@@ -11,12 +11,7 @@ import { loadEnvVarsForApp } from "./app-graph-load";
 import {
   loadAutoInjectedVarsForApp,
   loadSharedVarsForApp,
-} from "./shared-vars";
-
-/**
- * EVERY env layer carries its `plain`/`secret` type to the deploy edge. ==
- * "secret"`, and two of the four loaders never projected the column: `undefined !
- */
+} from "./shared-vars/deploy-entries";
 
 let db: TestDb;
 let pg: PGlite;
@@ -65,7 +60,6 @@ after(async () => {
   await pg.close();
 });
 
-/** The filter `appEnv` applies for a fork preview, verbatim. */
 const keep = <T extends { type: "plain" | "secret" }>(list: T[]): T[] =>
   list.filter((e) => e.type !== "secret");
 

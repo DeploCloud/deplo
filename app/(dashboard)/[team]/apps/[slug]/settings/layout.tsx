@@ -1,5 +1,5 @@
 import { notFound } from "next/navigation";
-import { getAppBySlug } from "@/lib/data/apps";
+import { getAppBySlug } from "@/lib/data/apps/listing";
 import { PendingChangesNotice } from "@/components/apps/pending-changes-notice";
 
 export default async function AppSettingsLayout(

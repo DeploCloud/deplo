@@ -22,7 +22,7 @@ import {
 import { AppLogo } from "@/components/shared/project-logo";
 import { DatabaseLogo } from "@/components/storage/database-logo";
 import { useAppNav } from "@/components/apps/app-nav-store";
-import type { DatabaseType } from "@/lib/types";
+import type { DatabaseType } from "@/lib/types/database";
 import {
   buildBreadcrumb,
   type BreadcrumbGraph,
@@ -31,14 +31,8 @@ import {
 } from "@/lib/breadcrumb-model";
 import { cn } from "@/lib/utils";
 
-/** Keep the crumb trail from crowding out the header on a deeply nested path:
- *  beyond this many folder crumbs the middle ones fold into a single "…" menu
- *  (Windows-Explorer behaviour). */
 const MAX_FOLDER_CRUMBS = 3;
 
-/**
- * The topbar breadcrumb.
- */
 export function Breadcrumbs({
   pathname,
   graph,
@@ -48,26 +42,17 @@ export function Breadcrumbs({
   pathname: string;
   graph: BreadcrumbGraph;
   capabilities: string[];
-  /** Plain label shown (after a "/") when there's no rich trail to build. */
   fallback: string;
 }) {
-  // The Overview drill-in lives in the query string (?folder=/?project=/?view=),
-  // which layouts don't receive, so the topbar reads it client-side.
   const params = useSearchParams();
   const searching = Boolean(params.get("q"));
   const openFolderId = searching ? null : params.get("folder");
   const openProjectId = searching ? null : params.get("project");
   const view = params.get("view") === "list" ? "list" : "grid";
 
-  // Live per-app facts (Console visibility) - null until the app
-  // layout publishes them, so the section menus fill in after first paint. The
-  // sibling/folder menus need none of this and are complete from SSR.
   const service = useAppNav();
   const slug = pathname.match(/^\/apps\/([^/]+)/)?.[1] ?? null;
 
-  // Inside an app, gate the section menu on what the viewer holds on THAT app
-  // (published by the app layout); the prop is the team-wide union, which is
-  // deliberately wider than the truth.
   const appCaps = service?.slug === slug ? service.capabilities : null;
   const capKey = appCaps ? appCaps.join(",") : capabilities.join(",");
   const caps = React.useMemo(() => {
@@ -120,14 +105,11 @@ export function Breadcrumbs({
   );
 }
 
-/** Fold the middle of a long folder run into one "…" crumb (see MAX_FOLDER_CRUMBS). */
 function collapseFolders(segments: BreadcrumbSegment[]): BreadcrumbSegment[] {
   const folderIdx = segments
     .map((s, i) => (s.kind === "folder" ? i : -1))
     .filter((i) => i >= 0);
   if (folderIdx.length <= MAX_FOLDER_CRUMBS) return segments;
-  // Folder crumbs are contiguous (root → leaf); keep the first + last, fold the
-  // rest - everything before the run (the Overview crumb) and after it is kept.
   const first = folderIdx[0];
   const last = folderIdx[folderIdx.length - 1];
   const middle = segments.slice(first + 1, last);
@@ -147,18 +129,14 @@ function collapseFolders(segments: BreadcrumbSegment[]): BreadcrumbSegment[] {
   return [...segments.slice(0, first + 1), ellipsis, ...segments.slice(last)];
 }
 
-/** A name that links to its level, plus a ▾ menu of sibling/child targets. */
 function Crumb({
   segment,
   isCurrent,
 }: {
   segment: BreadcrumbSegment;
-  /** The last crumb - the page you're on (gets aria-current + foreground text). */
   isCurrent?: boolean;
 }) {
   const hasChoices = segment.items.some((i) => !i.current);
-  // Away from the Overview itself, its crumb is just the way back: a home mark
-  // reads faster than the word and leaves the width to the trail.
   const home = segment.kind === "overview" && !isCurrent;
   return (
     <span className="flex min-w-0 items-center">
@@ -172,9 +150,6 @@ function Crumb({
           isCurrent ? "font-medium text-foreground" : "text-muted-foreground",
         )}
       >
-        {/* The thing's own mark, before its name. A trail of names is a trail of
-            strings that all look alike; the App you are working on wearing the
-            logo you know it by is what makes the crumb readable at a glance. */}
         {home ? (
           <House className="size-3.5 shrink-0" />
         ) : (
@@ -194,7 +169,6 @@ function Crumb({
   );
 }
 
-/** The collapsed "…" crumb - the whole thing is the menu trigger (no link). */
 function EllipsisCrumb({ segment }: { segment: BreadcrumbSegment }) {
   return (
     <span className="flex items-center">
@@ -208,10 +182,8 @@ function SiblingMenu({
   label,
 }: {
   segment: BreadcrumbSegment;
-  /** When set, the trigger shows this text instead of a bare chevron. */
   label?: string;
 }) {
-  // Bucket items under their optional group heading, preserving order.
   const groups: { name?: string; items: DropItem[] }[] = [];
   for (const it of segment.items) {
     const g = groups.find((x) => x.name === it.group);
@@ -255,9 +227,6 @@ function SiblingMenu({
   );
 }
 
-/**
- * The mark a crumb or a menu row wears, from the kind of thing it names.
- */
 function KindIcon({
   kind,
   logo,
@@ -277,8 +246,6 @@ function KindIcon({
   if (kind === "database") {
     return (
       <DatabaseLogo
-        // The model keeps the engine as a plain string on purpose - a breadcrumb has no
-        // business owning the engine union.
         type={(dbType ?? "postgres") as DatabaseType}
         logo={logo ?? null}
         size={size}
@@ -307,8 +274,6 @@ function MenuRow({ item }: { item: DropItem }) {
     <KindIcon kind={item.kind} logo={item.logo} dbType={item.dbType} />
   );
   if (item.current) {
-    // The entry you're already on: a non-navigating marker, kept full-opacity
-    // (the variant-scoped override beats the base data-[disabled]:opacity-50).
     return (
       <DropdownMenuItem
         disabled

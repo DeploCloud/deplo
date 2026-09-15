@@ -9,53 +9,42 @@ export default function Loading() {
       aria-busy
       aria-label="Loading deployment"
     >
-      {/* Back to deployments (ghost, size sm) */}
       <Skeleton className="-ml-2 h-8 w-44 rounded-md" />
 
-      {/* Summary card */}
       <Card>
         <CardContent className="grid gap-4 p-5 sm:grid-cols-2 lg:grid-cols-4">
-          {/* Status */}
           <div>
             <Skeleton className="h-3 w-14" />
             <Skeleton className="mt-1 h-5 w-24 rounded-md" />
           </div>
-          {/* Environment */}
           <div>
             <Skeleton className="h-3 w-24" />
             <Skeleton className="mt-1 h-5 w-20 rounded-md" />
           </div>
-          {/* Source */}
           <div>
             <Skeleton className="h-3 w-14" />
             <Skeleton className="mt-1 h-4 w-36" />
           </div>
-          {/* Build time */}
           <div>
             <Skeleton className="h-3 w-20" />
             <Skeleton className="mt-1 h-4 w-16" />
           </div>
-          {/* Commit message (spans two columns) */}
           <div className="sm:col-span-2">
             <Skeleton className="h-3 w-14" />
             <Skeleton className="mt-1 h-4 w-3/4" />
           </div>
-          {/* Created */}
           <div>
             <Skeleton className="h-3 w-14" />
             <Skeleton className="mt-1 h-4 w-40" />
           </div>
-          {/* Visit (outline, size sm) */}
           <div className="flex items-end">
             <Skeleton className="h-8 w-20 rounded-md" />
           </div>
         </CardContent>
       </Card>
 
-      {/* Build logs */}
       <div className="space-y-2">
         <Skeleton className="h-4 w-20" />
-        {/* Build phase bar: label / pill / timestamp */}
         <div className="space-y-1">
           <Skeleton className="h-3 w-24" />
           <Skeleton className="h-6 w-full rounded-md" />

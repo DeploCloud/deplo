@@ -5,10 +5,6 @@ import type {
 } from "@codemirror/autocomplete";
 import { splitForCompletion } from "@/lib/registry/image-ref";
 
-/**
- * CodeMirror async completion source for `image:` lines inside the compose editor.
- */
-
 interface TagSuggestion {
   name: string;
   lastUpdated?: string;
@@ -19,7 +15,6 @@ interface NameSuggestion {
   stars?: number;
 }
 
-/** Match the `image:` value on the current line, capturing the value start. */
 const IMAGE_LINE = /^(\s*)image\s*:\s*(["']?)([^"'#]*)$/;
 
 async function fetchJson(url: string, signal: AbortSignal): Promise<unknown> {
@@ -34,11 +29,6 @@ function compactNumber(n: number): string {
   return String(n);
 }
 
-/**
- * The completion source. Returns null when the cursor isn't on an `image:`
- * value (so other completion sources / nothing kicks in), else a CompletionResult
- * whose `from` is the start of the fragment being completed.
- */
 export async function imageCompletionSource(
   context: CompletionContext,
 ): Promise<CompletionResult | null> {
@@ -49,25 +39,16 @@ export async function imageCompletionSource(
   if (!m) return null;
 
   const value = m[3];
-  // Offset (within the doc) where the image value begins: the whole matched
-  // prefix length minus the value itself. `beforeCursor` ends at the cursor, so
-  // the value runs from here to the cursor.
   const valueStart = line.from + (beforeCursor.length - value.length);
-  // Don't fire on an empty value unless the user explicitly invoked completion.
   if (!value.trim() && !context.explicit) return null;
 
   const { namePart, tagPart } = splitForCompletion(value);
-  // Bridge CodeMirror's abort event to a fetch AbortSignal so stale lookups are
-  // cancelled when the user keeps typing.
   const ac = new AbortController();
   context.addEventListener?.("abort", () => ac.abort());
   const signal = ac.signal;
 
   try {
     if (tagPart !== null) {
-      // --- Completing a TAG (after the ":") ---
-      // Forward the fragment as a server-side filter so a specific/old version
-      // (e.g. "2.0") surfaces even when it isn't among the newest tags.
       const filterParam = tagPart
         ? `&filter=${encodeURIComponent(tagPart)}`
         : "";
@@ -78,20 +59,16 @@ export async function imageCompletionSource(
       const tags = json?.tags ?? [];
       if (tags.length === 0) return null;
 
-      // Replace from just after the tag colon to the cursor.
       const tagFrom = valueStart + value.length - tagPart.length;
       const options: Completion[] = tags.slice(0, 60).map((t) => ({
         label: t.name,
         type: "constant",
         detail: t.lastUpdated ? relativeDate(t.lastUpdated) : undefined,
       }));
-      // filter:false - the registry already matched the fragment server-side
-      // (e.g. tags are `v2.0.0` while the user typed `2.0.`), so CodeMirror's
-      // prefix scoring must not hide them. Order is registry order (newest-first).
+      // filter:false - the registry already matched the fragment, so prefix scoring must not hide a tag.
       return { from: tagFrom, options, filter: false };
     }
 
-    // --- Completing a NAME (repository) ---
     if (namePart.length < 2) return null;
     const json = (await fetchJson(
       `/api/registry/images?action=search&q=${encodeURIComponent(namePart)}`,
@@ -102,7 +79,6 @@ export async function imageCompletionSource(
 
     const options: Completion[] = names.slice(0, 25).map((n) => ({
       label: n.name,
-      // Appending ":" primes a follow-up tag completion.
       apply: `${n.name}:`,
       type: "class",
       detail: n.official
@@ -111,7 +87,6 @@ export async function imageCompletionSource(
           ? `★ ${compactNumber(n.stars)}`
           : undefined,
     }));
-    // filter:false - Docker Hub already ranked by relevance for the query.
     return { from: valueStart, options, filter: false };
   } catch {
     return null;

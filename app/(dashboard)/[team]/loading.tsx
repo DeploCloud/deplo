@@ -2,9 +2,6 @@ import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
 
-// The grid below mirrors AppsGrid's own breakpoints (1 col, 2 from `sm`, 3 from
-// `3xl`), so the placeholder count has to follow them too: a fixed count leaves a
-// half-empty last row on the wider layouts.
 const ROW_FILL = [
   "",
   "",
@@ -22,9 +19,7 @@ export default function Loading() {
       aria-busy
       aria-label="Loading dashboard"
     >
-      {/* Right rail */}
       <div className="order-2 space-y-6 lg:order-2">
-        {/* Recent activity */}
         <Card>
           <CardHeader className="pb-3">
             <Skeleton className="h-4 w-28" />
@@ -44,22 +39,18 @@ export default function Loading() {
         </Card>
       </div>
 
-      {/* Apps */}
       <div className="order-1 space-y-5 lg:order-1">
-        {/* Header row: title + Add New */}
         <div className="flex items-center justify-between gap-3">
           <Skeleton className="h-8 w-28" />
           <Skeleton className="h-8 w-28 rounded-md" />
         </div>
 
-        {/* Search + view toggles */}
         <div className="flex items-center gap-2">
           <Skeleton className="h-9 flex-1 rounded-md" />
           <Skeleton className="hidden size-9 rounded-md sm:block" />
           <Skeleton className="hidden size-9 rounded-md sm:block" />
         </div>
 
-        {/* Apps grid */}
         <div className="grid gap-4 sm:grid-cols-2 3xl:grid-cols-3">
           {ROW_FILL.map((fill, i) => (
             <Card key={i} className={cn("flex flex-col gap-4 p-5", fill)}>
@@ -73,7 +64,6 @@ export default function Loading() {
                 </div>
                 <Skeleton className="size-8 rounded-md" />
               </div>
-              {/* Latest deployment box */}
               <div className="rounded-lg border border-border bg-surface p-3">
                 <div className="flex items-center gap-2">
                   <Skeleton className="size-1.5 rounded-full" />

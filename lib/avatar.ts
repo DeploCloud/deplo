@@ -4,7 +4,7 @@ import { cache } from "@/lib/request-cache";
 import { eq } from "drizzle-orm";
 
 import { prepared } from "./db/prepared";
-import { instanceSettings } from "./db/schema/control-plane";
+import { instanceSettings } from "./db/schema/control-plane/instance";
 import { sha256Hex } from "./crypto";
 import {
   facePath,
@@ -15,18 +15,8 @@ import {
   isValidAvatarValue,
 } from "./apps/avatar-shared";
 
-/**
- * Where a person's or a team's picture comes from, resolved once on the server.
- */
-
-/** The singleton row's PK. Mirrors `lib/data/instance-settings.ts`. */
 const SETTINGS_ID = "default";
 
-/**
- * Whether Gravatar fallback is on for this instance. No row at all is a fresh
- * instance, and it reads the column's own default - off, because nobody has
- * chosen to hand gravatar.com an address hash yet.
- */
 export const gravatarEnabled = cache(async (): Promise<boolean> => {
   const [row] = await prepared("gravatar-enabled", (db) =>
     db
@@ -37,27 +27,17 @@ export const gravatarEnabled = cache(async (): Promise<boolean> => {
   return row?.gravatarEnabled ?? false;
 });
 
-/**
- * A person's Gravatar address. The service's default (`d=identicon`) would instead
- * paint a random geometric pattern over every person who never signed up for it.
- */
 function gravatarUrl(email: string): string {
   return `${GRAVATAR_ORIGINS[0]}/avatar/${sha256Hex(
     email.trim().toLowerCase(),
   )}?s=160&d=404`;
 }
 
-/** A row far enough along to answer "what picture does this person have?". */
 export type AvatarSource = {
   image?: string | null;
   email?: string | null;
 };
 
-/**
- * Resolve many people in one go: reads the instance flag once and hands back a
- * SYNC mapper, so a batch builder maps N rows without N awaits. Nothing chosen
- * falls to Gravatar when the instance allows it, then to NULL (drawn as letters).
- */
 export async function avatarResolver(): Promise<
   (row: AvatarSource) => string | null
 > {
@@ -75,16 +55,10 @@ export async function avatarResolver(): Promise<
   };
 }
 
-/** Single-row convenience for the handful of call sites that resolve one person. */
 export async function avatarUrlFor(row: AvatarSource): Promise<string | null> {
   return (await avatarResolver())(row);
 }
 
-/**
- * A team's picture. Sync and flagless: a team has no email, so there is no
- * Gravatar to ask the instance about - it is the uploaded image, a generated one,
- * or null, which the component draws as the letters of the team's name.
- */
 export function teamAvatarUrl(image: string | null | undefined): string | null {
   const value = image?.trim();
   const parts = faceParts(value);

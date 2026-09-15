@@ -1,24 +1,16 @@
 import { type NextRequest } from "next/server";
 import { StringDecoder } from "node:string_decoder";
-import { getCurrentUser } from "@/lib/auth";
+import { getCurrentUser } from "@/lib/auth/current-user";
 import { isCrossSite, crossSiteRefused } from "@/lib/http/same-origin";
 import { resolveDatabaseLogsTarget } from "@/lib/data/database-console";
 import * as logs from "@/lib/logs/session";
-import { connectAgent } from "@/lib/infra/agent-client";
+import { connectAgent } from "@/lib/infra/agent-client/connect";
 import { parseLogWindow } from "@/lib/logs/window";
-import { logMaxDays } from "@/lib/data/instance-settings";
+import { logMaxDays } from "@/lib/data/instance-settings/settings-store";
 
-/**
- * Live runtime logs (`docker logs -f`) for a DATABASE container, over plain HTTP -
- * the database sibling of `/api/apps/[id]/logs` (same SSE framing, same session
- * plumbing; only the authorization/resolution seam differs).
- */
-
-// Long-lived stream; must run at request time on the Node runtime.
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
-// Queued-chunk ceiling before a stalled SSE client is cut off.
 const MAX_QUEUED_CHUNKS = 1024;
 
 export async function GET(
@@ -31,14 +23,11 @@ export async function GET(
 
   const { id: databaseId } = await ctx.params;
   const target = request.nextUrl.searchParams.get("container") ?? undefined;
-  // Default to the last 500 lines; only parse the param when present and
-  // numeric (Number(null) is 0, which would mean follow-only, no history).
   const rawTail = request.nextUrl.searchParams.get("tail");
   const parsedTail = rawTail !== null ? Number(rawTail) : NaN;
   const tail = Number.isFinite(parsedTail)
     ? Math.min(Math.max(Math.trunc(parsedTail), 0), 5000)
     : 500;
-  // How far back to reach and whether to prefix each line with its write time.
   const window = parseLogWindow(
     request.nextUrl.searchParams,
     await logMaxDays(),
@@ -57,7 +46,6 @@ export async function GET(
     return Response.json({ error: resolved.reason }, { status });
   }
 
-  // Stream from the OWNING server's agent; a dial failure fails clearly.
   let session;
   try {
     const conn = await connectAgent(resolved.serverId);
@@ -81,62 +69,43 @@ export async function GET(
 
   const stream = new ReadableStream<Uint8Array>({
     start(controller) {
-      // Assigned below once the subscription exists; closeStream needs it earlier.
       let unsubscribe: () => void = () => {};
       const closeStream = () => {
         unsubscribe();
         try {
           controller.close();
-        } catch {
-          /* already closed */
-        }
+        } catch {}
       };
       const send = (event: string, data: string) => {
-        // Back-pressure: desiredSize is null once the stream errors/closes and
-        // goes negative when the client stops reading. Skip writes on a dead
-        // stream; cut off a stalled client rather than grow the heap unbounded.
         const size = controller.desiredSize;
         if (size === null) return;
         if (size < -MAX_QUEUED_CHUNKS) {
           closeStream();
           return;
         }
-        // SSE frame: data is JSON so arbitrary log bytes survive newlines.
         controller.enqueue(
           encoder.encode(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`),
         );
       };
 
-      // NOT named "open" - EventSource reserves that event name.
       send("session", session.id);
 
-      // Streaming decoder so a multi-byte UTF-8 glyph split across two docker
-      // chunks isn't mangled into �.
       const decoder = new StringDecoder("utf8");
       unsubscribe = logs.subscribe(session, (chunk) => {
         try {
           const text = decoder.write(chunk);
           if (text) send("data", text);
-        } catch {
-          /* controller closed mid-flush; cleanup runs below */
-        }
+        } catch {}
       });
 
-      // Curated failure reason first, then close, never a silent empty pane.
-      // NOT named "error" (EventSource dispatches transport errors there).
       session.onExit = (error) => {
         try {
           if (error) send("failure", error);
           send("exit", "");
           controller.close();
-        } catch {
-          /* already closed */
-        }
+        } catch {}
       };
 
-      // A signal that aborted DURING the pre-start awaits never fires "abort"
-      // again - check it explicitly so an already-gone client is cleaned up
-      // immediately (the idle reaper then kills the backing).
       if (request.signal.aborted) {
         closeStream();
         return;
@@ -150,7 +119,6 @@ export async function GET(
       "Content-Type": "text/event-stream; charset=utf-8",
       "Cache-Control": "no-cache, no-transform",
       Connection: "keep-alive",
-      // Disable proxy buffering (nginx) so output streams in real time.
       "X-Accel-Buffering": "no",
     },
   });
@@ -167,9 +135,6 @@ export async function DELETE(
   const { id: databaseId } = await ctx.params;
   const sessionId = request.nextUrl.searchParams.get("sessionId") ?? "";
   const session = sessionId ? logs.get(sessionId, databaseId) : undefined;
-  // Only the principal that opened it may close it: a session id is otherwise a
-  // capability anyone can use to cut short somebody else's live log stream.
-  // Silent either way - a stranger learns nothing about which ids are live.
   if (session && session.userId === user.id) logs.destroy(sessionId);
   return Response.json({ ok: true });
 }

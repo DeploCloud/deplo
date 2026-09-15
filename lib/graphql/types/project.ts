@@ -1,23 +1,20 @@
 import { builder } from "../builder";
 import {
-  listProjects,
-  getProjectBySlug,
   createProject,
   renameProject,
   setProjectColor,
   deleteProject,
   reorderProjects,
+} from "@/lib/data/projects/lifecycle";
+import {
   moveAppToProject,
   moveAppToEnvironment,
-  type ProjectSummary,
-} from "@/lib/data/projects";
+} from "@/lib/data/projects/placement";
+import { listProjects, getProjectBySlug } from "@/lib/data/projects/read";
+import type { ProjectSummary } from "@/lib/data/projects/rows";
 import { listEnvironmentsForProject } from "@/lib/data/environments";
 import { EnvironmentRef } from "./environment";
-import type { Project } from "@/lib/types";
-
-/* ------------------------------------------------------------------ */
-/* Object type - the Project CONTAINER (ADR-0008)                      */
-/* ------------------------------------------------------------------ */
+import type { Project } from "@/lib/types/team";
 
 export const ProjectRef = builder
   .objectRef<Project | ProjectSummary>("Project")
@@ -35,7 +32,6 @@ export const ProjectRef = builder
       ownerUserId: t.exposeID("ownerUserId", { nullable: true }),
       createdAt: t.exposeString("createdAt"),
       updatedAt: t.exposeString("updatedAt"),
-      // Live counts (present on the list/summary shape; 0 on a bare Project).
       folderCount: t.int({
         resolve: (p) => ("folderCount" in p ? p.folderCount : 0),
       }),
@@ -45,17 +41,12 @@ export const ProjectRef = builder
       environmentCount: t.int({
         resolve: (p) => ("environmentCount" in p ? p.environmentCount : 0),
       }),
-      // The container's environments (seeded Development/Preview/Production).
       environments: t.field({
         type: [EnvironmentRef],
         resolve: (p) => listEnvironmentsForProject(p.id),
       }),
     }),
   });
-
-/* ------------------------------------------------------------------ */
-/* Query                                                               */
-/* ------------------------------------------------------------------ */
 
 builder.queryFields((t) => ({
   projects: t.field({
@@ -74,18 +65,10 @@ builder.queryFields((t) => ({
   }),
 }));
 
-/* ------------------------------------------------------------------ */
-/* Mutations                                                           */
-/* ------------------------------------------------------------------ */
-
-// The team-wide container order (like reorderFolders/reorderApps) stays gated
-// on a super-user: instance admin OR manage_team.
 const reorderScope = {
   $any: { instanceAdmin: true, capability: "manage_team" },
 } as const;
 
-// One scope per action - creating a project, renaming it, deleting it and moving an
-// app into it are four different permissions.
 const createScope = { capability: "create_projects" } as const;
 const organizeScope = { capability: "organize_projects" } as const;
 const deleteScope = { capability: "delete_projects" } as const;

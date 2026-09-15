@@ -1,5 +1,5 @@
 import { runWithIdentity } from "../lib/auth/request-context";
-import { redeploy } from "../lib/data/deployments";
+import { redeploy } from "../lib/data/deployments/stack-actions";
 
 const d = await runWithIdentity(
   { userId: "usr_2f9f8b8ebf3b1131", teamId: "team_8d691fadd5f3d547" },

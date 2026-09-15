@@ -1,50 +1,25 @@
-// https://deplo.build/docs/guides/data/persistent-storage
-
 import { hostVolumeName } from "../utils";
 import {
   MOUNT_PROPAGATIONS,
   type MountPropagation,
   type VolumeMount,
-} from "../types";
+} from "../types/container";
 
-/**
- * The pure model behind the Storage settings editor: what the three kinds of mount
- * ARE in the UI's words, and the one validator both the editor's inline lint and
- * the save-time check run.
- */
-
-/** The stored discriminant. NEVER renamed - see the module note. */
 export type VolumeKind = NonNullable<VolumeMount["type"]>;
 
-/** UI order: safest and most common first, the privileged one last. */
 export const VOLUME_KIND_ORDER: VolumeKind[] = ["named", "app", "host"];
 
 export interface VolumeKindMeta {
   kind: VolumeKind;
-  /** What the UI calls it. */
   label: string;
-  /** One line, in consequences rather than Docker nouns. Shown in the picker. */
   summary: string;
-  /**
-   * "Good for …" - the recognition line. Picking a kind is otherwise a question
-   * a non-expert cannot answer ("do I want a volume or a bind?"); naming the
-   * situations turns it into one they can ("I have uploads to keep").
-   */
   examples: string;
-  /** The tooltip on the kind control - the "when would I pick this" answer. */
   tooltip: string;
-  /** Label of the single source field this kind needs. */
   sourceLabel: string;
   sourcePlaceholder: string;
-  /** Tooltip for the source field. */
   sourceTooltip: string;
-  /** True when saving one needs the `canMountHostVolumes` grant. */
   needsPermission: boolean;
-  /** Badge tone for the collapsed row's identity chip and the picker cards. */
   chip: "secondary" | "outline" | "warning";
-  /**
-   * Volume only: what the derived on-host name row is called.
-   */
   targetLabel: string | null;
 }
 
@@ -97,19 +72,11 @@ export const VOLUME_KINDS: Record<VolumeKind, VolumeKindMeta> = {
   },
 };
 
-/**
- * Switch a row's kind, KEEPING each kind's own source value. The no-op guard is
- * load-bearing, not a micro-optimisation.
- */
 export function switchKind(v: VolumeMount, kind: VolumeKind): VolumeMount {
   if (kind === kindOf(v)) return v;
   return { ...v, type: kind };
 }
 
-/**
- * Where a BUILT app's code runs inside its container, so the editor can tell the
- * user what `./uploads` in their code is called here.
- */
 export function containerWorkdir(
   source: string,
   rootDirectory: string | null | undefined,
@@ -121,7 +88,6 @@ export function containerWorkdir(
   return !root || root === "." ? "/app" : `/app/${root}`;
 }
 
-/** The kind of a row, defaulting the absent discriminant to "named". */
 export function kindOf(v: Pick<VolumeMount, "type">): VolumeKind {
   return v.type ?? "named";
 }
@@ -130,11 +96,6 @@ export function metaOf(v: Pick<VolumeMount, "type">): VolumeKindMeta {
   return VOLUME_KINDS[kindOf(v)];
 }
 
-/**
- * Container paths the runtime owns; mounting over them breaks or compromises the
- * container. Rejected as an exact match or as a parent prefix. Imported by the
- * server's `validateVolumes` so the editor and the writer share one list.
- */
 export const RESERVED_MOUNT_PREFIXES = [
   "/proc",
   "/sys",
@@ -148,10 +109,6 @@ export const RESERVED_MOUNT_PREFIXES = [
   "/var/run",
 ];
 
-/**
- * Whether this KIND of entry may not take `mountPath`, because the runtime owns
- * it.
- */
 export function reservedMountPath(
   mountPath: string,
   kind: VolumeKind,
@@ -163,13 +120,9 @@ export function reservedMountPath(
   );
 }
 
-/** Docker's name shape for a managed volume (also blocks YAML key injection). */
 export const VOLUME_NAME_RE = /^[a-z0-9][a-z0-9_-]*$/;
 export const VOLUME_NAME_MAX = 40;
 
-/**
- * The `:`-suffixed options a `- source:target` mount line ends with.
- */
 export function mountOptions(m: {
   readOnly?: boolean | null;
   propagation?: MountPropagation | null;
@@ -178,19 +131,12 @@ export function mountOptions(m: {
   return opts.length ? `:${opts.join(",")}` : "";
 }
 
-/** The propagation named in a mount line's option list, if any. Inverse of
- *  {@link mountOptions}, for the reroute path that reads the deployed stack. */
 export function parseMountPropagation(
   opts: string[],
 ): MountPropagation | undefined {
   return MOUNT_PROPAGATIONS.find((p) => opts.includes(p));
 }
 
-/**
- * The one normaliser for a File entry's path in this app's Files: trimmed, the
- * optional `./` marker dropped (the same prefix the compose convention uses), no
- * trailing slash.
- */
 export function normalizeFilesPath(path: string | null | undefined): string {
   return (path ?? "")
     .trim()
@@ -198,24 +144,16 @@ export function normalizeFilesPath(path: string | null | undefined): string {
     .replace(/\/+$/, "");
 }
 
-/** The last segment of a path - `/srv/media` → `media`. Empty for `/`, `.`, `..`. */
 function lastSegment(path: string): string {
   const segments = (path ?? "").trim().replace(/\/+$/, "").split("/");
   const last = segments[segments.length - 1] ?? "";
   return last === "." || last === ".." ? "" : last;
 }
 
-/**
- * The file name a mount path ends in - `/etc/nginx/nginx.conf` → `nginx.conf`.
- */
 export function filesPathFromMountPath(mountPath: string): string {
   return lastSegment(mountPath);
 }
 
-/**
- * Where a row lands inside the container when the user does not say - the reason
- * "Path inside the app" is not a field you must fill.
- */
 export function derivedMountPath(
   v: VolumeMount,
   workdir: string | null | undefined,
@@ -227,18 +165,11 @@ export function derivedMountPath(
       ? normalizeFilesPath(v.projectPath)
       : kind === "host"
         ? lastSegment((v.hostPath ?? "").trim())
-        : // As typed, NOT case-folded: a path inside a Linux container is
-          // case-sensitive, so a Volume named `Uploads` has to land on `/app/Uploads` - the
-          // folder the code writes to.
-          (v.name ?? "").trim();
+        : (v.name ?? "").trim();
   if (!rel) return "";
   return `${workdir.replace(/\/+$/, "")}/${rel.replace(/^\/+/, "")}`;
 }
 
-/**
- * The path this row will really mount at: what the user typed, or else {@link
- * derivedMountPath}.
- */
 export function effectiveMountPath(
   v: VolumeMount,
   workdir?: string | null,
@@ -249,9 +180,6 @@ export function effectiveMountPath(
   );
 }
 
-/** A docker-volume-safe name derived from a mount path when the name is blank
- *  (e.g. "/var/data" → "var-data", "/" → "data"). The server derives the SAME
- *  name (it re-exports this), so the editor's preview is not a guess. */
 export function deriveVolumeName(mountPath: string): string {
   const s = mountPath
     .toLowerCase()
@@ -260,9 +188,6 @@ export function deriveVolumeName(mountPath: string): string {
   return s || "data";
 }
 
-/**
- * Which field of a row is wrong, and what to say about it.
- */
 export interface VolumeProblem {
   field: "source" | "mountPath";
   message: string;
@@ -274,9 +199,6 @@ export function volumeProblem(
 ): VolumeProblem | null {
   const kind = kindOf(v);
 
-  // The SOURCE is checked first, and not only because the form asks for it first:
-  // with a known working directory it is also what the path inside the app is derived
-  // from, so a row with neither has a missing source, not a missing path.
   if (kind === "host") {
     const hostPath = (v.hostPath ?? "").trim().replace(/\/+$/, "");
     if (!hostPath)
@@ -317,9 +239,6 @@ export function volumeProblem(
     if (p.split("/").includes(".."))
       return { field: "source", message: 'The path cannot contain ".."' };
   } else {
-    // Volume: a blank name is fine on its own - the server derives one from the
-    // path (and the path may in turn be derived from the name, which is why the
-    // "one of the two" rule lives below rather than here).
     const name = (v.name ?? "").trim().toLowerCase();
     if (name && !VOLUME_NAME_RE.test(name))
       return {
@@ -336,9 +255,6 @@ export function volumeProblem(
 
   const mountPath = effectiveMountPath(v, workdir);
   if (!mountPath) {
-    // A Volume is the one kind whose source may be left blank, so this is where
-    // its "name it or place it" requirement lands, and with a working directory
-    // to derive from, naming it is the shorter of the two.
     if (kind === "named" && workdir)
       return {
         field: "source",
@@ -370,11 +286,6 @@ export function volumeProblem(
   return null;
 }
 
-/**
- * The problem the SET has, which no single row can see: two mounts at the same
- * path in the same container, or two managed volumes sharing a name (their on-host
- * name would collide).
- */
 export function volumeSetProblem(
   volumes: VolumeMount[],
   workdir?: string | null,
@@ -382,12 +293,8 @@ export function volumeSetProblem(
   const paths = new Set<string>();
   const names = new Set<string>();
   for (const v of volumes) {
-    // The path that will be STORED, derived ones included: two rows that leave
-    // the path empty and land on the same one still collide.
     const path = effectiveMountPath(v, workdir);
     if (path) {
-      // JSON, not a joined string: it keeps the two parts apart with no
-      // separator character that a service name or a path could contain.
       const key = JSON.stringify([(v.service ?? "").trim(), path]);
       if (paths.has(key)) return `Two mounts share the path ${path}`;
       paths.add(key);
@@ -405,11 +312,6 @@ export function volumeSetProblem(
   return null;
 }
 
-/**
- * The on-host name a Volume row will use, for the copyable target line. Null for
- * a File or a Bind (their source IS the target, already on screen) and for a
- * Volume with no path yet, which has nothing to derive a name from.
- */
 export function namedVolumeTarget(
   v: VolumeMount,
   slug: string,
@@ -421,27 +323,18 @@ export function namedVolumeTarget(
   return name ? hostVolumeName(slug, name.toLowerCase()) : null;
 }
 
-/**
- * One sentence stating what this row will DO at deploy - the honest readout that
- * replaces guessing from three half-filled inputs. `slug` is the app's, for the
- * on-host volume name.
- */
 export function volumeReadout(
   v: VolumeMount,
   slug: string,
   workdir?: string | null,
 ): string {
   const kind = kindOf(v);
-  // The path it will really use - a derived one reads exactly like a typed one,
-  // because at deploy there is no difference between them.
   const at = effectiveMountPath(v, workdir);
   const ro = v.readOnly ? " The app can read it but not change it." : "";
   if (kind === "host") {
     const from = (v.hostPath ?? "").trim();
     if (!from || !at)
       return "Shares a folder that already exists on the server.";
-    // Stated only when it is ON: the default (a snapshot of what was mounted at
-    // startup) is what every other kind does too, so saying it would be noise.
     const follows =
       v.propagation === "rslave"
         ? " Anything mounted inside it later shows up too."

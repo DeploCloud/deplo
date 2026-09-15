@@ -23,8 +23,6 @@ const fit = (width: number, height: number): CropSource => ({
 });
 
 test("cover at zoom 1 reproduces the old blind centre crop", () => {
-  // The regression pin: someone who opens the dialog and saves without touching
-  // anything gets byte-for-byte what `toAvatarDataUri` used to produce.
   const s = cover(800, 600);
   assert.deepEqual(cropRect(initialView(s), s), { sx: 100, sy: 0, size: 600 });
 });

@@ -21,19 +21,16 @@ import { eq } from "drizzle-orm";
 import { publishAppChanged } from "../graphql/pubsub";
 import { setFolderGrant } from "./folder-access";
 import { runWithIdentity } from "../auth/request-context";
+import { apps as appsTable } from "../db/schema/control-plane/apps";
 import {
-  apps as appsTable,
   folders as foldersTable,
   projects as projectsTable,
-} from "../db/schema/control-plane";
-import { ALL_CAPABILITIES } from "../types";
-import { appStatusStream, activeDeploymentsStream } from "../graphql/types/app";
-
-/**
- * Step 4 SSE generator test (relational-store PLAN §6 "SSE generators must stay
- * cookie-free"): the appStatus subscription generator must paint the initial
- * snapshot AND forward >1 change ping WITHOUT ever calling a cookie-reading helper
- */
+} from "../db/schema/control-plane/projects";
+import { ALL_CAPABILITIES } from "../types/identity";
+import {
+  appStatusStream,
+  activeDeploymentsStream,
+} from "../graphql/types/app/app-subscriptions";
 
 let db: TestDb;
 let pg: PGlite;
@@ -65,25 +62,19 @@ test("appStatusStream yields the initial snapshot + multiple change pings (cooki
     status: "active",
   });
 
-  // NO runWithIdentity - there is no request scope. If the generator read a
-  // cookie it would throw here.
   const gen = appStatusStream("alpha", TEAM_A, USER_1);
 
-  // Initial snapshot.
   const first = await gen.next();
   assert.equal(first.done, false);
   assert.equal(first.value.id, "prj_1");
   assert.equal(first.value.slug, "alpha");
 
-  // Ping 1: a change → the generator reloads + yields a fresh snapshot.
   const p1 = gen.next();
   publishAppChanged("prj_1");
   const second = await p1;
   assert.equal(second.done, false);
   assert.equal(second.value.id, "prj_1");
 
-  // Ping 2: a SECOND change across another iteration tick - this is the case the
-  // cookie-free guarantee protects (the old crash point).
   const p2 = gen.next();
   publishAppChanged("prj_1");
   const third = await p2;
@@ -122,8 +113,7 @@ test("appStatusStream ends when the project is deleted mid-stream", async () => 
     status: "active",
   });
   const gen = appStatusStream("alpha", TEAM_A, USER_1);
-  await gen.next(); // initial
-  // Delete the project, then ping - the reload returns null → the generator ends.
+  await gen.next();
   const p = gen.next();
   await pg.exec(`delete from apps where id = 'prj_1';`);
   publishAppChanged("prj_1");
@@ -131,9 +121,6 @@ test("appStatusStream ends when the project is deleted mid-stream", async () => 
   assert.equal(next.done, true, "generator ends when the project vanishes");
 });
 
-/**
- * The identity seam for subscriptions.
- */
 test("a project scope holds on EVERY tick of the stream, not just the first", async () => {
   await db.insert(projectsTable).values({
     id: "prc_out",
@@ -154,7 +141,6 @@ test("a project scope holds on EVERY tick of the stream, not just the first", as
   const token = {
     id: "tok_test",
     capabilities: [...ALL_CAPABILITIES],
-    // Scoped to a project the app is NOT in.
     scope: {
       teamIds: [TEAM_A],
       wholeTeamIds: [],
@@ -168,12 +154,9 @@ test("a project scope holds on EVERY tick of the stream, not just the first", as
   const asScoped = <T>(fn: () => T) =>
     runWithIdentity({ userId: USER_1, teamId: TEAM_A, token }, fn);
 
-  // Tick 0: the initial snapshot is refused, exactly like an unknown slug.
   const gen = asScoped(() => appStatusStream("alpha", TEAM_A, USER_1));
   await assert.rejects(() => asScoped(() => gen.next()), /App not found/);
 
-  // And with the scope covering the app, the stream survives past tick 1 - the
-  // regression this wrapper exists for.
   const ok = {
     id: "tok_test",
     capabilities: [...ALL_CAPABILITIES],
@@ -197,14 +180,7 @@ test("a project scope holds on EVERY tick of the stream, not just the first", as
   await asOk(() => gen2.return(undefined as never));
 });
 
-/* ------------------------------------------------------------------ */
-/* Folder privacy - a live feed is not a way around it                 */
-/* ------------------------------------------------------------------ */
-
 test("a member who can't see the folder can't watch the app inside it", async () => {
-  // OWNER owns a private folder; MEMBER holds real team capabilities but no
-  // access to it, which is exactly what makes the app invisible to them
-  // (lib/data/folder-access-integration.test.ts proves the list + page side).
   await pg.exec(`truncate table users, teams restart identity cascade;`);
   await seedIdentity(db, {
     users: [
@@ -239,15 +215,12 @@ test("a member who can't see the folder can't watch the app inside it", async ()
     .set({ folderId: "fld_private" })
     .where(eq(appsTable.id, "prj_1"));
 
-  // The snapshot carries the app's name, source repo, URL and every deployment -
-  // a member refused the app's own page must not read it off a live feed either.
   await assert.rejects(
     () => appStatusStream("alpha", TEAM_A, "u_outsider").next(),
     /App not found/,
     "the status stream leaked an app inside a folder the member can't see",
   );
 
-  // The control: the folder's owner watches it, and a grant opens it up.
   assert.equal(
     (await appStatusStream("alpha", TEAM_A, "u_folder_owner").next()).value.id,
     "prj_1",
@@ -293,12 +266,9 @@ test("an app moved into a folder the watcher can't see ends their stream", async
     status: "active",
   });
 
-  // Opens fine: the app is at the top level, where team capabilities govern.
   const gen = appStatusStream("alpha", TEAM_A, "u_outsider");
   assert.equal((await gen.next()).value.id, "prj_1");
 
-  // Filed away mid-stream - the revocation has to bite on the next tick, or a
-  // subscription opened a second before the move outlives it.
   const pending = gen.next();
   await db
     .update(appsTable)
@@ -312,10 +282,6 @@ test("an app moved into a folder the watcher can't see ends their stream", async
   );
 });
 
-/* ------------------------------------------------------------------ */
-/* The sidebar's live "deploying" chip                                 */
-/* ------------------------------------------------------------------ */
-
 test("activeDeploymentsStream counts in-flight builds and only pushes on change", async () => {
   await seedApp(db, {
     id: "prj_1",
@@ -325,15 +291,11 @@ test("activeDeploymentsStream counts in-flight builds and only pushes on change"
   });
   await seedDeployment(db, { id: "dep_1", appId: "prj_1", status: "building" });
   await seedDeployment(db, { id: "dep_2", appId: "prj_1", status: "queued" });
-  // Finished history never counts.
   await seedDeployment(db, { id: "dep_3", appId: "prj_1", status: "ready" });
 
-  // No runWithIdentity: the chip reads this from an SSE tick, where cookies are
-  // long gone.
   const gen = activeDeploymentsStream(TEAM_A, USER_1);
   assert.equal((await gen.next()).value, 2);
 
-  // A ping is only a "re-read": one build settling drops the count to 1.
   const pending = gen.next();
   await pg.exec(`update deployments set status = 'ready' where id = 'dep_1';`);
   publishAppChanged("prj_1");
@@ -385,8 +347,6 @@ test("a build inside a folder the member can't see is not counted", async () => 
     .where(eq(appsTable.id, "prj_1"));
   await seedDeployment(db, { id: "dep_1", appId: "prj_1", status: "building" });
 
-  // A count is small, but it is still "something is happening in a folder you
-  // are refused", and clicking the chip would show an empty Deployments page.
   assert.equal(
     (await activeDeploymentsStream(TEAM_A, "u_outsider").next()).value,
     0,

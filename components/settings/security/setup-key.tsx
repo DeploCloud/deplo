@@ -9,22 +9,14 @@ import { InfoTip } from "@/components/ui/info-tip";
 import { copyText } from "@/lib/clipboard";
 import { cn } from "@/lib/utils";
 
-/**
- * The TOTP setup key, covered until asked for - the same bargain as an environment
- * variable's value. Covering it matters more here than the usual "secret" reflex
- * suggests.
- */
 export function SetupKey({ secret }: { secret: string }) {
   const [revealed, setRevealed] = React.useState(false);
   const [copied, setCopied] = React.useState(false);
 
-  // Grouped for hand-typing: nobody transcribes 52 unbroken base32 characters.
   const grouped = React.useMemo(
     () => secret.replace(/(.{4})/g, "$1 ").trim(),
     [secret],
   );
-  // The cover is built to the SAME shape, so revealing does not reflow the
-  // dialog under the pointer that just clicked.
   const cover = React.useMemo(
     () =>
       Array.from({ length: Math.ceil(secret.length / 4) }, () => "••••").join(
@@ -52,8 +44,6 @@ export function SetupKey({ secret }: { secret: string }) {
         />
       </div>
 
-      {/* Two branches, never one element with a swapped string: while covered,
-          `secret` is not referenced in the rendered tree at all. */}
       {revealed ? (
         <code className="block font-mono text-xs leading-relaxed break-all select-all">
           {grouped}

@@ -12,23 +12,16 @@ process.env.DEPLO_DATA_DIR = mkdtempSync(join(tmpdir(), "deplo-pg-"));
 import { makeTestDb, type TestDb } from "../db/test-harness";
 import { __setTestDb, __resetTestDb } from "../db/client";
 import { runWithIdentity } from "../auth/request-context";
-import {
-  appMounts as appMountsTable,
-  pendingTeardowns as pendingTeardownsTable,
-} from "../db/schema/control-plane";
+import { appMounts as appMountsTable } from "../db/schema/control-plane/apps";
+import { pendingTeardowns as pendingTeardownsTable } from "../db/schema/control-plane/deployments";
 import { seedIdentity, TEAM_A, TEAM_B, USER_1 } from "./identity-test-helpers";
 import {
   seedServer,
   SERVER_1,
   TRUNCATE_PROJECT_GRAPH,
 } from "./app-graph-test-helpers";
-import { createApp } from "./apps";
+import { createApp } from "./apps/create";
 import { dropTeardown } from "./teardown-queue";
-
-/**
- * A slug whose stack still awaits teardown on a host is not free: a new app of any
- * team taking it would adopt the old one's named volumes and files.
- */
 
 let db: TestDb;
 let pg: PGlite;
@@ -99,7 +92,6 @@ test("a deploy key awaiting teardown keeps its slug taken, previews included", a
       name: "store",
       source: "compose",
       repo: null,
-      // Its own service name: two `web` on one team network would be a clash.
       compose: "services:\n  store:\n    image: nginx:1.27\n",
       deploy: false,
     }),
@@ -109,7 +101,6 @@ test("a deploy key awaiting teardown keeps its slug taken, previews included", a
 
 test("a config file's path stays inside the app's files and is never the env-file", async () => {
   const withMount = (filePath: string) => {
-    // One service name per app: two stacks answering `cfg` would clash.
     const name = `cfg-${Math.random().toString(36).slice(2, 8)}`;
     return asOtherTeam(() =>
       createApp({
@@ -132,7 +123,6 @@ test("a config file's path stays inside the app's files and is never the env-fil
     "",
   ])
     await assert.rejects(() => withMount(bad), /config file|\.env/, bad);
-  // A leading slash is folded, as the agent folds it, so the three agree.
   const stored = async (filePath: string) => {
     const app = await withMount(filePath);
     const rows = await db

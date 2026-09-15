@@ -2,9 +2,7 @@ import "server-only";
 
 import { builder } from "./builder";
 
-// Import every domain module for its side effect of registering types,
-// queries and mutations on the shared builder. Order is irrelevant - Pothos
-// resolves refs lazily at build time. Keep this list alphabetical.
+// A type module reaches the schema only by being imported here; there is no other registration.
 import "./types/account";
 import "./types/activity";
 import "./types/auth";
@@ -26,18 +24,39 @@ import "./types/health-check";
 import "./types/instance";
 import "./types/mcp";
 import "./types/member";
-import "./types/migration";
+import "./types/migration/active-run-feed";
+import "./types/migration/data-move";
+import "./types/migration/enums";
+import "./types/migration/import-mutations";
+import "./types/migration/inputs";
+import "./types/migration/plan-types";
+import "./types/migration/queries";
+import "./types/migration/run-mutations";
+import "./types/migration/run-types";
 import "./types/monitoring";
 import "./types/notifications";
 import "./types/passkey";
 import "./types/preview";
 import "./types/project";
-import "./types/app";
+import "./types/app/app-config-mutations";
+import "./types/app/app-inputs";
+import "./types/app/app-lifecycle-mutations";
+import "./types/app/app-object";
+import "./types/app/app-queries";
+import "./types/app/app-subscriptions";
+import "./types/app/deployment-mutations";
+import "./types/app/deployment-object";
 import "./types/app-files";
 import "./types/registry";
 import "./types/role";
 import "./types/search";
-import "./types/server";
+import "./types/server/certificates";
+import "./types/server/enrollment";
+import "./types/server/health";
+import "./types/server/host-ops";
+import "./types/server/roster-queries";
+import "./types/server/server-ref";
+import "./types/server/settings";
 import "./types/session";
 import "./types/shared-env";
 import "./types/takeover";
@@ -49,8 +68,4 @@ import "./types/updates";
 import "./types/user-access";
 import "./types/viewer";
 
-/**
- * The assembled executable schema. Built once at module load and reused across
- * requests (the schema is stateless; per-request data flows through context).
- */
 export const schema = builder.toSchema();

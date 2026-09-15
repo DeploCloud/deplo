@@ -1,14 +1,14 @@
 import { notFound } from "next/navigation";
 import { Rocket } from "lucide-react";
-import { getAppBySlug } from "@/lib/data/apps";
-import { listServerChoices } from "@/lib/data/servers";
+import { getAppBySlug } from "@/lib/data/apps/listing";
+import { listServerChoices } from "@/lib/data/servers/roster";
 import { neighboursOnNetwork } from "@/lib/data/name-clash";
 import { installationAccess, listGithubInstallations } from "@/lib/data/github";
 import {
   appWebhookStatus,
   listGitConnections,
 } from "@/lib/data/git-connections";
-import { providerFor } from "@/lib/git/providers";
+import { providerFor } from "@/lib/git/providers/registry";
 import { gitProviderChoices } from "@/lib/git/provider-choices";
 import { requiredAccess } from "@/lib/git/provider-access";
 import { repoCloneRefusal } from "@/lib/git/repo-access";
@@ -16,11 +16,11 @@ import { hasCapability, isInstanceAdmin } from "@/lib/membership";
 import { hasAppCapability } from "@/lib/data/node-access";
 import { redactComposeForDisplay } from "@/lib/deploy/compose-redact";
 import { SettingsSection } from "@/components/apps/settings/settings-shared";
-import { DeploymentSettingsForm } from "@/components/apps/settings/deployment-settings-form";
+import { DeploymentSettingsForm } from "@/components/apps/settings/deployment-settings-form/deployment-settings-form";
 import { RollbackSettingsForm } from "@/components/apps/settings/rollback-settings-form";
 import { CapabilityFieldset } from "@/components/apps/app-capabilities";
 import { appBuildsItsOwnImage } from "@/lib/utils";
-import type { GitProviderId } from "@/lib/types";
+import type { GitProviderId } from "@/lib/types/git";
 
 export const metadata = { title: "Deployment" };
 
@@ -32,7 +32,6 @@ export default async function AppDeploymentSettingsPage(
   if (!project) notFound();
 
   const servers = await listServerChoices();
-  // Who this app talks to by name on its server: a move cuts it off from them.
   const neighbours = await neighboursOnNetwork(
     {
       teamId: project.teamId,
@@ -44,23 +43,16 @@ export default async function AppDeploymentSettingsPage(
   const installations = await listGithubInstallations();
   const connections = await listGitConnections();
 
-  // Does a git provider ALREADY trigger this app's deploys?
   const providerTriggers =
     project.source === "github" ||
     (Boolean(project.repo?.connectionId) &&
       providerFor(project.repo?.provider ?? "git").api != null);
 
-  // Whether the push webhook is actually registered on the provider right now, asked
-  // of the provider rather than remembered: someone deleting it on their side is
-  // exactly the case a stored flag would get wrong.
   const webhook =
     providerTriggers && project.source !== "github" && project.autoDeploy
       ? await appWebhookStatus(project.repo)
       : null;
 
-  // What the host has not allowed, before a deploy discovers it in a build log.
-  // Both halves are live reads that fail open: an unreachable provider says
-  // nothing rather than accusing one.
   const [repoAccess, cloneRefusal, canManageGit] = await Promise.all([
     project.repo?.installationId
       ? installationAccess(project.repo.installationId, {
@@ -71,8 +63,6 @@ export default async function AppDeploymentSettingsPage(
     hasCapability("manage_git"),
   ]);
 
-  // Whether this app accrues rollbacks at all - the SAME predicate the data layer
-  // gates on, so the card cannot offer a setting the action would refuse.
   const canRollBack = appBuildsItsOwnImage(project);
 
   return (
@@ -126,9 +116,6 @@ export default async function AppDeploymentSettingsPage(
               : []
           }
         />
-        {/**
-         * Only where a rollback can exist at all: the app has to be one Deplo BUILDS.
-         */}
         {canRollBack && (
           <RollbackSettingsForm
             appId={project.id}

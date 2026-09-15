@@ -1,6 +1,5 @@
 import { cn } from "@/lib/utils";
 
-/** The All (per-app) variables empty-state illustration: three app cards, each taking delivery of its OWN variable, one after another. */
 export function AppVarsGraphic({ className }: { className?: string }) {
   return (
     <svg

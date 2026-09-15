@@ -1,16 +1,11 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-import { renderCompose, parseStackVolumes } from "./build";
-import { buildComposeStack } from "./compose-stack";
+import { renderCompose } from "./build/compose-render";
+import { parseStackVolumes } from "./build/stack-yaml";
+import { buildComposeStack } from "./compose-stack/render";
 import { previewDeployKey } from "./deploy-key";
-import type { RoutableDomain } from "../data/domains";
-
-/**
- * The load-bearing property of the deploy key: a PRODUCTION render is
- * byte-identical to what it has always been (the key is the app slug), while a
- * pull request preview shares nothing with it, not the container, not a volume,
- */
+import type { RoutableDomain } from "../data/domains/routes";
 
 const ROUTE: RoutableDomain = {
   name: "blog.example.com",
@@ -31,8 +26,6 @@ const BASE = {
   appId: "prj_1",
   routes: [ROUTE],
   env: { FOO: "bar" },
-  // A named volume AND an `app` (files-dir) mount, so BOTH isolation axes -
-  // the host volume name and the per-stack files dir - are exercised.
   volumes: [
     { name: "data", mountPath: "/app/data" },
     {
@@ -56,8 +49,6 @@ test("a production render names everything after the app slug, and nothing else"
   assert.match(yaml, /files\/blog\//);
   assert.match(yaml, /deplo\.slug=blog/);
   assert.match(yaml, /deplo\.project=prj_1/);
-  // The extra ownership label exists ONLY for previews. Emitting it here would
-  // change every production stack's labels and force a needless restart.
   assert.doesNotMatch(yaml, /deplo\.app=/);
 });
 
@@ -90,16 +81,12 @@ test("a preview shares no container, volume or files dir with production", () =>
   assert.match(yaml, /container_name: deplo-blog__pr-42\n/);
   assert.match(yaml, /name: deplo-blog__pr-42-data/);
   assert.match(yaml, /files\/blog__pr-42\//);
-  // The production names must appear NOWHERE, not as a volume, not as a path.
   assert.doesNotMatch(yaml, /name: deplo-blog-data/);
   assert.doesNotMatch(yaml, /files\/blog\//);
   assert.doesNotMatch(yaml, /container_name: deplo-blog\n/);
 });
 
 test("a preview's telemetry label is its OWN id, with the app kept discoverable", () => {
-  // The telemetry stream buckets container stats by `deplo.project`. Leaving the
-  // app id there would let a preview's containers satisfy the app's live-status
-  // check and land in its monitoring charts.
   const yaml = renderCompose({
     network: "deplo-team-team_test",
     ...BASE,
@@ -113,8 +100,6 @@ test("a preview's telemetry label is its OWN id, with the app kept discoverable"
 });
 
 test("the reroute volume parser survives a __ in the key", () => {
-  // parseStackVolumes strips exactly one path segment after `files/`; a preview
-  // key contains `__`, and the round-trip must not lose it.
   const key = previewDeployKey("blog", 42);
   const yaml = renderCompose({
     network: "deplo-team-team_test",
@@ -123,8 +108,6 @@ test("the reroute volume parser survives a __ in the key", () => {
     deployKey: key,
   });
   const parsed = parseStackVolumes(yaml, `deplo-${key}`);
-  // The named volume comes back plain; the `app` mount comes back with its
-  // projectPath intact, which is the part the `__` could have eaten.
   assert.deepEqual(parsed, [
     { name: "data", mountPath: "/app/data", readOnly: false },
     {
@@ -173,10 +156,6 @@ test("a compose stack isolates its volumes and labels the same way", () => {
   assert.match(preview, /deplo\.app=prj_1/);
 });
 
-/* ------------------------------------------------------------------ */
-/* A compose preview must actually be reachable                        */
-/* ------------------------------------------------------------------ */
-
 const COMPOSE = `
 services:
   web:
@@ -186,10 +165,6 @@ services:
     image: busybox
 `;
 
-/**
- * `buildComposeStack` skips every route that names no service, so a preview route
- * built with `service: null` produced a stack with NO Traefik router at all.
- */
 test("a compose preview emits a router that names a service", () => {
   const key = previewDeployKey("blog", 42);
   const yaml = buildComposeStack({
@@ -203,7 +178,6 @@ test("a compose preview emits a router that names a service", () => {
     domainRoutes: [
       {
         name: "blog-pr-42-abc-0a000001.nip.io",
-        // What previewRouteTarget resolves from the app's primary domain.
         service: "web",
         port: 80,
         pathPrefix: "",
@@ -224,8 +198,6 @@ test("a compose preview emits a router that names a service", () => {
 });
 
 test("a serviceless route is exactly what used to make it unreachable", () => {
-  // The regression, spelled out: same stack, route with no service ⇒ no router.
-  // Kept so nobody "simplifies" previewRouteTarget back to passing null.
   const key = previewDeployKey("blog", 43);
   const yaml = buildComposeStack({
     network: "deplo-team-team_test",
@@ -290,8 +262,6 @@ test("a $ in a value is escaped, because compose interpolates the file it reads"
       LITERAL: "pa$$word",
     },
   });
-  // Unescaped, `docker compose up` substituted its own environment into a tenant's
-  // variable (`pass/root/x`) and gutted the braced one to `prepost`.
   assert.match(yaml, /PLAIN: "ordinary"/);
   assert.match(yaml, /HOST_VAR: "pass\$\$HOME\/x"/);
   assert.match(yaml, /BRACED: "pre\$\$\{MISSING\}post"/);

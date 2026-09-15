@@ -15,8 +15,6 @@ import { Label } from "@/components/ui/label";
 import { StepShell } from "@/components/settings/migrations/step-shell";
 import type { TakeoverMode } from "@/components/settings/migrations/steps";
 
-// https://deplo.build/docs/migrations
-
 const STATUS = /* GraphQL */ `
   query TakeoverStatus {
     takeover {
@@ -43,8 +41,6 @@ const TAKE_PORTS = /* GraphQL */ `
   }
 `;
 
-/** The list is read again from the client: the copy that fails writes it while
- *  this very page is open. */
 const DATA_LOSS = /* GraphQL */ `
   query TakeoverDataLoss {
     takeover {
@@ -71,27 +67,15 @@ export type TakeoverState =
   | "removed"
   | "cancelled";
 
-/** How often the step re-asks while the host is doing something. */
 const POLL_MS = 3000;
-/** After this long without the final address answering, say how to get there. */
 const SLOW_MS = 60_000;
-/** How long this origin may stay silent before the final one is tried instead. */
 const DEAD_MS = 90_000;
-/** How long the final address gets to answer over https before it is opened
- *  anyway. Issuance follows a Docker restart and a Traefik restart, and a
- *  measured Start clean took 80 s from `removed` to the certificate. */
 const CERT_GRACE_MS = 180_000;
 
-/** Where the browser lands once the machine is Deplo's: the home, celebrating. */
 export function takeoverLandingUrl(finalUrl: string, platformLabel: string) {
   return `${finalUrl}/?welcome=1&takeover=${encodeURIComponent(platformLabel)}`;
 }
 
-/**
- * The wizard's last step. One confirmation moves the ports AND takes the other
- * panel off the disk, and the wait that follows stays right here - until the
- * dashboard answers on its own address, which is where this page then goes.
- */
 export function TakeoverStep({
   platformLabel,
   mode,
@@ -102,17 +86,11 @@ export function TakeoverStep({
   dataLoss = [],
 }: {
   platformLabel: string;
-  /** Whether anything was brought across, which is what the confirmation says. */
   mode: TakeoverMode;
-  /** How far the handover has got. Anything but `pending` / `failed` is the host working. */
   state: Exclude<TakeoverState, "cancelled">;
-  /** Why the last cutover rolled back, when `state` is `failed`. */
   error: string | null;
-  /** The run that finished, on the path that had one. */
   finishedRunId: string | null;
-  /** Where the dashboard answers once the ports have moved. */
   finalUrl: string;
-  /** Services whose data did not come across: the old panel holds the only copy. */
   dataLoss?: string[];
 }) {
   if (state !== "pending" && state !== "failed")
@@ -134,7 +112,6 @@ export function TakeoverStep({
   );
 }
 
-/** The one decision, in the shape the rest of the app confirms a danger in. */
 function TakeoverConfirm({
   platformLabel,
   mode,
@@ -145,34 +122,20 @@ function TakeoverConfirm({
   platformLabel: string;
   mode: TakeoverMode;
   finishedRunId: string | null;
-  /** Non-null when the last attempt rolled back: the card offers Try again instead. */
   error: string | null;
   dataLoss: string[];
 }) {
   const router = useRouter();
   const [retrying, setRetrying] = React.useState(false);
   const clean = mode === "clean";
-  /**
-   * The run happens in this page's own wizard, so what the server rendered is a
-   * step behind by the time it matters: a copy that failed a minute ago is not
-   * in it, and the takeover was then refused with no way to accept the loss.
-   */
   const [loss, setLoss] = React.useState(dataLoss);
   const readLoss = () => {
     void gql<{ takeover: { dataLoss: string[] } | null }>(DATA_LOSS)
       .then((d) => setLoss(d.takeover?.dataLoss ?? []))
-      // Keep what is known: the mutation refuses on the server's own list anyway.
       .catch(() => {});
   };
-  /** The copy of these failed; the takeover stops the panel holding the only copy. */
   const lossy = !clean && loss.length > 0;
   const [lossAccepted, setLossAccepted] = React.useState(false);
-  /**
-   * A token reads ONE team of that panel, and the panel cannot always list the
-   * others - Coolify never can. The cutover stops it for good, so this is a thing
-   * the operator says, not a thing Deplo can look up. On a clean takeover it is
-   * instead the acknowledgement that all of it dies.
-   */
   const [understood, setUnderstood] = React.useState(false);
 
   const args = (agreed: boolean) => ({
@@ -182,11 +145,8 @@ function TakeoverConfirm({
     acceptDataLoss: lossy ? lossAccepted : null,
   });
 
-  // The operator already confirmed once; the machine is back on the old panel
-  // and the only question left is whether to try again.
   async function retry() {
     setRetrying(true);
-    // The operator already ticked every box before the attempt that rolled back.
     const res = await gqlAction(TAKE_PORTS, {
       ...args(true),
       acceptDataLoss: clean ? null : true,
@@ -223,8 +183,6 @@ function TakeoverConfirm({
         </div>
       )}
 
-      {/* The one thing left to do on this screen, so it sits under the middle
-          of it rather than in a footer's corner. */}
       <div className="flex items-center justify-center gap-3">
         {error !== null ? (
           <Button onClick={retry} disabled={retrying}>
@@ -238,8 +196,6 @@ function TakeoverConfirm({
                 {clean ? "Delete it and take over" : "Take over the machine"}
               </Button>
             }
-            // What did not come across is asked for as the dialog opens, so the
-            // loss is on screen with a way to accept it, never a toast after.
             onOpenChange={(v) => {
               if (v) readLoss();
             }}
@@ -310,11 +266,7 @@ function TakeoverConfirm({
             optimistic
             onConfirm={async () => {
               const res = await gqlAction(TAKE_PORTS, args(understood));
-              // The state is the server's, and it is what swaps this step's
-              // body for the one that says the ports are moving.
               if (res.ok) router.refresh();
-              // A copy that failed between opening this and confirming it: read
-              // the list again so re-opening offers the box, not the same wall.
               else readLoss();
               return res;
             }}
@@ -325,7 +277,6 @@ function TakeoverConfirm({
   );
 }
 
-/** Whether this page is already served from the dashboard's own address. */
 function onFinalOrigin(finalUrl: string): boolean {
   try {
     return window.location.origin === new URL(finalUrl).origin;
@@ -334,11 +285,6 @@ function onFinalOrigin(finalUrl: string): boolean {
   }
 }
 
-/**
- * The step while the host works. Nothing here is clickable: the ports are moving
- * under it. The page follows them - onto the dashboard's own https address as
- * soon as it answers there, and onto the home once the old panel is gone.
- */
 function TakeoverWaiting({
   platformLabel,
   state,
@@ -357,8 +303,6 @@ function TakeoverWaiting({
     let removedAt: number | null = null;
     let deadSince: number | null = null;
     const id = setInterval(async () => {
-      // The state, from wherever this page is still served from. A poll that
-      // fails is the ports moving, or Docker restarting, not an error to show.
       try {
         const d = await gql<{ takeover: { state: TakeoverState } | null }>(
           STATUS,
@@ -376,12 +320,6 @@ function TakeoverWaiting({
         window.location.replace(takeoverLandingUrl(finalUrl, platformLabel));
         return;
       }
-      // This page leaves its origin ONLY once the old panel is gone - the removal
-      // restarts Docker, and a page that moved onto the final address a moment
-      // earlier died with it - or when nothing here answers any more. Then the
-      // final address has to say it is DEPLO first: until the ports move, the old
-      // panel answers that very address with a 404, and an opaque `no-cors` probe
-      // read that as "it works" and dropped the operator on it.
       const since = removedAt ?? deadSince;
       const leave =
         since != null && (removedAt != null || Date.now() - since > DEAD_MS);
@@ -394,10 +332,6 @@ function TakeoverWaiting({
           cache: "no-store",
         })
           .then((r) => r.ok)
-          // A certificate still being issued fails exactly like nothing
-          // listening does, so only a cutover KNOWN to have succeeded goes
-          // anyway: a silent origin may be a rollback under way, and its Try
-          // again is on this page, not on a dead https address.
           .catch(() => false);
         if (!live) return;
         if (
@@ -442,24 +376,16 @@ function TakeoverWaiting({
   );
 }
 
-/**
- * Backing out, in one muted line under the wizard: not a peer of the thing the
- * screen exists for, but reachable from every step - somebody who changes their
- * mind on step two should not have to finish first.
- */
 export function TakeoverCancel({
   platformLabel,
   tokenLabel,
 }: {
   platformLabel: string;
-  /** Their word for it: Dokploy mints keys, Coolify tokens. */
   tokenLabel: string;
 }) {
   const [cancelKey, setCancelKey] = React.useState("");
   const [cancelling, setCancelling] = React.useState(false);
 
-  // Deplo is uninstalling itself, so there is no page to go back to and nothing
-  // to poll: the last thing this origin does is say so.
   if (cancelling)
     return (
       <div className="fixed inset-0 z-50 grid place-items-center bg-background px-4">
@@ -537,12 +463,10 @@ function Working({
 }: {
   title: string;
   body: React.ReactNode;
-  /** For a screen with no picture of its own to say the work is going. */
   spinner?: boolean;
   children?: React.ReactNode;
 }) {
   return (
-    // Three plain periods, never the ellipsis CHARACTER: the copy tests ban it.
     <StepShell hero title={`${title}...`} lead={body}>
       {spinner && (
         <Loader2 className="mx-auto size-5 animate-spin text-muted-foreground" />
@@ -552,7 +476,6 @@ function Working({
   );
 }
 
-/** What to do when the cutover is taking longer than it should. */
 function SlowNote({ children }: { children: React.ReactNode }) {
   return (
     <div className="flex items-start gap-2 rounded-lg border border-warning/40 bg-warning-wash-strong p-3 text-left text-sm leading-relaxed text-warning">

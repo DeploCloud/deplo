@@ -10,15 +10,8 @@ import { Button } from "@/components/ui/button";
 import { SimpleTooltip } from "@/components/ui/tooltip";
 import { gql, gqlAction } from "@/lib/graphql-client";
 import { timeAgo } from "@/lib/utils";
-import type { CronRunDTO } from "@/lib/data/crons";
+import type { CronRunDTO } from "@/lib/data/crons/dto";
 
-/**
- * One job's runs, fetched when its row expands. Client-fetched: loading every
- * job's history to render a page that shows none of them is the expensive half
- * done for nothing. `skipped` and `lost` are not failures and are not red.
- */
-
-/** How often an open history re-reads itself. */
 const POLL_MS = 5_000;
 
 const RUNS = /* GraphQL */ `
@@ -151,7 +144,6 @@ function RunRow({
       </div>
       {open && (
         <div className="space-y-2 border-t border-border px-3 py-2">
-          {/* The sentence a colour cannot carry: why this is not a failure. */}
           {meta.note && (
             <p className="text-xs text-muted-foreground">{meta.note}</p>
           )}
@@ -205,8 +197,6 @@ export function CronRunHistory({
       });
   }, [jobId]);
 
-  // This history is mounted only while its row is expanded - that is, while somebody
-  // is watching a run they just started, or waiting for the next one.
   React.useEffect(() => {
     alive.current = true;
     load();

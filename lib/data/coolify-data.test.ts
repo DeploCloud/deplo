@@ -11,13 +11,13 @@ process.env.DEPLO_DATA_DIR = mkdtempSync(join(tmpdir(), "deplo-pg-"));
 import { makeTestDb, type TestDb } from "../db/test-harness";
 import { __setTestDb, __resetTestDb } from "../db/client";
 import { runWithIdentity } from "../auth/request-context";
+import { appVolumes as appVolumesTable } from "../db/schema/control-plane/apps";
+import { migrationRunItems as itemsTable } from "../db/schema/control-plane/migration";
 import {
-  appVolumes as appVolumesTable,
   environments as environmentsTable,
-  migrationRunItems as itemsTable,
   projects as projectsTable,
-  servers as serversTable,
-} from "../db/schema/control-plane";
+} from "../db/schema/control-plane/projects";
+import { servers as serversTable } from "../db/schema/control-plane/servers";
 import {
   seedIdentity,
   TEAM_A,
@@ -35,21 +35,11 @@ import {
   __resetMigrationFetchForTest,
 } from "../migration/transport";
 import { __resetCoolifyRateLimitForTest } from "../migration/coolify/client";
-import { __setAgentConnectorForTest } from "../infra/agent-client";
-import { beginMigration } from "./migration-import";
-import {
-  moveMigrationServiceData,
-  planMigrationDataMove,
-} from "./migration-data";
+import { __setAgentConnectorForTest } from "../infra/agent-client/connect";
+import { beginMigration } from "./migration-import/run-lifecycle";
+import { moveMigrationServiceData } from "./migration-data/move";
+import { planMigrationDataMove } from "./migration-data/plan";
 import { EMPTY_TAR_GZ, tarGzOf } from "../test/tar-fixture";
-
-/**
- * The data cutover against a fake Coolify.
- *
- * The difference that matters: Coolify's own storage rows already carry the real
- * volume name on the host, so nothing is inspected and nothing is synthesised -
- * and its stop is a queued job, so the cutover has to WAIT for it.
- */
 
 let db: TestDb;
 let pg: PGlite;
@@ -61,13 +51,10 @@ const CONNECT = {
 };
 
 let calls: string[] = [];
-/** How many status reads it takes before the app reports itself stopped. */
 let stopsAfter = 1;
 let statusReads = 0;
 let running = true;
 
-/** A one-click stack that keeps its data beside its own compose file - the shape
- *  every Coolify service template has, and the one nothing used to copy. */
 const BIND_COMPOSE = [
   "services:",
   "  web:",
@@ -79,8 +66,6 @@ const BIND_COMPOSE = [
 ].join("\n");
 
 const STORAGES: Record<string, unknown> = {
-  // Coolify records NOTHING for a `./x` bind: this is what "mounts nothing" was
-  // read off, over the directory holding every file the stack had.
   "svc-bind": { persistent_storages: [], file_storages: [] },
   "app-web": {
     persistent_storages: [
@@ -181,12 +166,9 @@ function fakeCoolify() {
   };
 }
 
-/* ---- the fake agent -------------------------------------------------- */
-
 let agentCalls: string[] = [];
 let volumes: Record<string, Record<string, Buffer>> = {};
 let hostPaths: Record<string, Record<string, Buffer>> = {};
-/** Host paths that are a FILE, so the directory export refuses them. */
 let hostFiles = new Set<string>();
 const EMPTY_ARCHIVE = EMPTY_TAR_GZ;
 
@@ -222,8 +204,6 @@ function fakeAgent(serverId: string) {
     },
     async *exportHostPath(path: string, allowFile = false) {
       say(allowFile ? "export-file" : "export-path", path);
-      // The agent tars a DIRECTORY and refuses a file unless the caller says a
-      // file is what it wants - which is what a `./nginx.conf` bind names.
       if (hostFiles.has(path)) {
         if (!allowFile)
           throw new Error(
@@ -299,7 +279,6 @@ async function openRun(): Promise<string> {
   return runId;
 }
 
-/** The Deplo server sitting at the Coolify address - derived, never chosen. */
 async function seedPanelHost(): Promise<void> {
   await db
     .insert(serversTable)
@@ -360,7 +339,7 @@ beforeEach(async () => {
   __setAgentConnectorForTest(
     async (serverId) =>
       fakeAgent(serverId) as unknown as Awaited<
-        ReturnType<typeof import("../infra/agent-client").connectAgent>
+        ReturnType<typeof import("../infra/agent-client/connect").connectAgent>
       >,
   );
 
@@ -420,8 +399,6 @@ beforeEach(async () => {
     readOnly: false,
     propagation: null,
   });
-  // The stack that binds `./content`: no Storage row on either side, so the whole
-  // pairing has to come off the compose file itself.
   await seedApp(db, {
     id: "prj_bind",
     teamId: TEAM_A,
@@ -438,8 +415,6 @@ function asOwner<T>(fn: () => Promise<T>): Promise<T> {
   return runWithIdentity({ userId: USER_1, teamId: TEAM_A }, fn);
 }
 
-/* ---- the plan -------------------------------------------------------- */
-
 test("the plan pairs by the path inside the container", async () => {
   await seedPanelHost();
   const runId = await openRun();
@@ -455,15 +430,11 @@ test("the plan pairs by the path inside the container", async () => {
     ),
     [
       "web-uploads-app-web->deplo-blink-web-uploads@/app/uploads",
-      // The bind mount is listed too: same path on both sides, moved by a
-      // different RPC behind a different permission.
       "/data/coolify/applications/app-web/config.json->/data/coolify/applications/app-web/config.json@/app/config.json",
     ],
   );
 });
 
-// Coolify already knows the volume's real name, so the plan never asks the host
-// what a container is mounting.
 test("planning inspects no container, because it does not have to", async () => {
   await seedPanelHost();
   const runId = await openRun();
@@ -484,11 +455,8 @@ test("a service already stopped is still planned", async () => {
   );
   const web = plan.find((s) => s.sourceName === "web")!;
   assert.equal(web.running, false);
-  // Stopped is the state a volume has to be READ in, so nothing is dropped.
   assert.equal(web.volumes.length, 2);
 });
-
-/* ---- the move -------------------------------------------------------- */
 
 test("the volume crosses, the source is stopped first, and the target is wiped", async () => {
   await seedPanelHost();
@@ -504,7 +472,6 @@ test("the volume crosses, the source is stopped first, and the target is wiped",
   assert.equal(res.failed, 0);
   assert.ok(res.moved >= 1);
 
-  // Stopped over there BEFORE anything was read here.
   const stopIndex = calls.findIndex((c) => c.endsWith("/stop"));
   const exportIndex = agentCalls.findIndex((c) => c.includes(":export:"));
   assert.ok(stopIndex >= 0);
@@ -522,8 +489,6 @@ test("the volume crosses, the source is stopped first, and the target is wiped",
   );
 });
 
-// Coolify's stop returns 200 the moment the job is QUEUED. Reading a volume while
-// its container is still writing is the one thing a cutover must never do.
 test("the stop waits for the container to actually be down", async () => {
   stopsAfter = 3;
   await seedPanelHost();
@@ -536,7 +501,6 @@ test("the stop waits for the container to actually be down", async () => {
       sourceId: "app-web",
     }),
   );
-  // It polled rather than trusting the 200.
   assert.ok(statusReads >= 3, `only ${statusReads} status reads`);
   const lastStatusRead = calls.lastIndexOf("GET applications/app-web");
   const stopIndex = calls.findIndex((c) => c.endsWith("/stop"));
@@ -560,12 +524,8 @@ test("a bind mount under the panel's data directory crosses too", async () => {
   );
 });
 
-// ADR-0025: the host the data is READ from is derived from the machine's own
-// address. Naming one would be an instruction to copy any volume off any host.
 test("the source host is derived, never taken from the caller", async () => {
   const runId = await openRun();
-  // No server registered at the panel's address: the cutover refuses rather than
-  // reaching for a host somebody might name.
   await assert.rejects(
     asOwner(() =>
       moveMigrationServiceData({
@@ -621,8 +581,6 @@ test("a `./x` bind beside the compose file crosses, and is not called a host pat
       `/data/coolify/services/svc-bind/nginx.conf->${filesDir}/nginx.conf@/etc/nginx/nginx.conf`,
     ],
   );
-  // Coolify's storage rows say nothing about it, and "mounts nothing" over a
-  // directory holding the whole app is the lie this replaces.
   assert.equal(
     bind.notes.some((n) => /nothing to copy/.test(n)),
     false,
@@ -650,8 +608,6 @@ test("a `./file` bind carries across as that FILE, not its directory", async () 
   const stackDir = "/data/coolify/services/svc-bind";
   hostPaths.srv_migration_host[`${stackDir}/content`] = tarGzOf(1024, 3);
   hostPaths.srv_migration_host[`${stackDir}/nginx.conf`] = tarGzOf(512, 1);
-  // Docker materialises a missing `./nginx.conf` as a DIRECTORY, and the stack
-  // then does not start at all - so the file has to come over.
   hostFiles.add(`${stackDir}/nginx.conf`);
   const runId = await openRun();
 
@@ -668,14 +624,11 @@ test("a `./file` bind carries across as that FILE, not its directory", async () 
     hostPaths[SERVER_1][`${filesDir}/nginx.conf`],
     hostPaths.srv_migration_host[`${stackDir}/nginx.conf`],
   );
-  // Never the stack directory around it: dragging that across carried every
-  // sibling of the file with it, Deplo's own config files included.
   assert.equal(
     agentCalls.includes(`${SERVER_1}:import-path:${filesDir}`),
     false,
     agentCalls.join(" | "),
   );
-  // The files dir holds Deplo's own config files too, so it is never emptied.
   assert.equal(
     agentCalls.includes(`${SERVER_1}:wipe-path:${filesDir}`),
     false,

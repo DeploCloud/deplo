@@ -1,6 +1,5 @@
 import { cn } from "@/lib/utils";
 
-/** The backup destinations empty-state illustration: a copy tossed off the box and into a bucket. */
 export function DestinationGraphic({ className }: { className?: string }) {
   return (
     <svg

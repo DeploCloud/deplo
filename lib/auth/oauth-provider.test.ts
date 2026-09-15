@@ -25,12 +25,6 @@ import {
   signIn,
 } from "./oauth-test-helpers";
 
-/**
- * Deplo as an OAuth 2.1 authorization server. Everything here is driven over HTTP
- * through Better Auth's own handler, the way `lib/data/two-factor.test.ts` does,
- * because the risk this file covers is a REMOTE one.
- */
-
 let db: TestDb;
 let pg: PGlite;
 
@@ -63,10 +57,6 @@ beforeEach(async () => {
   await seedIdentity(db);
 });
 
-/* ------------------------------------------------------------------ */
-/* The flow works at all                                               */
-/* ------------------------------------------------------------------ */
-
 test("a full authorization code flow issues an access token", async () => {
   const flow = await fullFlow({
     email: EMAIL,
@@ -78,8 +68,6 @@ test("a full authorization code flow issues an access token", async () => {
 });
 
 test("the access token is stored hashed over the BARE secret", async () => {
-  // The one contract that is invisible until it breaks: the plugin strips its prefix
-  // before hashing, so `authenticateToken` must hash the bare secret.
   const flow = await fullFlow({ email: EMAIL, password: PASSWORD });
   const bare = flow.accessToken.slice("dplo_at_".length);
   const expected = createHash("sha256").update(bare).digest("hex");
@@ -90,7 +78,6 @@ test("the access token is stored hashed over the BARE secret", async () => {
 });
 
 test("the consent endpoint REFUSES a server-side call, and refuses it wordlessly", async () => {
-  // This is the bug that made Authorize a dead button, pinned from both ends.
   const reg = await registerClient();
   const cookie = await signIn(EMAIL, PASSWORD);
   const authorized = await authorize(cookie, {
@@ -133,9 +120,6 @@ test("the consent endpoint REFUSES a server-side call, and refuses it wordlessly
 });
 
 test("the signed authorization query survives Next's searchParams round trip", async () => {
-  // The bug this pins was invisible and total: the provider signs the whole
-  // authorization query onto the consent URL, the page reads it back through Next's
-  // `searchParams` (an object, with an ARRAY for the repeated `ba_param` keys), and
   const reg = await registerClient();
   const clientId = String(reg.body.client_id);
   const cookie = await signIn(EMAIL, PASSWORD);
@@ -151,7 +135,6 @@ test("the signed authorization query survives Next's searchParams round trip", a
   });
   assert.ok(authorized.oauthQuery, "authorize produced no consent query");
 
-  // Exactly what Next hands a page: repeated keys collapse into an array.
   const incoming = new URLSearchParams(authorized.oauthQuery!);
   assert.ok(
     incoming.getAll("ba_param").length > 1,
@@ -176,9 +159,6 @@ test("the signed authorization query survives Next's searchParams round trip", a
 });
 
 test("dropping the repeated keys is what broke it", async () => {
-  // The control for the test above: rebuild the way the first version did -
-  // string values only, and the consent must be REFUSED. Without this, a
-  // rebuild that silently stopped round-tripping would still look green.
   const reg = await registerClient();
   const clientId = String(reg.body.client_id);
   const cookie = await signIn(EMAIL, PASSWORD);
@@ -206,9 +186,6 @@ test("dropping the repeated keys is what broke it", async () => {
 });
 
 test("a token cannot be requested for a resource Deplo does not serve", async () => {
-  // GHSA-p2fr-6hmx-4528: the plugin validates `resource` but does not bind it to the
-  // grant, so more than one valid audience lets a client aim a token at a resource
-  // server it was not authorised for.
   await assert.rejects(
     fullFlow({
       email: EMAIL,
@@ -226,8 +203,6 @@ test("a token cannot be requested for a resource Deplo does not serve", async ()
 });
 
 test("the audience allowlist has exactly one entry", async () => {
-  // The runtime test above only proves today's list; this is what makes adding a
-  // second audience a decision somebody has to argue for.
   const { readFileSync } = await import("node:fs");
   const src = readFileSync("lib/auth/better-auth.ts", "utf8");
   for (const key of ["resources", "clientRegistrationDefaultResources"]) {
@@ -239,8 +214,6 @@ test("the audience allowlist has exactly one entry", async () => {
       `a second audience in ${key} re-opens GHSA-p2fr-6hmx-4528`,
     );
   }
-  // And enforcement stays ON. With it off, the link above is decorative: every
-  // client could request every enabled resource.
   assert.ok(
     !/enforcePerClientResources:\s*false/.test(src),
     "per-client resource enforcement must stay on",
@@ -248,21 +221,15 @@ test("the audience allowlist has exactly one entry", async () => {
 });
 
 test("a moved panel leaves exactly one requestable audience", async () => {
-  // Better Auth 1.7.0 turned the audience list into ROWS, and seeds them
-  // `insertOnly`.
   const { reconcileOAuthResources } = await import("./oauth-resources");
   const current = `${BASE}/api/mcp`;
   const stale = "https://the-old-address.test/api/mcp";
 
-  // The state a move actually leaves behind: the old audience still enabled...
   await pg.query(
     `insert into oauth_resource (id, identifier, name, disabled) values ($1, $2, $3, false)
        on conflict (identifier) do update set disabled = false`,
     ["res_stale", stale, "old address"],
   );
-  // .and the current one present but DISABLED, which is the A -> B -> A case: coming
-  // back to an address you used before finds the row already there, and `insertOnly`
-  // will not touch it.
   await pg.query(
     `insert into oauth_resource (id, identifier, name, disabled) values ($1, $2, $3, true)
        on conflict (identifier) do update set disabled = true`,
@@ -279,8 +246,6 @@ test("a moved panel leaves exactly one requestable audience", async () => {
     [current],
     `exactly one audience may be requestable, got ${JSON.stringify(rows)}`,
   );
-  // Disabled, not deleted: "which audience was valid last March" is an audit
-  // question and these rows are the only thing that answers it.
   assert.ok(
     rows.some((r) => r.identifier === stale && r.disabled),
     "the old audience must be kept and disabled, not dropped",
@@ -294,9 +259,6 @@ test("a moved panel leaves exactly one requestable audience", async () => {
 });
 
 test("the discovery documents agree on one issuer, and it resolves", async () => {
-  // RFC 8414 §3.3 makes a client check that the `issuer` it reads back equals the
-  // identifier it built the discovery URL from. An issuer WITH a path also moves its
-  // metadata: §3.1 inserts the path after the well-known segment.
   const prm = (await (await protectedResourceResponse()).json()) as {
     authorization_servers: string[];
   };
@@ -309,7 +271,6 @@ test("the discovery documents agree on one issuer, and it resolves", async () =>
   assert.deepEqual(prm.authorization_servers, [as.issuer]);
   assert.equal(as.issuer, `${BASE}/api/auth`);
 
-  // And the path-inserted document a client following that issuer would fetch.
   const inserted = await PATH_INSERTED_METADATA(
     new Request(`${BASE}/.well-known/oauth-authorization-server/api/auth`),
   );
@@ -319,8 +280,6 @@ test("the discovery documents agree on one issuer, and it resolves", async () =>
     as.issuer,
   );
 
-  // A grant Deplo will not honour must not be advertised: `client_credentials`
-  // has no user, so it could never resolve to a connection.
   assert.deepEqual(as.grant_types_supported.sort(), [
     "authorization_code",
     "refresh_token",
@@ -328,8 +287,6 @@ test("the discovery documents agree on one issuer, and it resolves", async () =>
 });
 
 test("prompt=none is refused instead of silently re-issuing a code", async () => {
-  // The provider honours it: with a consent on file it answers a top-level GET with a
-  // 302 straight back to the client carrying a fresh code, no screen and no click.
   const reg = await registerClient();
   const clientId = String(reg.body.client_id);
   const cookie = await signIn(EMAIL, PASSWORD);
@@ -355,10 +312,6 @@ test("prompt=none is refused instead of silently re-issuing a code", async () =>
   );
 });
 
-/* ------------------------------------------------------------------ */
-/* At rest                                                             */
-/* ------------------------------------------------------------------ */
-
 test("no issued credential is readable from the database", async () => {
   const flow = await fullFlow({ email: EMAIL, password: PASSWORD });
   const dump = JSON.stringify([
@@ -375,10 +328,6 @@ test("no issued credential is readable from the database", async () => {
     );
   }
 });
-
-/* ------------------------------------------------------------------ */
-/* PKCE                                                                */
-/* ------------------------------------------------------------------ */
 
 async function codeFor(
   cookie: string,
@@ -442,7 +391,6 @@ test("a missing code_verifier is refused", async () => {
 });
 
 test("code_challenge_method=plain is refused", async () => {
-  // `plain` makes PKCE decorative: anyone holding the code holds the verifier.
   const reg = await registerClient();
   const clientId = String(reg.body.client_id);
   const cookie = await signIn(EMAIL, PASSWORD);
@@ -504,10 +452,6 @@ test("a code redeemed against a different redirect_uri is refused", async () => 
   );
 });
 
-/* ------------------------------------------------------------------ */
-/* Redirects                                                           */
-/* ------------------------------------------------------------------ */
-
 test("redirect_uri must match exactly - a prefix or a sibling host is not a match", async () => {
   const reg = await registerClient();
   const clientId = String(reg.body.client_id);
@@ -546,18 +490,10 @@ test("a dangerous URL scheme cannot be registered as a redirect", async () => {
   }
 });
 
-/* ------------------------------------------------------------------ */
-/* Dynamic registration                                                */
-/* ------------------------------------------------------------------ */
-
 test("dynamic registration cannot grant itself a silent-approval flag", async () => {
-  // Mass assignment from the registration body is how a self-registering client would
-  // hand itself a consent-free path in.
   const refused = await registerClient({ skip_consent: true });
   assert.ok(refused.status >= 400, JSON.stringify(refused.body));
 
-  // And a client cannot choose its own id, which would let it collide with one
-  // somebody has already approved.
   const res = await registerClient({ client_id: "chosen-by-the-attacker" });
   assert.equal(res.status, REGISTRATION_CREATED, JSON.stringify(res.body));
   const clientId = String(res.body.client_id);
@@ -582,13 +518,7 @@ test("a freshly registered client reaches nothing until someone approves it", as
   assert.equal(tokens.length, 0);
 });
 
-/* ------------------------------------------------------------------ */
-/* Better Auth is not weakened                                         */
-/* ------------------------------------------------------------------ */
-
 test("/sign-in/email is refused over HTTP, and the session it would mint never exists", async () => {
-  // The plugin's own sign-in skips every lock Deplo's does: the per-ACCOUNT rate
-  // limit, the `failed_logins` alert, and the suspended-account refusal.
   const before = (await pg.query(`select id from session`)).rows.length;
   const res = await requireAuth().handler(
     new Request("http://localhost/api/auth/sign-in/email", {
@@ -610,8 +540,6 @@ test("/sign-in/email is refused over HTTP, and the session it would mint never e
 });
 
 test("sign-up is still refused over HTTP with the OAuth plugin loaded", async () => {
-  // `disableSignUp` is one of the three settings better-auth.ts calls
-  // load-bearing, and until now nothing asserted it.
   const res = await requireAuth().handler(
     new Request("http://localhost/api/auth/sign-up/email", {
       method: "POST",
@@ -631,8 +559,6 @@ test("sign-up is still refused over HTTP with the OAuth plugin loaded", async ()
 });
 
 test("/two-factor/* is still refused over HTTP with the OAuth plugin loaded", async () => {
-  // Deliberately duplicates lib/data/two-factor.test.ts: the risk is plugin
-  // ORDER, and this is the file where a plugin was added.
   const res = await requireAuth().handler(
     new Request("http://localhost/api/auth/two-factor/enable", {
       method: "POST",
@@ -659,9 +585,6 @@ test("a normal sign-in still works and still returns a session row", async () =>
 });
 
 test("userinfo returns only profile claims, never the users row", async () => {
-  // Better Auth's `user` model IS the control-plane `users` table (ADR-0014), so
-  // a generous default here ships is_instance_admin and friends to every client
-  // that ever registered.
   const flow = await fullFlow({
     email: EMAIL,
     password: PASSWORD,

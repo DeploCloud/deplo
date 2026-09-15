@@ -3,20 +3,13 @@
 import { useEffect } from "react";
 import { isStaleBuildError, reloadOnce } from "@/lib/stale-build";
 
-/**
- * Global error boundary.
- */
 export default function GlobalError({
   error,
   retry,
 }: {
   error: Error & { digest?: string };
-  // Re-fetches and re-renders the children, Server Components included; see
-  // the note in app/(dashboard)/error.tsx.
   retry: () => void;
 }) {
-  // Same recovery as the dashboard boundary: a tab that outlived the build it
-  // was loaded from is one reload away from working. See lib/stale-build.ts.
   const stale = isStaleBuildError(error);
   useEffect(() => {
     if (stale) reloadOnce();

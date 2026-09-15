@@ -12,10 +12,6 @@ import { cn } from "@/lib/utils";
 
 export type ListView = "grid" | "list";
 
-/**
- * The grid/list switch every list wears. The active background SLIDES between
- * the two buttons, same motion as the sidebar's selected item.
- */
 export function ViewToggle({
   view,
   onView,
@@ -25,7 +21,6 @@ export function ViewToggle({
 }: {
   view: ListView;
   onView: (v: ListView) => void;
-  /** What the two buttons are called - a real table says "Table view". */
   gridLabel?: string;
   listLabel?: string;
   className?: string;
@@ -63,8 +58,6 @@ export function ViewToggle({
               aria-label={label}
               aria-pressed={active}
               data-active={active ? "true" : undefined}
-              // z-10 keeps the icon above the sliding pill; the active button
-              // paints no background of its own, the pill is it.
               className={cn(
                 "relative z-10",
                 active

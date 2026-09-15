@@ -15,12 +15,10 @@ import { cn } from "@/lib/utils";
 
 const ALL_TIME = "All time";
 
-/** `Date` -> `YYYY-MM-DD`, read in UTC to match how the feed buckets months. */
 function toDay(d: Date): string {
   return d.toISOString().slice(0, 10);
 }
 
-/** `YYYY-MM-DD` -> the `Date` the calendar highlights. */
 function fromDay(day: string): Date | undefined {
   return day ? new Date(`${day}T00:00:00.000Z`) : undefined;
 }
@@ -34,10 +32,6 @@ function summary(params: ActivityParams): string {
   return ALL_TIME;
 }
 
-/**
- * When the events happened: the four windows people actually ask for, and a
- * calendar for the week someone needs to go back to by name.
- */
 export function DateRangeFilter({
   params,
   onChange,
@@ -102,8 +96,6 @@ export function DateRangeFilter({
           defaultMonth={selected?.from}
           selected={selected}
           disabled={{ after: new Date() }}
-          // Picking a day always leaves the presets: the two say the same kind of
-          // thing, so both being lit would be a lie about which one is in force.
           onSelect={(next) =>
             onChange({
               range: "",

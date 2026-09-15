@@ -4,10 +4,6 @@ import { KeyRound } from "lucide-react";
 
 import { Switch } from "@/components/ui/switch";
 
-/**
- * The "Secret" toggle every variable form ends with - the app's own variables and
- * a preview override alike.
- */
 export function SecretRow({
   secret,
   onChange,

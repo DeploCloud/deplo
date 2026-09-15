@@ -13,17 +13,11 @@ const RETRY = /* GraphQL */ `
   }
 `;
 
-/**
- * The stacks the network-isolation move could not reach, said where somebody can
- * act on it. They still run where they were, so this is a delay, not an outage.
- */
 export function NetworkSweepNotice({
   failed,
   canRetry,
 }: {
-  /** How many stacks stayed on the old network. 0 renders nothing. */
   failed: number;
-  /** Whether the viewer is an instance admin (the only one who may re-run it). */
   canRetry: boolean;
 }) {
   const router = useRouter();

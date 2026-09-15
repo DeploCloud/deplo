@@ -6,10 +6,6 @@ import { ChevronDown } from "lucide-react";
 import { Collapse } from "@/components/shared/collapse";
 import { cn } from "@/lib/utils";
 
-/**
- * A titled drawer for the settings almost nobody changes. Shut by default, with
- * a summary of what is inside it, so closing it never hides what it is set to.
- */
 export function SettingsDrawer({
   title,
   summary,
@@ -18,7 +14,6 @@ export function SettingsDrawer({
   children,
 }: {
   title: string;
-  /** What it holds right now, read while it is shut. */
   summary?: React.ReactNode;
   defaultOpen?: boolean;
   className?: string;

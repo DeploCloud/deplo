@@ -1,24 +1,15 @@
 import { builder } from "../builder";
-import { ALL_CAPABILITIES } from "@/lib/types";
+import { ALL_CAPABILITIES } from "@/lib/types/identity";
 import {
   LEGACY_CAPABILITY_EXPANSION,
   LEGACY_CAPABILITY_NAMES,
 } from "@/lib/capabilities";
 
-/**
- * Enums lifted from the domain types in `lib/types.ts`.
- */
-
 export const RoleEnum = builder.enumType("Role", {
   values: ["owner", "member", "viewer"] as const,
 });
 
-/**
- * Every capability, plus the eight coarse names they replaced - kept as DEPRECATED
- * input aliases so a script written against the old API keeps working: each still
- * expands to exactly the permissions it used to imply (`cleanCapabilities` /
- * `sanitizeCapabilities` do the expanding).
- */
+// The retired coarse names stay as deprecated input aliases, so an old API client keeps working.
 export const CapabilityEnum = builder.enumType("Capability", {
   values: Object.fromEntries([
     ...ALL_CAPABILITIES.map((c) => [c, { value: c }]),
@@ -46,8 +37,6 @@ export const AppStatusEnum = builder.enumType("AppStatus", {
   ] as const,
 });
 
-// GraphQL enum value names must match /[_a-zA-Z0-9]/, but some of the domain unions
-// use hyphens (e.g. "docker-image").
 export const DeploySourceEnum = builder.enumType("DeploySource", {
   values: {
     GITHUB: { value: "github" },
@@ -82,9 +71,6 @@ export const DatabaseTypeEnum = builder.enumType("DatabaseType", {
   ] as const,
 });
 
-// The one enum in this module carrying per-value descriptions, because one of its
-// values means something a caller cannot guess from its name: `cloudflare` reads
-// like a success and is NOT one.
 export const DomainStatusEnum = builder.enumType("DomainStatus", {
   description: "A custom domain's DNS verification state.",
   values: {

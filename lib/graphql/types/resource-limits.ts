@@ -1,10 +1,5 @@
 import { builder } from "../builder";
-import type { ResourceLimits } from "@/lib/types";
-
-/**
- * The shared ResourceLimits object/input pair, used by BOTH the App and the
- * Database modules (the two carry the identical flattened resource_* columns).
- */
+import type { ResourceLimits } from "@/lib/types/container";
 
 export const ResourceLimitsRef = builder
   .objectRef<ResourceLimits>("ResourceLimits")

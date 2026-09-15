@@ -21,9 +21,9 @@ import {
   updateGitConnection,
 } from "./git-connections";
 import { resolveCloneUrl, redactCloneUrl } from "../git/clone-url";
-import { updateAppSource } from "./apps";
+import { updateAppSource } from "./apps/source";
 import { loadAppGraph } from "./app-graph-load";
-import { gitConnections as gitConnectionsTable } from "../db/schema/control-plane";
+import { gitConnections as gitConnectionsTable } from "../db/schema/control-plane/integrations";
 import { encryptSecret } from "../crypto";
 import { nowIso } from "../ids";
 import {
@@ -31,21 +31,12 @@ import {
   __resetDnsLookupForTest,
 } from "../outbound-url";
 
-/**
- * Git connections: the team boundary and the write-only token. The `git` provider
- * is used throughout because it is the only one with no API to call - every other
- * provider would try to reach a real host from a unit test.
- */
-
 let db: TestDb;
 let pg: PGlite;
 
 before(async () => {
   ({ db, pg } = await makeTestDb());
   __setTestDb(db);
-  // The SSRF guard on `baseUrl` resolves hostnames, and a real lookup would make
-  // this suite depend on the network AND answer differently per machine. Every
-  // name is public here except the one case that names itself.
   __setDnsLookupForTest(async (host) =>
     host === "git.internal.example.com"
       ? [{ address: "10.0.0.7" }]
@@ -67,8 +58,6 @@ beforeEach(async () => {
     users: [
       { id: USER_1, teamId: TEAM_A, role: "owner" },
       { id: "user_2", teamId: TEAM_B, role: "owner" },
-      // Holds `manage_git` in TEAM_A but is NOT an instance admin - the
-      // distinction the private-address gate turns on.
       { id: "user_3", teamId: TEAM_A, role: "owner", isInstanceAdmin: false },
     ],
   });
@@ -92,14 +81,12 @@ const connect = (label = "Acme git") =>
 test("a connection round-trips with no token in the DTO", async () => {
   const created = await asTeamA(() => connect());
   assert.equal(created.provider, "git");
-  // A bare domain is normalised to an https origin.
   assert.equal(created.baseUrl, "https://git.acme.com");
   assert.equal(created.hasApi, false);
   assert.equal(created.appCount, 0);
 
   const listed = await asTeamA(() => listGitConnections());
   assert.equal(listed.length, 1);
-  // The whole point of a write-only secret: no field of the DTO carries it.
   assert.ok(
     !JSON.stringify(listed[0]).includes("s3cret-token"),
     "the token must never reach a DTO",
@@ -151,7 +138,6 @@ test("rotating the token replaces it and keeps the rest", async () => {
   assert.equal(updated.label, "Renamed");
   assert.equal((await readGitCredential(created.id))?.token, "new-token");
 
-  // An empty token means "keep the stored one", not "erase it".
   await asTeamA(() => updateGitConnection(created.id, { token: "" }));
   assert.equal((await readGitCredential(created.id))?.token, "new-token");
 });
@@ -195,13 +181,9 @@ test("removing a connection unlinks its apps and stops their auto-deploy", async
   assert.equal(unlinked, 1);
   const after = await loadAppGraph("prj_1");
   assert.equal(after?.repo?.connectionId ?? null, null);
-  // Without a credential there is no clone and no delivery, so leaving
-  // auto-deploy on would promise something that can no longer happen.
   assert.equal(after?.autoDeploy, false);
   assert.deepEqual(await asTeamA(() => listGitConnections()), []);
 });
-
-/* ---- the clone URL ---------------------------------------------------- */
 
 test("a connection-backed clone carries its credentials in the userinfo", async () => {
   const created = await asTeamA(() => connect());
@@ -213,15 +195,11 @@ test("a connection-backed clone carries its credentials in the userinfo", async 
     connectionId: created.id,
   });
   assert.equal(url, "https://deploy:s3cret-token@git.acme.com/acme/site.git");
-  // Deploy logs are readable by anyone with view_logs, a far wider set than the
-  // people who may manage the connection.
   assert.equal(redactCloneUrl(url), "https://git.acme.com/acme/site.git");
 });
 
 test("a repo URL on a FOREIGN host does NOT carry the connection's token", async () => {
-  // `repo.url` and `connectionId` are set independently by a member who needs no
-  // manage_git and no reveal capability.
-  const created = await asTeamA(() => connect()); // baseUrl https://git.acme.com
+  const created = await asTeamA(() => connect());
   const attackerUrl = "https://collector.attacker.test/acme/site.git";
   const url = await resolveCloneUrl({
     provider: "git",
@@ -230,7 +208,6 @@ test("a repo URL on a FOREIGN host does NOT carry the connection's token", async
     branch: "main",
     connectionId: created.id,
   });
-  // Unchanged, anonymous - no username/password embedded.
   assert.equal(url, attackerUrl);
   const parsed = new URL(url);
   assert.equal(parsed.username, "");
@@ -254,8 +231,6 @@ test("a token full of URL metacharacters survives the round trip", async () => {
     branch: "main",
     connectionId: created.id,
   });
-  // Whatever the encoding, the parsed credentials must come back byte-identical
-  // or the clone authenticates as somebody else (or nobody).
   const parsed = new URL(url);
   assert.equal(decodeURIComponent(parsed.username), "a@b");
   assert.equal(decodeURIComponent(parsed.password), "p:a/s@s w0rd");
@@ -271,8 +246,6 @@ test("a repo with no credential clones exactly as typed", async () => {
     branch: "main",
   };
   assert.equal(await resolveCloneUrl(plain), plain.url);
-  // An scp-style remote has nowhere to put basic auth; hand it over untouched
-  // rather than mangling it.
   const created = await asTeamA(() => connect());
   assert.equal(
     await resolveCloneUrl({
@@ -315,23 +288,10 @@ test("an app cannot borrow another team's connection", async () => {
       },
     }),
   );
-  // The credential is DROPPED, not honoured: the repo still saves, and clones
-  // anonymously instead of with someone else's token.
   const app = await loadAppGraph("prj_1");
   assert.equal(app?.repo?.connectionId ?? null, null);
   assert.equal(app?.repo?.repo, "acme/site");
 });
-
-/* ------------------------------------------------------------------ */
-/* The address is dialed by the control plane, so it is SSRF surface    */
-/* ------------------------------------------------------------------ */
-
-/**
- * `base_url` was the one user-supplied outbound address that never went through
- * the shared guard - and the control plane dials it itself, putting the response
- * body into the error, so `169.254.169.254` came back READABLE to `manage_git`.
- * The escape (a LAN GitLab is ordinary) is instance-admin only and recorded.
- */
 
 const connectTo = (baseUrl: string, allowPrivateEndpoint = false) =>
   connectGitProvider({
@@ -345,7 +305,7 @@ const connectTo = (baseUrl: string, allowPrivateEndpoint = false) =>
 
 test("an address inside the deployment is refused", async () => {
   for (const addr of [
-    "http://169.254.169.254", // the cloud metadata endpoint
+    "http://169.254.169.254",
     "http://127.0.0.1:3000",
     "https://10.0.0.5",
     "https://192.168.1.10",
@@ -361,9 +321,8 @@ test("an address inside the deployment is refused", async () => {
   }
 });
 
+// Refusing only the literal address would have stopped nothing.
 test("a NAME that resolves inside the deployment is refused too", async () => {
-  // The politely-spelled version of the same attack. Refusing only the literal
-  // would have stopped nothing.
   await assert.rejects(
     () => asTeamA(() => connectTo("https://git.internal.example.com")),
     /private or internal/,
@@ -371,9 +330,6 @@ test("a NAME that resolves inside the deployment is refused too", async () => {
 });
 
 test("a private address needs instance admin, not just manage_git", async () => {
-  // `user_3` (seeded above) holds the capability in TEAM_A but is not an
-  // instance admin, which is the whole distinction: a team capability must never
-  // be enough to aim the control plane at its own network.
   await assert.rejects(
     () =>
       runWithIdentity({ userId: "user_3", teamId: TEAM_A }, () =>
@@ -402,10 +358,6 @@ test("an ordinary public address still connects, and is not flagged", async () =
   assert.equal(created.allowPrivateEndpoint, false);
 });
 
-/**
- * The scopes a provider reports are stored, and the card reads what is MISSING
- * from them. Inserted directly: reaching a real GitLab is what this suite avoids.
- */
 async function seedGitlab(tokenScopes: string): Promise<void> {
   await db.insert(gitConnectionsTable).values({
     id: "gitc_scopes",
@@ -437,7 +389,6 @@ test("a token short of a scope says which one, in GitLab's own word", async () =
     conn!.missingAccess.map((r) => r.label),
     ["api"],
   );
-  // Health is orthogonal: the token works, it just cannot do everything.
   assert.equal(conn!.health, "ok");
 });
 

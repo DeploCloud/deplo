@@ -1,26 +1,21 @@
-/**
- * Fleet rollout of deplo-agent v1.12.0 (the docker-cleanup retention fix).
- */
 import { and, eq, inArray, sql } from "drizzle-orm";
 
 import { getDb } from "../lib/db/client";
-import { deployments, apps } from "../lib/db/schema/control-plane";
-import { listAllServers, markServerSeen } from "../lib/data/servers";
-import {
-  agentPreflight,
-  runAgentCleanup,
-  selfUpdateServerAgent,
-} from "../lib/infra/agent-client";
+import { apps } from "../lib/db/schema/control-plane/apps";
+import { deployments } from "../lib/db/schema/control-plane/deployments";
+import { markServerSeen } from "../lib/data/servers/agent-handshake";
+import { listAllServers } from "../lib/data/servers/roster";
+import { selfUpdateServerAgent } from "../lib/infra/agent-client/agent-lifecycle";
+import { runAgentCleanup } from "../lib/infra/agent-client/docker-cleanup";
+import { agentPreflight } from "../lib/infra/agent-client/preflight";
 import { CleanupScope } from "../lib/agent/gen/agent";
 
 const TARGET = "1.12.1";
-/** Rollout order per the runbook: canary first, agent 0 (runs the control plane) last. */
 const ORDER = [
-  "srv_f47d8cba7db4c813", // neon-s1 (canary - fewest Apps)
-  "srv_07b0be4ab9ef9533", // neon-s2 (the saturated host this fix is for)
-  "srv_3667cf1973005952", // eu-main-1 (agent 0 - LAST)
+  "srv_f47d8cba7db4c813",
+  "srv_07b0be4ab9ef9533",
+  "srv_3667cf1973005952",
 ];
-/** Capabilities the control plane relies on; one disappearing = release regression. */
 const REQUIRED_CAPS = [
   "self-update",
   "backup",
@@ -54,7 +49,6 @@ async function updateOne(serverId: string, name: string): Promise<void> {
   const { version } = await selfUpdateServerAgent(serverId);
   await markServerSeen(serverId, version);
   console.log(`[${name}] agent replied ${version}, waiting for the re-exec…`);
-  // selfUpdateGrace is 750ms + exec + listen; give it a moment before Hello.
   await new Promise((r) => setTimeout(r, 4000));
 
   const hello = await agentPreflight(serverId);
@@ -71,9 +65,6 @@ async function updateOne(serverId: string, name: string): Promise<void> {
   }
   await markServerSeen(serverId, hello.agentVersion);
 
-  // Live smoke of the changed RPC: a dry run enumerates with the new rules and
-  // must answer ok. (The owner just pruned the fleet by hand, so ~0 candidates
-  // is the expected shape - the point is the RPC answering sanely, per scope.)
   const dry = await runAgentCleanup(serverId, {
     scopes: [
       CleanupScope.CLEANUP_SCOPE_BUILD_CACHE,
@@ -84,9 +75,6 @@ async function updateOne(serverId: string, name: string): Promise<void> {
     dryRun: true,
     minAgeHours: 24,
     keepImagesPerApp: 1,
-    // This script pre-dates per-app rollback retention and is kept as the 1.12
-    // record; the scalar is what it always sent. Same for the leftover-files
-    // inventory: no scope here asks for one.
     keepPerSlug: {},
     liveSlugs: [],
     liveNetworks: [],

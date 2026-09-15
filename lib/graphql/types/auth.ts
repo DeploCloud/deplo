@@ -5,23 +5,25 @@ import { ViewerRef } from "./viewer";
 import { z } from "zod";
 import { cookies, headers } from "next/headers";
 import {
+  createAccountWithTeam,
+  createAccountWithTeams,
+} from "@/lib/auth/create-account";
+import { completeSetup } from "@/lib/auth/setup";
+import {
   login,
   logout,
-  completeSetup,
-  createAccountWithTeam,
   emailForIdentifier,
-  createAccountWithTeams,
   startSessionFor,
   verifyTwoFactorCode,
   passkeyChallenge,
   verifyPasskeyLogin,
-} from "@/lib/auth";
-import { getCurrentUser } from "@/lib/auth";
+} from "@/lib/auth/sign-in";
+import { getCurrentUser } from "@/lib/auth/current-user";
 import {
   consumeRegistrationLink,
   getRegistrationLinkInfo,
   getRegistrationLinkAssignments,
-} from "@/lib/data/members";
+} from "@/lib/data/members/registration-redeem";
 import {
   normalizeUsername,
   USERNAME_MAX,
@@ -35,15 +37,8 @@ import { sha256Hex } from "@/lib/crypto";
 import { eq } from "drizzle-orm";
 import { getDb } from "@/lib/db/client";
 import { verification } from "@/lib/db/schema/auth";
-import { users } from "@/lib/db/schema/control-plane";
+import { users } from "@/lib/db/schema/control-plane/identity";
 
-/**
- * Authentication mutations. The rate-limiting that lived in lib/actions/auth.ts is
- * preserved here verbatim (the actions' security contract must not regress when
- * they become mutations).
- */
-
-/** Best-effort client IP - a secondary, spoofable limiter dimension only. */
 async function clientKey(scope: string): Promise<string> {
   const h = await headers();
   const ip =
@@ -53,11 +48,6 @@ async function clientKey(scope: string): Promise<string> {
   return `${scope}:${ip}`;
 }
 
-/**
- * A limiter bucket for the LOGIN ATTEMPT a two-factor challenge belongs to.
- * Hashed, because a limiter key ends up in memory next to a token that is still
- * live.
- */
 async function pendingLoginKey(): Promise<
   { key: string; limit: number; windowMs: number }[]
 > {
@@ -76,17 +66,12 @@ async function pendingLoginKey(): Promise<
     : [];
 }
 
-/**
- * The address behind the two-factor challenge in flight, or null.
- */
 async function pendingLoginEmail(): Promise<string | null> {
   const store = await cookies();
   const pending = store
     .getAll()
     .find((c) => c.name.endsWith("two_factor") && c.value);
   if (!pending) return null;
-  // A Better Auth signed cookie is `<identifier>.<signature>`, and the
-  // identifier it mints (`2fa-<random>`) never contains a dot.
   const identifier = pending.value.split(".")[0];
   if (!identifier) return null;
   const rows = await getDb()
@@ -98,9 +83,7 @@ async function pendingLoginEmail(): Promise<string | null> {
   return rows[0]?.email ?? null;
 }
 
-/**
- * Returns an error message when any limiter trips, else null.
- */
+// Every bucket counts on every attempt - an `||` chain short-circuited and left one uncounted.
 async function checkLimits(
   checks: { key: string; limit: number; windowMs: number }[],
 ): Promise<string | null> {
@@ -137,16 +120,11 @@ const AuthPayloadRef = builder
   });
 
 const loginSchema = z.object({
-  // An email OR a username: the product names people `@handle` everywhere, and
-  // the break-glass CLI addresses them that way, so demanding the address here
-  // was a rule only this one screen had.
   email: z.string().trim().min(1, "Enter your email or username"),
   password: z.string().min(1, "Password is required"),
 });
 
 const setupSchema = z.object({
-  // Optional: the wizard derives the handle from the name and only sends one
-  // that was edited by hand.
   username: z
     .string()
     .min(USERNAME_MIN, "Username is too short")
@@ -161,7 +139,6 @@ const setupSchema = z.object({
     .max(200),
   image: z.string().max(MAX_AVATAR_STRING_LEN).nullish(),
   teamImage: z.string().max(MAX_AVATAR_STRING_LEN).nullish(),
-  // The installer's setup link. Verified in completeSetup, never here.
   key: z.string().max(200).nullish(),
 });
 
@@ -171,9 +148,6 @@ const registerSchema = z.object({
   name: z.string().trim().min(1, "Name is required").max(80),
   email: z.string().email(),
   password: z.string().min(8).max(200),
-  // Optional: only own_team links collect a team name. existing_teams links
-  // pre-assign teams, so the registrant never names one and the form sends an
-  // explicit `null` (a nullable GraphQL arg).
   teamName: z.string().min(1).max(80).nullish(),
   image: z.string().max(MAX_AVATAR_STRING_LEN).nullish(),
   teamImage: z.string().max(MAX_AVATAR_STRING_LEN).nullish(),
@@ -191,27 +165,17 @@ builder.mutationFields((t) => ({
       const parsed = loginSchema.safeParse(args);
       if (!parsed.success)
         throw new Error(parsed.error.issues[0]?.message ?? "Invalid input");
-      // Resolved BEFORE the limiter, so a username and the address behind it
-      // share one bucket instead of giving an attacker two.
       const email = await emailForIdentifier(parsed.data.email);
-      // No global bucket: a shared fixed-window counter lets an anonymous
-      // attacker exhaust it and lock every user out. Limiting is per-email and
-      // per-client-IP only.
+      // Per-account AND per-client, never one global counter: that one locks every user out.
       const limited = await checkLimits([
         { key: `login:email:${email}`, limit: 8, windowMs: 60_000 },
         { key: await clientKey("login"), limit: 30, windowMs: 60_000 },
       ]);
       if (limited) throw new Error(limited);
       const res = await login(email, parsed.data.password);
-      // 2FA is not an error: the password was right, the login is just not
-      // finished. Returning a payload (rather than throwing) is what lets the
-      // client swap to the code step without treating it as a failed attempt.
       if (res.requiresTwoFactor)
         return { viewer: null, requiresTwoFactor: true };
       if (!res.ok) {
-        // Counted here rather than in `lib/auth.ts`: this resolver has the
-        // normalised address in scope and already knows a credential rejection
-        // from a rate-limit one.
         void noteFailedLogin(email);
         throw new Error(res.error ?? "Invalid email or password");
       }
@@ -224,19 +188,12 @@ builder.mutationFields((t) => ({
       "Finish a login that returned `requiresTwoFactor`, with a TOTP code or a recovery code.",
     args: {
       code: t.arg.string({ required: true }),
-      // One mutation, not two: the user pastes whatever they have, and the form
-      // says which kind it is. Splitting them would leak nothing extra and would
-      // double the public surface.
       recoveryCode: t.arg.boolean({ required: false }),
     },
     resolve: async (_r, args) => {
       const code = args.code.trim();
       if (!code) throw new Error("Enter the code from your authenticator app");
-      // The ACCOUNT this challenge belongs to, resolved once: it is both the
-      // limiter bucket below and the address the failure notice goes to.
       const who = await pendingLoginEmail();
-      // Tighter than the password limiter: a 6-digit code is guessable in a way a
-      // password is not, so cap attempts hard.
       const limited = await checkLimits([
         { key: await clientKey("2fa"), limit: 5, windowMs: 15 * 60_000 },
         ...(await pendingLoginKey()),
@@ -256,9 +213,6 @@ builder.mutationFields((t) => ({
         args.recoveryCode ? "backup" : "totp",
       );
       if (!res.ok) {
-        // Counted against the ACCOUNT the challenge belongs to, so a burst of wrong codes
-        // lands in the same bucket as a burst of wrong passwords and reaches that account's
-        // teams.
         if (who) void noteFailedLogin(who);
         throw new Error(res.error ?? "That code is not valid");
       }
@@ -270,7 +224,6 @@ builder.mutationFields((t) => ({
     description:
       "Options for `navigator.credentials.get`. Public: this is the START of a sign-in, so there is no session yet.",
     resolve: async () => {
-      // One bucket, on the client.
       const limited = await checkLimits([
         { key: await clientKey("passkey"), limit: 20, windowMs: 60_000 },
       ]);
@@ -284,9 +237,6 @@ builder.mutationFields((t) => ({
       "Finish a passkey sign-in with what the authenticator produced. Sets the session cookie.",
     args: { response: t.arg({ type: "JSON", required: true }) },
     resolve: async (_r, { response }) => {
-      // Looser than the 2FA limiter and with no per-account bucket, both on purpose: an
-      // assertion is a signature over a server-chosen challenge, not six digits, so there
-      // is nothing to guess - the limit exists to cap the verification work.
       const limited = await checkLimits([
         {
           key: await clientKey("passkey-verify"),
@@ -324,8 +274,6 @@ builder.mutationFields((t) => ({
       const res = await completeSetup(parsed.data);
       if (!res.ok)
         throw new GraphQLError(res.error ?? "Setup failed", {
-          // The wizard reads this to put the message back on the step that owns
-          // the field, instead of on the one the reader is looking at.
           extensions: res.field ? { field: res.field } : undefined,
         });
       return { viewer: await getCurrentUser() };
@@ -341,7 +289,6 @@ builder.mutationFields((t) => ({
       name: t.arg.string({ required: true }),
       email: t.arg.string({ required: true }),
       password: t.arg.string({ required: true }),
-      // Optional: only collected/required for own_team links (see resolver).
       teamName: t.arg.string({ required: false }),
       image: t.arg.string(),
       teamImage: t.arg.string(),
@@ -355,9 +302,6 @@ builder.mutationFields((t) => ({
         h.get("x-forwarded-for")?.split(",")[0]?.trim() ||
         h.get("x-real-ip") ||
         "local";
-      // Through `checkLimits` rather than two inline calls, so both buckets are
-      // always counted: the `||` short-circuited, which left the token bucket
-      // un-incremented whenever the address bucket refused first.
       const limited = await checkLimits([
         { key: `register:ip:${ip}`, limit: 10, windowMs: 60_000 },
         {
@@ -372,7 +316,7 @@ builder.mutationFields((t) => ({
       const usernameError = validateUsername(username);
       if (usernameError) throw new Error(usernameError);
 
-      // The team handling is dictated by the link's stored mode, NEVER the client.
+      // Team handling follows the link's stored mode, never anything the client sent.
       const info = await getRegistrationLinkInfo(parsed.data.token);
       if (!info.valid)
         throw new Error("This registration link is no longer valid");
@@ -381,7 +325,6 @@ builder.mutationFields((t) => ({
 
       let activeTeamId: string;
       if (info.mode === "existing_teams") {
-        // Team(s) come from the link; any submitted teamName is ignored.
         const assignments = await getRegistrationLinkAssignments(
           parsed.data.token,
         );

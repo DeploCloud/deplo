@@ -29,11 +29,6 @@ const SEEN = /* GraphQL */ `
   }
 `;
 
-/**
- * The end of first-run setup: the wizard lands here with `?welcome=1`, and the
- * owner's first Overview opens it even without one. Showing it stamps the
- * instance, so it happens exactly once. A takeover names the panel it replaced.
- */
 export function WelcomeCelebration({
   show,
   takeoverOf = null,
@@ -41,16 +36,12 @@ export function WelcomeCelebration({
   show: boolean;
   takeoverOf?: string | null;
 }) {
-  // Latched at mount: stripping the flag below re-renders this with `show`
-  // already false, which would take the dialog away mid-celebration.
   const [armed] = React.useState(show);
   const [open, setOpen] = React.useState(show);
   const [confetti, setConfetti] = React.useState(show);
 
   React.useEffect(() => {
     if (!armed) return;
-    // The History API, not the router: a router replace would re-render this
-    // away before the burst is over.
     const url = new URL(window.location.href);
     url.searchParams.delete("welcome");
     url.searchParams.delete("takeover");
@@ -63,7 +54,6 @@ export function WelcomeCelebration({
     if (takeoverOf)
       toast.success(
         `Deplo has taken over this machine. ${takeoverOf} is gone.`,
-        // Long enough to be read next to the celebration it lands with.
         { duration: 10_000 },
       );
     const timer = setTimeout(() => setConfetti(false), SHOW_MS);

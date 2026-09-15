@@ -23,10 +23,9 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { FieldLabel } from "@/components/ui/info-tip";
 import { gql, gqlAction } from "@/lib/graphql-client";
 import { CAPABILITY_META } from "@/lib/membership-shared";
-import { ALL_CAPABILITIES } from "@/lib/types";
-import type { Capability } from "@/lib/types";
+import { ALL_CAPABILITIES } from "@/lib/types/identity";
+import type { Capability } from "@/lib/types/identity";
 
-/** A current access grant on the folder, as returned by `folderGrants`. */
 interface FolderGrant {
   folderId: string;
   userId: string;
@@ -38,7 +37,6 @@ interface FolderGrant {
   isOwner: boolean;
 }
 
-/** A team member who could be granted access, from `folderShareCandidates`. */
 interface ShareCandidate {
   userId: string;
   username: string;
@@ -74,9 +72,6 @@ const CANDIDATES_QUERY = `query($folderId: ID!, $query: String) {
   }
 }`;
 
-/**
- * Manage who can access a folder.
- */
 export function ShareFolderDialog({
   folderId,
   folderName,
@@ -91,20 +86,16 @@ export function ShareFolderDialog({
   const router = useRouter();
   const [pending, startTransition] = React.useTransition();
 
-  // Current grants + the caps this granter may hand out. Loaded on open.
   const [grants, setGrants] = React.useState<FolderGrant[]>([]);
   const [grantable, setGrantable] = React.useState<Capability[]>([]);
   const [loading, setLoading] = React.useState(true);
 
-  // "Add person" sub-flow: search → pick a candidate → choose caps → save.
   const [query, setQuery] = React.useState("");
   const [candidates, setCandidates] = React.useState<ShareCandidate[]>([]);
   const [searching, setSearching] = React.useState(false);
   const [picked, setPicked] = React.useState<ShareCandidate | null>(null);
   const [caps, setCaps] = React.useState<Set<Capability>>(() => new Set());
 
-  // The grantable set, ordered canonically and with `view` dropped - that one is
-  // always implied by the server, so it's never a togglable box here.
   const togglableCaps = React.useMemo(
     () =>
       ALL_CAPABILITIES.filter(
@@ -113,8 +104,6 @@ export function ShareFolderDialog({
     [grantable],
   );
 
-  // (Re)load the current grants + grantable caps. Called on open and after every
-  // mutation so the two lists always reflect the latest server state.
   const reload = React.useCallback(async () => {
     setLoading(true);
     try {
@@ -138,9 +127,6 @@ export function ShareFolderDialog({
     if (open) reload();
   }, [open, reload]);
 
-  // Debounced candidate search, mirroring the add-member dialog: the empty query
-  // returns the full addable roster, so the list populates as the sub-flow opens.
-  // Only runs while adding (no candidate picked yet) and the dialog is open.
   React.useEffect(() => {
     if (!open || picked) return;
     const q = query.trim();
@@ -178,8 +164,6 @@ export function ShareFolderDialog({
 
   function pickCandidate(c: ShareCandidate) {
     setPicked(c);
-    // Seed with every grantable cap ticked - sharing a folder usually means
-    // "give them the same access I have"; the granter can trim before saving.
     setCaps(new Set(togglableCaps));
   }
 
@@ -192,9 +176,6 @@ export function ShareFolderDialog({
     });
   }
 
-  // Enter submits the step the dialog is actually on: `save` no-ops until a
-  // candidate is picked, so Enter in the search field just stays put (the
-  // candidate buttons handle their own Enter natively - they're type="button").
   function onSubmit(e: React.FormEvent) {
     e.preventDefault();
     save();
@@ -202,10 +183,7 @@ export function ShareFolderDialog({
 
   function save() {
     if (!picked) return;
-    // `view` is always implied by the server; send the ticked caps as-is.
     const capabilities = togglableCaps.filter((c) => caps.has(c));
-    // The grantee joins the list NOW, with exactly the capabilities that were
-    // ticked; the server's own answer replaces the whole list a moment later.
     const chosen = picked;
     const before = grants;
     setGrants((prev) => [
@@ -255,8 +233,6 @@ export function ShareFolderDialog({
   }
 
   function removeGrant(g: FolderGrant) {
-    // The grantee leaves the list on the click; the server's own answer (the
-    // grants that remain) lands a moment later and replaces it either way.
     const before = grants;
     setGrants((prev) => prev.filter((x) => x.userId !== g.userId));
     startTransition(async () => {
@@ -291,8 +267,6 @@ export function ShareFolderDialog({
     });
   }
 
-  // Short "Deploy, Manage domains" summary of a grantee's caps (view dropped,
-  // since it's always present). Empty ⇒ "View only".
   function capSummary(capabilities: string[]): string {
     const labels = ALL_CAPABILITIES.filter(
       (c) => c !== "view" && capabilities.includes(c),
@@ -319,7 +293,6 @@ export function ShareFolderDialog({
           className="grid grid-cols-[minmax(0,1fr)] gap-4"
           scroll={false}
         >
-          {/* Current access */}
           <div className="space-y-2">
             <Label>People with access</Label>
             {loading ? (
@@ -363,7 +336,6 @@ export function ShareFolderDialog({
                         {g.isOwner ? "Full access" : capSummary(g.capabilities)}
                       </p>
                     </div>
-                    {/* The owner row can't be revoked - ownership isn't a grant. */}
                     {!g.isOwner && (
                       <Button
                         variant="ghost"
@@ -382,7 +354,6 @@ export function ShareFolderDialog({
           </div>
 
           <form className="grid gap-4" onSubmit={onSubmit}>
-            {/* Add a person */}
             <div className="space-y-3 border-t border-border pt-4">
               {!picked ? (
                 <>
@@ -484,8 +455,6 @@ export function ShareFolderDialog({
                     >
                       What can they do?
                     </FieldLabel>
-                    {/* `view` is implied, always on - shown as a fixed, disabled row
-                      rather than a togglable box. */}
                     <div className="flex items-start gap-3 rounded-md px-1 py-1.5 opacity-70">
                       <input
                         type="checkbox"
@@ -541,9 +510,6 @@ export function ShareFolderDialog({
               >
                 Close
               </Button>
-              {/* Always mounted, disabled until there is someone to share with:
-                a button that appears on the pick would move Close across the
-                footer, and the disabled state says the action exists. */}
               <Button type="submit" disabled={pending || !picked}>
                 <span className="grid place-items-center">
                   <span

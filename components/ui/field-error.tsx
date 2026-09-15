@@ -4,10 +4,6 @@ import * as React from "react";
 
 import { cn } from "@/lib/utils";
 
-/**
- * Content that eases open and shut instead of appearing at full height. Pure
- * CSS grid rows, so it nests and needs no measuring.
- */
 export function Collapse({
   open,
   className,
@@ -30,16 +26,10 @@ export function Collapse({
   );
 }
 
-/** The className the field above a `FieldError` wears while it is invalid. */
 export const invalidField = "rounded-b-none border-destructive/40";
 
-/** The control inside a `Field`: the group draws the focus ring, not the input. */
 export const fieldControl = "focus-visible:ring-0 focus-visible:ring-offset-0";
 
-/**
- * A field's error, drawn as that field's own border growing downward rather
- * than as a card under it.
- */
 function FieldError({ children }: { children?: string | null }) {
   return (
     <Collapse open={Boolean(children)}>
@@ -50,12 +40,6 @@ function FieldError({ children }: { children?: string | null }) {
   );
 }
 
-/**
- * A control and the error that grows out of its border. The GROUP owns the
- * focus ring: left on the input, the ring would close above the error and cut
- * the field in two. Give the control `fieldControl` and, when invalid,
- * `invalidField`.
- */
 export function Field({
   error,
   className,

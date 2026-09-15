@@ -14,22 +14,16 @@ import {
   __resetLocalLeases,
 } from "../backups/lease";
 import {
-  leaseFor,
   releaseMigrationRunnerLease,
   runMigrationTick,
-} from "./migration-runner";
+} from "./migration-runner/run-loop";
+import { leaseFor } from "./migration-runner/runner-state";
 import {
   seedIdentity,
   TEAM_A,
   TRUNCATE_IDENTITY,
   USER_1,
 } from "./identity-test-helpers";
-
-/**
- * The runner's lease, which decides whether a migration may move. Per RUN, it
- * means the only thing a lease ever meant: two processes must not drive the same
- * one.
- */
 
 let harness: Awaited<ReturnType<typeof makeTestDb>>;
 
@@ -51,9 +45,6 @@ beforeEach(async () => {
   await seedIdentity(harness.db);
 });
 
-/** A run the tick will pick up and drive. With no `actor_user_id` it fails on
- *  its first line, which is all this file needs: what matters is WHICH runs the
- *  tick reaches, not what it does when it gets there. */
 async function seedRun(id: string): Promise<string> {
   await harness.db.execute(
     `insert into teams (id, name, slug, plan, created_at)
@@ -78,9 +69,6 @@ async function statusOf(id: string): Promise<string> {
 }
 
 test("a run that fails hands its services back", async () => {
-  // The marker outlives the run that set it: a data phase that stopped left every
-  // app refusing to deploy with "still being brought over by a migration", and the
-  // only way out was a restart of the control plane.
   const id = await seedRun("dimp_frozen");
   await harness.db.execute(
     `update migration_runs set phase = 'data' where id = '${id}';`,
@@ -106,7 +94,6 @@ test("a run that fails hands its services back", async () => {
 test("a run somebody else is driving does not stop the next one", async () => {
   const held = await seedRun("dimp_held");
   const fresh = await seedRun("dimp_fresh");
-  // Another control plane has the first one, alive and beating.
   assert.equal(await acquireLease(leaseFor(held), "another-instance"), true);
 
   await runMigrationTick();
@@ -131,13 +118,11 @@ test("a run the tick finished leaves no lease behind", async () => {
     true,
     "a restart must hand a migration over on the next tick, not in two hours",
   );
-  // And handing back on shutdown is a no-op when nothing is in flight.
   await releaseMigrationRunnerLease();
 });
 
 test("a runner that died is taken over in 90s, not in the schedulers' two hours", async () => {
   const id = await seedRun("dimp_dead");
-  // The dead process never released it: the next control plane can only wait.
   assert.equal(await acquireLease(leaseFor(id), "dead-instance"), true);
   const ninetySeconds = new Date(Date.now() + 91_000);
   assert.equal(
@@ -151,9 +136,6 @@ test("a runner that died is taken over in 90s, not in the schedulers' two hours"
 });
 
 test("overlapping ticks settle a run once and leave no lease behind", async () => {
-  // The timer fires every 15s whether or not the last pass is still going, so
-  // overlapping ticks are the normal case - and the lease cannot separate two of
-  // them: same process, same owner, and a lease renews for its owner by definition.
   const id = await seedRun("dimp_race");
 
   await Promise.all([
@@ -170,11 +152,6 @@ test("overlapping ticks settle a run once and leave no lease behind", async () =
   );
 });
 
-/* ------------------------------------------------------------------ */
-/* The queue of teams                                                  */
-/* ------------------------------------------------------------------ */
-
-/** One team of a walk, waiting its turn behind `session`. */
 async function seedQueued(
   id: string,
   session: string,
@@ -197,7 +174,6 @@ async function seedQueued(
   return id;
 }
 
-/** The team whose turn just ended, in whatever way it ended. */
 async function seedLanded(id: string, status: string): Promise<string> {
   await harness.db.execute(
     `insert into migration_runs
@@ -213,8 +189,6 @@ async function seedLanded(id: string, status: string): Promise<string> {
 test("the team behind a landed one starts on the next tick", async () => {
   const first = await seedLanded("dimp_one", "done");
   const next = await seedQueued("dimp_two", first);
-  // Held by another control plane, so the tick promotes it and leaves the
-  // driving alone - which is the half this test is about.
   assert.equal(await acquireLease(leaseFor(next), "another-instance"), true);
 
   await runMigrationTick();
@@ -222,8 +196,6 @@ test("the team behind a landed one starts on the next tick", async () => {
   assert.equal(await statusOf(next), "running");
 });
 
-// Carrying on would import the next team through machines the failure has just
-// been undone on.
 test("a team that did not land takes the rest of the walk with it", async () => {
   const first = await seedLanded("dimp_bad", "failed");
   const next = await seedQueued("dimp_after", first);

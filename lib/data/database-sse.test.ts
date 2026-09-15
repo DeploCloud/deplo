@@ -11,12 +11,6 @@ import { seedDatabase, TRUNCATE_BACKUPS } from "./backup-test-helpers";
 import { publishDatabaseChanged } from "../graphql/pubsub";
 import { databaseStatusStream } from "../graphql/types/database";
 
-/**
- * SSE generator test for the databaseStatus subscription - the database twin of
- * app-sse.test.ts (same contract): the generator must paint the initial snapshot
- * AND forward >1 change ping WITHOUT ever calling a cookie-reading helper
- */
-
 let db: TestDb;
 let pg: PGlite;
 
@@ -44,7 +38,6 @@ test("databaseStatusStream yields the initial snapshot + multiple change pings (
 
   const gen = databaseStatusStream("db_1", TEAM_A, USER_1);
 
-  // Initial snapshot - masked DTO, no secret projected.
   const first = await gen.next();
   assert.equal(first.done, false);
   assert.equal(first.value.id, "db_1");
@@ -52,7 +45,6 @@ test("databaseStatusStream yields the initial snapshot + multiple change pings (
   assert.equal("connectionStringEnc" in first.value, false);
   assert.ok(first.value.connectionStringMasked.includes("••••"));
 
-  // Ping 1: the provision flips the status → the generator reloads fresh state.
   const p1 = gen.next();
   await pg.exec(`update databases set status = 'running' where id = 'db_1';`);
   publishDatabaseChanged("db_1");
@@ -60,8 +52,6 @@ test("databaseStatusStream yields the initial snapshot + multiple change pings (
   assert.equal(second.done, false);
   assert.equal(second.value.status, "running");
 
-  // Ping 2: a SECOND change across another iteration tick (the old cookie
-  // crash point in the app twin).
   const p2 = gen.next();
   await pg.exec(`update databases set status = 'stopped' where id = 'db_1';`);
   publishDatabaseChanged("db_1");
@@ -86,9 +76,6 @@ test("databaseStatusStream rejects an unknown id / wrong team / no team", async 
     () => databaseStatusStream("db_1", null, USER_1).next(),
     /Database not found/,
   );
-  // No principal either: the generator runs after the HTTP handler returned, so
-  // it cannot go looking for one, and the gate it used to lean on answered
-  // "unrestricted" when it could not resolve a user.
   await assert.rejects(
     () => databaseStatusStream("db_1", TEAM_A, null).next(),
     /Database not found/,
@@ -98,7 +85,7 @@ test("databaseStatusStream rejects an unknown id / wrong team / no team", async 
 test("databaseStatusStream ends when the database is deleted mid-stream", async () => {
   await seedDatabase(db, { id: "db_1", name: "main" });
   const gen = databaseStatusStream("db_1", TEAM_A, USER_1);
-  await gen.next(); // initial
+  await gen.next();
   const p = gen.next();
   await pg.exec(`delete from databases where id = 'db_1';`);
   publishDatabaseChanged("db_1");

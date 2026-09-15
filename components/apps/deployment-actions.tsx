@@ -26,7 +26,7 @@ import {
 import { ConfirmAction } from "@/components/shared/confirm-action";
 import { RollbackDialog } from "@/components/apps/rollback-deployment";
 import { gqlAction } from "@/lib/graphql-client";
-import type { DeploymentStatus } from "@/lib/types";
+import type { DeploymentStatus } from "@/lib/types/deployment";
 
 export function DeploymentActions({
   id,
@@ -46,40 +46,16 @@ export function DeploymentActions({
 }: {
   id: string;
   appId: string;
-  /** Owning app slug - used to route to the new deployment's live logs. */
   appSlug: string;
   url: string;
   status: DeploymentStatus;
-  /**
-   * Set for a pull request preview build: a link straight to the pull request.
-   */
   pullRequestUrl?: string | null;
-  /** Show the "Delete" item (a finished deployment only). Cosmetic - the data
-   *  layer re-checks `deploy` on the app's folder. */
   canDelete?: boolean;
-  /** Whether the viewer may deploy this app. Redeploy / Promote / Cancel are
-   *  greyed out without it instead of failing on click. Cosmetic - every one of
-   *  them is re-checked in the data layer. */
   canDeploy?: boolean;
-  /**
-   * Whether this deployment is one the app can be put BACK on - the server's
-   * answer (`Deployment.canRollback`), never re-derived here: whether the image
-   * is still on the host is a fact about the host.
-   */
   canRollback?: boolean;
-  /**
-   * Whether the viewer holds `rollback_apps`. Separate from {@link canDeploy}
-   * because they are separate permissions - someone may be trusted to put the app
-   * back without being trusted to ship something new.
-   */
   canRollbackApps?: boolean;
-  /** What the app goes back TO, for the confirm dialog: the short sha or, for an
-   *  app built from an uploaded archive, nothing (the date carries it). */
   commitSha?: string;
   commitMessage?: string;
-  /** Deleting takes this row off the table on the CLICK rather than leaving it
-   *  clickable until the refresh lands, and puts it back if the mutation is
-   *  refused. Owned by the table, which holds the rows. */
   onRemoved?: () => void;
   onRestored?: () => void;
 }) {
@@ -88,10 +64,8 @@ export function DeploymentActions({
   const [deleteOpen, setDeleteOpen] = React.useState(false);
   const [rollbackOpen, setRollbackOpen] = React.useState(false);
 
-  // A build in flight can be stopped; a still-queued one is simply canceled.
   const isBuilding = status === "building";
   const canCancel = isBuilding || status === "queued";
-  // A finished deployment (not queued/building) is terminal history - deletable.
   const isTerminal = !canCancel;
 
   function redeploy() {
@@ -106,8 +80,6 @@ export function DeploymentActions({
       );
       if (res.ok) {
         toast.success("Redeploy started");
-        // Follow the new production build to its live logs; fall back to a
-        // refresh if no id came back.
         if (res.data?.id) {
           router.push(`/apps/${appSlug}/deployments/${res.data.id}`);
         } else {
@@ -125,8 +97,6 @@ export function DeploymentActions({
         (d) => d.cancelDeployment,
       );
       if (res.ok) {
-        // The server returns false when the build had already finished - don't
-        // claim we stopped something we didn't (the row status here can be stale).
         if (res.data)
           toast.success(isBuilding ? "Build stopped" : "Deployment canceled");
         else toast.info("This deployment already finished");
@@ -135,8 +105,6 @@ export function DeploymentActions({
     });
   }
 
-  // Delete this one finished deployment. Returns the ActionResult so ConfirmAction
-  // owns the toast + dialog close; we refresh the RSC reads on success.
   async function deleteThis() {
     onRemoved?.();
     const res = await gqlAction<{ deleteDeployments: number }, number>(
@@ -149,9 +117,6 @@ export function DeploymentActions({
     return res;
   }
 
-  // Two one-click destinations sit out in the open - "Open deployment" (its build
-  // logs & details) and "Visit" (the live app), so neither is buried in the menu;
-  // the ⋯ keeps the mutating actions (Redeploy / Promote / Stop build).
   const detailHref = `/apps/${appSlug}/deployments/${id}`;
   return (
     <>

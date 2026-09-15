@@ -14,17 +14,8 @@ import {
   TRUNCATE_PROJECT_GRAPH,
 } from "./app-graph-test-helpers";
 import { seedDatabase, seedDestination } from "./backup-test-helpers";
-import {
-  listServersForTeam,
-  setServerTeams,
-  getServerTeamIds,
-  getServerById,
-} from "./servers";
-
-/**
- * Data-layer tests for server → team access (the "all teams / specific teams"
- * feature).
- */
+import { listServersForTeam, getServerById } from "./servers/roster";
+import { setServerTeams, getServerTeamIds } from "./servers/team-access";
 
 let db: TestDb;
 let pg: PGlite;
@@ -40,8 +31,6 @@ after(async () => {
 });
 
 beforeEach(async () => {
-  // Truncating `servers` cascades to `server_teams` and `databases`; truncating
-  // `teams` cascades to the rest of identity, so each test starts from scratch.
   await pg.exec(`${TRUNCATE_PROJECT_GRAPH}
     truncate table registration_links, membership_capabilities, memberships, users, teams restart identity cascade;`);
   await seedIdentity(db, {
@@ -51,7 +40,7 @@ beforeEach(async () => {
       { id: "user_member", teamId: TEAM_A, role: "member" },
     ],
   });
-  await seedServer(db); // SERVER_1, all_teams defaults to true
+  await seedServer(db);
 });
 
 const asUser1 = <T>(fn: () => Promise<T>): Promise<T> =>
@@ -111,7 +100,6 @@ test("restricting is BLOCKED when an excluded team has a PROJECT on the server",
     ),
     /apps, databases or backup destinations/,
   );
-  // The block left the access untouched (still all teams).
   assert.equal((await getServerById(SERVER_1))!.allTeams, true);
 });
 
@@ -139,8 +127,6 @@ test("restricting SUCCEEDS when the team with workloads stays included", async (
 });
 
 test("setServerTeams requires instance admin", async () => {
-  // user_member is a plain team member (not an instance admin) - server
-  // administration is instance-admin-only, so the mutation must reject.
   await assert.rejects(
     runWithIdentity({ userId: "user_member", teamId: TEAM_A }, () =>
       setServerTeams(SERVER_1, { allTeams: false, teamIds: [TEAM_A] }),
@@ -163,7 +149,6 @@ test("a team with a backup destination on the server cannot lose its access to i
       ),
     /backup destinations on this server/,
   );
-  // Keeping that team keeps the server's runs going.
   await asUser1(() =>
     setServerTeams(SERVER_1, { allTeams: false, teamIds: [TEAM_A, TEAM_B] }),
   );

@@ -18,7 +18,6 @@ test("a round trip keeps an offered value", () => {
   assert.deepEqual(parseLogsDisplay(stored), { size: 18, leading: 2 });
 });
 
-// The value is user-writable: devtools, a stale build, a hand-edited key.
 test("a hostile or stale value never reaches the CSS", () => {
   for (const raw of [
     "not json",
@@ -33,7 +32,6 @@ test("a hostile or stale value never reaches the CSS", () => {
   assert.equal(parseLogsDisplay('{"size":9000}').size, MAX_LOG_SIZE);
   assert.equal(parseLogsDisplay('{"size":-5}').size, MIN_LOG_SIZE);
   assert.equal(parseLogsDisplay('{"size":13.6}').size, 14);
-  // A leading we stopped offering falls back instead of being applied.
   assert.equal(parseLogsDisplay('{"leading":99}').leading, D.leading);
 });
 

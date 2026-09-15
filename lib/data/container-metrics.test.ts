@@ -22,10 +22,6 @@ import {
   clearContainerHistory,
 } from "../monitoring/container-history";
 
-/**
- * Data-layer tests for the per-app / per-database metrics READS.
- */
-
 let db: TestDb;
 let pg: PGlite;
 
@@ -46,7 +42,6 @@ const asOwner = <T>(fn: () => Promise<T>) =>
 const asOtherTeam = <T>(fn: () => Promise<T>) =>
   runWithIdentity({ userId: USER_B, teamId: TEAM_B }, fn);
 
-// Read-time eviction is relative to Date.now(), so use a near-now timestamp.
 const NOW = Date.now();
 
 function sample(id: string, ts: number, cpu = 1): ContainerMetricsSample {
@@ -84,10 +79,6 @@ beforeEach(async () => {
   await seedApp(db, { id: "prj_1", slug: "app-one" });
   await seedDatabase(db, { id: "db_1" });
 });
-
-/* ------------------------------------------------------------------ */
-/* The live read is a buffer read                                      */
-/* ------------------------------------------------------------------ */
 
 test("getAppMetrics serves the newest buffered sample plus the breakdown cell", async () => {
   recordContainerSample(sample("prj_1", NOW - 5000, 11));
@@ -142,10 +133,6 @@ test("getDatabaseMetrics serves the buffer the same way", async () => {
   assert.equal(m.cpu, 33);
 });
 
-/* ------------------------------------------------------------------ */
-/* Team scoping - the only boundary left on an unscoped RAM buffer     */
-/* ------------------------------------------------------------------ */
-
 test("getAppMetrics is team-scoped: a cross-team id gets NOTHING, buffer or not", async () => {
   recordContainerSample(sample("prj_1", NOW, 42));
   recordContainerInstances("prj_1", [
@@ -169,11 +156,7 @@ test("getAppMetrics is team-scoped: a cross-team id gets NOTHING, buffer or not"
     },
   ]);
 
-  // The owning team reads the real measurement…
   assert.equal((await asOwner(() => getAppMetrics("prj_1")))?.cpu, 42);
-  // …and team B gets null, NOT an offline DTO and certainly not team A's numbers.
-  // Null (rather than a zeroed sample) also keeps the read from confirming that
-  // `prj_1` exists at all.
   assert.equal(await asOtherTeam(() => getAppMetrics("prj_1")), null);
 });
 
@@ -184,8 +167,6 @@ test("getDatabaseMetrics is team-scoped: a cross-team id gets NOTHING, buffer or
 });
 
 test("an unknown id is null for everyone (no buffer probe before the team gate)", async () => {
-  // The gate runs FIRST. A caller must not be able to learn whether an id is
-  // buffered by timing or by shape of the answer.
   recordContainerSample(sample("prj_nonexistent", NOW, 99));
   assert.equal(await asOwner(() => getAppMetrics("prj_nonexistent")), null);
   assert.equal(await asOwner(() => getDatabaseMetrics("db_nonexistent")), null);
@@ -194,13 +175,11 @@ test("an unknown id is null for everyone (no buffer probe before the team gate)"
 test("metrics HISTORY reads are team-scoped from both sides", async () => {
   recordContainerSample(sample("prj_1", NOW));
   recordContainerSample(sample("db_1", NOW));
-  // Same team sees the buffered window…
   assert.equal((await asOwner(() => getAppMetricsHistory("prj_1"))).length, 1);
   assert.equal(
     (await asOwner(() => getDatabaseMetricsHistory("db_1"))).length,
     1,
   );
-  // …another team gets an empty window (the row isn't theirs).
   assert.equal(
     (await asOtherTeam(() => getAppMetricsHistory("prj_1"))).length,
     0,
@@ -212,8 +191,6 @@ test("metrics HISTORY reads are team-scoped from both sides", async () => {
 });
 
 test("the app and database gates are not interchangeable", async () => {
-  // Passing a database id to the app read (or vice versa) must miss its gate
-  // rather than fall through to the shared, type-blind buffer.
   recordContainerSample(sample("db_1", NOW, 50));
   recordContainerSample(sample("prj_1", NOW, 60));
   assert.equal(await asOwner(() => getAppMetrics("db_1")), null);

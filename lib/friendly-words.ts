@@ -1,13 +1,3 @@
-/**
- * The two words baked into every generated hostname. Curated rather than taken
- * from a general-purpose dictionary: that one produced `whoami-obnoxious-kite`
- * and `stack-demo-fat-hookworm`, and the URL Deplo hands you on your first
- * deploy is the first thing you show somebody.
- *
- * Uniqueness does not rest here - the app's own label and the hex IP are already
- * in the name - so a short, safe list is enough.
- */
-
 export const FRIENDLY_ADJECTIVES: readonly string[] = [
   "amber",
   "ancient",
@@ -130,7 +120,6 @@ export const FRIENDLY_ANIMALS: readonly string[] = [
   "wren",
 ];
 
-/** One `adjective-animal` pair, e.g. `swift-otter`. */
 export function friendlyWords(): string {
   const pick = (list: readonly string[]) =>
     list[Math.floor(Math.random() * list.length)]!;

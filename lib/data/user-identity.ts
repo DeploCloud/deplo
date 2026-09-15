@@ -3,15 +3,10 @@ import "server-only";
 import { inArray } from "drizzle-orm";
 
 import { getDb } from "../db/client";
-import { users as usersTable } from "../db/schema/control-plane";
+import { users as usersTable } from "../db/schema/control-plane/identity";
 import { avatarResolver } from "../avatar";
-import type { VarAuthor } from "../types";
+import type { VarAuthor } from "../types/identity";
 
-/**
- * Batch-resolve the display identity behind the authorship columns
- * (`created_by_user_id` / `updated_by_user_id`, and the activity log's
- * `actor_user_id`).
- */
 export async function loadUserIdentities(
   ids: readonly (string | null | undefined)[],
 ): Promise<Map<string, VarAuthor>> {
@@ -46,7 +41,6 @@ export async function loadUserIdentities(
   );
 }
 
-/** Resolve one author column against a batch loaded by {@link loadUserIdentities}. */
 export function authorOf(
   id: string | null,
   authors: Map<string, VarAuthor>,

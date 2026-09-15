@@ -7,10 +7,6 @@ import {
   redactCloneUrl,
 } from "./clone-url";
 
-/**
- * What a fork preview is allowed to clone.
- */
-
 const BASE = "https://github.com/acme/app.git";
 
 test("a fork on the same host is cloned from its own address", () => {
@@ -65,7 +61,6 @@ test("the returned address never carries a credential of ours", () => {
 });
 
 test("a bare repository address is an outbound address, and never carries a token", async () => {
-  // A credential in the address would be stored and shown as typed.
   await assert.rejects(
     () => assertCloneTargetSafe("https://user:tok@github.com/o/r.git"),
     /token in a git connection/,
@@ -78,7 +73,6 @@ test("a bare repository address is an outbound address, and never carries a toke
     /token in a git connection/,
     "an admin is not exempt from that one",
   );
-  // The fleet's own addresses are not a repository host.
   await assert.rejects(
     () => assertCloneTargetSafe("https://10.0.0.5/o/r.git"),
     /private or internal/,

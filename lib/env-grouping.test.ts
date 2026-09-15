@@ -67,8 +67,6 @@ test("apps outside a project land in the Standalone section", () => {
 });
 
 test("sections follow the project order given, whatever order the rows arrive in", () => {
-  // The rows lead with a Standalone app and the Internal Tools one; the sections
-  // still come out in the team's Project order, with Standalone last.
   const sections = groupRowsByProject(
     [row("A", LOOSE), row("B", ADMIN), row("C", STOREFRONT)],
     PROJECTS,
@@ -78,8 +76,6 @@ test("sections follow the project order given, whatever order the rows arrive in
     ["prc_shop", "prc_tools", TOP_LEVEL],
   );
 
-  // Drag "Internal Tools" above "Acme Shop" (the caller re-orders `projects`)
-  // and the sections follow - that IS the reorder.
   const dragged = groupRowsByProject(
     [row("A", LOOSE), row("B", ADMIN), row("C", STOREFRONT)],
     [PROJECTS[1], PROJECTS[0]],
@@ -93,8 +89,6 @@ test("sections follow the project order given, whatever order the rows arrive in
 test("byName sorts the app cards A→Z; the sections keep the project order", () => {
   const sections = groupRowsByProject(
     [row("A", LOOSE), row("B", ADMIN), row("C", STOREFRONT), row("D", API)],
-    // Project order is the user's, so even "sort by key" must not re-sort it
-    // A→Z: Internal Tools was dragged first and stays first.
     [PROJECTS[1], PROJECTS[0]],
     { byName: true },
   );

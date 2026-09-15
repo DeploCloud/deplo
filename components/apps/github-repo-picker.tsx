@@ -44,18 +44,12 @@ export interface GithubSelection {
   branch: string;
 }
 
-/** GitHub's per-installation "configure repository access" settings page. */
 function installationSettingsUrl(inst: GithubInstallationDTO): string {
   return inst.accountType === "Organization"
     ? `https://github.com/organizations/${inst.accountLogin}/settings/installations/${inst.installationId}`
     : `https://github.com/settings/installations/${inst.installationId}`;
 }
 
-/**
- * How an installation reads in the switcher: the connected GitHub App's name first
- * (that's what decides which repositories are reachable - the same account can
- * host several Apps with different access), with the account it is installed on as
- */
 function InstallationLabel({ inst }: { inst: GithubInstallationDTO }) {
   return (
     <span className="min-w-0 flex-1 truncate">
@@ -65,7 +59,6 @@ function InstallationLabel({ inst }: { inst: GithubInstallationDTO }) {
   );
 }
 
-/** A round GitHub account avatar with an initials fallback if the image fails. */
 function AccountAvatar({
   inst,
   className,
@@ -83,7 +76,6 @@ function AccountAvatar({
   );
 }
 
-/** The connect-your-first-App empty state, shown when no App is connected yet. */
 function ConnectPanel({ onUsePublicUrl }: { onUsePublicUrl?: () => void }) {
   return (
     <div className="flex flex-col items-center gap-3 rounded-lg border border-dashed border-border p-6 text-center">
@@ -108,10 +100,6 @@ function ConnectPanel({ onUsePublicUrl }: { onUsePublicUrl?: () => void }) {
   );
 }
 
-/**
- * Repo source picker for the GitHub deploy source (app settings + the new-app
- * wizard): choose the connected account, then pick a repository and branch.
- */
 export function GithubRepoPicker({
   installations,
   initial,
@@ -120,27 +108,16 @@ export function GithubRepoPicker({
   onUsePublicUrl,
 }: {
   installations: GithubInstallationDTO[];
-  /**
-   * Pre-select a repo/branch already attached to the app (settings flow).
-   */
   initial?: {
     installationId?: string | null;
     fullName: string;
     branch: string;
   };
   onChange: (value: GithubSelection | null) => void;
-  /** When set, show a "Manage connected apps" link pointing here (e.g. /settings/git). */
   manageHref?: string;
-  /** The way out of the App: hands the caller back to the Git source, whose
-   *  default arm clones a public repository with no credentials. */
   onUsePublicUrl?: () => void;
 }) {
-  // The same owner choice Settings → Git offers: an App created from here can
-  // belong to an organization too, which is where a team's repositories live.
   const { items: ownerItems, dialog: ownerDialog } = useGithubOwnerConnect();
-  // Never seed an App the user did not choose: for an app that already has a
-  // repo, falling back to the first one claims a connection the row does not
-  // have. See `pickerInstallationId`.
   const [installationId, setInstallationId] = React.useState(() =>
     pickerInstallationId(initial, installations),
   );
@@ -150,9 +127,6 @@ export function GithubRepoPicker({
 
   const handleChange = React.useCallback(
     (sel: RepoSelection | null) => {
-      // `installationId` is stitched on here, at the last moment, so a selection
-      // must never bubble without one: that pair would be a credential the user
-      // never picked.
       onChange(sel && installationId ? { installationId, ...sel } : null);
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -161,9 +135,6 @@ export function GithubRepoPicker({
 
   return (
     <div className="space-y-3">
-      {/* Connected App, always rendered so the layout is stable and there's
-          always a path to switch, connect, or manage Apps, even with none
-          connected. */}
       <div className="space-y-1.5">
         <FieldLabel
           className="text-sm font-medium"

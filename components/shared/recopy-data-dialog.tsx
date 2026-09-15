@@ -92,12 +92,6 @@ interface PlanService {
   notes: string[];
 }
 
-/**
- * Copy a workload's data over again, from the page where its absence is felt.
- *
- * The token is asked for because a run wipes it when it ends; everything else -
- * the panel, the service, the volumes - comes from the run's own report.
- */
 export function RecopyDataDialog({
   open,
   onOpenChange,
@@ -112,8 +106,6 @@ export function RecopyDataDialog({
   name: string;
 }) {
   const router = useRouter();
-  // `undefined` while it is being read, `null` when nothing here came from a
-  // migration. Kept apart so the effect below sets no state synchronously.
   const [source, setSource] = React.useState<Source | null | undefined>(
     undefined,
   );

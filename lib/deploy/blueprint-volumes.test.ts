@@ -5,21 +5,14 @@ import { join } from "node:path";
 
 import yaml from "js-yaml";
 
-import { volumeSource, isEscapingSource } from "./compose-lint";
-
-/**
- * Guard the convention swap: every bundled blueprint must use the app-files
- * `./<x>` convention for its bind mounts, never the legacy `../files/<x>` /
- * `./files/<x>` form, and never a `..` escape (which the host-bind gate would now
- * block on deploy, breaking the one-click template for a non-privileged user).
- */
+import { volumeSource, isEscapingSource } from "./compose-lint/volumes";
 
 const BLUEPRINTS = join(process.cwd(), "templates", "blueprints");
 
 type Doc = { services?: Record<string, { volumes?: unknown }> };
 
 test("no blueprint compose uses the legacy files/ convention or a .. escape", () => {
-  if (!existsSync(BLUEPRINTS)) return; // skip if run outside the repo root
+  if (!existsSync(BLUEPRINTS)) return;
   const offenders: string[] = [];
   for (const dir of readdirSync(BLUEPRINTS)) {
     const file = join(BLUEPRINTS, dir, "docker-compose.yml");
@@ -32,7 +25,7 @@ test("no blueprint compose uses the legacy files/ convention or a .. escape", ()
     try {
       doc = yaml.load(text) as Doc;
     } catch {
-      continue; // a template we can't parse can't assert sources; lint covers it
+      continue;
     }
     for (const [svc, s] of Object.entries(doc?.services ?? {})) {
       const vols = s?.volumes;

@@ -31,27 +31,10 @@ import {
 import { ImageCropDialog } from "@/components/shared/image-crop-dialog";
 import { TeamPlaceholder } from "@/components/shared/user-avatar";
 
-/**
- * Change a profile picture by clicking the picture. Every source commits on the
- * spot - there is no Save button after it, because the change is one value with
- * no other state to reconcile.
- */
-
-/** A person picks a source; a team has only its own file (`sources` omitted),
- *  and clicking the picture goes straight to the file dialog. */
 export type AvatarSources = {
-  /** What is in use now - `avatarChoiceFromUrl` where the picture is saved,
-   *  `avatarChoiceFromValue` where a form still holds the raw value. */
   choice: AvatarChoice;
-  /** Their initials, which ARE the seed of an `initials` picture: DiceBear reads
-   *  the letters out of it ("Ada Lovelace" and "AL" both draw AL). Empty until
-   *  there is a name: a person's row then previews `FALLBACK_SEED`, a team's -
-   *  which has no other pack to fall back on - shows the generic mark. */
   letters: string;
-  /** Their Gravatar address when the instance allows it, so the card previews
-   *  the real thing. Absent = the source is not offered. */
   gravatar?: string | null;
-  /** A TEAM: the same packs, its own copy, and no Gravatar to offer. */
   team?: boolean;
 };
 
@@ -67,27 +50,15 @@ export function AvatarPicker({
   controlled,
   preload = true,
 }: {
-  /** The avatar to render - the caller's own `<UserAvatar>` / `<TeamAvatar>`.
-   *  Unused, and unnecessary, when `controlled` supplies the trigger. */
   preview?: React.ReactNode;
-  /** Whether there is an uploaded picture to remove. Gravatar is not removable
-   *  here: it is not stored, and turning it off is an instance-wide decision. */
   hasImage?: boolean;
   onSave: (image: string | null) => Promise<{ ok: boolean; error?: string }>;
   disabled?: boolean;
-  /** Held, not saved: skip the toast and the refresh - onboarding picks a
-   *  picture for an account that does not exist yet. */
   quiet?: boolean;
   label?: string;
-  /** What sits beside the picture. Remove lands under the picture itself. */
   children?: React.ReactNode;
   sources?: AvatarSources;
-  /** Driven from outside instead of by the built-in trigger: the header menu
-   *  opens it from a dropdown, where a dialog nested in the menu would unmount
-   *  with it. Renders the dialogs and nothing else. */
   controlled?: { open: boolean; onOpenChange: (open: boolean) => void };
-  /** Whether to fetch the pictures now. The header mounts on every page, so it
-   *  waits until the menu is open - one click before they can be needed. */
   preload?: boolean;
 }) {
   const router = useRouter();
@@ -103,8 +74,6 @@ export function AvatarPicker({
   React.useEffect(() => {
     const seed = letters === undefined ? "" : previewSeed(letters, team);
     if (!preload || !seed) return;
-    // Fetched now, not on the click: the dialog would otherwise open onto empty
-    // circles and fill them in one by one.
     for (const pack of packsFor(team))
       for (const tile of packRow(pack, seed)) {
         const img = new window.Image();
@@ -172,9 +141,6 @@ export function AvatarPicker({
         onCropped={(dataUri) => {
           setPicked(null);
           setChoosing(false);
-          // A 256px WebP lands two orders of magnitude inside the cap, so this
-          // only fires on something pathological - and it is worth saying here
-          // rather than letting the server answer for it.
           if (dataUri.length > MAX_AVATAR_STRING_LEN) {
             toast.error("That image is too large");
             return;
@@ -189,14 +155,12 @@ export function AvatarPicker({
         className="hidden"
         onChange={(e) => {
           pick(e.target.files?.[0]);
-          // Reset so re-picking the same file fires change again.
           e.target.value = "";
         }}
       />
     </>
   );
 
-  // Nothing but the dialogs: the caller drew the trigger and owns the state.
   if (controlled) return editor;
 
   return (
@@ -226,8 +190,6 @@ export function AvatarPicker({
         )}
       >
         {preview}
-        {/* The affordance, and the only one: a round picture says nothing about
-          being a control until the pointer is already on it. */}
         <span
           className={cn(
             "absolute inset-0 flex items-center justify-center rounded-full bg-background/70 opacity-0 transition",
@@ -257,8 +219,6 @@ export function AvatarPicker({
   );
 }
 
-/** One picture in a row: the SVG comes from `/api/avatar`, so the renderer never
- *  reaches the browser. */
 function FaceTile({
   src,
   label,
@@ -267,7 +227,6 @@ function FaceTile({
   onClick,
   small = false,
 }: {
-  /** Null while there is no seed to draw from - the generic mark stands in. */
   src: string | null;
   label: string;
   selected: boolean;
@@ -284,7 +243,6 @@ function FaceTile({
       aria-label={label}
       title={label}
       className={cn(
-        // The selector under the row is a selector, not a second row of choices.
         small ? "w-10" : "w-full",
         "rounded-full transition outline-none",
         "focus-visible:ring-2 focus-visible:ring-ring",
@@ -305,7 +263,6 @@ function FaceTile({
           src={src}
           alt=""
           draggable={false}
-          // The picture is opaque, so this only shows while it is still coming.
           className="block w-full rounded-full bg-muted"
         />
       ) : (
@@ -315,7 +272,6 @@ function FaceTile({
   );
 }
 
-/** Where a picture comes from when it is not one of the packs. */
 function SourceCard({
   visual,
   label,
@@ -329,7 +285,6 @@ function SourceCard({
   label: string;
   selected: boolean;
   disabled?: boolean;
-  /** The lesser of the sources: same card, less weight. */
   quiet?: boolean;
   className?: string;
   onClick: () => void;
@@ -422,8 +377,6 @@ function AvatarSourceDialog({
               }
               label={tile.label}
               disabled={busy || !tile.seed}
-              // The derived tile is what storing NOTHING already draws, for a
-              // person and a team alike.
               selected={
                 tile.derived
                   ? choice.kind === "initials"
@@ -471,7 +424,6 @@ function AvatarSourceDialog({
                     src={gravatar}
                     alt=""
                     draggable={false}
-                    // Absent from gravatar.com, the icon underneath stands.
                     className="absolute inset-0 size-full object-cover"
                   />
                 </>
@@ -485,8 +437,6 @@ function AvatarSourceDialog({
           <SourceCard
             quiet
             visual={
-              // The picture they uploaded, not a symbol for uploading one: it is
-              // the only source whose current value is a picture we hold.
               choice.kind === "uploaded" ? (
                 /* eslint-disable-next-line @next/next/no-img-element */
                 <img
@@ -507,7 +457,6 @@ function AvatarSourceDialog({
         </div>
         <p className="text-center text-[11px] leading-relaxed text-muted-foreground">
           Pictures by DiceBear.{" "}
-          {/* CC BY asks for the credit where the art it covers is shown. */}
           {packs.some((p) => p.style === "glyphs") ? (
             <>
               {AVATAR_ATTRIBUTION.style} is a remix of{" "}

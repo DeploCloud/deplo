@@ -63,17 +63,11 @@ export function RegisterWizard({
   prefill,
 }: {
   token: string;
-  /** How this link decides the team: own_team asks for a name; existing_teams
-   * pre-assigns and so has no team step. */
   mode: "own_team" | "existing_teams";
-  /** For existing_teams: the teams the registrant will join. */
   teams: { name: string; avatarUrl: string | null }[];
-  /** What the link already knows about them, empty when it says nothing. */
   prefill: { name: string; email: string };
 }) {
   const ownTeam = mode === "own_team";
-  // No sessionStorage key: a registration link is opened once, so the mark
-  // greets every arrival rather than only the first this browser saw.
   const { phase } = useLogoIntro();
   const { step, leaving, go } = useStepSwap<"account" | "team">("account");
   const [error, setError] = React.useState<string | null>(null);
@@ -95,12 +89,10 @@ export function RegisterWizard({
           email: account.email,
           password: account.password,
           image: account.image,
-          // existing_teams links already carry the team(s) - send no name.
           teamName: ownTeam ? team.name : null,
           teamImage: ownTeam ? team.image : null,
         });
         toast.success("Welcome to Deplo.");
-        // Hard, not the router: it cached `/` before this account existed.
         window.location.assign("/");
       } catch (err) {
         setError(
@@ -143,8 +135,6 @@ export function RegisterWizard({
                 {!ownTeam && teams.length > 0 && (
                   <p className="flex flex-wrap items-center justify-center gap-x-1.5 gap-y-2 text-sm text-muted-foreground">
                     <span>You will join</span>
-                    {/* Each team wears its OWN picture, monogram included -
-                        never one stand-in icon for the lot of them. */}
                     {teams.map((t, i) => (
                       <span
                         key={t.name}

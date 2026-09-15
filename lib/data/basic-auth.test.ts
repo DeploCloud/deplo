@@ -12,7 +12,7 @@ import {
   seedApp,
   TRUNCATE_PROJECT_GRAPH,
 } from "./app-graph-test-helpers";
-import { appBasicAuthUsers } from "../db/schema/control-plane";
+import { appBasicAuthUsers } from "../db/schema/control-plane/domains";
 import {
   addBasicAuthUser,
   listBasicAuthUsers,
@@ -23,12 +23,6 @@ import {
   appHasBasicAuth,
 } from "./basic-auth";
 
-/**
- * HTTP Basic Auth credentials - the rows the deploy/reroute renderers turn into a
- * Traefik `basicauth` middleware in front of every one of an app's domains. -
- * **The password reveal is the ONLY way back to a plaintext, and it is gated.
- */
-
 process.env.DEPLO_SECRET = "test-secret-for-basic-auth-aaaaaaaaaaaaaaaa";
 
 let db: TestDb;
@@ -36,11 +30,7 @@ let pg: PGlite;
 
 const OWNER_A = "u_owner_a";
 const OWNER_B = "u_owner_b";
-/** A second manage_domains holder in TEAM_A - "who added it" and "who changed it
- *  last" can only be told apart when two different people did them. */
 const MATE_A = "u_mate_a";
-/** A TEAM_A member with `view` only: the Access page is hidden from them, and the
- *  password reveal has to refuse them even on a direct call. */
 const VIEWER_A = "u_viewer_a";
 const APP_A = "app_a";
 const APP_B = "app_b";
@@ -51,7 +41,6 @@ const as = <T>(
   fn: () => Promise<T>,
 ): Promise<T> => runWithIdentity({ userId, teamId }, fn);
 
-/** `user:$2b$<cost>$<salt+digest>` - the bcrypt htpasswd line Traefik parses. */
 const HTPASSWD_LINE = /^[^\s:,]+:\$2[aby]\$\d{2}\$[./A-Za-z0-9]{53}$/;
 
 before(async () => {
@@ -140,10 +129,6 @@ test("a password that cannot be decrypted fails the render (never fails open)", 
     const u = await addBasicAuthUser(APP_A, "alice", "Hunter2!x");
     return u.id;
   });
-  // Simulate a rotated DEPLO_SECRET / restored dump: the ciphertext no longer
-  // decrypts. decryptSecret fails closed to "", which would otherwise hash into a
-  // perfectly valid hash OF THE EMPTY STRING - a middleware that lets anyone
-  // in with a blank password. The render must abort instead.
   await db
     .update(appBasicAuthUsers)
     .set({ passwordEnc: "not-a-valid-ciphertext" })
@@ -222,15 +207,10 @@ test("another team's credentials are invisible and untouchable", async () => {
     await assert.rejects(() => removeBasicAuthUser(foreign.id), /not found/i);
   });
 
-  // Still exactly one credential, still the original password.
   const after = await as(OWNER_A, TEAM_A, () => listBasicAuthUsers(APP_A));
   assert.equal(after.length, 1);
   assert.equal(after[0].username, "alice");
 });
-
-/* ------------------------------------------------------------------ */
-/* Authorship - "who set this login up, and who last rotated it"       */
-/* ------------------------------------------------------------------ */
 
 test("add names the creator; a password change moves only “modified by”", async () => {
   const added = await as(OWNER_A, TEAM_A, () =>
@@ -242,7 +222,6 @@ test("add names the creator; a password change moves only “modified by”", as
     OWNER_A,
     "a brand-new credential was last touched by whoever added it",
   );
-  // The DTO carries the display identity, not just an id - the card renders it.
   assert.equal(added.createdBy?.username, OWNER_A);
   assert.equal(added.createdBy?.avatarColor, "#abc");
 
@@ -256,7 +235,6 @@ test("add names the creator; a password change moves only “modified by”", as
   );
   assert.equal(rotated.updatedBy?.id, MATE_A);
 
-  // What a mutation returns and what the next page render reads must agree.
   const [listed] = await as(OWNER_A, TEAM_A, () => listBasicAuthUsers(APP_A));
   assert.equal(listed.createdBy?.id, OWNER_A);
   assert.equal(listed.updatedBy?.id, MATE_A);
@@ -266,9 +244,6 @@ test("a credential from before authorship tracking is never attributed to anyone
   const added = await as(OWNER_A, TEAM_A, () =>
     addBasicAuthUser(APP_A, "alice", "Hunter2!x"),
   );
-  // Exactly what migration 0045 leaves behind: it does NOT backfill, because
-  // naming someone as the author of a credential they may never have touched is
-  // a fabricated audit claim.
   await db
     .update(appBasicAuthUsers)
     .set({ createdByUserId: null, updatedByUserId: null })
@@ -279,24 +254,16 @@ test("a credential from before authorship tracking is never attributed to anyone
   assert.equal(row.updatedBy, null);
 });
 
-/* ------------------------------------------------------------------ */
-/* Reveal - the one way back to a plaintext password                   */
-/* ------------------------------------------------------------------ */
-
 test("no DTO ever carries the password - the reveal is the only way to it", async () => {
   const u = await as(OWNER_A, TEAM_A, () =>
     addBasicAuthUser(APP_A, "alice", "Hunter2!x"),
   );
   const [listed] = await as(OWNER_A, TEAM_A, () => listBasicAuthUsers(APP_A));
-  // A field-by-field assertion, not a substring scan: this is the contract the
-  // GraphQL object type mirrors, and a new column must not join it by accident.
   const EXPECTED = [
     "appId",
     "createdAt",
     "createdBy",
     "id",
-    // Whether the credential was carried over unvetted. Identity metadata like
-    // the authors: safe to project, and the reason Access can warn about it.
     "imported",
     "updatedAt",
     "updatedBy",
@@ -339,9 +306,6 @@ test("a password that cannot be decrypted fails the reveal (never returns empty)
   const u = await as(OWNER_A, TEAM_A, () =>
     addBasicAuthUser(APP_A, "alice", "Hunter2!x"),
   );
-  // Rotated DEPLO_SECRET / restored dump. decryptSecret fails closed to "" -
-  // showing that as "the password" would send someone off to try a login that
-  // cannot work, so the reveal must say what actually happened.
   await db
     .update(appBasicAuthUsers)
     .set({ passwordEnc: "not-a-valid-ciphertext" })
@@ -353,20 +317,11 @@ test("a password that cannot be decrypted fails the reveal (never returns empty)
   );
 });
 
-/**
- * A credential carried over from another platform keeps working. Deplo's two
- * password gates are for a password someone is CHOOSING; an imported one is
- * already in use and already protecting a public URL, so refusing it removed the
- * protection instead of strengthening it - a real migration put a code-server
- * online with no basic auth at all because "CoderPass123" has no special
- * character.
- */
 test("an imported credential skips the password policy and is flagged weak", async () => {
   const weak = await as(OWNER_A, TEAM_A, () =>
     addBasicAuthUser(APP_A, "carried", "coderpass123", { imported: true }),
   );
   assert.equal(weak.imported, true);
-  // The same password typed in by hand is still refused.
   await assert.rejects(
     () =>
       as(OWNER_A, TEAM_A, () =>

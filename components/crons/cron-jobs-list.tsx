@@ -40,15 +40,8 @@ import { CronRunHistory } from "@/components/crons/cron-run-history";
 import { nextCronRunInZone } from "@/lib/crons/cron-tz";
 import { gqlAction } from "@/lib/graphql-client";
 import { timeAgo } from "@/lib/utils";
-import type { CronJobDTO } from "@/lib/data/crons";
+import type { CronJobDTO } from "@/lib/data/crons/dto";
 
-/**
- * What is scheduled, when it next runs, how the last one went. One row per job
- * expanding into its history. Every clock is recomputed from the READER's clock -
- * a "next run" rendered server-side ages into the past. */
-
-/** How long after a fire the page re-reads to pick up the run it started: one
- *  scheduler tick to launch it, plus the reap that settles a quick command. */
 const AFTER_FIRE_MS = 8_000;
 
 const RUN_NOW = /* GraphQL */ `
@@ -67,10 +60,7 @@ const DELETE = /* GraphQL */ `
   }
 `;
 
-/** The badge a job's last outcome gets. Grey for "nothing wrong happened". */
 function LastStatus({ job }: { job: CronJobDTO }) {
-  // What it is doing NOW outranks how it went last time - and `lastStatus` can
-  // never answer this, since it is written when a run settles.
   if (job.running) {
     return (
       <SimpleTooltip content="A run is in flight">
@@ -90,7 +80,6 @@ function LastStatus({ job }: { job: CronJobDTO }) {
     succeeded: { variant: "success", label: "Succeeded" },
     failed: { variant: "destructive", label: "Failed" },
     timedout: { variant: "destructive", label: "Timed out" },
-    // Grey, not red: nothing went wrong, it simply did not run.
     skipped: { variant: "muted", label: "Skipped" },
     lost: { variant: "warning", label: "Unknown" },
     running: { variant: "warning", label: "Running" },
@@ -122,7 +111,6 @@ function CronJobRow({
   canManage,
 }: {
   job: CronJobDTO;
-  /** The next fire, on the reader's clock. Null when the job is disabled. */
   nextRunAt: number | null;
   targetKind: "app" | "database";
   targetId: string;
@@ -136,9 +124,6 @@ function CronJobRow({
   const [confirmDelete, setConfirmDelete] = React.useState(false);
   const { hide, restore } = useOptimisticRow(job.id);
   const [pending, startTransition] = React.useTransition();
-  // Bumped after a run starts: remounting the history is the immediate re-read
-  // of a panel that is ALREADY open, which otherwise waits out its own poll
-  // before showing the run the button just started.
   const [historyKey, setHistoryKey] = React.useState(0);
 
   function runNow() {
@@ -150,9 +135,6 @@ function CronJobRow({
         toast.error(res.error);
         return;
       }
-      // The run can already be over by the time this returns - a stopped container, or
-      // one the overlap rule skipped, settles before the mutation answers - so report
-      // what actually happened rather than "started", and for a skip say WHICH of the two
       const run = res.data?.runCronJobNow;
       if (run?.status === "skipped") {
         toast.warning(run.error ?? "Skipped");
@@ -166,8 +148,6 @@ function CronJobRow({
   }
 
   function remove() {
-    // The row goes now and the delete settles behind it; the dialog closes in
-    // the same commit rather than holding a spinner for a control-plane write.
     setConfirmDelete(false);
     hide();
     startTransition(async () => {
@@ -206,11 +186,6 @@ function CronJobRow({
               </div>
               <p className="mt-1 flex items-center gap-2 text-xs text-muted-foreground">
                 <ScheduleLabel cron={job.schedule} timezone={job.timezone} />
-                {/**
-                 * The reader's clock, ticking - see the module header. The server's first paint and
-                 * the browser's can disagree by a second at hydration, which is all
-                 * `suppressHydrationWarning` covers here.
-                 */}
                 {nextRunAt !== null && (
                   <span suppressHydrationWarning>
                     · next {timeAgo(nextRunAt)}
@@ -281,8 +256,6 @@ function CronJobRow({
         )}
       </div>
 
-      {/* Mounted only while open, so the dialog seeds its fields from `job` at
-          mount and needs no prop-syncing effect. */}
       {editing && (
         <CronJobDialog
           open
@@ -333,18 +306,13 @@ export function CronJobsList({
   enabled: boolean;
   jobs: CronJobDTO[];
   services: string[];
-  /** Where a job with no container picked runs. Null for a database. */
   primaryService: string | null;
   canManage: boolean;
-  /** Where the master switch lives (Settings → Advanced), for the "it is off"
-   *  empty state. */
   settingsHref: string;
 }) {
   const router = useRouter();
   const [creating, setCreating] = React.useState(false);
 
-  // One ticker for the whole list: every time on this page is rendered from an
-  // absolute instant, so a re-render is all it takes to keep them all honest.
   const [now, setNow] = React.useState(() => Date.now());
   React.useEffect(() => {
     const timer = setInterval(() => setNow(Date.now()), 1000);
@@ -358,12 +326,7 @@ export function CronJobsList({
       : null,
   );
 
-  // The soonest fire ahead. When it rolls over, one has just happened - the one
-  // change this page cannot see on its own, since firing writes a run row and touches
-  // nothing a list of jobs is rendered from.
   // ponytail: a fire is the only trigger, so a run somebody ELSE starts by hand
-  //   on a page whose next fire is hours away waits for a reload. Upgrade: poll
-  //   `appCronJobs` on a slow interval, which costs no RSC re-render.
   const soonest = Math.min(...nextRuns.filter((n): n is number => n !== null));
   const lastSoonest = React.useRef(soonest);
   React.useEffect(() => {
@@ -391,9 +354,6 @@ export function CronJobsList({
     );
   }
 
-  // One node, rendered in the header and again in the empty state - the same
-  // shape the Pull requests page uses for its own pair. Two copies of the same
-  // button are exactly how the two drifted apart in the first place.
   const newJobButton = canManage ? (
     <Button variant="outline" size="sm" onClick={() => setCreating(true)}>
       <Plus className="size-4" />
@@ -403,8 +363,6 @@ export function CronJobsList({
 
   return (
     <div className="space-y-4">
-      {/* The same heading shape as Pull requests and Environment next door: a
-          section title inside the app, not a page title. */}
       <div className="flex items-center justify-between gap-3">
         <div>
           <h3 className="text-sm font-medium">Cron jobs</h3>
@@ -429,8 +387,6 @@ export function CronJobsList({
       ) : (
         <Card>
           <CardContent className="space-y-2 pt-6">
-            {/* A deleted job leaves the list on the click - the rows ask to be
-                hidden themselves (see `OptimisticList`). */}
             <OptimisticList>
               {jobs.map((job, i) => (
                 <CronJobRow
@@ -449,9 +405,6 @@ export function CronJobsList({
         </Card>
       )}
 
-      {/**
-       * Follow a run until it settles, then stop - an idle list costs nothing.
-       */}
       <AutoRefresh active={jobs.some((j) => j.running)} intervalMs={10_000} />
 
       {creating && (

@@ -19,22 +19,20 @@ import {
   SERVER_1,
   TRUNCATE_PROJECT_GRAPH,
 } from "./app-graph-test-helpers";
-import { folders as foldersTable } from "../db/schema/control-plane";
+import { folders as foldersTable } from "../db/schema/control-plane/projects";
 import { setFolderGrant } from "./folder-access";
-import { listDeployments, rollbackDeployment } from "./deployments";
-import { setAppRollbackKeep } from "./apps";
-import { rollbackKeepBySlug } from "./docker-cleanup";
+import { listDeployments } from "./deployments/deployment-queries";
+import { rollbackDeployment } from "./deployments/rollback";
+import { setAppRollbackKeep } from "./apps/settings";
+import { rollbackKeepBySlug } from "./docker-cleanup/live-inventory";
 import { isInstanceAdmin } from "../membership";
 import { loadAppGraph, loadDeploymentsForApp } from "./app-graph-load";
-import { ALL_CAPABILITIES, MAX_ROLLBACK_KEEP, type Capability } from "../types";
+import { MAX_ROLLBACK_KEEP } from "../types/app";
+import { ALL_CAPABILITIES, type Capability } from "../types/identity";
 import { NODE_GRANTABLE_CAPABILITIES } from "../membership-shared";
 import { getDb } from "../db/client";
-import { apps as appsSchema } from "../db/schema/control-plane";
+import { apps as appsSchema } from "../db/schema/control-plane/apps";
 import { eq } from "drizzle-orm";
-
-/**
- * Rollback as an ATTACKER sees it.
- */
 
 let db: TestDb;
 let pg: PGlite;
@@ -60,8 +58,6 @@ beforeEach(async () => {
   await seedIdentity(db, {
     users: [
       { id: OWNER, teamId: TEAM_A, role: "owner" },
-      // Holds everything EXCEPT rollback_apps: the control that proves the two
-      // permissions are genuinely separate rather than one wearing two names.
       {
         id: GRANTEE,
         teamId: TEAM_A,
@@ -69,8 +65,6 @@ beforeEach(async () => {
         capabilities: ALL_CAPABILITIES.filter((c) => c !== "rollback_apps"),
       },
       { id: OTHER, teamId: TEAM_B, role: "owner" },
-      // Holds ONLY the rollback verb: the mirror control, proving it does not
-      // quietly need deploy_apps (or anything else) beside it.
       {
         id: ROLLBACKER,
         teamId: TEAM_A,
@@ -106,7 +100,6 @@ const grant = (over: Partial<TokenGrant> = {}): TokenGrant => ({
 const at = (minutesAgo: number) =>
   new Date(Date.UTC(2026, 0, 1, 12, 0, 0) - minutesAgo * 60_000).toISOString();
 
-/** Two successful builds of one app: dpl_0 live, dpl_1 the rollback target. */
 async function seedTwoBuilds(opts: { folderId?: string } = {}) {
   await seedApp(db, {
     id: "prj_1",
@@ -129,7 +122,6 @@ async function seedTwoBuilds(opts: { folderId?: string } = {}) {
   }
 }
 
-/** Nothing was enqueued: a refusal must not leave a deploy behind. */
 async function assertNothingQueued(appId = "prj_1") {
   const rows = await loadDeploymentsForApp(appId);
   assert.equal(
@@ -144,10 +136,6 @@ async function assertNothingQueued(appId = "prj_1") {
   );
 }
 
-/* ------------------------------------------------------------------ */
-/* The permission itself                                               */
-/* ------------------------------------------------------------------ */
-
 test("deploy_apps alone does NOT let a member roll back", async () => {
   await seedTwoBuilds();
   await assert.rejects(
@@ -160,9 +148,6 @@ test("deploy_apps alone does NOT let a member roll back", async () => {
 
 test("the member who cannot roll back is not offered the action either", async () => {
   await seedTwoBuilds();
-  // canRollback describes the DEPLOYMENT, not the viewer - it stays true, and the
-  // permission is what the UI greys out. What must not happen is the reverse: a
-  // list that hides it while the server would allow it, or vice versa.
   const rows = await as(GRANTEE, TEAM_A, () =>
     listDeployments({ appId: "prj_1" }),
   );
@@ -174,10 +159,6 @@ test("rollback_apps alone is enough - it does not silently need deploy_apps too"
   const dep = await as(ROLLBACKER, TEAM_A, () => rollbackDeployment("dpl_1"));
   assert.equal(dep.rollbackOf, "dpl_1");
 });
-
-/* ------------------------------------------------------------------ */
-/* Team, folder and token boundaries                                   */
-/* ------------------------------------------------------------------ */
 
 test("another team's deployment answers 'not found', never 'forbidden'", async () => {
   await seedTwoBuilds();
@@ -213,7 +194,6 @@ test("a folder grant WITHOUT rollback_apps cannot roll back an app in that folde
     updatedAt: at(0),
   });
   await seedTwoBuilds({ folderId: "fld_1" });
-  // Everything a deployer needs, deliberately minus the one verb under test.
   await as(OWNER, TEAM_A, () =>
     setFolderGrant("fld_1", GRANTEE, ["deploy_apps", "configure_apps"]),
   );
@@ -234,9 +214,6 @@ test("a folder grant stores rollback_apps like any other node-grantable verb", a
     updatedAt: at(0),
   });
   await seedTwoBuilds({ folderId: "fld_1" });
-  // The write site bounds a grant to NODE_GRANTABLE_CAPABILITIES; a verb missing
-  // from that list is silently dropped, which would make the folder Share dialog
-  // offer a permission it cannot actually save.
   assert.ok(
     NODE_GRANTABLE_CAPABILITIES.includes("rollback_apps"),
     "rollback_apps is not grantable on a node",
@@ -255,8 +232,6 @@ test("a folder grant stores rollback_apps like any other node-grantable verb", a
 
 test("a token scoped to a project it is not in cannot roll the app back", async () => {
   await seedTwoBuilds();
-  // The app sits at the team top level; the token is confined to a project, so
-  // the app is out of its reach even though it holds every capability.
   await assert.rejects(
     () =>
       runWithIdentity(
@@ -300,10 +275,6 @@ test("a token WITHOUT rollback_apps is refused even holding everything else", as
   await assertNothingQueued();
 });
 
-/* ------------------------------------------------------------------ */
-/* The retention setting is a DIFFERENT permission                     */
-/* ------------------------------------------------------------------ */
-
 test("rollback_apps does NOT let someone change how many rollbacks are kept", async () => {
   await seedTwoBuilds();
   await assert.rejects(
@@ -341,17 +312,6 @@ test("retention is clamped, not trusted", async () => {
   }
 });
 
-/* ------------------------------------------------------------------ */
-/* What the HOST is actually told to keep                              */
-/* ------------------------------------------------------------------ */
-
-/**
- * The map the sweep sends is the only thing standing between a rollback target
- * and `docker rmi`. Its arithmetic is off-by-one bait: "keep 3 rollbacks" means
- * three builds to go BACK to, and the one running is not one of them - so the
- * host has to be told 4. One short and every app silently loses its oldest
- * rollback, which nobody notices until they reach for it.
- */
 test("the host is told rollback_keep + 1: the depth plus the build that is live", async () => {
   await seedApp(db, { id: "prj_1", teamId: TEAM_A, slug: "web" });
   await seedApp(db, { id: "prj_2", teamId: TEAM_A, slug: "api" });
@@ -364,14 +324,10 @@ test("the host is told rollback_keep + 1: the depth plus the build that is live"
 test("an app that keeps NO rollbacks still keeps the image it is running", async () => {
   await seedApp(db, { id: "prj_1", teamId: TEAM_A, slug: "web" });
   await as(OWNER, TEAM_A, () => setAppRollbackKeep("prj_1", 0));
-  // 1, never 0: a stopped app has to stay startable without a rebuild, which is
-  // the same floor the agent applies to the scalar.
   assert.deepEqual(await rollbackKeepBySlug(SERVER_1), { web: 1 });
 });
 
 test("the map covers every team on the host - a sweep is not team-scoped", async () => {
-  // One host, two teams. A map built per-team would hand the agent a partial
-  // picture and let it prune the other team's rollbacks.
   await seedApp(db, { id: "prj_1", teamId: TEAM_A, slug: "web" });
   await seedApp(db, { id: "prj_2", teamId: TEAM_B, slug: "other-team-app" });
   const map = await rollbackKeepBySlug(SERVER_1);
@@ -379,9 +335,6 @@ test("the map covers every team on the host - a sweep is not team-scoped", async
 });
 
 test("an app that CANNOT roll back is absent from the map", async () => {
-  // Naming a compose stack would hold four images per built SERVICE on the host in
-  // exchange for a button that is never offered - the feature's disk cost with
-  // none of its benefit. It falls back to the instance scalar instead.
   await seedApp(db, {
     id: "prj_c",
     teamId: TEAM_A,
@@ -395,8 +348,6 @@ test("an app that CANNOT roll back is absent from the map", async () => {
 
 test("a value that got past the setter is still clamped on the way to the wire", async () => {
   await seedApp(db, { id: "prj_1", teamId: TEAM_A, slug: "web" });
-  // The column carries no CHECK and the proto field is an int32, so a value that
-  // arrived some other way must not ride out as-is.
   await getDb()
     .update(appsSchema)
     .set({ rollbackKeep: 2_000_000_000 })
@@ -419,22 +370,13 @@ test("a preview stack is deliberately absent from the map", async () => {
     serverId: SERVER_1,
     imageRef: "deplo/web__pr-7:dpl_pr",
   });
-  // The agent groups images by the deplo.slug LABEL, and a preview's is
-  // `<slug>__pr-<n>`. Naming it would hand a torn-down pull request the app's
-  // whole retention budget.
+  // The agent groups images by the `deplo.slug` label, so naming a preview hands it the app's retention budget.
   const map = await rollbackKeepBySlug(SERVER_1);
   assert.deepEqual(Object.keys(map), ["web"]);
 });
 
-/* ------------------------------------------------------------------ */
-/* Instance admin                                                      */
-/* ------------------------------------------------------------------ */
-
 test("an instance admin is not a shortcut past the capability", async () => {
   await seedTwoBuilds();
-  // GRANTEE holds everything but rollback_apps. Being an instance admin must not
-  // change that answer, because the UI enables the button on `|| isAdmin` (the
-  // house pattern for redeploy and delete) and the server is the real gate.
   const admin = await as(OWNER, TEAM_A, () => isInstanceAdmin());
   assert.equal(admin, true, "the fixture owner should be an instance admin");
   const notAdmin = await as(GRANTEE, TEAM_A, () => isInstanceAdmin());

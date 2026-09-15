@@ -3,10 +3,6 @@ import assert from "node:assert/strict";
 
 import { authRequestHeaders } from "./request-headers";
 
-/**
- * Both halves of this selection fail SILENTLY, which is why they are pinned.
- */
-
 const request = new Headers({
   "user-agent": "Mozilla/5.0 (Macintosh) Chrome/120.0.0.0",
   "x-forwarded-for": "203.0.113.7, 10.0.0.1",
@@ -29,8 +25,6 @@ test("the session metadata Better Auth stamps onto a new session is forwarded", 
 });
 
 test("origin, referer and host are NOT forwarded", () => {
-  // They would be matched against `trustedOrigins` (which defaults to
-  // DEPLO_PUBLIC_URL) and reject every login on a host that is not that one.
   const out = authRequestHeaders(request, "");
   for (const name of ["origin", "referer", "host"])
     assert.equal(out.get(name), null, `${name} must not be forwarded`);
@@ -51,8 +45,6 @@ test("nothing else rides along either", () => {
 });
 
 test("the supplied cookie wins over the request's own", () => {
-  // The cookie STORE sees writes made earlier in this request; the raw request
-  // headers still carry the pre-login value.
   const out = authRequestHeaders(request, "deplo.session_token=fresh");
   assert.match(
     out.get("cookie") ?? "",
@@ -62,8 +54,6 @@ test("the supplied cookie wins over the request's own", () => {
 });
 
 test("an empty cookie string sets no cookie header at all", () => {
-  // After logout there is nothing to send, and an empty `cookie:` header is not
-  // the same thing as no header.
   const out = authRequestHeaders(request, "");
   assert.equal(out.get("cookie"), null);
 });
@@ -79,11 +69,6 @@ test("a request with none of the metadata headers yields just the cookie", () =>
   assert.deepEqual([...out.keys()], ["cookie"]);
 });
 
-/**
- * The panel answers on two addresses at once - its own, usually https, and its
- * server's plain-http `http://<ip>:3000` backup - so the session cookie exists
- * under two names depending on which one it was opened at.
- */
 test("a plain-named auth cookie is also offered under __Secure-", () => {
   const out = authRequestHeaders(null, "deplo.session_token=abc");
   assert.match(out.get("cookie") ?? "", /__Secure-deplo\.session_token=abc/);
@@ -101,8 +86,6 @@ test("a name already present is never duplicated", () => {
 });
 
 test("cookies that are not Better Auth's are left exactly as they are", () => {
-  // `deplo_team` and `theme` are Deplo's own and are read by their one name;
-  // twinning them would be noise in every request.
   const out = authRequestHeaders(null, "deplo_team=team_a; theme=dark");
   assert.equal(out.get("cookie"), "deplo_team=team_a; theme=dark");
 });

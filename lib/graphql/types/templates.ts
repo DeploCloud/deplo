@@ -1,14 +1,14 @@
 import { revalidateTag } from "next/cache";
-import { assertUser } from "@/lib/auth";
+import { assertUser } from "@/lib/auth/current-user";
 import { rateLimit } from "@/lib/security";
 import { builder } from "../builder";
 import { matchesQuery } from "@/lib/match-query";
 import {
   createAppFromTemplate,
   type CreateAppFromTemplateInput,
-} from "@/lib/data/apps";
+} from "@/lib/data/apps/create";
 import { listCatalog } from "@/templates/catalog";
-import { AppRef } from "./app";
+import { AppRef } from "./app/app-object";
 
 interface TemplateVariantSummary {
   templateSlug: string;
@@ -130,20 +130,12 @@ builder.queryFields((t) => ({
   }),
 }));
 
-/* ------------------------------------------------------------------ */
-/* Mutations                                                          */
-/* ------------------------------------------------------------------ */
-
 builder.mutationFields((t) => ({
   refreshTemplates: t.boolean({
-    // `loggedIn`, not a capability: this only drops the hour-long cache in front of
-    // a PUBLIC catalog, and every member sees the same store.
     authScopes: { loggedIn: true },
     description:
       "Drop the cached template catalog so the next read hits the catalog service.",
     resolve: async () => {
-      // A drop costs the whole instance a catalog fetch, and the catalog is
-      // rate-limited per instance: a few per person per minute is plenty.
       const { id } = await assertUser();
       const limit = await rateLimit(`refresh-templates:${id}`, {
         limit: 3,
@@ -153,8 +145,6 @@ builder.mutationFields((t) => ({
         throw new Error(
           `Too many refreshes. Try again in ${limit.retryAfterSec}s.`,
         );
-      // The tag `templates/catalog.ts` stamps on every catalog fetch. `expire: 0`
-      // because a Refresh button that answers with stale content is a lie.
       revalidateTag("templates", { expire: 0 });
       return true;
     },

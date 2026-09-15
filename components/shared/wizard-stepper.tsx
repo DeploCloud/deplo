@@ -4,10 +4,6 @@ import { Check } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { SimpleTooltip } from "@/components/ui/tooltip";
 
-/**
- * The step rail shared by the dialog wizards: where you are, what's left, and a
- * way back to a step you already finished.
- */
 export interface WizardStep<T extends string> {
   id: T;
   label: string;
@@ -22,13 +18,8 @@ export function WizardStepper<T extends string>({
 }: {
   steps: WizardStep<T>[];
   current: T;
-  /** A step is normally reachable once every step before it is complete. */
   reachable: (s: T) => boolean;
   onSelect: (s: T) => void;
-  /**
-   * Dots, with only the step you are on named under them. For a rail long
-   * enough that a row of labelled chips outgrows the column it sits above.
-   */
   compact?: boolean;
 }) {
   const at = steps.findIndex((s) => s.id === current);
@@ -79,9 +70,6 @@ export function WizardStepper<T extends string>({
               >
                 {done ? <Check className="size-3" /> : i + 1}
               </span>
-              {/* Numbers only on a narrow viewport: four labelled chips do not
-                  fit a phone-width dialog, and a rail that overflows is worse
-                  than one that leans on its numbers. Still announced. */}
               <span className="truncate max-sm:sr-only">{s.label}</span>
             </button>
           </li>
@@ -91,7 +79,6 @@ export function WizardStepper<T extends string>({
   );
 }
 
-/** The dot rail: the name only where you are, every other step a hover away. */
 function CompactStepper<T extends string>({
   steps,
   at,

@@ -1,13 +1,13 @@
 import { notFound } from "next/navigation";
 import { Loader2 } from "lucide-react";
-import { getAppBySlug } from "@/lib/data/apps";
-import { listDeployments } from "@/lib/data/deployments";
+import { getAppBySlug } from "@/lib/data/apps/listing";
+import { listDeployments } from "@/lib/data/deployments/deployment-queries";
 import { isInstanceAdmin } from "@/lib/membership";
 import { hasAppCapability } from "@/lib/data/node-access";
 import { EmptyState } from "@/components/shared/empty-state";
 import { SettingsShortcut } from "@/components/shared/settings-shortcut";
 import { DeploymentGraphic } from "@/components/apps/deployment-graphic";
-import { DeploymentsTable } from "@/components/apps/deployments-table";
+import { DeploymentsTable } from "@/components/apps/deployments-table/deployments-table";
 import { titleClass } from "@/components/shared/page-header";
 
 export const metadata = { title: "Deployments" };
@@ -32,8 +32,6 @@ export default async function AppDeploymentsPage(
   ).length;
   const canManage = canDeploy || isAdmin;
 
-  // Passed into the table so it sits opposite the bulk-action buttons on one
-  // justify-between row; reused above the empty state.
   const header = (
     <div className="space-y-1">
       <h2 className={titleClass.section}>Deployment history</h2>

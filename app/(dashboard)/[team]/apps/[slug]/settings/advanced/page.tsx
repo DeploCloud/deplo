@@ -1,11 +1,11 @@
 import { notFound } from "next/navigation";
 import { SlidersHorizontal } from "lucide-react";
-import { getAppBySlug } from "@/lib/data/apps";
+import { getAppBySlug } from "@/lib/data/apps/listing";
 import { deployHookUrlMasked } from "@/lib/data/deploy-hook";
-import { listBuildServerChoices } from "@/lib/data/servers";
+import { listBuildServerChoices } from "@/lib/data/servers/roster";
 import { hasAppCapability } from "@/lib/data/node-access";
 import { canExposePorts } from "@/lib/membership";
-import { listAppCronJobs } from "@/lib/data/crons";
+import { listAppCronJobs } from "@/lib/data/crons/listing";
 import { SettingsSection } from "@/components/apps/settings/settings-shared";
 import { DangerSettings } from "@/components/apps/settings/danger-settings";
 import { RebuildContainerCard } from "@/components/apps/settings/rebuild-container-card";
@@ -18,7 +18,7 @@ import { BuildServerPanel } from "@/components/apps/settings/build-server-panel"
 import { ComposeArgsPanel } from "@/components/apps/settings/compose-args-panel";
 import { DeployHookPanel } from "@/components/apps/settings/deploy-hook-panel";
 import { CapabilityFieldset } from "@/components/apps/app-capabilities";
-import { providerFor } from "@/lib/git/providers";
+import { providerFor } from "@/lib/git/providers/registry";
 import { appBuildsItsOwnImage, usesComposeStack } from "@/lib/utils";
 import {
   Card,
@@ -30,20 +30,12 @@ import {
 
 export const metadata = { title: "Advanced" };
 
-/**
- * Advanced app settings: the powerful, less-everyday controls in one place - the
- * Advanced features card (the container Console and Cron jobs), the build and
- * trigger controls that nobody touches on a first deploy, a from-scratch
- * container Rebuild, and the Danger Zone (transfer to another team, delete).
- */
 export default async function AppAdvancedSettingsPage(
   props: PageProps<"/[team]/apps/[slug]/settings/advanced">,
 ) {
   const { slug } = await props.params;
   const project = await getAppBySlug(slug);
   if (!project) notFound();
-  // The console page refuses without this, so the row says so up front instead of
-  // handing out a link that 404s.
   const [canConsole, canCron, mayExposePorts, buildServerChoices] =
     await Promise.all([
       hasAppCapability(project.id, "open_app_console"),
@@ -53,11 +45,8 @@ export default async function AppAdvancedSettingsPage(
     ]);
   const cron = canCron ? await listAppCronJobs(project.id) : null;
 
-  // Same predicates the Deployments page used before these panels moved here.
   const isComposeStack = usesComposeStack(project);
   const buildsOwnImage = appBuildsItsOwnImage(project);
-  // A git provider that already triggers deploys makes a second trigger one more
-  // credential to leak for a job already done, so the hook is not offered.
   const providerTriggers =
     project.source === "github" ||
     (Boolean(project.repo?.connectionId) &&
@@ -110,7 +99,6 @@ export default async function AppAdvancedSettingsPage(
             </CapabilityFieldset>
           )}
 
-          {/* A compose stack publishes its own ports in its own YAML. */}
           {project.source !== "compose" && (
             <CapabilityFieldset cap="configure_apps">
               <PublishedPortsForm

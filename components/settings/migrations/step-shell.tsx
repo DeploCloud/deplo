@@ -3,11 +3,6 @@ import { cn } from "@/lib/utils";
 import type { DocsTopic } from "@/lib/docs";
 import type * as React from "react";
 
-/**
- * Every step is the same shape: a question, one line under it, the controls.
- * Left-aligned, because the picture is on the right: a centred column of text
- * beside an illustration has no edge for the eye to come back to.
- */
 export function StepShell({
   title,
   lead,
@@ -19,10 +14,7 @@ export function StepShell({
   title: string;
   lead: React.ReactNode;
   docs?: DocsTopic;
-  /** The screen someone LANDS on: the greeting, centred and large. */
   hero?: boolean;
-  /** Arrive out of a blur, one beat after another - the same class the setup
-   *  wizard's first step uses. For a step somebody lands on, not one they walk into. */
   stagger?: boolean;
   children: React.ReactNode;
 }) {
@@ -30,8 +22,6 @@ export function StepShell({
     <div
       className={cn(
         "flex flex-col items-stretch gap-5",
-        // A greeting needs air under it: at the step gap the cards read as part
-        // of the sentence rather than the answer to it.
         hero && "gap-10",
         stagger && "deplo-stagger",
       )}
@@ -50,8 +40,6 @@ export function StepShell({
         <p
           className={cn(
             "mt-1 leading-loose text-balance text-muted-foreground [&_strong]:font-medium [&_strong]:text-foreground",
-            // Narrower than the cards under it, so a centred lead breaks into even
-            // lines instead of one long one and a stub.
             hero ? "mx-auto mt-2 max-w-md" : "max-w-prose",
           )}
         >

@@ -19,7 +19,6 @@ test("rank orders exact, then prefix, then substring, then nothing", () => {
 });
 
 test("rank answers with the BEST of the fields it was given", () => {
-  // An id that merely contains the needle must not drag down a name that IS it.
   assert.equal(matchRank("api", "prj_capi_1", "api"), 0);
   assert.equal(matchRank("api", "nope", "api-gateway"), 1);
 });
@@ -36,8 +35,6 @@ test("rank agrees with the gate: 3 exactly when matchesQuery is false", () => {
 });
 
 test("an accent folds to the letter under it, not to nothing", () => {
-  // A team writing in Italian, French or Spanish names things with accents, and
-  // nobody types them into a search box.
   assert.equal(foldQuery("Café"), "cafe");
   assert.equal(foldQuery("Münchén"), "munchen");
   assert.equal(foldQuery("naïve"), "naive");

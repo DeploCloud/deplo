@@ -1,6 +1,5 @@
 import { cn } from "@/lib/utils";
 
-/** The environment variables empty-state illustration: a variable being written into an empty list, its value scrambled, and the padlock clicking shut over what is left. */
 export function EnvGraphic({ className }: { className?: string }) {
   return (
     <svg

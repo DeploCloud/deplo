@@ -9,10 +9,10 @@
 
 ## Context
 
-`removeServer()` ([`lib/data/servers.ts`](../../lib/data/servers.ts)) told the operator, in the
+`removeServer()` ([`lib/data/servers/removal.ts`](../../lib/data/servers/removal.ts)) told the operator, in the
 confirm dialog, that removal "revokes the agent's trust **and tells it to tear down its
 containers**". It did not. The function it called - `teardownServerAgent()` in
-[`lib/infra/agent-client.ts`](../../lib/infra/agent-client.ts) - dialed the agent, sent a single
+[`lib/infra/agent-client/`](../../lib/infra/agent-client/) - dialed the agent, sent a single
 `Hello`, and closed the connection. Nothing was ever torn down. The only real signal it produced
 was reachability, which it converted into a warning about cleaning up "leftover `deplo-*`
 containers by hand" - advice with no command attached.
@@ -33,7 +33,7 @@ The gap is not an oversight that a bigger RPC would close. It is structural:
   it would leave a window where a failed removal has already destroyed the host's containers.
 
 Two further defects sat in the same function. `databases.server_id` is `RESTRICT`
-([`lib/db/schema/control-plane.ts`](../../lib/db/schema/control-plane.ts)), but only _apps_ were
+([`lib/db/schema/control-plane/databases.ts`](../../lib/db/schema/control-plane/databases.ts)), but only _apps_ were
 checked, so removing a server that hosted a database surfaced a raw Postgres foreign-key
 violation to the operator. And the trust revoke ran **before** the block, so a removal that was
 then refused had already, permanently, de-trusted the server it declined to remove.

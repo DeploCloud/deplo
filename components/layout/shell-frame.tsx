@@ -3,15 +3,7 @@
 import { useFlatPathname } from "@/lib/nav";
 import { cn } from "@/lib/utils";
 
-/**
- * The dashboard's outer frame, split out of `AppShell` so it can know the route.
- * Here, every other route renders the markup it rendered before, attribute for
- * attribute.
- */
 const FULL_BLEED = [
-  // The general Logs page is BOTH of its states: the chooser is a full-screen
-  // step, and this matches on the pathname only, so one entry covers the pane
-  // at `/logs?app=…` too.
   /^\/logs\/?$/,
   /^\/apps\/[^/]+\/logs\/?$/,
   /^\/storage\/databases\/[^/]+\/logs\/?$/,
@@ -19,22 +11,12 @@ const FULL_BLEED = [
   /^\/storage\/databases\/[^/]+\/console\/?$/,
 ];
 
-/**
- * The dotted ground is the surface that answers the mouse: the three grids where
- * cards drag and marquee-select (`use-card-selection`). Everything else is a
- * reading surface and stays flat.
- */
 const DOTTED = [/^\/$/, /^\/apps\/?$/, /^\/storage\/?$/];
 
 export function isDottedRoute(pathname: string): boolean {
   return DOTTED.some((re) => re.test(pathname));
 }
 
-/**
- * Is the current route one of the full-bleed ones? Exported because the shell is
- * not the only thing in the way: an app's own layout adds a `max-w-6xl` measure
- * and a header of name, status and controls, and a database's does the same.
- */
 export function useFullBleedRoute(): boolean {
   const pathname = useFlatPathname();
   return FULL_BLEED.some((re) => re.test(pathname));
@@ -47,10 +29,7 @@ export function ShellFrame({
   children,
 }: {
   sidebar: React.ReactNode;
-  /** Topbar plus anything that stacks under it (banners, reminders). */
   header: React.ReactNode;
-  /** The active team's id. Keys the content so switching teams REMOUNTS the
-   *  page instead of re-rendering it in place - see the note in `AppShell`. */
   contentKey: string;
   children: React.ReactNode;
 }) {
@@ -69,8 +48,6 @@ export function ShellFrame({
       <div className="flex min-w-0 flex-1 flex-col">
         {header}
         <main
-          // The whole area right of the sidebar and under the header is the
-          // marquee surface for pages with card selection (use-card-selection).
           data-selection-region=""
           className={cn(
             full

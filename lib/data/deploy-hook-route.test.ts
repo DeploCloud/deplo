@@ -8,19 +8,17 @@ import type { PGlite } from "@electric-sql/pglite";
 import { eq } from "drizzle-orm";
 
 process.env.DEPLO_DATA_DIR = mkdtempSync(join(tmpdir(), "deplo-hook-"));
-// Set BEFORE the module loads: with a configured public URL the hook never has
-// to reach for request headers, which is what makes it drivable from here.
 process.env.DEPLO_PUBLIC_URL = "https://deplo.test";
 
 import { makeTestDb, type TestDb } from "../db/test-harness";
 import { __setTestDb, __resetTestDb } from "../db/client";
+import { apps as appsTable } from "../db/schema/control-plane/apps";
+import { deployments as deploymentsTable } from "../db/schema/control-plane/deployments";
+import { teams as teamsTable } from "../db/schema/control-plane/identity";
 import {
-  apps as appsTable,
-  deployments as deploymentsTable,
   folders as foldersTable,
   projects as projectsTable,
-  teams as teamsTable,
-} from "../db/schema/control-plane";
+} from "../db/schema/control-plane/projects";
 import { runWithIdentity } from "../auth/request-context";
 import { seedIdentity, TEAM_A, TEAM_B, USER_1 } from "./identity-test-helpers";
 import {
@@ -28,7 +26,7 @@ import {
   seedServer,
   TRUNCATE_PROJECT_GRAPH,
 } from "./app-graph-test-helpers";
-import { createToken } from "./tokens";
+import { createToken } from "./tokens/mint";
 import { revealDeployHook, setDeployHookEnabled } from "./deploy-hook";
 import { setFolderGrant } from "./folder-access";
 import {
@@ -37,13 +35,9 @@ import {
   __laneSnapshotForTest,
 } from "../deploy/deploy-queue";
 import { SERVER_1 } from "./app-graph-test-helpers";
-import { ALL_CAPABILITIES, type Capability } from "../types";
+import { ALL_CAPABILITIES, type Capability } from "../types/identity";
 
 import { GET, POST } from "@/app/api/apps/[id]/deploy-hook/[token]/route";
-
-/**
- * The deploy hook END TO END - the HTTP handler, not the helpers under it.
- */
 
 let db: TestDb;
 let pg: PGlite;
@@ -56,9 +50,6 @@ const DEPLOYER = "user_deployer";
 before(async () => {
   ({ db, pg } = await makeTestDb());
   __setTestDb(db);
-  // A hook that passes every gate really does queue a deploy, and the real
-  // runner would dial an agent that isn't there. The runner seam stands in for
-  // the build and settles the row, so the queue drains instead of re-picking it.
   __setRunnerForTest(async (depId) => {
     await db
       .update(deploymentsTable)
@@ -68,9 +59,6 @@ before(async () => {
 });
 
 after(async () => {
-  // The queue re-drains its lane once a deploy finishes (`startOne`'s finally), so
-  // give that last pass a tick to run while the database is still there - otherwise
-  // it fails on a torn-down fixture and re-arms itself on a timer, which keeps the
   await new Promise((r) => setTimeout(r, 100));
   __resetQueueForTest();
   __resetTestDb();
@@ -108,7 +96,6 @@ const as = <T>(
   fn: () => Promise<T>,
 ): Promise<T> => runWithIdentity({ userId, teamId }, fn);
 
-/** The secret last segment of the hook URL, minted on first reveal. */
 async function hookToken(appId = APP): Promise<string> {
   const url = await as(USER_1, TEAM_A, () => revealDeployHook(appId));
   return url.slice(url.lastIndexOf("/") + 1);
@@ -149,10 +136,6 @@ async function post(
   };
 }
 
-/* ------------------------------------------------------------------ */
-/* The two secrets                                                     */
-/* ------------------------------------------------------------------ */
-
 test("a hook URL with no API token deploys nothing, however right the URL is", async () => {
   const token = await hookToken();
   const res = await post(APP, token, null);
@@ -171,7 +154,7 @@ test("a bearer that isn't a live token is refused, and says nothing about the ap
 });
 
 test("a valid API token with the wrong URL token deploys nothing", async () => {
-  await hookToken(); // mint one, then present a different secret
+  await hookToken();
   const bearer = await mint(DEPLOYER, TEAM_A, ["deploy_apps"]);
   const res = await post(APP, "wrong-secret", bearer);
   assert.equal(res.status, 404);
@@ -191,10 +174,6 @@ test("an unknown app and a wrong secret answer identically - the hook is no orac
   );
 });
 
-/* ------------------------------------------------------------------ */
-/* The capability still decides                                        */
-/* ------------------------------------------------------------------ */
-
 test("a token without deploy_apps is refused even holding the right URL", async () => {
   const token = await hookToken();
   const bearer = await mint(VIEWER, TEAM_A, ["view"]);
@@ -206,8 +185,6 @@ test("a token without deploy_apps is refused even holding the right URL", async 
 
 test("a token granted deploy_apps by someone who doesn't hold it is refused", async () => {
   const token = await hookToken();
-  // The viewer can only mint what they hold - so the token is minted by the
-  // deployer and then the CREATOR loses the capability, live.
   const bearer = await mint(DEPLOYER, TEAM_A, ["deploy_apps"]);
   await pg.exec(
     `delete from membership_capabilities where membership_id = 'mem_${DEPLOYER}' and capability = 'deploy_apps';`,
@@ -266,10 +243,6 @@ test("an unmet two-factor policy stops the hook and names the policy", async () 
   assert.equal(await deploymentCount(), 0);
 });
 
-/* ------------------------------------------------------------------ */
-/* What it does when everything lines up                               */
-/* ------------------------------------------------------------------ */
-
 test("GET explains itself instead of deploying, whatever the URL says", async () => {
   const token = await hookToken();
   const res = await GET();
@@ -316,17 +289,11 @@ test("the right token and the right permission queue a deploy", async () => {
     DEPLOYER,
     "the deploy is attributed to the member the token acts as, not to nobody",
   );
-  // The free-text name has always been there; this is what lets the row show a
-  // FACE. A hook runs under runWithIdentity, so the actor resolves to an account -
-  // unlike a GitHub webhook push, whose creator is a GitHub login and stays
-  // null.
   assert.equal(
     rows[0].creatorUserId,
     DEPLOYER,
     "the deploy names the account behind the token, not just its display name",
   );
-  // Wait for the queue to actually dispatch it (the stub settles the row), so
-  // the fixture isn't torn down under a pump that would then retry forever.
   for (let i = 0; i < 200; i++) {
     const [row] = await db
       .select({ status: deploymentsTable.status })
@@ -348,9 +315,6 @@ async function deploymentCount(): Promise<number> {
 }
 
 test("a hook can't reach into a folder its token's creator can't see", async () => {
-  // The URL secret is minted BEFORE the app is filed away, which is how a leaked
-  // link outlives the access that produced it: the folder is the gate that has
-  // to catch up, and `redeploy`'s app gate is where it does.
   const token = await hookToken();
   await db.insert(foldersTable).values({
     id: "fld_private",
@@ -367,15 +331,12 @@ test("a hook can't reach into a folder its token's creator can't see", async () 
     .set({ folderId: "fld_private" })
     .where(eq(appsTable.id, APP));
 
-  // DEPLOYER holds team `deploy_apps` but nothing on the folder, so the app is
-  // not theirs to see, and a hook is never more than the person behind it.
   const bearer = await mint(DEPLOYER, TEAM_A, ["view", "deploy_apps"]);
   const res = await post(APP, token, bearer);
   assert.equal(res.status, 403);
   assert.match(String(res.body.error), /not found|permission/i);
   assert.equal(await deploymentCount(), 0);
 
-  // A grant on the folder is what makes the same call work again.
   await as(USER_1, TEAM_A, () =>
     setFolderGrant("fld_private", DEPLOYER, ["deploy_apps"]),
   );

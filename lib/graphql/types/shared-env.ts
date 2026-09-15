@@ -1,21 +1,20 @@
 import { builder } from "../builder";
 import { EnvTargetEnum } from "./enums";
 import { EnvVarTypeEnum, VarAuthorRef } from "./env";
+import { setSharedVarAppLink } from "@/lib/data/shared-vars/app-links";
+import {
+  listSharedVarsForApp,
+  type AppSharedVarDTO,
+} from "@/lib/data/shared-vars/app-view";
+import {
+  saveSharedVar,
+  deleteSharedVar,
+} from "@/lib/data/shared-vars/authoring";
 import {
   listSharedVars,
-  listSharedVarsForApp,
-  saveSharedVar,
-  setSharedVarAppLink,
-  deleteSharedVar,
   type SharedVarDTO,
-  type AppSharedVarDTO,
-} from "@/lib/data/shared-vars";
+} from "@/lib/data/shared-vars/team-view";
 
-/* ------------------------------------------------------------------ */
-/* Object types                                                        */
-/* ------------------------------------------------------------------ */
-
-/** A lightweight environment reference embedded in a shared var's scope. */
 const SharedVarEnvironmentRef = builder
   .objectRef<SharedVarDTO["environments"][number]>("SharedVarEnvironment")
   .implement({
@@ -26,7 +25,6 @@ const SharedVarEnvironmentRef = builder
     }),
   });
 
-/** A lightweight project reference embedded in a shared var's scope. */
 const SharedVarProjectRef = builder
   .objectRef<SharedVarDTO["projects"][number]>("SharedVarProject")
   .implement({
@@ -37,7 +35,6 @@ const SharedVarProjectRef = builder
     }),
   });
 
-/** A lightweight team reference: the owner, and every team the var reaches. */
 const SharedVarTeamRef = builder
   .objectRef<SharedVarDTO["teams"][number]>("SharedVarTeam")
   .implement({
@@ -47,7 +44,6 @@ const SharedVarTeamRef = builder
     }),
   });
 
-/** A lightweight app reference embedded in a shared var's per-app links. */
 const SharedVarAppRef = builder
   .objectRef<SharedVarDTO["apps"][number]>("SharedVarApp")
   .implement({
@@ -58,7 +54,6 @@ const SharedVarAppRef = builder
     }),
   });
 
-/** One unified shared variable: availability scopes + opt-in per-app links. */
 const SharedVarRef = builder.objectRef<SharedVarDTO>("SharedVar").implement({
   description:
     "A shared environment variable (ADR-0010/0012/0027). Secret values are masked. " +
@@ -124,7 +119,6 @@ const SharedVarRef = builder.objectRef<SharedVarDTO>("SharedVar").implement({
   }),
 });
 
-/** A shared var as seen from one app: its opt-in state + availability scope. */
 const AppSharedVarRef = builder
   .objectRef<AppSharedVarDTO>("AppSharedVar")
   .implement({
@@ -161,8 +155,6 @@ const AppSharedVarRef = builder
         description:
           "The most specific covering scope: teamWide | environment | project.",
       }),
-      // No `createdBy` here: the data layer already falls back to the creator,
-      // so this is the single "Modified by" the app's table renders.
       updatedBy: t.field({
         type: VarAuthorRef,
         nullable: true,
@@ -171,10 +163,6 @@ const AppSharedVarRef = builder
       updatedAt: t.exposeString("updatedAt"),
     }),
   });
-
-/* ------------------------------------------------------------------ */
-/* Inputs                                                              */
-/* ------------------------------------------------------------------ */
 
 const SaveSharedVarInputType = builder.inputType("SaveSharedVarInput", {
   description:
@@ -185,7 +173,6 @@ const SaveSharedVarInputType = builder.inputType("SaveSharedVarInput", {
     key: t.string({ required: true }),
     value: t.string({ required: true }),
     type: t.field({ type: EnvVarTypeEnum, required: true }),
-    // Omit ⇒ every deploy runtime (the UI no longer asks); see UpsertEnvInput.
     targets: t.field({ type: [EnvTargetEnum], required: false }),
     teamIds: t.idList({
       required: true,
@@ -207,10 +194,6 @@ const SaveSharedVarInputType = builder.inputType("SaveSharedVarInput", {
   }),
 });
 
-/* ------------------------------------------------------------------ */
-/* Queries                                                             */
-/* ------------------------------------------------------------------ */
-
 builder.queryFields((t) => ({
   sharedVars: t.field({
     type: [SharedVarRef],
@@ -227,10 +210,6 @@ builder.queryFields((t) => ({
     resolve: (_r, { appId }) => listSharedVarsForApp(appId),
   }),
 }));
-
-/* ------------------------------------------------------------------ */
-/* Mutations                                                           */
-/* ------------------------------------------------------------------ */
 
 builder.mutationFields((t) => ({
   saveSharedVar: t.field({
@@ -251,8 +230,6 @@ builder.mutationFields((t) => ({
         projectIds: input.projectIds,
         appIds: input.appIds ?? undefined,
       });
-      // Reload by the id the data fn minted - matching by key would be ambiguous
-      // (keys are deliberately NOT unique per team; a key repeats across scopes).
       const saved = (await listSharedVars()).find((v) => v.id === id);
       if (!saved) throw new Error("Shared variable not found");
       return saved;

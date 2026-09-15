@@ -12,11 +12,6 @@ import {
   visitWithTypeInfo,
 } from "graphql";
 
-/**
- * A query that names a team or a person asks for its picture too: the hand-written
- * response type says `avatarUrl` either way, so a missing field is silent - the
- * avatar just falls back to initials.
- */
 const DOC = /`([^`]*)`/g;
 
 function walk(dir: string, out: string[] = []) {

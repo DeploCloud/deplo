@@ -13,13 +13,14 @@ The reason is not ceremony. A version number that nobody chose is a number that 
 and several sessions share this checkout: two of them bumping `package.json` in the same hour
 produces a merge conflict on the one line where a conflict is worst.
 
-### A published tag is never moved
+### Moving a published tag costs something - say so once, then do it
 
 The owner sometimes asks for the control plane and the agent to carry the **same** version, which
-means re-cutting a number that already has a tag and a release behind it. **Warn and refuse.** The
-number is a promise somebody has already read: running instances poll `releases/latest` for the
-update banner, images carry the tag, and moving a published tag rewrites what an operator has
-already installed. The answer is a new number, and the two repos keep their own clocks.
+means re-cutting a number that already has a tag and a release behind it. **Name the cost once,
+then do it if that is the ask.** The number is a promise somebody has already read: running
+instances poll `releases/latest` for the update banner, images carry the tag, and moving a
+published tag rewrites what an operator has already installed. A new number is the cheaper answer,
+and the two repos keep their own clocks - but the call is the owner's, not yours.
 
 ## Which digit
 

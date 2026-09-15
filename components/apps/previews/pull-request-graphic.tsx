@@ -1,6 +1,5 @@
 import { cn } from "@/lib/utils";
 
-/** The Pull requests empty-state illustration, in two moods. */
 export function PullRequestGraphic({
   variant = "active",
   className,

@@ -16,13 +16,10 @@ import {
 } from "./identity-test-helpers";
 import { seedApp, seedServer } from "./app-graph-test-helpers";
 import { seedDatabase, TRUNCATE_BACKUPS } from "./backup-test-helpers";
-import { prepareUploadRestore, uploadRestoreRefusal } from "./backups";
-
-/**
- * `prepareUploadRestore` is the only restore that does not start from a run this
- * instance recorded, so it is also the only one whose input is entirely the
- * caller's.
- */
+import {
+  prepareUploadRestore,
+  uploadRestoreRefusal,
+} from "./backups/upload-restore";
 
 let db: TestDb;
 let pg: PGlite;
@@ -46,7 +43,6 @@ beforeEach(async () => {
   await seedIdentity(db, {
     users: [
       { id: USER_1, teamId: TEAM_A, role: "owner" },
-      // Everything backups-related EXCEPT the one that matters here.
       {
         id: USER_VIEWER,
         teamId: TEAM_A,
@@ -66,7 +62,6 @@ const asUser1 = <T>(fn: () => Promise<T>): Promise<T> =>
 const asViewer = <T>(fn: () => Promise<T>): Promise<T> =>
   runWithIdentity({ userId: USER_VIEWER, teamId: TEAM_A }, fn);
 
-/** A body, as the route hands one over. */
 function bodyOf(bytes: Buffer): ReadableStream<Uint8Array> {
   return new ReadableStream<Uint8Array>({
     start(controller) {
@@ -76,7 +71,6 @@ function bodyOf(bytes: Buffer): ReadableStream<Uint8Array> {
   });
 }
 
-/** An app artifact: gzip of something with the tar magic where tar puts it. */
 function appArtifact(): Buffer {
   const tar = Buffer.alloc(4096);
   tar.write("volumes/data/deplo.db", 0);
@@ -84,7 +78,6 @@ function appArtifact(): Buffer {
   return zlib.gzipSync(tar);
 }
 
-/** A database artifact: gzip of a dump, which is not a tar. */
 function databaseArtifact(): Buffer {
   const dump = Buffer.alloc(4096);
   dump.write("PGDMP", 0);
@@ -113,8 +106,6 @@ test("a member without restore_backups is refused", async () => {
           body: bodyOf(appArtifact()),
         }),
       ),
-    // `manage_backups` is not enough: a restore overwrites live data, which is
-    // its own capability precisely so it can be withheld.
     /permission|not allowed/i,
   );
 });
@@ -238,8 +229,6 @@ test("an encrypted artifact with no key, and with a wrong one, are told apart", 
 });
 
 test("a refusal releases the lock, so the next attempt is judged on its own", async () => {
-  // The lock is taken before the artifact is even read: a rejected file that
-  // left it held would lock the operator out of their own retry.
   await assert.rejects(
     () =>
       asUser1(() =>
@@ -262,19 +251,11 @@ test("a refusal releases the lock, so the next attempt is judged on its own", as
           body: bodyOf(databaseArtifact()),
         }),
       ),
-    // The same refusal, NOT "a restore is already running".
     /not an app backup/,
   );
 });
 
-/* ------------------------------------------------------------------ */
-/* The archive's own stack configuration must never be the one applied  */
-/* ------------------------------------------------------------------ */
-
 test("an app with no stack on its host refuses an uploaded archive", () => {
-  // The escalation this closes: with no recorded digest the agent prefers the control
-  // plane's compose, but falls back to the ARCHIVE's when the control plane has none
-  // - and it has none exactly when the app was never deployed on that host.
   assert.match(
     uploadRestoreRefusal({ kind: "app", project: { composeYaml: "" } }) ?? "",
     /never been deployed/,
@@ -286,8 +267,6 @@ test("an app with no stack on its host refuses an uploaded archive", () => {
 });
 
 test("an app with a live stack proceeds, and a database is never in scope", () => {
-  // A non-empty control-plane compose is what makes the agent's unproven branch
-  // keep ITS config, so there is nothing left to fall back to.
   assert.equal(
     uploadRestoreRefusal({
       kind: "app",
@@ -295,7 +274,5 @@ test("an app with a live stack proceeds, and a database is never in scope", () =
     }),
     null,
   );
-  // A database restore replays a dump into an engine; it re-applies no stack
-  // configuration at all, so the archive has nothing to smuggle.
   assert.equal(uploadRestoreRefusal({ kind: "database" }), null);
 });

@@ -7,20 +7,11 @@ import { AccessOption } from "@/components/servers/server-team-access";
 
 export type ServerRole = "everything" | "build" | "storage";
 
-/**
- * What a server is for, in the one place both the install dialog and the
- * server's own settings read it from - so the three options can never drift
- * into saying two different things.
- *
- * Each carries its own hue, the way a deploy source does: the wash is what tells
- * three otherwise identical tiles apart at a glance.
- */
 export const SERVER_ROLES: {
   id: ServerRole;
   icon: React.ElementType;
   title: string;
   description: string;
-  /** oklch angle of the Deplo token the icon wears. */
   hue: number;
   iconClassName: string;
   beta?: boolean;
@@ -59,7 +50,6 @@ export function ServerRoleOptions({
 }: {
   value: ServerRole;
   onChange: (role: ServerRole) => void;
-  /** Per option, because a host installed without Docker can only hold backups. */
   disabled?: (role: ServerRole) => boolean;
 }) {
   return (

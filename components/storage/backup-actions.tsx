@@ -38,24 +38,17 @@ import { BackupScheduleFields } from "@/components/storage/backup-schedule-field
 import { useOptimisticRow } from "@/components/shared/optimistic-list";
 import { gqlAction } from "@/lib/graphql-client";
 import { isValidSchedule } from "@/lib/schedule";
-import type { BackupDTO } from "@/lib/data/backups";
-import type { DestinationOption } from "@/lib/data/destinations";
+import type { BackupDTO } from "@/lib/data/backups/schedules";
+import type { DestinationOption } from "@/lib/data/destinations/dto";
 
 export interface BackupActionProps {
   backup: BackupDTO;
   destinations: DestinationOption[];
-  /** `manage_backups`. Gates run / edit / delete and the enable switch. */
   canManage: boolean;
-  /** `restore_backups`. Restore is the destructive one and has its own. */
   canRestore: boolean;
-  /** `manage_backup_destinations`, for the picker's live probe. */
   canTestDestinations: boolean;
 }
 
-/**
- * Everything a schedule can have done to it - the ⋯ menu, the enable toggle and
- * the three dialogs - shared by the table row and the card.
- */
 export function useBackupActions({
   backup,
   destinations,
@@ -63,7 +56,6 @@ export function useBackupActions({
   canRestore,
   canTestDestinations,
 }: BackupActionProps): {
-  /** In flight from here, or already running elsewhere according to the last read. */
   isRunning: boolean;
   toggle: (enabled: boolean) => void;
   pending: boolean;
@@ -73,8 +65,6 @@ export function useBackupActions({
   const router = useRouter();
   const [pending, startTransition] = React.useTransition();
   const [confirmOpen, setConfirmOpen] = React.useState(false);
-  // The schedule leaves the list on the click; deleting one is a single
-  // control-plane write with nothing on a host to wait for.
   const { hide, restore } = useOptimisticRow(backup.id);
   const [restoreOpen, setRestoreOpen] = React.useState(false);
   const [editOpen, setEditOpen] = React.useState(false);
@@ -83,9 +73,6 @@ export function useBackupActions({
   const targetName = isApp ? backup.serviceName : backup.databaseName;
   const targetId = isApp ? backup.appId : backup.databaseId;
 
-  // The mutation resolves at the END of the dump (minutes), so the toast is the
-  // RESULT. What says "it started" is the row itself going `running`, which the
-  // refresh below brings in within seconds and keeps up to date.
   const [running, setRunning] = React.useState(false);
   const isRunning = running || backup.lastStatus === "running";
 
@@ -120,11 +107,6 @@ export function useBackupActions({
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-44">
-        {/**
-         * Disabled rather than hidden, with the reason in the tooltip: a member who cannot
-         * act should still see that the action exists and learn which permission to ask
-         * for.
-         */}
         <SimpleTooltip
           content={
             !canManage
@@ -218,7 +200,6 @@ export function useBackupActions({
           return res;
         }}
       />
-      {/* Restore from a recent run of this schedule's target. */}
       {targetId && (
         <RestoreRunsDialog
           open={restoreOpen}
@@ -228,8 +209,6 @@ export function useBackupActions({
           targetName={targetName ?? backup.name}
         />
       )}
-      {/* key on `editOpen` so each open remounts the dialog with fresh state
-          seeded from the current schedule, no reset effect needed. */}
       <EditBackupDialog
         key={editOpen ? "edit-open" : "edit-closed"}
         backup={backup}
@@ -244,13 +223,6 @@ export function useBackupActions({
   return { isRunning, toggle, pending, menu, dialogs };
 }
 
-/* ------------------------------------------------------------------ */
-/* Edit a schedule (name / destination / cron / retention)             */
-/* ------------------------------------------------------------------ */
-
-/** Edit dialog for an existing schedule. The target it backs up (a database or
- *  app) is fixed at creation, so only these settings are editable here;
- *  `enabled` keeps its own toggle. */
 function EditBackupDialog({
   backup,
   destinations,
@@ -266,9 +238,6 @@ function EditBackupDialog({
 }) {
   const router = useRouter();
   const [pending, startTransition] = React.useTransition();
-  // Seeded from the current schedule on mount; the parent remounts this dialog
-  // (via `key`) each time it opens, so these initial values are always fresh and
-  // a cancelled edit never leaks stale input into the next open.
   const [name, setName] = React.useState(backup.name);
   const [destinationId, setDestinationId] = React.useState(
     backup.destinationId,
@@ -283,7 +252,6 @@ function EditBackupDialog({
   }
 
   function submit() {
-    // Closes on the click; a refusal reopens it with the fields as typed.
     onOpenChange(false);
     startTransition(async () => {
       const res = await gqlAction(

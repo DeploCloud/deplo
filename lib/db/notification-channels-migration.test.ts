@@ -9,19 +9,13 @@ import { drizzle, type PgliteDatabase } from "drizzle-orm/pglite";
 import { isoTimestampParser } from "./timestamp-parser";
 import { schema } from "./schema";
 import { seedIdentity, TEAM_A, TEAM_B } from "../data/identity-test-helpers";
-import { ALL_CHANNELS } from "../types";
-
-/**
- * The data carry-over of migration 0075 - twelve fixed channel slots becoming N
- * configured instances.
- */
+import { ALL_CHANNELS } from "../types/notification";
 
 const MIG_DIR = path.join(process.cwd(), "lib", "db", "migrations");
 
 let pg: PGlite;
 let db: PgliteDatabase<typeof schema>;
 
-/** Apply one migration file, statement by statement (drizzle's breakpoint split). */
 async function applyFile(file: string): Promise<void> {
   const sql = readFileSync(path.join(MIG_DIR, file), "utf8");
   for (const chunk of sql.split("--> statement-breakpoint")) {
@@ -42,27 +36,16 @@ before(async () => {
   const files = readdirSync(MIG_DIR)
     .filter((f) => /^\d{4}_.*\.sql$/.test(f))
     .sort();
-  // 0085 rides along: it adds one column to `teams`, which the live-drizzle
-  // seed below names in its INSERT. Any later additive column on a seeded table
-  // needs the same treatment - 0098 (the two MCP switches) is the next one.
   const preSeed = (f: string): boolean =>
     Number(f.slice(0, 4)) < 75 ||
     f.startsWith("0085_") ||
     f.startsWith("0098_") ||
-    // Same reason as in shared-env-migration.test.ts: 0115 is the single
-    // additive `account.issuer` ALTER that `seedIdentity` needs, split from the
-    // OAuth half (0116) precisely so it can be pulled forward here.
     f.startsWith("0115_") ||
-    // 0121 adds `teams.image` (profile pictures), and the live-drizzle seed
-    // below names it. Every ALTER in 0121 is an additive
-    // `ADD COLUMN IF NOT EXISTS`, so pulling the whole file forward is safe.
     f.startsWith("0121_");
   for (const f of files.filter(preSeed)) await applyFile(f);
 
-  // Teams and users through the live schema: 0075 does not touch them.
   await seedIdentity(db);
 
-  // TEAM_A: one of everything worth distinguishing.
   await pg.exec(`
     INSERT INTO notification_settings (
       team_id, push_enabled,
@@ -95,7 +78,6 @@ before(async () => {
     );
   `);
 
-  // TEAM_B: nothing configured at all except the columns that cannot be empty.
   await pg.exec(`
     INSERT INTO notification_settings (
       team_id, push_enabled, email_enabled, email_address,
@@ -103,7 +85,6 @@ before(async () => {
     ) VALUES ('${TEAM_B}', false, false, '', false, '', false, '');
   `);
 
-  // Decisions in the OLD shape: keyed by (team, channel TYPE, alert).
   await pg.exec(`
     INSERT INTO notification_alerts (team_id, channel, alert_key, enabled) VALUES
       ('${TEAM_A}', 'discord', 'deployment_failed',    true),
@@ -174,7 +155,6 @@ test("a type configured but switched off survives, still off", async () => {
   assert.equal(slack.enabled, false);
   assert.equal(slack.url, "https://slack.example/services/tok");
 
-  // And its selection came with it, including the deliberate `false`.
   const alerts = (
     await pg.query<{ alert_key: string; enabled: boolean }>(
       `SELECT alert_key, enabled FROM notification_alerts WHERE channel_id = $1 ORDER BY alert_key`,
@@ -191,7 +171,6 @@ test("a type that was neither enabled nor configured becomes nothing", async () 
   const kinds = (await channels(TEAM_A)).map((c) => c.kind);
   assert.equal(kinds.includes("lark"), false);
   assert.equal(kinds.includes("telegram"), false);
-  // Its decisions had nothing left to be decisions about.
   const orphans = (
     await pg.query<{ n: string }>(
       `SELECT count(*) AS n FROM notification_alerts a
@@ -203,9 +182,6 @@ test("a type that was neither enabled nor configured becomes nothing", async () 
 });
 
 test("ntfy's NOT NULL default base URL is not evidence of anything", async () => {
-  // `ntfy_base_url` defaults to https://ntfy.sh on EVERY row ever written, so a
-  // naive "any non-empty field means configured" would hand an ntfy channel to
-  // every team on the instance. This is that regression, pinned.
   for (const team of [TEAM_A, TEAM_B]) {
     const kinds = (await channels(team)).map((c) => c.kind);
     assert.equal(kinds.includes("ntfy"), false, `${team} should have no ntfy`);
@@ -236,8 +212,6 @@ test("a team with nothing configured comes out with no channels at all", async (
 });
 
 test("the instances come out in catalog order, not the planner's", async () => {
-  // `now()` is the transaction's clock, so without the ordinal offset in the
-  // INSERT every row would share a timestamp and this order would be luck.
   const kinds = (await channels(TEAM_A)).map((c) => c.kind);
   const expected = ALL_CHANNELS.filter((k) => kinds.includes(k));
   assert.deepEqual(kinds, expected);

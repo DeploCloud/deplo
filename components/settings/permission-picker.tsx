@@ -8,21 +8,15 @@ import { Badge } from "@/components/ui/badge";
 import { InfoTip } from "@/components/ui/info-tip";
 import { SimpleTooltip } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
-import { ALL_CAPABILITIES, type Capability } from "@/lib/types";
+import { ALL_CAPABILITIES, type Capability } from "@/lib/types/identity";
 import {
   CAPABILITY_CATEGORIES,
   CAPABILITY_META,
   capabilitySearchText,
 } from "@/lib/capabilities";
 
-/** Optional permissions = everything except the always-on `view` floor. */
 const OPTIONAL = ALL_CAPABILITIES.filter((c) => c !== "view");
 
-/**
- * The permission list shared by the role editor and the API-token editor: every
- * capability Deplo enforces, one checkbox each, grouped into categories only so
- * they can be FOUND - there is no category-level grant, because a permission you
- */
 export function PermissionPicker({
   capabilities,
   onChange,
@@ -33,24 +27,13 @@ export function PermissionPicker({
 }: {
   capabilities: Capability[];
   onChange: (caps: Capability[]) => void;
-  /** Read-only rendering (the locked Owner role, or a viewer). */
   disabled?: boolean;
-  /** Tooltip beside the heading - name the thing being granted. */
   hint?: string;
-  /**
-   * Bound the category list and scroll it, the way `ScopePicker` bounds its tree.
-   */
   scroll?: boolean;
-  /**
-   * Capabilities the current SCOPE makes meaningless. They stay ticked, stay
-   * tickable and keep their value - only the rendering says they do nothing right
-   * now, because widening the scope brings them back with no edit to undo.
-   */
   muted?: { caps: Capability[]; reason: string };
 }) {
   const [query, setQuery] = React.useState("");
   const enabled = React.useMemo(() => new Set(capabilities), [capabilities]);
-  // Keyed on the CONTENTS: the caller rebuilds the array every render.
   const mutedKey = muted?.caps.join(",") ?? "";
   const silenced = React.useMemo(
     () => new Set(mutedKey ? (mutedKey.split(",") as Capability[]) : []),
@@ -71,7 +54,6 @@ export function PermissionPicker({
     ...cat,
     shown: cat.caps.filter(matches),
   })).filter((cat) => cat.shown.length > 0);
-  /** The always-on floor is listed like any other permission - it just can't be unticked. */
   const viewShown = matches("view");
   const shownCount =
     sections.reduce((n, s) => n + s.shown.length, 0) + (viewShown ? 1 : 0);
@@ -152,9 +134,6 @@ export function PermissionPicker({
         <div
           className={cn(
             "space-y-3",
-            // The scope tree's own `max-h-96`, and a `dvh` ceiling so a short
-            // window cannot push the dialog past its 85dvh cap and take the
-            // footer with it, which is the whole reason this exists.
             scroll &&
               "focus-safe-scroll max-h-[min(24rem,40dvh)] overflow-y-auto",
           )}
@@ -253,7 +232,6 @@ export function PermissionPicker({
               </section>
             );
           })}
-          {/* view - the floor, last and category-less: same row, permanently ticked. */}
           {viewShown && (
             <div className="overflow-hidden rounded-lg border border-border">
               <div className="flex items-start gap-3 px-3 py-2.5">

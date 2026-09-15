@@ -1,7 +1,5 @@
 import "server-only";
 
-// https://deplo.build/docs/guides/deploy/from-template
-
 import { z } from "zod";
 import { MAX_LOGO_BYTES } from "@/lib/apps/logo-shared";
 import { templatesApiBase } from "./api-base";
@@ -14,12 +12,6 @@ import {
 } from "./schema";
 import type { ApiTemplate, CatalogTemplate, TemplateListQuery } from "./types";
 
-/**
- * Client for the one-click template catalog (the `DeploCloud/templates` service).
- * Every response is validated against `./schema` before it is used: this is remote
- * input, and its variant files end up in a deploy.
- */
-
 const cacheOptions = {
   cache: "force-cache" as const,
   next: { revalidate: 3600, tags: ["templates"] },
@@ -29,11 +21,6 @@ function apiUrl(path: string): string {
   return `${templatesApiBase()}${path}`;
 }
 
-/**
- * Absolute URL for a catalog asset (a logo, a screenshot, a blueprint file).
- * The path always comes from the API's own response and is re-validated here,
- * so a compromised catalog cannot point the browser at an arbitrary URL.
- */
 export function templateAssetUrl(path: string): string {
   return apiUrl(templateAssetPathSchema.parse(path));
 }
@@ -64,7 +51,6 @@ async function fetchText(path: string, slug: string): Promise<string> {
   return response.text();
 }
 
-/** One page of the catalog. */
 export async function getTemplates(query: TemplateListQuery = {}) {
   const parsed = templateListQuerySchema.parse(query);
   const params = new URLSearchParams();
@@ -73,7 +59,6 @@ export async function getTemplates(query: TemplateListQuery = {}) {
   return fetchJson(`/templates?${params}`, templatesResponseSchema);
 }
 
-/** The same entry, with every asset path turned into an absolute URL. */
 function withAssetUrls(t: ApiTemplate): CatalogTemplate {
   return {
     ...t,
@@ -86,9 +71,6 @@ function withAssetUrls(t: ApiTemplate): CatalogTemplate {
   };
 }
 
-/**
- * The whole catalog, every field the service serves.
- */
 export async function listCatalog(): Promise<CatalogTemplate[]> {
   const first = await getTemplates({ page: 1, limit: 100 });
   const rest = await Promise.all(
@@ -100,7 +82,6 @@ export async function listCatalog(): Promise<CatalogTemplate[]> {
   return [first, ...rest].flatMap((page) => page.data).map(withAssetUrls);
 }
 
-/** `null` when the slug is unknown; this call never selects a variant. */
 export async function getTemplate(slug: string) {
   const safe = slugSchema.safeParse(slug);
   if (!safe.success) return null;
@@ -116,11 +97,6 @@ export async function getTemplate(slug: string) {
   return apiTemplateSchema.parse(await response.json());
 }
 
-/**
- * A deployable template family plus exactly the requested variant's files.
- * `null` means either slug is invalid, the family is unknown, or the variant
- * is not part of that family.
- */
 export async function getTemplateVariant(
   templateSlug: string,
   variantSlug: string,
@@ -142,10 +118,6 @@ export async function getTemplateVariant(
   return { ...family, variant: selected, compose, config };
 }
 
-/**
- * The raw bytes of a catalog image, from the same hour-long cache every other
- * request uses.
- */
 export async function templateImageBytes(url: string): Promise<Buffer | null> {
   try {
     const response = await get(url, "image/webp");
@@ -158,9 +130,6 @@ export async function templateImageBytes(url: string): Promise<Buffer | null> {
   }
 }
 
-/**
- * A template's logo inlined as a data URI.
- */
 export async function templateLogoDataUri(
   path: string | null,
 ): Promise<string | null> {

@@ -11,7 +11,7 @@ process.env.DEPLO_DATA_DIR = mkdtempSync(join(tmpdir(), "deplo-pg-"));
 
 import { makeTestDb, type TestDb } from "../db/test-harness";
 import { __setTestDb, __resetTestDb } from "../db/client";
-import { domains as domainsTable } from "../db/schema/control-plane";
+import { domains as domainsTable } from "../db/schema/control-plane/domains";
 import { runWithIdentity } from "../auth/request-context";
 import { seedIdentity, TEAM_A, USER_1 } from "./identity-test-helpers";
 import {
@@ -23,18 +23,12 @@ import {
   addImportedDomains,
   dismissImportedDomains,
   type ImportedRoute,
-} from "./domains";
-
-/**
- * Re-hosting the addresses an import could not keep. The failure this exists to
- * prevent is arithmetic: an app that answered on two addresses over there must not
- * arrive answering on none.
- */
+} from "./domains/imported-routes";
 
 let db: TestDb;
 let pg: PGlite;
 
-const IP = "10.0.0.1"; // seedServer's ip - what a nip.io host encodes
+const IP = "10.0.0.1";
 
 before(async () => {
   ({ db, pg } = await makeTestDb());
@@ -100,7 +94,6 @@ test("each source host is re-hosted once, keeping its whole route", async () => 
     );
     assert.equal(d.isPrimary, false);
   }
-  // The label carries the service, so which is which is readable in the list.
   const api = all.find((d) => d.importedFrom === "api-abc.sslip.io")!;
   assert.match(api.name, /^web-api-/);
   assert.equal(api.port, 8080);
@@ -111,8 +104,6 @@ test("each source host is re-hosted once, keeping its whole route", async () => 
   assert.equal(api.ssl, true);
 });
 
-// Two Dokploy rows on ONE host with different paths were one address with two
-// routes. Minting an address per row would hand back a shape the app never had.
 test("two routes on the same source host share one new address", async () => {
   await addImportedDomains(
     "prj_web",
@@ -132,8 +123,6 @@ test("two routes on the same source host share one new address", async () => {
   assert.deepEqual(all.map((d) => d.pathPrefix ?? "").sort(), ["", "/api"]);
 });
 
-// The app's primary is minted by createApp before the import can speak, so the
-// first source host lands there. A later row on that same host must join it.
 test("a row whose source host already landed joins that address", async () => {
   const seed = new Map([["web-abc.sslip.io", "web-existing-0a000001.nip.io"]]);
   await db.insert(domainsTable).values({
@@ -169,7 +158,6 @@ test("a row whose source host already landed joins that address", async () => {
   );
 });
 
-// Re-running an interrupted import must not stack duplicates.
 test("re-running writes nothing the second time", async () => {
   const routes = [route({ sourceHost: "web-abc.sslip.io" })];
   const first = await addImportedDomains("prj_web", routes, {
@@ -212,7 +200,5 @@ test("an imported path is stored canonical, backtick and all", async () => {
     ),
   );
   const [row] = await rows();
-  // The router rule interpolates this into a backtick literal; the writers used
-  // to store whatever the source panel said.
   assert.equal(row.pathPrefix, "/api) || Host(victim.example.com");
 });

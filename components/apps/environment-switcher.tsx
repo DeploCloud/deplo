@@ -44,11 +44,6 @@ export interface EnvironmentOption {
   isDefault: boolean;
 }
 
-/**
- * The project drill-in's ENVIRONMENT dropdown (ADR-0009): each environment of a
- * project holds its own apps, so picking one here switches which apps the Overview
- * shows.
- */
 export function EnvironmentSwitcher({
   projectId,
   view,
@@ -74,8 +69,6 @@ export function EnvironmentSwitcher({
     null,
   );
 
-  // A deleted environment leaves the switcher on the click, so the menu never
-  // offers one that is already gone.
   const {
     visible: envs,
     remove,
@@ -101,8 +94,6 @@ export function EnvironmentSwitcher({
   function add() {
     const typed = addName.trim();
     if (!typed) return;
-    // The dialog closes on the click and the write settles behind it; a refusal
-    // reopens it with what was typed.
     setAddOpen(false);
     setAddName("");
     void (async () => {
@@ -127,8 +118,6 @@ export function EnvironmentSwitcher({
 
   function rename() {
     if (!renameFor || !renameName.trim()) return;
-    // The dialog closes on the click; the name it typed reaches the switcher
-    // with the refresh, and a refusal says why with nothing lost.
     const target = renameFor;
     const next = renameName.trim();
     setRenameFor(null);

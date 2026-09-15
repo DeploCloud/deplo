@@ -11,11 +11,6 @@ import {
   type LeaseRow,
 } from "./lease";
 
-/**
- * The scheduler lease is the cross-process mutex that keeps a due backup firing AT
- * MOST ONCE (Step 6).
- */
-
 const NOW = new Date("2026-06-23T12:00:00Z");
 
 test("canAcquire: a fresh lease (no row) is claimable", () => {
@@ -48,16 +43,12 @@ test("canAcquire: a foreign owner past the staleness window is stealable", () =>
   assert.equal(canAcquire(row, "me", NOW), true);
 });
 
-/* ------------------------------------------------------------------ */
-/* In-process fallback (no Postgres configured in the test env)        */
-/* ------------------------------------------------------------------ */
-
 beforeEach(() => __resetLocalLeases());
 
 test("in-process: first claimant wins, a second is denied, holder renews", async () => {
   assert.equal(await acquireLease("L", "a", NOW), true);
-  assert.equal(await acquireLease("L", "b", NOW), false); // a still holds it
-  assert.equal(await acquireLease("L", "a", NOW), true); // a renews
+  assert.equal(await acquireLease("L", "b", NOW), false);
+  assert.equal(await acquireLease("L", "a", NOW), true);
 });
 
 test("in-process: release frees the lease for the next claimant", async () => {
@@ -68,23 +59,21 @@ test("in-process: release frees the lease for the next claimant", async () => {
 
 test("in-process: release by a non-holder is a no-op", async () => {
   assert.equal(await acquireLease("L", "a", NOW), true);
-  await releaseLease("L", "b"); // b doesn't hold it
-  assert.equal(await acquireLease("L", "b", NOW), false); // a still holds it
+  await releaseLease("L", "b");
+  assert.equal(await acquireLease("L", "b", NOW), false);
 });
 
 test("in-process: a stale lease is stolen by another owner", async () => {
   assert.equal(await acquireLease("L", "a", NOW), true);
   const later = new Date(NOW.getTime() + LEASE_STALE_MS + 60_000);
-  assert.equal(await acquireLease("L", "b", later), true); // a's heartbeat is stale
+  assert.equal(await acquireLease("L", "b", later), true);
 });
 
 test("ownedByDeadLocalProcess: a dead pid on this host, and nothing else", () => {
   const probe = { host: "ia-main", alive: (pid: number) => pid === 100 };
   assert.equal(ownedByDeadLocalProcess("ia-main:200:abcd", probe), true);
   assert.equal(ownedByDeadLocalProcess("ia-main:100:abcd", probe), false);
-  // Another host's process cannot be probed from here.
   assert.equal(ownedByDeadLocalProcess("other:200:abcd", probe), false);
-  // The migration runner labels itself differently; leave it to the window.
   assert.equal(ownedByDeadLocalProcess("4592-run_717dc455", probe), false);
   assert.equal(ownedByDeadLocalProcess("ia-main:notapid:x", probe), false);
 });

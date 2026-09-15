@@ -14,13 +14,8 @@ import {
   DEFAULT_ALERTS,
   alertSearchText,
 } from "@/lib/alerts";
-import { ALL_ALERTS, type AlertKey } from "@/lib/types";
+import { ALL_ALERTS, type AlertKey } from "@/lib/types/notification";
 
-/**
- * Which alerts a team wants - the same picker shape as the role editor's
- * permissions, on purpose: search, categories, a description per row and a count
- * per category.
- */
 export function AlertPicker({
   alerts,
   onChange,
@@ -42,8 +37,6 @@ export function AlertPicker({
     [query],
   );
 
-  // Empty categories vanish while searching rather than sitting there as
-  // headings with nothing under them.
   const sections = ALERT_CATEGORIES.map((cat) => ({
     ...cat,
     shown: cat.alerts.filter(matches),
@@ -51,7 +44,6 @@ export function AlertPicker({
   const shown = sections.flatMap((c) => c.shown);
   const shownCount = shown.length;
 
-  /** Always emit in catalog order, never insertion order. */
   function write(next: Set<AlertKey>) {
     onChange(ALL_ALERTS.filter((a) => next.has(a)));
   }
@@ -78,8 +70,6 @@ export function AlertPicker({
     <div className="space-y-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex items-center gap-1.5">
-          {/* The count belongs to the heading, not beside the actions: it says
-              what this list currently IS, it is not something you can press. */}
           <h3 className="text-sm font-medium">
             Alerts{" "}
             <span className="font-normal text-muted-foreground tabular-nums">
@@ -98,11 +88,6 @@ export function AlertPicker({
               Reset to defaults
             </button>
           )}
-          {/**
-           * Acts on the FILTERED subset and is spelled the same as the control in every
-           * category header - it is the same gesture, and the same gesture cannot be called
-           * two things three lines apart.
-           */}
           {!disabled && shown.some((a) => enabled.has(a)) && (
             <button
               type="button"
@@ -144,8 +129,6 @@ export function AlertPicker({
         <div className="space-y-3">
           {sections.map((cat) => {
             const on = cat.alerts.filter((a) => enabled.has(a)).length;
-            // Acts on the FILTERED subset, so "Select all" while searching
-            // never quietly ticks a row the user cannot see.
             const allShownOn = cat.shown.every((a) => enabled.has(a));
             return (
               <section

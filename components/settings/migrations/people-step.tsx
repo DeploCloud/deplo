@@ -35,8 +35,6 @@ import {
 } from "./people";
 import type { Invite } from "./types";
 
-/** One team of the migration: who the panel listed on it, and the extra link
- *  for whoever was not there at all. */
 export interface PeopleGroup {
   key: string;
   team: { name: string; avatarUrl: string | null };
@@ -46,19 +44,12 @@ export interface PeopleGroup {
   onMintLink: () => void;
 }
 
-/**
- * The people who were on that panel, as the team page draws people: one card per
- * address, whatever number of teams they were on, because one address is one
- * account here and one link.
- */
 export function PeopleStep({
   kind,
   groups,
   onContinue,
 }: {
-  /** Which panel these people came from. */
   kind: SourceKind | null;
-  /** One per team that came over, in the order they did. */
   groups: PeopleGroup[];
   onContinue: () => void;
 }) {
@@ -87,7 +78,6 @@ export function PeopleStep({
         />
       ) : (
         <>
-          {/* One person needs no search box, and neither does a single team. */}
           {people.length > 1 && (
             <ListToolbar
               query={query}
@@ -113,8 +103,6 @@ export function PeopleStep({
               action={
                 anyLink && (
                   <div className="flex gap-2">
-                    {/* Read at click time, so both follow the filter rather than
-                        whatever was on screen when the step mounted. */}
                     <CopyButton
                       label="Copy all links"
                       value={() => linksTsv(shown)}
@@ -132,8 +120,6 @@ export function PeopleStep({
             />
           )}
 
-          {/* One team names itself once: a chip repeating it on every card is the
-              same word five times, and a link still has to say which team. */}
           {teams.length === 1 && (
             <div className="flex items-center gap-2 text-sm">
               <TeamAvatar
@@ -154,8 +140,6 @@ export function PeopleStep({
               description="Nobody here matches the current search and filter."
             />
           ) : (
-            // Two columns at most: the column is a fixed measure even on this
-            // wider step, so a third would be three cards holding an address.
             <div className="grid gap-3 sm:grid-cols-2">
               {shown.map((p) => (
                 <PersonCard
@@ -173,9 +157,6 @@ export function PeopleStep({
         </>
       )}
 
-      {/* No Skip: there is nothing here to fill in, so pressing Continue without
-          touching anything IS skipping it, and two names for one action is one
-          too many. With a single team its extra link shares this row. */}
       <div className="flex flex-wrap items-center justify-between gap-2">
         {single ? <ExtraLink group={groups[0]!} /> : <span />}
         <Button onClick={onContinue}>Continue</Button>
@@ -184,7 +165,6 @@ export function PeopleStep({
   );
 }
 
-/** One person, their teams, and the one link that joins them to all of them. */
 function PersonCard({
   person,
   panel,
@@ -192,10 +172,8 @@ function PersonCard({
   onPickTeam,
 }: {
   person: MergedPerson;
-  /** The panel's name. Coolify hides a member's role, so the line goes with it. */
   panel: string;
   activeTeam: string;
-  /** Null when one team landed: it is named above the grid instead. */
   onPickTeam: ((team: string) => void) | null;
 }) {
   const links = linkGroups(person);
@@ -205,9 +183,6 @@ function PersonCard({
   return (
     <div className="flex h-full flex-col gap-3 rounded-lg border border-border bg-background p-4">
       <div className="flex w-full items-center gap-3">
-        {/* Their real picture once they already have an account here; the
-            neutral mark otherwise, with their name or the local part of their
-            address for the letters. */}
         <UserAvatar
           name={person.name}
           username={person.email}
@@ -218,8 +193,6 @@ function PersonCard({
           <p className="truncate text-sm font-medium">
             {named ? person.name : person.email}
           </p>
-          {/* The address stays visible whatever the panel called them: it is
-              what gets pasted into a mail. */}
           {named && (
             <p className="truncate text-xs text-muted-foreground">
               {person.email}
@@ -233,8 +206,6 @@ function PersonCard({
         </div>
       </div>
 
-      {/* On its own row, not beside the address: an email is the identity here
-          and a badge sharing its line takes the half that says which person. */}
       <div className="flex flex-wrap gap-1.5">
         {person.hasAccount && <Badge variant="info">Has an account</Badge>}
         {onPickTeam &&
@@ -248,8 +219,6 @@ function PersonCard({
           ))}
       </div>
 
-      {/* The link is the point of the card, so it sits at its foot with a rule
-          above it - the same shape a member card uses for its badges. */}
       <div className="mt-auto space-y-2 border-t border-border pt-3">
         {links.map((g) => (
           <div key={g.link} className="space-y-1">
@@ -257,8 +226,6 @@ function PersonCard({
               <Input readOnly value={g.link} className="h-8 min-w-0 flex-1" />
               <CopyButton value={g.link} />
             </div>
-            {/* Only when a second link exists does it matter which teams this
-                one opens - one link opens the chips above and says so itself. */}
             {links.length > 1 && (
               <p className="text-xs text-muted-foreground">
                 {g.teams.join(", ")}
@@ -266,8 +233,6 @@ function PersonCard({
             )}
           </div>
         ))}
-        {/* No link means Deplo did something else with them on that team - added
-            them straight away, or could not. Its own message says which. */}
         {notes.map((n) => (
           <p key={n.message} className="text-xs text-muted-foreground">
             {n.teams.length > 0 && `${n.teams.join(", ")}: `}
@@ -279,7 +244,6 @@ function PersonCard({
   );
 }
 
-/** Where one person landed. Clicking it narrows the grid to that team. */
 function TeamChip({
   landing,
   active,
@@ -309,7 +273,6 @@ function TeamChip({
   );
 }
 
-/** The link for whoever was not on that panel at all, one team at a time. */
 function ExtraLinks({ groups }: { groups: PeopleGroup[] }) {
   return (
     <section className="space-y-3 rounded-lg border border-border bg-background p-3">
@@ -339,8 +302,6 @@ function ExtraLinks({ groups }: { groups: PeopleGroup[] }) {
 function ExtraLink({ group: g }: { group: PeopleGroup }) {
   return (
     <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
-      {/* One width for both labels, so a row that already minted one lines up
-          with the rows that have not. */}
       <Button
         variant="outline"
         onClick={g.onMintLink}

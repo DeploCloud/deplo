@@ -27,7 +27,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { SimpleTooltip } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
-import type { TeamRoleDTO } from "@/lib/data/roles";
+import type { TeamRoleDTO } from "@/lib/data/roles/role-list";
 
 const ROLE_ICON: Record<string, LucideIcon> = {
   owner: Crown,
@@ -35,10 +35,6 @@ const ROLE_ICON: Record<string, LucideIcon> = {
   viewer: Eye,
 };
 
-/**
- * The roles of the team, as the left rail of the roles pages: pick one to edit it,
- * or start a new one.
- */
 export function RolesRail({
   roles,
   canManage,
@@ -47,17 +43,11 @@ export function RolesRail({
   canManage: boolean;
 }) {
   const router = useRouter();
-  // Which entry is open comes from the URL rather than a prop, so the rail can
-  // live in the layout and survive navigation between roles without re-rendering
-  // the whole page from the server.
   const pathname = useFlatPathname();
   const activeId = pathname.startsWith("/settings/roles/")
     ? pathname.slice("/settings/roles/".length).split("/")[0]
     : null;
 
-  // Sticky on desktop, like the role editor's summary card: the rail is the
-  // navigation, so it has to stay reachable while the permission list scrolls.
-  // It scrolls on its own once a team has more roles than fit the viewport.
   return (
     <div className="space-y-2 lg:sticky lg:top-20 lg:max-h-[calc(100vh-6rem)] lg:overflow-y-auto">
       <div className="flex items-center justify-between gap-2 px-1">

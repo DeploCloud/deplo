@@ -6,15 +6,6 @@ import {
   updateMyAvatar,
 } from "@/lib/data/account";
 
-/* ------------------------------------------------------------------ */
-/* Mutations (the current user's own profile)                          */
-/*                                                                     */
-/* No object type here: the viewer is already modelled elsewhere and   */
-/* every account data fn returns void, so these mutations report       */
-/* success with Boolean true. The data layer (assertUser + password    */
-/* re-check) is the security boundary; `loggedIn` is the GraphQL gate. */
-/* ------------------------------------------------------------------ */
-
 builder.mutationFields((t) => ({
   updateProfile: t.field({
     type: "Boolean",

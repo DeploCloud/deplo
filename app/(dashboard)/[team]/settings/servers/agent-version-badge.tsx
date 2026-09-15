@@ -5,11 +5,6 @@ import { Package } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { SimpleTooltip } from "@/components/ui/tooltip";
 
-/**
- * The agent version pill on a server card - a plain fact, never a verdict. The
- * server's actions offer "Update agent" whenever the host is not on the current
- * release (`agentUpdateAvailable`), so this pill never has to nag.
- */
 export function AgentVersionBadge({ version }: { version: string | null }) {
   if (!version) {
     return (

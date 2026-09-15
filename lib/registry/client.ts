@@ -1,18 +1,8 @@
 import "server-only";
 
-// https://deplo.build/docs/operations/servers/container-registries
-
-/**
- * Server-side container-registry client: image-name search, tag listing, and
- * existence checks across Docker Hub, GHCR, GitLab, Quay and any generic OCI
- * registry.
- */
-
 import { parseImageRef, DOCKER_HUB_REGISTRY } from "./image-ref";
 import { assertSafeOutboundHost } from "../outbound-url";
 
-/** Manifest media types to advertise so multi-arch (OCI index / manifest list)
- * tags resolve on a HEAD instead of 404/406-ing. */
 const MANIFEST_ACCEPT = [
   "application/vnd.oci.image.index.v1+json",
   "application/vnd.docker.distribution.manifest.list.v2+json",
@@ -23,14 +13,6 @@ const MANIFEST_ACCEPT = [
 const UA = "Deplo-Registry-Client";
 const DEFAULT_TIMEOUT = 8000;
 
-// ---------------------------------------------------------------------------
-// SSRF guard
-// ---------------------------------------------------------------------------
-
-/**
- * SSRF guard for every outbound registry fetch: https only, and the ONE outbound
- * host rule (`lib/outbound-url.ts`), so this client cannot drift from it.
- */
 async function isPublicHttpsUrl(url: string): Promise<boolean> {
   let parsed: URL;
   try {
@@ -47,7 +29,6 @@ async function isPublicHttpsUrl(url: string): Promise<boolean> {
   }
 }
 
-/** Encode a repository path per-segment so its parts cannot rewrite the URL. */
 function encodeRepoPath(repository: string): string {
   return repository.split("/").map(encodeURIComponent).join("/");
 }
@@ -56,8 +37,6 @@ async function fetchJson<T>(
   url: string,
   init?: RequestInit & { timeoutMs?: number },
 ): Promise<{ status: number; body: T | null }> {
-  // Every fetchJson target derives from user input or a probed host's own
-  // response - refuse anything that is not public https (SSRF guard).
   if (!(await isPublicHttpsUrl(url))) return { status: 0, body: null };
   const ctrl = new AbortController();
   const t = setTimeout(() => ctrl.abort(), init?.timeoutMs ?? DEFAULT_TIMEOUT);
@@ -67,8 +46,6 @@ async function fetchJson<T>(
       signal: ctrl.signal,
       headers: { "User-Agent": UA, ...(init?.headers ?? {}) },
       cache: "no-store",
-      // A 302 out of a checked URL would land the follow-up on a private/
-      // metadata target the SSRF guard never saw - refuse it, don't follow.
       redirect: "manual",
     });
     if (res.status >= 300 && res.status < 400) return { status: 0, body: null };
@@ -84,12 +61,7 @@ async function fetchJson<T>(
   }
 }
 
-// ---------------------------------------------------------------------------
-// Docker Hub name search
-// ---------------------------------------------------------------------------
-
 export interface ImageSuggestion {
-  /** Canonical reference to insert, e.g. "postgres", "grafana/grafana". */
   name: string;
   description?: string;
   official?: boolean;
@@ -107,11 +79,6 @@ interface HubSearchResponse {
   }[];
 }
 
-/**
- * Suggest image names from Docker Hub for a query fragment. Official images
- * come back as a bare name (`postgres`) with `is_official: true`; others as
- * `namespace/name`. Returns [] for non-Hub registries (no search API exists).
- */
 export async function searchImages(
   query: string,
   limit = 8,
@@ -132,13 +99,8 @@ export async function searchImages(
   }));
 }
 
-// ---------------------------------------------------------------------------
-// Tag listing
-// ---------------------------------------------------------------------------
-
 export interface TagSuggestion {
   name: string;
-  /** ISO timestamp when known (Docker Hub provides it; OCI tags/list does not). */
   lastUpdated?: string;
 }
 
@@ -146,15 +108,11 @@ interface HubTagsResponse {
   results?: { name: string; last_updated?: string }[];
 }
 
-/**
- * Docker Hub tags carry rich metadata, including last-updated for sorting.
- */
 async function dockerHubTags(
   repository: string,
   limit: number,
   filter?: string,
 ): Promise<TagSuggestion[]> {
-  // Hub expects the namespaced path; image-ref already expands bare → library/.
   const params = new URLSearchParams({
     page_size: String(Math.min(limit, 100)),
     ordering: "last_updated",
@@ -171,7 +129,6 @@ async function dockerHubTags(
   }));
 }
 
-/** A parsed `WWW-Authenticate: Bearer realm=…,service=…` challenge. */
 function parseBearerChallenge(
   header: string | null,
 ): { realm: string; service?: string } | null {
@@ -182,17 +139,11 @@ function parseBearerChallenge(
   return { realm, service };
 }
 
-/**
- * Obtain an anonymous pull token for an OCI registry by probing `/v2/` for its
- * Bearer challenge, then requesting a repo-scoped token. Returns null when the
- * registry needs no token (it answered `/v2/` with 200).
- */
 async function ociToken(
   registry: string,
   repository: string,
 ): Promise<string | null | "none"> {
   const probeUrl = `https://${registry}/v2/`;
-  // `registry` is user input, never probe a non-public target.
   if (!(await isPublicHttpsUrl(probeUrl))) return null;
   const ctrl = new AbortController();
   const t = setTimeout(() => ctrl.abort(), DEFAULT_TIMEOUT);
@@ -202,11 +153,10 @@ async function ociToken(
       headers: { "User-Agent": UA },
       signal: ctrl.signal,
       cache: "no-store",
-      // Never follow a 3xx off the checked host (SSRF: 302 → private target).
       redirect: "manual",
     });
     if (probe.status >= 300 && probe.status < 400) return null;
-    if (probe.ok) return "none"; // open registry, no auth needed
+    if (probe.ok) return "none";
     challenge = parseBearerChallenge(probe.headers.get("www-authenticate"));
   } catch {
     return null;
@@ -214,8 +164,6 @@ async function ociToken(
     clearTimeout(t);
   }
   if (!challenge) return null;
-  // The realm URL is dictated by the probed host's response - follow it only
-  // to a public https endpoint, never an arbitrary scheme/host.
   if (!(await isPublicHttpsUrl(challenge.realm))) return null;
   const params = new URLSearchParams();
   if (challenge.service) params.set("service", challenge.service);
@@ -226,22 +174,12 @@ async function ociToken(
   return body?.token ?? body?.access_token ?? null;
 }
 
-/** Build the auth headers for an OCI request given a token result. */
 function ociAuthHeaders(token: string | null | "none"): Record<string, string> {
   return token && token !== "none" ? { Authorization: `Bearer ${token}` } : {};
 }
 
-// ---------------------------------------------------------------------------
-// Credential check (`docker login` without the daemon)
-// ---------------------------------------------------------------------------
-
 export type CredentialCheck = "ok" | "rejected" | "unknown";
 
-/**
- * Does this username / token actually authenticate at this registry? Probe
- * `/v2/` for the Bearer challenge, then ask the realm for a token as Basic auth.
- * "unknown" on an unreachable registry - an outage must not block a save.
- */
 export async function checkRegistryCredential(
   registry: string,
   username: string,
@@ -256,7 +194,6 @@ export async function checkRegistryCredential(
       ? "registry-1.docker.io"
       : bare;
   const probeUrl = `https://${host}/v2/`;
-  // `registry` is user input, never probe a non-public target.
   if (!(await isPublicHttpsUrl(probeUrl))) return "unknown";
 
   const basic = {
@@ -277,8 +214,6 @@ export async function checkRegistryCredential(
   } finally {
     clearTimeout(t);
   }
-  // A Basic-only registry answers the probe itself; a token one 401s with a
-  // challenge and ignores the header we just sent.
   if (probe.ok) return "ok";
   const challenge = parseBearerChallenge(probe.headers.get("www-authenticate"));
   if (!challenge) return probe.status === 401 ? "rejected" : "unknown";
@@ -292,7 +227,6 @@ export async function checkRegistryCredential(
     { headers: basic },
   );
   if (status === 200) return "ok";
-  // ghcr answers a bad credential 403, the Hub and GitLab 401.
   return status === 401 || status === 403 ? "rejected" : "unknown";
 }
 
@@ -300,11 +234,6 @@ interface OciTagsResponse {
   tags?: string[] | null;
 }
 
-/**
- * Generic OCI `tags/list`. The spec has no server-side name filter, so it
- * returns the whole list (we request a generous page) and we filter for the
- * fragment client-side, which is fine because the full list is returned at once.
- */
 async function ociTags(
   registry: string,
   repository: string,
@@ -324,11 +253,6 @@ async function ociTags(
   return tags.slice(0, limit).map((name) => ({ name }));
 }
 
-/**
- * List tags for an image reference, choosing the richest available source.
- * `filter` (the tag fragment the user has typed) is forwarded so a specific
- * version surfaces even when it isn't among the newest tags.
- */
 export async function listTags(
   imageRef: string,
   limit = 30,
@@ -343,22 +267,13 @@ export async function listTags(
   return tags.slice(0, limit);
 }
 
-// ---------------------------------------------------------------------------
-// Existence check
-// ---------------------------------------------------------------------------
-
 export type ImageExistence = "exists" | "absent" | "private" | "unknown";
 
 export interface ExistenceResult {
   status: ImageExistence;
-  /** Resolved digest from the manifest HEAD, when the image exists. */
   digest?: string;
 }
 
-/**
- * Check whether `image:tag` resolves via a manifest HEAD on the registry v2 API.
- *  200 → exists, 404 → absent, 401/403 (after a token) → private/forbidden.
- */
 export async function checkImageExists(
   imageRef: string,
 ): Promise<ExistenceResult> {
@@ -375,7 +290,6 @@ export async function checkImageExists(
   const manifestUrl = `https://${registryHost}/v2/${encodeRepoPath(
     parsed.repository,
   )}/manifests/${encodeURIComponent(reference)}`;
-  // `registryHost` is user input, never HEAD a non-public target.
   if (!(await isPublicHttpsUrl(manifestUrl))) return { status: "unknown" };
   const ctrl = new AbortController();
   const t = setTimeout(() => ctrl.abort(), DEFAULT_TIMEOUT);
@@ -389,7 +303,6 @@ export async function checkImageExists(
       },
       signal: ctrl.signal,
       cache: "no-store",
-      // Never follow a 3xx off the checked host (SSRF: 302 → private target).
       redirect: "manual",
     });
     if (res.status >= 300 && res.status < 400) return { status: "unknown" };
@@ -409,11 +322,6 @@ export async function checkImageExists(
   }
 }
 
-// ---------------------------------------------------------------------------
-// The port an image declares
-// ---------------------------------------------------------------------------
-
-/** A manifest, an index, and the config blob - only the fields we read. */
 interface ManifestDoc {
   config?: { digest?: string };
   manifests?: {
@@ -425,12 +333,6 @@ interface ConfigBlob {
   config?: { ExposedPorts?: Record<string, unknown> };
 }
 
-/**
- * The container port an image declares in its own `EXPOSE`, or null when it
- * declares none, several, or the registry will not say. It is what stops a
- * Docker-image app from being routed to a guessed 3000 and answering 502.
- * Read from the registry, never a pull: two small GETs, no layers.
- */
 export async function imageExposedPort(
   imageRef: string,
 ): Promise<number | null> {
@@ -449,8 +351,6 @@ export async function imageExposedPort(
   let doc = (
     await fetchJson<ManifestDoc>(at(parsed.digest ?? parsed.tag), { headers })
   ).body;
-  // A multi-arch tag answers with an index: follow the linux/amd64 entry, which
-  // is the platform every declared port we care about is described on.
   if (doc?.manifests?.length) {
     const pick =
       doc.manifests.find(
@@ -470,15 +370,8 @@ export async function imageExposedPort(
   return singleExposedPort(blob?.config?.ExposedPorts);
 }
 
-/** Largest config blob we will read. Real ones are a few KB; this is the bound. */
 const CONFIG_BLOB_MAX = 256 * 1024;
 
-/**
- * The config blob, following ONE redirect. Registries hand blobs off to a CDN
- * (Docker Hub answers 307 to CloudFront), so refusing every 3xx like the manifest
- * path does would always come back empty. The hop is re-checked against the same
- * SSRF rule and the token is NOT carried to it - a CDN URL is pre-signed.
- */
 async function fetchConfigBlob(
   url: string,
   headers: Record<string, string>,
@@ -519,10 +412,6 @@ async function fetchConfigBlob(
   }
 }
 
-/**
- * `{"80/tcp":{}}` → 80. An image that exposes several ports has not answered the
- * question, so it gets no answer: the app keeps the default and the field is there.
- */
 export function singleExposedPort(
   exposed: Record<string, unknown> | undefined | null,
 ): number | null {

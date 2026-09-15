@@ -31,13 +31,8 @@ import {
 } from "@/components/storage/database-exposure";
 import { DirtyHint } from "@/components/apps/settings/settings-shared";
 import { gqlAction } from "@/lib/graphql-client";
-import type { DatabaseDTO } from "@/lib/data/databases";
+import type { DatabaseDTO } from "@/lib/data/databases/rows";
 
-/**
- * A database's Connection settings - everything about how clients reach it and
- * authenticate: public exposure (+ host port), server location / move, and
- * password rotation.
- */
 export function DatabaseConnectionSettings({
   db,
   servers,
@@ -62,8 +57,6 @@ export function DatabaseConnectionSettings({
   );
 }
 
-/* Exposure + server move - one reroute either way (the data layer's
-   updateDatabase applies both). */
 function ExposureCard({
   db,
   servers,
@@ -200,7 +193,6 @@ function ExposureCard({
   );
 }
 
-/* Password rotation - reveals the NEW connection string once. */
 function RotatePasswordCard({ db }: { db: DatabaseDTO }) {
   const router = useRouter();
   const [pending, startTransition] = React.useTransition();

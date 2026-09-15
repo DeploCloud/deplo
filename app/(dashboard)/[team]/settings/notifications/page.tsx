@@ -9,9 +9,6 @@ import { NotificationsPanel } from "@/components/settings/notifications-panel";
 export const metadata = { title: "Settings · Notifications" };
 
 export default async function SettingsNotificationsPage() {
-  // A channel row carries the webhook URL, which IS the credential for a chat
-  // room, so the PAGE takes the same gate as the read behind it: reaching the
-  // whole team is not enough, it takes `manage_notifications`.
   const canManage = await hasCapability("manage_notifications");
   if (!(await reachesWholeTeam()) || !canManage)
     return (
@@ -23,13 +20,9 @@ export default async function SettingsNotificationsPage() {
     );
   const [channels, vapidPublicKey] = await Promise.all([
     listNotificationChannels(),
-    // Minted here, on first render of this page, so an instance that never uses
-    // browser push never holds a VAPID keypair.
     getWebPushPublicKey(),
   ]);
 
-  // The page header lives inside the panel: "Add channel" belongs in it, and
-  // only the panel can open the dialog it opens.
   return (
     <NotificationsPanel
       initial={channels}

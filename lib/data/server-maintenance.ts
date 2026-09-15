@@ -3,27 +3,18 @@ import "server-only";
 import { eq } from "drizzle-orm";
 import { hostname } from "node:os";
 
-import type { AppStatus } from "../types";
+import type { AppStatus } from "../types/app";
 
 import { getDb } from "../db/client";
-import {
-  apps as appsTable,
-  databases as databasesTable,
-} from "../db/schema/control-plane";
+import { apps as appsTable } from "../db/schema/control-plane/apps";
+import { databases as databasesTable } from "../db/schema/control-plane/databases";
 import { requireActiveTeamId, requireInstanceAdmin } from "../membership";
-import { getCurrentUser } from "../auth";
+import { getCurrentUser } from "../auth/current-user";
 import { isDeploHostServer } from "../deploy/domains";
 import { recordActivity } from "./activity";
-import { assertNotMigrationSource, getServerById } from "./servers";
+import { assertNotMigrationSource, getServerById } from "./servers/roster";
 import { stopStackOn, startStackOn } from "./volume-migration";
 
-/**
- * Host-level maintenance for ONE server - the actions on Settings → Servers →
- * <server> that operate on the box rather than on anything deployed to it. There
- * is no per-team variant on purpose.
- */
-
-/** What a host reports about itself, plus what the control plane knows about it. */
 export type ServerHostInfo = {
   cpuModel: string;
   cpuCores: number;
@@ -39,64 +30,36 @@ export type ServerHostInfo = {
   uptimeSec: number;
   timezone: string;
   timeUnixMs: number;
-  /**
-   * Deplo's own clock when this reading landed, so a caller can say how far the
-   * host has drifted WITHOUT involving the viewer's machine.
-   */
   controlPlaneTimeUnixMs: number;
   utcOffsetMinutes: number;
-  /** Whether the panel runs in a container the agent could restart. */
   canRestartControlPlane: boolean;
 };
 
-/** Per-workload outcome of a whole-server restart. */
 export type RestartedWorkload = {
   kind: "app" | "database";
   name: string;
-  /** Why it did not come back, verbatim for the operator. When the stop landed
-   *  but the start did not, it also says the workload is now DOWN rather than
-   *  merely un-restarted. Nullable only because the DTO is shared. */
   error: string | null;
 };
 
 export type ServerRestartReport = {
   restarted: number;
-  /** Workloads left alone: the ones already stopped (restarting them would have
-   *  STARTED them, a different verb than the operator pressed) and the ones with
-   *  a deploy in flight, which come back on their own. */
   skipped: number;
   failures: RestartedWorkload[];
 };
 
-/* ------------------------------------------------------------------ */
-/* Host identity + clock                                               */
-/* ------------------------------------------------------------------ */
-
-/**
- * Read what this host IS. Deliberately not cached: the whole point of the panel is
- * to answer "what is actually on this box right now", and a stored answer is how a
- * server ends up showing the RAM it had before the operator resized it.
- */
 export async function serverHostInfo(id: string): Promise<ServerHostInfo> {
   await requireInstanceAdmin();
-  // Not redundant with the gate above: the 2FA POLICY lives in requireActiveTeamId,
-  // and every mutation in this module already goes through it.
   await requireActiveTeamId();
   const server = await getServerById(id);
   if (!server) throw new Error("Server not found");
 
-  const { fetchHostInfo } = await import("../infra/agent-client");
+  const { fetchHostInfo } = await import("../infra/agent-client/host-ops");
   const info = await fetchHostInfo(id, {
     controlPlaneHint: controlPlaneHint(),
   });
   return toHostInfo(info);
 }
 
-/**
- * Move a host's clock to an IANA timezone. The agent re-validates against
- * /usr/share/zoneinfo, because that is where the write happens and a host may
- * simply not carry every zone.
- */
 export async function setServerTimezone(
   id: string,
   timezone: string,
@@ -113,7 +76,7 @@ export async function setServerTimezone(
       `${timezone.trim() || "That"} is not a timezone. Pick one from the list, like "Europe/Rome".`,
     );
 
-  const { setHostTimezone } = await import("../infra/agent-client");
+  const { setHostTimezone } = await import("../infra/agent-client/host-ops");
   const info = await setHostTimezone(id, tz, {
     controlPlaneHint: controlPlaneHint(),
   });
@@ -127,11 +90,6 @@ export async function setServerTimezone(
   return toHostInfo(info);
 }
 
-/**
- * The CANONICAL IANA name for what the caller sent, or null if it is not a zone.
- * Exported for its unit test: with the agent unreachable there is no other way to
- * observe WHICH name would have been sent.
- */
 export function canonicalTimezone(input: string): string | null {
   const tz = input.trim();
   if (!tz) return null;
@@ -146,13 +104,6 @@ export function canonicalTimezone(input: string): string | null {
   return /^[+-]/.test(resolved) ? null : resolved;
 }
 
-/* ------------------------------------------------------------------ */
-/* Restarts                                                            */
-/* ------------------------------------------------------------------ */
-
-/**
- * Restart every App and database Deplo runs on this server.
- */
 export async function restartServerWorkloads(
   id: string,
 ): Promise<ServerRestartReport> {
@@ -165,8 +116,6 @@ export async function restartServerWorkloads(
 
   const db = getDb();
   const [appRows, dbRows] = await Promise.all([
-    // status is the App's own INTENT: the last thing the control plane was asked to do,
-    // not what the host has (lib/apps/display-status.ts).
     db
       .select({
         slug: appsTable.slug,
@@ -199,21 +148,17 @@ export async function restartServerWorkloads(
     })),
     ...dbRows.map((d) => ({
       kind: "database" as const,
-      // `host` IS the stack slug (`db-<name>`, frozen at create). The connection
-      // string's host is a different value that never lands in this column.
       slug: d.host,
       name: d.name,
       restart: !LEAVE_ALONE_DB_STATUSES.has(d.status),
     })),
   ];
 
-  const { AgentUnreachableError } = await import("../infra/agent-client");
+  const { AgentUnreachableError } =
+    await import("../infra/agent-client/errors");
   const failures: RestartedWorkload[] = [];
   let restarted = 0;
   let skipped = 0;
-  // Sequential on purpose: this runs on ONE host, and firing twenty concurrent
-  // compose invocations at a box the operator is already worried about is how a
-  // "restart everything" turns into an outage.
   for (const target of targets) {
     if (!target.restart) {
       skipped++;
@@ -222,8 +167,6 @@ export async function restartServerWorkloads(
     try {
       await stopStackOn(id, target.slug);
     } catch (e) {
-      // A host that did not ANSWER (a gRPC code = the dial itself failed) fails
-      // every remaining workload identically: one refusal, not twenty rows of it.
       if (e instanceof AgentUnreachableError && typeof e.code === "number")
         throw e;
       failures.push({ kind: target.kind, name: target.name, error: reason(e) });
@@ -233,9 +176,6 @@ export async function restartServerWorkloads(
       await startStackOn(id, target.slug);
       restarted++;
     } catch (e) {
-      // The one outcome the operator must not have to infer: it went down and did
-      // not come back. Reported as a failure like any other would read as "nothing
-      // happened", and something did.
       failures.push({
         kind: target.kind,
         name: target.name,
@@ -254,11 +194,6 @@ export async function restartServerWorkloads(
   return { restarted, skipped, failures };
 }
 
-/**
- * App statuses a whole-server restart passes over. `idle`/`stopping` are down
- * (restarting would START them); `building`/`queued` have a deploy in flight and
- * come back on their own.
- */
 const LEAVE_ALONE_APP_STATUSES: ReadonlySet<string> = new Set<AppStatus>([
   "idle",
   "stopping",
@@ -266,21 +201,14 @@ const LEAVE_ALONE_APP_STATUSES: ReadonlySet<string> = new Set<AppStatus>([
   "queued",
 ]);
 
-/** The same call for databases: `stopped` is down, `provisioning` is mid-create
- *  (there is no stack yet). `error` is restartable for the same reason as above. */
 const LEAVE_ALONE_DB_STATUSES: ReadonlySet<string> = new Set([
   "stopped",
   "provisioning",
 ]);
 
-/** An error's own words, for a report the operator reads. */
 const reason = (e: unknown): string =>
   e instanceof Error ? e.message : String(e);
 
-/**
- * Restart the host's Traefik. Not a config change: the stack file is untouched,
- * so this is the "it is wedged, bounce it" button and nothing more.
- */
 export async function restartServerTraefik(id: string): Promise<void> {
   await requireInstanceAdmin();
   const teamId = await requireActiveTeamId();
@@ -289,10 +217,8 @@ export async function restartServerTraefik(id: string): Promise<void> {
   if (!server) throw new Error("Server not found");
   assertNotMigrationSource(server);
 
-  const { applyTraefikConfig } = await import("../infra/agent-client");
+  const { applyTraefikConfig } = await import("../infra/agent-client/host-ops");
   const res = await applyTraefikConfig(id, { restartOnly: true });
-  // The agent reports a refusal (a Traefik it did not install) as ok:false with
-  // a reason - surface that verbatim rather than inventing copy for it.
   if (!res.ok)
     throw new Error(res.error || `Could not restart Traefik on ${server.name}`);
   await recordActivity(
@@ -304,9 +230,6 @@ export async function restartServerTraefik(id: string): Promise<void> {
   );
 }
 
-/**
- * Restart the Deplo panel - only ever on the host that runs it.
- */
 export async function restartDeploPanel(id: string): Promise<void> {
   await requireInstanceAdmin();
   const teamId = await requireActiveTeamId();
@@ -318,12 +241,11 @@ export async function restartDeploPanel(id: string): Promise<void> {
       `${server.name} does not run the Deplo panel - only the host running Deplo can restart it.`,
     );
 
-  const { restartControlPlaneOn } = await import("../infra/agent-client");
+  const { restartControlPlaneOn } =
+    await import("../infra/agent-client/host-ops");
   const res = await restartControlPlaneOn(id, controlPlaneHint());
   if (!res.ok)
     throw new Error(res.error || "Deplo could not be restarted on this host");
-  // Recorded BEFORE the restart lands (it is scheduled a moment out), so the
-  // trail survives the process going away mid-request.
   await recordActivity(
     "server",
     `Restarted the Deplo panel`,
@@ -333,17 +255,9 @@ export async function restartDeploPanel(id: string): Promise<void> {
   );
 }
 
-/**
- * How the control plane names itself to the agent: its own hostname, which inside
- * a container IS the short container id.
- */
 function controlPlaneHint(): string {
   return hostname();
 }
-
-/* ------------------------------------------------------------------ */
-/* Mapping                                                             */
-/* ------------------------------------------------------------------ */
 
 function toHostInfo(info: {
   cpuModel: string;
@@ -378,9 +292,6 @@ function toHostInfo(info: {
     uptimeSec: Number(info.uptimeSec),
     timezone: info.timezone,
     timeUnixMs: Number(info.timeUnixMs),
-    // Stamped where the reading lands, so the pair is measured between two
-    // machines Deplo controls. The agent round trip is inside the difference,
-    // which is why a few seconds of it never counts as drift.
     controlPlaneTimeUnixMs: Date.now(),
     utcOffsetMinutes: info.utcOffsetMinutes,
     canRestartControlPlane: Boolean(info.controlPlaneContainer),

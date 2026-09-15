@@ -3,26 +3,19 @@ import "server-only";
 import { and, asc, eq, isNull, ne, or } from "drizzle-orm";
 
 import { getDb } from "../db/client";
+import { apps as appsTable } from "../db/schema/control-plane/apps";
+import { databases as databasesTable } from "../db/schema/control-plane/databases";
 import {
-  apps as appsTable,
-  databases as databasesTable,
   environments as environmentsTable,
   projects as projectsTable,
-} from "../db/schema/control-plane";
-import { composeClaimedNames } from "../deploy/compose-lint";
+} from "../db/schema/control-plane/projects";
+import { composeClaimedNames } from "../deploy/compose-lint/networks";
 import { appNetwork } from "../deploy/network";
 import { stackName } from "../deploy/deploy-key";
 import type { Neighbour } from "../deploy/cross-network";
 
-/** How many neighbours to read. A host with more than this has bigger problems. */
 const MAX_NEIGHBOURS = 200;
 
-/**
- * Every DNS name a stack of this team answers to that could matter to this app:
- * the ones it cannot reach, and the ones it CAN, which is what a name collision
- * is made of. Another TEAM is never named: it is unreachable by construction, so
- * saying so would only leak their project.
- */
 export async function neighboursForApp(a: {
   id: string;
   serverId: string;
@@ -31,8 +24,6 @@ export async function neighboursForApp(a: {
 }): Promise<Neighbour[]> {
   const mine = appNetwork(a);
   const db = getDb();
-  // The same placement, NULL (the team's top level) included - the other half of
-  // "could matter", since a neighbour there shares this app's network by name.
   const envId = a.environmentId ?? null;
   const appPlaced = envId
     ? eq(appsTable.environmentId, envId)
@@ -60,10 +51,6 @@ export async function neighboursForApp(a: {
         projectsTable,
         eq(environmentsTable.projectId, projectsTable.id),
       )
-      // Same TEAM as well as same host: another team's network is unreachable by
-      // construction, so naming one would only leak their project name. Narrowed to
-      // the neighbours that can matter - this host, or this placement on another one -
-      // so the cap cannot silently drop the one the app actually names.
       .where(
         and(
           eq(appsTable.teamId, a.teamId),
@@ -111,8 +98,6 @@ export async function neighboursForApp(a: {
     if (!name) return;
     const sameNetwork = network === mine;
     const sameHost = serverId === a.serverId;
-    // Reachable is same network name AND same machine. Anything else is a name this
-    // app will not resolve, and the two reasons take different advice.
     out.push({
       name: name.toLowerCase(),
       network,
@@ -128,8 +113,6 @@ export async function neighboursForApp(a: {
   for (const n of neighbours) {
     const net = appNetwork(n);
     const where = placeLabel(n.projectName, n.envName);
-    // A compose stack answers to every service name it declares; a single-image
-    // one answers to its container, which is the stack name.
     const names = n.compose?.trim()
       ? composeClaimedNames(n.compose)
       : [stackName(n.slug)];
@@ -145,22 +128,10 @@ export async function neighboursForApp(a: {
   return out;
 }
 
-/**
- * Where a neighbour lives, said the way the user could act on it. An app with no
- * Environment is at the team's top level, and telling someone to "move into that
- * environment" when there is none is advice they cannot follow.
- */
 function placeLabel(project: string | null, env: string | null): string {
   return project && env ? `${project} / ${env}` : "the team's top level";
 }
 
-/**
- * Strip a neighbour down to what a deploy log may carry. The log outlives the
- * request and is read later by anyone with `view_logs`, so this cannot depend on
- * who started the deploy: a run by an owner would write the full layout and a
- * scoped member would read it afterwards. The NAME still appears - the app itself
- * wrote it - but where it lives does not.
- */
 export function redactNeighbours(list: Neighbour[]): Neighbour[] {
   return list.map((n) => ({ ...n, where: "another part of this team" }));
 }

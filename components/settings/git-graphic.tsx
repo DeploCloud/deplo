@@ -1,6 +1,5 @@
 import { cn } from "@/lib/utils";
 
-/** The Git empty-state illustration: a repository being cloned across. */
 export function GitGraphic({ className }: { className?: string }) {
   return (
     <svg

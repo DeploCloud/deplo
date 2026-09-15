@@ -35,43 +35,18 @@ export function ConfirmAction({
   extra,
   onConfirm,
 }: {
-  /** Uncontrolled: render a trigger that opens the dialog. */
   trigger?: React.ReactNode;
-  /** Controlled mode (e.g. opened from a dropdown item). */
   open?: boolean;
   onOpenChange?: (v: boolean) => void;
   title: string;
   description: React.ReactNode;
   confirmLabel?: string;
   variant?: "destructive" | "default";
-  /**
-   * What this action costs, in one concrete sentence. Never behind a link: the
-   * consequence of a destructive act stays on screen.
-   */
   consequence?: React.ReactNode;
   successMessage?: string;
-  /**
-   * Typed confirmation: when set, the confirm button stays disabled until the user
-   * types this exact string (case-sensitive).
-   */
   confirmText?: string;
-  /**
-   * Hold the confirm button closed for a reason the CALLER knows: the dialog is
-   * still loading what it is about to destroy, or the action is refused outright
-   * and the description already says why.
-   */
   confirmDisabled?: boolean;
-  /**
-   * Fire and close: the dialog shuts on the confirm CLICK and `onConfirm` settles
-   * behind it, instead of holding the user in front of a spinner for the round
-   * trip.
-   */
   optimistic?: boolean;
-  /**
-   * Extra content rendered between the description and the footer - e.g. a
-   * "also delete S3 artifacts" checkbox on a delete dialog. Keep it controlled
-   * by the caller; this component only lays it out.
-   */
   extra?: React.ReactNode;
   onConfirm: () => Promise<ActionResult<unknown>>;
 }) {
@@ -82,8 +57,6 @@ export function ConfirmAction({
   const [typed, setTyped] = React.useState("");
   const confirmInputId = React.useId();
 
-  // Reset the typed phrase on close so a previous attempt never leaves a stale,
-  // already-matching value behind the next time the dialog opens.
   const setOpen = (v: boolean) => {
     if (!v) setTyped("");
     onOpenChange?.(v);
@@ -94,8 +67,6 @@ export function ConfirmAction({
 
   function onSubmit(e: React.FormEvent) {
     e.preventDefault();
-    // This dialog is routinely rendered INSIDE another dialog's <form> (a row's delete
-    // action, the `extra` slot).
     e.stopPropagation();
     handleConfirm();
   }
@@ -103,8 +74,6 @@ export function ConfirmAction({
   function handleConfirm() {
     if (!typedOk || confirmDisabled) return;
     if (optimistic) {
-      // Close FIRST, then hand over: the caller's `onConfirm` drops the row in the same
-      // event, so the click, the dialog leaving and the row leaving are one commit.
       setOpen(false);
       void onConfirm()
         .then((res) => {
@@ -141,10 +110,6 @@ export function ConfirmAction({
           {extra}
           {confirmText && (
             <div className="space-y-2">
-              {/**
-               * Copy sits ON the name, not at the end of the sentence: what the operator does
-               * next is paste it into the box below.
-               */}
               <div className="flex flex-wrap items-center gap-x-1 gap-y-0.5">
                 <Label
                   htmlFor={confirmInputId}
@@ -187,9 +152,6 @@ export function ConfirmAction({
               aria-busy={pending}
               aria-label={pending ? confirmLabel : undefined}
             >
-              {/* While the action runs, a spinner stands in for the label. The
-                  label stays mounted (just hidden) so the button keeps its
-                  width and the footer doesn't jump mid-action. */}
               <span className="grid place-items-center">
                 <span
                   className={cn(
@@ -211,10 +173,6 @@ export function ConfirmAction({
   );
 }
 
-/**
- * What a destructive action costs, in one concrete sentence. Never behind a
- * link, and never the place for background: the box is read, not studied.
- */
 export function ConsequenceNote({ children }: { children: React.ReactNode }) {
   return (
     <p className="flex items-start gap-2 rounded-lg border border-destructive/40 bg-destructive-wash p-3 text-sm text-destructive">

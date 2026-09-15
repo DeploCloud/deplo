@@ -3,7 +3,6 @@ import assert from "node:assert/strict";
 import { pickRelated } from "./related";
 import type { CatalogTemplate } from "@/templates/types";
 
-/** A catalogue entry trimmed to what `pickRelated` reads. */
 function tpl(slug: string, category: string): CatalogTemplate {
   return {
     name: slug,

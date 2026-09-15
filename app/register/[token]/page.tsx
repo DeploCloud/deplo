@@ -1,5 +1,5 @@
 import Link from "@/components/ui/link";
-import { getRegistrationLinkInfo } from "@/lib/data/members";
+import { getRegistrationLinkInfo } from "@/lib/data/members/registration-redeem";
 import { AuthChrome } from "@/components/auth/auth-chrome";
 import { InvalidLinkGraphic } from "@/components/auth/invalid-link-graphic";
 import { Button } from "@/components/ui/button";
@@ -26,10 +26,6 @@ export default async function RegisterPage(
             prefill={{ name: one(sp.name, 80), email: one(sp.email, 254) }}
           />
         ) : (
-          // No intro in front of this one: a dead link should not cost two
-          // seconds of animation before it says so. The chrome stays OUTSIDE the
-          // animated box: its `filter` would become the containing block and
-          // strand both fixed corners mid-screen.
           <>
             <AuthChrome />
             <div className="deplo-stagger w-full max-w-sm text-center">
@@ -53,8 +49,6 @@ export default async function RegisterPage(
   );
 }
 
-/** A form default carried by the link (a migration fills these in), nothing the
- *  server acts on - capped at what the field itself takes. */
 function one(v: string | string[] | undefined, max: number): string {
   return typeof v === "string" ? v.trim().slice(0, max) : "";
 }

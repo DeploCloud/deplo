@@ -2,10 +2,8 @@ import * as React from "react";
 import { GitBranch, Layers, Container, Package } from "lucide-react";
 import { GitHubIcon } from "@/components/shared/brand-icons";
 import { usesComposeStack } from "@/lib/utils";
-import type { GitRepo } from "@/lib/types";
+import type { GitRepo } from "@/lib/types/build";
 
-/** The project fields needed to identify its source. Structurally satisfied by
- *  both `App` and `AppSummary`. */
 export type AppSourceLike = {
   source: string;
   compose: string | null;
@@ -14,21 +12,11 @@ export type AppSourceLike = {
 };
 
 export interface AppSourceDescriptor {
-  /** Icon component (lucide or a brand glyph) - render as `<Icon className=… />`. */
   Icon: React.ComponentType<{ className?: string }>;
-  /** Short human label for what backs the app (repo, "Compose", image, …). */
   label: string;
-  /**
-   * True ONLY for a git-backed source (github / plain git), where a branch and
-   * commit are meaningful. A compose stack, a docker image or an uploaded archive
-   * has no git, so the UI must not invent a branch for it.
-   */
   isGit: boolean;
 }
 
-/**
- * Describe where an app's code/image comes from, for display.
- */
 export function describeAppSource(project: AppSourceLike): AppSourceDescriptor {
   if (usesComposeStack(project)) {
     return { Icon: Layers, label: "Compose", isGit: false };

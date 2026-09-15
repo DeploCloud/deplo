@@ -3,7 +3,6 @@ import assert from "node:assert/strict";
 import type * as React from "react";
 import { scopeListenersToSubtree } from "./portal-event-scope";
 
-/** A card wrapper element that contains `inside`, and nothing else. */
 function wrapper(inside: object) {
   const node: { contains(n: unknown): boolean } = {
     contains: (n: unknown) => n === node || n === inside,
@@ -11,7 +10,6 @@ function wrapper(inside: object) {
   return node;
 }
 
-/** The two Nodes a React event exposes, and nothing we don't read. */
 const event = (currentTarget: unknown, target: unknown) =>
   ({ currentTarget, target }) as unknown as React.SyntheticEvent;
 
@@ -29,7 +27,7 @@ test("runs a listener for a press that started inside the element", () => {
 });
 
 test("drops a press that only reached the element through the React tree", () => {
-  const portalled = {}; // a Dialog overlay, mounted under <body>
+  const portalled = {};
   const card = wrapper({});
   const seen: string[] = [];
   const scoped = scopeListenersToSubtree({

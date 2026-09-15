@@ -3,12 +3,6 @@ import assert from "node:assert/strict";
 
 import { isDeploOwnedAuthPath } from "./better-auth";
 
-/**
- * `app/api/auth/[...all]/route.ts` mounts Better Auth WHOLE, because the OAuth
- * surface has to be reachable. These tests pin both halves - what must be shut,
- * and what must stay open.
- */
-
 test("the account surface Deplo drives itself is shut", () => {
   for (const path of [
     "/sign-in/email",

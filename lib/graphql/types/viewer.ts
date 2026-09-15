@@ -1,11 +1,6 @@
 import { builder } from "../builder";
-import type { PublicUser } from "@/lib/types";
+import type { PublicUser } from "@/lib/types/identity";
 
-/**
- * The viewer: who the current request is authenticated as. Proves both auth
- * paths end to end - `me` returns the same shape whether the caller used a
- * session cookie (browser) or an `Authorization: Bearer deplo_…` token.
- */
 export const ViewerRef = builder.objectRef<PublicUser>("Viewer").implement({
   description: "The authenticated principal for the current request.",
   fields: (t) => ({

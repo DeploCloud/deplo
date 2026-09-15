@@ -1,12 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-import { withTraefikStackLock } from "./agent-client";
-
-/**
- * Three features rewrite a host's Traefik stack file: the certificates tab, the
- * fleet-wide ACME account email, and the dashboard toggle.
- */
+import { withTraefikStackLock } from "./agent-client/host-ops";
 
 test("two writers on ONE server never interleave their read and their write", async () => {
   const order: string[] = [];
@@ -35,7 +30,6 @@ test("a failed write still lets the next one run", async () => {
     return "ok";
   });
 
-  // The caller sees its own failure; the queue behind it does not inherit it.
   await assert.rejects(() => boom, /the host refused it/);
   assert.equal(await after, "ok");
   assert.deepEqual(ran, ["first", "second"]);
@@ -53,6 +47,5 @@ test("different servers are not serialised against each other", async () => {
       order.push("fast");
     }),
   ]);
-  // A fleet-wide change would otherwise take as long as the sum of its hosts.
   assert.deepEqual(order, ["slow:start", "fast", "slow:end"]);
 });

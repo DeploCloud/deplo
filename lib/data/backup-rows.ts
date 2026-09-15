@@ -1,32 +1,31 @@
 import type { InferInsertModel, InferSelectModel } from "drizzle-orm";
 
-import { assembleResources, resourceLimitsToRow } from "./app-graph-rows";
+import {
+  assembleResources,
+  resourceLimitsToRow,
+} from "./app-graph-rows/resource-limits";
 import {
   backups,
   backupRuns,
-  databases,
   backupDestination,
-} from "../db/schema/control-plane";
+} from "../db/schema/control-plane/backups";
+import { databases } from "../db/schema/control-plane/databases";
 import type {
   Backup,
   BackupDestination,
   BackupRun,
   BackupRunStatus,
   BackupTargetKind,
+  DestinationKind,
+  DestinationStatus,
+  S3Provider,
+} from "../types/backup";
+import type {
   Database,
   DatabaseMount,
   DatabaseStatus,
   DatabaseType,
-  DestinationKind,
-  DestinationStatus,
-  S3Provider,
-} from "../types";
-
-/**
- * The ONE relational-rows ↔ domain-objects mapping for the backups tables
- * (relational-store PLAN §3 cut-set (d) / §2 the data aggregate): `databases`,
- * `backup_destination`, `backups`, `backup_runs`.
- */
+} from "../types/database";
 
 export type DatabaseRow = InferSelectModel<typeof databases>;
 export type DatabaseInsert = InferInsertModel<typeof databases>;
@@ -39,11 +38,6 @@ export type BackupInsert = InferInsertModel<typeof backups>;
 export type BackupRunRow = InferSelectModel<typeof backupRuns>;
 export type BackupRunInsert = InferInsertModel<typeof backupRuns>;
 
-/* ------------------------------------------------------------------ */
-/* databases                                                           */
-/* ------------------------------------------------------------------ */
-
-/** Explode a {@link Database} into its `databases` row (exhaustive via satisfies). */
 export function databaseToRow(d: Database): DatabaseInsert {
   return {
     id: d.id,
@@ -64,9 +58,6 @@ export function databaseToRow(d: Database): DatabaseInsert {
     connectionStringEnc: d.connectionStringEnc,
     exposedPublicly: d.exposedPublicly,
     exposedPort: d.exposedPort,
-    // Flattened ResourceLimits - shared with `appToRow` via the one mapping in
-    // app-graph-rows.ts (the `resource_*` block is declared identically on both
-    // tables), so the two tables can't drift on the column↔field fold.
     ...resourceLimitsToRow(d.resources),
     customImage: d.customImage,
     customCommand: d.customCommand,
@@ -74,17 +65,11 @@ export function databaseToRow(d: Database): DatabaseInsert {
     sizeMb: d.sizeMb,
     createdAt: d.createdAt,
   } satisfies Record<
-    // `mounts` is an ordered CHILD table (`database_mounts`), like an App's, so
-    // it is no more a column here than `resources` is one column.
     Exclude<keyof Database, "resources" | "mounts">,
     unknown
   > as DatabaseInsert;
 }
 
-/**
- * Reassemble a `databases` row into a {@link Database}. The one caller that must
- * pass them is the one whose result is rendered into a stack.
- */
 export function assembleDatabase(
   row: DatabaseRow,
   mounts: DatabaseMount[] = [],
@@ -108,7 +93,6 @@ export function assembleDatabase(
     connectionStringEnc: row.connectionStringEnc,
     exposedPublicly: row.exposedPublicly,
     exposedPort: row.exposedPort,
-    // All-NULL resource columns ⇒ no limits set (null) - same fold as apps.
     resources: assembleResources(row),
     customImage: row.customImage,
     customCommand: row.customCommand,
@@ -119,13 +103,6 @@ export function assembleDatabase(
   };
 }
 
-/* ------------------------------------------------------------------ */
-/* backup_destination                                                  */
-/* ------------------------------------------------------------------ */
-
-/**
- * Explode a {@link BackupDestination} into its `backup_destination` row.
- */
 export function destinationToRow(
   d: BackupDestination,
 ): BackupDestinationInsert {
@@ -162,7 +139,6 @@ export function destinationToRow(
   > as BackupDestinationInsert;
 }
 
-/** Reassemble a `backup_destination` row into a {@link BackupDestination}. */
 export function assembleDestination(
   row: BackupDestinationRow,
 ): BackupDestination {
@@ -196,11 +172,6 @@ export function assembleDestination(
   };
 }
 
-/* ------------------------------------------------------------------ */
-/* backups (schedule)                                                  */
-/* ------------------------------------------------------------------ */
-
-/** Explode a {@link Backup} schedule into its `backups` row. */
 export function backupToRow(b: Backup): BackupInsert {
   return {
     id: b.id,
@@ -220,7 +191,6 @@ export function backupToRow(b: Backup): BackupInsert {
   } satisfies Record<keyof Backup, unknown> as BackupInsert;
 }
 
-/** Reassemble a `backups` row into a {@link Backup} schedule. */
 export function assembleBackup(row: BackupRow): Backup {
   return {
     id: row.id,
@@ -240,14 +210,6 @@ export function assembleBackup(row: BackupRow): Backup {
   };
 }
 
-/* ------------------------------------------------------------------ */
-/* backup_runs (history)                                               */
-/* ------------------------------------------------------------------ */
-
-/**
- * Explode a {@link BackupRun} into its `backup_runs` row. (`seq` is
- * `generatedAlwaysAsIdentity`, so even passing it would be rejected.)
- */
 export function backupRunToRow(r: BackupRun): BackupRunInsert {
   return {
     id: r.id,
@@ -270,11 +232,6 @@ export function backupRunToRow(r: BackupRun): BackupRunInsert {
   } satisfies Record<keyof BackupRun, unknown> as BackupRunInsert;
 }
 
-/**
- * Reassemble a `backup_runs` row into a {@link BackupRun}. Drops `seq` (the domain
- * object never carries it - retention reads it via a dedicated `seq`-bearing
- * projection, {@link import("./backup-objectkey").RunForRetention}).
- */
 export function assembleBackupRun(row: BackupRunRow): BackupRun {
   return {
     id: row.id,

@@ -16,14 +16,9 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { gqlAction } from "@/lib/graphql-client";
-import type { Team } from "@/lib/types";
+import type { Team } from "@/lib/types/team";
 import { DocsLink } from "@/components/ui/docs-link";
 
-/**
- * Create a new team - the viewer becomes its owner and it is made active.
- * Controlled (no trigger of its own) so it can be opened from a menu, the team
- * switcher, or anywhere else.
- */
 export function CreateTeamDialog({
   open,
   onOpenChange,
@@ -33,22 +28,12 @@ export function CreateTeamDialog({
 }: {
   open: boolean;
   onOpenChange: (o: boolean) => void;
-  /**
-   * Whether to leave for the overview once the team exists. False when the
-   * caller is mid-flow with state a navigation would throw away - the migration
-   * wizard holds a scan and an API key that exist only in its tab. */
   redirect?: boolean;
-  /** Fired with the new team's id once it exists and is active - for a caller
-   *  that has to react to landing in a different team. */
   onCreated?: (teamId: string) => void;
-  /** What the field opens with - the source team's name, when a migration is
-   *  creating the team that mirrors it. */
   defaultName?: string;
 }) {
   const router = useRouter();
   const [pending, startTransition] = React.useTransition();
-  // Back to the seed rather than to empty, so a dialog that stays mounted still
-  // opens on the name its caller gave it.
   const [name, setName] = React.useState(defaultName ?? "");
 
   function onSubmit(e: React.FormEvent) {
@@ -67,12 +52,7 @@ export function CreateTeamDialog({
         toast.success("Team created");
         onOpenChange(false);
         setName(defaultName ?? "");
-        // Into the new team, by name: the team a page shows IS its address, so
-        // landing on `/` would just put the old one back.
         if (redirect && res.data) router.push(`/${res.data.slug}`);
-        // Either way: `createTeam` switches the active team server-side, so
-        // every read on the page behind this dialog is now about a different
-        // team and has to run again.
         router.refresh();
         if (res.data) onCreated?.(res.data.id);
       } else {

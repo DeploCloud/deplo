@@ -1,11 +1,5 @@
-/**
- * The curated accent colours offered for a folder tile, alongside a free-form
- * custom HEX.
- */
 export interface FolderColor {
-  /** Human label shown as the swatch's tooltip / aria-label. */
   name: string;
-  /** Canonical lowercase `#rrggbb`. */
   value: string;
 }
 

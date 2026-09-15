@@ -15,12 +15,6 @@ import {
 } from "./identity-test-helpers";
 import { applyDeploUpdate, listDeploReleases, releaseProse } from "./updates";
 
-/**
- * The changelog is remote input rendered inside the panel: a draft nobody
- * published must not appear, and a GitHub that says no must say so rather than
- * read as "there are no releases".
- */
-
 let db: TestDb;
 let pg: PGlite;
 
@@ -79,7 +73,6 @@ test("drafts are dropped and the running version is the one marked installed", a
     );
     assert.equal(releases[0].current, false);
     assert.equal(releases[1].current, true);
-    // A release published without a title still needs one to click on.
     assert.equal(releases[1].name, `v${DEPLO_VERSION}`);
   } finally {
     capture.restore();
@@ -114,7 +107,6 @@ test("a member cannot read the instance's changelog", async () => {
   const capture = captureFetch(() => json([]));
   try {
     await assert.rejects(() => asUser(MEMBER, listDeploReleases));
-    // Refused before the call went out, not after.
     assert.equal(capture.calls.length, 0);
   } finally {
     capture.restore();
@@ -144,8 +136,6 @@ test("an instance already on the newest release is not updated", async () => {
 });
 
 test("without the panel's own machine as a server there is nobody to ask", async () => {
-  // The button exists because agent 0 runs the installer. An instance whose host
-  // is not enrolled has to be told that, not left with a spinner.
   const capture = captureFetch(() =>
     json({ tag_name: "v99.0.0", html_url: "u" }),
   );
@@ -159,10 +149,6 @@ test("without the panel's own machine as a server there is nobody to ask", async
   }
 });
 
-/**
- * The changelog is read by somebody deciding whether to update, not by whoever
- * wrote the PRs: GitHub's generated "What's Changed" list is not their answer.
- */
 test("the changelog keeps the prose and drops the generated list", () => {
   const body = [
     "Hello, world. This is Deplo's first tagged build.",
@@ -179,11 +165,9 @@ test("the changelog keeps the prose and drops the generated list", () => {
   assert.match(prose, /without the shell/);
   assert.doesNotMatch(prose, /What's Changed|pull\/1|Full Changelog/);
 
-  // A release that is ONLY the generated list gets a link, not the wall.
   assert.equal(
     releaseProse("## What's Changed\n* only a list", "https://example.com/r"),
     "[Read the notes on GitHub](https://example.com/r)",
   );
-  // Nothing at all stays nothing - no link to an empty page.
   assert.equal(releaseProse("", "https://example.com/r"), "");
 });

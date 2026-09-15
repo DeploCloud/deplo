@@ -10,12 +10,8 @@ import type {
   BuildConfig,
   BuildMethod,
   BuildMethodSettings,
-} from "@/lib/types";
+} from "@/lib/types/build";
 
-/**
- * The build-method-aware "Build & Output" section of the NEW-APP WIZARD: build
- * method, the commands, and the runtime, in the order the questions get asked.
- */
 export function BuildConfigFields({
   build,
   onBuildChange,
@@ -23,7 +19,6 @@ export function BuildConfigFields({
 }: {
   build: BuildConfig;
   onBuildChange: (next: BuildConfig) => void;
-  /** False where the card already asks for them at its own level. */
   commands?: boolean;
 }) {
   function setBuild(updater: (b: BuildConfig) => BuildConfig) {
@@ -41,8 +36,6 @@ export function BuildConfigFields({
     }));
   }
 
-  // Build command / start command / Node version are optional OVERRIDES for the
-  // auto-detecting builders.
   const method = build.buildMethod;
   const showBuildCommand =
     method === "nixpacks" || method === "railpack" || method === "static";
@@ -51,7 +44,6 @@ export function BuildConfigFields({
     method === "nixpacks" || method === "railpack" || method === "static";
   const showCommands = commands && (showBuildCommand || showStartCommand);
 
-  // The port field keeps a DRAFT of what is typed so it can be emptied mid-edit.
   const [portDraft, setPortDraft] = React.useState<string | null>(null);
   const portText = portDraft ?? String(build.port);
 
@@ -63,8 +55,6 @@ export function BuildConfigFields({
     }
   }
 
-  /** Leaving the field drops the draft, so the box shows the committed port
-   * again, which is what restores it after it was emptied or left invalid. */
   function onPortBlur() {
     setPortDraft(null);
   }
@@ -179,11 +169,6 @@ export function BuildConfigFields({
   );
 }
 
-/**
- * One titled group of fields. A rule + a quiet heading rather than another
- * bordered box: the method options and the framework already own panels, and a
- * card of nested boxes reads as noise.
- */
 function FieldGroup({
   title,
   hint,
@@ -191,9 +176,7 @@ function FieldGroup({
   children,
 }: {
   title: string;
-  /** What the group is for. Read in the title's tooltip, never below it. */
   hint?: string;
-  /** Skips the top rule when this is the first thing in the card. */
   first?: boolean;
   children: React.ReactNode;
 }) {

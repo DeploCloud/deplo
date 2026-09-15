@@ -8,15 +8,8 @@ import {
   revealBasicAuthPassword,
   type BasicAuthUserDTO,
 } from "@/lib/data/basic-auth";
-import { rerouteApp } from "@/lib/deploy/build";
+import { rerouteApp } from "@/lib/deploy/build/reroute";
 
-/* ------------------------------------------------------------------ */
-/* Object type                                                         */
-/* ------------------------------------------------------------------ */
-
-// The password is never a FIELD - the username, its authorship and its
-// timestamps are all that ride the object. Reading a password back is a separate,
-// deliberate `revealBasicAuthPassword` call for one credential (see below).
 const BasicAuthUserRef = builder
   .objectRef<BasicAuthUserDTO>("BasicAuthUser")
   .implement({
@@ -25,9 +18,6 @@ const BasicAuthUserRef = builder
     fields: (t) => ({
       id: t.exposeID("id"),
       username: t.exposeString("username"),
-      // Identity metadata, never a value. Null for credentials created before
-      // authorship was tracked (migration 0045 does not backfill) or once the
-      // author's account is deleted - the UI renders "—".
       createdBy: t.field({
         type: VarAuthorRef,
         nullable: true,
@@ -49,10 +39,6 @@ const BasicAuthUserRef = builder
     }),
   });
 
-/* ------------------------------------------------------------------ */
-/* Queries                                                             */
-/* ------------------------------------------------------------------ */
-
 builder.queryFields((t) => ({
   basicAuthUsers: t.field({
     type: [BasicAuthUserRef],
@@ -63,10 +49,6 @@ builder.queryFields((t) => ({
     resolve: (_r, { appId }) => listBasicAuthUsers(appId),
   }),
 }));
-
-/* ------------------------------------------------------------------ */
-/* Mutations                                                           */
-/* ------------------------------------------------------------------ */
 
 builder.mutationFields((t) => ({
   addBasicAuthUser: t.field({
@@ -128,17 +110,10 @@ builder.mutationFields((t) => ({
   }),
 }));
 
-/**
- * Push an app's current basic-auth credentials to its RUNNING container.
- */
 async function applyRouting(appId: string): Promise<void> {
   try {
     await rerouteApp(appId);
   } catch (e) {
-    // The row is already committed, so a failed reroute is NOT "the save failed": say
-    // exactly what happened and how to retry, or the user is left believing a
-    // credential is guarding an app that is still open (or that a deleted one is gone
-    // while the login still works).
     const msg = e instanceof Error ? e.message : String(e);
     throw new Error(
       `Saved, but applying it to the running app failed: ${msg}. ` +

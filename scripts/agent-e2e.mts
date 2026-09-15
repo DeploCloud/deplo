@@ -1,6 +1,3 @@
-/**
- * End-to-end smoke test for the server agent (PLAN Part A).
- */
 import { spawn } from "node:child_process";
 import { mkdtempSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -10,7 +7,7 @@ process.env.DEPLO_SECRET ||= "e2e-agent-secret-aaaaaaaaaaaaaaaaaaaa";
 const DATA = mkdtempSync(join(tmpdir(), "deplo-agent-e2e-"));
 process.env.DEPLO_DATA_DIR = DATA;
 process.env.DEPLO_AGENT_BIN = join(process.cwd(), "agent/bin/deplo-agent");
-process.env.DEPLO_AGENT_ADDR = "127.0.0.1:19443"; // avoid clashing with a real agent
+process.env.DEPLO_AGENT_ADDR = "127.0.0.1:19443";
 
 const SLUG = "agent-e2e-demo";
 const NAME = `deplo-${SLUG}`;
@@ -29,8 +26,9 @@ function sh(
 }
 
 async function main() {
-  const { connectAgent, agentPreflight } =
-    await import("../lib/infra/agent-client");
+  const { connectAgent } = await import("../lib/infra/agent-client/connect");
+  const { agentPreflight } =
+    await import("../lib/infra/agent-client/preflight");
   const { SourceKind, BuildKind } = await import("../lib/agent/gen/agent");
 
   console.log("== preflight (Hello over mTLS) ==");
@@ -45,20 +43,16 @@ async function main() {
   if (!hello.dockerAvailable)
     throw new Error("agent reports docker unavailable");
 
-  // A minimal Dockerfile build context, tar'd in memory (ustar, relative).
   const ctxDir = mkdtempSync(join(tmpdir(), "deplo-e2e-ctx-"));
   writeFileSync(
     join(ctxDir, "Dockerfile"),
     [
       "FROM busybox:latest",
-      // A trivial long-running server on :3000 so the container stays running.
       `CMD ["sh","-c","while true; do echo hi | nc -l -p 3000 || sleep 1; done"]`,
     ].join("\n") + "\n",
   );
   const tar = await tarToBytes(ctxDir);
 
-  // A rendered single-image compose, exactly as renderCompose would emit (no
-  // routes needed for the e2e - we only assert the container runs).
   const composeYaml = `services:
   ${NAME}:
     image: deplo/${SLUG}:e2e
@@ -119,7 +113,6 @@ networks:
   const running = ps.out.trim() === "true";
   console.log(`  agent result.ready=${ready}  docker says running=${running}`);
 
-  // Teardown.
   await sh("docker", ["rm", "-f", NAME]);
   rmSync(ctxDir, { recursive: true, force: true });
   rmSync(DATA, { recursive: true, force: true });

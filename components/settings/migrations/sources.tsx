@@ -3,28 +3,15 @@ import * as React from "react";
 import { cn } from "@/lib/utils";
 import type { DocsTopic } from "@/lib/docs";
 
-/**
- * The two panels Deplo migrates from: their marks, and the words each screen uses
- * for them. One table per thing, both keyed the same way.
- */
-
 export const SOURCE_KINDS = ["dokploy", "coolify"] as const;
 export type SourceKind = (typeof SOURCE_KINDS)[number];
 
-/** Half of one swap cycle, in ms. The second mark runs this far behind the
- *  first, so one is scaling in while the other scales out. Matches
- *  `deplo-migrate-swap` in globals.css. */
 export const SWAP_HALF_MS = 2600;
 
 interface MarkPath {
   d: string;
-  /** The brand colour, verbatim from the upstream file. Absent means the mark is
-   *  monochrome, so it takes `currentColor` and the drawing decides its shade. */
   fill?: string;
-  /** A token class instead of a literal colour: `fill-border` and friends. */
   className?: string;
-  /** The upstream artwork's own layering. NOT the banned white-with-alpha: an
-   *  alpha on a genuinely coloured token is allowed, and #8c52ff is one. */
   fillOpacity?: number;
   transform?: string;
 }
@@ -34,14 +21,7 @@ interface SourceArt {
   paths: MarkPath[];
 }
 
-/**
- * A mark is painted in its own brand colour when it has one, and in `currentColor`
- * when it is monochrome. Both are inlined rather than loaded from `public/`, for
- * the reason `components/logo.tsx` gives: an `<image href>` renders the file's
- * baked-in fill.
- */
 export const SOURCE_ART: Record<SourceKind, SourceArt> = {
-  // public/migrations/dokploy.svg
   dokploy: {
     viewBox: "86 51.88 428.15 363.12",
     paths: [
@@ -56,12 +36,9 @@ export const SOURCE_ART: Record<SourceKind, SourceArt> = {
       },
     ],
   },
-  // public/migrations/coolify.svg
   coolify: {
     viewBox: "0 0 512 512",
     paths: [
-      // Three stacked layers, drawn in the three greys rather than one colour at
-      // three alphas: white at 30% is not a grey, it is whatever is behind it.
       {
         d: "M63.7-161.7h-90.9v272.8h90.9zm0 363.7h363.7v-90.9H63.7zm0-363.7h363.7v-90.9H63.7z",
         className: "fill-border",
@@ -81,11 +58,6 @@ export const SOURCE_ART: Record<SourceKind, SourceArt> = {
   },
 };
 
-/**
- * One mark's paths. `dim` flattens it onto `currentColor`: `--border` is the
- * token for "drawn, and no longer the subject", and it has nothing below it to
- * tint with.
- */
 export function markPaths(art: SourceArt, dim = false): React.ReactNode {
   const paint = (p: MarkPath) =>
     dim
@@ -98,7 +70,6 @@ export function markPaths(art: SourceArt, dim = false): React.ReactNode {
   ));
 }
 
-/** One panel's mark, for a line of text. */
 export function SourceMark({
   kind,
   className,
@@ -119,35 +90,20 @@ export function SourceMark({
   );
 }
 
-/* ------------------------------------------------------------------ */
-/* The words                                                           */
-/* ------------------------------------------------------------------ */
-
 interface SourceCopy {
-  /** The product's own name, for a sentence. */
   name: string;
   connectTitle: string;
   urlInfo: string;
   urlPlaceholder: string;
-  /** Dokploy calls it a key, Coolify calls it a token. Use their word. */
   tokenLabel: string;
   tokenInfo: string;
-  /** What the panel calls the thing a token reads: Dokploy an organization,
-   *  Coolify a team. Pluralised with an s in both. */
   teamLabel: string;
-  /** The port it answers on, for the same-machine address the field's tooltip
-   *  shows. The HOST half is read off this instance, never guessed. */
   privatePort: number;
   scanIdle: string;
   scanBusy: string;
   docs: DocsTopic;
 }
 
-/**
- * Three states, not a template: "Check this Dokploy" and "Check this panel" do
- * not come out of one sentence, and every string here is written for the state it
- * appears in.
- */
 export const SOURCE_COPY: Record<SourceKind | "unknown", SourceCopy> = {
   unknown: {
     name: "the panel",
@@ -196,12 +152,10 @@ export const SOURCE_COPY: Record<SourceKind | "unknown", SourceCopy> = {
   },
 };
 
-/** The words for what is known so far. */
 export function copyFor(kind: SourceKind | null): SourceCopy {
   return SOURCE_COPY[kind ?? "unknown"];
 }
 
-/** The guide for this panel, at the section a step is about. */
 export function stepDocs(
   kind: SourceKind | null,
   step: "run" | "source" | "people" | "changes",

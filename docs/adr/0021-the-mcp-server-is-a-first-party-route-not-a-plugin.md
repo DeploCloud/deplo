@@ -46,7 +46,7 @@ non-expert bar, because copying one line is the whole product here.
    (`@modelcontextprotocol/server`) owns every protocol mechanic; Deplo writes no JSON-RPC.
 
 2. **A tool is data, and the data layer is still the only boundary.** Each of the 76 tools is a
-   row in `lib/mcp/tools.ts`: a name, a zod schema and a GraphQL document. `lib/mcp/execute.ts`
+   row in `lib/mcp/tools/`: a name, a zod schema and a GraphQL document. `lib/mcp/execute.ts`
    runs the document **in-process** against the same schema `/api/graphql` serves, inside
    `runWithIdentity`, with a real `GraphQLContext`. Every `authScopes` check, every
    `requireCapability`, every folder grant, the token scope clamp and the 2FA policy therefore

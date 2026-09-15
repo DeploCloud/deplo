@@ -4,13 +4,7 @@ import * as React from "react";
 import { useTheme } from "@/components/theme-provider";
 import { Toaster as Sonner, type ToasterProps } from "sonner";
 
-/**
- * App-wide toast host. sonner's `richColors` palette is rebranded to Deplo's
- * tokens by overriding its custom properties INLINE on the toaster element: an
- * inline declaration beats its stylesheet rule regardless of injection order.
- */
 const TOAST_VARS = {
-  // Plain / loading toasts: match the popover surface (sonner's "normal" type).
   "--normal-bg": "var(--popover)",
   "--normal-border": "var(--border)",
   "--normal-text": "var(--popover-foreground)",
@@ -41,10 +35,9 @@ const Toaster = ({ ...props }: ToasterProps) => {
       richColors
       closeButton
       className="toaster group"
+      // Inline, not a stylesheet rule: that is what beats sonner's own richColors declarations whatever the injection order.
       style={TOAST_VARS}
       toastOptions={{
-        // Shape only - the per-type colours come from richColors + TOAST_VARS,
-        // so this must NOT pin a background/text colour or it would flatten them.
         classNames: {
           toast:
             "group toast group-[.toaster]:items-start group-[.toaster]:gap-2.5 group-[.toaster]:rounded-xl group-[.toaster]:border group-[.toaster]:p-4 group-[.toaster]:text-[13px] group-[.toaster]:shadow-lg",

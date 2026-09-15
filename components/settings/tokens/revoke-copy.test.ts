@@ -3,10 +3,6 @@ import assert from "node:assert/strict";
 
 import { joinNames, revokeDescription } from "./revoke-copy";
 
-/**
- * What Revoke promises, against what `revokeToken` does.
- */
-
 const A = { id: "team_a", name: "Acme" };
 const B = { id: "team_b", name: "Beta" };
 const C = { id: "team_c", name: "Gamma" };
@@ -35,9 +31,6 @@ test("a multi-team token names the other teams it takes down", () => {
 });
 
 test("revoking your own token from outside its reach names its teams too", () => {
-  // The tokens page lists every token you minted, so the active team may be one
-  // the credential never touched - and revoking it there still kills the teams
-  // it does reach.
   const text = revokeDescription({
     teams: [B, C],
     activeTeamId: A.id,
@@ -47,7 +40,6 @@ test("revoking your own token from outside its reach names its teams too", () =>
 });
 
 test("an unscoped token has no stored teams to name", () => {
-  // Its reach is "every team the creator belongs to", resolved live.
   const text = revokeDescription({
     teams: [],
     activeTeamId: A.id,

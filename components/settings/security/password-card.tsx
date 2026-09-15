@@ -18,9 +18,6 @@ const CHANGE_PASSWORD = /* GraphQL */ `
   }
 `;
 
-/**
- * Change the account password.
- */
 export function PasswordCard({
   twoFactorEnabled,
 }: {

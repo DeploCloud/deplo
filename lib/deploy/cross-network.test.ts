@@ -44,8 +44,6 @@ test("a bare hostname is reported when the KEY says host", () => {
   assert.equal(refs.length, 1);
 });
 
-// The measured false positive: `garage` is an S3 REGION here, not a host, and a
-// warning on it would train people to ignore the warnings.
 test("a bare value under a non-host key is NOT reported", () => {
   assert.deepEqual(crossNetworkRefs({ S3_REGION: "garage" }, FOREIGN), []);
 });
@@ -78,10 +76,6 @@ test("one line per neighbour, not per variable that names it", () => {
   assert.equal(refs.length, 1);
 });
 
-// A Docker network is local to its host, so two apps that share an Environment but
-// sit on different servers do NOT reach each other. The docs said they did, and the
-// detector used to skip other hosts as "not news" - between them, the commonest
-// cross-host mistake was made silently.
 test("a neighbour in the same environment on another server is reported", () => {
   const refs = crossNetworkRefs({ DB_HOST: "orders-db" }, [
     {
@@ -124,7 +118,6 @@ test("a name a reachable neighbour already answers to is a clash", () => {
     },
   ];
   const clashes = nameClashes(["redis", "api", "queue", "web"], neighbours);
-  // Only the one on this network AND this host: the others cannot answer here.
   assert.deepEqual(clashes, [{ name: "redis", where: "Shop / Prod" }]);
 });
 
@@ -142,8 +135,6 @@ test("one line per clashing name, whoever else answers to it", () => {
 });
 
 test("a mounted config file names a neighbour as squarely as an env var does", () => {
-  // `usesAsHost` reads a whole VALUE, and a config file is a document, so passing
-  // its text straight in matched nothing - those stacks got no warning at all.
   const found = {
     ...hostsInMountedFile(
       "nginx.conf",
@@ -162,10 +153,7 @@ test("a mounted config file names a neighbour as squarely as an env var does", (
 });
 
 test("usesAsHost knows DB_HOSTNAME, not only DB_HOST", () => {
-  // The anchor wanted the key to END in HOST, and `HOSTNAME` ends in NAME - so the
-  // commonest spelling of all was a silent false negative.
   assert.ok(usesAsHost("DB_HOSTNAME", "orders-db", "orders-db"));
   assert.ok(usesAsHost("DB_HOST", "orders-db", "orders-db"));
-  // Still not a bare value under a key that says nothing about hosts.
   assert.ok(!usesAsHost("S3_REGION", "garage", "garage"));
 });

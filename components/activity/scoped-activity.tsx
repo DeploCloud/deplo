@@ -34,16 +34,11 @@ import {
   scopedActivityFilter,
   type ActivityScope,
 } from "@/lib/activity-filter";
-import type { FacetOption } from "@/components/env/env-filters";
+import type { FacetOption } from "@/components/env/env-filters/types";
 
 type Actor = Awaited<ReturnType<typeof listActivityActors>>[number];
 type ActorCount = Awaited<ReturnType<typeof activityCountsByActor>>[number];
 
-/**
- * The team's trail narrowed to ONE thing. The same feed, rail and counts as
- * /activity with that dimension fixed, so its own facet is left out and every
- * link comes back here.
- */
 export async function ScopedActivity({
   scope,
   base,
@@ -57,12 +52,9 @@ export async function ScopedActivity({
   databaseLinks,
 }: {
   scope: ActivityScope;
-  /** This tab's own address - where a filter change and "Clear filters" land. */
   base: string;
   searchParams: Record<string, string | string[] | undefined>;
-  /** What the page says when nothing has happened at all. */
   emptyDescription: string;
-  /** The Resource facet's options. Omitted on a resource's own tab. */
   apps?: ResourceOption[];
   folders?: ResourceOption[];
   projects?: ResourceOption[];
@@ -73,8 +65,6 @@ export async function ScopedActivity({
   const params = parseActivityParams(searchParams);
   const pinnedActor = scope.kind === "actor";
   const filter = scopedActivityFilter(params, scope);
-  // Each count call blanks its OWN dimension, so picking a person narrows the
-  // events beside them without collapsing the people to a list of one.
   const counted = { ...filter, ...activityCountWindow(params) };
   const noActors: Actor[] = [];
   const noCounts: ActorCount[] = [];
@@ -83,7 +73,6 @@ export async function ScopedActivity({
     await Promise.all([
       listActivity(ACTIVITY_PAGE_SIZE, filter),
       activityMonths(filter),
-      // Nothing to offer and nothing to count when the actor IS the page.
       pinnedActor ? noActors : listActivityActors(),
       activityCountsByType({ ...counted, types: [] }),
       pinnedActor
@@ -113,8 +102,6 @@ export async function ScopedActivity({
       folders={folders}
       projects={projects}
       databases={databases}
-      // Zeroes spelled out rather than left absent: an option with no number
-      // reads as a bug, one showing 0 reads as "nothing lately".
       actorCounts={zeroed(
         actors.map((a) => a.value),
         byActor,
@@ -157,8 +144,6 @@ export async function ScopedActivity({
     count: c.count,
     author: actorById.get(c.actorUserId)?.author,
   }));
-  // Static markup, so the phone gets its own copy after the feed rather than the
-  // rail moving; the filters, which carry state, stay mounted once.
   const summary = (className: string) => (
     <ActivitySummary
       className={className}
@@ -178,7 +163,6 @@ export async function ScopedActivity({
       </aside>
       <div className="min-w-0 lg:col-start-1 lg:row-start-1">
         <ActivityFeed
-          // A filter change is a fresh first page, not more of the old one.
           key={activityHref(params, base)}
           initialItems={activities.map(toActivityItem)}
           monthCounts={Object.fromEntries(
@@ -186,8 +170,6 @@ export async function ScopedActivity({
           )}
           appLinks={appLinks ?? {}}
           databaseLinks={databaseLinks ?? {}}
-          // Their face on every row of their OWN page says nothing the header
-          // has not already said.
           showActor={!pinnedActor}
           variables={{
             actorUserIds: filter.actorUserIds.length
@@ -206,7 +188,6 @@ export async function ScopedActivity({
   );
 }
 
-/** Every option's count, absent ones spelled out as 0. */
 function zeroed(
   values: string[],
   counts: Record<string, number>,

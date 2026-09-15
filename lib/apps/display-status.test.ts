@@ -12,12 +12,6 @@ const runtime = (over: Partial<RuntimeSnapshot> = {}): RuntimeSnapshot => ({
   ...over,
 });
 
-/**
- * The bug these lock down: `apps.status` is the last thing the control plane was
- * ASKED to do, so a container that crash-loops right after a successful deploy
- * leaves the row saying "active", and the UI said "Online" while docker was
- */
-
 test("a crash-looping container is Restarting, never Online", () => {
   assert.equal(
     displayStatus("active", runtime({ total: 1, running: 0, restarting: 1 })),
@@ -85,7 +79,6 @@ test("a crash loop outranks an unhealthy sidecar", () => {
 });
 
 test("an unreachable agent proves nothing: keep the stored status", () => {
-  // Inventing "down" from a dead agent would just be a different lie.
   assert.equal(
     displayStatus(
       "active",
@@ -101,8 +94,6 @@ test("no probe yet: keep the stored status", () => {
 });
 
 test("statuses the host cannot contradict pass through untouched", () => {
-  // A build has no container yet; a stopped app is meant to have none; a failed
-  // deploy already says so. Only "active" is a claim about the host.
   const none = runtime({ total: 0, running: 0 });
   assert.equal(displayStatus("building", none), "building");
   assert.equal(displayStatus("queued", none), "queued");
@@ -113,13 +104,9 @@ test("statuses the host cannot contradict pass through untouched", () => {
 
 test("never deployed reads as such, not as stopped", () => {
   const none = runtime({ total: 0, running: 0 });
-  // The state a bulk import lands every app in: no build, so nothing ever ran.
   assert.equal(displayStatus("idle", none, true), "not_deployed");
   assert.equal(displayStatus("idle", null, true), "not_deployed");
-  // Someone stopped it AFTER a build: still "Stopped".
   assert.equal(displayStatus("idle", none, false), "idle");
-  // The flag only ever speaks for an app at rest - a build in flight, a failed
-  // deploy or a running container all outrank "it has no deployment row".
   assert.equal(displayStatus("building", none, true), "building");
   assert.equal(displayStatus("error", none, true), "error");
 });

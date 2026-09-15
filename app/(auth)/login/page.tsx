@@ -56,11 +56,6 @@ const VERIFY_2FA = /* GraphQL */ `
   }
 `;
 
-/**
- * Only allow returning to a safe, in-app path (no open redirect). A fixed
- * allowlist, not a same-origin check: two destinations legitimately send someone
- * here before they have a session, and everything else goes to the dashboard.
- */
 function safeNext(raw: string | null): string {
   if (!raw) return "/";
   if (/^\/invite\/[A-Za-z0-9_-]+$/.test(raw)) return raw;
@@ -72,26 +67,17 @@ export default function LoginPage() {
   const next = useSearchParams().get("next");
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
-  // The password step succeeded but the account has an authenticator app. The
-  // challenge itself lives in a short-lived httpOnly cookie the server set, so
-  // this flag is all the client holds - no token in state.
   const { step, leaving, go } = useStepSwap<"password" | "code">("password");
   const [useRecovery, setUseRecovery] = useState(false);
   const [code, setCode] = useState("");
 
   function done() {
-    // Signing in mid-OAuth: the provider redirects here with the WHOLE signed
-    // authorization query, not a `next` param, so re-run authorize now that a session
-    // exists.
     const sp = new URLSearchParams(window.location.search);
     if (sp.has("client_id") && sp.has("sig")) {
-      // Otherwise the provider sends us straight back here, forever.
       if (sp.get("prompt") === "login") sp.delete("prompt");
       window.location.assign(`/api/auth/oauth2/authorize?${sp}`);
       return;
     }
-    // A hard navigation, never the router: every payload it cached was rendered for
-    // a signed-out visitor, `/` included - the logo above prefetches it.
     window.location.assign(safeNext(next));
   }
 
@@ -121,9 +107,6 @@ export default function LoginPage() {
     });
   }
 
-  /**
-   * The whole passkey sign-in: challenge, ceremony, verify.
-   */
   function signInWithPasskey() {
     if (pending) return;
     setError(null);
@@ -131,9 +114,6 @@ export default function LoginPage() {
       try {
         if (!passkeysSupported())
           throw new Error("This browser can't use passkeys.");
-        // The server refuses the challenge outright on an instance that cannot have
-        // passkeys (no address, or plain http), with a message saying so - which is why the
-        // button is always offered rather than hidden behind a capability this page has no
         const { passkeyChallenge } = await gql<{ passkeyChallenge: unknown }>(
           PASSKEY_CHALLENGE,
         );
@@ -156,8 +136,6 @@ export default function LoginPage() {
         done();
       } catch (err) {
         setError(err instanceof Error ? err.message : "That code is not valid");
-        // A rejected code is never worth resubmitting; an empty field says
-        // "try the next one" more clearly than a red field full of stale digits.
         setCode("");
       }
     });
@@ -205,9 +183,6 @@ export default function LoginPage() {
           )}
           {banner}
           <form
-            // POST, even though JS always intercepts this: if the page has not hydrated yet (or
-            // its bundle failed to load) the browser submits natively, and a GET would put the
-            // code in the URL, the history and the proxy access logs.
             method="post"
             onSubmit={(e) => {
               e.preventDefault();
@@ -234,8 +209,6 @@ export default function LoginPage() {
               <OtpInput
                 value={code}
                 onChange={setCode}
-                // Six digits in, there is nothing left to decide - submitting
-                // for them saves a reach for the mouse mid-login.
                 onComplete={submitCode}
                 disabled={pending}
                 invalid={!!error}
@@ -280,17 +253,12 @@ export default function LoginPage() {
         <>
           {title("Welcome back.", "Sign in to continue.")}
           {banner}
-          {/**
-           * `method="post"` is load-bearing SECURITY, not a formality.
-           */}
           <form method="post" onSubmit={onSubmit} className="space-y-4">
             <div className="space-y-2">
               <Label htmlFor="email">Email or username</Label>
               <Input
                 id="email"
                 name="email"
-                // NOT type="email": the browser's own validation refused the
-                // `@handle` this product names everyone by.
                 type="text"
                 autoComplete="username"
                 placeholder="you@example.com"
@@ -312,9 +280,6 @@ export default function LoginPage() {
               Sign in
             </Button>
           </form>
-          {/* Secondary, and outside the form so it can never submit it. No email
-              field: the challenge is for a discoverable credential, so the browser
-              offers the passkeys it holds for this site and the person picks one. */}
           <Button
             variant="outline"
             className="mt-3 w-full"

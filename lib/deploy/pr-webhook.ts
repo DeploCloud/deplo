@@ -1,10 +1,3 @@
-/**
- * What a GitHub `pull_request` delivery MEANS for one app - the preview twin of
- * [git-webhook](./git-webhook.ts), and pure for the same reason: the decision is
- * the part worth testing, and the route around it is plumbing.
- */
-
-/** The fields of a `pull_request` payload this module reads. */
 export interface RawPullRequestPayload {
   action?: string;
   number?: number;
@@ -23,14 +16,11 @@ export interface RawPullRequestPayload {
       repo?: { full_name?: string; clone_url?: string } | null;
     };
     base?: { ref?: string };
-    /** GitHub sends the pull request's CURRENT labels on every delivery. */
     labels?: { name?: string }[];
   };
 }
 
-/** One pull request delivery, normalised. */
 export interface PullRequestEvent {
-  /** The raw GitHub action, verbatim. */
   action: string;
   number: number;
   title: string;
@@ -38,59 +28,38 @@ export interface PullRequestEvent {
   url: string;
   headBranch: string;
   headSha: string;
-  /** `owner/name` of the head repo; "" when the fork has been deleted. */
   headRepo: string;
   headCloneUrl: string;
-  /** The repo the App is installed on - what candidate apps are matched against. */
   baseRepo: string;
   baseBranch: string;
-  /** The head lives somewhere the operator does not control. */
   isFork: boolean;
   draft: boolean;
   merged: boolean;
-  /** The pull request's labels, lower-cased - GitHub matches them that way. */
   labels: string[];
 }
 
-/** The app-side facts the decision needs. */
 export interface PreviewTriggerConfig {
-  /** The branch the app tracks - pull requests must TARGET it. */
   branch: string;
   previewsEnabled: boolean;
-  /** Rebuild when the pull request receives a new commit. */
   autoDeploy: boolean;
-  /** Build a pull request that is still a draft. */
   buildDrafts: boolean;
-  /** A pull request must carry ONE of these. Empty ⇒ no filter. */
   requiredLabels: string[];
 }
 
-/** Why a delivery produced nothing. Logged, never silent. */
 export type PreviewSkipReason =
   | "previews-off"
   | "base-branch"
   | "draft"
   | "no-head-repo"
   | "action"
-  /** The app filters on labels and this pull request carries none of them. */
   | "label";
 
 export type PreviewIntent =
   | { kind: "deploy" }
   | { kind: "destroy" }
-  /**
-   * Refresh what the list says about the pull request (head, title, approval)
-   * without building. A head that arrives this way and is never recorded is how
-   * a fork's unreviewed commit would inherit a stale approval.
-   */
   | { kind: "sync" }
   | { kind: "ignore"; reason: PreviewSkipReason };
 
-/**
- * Normalise a `pull_request` payload. Returns null when the delivery carries no
- * usable pull request (a malformed body, or one of GitHub's shapes we never
- * subscribed to).
- */
 export function parsePullRequestEvent(
   payload: RawPullRequestPayload,
 ): PullRequestEvent | null {
@@ -111,24 +80,16 @@ export function parsePullRequestEvent(
     headCloneUrl: pr.head?.repo?.clone_url ?? "",
     baseRepo,
     baseBranch: pr.base?.ref ?? "",
-    // NOT `head.repo.fork`: a pull request opened from an unrelated repository in the
-    // same organisation reports `fork: false` and is every bit as untrusted.
+    // NOT `head.repo.fork`: an unrelated repo in the same org reports `fork: false` and is as untrusted.
     isFork: !headRepo || headRepo !== baseRepo,
     draft: Boolean(pr.draft),
     merged: Boolean(pr.merged),
-    // Lower-cased at the door so every comparison downstream is a plain
-    // `includes` and nobody has to remember that GitHub labels are
-    // case-insensitive.
     labels: (pr.labels ?? [])
       .map((l) => (l?.name ?? "").trim().toLowerCase())
       .filter(Boolean),
   };
 }
 
-/**
- * What to do with one delivery, for one app. `closed` destroys FIRST, before any
- * gate. the pull request must TARGET the branch this app tracks.
- */
 export function previewIntent(
   cfg: PreviewTriggerConfig,
   ev: PullRequestEvent,
@@ -136,16 +97,11 @@ export function previewIntent(
   if (ev.action === "closed") return { kind: "destroy" };
   if (!cfg.previewsEnabled) return { kind: "ignore", reason: "previews-off" };
   if (ev.baseBranch !== cfg.branch) {
-    // `edited` is also how GitHub reports a retarget: a preview that no longer
-    // targets the tracked branch is a build of something this app never ships.
     return ev.action === "edited"
       ? { kind: "destroy" }
       : { kind: "ignore", reason: "base-branch" };
   }
 
-  // The label gate spans every action, which is why it sits above the action
-  // switch: a pull request that loses its last required label must be torn down
-  // whichever delivery carried the news.
   const labelled =
     cfg.requiredLabels.length === 0 ||
     ev.labels.some((l) => cfg.requiredLabels.includes(l));
@@ -155,7 +111,6 @@ export function previewIntent(
       : { kind: "ignore", reason: "label" };
   }
 
-  // A title edit changes nothing on the host, but the list must not lie.
   if (ev.action === "edited") return { kind: "sync" };
 
   if (
@@ -163,17 +118,11 @@ export function previewIntent(
     ev.action === "reopened" ||
     ev.action === "synchronize" ||
     ev.action === "ready_for_review" ||
-    // `labeled` builds ONLY for an app that filters on labels: there, the label applied
-    // after the pull request opened is the moment it qualifies, and without this it
-    // would never build at all.
     (ev.action === "labeled" && cfg.requiredLabels.length > 0)
   ) {
     if (!ev.headRepo) return { kind: "ignore", reason: "no-head-repo" };
     if (ev.draft && !cfg.buildDrafts)
       return { kind: "ignore", reason: "draft" };
-    // Manual-only apps still RECORD the new head: Redeploy builds the branch tip,
-    // and the row has to say which commit that is (and, for a fork, that nobody
-    // has approved it yet).
     if (ev.action === "synchronize" && !cfg.autoDeploy) return { kind: "sync" };
     return { kind: "deploy" };
   }

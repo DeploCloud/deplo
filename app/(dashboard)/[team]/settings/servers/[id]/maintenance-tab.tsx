@@ -20,10 +20,6 @@ import { gqlAction } from "@/lib/graphql-client";
 import type { ServerSummary } from "./server-detail-tabs";
 import { DocsLink } from "@/components/ui/docs-link";
 
-/**
- * The Maintenance tab: the restarts an operator used to need SSH for.
- */
-
 type ActionId = "workloads" | "traefik" | "panel" | null;
 
 type RestartReport = {
@@ -56,16 +52,12 @@ export function ServerMaintenanceTab({ server }: { server: ServerSummary }) {
       setConfirm(null);
       const report = res.data?.restartServerWorkloads;
       if (!report) return;
-      // Partial success is the normal outcome and is reported as one: a summary
-      // that only counted the wins would hide the stack that did not come back.
       if (report.failures.length > 0) {
         toast.warning(
           `Restarted ${report.restarted}; ${report.failures.length} failed: ` +
             report.failures.map((f) => `${f.name} (${f.error})`).join(", "),
         );
       } else if (report.restarted === 0) {
-        // "left alone" rather than "stopped": the bucket also holds workloads with
-        // a deploy in flight, and those are anything but stopped.
         toast.info(
           report.skipped > 0
             ? `Nothing to restart, ${report.skipped} left alone`
@@ -88,8 +80,6 @@ export function ServerMaintenanceTab({ server }: { server: ServerSummary }) {
         { id: server.id },
       );
       if (!res.ok) {
-        // Includes "Deplo did not install Traefik on this host" - the host's own
-        // answer, which is more useful than anything we could word for it.
         toast.error(res.error);
         return;
       }
@@ -109,8 +99,6 @@ export function ServerMaintenanceTab({ server }: { server: ServerSummary }) {
         return;
       }
       setConfirm(null);
-      // Not "restarted": the mutation returns once the restart is SCHEDULED,
-      // because the restart ends the process that would have reported it done.
       toast.success(
         "Deplo is restarting - this page will be briefly unavailable",
       );
@@ -160,9 +148,6 @@ export function ServerMaintenanceTab({ server }: { server: ServerSummary }) {
               </Button>
             }
           />
-          {/* Only on the host that runs the panel: on a remote there is nothing
-              to restart, and offering a button that can only fail is worse than
-              not offering it. */}
           {server.isDeploHost ? (
             <ActionRow
               icon={DeploMark}
@@ -270,7 +255,6 @@ export function ServerMaintenanceTab({ server }: { server: ServerSummary }) {
   );
 }
 
-/** One labelled action: icon + title + one line of what it does + the button. */
 function ActionRow({
   icon: Icon,
   title,

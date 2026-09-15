@@ -21,7 +21,6 @@ test("passwordMeetsPolicy: every rule must hold", () => {
     false,
     "over the cap",
   );
-  // "Special" is anything non-alphanumeric, not a hand-picked punctuation set.
   assert.equal(passwordMeetsPolicy("Str0ng~pass"), true);
   assert.equal(passwordMeetsPolicy("Str0ng pass"), true);
 });
@@ -62,7 +61,6 @@ test("generatePassword: every suggestion passes the gate that follows it", () =>
   }
   assert.equal(generatePassword().length, 20);
   assert.equal(generatePassword(32).length, 32);
-  // A short request still clears the length rule.
   assert.equal(passwordMeetsPolicy(generatePassword(4)), true);
 });
 
@@ -72,8 +70,6 @@ test("generatePassword: unambiguous characters only, and unbiased", () => {
     for (const c of generatePassword()) seen.set(c, (seen.get(c) ?? 0) + 1);
   for (const c of "lIO01") assert.equal(seen.has(c), false, `ambiguous ${c}`);
 
-  // Uniformity holds WITHIN a class; across classes the guaranteed one-of-each
-  // skews on purpose. Modulo bias would show as a ratio near 4/3 inside a class.
   for (const cls of [
     "abcdefghijkmnopqrstuvwxyz",
     "ABCDEFGHJKLMNPQRSTUVWXYZ",

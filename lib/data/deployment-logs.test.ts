@@ -11,7 +11,7 @@ process.env.DEPLO_DATA_DIR = mkdtempSync(join(tmpdir(), "deplo-logs-"));
 
 import { makeTestDb, type TestDb } from "../db/test-harness";
 import { __setTestDb, __resetTestDb } from "../db/client";
-import { deploymentLogs } from "../db/schema/control-plane";
+import { deploymentLogs } from "../db/schema/control-plane/deployments";
 import { seedIdentity, TEAM_A, USER_1 } from "./identity-test-helpers";
 import {
   seedServer,
@@ -28,13 +28,7 @@ import {
   __resetLogCapsForTest,
   __resetDeploymentLogBuffers,
 } from "./deployment-logs";
-import type { LogLine } from "../types";
-
-/**
- * Step 4 buffered deployment_logs writer tests (relational-store PLAN §6 Decision
- * 18): the guaranteed final flush, line order preserved (Array.push order via the
- * id identity), the buffer-fills immediate flush, and drain-then-DELETE with the
- */
+import type { LogLine } from "../types/deployment";
 
 let db: TestDb;
 let pg: PGlite;
@@ -87,7 +81,6 @@ test("final flush persists every enqueued line, in order", async () => {
 test("loadDeploymentLogs flushes pending lines then reads them back", async () => {
   appendLog("dpl_1", line("a"));
   appendLog("dpl_1", line("b"));
-  // No explicit finalize - loadDeploymentLogs must flush first.
   const logs = await loadDeploymentLogs("dpl_1");
   assert.deepEqual(
     logs.map((l) => l.text),
@@ -96,9 +89,7 @@ test("loadDeploymentLogs flushes pending lines then reads them back", async () =
 });
 
 test("a buffer that fills flushes immediately (no waiting for the timer)", async () => {
-  // MAX_BUFFER is 200; push past it and the writer flushes without finalize.
   for (let i = 0; i < 250; i++) appendLog("dpl_1", line(`L${i}`));
-  // Give the immediate flush its microtask/await turn.
   await finalizeDeploymentLogs("dpl_1");
   assert.equal(
     (await db.select({ n: count() }).from(deploymentLogs))[0]!.n,
@@ -112,13 +103,10 @@ test("clear drains-then-DELETEs and a late flush can't resurrect cleared lines",
   await finalizeDeploymentLogs("dpl_1");
   assert.equal((await db.select({ n: count() }).from(deploymentLogs))[0]!.n, 2);
 
-  // Enqueue more, then CLEAR before they flush - the clear bumps the epoch so the
-  // buffered batch is dropped and the persisted rows are deleted.
   appendLog("dpl_1", line("doomed-1"));
   appendLog("dpl_1", line("doomed-2"));
   await clearDeploymentLogs("dpl_1");
 
-  // A late finalize must NOT resurrect the cleared lines.
   await finalizeDeploymentLogs("dpl_1");
   assert.equal(
     (await db.select({ n: count() }).from(deploymentLogs))[0]!.n,
@@ -126,7 +114,6 @@ test("clear drains-then-DELETEs and a late flush can't resurrect cleared lines",
     "cleared deployment has no resurrected lines",
   );
 
-  // A fresh build can append again from an empty stream.
   appendLog("dpl_1", line("new-1"));
   await finalizeDeploymentLogs("dpl_1");
   const rows = await db
@@ -169,10 +156,7 @@ test("flushes for different deployments don't interleave", async () => {
 });
 
 test("a failed flush retries IN ORDER (no inversion across two failed batches)", async () => {
-  // Regression: an earlier drain-and-unshift-on-failure inverted order - two batches
-  // flushed in the same turn where both inserts fail would re-queue the SECOND batch
-  // in front of the first (B…, A…).
-  const fail = { n: 2 }; // fail exactly the first two flush inserts
+  const fail = { n: 2 };
   const real = db as unknown as {
     insert: (t: unknown) => { values: (v: unknown) => Promise<unknown> };
   };
@@ -194,17 +178,14 @@ test("a failed flush retries IN ORDER (no inversion across two failed batches)",
   });
   __setTestDb(failing);
   try {
-    // Two synchronous bursts each crossing MAX_BUFFER (200) in the SAME turn:
-    // batch A then batch B, both scheduled before either flush callback runs.
     for (let i = 0; i < 200; i++) appendLog("dpl_1", line(`A${i}`));
     for (let i = 0; i < 200; i++) appendLog("dpl_1", line(`B${i}`));
-    // Drain across the two failures + the eventual success.
     await finalizeDeploymentLogs("dpl_1");
     await finalizeDeploymentLogs("dpl_1");
     await finalizeDeploymentLogs("dpl_1");
     assert.equal(fail.n, 0, "both simulated failures were consumed");
   } finally {
-    __setTestDb(db); // restore the real client for the rest of the suite
+    __setTestDb(db);
   }
   const rows = await db
     .select()
@@ -222,10 +203,6 @@ test("a failed flush retries IN ORDER (no inversion across two failed batches)",
   );
 });
 
-/**
- * `deployment_logs` lives in the CONTROL PLANE's database, shared by every team,
- * but the build's output is the tenant's to write, and nothing prunes these rows.
- */
 test("the per-line and per-deployment log caps hold, and a read can't reset the budget", async () => {
   await seedDeployment(db, {
     id: "dpl_cap",
@@ -234,7 +211,6 @@ test("the per-line and per-deployment log caps hold, and a read can't reset the 
   });
   __setLogCapsForTest(5, 20);
   try {
-    // Per line: the HEAD is kept (that's where a compiler error is) and marked.
     appendLog("dpl_cap", line("y".repeat(100)));
     for (let i = 0; i < 10; i++) appendLog("dpl_cap", line(`L${i}`));
     let rows = await loadDeploymentLogs("dpl_cap");
@@ -243,14 +219,11 @@ test("the per-line and per-deployment log caps hold, and a read can't reset the 
     assert.match(rows[0].text, /line truncated/);
     assert.match(rows[rows.length - 1].text, /log truncated at 5 lines/);
 
-    // A reader opening the Logs page mid-build finalizes + EVICTS the buffer. The
-    // budget must not live on that buffer, or the ceiling would reset per read.
     for (let i = 0; i < 5; i++) appendLog("dpl_cap", line(`B${i}`));
     rows = await loadDeploymentLogs("dpl_cap");
     assert.equal(rows.length, 5, "the ceiling survived the read");
     assert.ok(!rows.some((r) => r.text.startsWith("B")));
 
-    // Clearing (a rebuild of the same deployment) starts a fresh budget.
     await clearDeploymentLogs("dpl_cap");
     appendLog("dpl_cap", line("fresh"));
     assert.deepEqual(
@@ -263,9 +236,6 @@ test("the per-line and per-deployment log caps hold, and a read can't reset the 
 });
 
 test("an unstated build line is classified on read; an authored level is not", async () => {
-  // The agent stamps the builder's whole output `info`, so the level that
-  // matters is the one the line's TEXT states. Deplo's own sink lines already
-  // carry a level and must survive untouched.
   appendLog(
     "dpl_1",
     line('#14 4.914 error: script "build" exited with code 1'),
@@ -278,8 +248,6 @@ test("an unstated build line is classified on read; an authored level is not", a
   });
   appendLog("dpl_1", {
     ts: "2026-01-01T00:00:00.000Z",
-    // A line the producer DID call info, whose text a keyword scanner would
-    // have painted: it stays neutral, because nothing states a level.
     level: "info",
     text: "no errors found",
   });
@@ -289,7 +257,6 @@ test("an unstated build line is classified on read; an authored level is not", a
     logs.map((l) => l.level),
     ["error", "info", "command", "info"],
   );
-  // The stored rows keep what the producer said - the reading is on the way out.
   const rows = await db
     .select()
     .from(deploymentLogs)

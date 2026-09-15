@@ -2,7 +2,6 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { parseAnsi, stripAnsi } from "./ansi";
 
-/** Flatten segments back to plain text - what the user reads on screen. */
 function visible(segments: ReturnType<typeof parseAnsi>): string {
   return segments.map((s) => s.text).join("");
 }
@@ -15,7 +14,6 @@ test("plain text passes through as one unstyled segment", () => {
 });
 
 test("docker's warning line: ESC[33m colors the run, no escape bytes leak", () => {
-  // The exact shape a `docker build` emits for its warnings summary.
   const segs = parseAnsi(
     " \x1b[33m1 warning found (use docker --debug to expand):",
   );
@@ -30,7 +28,6 @@ test("docker's warning line: ESC[33m colors the run, no escape bytes leak", () =
 });
 
 test("a line starting with a reset renders plain, reset consumed", () => {
-  // The continuation line of the same docker warning block.
   const segs = parseAnsi(
     "\x1b[0m - UndefinedVar: Usage of undefined variable '$NIXPACKS_PATH' (line 18)",
   );

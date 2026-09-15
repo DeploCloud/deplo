@@ -12,8 +12,6 @@ test("isValidAvatarValue: accepts png / jpeg / webp data-URIs", () => {
   }
 });
 
-// The two shapes that separate this from `isValidLogoValue`. A logo may be a
-// bundled template path or an SVG document; a person's face may be neither.
 test("isValidAvatarValue: rejects an SVG data-URI", () => {
   assert.equal(
     isValidAvatarValue("data:image/svg+xml;base64,PHN2Zz48L3N2Zz4="),
@@ -42,8 +40,6 @@ test("isValidAvatarValue: rejects non-image and script data-URIs", () => {
   assert.equal(isValidAvatarValue("javascript:alert(1)"), false);
 });
 
-// The cap is the ONLY server-side size guarantee: the 256x256 downscale happens
-// in the browser, and a hostile client simply will not do it.
 test("isValidAvatarValue: rejects a data-URI over the cap, accepts one under", () => {
   const prefix = "data:image/webp;base64,";
   assert.equal(

@@ -27,11 +27,6 @@ import { cn } from "@/lib/utils";
 import type { PasskeyDTO } from "@/lib/data/passkeys";
 import type { UserSessionDTO } from "@/lib/data/sessions";
 
-/**
- * The two halves of the Security page: what proves it is you, and where that
- * proof is currently being held.
- */
-
 const TABS = ["signin", "devices"] as const;
 type TabId = (typeof TABS)[number];
 
@@ -53,8 +48,6 @@ export function SecurityTabs({
   rpId: string | null;
 }) {
   const params = useSearchParams();
-  // The hero's one recommendation opens the thing it recommends, so the two
-  // dialogs it can reach are owned here rather than inside their own cards.
   const [wizard, setWizard] = React.useState(false);
   const [addPasskey, setAddPasskey] = React.useState(false);
 
@@ -68,9 +61,6 @@ export function SecurityTabs({
     if (tab === "signin") next.delete("tab");
     else next.set("tab", tab);
     const s = next.toString();
-    // The native History API, not `router.replace`: the panels are already in
-    // the browser and re-running every server read for a query parameter would
-    // be a page load to move an underline.
     window.history.replaceState(
       null,
       "",
@@ -98,8 +88,6 @@ export function SecurityTabs({
       </div>
 
       <TabsContent value="signin">
-        {/* Direct grid children, so the two cards of a row share one height
-            instead of each ending wherever its own content stops. */}
         <div className="grid gap-4 lg:grid-cols-2">
           <SecurityHero
             twoFactorEnabled={twoFactorEnabled}
@@ -134,7 +122,6 @@ export function SecurityTabs({
   );
 }
 
-/** How many devices hold a session right now, beside the tabs. */
 function SignedInCount({
   count,
   onOpen,
@@ -158,7 +145,6 @@ function SignedInCount({
   );
 }
 
-/** The one thing worth doing next, given what the account already carries. */
 function nextStep(args: {
   twoFactorEnabled: boolean;
   passkeys: number;
@@ -239,8 +225,6 @@ function SecurityHero({
         </CardTitle>
       </CardHeader>
       <CardContent className="flex flex-1 flex-col gap-4">
-        {/* The box takes the slack, so the card keeps its neighbour's height;
-            the drawing is capped at its own 80px. */}
         <div className="flex min-h-0 flex-1 items-center justify-center py-2">
           <SecurityGraphic level={level} className="max-h-20" />
         </div>

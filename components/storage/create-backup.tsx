@@ -47,7 +47,7 @@ import {
 import { gqlAction } from "@/lib/graphql-client";
 import { DEFAULT_SCHEDULE, isValidSchedule } from "@/lib/schedule";
 import { cn } from "@/lib/utils";
-import type { DestinationOption } from "@/lib/data/destinations";
+import type { DestinationOption } from "@/lib/data/destinations/dto";
 
 type TargetKind = "database" | "app";
 
@@ -59,7 +59,6 @@ const STEPS: { id: StepId; label: string }[] = [
   { id: "schedule", label: "Schedule" },
 ];
 
-/** Per-step heading, icon and one line of orientation. */
 const COPY: Record<
   StepId,
   {
@@ -88,11 +87,6 @@ const COPY: Record<
   },
 };
 
-/**
- * Schedule a backup from Storage, where nothing about the target is known yet. The
- * per-app and per-database tabs run the same wizard minus this first step
- * (`ScheduleBackup` in `backups-panel.tsx`), because there the target is the page.
- */
 export function CreateBackup({
   databases,
   services = [],
@@ -102,23 +96,12 @@ export function CreateBackup({
   autoOpen = false,
   size = "default",
 }: {
-  /** `serverId` is only used to flag a destination sitting on the target's own
-   *  disk; leave it out and the picker simply says nothing. */
   databases: BackupTargetOption[];
   services?: BackupTargetOption[];
   destinations: DestinationOption[];
-  /**
-   * Whether the current user may schedule a backup (`manage_backups`).
-   */
   canCreate?: boolean;
-  /** Whether this user may run the destination picker's live probe
-   *  (`manage_backup_destinations`). Without it the picker shows the stored
-   *  badges instead of firing a mutation the server would refuse. */
   canTestDestinations?: boolean;
-  /** Open on mount - used by the global "New ▸ Schedule backup" menu
-   *  (which links to /storage?new=backup). */
   autoOpen?: boolean;
-  /** `sm` outside a toolbar; `default` next to an input, which is h-9. */
   size?: "sm" | "default";
 }) {
   const router = useRouter();
@@ -126,21 +109,14 @@ export function CreateBackup({
   const [pending, startTransition] = React.useTransition();
   const [step, setStep] = React.useState<StepId>("target");
 
-  // Drop the ?new=backup param after opening so a refresh/Back doesn't reopen it.
   React.useEffect(() => {
     if (autoOpen) router.replace("/storage", { scroll: false });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-  // Named after its frequency until the user says otherwise - the same as the
-  // per-app dialog, so the two never disagree about what a new schedule is
-  // called or about whether Create is reachable on open.
   const [name, setName] = React.useState(() =>
     suggestScheduleName(DEFAULT_SCHEDULE),
   );
   const [nameTouched, setNameTouched] = React.useState(false);
-  // Apps are the common case - a whole app (volumes, files, compose/env snapshot) is
-  // what most people come here to protect, and a database that matters usually
-  // belongs to one.
   const [targetKind, setTargetKind] = React.useState<TargetKind>(
     services.length === 0 && databases.length > 0 ? "database" : "app",
   );
@@ -156,23 +132,17 @@ export function CreateBackup({
   const [retention, setRetention] = React.useState(DEFAULT_RETENTION);
 
   const noDeps = destinations.length === 0;
-  // Why the button can't be clicked, if it can't. The missing permission wins:
-  // adding a destination would not unblock it.
   const blocked = !canCreate
     ? "You don't have permission to schedule backups"
     : noDeps
       ? "Add a backup destination first"
       : null;
-  // The chosen target must have a concrete id selected, otherwise the schedule
-  // would point at nothing.
   const targetId = targetKind === "database" ? databaseId : appId;
-  // The server the chosen target runs on - a destination on it is a same-disk copy.
   const targetServerId =
     (targetKind === "database" ? databases : services).find(
       (t) => t.id === targetId,
     )?.serverId ?? null;
 
-  /** What each step needs before the next one means anything. */
   const complete: Record<StepId, boolean> = {
     target: !!targetId,
     destination: !!destinationId,
@@ -183,12 +153,9 @@ export function CreateBackup({
 
   function close() {
     setOpen(false);
-    // Deferred so the close animation does not play over a form that has
-    // already snapped back to step one.
     setTimeout(() => setStep("target"), 200);
   }
 
-  /** Enter runs whatever the current step's primary button does. */
   function onSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (pending || !complete[step]) return;
@@ -197,8 +164,6 @@ export function CreateBackup({
   }
 
   function submit() {
-    // The wizard closes on the click and the schedule is written behind it; a
-    // refusal reopens it on the step it was left on, fields intact.
     setOpen(false);
     startTransition(async () => {
       const res = await gqlAction(
@@ -232,9 +197,6 @@ export function CreateBackup({
       <Tooltip>
         <TooltipTrigger asChild>
           {blocked ? (
-            // Disabled buttons swallow pointer events, so wrap in a focusable
-            // span to keep the tooltip reachable. No DialogTrigger here means a
-            // click can never open the dialog while it is blocked.
             <span tabIndex={0}>
               <Button size={size} disabled>
                 <Plus className="size-4" />
@@ -252,9 +214,6 @@ export function CreateBackup({
         </TooltipTrigger>
         <TooltipContent>{blocked ?? "Schedule a backup"}</TooltipContent>
       </Tooltip>
-      {/* No `overflow-hidden` here: the step box below clips itself while it is
-          animating, and the rest of the time a combobox menu has to be free to
-          hang past the field it belongs to. */}
       <DialogContent selfManaged className="sm:max-w-lg">
         <DialogHeader className="space-y-0 pr-8">
           <DialogTitle className="sr-only">Schedule a backup</DialogTitle>
@@ -265,8 +224,6 @@ export function CreateBackup({
           <WizardStepper
             steps={STEPS}
             current={step}
-            // Every answer here is the user's own and stays editable, so any step
-            // whose predecessors are settled can be jumped back to.
             reachable={(s) =>
               STEPS.slice(
                 0,
@@ -278,12 +235,7 @@ export function CreateBackup({
         </DialogHeader>
 
         <form onSubmit={onSubmit} className="grid gap-4">
-          {/* The height is the STEP's, measured, so "what are you backing up?"
-              is a short box and only the schedule step is a tall one - a wizard
-              padded to its tallest step spends two thirds of itself on air. */}
           <AnimatedHeight className="mx-auto flex w-full max-w-md flex-col gap-5 py-2">
-            {/* One heading block, same shape on every step, so the eye lands
-                in the same place each time the body swaps under it. */}
             <div className="flex flex-col items-center gap-2 text-center">
               <span className="flex size-10 items-center justify-center rounded-full bg-primary-wash-strong">
                 <StepIcon className="size-5 text-primary" />

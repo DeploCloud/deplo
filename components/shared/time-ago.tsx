@@ -4,11 +4,6 @@ import * as React from "react";
 import { SimpleTooltip } from "@/components/ui/tooltip";
 import { timeAgo } from "@/lib/utils";
 
-/**
- * A relative timestamp, with the absolute one in its tooltip. The string is
- * computed twice - server render then hydration - so `suppressHydrationWarning`
- * tells React that gap is the point, not a mismatch. `live` re-counts every second.
- */
 export function TimeAgo({ at, live = false }: { at: string; live?: boolean }) {
   const [, tick] = React.useState(0);
   React.useEffect(() => {

@@ -10,11 +10,6 @@ import {
   protectedResourceMetadata,
 } from "@/lib/auth/oauth-metadata";
 
-/**
- * The discovery documents, served from the SITE ROOT. Better Auth mounts its own
- * copies under `/api/auth/.well-known/…` because that is its base path.
- */
-
 function json(body: unknown, status = 200): Response {
   return Response.json(body, {
     status,
@@ -22,12 +17,10 @@ function json(body: unknown, status = 200): Response {
   });
 }
 
-/** A CORS preflight. Discovery can start in a browser. */
 export function oauthPreflight(): Response {
   return new Response(null, { status: 204, headers: OAUTH_CORS_HEADERS });
 }
 
-/** RFC 9728. Served at both the bare path and the resource-suffixed one. */
 export function protectedResourceResponse(): Response {
   const doc = protectedResourceMetadata();
   if (!doc)
@@ -42,7 +35,6 @@ export function protectedResourceResponse(): Response {
   return json(doc);
 }
 
-/** RFC 8414 / OpenID discovery, both delegated to the plugin's own builders. */
 export async function authServerMetadataResponse(
   request: Request,
 ): Promise<Response> {

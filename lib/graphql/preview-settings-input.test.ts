@@ -8,9 +8,9 @@ import type { PGlite } from "@electric-sql/pglite";
 import { makeTestDb, type TestDb } from "../db/test-harness";
 import { __setTestDb, __resetTestDb } from "../db/client";
 import { runWithIdentity } from "../auth/request-context";
-import { getCurrentUser } from "../auth";
+import { getCurrentUser } from "../auth/current-user";
 import { getActiveTeamId, reachableCapabilities } from "../membership";
-import { apps as appsTable } from "../db/schema/control-plane";
+import { apps as appsTable } from "../db/schema/control-plane/apps";
 import { schema } from "./schema";
 import type { GraphQLContext } from "./context";
 import {
@@ -24,13 +24,6 @@ import {
   TRUNCATE_IDENTITY,
   USER_1,
 } from "../data/identity-test-helpers";
-
-/**
- * `setAppPreviewSettings` through the API, where a nullable field arrives as an
- * explicit null. The data layer already reads null as "clear it"; the resolver
- * used to fold null into undefined, which made "back to the app's port" a save
- * that changed nothing - through the form as much as through the API.
- */
 
 let db: TestDb;
 let pg: PGlite;
@@ -110,7 +103,6 @@ test("an explicit null clears a nullable preview setting; an omitted one is kept
     max: 5,
   });
 
-  // The form's "back to the app's port" is exactly this shape.
   await call(SET, { appId: "prj_1", input: { port: null } });
   assert.equal((await stored()).port, null);
   assert.equal((await stored()).base, "preview.example.com", "untouched");

@@ -2,18 +2,7 @@
 
 import * as React from "react";
 
-/**
- * Who opens the command palette. A module store rather than a provider: it is
- * one boolean that two buttons write and one component reads, so `openPalette`
- * can be a plain import and no prop has to be threaded through the shell.
- */
-
 let open = false;
-/**
- * Bumped on every opening. The palette keys its body on it, because a second
- * open that lands before the closing animation has finished never unmounts
- * anything - and that is exactly when the state has to start clean.
- */
 let generation = 0;
 const listeners = new Set<() => void>();
 

@@ -29,17 +29,11 @@ import {
 } from "./server-team-access";
 import { ServerRoleOptions } from "./server-role-options";
 
-/**
- * Register a remote server. No SSH-in: the operator names the host and gets a
- * ONE-TIME install command to paste on the box, and the agent calls home. The
- * command is shown once, hence two steps with the dialog staying open.
- */
 export function AddServer({
   autoOpen = false,
   teams = [],
 }: {
   autoOpen?: boolean;
-  /** Every team in the instance, for the access picker (empty if not allowed). */
   teams?: TeamOption[];
 } = {}) {
   const router = useRouter();
@@ -52,15 +46,10 @@ export function AddServer({
     teamIds: [],
   });
   const [command, setCommand] = React.useState<string | null>(null);
-  // What the box is FOR. "everything" is the default and what almost every server
-  // is; the other two change what the install command does on the host, which is
-  // why this is decided here and not editable freely afterwards.
   const [role, setRole] = React.useState<"everything" | "build" | "storage">(
     "everything",
   );
 
-  // Opened via the global "New ▸ Add server" menu (?new=1) → drop the param so a
-  // refresh/Back doesn't reopen it.
   React.useEffect(() => {
     if (autoOpen) router.replace("/settings/servers", { scroll: false });
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -76,8 +65,6 @@ export function AddServer({
 
   function onSubmit(e: React.FormEvent) {
     e.preventDefault();
-    // Step two only reveals the install command (its footer button just closes),
-    // so Enter must not register the server a second time.
     if (command) return;
     submit();
   }
@@ -144,9 +131,6 @@ export function AddServer({
           </DialogDescription>
         </DialogHeader>
 
-        {/* gap-8, not the body's gap-4: the footer used to inherit its air from
-            whatever the last field rendered, so picking "Everything" glued Cancel
-            to the options. */}
         <form className="grid gap-8" onSubmit={onSubmit}>
           <AnimatedHeight className="grid gap-4" scroll={false}>
             {command ? (
@@ -158,11 +142,6 @@ export function AddServer({
                   hour. It is shown only now; if you lose it, re-mint one from
                   the server&rsquo;s menu.
                 </p>
-                {/**
-                 * Over plain http the installer AND its checksum travel on the same unauthenticated
-                 * channel, so anyone on the network path between the two machines can replace what
-                 * runs as root here.
-                 */}
                 {command.includes("http://") ? (
                   <p className="text-xs text-warning">
                     This panel is on an http address, so the installer is
@@ -205,9 +184,6 @@ export function AddServer({
                   onChange={setAccess}
                   disabled={pending}
                 />
-                {/**
-                 * What the box is for.
-                 */}
                 <div className="space-y-2">
                   <FieldLabel
                     info="Changes what the install command sets up on the host. Most servers should do everything."
@@ -224,8 +200,6 @@ export function AddServer({
               </div>
             )}
           </AnimatedHeight>
-          {/* One footer per phase rather than a fragment inside one: a footer
-              counts its own children to place them, and a fragment hides them. */}
           {command ? (
             <DialogFooter>
               <Button onClick={() => setOpen(false)}>Done</Button>

@@ -9,9 +9,11 @@ import { __setTestDb, __resetTestDb, type DbTx } from "../db/client";
 import {
   memberships as membershipsTable,
   membershipCapabilities as membershipCapabilitiesTable,
+} from "../db/schema/control-plane/access-control";
+import {
   registrationLinks as registrationLinksTable,
   users as usersTable,
-} from "../db/schema/control-plane";
+} from "../db/schema/control-plane/identity";
 import { sha256Hex, decryptSecret } from "../crypto";
 import { runWithIdentity } from "../auth/request-context";
 import {
@@ -21,25 +23,20 @@ import {
   TEAM_B,
   USER_1,
 } from "./identity-test-helpers";
+import { addExistingMember, updateMember } from "./members/assignment";
+import { updateUserAdmin } from "./members/instance-users";
 import {
-  addExistingMember,
-  searchUsers,
-  consumeRegistrationLink,
-  getRegistrationLinkInfo,
-  listMembers,
   mintRegistrationLink,
   revealRegistrationLink,
   revokeAllRegistrationLinks,
-  removeMember,
-  updateMember,
-  updateUserAdmin,
-} from "./members";
-
-/**
- * Members cut-set (b) tests against pglite (relational-store PLAN Step 3): the
- * `SELECT … FOR UPDATE` count-invariants (admin-coverage + active-admin) under two
- * concurrent demotions, and the membership edits via the junction.
- */
+} from "./members/registration-links";
+import {
+  consumeRegistrationLink,
+  getRegistrationLinkInfo,
+} from "./members/registration-redeem";
+import { removeMember } from "./members/removal";
+import { listMembers } from "./members/roster";
+import { searchUsers } from "./members/user-search";
 
 let db: TestDb;
 let pg: PGlite;
@@ -61,15 +58,11 @@ beforeEach(async () => {
 const asOwner = <T>(fn: () => Promise<T>): Promise<T> =>
   runWithIdentity({ userId: USER_1, teamId: TEAM_A }, fn);
 
-/** Act as an arbitrary user inside TEAM_A (founder, assigned owner, manager…). */
 const asUser = <T>(userId: string, fn: () => Promise<T>): Promise<T> =>
   runWithIdentity({ userId, teamId: TEAM_A }, fn);
 
 test("mintRegistrationLink refuses an owner role for an existing-teams assignment", async () => {
-  await seedIdentity(db); // USER_1 is an instance admin (owner of TEAM_A)
-  // The server must mirror the UI's member/viewer-only restriction even when the
-  // role arrives from a hand-crafted request - an injected owner would be
-  // immutable/unremovable. The guard throws before any DB write.
+  await seedIdentity(db);
   await assert.rejects(
     () =>
       asOwner(() =>
@@ -86,14 +79,8 @@ test("mintRegistrationLink refuses an owner role for an existing-teams assignmen
 
 const HOUR_MS = 3_600_000;
 
-/**
- * pglite's transaction handle differs from the production node-postgres `DbTx`
- * only in the driver HKT - the query surface is identical (see `DbTx`'s doc
- * comment), the same widening `__setTestDb` already relies on.
- */
 const asDbTx = (tx: unknown): DbTx => tx as DbTx;
 
-/** A pending link row, `hoursFromNow` away from expiry (negative = expired). */
 const linkRow = (id: string, rawToken: string, hoursFromNow: number) => ({
   id,
   tokenHash: sha256Hex(rawToken),
@@ -109,9 +96,6 @@ const linkRow = (id: string, rawToken: string, hoursFromNow: number) => ({
 test("mintRegistrationLink stamps an automatic 24h expiry", async () => {
   await seedIdentity(db);
   const before = Date.now();
-  // Mint runs to completion under node:test: the share URL is built from the
-  // instance's stored panel address (lib/data/instance-settings), which degrades
-  // to the configured DEPLO_PUBLIC_URL rather than demanding request headers.
   const { link } = await asOwner(() =>
     mintRegistrationLink({ mode: "own_team" }),
   );
@@ -147,9 +131,6 @@ test("mintRegistrationLink keeps the token readable back, and the hash still mat
   );
   const token = decryptSecret(row!.tokenEnc!);
   assert.notEqual(token, "", "and it decrypts");
-  // The pair has to stay consistent: the HASH is what /register looks the link up
-  // by, so a token read back that doesn't hash to it would be a link that shows
-  // one URL and accepts another.
   assert.equal(sha256Hex(token), row!.tokenHash);
 });
 
@@ -163,13 +144,10 @@ test("revealRegistrationLink refuses a link that can no longer be used", async (
     },
     { ...linkRow("reg_revoked", "revoked-token", 12), status: "revoked" },
     linkRow("reg_expired", "expired-token", -1),
-    // Pending and alive, but minted before token_enc existed (migration 0048).
     linkRow("reg_legacy", "legacy-token", 12),
   ]);
 
   await asOwner(async () => {
-    // Each check runs BEFORE the token is decrypted, so the message says which
-    // dead end this is, and none of them leaks a URL.
     await assert.rejects(
       () => revealRegistrationLink("reg_used"),
       /already used by @bob/,
@@ -226,8 +204,6 @@ test("revokeAllRegistrationLinks kills every pending link and nothing else", asy
   });
   await db.insert(registrationLinksTable).values([
     linkRow("reg_mine", "mine", 12),
-    // Another admin's, and one already expired but still stored as pending -
-    // both are on screen, so both go.
     { ...linkRow("reg_theirs", "theirs", 12), createdBy: "someone-else" },
     linkRow("reg_expired", "expired", -1),
     {
@@ -255,7 +231,6 @@ test("revokeAllRegistrationLinks kills every pending link and nothing else", asy
     reg_expired: "revoked",
     reg_used: "used",
   });
-  // Nothing left to revoke.
   assert.equal(await asOwner(() => revokeAllRegistrationLinks()), 0);
 });
 
@@ -270,8 +245,6 @@ test("registration-link expiry is enforced on read and at consume", async () => 
   assert.equal((await getRegistrationLinkInfo(fresh)).valid, true);
   assert.equal((await getRegistrationLinkInfo(stale)).valid, false);
 
-  // An expired row keeps status='pending', nothing sweeps it, so the
-  // conditional consume UPDATE is the thing that actually refuses it.
   await assert.rejects(
     () =>
       db.transaction((tx) =>
@@ -297,7 +270,6 @@ test("addExistingMember adds a user with caps; double-add is rejected", async ()
     assert.ok(m.capabilities.includes("view"));
     const members = await listMembers();
     assert.equal(members.length, 2, "owner + bob");
-    // A second add of the same user is rejected.
     await assert.rejects(
       () => addExistingMember({ userId: "bob", role: "member" }),
       /already a member/,
@@ -306,8 +278,6 @@ test("addExistingMember adds a user with caps; double-add is rejected", async ()
 });
 
 test("updateMember edits caps but assertAdminCoverage blocks dropping the last manager", async () => {
-  // Owner + one extra manager. Demoting the manager is allowed (owner still
-  // covers); but the owner is immutable, so the team always keeps a manager.
   await seedIdentity(db, {
     users: [
       { id: USER_1, teamId: TEAM_A, role: "owner" },
@@ -320,7 +290,6 @@ test("updateMember edits caps but assertAdminCoverage blocks dropping the last m
     ],
   });
   await asOwner(async () => {
-    // Demote mgr to view-only: owner still holds both critical caps, so allowed.
     await updateMember({
       userId: "mgr",
       role: "member",
@@ -344,9 +313,6 @@ test("updateMember edits caps but assertAdminCoverage blocks dropping the last m
 });
 
 test("two concurrent demotions of manage_members holders - coverage invariant holds", async () => {
-  // Owner is immutable (always covers). Add TWO non-owner managers; concurrently
-  // strip manage_members from BOTH. With the owner present, coverage never drops
-  // to zero, so both can succeed - assert ≥1 holder remains regardless.
   await seedIdentity(db, {
     users: [
       { id: USER_1, teamId: TEAM_A, role: "owner" },
@@ -369,10 +335,8 @@ test("two concurrent demotions of manage_members holders - coverage invariant ho
       updateMember({ userId: "m1", role: "member", capabilities: ["view"] }),
       updateMember({ userId: "m2", role: "member", capabilities: ["view"] }),
     ]);
-    // The owner always holds manage_members, so neither demotion empties the set.
     assert.ok(results.every((r) => r.status === "fulfilled"));
   });
-  // At least one manage_members holder remains (the owner).
   const holders = await db
     .select({ userId: membershipsTable.userId })
     .from(membershipsTable)
@@ -408,15 +372,11 @@ test("removeMember keeps the team covered; removing the sole non-owner manager w
   });
 });
 
-/* ------------------------------------------------------------------ */
-/* Absolute owner ("crown") vs assigned owner                          */
-/* ------------------------------------------------------------------ */
-
 test("listMembers marks the founder as the primary owner; assigned owners are not", async () => {
   await seedIdentity(db, {
     users: [
-      { id: USER_1, teamId: TEAM_A, role: "owner" }, // founder of TEAM_A
-      { id: "co", teamId: TEAM_A, role: "owner", isInstanceAdmin: false }, // assigned owner
+      { id: USER_1, teamId: TEAM_A, role: "owner" },
+      { id: "co", teamId: TEAM_A, role: "owner", isInstanceAdmin: false },
       { id: "m1", teamId: TEAM_A, role: "member", isInstanceAdmin: false },
     ],
   });
@@ -435,7 +395,6 @@ test("listMembers marks the founder as the primary owner; assigned owners are no
       "assigned owner is not",
     );
     assert.equal(byId.get("m1")!.isPrimaryOwner, false);
-    // The founder is an instance admin by seed default; the others opted out.
     assert.equal(byId.get(USER_1)!.isInstanceAdmin, true);
     assert.equal(byId.get("co")!.isInstanceAdmin, false);
   });
@@ -448,7 +407,7 @@ test("listMembers counts each member's tokens and agents reaching the team, noth
       { id: "m1", teamId: TEAM_A, role: "member", isInstanceAdmin: false },
     ],
   });
-  const { createToken } = await import("./tokens");
+  const { createToken } = await import("./tokens/mint");
   await runWithIdentity({ userId: USER_1, teamId: TEAM_A }, async () => {
     await createToken({ name: "ci", capabilities: ["view"] });
     const { token } = await createToken({
@@ -465,7 +424,6 @@ test("listMembers counts each member's tokens and agents reaching the team, noth
     assert.equal(byId.get(USER_1)!.tokenCount, 2);
     assert.equal(byId.get(USER_1)!.agentCount, 1);
     assert.equal(byId.get("m1")!.tokenCount, 0);
-    // The DTO carries counts only: no id, prefix or name of a credential.
     const dump = JSON.stringify(byId.get(USER_1));
     assert.ok(!dump.includes("deplo_"), dump);
     assert.ok(!dump.includes("tok_"), dump);
@@ -475,11 +433,10 @@ test("listMembers counts each member's tokens and agents reaching the team, noth
 test("the founder (primary owner) can't be removed or demoted - even by another owner", async () => {
   await seedIdentity(db, {
     users: [
-      { id: USER_1, teamId: TEAM_A, role: "owner" }, // founder
-      { id: "co", teamId: TEAM_A, role: "owner" }, // assigned owner with manage_members
+      { id: USER_1, teamId: TEAM_A, role: "owner" },
+      { id: "co", teamId: TEAM_A, role: "owner" },
     ],
   });
-  // An assigned owner (full manage_members) still cannot touch the founder.
   await asUser("co", async () => {
     await assert.rejects(
       () => removeMember(USER_1),
@@ -500,8 +457,8 @@ test("the founder (primary owner) can't be removed or demoted - even by another 
 test("the founder CAN remove an assigned owner (the reported gap)", async () => {
   await seedIdentity(db, {
     users: [
-      { id: USER_1, teamId: TEAM_A, role: "owner" }, // founder
-      { id: "co", teamId: TEAM_A, role: "owner" }, // assigned owner
+      { id: USER_1, teamId: TEAM_A, role: "owner" },
+      { id: "co", teamId: TEAM_A, role: "owner" },
     ],
   });
   await asOwner(async () => {
@@ -515,13 +472,13 @@ test("the founder CAN remove an assigned owner (the reported gap)", async () => 
 test("assigned owners can remove each other; the founder stays protected", async () => {
   await seedIdentity(db, {
     users: [
-      { id: USER_1, teamId: TEAM_A, role: "owner" }, // founder
-      { id: "co1", teamId: TEAM_A, role: "owner" }, // assigned owner
-      { id: "co2", teamId: TEAM_A, role: "owner" }, // assigned owner
+      { id: USER_1, teamId: TEAM_A, role: "owner" },
+      { id: "co1", teamId: TEAM_A, role: "owner" },
+      { id: "co2", teamId: TEAM_A, role: "owner" },
     ],
   });
   await asUser("co1", async () => {
-    await removeMember("co2"); // one assigned owner removes another - allowed
+    await removeMember("co2");
     const members = await listMembers();
     assert.deepEqual(
       members.map((m) => m.userId).sort(),
@@ -533,20 +490,19 @@ test("assigned owners can remove each other; the founder stays protected", async
 test("a non-owner manager cannot act on owners or grant the owner role", async () => {
   await seedIdentity(db, {
     users: [
-      { id: USER_1, teamId: TEAM_A, role: "owner" }, // founder
-      { id: "co", teamId: TEAM_A, role: "owner" }, // assigned owner
+      { id: USER_1, teamId: TEAM_A, role: "owner" },
+      { id: "co", teamId: TEAM_A, role: "owner" },
       {
         id: "mgr",
         teamId: TEAM_A,
         role: "member",
         capabilities: ["view", "manage_members"],
       },
-      { id: "m1", teamId: TEAM_A, role: "member" }, // a plain member to promote
-      { id: "cand", teamId: "team_b", role: "owner" }, // a user from another team
+      { id: "m1", teamId: TEAM_A, role: "member" },
+      { id: "cand", teamId: "team_b", role: "owner" },
     ],
   });
   await asUser("mgr", async () => {
-    // Can't remove or edit an (assigned) owner.
     await assert.rejects(
       () => removeMember("co"),
       /Only an owner can remove another owner/,
@@ -556,17 +512,14 @@ test("a non-owner manager cannot act on owners or grant the owner role", async (
         updateMember({ userId: "co", role: "member", capabilities: ["view"] }),
       /Only an owner can change another owner/,
     );
-    // Can't promote a member to owner.
     await assert.rejects(
       () => updateMember({ userId: "m1", role: "owner" }),
       /Only an owner can grant the owner role/,
     );
-    // Can't add a new owner.
     await assert.rejects(
       () => addExistingMember({ userId: "cand", role: "owner" }),
       /Only an owner can add another owner/,
     );
-    // But managing a plain member is fine.
     await updateMember({
       userId: "m1",
       role: "viewer",
@@ -578,7 +531,7 @@ test("a non-owner manager cannot act on owners or grant the owner role", async (
 test("an owner can add another (assigned) owner; they are not the founder", async () => {
   await seedIdentity(db, {
     users: [
-      { id: USER_1, teamId: TEAM_A, role: "owner" }, // founder
+      { id: USER_1, teamId: TEAM_A, role: "owner" },
       { id: "cand", teamId: "team_b", role: "owner" },
     ],
   });
@@ -598,9 +551,6 @@ test("an owner can add another (assigned) owner; they are not the founder", asyn
 });
 
 test("two concurrent active-admin demotions - at least one active admin always survives", async () => {
-  // Two instance admins, each acting to demote the OTHER. Exactly one demotion
-  // can succeed; the second must re-evaluate post-commit and be refused, leaving
-  // ≥1 active admin (the lockout guard).
   await seedIdentity(db, {
     users: [
       { id: "admin1", teamId: TEAM_A, role: "owner", isInstanceAdmin: true },
@@ -681,16 +631,6 @@ test("updateUserAdmin can promote a non-admin even when they aren't yet in the a
   assert.equal(promoted.isInstanceAdmin, true);
 });
 
-/* ------------------------------------------------------------------ */
-/* The add-member picker is not a directory                            */
-/* ------------------------------------------------------------------ */
-
-/**
- * `manage_members` is a TEAM capability, so the people it offers are bounded by
- * the actor's own reach. It used to return EVERY account on the instance - one
- * team admin reading every other customer's staff list. A colleague is still
- * offered with no query; a stranger only by their exact username.
- */
 test("searchUsers offers colleagues, and a stranger only by exact username", async () => {
   await seedIdentity(db, {
     teams: [
@@ -699,8 +639,6 @@ test("searchUsers offers colleagues, and a stranger only by exact username", asy
       { id: "team_c", slug: "gamma" },
     ],
     users: [
-      // The actor: owner of A, and also in B. NOT an instance admin, which is
-      // the whole point - an admin keeps the full roster on purpose.
       { id: USER_1, teamId: TEAM_A, role: "owner", isInstanceAdmin: false },
       {
         id: "u_colleague",
@@ -716,7 +654,6 @@ test("searchUsers offers colleagues, and a stranger only by exact username", asy
       },
     ],
   });
-  // Put the actor in B too, so `u_colleague` shares a team with them.
   await db.insert(membershipsTable).values({
     id: "mem_user_1_b",
     userId: USER_1,

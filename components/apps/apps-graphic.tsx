@@ -1,6 +1,5 @@
 import { cn } from "@/lib/utils";
 
-/** The Overview empty-state illustration: a rocket sitting on its pad, lifting off, and coming back round for the next one. */
 export function AppsGraphic({ className }: { className?: string }) {
   return (
     <svg

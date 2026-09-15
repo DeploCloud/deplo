@@ -23,11 +23,6 @@ import {
   loadRegistryAuthsForApp,
 } from "./registries";
 
-/**
- * The deploy edge's view of a registry credential: decrypted, keyed the way the
- * docker CLI matches an image, and never another team's.
- */
-
 let db: TestDb;
 let pg: PGlite;
 let realFetch: typeof globalThis.fetch;
@@ -35,7 +30,6 @@ let realFetch: typeof globalThis.fetch;
 before(async () => {
   ({ db, pg } = await makeTestDb());
   __setTestDb(db);
-  // The credential check is a network call; every fixture here is a good one.
   realFetch = globalThis.fetch;
   globalThis.fetch = (async () =>
     new Response(null, { status: 200 })) as typeof fetch;
@@ -94,8 +88,6 @@ test("an app that no longer exists sends nothing", async () => {
 });
 
 test("the Hub is keyed the way the docker CLI looks it up", () => {
-  // A `docker pull nginx` resolves its credential under this key, NOT "docker.io",
-  // so storing the host verbatim would silently never authenticate.
   for (const host of ["docker.io", "index.docker.io", "registry-1.docker.io"]) {
     assert.equal(dockerConfigKey(host), "https://index.docker.io/v1/", host);
   }

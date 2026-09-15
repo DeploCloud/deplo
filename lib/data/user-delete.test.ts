@@ -7,14 +7,16 @@ import { eq } from "drizzle-orm";
 import { makeTestDb, type TestDb } from "../db/test-harness";
 import { __setTestDb, __resetTestDb } from "../db/client";
 import {
-  apps as appsTable,
-  folders as foldersTable,
-  instanceSettings,
   memberships as membershipsTable,
   membershipCapabilities as membershipCapabilitiesTable,
+} from "../db/schema/control-plane/access-control";
+import { apps as appsTable } from "../db/schema/control-plane/apps";
+import {
   teams as teamsTable,
   users as usersTable,
-} from "../db/schema/control-plane";
+} from "../db/schema/control-plane/identity";
+import { instanceSettings } from "../db/schema/control-plane/instance";
+import { folders as foldersTable } from "../db/schema/control-plane/projects";
 import { runWithIdentity } from "../auth/request-context";
 import { capabilitiesForRole } from "../membership-shared";
 import {
@@ -30,10 +32,6 @@ import {
   TRUNCATE_PROJECT_GRAPH,
 } from "./app-graph-test-helpers";
 import { deleteUser, getDeleteUserImpact } from "./user-delete";
-
-/**
- * Permanently deleting a user account, against pglite.
- */
 
 const USER_2 = "user_2";
 const USER_3 = "user_3";
@@ -57,7 +55,6 @@ beforeEach(async () => {
   await pg.exec(TRUNCATE_IDENTITY);
 });
 
-/** Add an existing user to another team (seedIdentity seeds one membership each). */
 async function addMembership(userId: string, teamId: string, role = "member") {
   const membershipId = `mem_${userId}_${teamId}`;
   await db.insert(membershipsTable).values({
@@ -97,7 +94,6 @@ async function exists(
   return rows.length > 0;
 }
 
-/** An admin (USER_1) plus the target (USER_2) who owns TEAM_B alone. */
 async function seedAdminAndTarget() {
   await seedIdentity(db, {
     teams: [
@@ -117,10 +113,6 @@ const ALL_OFF = {
   deleteFoundedTeams: false,
 };
 
-/* ------------------------------------------------------------------ */
-/* Solo teams: always, and disclosed                                   */
-/* ------------------------------------------------------------------ */
-
 test("a team the user is alone in is deleted with the account, apps and all", async () => {
   await seedAdminAndTarget();
   await seedServer(db);
@@ -136,7 +128,6 @@ test("a team the user is alone in is deleted with the account, apps and all", as
   assert.equal(impact.soloTeams.length, 1);
   assert.equal(impact.soloTeams[0]!.appCount, 1);
   assert.equal(impact.soloTeams[0]!.otherMemberCount, 0);
-  // Already accounted for by the team line, never double-counted as an opt-in.
   assert.equal(impact.createdAppCount, 0);
 
   const res = await runWithIdentity({ userId: USER_1, teamId: TEAM_A }, () =>
@@ -158,7 +149,6 @@ test("a shared team survives; the account just loses its membership", async () =
     getDeleteUserImpact(USER_2),
   );
   assert.equal(impact.soloTeams.length, 0);
-  // USER_2 founded TEAM_B and it still has USER_1 in it.
   assert.deepEqual(
     impact.foundedTeams.map((t) => t.teamId),
     [TEAM_B],
@@ -175,7 +165,6 @@ test("a shared team survives; the account just loses its membership", async () =
     .from(membershipsTable)
     .where(eq(membershipsTable.teamId, TEAM_B));
   assert.equal(left.length, 1);
-  // The crown is vacated, never dangled.
   const team = (
     await db
       .select({ founderUserId: teamsTable.founderUserId })
@@ -196,10 +185,6 @@ test("deleteFoundedTeams takes the shared team too", async () => {
   assert.equal(await exists(teamsTable, TEAM_B), false);
 });
 
-/* ------------------------------------------------------------------ */
-/* The opt-ins                                                         */
-/* ------------------------------------------------------------------ */
-
 test("apps they created in a surviving team are kept unless asked for", async () => {
   await seedAdminAndTarget();
   await addMembership(USER_2, TEAM_A, "member");
@@ -214,8 +199,6 @@ test("apps they created in a surviving team are kept unless asked for", async ()
     teamId: TEAM_A,
     createdByUserId: USER_1,
   });
-  // TEAM_B is USER_2's solo team and would be deleted regardless - drop it so
-  // this case is only about the shared team.
   await db.delete(teamsTable).where(eq(teamsTable.id, TEAM_B));
 
   const impact = await runWithIdentity({ userId: USER_1, teamId: TEAM_A }, () =>
@@ -227,7 +210,6 @@ test("apps they created in a surviving team are kept unless asked for", async ()
     deleteUser(USER_2, ALL_OFF),
   );
   assert.equal(await exists(appsTable, "prj_theirs"), true);
-  // Kept, but no longer attributed - the FK is SET NULL, never CASCADE.
   const row = (
     await db
       .select({ createdByUserId: appsTable.createdByUserId })
@@ -267,7 +249,6 @@ test("deleteOwnedWorkspaces takes the folder and the apps inside it", async () =
   await addMembership(USER_2, TEAM_A, "member");
   await seedServer(db);
   await seedFolder("fld_theirs", TEAM_A, USER_2);
-  // Created by someone ELSE but parked in their folder: the folder is the claim.
   await seedApp(db, {
     id: "prj_in_folder",
     teamId: TEAM_A,
@@ -309,14 +290,11 @@ test("an unclaimed folder is kept, and passes to the team's primary owner", asyn
       .from(foldersTable)
       .where(eq(foldersTable.id, "fld_theirs"))
   )[0]!;
-  // A folder is private to its owner: ownerless, it would be visible to nobody
-  // but a super-user, and the apps inside it would vanish from the team.
   assert.equal(folder.ownerUserId, USER_1, "TEAM_A's founder takes it");
 });
 
 test("a folder in a team they founded and leave behind goes to the deleting admin", async () => {
   await seedAdminAndTarget();
-  // TEAM_B survives: founded by USER_2 but shared with USER_1, and not opted in.
   await addMembership(USER_1, TEAM_B, "member");
   await seedFolder("fld_founded", TEAM_B, USER_2);
 
@@ -337,10 +315,6 @@ test("a folder in a team they founded and leave behind goes to the deleting admi
     "the crown left with the account, so the admin who deleted it holds the folder",
   );
 });
-
-/* ------------------------------------------------------------------ */
-/* Guards                                                              */
-/* ------------------------------------------------------------------ */
 
 test("an admin can't delete their own account", async () => {
   await seedAdminAndTarget();
@@ -384,9 +358,6 @@ test("the instance owner's account is off limits", async () => {
 });
 
 test("deleting a fellow admin is fine - the caller is the surviving admin", async () => {
-  // The lockout invariant `updateUserAdmin` has to defend holds for free here:
-  // the caller is an active instance admin (a suspended account can't even
-  // authenticate) and can't delete themselves, so one always remains.
   await seedIdentity(db, {
     teams: [
       { id: TEAM_A, slug: "alpha" },
@@ -436,10 +407,6 @@ test("a non-admin can't delete anyone", async () => {
   );
 });
 
-/* ------------------------------------------------------------------ */
-/* Nobody is left locked out of a surviving team                       */
-/* ------------------------------------------------------------------ */
-
 test("a team left with no member manager is healed, and says so first", async () => {
   await seedIdentity(db, {
     teams: [
@@ -449,8 +416,6 @@ test("a team left with no member manager is healed, and says so first", async ()
     users: [
       { id: USER_1, teamId: TEAM_A, role: "owner" },
       { id: USER_2, teamId: TEAM_B, role: "owner", isInstanceAdmin: false },
-      // A viewer holds neither manage_members nor manage_team, so deleting the
-      // owner would strand TEAM_B unmanageable.
       { id: USER_3, teamId: TEAM_B, role: "viewer", isInstanceAdmin: false },
     ],
   });

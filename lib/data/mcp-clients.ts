@@ -1,17 +1,15 @@
 import "server-only";
 
-// https://deplo.build/docs/guides/mcp-server
-
 import { and, eq, inArray } from "drizzle-orm";
 import { getDb } from "../db/client";
+import { memberships as membershipsTable } from "../db/schema/control-plane/access-control";
+import { apiTokens } from "../db/schema/control-plane/api-tokens";
+import { apps as appsTable } from "../db/schema/control-plane/apps";
+import { teams as teamsTable } from "../db/schema/control-plane/identity";
 import {
-  apiTokens,
-  apps as appsTable,
   folders as foldersTable,
-  memberships as membershipsTable,
   projects as projectsTable,
-  teams as teamsTable,
-} from "../db/schema/control-plane";
+} from "../db/schema/control-plane/projects";
 import { oauthClient, oauthConsent } from "../db/schema/auth";
 import {
   membershipFor,
@@ -19,49 +17,31 @@ import {
   requireTeamWide,
   teamsWhereUserHolds,
 } from "../membership";
-import { assertUser } from "../auth";
-import type { Capability } from "../types";
-import { createToken, tokensReaching, type TokenScopeInput } from "./tokens";
+import { assertUser } from "../auth/current-user";
+import type { Capability } from "../types/identity";
+import { createToken } from "./tokens/mint";
+import { tokensReaching } from "./tokens/reach";
+import type { TokenScopeInput } from "./tokens/scope";
 import { recordActivity } from "./activity";
 import { listMyTeams } from "./teams";
 import { requirePersonalSession } from "../auth/request-context";
 
-/**
- * Connecting an AI client over OAuth. That is ADR-0021 §2's "there is no second
- * authorization path, and there must never be one", kept true by not building
- * one. A connection is a PERSONAL token: it reaches the teams where its owner
- * may connect agents, and only its owner can see or revoke it.
- */
-
-/** A registered client, as the consent screen shows it. */
 export interface ConsentClientDTO {
   clientId: string;
-  /** Free text the client chose for itself. Never show it without the origin. */
   name: string;
-  /** The one thing a client cannot lie about: where it may be redirected back to. */
   redirectOrigin: string | null;
   uri: string | null;
   icon: string | null;
 }
 
-/** Names longer than this are clamped - `createToken` refuses over 40. */
 const MAX_CLIENT_NAME = 40;
 
-/** How recently the consent must have been given for a mint to follow it. */
 const CONSENT_FRESHNESS_MS = 5 * 60 * 1000;
 
-/**
- * Refuse to mint unless the person has JUST approved this client for real. It
- * could not be used immediately (the attacker still has no signed consent), but
- * the credential would exist.
- */
 async function assertFreshConsent(
   clientId: string,
   userId: string,
 ): Promise<void> {
-  // The age is compared in JS, and that is the CORRECT half of a real trap. So
-  // comparing this row against `now()` in SQL is what breaks, and comparing it
-  // against `Date.now()` is what works.
   const row = (
     await getDb()
       .select({
@@ -84,11 +64,6 @@ async function assertFreshConsent(
     );
 }
 
-/**
- * The teams the named projects, folders and apps belong to. A connection reaches
- * every team its scope touches, not only the ones ticked as wholes, so a project
- * is a grant of its team, and has to pass the same per-team gate.
- */
 async function teamsOfNodes(input: TokenScopeInput): Promise<string[]> {
   const named = new Set([
     ...(input.projectIds ?? []),
@@ -124,9 +99,6 @@ async function teamsOfNodes(input: TokenScopeInput): Promise<string[]> {
   return [...new Set(found.map((r) => r.teamId))];
 }
 
-/**
- * May this person let their AI client into THIS team?
- */
 async function assertMayConnect(teamId: string, userId: string): Promise<void> {
   const membership = await membershipFor(userId, teamId);
   if (!membership || !membership.capabilities.includes("manage_mcp"))
@@ -146,11 +118,6 @@ async function assertMayConnect(teamId: string, userId: string): Promise<void> {
     );
 }
 
-/**
- * The teams this person may connect an AI client to, right now: a member
- * holding `manage_mcp` in a team that has MCP on. What an unscoped connection
- * will act in, and what the consent screen names.
- */
 export async function listConnectableTeamIds(): Promise<string[]> {
   const user = await assertUser();
   const rows = await getDb()
@@ -166,8 +133,6 @@ export async function listConnectableTeamIds(): Promise<string[]> {
   const ids = await Promise.all(
     rows.map(async (t) => {
       if (!t.enabled) return null;
-      // An unmet two-factor policy THROWS in here rather than answering null,
-      // and it is the same "no" as missing the capability.
       const m = await membershipFor(user.id, t.id).catch(() => null);
       return m?.capabilities.includes("manage_mcp") ? t.id : null;
     }),
@@ -184,9 +149,6 @@ function originOf(url: string | null | undefined): string | null {
   }
 }
 
-/**
- * The client a consent request names.
- */
 export async function getOAuthClientForConsent(
   clientId: string,
 ): Promise<ConsentClientDTO | null> {
@@ -215,30 +177,18 @@ export async function getOAuthClientForConsent(
   };
 }
 
-/**
- * `teamIds` names the teams this connection may work in.
- */
 export interface AuthorizeMcpClientInput extends TokenScopeInput {
   clientId: string;
   capabilities?: Capability[];
-  /**
-   * The team the consent screen SHOWED, for the server to disagree with.
-   */
   expectedTeamId?: string;
 }
 
-/**
- * Every gate, and the mint. The `raw` secret `createToken` returns is DROPPED on
- * the floor.
- */
 export async function mintMcpConnection(
   input: AuthorizeMcpClientInput,
 ): Promise<{ tokenId: string }> {
-  // A consent is a person's act; a token must not re-mint (and so revoke) one.
   requirePersonalSession("connecting an AI client");
   const { id: userId } = await assertUser();
   const teamId = await requireActiveTeamId();
-  // A narrowed token must not be able to mint a whole-team connection.
   await requireTeamWide("connecting an AI client");
 
   if (input.expectedTeamId && input.expectedTeamId !== teamId)
@@ -251,9 +201,6 @@ export async function mintMcpConnection(
 
   await assertFreshConsent(input.clientId, userId);
 
-  // Re-approving MOVES a connection rather than leaving two the owner cannot
-  // tell apart, and never widens the previous token in place: the old row goes,
-  // a new one is minted with exactly what this screen submitted.
   await getDb()
     .delete(apiTokens)
     .where(
@@ -263,9 +210,6 @@ export async function mintMcpConnection(
       ),
     );
 
-  // Which teams this connection may work in, gated once PER TEAM, in that
-  // team. Naming nothing means every team the person may connect agents to,
-  // read live on each call - so there has to be at least one right now.
   const nodeTeams = await teamsOfNodes(input);
   const named = [...new Set([...(input.teamIds ?? []), ...nodeTeams])];
   for (const t of named) await assertMayConnect(t, userId);
@@ -289,9 +233,6 @@ export async function mintMcpConnection(
     .set({ oauthClientId: input.clientId })
     .where(eq(apiTokens.id, token.id));
 
-  // Outside any transaction, and the answer to "who let this AI client in", in
-  // every team it can act in. Names the client and the approver, never a
-  // secret: the raw token minted above is dropped on the floor.
   const actor = (await assertUser()).name;
   for (const t of granted)
     await recordActivity(
@@ -305,22 +246,14 @@ export async function mintMcpConnection(
   return { tokenId: token.id };
 }
 
-/** A team as the MCP server names it to an agent. */
 export interface McpTeamDTO {
   id: string;
   name: string;
   slug: string;
-  /** The team's own switch. */
   mcpEnabled: boolean;
-  /** Whether the caller holds `manage_mcp` there. */
   canConnect: boolean;
 }
 
-/**
- * Every team the caller's credential can name, with whether MCP may act there:
- * the team's switch AND the caller's own `manage_mcp`. Both false-able, both
- * listed, so an agent can say WHY a team is off limits instead of guessing.
- */
 export async function listMcpTeams(): Promise<McpTeamDTO[]> {
   const user = await assertUser();
   const mine = await listMyTeams();
@@ -347,20 +280,11 @@ export async function listMcpTeams(): Promise<McpTeamDTO[]> {
   }));
 }
 
-/**
- * How many AI agents can act in the active team right now - every member's,
- * as a number and nothing more. A team never sees another person's credential;
- * it sees that agents are here, and takes them away through the member.
- */
 export async function countMcpAgents(): Promise<number> {
   const teamId = await requireActiveTeamId();
   return (await tokensReaching(teamId)).filter((t) => t.mcp).length;
 }
 
-/**
- * Has YOUR token spoken MCP yet? Deliberately a boolean: somebody else's id
- * answers `false` rather than an error that confirms the row exists.
- */
 export async function mcpTokenConnected(tokenId: string): Promise<boolean> {
   const user = await assertUser();
   const rows = await getDb()

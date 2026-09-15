@@ -5,7 +5,7 @@ templates into Docker stacks fronted by Traefik. Read this before writing code, 
 the deeper docs it links (this file points; it does not restate them).
 
 - **`CONTEXT.md`** (repo root): authoritative glossary / ubiquitous language. Single-context repo.
-- **`docs/adr/`**: numbered decisions (0001-0027). Contradicting one? Surface it, don't silently override.
+- **`docs/adr/`**: numbered decisions, indexed in its `README.md`. Contradicting one? Surface it, don't silently override.
 - **`schema.graphql`** (root): generated SDL, the API contract.
 - **The USER manual is NOT in this repo.** It is [`DeploCloud/docs`](https://github.com/DeploCloud/docs),
   served at <https://deplo.build/docs>. Never add a user-facing page here.
@@ -139,11 +139,11 @@ a per-app / host-coupled action.** Deploy, build, logs, console, metrics, files,
 lifecycle, backups, backup destinations, volume copy and DB provisioning all
 route `UI → GraphQL → lib/data/* → connectAgent(serverId) → agent`.
 
-- `lib/infra/agent-client.ts` `connectAgent(serverId)` is the sole entry (mTLS, cert-fingerprint
+- `lib/infra/agent-client/connect.ts` `connectAgent(serverId)` is the sole entry (mTLS, cert-fingerprint
   pinned at bootstrap). The Deplo host is itself "agent 0", **no in-process localhost shortcut**;
   local and remote take the identical path.
 - **A backup destination is a bucket OR a server's disk** (ADR-0019). Which agent handles one
-  is the single seam `destinationServerId` in `lib/data/destinations.ts`: the DESTINATION's
+  is the single seam `destinationServerId` in `lib/data/destinations/credentials.ts`: the DESTINATION's
   server for `kind: "server"`, the workload's for `s3`. Getting it wrong is silent - retention
   would dial the app's host for an artifact living elsewhere. Bytes for a cross-host store
   relay THROUGH the control plane (agents are a star, they cannot dial each other), as
@@ -164,7 +164,7 @@ route `UI → GraphQL → lib/data/* → connectAgent(serverId) → agent`.
   the only live caller is the boot sweep that removes ones an older version left behind. Don't
   wire anything new to it, and read ADR-0013 before reviving it - the return is expected to go
   through the agent, not the socket.
-  `lib/deploy/build.ts` also retains a now-dead local build path + host `ensureNetwork`/`mkdir`;
+  `lib/deploy/build/` also retains a now-dead local build path + host `ensureNetwork`/`mkdir`;
   the live path passes `skipBuild:true → runAgentDeploy`. Don't mistake the dead path for a
   violation and don't revive it.
 
@@ -281,7 +281,7 @@ scripts/gen-schema.ts`. Both halves of that prefix are load-bearing: the shim
   - `apps/[id]/deploy-hook/[token]` (the **deploy hook**): a webhook sender can't compose a
     GraphQL query, so it POSTs a URL and lets `redeploy` apply the gates.
   - `mcp` (the **MCP server**, ADR-0021): JSON-RPC, not GraphQL, because that is what AI agents
-    speak. Every tool is a row in `lib/mcp/tools.ts` whose GraphQL document runs **in-process**
+    speak. Every tool is a row in `lib/mcp/tools/` whose GraphQL document runs **in-process**
     against the same schema via `lib/mcp/execute.ts`, so the gates are literally the same code.
     Adding a tool is adding a row; adding an authorization check there is a bug - it belongs in
     `lib/data/*`. Regenerate nothing, but keep `lib/mcp/tools.test.ts` green: it validates every
@@ -327,7 +327,7 @@ scripts/gen-schema.ts`. Both halves of that prefix are load-bearing: the shim
   `devices`, `pid|ipc|uts: host`, `userns_mode`, an unconfining `security_opt`, `cgroup_parent`
   and `device_cgroup_rules` reach the host exactly like a bind mount of `/` does, and for a while
   only the bind mount was gated, which made a plain **Member** one YAML key away from root on the
-  server. `composeNeedsHostPrivileges` (lib/deploy/compose-lint.ts) is the detector, and both
+  server. `composeNeedsHostPrivileges` (lib/deploy/compose-lint/host-privileges.ts) is the detector, and both
   compose write paths (`createApp`, `updateAppSource`) put it behind the same grant as
   `composeHasHostBindMount`. Adding a compose key that escapes the sandbox means adding it to
   that list, and HARDENING is never gated (`no-new-privileges`, `cap_drop`, `read_only`), because
@@ -399,9 +399,9 @@ scripts/gen-schema.ts`. Both halves of that prefix are load-bearing: the shim
   true (so the attacker picks the victim's host), the victim's DNS already points there (so the row
   is born `valid`), and `traefikRouterLabels` pins a path router ABOVE the whole-host one on
   purpose - same-origin content under someone else's name. `assertHostnameNotAnotherTeams`
-  (lib/data/domains.ts) is the refusal, on `addDomain` AND on the rename in `updateDomain`. Any new
+  (lib/data/domains/hostname-claim.ts) is the refusal, on `addDomain` AND on the rename in `updateDomain`. Any new
   writer of `domains.name` needs it too.
-- **Roles are per-team ROWS** (`team_roles`, `lib/data/roles.ts`), not TS presets: three
+- **Roles are per-team ROWS** (`team_roles`, `lib/data/roles/`), not TS presets: three
   editable/resettable defaults (Owner locked at full access) plus the team's own. A role edit
   re-writes `membership_capabilities` for its members in the same transaction, so **every
   authorization check stays a read of the member's effective capabilities**, never resolve a
@@ -474,7 +474,7 @@ scripts/gen-schema.ts`. Both halves of that prefix are load-bearing: the shim
   notification webhooks, push endpoints and git base URLs are all on it; reaching inside the
   deployment is an `allowPrivateEndpoint` flag gated on `requireInstanceAdmin`, never on a team
   capability. A new `fetch` to an address a user typed is a hole until it is on this list.
-  **Exactly one exemption**, named in that file: `probePanel` (`lib/data/instance-settings.ts`)
+  **Exactly one exemption**, named in that file: `probePanel` (`lib/data/instance-settings/panel-probe.ts`)
   dials the panel's OWN address, which is legitimately private on plenty of installs, so it asserts
   `requireInstanceAdmin` at the dialer instead. There is no second exemption.
 - **The rate limiter (`lib/security.ts`) is Postgres-backed and `async`.** One UPSERT per attempt,
@@ -490,14 +490,14 @@ scripts/gen-schema.ts`. Both halves of that prefix are load-bearing: the shim
   scrypt (change it and every credential dies), and `disableSignUp: true` (Better Auth must never
   INSERT into `users`, which has NOT NULL columns it knows nothing about). The credential lives on
   `account.password`; `users.password_hash` is GONE and `token_version` is dead - revoking sessions
-  is `revokeAllSessions(userId)`. `lib/auth.ts` keeps its exported surface; only its internals moved.
+  is `revokeAllSessions(userId)`. `lib/auth/` keeps its exported surface; only its internals moved.
 - **The Better Auth route is mounted WHOLE, so its account surface is gated shut.** `/api/auth/*`
   has to exist for OAuth, and that also publishes a complete second account API. Three middlewares
   in `lib/auth/better-auth.ts` close what Deplo drives itself - `twoFactorGate`, `passkeyGate` and
   `deploOwnedGate` (`isDeploOwnedAuthPath`: sign-in/sign-up, change/set password, change email,
   update/delete user, the session list and the password-reset pair). All three discriminate on
   `ctx.request`, which exists only for a real HTTP call, so `auth.api.*({ body, headers })` from
-  `lib/auth.ts` and `lib/data/*` is untouched. The reason is always the same: Deplo's own sign-in is
+  `lib/auth/` and `lib/data/*` is untouched. The reason is always the same: Deplo's own sign-in is
   the ONLY path that limits per ACCOUNT, raises `failed_logins` and refuses a suspended account -
   the plugin's endpoint has an in-memory limiter keyed on a caller-writable IP header and nothing
   else. **Adding a Better Auth endpoint means deciding which side of that list it is on.**

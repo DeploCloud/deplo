@@ -43,7 +43,10 @@ import {
 } from "@/components/shared/pending-create";
 import { gqlAction } from "@/lib/graphql-client";
 import type { RegistryDTO } from "@/lib/data/registries";
-import { REGISTRY_SECRET_LABEL, type RegistryType } from "@/lib/types";
+import {
+  REGISTRY_SECRET_LABEL,
+  type RegistryType,
+} from "@/lib/types/integration";
 
 const TYPE_META: Record<
   RegistryType,
@@ -51,7 +54,6 @@ const TYPE_META: Record<
     label: string;
     host: string;
     userPlaceholder: string;
-    /** Which credential this provider actually issues, named exactly. */
     secretInfo: React.ReactNode;
   }
 > = {
@@ -94,14 +96,8 @@ const TYPE_META: Record<
   },
 };
 
-/**
- * The whole Registries page: one header, one grid of connected registries, one
- * empty state - the shape the Git settings page uses, for the same reason.
- */
 export function RegistriesPanel({ registries }: { registries: RegistryDTO[] }) {
   return (
-    // Adding closes the dialog at once and shows the registry pulsing in the
-    // grid until the real card lands.
     <PendingCreateProvider count={registries.length}>
       <RegistriesBody registries={registries} />
     </PendingCreateProvider>
@@ -111,13 +107,8 @@ export function RegistriesPanel({ registries }: { registries: RegistryDTO[] }) {
 function RegistriesBody({ registries }: { registries: RegistryDTO[] }) {
   const router = useRouter();
   const [addOpen, setAddOpen] = React.useState(false);
-  // Bumped after a successful add so the next open starts from blank fields
-  // without an effect - the dialog stays MOUNTED while its creation is in
-  // flight, which is what lets a refusal put back what was typed.
   const [addKey, setAddKey] = React.useState(0);
   const [deleting, setDeleting] = React.useState<RegistryDTO | null>(null);
-  // The card leaves the grid on the click and comes back only if the server
-  // refuses; nothing here is worth a spinner in front of a confirm dialog.
   const {
     visible: rows,
     remove,
@@ -197,11 +188,6 @@ function RegistriesBody({ registries }: { registries: RegistryDTO[] }) {
   );
 }
 
-/**
- * One connected registry. Same card as a git host card: the mark says which
- * provider it is, the title is what the team called it, the subtitle is where it
- * actually authenticates, and everything you can do to it lives in the kebab.
- */
 function RegistryCard({
   registry,
   onRemove,
@@ -249,7 +235,6 @@ function AddRegistryDialog({
 }: {
   open: boolean;
   onOpenChange: (o: boolean) => void;
-  /** Fired once the registry actually landed, so the panel can reset the form. */
   onCreated: () => void;
 }) {
   const { create } = usePendingCreate();
@@ -285,8 +270,6 @@ function AddRegistryDialog({
       {
         success: "Registry added",
         onSuccess: onCreated,
-        // The dialog is still mounted with everything typed in it, so a refusal
-        // is one reopen away from being corrected.
         onError: () => onOpenChange(true),
       },
     );
@@ -329,9 +312,6 @@ function AddRegistryDialog({
                   <SelectContent>
                     {(Object.keys(TYPE_META) as RegistryType[]).map((t) => (
                       <SelectItem key={t} value={t}>
-                        {/* The mark rides into the trigger too: Radix clones the
-                          selected item's children into SelectValue, so the
-                          chosen registry keeps its logo once the menu closes. */}
                         <span className="flex items-center gap-2">
                           <RegistryMark type={t} className="size-5" />
                           {TYPE_META[t].label}

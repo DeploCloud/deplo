@@ -3,21 +3,17 @@ import "server-only";
 import { eq } from "drizzle-orm";
 
 import { getDb } from "../db/client";
-import {
-  apps as appsTable,
-  domains as domainsTable,
-} from "../db/schema/control-plane";
+import { apps as appsTable } from "../db/schema/control-plane/apps";
+import { domains as domainsTable } from "../db/schema/control-plane/domains";
 import { nowIso } from "../ids";
 import { publishAppChanged } from "../graphql/pubsub";
-import {
-  AgentUnreachableError,
-  connectAgent,
-  VOLUME_USAGE_CAPABILITY,
-  type AgentConnection,
-} from "../infra/agent-client";
+import { connectAgent } from "../infra/agent-client/connect";
+import type { AgentConnection } from "../infra/agent-client/connection";
+import { AgentUnreachableError } from "../infra/agent-client/errors";
+import { VOLUME_USAGE_CAPABILITY } from "../infra/agent-client/hello-capabilities";
 import { nipEmbeddedIp, rehostNip, resolveServerIp } from "../deploy/domains";
-import { stopPreviewsForServerChange } from "../deploy/preview-lifecycle";
-import type { App } from "../types";
+import { stopPreviewsForServerChange } from "../deploy/preview-lifecycle/close";
+import type { App } from "../types/app";
 import { recordActivity } from "./activity";
 import { loadAppGraph, loadDomainsForApp } from "./app-graph-load";
 import { clearDataCopyError, markDataCopyFailed } from "./data-copy";
@@ -29,7 +25,7 @@ import {
   appOwnVolumeNames,
   assertSafeVolumeNames,
 } from "./project-backup-descriptor";
-import { getServerById } from "./servers";
+import { getServerById } from "./servers/roster";
 import { dropTeardown, teardownOrQueue } from "./teardown-queue";
 import {
   destroyStackOn,
@@ -41,32 +37,13 @@ import {
 
 type Emit = (level: "info" | "warn" | "error", text: string) => void;
 
-/**
- * How a move ended. `rolled-back` and `held` are the two ways a copy can fail,
- * and the deploy that carried them is marked failed by the caller.
- */
-export type MoveOutcome =
-  /** The data is on the new server and the old stack is gone (or queued to go). */
-  | "done"
-  /** No move pending, or nothing on the old server to copy. */
-  | "nothing"
-  /** The copy failed with the old server reachable: the app is back on it. */
-  | "rolled-back"
-  /** The old server could not be reached: the app waits, stopped, on the new one. */
-  | "held";
+export type MoveOutcome = "done" | "nothing" | "rolled-back" | "held";
 
-/**
- * Complete a pending server move for an app, called from the deploy pipeline right
- * AFTER a successful deploy on the app's NEW server.
- */
 export async function completePendingAppMigration(
   appId: string,
-  /** The server the deploy that is calling ran on. */
   deployedOn: string,
   emit: Emit,
 ): Promise<MoveOutcome> {
-  // The app's lifecycle lock: the same one start/stop/reroute/delete take, so none
-  // of them can interleave with the stop-copy-start below.
   return withKeyedLock(`app-lifecycle:${appId}`, () =>
     runMigration(appId, deployedOn, emit),
   );
@@ -83,7 +60,6 @@ async function serverName(id: string): Promise<string> {
   return (await getServerById(id))?.name ?? id;
 }
 
-/** Which of `names` exist on `agent`, when it can say; all of them when it cannot. */
 async function presentVolumes(
   agent: AgentConnection,
   names: string[],
@@ -114,9 +90,6 @@ async function runMigration(
     await clearMarker(appId);
     return "nothing";
   }
-  // A second move re-targeted the app while this deploy was in flight: what it
-  // brought up is a stray. The move completes from a deploy that lands where the
-  // row says.
   if (deployedOn !== to) {
     const [here, there] = await Promise.all([
       serverName(deployedOn),
@@ -137,7 +110,6 @@ async function runMigration(
   ]);
   emit("info", `Copying ${app.name}'s data from ${fromName}…`);
 
-  // 1. What the OLD host holds - it is where the data lives, so it is the truth.
   let names: string[];
   let hasStack: boolean;
   let includeFiles = appHasFilesDir(app);
@@ -151,8 +123,6 @@ async function runMigration(
       names = appMoveVolumeNames(app, yaml);
       assertSafeVolumeNames(slug, names);
       leftBehind = appMoveLeftBehind(app, yaml);
-      // Never deployed there (or torn down since): only what an import may have
-      // written is over there. Ask before stopping anything for it.
       if (!hasStack) {
         names = await presentVolumes(old, names);
         if (includeFiles)
@@ -188,8 +158,6 @@ async function runMigration(
     return "nothing";
   }
 
-  // 2. Quiesce both sides. A running source gives a torn copy; a running
-  //    destination races the untar.
   let newStopped = false;
   let oldStopped = false;
   try {
@@ -217,8 +185,6 @@ async function runMigration(
     }
   }
 
-  // 3. Copy. A failure here leaves the old host with its data, so the move is
-  //    undone rather than left half done.
   let moved: { missing: string[] };
   try {
     moved = await migrateWorkloadData(from, to, {
@@ -239,7 +205,6 @@ async function runMigration(
         `Its volumes there are kept, in case the app was running with data under another name.`,
     );
 
-  // 4. Up on the copied data.
   let newUp = true;
   try {
     await startStackOn(to, slug);
@@ -251,8 +216,6 @@ async function runMigration(
     );
   }
 
-  // 5. The old host: torn down with its volumes once the copy is verified, kept
-  //    (containers only) when a volume was not found where Deplo looked for it.
   let teardownNote = "";
   if (moved.missing.length > 0) {
     await destroyStackOn(from, slug, false).catch((e) => {
@@ -281,7 +244,6 @@ async function runMigration(
   return "done";
 }
 
-/** The teardown entry for this app's stack on `serverId`. */
 function strayEntry(app: App, serverId: string, reclaim?: string[]) {
   return {
     serverId,
@@ -293,11 +255,6 @@ function strayEntry(app: App, serverId: string, reclaim?: string[]) {
   };
 }
 
-/**
- * Undo the move: the app goes back to the server that still holds its data, and
- * the half-built stack on the new one is removed. Only with the old host
- * reachable - otherwise there is nothing to go back to (see {@link hold}).
- */
 async function rollback(
   app: App,
   ctx: {
@@ -318,7 +275,6 @@ async function rollback(
       () => false,
     );
   await relocate(app, from, oldUp ? "active" : "error");
-  // Best-effort: an unreachable new host lands in the retry queue.
   await teardownOrQueue(strayEntry(app, to)).catch(() => {});
   publishAppChanged(app.id);
   emit(
@@ -338,12 +294,6 @@ async function rollback(
   return "rolled-back";
 }
 
-/**
- * The old host cannot be reached, so the data cannot be copied and there is no
- * host to go back to. The app stays on the new server, STOPPED rather than
- * running on empty storage, blocked the way a failed import copy is: a redeploy
- * retries once the old host answers, "Deploy anyway" accepts the loss.
- */
 async function hold(
   app: App,
   ctx: {
@@ -374,18 +324,11 @@ async function hold(
   return "held";
 }
 
-/**
- * Put the app row back on `serverId` - the reverse of what `updateAppSource`
- * did for the move: server, the build server that followed it, the auto nip.io
- * hosts and the previews that follow the app.
- */
 async function relocate(
   app: App,
   serverId: string,
   status: "active" | "error",
 ): Promise<void> {
-  // An earlier attempt that failed queued a teardown of this stack on the
-  // destination: now that it lives there, that teardown would destroy it.
   await dropTeardown(serverId, app.slug);
   const [leaving, arriving] = await Promise.all([
     getServerById(app.serverId),
@@ -432,7 +375,6 @@ async function relocate(
     await stopPreviewsForServerChange(app.id, serverId).catch(() => {});
 }
 
-/** Clear the pending-migration marker (a no-op UPDATE if the row is gone). */
 async function clearMarker(appId: string): Promise<void> {
   await getDb()
     .update(appsTable)

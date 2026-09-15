@@ -6,10 +6,6 @@ import {
   type VersionItem,
 } from "@/components/apps/version-combobox";
 
-/**
- * Railpack version input with an autocomplete dropdown synced to the railpack
- * GitHub releases (served by `/api/railpack-versions`, cached server-side).
- */
 export interface RailpackVersionInputProps {
   value: string;
   onChange: (value: string) => void;
@@ -18,7 +14,6 @@ export interface RailpackVersionInputProps {
   className?: string;
 }
 
-/** Fetch the release tags; each tag is both the stored value and the label. */
 async function loadRailpackVersions(): Promise<VersionItem[]> {
   const r = await fetch("/api/railpack-versions");
   const j = await r.json();

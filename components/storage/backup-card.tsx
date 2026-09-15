@@ -38,10 +38,7 @@ export function BackupCard({
   });
 
   const isApp = backup.targetKind === "app";
-  // The whole card opens the target's own Backups tab, where this schedule's
-  // runs and restore points live. Null once the target is deleted.
   const href = targetHref(backup);
-  // A destination is a bucket or a disk, and the icon has to say which.
   const onAServer =
     destinations.find((d) => d.id === backup.destinationId)?.kind === "server";
   const DestinationIcon = onAServer ? Server : Cloud;
@@ -51,8 +48,6 @@ export function BackupCard({
       <Card className="group relative flex flex-col gap-4 p-5 transition-colors hover:border-foreground/20">
         <AutoRefresh active={isRunning} />
         {href && <OverlayLink href={href} label={backup.name} />}
-        {/* Above the stretched link, and inert so every pixel of the card falls
-            through to it; the controls below opt back in. */}
         <div className="pointer-events-none relative z-[1] flex flex-1 flex-col gap-4">
           <div className="flex items-start justify-between gap-3">
             <div className="min-w-0 flex-1">
@@ -82,8 +77,6 @@ export function BackupCard({
             </div>
           </div>
 
-          {/* The last outcome is what anyone opens this page to check, so it gets
-              the box - the cadence below it is the setting, not the news. */}
           <div className="space-y-1.5 rounded-lg border border-border bg-surface p-3 text-xs">
             {isRunning ? (
               <p className="flex items-center gap-1.5 text-muted-foreground">
@@ -99,8 +92,6 @@ export function BackupCard({
                   {OUTCOME[backup.lastStatus] ?? backup.lastStatus}
                   {backup.lastRunAt ? ` ${timeAgo(backup.lastRunAt)}` : ""}
                 </span>
-                {/* Only next to a success: the newest artifact's size beside
-                  "Failed" would read as the size of the run that failed. */}
                 {backup.lastStatus === "success" &&
                   backup.lastSizeBytes !== null && (
                     <>

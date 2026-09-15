@@ -1,7 +1,3 @@
-/**
- * Capture the outbound HTTP a test causes, without a network.
- */
-
 export interface CapturedCall {
   url: string;
   method: string;
@@ -11,14 +7,9 @@ export interface CapturedCall {
 
 export interface FetchCapture {
   calls: CapturedCall[];
-  /** Put the real fetch back. Always call this in `after`. */
   restore: () => void;
 }
 
-/**
- * @param respond decides the response per URL - default 200 `{}`. Return a
- * `Response` to simulate a provider refusing.
- */
 export function captureFetch(
   respond: (url: string) => Response = () =>
     new Response("{}", { status: 200 }),
@@ -31,9 +22,7 @@ export function captureFetch(
     if (typeof body === "string") {
       try {
         body = JSON.parse(body);
-      } catch {
-        // Not JSON - keep the raw string, which is itself worth asserting on.
-      }
+      } catch {}
     }
     calls.push({
       url,

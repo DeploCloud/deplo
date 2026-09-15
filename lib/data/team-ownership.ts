@@ -5,27 +5,23 @@ import { getDb } from "../db/client";
 import {
   membershipCapabilities as membershipCapabilitiesTable,
   memberships as membershipsTable,
+} from "../db/schema/control-plane/access-control";
+import {
   teams as teamsTable,
   users as usersTable,
-} from "../db/schema/control-plane";
-import { assertUser } from "../auth";
+} from "../db/schema/control-plane/identity";
+import { assertUser } from "../auth/current-user";
 import { requirePersonalSession } from "../auth/request-context";
 import { requireCapability } from "../membership";
 import { capabilitiesForRole } from "../membership-shared";
 import { recordActivity } from "./activity";
-import { ensureTeamRoles } from "./roles";
+import { ensureTeamRoles } from "./roles/builtin-roles";
 import { clearNodeGrants } from "./node-grants";
 import { stepUpCode, stepUpPassword } from "./two-factor";
 
-/**
- * Handing a TEAM to somebody else - the team-level twin of {@link
- * transferInstanceOwner} (lib/data/instance-owner.ts), and the only thing that
- * ever writes `teams.founder_user_id` after the team is created.
- */
 export async function transferTeamOwnership(input: {
   userId: string;
   password: string;
-  /** A TOTP or recovery code. Required only when the caller's own 2FA is on. */
   code?: string;
 }): Promise<void> {
   requirePersonalSession("team ownership");
@@ -35,21 +31,14 @@ export async function transferTeamOwnership(input: {
   if (input.userId === actingUserId)
     throw new Error("You already own this team");
 
-  // Step up BEFORE the transaction: both halves are rate limited per account and
-  // a recovery code is consumed on success, so neither belongs inside a write
-  // that may still be rolled back by a guard below.
   await stepUpPassword(input.password);
   if (actor.twoFactorEnabled) await stepUpCode(input.code ?? "");
 
-  // Seeded outside the transaction (it commits its own inserts) so the crown
-  // always lands on a real Owner role, on a team that never read one before.
   const db = getDb();
   const ownerRoleId = (await ensureTeamRoles(db, teamId)).get("owner") ?? null;
   const ownerCapabilities = capabilitiesForRole("owner");
 
   const targetUsername = await db.transaction(async (tx) => {
-    // Lock the team row first: two concurrent transfers must serialize, or both
-    // could read "I am the founder" and the second would overwrite the first.
     const team = (
       await tx
         .select({ founderUserId: teamsTable.founderUserId })
@@ -59,8 +48,6 @@ export async function transferTeamOwnership(input: {
         .limit(1)
     )[0];
     if (!team) throw new Error("Team not found");
-    // A legacy team whose founder column was never backfilled has no crown to
-    // hand over, and inventing one here would let any owner claim it.
     if (team.founderUserId === null)
       throw new Error("This team has no primary owner to transfer.");
     if (team.founderUserId !== actingUserId)
@@ -87,8 +74,6 @@ export async function transferTeamOwnership(input: {
     if (target.suspended)
       throw new Error("You can't hand this team to a suspended account");
 
-    // The crown IS full access, so the transfer grants it rather than demanding it was
-    // arranged first.
     await tx
       .update(membershipsTable)
       .set({
@@ -112,8 +97,6 @@ export async function transferTeamOwnership(input: {
         capability: c,
       })),
     );
-    // Node grants are what "reaches part of the team" is made of; the crown
-    // reaches all of it, so they go with the rest.
     await clearNodeGrants(tx, input.userId, teamId);
 
     await tx
@@ -123,7 +106,6 @@ export async function transferTeamOwnership(input: {
     return target.username;
   });
 
-  // Outside the transaction, per the recordActivity rule (own connection).
   await recordActivity(
     "member",
     `Transferred ownership of this team to @${targetUsername}`,

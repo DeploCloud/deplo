@@ -13,11 +13,6 @@ import {
 } from "./identity-test-helpers";
 import { getTeam, updateTeam } from "./teams";
 
-/**
- * The team slug is frozen after creation: it is the API's `X-Deplo-Team` value,
- * so nothing a person edits may move it.
- */
-
 let db: TestDb;
 let pg: PGlite;
 

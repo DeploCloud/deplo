@@ -10,16 +10,9 @@ import {
   createHmac,
   createHash,
 } from "node:crypto";
-// Pure JS, no native binding: it has to load on the musl runtime image without a
-// rebuild step, which is the same constraint that keeps node-pty and sharp in
-// `serverExternalPackages`.
+// Pure JS, no native binding: it has to load on the musl runtime image without a rebuild step.
 import { hash as bcryptHash } from "bcryptjs";
 
-/**
- * Central secret material. Production refuses to boot without it (mirroring the
- * `DEPLO_DATABASE_URL` guard in lib/db/pg.ts) - silently deriving every key from a
- * public constant would make all secrets, sessions and the agent CA forgeable.
- */
 function rootSecret(): string {
   const s = process.env.DEPLO_SECRET;
   if (s && s.length >= 16) return s;
@@ -33,11 +26,6 @@ function rootSecret(): string {
   return "deplo-dev-insecure-secret-change-me-please-0000";
 }
 
-/**
- * Derive a 32-byte key for a given purpose from the root secret. The root secret
- * is fixed for the process lifetime, so the derived key is stable too - memoize
- * per purpose.
- */
 const keyCache = new Map<string, Buffer>();
 export function deriveKey(purpose: string): Buffer {
   const cacheKey = `${rootSecret()} ${purpose}`;
@@ -49,21 +37,13 @@ export function deriveKey(purpose: string): Buffer {
   return key;
 }
 
-/* ------------------------------------------------------------------ */
-/* Passwords (scrypt)                                                  */
-/* ------------------------------------------------------------------ */
-
-/**
- * The scrypt work factor NEW hashes are made with. N=65536 rather than the 2^17
- * OWASP names first, deliberately.
- */
+// Safe to raise: verifyPassword reads each hash's own parameters and login re-hashes a weaker one in place.
 const SCRYPT_PARAMS = { N: 65536, r: 8, p: 1 } as const;
-/** Node caps scrypt memory at 32 MiB by default, well under `128 * N * r`. */
+// Node caps scrypt memory at 32 MiB by default, well under the 128 * N * r this needs.
 const SCRYPT_MAXMEM = 512 * 1024 * 1024;
 const SCRYPT_KEYLEN = 64;
 
-/** The cost node's `scryptSync(pw, salt, len)` defaults to - what every hash
- *  written before the parameters were recorded was made with. */
+// What node's scryptSync defaults to: every hash written before the parameters were recorded used it.
 const LEGACY_PARAMS = { N: 16384, r: 8, p: 1 } as const;
 
 interface ScryptParams {
@@ -89,9 +69,6 @@ function scryptAsync(
   });
 }
 
-/**
- * Hash a password: `scrypt$<N>$<r>$<p>$<salt-hex>$<hash-hex>`.
- */
 export async function hashPassword(password: string): Promise<string> {
   const salt = randomBytes(16);
   const derived = await scryptAsync(
@@ -104,10 +81,6 @@ export async function hashPassword(password: string): Promise<string> {
   return `scrypt$${N}$${r}$${p}$${salt.toString("hex")}$${derived.toString("hex")}`;
 }
 
-/**
- * Split a stored hash into its parameters, salt and digest, accepting BOTH
- * formats.
- */
 function parseStoredPassword(
   stored: string,
 ): { params: ScryptParams; salt: Buffer; expected: Buffer } | null {
@@ -151,10 +124,6 @@ export async function verifyPassword(
   }
 }
 
-/**
- * Whether a stored hash was made with a WEAKER setting than the current one, and
- * should therefore be replaced.
- */
 export function passwordNeedsRehash(stored: string): boolean {
   const parsed = parseStoredPassword(stored);
   if (!parsed) return false;
@@ -162,40 +131,18 @@ export function passwordNeedsRehash(stored: string): boolean {
   return work(parsed.params) < work(SCRYPT_PARAMS);
 }
 
-/**
- * Deterministic 32-byte seed for the agent mTLS CA (PLAN P4 / ADR-0006). Stable
- * for the process/secret lifetime (memoized in `deriveKey`), so the CA is
- * reconstructed identically on every restart with no stored CA key.
- */
 export function agentCaSeed(): Buffer {
   return deriveKey("agent-mtls-ca");
 }
 
-/* ------------------------------------------------------------------ */
-/* htpasswd (bcrypt) for Traefik basicauth                             */
-/* ------------------------------------------------------------------ */
-
-/**
- * The bcrypt cost for a basic-auth credential. 10 is ~60ms here, which is the
- * usual ceiling for something derived on every stack render; the credential is
- * also a password a person typed, so the salt is doing most of the work.
- */
 const HTPASSWD_COST = 10;
 
-/**
- * Produce a `user:hash` htpasswd line for Traefik's `basicauth` middleware. A
- * credential that leaks with the file should still cost something to break.
- */
 export async function htpasswdLine(
   username: string,
   password: string,
 ): Promise<string> {
   return `${username}:${await bcryptHash(password, HTPASSWD_COST)}`;
 }
-
-/* ------------------------------------------------------------------ */
-/* Symmetric encryption for stored secrets (AES-256-GCM)              */
-/* ------------------------------------------------------------------ */
 
 export function encryptSecret(plaintext: string): string {
   const key = deriveKey("secrets");
@@ -208,10 +155,6 @@ export function encryptSecret(plaintext: string): string {
   )}`;
 }
 
-/**
- * Open a ciphertext, saying WHETHER it opened as well as what came out. Only the
- * decrypt itself knows, which is why the answer is reported from here.
- */
 export function tryDecryptSecret(
   payload: string,
 ): { ok: true; value: string } | { ok: false } {
@@ -235,19 +178,12 @@ export function tryDecryptSecret(
   }
 }
 
-/**
- * Open a ciphertext, or `""` if it will not open. The lossy form, kept because
- * most callers genuinely do want a best-effort read (a masked display, an optional
- * field).
- */
+// Answers "" for BOTH an empty value and a ciphertext that will not open; use decryptSecretOrThrow where that matters.
 export function decryptSecret(payload: string): string {
   const res = tryDecryptSecret(payload);
   return res.ok ? res.value : "";
 }
 
-/**
- * {@link decryptSecret} for the call sites where `""` is not an answer.
- */
 export function decryptSecretOrThrow(payload: string, what: string): string {
   const res = tryDecryptSecret(payload);
   if (!res.ok)
@@ -257,10 +193,6 @@ export function decryptSecretOrThrow(payload: string, what: string): string {
     );
   return res.value;
 }
-
-/* ------------------------------------------------------------------ */
-/* Encoding helpers                                                    */
-/* ------------------------------------------------------------------ */
 
 function b64url(buf: Buffer): string {
   return buf
@@ -274,23 +206,10 @@ function fromB64url(s: string): Buffer {
   return Buffer.from(s.replace(/-/g, "+").replace(/_/g, "/"), "base64");
 }
 
-/* ------------------------------------------------------------------ */
-/* Misc                                                                */
-/* ------------------------------------------------------------------ */
-
 export function sha256Hex(input: string): string {
   return createHash("sha256").update(input).digest("hex");
 }
 
-/* ------------------------------------------------------------------ */
-/* Stateless signed state (CSRF tokens for external OAuth-style flows) */
-/* ------------------------------------------------------------------ */
-
-/**
- * Sign an arbitrary short string into a tamper-proof, expiring token. Used to
- * carry CSRF state through external redirect flows (e.g. the GitHub App
- * manifest callback) without server-side storage.
- */
 export function signState(data: string, ttlSeconds = 600): string {
   const exp = Math.floor(Date.now() / 1000) + ttlSeconds;
   const body = b64url(Buffer.from(JSON.stringify({ d: data, exp }), "utf8"));
@@ -300,7 +219,6 @@ export function signState(data: string, ttlSeconds = 600): string {
   return `${body}.${sig}`;
 }
 
-/** Verify a token from `signState`; returns the original data or null. */
 export function verifyState(token: string | undefined): string | null {
   if (!token) return null;
   const [body, sig] = token.split(".");

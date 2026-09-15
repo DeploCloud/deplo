@@ -1,12 +1,7 @@
-import { completeBootstrap } from "@/lib/data/servers";
+import { completeBootstrap } from "@/lib/data/servers/agent-handshake";
 import { signResponse, BootstrapError } from "@/lib/agent/bootstrap";
 import { readTextCapped } from "@/lib/http/body-cap";
 
-/**
- * The call-home BOOTSTRAP endpoint (PLAN Part B, P1-P4). The agent has already
- * authenticated US (P2/P3): over HTTPS it pinned our cert fingerprint before
- * POSTing here; over plain HTTP it relies on the response HMAC below.
- */
 export async function POST(request: Request) {
   let body: {
     token?: unknown;
@@ -42,27 +37,20 @@ export async function POST(request: Request) {
       agentPort,
       advertisedHost,
     });
-    // The agent recomputes this HMAC with its copy of the token and refuses a mismatch -
-    // binding the response (and the CA it carries) to a party that knew the token.
+    // The agent recomputes this HMAC and refuses a mismatch, binding the CA it carries to a party that knew the token.
     const payload = JSON.stringify({ certPem, caPem });
     const mac = signResponse(token, payload);
     return new Response(payload, {
       status: 200,
       headers: {
         "content-type": "application/json",
-        // The agent reads this header, recomputes signResponse(token, body), and
-        // compares in constant time before trusting the body.
         "x-deplo-bootstrap-mac": mac,
       },
     });
   } catch (e) {
     if (e instanceof BootstrapError) {
-      // A bad/expired/used token or malformed CSR: 401 (the caller is not, or no
-      // longer, authorised), never reveal which server or why beyond the reason
-      // code, which is safe to share (it does not leak the token).
       return Response.json({ error: e.reason }, { status: 401 });
     }
-    // A lost race (token consumed concurrently) or unexpected failure.
     return Response.json(
       { error: e instanceof Error ? e.message : "bootstrap failed" },
       { status: 409 },

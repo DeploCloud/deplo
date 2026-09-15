@@ -4,14 +4,14 @@ import { and, asc, count, eq, inArray, ne } from "drizzle-orm";
 import type { InferSelectModel } from "drizzle-orm";
 
 import { ALERT_META, DEFAULT_ALERTS } from "../alerts";
-import { assertUser } from "../auth";
+import { assertUser } from "../auth/current-user";
 import { decryptSecret, encryptSecret } from "../crypto";
 import { getDb } from "../db/client";
 import {
   notificationAlerts,
   notificationChannels,
   pushSubscriptions,
-} from "../db/schema/control-plane";
+} from "../db/schema/control-plane/notifications";
 import { newId, nowIso } from "../ids";
 import {
   requireActiveTeamId,
@@ -31,28 +31,18 @@ import {
 } from "../notify/web-push";
 import { assertSafeOutboundHost, assertSafeOutboundUrl } from "../outbound-url";
 import { rateLimit } from "../security";
-import { ALL_ALERTS, ALL_CHANNELS } from "../types";
+import { ALL_ALERTS, ALL_CHANNELS } from "../types/notification";
 import type {
   AlertKey,
   EmailProvider,
   NotificationChannel,
   NotificationChannelInput,
   NotificationChannelInstance,
-} from "../types";
+} from "../types/notification";
 import { requirePersonalSession } from "../auth/request-context";
-
-/**
- * Notification channels: N configured destinations per team, any kind repeatable,
- * each with its own alert selection.
- */
 
 type ChannelRow = InferSelectModel<typeof notificationChannels>;
 
-/* ------------------------------------------------------------------ */
-/* Reads                                                               */
-/* ------------------------------------------------------------------ */
-
-/** One channel of this team, or null. Scoped so a cross-team id hits nothing. */
 async function channelRow(
   teamId: string,
   id: string,
@@ -70,9 +60,6 @@ async function channelRow(
   return rows[0] ?? null;
 }
 
-/**
- * What each of these channels is subscribed to.
- */
 async function alertsForChannels(
   ids: string[],
 ): Promise<Map<string, AlertKey[]>> {
@@ -99,7 +86,6 @@ async function alertsForChannels(
   return out;
 }
 
-/** The row plus its selection, with every credential reduced to a bit. */
 function rowToInstance(
   row: ChannelRow,
   alerts: AlertKey[],
@@ -124,11 +110,6 @@ function rowToInstance(
   };
 }
 
-/**
- * Every configured destination of the active team, oldest first. There is no
- * masked variant to fall back to, the edit modal needs the real address, so the
- * read carries the same gate as the write.
- */
 export async function listNotificationChannels(): Promise<
   NotificationChannelInstance[]
 > {
@@ -145,16 +126,7 @@ export async function listNotificationChannels(): Promise<
   );
 }
 
-/* ------------------------------------------------------------------ */
-/* The JSON trust boundary                                             */
-/* ------------------------------------------------------------------ */
-
 const bool = (v: unknown): boolean => v === true;
-/**
- * A stored field is text a human typed, so it is capped: nothing here is a
- * document, and an uncapped `JSON` scalar is a free row-size multiplier for
- * anybody who can save a channel.
- */
 const MAX_FIELD = 512;
 const str = (v: unknown): string =>
   typeof v === "string" ? v.trim().slice(0, MAX_FIELD) : "";
@@ -163,11 +135,6 @@ const port = (v: unknown): number => {
   return Number.isInteger(n) && n > 0 && n <= 65535 ? n : 587;
 };
 
-/**
- * Coerce whatever arrived over the `JSON` scalar into one real channel. A save is
- * for one instance, so silently turning an unknown kind into a Discord would
- * create a channel nobody asked for.
- */
 export function parseChannelInput(raw: unknown): NotificationChannelInput {
   const i = (raw ?? {}) as Partial<NotificationChannelInput>;
   const kind = str(i.kind) as NotificationChannel;
@@ -182,7 +149,6 @@ export function parseChannelInput(raw: unknown): NotificationChannelInput {
     kind,
     name: str(i.name),
     enabled: bool(i.enabled),
-    // ntfy is the one kind with a meaningful default address.
     url: str(i.url) || (kind === "ntfy" ? "https://ntfy.sh" : ""),
     target: str(i.target),
     emailFrom: str(i.emailFrom),
@@ -195,11 +161,6 @@ export function parseChannelInput(raw: unknown): NotificationChannelInput {
   };
 }
 
-/* ------------------------------------------------------------------ */
-/* Writes                                                              */
-/* ------------------------------------------------------------------ */
-
-/** What the outbound guard calls each kind's URL when it refuses one. */
 const URL_LABEL: Partial<Record<NotificationChannel, string>> = {
   discord: "Discord webhook URL",
   slack: "Slack webhook URL",
@@ -211,12 +172,6 @@ const URL_LABEL: Partial<Record<NotificationChannel, string>> = {
   ntfy: "ntfy server URL",
 };
 
-/**
- * Create (`id === null`) or replace one channel. Returns what was saved.
- *
- * One function rather than create + update: they differ by four lines, and the
- * UI has one modal that serves both.
- */
 export async function saveNotificationChannel(
   id: string | null,
   raw: unknown,
@@ -224,25 +179,15 @@ export async function saveNotificationChannel(
   const teamId = (await requireCapability("manage_notifications")).teamId;
   const next = parseChannelInput(raw);
 
-  // Dialed FROM the control plane by a background loop with no user behind it, so
-  // reject private/internal targets before they are ever persisted.
   const label = URL_LABEL[next.kind];
   if (label && next.url) await assertSafeOutboundUrl(next.url, label);
-  // SMTP is a bare host rather than a URL, so it takes the HOST form of the same
-  // guard. Without it, `email` would be the one channel kind that can dial the
-  // control plane's own network.
   if (next.kind === "email" && next.emailProvider === "smtp" && next.smtpHost)
     await assertSafeOutboundHost(next.smtpHost, "SMTP host");
 
-  // Read the stored ciphertext BEFORE the transaction (a query on its own connection
-  // inside one deadlocks the test harness) - an empty secret means "keep the stored
-  // one", so an edit that only moves the channel's NAME must not require retyping the
   const prev = id ? await channelRow(teamId, id) : null;
   if (id && !prev) throw new Error("Channel not found");
   if (!prev) await assertRoomForOneMore(teamId);
 
-  // A stored credential is kept only while the destination it was typed for is the
-  // same one.
   if (
     prev &&
     prev.secretEnc &&
@@ -258,8 +203,6 @@ export async function saveNotificationChannel(
   const row: ChannelRow = {
     id: prev?.id ?? newId("chan"),
     teamId,
-    // FROZEN at create: an instance that changed kind would carry an alert
-    // selection made about something else entirely.
     kind: prev?.kind ?? next.kind,
     name: next.name,
     enabled: next.enabled,
@@ -280,8 +223,6 @@ export async function saveNotificationChannel(
       .insert(notificationChannels)
       .values(row)
       .onConflictDoUpdate({ target: notificationChannels.id, set: row });
-    // The modal always posts the whole set for THIS channel, so replace it
-    // wholesale: that also retires keys the catalog dropped, with no cleanup.
     await tx
       .delete(notificationAlerts)
       .where(eq(notificationAlerts.channelId, row.id));
@@ -297,9 +238,6 @@ export async function saveNotificationChannel(
   return rowToInstance(row, [...next.alerts]);
 }
 
-/**
- * How many destinations one team may configure.
- */
 const MAX_CHANNELS_PER_TEAM = 25;
 
 async function assertRoomForOneMore(teamId: string): Promise<void> {
@@ -313,7 +251,6 @@ async function assertRoomForOneMore(teamId: string): Promise<void> {
     );
 }
 
-/** Forget one channel. Its alert rows go with it, by FK cascade. */
 export async function deleteNotificationChannel(id: string): Promise<void> {
   const teamId = (await requireCapability("manage_notifications")).teamId;
   const gone = await getDb()
@@ -328,17 +265,7 @@ export async function deleteNotificationChannel(id: string): Promise<void> {
   if (gone.length === 0) throw new Error("Channel not found");
 }
 
-/* ------------------------------------------------------------------ */
-/* The dial                                                            */
-/* ------------------------------------------------------------------ */
-
-/**
- * The dial for ONE channel, or the message the user needs to finish setting it up.
- * ONE switch, so "configured enough to send" is defined exactly once and two
- * copies of it can never drift apart.
- */
 function channelFor(row: ChannelRow, userId?: string): AlertChannel | string {
-  // Validated against ALL_CHANNELS on the way in (`parseChannelInput`).
   const kind = row.kind as NotificationChannel;
   switch (kind) {
     case "discord":
@@ -383,7 +310,6 @@ function channelFor(row: ChannelRow, userId?: string): AlertChannel | string {
             kind: "ntfy",
             baseUrl: row.url,
             topic: row.target,
-            // A public topic needs no token, so an empty one is a valid config.
             token: row.secretEnc ? decryptSecret(row.secretEnc) : "",
           }
         : "Add an ntfy server URL and topic first";
@@ -400,9 +326,6 @@ function channelFor(row: ChannelRow, userId?: string): AlertChannel | string {
     case "push":
       return { kind: "push", teamId: row.teamId, userId };
     default: {
-      // A kind the catalog retired would otherwise be a silent no-op - the exact
-      // bug this feature exists to close. The `never` makes forgetting a NEW
-      // kind a compile error; the return handles a stale row.
       const unreachable: never = kind;
       return `Unknown channel type ${String(unreachable)}`;
     }
@@ -439,11 +362,6 @@ function emailChannelFor(row: ChannelRow): AlertChannel | string {
   };
 }
 
-/**
- * The configured channels that want `key`, resolved WITHOUT a request. Filtering
- * after the flattening would have to key on `kind`, which is the same answer for
- * both of them. Returns plaintext credentials, so it must never reach a DTO.
- */
 export async function channelsForAlert(
   teamId: string,
   key: AlertKey,
@@ -477,7 +395,6 @@ export async function channelsForAlert(
         )
     ).map((r) => [r.channelId, r.enabled] as const),
   );
-  // No row for `key` means this channel has never decided about it.
   const fallback = ALERT_META[key].defaultOn;
   return rows
     .filter((r) => decided.get(r.id) ?? fallback)
@@ -485,22 +402,8 @@ export async function channelsForAlert(
     .filter((c): c is AlertChannel => typeof c !== "string");
 }
 
-/* ------------------------------------------------------------------ */
-/* Test sends and browser push                                         */
-/* ------------------------------------------------------------------ */
-
-/**
- * Deliver a one-off test alert through ONE channel, using its saved config.
- * Browser push goes to the CALLER's own devices.
- */
 export async function sendTestNotification(channelId: string): Promise<void> {
-  // Sending a real outbound POST is a side-effecting infra action - gate it the
-  // same way as editing, so a view-only member can't drive traffic to the team's
-  // configured endpoints.
   const { teamId, userId } = await requireCapability("manage_notifications");
-  // One button press is one outbound request to an address the presser chose, so
-  // it is counted like every other sensitive action. Without this the settings
-  // page is a request generator anybody with the capability can hold down.
   if (
     !(await rateLimit(`notify-test:${userId}`, { limit: 10, windowMs: 60_000 }))
       .ok
@@ -510,14 +413,10 @@ export async function sendTestNotification(channelId: string): Promise<void> {
   if (!row) throw new Error("Channel not found");
   const target = channelFor(row, userId);
   if (typeof target === "string") throw new Error(target);
-  // The same deadline the dispatcher gives a channel: a settings-page mutation
-  // must not hang on a destination that accepts the connection and goes quiet.
   try {
     await sendToChannel(
       target,
       {
-        // A success key on purpose: the Discord embed colours itself from the
-        // key, and a red stripe on "wired up correctly" reads as a failure.
         key: "deployment_succeeded",
         title: "Deplo test alert",
         body: "This channel is wired up correctly.",
@@ -531,11 +430,6 @@ export async function sendTestNotification(channelId: string): Promise<void> {
   }
 }
 
-/**
- * Why a send failed, in words. `fetch` throws "fetch failed" and hides the real
- * reason on `cause` - a bad certificate, a refused connection, a name that does
- * not resolve all read identically without it, and the operator is left guessing.
- */
 export function deliveryReason(e: unknown): string {
   const seen: string[] = [];
   let cur: unknown = e;
@@ -548,17 +442,11 @@ export function deliveryReason(e: unknown): string {
   return seen.join(" - ") || "The channel could not be reached";
 }
 
-/** The instance's VAPID public key, minted on first use. Public by design. */
 export async function getWebPushPublicKey(): Promise<string> {
   await assertUser();
   return ensureVapidKeys();
 }
 
-/**
- * Opt this browser in. The endpoint is a URL the CALLER supplies and the control
- * plane later dials from a background loop with nobody behind it - the same shape
- * as a webhook, and so it takes the same guard.
- */
 export async function subscribeWebPush(
   sub: PushSubscriptionInput,
 ): Promise<void> {
@@ -572,9 +460,6 @@ export async function subscribeWebPush(
   await savePushSubscription(teamId, user.id, sub);
 }
 
-/**
- * How many browsers one person may register per team.
- */
 const MAX_DEVICES_PER_USER = 10;
 
 async function assertRoomForOneMoreDevice(
@@ -582,8 +467,6 @@ async function assertRoomForOneMoreDevice(
   userId: string,
   endpoint: string,
 ): Promise<void> {
-  // Counts the OTHER devices: the save is an upsert, so a browser rotating its
-  // keys on an endpoint it already holds must not be refused at the cap.
   const [row] = await getDb()
     .select({ n: count() })
     .from(pushSubscriptions)
@@ -600,7 +483,6 @@ async function assertRoomForOneMoreDevice(
     );
 }
 
-/** Opt this browser back out. Scoped to the caller's own row. */
 export async function unsubscribeWebPush(endpoint: string): Promise<void> {
   requirePersonalSession("push notifications");
   const user = await assertUser();

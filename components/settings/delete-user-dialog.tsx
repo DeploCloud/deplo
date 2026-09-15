@@ -9,7 +9,6 @@ import { ConfirmAction } from "@/components/shared/confirm-action";
 import { gqlAction } from "@/lib/graphql-client";
 import { cn } from "@/lib/utils";
 
-/** Mirrors the `DeleteUserImpact` GraphQL type (lib/data/user-delete.ts). */
 interface TeamImpact {
   teamId: string;
   name: string;
@@ -68,11 +67,6 @@ const IMPACT_QUERY = /* GraphQL */ `
   }
 `;
 
-/**
- * Permanently delete a user account - the one irreversible action in Settings →
- * Users, so it opens by ASKING THE SERVER what it would actually destroy and shows
- * that instead of a generic warning.
- */
 export function DeleteUserDialog({
   userId,
   username,
@@ -84,11 +78,6 @@ export function DeleteUserDialog({
   username: string;
   open: boolean;
   onOpenChange: (v: boolean) => void;
-  /**
-   * Fired once the account is actually gone. For a caller that is itself a view
-   * OF that account (the user editor's danger zone) this is how it closes
-   * instead of sitting there pointed at a user who no longer exists.
-   */
   onDeleted?: () => void;
 }) {
   const router = useRouter();
@@ -99,7 +88,6 @@ export function DeleteUserDialog({
     React.useState(false);
   const [deleteFoundedTeams, setDeleteFoundedTeams] = React.useState(false);
 
-  // Read on open.
   React.useEffect(() => {
     if (!open) return;
     let cancelled = false;
@@ -118,8 +106,6 @@ export function DeleteUserDialog({
   }, [open, userId]);
 
   const handleOpenChange = (v: boolean) => {
-    // Reset the opt-ins on close so a previous choice never carries into the
-    // next account (the repo's reset-on-close dialog idiom).
     if (!v) {
       setDeleteCreatedApps(false);
       setDeleteOwnedWorkspaces(false);
@@ -153,12 +139,7 @@ export function DeleteUserDialog({
           : "It can't be undone, and the person can't be restored - a suspension is the reversible option."
       }
       confirmLabel="Delete account"
-      // The typed username is the last gate: everything below is a checkbox, and
-      // a stray click on a destructive default button must not be enough.
       confirmText={username}
-      // Nothing to confirm until the preview lands (the operator would be
-      // agreeing to an unknown), and nothing to confirm ever if the account is
-      // off limits.
       confirmDisabled={loading || failed !== null || blocked !== null}
       extra={
         <div className="grid max-h-[45vh] gap-3 overflow-y-auto text-sm">
@@ -175,8 +156,6 @@ export function DeleteUserDialog({
           )}
           {impact && !blocked && (
             <>
-              {/* Not optional, so not a checkbox - a statement of fact, with the
-                  numbers that make it concrete. */}
               {impact.soloTeams.length > 0 && (
                 <div className="rounded-lg border border-destructive/40 bg-destructive-wash p-3">
                   <p className="flex items-center gap-1.5 font-medium text-destructive">
@@ -226,8 +205,6 @@ export function DeleteUserDialog({
                 </div>
               )}
 
-              {/* The opt-ins. Each is hidden when there is nothing to act on -
-                  an empty checkbox is a question the operator can't answer. */}
               {impact.createdAppCount > 0 && (
                 <Option
                   checked={deleteCreatedApps}
@@ -300,7 +277,6 @@ export function DeleteUserDialog({
                 </Option>
               )}
 
-              {/* What happens regardless, so nothing lands as a surprise. */}
               <div className="rounded-lg border border-border p-3 text-xs text-muted-foreground">
                 <p className="mb-1.5 font-medium text-foreground">
                   Always removed with the account
@@ -383,8 +359,6 @@ export function DeleteUserDialog({
           (d) => d.deleteUser,
         );
         if (res.ok && res.data) {
-          // Report what actually went, not a generic "deleted" - the counts are
-          // the operator's only receipt for an irreversible action.
           const removed = [
             [res.data.teamsDeleted, "team"] as const,
             [res.data.appsDeleted, "app"] as const,
@@ -417,7 +391,6 @@ function Option({
   onChange: (v: boolean) => void;
   title: string;
   detail: string;
-  /** "destructive" marks the option that costs OTHER people their work. */
   tone?: "default" | "destructive";
   children?: React.ReactNode;
 }) {
@@ -451,15 +424,10 @@ function sum<T>(rows: T[], pick: (row: T) => number): number {
   return rows.reduce((n, r) => n + pick(r), 0);
 }
 
-/** "1 app" / "3 apps" - the count always leads, so nothing reads as "some". */
 function countLabel(n: number, singular: string, plural?: string): string {
   return `${n} ${n === 1 ? singular : (plural ?? `${singular}s`)}`;
 }
 
-/**
- * "2 apps and 1 database", dropping whichever side is zero and returning "" when
- * both are - "1 app and 0 databases" reads like a form, not like a warning.
- */
 function contentsLabel(apps: number, databases: number): string {
   const parts: string[] = [];
   if (apps > 0) parts.push(countLabel(apps, "app"));
@@ -467,7 +435,6 @@ function contentsLabel(apps: number, databases: number): string {
   return parts.join(" and ");
 }
 
-/** "2 folders and 1 Project", skipping whichever side is zero. */
 function ownedLabel(impact: Impact): string {
   const parts: string[] = [];
   if (impact.ownedFolderCount > 0)

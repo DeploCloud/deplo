@@ -1,35 +1,20 @@
-/**
- * The edit model behind the split one-time-code input
- * (`components/ui/otp-input.tsx`), where each digit gets its own box.
- */
-
-/** Where the caret sits for a given value: the first empty box, clamped. */
 export function caretFor(value: string, length: number): number {
   return Math.min(value.length, length - 1);
 }
 
-/** True once every box is filled. */
 export function isComplete(value: string, length: number): boolean {
   return value.length === length;
 }
 
-/** The result of any edit: the new value and where focus should land. */
 export interface OtpEdit {
   value: string;
   caret: number;
 }
 
-/**
- * Clamp an index to the reachable range. A box after the first empty one is not
- * a legal place to be - clicking box 5 of an empty field puts you in box 1.
- */
 function reachable(value: string, index: number, length: number): number {
   return Math.max(0, Math.min(index, value.length, length - 1));
 }
 
-/**
- * Type one character at `index`.
- */
 export function typeDigit(
   value: string,
   index: number,
@@ -46,9 +31,6 @@ export function typeDigit(
   return { value: next, caret: Math.min(i + 1, length - 1) };
 }
 
-/**
- * Backspace at `index`.
- */
 export function backspace(
   value: string,
   index: number,
@@ -61,9 +43,6 @@ export function backspace(
   return { value: value.slice(0, -1), caret: value.length - 1 };
 }
 
-/**
- * Paste at `index`, keeping only digits.
- */
 export function pasteDigits(
   value: string,
   index: number,
@@ -77,9 +56,6 @@ export function pasteDigits(
   return { value: next, caret: caretFor(next, length) };
 }
 
-/**
- * One `input` event on a box, which is not always one keystroke.
- */
 export function typeOrFill(
   value: string,
   index: number,
@@ -93,7 +69,6 @@ export function typeOrFill(
     : typeDigit(value, index, raw, length);
 }
 
-/** Move the caret one box, never past the first empty one. */
 export function moveCaret(
   value: string,
   index: number,

@@ -45,8 +45,6 @@ export function BackupRow({
         selected && "bg-primary-wash-strong hover:bg-primary-wash-strong",
       )}
     >
-      {/* A dump takes minutes and nothing here changes by itself: re-read the
-          page while this one runs, wherever it was started from. */}
       <AutoRefresh active={isRunning} />
       <TableCell className="font-medium">{backup.name}</TableCell>
       <TableCell className="text-muted-foreground">

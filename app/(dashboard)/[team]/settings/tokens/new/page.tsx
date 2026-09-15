@@ -2,11 +2,11 @@ import Link from "@/components/ui/link";
 import { ArrowLeft } from "lucide-react";
 import { isInstanceAdmin, requireActiveTeamId } from "@/lib/membership";
 
-import { listScopeTree } from "@/lib/data/tokens";
+import { listScopeTree } from "@/lib/data/tokens/scope-tree";
 import { tokenPreset } from "@/lib/token-presets";
 import { PageHeader } from "@/components/shared/page-header";
 import { TokenEditor } from "@/components/settings/tokens/token-editor";
-import { instancePublicBaseUrl } from "@/lib/data/instance-settings";
+import { instancePublicBaseUrl } from "@/lib/data/instance-settings/settings-store";
 
 export const metadata = { title: "Settings · New API token" };
 
@@ -20,9 +20,6 @@ export default async function NewTokenPage(
     listScopeTree(),
     requireActiveTeamId(),
   ]);
-  // `?preset=` is the template chosen in that menu. An unknown or stale id
-  // degrades to a blank token rather than erroring: the choice is a starting
-  // point, not a link.
   const preset = wanted ? tokenPreset(wanted) : null;
 
   return (

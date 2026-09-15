@@ -1,9 +1,9 @@
 import { notFound } from "next/navigation";
 import Link from "@/components/ui/link";
 import { SlidersHorizontal, SquareTerminal } from "lucide-react";
-import { getDatabase } from "@/lib/data/databases";
+import { getDatabase } from "@/lib/data/databases/rows";
 import { hasCapability } from "@/lib/membership";
-import { listDatabaseCronJobs } from "@/lib/data/crons";
+import { listDatabaseCronJobs } from "@/lib/data/crons/listing";
 import { SettingsSection } from "@/components/apps/settings/settings-shared";
 import { DatabaseImageSettings } from "@/components/storage/database-image-settings";
 import { DatabaseConfigFiles } from "@/components/storage/database-config-files";
@@ -21,20 +21,12 @@ import {
 
 export const metadata = { title: "Advanced" };
 
-/**
- * Advanced: the powerful, less-everyday controls in one place - the Advanced
- * features card (the container Console and Cron jobs), expert image/command/
- * version overrides (applied on the next Redeploy) and the Danger Zone (rebuild
- * from scratch, delete with artifacts).
- */
 export default async function DatabaseAdvancedSettingsPage(
   props: PageProps<"/[team]/storage/databases/[id]/settings/advanced">,
 ) {
   const { id } = await props.params;
   const db = await getDatabase(id);
   if (!db) notFound();
-  // A live shell into the container is infra-class - the console page itself gates on
-  // it, so don't advertise a door the viewer can't open.
   const [canConsole, canCron] = await Promise.all([
     hasCapability("open_database_console"),
     hasCapability("manage_crons"),

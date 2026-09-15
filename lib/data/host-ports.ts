@@ -6,14 +6,9 @@ import { getDb } from "../db/client";
 import {
   appPorts as appPortsTable,
   apps as appsTable,
-  databases as databasesTable,
-} from "../db/schema/control-plane";
+} from "../db/schema/control-plane/apps";
+import { databases as databasesTable } from "../db/schema/control-plane/databases";
 
-/**
- * Whether anything on this server ALREADY holds this host port - another team's
- * app or database included. Servers are shared and a host port is a singleton on
- * the machine, so the answer cannot depend on who is asking.
- */
 export async function hostPortClaimed(
   serverId: string,
   port: number,
@@ -39,8 +34,6 @@ export async function hostPortClaimed(
       and(
         eq(appsTable.serverId, serverId),
         eq(appPortsTable.published, port),
-        // A stack that became compose publishes what its own YAML says and
-        // nothing else - its rows are kept for a flip back, not as a claim.
         ne(appsTable.source, "compose"),
       ),
     );

@@ -18,12 +18,8 @@ import { ComposeLintSummary } from "@/components/apps/compose-lint-summary";
 import {
   hasBlockingErrors,
   type LintDiagnostic,
-} from "@/lib/deploy/compose-lint";
+} from "@/lib/deploy/compose-lint/lint";
 
-/**
- * The compose stack, written full-size. The wizard card keeps its own height by
- * holding only a summary; the actual writing happens here.
- */
 export function ComposeDialog({
   open,
   onOpenChange,
@@ -40,8 +36,6 @@ export function ComposeDialog({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-4xl">
-        {/* The body mounts with the dialog, so each opening starts from what the
-            card holds and a cancelled edit leaves nothing behind. */}
         <ComposeBody
           value={value}
           title={title}

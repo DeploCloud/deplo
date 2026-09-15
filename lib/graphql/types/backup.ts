@@ -1,49 +1,38 @@
 import { builder } from "../builder";
 import {
-  listBackups,
-  createBackup,
+  countBackupArtifacts,
+  deleteBackupRun,
+  deleteAllBackupArtifacts,
+} from "@/lib/data/backups/artifact-delete";
+import { cancelBackupRun } from "@/lib/data/backups/execute-backup";
+import { restoreBackup } from "@/lib/data/backups/restore";
+import { listBackupRuns } from "@/lib/data/backups/run-listing";
+import {
   runBackup,
   runAppBackup,
   runDatabaseBackup,
-  restoreBackup,
-  listBackupRuns,
-  countBackupArtifacts,
+} from "@/lib/data/backups/run-now";
+import {
+  listBackups,
+  createBackup,
   toggleBackup,
   updateBackup,
-  cancelBackupRun,
   deleteBackup,
-  deleteBackupRun,
-  deleteAllBackupArtifacts,
   type BackupDTO,
-} from "@/lib/data/backups";
-import type { BackupRun } from "@/lib/types";
+} from "@/lib/data/backups/schedules";
+import type { BackupRun } from "@/lib/types/backup";
 
-/* ------------------------------------------------------------------ */
-/* Enums                                                               */
-/* ------------------------------------------------------------------ */
-
-// `lastStatus` is a local string union on the Backup type and is not shared
-// across modules, so we define its enum here rather than in enums.ts. Every
-// value already matches /[_a-zA-Z0-9]/, so the plain array form is fine.
 const BackupStatusEnum = builder.enumType("BackupStatus", {
   values: ["success", "failed", "running", "canceled", "never"] as const,
 });
 
-// What a schedule / run targets. Local to this domain (mirrors how
-// DatabaseStatus lives in database.ts) rather than the shared enums file.
 const BackupTargetKindEnum = builder.enumType("BackupTargetKind", {
   values: ["database", "app"] as const,
 });
 
-// A single run's terminal/in-flight state - distinct from `BackupStatus`
-// (which has the schedule-only `"never"`). Local to this domain.
 const BackupRunStatusEnum = builder.enumType("BackupRunStatus", {
   values: ["running", "success", "failed", "canceled"] as const,
 });
-
-/* ------------------------------------------------------------------ */
-/* Object types                                                        */
-/* ------------------------------------------------------------------ */
 
 export const BackupRef = builder.objectRef<BackupDTO>("Backup").implement({
   description:
@@ -111,7 +100,6 @@ export const BackupRunRef = builder
           "False for runs taken before integrity checking shipped.",
         resolve: (r) => Boolean(r.sha256),
       }),
-      // Float, not Int - a backup artifact can exceed 2^31 bytes (>2 GB).
       sizeBytes: t.exposeFloat("sizeBytes"),
       status: t.field({
         type: BackupRunStatusEnum,
@@ -123,30 +111,19 @@ export const BackupRunRef = builder
     }),
   });
 
-/* ------------------------------------------------------------------ */
-/* Inputs                                                              */
-/* ------------------------------------------------------------------ */
-
 const CreateBackupInputType = builder.inputType("CreateBackupInput", {
   fields: (t) => ({
     name: t.string({ required: true }),
-    // Which kind of target this schedule backs up. Optional: omitted defaults to
-    // "database" (legacy schedules could only target a database).
     targetKind: t.field({ type: BackupTargetKindEnum, required: false }),
     databaseId: t.string({ required: false }),
-    // Set when targetKind is "app"; otherwise leave null.
     appId: t.string({ required: false }),
     destinationId: t.string({ required: true }),
     schedule: t.string({ required: true }),
-    // Omitted means UTC, which is what every schedule made before this meant.
     timezone: t.string({ required: false }),
     retentionCount: t.int({ required: true }),
   }),
 });
 
-// Editing an existing schedule. The target binding (kind + database/project) is
-// fixed at creation, so only the settings below are editable; `enabled` has its
-// own toggle mutation.
 const UpdateBackupInputType = builder.inputType("UpdateBackupInput", {
   fields: (t) => ({
     name: t.string({ required: true }),
@@ -156,10 +133,6 @@ const UpdateBackupInputType = builder.inputType("UpdateBackupInput", {
     retentionCount: t.int({ required: true }),
   }),
 });
-
-/* ------------------------------------------------------------------ */
-/* Queries                                                             */
-/* ------------------------------------------------------------------ */
 
 builder.queryFields((t) => ({
   backups: t.field({
@@ -198,10 +171,6 @@ builder.queryFields((t) => ({
       countBackupArtifacts({ kind: targetKind, targetId }),
   }),
 }));
-
-/* ------------------------------------------------------------------ */
-/* Mutations (every backup server action)                              */
-/* ------------------------------------------------------------------ */
 
 builder.mutationFields((t) => ({
   createBackup: t.field({
@@ -345,9 +314,6 @@ builder.mutationFields((t) => ({
   }),
   deleteBackupArtifacts: t.field({
     type: "Int",
-    // The precise capability VARIES by target kind - `delete_apps` for a project,
-    // `delete_databases` for a database, each mirroring that target's OWN delete gate,
-    // which one static authScope cannot express.
     authScopes: { loggedIn: true },
     description:
       "Delete ALL of a target's backup artifacts (across every destination it " +
@@ -364,9 +330,6 @@ builder.mutationFields((t) => ({
         kind: targetKind,
         targetId,
       });
-      // A partial sweep is a failure: surface it so the delete flow aborts and
-      // the operator can retry, rather than deleting the target over a bucket we
-      // could not fully clear.
       if (failedDestinations.length > 0) {
         throw new Error(
           `Could not delete every backup artifact (failed for ` +

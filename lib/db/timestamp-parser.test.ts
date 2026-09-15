@@ -11,17 +11,7 @@ import {
 } from "./timestamp-parser";
 import { nowIso } from "../ids";
 
-/**
- * Step 0 round-trip GATE (relational-store PLAN §8 Step 0: "the round-trip test
- * passes"). Validating the same exported function in both regimes is what
- * guarantees they can't drift.
- */
-
 const ISO_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/;
-
-/* ------------------------------------------------------------------ */
-/* The shared helper in isolation                                      */
-/* ------------------------------------------------------------------ */
 
 test("isoTimestampParser: null passes through, every shape canonicalises to T…Z", () => {
   assert.equal(isoTimestampParser(null), null);
@@ -33,8 +23,6 @@ test("isoTimestampParser: null passes through, every shape canonicalises to T…
     "an ISO 'T…Z' write is byte-for-byte stable",
   );
 
-  // node-postgres' native rendering (space separator, '+00', trimmed fraction)
-  // is canonicalised back to the sortable 'T…Z' form.
   assert.equal(
     isoTimestampParser("2026-06-24 12:34:56.789+00"),
     "2026-06-24T12:34:56.789Z",
@@ -42,18 +30,11 @@ test("isoTimestampParser: null passes through, every shape canonicalises to T…
   assert.match(isoTimestampParser("2020-01-01 00:00:00+00")!, ISO_RE);
 });
 
-/* ------------------------------------------------------------------ */
-/* Regime 1 - node-postgres process-global registration                */
-/* ------------------------------------------------------------------ */
-
 test("pg.types: importing lib/db/pg.ts registers the shared parser for both OIDs", async () => {
-  // Importing the production module installs the parser at module load.
   await import("./pg");
 
   for (const oid of [TIMESTAMPTZ_OID, TIMESTAMP_OID]) {
     const parser = pgTypes.getTypeParser(oid) as (v: string | null) => unknown;
-    // The registered parser must behave identically to our shared helper - i.e.
-    // a space-separated driver rendering comes back canonical 'T…Z'.
     assert.equal(
       parser("2026-06-24 12:34:56.789+00"),
       "2026-06-24T12:34:56.789Z",
@@ -62,10 +43,6 @@ test("pg.types: importing lib/db/pg.ts registers the shared parser for both OIDs
     assert.equal(parser(null), null, `OID ${oid} parser passes null through`);
   }
 });
-
-/* ------------------------------------------------------------------ */
-/* Regime 2 - pglite end-to-end round-trip                              */
-/* ------------------------------------------------------------------ */
 
 let db: PGlite;
 
@@ -115,8 +92,6 @@ test("round-trip: a nowIso() write reads back byte-for-byte canonical T…Z (tim
 });
 
 test("round-trip: mixed-origin timestamps still sort lexicographically", async () => {
-  // The decisive property for the migration window: legacy-'T' writes and fresh
-  // writes interleave, yet ORDER BY is correct because every read is canonical.
   await db.query("insert into stamped values ($1,$2)", [
     "s0",
     "2020-01-01T00:00:00.000Z",

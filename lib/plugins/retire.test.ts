@@ -5,7 +5,7 @@ import type { PGlite } from "@electric-sql/pglite";
 
 import { makeTestDb, type TestDb } from "../db/test-harness";
 import { __setTestDb, __resetTestDb } from "../db/client";
-import { installedPlugins as installedPluginsTable } from "../db/schema/control-plane";
+import { installedPlugins as installedPluginsTable } from "../db/schema/control-plane/integrations";
 import {
   seedIdentity,
   TEAM_A,
@@ -13,10 +13,6 @@ import {
   USER_1,
 } from "../data/leaf-test-helpers";
 import { retireInstalledPlugins } from "./retire";
-
-/**
- * The retirement sweep (ADR-0013).
- */
 
 let db: TestDb;
 let pg: PGlite;
@@ -93,7 +89,6 @@ test("a legacy row with no stored slug derives the one the container actually ha
     torn.push(s);
   });
 
-  // `pluginSlug("relay", "alpha")` - the value the installer would have frozen.
   assert.deepEqual(torn, ["relay__alpha"]);
   assert.deepEqual(await remaining(), []);
 });

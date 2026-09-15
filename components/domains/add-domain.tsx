@@ -29,27 +29,18 @@ import { gqlAction } from "@/lib/graphql-client";
 import { regenerateNipDomain } from "@/lib/nip-suggestion";
 import { DocsLink } from "@/components/ui/docs-link";
 
-/** A project as the dialog needs it: the compose YAML populates the service
- * selector, and the default port pre-fills a new domain's port field. */
 export interface AddDomainApp {
   id: string;
   name: string;
   compose?: string | null;
-  /** The app's default container port (build.port) - seeds the port field. */
   defaultPort?: number;
 }
 
-/** Props for {@link AddDomain}. `suggestedDomain` is a ready-to-use zero-config
- * nip.io hostname (`<slug>-<adjective>-<animal>-<hexip>.nip.io`) resolved
- * server-side; the dialog offers a one-click button to drop it into the field. */
 export interface AddDomainProps {
   project: AddDomainApp;
   suggestedDomain?: string;
 }
 
-/** App names declared in a compose file, parsed in the browser (js-yaml is
- * a client-safe dep, also used by the compose linter). Returns [] for a missing
- * or malformed compose - the dialog then shows no service selector. */
 function composeServices(compose?: string | null): string[] {
   if (!compose || !compose.trim()) return [];
   try {
@@ -69,16 +60,11 @@ export function AddDomain({ project, suggestedDomain }: AddDomainProps) {
   const [open, setOpen] = React.useState(false);
   const { create } = usePendingCreate();
   const [name, setName] = React.useState("");
-  // The nip.io host shown in the field-help example. Tracks the most recently
-  // generated suggestion so the tooltip stays in sync with what Generate dropped
-  // into the field; seeded with the server's first (already-fresh) suggestion.
   const [suggestion, setSuggestion] = React.useState(suggestedDomain);
   const [config, setConfig] = React.useState<DomainConfigState>(() =>
     initialDomainConfig(undefined, project.defaultPort),
   );
 
-  // The app's compose services (empty ⇒ single-image). A compose stack
-  // offers a service selector; the per-domain port is always available.
   const services = React.useMemo(
     () => composeServices(project.compose),
     [project.compose],
@@ -104,9 +90,6 @@ export function AddDomain({ project, suggestedDomain }: AddDomainProps) {
       toast.error(resolved.error);
       return;
     }
-    // The domain takes its place in the table straight away, pulsing, while the
-    // DNS check and the reroute run in the background. What was typed is kept
-    // aside so a rejected add can hand the form back untouched.
     const typed = { name: name.trim(), config };
     setOpen(false);
     reset();
@@ -122,7 +105,6 @@ export function AddDomain({ project, suggestedDomain }: AddDomainProps) {
             name: typed.name,
             config: {
               port: resolved.port,
-              // Add takes the auto entrypoint by omitting it (null ⇒ undefined).
               entrypoint: resolved.entrypoint ?? undefined,
               certProvider: resolved.certProvider,
               middlewares: resolved.middlewares,
@@ -130,22 +112,14 @@ export function AddDomain({ project, suggestedDomain }: AddDomainProps) {
               stripPrefix: resolved.stripPrefix,
               service: resolved.service,
               proxied: resolved.proxied,
-              // A brand-new domain can be paired with its www counterpart in the
-              // same click: the server adds the second hostname, checks its DNS
-              // and wires the 301 before the add returns.
               www: resolved.www,
             },
           },
         ),
       {
         onSuccess: (data) => {
-          // DNS was checked as part of the add, so the toast reports the real outcome: a
-          // pre-pointed host is already live; an unpointed one is watched automatically from
-          // the domains page, never a generic "now go verify" chore.
           const status = data?.addDomain.status;
           if (resolved.proxied)
-            // Its DNS answers with the proxy, so the check's verdict says nothing
-            // here: what matters is that the host is routed.
             toast.success(
               "Domain added - routed through your proxy. Point the proxy at this server.",
             );
@@ -175,8 +149,6 @@ export function AddDomain({ project, suggestedDomain }: AddDomainProps) {
     );
   }
 
-  // Read-only viewers keep the table and the row menu's Visit entry; the one
-  // thing that changes is that nothing here opens a dialog the server refuses.
   if (!canManage) {
     return (
       <CapabilityTip cap="manage_domains">

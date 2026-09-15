@@ -1,13 +1,7 @@
 import "server-only";
 
-/** The most a request body may be on the routes below. */
 export const MAX_BODY_BYTES = 1024 * 1024;
 
-/**
- * `request.text()` under a byte cap: a 413 `Response` instead of a string when
- * over. Read by hand because a Request rebuilt around a piped body throws on
- * `.json()` inside a route handler (Next hands the handler its own subclass).
- */
 export async function readTextCapped(
   request: Request,
   max = MAX_BODY_BYTES,
@@ -31,7 +25,6 @@ export async function readTextCapped(
   return Buffer.concat(chunks).toString("utf8");
 }
 
-/** The same request with its body already read and bounded, for a handler that needs a Request. */
 export async function capRequestBody(
   request: Request,
   max = MAX_BODY_BYTES,

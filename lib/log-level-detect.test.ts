@@ -2,7 +2,6 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { detectLogLevel, isLogContinuation } from "./log-level-detect";
 
-/** Assert a whole table at once and report the offending line, not just a bool. */
 function expect(cases: Record<string, string>) {
   for (const [line, want] of Object.entries(cases)) {
     assert.equal(detectLogLevel(line), want, JSON.stringify(line));
@@ -16,13 +15,11 @@ test("structured levels: JSON, the shape the old detector missed entirely", () =
     '{"severity":"WARNING","message":"disk"}': "warn",
     '{"log.level":"debug","event":"span"}': "debug",
     '{"levelname":"INFO","name":"app"}': "info",
-    // pino/bunyan numeric scale
     '{"level":60,"msg":"fatal"}': "error",
     '{"level":50,"msg":"err"}': "error",
     '{"level":40,"msg":"warn"}': "warn",
     '{"level":30,"msg":"info"}': "info",
     '{"level":20,"msg":"debug"}': "debug",
-    // a notice is BELOW a warning in syslog, so it reads as info
     '{"level":"notice","msg":"index created"}': "info",
   });
 });
@@ -39,12 +36,12 @@ test("structured levels: logfmt, brackets, tags, glog, syslog, npm", () => {
     "err: socket closed": "error",
     "warn: cache miss": "warn",
     "debug: payload size 42": "debug",
-    "INFO:root:server started": "info", // python logging's default format
+    "INFO:root:server started": "info",
     "E0824 10:00:00.123456       1 server.go:12] sync failed": "error",
     "W0824 10:00:00.123456       1 server.go:12] slow": "warn",
     "I0824 10:00:00.123456       1 server.go:12] ok": "info",
-    "<11>Aug 24 10:00:00 host app: down": "error", // 11 % 8 == 3 == err
-    "<14>Aug 24 10:00:00 host app: up": "info", // 14 % 8 == 6 == info
+    "<11>Aug 24 10:00:00 host app: down": "error",
+    "<14>Aug 24 10:00:00 host app: up": "info",
     "npm ERR! code E404": "error",
     "npm WARN deprecated left-pad@1.0.0": "warn",
     "npm notice created a lockfile": "info",
@@ -53,20 +50,16 @@ test("structured levels: logfmt, brackets, tags, glog, syslog, npm", () => {
 
 test("structured levels: the level is not always the first bracket or word", () => {
   expect({
-    // logback / Postgres put a thread name or a pid in front of the level
     "[main] INFO com.acme.App - started": "info",
     "2026-08-24 10:00:00.000 UTC [1] FATAL:  database is starting up": "error",
     "2026-08-24 10:00:00.000 UTC [1] LOG:  database system is ready": "info",
     "2026-08-24 10:00:00.000 UTC [1] WARNING:  no partition key": "warn",
-    // a bare uppercase level column (Spring Boot, log4j, Serilog)
     "2026-08-24 10:00:00.000  ERROR 1 --- [main] c.a.App : boom": "error",
     "2026-08-24 10:00:00.000  INFO 1 --- [main] c.a.App : up": "info",
   });
 });
 
 test("a declared level wins over anything the message says", () => {
-  // The producer knows something we don't: a line logged at info that happens
-  // to quote a panic is still an info line.
   expect({
     '{"level":"info","msg":"panic: recovered in handler"}': "info",
     "[INFO] Traceback capture is enabled": "info",
@@ -101,11 +94,10 @@ test("a status code is read only inside a recognised access log", () => {
   expect({
     "GET /api/users 500 12ms": "error",
     "POST /login 401": "warn",
-    "GET /api/users 200 3ms": "info", // 2xx stays neutral, it is not news
+    "GET /api/users 200 3ms": "info",
     "GET /old 301 0ms": "info",
     '127.0.0.1 - - [24/Aug/2026:10:00:00] "GET / HTTP/1.1" 200 1234': "info",
     '127.0.0.1 - - [24/Aug/2026:10:00:00] "GET /x HTTP/1.1" 502 0': "error",
-    // a NAMED status field is structured evidence and needs no method
     '"statusCode": 503': "error",
     '"statusCode":"404"': "warn",
     "status=500 upstream timeout": "error",
@@ -114,24 +106,21 @@ test("a status code is read only inside a recognised access log", () => {
 });
 
 test("the bare-number bug: a 3-digit token is never a status on its own", () => {
-  // Every one of these was mis-coloured before: `levelFromStatusCode` matched
-  // any 3-digit token bounded by spaces, so a duration or a count took the
-  // colour of the HTTP range it happened to land in.
   expect({
-    "built in 502 ms": "info", // was ERROR
-    "Loaded 200 routes": "info", // was SUCCESS
-    "Processed 500 items in batch": "info", // was ERROR
-    "listening on port 404": "info", // was WARN
-    "code: 200": "info", // was ERROR (`code\s*[:=]\s*\d+` meant errno)
+    "built in 502 ms": "info",
+    "Loaded 200 routes": "info",
+    "Processed 500 items in batch": "info",
+    "listening on port 404": "info",
+    "code: 200": "info",
   });
 });
 
 test("the keyword bug: healthy-sounding words no longer paint a line", () => {
   expect({
-    "Long running query detected on shard 3": "info", // was SUCCESS
-    "container is running": "info", // was SUCCESS
-    "Server listening on :8080": "info", // was SUCCESS
-    "now serving at http://localhost:3000": "info", // was SUCCESS
+    "Long running query detected on shard 3": "info",
+    "container is running": "info",
+    "Server listening on :8080": "info",
+    "now serving at http://localhost:3000": "info",
     "no failures detected, all good": "info",
     "error handling middleware registered": "info",
     "the request may cause a retry": "info",
@@ -144,7 +133,7 @@ test("success is claimed, never inferred", () => {
     "[success] uploaded": "success",
     "✓ build done": "success",
     "compiled successfully": "success",
-    "ready in 340ms": "success", // Next.js / Vite print this as their green line
+    "ready in 340ms": "success",
   });
 });
 
@@ -156,15 +145,11 @@ test("warn shapes that are not a tag", () => {
   });
 });
 
-// The header BuildKit prints over its lint block. Nothing in it is a level word,
-// so it read as info while the block it introduces is the warnings themselves.
 test("a producer counting the warnings it found", () => {
   expect({
     " 7 warnings found (use docker --debug to expand):": "warn",
     " 1 warning found (use docker --debug to expand):": "warn",
-    // A count of zero is the producer saying it found none.
     "0 warnings found": "info",
-    // Not a count: nothing was found, it is being looked for.
     "no warnings found": "info",
   });
 });
@@ -172,7 +157,7 @@ test("a producer counting the warnings it found", () => {
 test("info is the default, and the default is most lines", () => {
   expect({
     "Starting application": "info",
-    "GET /healthz": "info", // a method with no status is not an access log
+    "GET /healthz": "info",
     "user logged in": "info",
     "": "info",
     "{}": "info",
@@ -206,8 +191,6 @@ test("isLogContinuation: a trace is one event, not a dozen records", () => {
 });
 
 test("classification is bounded work per line (no catastrophic backtracking)", () => {
-  // A frame-shaped line with no `:<digit>` used to backtrack O(n^2) here, and
-  // this runs per raw container log line, client-side.
   const adversarial = `    at ${"a".repeat(5_000)}`;
   const started = process.hrtime.bigint();
   detectLogLevel(adversarial);

@@ -17,14 +17,12 @@ import {
   seedApp,
   TRUNCATE_PROJECT_GRAPH,
 } from "./app-graph-test-helpers";
-import { updateAppBuild, clearAppBuildCache } from "./apps";
+import { updateAppBuild, clearAppBuildCache } from "./apps/build-settings";
 import { loadAppGraph } from "./app-graph-load";
-import { noCacheForDeploy, consumeCacheClear } from "../deploy/build";
-
-/**
- * The per-app build cache: the stored setting, the one-shot "Clear build cache",
- * and the two ways they must not interfere with each other.
- */
+import {
+  noCacheForDeploy,
+  consumeCacheClear,
+} from "../deploy/build/build-attempt";
 
 let db: TestDb;
 let pg: PGlite;
@@ -73,7 +71,6 @@ test("saving other build settings leaves the cache setting alone", async () => {
   await seedApp(db, { id: "prj_1", teamId: TEAM_A });
   await asUser1(async () => {
     await updateAppBuild("prj_1", { buildCache: false });
-    // The Build & Output card's Save sends its own fields only.
     await updateAppBuild("prj_1", { buildCommand: "npm run build" });
   });
   const app = await loadAppGraph("prj_1");
@@ -93,8 +90,6 @@ test("Clear build cache arms the one-shot, and a build save can't swallow it", a
       (await loadAppGraph("prj_1"))?.build.buildCacheClearPending,
       true,
     );
-    // Someone edits the build settings before deploying: the armed clear must
-    // survive it (updateAppBuild merges field-by-field and never writes it).
     await updateAppBuild("prj_1", { installCommand: "npm ci" });
   });
   const app = await loadAppGraph("prj_1");
@@ -126,13 +121,10 @@ test("another team's app cannot be touched", async () => {
       /App not found/,
     );
   });
-  // …and nothing about it moved.
   const app = await loadAppGraph("prj_other");
   assert.equal(app?.build.buildCache, true);
   assert.equal(app?.build.buildCacheClearPending, false);
 });
-
-/* ---- what a deploy does with all this ------------------------------- */
 
 test("the deploy decides no-cache from the setting OR the armed clear", () => {
   assert.equal(
@@ -146,8 +138,6 @@ test("the deploy decides no-cache from the setting OR the armed clear", () => {
   });
   assert.equal(off.noCache, true);
   assert.match(off.reason, /off for this app/);
-  // An armed clear beats the setting, and says so - "why was this build slow"
-  // has two different answers and the log must not blur them.
   const cleared = noCacheForDeploy({
     buildCache: true,
     buildCacheClearPending: true,
@@ -171,7 +161,6 @@ test("a build spends the one-shot, so the next deploy caches again", async () =>
     true,
     "spending the one-shot must not turn the cache off",
   );
-  // Idempotent: a second deploy consuming nothing is a no-op, not an error.
   await consumeCacheClear("prj_1");
   assert.equal(
     (await loadAppGraph("prj_1"))?.build.buildCacheClearPending,

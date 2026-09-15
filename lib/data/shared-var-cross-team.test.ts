@@ -10,27 +10,22 @@ import { runWithIdentity } from "../auth/request-context";
 import {
   memberships as membershipsTable,
   membershipCapabilities as membershipCapabilitiesTable,
-  sharedEnvVarApps as appJunction,
+} from "../db/schema/control-plane/access-control";
+import { sharedEnvVarApps as appJunction } from "../db/schema/control-plane/env-vars";
+import {
   teams as teamsTable,
   users as usersTable,
-} from "../db/schema/control-plane";
+} from "../db/schema/control-plane/identity";
 import { seedIdentity, TEAM_A, TEAM_B } from "./identity-test-helpers";
 import { seedServer, seedApp } from "./app-graph-test-helpers";
+import { setSharedVarAppLink } from "./shared-vars/app-links";
+import { listSharedVarsForApp } from "./shared-vars/app-view";
+import { deleteSharedVar, saveSharedVar } from "./shared-vars/authoring";
 import {
-  deleteSharedVar,
-  listSharedVars,
-  listSharedVarsForApp,
   loadAutoInjectedVarsForApp,
   loadSharedVarsForApp,
-  saveSharedVar,
-  setSharedVarAppLink,
-} from "./shared-vars";
-
-/**
- * The CROSS-TEAM boundary of a shared variable (ADR-0027): a variable may reach
- * several teams, so every read has to answer "which teams, exactly" and every
- * write has to answer "who may say so".
- */
+} from "./shared-vars/deploy-entries";
+import { listSharedVars } from "./shared-vars/team-view";
 
 let db: TestDb;
 let pg: PGlite;
@@ -39,9 +34,7 @@ const TEAM_C = "team_c";
 const APP_A = "prj_a";
 const APP_B = "prj_b";
 const APP_C = "prj_c";
-/** In alpha AND beta, with manage_env in both. */
 const BOTH = "u_both";
-/** In alpha only. */
 const ONLY_A = "u_only_a";
 
 before(async () => {
@@ -69,7 +62,6 @@ beforeEach(async () => {
       { id: ONLY_A, teamId: TEAM_A, role: "owner" },
     ],
   });
-  // The same person in beta as well - one human, two memberships.
   await db.insert(membershipsTable).values({
     id: "mbr_both_b",
     userId: BOTH,
@@ -123,7 +115,6 @@ test("two teams: it auto-injects into both, into no third team, and links nothin
   assert.deepEqual(keys(await loadAutoInjectedVarsForApp(APP_A)), ["SHARED"]);
   assert.deepEqual(keys(await loadAutoInjectedVarsForApp(APP_B)), ["SHARED"]);
   assert.deepEqual(await loadAutoInjectedVarsForApp(APP_C), []);
-  // No opt-in was created anywhere - that is what "auto" means.
   assert.deepEqual(await db.select().from(appJunction), []);
 });
 
@@ -150,12 +141,10 @@ test("beta sees a variable alpha shared with it, read-only and stripped", async 
   assert.equal(seen.editable, false);
   assert.equal(seen.ownerTeam?.id, TEAM_A);
   assert.equal(seen.autoInject, true);
-  // Alpha's object graph must not be enumerable from beta.
   assert.deepEqual(seen.appIds, []);
   assert.deepEqual(seen.projectIds, []);
   assert.deepEqual(seen.environmentIds, []);
   assert.deepEqual(seen.apps, []);
-  // Alpha itself still sees the whole thing.
   const [owned] = await inA(() => listSharedVars());
   assert.equal(owned!.editable, true);
   assert.deepEqual(owned!.appIds, [APP_A]);
@@ -179,10 +168,8 @@ test("beta may LINK a variable alpha shared with it, but never edit or delete it
     /not found/i,
   );
   await assert.rejects(() => inB(() => deleteSharedVar(id)), /not found/i);
-  // Linking is beta's own opt-in, not an edit of alpha's row.
   await inB(() => setSharedVarAppLink(id, APP_B, true));
   assert.deepEqual(keys(await loadSharedVarsForApp(APP_B)), ["SHARED"]);
-  // The value alpha wrote is untouched.
   const [v] = await inA(() => listSharedVars());
   assert.equal(v!.value, "v");
 });
@@ -206,8 +193,6 @@ test("a member of alpha alone cannot tick beta, and nothing is created", async (
 });
 
 test("a token without manage_env of its own cannot tick a second team", async () => {
-  // The clamp `membershipFor` applies bails out for a team other than the
-  // request's, so the token's OWN capability set has to be read here.
   await assert.rejects(
     () =>
       runWithIdentity(
@@ -247,7 +232,6 @@ test("a token holding beta only by project cannot tick beta", async () => {
             capabilities: ["view", "manage_env"],
             scope: {
               teamIds: [TEAM_A, TEAM_B],
-              // Breadth, not depth: beta is reachable, but not WHOLLY.
               wholeTeamIds: [TEAM_A],
               projectIds: [],
               folderIds: [],
@@ -274,8 +258,6 @@ test("a token holding beta only by project cannot tick beta", async () => {
 test("deleting the second team does NOT disarm the variable in the first", async () => {
   await mkVar([TEAM_A, TEAM_B]);
   await db.delete(teamsTable).where(eq(teamsTable.id, TEAM_B));
-  // `auto_inject` is a column: the reach set losing a row to a cascade must not
-  // silently turn an injected variable back into a suggestion.
   assert.deepEqual(keys(await loadAutoInjectedVarsForApp(APP_A)), ["SHARED"]);
 });
 
@@ -291,10 +273,8 @@ test("an instance-owned variable reaches its teams and only an admin edits it", 
   assert.deepEqual(keys(await loadAutoInjectedVarsForApp(APP_A)), ["GLOBAL"]);
   assert.deepEqual(await loadAutoInjectedVarsForApp(APP_B), []);
   const [seen] = await inA(() => listSharedVars());
-  // BOTH is seeded `owner`, which is an instance admin.
   assert.equal(seen!.editable, true);
   assert.equal(seen!.ownerTeam, null);
-  // A non-admin in the same team sees it, but read-only.
   await db
     .update(usersTable)
     .set({ isInstanceAdmin: false })
@@ -303,15 +283,9 @@ test("an instance-owned variable reaches its teams and only an admin edits it", 
   assert.equal(asMember!.editable, false);
 });
 
-/* ------------------------------------------------------------------ */
-/* What one team's save may do to another team's opt-in (ADR-0027 §2). */
-/* ------------------------------------------------------------------ */
-
 test("beta's opt-in does not lock the owner out of its own variable", async () => {
   const id = await mkVar([TEAM_A, TEAM_B]);
   await inB(() => setSharedVarAppLink(id, APP_B, true));
-  // The whole-set link replace owns the ACTING team's links and nothing else, so
-  // this must not ask for `manage_env` on an app in beta - which alpha never has.
   await inA(() =>
     saveSharedVar({
       id,
@@ -349,8 +323,7 @@ test("revoking beta's reach takes beta's per-app links with it", async () => {
       projectIds: [],
     }),
   );
-  // Left behind, the row would inject again - at the HIGHEST precedence - the
-  // moment the variable is ever re-shared with beta.
+  // Left behind, the row would inject again the moment beta is re-shared with.
   assert.deepEqual(
     await db.select().from(appJunction).where(eq(appJunction.varId, id)),
     [],
@@ -359,8 +332,6 @@ test("revoking beta's reach takes beta's per-app links with it", async () => {
 
 test("a team the variable already reaches is not re-gated on a save", async () => {
   const id = await mkVar([TEAM_A, TEAM_B]);
-  // The author has lost `manage_env` across the whole of beta since. Re-checking
-  // the STORED reach is what made a migrated instance-wide variable unsavable.
   await inA(() =>
     runWithIdentity(
       {
@@ -409,7 +380,6 @@ test("a reach row lost to a cascade survives the next ordinary save", async () =
       projectIds: [],
     }),
   );
-  // ADR-0027 §4 all the way through: the column, not the count.
   assert.deepEqual(keys(await loadAutoInjectedVarsForApp(APP_A)), ["SHARED"]);
 });
 
@@ -453,7 +423,6 @@ test("an edit never ARMS an instance-owned variable that was not injecting", asy
 });
 
 test("beta is told who owns the variable, not which other teams run on it", async () => {
-  // The author needs gamma too, to be allowed to share with all three.
   await db.insert(membershipsTable).values({
     id: "mbr_both_c",
     userId: BOTH,
@@ -470,7 +439,6 @@ test("beta is told who owns the variable, not which other teams run on it", asyn
   await mkVar([TEAM_A, TEAM_B, TEAM_C]);
   const [seen] = await inB(() => listSharedVars());
   assert.equal(seen!.ownerTeam?.id, TEAM_A);
-  // Gamma exists, and beta has no business knowing that.
   assert.deepEqual(seen!.teamIds, [TEAM_B]);
   assert.deepEqual(
     seen!.teams.map((t) => t.id),

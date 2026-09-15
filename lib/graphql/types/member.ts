@@ -1,27 +1,29 @@
 import { builder } from "../builder";
 import { RoleEnum, CapabilityEnum } from "./enums";
+import { addExistingMember, updateMember } from "@/lib/data/members/assignment";
 import {
-  listMembers,
-  searchUsers,
-  addExistingMember,
-  updateMember,
-  removeMember,
   listAllUsers,
   getUserDetail,
   updateUserAdmin,
   resetUserPasskeys,
   resetUserTwoFactor,
+  type GlobalUserDTO,
+  type UserDetailDTO,
+} from "@/lib/data/members/instance-users";
+import {
   mintRegistrationLink,
   listRegistrationLinks,
   revealRegistrationLink,
   revokeRegistrationLink,
   revokeAllRegistrationLinks,
-  type MemberDTO,
-  type UserSearchResult,
-  type GlobalUserDTO,
-  type UserDetailDTO,
   type RegistrationLinkDTO,
-} from "@/lib/data/members";
+} from "@/lib/data/members/registration-links";
+import { removeMember } from "@/lib/data/members/removal";
+import { listMembers, type MemberDTO } from "@/lib/data/members/roster";
+import {
+  searchUsers,
+  type UserSearchResult,
+} from "@/lib/data/members/user-search";
 import {
   transferInstanceOwner,
   viewerIsInstanceOwner,
@@ -34,25 +36,13 @@ import {
   type DeleteUserResult,
 } from "@/lib/data/user-delete";
 
-/* ------------------------------------------------------------------ */
-/* Local enums                                                         */
-/* ------------------------------------------------------------------ */
-
-// RegistrationLinkStatus is a small domain union not shared in enums.ts, so it
-// lives locally - defined, used, and not exported.
 const RegistrationLinkStatusEnum = builder.enumType("RegistrationLinkStatus", {
   values: ["pending", "used", "revoked"] as const,
 });
 
-// How a registration link decides the registrant's team(s): own_team (name +
-// own a fresh team) or existing_teams (admin pre-assigned to existing teams).
 const RegistrationModeEnum = builder.enumType("RegistrationMode", {
   values: ["own_team", "existing_teams"] as const,
 });
-
-/* ------------------------------------------------------------------ */
-/* Object types                                                        */
-/* ------------------------------------------------------------------ */
 
 export const MemberRef = builder.objectRef<MemberDTO>("Member").implement({
   description: "A user's membership in the active team (no email exposed).",
@@ -80,9 +70,6 @@ export const MemberRef = builder.objectRef<MemberDTO>("Member").implement({
       type: [CapabilityEnum],
       resolve: (m) => m.capabilities,
     }),
-    // The absolute-owner ("crown") + instance-admin distinctions: graphical
-    // badges in the member list, and (for the founder) the gating of which
-    // members the viewer may edit/remove. See MemberDTO in lib/data/members.ts.
     isPrimaryOwner: t.exposeBoolean("isPrimaryOwner"),
     isInstanceAdmin: t.exposeBoolean("isInstanceAdmin"),
     avatarColor: t.exposeString("avatarColor"),
@@ -143,8 +130,6 @@ export const GlobalUserRef = builder
     }),
   });
 
-// Nested rows of UserDetailDTO. These are plain inline shapes on the DTO, so we
-// mirror them as their own object types built from the structural slice.
 const UserDetailTeamRef = builder
   .objectRef<UserDetailDTO["teams"][number]>("UserDetailTeam")
   .implement({
@@ -192,8 +177,6 @@ export const UserDetailRef = builder
       teams: t.field({ type: [UserDetailTeamRef], resolve: (u) => u.teams }),
     }),
   });
-
-/* --- Deleting an account: the preview, and what the delete removed --- */
 
 const DeleteUserTeamImpactRef = builder
   .objectRef<DeleteUserTeamImpact>("DeleteUserTeamImpact")
@@ -285,7 +268,6 @@ export const RegistrationLinkRef = builder
         resolve: (l) => l.status,
       }),
       mode: t.field({ type: RegistrationModeEnum, resolve: (l) => l.mode }),
-      // For existing_teams links: the names of the assigned teams (else empty).
       teamNames: t.field({ type: ["String"], resolve: (l) => l.teamNames }),
       createdBy: t.exposeString("createdBy"),
       usedByUsername: t.exposeString("usedByUsername", { nullable: true }),
@@ -302,11 +284,6 @@ export const RegistrationLinkRef = builder
     }),
   });
 
-/* ------------------------------------------------------------------ */
-/* Inputs                                                              */
-/* ------------------------------------------------------------------ */
-
-// `roleId` is the current path: the member gets exactly that team role.
 const AddMemberInputType = builder.inputType("AddMemberInput", {
   fields: (t) => ({
     userId: t.string({ required: true }),
@@ -330,17 +307,13 @@ const UpdateUserAdminInputType = builder.inputType("UpdateUserAdminInput", {
     userId: t.string({ required: true }),
     isInstanceAdmin: t.boolean({ required: true }),
     suspended: t.boolean({ required: true }),
-    // Instance-wide grants. Optional so older clients keep working; omitted ⇒
-    // the user's current value is preserved (resolved in the resolver).
     canExposePorts: t.boolean({ required: false }),
     canMountHostVolumes: t.boolean({ required: false }),
     newPassword: t.string({ required: false }),
   }),
 });
 
-// The three "go deeper" choices the delete-account dialog offers. All optional
-// and all defaulting to FALSE server-side: an omitted flag must never be read as
-// "yes, destroy that too".
+// All default to FALSE: an omitted flag must never be read as "destroy that too".
 const DeleteUserInputType = builder.inputType("DeleteUserInput", {
   fields: (t) => ({
     userId: t.string({ required: true }),
@@ -350,8 +323,6 @@ const DeleteUserInputType = builder.inputType("DeleteUserInput", {
   }),
 });
 
-// One existing team a new user is pre-assigned to, with their role + (optional)
-// fine-tuned capabilities. Used only when minting an `existing_teams` link.
 const RegistrationTeamAssignmentInput = builder.inputType(
   "RegistrationTeamAssignmentInput",
   {
@@ -368,7 +339,6 @@ const MintRegistrationLinkInputType = builder.inputType(
   {
     fields: (t) => ({
       mode: t.field({ type: RegistrationModeEnum, required: true }),
-      // Required + non-empty iff mode is existing_teams; ignored for own_team.
       teamAssignments: t.field({
         type: [RegistrationTeamAssignmentInput],
         required: false,
@@ -376,10 +346,6 @@ const MintRegistrationLinkInputType = builder.inputType(
     }),
   },
 );
-
-/* ------------------------------------------------------------------ */
-/* Queries                                                             */
-/* ------------------------------------------------------------------ */
 
 builder.queryFields((t) => ({
   members: t.field({
@@ -431,10 +397,6 @@ builder.queryFields((t) => ({
     resolve: () => viewerIsInstanceOwner(),
   }),
 }));
-
-/* ------------------------------------------------------------------ */
-/* Mutations (every member/user-admin/registration server action)      */
-/* ------------------------------------------------------------------ */
 
 builder.mutationFields((t) => ({
   addExistingMember: t.field({
@@ -528,8 +490,6 @@ builder.mutationFields((t) => ({
       "Edit a user's instance-admin flag, suspended state, and password.",
     args: { input: t.arg({ type: UpdateUserAdminInputType, required: true }) },
     resolve: async (_r, { input }) => {
-      // Grants are optional in the input; an omitted (null) flag preserves the
-      // user's current value rather than silently clearing it.
       const current = await getUserDetail(input.userId);
       await updateUserAdmin({
         userId: input.userId,
@@ -580,8 +540,6 @@ builder.mutationFields((t) => ({
   }),
   transferInstanceOwner: t.field({
     type: "Boolean",
-    // instanceAdmin is the FLOOR, not the gate - the data layer additionally
-    // requires the caller to BE the current owner, which no scope can express.
     authScopes: { instanceAdmin: true },
     description:
       "Hand instance ownership to another instance admin. Owner-only; requires the caller's password, plus a two-factor code when their account has 2FA on. Returns true.",
@@ -601,7 +559,6 @@ builder.mutationFields((t) => ({
   }),
 }));
 
-/** Reload a member by id after a void mutation so we can return the entity. */
 async function reloadMember(userId: string): Promise<MemberDTO> {
   const all = await listMembers();
   const found = all.find((m) => m.userId === userId);

@@ -19,12 +19,8 @@ import { DirtyHint } from "@/components/apps/settings/settings-shared";
 import { UnsavedChangesGuard } from "@/components/apps/unsaved-changes-guard";
 import { gqlAction } from "@/lib/graphql-client";
 import { cn } from "@/lib/utils";
-import { MAX_LOG_RANGE_DAYS, MIN_LOG_RANGE_DAYS } from "@/lib/types";
+import { MAX_LOG_RANGE_DAYS, MIN_LOG_RANGE_DAYS } from "@/lib/types/deployment";
 
-/**
- * How far back the log viewer's time range may reach. Instance-wide, because the
- * logs live on the HOST and a host is what several teams share.
- */
 export function LogsRetentionCard({ logMaxDays }: { logMaxDays: number }) {
   const router = useRouter();
   const [value, setValue] = React.useState(String(logMaxDays));
@@ -32,8 +28,6 @@ export function LogsRetentionCard({ logMaxDays }: { logMaxDays: number }) {
   const [pending, startTransition] = React.useTransition();
   const dirty = value.trim() !== saved;
 
-  // Empty reads as the floor rather than NaN, which is what the field holds
-  // mid-edit after a backspace.
   const parsed = Math.min(
     MAX_LOG_RANGE_DAYS,
     Math.max(
@@ -83,7 +77,6 @@ export function LogsRetentionCard({ logMaxDays }: { logMaxDays: number }) {
             >
               Maximum range
             </FieldLabel>
-            {/* The unit rides inside the field: "7" alone reads as anything. */}
             <div className="relative">
               <Input
                 id="log-max-days"

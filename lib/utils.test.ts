@@ -35,16 +35,13 @@ test("normalizeHexColor canonicalises to lowercase #rrggbb and expands shorthand
 });
 
 test("readableTextColor picks the higher-contrast foreground (auto-contrast)", () => {
-  // Light backgrounds → dark text; dark backgrounds → light text.
   assert.equal(readableTextColor("#ffffff"), "#000000");
   assert.equal(readableTextColor("#000000"), "#ffffff");
-  assert.equal(readableTextColor("#facc15"), "#000000"); // light yellow
-  assert.equal(readableTextColor("#f59e0b"), "#000000"); // amber
-  assert.equal(readableTextColor("#1e1b4b"), "#ffffff"); // near-black navy
-  // Shorthand and a missing # are tolerated.
+  assert.equal(readableTextColor("#facc15"), "#000000");
+  assert.equal(readableTextColor("#f59e0b"), "#000000");
+  assert.equal(readableTextColor("#1e1b4b"), "#ffffff");
   assert.equal(readableTextColor("fff"), "#000000");
   assert.equal(readableTextColor("#000"), "#ffffff");
-  // An unparseable value falls back to a safe dark foreground (never throws).
   assert.equal(readableTextColor("nope"), "#000000");
 });
 
@@ -61,14 +58,11 @@ test("appTypeLabel names the App kind, tracking usesComposeStack", () => {
     appTypeLabel({ ...base, source: "docker-image", dockerImage: "nginx" }),
     "Application",
   );
-  // An upload keeps a stale compose around for switching back, still a
-  // single-image build, so it must not read as a stack.
   assert.equal(
     appTypeLabel({ ...base, source: "upload", compose: "services: {}" }),
     "Application",
   );
   assert.equal(appTypeLabel({ ...base, source: "compose" }), "Compose app");
-  // Legacy template apps: a stored compose with no repo/image.
   assert.equal(
     appTypeLabel({ ...base, source: "git", compose: "services: {}" }),
     "Compose app",
@@ -76,8 +70,6 @@ test("appTypeLabel names the App kind, tracking usesComposeStack", () => {
 });
 
 test("formatBuildDuration rounds DOWN so a live timer never over-reports", () => {
-  // The same formatter drives the ticking "Build time" on the deployment page,
-  // so a build 400ms in must read 400ms, never a second it hasn't reached.
   assert.equal(formatBuildDuration(1_999), "1s");
   assert.equal(formatBuildDuration(45_000), "45s");
   assert.equal(formatBuildDuration(59_999), "59s");
@@ -86,22 +78,16 @@ test("formatBuildDuration rounds DOWN so a live timer never over-reports", () =>
 });
 
 test("formatBuildDuration: a sub-second build reports milliseconds, not 0s", () => {
-  // A redeploy that only restarts a container really does finish in a few
-  // hundred ms - "0s" would read as "we didn't measure it".
   assert.equal(formatBuildDuration(400), "400ms");
   assert.equal(formatBuildDuration(7), "7ms");
   assert.equal(formatBuildDuration(999), "999ms");
-  // Fractions round down too, and the unit flips exactly at a full second.
   assert.equal(formatBuildDuration(12.9), "12ms");
   assert.equal(formatBuildDuration(999.9), "999ms");
   assert.equal(formatBuildDuration(1_000), "1s");
 });
 
 test("formatBuildDuration: no duration renders empty, a negative one clamps to 0ms", () => {
-  // Null = never measured (still queued, or a build orphaned by a restart) -
-  // the caller renders its own placeholder rather than a fabricated duration.
   assert.equal(formatBuildDuration(null), "");
-  // A viewer's clock running ahead of the host's must not show a negative build.
   assert.equal(formatBuildDuration(-5_000), "0ms");
 });
 
@@ -116,10 +102,6 @@ test("readableTextColor returns a valid foreground for every curated folder colo
 });
 
 test("cn keeps a breakpoint-scoped size when a call site overrides the base one", () => {
-  // CardTitle ships "text-base lg:text-lg" and ~55 call sites still pass their own
-  // "text-base". tailwind-merge keys the font-size group on the modifier, so the bare
-  // one is replaced and the lg: one survives - which is the ONLY reason every card
-  // title grows on a wide screen without touching 55 files.
   const merged = cn(
     "text-base leading-none font-semibold tracking-tight lg:text-lg",
     "flex w-fit items-center gap-2 text-base",
@@ -127,7 +109,6 @@ test("cn keeps a breakpoint-scoped size when a call site overrides the base one"
   assert.match(merged, /\blg:text-lg\b/);
   assert.match(merged, /\btext-base\b/);
 
-  // A call site that pins BOTH sizes wins on both (the login/monitoring cards).
   const pinned = cn(
     "text-base font-semibold lg:text-lg",
     "text-2xl lg:text-2xl",
@@ -138,25 +119,18 @@ test("cn keeps a breakpoint-scoped size when a call site overrides the base one"
 
 test("pickerInstallationId never invents a GitHub App for an app that already has a repo", () => {
   const insts = [{ id: "gi_first" }, { id: "gi_real" }];
-  // A NEW app asserts nothing yet, so opening on the first App is helpful.
   assert.equal(pickerInstallationId(undefined, insts), "gi_first");
-  // A properly connected app opens on its OWN App.
   assert.equal(
     pickerInstallationId({ installationId: "gi_real" }, insts),
     "gi_real",
   );
-  // An imported app: repo set, credential NULL. This used to answer "gi_first",
-  // which is how the UI came to claim a connection the database never had.
   assert.equal(pickerInstallationId({ installationId: null }, insts), "");
-  // A re-installed App re-keys the row: the stored id no longer exists. Same
-  // class of lie, same answer.
   assert.equal(pickerInstallationId({ installationId: "gi_gone" }, insts), "");
   assert.equal(pickerInstallationId(undefined, []), "");
 });
 
 test("only a row that claims a GitHub App it lacks is flagged", () => {
   const bare = { installationId: null, connectionId: null };
-  // The real broken row: source github, both credential columns NULL.
   assert.equal(repoCredentialMissing({ source: "github", repo: bare }), true);
   assert.equal(
     repoCredentialMissing({
@@ -169,9 +143,6 @@ test("only a row that claims a GitHub App it lacks is flagged", () => {
     repoCredentialMissing({ source: "github", repo: { connectionId: "gc_1" } }),
     false,
   );
-  // A bare Repository URL is the documented use of that source, not a fault:
-  // an anonymous clone of a PUBLIC repo deploys fine. Widening the predicate to
-  // "no credential" would flag it, and a warning on a healthy app is noise.
   assert.equal(repoCredentialMissing({ source: "git", repo: bare }), false);
   assert.equal(
     repoCredentialMissing({ source: "docker-image", repo: null }),
@@ -180,12 +151,6 @@ test("only a row that claims a GitHub App it lacks is flagged", () => {
   assert.equal(repoCredentialMissing({ source: "github", repo: null }), false);
 });
 
-/**
- * `safeReturnPath` is what stands between "come back where you were" and an open
- * redirect: the return address arrives from the browser (a `?next=`, a `returnTo`
- * argument), so anything that could leave the app has to answer `null` rather than
- * being trusted because it was signed later.
- */
 test("safeReturnPath keeps in-app paths and refuses anything that leaves the app", () => {
   for (const ok of [
     "/new",
@@ -205,8 +170,6 @@ test("safeReturnPath keeps in-app paths and refuses anything that leaves the app
     "//evil.example.com",
     "/\\evil.example.com",
     "javascript:alert(1)",
-    // An API route is never a page to land on, and the GitHub routes in
-    // particular would re-enter the flow that issued the address.
     "/api/github/setup",
   ]) {
     assert.equal(safeReturnPath(bad), null, `expected ${bad} to be refused`);
@@ -236,7 +199,6 @@ test("formatClockTime pads UTC and only shows millis when asked", () => {
 });
 
 test("formatDateTime pairs a date with a clock, and refuses junk", () => {
-  // The timezone is the reader's, so only the SHAPE is assertable here.
   assert.match(
     formatDateTime("2026-08-22T03:00:00Z"),
     /^\d{1,2} \w{3}, \d{2}:\d{2}$/,
@@ -253,19 +215,14 @@ test("gitProfileUrl links a pusher's account, and only when it can", () => {
     gitProfileUrl("bitbucket", "@idradev"),
     "https://bitbucket.org/idradev",
   );
-  // Self-hosted: the origin comes from the repository's own URL.
   assert.equal(
     gitProfileUrl("gitea", "idradev", "https://git.acme.com/team/api.git"),
     "https://git.acme.com/idradev",
   );
   assert.equal(gitProfileUrl("gitea", "idradev"), null);
-  // A deploy nobody on a git host ran, an unknown host, and a display name that
-  // is not a login all stay unlinked.
   assert.equal(gitProfileUrl(null, "Owner"), null);
   assert.equal(gitProfileUrl("svn", "idradev"), null);
   assert.equal(gitProfileUrl("bitbucket", "Ada Lovelace"), null);
-  // The parsers' own fallback: a push with no pusher names the HOST, and
-  // github.com/github is not who did it.
   assert.equal(gitProfileUrl("github", "github"), null);
   assert.equal(
     gitProfileUrl("gitea", "Gitea", "https://git.acme.com/t/a"),

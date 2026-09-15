@@ -11,7 +11,7 @@ process.env.DEPLO_DATA_DIR = mkdtempSync(join(tmpdir(), "deplo-pg-"));
 import { makeTestDb, type TestDb } from "../db/test-harness";
 import { __setTestDb, __resetTestDb } from "../db/client";
 import { runWithIdentity } from "../auth/request-context";
-import { databases as databasesTable } from "../db/schema/control-plane";
+import { databases as databasesTable } from "../db/schema/control-plane/databases";
 import { seedIdentity, TEAM_A, TEAM_B, USER_1 } from "./identity-test-helpers";
 import {
   seedServer,
@@ -19,19 +19,12 @@ import {
   SERVER_1,
   TRUNCATE_PROJECT_GRAPH,
 } from "./app-graph-test-helpers";
-import { setAppPorts } from "./apps";
+import { setAppPorts } from "./apps/ports";
 import { loadAppGraph } from "./app-graph-load";
-
-/**
- * Host ports an app publishes - what Deplo's proxy cannot route, and what used
- * to force anybody moving a game server or an SMTP relay to rewrite their app as
- * a compose stack by hand.
- */
 
 let db: TestDb;
 let pg: PGlite;
 
-/** A Member who may configure apps and holds NEITHER orthogonal grant. */
 const USER_3 = "user_3";
 
 before(async () => {
@@ -86,7 +79,6 @@ test("a published port is saved, ordered, and read back", async () => {
     app?.ports?.map((p) => `${p.published}:${p.target}/${p.protocol}`),
     ["16379:6379/tcp", "25565:25565/udp"],
   );
-  // Every row gets an id of its own, so the editor can key them.
   assert.ok(app!.ports![0].id.startsWith("prt_"));
 });
 
@@ -97,8 +89,6 @@ test("saving an empty set clears them", async () => {
   assert.equal((await loadAppGraph("prj_1"))?.ports, null);
 });
 
-// The container leaves the proxy behind and lands on the host's own network, so
-// the same grant that gates a host mount gates this.
 test("publishing a port needs the grant; clearing them does not", async () => {
   await seedApp(db, { id: "prj_1", teamId: TEAM_A });
   await assert.rejects(
@@ -121,9 +111,6 @@ test("a privileged port and a duplicate are both refused", async () => {
   );
 });
 
-// The rows are kept so a flip back to a single image recovers them, exactly as
-// the compose file itself is kept - but a stack that publishes nothing must not
-// hold a port away from everyone else.
 test("a stack that became compose stops claiming its old ports", async () => {
   await seedApp(db, { id: "prj_1", teamId: TEAM_A });
   await seedApp(db, { id: "prj_2", teamId: TEAM_B, slug: "two" });
@@ -148,8 +135,6 @@ test("a compose stack publishes its ports in its own file", async () => {
   );
 });
 
-// A host port is a singleton on the machine and the machine is shared, so the
-// row that collides can belong to another team entirely.
 test("a port another team's database already publishes is refused", async () => {
   await seedApp(db, { id: "prj_1", teamId: TEAM_A });
   await db.insert(databasesTable).values({
@@ -188,6 +173,5 @@ test("a port another APP publishes is refused, and its own is not", async () => 
       ),
     /already published on this server/,
   );
-  // Re-saving its OWN port is not a collision with itself.
   await asOwner(() => setAppPorts("prj_1", [port(16379, 6380)]));
 });

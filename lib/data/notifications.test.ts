@@ -10,14 +10,13 @@ import {
   notificationAlerts,
   notificationChannels,
   pushSubscriptions,
-} from "../db/schema/control-plane";
+} from "../db/schema/control-plane/notifications";
 import { runWithIdentity } from "../auth/request-context";
 import { DEFAULT_ALERTS } from "../alerts";
-import { ALL_ALERTS } from "../types";
-import type { NotificationChannelInput } from "../types";
+import { ALL_ALERTS } from "../types/notification";
+import type { NotificationChannelInput } from "../types/notification";
 import { seedIdentity, TEAM_A, TEAM_B, USER_1 } from "./leaf-test-helpers";
 
-/** The seeder ships one user; TEAM_B needs its own owner for the scoping test. */
 const USER_2 = "user_2";
 import {
   channelsForAlert,
@@ -28,10 +27,6 @@ import {
   saveNotificationChannel,
   subscribeWebPush,
 } from "./notifications";
-
-/**
- * Data-layer tests for notification channels against pglite.
- */
 
 let db: TestDb;
 let pg: PGlite;
@@ -50,8 +45,6 @@ beforeEach(async () => {
   await pg.exec(
     `truncate table notification_alerts, notification_channels, push_subscriptions, users, teams restart identity cascade;`,
   );
-  // USER_2 owns TEAM_B, so the cross-team test below is refused by the row's
-  // scoping rather than by a missing capability.
   await seedIdentity(db, {
     users: [
       { id: USER_1, teamId: TEAM_A, role: "owner" },
@@ -63,10 +56,6 @@ beforeEach(async () => {
 const asUser1 = <T>(fn: () => Promise<T>): Promise<T> =>
   runWithIdentity({ userId: USER_1, teamId: TEAM_A }, fn);
 
-/**
- * A channel of `kind`, overridden as the test needs. Bare hostnames never
- * resolve, so the outbound guard passes them through untouched.
- */
 function draft(
   over: Partial<NotificationChannelInput> = {},
 ): NotificationChannelInput {
@@ -136,9 +125,6 @@ test("the same kind can be added twice, each with its own alerts", async () => {
     );
     assert.notEqual(got[0].id, got[1].id);
   });
-  // And the dispatcher agrees: only the room that asked for it is dialed. THIS
-  // is the regression net for the lookup that used to key on `kind`, which is
-  // the same answer for both of them.
   assert.equal((await channelsForAlert(TEAM_A, "deployment_failed")).length, 2);
   assert.equal(
     (await channelsForAlert(TEAM_A, "deployment_succeeded")).length,
@@ -152,8 +138,6 @@ test("a channel with NO alert rows lands on the catalog defaults", async () => {
   await asUser1(async () => {
     id = (await saveNotificationChannel(null, draft())).id;
   });
-  // A channel nobody has decided about, which is exactly the state a brand-new
-  // one is in, since nothing is seeded on create.
   await db
     .delete(notificationAlerts)
     .where(eq(notificationAlerts.channelId, id));
@@ -191,8 +175,6 @@ test("deleting a channel takes its alert rows with it", async () => {
 test("the kind is frozen once the channel exists", async () => {
   await asUser1(async () => {
     const saved = await saveNotificationChannel(null, draft());
-    // An instance that changed kind would carry an alert selection made about
-    // something else entirely.
     await saveNotificationChannel(saved.id, draft({ kind: "slack" }));
     const [got] = await listNotificationChannels();
     assert.equal(got.kind, "discord");
@@ -215,7 +197,6 @@ test("an empty secret keeps the stored ciphertext; a new one replaces it", async
   });
   const before = (await db.select().from(notificationChannels))[0]!;
 
-  // Same address, so an edit that only renames the channel keeps the token.
   await asUser1(() =>
     saveNotificationChannel(
       id,
@@ -262,9 +243,6 @@ test("a stored token is never forwarded to an address that just changed", async 
   });
   const before = (await db.select().from(notificationChannels))[0]!;
 
-  // Repointing the channel while leaving the secret blank would have the stored
-  // token delivered to whoever owns the new address - in a header, on the first
-  // alert. The save is refused instead, and nothing is written.
   await assert.rejects(
     () =>
       asUser1(() =>
@@ -279,7 +257,6 @@ test("a stored token is never forwarded to an address that just changed", async 
   assert.equal(untouched.url, "https://gotify");
   assert.equal(untouched.secretEnc, before.secretEnc);
 
-  // Re-typing it is what makes the move legitimate.
   await asUser1(() =>
     saveNotificationChannel(
       id,
@@ -316,7 +293,6 @@ test("a URL aimed inside the network is refused before it is stored", async () =
   await asUser1(async () => {
     await assert.rejects(
       () =>
-        // The self-hosted case the owner explicitly chose to keep refused.
         saveNotificationChannel(
           null,
           draft({ kind: "gotify", url: "https://127.0.0.1:8080" }),
@@ -332,8 +308,6 @@ test("another team's channel is out of reach, and its row survives", async () =>
   await asUser1(async () => {
     id = (await saveNotificationChannel(null, draft())).id;
   });
-  // USER_2 owns TEAM_B and holds every capability THERE, so the refusal has to
-  // come from the row being scoped to another team, not from a missing grant.
   await runWithIdentity({ userId: USER_2, teamId: TEAM_B }, async () => {
     await assert.rejects(() => deleteNotificationChannel(id), /not found/i);
     assert.deepEqual(await listNotificationChannels(), []);
@@ -351,8 +325,6 @@ test("parseChannelInput survives junk, and refuses an unknown kind", () => {
   assert.equal(parsed.url, "https://ntfy.sh", "ntfy's one meaningful default");
   assert.equal(parsed.smtpPort, 587);
   assert.equal(parsed.enabled, false);
-  // A save is for ONE channel, so coercing an unknown kind would create a
-  // channel nobody asked for.
   assert.throws(
     () => parseChannelInput({ kind: "myspace" }),
     /Unknown channel/,
@@ -363,8 +335,6 @@ test("channelsForAlert resolves without any request identity", async () => {
   await asUser1(() =>
     saveNotificationChannel(null, draft({ alerts: ["deployment_failed"] })),
   );
-  // Deliberately OUTSIDE runWithIdentity: this is the dispatcher's read, and a
-  // scheduler tick has no active team.
   const kinds = (await channelsForAlert(TEAM_A, "deployment_failed")).map(
     (c) => c.kind,
   );
@@ -382,8 +352,6 @@ test("a channel that is on but unconfigured is not dialed either", async () => {
 });
 
 test("a push endpoint takes the same outbound guard as a webhook", async () => {
-  // The endpoint is a URL the SUBSCRIBER supplies and the fan-out dials, so a
-  // member with nothing but `view` must not be able to aim it inside.
   await assert.rejects(
     () =>
       asUser1(() =>
@@ -397,7 +365,6 @@ test("a push endpoint takes the same outbound guard as a webhook", async () => {
   );
   assert.equal((await db.select().from(pushSubscriptions)).length, 0);
 
-  // A real push service is unaffected.
   await asUser1(() =>
     subscribeWebPush({
       endpoint: "https://fcm.googleapis.example/send/abc",
@@ -423,11 +390,6 @@ test("a team cannot grow an unbounded fan-out", async () => {
   assert.equal((await db.select().from(notificationChannels)).length, 25);
 });
 
-/**
- * A test send that fails has to say WHY: `fetch` answers "fetch failed" and puts
- * the reason on `cause`, so a bad certificate and a refused connection read the
- * same without unwrapping it.
- */
 test("a delivery failure names its cause, not just 'fetch failed'", () => {
   const tls = new TypeError("fetch failed", {
     cause: new Error("unable to verify the first certificate"),

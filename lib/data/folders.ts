@@ -4,12 +4,10 @@ import { cache } from "@/lib/request-cache";
 import { and, eq, inArray, ne } from "drizzle-orm";
 
 import { getDb } from "../db/client";
-import {
-  folders as foldersTable,
-  apps as appsTable,
-  teamFolderOrder,
-} from "../db/schema/control-plane";
-import { getCurrentUser } from "../auth";
+import { apps as appsTable } from "../db/schema/control-plane/apps";
+import { teamFolderOrder } from "../db/schema/control-plane/display-order";
+import { folders as foldersTable } from "../db/schema/control-plane/projects";
+import { getCurrentUser } from "../auth/current-user";
 import { newId, nowIso } from "../ids";
 import {
   requireActiveTeamId,
@@ -26,25 +24,21 @@ import {
 import { appCapabilitiesForTeam, requireAppCapability } from "./node-access";
 import { assertNotMigrating } from "./migration-guard";
 import { recordActivity } from "./activity";
-import { reapplyNetworkAfterMove } from "../deploy/build";
+import { reapplyNetworkAfterMove } from "../deploy/build/reroute";
 import { assertNoNameClash, withNetworkLock } from "./name-clash";
 import { lostNeighbourMessage, neighboursLostByMove } from "./reachability";
-import { composeNamesOnNetwork } from "../deploy/compose-stack";
+import { composeNamesOnNetwork } from "../deploy/compose-stack/compose-read";
 import { stackName } from "../deploy/deploy-key";
 import { inFolderScope } from "../auth/request-context";
 import { normalizeHexColor } from "../utils";
-import { assembleFolder, folderToRow } from "./app-graph-rows";
-import type { Folder } from "../types";
+import { assembleFolder, folderToRow } from "./app-graph-rows/folder";
+import type { Folder } from "../types/team";
 
 export interface FolderSummary extends Folder {
-  /** Live count of apps in this folder's WHOLE subtree - the folder itself
-   *  plus every subfolder nested anywhere beneath it (derived, never stored). */
   appCount: number;
-  /** Live count of immediate child folders (derived, never stored). */
   subfolderCount: number;
 }
 
-/** Cap folder names so one can't break the grid layout or the audit log. */
 const MAX_NAME = 60;
 
 function summarizeFolder(
@@ -59,11 +53,6 @@ function summarizeFolder(
   };
 }
 
-/**
- * The id of `folderId` plus every folder nested anywhere beneath it (its whole
- * subtree). Used to reject a move that would put a folder under its own descendant,
- * which would orphan a cycle out of the tree.
- */
 export function descendantFolderIds(
   folderId: string,
   folders: Pick<Folder, "id" | "parentId">[],
@@ -87,10 +76,6 @@ export function descendantFolderIds(
   return out;
 }
 
-/**
- * Roll DIRECT per-folder app counts up the folder tree so each folder's total
- * covers its WHOLE subtree - itself plus every folder nested anywhere beneath it.
- */
 export function rollUpAppCounts(
   folders: Pick<Folder, "id" | "parentId">[],
   direct: Map<string, number>,
@@ -100,7 +85,6 @@ export function rollUpAppCounts(
   for (const f of folders) {
     const n = direct.get(f.id) ?? 0;
     if (n === 0) continue;
-    // Credit this folder and every ancestor; the seen-set breaks stale cycles.
     const seen = new Set<string>();
     let cur: Pick<Folder, "id" | "parentId"> | undefined = f;
     while (cur && !seen.has(cur.id)) {
@@ -112,7 +96,6 @@ export function rollUpAppCounts(
   return totals;
 }
 
-/** A team's folders (assembled) + live project/subfolder counts (one query each). */
 async function teamFoldersWithCounts(teamId: string): Promise<{
   folders: Folder[];
   appCounts: Map<string, number>;
@@ -123,9 +106,6 @@ async function teamFoldersWithCounts(teamId: string): Promise<{
     .from(foldersTable)
     .where(eq(foldersTable.teamId, teamId));
   const folders = folderRows.map(assembleFolder);
-  // App counts: GROUP BY folder_id over the team's apps, then rolled up the tree so a
-  // folder's count covers its whole subtree - the Overview shows one level at a time,
-  // so a parent tile saying "0 apps" over populated subfolders would read as empty.
   const projRows = await getDb()
     .select({ folderId: appsTable.folderId })
     .from(appsTable)
@@ -145,11 +125,6 @@ async function teamFoldersWithCounts(teamId: string): Promise<{
   return { folders, appCounts, subfolderCounts };
 }
 
-/**
- * Folders in the active team, honouring the team-wide manual order (Overview
- * drag-and-drop) when present and falling back to newest-first - the same
- * contract as `listApps`. Each carries a live project count.
- */
 export const listFolders = cache(async function listFolders(): Promise<
   FolderSummary[]
 > {
@@ -157,18 +132,10 @@ export const listFolders = cache(async function listFolders(): Promise<
   const { folders, appCounts, subfolderCounts } =
     await teamFoldersWithCounts(teamId);
   const rank = await folderOrderRank(teamId);
-  // Only surface folders the caller may SEE: the ones they own or hold a grant
-  // on, or every folder when they're a super-user (admin / manage_team).
   const visible = await visibleFolderIds(teamId);
   const granted =
     visible === "all" ? folders : folders.filter((f) => visible.has(f.id));
-  // …and then only the ones a narrowed API token reaches. Its `folderIds` are
-  // already flattened, so a token given a parent folder sees the whole subtree.
   const seen = granted.filter((f) => inFolderScope(f.id));
-  // Recompute subfolderCount over the VISIBLE set so a folder doesn't disclose the
-  // existence of child folders the caller can't see (child folders carry their own
-  // independent ownership/grants). appCount stays team-scoped - a folder's apps
-  // (including the subtree roll-up) are part of what any folder-viewer works with.
   const shownSubfolderCounts =
     visible === "all"
       ? subfolderCounts
@@ -189,7 +156,6 @@ export const listFolders = cache(async function listFolders(): Promise<
     });
 });
 
-/** Team-wide manual folder order (the `team_folder_order` junction), id→rank. */
 async function folderOrderRank(teamId: string): Promise<Map<string, number>> {
   const rows = await getDb()
     .select({
@@ -210,12 +176,6 @@ export function cleanName(name: string): string {
   return trimmed;
 }
 
-/**
- * Reconcile a client-supplied display order against the authoritative id set: keep
- * the requested ids that are valid (dropping unknown/duplicate ones, in order),
- * then append any authoritative id the client omitted (preserving its existing
- * position) so the stored order is always total and self-healing.
- */
 export function mergeOrder(orderedIds: string[], allIds: string[]): string[] {
   const valid = new Set(allIds);
   const seen = new Set<string>();
@@ -235,18 +195,10 @@ export async function createFolder(
   color?: string | null,
   parentId?: string | null,
 ): Promise<FolderSummary> {
-  // Creating a folder needs the SAME capability as creating a project: `deploy`.
-  // The creator becomes the folder's owner and its per-folder caps are derived
-  // live from their team caps (never stored) - see lib/data/folder-access.ts.
   const { teamId, userId } = await requireCapability("create_folders");
   const userName = (await getCurrentUser())?.name ?? "Someone";
   const clean = cleanName(name);
-  // Normalise at the trust boundary so every stored colour is a canonical
-  // `#rrggbb`; an empty/absent choice keeps the default neutral tile.
   const cleanColor = color ? normalizeHexColor(color) : null;
-  // A nested folder must be created under a real folder of the same team that the
-  // creator can actually SEE - an unknown/foreign/invisible parent is rejected so
-  // a stale client can't strand a subtree or nest under someone else's folder.
   if (parentId) {
     if (
       !(await folderInTeam(parentId, teamId)) ||
@@ -264,8 +216,6 @@ export async function createFolder(
     createdAt: nowIso(),
     updatedAt: nowIso(),
   };
-  // Append to the team's folder order so a brand-new folder lands last in the
-  // grid rather than jumping ahead of existing, deliberately-ordered ones.
   await getDb().transaction(async (tx) => {
     await tx.insert(foldersTable).values(folderToRow(folder));
     const maxPos = await tx
@@ -288,7 +238,6 @@ export async function createFolder(
   return summarizeFolder(folder, appCounts, subfolderCounts);
 }
 
-/** True if a folder belongs to a team. */
 async function folderInTeam(
   folderId: string,
   teamId: string,
@@ -313,8 +262,6 @@ export async function renameFolder(id: string, name: string): Promise<void> {
     "organize_folders",
   );
   const clean = cleanName(name);
-  // No-op when unchanged (conditional UPDATE … RETURNING); verify existence only
-  // when nothing changed so a rename-to-same-name doesn't error.
   const updated = await getDb()
     .update(foldersTable)
     .set({ name: clean, updatedAt: nowIso() })
@@ -339,11 +286,6 @@ export async function renameFolder(id: string, name: string): Promise<void> {
   );
 }
 
-/**
- * Set (or clear, with `null`/empty) a folder's accent colour. Normalised to a
- * canonical `#rrggbb` at this boundary. No-op (no updatedAt bump, no activity)
- * when unchanged.
- */
 export async function setFolderColor(
   id: string,
   color: string | null,
@@ -376,17 +318,10 @@ export async function setFolderColor(
   );
 }
 
-/**
- * Move a folder under a new parent, or to the top level when `parentId` is null.
- * Both folders must belong to the active team. A folder can't be moved into
- * itself or any of its own descendants (rejected). No-op when already in place.
- */
 export async function moveFolder(
   id: string,
   parentId: string | null,
 ): Promise<void> {
-  // Manage the moved folder itself, AND (when nesting) be able to see the
-  // destination parent, so a user can't file a folder under one they can't use.
   const { teamId, userName } = await requireFolderCapability(
     id,
     "organize_folders",
@@ -418,9 +353,6 @@ export async function moveFolder(
   if (msg) await recordActivity("app", msg, userName, null, teamId);
 }
 
-/**
- * Delete a folder.
- */
 export async function deleteFolder(
   id: string,
   opts: { deleteApps?: boolean } = {},
@@ -429,11 +361,9 @@ export async function deleteFolder(
     id,
     "delete_folders",
   );
-  // Before the folder row goes, while its apps still resolve THROUGH it (ADR-0016)
-  // and their gate is the one the folder's own grants decide. Imported lazily:
-  // apps.ts imports this module, so a static import would close the cycle.
+  // Before the folder row goes, while its apps still resolve THROUGH it (ADR-0016).
   if (opts.deleteApps) {
-    const { deleteAppsIn } = await import("./apps");
+    const { deleteAppsIn } = await import("./apps/bulk");
     await deleteAppsIn({ folderId: id });
   }
   const name = await getDb().transaction(async (tx) => {
@@ -445,39 +375,26 @@ export async function deleteFolder(
     const f = rows[0];
     if (!f) throw new Error("Folder not found");
     const grandparent = f.parentId ?? null;
-    // Apps in the folder fall to its parent (or the top level if none).
     await tx
       .update(appsTable)
       .set({ folderId: grandparent })
       .where(and(eq(appsTable.teamId, teamId), eq(appsTable.folderId, id)));
-    // Child folders re-parent to the grandparent so the subtree survives.
     await tx
       .update(foldersTable)
       .set({ parentId: grandparent })
       .where(
         and(eq(foldersTable.teamId, teamId), eq(foldersTable.parentId, id)),
       );
-    // The team_folder_order row CASCADEs when the folder row is deleted.
     await tx.delete(foldersTable).where(eq(foldersTable.id, id));
     return f.name;
   });
-  // Record OUTSIDE the transaction: recordActivity opens its own connection, which
-  // would deadlock against the open tx on pglite's single connection.
   await recordActivity("app", `Deleted folder ${name}`, userName, null, teamId);
 }
 
-/**
- * Move a project into a folder, or back to the top level when `folderId` is
- * null. No-op when already in place.
- */
 export async function moveAppToFolder(
   appId: string,
   folderId: string | null,
 ): Promise<void> {
-  // The SOURCE gate, and the only one that covers every placement: the ladder
-  // resolves the app through its folder chain, its project, then the membership
-  // (ADR-0016), so this is the folder-source check it replaces AND the one an app
-  // inside a project never had.
   const { teamId } = await requireAppCapability(appId, "move_apps");
   const userName = (await getCurrentUser())?.name ?? "Someone";
   const proj = await getDb()
@@ -493,7 +410,6 @@ export async function moveAppToFolder(
   if (!p) throw new Error("App not found");
   let msg = "";
   if (folderId) {
-    // Filing INTO a folder needs `deploy` on that destination folder.
     if (!(await folderInTeam(folderId, teamId)))
       throw new Error("Folder not found");
     if (p.folderId === folderId) return;
@@ -508,16 +424,10 @@ export async function moveAppToFolder(
     if (p.folderId == null) return;
     msg = `Moved ${p.name} out of its folder`;
   }
-  // Filing into a folder pulls the app OUT of its Environment, so it lands on the
-  // team's network - a different network, with different names already on it.
-  // Check and write under one lock, or two concurrent moves both read the name as
-  // free on the team's network and both take it.
   await withNetworkLock({ teamId, environmentId: null }, async () => {
     if (folderId) await assertAppNamesFreeAtTeamLevel([appId], teamId);
     await getDb()
       .update(appsTable)
-      // An app lives in ONE place: filing it into a folder also pulls it out of
-      // any project/environment (ADR-0009 - folders and projects don't nest).
       .set({
         folderId,
         ...(folderId ? { projectId: null, environmentId: null } : {}),
@@ -525,18 +435,12 @@ export async function moveAppToFolder(
       })
       .where(eq(appsTable.id, appId));
   });
-  // The placement IS the network: a folder app is on its team's, an Environment's
-  // is on that Environment's, so the stack has to be brought up again to follow.
+  // The placement IS the network (ADR-0028), so the stack has to be brought up again to follow.
   await reapplyNetworkAfterMove([appId]);
   await warnLostNeighbours([appId], teamId, folderId ? null : null);
   if (msg) await recordActivity("app", msg, userName, appId, teamId);
 }
 
-/**
- * Move SEVERAL apps into a folder (or to the top level) in one write - the
- * bulk counterpart to `moveAppToFolder`. Team-scoped; foreign/stale ids and
- * apps already in place are skipped. Returns how many actually moved.
- */
 export async function moveAppsToFolder(
   appIds: string[],
   folderId: string | null,
@@ -551,11 +455,9 @@ export async function moveAppsToFolder(
       .where(eq(foldersTable.id, folderId))
       .limit(1);
     if (!f[0] || f[0].teamId !== teamId) throw new Error("Folder not found");
-    // Filing INTO a folder needs `deploy` on that destination folder.
     await requireFolderCapability(folderId, "move_apps");
     folderName = f[0].name;
   }
-  // Only the caller's own team apps that actually change folder.
   const owned = await getDb()
     .select({
       id: appsTable.id,
@@ -576,8 +478,6 @@ export async function moveAppsToFolder(
     .filter((p) => (p.folderId ?? null) !== folderId)
     .map((p) => p.id);
   if (toMove.length === 0) return 0;
-  // The same source gate as the single move, batched: `move_apps` ON EACH APP,
-  // resolved through its own folder chain and project.
   const reach = await appCapabilitiesForTeam(
     teamId,
     owned
@@ -590,25 +490,16 @@ export async function moveAppsToFolder(
       })),
   );
   for (const id of toMove) {
-    // Same message an unknown id gets: which of the selection they may not move
-    // is not something a refusal should spell out.
     if (!(reach.get(id) ?? []).includes("move_apps"))
       throw new Error("App not found");
   }
-  // The check the batched gate cannot make: reading the whole selection at once
-  // skips `requireAppCapability`, which is where an app a migration is still
-  // writing is refused. Same order as there - reachability first, then this.
   for (const p of owned)
     if (toMove.includes(p.id))
       assertNotMigrating("app", p.name, p.migrationRunId);
-  // Checked for the whole selection before the single write, so a clash refuses the
-  // move instead of leaving half of it applied.
   await withNetworkLock({ teamId, environmentId: null }, async () => {
     if (folderId) await assertAppNamesFreeAtTeamLevel(toMove, teamId);
     await getDb()
       .update(appsTable)
-      // Same one-home rule as the single move: filing into a folder leaves the
-      // project/environment (ADR-0009).
       .set({
         folderId,
         ...(folderId ? { projectId: null, environmentId: null } : {}),
@@ -629,12 +520,7 @@ export async function moveAppsToFolder(
   return toMove.length;
 }
 
-/**
- * Persist the team-wide order of folders in the Overview grid.
- */
 export async function reorderFolders(orderedIds: string[]): Promise<void> {
-  // The Overview folder order is a single TEAM-WIDE setting (like reorderApps),
-  // so a lone folder owner can't define it - gate on the super-user role.
   const { teamId } = await requireMembership();
   if (!(await isInstanceAdmin()) && !(await hasCapability("manage_team")))
     throw new Error("You don't have permission to reorder folders");
@@ -656,7 +542,6 @@ export async function reorderFolders(orderedIds: string[]): Promise<void> {
   });
 }
 
-/** The team's top level is a network too: the names have to be free there. */
 async function assertAppNamesFreeAtTeamLevel(
   appIds: string[],
   teamId: string,
@@ -672,13 +557,8 @@ async function assertAppNamesFreeAtTeamLevel(
     })
     .from(appsTable)
     .where(inArray(appsTable.id, appIds));
-  // The SIBLINGS of this batch land on the same network in the same write, and
-  // they still carry their old placement while this runs - so the stored rows say
-  // nothing about them. Two apps that both answer to `db`, moved together, both
-  // passed; moved one at a time, the second was refused.
   const takenByBatch = new Map<string, string>();
   for (const row of rows) {
-    // Already at the top level: the move changes no network.
     if (!row.environmentId) continue;
     const claims = row.compose?.trim()
       ? composeNamesOnNetwork(row.compose)
@@ -701,7 +581,6 @@ async function assertAppNamesFreeAtTeamLevel(
   }
 }
 
-/** Record what filing these apps into a folder took out of reach. See reachability.ts. */
 async function warnLostNeighbours(
   appIds: string[],
   teamId: string,
@@ -723,8 +602,6 @@ async function warnLostNeighbours(
         id,
         teamId,
       );
-    } catch {
-      // Never fail a move for a warning it could not produce.
-    }
+    } catch {}
   }
 }

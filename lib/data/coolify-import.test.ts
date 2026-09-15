@@ -14,13 +14,11 @@ import type { PGlite } from "@electric-sql/pglite";
 import { makeTestDb, type TestDb } from "../db/test-harness";
 import { __setTestDb, __resetTestDb } from "../db/client";
 import { runWithIdentity } from "../auth/request-context";
-import {
-  apps as appsTable,
-  databases as databasesTable,
-  domains as domainsTable,
-  envVars as envVarsTable,
-  migrationRunItems as itemsTable,
-} from "../db/schema/control-plane";
+import { apps as appsTable } from "../db/schema/control-plane/apps";
+import { databases as databasesTable } from "../db/schema/control-plane/databases";
+import { domains as domainsTable } from "../db/schema/control-plane/domains";
+import { envVars as envVarsTable } from "../db/schema/control-plane/env-vars";
+import { migrationRunItems as itemsTable } from "../db/schema/control-plane/migration";
 import {
   seedIdentity,
   TEAM_A,
@@ -28,9 +26,12 @@ import {
   USER_1,
 } from "./identity-test-helpers";
 import { seedServer, TRUNCATE_PROJECT_GRAPH } from "./app-graph-test-helpers";
-import { __setDnsResolve4ForTest, __resetDnsResolve4ForTest } from "./domains";
+import {
+  __setDnsResolve4ForTest,
+  __resetDnsResolve4ForTest,
+} from "./domains/dns-check";
 import { settleProvisioning } from "./backup-test-helpers";
-import { __setAgentConnectorForTest } from "../infra/agent-client";
+import { __setAgentConnectorForTest } from "../infra/agent-client/connect";
 import { __resetAcceptedKeysForTest } from "../migration/dokploy/client";
 import {
   __resetMigrationFetchForTest,
@@ -39,19 +40,9 @@ import {
 import { __resetCoolifyIndexForTest } from "../migration/coolify/adapter";
 import { __resetCoolifyRateLimitForTest } from "../migration/coolify/client";
 import { decryptSecret } from "../crypto";
-import {
-  beginMigration,
-  importMigrationProject,
-  scanMigrationSource,
-} from "./migration-import";
-
-/**
- * The Coolify adapter end to end, against a fake instance.
- *
- * Fixtures are keyed by the path AFTER `/api/v1/`, which is the contract the
- * adapter has with a real Coolify - the Dokploy suite keys on its procedure names
- * for the same reason.
- */
+import { importMigrationProject } from "./migration-import/project-import";
+import { beginMigration } from "./migration-import/run-lifecycle";
+import { scanMigrationSource } from "./migration-import/scan";
 
 let db: TestDb;
 let pg: PGlite;
@@ -171,15 +162,12 @@ function defaultFixtures(): Record<string, unknown> {
         status: "running",
       },
     ],
-    "applications/app-web": null, // filled below from the list row
+    "applications/app-web": null,
     "applications/app-web/envs": [
       { key: "NODE_ENV", value: "production" },
       { key: "SECRET", value: "$SERVICE_PASSWORD_APP", real_value: "aB3k9" },
       { key: "ONLY_PREVIEW", value: "x", is_preview: true },
-      // Same name as the shared variable: a LINK here, not a second copy.
       { key: "TEAM_WIDE", value: "{{team.TEAM_WIDE}}", real_value: "t" },
-      // A different name: a link injects under the shared variable's own key, so
-      // this one has to arrive as the value the panel resolved.
       { key: "MAIL", value: "{{project.PROJECT_WIDE}}", real_value: "p" },
     ],
     "applications/app-web/storages": {
@@ -237,7 +225,6 @@ function json(body: unknown): Response {
 function routingFetch() {
   return async (input: string, init?: RequestInit): Promise<Response> => {
     const url = new URL(input);
-    // A Coolify serves neither Dokploy's tRPC paths nor anything else.
     if (!url.pathname.startsWith("/api/v1/"))
       return new Response("not found", { status: 404 });
     const path = url.pathname.replace(/^\/api\/v1\//, "");
@@ -247,7 +234,6 @@ function routingFetch() {
       `Bearer ${CONNECT.apiKey}`,
     );
 
-    // A single resource: the list row is the detail row on this API.
     const single = /^(applications|services|databases)\/([^/]+)$/.exec(path);
     if (single) {
       const list = fixtures[single[1]] as { uuid: string }[] | undefined;
@@ -265,8 +251,6 @@ function routingFetch() {
     return json(hit);
   };
 }
-
-/* ------------------------------------------------------------------ */
 
 before(async () => {
   ({ db, pg } = await makeTestDb());
@@ -305,8 +289,6 @@ beforeEach(async () => {
 const asOwner = <T>(fn: () => Promise<T>): Promise<T> =>
   runWithIdentity({ userId: USER_1, teamId: TEAM_A }, fn);
 
-/* ---- scan ----------------------------------------------------------- */
-
 test("the scan reads the whole tree and says it is a Coolify", async () => {
   const plan = await asOwner(() => scanMigrationSource(CONNECT));
   assert.equal(plan.platform, "coolify");
@@ -339,15 +321,11 @@ test("an engine Deplo does not have is refused by name, not forgotten", async ()
 });
 
 test("the panel's own host is the machine the wizard offers first", async () => {
-  // Nothing of this team runs on the remote server, so it is not a machine to
-  // install on: the wizard would only have held the step for it.
   const plan = await asOwner(() => scanMigrationSource(CONNECT));
   assert.deepEqual(
     plan.servers.map((s) => s.sourceId),
     [""],
   );
-  // With a resource on it, the remote one keeps its uuid, so a service there
-  // can be placed separately.
   fixtures["servers/srv-eu/resources"] = (
     fixtures["servers/srv-local/resources"] as unknown[]
   ).splice(0, 1);
@@ -369,7 +347,6 @@ test("a scan writes nothing on either side", async () => {
   assert.equal(rows.length, 0);
 });
 
-// The one failure that looks like success: apps land with their variables empty.
 test("a token that cannot read values is refused before anything happens", async () => {
   fixtures.databases = [
     {
@@ -378,7 +355,6 @@ test("a token that cannot read values is refused before anything happens", async
       environment_id: 2,
       type: "standalone-postgresql",
       image: "postgres:16",
-      // No password key at all: this is what Coolify sends without read:sensitive.
     },
   ];
   await assert.rejects(
@@ -395,8 +371,6 @@ test("with no database, the refusal comes from a resource's own variables", asyn
     /cannot read values/,
   );
 });
-
-/* ---- import --------------------------------------------------------- */
 
 async function importAll(): Promise<string> {
   const runId = await asOwner(() =>
@@ -418,8 +392,6 @@ test("a project lands: apps, a stack, a database and its variables", async () =>
     "wordpress",
   ]);
 
-  // The seeded host has no agent, so a database create is a REPORT row carrying
-  // the host's own words - not a failed import. Same as the other platform's suite.
   const items = await db.select().from(itemsTable);
   const pg = items.find((i) => i.sourceKind === "postgres")!;
   assert.equal(pg.outcome, "failed");
@@ -432,11 +404,7 @@ test("a project lands: apps, a stack, a database and its variables", async () =>
     .from(envVarsTable)
     .where(eq(envVarsTable.appId, web.id));
   const keys = vars.map((v) => v.key).sort();
-  // MAIL read {{project.PROJECT_WIDE}}: a link cannot rename, so it arrives as the
-  // value. TEAM_WIDE read a variable of its own name and became a link instead.
   assert.deepEqual(keys, ["MAIL", "NODE_ENV", "SECRET"]);
-  // A preview-only variable stays behind: Deplo's previews inherit the app's env,
-  // so importing it would leak it into production.
   assert.equal(keys.includes("ONLY_PREVIEW"), false);
 });
 
@@ -449,7 +417,6 @@ test("a compose-built application lands as a stack, not as an app", async () => 
   const doc = yaml.load(stack.compose ?? "") as {
     networks?: Record<string, unknown>;
   };
-  // Coolify's per-resource network is the PLATFORM's, and Deplo attaches its own.
   assert.equal(doc.networks, undefined);
 });
 
@@ -476,7 +443,6 @@ test("what has no home here becomes a line in the report", async () => {
     .where(eq(itemsTable.runId, runId));
   const messages = items.map((i) => i.message ?? "").join("\n");
   assert.match(messages, /--gpus all/);
-  // Every report line names the panel it read, and names it correctly.
   assert.doesNotMatch(messages, /\{panel\}/);
   assert.doesNotMatch(messages, /Dokploy/);
   assert.match(messages, /Coolify/);
@@ -505,8 +471,6 @@ test("nothing is deployed and the source is still running", async () => {
   );
 });
 
-/* ---- what Coolify carries that Deplo now has a home for ------------- */
-
 test("the health check comes across, and what does not fit is a note", async () => {
   await importAll();
   const web = (await db.select().from(appsTable)).find(
@@ -518,7 +482,6 @@ test("the health check comes across, and what does not fit is a note", async () 
   assert.equal(web.healthCheckIntervalS, 20);
   assert.equal(web.healthCheckRetries, 5);
 
-  // Coolify checks things Deplo's does not, and the report says which.
   const items = await db.select().from(itemsTable);
   assert.match(
     items.map((i) => i.message ?? "").join("\n"),
@@ -528,7 +491,6 @@ test("the health check comes across, and what does not fit is a note", async () 
 
 test("shared variables come across at every level, including the server one", async () => {
   await importAll();
-  // The team level is now a reach ROW, not a boolean (ADR-0027).
   const shared = await db.execute(
     `select v.key, (t.team_id is not null) as team_wide
        from shared_env_vars v
@@ -557,7 +519,6 @@ test("only the app that REFERENCED a shared variable is linked to it", async () 
        join apps a on a.id = l.app_id
       order by v.key, a.slug`,
   );
-  // app-web wrote TEAM_WIDE={{team.TEAM_WIDE}} and nothing else did.
   assert.deepEqual(
     (links.rows as { key: string; slug: string }[]).map((r) => r.key),
     ["TEAM_WIDE"],
@@ -568,14 +529,12 @@ test("only the app that REFERENCED a shared variable is linked to it", async () 
       where a.name = 'web' order by e.key`,
   );
   const keys = (rows.rows as { key: string }[]).map((r) => r.key);
-  // The linked one carries no copy of its own; the aliased one does.
   assert.equal(keys.includes("TEAM_WIDE"), false);
   assert.equal(keys.includes("MAIL"), true);
   const mail = (rows.rows as { key: string; value_enc: string }[]).find(
     (r) => r.key === "MAIL",
   );
   assert.equal(decryptSecret(mail!.value_enc), "p");
-  // And it is said out loud, both ways round.
   const items = await db.select().from(itemsTable);
   const messages = items.map((i) => i.message ?? "").join("\n");
   assert.match(messages, /linked to the shared variable of the same name/);
@@ -592,8 +551,6 @@ test("a backup destination comes across and is tried at once", async () => {
     ]),
     [["nightly", "backups"]],
   );
-  // No agent answers in this harness, so it lands with the reason on the report
-  // rather than looking verified.
   const item = (await db.select().from(itemsTable))
     .filter((i) => i.runId === runId)
     .find((i) => i.sourceKind === "destination")!;

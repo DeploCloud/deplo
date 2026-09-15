@@ -40,7 +40,6 @@ const FINISH = /* GraphQL */ `
   }
 `;
 
-/** What each kind of authenticator is, in the words a person would use. */
 const KIND: Record<
   PasskeyKind,
   { label: string; icon: React.ComponentType<{ className?: string }> }
@@ -50,11 +49,6 @@ const KIND: Record<
   securityKey: { label: "Security key", icon: Usb },
 };
 
-/**
- * Why this instance cannot register a passkey, or null when it can. Resolved
- * from props during render - reading `window.location` would disagree with the
- * server's HTML and break hydration.
- */
 export function passkeyBlockedReason(
   panelUrl: string | null,
   rpId: string | null,
@@ -65,9 +59,6 @@ export function passkeyBlockedReason(
   return null;
 }
 
-/**
- * The passkeys on this account: add, rename, remove.
- */
 export function PasskeysCard({
   passkeys,
   panelUrl,
@@ -76,19 +67,14 @@ export function PasskeysCard({
   onAddOpenChange,
 }: {
   passkeys: PasskeyDTO[];
-  /** This instance's canonical address, or null if the operator never set one. */
   panelUrl: string | null;
-  /** The hostname passkeys are bound to, or null when this instance can't have any. */
   rpId: string | null;
-  /** Owned by the page, so the Account protection card can open it too. */
   addOpen: boolean;
   onAddOpenChange: (open: boolean) => void;
 }) {
   const router = useRouter();
   const blocked = passkeyBlockedReason(panelUrl, rpId);
 
-  // `sm`, matching the card-header buttons on this page (the house rule reserves
-  // the default height for rows that hold a form control).
   const addButton = (
     <Button size="sm" disabled={blocked !== null}>
       <Plus className="size-4" />
@@ -101,11 +87,6 @@ export function PasskeysCard({
       <CardHeader className="flex-row items-center justify-between gap-4 space-y-0">
         <CardTitle className="flex w-fit items-center gap-2 text-base">
           Passkeys
-          {/**
-           * A promise about support, not a warning: the ceremony is covered by tests end to
-           * end, but no real fleet has carried it yet, and the rpID is welded to the panel's
-           * address in a way operators will meet the first time they move it.
-           */}
           <BetaChip />
           <InfoTip
             content="Sign in with your fingerprint, face or device PIN instead of a password, and it counts as your second factor."
@@ -152,7 +133,6 @@ export function PasskeysCard({
                       <span className="truncate text-sm font-medium">
                         {p.name}
                       </span>
-                      {/* A credential minted for another panel address. */}
                       {!p.usableHere && (
                         <SimpleTooltip content="Registered for a different address of this panel, so this browser will not offer it. Remove it.">
                           <Badge variant="secondary">Not usable here</Badge>
@@ -184,11 +164,6 @@ export function PasskeysCard({
   );
 }
 
-/**
- * Add: password, then the ceremony, then the label. The password is taken BEFORE
- * the browser prompt rather than after, so a person who cannot produce it is not
- * asked for their fingerprint first.
- */
 function AddPasskeyDialog({
   trigger,
   panelUrl,
@@ -206,9 +181,6 @@ function AddPasskeyDialog({
   const [password, setPassword] = React.useState("");
   const [name, setName] = React.useState("");
 
-  // Seeded when the dialog opens, in the event handler rather than an effect:
-  // `navigator` is a browser-only read, and the default should describe the
-  // device sitting in front of the person right now.
   function onOpenChange(next: boolean) {
     if (next) setName(describeUserAgent(navigator.userAgent).label);
     else setPassword("");
@@ -216,9 +188,6 @@ function AddPasskeyDialog({
   }
 
   async function add() {
-    // The reason the server could not know: the browser is on some other host,
-    // so the platform would refuse the ceremony without sending anything. Caught
-    // before the password is spent on a round trip that cannot succeed.
     if (rpId && window.location.hostname !== rpId)
       return {
         ok: false as const,
@@ -288,7 +257,6 @@ function AddPasskeyDialog({
   );
 }
 
-/** Relabel. No password: a name is not a credential. */
 function RenamePasskey({
   passkey,
   onDone,
@@ -308,8 +276,6 @@ function RenamePasskey({
       }
       open={open}
       onOpenChange={(next) => {
-        // Reset on OPEN, not on close: a name half-typed and abandoned must not
-        // be what the field shows the next time.
         if (next) setName(passkey.name);
         setOpen(next);
       }}
@@ -343,7 +309,6 @@ function RenamePasskey({
   );
 }
 
-/** Remove. Password required - this is taking a sign-in credential away. */
 function DeletePasskey({
   passkey,
   onDone,

@@ -1,5 +1,3 @@
-/** Brand glyphs not shipped by lucide-react (brand icons were removed). */
-
 import { Boxes } from "lucide-react";
 
 import { cn } from "@/lib/utils";
@@ -17,10 +15,6 @@ export function GitHubIcon({ className }: { className?: string }) {
   );
 }
 
-/**
- * Real brand marks, single-path, 24x24, `fill="currentColor"` - taken from
- * simple-icons (CC0) so nothing here is drawn from memory.
- */
 export function MattermostIcon({ className }: { className?: string }) {
   return (
     <svg
@@ -164,11 +158,6 @@ export function GitIcon({ className }: { className?: string }) {
   );
 }
 
-/**
- * The mark of a git host, by provider id - one mapping so the provider dropdown,
- * the connections list and the connect dialog can never show three different
- * glyphs for the same host.
- */
 export function GitProviderIcon({
   provider,
   className,
@@ -189,10 +178,6 @@ export function GitProviderIcon({
   return <Icon className={className} />;
 }
 
-/**
- * Brand colours for the git hosts, straight from simple-icons. A literal, not a
- * token: a brand colour is not themeable.
- */
 const GIT_BRAND: Record<string, { bg: string; fg: string }> = {
   github: { bg: "#181717", fg: "#FFFFFF" },
   gitlab: { bg: "#FC6D26", fg: "#FFFFFF" },
@@ -201,11 +186,6 @@ const GIT_BRAND: Record<string, { bg: string; fg: string }> = {
   git: { bg: "#F05032", fg: "#FFFFFF" },
 };
 
-/**
- * A git host's mark on its own brand colour - the same shape the notification
- * channels use, and for the same reason: four identical grey glyphs are four
- * things you have to read, while the colour makes the one you want findable before
- */
 export function GitProviderMark({
   provider,
   className,
@@ -222,10 +202,6 @@ export function GitProviderMark({
       )}
       style={{ backgroundColor: brand.bg, color: brand.fg }}
     >
-      {/**
-       * Half the tile, whatever the tile is: the mark stays proportional at every size
-       * this is used at, with nothing to pass at the call site.
-       */}
       <GitProviderIcon provider={provider} className="h-1/2! w-1/2!" />
     </span>
   );
@@ -244,9 +220,6 @@ export function DockerIcon({ className }: { className?: string }) {
   );
 }
 
-/**
- * A registry's mark, on its brand colour where it HAS one.
- */
 const REGISTRY_BRAND: Record<string, { bg: string; fg: string }> = {
   ghcr: { bg: "#181717", fg: "#FFFFFF" },
   dockerhub: { bg: "#2496ED", fg: "#FFFFFF" },
@@ -278,19 +251,10 @@ export function RegistryMark({
       )}
       style={brand ? { backgroundColor: brand.bg, color: brand.fg } : undefined}
     >
-      {/* Half the tile at every size, and important for the same reason as the
-          git mark: a menu item sizes any icon inside it with a descendant
-          selector, which is wrong for a tile with a glyph in it. */}
       <Icon className="h-1/2! w-1/2!" />
     </span>
   );
 }
-
-/**
- * The AI agents Settings → MCP Server offers to connect, same source and same rule
- * as the marks above: simple-icons (CC0), single path, 24x24,
- * `fill="currentColor"`.
- */
 
 export function ClaudeIcon({ className }: { className?: string }) {
   return (

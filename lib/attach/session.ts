@@ -3,31 +3,14 @@ import "server-only";
 import { randomBytes } from "node:crypto";
 import { type AttachHandle } from "../infra/docker";
 
-/**
- * In-process registry of live `docker attach` sessions.
- */
-
 export interface AttachSession {
   id: string;
-  /** App that authorised this session - POST/GET must match it. */
   appId: string;
-  /**
-   * Team the session was opened under. POST/DELETE re-check the caller's active
-   * team against this so an id opened in one team can't be driven from another.
-   */
   teamId: string;
-  /**
-   * The single user who opened this session and was authorised for it. POST/DELETE
-   * honour ONLY this principal - possession of the id is not authority, so a
-   * different (or since-demoted) user can't keep writing to PID 1 on its TTL.
-   */
   userId: string;
-  /** Real container name being attached. */
   containerName: string;
   handle: AttachHandle;
-  /** Subscribers draining stdout/stderr (normally exactly one: the GET stream). */
   readonly subscribers: Set<(chunk: Buffer) => void>;
-  /** Called when the child exits so the stream can close cleanly. */
   onExit?: () => void;
   idleTimer?: NodeJS.Timeout;
   exited: boolean;
@@ -35,8 +18,6 @@ export interface AttachSession {
 
 const sessions = new Map<string, AttachSession>();
 
-// A session with no GET stream draining it (browser tab closed without a clean
-// DELETE) is reaped so the `docker attach` child can't linger forever.
 const IDLE_MS = 30_000;
 
 function armIdleReaper(s: AttachSession) {
@@ -46,12 +27,8 @@ function armIdleReaper(s: AttachSession) {
   }, IDLE_MS);
 }
 
-// Hard ceilings on live sessions. The idle reaper only fires at zero subscribers,
-// so a client that holds its EventSource open forever is never reclaimed by it -
-// without a cap each open() pins a backing (and its gRPC client) for good.
 const MAX_SESSIONS = 64;
 const MAX_SESSIONS_PER_APP = 8;
-// One person cannot hold the whole instance ceiling.
 const MAX_SESSIONS_PER_USER = 16;
 
 function evict(s: AttachSession) {
@@ -60,8 +37,6 @@ function evict(s: AttachSession) {
 }
 
 function enforceSessionCaps(appId: string, userId: string) {
-  // Only the caller's OWN sessions are ever evicted: a cap reached by other
-  // people's streams is a refusal, never a way to close their consoles.
   const mine = [...sessions.values()].filter((s) => s.userId === userId);
   const forApp = mine.filter((s) => s.appId === appId);
   if (forApp.length >= MAX_SESSIONS_PER_APP) evict(forApp[0]);
@@ -75,11 +50,6 @@ function enforceSessionCaps(appId: string, userId: string) {
   }
 }
 
-/**
- * Open a new attach session over a pre-built backing handle. `cleanup` runs once
- * when the backing exits/closes (e.g. `conn.close()` for a remote gRPC client) -
- * bound here so it can never leak.
- */
 export function open(
   appId: string,
   teamId: string,
@@ -119,13 +89,11 @@ export function open(
   return session;
 }
 
-/** Look up a session, scoped to its project so ids can't be used cross-project. */
 export function get(id: string, appId: string): AttachSession | undefined {
   const s = sessions.get(id);
   return s && s.appId === appId ? s : undefined;
 }
 
-/** Subscribe to a session's output; returns an unsubscribe fn. */
 export function subscribe(
   s: AttachSession,
   onChunk: (chunk: Buffer) => void,
@@ -138,10 +106,6 @@ export function subscribe(
   };
 }
 
-/**
- * Tear down every session of one app - what turning the app's console OFF does,
- * so an open terminal stops at the flip rather than at the next page load.
- */
 export function destroyForApp(appId: string): void {
   for (const s of [...sessions.values()]) {
     if (s.appId !== appId) continue;
@@ -150,7 +114,6 @@ export function destroyForApp(appId: string): void {
   }
 }
 
-/** Tear down a session: kill the local attach client (never the container). */
 export function destroy(id: string): void {
   const s = sessions.get(id);
   if (!s) return;

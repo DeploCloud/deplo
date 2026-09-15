@@ -8,19 +8,12 @@ import { LineEditor } from "@/lib/exec-line-editor";
 import { XtermView, type XtermApi } from "@/components/apps/xterm-lazy";
 import type { ConsoleControls } from "@/components/console/console-controls";
 
-// SGR wrappers - the exec pane colours its own chrome (prompt/banner/errors);
-// command OUTPUT is written verbatim so the container's own ANSI renders.
 const GREEN = (s: string) => `\x1b[32m${s}\x1b[0m`;
 const CYAN = (s: string) => `\x1b[36m${s}\x1b[0m`;
 const RED = (s: string) => `\x1b[31m${s}\x1b[0m`;
 
-/** Container output uses lone \n; a terminal needs \r\n or lines stair-step. */
 const toCrlf = (s: string) => s.replace(/\r?\n/g, "\r\n");
 
-/**
- * The stateless `docker exec` REPL, rendered in an xterm.js terminal with a local
- * line editor.
- */
 export function ExecTerminal({
   prompt,
   banner,
@@ -28,21 +21,12 @@ export function ExecTerminal({
   exec,
   onControls,
 }: {
-  /** e.g. `root@web$`, no trailing space (added with the prompt colour). */
   prompt: string;
-  /** System lines printed above the first prompt. */
   banner: string[];
-  /** Late-resolved distroless caveat, appended once when it arrives. */
   note: string | null;
-  /**
-   * How a line is executed. The pane owns this - it is what applies the shell
-   * wrapper and picks between the app's `execConsole` and a database's
-   * `execDatabaseConsole`, so this component only has to render the REPL.
-   */
   exec: (
     command: string,
   ) => Promise<ActionResult<{ output: string; detach?: boolean }>>;
-  /** Hands the toolbar its Clear / Copy / Download handles once mounted. */
   onControls?: (controls: ConsoleControls) => void;
 }) {
   const term = React.useRef<XtermApi | null>(null);
@@ -78,9 +62,6 @@ export function ExecTerminal({
     );
     writeBanner(api);
     api.focus();
-    // Clear is Ctrl-L, fed through the editor rather than reimplemented: it
-    // wipes the screen AND repaints the prompt with the half-typed line intact,
-    // which a bare `reset()` would swallow.
     onControlsRef.current?.({
       clear: () => {
         if (!busy.current) editor.current?.data("\x0c");
@@ -89,15 +70,11 @@ export function ExecTerminal({
     });
   }
 
-  // Behind a ref so a fresh `onControls` closure each render never re-runs the
-  // mount path - `onReady` fires exactly once per terminal.
   const onControlsRef = React.useRef(onControls);
   React.useEffect(() => {
     onControlsRef.current = onControls;
   });
 
-  // The distroless caveat can land after mount (the shell probe is async).
-  // Slot it in above the live prompt, preserving the line being typed.
   React.useEffect(() => {
     const ed = editor.current;
     if (!note || noteWritten.current || !ed || !open.current) return;
@@ -105,7 +82,6 @@ export function ExecTerminal({
     ed.insertAbove(CYAN(note));
   }, [note]);
 
-  /** Print command output, guaranteeing a fresh line before the next prompt. */
   function writeOutput(text: string) {
     const a = term.current;
     if (!a) return;
@@ -161,8 +137,6 @@ export function ExecTerminal({
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      {/* The terminal takes whatever height the pane has left - the route is
-          full-bleed, so that is floor to ceiling. */}
       <div className="min-h-0 flex-1 bg-terminal p-2">
         <XtermView
           onReady={onReady}

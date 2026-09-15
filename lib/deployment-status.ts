@@ -1,16 +1,11 @@
-import type { DeploymentStatus } from "./types";
+import type { DeploymentStatus } from "./types/deployment";
 
-/**
- * Terminal deployment statuses - the build is over and the row will not change
- * again.
- */
 const TERMINAL: ReadonlySet<DeploymentStatus> = new Set<DeploymentStatus>([
   "ready",
   "error",
   "canceled",
 ]);
 
-/** True while a deployment is still queued or building. */
 export function isDeploymentLive(status: DeploymentStatus): boolean {
   return !TERMINAL.has(status);
 }

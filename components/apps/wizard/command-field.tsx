@@ -4,11 +4,6 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { FieldLabel } from "@/components/ui/info-tip";
 
-/**
- * A build or start command, prefilled with what the repository declares for
- * itself. Empty is a real answer - it means the builder decides - so Reset
- * clears the field rather than putting the detected value back.
- */
 export function CommandField({
   id,
   label,
@@ -23,7 +18,6 @@ export function CommandField({
   info: string;
   value: string;
   onChange: (value: string) => void;
-  /** Where the current value came from, when it was read rather than typed. */
   detected: string | null;
   placeholder: string;
 }) {

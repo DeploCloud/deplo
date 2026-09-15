@@ -3,12 +3,6 @@ import assert from "node:assert/strict";
 
 import { deploHostSelfAddresses, isDeploHostServer } from "./domains";
 
-/**
- * `isDeploHostServer` is the DISPLAY-only classifier that tells the one host
- * running Deplo itself ("agent 0") apart from the pure deploy-target remotes on
- * the Servers page.
- */
-
 function withEnv(
   vars: Record<string, string | undefined>,
   fn: () => void,
@@ -39,7 +33,6 @@ test("DEPLO_SERVER_IP identifies the Deplo host by its ip", () => {
         isDeploHostServer({ ip: "203.0.113.10", host: "203.0.113.10" }, self),
         true,
       );
-      // A remote on a different address is never the Deplo host.
       assert.equal(
         isDeploHostServer({ ip: "198.51.100.7", host: "198.51.100.7" }, self),
         false,
@@ -53,7 +46,6 @@ test("matches the server row's host when only the host (not ip) carries the addr
     { DEPLO_SERVER_IP: "203.0.113.10", DEPLO_PUBLIC_URL: undefined },
     () => {
       const self = deploHostSelfAddresses();
-      // host holds the self-address, ip is something else - still the Deplo host.
       assert.equal(
         isDeploHostServer({ ip: "10.0.0.5", host: "203.0.113.10" }, self),
         true,
@@ -84,7 +76,6 @@ test("a hostname-valued DEPLO_PUBLIC_URL matches a host registered under that ho
     },
     () => {
       const self = deploHostSelfAddresses();
-      // Lower-cased, so a case-different row still matches.
       assert.equal(
         isDeploHostServer(
           { ip: "198.51.100.7", host: "deplo.example.com" },
@@ -107,15 +98,12 @@ test("matching is case-insensitive and tolerant of surrounding whitespace", () =
 });
 
 test("an empty self-address set never classifies any server as the Deplo host", () => {
-  // No self-signal matches this remote's address, so it stays a plain remote even
-  // when the set is non-empty from NIC detection.
   withEnv({ DEPLO_SERVER_IP: undefined, DEPLO_PUBLIC_URL: undefined }, () => {
     const self = deploHostSelfAddresses();
     assert.equal(
       isDeploHostServer({ ip: "198.51.100.250", host: "" }, self),
       false,
     );
-    // And an explicitly empty set short-circuits to false regardless of the row.
     assert.equal(isDeploHostServer({ ip: "198.51.100.250" }, new Set()), false);
   });
 });

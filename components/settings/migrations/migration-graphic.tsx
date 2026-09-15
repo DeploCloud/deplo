@@ -10,17 +10,10 @@ import {
   type SourceKind,
 } from "./sources";
 
-/**
- * The migration wizard's illustration: two servers and the cable between them. One
- * drawing in five poses rather than five drawings, because the pose IS the
- * progress bar.
- */
-
 export type MigrationState =
   "connect" | "install" | "review" | "moving" | "done";
 
 function graphicLabel(state: MigrationState, kind: SourceKind | null): string {
-  // Only `connect` is reachable before a scan has said which panel it is.
   if (!kind)
     return "A Dokploy or a Coolify server and a Deplo server, not yet linked";
   const n = SOURCE_COPY[kind].name;
@@ -38,9 +31,6 @@ function graphicLabel(state: MigrationState, kind: SourceKind | null): string {
   }
 }
 
-/**
- * How much of the cable is still missing, as a fraction.
- */
 const CABLE_LEFT: Record<MigrationState, number> = {
   connect: 0.8,
   install: 0.6,
@@ -49,10 +39,8 @@ const CABLE_LEFT: Record<MigrationState, number> = {
   done: 0,
 };
 
-/** Three reads as a stream; one reads as an accident. */
 const PACKETS = 3;
 
-/** The id of the brand sweep. Same three stops in every copy of the drawing. */
 const BRAND_GRADIENT = "deplo-migration-brand";
 
 export function MigrationGraphic({
@@ -61,15 +49,12 @@ export function MigrationGraphic({
   className,
 }: {
   state?: MigrationState;
-  /** Which panel the scan found. Null until it has: the source machine is drawn
-   *  with an empty face, and the mark lands in it when the answer arrives. */
   kind?: SourceKind | null;
   className?: string;
 }) {
   const done = state === "done";
   const moving = state === "moving";
   return (
-    // Cropped to the drawing, but not tighter than the widest thing IN it.
     <svg
       viewBox="-10 18 180 84"
       fill="none"
@@ -78,11 +63,6 @@ export function MigrationGraphic({
       className={cn("h-32 w-auto", className)}
     >
       <defs>
-        {/**
-         * Deplo's machine is drawn in the brand gradient - violet, pink, blue - and only
-         * its CASE is: the mark on its face stays `currentColor`, the way every logo in
-         * this repo does, so it reads in both themes.
-         */}
         <linearGradient
           id={BRAND_GRADIENT}
           gradientUnits="userSpaceOnUse"
@@ -97,11 +77,8 @@ export function MigrationGraphic({
         </linearGradient>
       </defs>
 
-      {/* ---- the source, on the left. It dims at the end: the whole point of
-              the drawing is that it stops being the one that serves. ---- */}
       <Machine x={4} dim={done}>
         {kind ? (
-          // Keyed on the kind so the mark plays its arrival once, when it is found.
           <SourceFace
             key={kind}
             kind={kind}
@@ -112,8 +89,6 @@ export function MigrationGraphic({
             )}
           />
         ) : (
-          // Nothing has answered yet, so the face shows what it could be. Both
-          // marks are drawn; the CSS trades them, half a cycle apart.
           SOURCE_KINDS.map((k, i) => (
             <SourceFace
               key={k}
@@ -125,15 +100,9 @@ export function MigrationGraphic({
         )}
       </Machine>
 
-      {/* ---- the cable. The dotted track is the whole route, always; the solid
-              line on top of it is how far along we are. ---- */}
       <path
         d="M52 60 H108"
-        className={cn(
-          "stroke-border",
-          // The dots drift toward Deplo while the cable is still short of it.
-          !done && "deplo-migrate-track",
-        )}
+        className={cn("stroke-border", !done && "deplo-migrate-track")}
         strokeWidth="2.5"
         strokeDasharray="2 4"
         strokeLinecap="round"
@@ -150,7 +119,6 @@ export function MigrationGraphic({
         strokeWidth="2.5"
         strokeLinecap="round"
       />
-      {/* The packets exist only while something is actually in flight. */}
       {moving &&
         Array.from({ length: PACKETS }, (_, i) => (
           <circle
@@ -163,13 +131,9 @@ export function MigrationGraphic({
           />
         ))}
 
-      {/* The sockets, drawn over the cable ends so it reads as plugged in. */}
       <Socket x={44} lit={done} />
       <Socket x={108} brand />
 
-      {/* ---- Deplo, on the right. Always in the brand gradient, because it is
-              always Deplo; what CHANGES at the end is that it lights up - the
-              halo behind it, and the cable arriving in green. ---- */}
       {done && (
         <circle
           cx="134"
@@ -195,10 +159,6 @@ export function MigrationGraphic({
   );
 }
 
-/**
- * One mark on a machine's face. The group is what the scale animates, because a
- * `fill-box` origin needs a bounding box and a nested `<svg>` does not give one.
- */
 function SourceFace({
   kind,
   dim = false,
@@ -225,9 +185,6 @@ function SourceFace({
   );
 }
 
-/**
- * One machine: a case, the mark on its face, and two drive bays under it.
- */
 function Machine({
   x,
   dim,
@@ -235,9 +192,7 @@ function Machine({
   children,
 }: {
   x: number;
-  /** The source, after the move: still drawn, no longer the subject. */
   dim?: boolean;
-  /** Deplo's own machine, drawn in the brand gradient. */
   brand?: boolean;
   children: React.ReactNode;
 }) {
@@ -276,8 +231,6 @@ function Machine({
             r="2"
             fill={ink}
             className={cn(
-              // Only the first bay's light is alive, and only on the machine
-              // that is still the one serving.
               i === 0 && !dim && !brand && "deplo-migrate-blip",
               brand
                 ? i === 0
@@ -302,9 +255,7 @@ function Socket({
   brand,
 }: {
   x: number;
-  /** The migration landed, so this end went green with the cable. */
   lit?: boolean;
-  /** Deplo's end, which wears the brand gradient like the machine behind it. */
   brand?: boolean;
 }) {
   return (

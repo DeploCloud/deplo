@@ -1,17 +1,14 @@
 import { notFound } from "next/navigation";
 
-import { getAppBySlug } from "@/lib/data/apps";
+import { getAppBySlug } from "@/lib/data/apps/listing";
 import { hasAppCapability } from "@/lib/data/node-access";
-import { listAppCronJobs } from "@/lib/data/crons";
+import { listAppCronJobs } from "@/lib/data/crons/listing";
 import { CronJobsList } from "@/components/crons/cron-jobs-list";
 import { EmptyState } from "@/components/shared/empty-state";
 import { Lock } from "lucide-react";
 
 export const metadata = { title: "Cron jobs" };
 
-/**
- * The operational page: what is scheduled on this app, and what each one did.
- */
 export default async function AppCronJobsPage(
   props: PageProps<"/[team]/apps/[slug]/cron-jobs">,
 ) {

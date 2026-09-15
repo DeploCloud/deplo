@@ -3,9 +3,6 @@
 import * as React from "react";
 import { cn } from "@/lib/utils";
 
-// useLayoutEffect on the client (measure before paint, no flash), useEffect on
-// the server (a layout effect there would warn). Renamed so the exhaustive-deps
-// lint doesn't try to police the caller-supplied dependency array.
 const useIsoLayoutEffect =
   typeof window !== "undefined" ? React.useLayoutEffect : React.useEffect;
 
@@ -16,11 +13,6 @@ export interface SlideRect {
   height: number;
 }
 
-/**
- * Track the active element's box inside a container so one highlight can SLIDE
- * between items. Re-measures on `deps`, on resize, and with `watchAttributes`
- * when a descendant's `data-state` flips (how Radix marks the active trigger).
- */
 export function useSlidingRect(
   containerRef: React.RefObject<HTMLElement | null>,
   getActive: () => HTMLElement | null,
@@ -41,20 +33,13 @@ export function useSlidingRect(
       }
       const c = container.getBoundingClientRect();
       const r = el.getBoundingClientRect();
-      // A scaled ancestor (a dialog's zoom-in) shrinks every measured box, and
-      // nothing re-fires once it settles: divide the scale back out.
       const scale = c.width / container.offsetWidth || 1;
       const next: SlideRect = {
-        // Scroll offsets included on purpose: the highlight is positioned inside the
-        // container's CONTENT box, which moves when the container scrolls (the tab strip
-        // does, on a narrow screen).
         top: (r.top - c.top) / scale + container.scrollTop,
         left: (r.left - c.left) / scale + container.scrollLeft,
         width: r.width / scale,
         height: r.height / scale,
       };
-      // Keep the same object when nothing moved so we don't re-render in a loop
-      // (ResizeObserver fires once on observe).
       setRect((prev) =>
         prev &&
         prev.top === next.top &&
@@ -90,8 +75,6 @@ export function useSlidingRect(
   return rect;
 }
 
-/** The sliding underline - absolutely positioned at the bottom of a `relative`
- *  tab bar. Animates its x-offset and width between tabs. */
 export function SlidingUnderline({
   rect,
   className,
@@ -112,9 +95,6 @@ export function SlidingUnderline({
   );
 }
 
-/** A sliding background "pill" - sits behind the active item in a `relative
- *  isolate` list and translates/resizes to it. Used for the sidebar nav so the
- *  selected item's background glides between entries on navigation. */
 export function SlidingBackground({
   rect,
   className,

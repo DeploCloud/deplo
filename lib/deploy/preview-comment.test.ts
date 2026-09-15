@@ -4,11 +4,6 @@ import assert from "node:assert/strict";
 import { previewCommentBody, retryTransient } from "./preview-comment";
 import { TransientGithubError } from "../github/app";
 
-/**
- * The sticky pull request comment, state by state. What matters is that a state
- * with no working URL never prints one.
- */
-
 const at = {
   url: "http://blog-pr-42-abc123-0a000001.nip.io",
   host: "blog-pr-42-abc123-0a000001.nip.io",

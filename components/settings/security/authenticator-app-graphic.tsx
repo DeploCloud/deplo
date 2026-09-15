@@ -1,6 +1,5 @@
 import { cn } from "@/lib/utils";
 
-/** The "you need an app" mark: a phone showing a code and the ring counting it down. */
 export function AuthenticatorAppGraphic({ className }: { className?: string }) {
   return (
     <svg
@@ -25,7 +24,6 @@ export function AuthenticatorAppGraphic({ className }: { className?: string }) {
         <line x1="18" y1="56" x2="26" y2="56" />
       </g>
 
-      {/* The 30-second window: a full track, and the slice still left on it. */}
       <circle cx="22" cy="26" r="7" className="stroke-ring" strokeWidth="2.5" />
       <path
         d="M22 19 A7 7 0 1 1 15 26"

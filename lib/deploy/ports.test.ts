@@ -19,7 +19,5 @@ test("effectivePortFor: null/undefined override uses the default", () => {
 });
 
 test("effectivePortFor: override of 0 is honoured only via ??, not coerced away", () => {
-  // 0 is not a real port, but the ?? contract (only null/undefined defer) is
-  // what keeps falsy-but-set overrides from silently vanishing.
   assert.equal(effectivePortFor(proj(3000), 0), 0);
 });

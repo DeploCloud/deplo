@@ -1,14 +1,9 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-import { orderDeployRoutes } from "./build";
-import { defaultRoute, type RoutableDomain } from "../data/domains";
+import { orderDeployRoutes } from "./build/deploy-routes";
+import { defaultRoute, type RoutableDomain } from "../data/domains/routes";
 
-/**
- * The route set a production deploy bakes into its Traefik labels.
- */
-
-/** A valid, routable row as `routableRoutes` returns it. */
 function route(
   name: string,
   extra: Partial<RoutableDomain> = {},
@@ -44,7 +39,6 @@ test("several path rows on one hostname all survive", () => {
 });
 
 test("the primary row leads even when it is the one carrying the path", () => {
-  // Only row is `app.com` + `/api` and it is primary: it must keep its path.
   const valid = [
     route("app.com", { port: 8080, pathPrefix: "/api", stripPrefix: true }),
   ];
@@ -64,8 +58,6 @@ test("distinct hostnames are all kept, primary first (long-standing behaviour)",
 });
 
 test("a not-yet-valid primary is added as a synthetic route, never duplicated", () => {
-  // The primary (`app.com`) has no valid row; `other.com` does. The synthetic
-  // fallback leads and the valid row is kept.
   const valid = [route("other.com")];
   const out = orderDeployRoutes(valid, "app.com");
   assert.deepEqual(
@@ -78,9 +70,6 @@ test("a not-yet-valid primary is added as a synthetic route, never duplicated", 
     "the synthetic fallback routes the whole host",
   );
 });
-
-// An UNVERIFIED primary is still routed (so a brand-new app answers on it), and it
-// must be routed as the user configured it.
 
 test("an unverified primary keeps its OWN path/strip/port, not defaults", () => {
   const stored = route("app.com", {

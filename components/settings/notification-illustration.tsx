@@ -2,9 +2,7 @@ import {
   ChannelMark,
   CHANNEL_BRAND,
 } from "@/components/settings/channel-brand";
-import type { NotificationChannel } from "@/lib/types";
-
-/** A phone catching alerts as they land - the one picture that says what this page is for before anybody reads a switch. */
+import type { NotificationChannel } from "@/lib/types/notification";
 
 const INBOX: {
   channel: NotificationChannel;

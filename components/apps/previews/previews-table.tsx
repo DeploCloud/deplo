@@ -46,9 +46,6 @@ import { gqlAction } from "@/lib/graphql-client";
 import type { AppPreviewDTO } from "@/lib/data/previews";
 import { gitProfileUrl, timeAgo } from "@/lib/utils";
 
-/**
- * The pull request previews of one app.
- */
 export function PreviewsTable({
   appSlug,
   previews,
@@ -63,18 +60,12 @@ export function PreviewsTable({
   const router = useRouter();
   const [, startTransition] = React.useTransition();
   const live = useLiveApp();
-  // A destroyed preview leaves the table on the click: the row is dropped
-  // server-side before its stack comes down, so waiting out the teardown only
-  // leaves a dead row with a live Destroy under the cursor.
   const {
     visible: rows,
     remove,
     restore,
   } = useOptimisticRemove(previews, (p) => p.id);
 
-  // Any change to the owning app (a preview build starting, finishing, failing)
-  // arrives on the same stream the header uses - re-read the rows when one lands
-  // while something is in flight.
   const inFlight = rows.some(
     (p) => p.status === "queued" || p.status === "building",
   );
@@ -93,7 +84,6 @@ export function PreviewsTable({
     query: string,
     variables: Record<string, unknown>,
     success: string,
-    /** Undo whatever the caller took off the table when the server refuses. */
     onError?: () => void,
   ) {
     startTransition(async () => {
@@ -107,9 +97,7 @@ export function PreviewsTable({
     });
   }
 
-  // What the cap actually counts: previews with a stack up. A closed pull
-  // request has none, and neither has an `evicted` or `blocked` one - counting
-  // those would show "at its limit" while slots were free.
+  // Closed, evicted and blocked previews hold no slot: counting them reads "at its limit" too early.
   const liveCount = rows.filter(
     (p) => !p.closed && p.status !== "evicted" && p.status !== "blocked",
   ).length;
@@ -151,9 +139,6 @@ export function PreviewsTable({
                         <span aria-hidden>to</span>
                         <span className="font-mono">{p.baseBranch}</span>
                       </span>
-                      {/* Previews only ever come from a GitHub pull request, so
-                          the author is an account there - drawn like every other
-                          pusher, not as bare text. */}
                       {p.author && (
                         <GitAccount
                           login={p.author}
@@ -178,9 +163,6 @@ export function PreviewsTable({
                         Needs approval
                       </Badge>
                     ) : p.status === "evicted" ? (
-                      // The one status whose CAUSE is a setting rather than anything that happened to the
-                      // build, so the badge alone cannot finish the sentence: say which limit, and that
-                      // getting it back costs one click and keeps the address.
                       <SimpleTooltip
                         content={`At the limit of ${maxActive} previews, this was the least recently touched. Redeploy brings it back on the same address.`}
                       >
@@ -206,9 +188,6 @@ export function PreviewsTable({
                         {p.host}
                       </a>
                     ) : p.status === "evicted" ? (
-                      // The host is still RESERVED for this pull request - the row kept it, so Redeploy
-                      // brings the same link back. It just answers nothing right now, so it must not look
-                      // clickable.
                       <span
                         className="font-mono text-xs text-muted-foreground"
                         title="Redeploy to bring this address back"

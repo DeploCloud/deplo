@@ -2,12 +2,6 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 
-/**
- * A sign-in, a sign-out or a first team changes what the server answers for `/`,
- * and every payload the client router cached was rendered for the session before
- * it - `/` included, which the login page's own logo prefetches into a redirect
- * back to /login. Hand over with a full navigation, never with the router.
- */
 const HANDOVERS = [
   "app/(auth)/login/page.tsx",
   "app/register/[token]/register-wizard.tsx",

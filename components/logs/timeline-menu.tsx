@@ -11,13 +11,6 @@ import { Switch } from "@/components/ui/switch";
 import { SimpleTooltip } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 
-/**
- * How far back the live stream reaches. Not a filter: picking a range REOPENS
- * the stream with a new `--since`. Docker rotates by SIZE, so this bounds what
- * may be ASKED for, never a promise the host still has it. */
-
-/** Minutes back from now. `0` would mean "everything", which is deliberately not
- *  offered: a container that has been up for a year would replay all of it. */
 export interface LogTimeline {
   sinceMinutes: number;
   timestamps: boolean;
@@ -35,8 +28,6 @@ const BASE_RANGES = [
   { minutes: WEEK_MINUTES, label: "Last 7 days" },
 ];
 
-/** A log pane opens on a week of history, or on the widest range the instance
- *  ceiling still allows. */
 export function defaultTimeline(maxDays: number): LogTimeline {
   const ranges = rangesFor(maxDays).filter((r) => r.minutes <= WEEK_MINUTES);
   return {
@@ -46,8 +37,6 @@ export function defaultTimeline(maxDays: number): LogTimeline {
   };
 }
 
-/** The offered ranges for a given ceiling. The ceiling's own row is appended
- *  only when it says something the fixed rows do not. */
 export function rangesFor(
   maxDays: number,
 ): { minutes: number; label: string }[] {
@@ -62,9 +51,6 @@ export function rangesFor(
   return ranges;
 }
 
-/**
- * The write time as the gutter shows it, in whichever of the two formats is on.
- */
 export function formatLogClock(
   iso: string,
   format: LogTimeline["format"],
@@ -93,9 +79,7 @@ export function TimelineMenu({
 }: {
   value: LogTimeline;
   onChange: (next: LogTimeline) => void;
-  /** The instance's "Max log range" setting, in days. */
   maxDays: number;
-  /** The server's agent predates the time-range fields on FollowLogs. */
   disabled?: boolean;
   disabledReason?: string;
 }) {
@@ -120,9 +104,6 @@ export function TimelineMenu({
     </button>
   );
 
-  // A disabled trigger swallows pointer events, so the tooltip has to wrap it
-  // rather than sit on it, otherwise the one control that needs to explain
-  // itself is the one that cannot.
   if (disabled) {
     return (
       <SimpleTooltip

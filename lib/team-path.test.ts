@@ -44,7 +44,6 @@ test("leaves a path that belongs to no team", () => {
 });
 
 test("leaves an asset alone, page or not", () => {
-  // /templates is the page and moves; /templates/n8n.svg is public/ and does not.
   assert.equal(withTeam("/templates", "acme"), "/acme/templates");
   assert.equal(withTeam("/templates/n8n.svg", "acme"), "/templates/n8n.svg");
   assert.equal(withTeam("/logo.svg", "acme"), "/logo.svg");
@@ -86,16 +85,11 @@ test("reads the team out of a path", () => {
 test("flatPath is the inverse of withTeam", () => {
   for (const p of ["/", "/apps/web", "/logs?app=web", "/settings/members"])
     assert.equal(flatPath(withTeam(p, "acme")), p);
-  // Already flat, or flat for good: unchanged either way.
   assert.equal(flatPath("/apps/web"), "/apps/web");
   assert.equal(flatPath("/login"), "/login");
   assert.equal(flatPath("/acme"), "/");
 });
 
-/**
- * The guard that keeps the list honest: a new top-level route a team could be
- * named after would make that team unreachable.
- */
 test("every first segment the app tree serves is reserved", () => {
   const root = path.join(process.cwd(), "app");
   const segments: string[] = [];
@@ -111,8 +105,6 @@ test("every first segment the app tree serves is reserved", () => {
     segments.push(entry.name);
   }
   for (const seg of segments) {
-    // A dotted name is a file route (/robots.txt), a bracketed one is the team
-    // segment itself - neither can be confused with a team.
     if (seg.includes(".") || seg.startsWith("[")) continue;
     assert.ok(
       RESERVED_TEAM_SLUGS.has(seg),
@@ -128,7 +120,6 @@ test("mints a slug that is free and never a route name", () => {
     pickTeamSlug("Idra Arts", ["idra-arts", "idra-arts-2"]),
     "idra-arts-3",
   );
-  // A name that slugs onto a route would be unreachable at /<slug>.
   assert.equal(pickTeamSlug("Apps", []), "apps-2");
   assert.equal(pickTeamSlug("Settings", []), "settings-2");
   assert.equal(pickTeamSlug("!!!", []), "team");
@@ -147,19 +138,14 @@ test("the URL's team wins over the last visited one", () => {
   assert.equal(pick("idra", "acme"), "team_b");
   assert.equal(pick(null, "acme"), "team_a");
   assert.equal(pick(null, null), "team_a", "falls back to the first team");
-  // Id or slug, on either source.
   assert.equal(pick("team_b"), "team_b");
   assert.equal(pick(null, "team_b"), "team_b");
-  // A team the user is not in selects NOTHING - an invented header or cookie is
-  // worth exactly as much as no header at all.
   assert.equal(pick("team_stranger", "idra"), "team_b");
   assert.equal(pick("stranger", null), "team_a");
   assert.equal(pick("", ""), "team_a");
 });
 
 test("a path that already names a team is left alone", () => {
-  // Nothing but a team can hold a first segment, so an unknown one is a team's -
-  // and the team switcher's own `/idra` must not become `/acme/idra`.
   assert.equal(withTeam("/idra", "acme"), "/idra");
   assert.equal(withTeam("/idra/apps/web", "acme"), "/idra/apps/web");
   assert.equal(withTeam("/acme", "acme"), "/acme");

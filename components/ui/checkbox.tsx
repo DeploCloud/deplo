@@ -18,8 +18,6 @@ const Checkbox = React.forwardRef<
     {...props}
   >
     <CheckboxPrimitive.Indicator className="flex items-center justify-center text-current">
-      {/* A dash for "some of what is under here", the way every file picker draws
-          it. Radix gives the state; only the glyph was missing. */}
       {props.checked === "indeterminate" ? (
         <Minus className="size-3.5" />
       ) : (

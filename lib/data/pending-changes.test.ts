@@ -17,23 +17,17 @@ import {
   seedApp,
   TRUNCATE_PROJECT_GRAPH,
 } from "./app-graph-test-helpers";
-import {
-  apps as appsTable,
-  envVars as envVarsTable,
-} from "../db/schema/control-plane";
+import { apps as appsTable } from "../db/schema/control-plane/apps";
+import { envVars as envVarsTable } from "../db/schema/control-plane/env-vars";
 import { eq } from "drizzle-orm";
 import { upsertEnv, deleteEnv } from "./env";
-import { updateAppResources } from "./apps";
+import { updateAppResources } from "./apps/resources";
 import {
   dismissPendingChanges,
   markPendingChangesForSharedVar,
 } from "./pending-changes";
-import { saveSharedVar, setSharedVarAppLink } from "./shared-vars";
-
-/**
- * The "changes not deployed yet" marker: every write that changes what a deploy
- * would render has to stamp the apps it reaches, and only those.
- */
+import { setSharedVarAppLink } from "./shared-vars/app-links";
+import { saveSharedVar } from "./shared-vars/authoring";
 
 let db: TestDb;
 let pg: PGlite;
@@ -122,7 +116,6 @@ test("a shared var stamps the apps it is linked to, and no others", async () => 
 
   await markPendingChangesForSharedVar(varId);
   assert.notEqual(await pendingAt("prj_1"), null);
-  // prj_2 never linked it, so its rendered env did not change.
   assert.equal(await pendingAt("prj_2"), null);
 
   await clearPending("prj_1");

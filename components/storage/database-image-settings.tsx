@@ -18,13 +18,8 @@ import { FieldLabel } from "@/components/ui/info-tip";
 import { DirtyHint } from "@/components/apps/settings/settings-shared";
 import { DbVersionInput } from "@/components/storage/db-version-input";
 import { gqlAction } from "@/lib/graphql-client";
-import type { DatabaseDTO } from "@/lib/data/databases";
+import type { DatabaseDTO } from "@/lib/data/databases/rows";
 
-/**
- * Expert overrides (Advanced): custom image, custom command, and engine
- * version. All applied on the next Redeploy ("the row is truth"). The escape
- * hatch for experts - the warnings live here, but nothing is blocked.
- */
 export function DatabaseImageSettings({ db }: { db: DatabaseDTO }) {
   const router = useRouter();
   const [pending, startTransition] = React.useTransition();

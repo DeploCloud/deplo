@@ -1,7 +1,7 @@
 import { notFound } from "next/navigation";
 import { hasCapability } from "@/lib/membership";
-import { getRole } from "@/lib/data/roles";
-import { listTeamScopeTree } from "@/lib/data/tokens";
+import { getRole } from "@/lib/data/roles/role-list";
+import { listTeamScopeTree } from "@/lib/data/tokens/scope-tree";
 import { RoleEditor } from "@/components/settings/roles/role-editor";
 
 export async function generateMetadata(
@@ -21,8 +21,6 @@ export default async function RolePage(
     hasCapability("manage_roles"),
     listTeamScopeTree(),
   ]);
-  // A role of another team resolves to nothing here, exactly as it does in the
-  // data layer - there is no id to guess your way into.
   if (!role) notFound();
 
   return (

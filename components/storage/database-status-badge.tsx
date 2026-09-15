@@ -11,13 +11,8 @@ import {
   databaseDisplayStatus,
   type DatabaseDisplayStatus,
 } from "@/lib/databases/display-status";
-import type { DatabaseStatus } from "@/lib/types";
+import type { DatabaseStatus } from "@/lib/types/database";
 
-/**
- * The one place a database's badge decides what its state IS: the live
- * subscription (what the control plane last DID) folded with a poll of the owning
- * agent (what the container is actually DOING), via {@link databaseDisplayStatus}.
- */
 function useDisplayStatus(
   fallback: DatabaseStatus,
   id: string,
@@ -34,7 +29,6 @@ function useDisplayStatus(
   };
 }
 
-/** The sentence behind a badge reporting trouble. */
 function detailFor(runtime: DatabaseRuntimeView | null): string | null {
   if (!runtime || runtime.unreachable) return null;
   if (runtime.restarting > 0) {
@@ -54,9 +48,6 @@ function detailFor(runtime: DatabaseRuntimeView | null): string | null {
   return null;
 }
 
-/**
- * The database header's labelled status badge - the DB twin of AppStatusBadge.
- */
 export function DatabaseStatusBadge({
   id,
   status,
@@ -79,7 +70,6 @@ export function DatabaseStatusBadge({
   );
 }
 
-/** The dot form (for the /storage list cards). */
 export function DatabaseStatusDot({
   id,
   status,

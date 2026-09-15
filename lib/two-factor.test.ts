@@ -9,12 +9,14 @@ import { __setTestDb, __resetTestDb } from "./db/client";
 import {
   memberships as membershipsTable,
   teamRoles as teamRolesTable,
+} from "./db/schema/control-plane/access-control";
+import {
   teams as teamsTable,
   users as usersTable,
-} from "./db/schema/control-plane";
+} from "./db/schema/control-plane/identity";
 import { runWithIdentity } from "./auth/request-context";
 import { requireAuth } from "./auth/better-auth";
-import { login, verifyTwoFactorCode } from "./auth";
+import { login, verifyTwoFactorCode } from "./auth/sign-in";
 import {
   requireActiveTeamId,
   requireCapability,
@@ -22,23 +24,15 @@ import {
   twoFactorMandateForCurrentUser,
 } from "./membership";
 import { buildContext } from "./graphql/context";
-import { authenticateToken, createToken } from "./data/tokens";
-import { ensureTeamRoles } from "./data/roles";
+import { authenticateToken } from "./data/tokens/authenticate";
+import { createToken } from "./data/tokens/mint";
+import { ensureTeamRoles } from "./data/roles/builtin-roles";
 import { seedIdentity, TEAM_A, USER_1 } from "./data/identity-test-helpers";
-import { ALL_CAPABILITIES } from "./types";
+import { ALL_CAPABILITIES } from "./types/identity";
 
-/**
- * Any real capability, resolved from the canonical list rather than named.
- */
 const SOME_CAPABILITY = ALL_CAPABILITIES.find((c) => c !== "view")!;
 
-/** A second member of TEAM_A, seeded alongside USER_1 for the policy tests. */
 const USER_2 = "user_2";
-
-/**
- * Two-factor authentication end to end: enrolment through Better Auth's plugin,
- * the login challenge, and the team/role policy gate.
- */
 
 let db: TestDb;
 let pg: PGlite;
@@ -71,32 +65,18 @@ beforeEach(async () => {
 const asUser = <T>(userId: string, fn: () => Promise<T>): Promise<T> =>
   runWithIdentity({ userId, teamId: TEAM_A }, fn);
 
-/* ------------------------------------------------------------------ */
-/* Helpers                                                             */
-/* ------------------------------------------------------------------ */
-
-/**
- * Drive the plugin's endpoints directly with an explicit cookie header.
- *
- * `login()` and friends read cookies through `next/headers`, which does not
- * exist under `node --test`; the endpoints themselves take headers as an
- * argument, so the enrolment flow is exercised for real without a request scope.
- */
 async function signIn(email: string, password: string): Promise<string> {
   const res = await requireAuth().api.signInEmail({
     body: { email, password },
     asResponse: true,
   });
   assert.equal(res.status, 200, "sign-in should succeed");
-  // getSetCookie(), not get(): a 2FA sign-in sets more than one cookie and
-  // `get("set-cookie")` would flatten them into one unparseable string.
   return res.headers
     .getSetCookie()
     .map((c) => c.split(";")[0])
     .join("; ");
 }
 
-/** A code the authenticator would show right now for this enrolment. */
 async function codeFor(totpURI: string): Promise<string> {
   const encoded = new URL(totpURI).searchParams.get("secret")!;
   const { base32 } = await import("@better-auth/utils/base32");
@@ -105,11 +85,6 @@ async function codeFor(totpURI: string): Promise<string> {
   return createOTP(secret, { digits: 6, period: 30 }).totp();
 }
 
-/**
- * `enableTwoFactor`, narrowed to the shape Deplo enrols. Since Better Auth 1.7.0
- * the endpoint answers a DISCRIMINATED union, and an OTP enrolment carries no
- * secret at all. Deplo asks for TOTP by name and this throws on anything else.
- */
 async function enableTotp(
   headers: Headers,
 ): Promise<{ totpURI: string; backupCodes: string[] }> {
@@ -122,7 +97,6 @@ async function enableTotp(
   return res;
 }
 
-/** Enrol `USER_1` fully (enable + verify) and return their backup codes. */
 async function enrolUser1(): Promise<{
   cookie: string;
   backupCodes: string[];
@@ -138,16 +112,11 @@ async function enrolUser1(): Promise<{
   return { cookie, backupCodes: enabled.backupCodes };
 }
 
-/** Turn the team-wide mandate on. */
 const requireForTeam = () =>
   db
     .update(teamsTable)
     .set({ requireTwoFactor: true })
     .where(eq(teamsTable.id, TEAM_A));
-
-/* ------------------------------------------------------------------ */
-/* Enrolment                                                           */
-/* ------------------------------------------------------------------ */
 
 test("enable + verify turns 2FA on; the flag is not set until a code is proved", async () => {
   const auth = requireAuth();
@@ -158,8 +127,6 @@ test("enable + verify turns 2FA on; the flag is not set until a code is proved",
   assert.match(enabled.totpURI, /^otpauth:\/\/totp\//);
   assert.equal(enabled.backupCodes.length, 10);
 
-  // Enrolment alone must NOT flip the flag: an authenticator that was scanned
-  // wrong would otherwise lock the account out at the next sign-in.
   const before = await db
     .select({ on: usersTable.twoFactorEnabled })
     .from(usersTable)
@@ -201,10 +168,6 @@ test("enrolment refuses a wrong password", async () => {
   );
 });
 
-/* ------------------------------------------------------------------ */
-/* The login challenge                                                 */
-/* ------------------------------------------------------------------ */
-
 test("with 2FA on, login stops at the challenge and mints no session", async () => {
   await enrolUser1();
   const sessionsBefore = (
@@ -239,8 +202,6 @@ test("a backup code works exactly once", async () => {
   const { backupCodes } = await enrolUser1();
   const code = backupCodes[0]!;
 
-  // A backup code answers the LOGIN challenge, so it needs the short-lived
-  // two-factor cookie that the password step hands back, not a session cookie.
   const challenge = async () =>
     new Headers({ cookie: await signIn(EMAIL_1, PASSWORD) });
 
@@ -265,21 +226,13 @@ test("verifyTwoFactorCode reports the plugin's own message on a bad code", async
   );
 });
 
-/* ------------------------------------------------------------------ */
-/* The team policy gate                                                */
-/* ------------------------------------------------------------------ */
-
 test("a team mandate blocks mutations, reads AND the bearer API", async () => {
-  // Mint the token BEFORE the mandate exists: the point is that an already-issued
-  // token stops working, not that minting one is blocked (it is, but that is just
-  // requireCapability again).
   const raw = await asUser(
     USER_1,
     async () => (await createToken({ name: "CI" })).raw,
   );
   await requireForTeam();
 
-  // Mutations.
   await asUser(USER_2, async () => {
     await assert.rejects(
       () => requireCapability(SOME_CAPABILITY),
@@ -288,8 +241,6 @@ test("a team mandate blocks mutations, reads AND the bearer API", async () => {
     );
   });
 
-  // Reads. This is the one a gate on membershipFor alone would miss: every
-  // read in lib/data scopes itself here and never touches membershipFor.
   await asUser(USER_2, async () => {
     await assert.rejects(
       () => requireActiveTeamId(),
@@ -298,7 +249,6 @@ test("a team mandate blocks mutations, reads AND the bearer API", async () => {
     );
   });
 
-  // The bearer API, whose principal is the token's creator.
   await assert.rejects(
     () => authenticateToken(raw),
     (e: unknown) => e instanceof TwoFactorRequiredError,
@@ -314,9 +264,6 @@ test("the mandate never blocks the way out", async () => {
       (e: unknown) => e instanceof TwoFactorRequiredError,
       "the gate itself stays shut",
     );
-    // The request still gets a context, or `logout` and the enrolment pair - fields
-    // about the account, not the team - would be refused along with everything else,
-    // and the lock screen would be a dead end.
     const ctx = await buildContext(new Request("http://localhost/api/graphql"));
     assert.equal(ctx.viewer?.id, USER_2);
     assert.equal(ctx.teamId, null, "the team stays unresolved");
@@ -341,7 +288,6 @@ test("the same member passes every gate once enrolled", async () => {
   const principal = await authenticateToken(raw);
   assert.equal(principal?.userId, USER_1);
   assert.equal(principal?.teamId, TEAM_A);
-  // The token's own grant rides along; what it holds is tokens.test.ts's business.
   assert.ok(principal?.token);
 });
 
@@ -355,12 +301,7 @@ test("the mandate names the team, and only that team", async () => {
   });
 });
 
-/* ------------------------------------------------------------------ */
-/* The role policy gate                                                */
-/* ------------------------------------------------------------------ */
-
 test("a role mandate blocks only the members who hold that role", async () => {
-  // Seed the team's built-in roles, then mandate 2FA on `member` alone.
   await ensureTeamRoles(db as never, TEAM_A);
   const roles = await db
     .select({ id: teamRolesTable.id, key: teamRolesTable.builtinKey })
@@ -372,8 +313,6 @@ test("a role mandate blocks only the members who hold that role", async () => {
     .update(teamRolesTable)
     .set({ requireTwoFactor: true })
     .where(eq(teamRolesTable.id, memberRole.id));
-  // Pin each member to a role explicitly (ensureTeamRoles only adopts exact
-  // capability matches, which is not what this test is asserting).
   await db
     .update(membershipsTable)
     .set({ roleId: memberRole.id })
@@ -383,7 +322,6 @@ test("a role mandate blocks only the members who hold that role", async () => {
     .set({ roleId: ownerRole.id })
     .where(eq(membershipsTable.userId, USER_1));
 
-  // The holder of the mandated role is stopped.
   await asUser(USER_2, async () => {
     await assert.rejects(
       () => requireCapability(SOME_CAPABILITY),
@@ -391,7 +329,6 @@ test("a role mandate blocks only the members who hold that role", async () => {
     );
   });
 
-  // Everyone else carries on: a role mandate is not a team mandate.
   await asUser(USER_1, async () => {
     assert.equal(await requireActiveTeamId(), TEAM_A);
   });

@@ -11,11 +11,6 @@ import { getOperationAST } from "graphql";
 import { runWithIdentity } from "@/lib/auth/request-context";
 import { withoutRequestCache } from "@/lib/request-cache";
 
-/**
- * Wrap the operation's execution in the bearer-token identity (when present) so
- * every data-layer call inside the resolvers resolves the token's principal rather
- * than cookies.
- */
 const identityPlugin: Plugin<GraphQLContext> = {
   onExecute({ args, setExecuteFn, executeFn }) {
     const identity = (args.contextValue as GraphQLContext).identity;
@@ -38,11 +33,6 @@ const identityPlugin: Plugin<GraphQLContext> = {
   },
 };
 
-/**
- * The request memo (app/api/graphql/route.ts) serves a query. A mutation must read
- * what it just wrote, and a subscription outlives every gate it passed, so both
- * run with it off - the subscription on every tick.
- */
 const uncachedWrites: Plugin<GraphQLContext> = {
   onExecute({ args, setExecuteFn, executeFn }) {
     const op = getOperationAST(args.document, args.operationName)?.operation;
@@ -65,10 +55,7 @@ function isAsyncIterable(v: unknown): v is AsyncIterable<unknown> {
   );
 }
 
-/**
- * Re-apply `wrap` around every TICK of a subscription, not just around the
- * iterator's creation.
- */
+// The wrap is re-applied around every TICK, not only around the iterator's creation.
 function perTick<T>(
   source: AsyncIterable<T>,
   wrap: <R>(fn: () => R) => R,
@@ -84,10 +71,7 @@ function perTick<T>(
   } as AsyncIterableIterator<T>;
 }
 
-/**
- * A POST must be JSON. A form on any site could therefore POST a mutation and the
- * session cookie would ride along.
- */
+// A POST must be JSON: a cross-site form could otherwise post a mutation with the session cookie.
 const requireJsonPost: Plugin = {
   onRequest({ request, endResponse, fetchAPI }) {
     if (request.method !== "POST") return;
@@ -111,27 +95,20 @@ const requireJsonPost: Plugin = {
 
 export const yoga = createYoga({
   schema,
-  // Served from the Next route handler at this path; GraphiQL lives here too.
   graphqlEndpoint: "/api/graphql",
-  // The panel is same-origin; never reflect a request Origin back with
-  // credentials allowed (that would let any site read/mutate with the cookie).
+  // Same-origin panel: reflecting an Origin with credentials would let any site use the cookie.
   cors: false,
   context: ({ request }) => buildContext(request),
   plugins: [
     requireJsonPost,
     identityPlugin,
     uncachedWrites,
-    // Public-API hardening: bound query complexity so an external client can't
-    // craft a pathological query (deep nesting, alias amplification, huge cost).
     maxDepthPlugin({ n: 12 }),
     maxAliasesPlugin({ n: 30 }),
     costLimitPlugin({ maxCost: 5000 }),
   ],
   maskedErrors: { maskError },
-  // Next.js owns the HTTP layer; let Yoga produce a Fetch Response.
   fetchAPI: { Response },
-  // The IDE loads its bundle from a public CDN into the panel's origin, with the
-  // session cookie on every call it makes: development only.
   graphiql: process.env.NODE_ENV === "development" && {
     title: "Deplo API",
     defaultQuery: /* GraphQL */ `

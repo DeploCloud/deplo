@@ -1,8 +1,3 @@
-/**
- * End-to-end smoke test for the server agent's PART B path, against the REAL
- * binary + real Docker + real git, with a SIMULATED remote: the agent is run as if
- * it were a freshly-installed remote box (no pre-written certs), it CALLS HOME to
- */
 import { spawn, type ChildProcess } from "node:child_process";
 import { createServer } from "node:http";
 import { mkdtempSync, writeFileSync, rmSync } from "node:fs";
@@ -35,12 +30,10 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 async function main() {
   const { signAgentCsr } = await import("../lib/agent/pki");
-  const { connectAgent } = await import("../lib/infra/agent-client");
+  const { connectAgent } = await import("../lib/infra/agent-client/connect");
   const { SourceKind, BuildKind, ContractVersion } =
     await import("../lib/agent/gen/agent");
 
-  // ---- 1. A tiny stand-in for POST /api/agent/bootstrap (HTTP trust path). ----
-  // It signs the CSR with the REAL control-plane PKI and HMAC-binds the response.
   const { createHmac } = await import("node:crypto");
   let pinnedFingerprint = "";
   const bootstrapServer = createServer((req, res) => {
@@ -81,7 +74,6 @@ async function main() {
   const cpUrl = `http://127.0.0.1:${cpPort}`;
   console.log(`== bootstrap stand-in listening at ${cpUrl} ==`);
 
-  // ---- 2. Run the agent as a fresh "remote": no certs, bootstrap on first run. ----
   const agentDir = mkdtempSync(join(tmpdir(), "deplo-partb-agent-"));
   console.log("== launching agent in BOOTSTRAP mode (simulated remote) ==");
   const agent: ChildProcess = spawn(
@@ -95,7 +87,6 @@ async function main() {
       cpUrl,
       "--bootstrap-token",
       "e2e-bootstrap-token",
-      // no fingerprint => HTTP trust path (HMAC)
       "--stack-dir",
       join(agentDir, "stacks"),
       "--build-tmp",
@@ -105,7 +96,6 @@ async function main() {
   );
   agent.on("exit", (c) => console.log(`agent exited (${c})`));
 
-  // ---- 3.
   for (let i = 0; i < 100 && !pinnedFingerprint; i++) await sleep(100);
   if (!pinnedFingerprint) throw new Error("agent never called home");
   console.log(
@@ -113,12 +103,9 @@ async function main() {
     pinnedFingerprint.slice(0, 16) + "…",
   );
 
-  // Dial through the real connectAgent by inserting a Server row directly into the
-  // relational `servers` table (servers are relational as of cut-set (e); the JSONB
-  // store + its `mutate()` are gone - Step 6 cutover).
   const { getDb } = await import("../lib/db/client");
   const { servers: serversTable } =
-    await import("../lib/db/schema/control-plane");
+    await import("../lib/db/schema/control-plane/servers");
   const { serverToRow } = await import("../lib/data/infra-rows");
   const { eq } = await import("drizzle-orm");
   const { caCertPem } = await import("../lib/agent/pki");
@@ -157,7 +144,6 @@ async function main() {
     }),
   );
 
-  // Wait for the gRPC listener (Hello) over the pinned mTLS channel.
   let helloOk = false;
   for (let i = 0; i < 100; i++) {
     try {
@@ -179,7 +165,6 @@ async function main() {
   }
   if (!helloOk) throw new Error("never completed Hello over pinned mTLS");
 
-  // ---- 4. A GIT deploy (D3): a tiny local git repo with a Dockerfile. ----
   const repoDir = mkdtempSync(join(tmpdir(), "deplo-partb-repo-"));
   writeFileSync(
     join(repoDir, "Dockerfile"),
@@ -258,7 +243,6 @@ async function main() {
   if (running !== "true") throw new Error(`container not running: ${running}`);
   console.log("  container is running ✓");
 
-  // ---- 5. Reattach/replay (D5): reconnect to the just-finished deploy. ----
   console.log("== reattach to the finished deploy and replay from seq 0 ==");
   const conn2 = await connectAgent("srv-e2e-remote");
   let replayCount = 0;
@@ -276,9 +260,6 @@ async function main() {
   if (replayCount < lastSeq)
     throw new Error("reattach replayed fewer events than were buffered");
 
-  // ---- 6. ---- Start a second deploy, abandon the Deploy stream after the first
-  // event (as if the control plane crashed mid-build), then reattach from the cursor
-  // and follow it to completion - the build kept going on the agent's background ctx.
   await sh("docker", ["rm", "-f", NAME]);
   const DEPLOY_ID_2 = "dpl_e2e_partb_2";
   console.log("== mid-flight: start deploy, drop after 1 event, reattach ==");
@@ -314,7 +295,7 @@ async function main() {
     registryAuth: [],
   })) {
     if (ev.seq) cursor = Number(ev.seq);
-    break; // DROP: simulate the control plane losing the stream mid-build
+    break;
   }
   c3.close();
   console.log(`  dropped after seq ${cursor}; the agent keeps building…`);
@@ -343,7 +324,6 @@ async function main() {
     throw new Error(`mid-flight: container not running: ${running2}`);
   console.log("  reattached from the cursor and the deploy completed ✓");
 
-  // ---- Cleanup ----
   await sh("docker", ["rm", "-f", NAME]);
   agent.kill("SIGKILL");
   bootstrapServer.close();

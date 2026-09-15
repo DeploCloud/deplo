@@ -6,20 +6,14 @@ import { AlertTriangle, Cloud, Loader2, Server } from "lucide-react";
 import { Combobox } from "@/components/shared/combobox";
 import { StatusBadge } from "@/components/shared/status-badge";
 import { probeDestinations } from "@/lib/destination-probe";
-import type { DestinationStatus } from "@/lib/types";
-import type { DestinationOption } from "@/lib/data/destinations";
+import type { DestinationStatus } from "@/lib/types/backup";
+import type { DestinationOption } from "@/lib/data/destinations/dto";
 
-/** The stored badge is only a starting point; this is what the live probe returns. */
 interface LiveStatus {
   status: DestinationStatus;
   error: string | null;
 }
 
-/**
- * Pick a backup destination by typing, with the list proving itself as it opens.
- * Until it lands, each row shows the stored verdict, so the list is never empty or
- * frozen while the network works.
- */
 export function DestinationCombobox({
   destinations,
   value,
@@ -31,21 +25,12 @@ export function DestinationCombobox({
   canProbe = false,
 }: {
   destinations: DestinationOption[];
-  /** The selected destination id, or "" for none. */
   value: string;
   onChange: (id: string) => void;
   id?: string;
   disabled?: boolean;
-  /**
-   * The server the thing being backed up runs on.
-   */
   sameDiskServerId?: string | null;
-  /** What that warning calls the thing being backed up. */
   sameDiskNoun?: "app" | "database";
-  /**
-   * Whether this user holds `manage_backup_destinations`, the capability the live
-   * probe needs.
-   */
   canProbe?: boolean;
 }) {
   const [live, setLive] = React.useState<Record<string, LiveStatus>>({});
@@ -57,14 +42,11 @@ export function DestinationCombobox({
     selected?.kind === "server" &&
     selected.serverId === sameDiskServerId;
 
-  /** Re-probe every destination and repaint the badges from the verdicts. */
   const probe = React.useCallback(() => {
     if (!canProbe) return;
     setProbing(true);
     void probeDestinations()
       .then((rows) => {
-        // A skipped or failed round leaves the stored badges in place - opening a
-        // dropdown is not the place to raise an error the user did not ask for.
         if (!rows) return;
         setLive(
           Object.fromEntries(
@@ -85,9 +67,6 @@ export function DestinationCombobox({
       value={value}
       onChange={onChange}
       getKey={(d) => d.id}
-      // Typing filters over BOTH the name and the location: searching "r2", an
-      // account id or a server name finds the destination when nobody remembers
-      // what it was called.
       matches={(d, q) =>
         d.name.toLowerCase().includes(q) || d.where.toLowerCase().includes(q)
       }
@@ -127,7 +106,6 @@ export function DestinationCombobox({
             <span className="block truncate font-mono text-xs text-muted-foreground">
               {d.where}
             </span>
-            {/* Why it is red, without making anyone open Storage. */}
             {status === "error" && error && !probing && (
               <span className="block truncate text-xs text-destructive">
                 {error}
@@ -137,7 +115,6 @@ export function DestinationCombobox({
         );
       }}
       footer={
-        // Same-disk honesty, only once it is actually the choice.
         sameDisk && selected ? (
           <div className="mt-2 flex items-start gap-2 rounded-lg border border-[var(--warning)]/30 bg-[var(--warning)]/5 p-3">
             <AlertTriangle className="mt-0.5 size-3.5 shrink-0 text-[var(--warning)]" />

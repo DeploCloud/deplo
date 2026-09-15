@@ -17,12 +17,8 @@ import {
 } from "@/components/ui/tabs";
 import { cn } from "@/lib/utils";
 
-// The toolbar's six facets: Project, Environment, Source, Type, Modified by,
-// Updated. They share the row's width evenly, as the real ones do.
 const FACETS = 6;
 
-// One project section per entry, each holding this many app cards, each card this
-// many variable rows. Both sections render open, like the page's own first paint.
 const SECTIONS = [[4, 3], [2]];
 
 const KEY_WIDTHS = ["w-32", "w-44", "w-28", "w-36"];
@@ -41,8 +37,6 @@ export default function Loading() {
       </UnderlineTabsList>
 
       <TabsContent value="app" className="space-y-4">
-        {/* EnvFilters: search, the facets and their info icons, the reserved
-            Clear slot, the sort picker, then the Collapse all action. */}
         <div className="flex flex-wrap items-center gap-2 lg:flex-nowrap">
           <div className="min-w-[11rem] flex-1 basis-full sm:basis-auto lg:max-w-[16rem]">
             <Skeleton className="h-9 w-full" />
@@ -56,8 +50,6 @@ export default function Loading() {
               <Skeleton className="size-3.5 shrink-0 rounded-full" />
             </div>
           ))}
-          {/* Invisible in the real toolbar too, until a filter is on - but it holds
-              its width either way, so the placeholder has to hold it as well. */}
           <Button variant="ghost" disabled className="invisible shrink-0">
             Clear filters
           </Button>
@@ -69,7 +61,6 @@ export default function Loading() {
 
         {SECTIONS.map((cards, section) => (
           <section key={section} className="space-y-3">
-            {/* Project header: chevron, colour tile, name over counts. */}
             <div className="flex w-full items-center gap-2 rounded-lg border border-border px-4">
               <div className="flex min-w-0 flex-1 items-center gap-3 py-3">
                 <Skeleton className="size-4 shrink-0 rounded" />
@@ -93,7 +84,6 @@ export default function Loading() {
                         <Skeleton className="mt-1 h-3 w-32" />
                       </div>
                     </div>
-                    {/* Add / Open */}
                     <div className="flex items-center gap-2">
                       <Skeleton className="h-8 w-[4.5rem] rounded-md" />
                       <Skeleton className="h-8 w-[5.25rem] rounded-md" />

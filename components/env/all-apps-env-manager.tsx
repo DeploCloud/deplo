@@ -17,12 +17,12 @@ import {
   SearchX,
 } from "lucide-react";
 import { AppLogo } from "@/components/shared/project-logo";
-import {
-  SharedVarDialog,
-  type AppRef,
-  type ProjectRef,
-  type TeamRef,
-} from "@/components/env/shared-var-wizard";
+import { SharedVarDialog } from "@/components/env/shared-var-wizard/dialog";
+import type {
+  AppRef,
+  ProjectRef,
+  TeamRef,
+} from "@/components/env/shared-var-wizard/types";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import {
   Table,
@@ -46,16 +46,15 @@ import { EnvVarDialog } from "@/components/env/env-var-dialog";
 import { EnvAuthorCell } from "@/components/env/env-author-cell";
 import { SharedVarEditDialog } from "@/components/env/shared-var-edit-dialog";
 import { EnvEditButton } from "@/components/env/env-edit-button";
+import { EnvFilters } from "@/components/env/env-filters/env-filters-toolbar";
 import {
-  EnvFilters,
-  useEnvFilters,
   editorFacet,
   sourceFacet,
   typeFacet,
   updatedFacet,
-  FACET_NONE,
-  type EnvFacet,
-} from "@/components/env/env-filters";
+} from "@/components/env/env-filters/facets";
+import { FACET_NONE, type EnvFacet } from "@/components/env/env-filters/types";
+import { useEnvFilters } from "@/components/env/env-filters/use-env-filters";
 import { gqlAction } from "@/lib/graphql-client";
 import { cn, readableTextColor } from "@/lib/utils";
 import {
@@ -64,49 +63,29 @@ import {
   type AppBucket,
   type ProjectBucket,
 } from "@/lib/env-grouping";
-import type { EnvVarDTO } from "@/lib/types";
+import type { EnvVarDTO } from "@/lib/types/env";
 import type { AppEnvGroup } from "@/lib/data/env";
-import type { AppliedSharedVarDTO, SharedVarDTO } from "@/lib/data/shared-vars";
+import type { AppliedSharedVarDTO } from "@/lib/data/shared-vars/app-view";
+import type { SharedVarDTO } from "@/lib/data/shared-vars/team-view";
 import type { TeamEnvironment } from "@/lib/data/environments";
 
-/** The app a row belongs to - what the Project / Environment filters read. */
 type RowApp = AppEnvGroup["app"];
 
-/**
- * An applied shared var carries no `type` (the DTO never decrypts a value), but
- * the filters key off one, and at the source `masked` IS `type === "secret"`.
- */
 type SharedVar = AppliedSharedVarDTO & { type: "plain" | "secret" };
 
-/**
- * Every variable of every app in ONE flat row list, each row carrying its app and
- * the name of the app's project.
- */
 type EnvRow =
   | ({ kind: "standalone"; app: RowApp; projectName: string } & EnvVarDTO)
   | ({ kind: "shared"; app: RowApp; projectName: string } & SharedVar);
 
-/**
- * A row's identity across the whole page - what an optimistic removal is tracked
- * by. A standalone variable's id is unique on its own; a SHARED one repeats,
- * once under every app it reaches, so there its app belongs in the key.
- */
 const rowKey = (row: EnvRow) =>
   row.kind === "standalone"
     ? `standalone:${row.id}`
     : `shared:${row.app.id}:${row.id}`;
 
-/**
- * The ids of the sections the user has COLLAPSED, persisted so a page you tidied
- * stays tidy across reloads.
- */
 function useCollapsed(storageKey: string) {
   const [collapsed, setCollapsed] = React.useState<ReadonlySet<string>>(
     () => new Set(),
   );
-  // The state mirror the writers read: computing the next set inside a setState
-  // updater would make the localStorage write a side effect of a function React
-  // is free to call twice.
   const current = React.useRef(collapsed);
 
   React.useEffect(() => {
@@ -116,9 +95,7 @@ function useCollapsed(storageKey: string) {
       const parsed: unknown = raw ? JSON.parse(raw) : null;
       if (Array.isArray(parsed))
         stored = parsed.filter((id): id is string => typeof id === "string");
-    } catch {
-      /* ignore */
-    }
+    } catch {}
     if (stored.length === 0) return;
     const next = new Set(stored);
     current.current = next;
@@ -132,9 +109,7 @@ function useCollapsed(storageKey: string) {
       setCollapsed(next);
       try {
         window.localStorage.setItem(storageKey, JSON.stringify([...next]));
-      } catch {
-        /* ignore */
-      }
+      } catch {}
     },
     [storageKey],
   );
@@ -151,11 +126,6 @@ function useCollapsed(storageKey: string) {
   return { collapsed, toggle, commit };
 }
 
-/**
- * A card's second line: the environment the app sits in, then how it's reached.
- * The PROJECT is not repeated here - the section header the card sits under is
- * the project.
- */
 function appSubtitle(
   app: RowApp,
   environmentName: Map<string, string>,
@@ -170,10 +140,6 @@ function appSubtitle(
 
 const plural = (n: number, one: string) => `${n} ${one}${n === 1 ? "" : "s"}`;
 
-/**
- * The editable aggregate of every app's variables (the Variables page's "All"
- * tab).
- */
 export function AllAppsEnvManager({
   groups,
   sharedByApp,
@@ -185,11 +151,8 @@ export function AllAppsEnvManager({
 }: {
   groups: AppEnvGroup[];
   sharedByApp: Record<string, AppliedSharedVarDTO[]>;
-  /** Full shared-var DTOs, so a shared row's Edit can open the shared dialog. */
   sharedVars: SharedVarDTO[];
-  /** Every app in the active team - the wizard's "specific apps" scope. */
   apps: AppRef[];
-  /** Projects in the team's own order (the Overview's) - the section order. */
   projects: ProjectRef[];
   environments: TeamEnvironment[];
   teams: TeamRef[];
@@ -198,9 +161,6 @@ export function AllAppsEnvManager({
     appId: string;
     editing: EnvVarDTO | null;
   } | null>(null);
-  // Editing a shared variable's VALUE and changing WHO gets it are two different
-  // dialogs: the row's Edit opens the small form, and only that form's "Change
-  // sharing…" hands the variable on to the wizard.
   const [sharedEditing, setSharedEditing] = React.useState<SharedVarDTO | null>(
     null,
   );
@@ -230,8 +190,6 @@ export function AllAppsEnvManager({
   const projectCollapse = useCollapsed("deplo:vars-collapsed-projects");
   const appCollapse = useCollapsed("deplo:vars-collapsed-apps");
 
-  // Every variable of every app, flat. Computed BEFORE the filters so that
-  // "nothing matches the search" stays distinguishable from "nothing to search".
   const serverRows = React.useMemo<EnvRow[]>(
     () =>
       groups.flatMap((g) => {
@@ -257,18 +215,12 @@ export function AllAppsEnvManager({
     [groups, sharedByApp, projectName],
   );
 
-  // A deleted variable leaves its card on the click, rather than sitting there -
-  // still clickable, still good for a "Not found" - for the length of the mutation
-  // and then the `router.refresh()` that reloads every app's variables.
   const {
     visible: rows,
     remove,
     restore,
   } = useOptimisticRemove(serverRows, rowKey);
 
-  // This tab is the only place a variable is seen next to every OTHER app's, so it is
-  // the only place WHERE the app lives is a filter: its project, and the environment
-  // of that project it sits in.
   const facets = React.useMemo<EnvFacet<EnvRow>[]>(() => {
     const projectIds = new Set<string>();
     const environmentIds = new Set<string>();
@@ -307,8 +259,6 @@ export function AllAppsEnvManager({
       info: "The environment of its project the app lives in. Apps outside a project have none.",
       options: environments
         .filter((e) => environmentIds.has(e.id))
-        // Every project has a "Production": the project name is what tells two
-        // same-named environments apart in the menu.
         .map((e) => ({ value: e.id, label: e.name, hint: e.projectName })),
       match: (row, value) => row.app.environmentId === value,
     };
@@ -323,9 +273,6 @@ export function AllAppsEnvManager({
     ];
   }, [rows, projects, environments]);
 
-  // The app AND its project join the search haystack, so "storefront" surfaces
-  // that app's variables rather than only the keys that spell it, and "acme"
-  // surfaces every app of the Acme project.
   const {
     state: filters,
     setState: setFilters,
@@ -338,9 +285,6 @@ export function AllAppsEnvManager({
     (row) => `${row.app.name} ${row.projectName}`,
   );
 
-  // Back into sections - in the team's project order (the Overview's own),
-  // Standalone last. Sorting BY KEY is about the keys, not the apps: there the
-  // app cards stay in name order instead of reshuffling behind the table.
   const sections = React.useMemo<ProjectBucket<EnvRow>[]>(
     () =>
       groupRowsByProject(shown, projects, { byName: filters.sort === "key" }),
@@ -351,10 +295,6 @@ export function AllAppsEnvManager({
     (s) => !projectCollapse.collapsed.has(s.id),
   ).length;
 
-  /**
-   * Collapse (or expand) every section ON SCREEN, by MERGING into the collapsed
-   * set rather than replacing it.
-   */
   function toggleAllSections() {
     const next = new Set(projectCollapse.collapsed);
     for (const s of sections) {
@@ -405,7 +345,6 @@ export function AllAppsEnvManager({
         actions={
           sections.length > 1 ? (
             <Button
-              // Toolbar height, not `sm`: it stands beside the sort select.
               variant="ghost"
               className="text-muted-foreground"
               onClick={toggleAllSections}
@@ -471,7 +410,6 @@ export function AllAppsEnvManager({
                       const full = sharedById.get(id);
                       if (full) setSharedEditing(full);
                     }}
-                    // Another team owns it: the pencil would only earn a refusal.
                     editableSharedIds={editableSharedIds}
                   />
                 ))}
@@ -488,7 +426,6 @@ export function AllAppsEnvManager({
           onOpenChange={(v) => !v && setDialog(null)}
           appId={dialog.appId}
           editing={dialog.editing}
-          // This page only renders for a caller holding `manage_env` team-wide.
           canCreateShared
           apps={apps}
           projects={projects}
@@ -529,8 +466,6 @@ export function AllAppsEnvManager({
         successMessage="Variable deleted"
         optimistic
         onConfirm={async () => {
-          // `deleteId` is this render's value: the dialog has already closed
-          // itself (and cleared it) by the time this runs.
           const id = deleteId!;
           const key = `standalone:${id}`;
           remove(key);
@@ -547,7 +482,6 @@ export function AllAppsEnvManager({
   );
 }
 
-/** One Project's collapsible header. */
 function ProjectSectionHeader({
   section,
   open,
@@ -559,7 +493,6 @@ function ProjectSectionHeader({
 }) {
   const top = section.id === TOP_LEVEL;
   const color = section.color;
-  // Hex alpha suffixes: `1a` ≈ 10%, `40` ≈ 25%.
   const headerStyle = color
     ? { backgroundColor: `${color}1a`, borderColor: `${color}40` }
     : undefined;
@@ -616,10 +549,6 @@ function ProjectSectionHeader({
   );
 }
 
-/**
- * One App's collapsible card: its own variables (editable) and the shared ones
- * that reach it (read-only, edited centrally).
- */
 function AppVarsCard({
   card,
   open,
@@ -639,7 +568,6 @@ function AppVarsCard({
   onEdit: (row: EnvVarDTO) => void;
   onDelete: (id: string) => void;
   onEditShared: (id: string) => void;
-  /** The shared variables this team OWNS - the only ones it may edit (ADR-0027). */
   editableSharedIds: Set<string>;
 }) {
   const { app, rows } = card;
@@ -668,13 +596,9 @@ function AppVarsCard({
           />
           <AppLogo logo={app.logo} size={32} />
           <span className="min-w-0">
-            {/* CardTitle's own classes, on a <span>: it renders a <div>, and a
-                <div> can't legally live inside a <button>. */}
             <span className="block truncate text-base leading-none font-semibold tracking-tight lg:text-lg">
               {app.name}
             </span>
-            {/* Where the app is reached, and, once the table is folded away,
-                how much it is hiding. */}
             <span className="mt-1 block truncate text-xs text-muted-foreground">
               {[subtitle, open ? null : plural(rows.length, "variable")]
                 .filter(Boolean)

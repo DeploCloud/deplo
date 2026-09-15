@@ -1,9 +1,7 @@
-import type { ActivityType } from "./types";
+import type { ActivityType } from "./types/activity";
 
-/** How many rows a page of the feed holds, first one included. */
 export const ACTIVITY_PAGE_SIZE = 40;
 
-/** How long "the last N days" is, per preset. Absent from the URL = all time. */
 export const ACTIVITY_RANGES: { value: string; label: string; days: number }[] =
   [
     { value: "1d", label: "Last 24 hours", days: 1 },
@@ -12,16 +10,12 @@ export const ACTIVITY_RANGES: { value: string; label: string; days: number }[] =
     { value: "30d", label: "Last 30 days", days: 30 },
   ];
 
-/** The Activity page's filters, exactly as they live in the URL. */
 export interface ActivityParams {
   actorUserIds: string[];
   types: ActivityType[];
   resourceIds: string[];
-  /** One of {@link ACTIVITY_RANGES}, or "" for all time / a custom range. */
   range: string;
-  /** `YYYY-MM-DD`, inclusive. Set only for a custom range. */
   from: string;
-  /** `YYYY-MM-DD`, inclusive. Set only for a custom range. */
   to: string;
 }
 
@@ -58,7 +52,6 @@ function list(v: string | string[] | undefined): string[] {
     .filter(Boolean);
 }
 
-/** Read the filters out of `searchParams`. Anything unrecognised reads as unset. */
 export function parseActivityParams(
   sp: Record<string, string | string[] | undefined>,
 ): ActivityParams {
@@ -75,8 +68,6 @@ export function parseActivityParams(
   };
 }
 
-/** The href for a set of filters, on the team-wide page or on a resource's own
- *  Activity tab. Defaults are omitted, so "no filters" is `base` itself. */
 export function activityHref(p: ActivityParams, base = "/activity"): string {
   const q = new URLSearchParams();
   if (p.actorUserIds.length) q.set("actor", p.actorUserIds.join(","));
@@ -89,11 +80,9 @@ export function activityHref(p: ActivityParams, base = "/activity"): string {
   }
   const s = q.toString();
   if (!s) return base;
-  // The base may already carry a query, e.g. the tab a scoped feed lives on.
   return `${base}${base.includes("?") ? "&" : "?"}${s}`;
 }
 
-/** Short month names, for every date the trail spells out itself. */
 export const MONTH_SHORT = [
   "Jan",
   "Feb",
@@ -109,14 +98,8 @@ export const MONTH_SHORT = [
   "Dec",
 ];
 
-/** What the rail counts over when the reader has picked no dates of their own. */
 const DEFAULT_COUNT_RANGE = ACTIVITY_RANGES.find((r) => r.value === "30d")!;
 
-/**
- * Turn the picked range into the half-open window the query wants. A custom `to`
- * is the last day the reader means to INCLUDE, so it becomes the start of the
- * day after.
- */
 export function activityWindow(
   p: ActivityParams,
   now = Date.now(),
@@ -132,11 +115,6 @@ export function activityWindow(
   };
 }
 
-/**
- * The window the rail's counts describe: the reader's own dates when they picked
- * any, else the last 30 days. `activities` has no retention and grows for ever,
- * so an aggregate over it is never left unbounded.
- */
 export function activityCountWindow(
   p: ActivityParams,
   now = Date.now(),
@@ -148,15 +126,9 @@ export function activityCountWindow(
   };
 }
 
-/** What a page pins the trail to: one app or database, or one person. */
 export type ActivityScope =
   { kind: "resource"; resourceId: string } | { kind: "actor"; userId: string };
 
-/**
- * What a scoped page queries. The pin BEATS the URL: a person's own page is not
- * a place `?actor=` may widen to somebody else, and the facet it fixes is left
- * out of the filter row precisely because there is nothing left to pick.
- */
 export function scopedActivityFilter(
   p: ActivityParams,
   scope: ActivityScope,
@@ -176,7 +148,6 @@ export function scopedActivityFilter(
   };
 }
 
-/** What {@link activityCountWindow} chose, said out loud above the counts. */
 export function activityCountWindowLabel(p: ActivityParams): string {
   const preset = ACTIVITY_RANGES.find((r) => r.value === p.range);
   if (preset) return preset.label;
@@ -186,7 +157,6 @@ export function activityCountWindowLabel(p: ActivityParams): string {
   return DEFAULT_COUNT_RANGE.label;
 }
 
-/** `2026-08-15` -> `15 Aug`. Sliced, never parsed, like every other date here. */
 function day(iso: string): string {
   const [, month, d] = iso.split("-");
   return `${Number(d)} ${MONTH_SHORT[Number(month) - 1]}`;

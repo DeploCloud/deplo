@@ -9,8 +9,6 @@ import {
   type RepoTriggerConfig,
 } from "./git-webhook";
 
-/* ---- parsePushEvent -------------------------------------------------- */
-
 test("parsePushEvent: branch push strips refs/heads and unions changed files", () => {
   const ev = parsePushEvent({
     ref: "refs/heads/main",
@@ -35,8 +33,6 @@ test("parsePushEvent: a delete push is marked deleted", () => {
   assert.equal(ev.deleted, true);
 });
 
-/* ---- shouldAutoDeploy: trigger type ---------------------------------- */
-
 const pushCfg: RepoTriggerConfig = {
   branch: "main",
   triggerType: "push",
@@ -57,7 +53,6 @@ test("push trigger: deploys on a push to the tracked branch only", () => {
     shouldAutoDeploy(pushCfg, parsePushEvent({ ref: "refs/heads/dev" })),
     false,
   );
-  // A tag push must NOT fire a push-triggered app.
   assert.equal(
     shouldAutoDeploy(pushCfg, parsePushEvent({ ref: "refs/tags/v1" })),
     false,
@@ -91,8 +86,6 @@ test("a ref deletion never deploys, whatever the trigger", () => {
     false,
   );
 });
-
-/* ---- shouldAutoDeploy: watch paths ----------------------------------- */
 
 test("watch paths gate a push: only a matching change deploys", () => {
   const cfg: RepoTriggerConfig = {
@@ -128,7 +121,6 @@ test("watch paths fail open when the delivery carries no file list", () => {
     triggerType: "tag",
     watchPaths: ["apps/web/**"],
   };
-  // An annotated-tag push has no commits/head_commit files → deploy anyway.
   assert.equal(
     shouldAutoDeploy(
       cfg,
@@ -137,8 +129,6 @@ test("watch paths fail open when the delivery carries no file list", () => {
     true,
   );
 });
-
-/* ---- shouldAutoDeploy: skip when root directory untouched ------------- */
 
 test("skipUnchanged: a push that touches the root directory deploys", () => {
   const cfg: RepoTriggerConfig = {
@@ -257,12 +247,10 @@ test("skipUnchanged off (default): a push outside the root directory still deplo
   );
 });
 
-/* ---- glob matching --------------------------------------------------- */
-
 test("pathMatchesGlob: literal patterns are file-or-directory-prefix matches", () => {
   assert.equal(pathMatchesGlob("src", "src"), true);
   assert.equal(pathMatchesGlob("src/app.ts", "src"), true);
-  assert.equal(pathMatchesGlob("srcextra/x", "src"), false); // not a path boundary
+  assert.equal(pathMatchesGlob("srcextra/x", "src"), false);
   assert.equal(pathMatchesGlob("package.json", "package.json"), true);
   assert.equal(pathMatchesGlob("apps/package.json", "package.json"), false);
 });
@@ -271,15 +259,13 @@ test("pathMatchesGlob: * stays within a segment, ** crosses separators", () => {
   assert.equal(pathMatchesGlob("README.md", "*.md"), true);
   assert.equal(pathMatchesGlob("docs/x.md", "*.md"), false);
   assert.equal(pathMatchesGlob("docs/x.md", "**/*.md"), true);
-  assert.equal(pathMatchesGlob("x.md", "**/*.md"), true); // **/ matches zero dirs
+  assert.equal(pathMatchesGlob("x.md", "**/*.md"), true);
   assert.equal(pathMatchesGlob("apps/web/page.tsx", "apps/web/**"), true);
   assert.equal(pathMatchesGlob("apps/api/page.tsx", "apps/web/**"), false);
 });
 
 test("pathMatchesGlob: **/ is anchored to a path boundary (no partial-segment match)", () => {
-  // The leading **/ must consume WHOLE segments - it may not swallow a partial
-  // filename, so a sibling that merely shares the suffix does not match.
-  assert.equal(pathMatchesGlob("config.json", "**/config.json"), true); // zero dirs
+  assert.equal(pathMatchesGlob("config.json", "**/config.json"), true);
   assert.equal(pathMatchesGlob("a/b/config.json", "**/config.json"), true);
   assert.equal(pathMatchesGlob("myconfig.json", "**/config.json"), false);
   assert.equal(pathMatchesGlob("barfoo", "**/foo"), false);

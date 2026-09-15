@@ -15,11 +15,6 @@ import {
 } from "@/lib/overview-links";
 import { cn } from "@/lib/utils";
 
-/**
- * The storefront: one template the eye lands on and six smaller ones beside it.
- * Deploy skips the page only for a family with a single variant - with more, the
- * choice is made on the template's own page.
- */
 export function FeaturedTemplates({
   templates,
   accents,
@@ -44,8 +39,6 @@ export function FeaturedTemplates({
           canDeploy={canDeploy}
           placement={placement}
         />
-        {/* Two of the three columns, three cards deep each. Below xl the pair
-            drops under the hero rather than squeezing beside it. */}
         <div className="grid gap-3 sm:grid-cols-2 xl:col-span-2">
           {rest.map((t) => (
             <Sidekick
@@ -74,8 +67,6 @@ function Hero({
 }) {
   const veil = veilProps(accent, "on");
   const page = templateHref(template.slug, placement);
-  // A family with one variant has nothing to choose, so Deploy opens the wizard;
-  // with more, the variant is a decision and it is made on the template's page.
   const deploy =
     template.variants > 1
       ? page
@@ -119,8 +110,6 @@ function Hero({
             </Link>
           </Button>
         ) : (
-          // A disabled button swallows pointer events, so the tooltip needs a
-          // focusable wrapper to stay reachable.
           <SimpleTooltip content="Needs the “Create apps” permission">
             <span tabIndex={0}>
               <Button disabled className="w-32">

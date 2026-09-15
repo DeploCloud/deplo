@@ -7,12 +7,7 @@ import {
   buildSpecFor,
   explicitDockerfileDescriptor,
 } from "./agent-deploy";
-import type { BuildConfig } from "../types";
-
-/**
- * The agent now runs EVERY build method (the Dockerfile family + the heavy
- * builders static/nixpacks/railpack, ported to deplo-agent).
- */
+import type { BuildConfig } from "../types/build";
 
 function build(method: BuildConfig["buildMethod"]): BuildConfig {
   return {
@@ -67,17 +62,12 @@ test("buildSpecFor flattens the build config", () => {
   assert.equal(spec.buildCommand, "npm run build");
   assert.equal(spec.startCommand, "node server.js");
   assert.equal(spec.runtimeVersion, "20");
-  // Node is the one pinnable runtime Deplo surfaces, so a pinned version declares
-  // "node" - that's how the agent knows to set NIXPACKS_NODE_VERSION.
   assert.equal(spec.runtimeLanguage, "node");
   assert.equal(spec.nixpacksPublishDirectory, "dist");
   assert.equal(spec.staticSinglePageApp, true);
 });
 
 test("buildSpecFor defaults Nixpacks/Railpack to the current Node major when unpinned", () => {
-  // No pin on an auto-detecting Node builder ⇒ force DEFAULT_NODE_MAJOR (Node 24)
-  // so the build uses a current Node instead of the builder's stale default
-  // (Nixpacks otherwise picks Node 18). runtimeLanguage rides along as "node".
   for (const m of ["nixpacks", "railpack"] as const) {
     const spec = buildSpecFor(build(m));
     assert.equal(spec.runtimeVersion, "24", `${m} defaults to Node 24`);
@@ -86,8 +76,6 @@ test("buildSpecFor defaults Nixpacks/Railpack to the current Node major when unp
 });
 
 test("buildSpecFor leaves the Dockerfile family unpinned when no version is set", () => {
-  // Only Nixpacks/Railpack get the forced default; dockerfile/static keep their
-  // own default/auto-detection (empty ⇒ the agent decides).
   for (const m of ["dockerfile", "static"] as const) {
     const spec = buildSpecFor(build(m));
     assert.equal(spec.runtimeVersion, "", `${m} stays unpinned`);
@@ -104,8 +92,6 @@ test("buildSpecFor honours an explicit pin over the default", () => {
 });
 
 test("explicit dockerfile descriptor carries methodSettings (parity with builders.ts)", () => {
-  // The bug this guards: dropping these silently shipped the wrong image (the
-  // last stage of a multi-stage Dockerfile instead of the chosen --target).
   const b = build("dockerfile");
   b.methodSettings = {
     dockerfilePath: "docker/Dockerfile.prod",

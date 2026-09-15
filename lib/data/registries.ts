@@ -2,12 +2,10 @@ import "server-only";
 
 import { and, desc, eq } from "drizzle-orm";
 
-import { getCurrentUser } from "../auth";
+import { getCurrentUser } from "../auth/current-user";
 import { getDb } from "../db/client";
-import {
-  apps as appsTable,
-  registries as registriesTable,
-} from "../db/schema/control-plane";
+import { apps as appsTable } from "../db/schema/control-plane/apps";
+import { registries as registriesTable } from "../db/schema/control-plane/integrations";
 import { newId, nowIso } from "../ids";
 import {
   requireActiveTeamId,
@@ -17,7 +15,7 @@ import {
 import { recordActivity } from "./activity";
 import { decryptSecretOrThrow, encryptSecret } from "../crypto";
 import { checkRegistryCredential } from "../registry/client";
-import { REGISTRY_SECRET_LABEL, type RegistryType } from "../types";
+import { REGISTRY_SECRET_LABEL, type RegistryType } from "../types/integration";
 
 export interface RegistryDTO {
   id: string;
@@ -28,7 +26,6 @@ export interface RegistryDTO {
   createdAt: string;
 }
 
-/** Default host per registry type; "generic" must supply its own. */
 export const REGISTRY_HOSTS: Record<RegistryType, string> = {
   ghcr: "ghcr.io",
   dockerhub: "docker.io",
@@ -36,7 +33,6 @@ export const REGISTRY_HOSTS: Record<RegistryType, string> = {
   generic: "",
 };
 
-/** What the docker CLI calls the Hub in a config.json, which is not its host. */
 const DOCKER_HUB_AUTH_KEY = "https://index.docker.io/v1/";
 const DOCKER_HUB_ALIASES = new Set([
   "docker.io",
@@ -44,7 +40,6 @@ const DOCKER_HUB_ALIASES = new Set([
   "registry-1.docker.io",
 ]);
 
-/** The key the docker CLI matches an image's registry against. */
 export function dockerConfigKey(registryUrl: string): string {
   const host = registryUrl
     .trim()
@@ -55,18 +50,12 @@ export function dockerConfigKey(registryUrl: string): string {
     : host;
 }
 
-/** One decrypted credential on its way to the agent (never a DTO, never a query). */
 export interface RegistryAuthEntry {
   host: string;
   username: string;
   password: string;
 }
 
-/**
- * The team's registry credentials, decrypted for the deploy edge. NOT filtered by
- * the images this deploy names: a Dockerfile's `FROM` is invisible here, so a
- * host-match would silently fail exactly the case people hit first.
- */
 export async function loadRegistryAuthsForApp(
   appId: string,
 ): Promise<RegistryAuthEntry[]> {
@@ -93,8 +82,6 @@ export async function loadRegistryAuthsForApp(
   return rows.map((r) => ({
     host: dockerConfigKey(r.registryUrl),
     username: r.username,
-    // STRICT at the deploy edge, like every other secret: "" would deploy an app
-    // that then fails its pull with an unauthorized nobody can explain.
     password: decryptSecretOrThrow(
       r.passwordEnc,
       `The credential for registry ${r.name}`,
@@ -102,7 +89,6 @@ export async function loadRegistryAuthsForApp(
   }));
 }
 
-/** The non-secret projection, never selects `password_enc`. */
 const DTO_COLUMNS = {
   id: registriesTable.id,
   name: registriesTable.name,
@@ -115,7 +101,6 @@ const DTO_COLUMNS = {
 export async function listRegistries(): Promise<RegistryDTO[]> {
   await requireTeamWide("container registries");
   const teamId = await requireActiveTeamId();
-  // Newest-first sort pushed into SQL (matches registries_team_created_idx).
   return getDb()
     .select(DTO_COLUMNS)
     .from(registriesTable)
@@ -131,8 +116,6 @@ export async function addRegistry(input: {
   password: string;
 }): Promise<void> {
   const { membership } = await requireCapability("manage_registries");
-  // The actor's display name for the activity log lives in the JSONB users
-  // collection (cut-set b, still authoritative this step).
   const user = (await getCurrentUser())!;
   const name = input.name.trim();
   if (!name) throw new Error("Enter a name");
@@ -142,15 +125,11 @@ export async function addRegistry(input: {
   if (!registryUrl) throw new Error("Enter the registry host");
   if (!input.username.trim()) throw new Error("Enter a username");
   if (!input.password) {
-    // Matches the form's own label, which is type-aware: "Token" for a provider
-    // that issues one, "Password or access token" only for a generic registry.
     throw new Error(
       `Enter the ${REGISTRY_SECRET_LABEL[input.type].toLowerCase()}`,
     );
   }
 
-  // A credential that does not work is invisible until a build dies with
-  // `denied: denied` - and it poisons PUBLIC pulls from the same host too.
   const check = await checkRegistryCredential(
     registryUrl,
     input.username.trim(),

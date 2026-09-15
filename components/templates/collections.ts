@@ -1,14 +1,9 @@
-/**
- * The store's editorial rows. The catalog has no popularity signal and no dates,
- * so "Most installed" would be an arbitrary order wearing a confident label.
- * Slugs are matched at render time, so a rename costs a card, never the page. */
 export interface TemplateCollection {
   title: string;
   subtitle: string;
   slugs: string[];
 }
 
-/** Below this a row looks broken rather than curated, so it is hidden. */
 export const MIN_COLLECTION_SIZE = 4;
 
 export const COLLECTIONS: TemplateCollection[] = [
@@ -56,9 +51,6 @@ export const COLLECTIONS: TemplateCollection[] = [
   },
 ];
 
-/** The storefront: the first is the big one, the other six fill the two columns
- *  beside it. All of them are dropped from the collections above so the same
- *  card never appears twice within one screen. */
 export const FEATURED = [
   "uptime-kuma",
   "n8n",

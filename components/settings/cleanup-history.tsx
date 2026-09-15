@@ -16,7 +16,7 @@ import { InfoTip } from "@/components/ui/info-tip";
 import { EmptyState } from "@/components/shared/empty-state";
 import { StatusDot } from "@/components/shared/status-badge";
 import { formatBuildDuration, formatBytes, timeAgo } from "@/lib/utils";
-import type { CleanupRunDTO } from "@/lib/data/docker-cleanup";
+import type { CleanupRunDTO } from "@/lib/data/docker-cleanup/run-history";
 
 const STATUS_LABELS: Record<CleanupRunDTO["status"], string> = {
   running: "Running",
@@ -24,15 +24,8 @@ const STATUS_LABELS: Record<CleanupRunDTO["status"], string> = {
   failed: "Failed",
 };
 
-/**
- * The last sweeps, newest first - at most 3 per server (the retention cap; the
- * data layer prunes anything older after every sweep, so this is the WHOLE
- * history, not a page of it).
- */
 export function CleanupHistory({
   runs,
-  /** Drop the Server column. A server's own Cleanup tab shows one host's runs,
-   *  where repeating its name on every row is noise, not information. */
   hideServer,
 }: {
   runs: CleanupRunDTO[];
@@ -111,10 +104,6 @@ export function CleanupHistory({
                     >
                       {timeAgo(run.startedAt)}
                     </TableCell>
-                    {/**
-                     * The failure verbatim - it is the agent's own message, and it is what tells an
-                     * operator whether to update the agent, provision the host, or free some disk.
-                     */}
                     <TableCell className="max-w-xs">
                       {run.error ? (
                         <span
@@ -140,10 +129,6 @@ export function CleanupHistory({
   );
 }
 
-/**
- * How long the sweep in flight has been going, ticking against the VIEWER's clock
- * from an absolute timestamp (the same contract as `BuildDuration`).
- */
 function Elapsed({ startedAt }: { startedAt: string }) {
   const [now, setNow] = React.useState(() => Date.now());
   React.useEffect(() => {
@@ -157,11 +142,7 @@ function Elapsed({ startedAt }: { startedAt: string }) {
   );
 }
 
-/** "12 objects across 3 scopes" - the shape of a successful sweep, without the ids
- *  (the history keeps counts, not object names). */
 function summarize(run: CleanupRunDTO): string {
-  // A run in flight has no items yet, and "Nothing to reclaim" would be a lie told
-  // about a host that is still working. Say what is actually happening.
   if (run.status === "running") return "Reclaiming disk on the host";
   const swept = run.items.filter((i) => !i.skipped && !i.error);
   const objects = swept.reduce((n, i) => n + i.itemsRemoved, 0);

@@ -8,16 +8,10 @@ import { StepShell } from "./step-shell";
 import { copyFor, type SourceKind } from "./sources";
 import type { TakeoverMode } from "./steps";
 
-/**
- * The first decision of a takeover, and the only one that cannot be undone later:
- * whether the machine keeps what is on it. The card IS the answer - picking one
- * moves on, so there is no button to press after it.
- */
 export function ChooseStep({
   kind,
   onPick,
 }: {
-  /** The panel being replaced. Named on both cards, so it is never abstract. */
   kind: SourceKind | null;
   onPick: (mode: TakeoverMode) => void;
 }) {

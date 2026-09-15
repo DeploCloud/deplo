@@ -14,17 +14,11 @@ import { DocsLink } from "@/components/ui/docs-link";
 import { SimpleTooltip } from "@/components/ui/tooltip";
 import { gqlAction } from "@/lib/graphql-client";
 
-/**
- * The instance-wide metrics-history switch, out of the toolbar and behind the
- * header's overflow menu: it is a setting on a page of readings, and every knob
- * on a first screen is a knob the reader has to look past.
- */
 export function SaveMetricsMenu({
   initialSaveMetrics,
   canManage,
 }: {
   initialSaveMetrics: boolean;
-  /** Cosmetic gate; setSaveMetrics enforces `manage_monitoring` itself. */
   canManage: boolean;
 }) {
   const [saveMetrics, setSaveMetrics] = React.useState(initialSaveMetrics);
@@ -84,7 +78,6 @@ export function SaveMetricsMenu({
           {canManage ? (
             control
           ) : (
-            // span so the tooltip still fires over the disabled switch
             <SimpleTooltip content="Requires the Manage monitoring capability">
               <span className="mt-0.5 inline-flex">{control}</span>
             </SimpleTooltip>

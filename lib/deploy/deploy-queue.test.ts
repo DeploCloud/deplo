@@ -7,16 +7,12 @@ import { join } from "node:path";
 import type { PGlite } from "@electric-sql/pglite";
 import { and, eq } from "drizzle-orm";
 
-// Point build staging at a throwaway dir BEFORE the build module graph loads
-// (deploy-queue imports build.ts, which reads DEPLO_DATA_DIR at module load).
 process.env.DEPLO_DATA_DIR = mkdtempSync(join(tmpdir(), "deplo-queue-"));
 
 import { makeTestDb, type TestDb } from "../db/test-harness";
 import { __setTestDb, __resetTestDb } from "../db/client";
-import {
-  deployments as deploymentsTable,
-  servers as serversTable,
-} from "../db/schema/control-plane";
+import { deployments as deploymentsTable } from "../db/schema/control-plane/deployments";
+import { servers as serversTable } from "../db/schema/control-plane/servers";
 import {
   seedIdentity,
   TEAM_A,
@@ -35,11 +31,7 @@ import {
   __setRunnerForTest,
   __resetQueueForTest,
 } from "./deploy-queue";
-import { startDeployment } from "./build";
-
-/**
- * Per-server deploy-queue tests (pglite).
- */
+import { startDeployment } from "./build/deploy-start";
 
 let db: TestDb;
 let pg: PGlite;
@@ -67,14 +59,11 @@ beforeEach(async () => {
   });
 });
 
-/** A controllable deploy runner: records dispatch order and lets the test settle
- *  each running deploy on command (mimicking runDeployment's claim + terminal). */
 function makeFakeRunner() {
   const started: string[] = [];
   const resolvers = new Map<string, () => void>();
   const runner = async (depId: string): Promise<void> => {
     started.push(depId);
-    // The atomic slot hand-off the queue relies on: queued -> building.
     await db
       .update(deploymentsTable)
       .set({ status: "building" })
@@ -110,7 +99,6 @@ async function waitFor(
   }
 }
 
-/** Let any pending pump work flush, so a "nothing else started" assertion is safe. */
 async function settle(): Promise<void> {
   await new Promise((r) => setTimeout(r, 40));
 }
@@ -205,14 +193,12 @@ test("deploys on different servers run in parallel", async () => {
   await finish("d_b");
 });
 
-// The regression a BUILD SERVER makes possible.
 test("two deploys of one app never overlap, even in different lanes", async () => {
   const { runner, started, finish } = makeFakeRunner();
   __setRunnerForTest(runner);
   await seedServer(db, SRV_A);
   await seedServer(db, SRV_B);
   await seedApp(db, { id: "svc_x", serverId: SRV_A, status: "queued" });
-  // Same app, same stack (one deploy key), but routed to two different builders.
   await seedDeployment(db, {
     id: "b1",
     appId: "svc_x",
@@ -269,9 +255,6 @@ test("two deploys of one app never overlap, even in different lanes", async () =
   await finish("b2");
 });
 
-// The other half of the same rule: the exclusion is on the STACK, not the app, so a
-// preview and a production deploy of one app are free to run at once. They touch
-// different containers, volumes and routers.
 test("a preview and a production deploy of one app do run in parallel", async () => {
   const { runner, started, finish } = makeFakeRunner();
   __setRunnerForTest(runner);
@@ -311,8 +294,6 @@ test("concurrency 2: two distinct services run, but never two of the same servic
   await setConcurrency(SRV_A, 2);
   await seedApp(db, { id: "svc_x", serverId: SRV_A, status: "queued" });
   await seedApp(db, { id: "svc_y", serverId: SRV_A, status: "queued" });
-  // Two queued deploys for the SAME app x, plus one for y. (Seeded directly -
-  // the enqueue-time collapse lives in startDeployment, not the queue.)
   await seedDeployment(db, {
     id: "x1",
     appId: "svc_x",
@@ -387,7 +368,6 @@ test("a canceled queued deploy is skipped by the drain", async () => {
   enqueueDeployment({ depId: "d2", serverId: SRV_A, appId: "svc_y" });
   await waitFor(() => started.length === 1, "d1 started");
 
-  // Cancel d2 while it waits (mimics cancelDeployment's conditional flip).
   await db
     .update(deploymentsTable)
     .set({ status: "canceled" })
@@ -405,7 +385,6 @@ test("startDeployQueue re-drains an existing queued backlog on boot", async () =
   await seedServer(db, SRV_A);
   await seedApp(db, { id: "svc_x", serverId: SRV_A, status: "queued" });
   await seedApp(db, { id: "svc_y", serverId: SRV_A, status: "queued" });
-  // Rows exist as `queued` (a restart mid-backlog), nothing enqueued this run.
   await seedDeployment(db, {
     id: "b1",
     appId: "svc_x",
@@ -438,7 +417,6 @@ test("startDeployQueue backfills a queued row missing its serverId", async () =>
   __setRunnerForTest(runner);
   await seedServer(db, SRV_A);
   await seedApp(db, { id: "svc_x", serverId: SRV_A, status: "queued" });
-  // A pre-migration straggler: queued but no denormalized server_id.
   await seedDeployment(db, { id: "old", appId: "svc_x", status: "queued" });
   assert.equal(
     (
@@ -468,7 +446,6 @@ test("startDeployment supersedes an older still-queued deploy of the same servic
   __setRunnerForTest(runner);
   await seedServer(db, SRV_A);
   await seedApp(db, { id: "svc_x", serverId: SRV_A, status: "queued" });
-  // An older deploy is already sitting queued (its slot never came free).
   await seedDeployment(db, {
     id: "old",
     appId: "svc_x",
@@ -477,8 +454,6 @@ test("startDeployment supersedes an older still-queued deploy of the same servic
     createdAt: "2026-01-01T00:00:01.000Z",
   });
 
-  // A new trigger arrives: it must cancel the older queued deploy (supersede) and
-  // enqueue the fresh one so the same tree isn't rebuilt twice.
   const fresh = await startDeployment("svc_x", {
     creator: "Owner",
     commitMessage: "newer",
@@ -503,7 +478,7 @@ test("deploy_concurrency is clamped to at least 1", async () => {
   const { runner, started, finish } = makeFakeRunner();
   __setRunnerForTest(runner);
   await seedServer(db, SRV_A);
-  await setConcurrency(SRV_A, 0); // nonsensical - must clamp to 1, not stall
+  await setConcurrency(SRV_A, 0);
   await seedApp(db, { id: "svc_x", serverId: SRV_A, status: "queued" });
   await seedApp(db, { id: "svc_y", serverId: SRV_A, status: "queued" });
   await seedDeployment(db, {
@@ -543,7 +518,6 @@ test("a lane is shared: the team with nothing running goes before a team's secon
     serverId: SRV_A,
     status: "queued",
   });
-  // Team A queued two builds before team B queued one.
   await seedDeployment(db, {
     id: "d_a1",
     appId: "svc_a1",

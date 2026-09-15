@@ -8,24 +8,24 @@ import { __setTestDb, __resetTestDb } from "./db/client";
 import {
   memberships as membershipsTable,
   membershipCapabilities as membershipCapabilitiesTable,
+} from "./db/schema/control-plane/access-control";
+import {
   registrationLinks as registrationLinksTable,
   teams as teamsTable,
   users as usersTable,
-  instanceSettings as instanceSettingsTable,
-} from "./db/schema/control-plane";
+} from "./db/schema/control-plane/identity";
+import { instanceSettings as instanceSettingsTable } from "./db/schema/control-plane/instance";
 import { account as accountTable } from "./db/schema/auth";
 import { eq } from "drizzle-orm";
 import { verifyPassword } from "./crypto";
 import { runWithIdentity } from "./auth/request-context";
 import {
-  checkSetupKey,
-  completeSetup,
   createAccountWithTeam,
   createAccountWithTeams,
-  emailForIdentifier,
-  login,
-} from "./auth";
-import { consumeRegistrationLink } from "./data/members";
+} from "./auth/create-account";
+import { checkSetupKey, completeSetup } from "./auth/setup";
+import { emailForIdentifier, login } from "./auth/sign-in";
+import { consumeRegistrationLink } from "./data/members/registration-redeem";
 import { changePassword } from "./data/account";
 import {
   seedIdentity,
@@ -38,12 +38,6 @@ import {
 import { capabilitiesForRole } from "./membership-shared";
 import { monogramColor } from "./avatar-colors";
 import { faceParts } from "./apps/avatar-shared";
-
-/**
- * Auth cut-set (b) tests against pglite (relational-store PLAN Step 3):
- * `createAccountWithTeam` as one `db.transaction`, the single-use registration
- * link's two-concurrent race, and the stale-password-login regression that proves
- */
 
 let db: TestDb;
 let pg: PGlite;
@@ -80,7 +74,6 @@ test("createAccountWithTeam writes user + team + owner membership with caps", as
   )[0]!;
   assert.equal(urow.email, "new@owner.io");
   assert.equal(urow.role, "owner");
-  // The credential is on the Better Auth `account` row since 0055, stored hashed.
   const arow = (
     await db.select().from(accountTable).where(eq(accountTable.userId, user.id))
   )[0]!;
@@ -148,7 +141,7 @@ test("createAccountWithTeam rejects a duplicate username / email / team name", a
 });
 
 test("createAccountWithTeams joins existing teams with per-team roles + caps, owning none", async () => {
-  await seedIdentity(db); // TEAM_A (alpha) + TEAM_B (beta) exist
+  await seedIdentity(db);
   const { user, activeTeamId } = await createAccountWithTeams(
     {
       username: "joiner",
@@ -165,7 +158,6 @@ test("createAccountWithTeams joins existing teams with per-team roles + caps, ow
       { teamId: TEAM_B, role: "viewer", capabilities: ["view"] },
     ],
   );
-  // Active team is the first assignment; the user owns no team (legacy role).
   assert.equal(activeTeamId, TEAM_A);
   const urow = (
     await db.select().from(usersTable).where(eq(usersTable.id, user.id))
@@ -181,7 +173,6 @@ test("createAccountWithTeams joins existing teams with per-team roles + caps, ow
   assert.equal(roleByTeam[TEAM_A], "member");
   assert.equal(roleByTeam[TEAM_B], "viewer");
 
-  // The viewer membership's caps are exactly what was passed (always incl. view).
   const memB = mems.find((m) => m.teamId === TEAM_B)!;
   const capsB = await db
     .select({ c: membershipCapabilitiesTable.capability })
@@ -222,13 +213,11 @@ test("createAccountWithTeams stores the profile picture and refuses a bad one", 
     await db.select().from(usersTable).where(eq(usersTable.id, user.id))
   )[0]!;
   assert.equal(urow.image, AVATAR);
-  // A link that joins existing teams never mints one.
   assert.equal((await db.select().from(teamsTable)).length, 2);
 });
 
 test("createAccountWithTeams skips teams deleted before use, and fails if none remain", async () => {
   await seedIdentity(db);
-  // One real team + one already-gone team → user joins only the survivor.
   const { user } = await createAccountWithTeams(
     {
       username: "partial",
@@ -252,7 +241,6 @@ test("createAccountWithTeams skips teams deleted before use, and fails if none r
   assert.equal(mems.length, 1);
   assert.equal(mems[0]!.teamId, TEAM_A);
 
-  // All assigned teams gone → throws and creates NOTHING (tx rolls back).
   await assert.rejects(
     () =>
       createAccountWithTeams(
@@ -293,9 +281,8 @@ test("createAccountWithTeams consumes the registration link (single-use); a spen
       ],
       { guard: (tx) => consumeRegistrationLink(tx, rawToken, username) },
     );
-  await join("first"); // consumes the link
+  await join("first");
   await assert.rejects(() => join("second"), /no longer valid/);
-  // Only the first account exists beyond the seeded owner (USER_1).
   const names = (await db.select().from(usersTable)).map((u) => u.username);
   assert.ok(names.includes("first"));
   assert.ok(!names.includes("second"));
@@ -329,7 +316,6 @@ test("registration link is single-use: two concurrent registrations, exactly one
     /no longer valid/,
   );
 
-  // Exactly one account was minted, and the link is marked used.
   const userCount = (await db.select().from(usersTable)).length;
   assert.equal(userCount, 1, "one account total from the single-use link");
   const link = (
@@ -363,7 +349,6 @@ test("registration link consume rejects an expired link", async () => {
       ),
     /no longer valid/,
   );
-  // Nothing was minted (the whole tx rolled back).
   assert.equal((await db.select().from(usersTable)).length, 0);
 });
 
@@ -375,7 +360,6 @@ test("login reads the RELATIONAL password - a relational password change is seen
   });
   const email = `${USER_1}@example.io`;
 
-  // The OLD password authenticates before any change.
   assert.equal(
     (await login(email, "wrongpass")).ok,
     false,
@@ -383,7 +367,6 @@ test("login reads the RELATIONAL password - a relational password change is seen
   );
   await assertLoginAccepts(email, "Oldpass!1");
 
-  // Change the password through the relational data layer.
   await runWithIdentity({ userId: USER_1, teamId: TEAM_A }, async () => {
     await changePassword({
       currentPassword: "Oldpass!1",
@@ -391,8 +374,6 @@ test("login reads the RELATIONAL password - a relational password change is seen
     });
   });
 
-  // The OLD password must now FAIL and the NEW one succeed - proving login reads
-  // the relational row, not a stale JSONB cache (the cut-set boundary hazard).
   assert.equal(
     (await login(email, "Oldpass!1")).ok,
     false,
@@ -430,27 +411,18 @@ test("a WRONG password on a suspended account is the GENERIC error, not an enume
       },
     ],
   });
-  // The "suspended" message is revealed only to someone who proves the password;
-  // without it, a suspended account is indistinguishable from a wrong password or
-  // an unknown email (same message, same scrypt work) - no pre-auth existence leak.
   const res = await login(`${USER_1}@example.io`, "not-the-password");
   assert.equal(res.ok, false);
   assert.match(res.error ?? "", /Invalid email or password/);
   assert.doesNotMatch(res.error ?? "", /suspended/i);
 });
 
-/**
- * A successful `login` writes the session cookie via `cookies()`, which throws
- * "outside a request scope" under `node --test`. (A wrong password returns
- * ok:false before any cookie write and never throws.)
- */
 async function assertLoginAccepts(
   email: string,
   password: string,
 ): Promise<void> {
   try {
     const res = await login(email, password);
-    // If it returned without throwing, it must NOT be the invalid-credentials path.
     assert.notEqual(res.ok, false, `login should accept ${password}`);
   } catch (e) {
     assert.match(
@@ -461,7 +433,6 @@ async function assertLoginAccepts(
   }
 }
 
-// First-run setup: the instance-owner claim is the atomic guard.
 const setupOwner = (username: string) =>
   createAccountWithTeam(
     {
@@ -491,7 +462,6 @@ test("first-run setup: two concurrent owner claims, exactly one wins", async () 
     /already been completed/,
   );
 
-  // The loser's whole account + team insert rolled back: one user, one owner.
   assert.equal((await db.select().from(usersTable)).length, 1);
   const settings = await db.select().from(instanceSettingsTable);
   assert.equal(settings.length, 1);
@@ -508,7 +478,6 @@ test("first-run setup: a second owner claim after one succeeds is refused", asyn
   assert.equal((await db.select().from(usersTable)).length, 1);
 });
 
-/** A one-pixel PNG, shaped the way the picker stores one. */
 const PICTURE = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUg==";
 
 const WIZARD = {
@@ -536,8 +505,6 @@ test("first-run setup: a hand-edited handle wins over the derived one", async ()
 test("first-run setup: the monogram colour follows the name", async () => {
   const { user } = await createAccountWithTeam(WIZARD, FIRST_RUN);
   assert.equal(user.avatarColor, monogramColor(WIZARD.name));
-  // Not the palette's first entry by accident: a different name, a different
-  // colour, which is what the round-robin it replaced could not promise.
   assert.notEqual(monogramColor("Ada Lovelace"), monogramColor("Grace Hopper"));
 });
 
@@ -562,7 +529,6 @@ test("first-run setup: a picture that is not an image data-URI is refused", asyn
   assert.equal((await db.select().from(usersTable)).length, 0);
 });
 
-/** The installer's key lives in the environment, so every case restores it. */
 async function withSetupKey(key: string | null, fn: () => Promise<void>) {
   const before = process.env.DEPLO_SETUP_KEY;
   if (key === null) delete process.env.DEPLO_SETUP_KEY;
@@ -577,11 +543,6 @@ async function withSetupKey(key: string | null, fn: () => Promise<void>) {
 
 const SETUP_KEY = "a3f9c1d84b7e2065";
 
-/**
- * completeSetup signs the owner in last, and that needs a request scope the
- * harness has none of - so a call that clears the key gate throws on the cookie
- * write, with the account already created. Reaching that throw is the pass.
- */
 async function setupRefusal(
   input: Parameters<typeof completeSetup>[0],
 ): Promise<string | null> {
@@ -603,7 +564,6 @@ test("setup key: an instance without one is unchanged", async () => {
   });
 });
 
-/** What `install.sh --public-setup` leaves in the environment. */
 test("setup key: an empty one is no key at all", async () => {
   await withSetupKey("", async () => {
     assert.equal(checkSetupKey(null), "ok");
@@ -623,8 +583,6 @@ test("setup key: the installer's link creates the first account", async () => {
 test("setup key: a wrong key claims nothing", async () => {
   await withSetupKey(SETUP_KEY, async () => {
     assert.equal(checkSetupKey("b3f9c1d84b7e2065"), "wrong");
-    // Shorter, longer and empty all have to land on the same refusal - a length
-    // mismatch is what constantTimeEquals refuses before it compares.
     for (const key of ["b3f9c1d84b7e2065", "short", `${SETUP_KEY}x`, ""]) {
       assert.match(
         (await setupRefusal({ ...WIZARD, key })) ?? "",
@@ -644,10 +602,6 @@ test("setup key: no key at all claims nothing", async () => {
   });
 });
 
-/**
- * The product names people `@handle` everywhere and the break-glass CLI takes a
- * username, so demanding an address was a rule only the sign-in screen had.
- */
 test("a username resolves to its address, and an unknown one is left alone", async () => {
   await seedIdentity(db);
   const row = (
@@ -658,7 +612,5 @@ test("a username resolves to its address, and an unknown one is left alone", asy
     row.email.toLowerCase(),
   );
   assert.equal(await emailForIdentifier(row.email), row.email.toLowerCase());
-  // Nobody's username: unchanged, so the credential check refuses it like any
-  // other wrong sign-in rather than answering differently.
   assert.equal(await emailForIdentifier("nobody-here"), "nobody-here");
 });

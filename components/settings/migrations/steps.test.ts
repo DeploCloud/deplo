@@ -27,13 +27,10 @@ test("the plain migration ends on the report", () => {
   ]);
 });
 
-// Both of People's actions are instance-admin gated, so for anyone else the step
-// would be a page of nothing.
 test("People is an instance admin's step", () => {
   assert.deepEqual(ids(false, false), ["connect", "install", "review", "done"]);
 });
 
-// Taking the ports is the LAST thing a person does, and Done is what follows it.
 test("Choose is the question before the rail, and Take over is last", () => {
   assert.deepEqual(ids(true, true), [
     "connect",
@@ -63,8 +60,6 @@ test("every step is labelled", () => {
     "Take over",
   );
 });
-
-/* ---- the gate ------------------------------------------------------ */
 
 const NOTHING: StepProgress = {
   mode: null,
@@ -111,8 +106,6 @@ test("Install waits for a scan, Review for the machines", () => {
   );
 });
 
-// The whole point of the gate: no card explaining a disabled button, the step
-// simply is not there yet.
 test("Take over is closed until a run has finished", () => {
   const at = { mode: "migrate" as const, plan: true, machinesReady: true };
   assert.equal(stepReachable("takeover", { ...NOTHING, ...at }), false);
@@ -163,26 +156,20 @@ test("Done is the machine changing hands, not the report", () => {
   const at = { mode: "clean" as const, reportDone: true };
   assert.equal(stepReachable("done", { ...NOTHING, ...at }), false);
   assert.ok(stepReachable("done", { ...NOTHING, ...at, takeoverDone: true }));
-  // Off a takeover the report IS the end.
   assert.ok(
     stepReachable("done", { ...NOTHING, isTakeover: false, reportDone: true }),
   );
 });
 
-// One screen says "You're on Deplo", and it is the last one: Review does not
-// reopen on a report that has moved off it.
 test("off a takeover the report leaves Review behind", () => {
   const at = { plan: true, machinesReady: true, reportDone: true };
   assert.equal(
     stepReachable("review", { ...NOTHING, ...at, isTakeover: false }),
     false,
   );
-  // A takeover still reads it there, before the ports move.
   assert.ok(stepReachable("review", { ...NOTHING, ...at, mode: "migrate" }));
 });
 
-// The wizard was reloaded: the plan is gone with the tab, and the people are on
-// the runs. The step that hands out their links has to open all the same.
 test("People opens on a reload with no plan", () => {
   assert.ok(
     stepReachable("people", {
@@ -200,8 +187,6 @@ test("the choice is gone once a run exists", () => {
   );
 });
 
-/* ---- what Review is showing ---------------------------------------- */
-
 const REVIEW = {
   running: false,
   runId: null as string | null,
@@ -215,8 +200,6 @@ test("Review shows the plan until something is started", () => {
   assert.equal(reviewShows({ ...REVIEW, plan: false }), null);
 });
 
-// The bug: the start call landed, the subscription had not caught up, and the
-// plan came back with a live Start button under a run that was already going.
 test("a run this tab cannot see yet still owns Review", () => {
   assert.equal(reviewShows({ ...REVIEW, running: true }), "moving");
   assert.equal(reviewShows({ ...REVIEW, runId: "dimp_1" }), "moving");
@@ -233,7 +216,6 @@ test("the report wins over the run that produced it", () => {
   );
 });
 
-// One thing needing a person reads "1 needs you", not "1 need you".
 test("a single item needing a person is not plural", () => {
   assert.equal(needsYou(1), "1 needs you");
   assert.equal(needsYou(0), "0 need you");

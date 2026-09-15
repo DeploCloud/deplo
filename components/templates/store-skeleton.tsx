@@ -2,12 +2,6 @@ import type { CSSProperties } from "react";
 
 import { Skeleton } from "@/components/ui/skeleton";
 
-/**
- * The store's placeholders. One file because two moments render them, and a
- * skeleton showing a different shape makes the page jump on arrival.
- */
-
-/** The chip row above the rails. */
 export function StoreChipsSkeleton() {
   return (
     <div className="flex gap-2 overflow-hidden">
@@ -23,8 +17,6 @@ export function StoreChipsSkeleton() {
   );
 }
 
-/** The storefront plus two rails: the head of the store, and enough of it to
- *  fill a screen. */
 export function StoreRailsSkeleton() {
   return (
     <div className="space-y-8">

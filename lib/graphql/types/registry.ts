@@ -7,10 +7,6 @@ import {
   type RegistryDTO,
 } from "@/lib/data/registries";
 
-/* ------------------------------------------------------------------ */
-/* Object types                                                        */
-/* ------------------------------------------------------------------ */
-
 export const RegistryRef = builder
   .objectRef<RegistryDTO>("Registry")
   .implement({
@@ -27,24 +23,15 @@ export const RegistryRef = builder
     }),
   });
 
-/* ------------------------------------------------------------------ */
-/* Inputs                                                              */
-/* ------------------------------------------------------------------ */
-
 const AddRegistryInputType = builder.inputType("AddRegistryInput", {
   fields: (t) => ({
     name: t.string({ required: true }),
     type: t.field({ type: RegistryTypeEnum, required: true }),
-    // Optional - the data layer defaults the host per registry type.
     registryUrl: t.string({ required: false }),
     username: t.string({ required: true }),
     password: t.string({ required: true }),
   }),
 });
-
-/* ------------------------------------------------------------------ */
-/* Queries                                                             */
-/* ------------------------------------------------------------------ */
 
 builder.queryFields((t) => ({
   registries: t.field({
@@ -54,10 +41,6 @@ builder.queryFields((t) => ({
     resolve: () => listRegistries(),
   }),
 }));
-
-/* ------------------------------------------------------------------ */
-/* Mutations (every registry server action)                            */
-/* ------------------------------------------------------------------ */
 
 builder.mutationFields((t) => ({
   addRegistry: t.field({

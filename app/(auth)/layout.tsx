@@ -1,6 +1,7 @@
 import Link from "@/components/ui/link";
 import { redirect } from "next/navigation";
-import { getCurrentUser, isSetupNeeded } from "@/lib/auth";
+import { getCurrentUser } from "@/lib/auth/current-user";
+import { isSetupNeeded } from "@/lib/auth/setup";
 import { AuthChrome } from "@/components/auth/auth-chrome";
 import { DeploLogo } from "@/components/logo";
 
@@ -9,10 +10,8 @@ export default async function AuthLayout({
 }: {
   children: React.ReactNode;
 }) {
-  // Real (signature-verifying) check, safe here, unlike the Edge proxy.
   const user = await getCurrentUser();
   if (user) redirect("/");
-  // Fresh install with no account yet: send to the setup wizard.
   if (await isSetupNeeded()) redirect("/setup");
 
   return (

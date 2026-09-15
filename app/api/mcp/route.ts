@@ -1,8 +1,8 @@
 import { createMcpHandler } from "@modelcontextprotocol/server";
 import { TEAM_HEADER } from "@/lib/team-path";
-import { authenticateToken, stampMcpUse } from "@/lib/data/tokens";
+import { authenticateToken, stampMcpUse } from "@/lib/data/tokens/authenticate";
 import { runWithIdentity } from "@/lib/auth/request-context";
-import { getCurrentUser } from "@/lib/auth";
+import { getCurrentUser } from "@/lib/auth/current-user";
 import { getActiveTeamId, reachableCapabilities } from "@/lib/membership";
 import { getMcpSettings } from "@/lib/data/mcp-settings";
 import { listMcpTeams } from "@/lib/data/mcp-clients";
@@ -14,26 +14,11 @@ import {
 } from "@/lib/auth/oauth-metadata";
 import { buildMcpServer, type McpPrincipal } from "@/lib/mcp/server";
 
-/**
- * The Deplo MCP server - protocol revision **2026-07-28**. There is no
- * MCP-specific credential and there must never be one - "how do I take this access
- * away" has to keep having one answer, and that answer is "revoke the token".
- */
-
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-/**
- * An agent in a loop is precisely the client that needs a limit, and the bearer
- * path has never had one. Keyed on the token, not the IP: a fleet of agents
- * sharing one token is one budget, and two teams behind one NAT are two.
- */
 const RATE = { limit: 120, windowMs: 60_000 };
 
-/**
- * The limit on requests that never authenticate. Keyed on the address, because a
- * caller that has not authenticated has no other name.
- */
 const FAILED_AUTH_RATE = { limit: 60, windowMs: 60_000 };
 
 function callerAddress(request: Request): string {
@@ -45,19 +30,10 @@ function callerAddress(request: Request): string {
   );
 }
 
-/**
- * The factory runs once per request (the SDK's model under a stateless
- * protocol), so the tool list can be filtered to what this token may call.
- */
 const handler = createMcpHandler((ctx) =>
   buildMcpServer(ctx.authInfo!.extra!.principal as McpPrincipal),
 );
 
-/**
- * The RFC 6750 challenge, carrying RFC 9728 discovery. A terminal agent keeps
- * ignoring the header and sending a `deplo_` token, exactly as before. It names no
- * team, user or token - a challenge must not be an oracle.
- */
 function unauthorized(message: string) {
   const metadata = resourceMetadataUrl();
   return Response.json(
@@ -74,11 +50,6 @@ function unauthorized(message: string) {
   );
 }
 
-/**
- * Count a request that failed to authenticate, and refuse once there are too
- * many from one address. Runs on every unauthenticated answer, so the endpoint
- * costs an attacker something even before a token is ever resolved.
- */
 async function refuse(request: Request, message: string): Promise<Response> {
   const limited = await rateLimit(
     `mcp-auth:${callerAddress(request)}`,
@@ -100,10 +71,6 @@ async function refuse(request: Request, message: string): Promise<Response> {
 
 type GrantedTeam = { id: string; slug: string; name: string };
 
-/**
- * Why a team named by the caller cannot be worked in, as one sentence the model
- * can relay - or null when it can.
- */
 function refusalFor(
   team: string,
   known: Awaited<ReturnType<typeof listMcpTeams>>,
@@ -118,10 +85,6 @@ function refusalFor(
   return null;
 }
 
-/**
- * The context for a team a tool named explicitly, or a refusal. `teams` is what
- * this connection may act in, resolved once per request by the caller.
- */
 async function contextForTeam(
   raw: string,
   teams: GrantedTeam[],
@@ -134,14 +97,10 @@ async function contextForTeam(
   if (!match) throw refusal;
 
   const identity = await authenticateToken(raw, match.id);
-  // The header's lenient fallback lands the token elsewhere when the named
-  // team is out of reach; an ARGUMENT naming a team is strict, never swapped.
   if (!identity || identity.teamId !== match.id) throw refusal;
 
   return runWithIdentity(identity, async () => {
-    // The team's switch and the owner's `manage_mcp` were read at the door for
-    // the INITIAL team; re-read them here so a tool switching team via its
-    // `team` argument can't keep operating where MCP was turned off since.
+    // Re-read: the door checked the INITIAL team, so a team argument must not keep working where MCP was turned off since.
     const why = refusalFor(match.id, await listMcpTeams());
     if (why) throw new Error(why);
     const [viewer, teamId, capabilities] = await Promise.all([
@@ -155,8 +114,7 @@ async function contextForTeam(
 
 export async function POST(request: Request) {
   const header = request.headers.get("authorization") ?? "";
-  // Case-insensitive: matching `Bearer ` exactly was a real bug on the deploy
-  // hook, and MCP clients spell it however their HTTP library does.
+  // Case-insensitive: matching "Bearer " exactly was a real bug on the deploy hook.
   const raw = /^bearer /i.test(header) ? header.slice(7).trim() : "";
   if (!raw)
     return refuse(
@@ -169,14 +127,11 @@ export async function POST(request: Request) {
   try {
     first = await authenticateToken(raw, hint);
   } catch (e) {
-    // An unmet two-factor policy THROWS rather than returning null. Surfacing it
-    // as the 401 body beats a 500 that tells the operator nothing.
     return refuse(request, e instanceof Error ? e.message : "Not authorized");
   }
   if (!first) return refuse(request, "That API token is not valid.");
   const identity = first;
 
-  // Everything below resolves as the token's principal.
   type Prepared =
     | { blocked: string }
     | { limited: Awaited<ReturnType<typeof rateLimit>> }
@@ -185,14 +140,9 @@ export async function POST(request: Request) {
   try {
     prepared = await runWithIdentity(identity, async (): Promise<Prepared> => {
       let active = identity;
-      // Every team this credential can name, with whether MCP may act there:
-      // the team's switch AND the owner's own `manage_mcp`. Read once, here,
-      // and again by `forTeam` for a call that names another team.
       const known = await listMcpTeams();
       const usable = known.filter((t) => t.mcpEnabled && t.canConnect);
       let why = refusalFor(active.teamId, known);
-      // No team was asked for and the default one refuses: land on the first
-      // usable one rather than answering "no" for a team nobody chose.
       if (why && !hint && usable.length > 0) {
         const moved = await authenticateToken(raw, usable[0].id);
         if (moved) {
@@ -210,8 +160,6 @@ export async function POST(request: Request) {
       const limited = await rateLimit(`mcp:${active.token!.id}`, RATE);
       if (!limited.ok) return { limited };
 
-      // Every team the credential can NAME, not only the usable ones: a call
-      // naming a team that is off limits has to hear why, not "no access".
       const teams = known.map((t) => ({
         id: t.id,
         slug: t.slug,
@@ -235,8 +183,6 @@ export async function POST(request: Request) {
           },
           settings,
           capabilities: new Set(capabilities),
-          // Instance-admin is opt-in per token and never inherited from an admin
-          // creator, so this is the token's own flag, not the person's.
           instanceAdmin: resolved.token?.instanceAdmin === true,
           forTeam: (team) => contextForTeam(raw, teams, team),
         };
@@ -264,8 +210,6 @@ export async function POST(request: Request) {
       },
     );
 
-  // Past every gate, so this request is genuinely being served: the token is driving
-  // an agent right now.
   stampMcpUse(identity.token!.id);
 
   return handler.fetch(request, {
@@ -273,17 +217,11 @@ export async function POST(request: Request) {
       token: raw,
       clientId: identity.token!.id,
       scopes: [],
-      // The SDK passes this straight through to the factory; it never inspects
-      // it. This is the seam that carries Deplo's principal into the tools.
       extra: { principal: prepared.principal },
     },
   });
 }
 
-/**
- * A browser hitting this URL, or a client configured for the 2025 GET stream, gets
- * a sentence instead of a blank failure - the same courtesy the deploy hook pays.
- */
 export async function GET() {
   return Response.json(
     {
@@ -296,11 +234,6 @@ export async function GET() {
   );
 }
 
-/**
- * A browser-based MCP client preflights before it can send `Authorization` or
- * read the challenge off a 401. Same headers everywhere, and no
- * `Allow-Credentials`: this endpoint is bearer-only and has no cookie path.
- */
 export function OPTIONS() {
   return new Response(null, { status: 204, headers: OAUTH_CORS_HEADERS });
 }

@@ -1,6 +1,5 @@
 import { cn } from "@/lib/utils";
 
-/** The Logs empty-state illustration: an empty pane with a blinking caret, into which log lines arrive one after another before the buffer clears and waits again. */
 export function LogsGraphic({ className }: { className?: string }) {
   return (
     <svg

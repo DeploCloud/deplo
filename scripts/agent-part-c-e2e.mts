@@ -1,6 +1,3 @@
-/**
- * End-to-end smoke test for the server agent PART C (observability + files).
- */
 import { spawn } from "node:child_process";
 import { mkdtempSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -10,7 +7,7 @@ process.env.DEPLO_SECRET ||= "e2e-agent-secret-aaaaaaaaaaaaaaaaaaaa";
 const DATA = mkdtempSync(join(tmpdir(), "deplo-agent-c-e2e-"));
 process.env.DEPLO_DATA_DIR = DATA;
 process.env.DEPLO_AGENT_BIN = join(process.cwd(), "agent/bin/deplo-agent");
-process.env.DEPLO_AGENT_ADDR = "127.0.0.1:19444"; // avoid clashing
+process.env.DEPLO_AGENT_ADDR = "127.0.0.1:19444";
 
 const SLUG = "agent-c-e2e";
 const NAME = `deplo-${SLUG}`;
@@ -43,8 +40,9 @@ function check(name: string, ok: boolean, detail = "") {
 }
 
 async function main() {
-  const { connectAgent, agentPreflight } =
-    await import("../lib/infra/agent-client");
+  const { connectAgent } = await import("../lib/infra/agent-client/connect");
+  const { agentPreflight } =
+    await import("../lib/infra/agent-client/preflight");
   const { SourceKind, BuildKind } = await import("../lib/agent/gen/agent");
 
   console.log("== preflight ==");
@@ -52,8 +50,6 @@ async function main() {
   if (!hello.dockerAvailable)
     throw new Error("agent reports docker unavailable");
 
-  // Deploy a labelled, shell-bearing, running container so the console RPCs have
-  // a real target. (Label is what assertOwned checks; busybox gives /bin/sh.)
   const ctxDir = mkdtempSync(join(tmpdir(), "deplo-c-ctx-"));
   writeFileSync(
     join(ctxDir, "Dockerfile"),
@@ -122,7 +118,6 @@ networks:
     ).out.trim() === "true";
   check("target container running", running);
 
-  // ---- ListInstances ----
   console.log("== ListInstances ==");
   {
     const conn = await connectAgent("srv-local");
@@ -142,7 +137,6 @@ networks:
     }
   }
 
-  // ---- Exec ----
   console.log("== Exec ==");
   {
     const conn = await connectAgent("srv-local");
@@ -165,7 +159,6 @@ networks:
         `deplo/${SLUG}:e2e`,
       );
       check("exec non-zero exit is reported, not thrown", nz.code !== 0);
-      // assertOwned negative: a wrong project_id must be PermissionDenied.
       let denied = false;
       try {
         await conn.exec("prj_WRONG", NAME, "echo nope", `deplo/${SLUG}:e2e`);
@@ -178,7 +171,6 @@ networks:
     }
   }
 
-  // ---- ShellLabel ----
   console.log("== ShellLabel ==");
   {
     const conn = await connectAgent("srv-local");
@@ -194,12 +186,8 @@ networks:
     }
   }
 
-  // ---- FollowLogs ----
   console.log("== FollowLogs ==");
   {
-    // Write a recognizable line to the container's stdout (PID1 of our container
-    // just sleeps, so log a line via a side exec into its stdout is not visible;
-    // instead run a short-lived labelled container that prints, and tail it).
     const logName = `deplo-${SLUG}-logger`;
     await sh("docker", ["rm", "-f", logName]);
     await sh("docker", [
@@ -230,10 +218,8 @@ networks:
     await sh("docker", ["rm", "-f", logName]);
   }
 
-  // ---- Attach (non-tty pipe path) ----
   console.log("== Attach ==");
   {
-    // A container reading stdin and echoing it back, attachable over pipes.
     const attName = `deplo-${SLUG}-att`;
     await sh("docker", ["rm", "-f", attName]);
     await sh("docker", [
@@ -248,7 +234,7 @@ networks:
       "sh",
       "-c",
       "cat",
-    ]); // cat echoes stdin -> stdout
+    ]);
     await sleep(400);
     const conn = await connectAgent("srv-local");
     const handle = conn.attach(PROJECT_ID, attName, false, 80, 24);
@@ -267,7 +253,6 @@ networks:
     await sh("docker", ["rm", "-f", attName]);
   }
 
-  // ---- Metrics ----
   console.log("== Metrics ==");
   {
     const conn = await connectAgent("srv-local");
@@ -283,7 +268,6 @@ networks:
     }
   }
 
-  // ---- Files read/write + sandbox ----
   console.log("== Files ==");
   {
     const conn = await connectAgent("srv-local");
@@ -306,7 +290,6 @@ networks:
       const exists = await conn.filesExist(SLUG);
       check("FilesExist is true for the slug", exists === true);
 
-      // Sandbox: a traversal escape must be rejected (InvalidArgument).
       let escaped = false;
       try {
         await conn.readFile(SLUG, "../../../etc/hostname");
@@ -319,7 +302,6 @@ networks:
     }
   }
 
-  // Teardown.
   await sh("docker", ["rm", "-f", NAME]);
   rmSync(ctxDir, { recursive: true, force: true });
   rmSync(DATA, { recursive: true, force: true });
@@ -329,18 +311,13 @@ networks:
   process.exit(fail === 0 ? 0 : 1);
 }
 
-/**
- * Kill the local agent the supervisor spawned.
- */
 function killLocalAgent(): void {
   try {
     const key = Symbol.for("deplo.localAgent.supervisor");
     const st = (globalThis as Record<symbol, unknown>)[key] as
       { proc?: { kill?: (s?: string) => void } | null } | undefined;
     st?.proc?.kill?.("SIGKILL");
-  } catch {
-    /* best-effort */
-  }
+  } catch {}
 }
 
 function tarToBytes(dir: string): Promise<Uint8Array> {

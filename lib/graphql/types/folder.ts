@@ -21,11 +21,7 @@ import {
   removeFolderGrant,
   type FolderGrant,
 } from "@/lib/data/folder-access";
-import type { Capability } from "@/lib/types";
-
-/* ------------------------------------------------------------------ */
-/* Object type                                                         */
-/* ------------------------------------------------------------------ */
+import type { Capability } from "@/lib/types/identity";
 
 export const FolderRef = builder.objectRef<FolderSummary>("Folder").implement({
   description:
@@ -42,17 +38,12 @@ export const FolderRef = builder.objectRef<FolderSummary>("Folder").implement({
     subfolderCount: t.exposeInt("subfolderCount"),
     createdAt: t.exposeString("createdAt"),
     updatedAt: t.exposeString("updatedAt"),
-    // The CURRENT caller's effective capabilities on this folder (team-bounded).
-    // Drives per-folder action gating in the UI - rename/delete/move/share are
-    // shown only when the relevant capability is present here.
     capabilities: t.field({
       type: ["String"],
       description:
         "The current caller's effective capabilities on this folder (bounded by their team caps).",
       resolve: (f) => folderCapabilities(f.id),
     }),
-    // True when the caller may administer sharing for this folder - the owner or a
-    // super-user (manage_team / instance admin). Gates the "Share folder" affordance.
     isOwner: t.field({
       type: "Boolean",
       description:
@@ -61,10 +52,6 @@ export const FolderRef = builder.objectRef<FolderSummary>("Folder").implement({
     }),
   }),
 });
-
-/* ------------------------------------------------------------------ */
-/* Folder grant (a shared user's per-folder access)                    */
-/* ------------------------------------------------------------------ */
 
 const FolderGrantRef = builder.objectRef<FolderGrant>("FolderGrant").implement({
   description:
@@ -102,10 +89,6 @@ const FolderShareCandidateRef = builder
     }),
   });
 
-/* ------------------------------------------------------------------ */
-/* Query                                                               */
-/* ------------------------------------------------------------------ */
-
 builder.queryFields((t) => ({
   folders: t.field({
     type: [FolderRef],
@@ -115,7 +98,6 @@ builder.queryFields((t) => ({
   }),
   folderGrants: t.field({
     type: [FolderGrantRef],
-    // The data layer restricts this to the folder owner / super-user.
     authScopes: { loggedIn: true },
     description:
       "Who can access a folder - its owner plus every user it's shared with. Owner/admin only.",
@@ -145,25 +127,15 @@ builder.queryFields((t) => ({
   }),
 }));
 
-/* ------------------------------------------------------------------ */
-/* Mutations                                                           */
-/* ------------------------------------------------------------------ */
-
-// `reorderFolders` writes the team-wide folder order (like reorderApps), so
-// it stays gated on a super-user: an instance admin OR a member with manage_team.
 const folderScopes = {
   $any: { instanceAdmin: true, capability: "manage_team" },
 } as const;
 
-// Every OTHER folder mutation is a PER-FOLDER decision (owner / grantee / super-
-// user) that can't be expressed as a static team scope, so the GraphQL layer only
-// requires a logged-in caller and the data layer performs the authoritative
 const perFolder = { loggedIn: true } as const;
 
 builder.mutationFields((t) => ({
   createFolder: t.field({
     type: FolderRef,
-    // Creating a folder is its own permission, like creating an app.
     authScopes: { capability: "create_folders" },
     description:
       "Create a folder in the active team; nest it by passing a parent folder id. Requires the create_folders capability; the creator becomes the folder's owner.",

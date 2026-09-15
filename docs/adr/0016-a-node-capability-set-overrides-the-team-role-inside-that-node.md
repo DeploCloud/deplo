@@ -80,7 +80,7 @@ explicitly rules out.
 7. **The role still supplies the base.** Granular mode is role **plus** overrides,
    not instead of a role: `memberships.role_id` stays set, so editing a Role keeps
    reaching everyone who holds it and every authorization check stays a read of
-   the member's effective set (the invariant `lib/data/roles.ts` depends on).
+   the member's effective set (the invariant `lib/data/roles/member-capabilities.ts` depends on).
 
 8. **The token intersection is preserved AT THE NODE.** A node grant replaces the
    membership set and so never passes through `membershipFor`'s own clamp;

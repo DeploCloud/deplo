@@ -8,11 +8,7 @@ import {
   alertSearchText,
   searchAlerts,
 } from "./alerts";
-import { ALL_ALERTS, type AlertKey } from "./types";
-
-/**
- * The alert catalog's own invariants.
- */
+import { ALL_ALERTS, type AlertKey } from "./types/notification";
 
 test("every alert has a label and a one-line description", () => {
   for (const key of ALL_ALERTS) {
@@ -68,7 +64,6 @@ test("the defaults are a real subset of the catalog", () => {
 test("search matches on the key, the label and the keywords", () => {
   assert.ok(searchAlerts("deployment failed").includes("deployment_failed"));
   assert.ok(searchAlerts("disk").includes("server_disk_low"));
-  // Keyword-only hit: "brute force" is nowhere in the label or description.
   assert.ok(searchAlerts("brute force").includes("failed_logins"));
   assert.deepEqual(searchAlerts("zzzz-no-such-thing"), []);
   assert.deepEqual(searchAlerts(""), ALL_ALERTS);

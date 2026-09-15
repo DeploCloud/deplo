@@ -46,14 +46,9 @@ import {
   timeAgoShort,
 } from "@/lib/utils";
 import { gqlAction } from "@/lib/graphql-client";
-import type { AppSummary } from "@/lib/data/apps";
-import type { Capability } from "@/lib/types";
+import type { AppSummary } from "@/lib/data/apps/summary";
+import type { Capability } from "@/lib/types/identity";
 
-/**
- * The menu-primitive set used to render the card's action list once and reuse it
- * for BOTH the ⋯ dropdown (left-click) and the right-click context menu - same
- * items, same handlers, no duplication.
- */
 type MenuKit = {
   Item: React.ElementType;
   Sub: React.ElementType;
@@ -70,7 +65,6 @@ const DROPDOWN_KIT: MenuKit = {
   Separator: DropdownMenuSeparator,
 };
 
-/** The grid supplies the same status state used by the app header. */
 function LiveCardStatusDot({
   project,
   liveState,
@@ -116,29 +110,12 @@ export function AppCard({
   project: AppSummary;
   liveState?: OverviewAppStateView;
   view?: "grid" | "list";
-  /** Optional drag-to-reorder handle, rendered with the card's controls. */
   dragHandle?: React.ReactNode;
-  /**
-   * A reorder drag is in progress for the grid.
-   */
   dragActive?: boolean;
-  /** Team folders, for the "Move to folder" menu (omitted ⇒ no folders). */
   folders?: { id: string; name: string }[];
-  /** Whether the viewer holds `move_apps` at all - the menu is hidden without
-   *  it. Whether it may move THIS app is the card's own `can("move_apps")`,
-   *  which disables the individual entries. */
   canMoveApps?: boolean;
-  /**
-   * The surrounding project's environments, for the "Move to environment" menu
-   * (ADR-0009).
-   */
   environments?: { id: string; name: string }[];
-  /** The delete was RECORDED - the grid drops the card now and the host tears
-   *  the stack down behind it. */
   onDeleted?: () => void;
-  /** A move from the card's own menu: the grid hides the card straight away
-   *  (`onMoved`) and reveals it again if the server refuses (`onMoveFailed`) -
-   *  the same contract dragging it onto a folder already had. */
   onMoved?: () => void;
   onMoveFailed?: () => void;
 }) {
@@ -146,29 +123,15 @@ export function AppCard({
   const [pending, startTransition] = React.useTransition();
   const [confirmOpen, setConfirmOpen] = React.useState(false);
   const dep = project.latestDeployment;
-  // What the viewer may do to THIS app (per-app, so a folder grant counts).
-  // Absent means the list didn't resolve them - leave the item enabled and let
-  // the server answer, rather than greying out an action they may well hold.
   const caps = project.capabilities;
   const can = (c: Capability) => !caps || caps.includes(c);
-  // A repo ⇒ a git deploy (real branch + repo). Otherwise the app has no
-  // git, so we describe its source instead of inventing a branch. Shared with
-  // the app overview page so the two never disagree (see app-source.tsx).
   const nonGit = project.repo ? null : describeAppSource(project);
 
-  // The card mirrors the app header's lifecycle controls in a minimized
-  // form: Start/Stop track the persisted status (no live subscription on the
-  // overview, so a refresh after each action keeps the menu in sync).
   const stopped = project.status === "idle";
   const stopping = project.status === "stopping";
-  // Never built at all: there is no container to start, stop or reroute, so the
-  // menu drops those verbs entirely and Redeploy becomes the first Deploy.
   const neverDeployed = stopped && !dep;
-  // A backup is being put back in place - Deplo owns the stack until it lands.
   const restoring = project.status === "restoring";
 
-  // Clicking anywhere on the card opens the app overview. The latest commit
-  // is shown on the card itself (compact) rather than deep-linking to it.
   const href = `/apps/${project.slug}`;
 
   function redeploy() {
@@ -185,8 +148,6 @@ export function AppCard({
         toast.success(
           `${neverDeployed ? "Deploying" : "Redeploying"} ${project.name}`,
         );
-        // Follow the new build straight to its live logs; fall back to a refresh
-        // if no id came back.
         if (res.data?.id) {
           router.push(`/apps/${project.slug}/deployments/${res.data.id}`);
         } else {
@@ -196,9 +157,6 @@ export function AppCard({
     });
   }
 
-  // Lifecycle verbs (start/stop) all take a single `id` argument and share the
-  // same optimistic-refresh shape: fire, and let the live status badge say what
-  // the container is doing rather than freezing the menu until it answers.
   function act(mutation: string, success: string) {
     startTransition(async () => {
       const res = await gqlAction(mutation, { id: project.id });
@@ -209,8 +167,6 @@ export function AppCard({
     });
   }
 
-  // Reload re-applies routing (domains + basic auth) to the running container
-  // with no rebuild; the mutation returns a status string we turn into a toast.
   function reload() {
     startTransition(async () => {
       const res = await gqlAction<{ reloadApp: string | null }, string>(
@@ -233,12 +189,7 @@ export function AppCard({
     });
   }
 
-  // Move this app into a folder, or back to the top level (folderId null).
-  // The grid also supports dragging a card onto a folder; this menu is the
-  // keyboard-friendly, always-available counterpart.
   function moveTo(folderId: string | null) {
-    // The card leaves the view it is in NOW - the grid hides it and puts it back
-    // if the move is refused, the same contract a drag-and-drop move gets.
     onMoved?.();
     startTransition(async () => {
       const res = await gqlAction(
@@ -255,8 +206,6 @@ export function AppCard({
     });
   }
 
-  // Move this app to another environment of its project (ADR-0009: each
-  // environment holds its own apps), or out of the project entirely.
   function moveToEnvironment(environmentId: string | null) {
     onMoved?.();
     startTransition(async () => {
@@ -281,9 +230,6 @@ export function AppCard({
     });
   }
 
-  // The card's actions, rendered once for whichever menu primitive is passed.
-  // Each item carries a native `title` so hovering it for ~a second explains
-  // what it does (reliable inside menus, unlike a nested styled tooltip).
   const menu = (K: MenuKit) => (
     <>
       {neverDeployed ? null : restoring ? (
@@ -490,20 +436,9 @@ export function AppCard({
     </>
   );
 
-  // Shared interactive controls (status dot + drag handle + ⋯ menu). Used by
-  // both layouts. At rest the status dot sits flush against the ⋯; the drag
-  // handle is zero-width until hover, when it expands and slides the dot left.
   const actions = (
     <div className="pointer-events-auto relative z-10 flex items-center gap-1">
-      {/**
-       * App status as a bare dot (green / amber / red / grey), no label - the dot's
-       * colour is the status; hovering it shows the word.
-       */}
       <LiveCardStatusDot project={project} liveState={liveState} />
-      {/**
-       * Drag handle is taken out of the flow at rest (display:none) so it leaves no empty
-       * gap; it appears on hover / keyboard focus.
-       */}
       <span className="hidden animate-in items-center duration-200 fade-in-0 slide-in-from-right-2 group-hover:flex focus-within:flex">
         {dragHandle}
       </span>
@@ -548,9 +483,6 @@ export function AppCard({
           id: project.id,
         })
       }
-      // The delete is RECORDED by the time this fires (the teardown runs on the host
-      // behind it), so the card goes now, and the refresh re-renders the grid in place
-      // rather than bouncing the user out of the folder they were in.
       onDeleted={() => {
         onDeleted?.();
         router.refresh();
@@ -558,9 +490,6 @@ export function AppCard({
     />
   );
 
-  // Stretched, whole-card navigation link. While a reorder drag is active it is
-  // made inert (no pointer events, not focusable), so dragging the card never
-  // navigates and keyboard users can't fall through to it while reordering.
   const overlayLink = (
     <Link
       href={href}
@@ -574,16 +503,10 @@ export function AppCard({
     />
   );
 
-  // The app's source identity (repo or "Compose"/image/upload), shown in the
-  // deployment box when there's no deployment yet. Mirrors the list view so a
-  // freshly imported git project still shows its repo before its first deploy.
   const identity = project.repo ? (
     <>
       <GitHubIcon className="size-3.5 shrink-0" />
       <span className="min-w-0 truncate">{project.repo.repo}</span>
-      {/* Names a repo, carries no credential to clone it with: the deploy would
-          die with a bare `exit status 128`. Derived from props the grid already
-          has, so flagging 70 cards costs nothing. */}
       {repoCredentialMissing(project) && (
         <SimpleTooltip content="No GitHub App is linked - a private repository will not clone">
           <TriangleAlert className="pointer-events-auto size-3.5 shrink-0 text-[var(--warning)]" />
@@ -605,9 +528,6 @@ export function AppCard({
           <AppLogo logo={project.logo} tone={project.logoTone} size={36} />
           <div className="min-w-0 flex-1">
             <span className="block truncate font-medium">{project.name}</span>
-            {/* Same subtitle slot the app's own header uses: the live URL when
-                a domain is linked, otherwise what this App *is* - "No domain
-                yet" only restated the absence the empty slot already showed. */}
             <p className="mt-1 truncate text-xs text-muted-foreground">
               {project.productionUrl
                 ? project.productionUrl.replace(/^https?:\/\//, "")
@@ -620,7 +540,6 @@ export function AppCard({
               <span className="whitespace-nowrap">
                 {timeAgoShort(dep.createdAt)}
               </span>
-              {/* Branch only for a git deploy - compose/image/upload have none. */}
               {project.repo && (
                 <>
                   <span className="text-muted-foreground/40">on</span>
@@ -647,8 +566,6 @@ export function AppCard({
       </Card>
     ) : (
       <Card className="group relative flex flex-col gap-4 p-5 transition-colors hover:border-foreground/20">
-        {/* Stretched link: the whole card is clickable. Interactive controls
-            below opt back into pointer events and sit above this overlay. */}
         {overlayLink}
 
         <div className="pointer-events-none relative z-[1] flex flex-1 flex-col gap-4">
@@ -659,8 +576,6 @@ export function AppCard({
                 <span className="block truncate font-medium">
                   {project.name}
                 </span>
-                {/* See the list view above: URL when there is one, else the
-                    App's kind, exactly as its management header reads. */}
                 <p className="mt-1 truncate text-xs text-muted-foreground">
                   {project.productionUrl
                     ? project.productionUrl.replace(/^https?:\/\//, "")
@@ -672,13 +587,9 @@ export function AppCard({
             {actions}
           </div>
 
-          {/* Latest deployment */}
           {dep ? (
             <div className="rounded-lg border border-border bg-surface p-3">
               <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                {/* Non-git deploys (compose / image / upload) have no commit
-                    SHA; render it only when present so an empty <code> + gap
-                    doesn't leave a blank space before the commit message. */}
                 {dep.commitSha && (
                   <code className="shrink-0 font-mono text-foreground">
                     {dep.commitSha.slice(0, 7)}
@@ -691,7 +602,6 @@ export function AppCard({
               <div className="mt-2 flex items-center gap-2 text-xs text-muted-foreground">
                 <span className="shrink-0">{timeAgoShort(dep.createdAt)}</span>
                 {project.repo ? (
-                  // Git deploy: real branch + repo on the same line.
                   <>
                     <span className="shrink-0 text-muted-foreground/40">
                       on
@@ -702,8 +612,6 @@ export function AppCard({
                     {identity}
                   </>
                 ) : (
-                  // No git (compose / image / upload): no branch - show what the
-                  // project IS (e.g. "Compose") where the repo would be.
                   identity && (
                     <>
                       <span className="shrink-0 text-muted-foreground/40">
@@ -718,8 +626,6 @@ export function AppCard({
           ) : (
             <div className="rounded-lg border border-dashed border-border p-3 text-xs text-muted-foreground">
               No deployments yet
-              {/* Even without a deployment, surface the repo/source identity so a
-                  freshly-imported project still shows where it came from. */}
               {identity && (
                 <div className="mt-2 flex items-center gap-1.5">{identity}</div>
               )}
@@ -731,9 +637,6 @@ export function AppCard({
       </Card>
     );
 
-  // Still arriving: a migration is writing this app and copying data into its
-  // volumes. `inert`, not just pointer-events-none, which the ⋯ cluster opts
-  // back out of with pointer-events-auto - the menu opened and Delete worked.
   if (project.migrationRunId)
     return (
       <div

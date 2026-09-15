@@ -5,40 +5,22 @@ import { McpServer } from "@modelcontextprotocol/server";
 import { DEPLO_VERSION } from "../version";
 import { DOCS_BASE } from "../docs";
 import { runWithIdentity } from "../auth/request-context";
-import type { Capability } from "../types";
+import type { Capability } from "../types/identity";
 import type { GraphQLContext } from "../graphql/context";
 import type { McpSettings } from "../data/mcp-settings";
-import { MCP_TOOLS, type McpToolDef } from "./tools";
+import { MCP_TOOLS } from "./tools/catalog";
+import type { McpToolDef } from "./tools/tool-def";
 import { runGraphql } from "./execute";
 import { safeMessage } from "../graphql/mask-error";
 
-/**
- * Builds the MCP server for ONE request. The authoritative refusal happens inside
- * `lib/data/*` when the tool runs, and a tool that slipped through the filter
- * would still be refused there.
- */
-
 export interface McpPrincipal {
-  /** The GraphQL context built from this request's bearer token. */
   gql: GraphQLContext;
-  /** The active team's MCP policy. */
   settings: McpSettings;
-  /** The token's effective capabilities, for filtering `tools/list`. */
   capabilities: Set<Capability>;
-  /** Whether this TOKEN carries instance-admin (never inherited from the person). */
   instanceAdmin: boolean;
-  /**
-   * Resolve the context for ANOTHER team this connection may act in. MUST THROW
-   * for a team it may not.
-   */
   forTeam: (team: string) => Promise<GraphQLContext>;
 }
 
-/**
- * The team a call works in. On every tool, always: a connection reaches every
- * team its owner may connect agents to, and the one thing an agent must never
- * be left guessing is how to get to another one.
- */
 const TEAM_ARG = z
   .string()
   .optional()
@@ -46,16 +28,13 @@ const TEAM_ARG = z
     "Team id or slug, from list_teams. Omit for this connection's default team.",
   );
 
+// Cosmetic: a tool that slips this filter is still refused in lib/data, which is the boundary.
 function visible(tool: McpToolDef, principal: McpPrincipal): boolean {
   if (tool.requires === null) return true;
   if (tool.requires === "instanceAdmin") return principal.instanceAdmin;
   return principal.capabilities.has(tool.requires);
 }
 
-/**
- * Slice the single top-level array in a result, so a fleet of 74 apps does not
- * arrive as one wall of JSON.
- */
 function paginate(
   data: unknown,
   limit: number | undefined,
@@ -78,9 +57,6 @@ function paginate(
   };
 }
 
-/**
- * Hard ceiling on one tool result, in characters.
- */
 const MAX_RESULT_CHARS = 60_000;
 
 function text(value: unknown) {
@@ -99,10 +75,6 @@ function failure(message: string) {
   };
 }
 
-/**
- * Sent once at `initialize`. The tool table says what Deplo can DO; this says
- * what Deplo IS, so an agent uses Deplo's own words and knows where to read more.
- */
 const instructions = `Deplo is a self-hosted deploy platform: it turns repositories, Docker images and Compose files into containers fronted by Traefik, on servers this instance manages.
 
 Its vocabulary, which the tools use literally:
@@ -136,34 +108,18 @@ export function buildMcpServer(principal: McpPrincipal): McpServer {
       {
         title: tool.title,
         description: tool.description,
-        // Every tool takes the team as an optional argument. Added centrally so
-        // the rows stay a table of what Deplo can do, with nothing about
-        // tenancy repeated in each of them.
-        // Unknown keys are kept, not stripped, so the handler below can REFUSE
-        // them by name. Advertising `additionalProperties: false` instead would
-        // make a client's own validator answer, and never in Deplo's words.
+        // passthrough: zod drops an unknown key silently, so a wrong argument read back as "none given".
         inputSchema: tool.input.extend({ team: TEAM_ARG }).passthrough(),
-        // `readOnlyHint` and `idempotentHint` already default to false, so
-        // spelling them out bought nothing and cost a line on every tool. The
-        // other two default to TRUE and have to stay explicit.
         annotations: {
           ...(tool.readOnly ? { readOnlyHint: true } : {}),
           ...(tool.idempotent ? { idempotentHint: true } : {}),
+          // Both default to TRUE upstream, so they stay explicit.
           destructiveHint: tool.destructive ?? false,
-          // Every tool acts on this Deplo instance and nothing else.
           openWorldHint: false,
         },
       },
       async (args) => {
-        // No confirmation step, deliberately. What an agent may do is the token's
-        // Capabilities and nothing on top: a second gate here would be a second permission
-        // system, and it could only ever drift from the first.
         try {
-          // An argument this tool does not take is a REFUSAL that names it. Dropped
-          // silently (zod's default), `container` instead of `service` reaches the
-          // resolver as "no container was given", and the model reads Deplo's "pick
-          // one" as its own mistake and tries another spelling. `_`-prefixed keys
-          // are protocol metadata some clients add, never the model's doing.
           const accepted = new Set([...Object.keys(tool.input.shape), "team"]);
           const unknown = Object.keys(args).filter(
             (k) => !accepted.has(k) && !k.startsWith("_"),
@@ -175,17 +131,12 @@ export function buildMcpServer(principal: McpPrincipal): McpServer {
                 : `${tool.name} takes no argument "${unknown[0]}". It takes: ${[...accepted].join(", ")}.`,
             );
 
-          // `team` is Deplo's, not the tool's: taken out before the arguments
-          // become GraphQL variables, and resolved into a whole principal
-          // rather than passed down as a value some resolver might trust.
           const { team, ...rest } = args as Record<string, unknown> & {
             team?: string;
           };
           const ctx = team ? await principal.forTeam(team) : principal.gql;
 
-          // The two tools that bypass GraphQL have to enter the identity themselves:
-          // `runGraphql` does it for every other tool, and `handler.fetch` runs OUTSIDE the
-          // scope the route opened.
+          // A run tool skips runGraphql, and the SDK handler runs outside the scope the route opened.
           if (tool.run) {
             const go = () => tool.run!(rest, ctx);
             return text(
@@ -197,13 +148,7 @@ export function buildMcpServer(principal: McpPrincipal): McpServer {
             ? tool.variables(rest)
             : (rest as Record<string, unknown>);
           const { data, error } = await runGraphql(tool.query, variables, ctx);
-          // Surfaced verbatim: Deplo's messages are written to be read by a person ("This
-          // token is limited to specific projects and can't access …"), and that is exactly
-          // the sentence the model needs in order to do something else instead.
           if (error) return failure(error);
-          // Validated by the tool's own zod schema before this runs (the test
-          // pins that a paginated tool declares both), so the cast asserts what
-          // the SDK already checked.
           return text(
             tool.paginate
               ? paginate(

@@ -15,11 +15,6 @@ import {
   normalizeSourceBaseUrl,
 } from "../transport";
 
-/**
- * The transport half of the Coolify adapter. Every refusal here is a real body
- * from Coolify's own middlewares, which is why they are matched by their words.
- */
-
 const cred = {
   kind: "coolify" as const,
   baseUrl: "https://coolify.test",
@@ -77,7 +72,6 @@ test("a read goes out as a bearer token on /api/v1", async (t) => {
   assert.deepEqual(await listProjects(cred), []);
   assert.equal(seenUrl, "https://coolify.test/api/v1/projects");
   assert.equal(seenAuth, `Bearer ${cred.apiKey}`);
-  // The other platform's header must never ride along with it.
   assert.equal(seenKey, null);
 });
 
@@ -87,7 +81,6 @@ test("an API somebody turned off says so, and says where to turn it on", async (
   await assert.rejects(listProjects(cred), (e: Error) => {
     assert.match(e.message, /API is turned off/);
     assert.match(e.message, /Settings/);
-    // Coolify's own words are kept, never replaced.
     assert.match(e.message, /Coolify said: API is disabled\./);
     return true;
   });
@@ -147,7 +140,6 @@ test("a rate limit is waited out and retried, then given up on with the number",
   await assert.rejects(listProjects(cred), /200 requests a minute/);
   assert.equal(calls, 6);
 
-  // The wait Coolify asked for is taken, and it is the whole panel that waits.
   calls = 0;
   __setMigrationFetchForTest(async () => {
     calls += 1;
@@ -193,8 +185,6 @@ test("a transport failure arrives readable, naming Coolify", async (t) => {
 });
 
 test("a blip is retried, and a wrong address is not", async (t) => {
-  // A migration reads the panel hundreds of times. One reset used to end the data
-  // phase with every service after it left on empty storage.
   reset(t);
   let calls = 0;
   __setMigrationFetchForTest(async () => {
@@ -211,7 +201,6 @@ test("a blip is retried, and a wrong address is not", async (t) => {
   assert.deepEqual(await listProjects(cred), []);
   assert.equal(calls, 3);
 
-  // Nothing listening is not a blip: the Connect screen has to say so at once.
   calls = 0;
   __setMigrationFetchForTest(async () => {
     calls++;
@@ -233,8 +222,6 @@ test("the healthcheck names the panel that answered, or nothing", async (t) => {
   __setMigrationFetchForTest(async () => new Response("OK", { status: 200 }));
   assert.equal(await panelFromHealth("https://panel.test"), "coolify");
 
-  // The other panel answers on the same path in its own words, and reading any
-  // 200 as Coolify told people their ADDRESS was wrong when their key was.
   __setMigrationFetchForTest(
     async () => new Response('{"ok":true}', { status: 200 }),
   );
@@ -262,11 +249,9 @@ test("the one write is a stop, and it posts", async (t) => {
 
 test("a list the panel does not keep answers empty; a list it refuses to answer throws", async (t) => {
   reset(t);
-  // An older build without the route: 404 is "no such list".
   refuses(404, "Not found.");
   assert.deepEqual(await listS3Storages(cred), []);
   assert.deepEqual(await listDatabaseBackups(cred, "db-1"), []);
-  // The rate limit is NOT "no such list": swallowed, it read as no destination.
   __setMigrationFetchForTest(
     async () =>
       new Response(JSON.stringify({ message: "Too Many Attempts." }), {

@@ -10,8 +10,8 @@ import { __setTestDb, __resetTestDb } from "../db/client";
 import {
   memberships as membershipsTable,
   membershipCapabilities as membershipCapabilitiesTable,
-  teams as teamsTable,
-} from "../db/schema/control-plane";
+} from "../db/schema/control-plane/access-control";
+import { teams as teamsTable } from "../db/schema/control-plane/identity";
 import { runWithIdentity } from "../auth/request-context";
 import { capabilitiesForRole } from "../membership-shared";
 import {
@@ -22,12 +22,6 @@ import {
   USER_1,
 } from "./identity-test-helpers";
 import { canDeleteTeam, deleteTeam } from "./team-delete";
-
-/**
- * deleteTeam gating + cascade against pglite. The cookie switch after the delete
- * throws outside a request scope and is best-effort by design - asserted
- * indirectly by the delete succeeding.
- */
 
 const USER_2 = "user_2";
 
@@ -48,7 +42,6 @@ beforeEach(async () => {
   await pg.exec(TRUNCATE_IDENTITY);
 });
 
-/** Add an existing user to another team (seedIdentity seeds one membership per user). */
 async function addMembership(userId: string, teamId: string, role = "member") {
   const membershipId = `mem_${userId}_${teamId}`;
   await db.insert(membershipsTable).values({
@@ -75,8 +68,6 @@ async function teamExists(teamId: string): Promise<boolean> {
 }
 
 test("the founder deletes the team; cascades take the memberships", async () => {
-  // USER_1 is TEAM_A's founder (seed default) and needs a second team to pass
-  // the only-team guard.
   await seedIdentity(db);
   await addMembership(USER_1, TEAM_B);
 
@@ -101,9 +92,6 @@ test("an assigned owner (not the founder, not an admin) is rejected", async () =
     ],
     users: [
       { id: USER_1, teamId: TEAM_A, role: "owner" },
-      // Assigned owner: owner ROLE in TEAM_A but not its founder. seedIdentity
-      // defaults owners to instance admin, so pin that off - it would bypass
-      // the founder gate.
       { id: USER_2, teamId: TEAM_A, role: "owner", isInstanceAdmin: false },
     ],
   });
@@ -138,7 +126,7 @@ test("an instance-admin member who is not the founder may delete", async () => {
 });
 
 test("the caller's only team can't be deleted", async () => {
-  await seedIdentity(db); // USER_1 is a member of TEAM_A only
+  await seedIdentity(db);
 
   await assert.rejects(
     runWithIdentity({ userId: USER_1, teamId: TEAM_A }, () =>
@@ -150,9 +138,6 @@ test("the caller's only team can't be deleted", async () => {
 });
 
 test("a teamId that is not the active team fails closed (stale tab)", async () => {
-  // The client echoes back the id the user confirmed; if the active team
-  // changed meanwhile (another tab switched or created a team), the delete
-  // must refuse rather than destroy whatever the cookie now resolves to.
   await seedIdentity(db);
   await addMembership(USER_1, TEAM_B);
 
@@ -166,10 +151,8 @@ test("a teamId that is not the active team fails closed (stale tab)", async () =
   assert.equal(await teamExists(TEAM_B), true);
 });
 
+// A stale token is silently rescoped to the user's first team; the delete must refuse that.
 test("a bearer token scoped to a team the user left fails closed", async () => {
-  // getActiveTeamId silently rescopes a stale token to the user's first team;
-  // deleteTeam must refuse that rescope instead of deleting a team the token was
-  // never scoped to.
   await seedIdentity(db);
 
   await assert.rejects(
@@ -200,9 +183,6 @@ test("on a legacy team with no founder, any owner may delete", async () => {
 });
 
 test("a team with a database, a backup destination, schedules and run history deletes cleanly", async () => {
-  // The riskiest cascade topology: backups/backup_runs point at backup_destination
-  // with ON DELETE RESTRICT while the team delete cascades BOTH sides in one
-  // statement.
   await seedIdentity(db);
   await addMembership(USER_1, TEAM_B);
   const T0 = "2026-01-01T00:00:00.000Z";
@@ -248,7 +228,6 @@ test("canDeleteTeam reports the gate and the only-team guard", async () => {
     ],
   });
 
-  // Founder of their only team: allowed but blocked by the guard.
   assert.deepEqual(
     await runWithIdentity({ userId: USER_1, teamId: TEAM_A }, () =>
       canDeleteTeam(),
@@ -261,7 +240,6 @@ test("canDeleteTeam reports the gate and the only-team guard", async () => {
     },
   );
 
-  // With a second team the guard lifts.
   await addMembership(USER_1, TEAM_B);
   assert.deepEqual(
     await runWithIdentity({ userId: USER_1, teamId: TEAM_A }, () =>
@@ -275,7 +253,6 @@ test("canDeleteTeam reports the gate and the only-team guard", async () => {
     },
   );
 
-  // A plain member is never allowed.
   assert.deepEqual(
     await runWithIdentity({ userId: USER_2, teamId: TEAM_A }, () =>
       canDeleteTeam(),
@@ -290,8 +267,6 @@ test("canDeleteTeam reports the gate and the only-team guard", async () => {
 });
 
 test("a deleted team's stacks are queued for teardown, with no team left to name", async () => {
-  // The team row is gone before the fan-out starts, so the queue entries are the
-  // ONLY record left anywhere that these containers exist on that host.
   await seedIdentity(db);
   await addMembership(USER_1, TEAM_B);
   const T0 = "2026-01-01T00:00:00.000Z";
@@ -309,7 +284,6 @@ test("a deleted team's stacks are queued for teardown, with no team left to name
     deleteTeam(TEAM_A),
   );
 
-  // The teardown runs behind the response; the enqueue is its first act.
   let rows: { deploy_key: string; team_id: string | null }[] = [];
   for (let i = 0; i < 100; i++) {
     rows = (

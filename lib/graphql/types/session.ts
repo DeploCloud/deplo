@@ -6,10 +6,6 @@ import {
   type UserSessionDTO,
 } from "@/lib/data/sessions";
 
-/**
- * The signed-in devices of the CURRENT user.
- */
-
 const DeviceKindEnum = builder.enumType("DeviceKind", {
   values: ["desktop", "mobile", "tablet", "unknown"] as const,
 });

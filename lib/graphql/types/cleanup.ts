@@ -2,22 +2,18 @@ import { builder } from "../builder";
 import { CLEANUP_RUNS_TOPIC, pubSub } from "../pubsub";
 import {
   getCleanupPolicy,
-  listCleanupRuns,
-  listCleanupRunsForSubscriber,
-  runCleanupNow,
   setServerCleanupExcluded,
   updateCleanupPolicy,
   type CleanupPolicy,
+} from "@/lib/data/docker-cleanup/policy";
+import {
+  listCleanupRuns,
+  listCleanupRunsForSubscriber,
   type CleanupRunDTO,
-  type CleanupRunItem,
-} from "@/lib/data/docker-cleanup";
+} from "@/lib/data/docker-cleanup/run-history";
+import type { CleanupRunItem } from "@/lib/data/docker-cleanup/scopes";
+import { runCleanupNow } from "@/lib/data/docker-cleanup/sweep";
 
-/* ------------------------------------------------------------------ */
-/* Enums                                                               */
-/* ------------------------------------------------------------------ */
-
-// The scope allow-list, mirroring `CLEANUP_SCOPES` (lib/data/docker-cleanup.ts)
-// and, through it, the agent's proto enum.
 const DockerCleanupScopeEnum = builder.enumType("DockerCleanupScope", {
   description:
     "A class of Docker object a cleanup may reclaim. build_cache = the daemon's BuildKit cache, plus the build directories a crashed build left behind. dangling_images = untagged layers (never `-a`). orphan_volumes = ANONYMOUS volumes no container references (the data dirs of removed containers, abandoned buildkit stores); a named volume is never touched. unused_app_images = old app images no container references, bounded per app by that app's `rollbackKeep` (falling back to keepImagesPerApp where a rollback is impossible); an app that was DELETED keeps none. Deplo pushes to no registry, so a removed image comes back only by a rebuild. unused_pulled_images = tagged images Deplo did not build that no container uses, aged on when they were last pulled here; a deploy that needs one pulls it again, and build tooling is spared. leftover_app_files = the config files of Apps and databases that were DELETED, judged against the stacks this instance still knows about; skipped outright on an agent too old to have the list. leftover_networks = the Docker networks of Environments, previews and stacks that are gone, judged against the same kind of list; it reclaims address space rather than disk. All are on by default.",
@@ -39,10 +35,6 @@ const DockerCleanupTriggerEnum = builder.enumType("DockerCleanupTrigger", {
 const DockerCleanupRunStatusEnum = builder.enumType("DockerCleanupRunStatus", {
   values: ["running", "success", "failed"] as const,
 });
-
-/* ------------------------------------------------------------------ */
-/* Object types                                                        */
-/* ------------------------------------------------------------------ */
 
 const DockerCleanupPolicyRef = builder
   .objectRef<CleanupPolicy>("DockerCleanupPolicy")
@@ -134,10 +126,6 @@ const DockerCleanupRunRef = builder
     }),
   });
 
-/* ------------------------------------------------------------------ */
-/* Inputs                                                              */
-/* ------------------------------------------------------------------ */
-
 const UpdateDockerCleanupPolicyInputType = builder.inputType(
   "UpdateDockerCleanupPolicyInput",
   {
@@ -149,16 +137,10 @@ const UpdateDockerCleanupPolicyInputType = builder.inputType(
       minAgeHours: t.int({ required: true }),
       keepImagesPerApp: t.int({ required: true }),
       scopes: t.field({ type: [DockerCleanupScopeEnum], required: true }),
-      // Optional and NOT the same as an empty list: omitted leaves the opt-out list
-      // untouched, `[]` clears it (every server is swept).
       excludedServerIds: t.stringList({ required: false }),
     }),
   },
 );
-
-/* ------------------------------------------------------------------ */
-/* Queries (the DB reads, no agent is dialed)                         */
-/* ------------------------------------------------------------------ */
 
 builder.queryFields((t) => ({
   dockerCleanupPolicy: t.field({
@@ -191,10 +173,6 @@ builder.queryFields((t) => ({
       }),
   }),
 }));
-
-/* ------------------------------------------------------------------ */
-/* Mutations                                                           */
-/* ------------------------------------------------------------------ */
 
 builder.mutationFields((t) => ({
   updateDockerCleanupPolicy: t.field({
@@ -242,15 +220,6 @@ builder.mutationFields((t) => ({
   }),
 }));
 
-/* ------------------------------------------------------------------ */
-/* Subscription (the live history)                                     */
-/* ------------------------------------------------------------------ */
-
-/**
- * The live history. Sweeps are background jobs - a manual one returns before the
- * host has done anything, and the nightly one has no client at all, so the run
- * rows are the progress indicator, and they have to move on their own.
- */
 builder.subscriptionFields((t) => ({
   dockerCleanupRuns: t.field({
     type: [DockerCleanupRunRef],
@@ -262,13 +231,8 @@ builder.subscriptionFields((t) => ({
   }),
 }));
 
-/** Exported for the SSE test: it must stay cookie-free across iteration ticks. */
 export async function* cleanupRunsStream(): AsyncGenerator<CleanupRunDTO[]> {
-  // Initial snapshot - a fresh subscriber paints the current history immediately,
-  // which also re-syncs a client whose SSE connection just self-healed.
   yield await listCleanupRunsForSubscriber();
-  // The payload carries nothing beyond "something changed" (the channel's key is a
-  // constant), so each ping is answered with a fresh read rather than a diff.
   for await (const _ping of pubSub.subscribe(
     "cleanupRunsChanged",
     CLEANUP_RUNS_TOPIC,

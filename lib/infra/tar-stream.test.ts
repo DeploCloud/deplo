@@ -18,8 +18,6 @@ const BLOCK = 512;
 
 const OPTS = { maxEntryBytes: 1024 * 1024, maxScanBytes: 64 * 1024 * 1024 };
 
-/* ------------------------------------------------------------------ */
-
 test("readTarEntry: extracts the named entry's exact bytes", async () => {
   const png = Buffer.from([
     0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 1,
@@ -104,8 +102,6 @@ test("readTarEntry: honours a PAX path= override (what Go writes for long paths)
 });
 
 test("readTarEntry: a PAX path with multibyte characters is sliced by BYTES", async () => {
-  // Record lengths are byte counts: decoding first would mis-slice the blob and
-  // lose the override (the entry would keep its truncated header name).
   const long = `files/${"caffè/".repeat(20)}favicon.png`;
   const archive = Buffer.concat([
     entry(
@@ -191,8 +187,6 @@ test("readTarEntry: stops consuming the stream as soon as it has the entry", asy
     await readTarEntry(counted(), { ...OPTS, name: "files/favicon.png" }),
     Buffer.from("EARLY"),
   );
-  // Two blocks (header + body) is all it takes; the 64 KiB tail never ships,
-  // and the producer is closed (for a gRPC stream: the call is cancelled).
   assert.equal(delivered, 2);
   assert.equal(closed, true);
 });
@@ -228,7 +222,7 @@ test("tarEntries: reports sizes without buffering when read() declines", async (
 test("tarEntries: a corrupt header ends the scan instead of throwing", async () => {
   const archive = Buffer.concat([
     entry("files/a.txt", "a"),
-    Buffer.alloc(BLOCK, 0x41), // garbage where a header should be
+    Buffer.alloc(BLOCK, 0x41),
     entry("files/b.txt", "b"),
     END,
   ]);
@@ -249,9 +243,6 @@ test("tarEntries: a truncated stream yields what it managed to read", async () =
 });
 
 test("readTarEntry: reads a REAL archive produced by tar(1), gzip included", async (t) => {
-  // The hand-built cases above pin the format; this one proves the parser eats
-  // what an actual tar writes (long paths, PAX records and all). Skipped where
-  // tar isn't installed rather than failing the suite.
   const dir = mkdtempSync(join(tmpdir(), "deplo-tar-test-"));
   try {
     const deep = join(
@@ -284,8 +275,6 @@ test("readTarEntry: reads a REAL archive produced by tar(1), gzip included", asy
       icon,
       "plain tar",
     );
-    // The agent ships the archive gzipped; the caller gunzips, so feeding the
-    // decompressed bytes back through must behave identically.
     const round = gzipSync(tarball);
     assert.equal(round.length > 0, true);
   } finally {

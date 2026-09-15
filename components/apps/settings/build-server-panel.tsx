@@ -19,25 +19,15 @@ import { gqlAction } from "@/lib/graphql-client";
 export interface BuildServerChoice {
   id: string;
   name: string;
-  /** "amd64" | "arm64", or "" when the agent is too old to report one. */
   hostArch: string;
-  /** True for a host dedicated to building; false for an ordinary server. */
   buildOnly: boolean;
-  /** True when this host builds for an app whose own build server is down. */
   buildFallback: boolean;
   isDeploHost: boolean;
 }
 
-/** The stored value's three meanings, as one select value. `AUTOMATIC` and `SELF`
- *  are not server ids, and no server id can collide with them (ids are `srv_…`). */
 const AUTOMATIC = "__auto__";
 const SELF = "__self__";
 
-/**
- * Where this app COMPILES, when that is not where it runs. It saves on change
- * rather than joining a Save button, like every other panel in that card, and
- * changing it never starts a deploy: it decides where the NEXT build happens.
- */
 export function BuildServerPanel({
   appId,
   serverId,
@@ -48,7 +38,6 @@ export function BuildServerPanel({
   choices,
 }: {
   appId: string;
-  /** The server the app RUNS on - the "build here" option, and the arch to match. */
   serverId: string;
   serverName: string;
   serverArch: string;
@@ -67,16 +56,10 @@ export function BuildServerPanel({
   );
   const [fallback, setFallback] = React.useState(buildFallback);
 
-  // Everything except the app's own server, which is the SELF option above.
   const others = choices.filter((c) => c.id !== serverId);
   const compatible = (c: BuildServerChoice) =>
     c.hostArch !== "" && serverArch !== "" && c.hostArch === serverArch;
-  // Whether Automatic would actually find anything. Said out loud, because
-  // "Automatic" on a fleet with no build server is a setting that does nothing, and
-  // silently doing nothing is what makes people distrust a control.
   const autoWouldUse = others.some((c) => c.buildOnly && compatible(c));
-  // Where a build actually goes when the chosen server cannot take it. The Deplo
-  // host first, exactly as the deploy resolves it (lib/deploy/build-server.ts).
   const fallbackName = others
     .filter((c) => c.buildFallback && compatible(c) && c.id !== value)
     .sort((a, b) => Number(b.isDeploHost) - Number(a.isDeploHost))[0]?.name;
@@ -97,8 +80,6 @@ export function BuildServerPanel({
         toast.success("Build server saved");
         router.refresh();
       } else {
-        // The server refused - go back to what it actually holds rather than
-        // leaving the form showing a value nobody stored.
         setValue(
           buildServerId === null
             ? AUTOMATIC
@@ -130,7 +111,6 @@ export function BuildServerPanel({
     });
   }
 
-  // The fallback only means anything while a build actually happens elsewhere.
   const buildsElsewhere =
     value !== SELF && (value !== AUTOMATIC || autoWouldUse);
 

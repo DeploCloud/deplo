@@ -13,12 +13,6 @@ import { CapabilityTip } from "@/components/apps/app-capabilities";
 import { gqlAction } from "@/lib/graphql-client";
 import { DocsLink } from "@/components/ui/docs-link";
 
-/**
- * The master switch for one app's container console. Turning it ON is a real
- * decision - a shell inside the running container - so it asks once; turning it
- * off is immediate and closes the sessions already open.
- */
-
 const SET_ENABLED = /* GraphQL */ `
   mutation ($appId: String!, $enabled: Boolean!) {
     setConsoleEnabled(appId: $appId, enabled: $enabled)
@@ -34,7 +28,6 @@ export function ConsoleSettingsForm({
   appId: string;
   slug: string;
   enabled: boolean;
-  /** Whether the viewer may actually open it once it is on. */
   canConsole: boolean;
 }) {
   const router = useRouter();
@@ -43,14 +36,14 @@ export function ConsoleSettingsForm({
   const [confirmOn, setConfirmOn] = React.useState(false);
 
   function apply(v: boolean) {
-    setEnabled(v); // optimistic
+    setEnabled(v);
     startTransition(async () => {
       const res = await gqlAction(SET_ENABLED, { appId, enabled: v });
       if (res.ok) {
         toast.success(v ? "Console is on" : "Console is off");
         router.refresh();
       } else {
-        setEnabled(!v); // rollback
+        setEnabled(!v);
         toast.error(res.error);
       }
     });

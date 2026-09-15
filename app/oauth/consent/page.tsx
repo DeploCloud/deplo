@@ -1,20 +1,16 @@
 import { redirect } from "next/navigation";
-import { requireUser } from "@/lib/auth";
+import { requireUser } from "@/lib/auth/current-user";
 import {
   getOAuthClientForConsent,
   listConnectableTeamIds,
 } from "@/lib/data/mcp-clients";
-import { listScopeTree } from "@/lib/data/tokens";
+import { listScopeTree } from "@/lib/data/tokens/scope-tree";
 import { requireActiveTeamId } from "@/lib/membership";
 import { rebuildOauthQuery } from "@/lib/auth/oauth-query";
 import { publicBaseUrl } from "@/lib/public-url";
 import { ConsentForm } from "@/components/oauth/consent-form";
 import { ConsentRefusal } from "@/components/oauth/consent-refusal";
 
-/**
- * The OAuth consent screen - Deplo's half of connecting an AI client. It is a
- * token-minting form, because approving it mints a real API token.
- */
 export default async function OAuthConsentPage(props: {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
@@ -23,14 +19,10 @@ export default async function OAuthConsentPage(props: {
   const clientId = typeof params.client_id === "string" ? params.client_id : "";
   const scope = typeof params.scope === "string" ? params.scope : "";
 
-  // Must survive the round trip byte for byte - see `rebuildOauthQuery`.
   const oauthQuery = rebuildOauthQuery(params);
 
   if (!clientId) redirect("/settings/mcp");
 
-  // Refusing to render without the provider's signature is not the security boundary -
-  // the consent endpoint verifies it for real (and its expiry), and the mint
-  // requires the record that endpoint writes.
   if (typeof params.sig !== "string" || !params.sig)
     return (
       <ConsentRefusal
@@ -53,8 +45,6 @@ export default async function OAuthConsentPage(props: {
   const [tree, activeTeamId, connectableTeamIds] = await Promise.all([
     listScopeTree(),
     requireActiveTeamId(),
-    // The teams an unscoped connection will act in: where this person may
-    // connect agents and MCP is on. Named on the form, so Authorize is read.
     listConnectableTeamIds(),
   ]);
 

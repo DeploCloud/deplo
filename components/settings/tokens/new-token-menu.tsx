@@ -23,7 +23,6 @@ import {
 import { Button } from "@/components/ui/button";
 import { TOKEN_PRESETS, type TokenPresetId } from "@/lib/token-presets";
 
-/** Marks for the shipped templates. Data stays in `lib/token-presets.ts`. */
 export const TOKEN_PRESET_ICON: Record<TokenPresetId, LucideIcon> = {
   readonly: Eye,
   ci: Rocket,
@@ -32,13 +31,8 @@ export const TOKEN_PRESET_ICON: Record<TokenPresetId, LucideIcon> = {
   root: ShieldAlert,
 };
 
-/** The mark for a token whose permissions match no template. */
 export const CUSTOM_TOKEN_ICON = KeyRound;
 
-/**
- * "New token" is a menu, not a button: a token's permission set is mandatory, and
- * forty checkboxes is not a first decision anyone should have to make.
- */
 export function NewTokenMenu() {
   const router = useRouter();
   return (

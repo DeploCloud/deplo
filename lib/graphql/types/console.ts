@@ -24,16 +24,6 @@ import {
   execInDatabase,
 } from "@/lib/data/database-console";
 
-/**
- * GraphQL surface for the real container console: read the attachable instances
- * for an app, probe the default container's shell label, and exec a command inside
- * the live container.
- */
-
-/* ------------------------------------------------------------------ */
-/* Object types                                                        */
-/* ------------------------------------------------------------------ */
-
 const ConsoleInstanceRef = builder
   .objectRef<ConsoleInstance>("ConsoleInstance")
   .implement({
@@ -197,7 +187,6 @@ const OverviewAppStateRef = builder
     }),
   });
 
-/** Result of running a command in the live container. */
 interface ExecResult {
   output: string;
   detach?: boolean;
@@ -211,14 +200,9 @@ const ExecResultRef = builder.objectRef<ExecResult>("ExecResult").implement({
   }),
 });
 
-/* ------------------------------------------------------------------ */
-/* Inputs                                                              */
-/* ------------------------------------------------------------------ */
-
 const ShellLabelInputType = builder.inputType("ShellLabelInput", {
   fields: (t) => ({
     appId: t.string({ required: true }),
-    // Optional explicit instance to probe; default = the running/default target.
     containerName: t.string({ required: false }),
   }),
 });
@@ -227,7 +211,6 @@ const ExecConsoleInputType = builder.inputType("ExecConsoleInput", {
   fields: (t) => ({
     appId: t.string({ required: true }),
     command: t.string({ required: true }),
-    // Optional explicit instance to exec into; default = the default target.
     containerName: t.string({ required: false }),
   }),
 });
@@ -241,10 +224,6 @@ const ExecDatabaseConsoleInputType = builder.inputType(
     }),
   },
 );
-
-/* ------------------------------------------------------------------ */
-/* Queries                                                             */
-/* ------------------------------------------------------------------ */
 
 builder.queryFields((t) => ({
   consoleInfo: t.field({
@@ -329,10 +308,6 @@ builder.queryFields((t) => ({
     resolve: (_r, { databaseId }) => getDatabaseShellLabel(databaseId),
   }),
 }));
-
-/* ------------------------------------------------------------------ */
-/* Mutations                                                           */
-/* ------------------------------------------------------------------ */
 
 builder.mutationFields((t) => ({
   setConsoleEnabled: t.field({

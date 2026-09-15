@@ -1,25 +1,17 @@
-/**
- * Minimal ANSI → styled-segment parser for rendering raw terminal output (e.g. a
- * container's stdout/stderr from `docker attach`) in the browser.
- */
-
 export interface AnsiSegment {
   text: string;
-  /** Tailwind/utility classes for this run, or "" for default styling. */
   className: string;
 }
 
-// Standard 16-color palette mapped to Tailwind text utilities. We map both the
-// normal (30-37) and bright (90-97) ranges; bright maps to the lighter shade.
 const FG: Record<number, string> = {
-  30: "text-zinc-500", // black → readable on a dark bg
+  30: "text-zinc-500",
   31: "text-red-400",
   32: "text-green-400",
   33: "text-yellow-400",
   34: "text-blue-400",
   35: "text-fuchsia-400",
   36: "text-cyan-400",
-  37: "text-zinc-300", // white/default-ish
+  37: "text-zinc-300",
   90: "text-zinc-500",
   91: "text-red-300",
   92: "text-green-300",
@@ -31,7 +23,7 @@ const FG: Record<number, string> = {
 };
 
 interface SgrState {
-  fg: string; // class or ""
+  fg: string;
   bold: boolean;
   dim: boolean;
   underline: boolean;
@@ -50,9 +42,7 @@ function classOf(s: SgrState): string {
   return parts.join(" ");
 }
 
-/** Apply one SGR escape's numeric params to the running style state. */
 function applySgr(state: SgrState, params: number[]): void {
-  // A bare `ESC[m` is treated as reset (params = [0]).
   if (params.length === 0) params = [0];
   for (let i = 0; i < params.length; i++) {
     const p = params[i];
@@ -74,8 +64,6 @@ function applySgr(state: SgrState, params: number[]): void {
     } else if (FG[p]) {
       state.fg = FG[p];
     } else if (p === 38) {
-      // 256-color (38;5;n) or truecolor (38;2;r;g;b): consume the params and
-      // fall back to a neutral bright color rather than rendering nothing.
       if (params[i + 1] === 5) {
         i += 2;
         state.fg = "text-zinc-200";
@@ -84,30 +72,17 @@ function applySgr(state: SgrState, params: number[]): void {
         state.fg = "text-zinc-200";
       }
     }
-    // Background colors (40-47/100-107/48) are intentionally ignored: full-width
-    // backgrounds look wrong in a reflowing, non-grid pane.
   }
 }
 
 const CSI_OR_OSC = /\x1b\[[0-9;?]*[A-Za-z]|\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)/g;
 const SGR = /^\x1b\[([0-9;]*)m$/;
-// Stray single control chars to drop (keep \n and \t).
 const STRAY = /[\x00-\x08\x0b-\x1f\x7f]/g;
 
-/**
- * Strip every ANSI/CSI/OSC escape and stray control char, returning the plain
- * visible text. Used where we need the *content* of a line (e.g. to classify a
- * container log line by keyword) rather than its styling. `\n`/`\t` are kept.
- */
 export function stripAnsi(input: string): string {
   return input.replace(CSI_OR_OSC, "").replace(STRAY, "");
 }
 
-/**
- * Parse a raw terminal string into styled segments. Stateless across calls:
- * pass the full accumulated buffer (styles don't carry between invocations),
- * which is how the attach pane uses it.
- */
 export function parseAnsi(input: string): AnsiSegment[] {
   const segments: AnsiSegment[] = [];
   const state = emptyState();
@@ -118,7 +93,6 @@ export function parseAnsi(input: string): AnsiSegment[] {
     if (!text) return;
     const clean = text.replace(STRAY, "");
     if (!clean) return;
-    // Coalesce adjacent runs that share a class to keep the DOM small.
     const prev = segments[segments.length - 1];
     if (prev && prev.className === cls) prev.text += clean;
     else segments.push({ text: clean, className: cls });
@@ -137,7 +111,6 @@ export function parseAnsi(input: string): AnsiSegment[] {
       applySgr(state, params);
       cls = classOf(state);
     }
-    // Non-SGR CSI/OSC (cursor, clear, title): swallowed - no output.
   }
   push(input.slice(last));
   return segments;

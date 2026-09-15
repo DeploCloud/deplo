@@ -4,11 +4,6 @@ import { plateClass, veilProps } from "@/components/templates/veil";
 import type { LogoAccent } from "@/lib/templates/logo-color";
 import { cn } from "@/lib/utils";
 
-/**
- * A template's logo on its own tile: washed in the logo's own colour, plated
- * when the mark would vanish into the theme. The one renderer for every surface
- * that shows a template - store card, detail page, storefront, create wizard.
- */
 export function LogoTile({
   src,
   accent,
@@ -18,9 +13,7 @@ export function LogoTile({
 }: {
   src: string | null;
   accent?: LogoAccent;
-  /** Tile edge in px. */
   size: number;
-  /** Logo edge in px, ~2/3 of the tile. */
   logoSize: number;
   className?: string;
 }) {

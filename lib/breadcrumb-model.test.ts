@@ -22,7 +22,6 @@ const NO_FLAGS: BreadcrumbFlags = {
   slugMatches: false,
 };
 
-/** A small team: folder Alpha > folder Beta, apps at each level + a project. */
 function graph(): BreadcrumbGraph {
   return {
     folders: [
@@ -95,7 +94,6 @@ function graph(): BreadcrumbGraph {
   };
 }
 
-// Helpers: an app route, and an Overview drill-in.
 const svc = (
   pathname: string,
   g: BreadcrumbGraph = graph(),
@@ -141,8 +139,6 @@ test("every trail is rooted at an Overview crumb", () => {
   assert.equal(overview()![0].name, "Overview");
 });
 
-/* ---- App routes -------------------------------------------------- */
-
 test("nested folder app: Overview → folder → folder → app", () => {
   const segs = svc("/apps/web")!;
   assert.deepEqual(shape(segs), [
@@ -151,7 +147,6 @@ test("nested folder app: Overview → folder → folder → app", () => {
     ["folder", "Beta"],
     ["app", "Web"],
   ]);
-  // Overview dropdown lists the top level; Alpha (the next crumb) is current.
   const ov = segs[0];
   assert.equal(ov.items.find((i) => i.label === "Alpha")!.current, true);
   assert.ok(ov.items.some((i) => i.label === "Store" && i.kind === "project"));
@@ -161,7 +156,6 @@ test("nested folder app: Overview → folder → folder → app", () => {
 test("folder crumbs mark the next node current and list children", () => {
   const segs = svc("/apps/web")!;
   const alpha = segs[1];
-  // Alpha offers subfolder Beta (current - the next crumb) + its own app Root.
   assert.deepEqual(
     alpha.items.map((i) => [i.kind, i.label, i.current]),
     [
@@ -170,7 +164,6 @@ test("folder crumbs mark the next node current and list children", () => {
     ],
   );
   const beta = segs[2];
-  // Beta (leaf) holds Api + Web; Web is current.
   assert.deepEqual(
     beta.items.map((i) => [i.label, i.current]),
     [
@@ -195,13 +188,11 @@ test("app entries carry the app's logo, wherever they are listed", () => {
   g.apps.find((a) => a.slug === "web")!.logo = "https://cdn.test/web.png";
   g.apps.find((a) => a.slug === "shop")!.logo = "https://cdn.test/shop.png";
 
-  // The app crumb ITSELF wears the logo, not just its menu entries.
   assert.equal(
     svc("/apps/web", g)!.find((s) => s.kind === "app")!.logo,
     "https://cdn.test/web.png",
   );
 
-  // Sibling menu on the app crumb, and the folder crumb that holds it.
   const segs = svc("/apps/api", g)!;
   assert.equal(segs.find((s) => s.kind === "app")!.logo, null);
   const siblings = segs.find((s) => s.kind === "app")!.items;
@@ -209,14 +200,12 @@ test("app entries carry the app's logo, wherever they are listed", () => {
     siblings.find((i) => i.label === "Web")!.logo,
     "https://cdn.test/web.png",
   );
-  // No logo set ⇒ null, so the renderer falls back to the generic glyph.
   assert.equal(siblings.find((i) => i.label === "Api")!.logo, null);
   assert.equal(
     segs[2].items.find((i) => i.label === "Web")!.logo,
     "https://cdn.test/web.png",
   );
 
-  // Project crumb + the Overview root's ungrouped apps.
   const proj = svc("/apps/shop", g)!.find((s) => s.kind === "project")!;
   assert.equal(
     proj.items.find((i) => i.label === "Shop")!.logo,
@@ -224,7 +213,6 @@ test("app entries carry the app's logo, wherever they are listed", () => {
   );
   const root = overview(null, null, "grid", g)![0];
   assert.equal(root.items.find((i) => i.label === "Loose")!.logo, null);
-  // Folders and projects have no logo of their own - the field stays absent.
   assert.equal(root.items.find((i) => i.kind === "folder")!.logo, undefined);
   assert.equal(root.items.find((i) => i.kind === "project")!.logo, undefined);
 });
@@ -250,7 +238,6 @@ test("project app: Overview → project → app, env-scoped siblings", () => {
     ["app", "Shop"],
   ]);
   assert.equal(segs[0].items.find((i) => i.label === "Store")!.current, true);
-  // Shop + Cart share env e1; Stage (e2) is excluded.
   assert.deepEqual(
     segs[1].items.map((i) => i.label),
     ["Cart", "Shop"],
@@ -340,8 +327,6 @@ test("flag-gated sections hidden until the store confirms; current always shown"
   );
 });
 
-/* ---- Section preservation on sibling links --------------------------- */
-
 test("sibling links preserve the current section (tab is kept)", () => {
   const segs = svc("/apps/web/deployments")!;
   const service = segs.find((s) => s.kind === "app")!;
@@ -349,7 +334,6 @@ test("sibling links preserve the current section (tab is kept)", () => {
     service.items.find((i) => i.label === "Api")!.href,
     "/apps/api/deployments",
   );
-  // The leaf folder's child-app entry preserves it too.
   assert.equal(
     segs[2].items.find((i) => i.label === "Api")!.href,
     "/apps/api/deployments",
@@ -381,8 +365,6 @@ test("a runtime section (Console) is NOT preserved on siblings", () => {
   );
 });
 
-/* ---- Overview folder / project browsing ------------------------------ */
-
 test("browsing a subfolder: Overview → Alpha → Beta (leaf is current page)", () => {
   const segs = overview("B")!;
   assert.deepEqual(shape(segs), [
@@ -390,7 +372,6 @@ test("browsing a subfolder: Overview → Alpha → Beta (leaf is current page)",
     ["folder", "Alpha"],
     ["folder", "Beta"],
   ]);
-  // No app selected, so Beta's child apps are listed but none is current.
   const beta = last(segs);
   assert.deepEqual(
     beta.items.map((i) => [i.label, i.current]),
@@ -399,7 +380,6 @@ test("browsing a subfolder: Overview → Alpha → Beta (leaf is current page)",
       ["Web", false],
     ],
   );
-  // Overview marks Alpha (the next crumb) current; Alpha marks Beta current.
   assert.equal(segs[0].items.find((i) => i.label === "Alpha")!.current, true);
   assert.equal(segs[1].items.find((i) => i.label === "Beta")!.current, true);
 });
@@ -418,7 +398,6 @@ test("browsing a project: Overview → project, dropdown lists all its apps", ()
     ["overview", "Overview"],
     ["project", "Store"],
   ]);
-  // Browsing (no app selected) lists every app in the project, all envs.
   assert.deepEqual(
     last(segs).items.map((i) => i.label),
     ["Cart", "Shop", "Stage"],
@@ -432,7 +411,7 @@ test("plain Overview root: a single current Overview crumb with the top level", 
   assert.ok(ov.items.some((i) => i.label === "Alpha" && i.kind === "folder"));
   assert.ok(ov.items.some((i) => i.label === "Store" && i.kind === "project"));
   assert.ok(ov.items.some((i) => i.label === "Loose" && i.kind === "app"));
-  assert.ok(ov.items.every((i) => !i.current)); // nothing deeper is selected
+  assert.ok(ov.items.every((i) => !i.current));
 });
 
 test("list view is preserved in folder / project / overview links", () => {
@@ -443,8 +422,6 @@ test("list view is preserved in folder / project / overview links", () => {
   const proj = overview(null, "P", "list")!;
   assert.equal(proj[1].href, "/?project=P&view=list");
 });
-
-/* ---- folderChainFor edge cases --------------------------------------- */
 
 test("folderChainFor tolerates a broken parent link and a cycle", () => {
   const dangling = folderChainFor("B", [{ id: "B", name: "B", parentId: "A" }]);
@@ -458,10 +435,6 @@ test("folderChainFor tolerates a broken parent link and a cycle", () => {
   ]);
   assert.equal(cyclic.length, 2);
 });
-
-/* ------------------------------------------------------------------ */
-/* Storage: its own short trail, not part of the apps tree             */
-/* ------------------------------------------------------------------ */
 
 const dbAt = (path: string): BreadcrumbContext => ({
   pathname: path,
@@ -485,8 +458,6 @@ test("a database reads as Storage / <name>, and the name carries its engine", ()
       ["database", "Primary"],
     ],
   );
-  // The crumb wears the thing's own mark: no uploaded logo here, so the engine
-  // is what the renderer falls back on.
   assert.equal(segs[1]!.dbType, "postgres");
 });
 
@@ -526,8 +497,6 @@ test("switching database keeps the section you are on", () => {
 });
 
 test("a section a sibling may not have is NOT carried over", () => {
-  // Console hides behind a per-database acknowledgement and cron jobs behind a
-  // switch: landing on a sibling's missing section would be a dead end.
   for (const seg of ["console", "cron-jobs"]) {
     const segs = buildBreadcrumb(
       dbAt(`/storage/databases/db_1/${seg}`),
@@ -541,8 +510,6 @@ test("a section a sibling may not have is NOT carried over", () => {
 });
 
 test("a database the caller cannot see falls back to the plain label", () => {
-  // Same rule as an app that is not in the graph: null, so the topbar prints
-  // "Storage" rather than naming a row this viewer has no business reading.
   assert.equal(
     buildBreadcrumb(
       dbAt("/storage/databases/db_missing"),

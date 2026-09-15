@@ -8,20 +8,9 @@ import {
 } from "@modelcontextprotocol/server";
 
 import { buildMcpServer, type McpPrincipal } from "./server";
-import { MCP_TOOLS } from "./tools";
-import type { Capability } from "../types";
+import { MCP_TOOLS } from "./tools/catalog";
+import type { Capability } from "../types/identity";
 
-/**
- * Drives the real SDK over a real HTTP request, so the wiring is tested rather
- * than assumed. No database: `tools/list` never reaches a resolver, so a principal
- * is just a capability set here.
- */
-
-/**
- * The revision Deplo targets, spelled out rather than taken from the SDK's
- * `LATEST_PROTOCOL_VERSION`, which still names the PREVIOUS revision
- * (`2025-11-25`), because "latest" there means "latest of the two eras this build
- */
 const PROTOCOL = "2026-07-28";
 
 function principal(
@@ -29,9 +18,6 @@ function principal(
   instanceAdmin = false,
 ): McpPrincipal {
   return {
-    // Never called here: this file drives the SDK with a hand-built principal
-    // and no request behind it. The team argument's own behaviour is covered in
-    // lib/mcp/route.test.ts, against a real connection.
     forTeam: () =>
       Promise.reject(new Error("no team switching in this fixture")),
     gql: {
@@ -55,7 +41,6 @@ async function rpc(
   method: string,
   who: McpPrincipal,
   params = {},
-  // Most agents can prompt their user; the tests that matter cover both.
   clientCapabilities: Record<string, unknown> = { elicitation: { form: {} } },
 ) {
   const body = {
@@ -76,9 +61,6 @@ async function rpc(
       headers: {
         "content-type": "application/json",
         accept: "application/json, text/event-stream",
-        // Both are REQUIRED on a 2026-07-28 POST (SEP-2243): they exist so a
-        // gateway can route and meter without parsing the body, and the SDK
-        // rejects a mismatch with `-32020` rather than guessing.
         "mcp-method": method,
         ...((params as { name?: string }).name
           ? { "mcp-name": (params as { name: string }).name }
@@ -96,8 +78,6 @@ async function rpc(
     },
   );
   const text = await res.text();
-  // The handler may answer as a single JSON body or as one SSE frame; both
-  // carry the same JSON-RPC message.
   const json = text.startsWith("data:")
     ? JSON.parse(text.slice(text.indexOf("data:") + 5).split("\n")[0])
     : JSON.parse(text);
@@ -165,8 +145,6 @@ test("instance-admin tools appear only for an instance-admin token", async () =>
 });
 
 test("a destructive tool runs straight away, with no confirmation step", () => {
-  // Deplo adds no gate of its own: what an agent may do is the token's Capabilities
-  // and nothing on top.
   return rpc("tools/call", principal(ALL, true), {
     name: "delete_app",
     arguments: { appId: "prj_whatever" },
@@ -181,7 +159,6 @@ test("a destructive tool runs straight away, with no confirmation step", () => {
 });
 
 test("a client that cannot prompt is served exactly like one that can", async () => {
-  // The old behaviour refused here, because Deplo owned the confirmation.
   const withPrompt = await rpc("tools/call", principal(ALL, true), {
     name: "delete_app",
     arguments: { appId: "prj_whatever" },

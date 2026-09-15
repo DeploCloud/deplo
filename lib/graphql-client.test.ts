@@ -10,20 +10,12 @@ import {
   getServerConnectionSnapshot,
 } from "./server-connection";
 
-/**
- * What every one of these guards against: while the panel can't reach its web
- * server, a request either fails at the network level ("Failed to fetch") or lands
- * on a reverse proxy's HTML error page, and `res.json()` on that page throws
- */
-
 const HTML_ERROR_PAGE =
   "<!DOCTYPE html>\n<html><head><title>502 Bad Gateway</title></head><body>Web server is down</body></html>";
 
 const realFetch = globalThis.fetch;
-/** Every URL the stub was asked for, in order. */
 let requested: string[] = [];
 
-/** Install a fetch stub; `/api/health` always fails so the guard can latch. */
 function stubFetch(
   handler: (url: string) => Promise<Response> | Response,
 ): void {
@@ -48,8 +40,6 @@ beforeEach(async () => {
 });
 
 afterEach(async () => {
-  // Drain with the stub still installed: a check a test kicked off retries its
-  // ping 1.5s later, and that ping would otherwise land in the NEXT test.
   await __resetServerConnectionForTests();
   globalThis.fetch = realFetch;
 });
@@ -75,7 +65,6 @@ test("a proxy's HTML error page never surfaces as a JSON parse error", async () 
 });
 
 test("an HTML body with a 200 status is treated as an outage too", async () => {
-  // A proxy or captive portal can answer 200 with its own page.
   stubFetch(() => new Response(HTML_ERROR_PAGE, { status: 200 }));
   await assert.rejects(() => gql("{ me { id } }"), ServerUnreachableError);
 });
@@ -99,8 +88,6 @@ test("a failed request tells the connection guard, so the notification comes up"
   });
 
   await assert.rejects(() => gql("{ me { id } }"), ServerUnreachableError);
-  // gql() fired reportServerUnreachable(); run the check to completion so the
-  // latch (two failed pings) is observable without waiting out its retry delay.
   await checkServerConnection();
   assert.equal(getServerConnectionSnapshot(), "disconnected");
   assert.ok(
@@ -111,7 +98,6 @@ test("a failed request tells the connection guard, so the notification comes up"
 
 test("once paused, an interaction is refused without touching the network", async () => {
   stubFetch(() => jsonResponse({ data: { ok: true } }));
-  // Latch: /api/health answers 502 twice.
   await checkServerConnection();
   assert.equal(getServerConnectionSnapshot(), "disconnected");
 

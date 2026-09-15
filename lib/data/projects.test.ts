@@ -5,40 +5,32 @@ import { eq } from "drizzle-orm";
 
 import { makeTestDb, type TestDb } from "../db/test-harness";
 import { __setTestDb, __resetTestDb } from "../db/client";
+import { apps as appsTable } from "../db/schema/control-plane/apps";
 import {
   folders as foldersTable,
-  apps as appsTable,
   projects as projectsTable,
   environments as environmentsTable,
-} from "../db/schema/control-plane";
+} from "../db/schema/control-plane/projects";
 import { runWithIdentity } from "../auth/request-context";
 import { seedIdentity, TEAM_A, TEAM_B, USER_1 } from "./identity-test-helpers";
 import { seedServer, seedApp } from "./app-graph-test-helpers";
 import {
   createProject,
-  listProjects,
-  getProjectBySlug,
   renameProject,
   setProjectColor,
   deleteProject,
   reorderProjects,
-  moveAppToProject,
-  moveAppToEnvironment,
-} from "./projects";
+} from "./projects/lifecycle";
+import { moveAppToProject, moveAppToEnvironment } from "./projects/placement";
+import { listProjects, getProjectBySlug } from "./projects/read";
 import { createFolder, moveAppToFolder } from "./folders";
-import { createApp } from "./apps";
+import { createApp } from "./apps/create";
 import {
   listEnvironmentsForProject,
   createEnvironment,
   setDefaultEnvironment,
   deleteEnvironment,
 } from "./environments";
-
-/**
- * Integration tests for the Project data layer (ADR-0008, remodeled per ADR-0009:
- * a project is an ADVANCED FOLDER whose contents live per Environment) against
- * pglite.
- */
 
 let db: TestDb;
 let pg: PGlite;
@@ -135,7 +127,6 @@ test("moveAppToProject lands in the DEFAULT environment and updates live counts"
       prod.id,
       "lands in the default environment",
     );
-    // move back out → project AND environment cleared, count drops
     await moveAppToProject("prj_svc1", null);
     const out = (
       await db
@@ -159,7 +150,6 @@ test("moveAppToEnvironment switches environments; the project follows", async ()
     const dev = (await listEnvironmentsForProject(p.id)).find(
       (e) => e.slug === "development",
     )!;
-    // Straight from the top level into a specific environment.
     await moveAppToEnvironment("prj_svc1", dev.id);
     const row = (
       await db
@@ -181,7 +171,6 @@ test("one home only: filing into a folder leaves the project, and vice versa", a
     const f = await createFolder("Docs");
     await seedApp(db, { id: "prj_svc1", teamId: TEAM_A });
     await moveAppToProject("prj_svc1", p.id);
-    // Project → folder: project/environment cleared.
     await moveAppToFolder("prj_svc1", f.id);
     let row = (
       await db
@@ -196,7 +185,6 @@ test("one home only: filing into a folder leaves the project, and vice versa", a
     assert.equal(row.folderId, f.id);
     assert.equal(row.projectId, null);
     assert.equal(row.environmentId, null);
-    // Folder → project: folder cleared.
     await moveAppToProject("prj_svc1", p.id);
     row = (
       await db
@@ -246,17 +234,13 @@ test("deleteProject re-parents its apps (and legacy folders) to the top level (n
     const p = await createProject("Container");
     const f = await createFolder("Docs");
     await seedApp(db, { id: "prj_svc1", teamId: TEAM_A });
-    // A LEGACY folder-in-project row (pre-ADR-0009; the UI can no longer write
-    // this) - deleteProject must still clear it.
     await db
       .update(foldersTable)
       .set({ projectId: p.id })
       .where(eq(foldersTable.id, f.id));
     await moveAppToProject("prj_svc1", p.id);
     await deleteProject(p.id);
-    // The project is gone…
     assert.equal((await listProjects()).length, 0);
-    // …but the folder and service survive, back at the top level.
     const folderRow = await db
       .select({ projectId: foldersTable.projectId })
       .from(foldersTable)
@@ -304,7 +288,6 @@ test("environment CRUD: add custom, switch default, delete guards", async () => 
     assert.equal(custom.slug, "staging");
     assert.equal((await listEnvironmentsForProject(p.id)).length, 4);
 
-    // Can't delete the default (Production) until another is made default.
     const prod = (await listEnvironmentsForProject(p.id)).find(
       (e) => e.isDefault,
     )!;
@@ -313,7 +296,6 @@ test("environment CRUD: add custom, switch default, delete guards", async () => 
       /default environment/,
     );
 
-    // Switch default to the custom one, then Production is deletable.
     await setDefaultEnvironment(custom.id);
     const after = await listEnvironmentsForProject(p.id);
     assert.equal(after.filter((e) => e.isDefault).length, 1);
@@ -328,18 +310,12 @@ test("reorderProjects persists a team-wide order and is self-healing", async () 
     const a = await createProject("A");
     const b = await createProject("B");
     const c = await createProject("C");
-    // Request only b,a - c must be appended, unknown ids dropped.
     await reorderProjects([b.id, a.id, "prc_ghost"]);
     const order = (await listProjects()).map((p) => p.id);
     assert.deepEqual(order, [b.id, a.id, c.id]);
   });
 });
 
-/* ------------------------------------------------------------------ */
-/* Creating an app INSIDE a project environment (placement at birth)   */
-/* ------------------------------------------------------------------ */
-
-/** A hermetic create: "upload" is born idle, so nothing dials an agent. */
 const newApp = (
   placement: {
     folderId?: string | null;
@@ -372,8 +348,6 @@ test("createApp lands in the environment it was created from", async () => {
     assert.equal(row.projectId, p.id, "the project follows the environment");
     assert.equal(row.environmentId, dev.id);
     assert.equal(row.folderId, null, "one home only");
-    // It shows up in the project's live count, i.e. in the drill-in the user
-    // was standing in - the whole point of placing at birth.
     assert.equal((await listProjects())[0].appCount, 1);
   });
 });
@@ -402,8 +376,6 @@ test("createApp rejects a project/environment pair that disagree", async () => {
 });
 
 test("createApp rejects another team's environment", async () => {
-  // A project + environment owned by TEAM_B, seeded directly (USER_1 is only a
-  // member of TEAM_A, so it is unreachable through the data layer).
   const T0 = "2026-01-01T00:00:00.000Z";
   await db.insert(projectsTable).values({
     id: "prc_foreign",
@@ -446,7 +418,6 @@ test("createApp rejects another team's environment", async () => {
 test("a project holds at most 10 environments", async () => {
   await asOwner(async () => {
     const p = await createProject("Crowded");
-    // The project is born with its default environments; fill to the cap.
     const born = (await listEnvironmentsForProject(p.id)).length;
     for (let i = born; i < 10; i++) await createEnvironment(p.id, `env ${i}`);
     await assert.rejects(

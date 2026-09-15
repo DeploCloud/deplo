@@ -8,11 +8,8 @@ import { Button } from "@/components/ui/button";
 import { SimpleTooltip } from "@/components/ui/tooltip";
 import { gqlAction } from "@/lib/graphql-client";
 import { useLiveDatabaseStatus } from "@/components/storage/database-live-status";
-import type { DatabaseStatus } from "@/lib/types";
+import type { DatabaseStatus } from "@/lib/types/database";
 
-/**
- * Start / Stop / Restart for a database - the DB twin of AppControls.
- */
 export function DatabaseControls({
   id,
   status: serverStatus,
@@ -26,8 +23,6 @@ export function DatabaseControls({
   const provisioning = status === "provisioning";
   const running = status === "running";
 
-  // Fire and let the live status answer - the subscription reports what the
-  // container is doing, so a spinner on the button only delays the click.
   function act(mutation: string, success: string) {
     startTransition(async () => {
       const res = await gqlAction(mutation, { id });

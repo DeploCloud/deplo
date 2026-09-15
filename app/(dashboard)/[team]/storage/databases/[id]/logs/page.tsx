@@ -1,8 +1,8 @@
 import { notFound } from "next/navigation";
-import { getDatabase } from "@/lib/data/databases";
+import { getDatabase } from "@/lib/data/databases/rows";
 import { getDatabaseLogsInfo } from "@/lib/data/database-console";
 import { DatabaseLogs } from "@/components/storage/database-logs";
-import { DEFAULT_LOG_RANGE_DAYS } from "@/lib/types";
+import { DEFAULT_LOG_RANGE_DAYS } from "@/lib/types/deployment";
 
 export const metadata = { title: "Logs" };
 
@@ -15,8 +15,6 @@ export default async function DatabaseLogsPage(
 
   const info = await getDatabaseLogsInfo(id);
 
-  // Full-bleed route: the pane fills the frame, so there is no header above it.
-  // See components/layout/shell-frame.tsx.
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <DatabaseLogs

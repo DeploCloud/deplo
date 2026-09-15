@@ -15,9 +15,9 @@ test("normalizeUsername lowercases and strips to the allowed charset", () => {
 test("validateUsername enforces length and charset", () => {
   assert.equal(validateUsername("ada"), null);
   assert.equal(validateUsername("a_b-9"), null);
-  assert.ok(validateUsername("ab")); // too short
-  assert.ok(validateUsername("a".repeat(33))); // too long
-  assert.ok(validateUsername("Ada")); // uppercase not allowed (post-normalize)
+  assert.ok(validateUsername("ab"));
+  assert.ok(validateUsername("a".repeat(33)));
+  assert.ok(validateUsername("Ada"));
 });
 
 test("uniqueUsername suffixes on collision", () => {

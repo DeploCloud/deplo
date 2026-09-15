@@ -1,13 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { AgentUnreachableError } from "../infra/agent-client";
+import { AgentUnreachableError } from "../infra/agent-client/errors";
 import { AgentUnavailableError } from "./agent-deploy";
-
-/**
- * The two error classes a dead host can produce, and why the build-server fallback
- * has to know about BOTH.
- */
 
 test("the two agent-down errors are unrelated classes, so one instanceof is not enough", () => {
   const unreachable = new AgentUnreachableError("dial 10.0.0.5:9443 refused");
@@ -21,11 +16,6 @@ test("the two agent-down errors are unrelated classes, so one instanceof is not 
   assert.equal(unavailable instanceof AgentUnreachableError, false);
 });
 
-/**
- * The predicate `lib/deploy/build.ts` uses, restated here. It is not exported (it
- * is one line of a private module), so this pins the CONTRACT it has to satisfy:
- * every way a host can be down has to answer true.
- */
 function agentIsDown(e: unknown): boolean {
   return (
     e instanceof AgentUnavailableError || e instanceof AgentUnreachableError
@@ -44,19 +34,12 @@ test("every agent-down error is recognised as down", () => {
 });
 
 test("an ordinary build failure is NOT treated as the host being down", () => {
-  // The distinction the fallback rests on: a build that RAN and failed must not be
-  // retried on another host, because it would fail there identically.
   assert.equal(agentIsDown(new Error("npm run build exited 1")), false);
   assert.equal(agentIsDown(new TypeError("boom")), false);
   assert.equal(agentIsDown("nope"), false);
   assert.equal(agentIsDown(null), false);
 });
 
-/**
- * The message the deploy log is allowed to carry. A raw gRPC transport error
- * embeds the dial address, and a deploy log is readable by anyone with
- * `view_logs` - a lower bar than the fleet page that address belongs to.
- */
 function agentDownReason(e: unknown): string {
   if (e instanceof AgentUnavailableError) return e.message;
   if (e instanceof AgentUnreachableError && e.trust) {
@@ -82,9 +65,6 @@ test("our own curated messages DO survive - they carry no address", () => {
   assert.equal(agentDownReason(new AgentUnavailableError(msg)), msg);
 });
 
-// A TRUST failure rides the SAME class as a dead host, and only the `trust` flag
-// separates them - the dial captures it because gRPC surfaces both as an opaque
-// transport error.
 test("a certificate failure does not read as a dead host", () => {
   const dead = new AgentUnreachableError("14 UNAVAILABLE: connection refused");
   const untrusted = new AgentUnreachableError(
@@ -96,7 +76,6 @@ test("a certificate failure does not read as a dead host", () => {
   assert.match(agentDownReason(dead), /did not answer/);
   assert.match(agentDownReason(untrusted), /certificate/);
   assert.doesNotMatch(agentDownReason(untrusted), /did not answer/);
-  // And it still says nothing an operator should not see.
   assert.doesNotMatch(
     agentDownReason(untrusted),
     /UNAVAILABLE|handshake|\d+\.\d+\.\d+\.\d+/,

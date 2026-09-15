@@ -1,37 +1,27 @@
 import "server-only";
 
-import { getCurrentUser } from "@/lib/auth";
+import { getCurrentUser } from "@/lib/auth/current-user";
 import {
   getActiveTeamId,
   reachableCapabilities,
   TwoFactorRequiredError,
 } from "@/lib/membership";
-import { authenticateToken } from "@/lib/data/tokens";
+import { authenticateToken } from "@/lib/data/tokens/authenticate";
 import {
   runWithIdentity,
   type RequestIdentity,
 } from "@/lib/auth/request-context";
 import { TEAM_HEADER } from "@/lib/team-path";
-import type { Capability, PublicUser } from "@/lib/types";
+import type { Capability, PublicUser } from "@/lib/types/identity";
 
-/**
- * The GraphQL request context.
- */
 export interface GraphQLContext {
   viewer: PublicUser | null;
   teamId: string | null;
   capabilities: Capability[];
-  /** How this request authenticated - useful for docs/debugging, not security. */
   via: "cookie" | "token" | "anonymous";
-  /**
-   * Set for a valid bearer-token request.
-   */
   identity: RequestIdentity | null;
 }
 
-/**
- * Build the per-request context.
- */
 export async function buildContext(request: Request): Promise<GraphQLContext> {
   const auth = request.headers.get("authorization");
   const bearer = auth?.toLowerCase().startsWith("bearer ")
@@ -39,9 +29,6 @@ export async function buildContext(request: Request): Promise<GraphQLContext> {
     : null;
 
   if (bearer) {
-    // A token's scope can span teams, and everything below this line is scoped to
-    // exactly one. Unset or unreachable falls back to the first team in the token's
-    // scope, deterministically.
     const identity = await authenticateToken(
       bearer,
       request.headers.get(TEAM_HEADER),
@@ -63,9 +50,6 @@ export async function buildContext(request: Request): Promise<GraphQLContext> {
     });
   }
 
-  // Cookie path - same-origin browser. The team comes from the page's URL via
-  // `x-deplo-team` (lib/graphql-client.ts), which getActiveTeamId reads: this
-  // endpoint is flat, so the header is the only thing that carries it.
   const viewer = await getCurrentUser();
   let teamId: string | null = null;
   let capabilities: Capability[] = [];
@@ -73,9 +57,6 @@ export async function buildContext(request: Request): Promise<GraphQLContext> {
     teamId = await getActiveTeamId();
     capabilities = await reachableCapabilities();
   } catch (e) {
-    // A member their team locks out still has to be able to sign out and to enrol -
-    // both account-only fields. The team stays unresolved, so everything scoped to
-    // one refuses again in lib/data, which is the boundary.
     if (!(e instanceof TwoFactorRequiredError)) throw e;
     teamId = null;
     capabilities = [];

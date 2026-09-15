@@ -11,10 +11,6 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 
-/**
- * What a link to a team you are not in opens - the same answer a team that does
- * not exist gets, so the address gives nothing away either way.
- */
 export function NoTeamAccessScreen({
   teams,
 }: {

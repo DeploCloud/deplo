@@ -3,10 +3,6 @@ import assert from "node:assert/strict";
 
 import { decodeRemote, PUBSUB_INSTANCE } from "./pubsub";
 
-/**
- * What a peer control plane is allowed to make this one publish.
- */
-
 const peer = (over: Record<string, unknown> = {}) =>
   JSON.stringify({
     i: "some-other-control-plane",
@@ -40,7 +36,7 @@ test("anything that is not one of ours is ignored", () => {
     "null",
     '"a string"',
     "[]",
-    JSON.stringify({ c: "appChanged", k: "prj_1", p: "prj_1" }), // no sender
+    JSON.stringify({ c: "appChanged", k: "prj_1", p: "prj_1" }),
     peer({ k: 42 }),
     peer({ p: undefined }),
   ])

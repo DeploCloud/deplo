@@ -8,8 +8,6 @@ const Textarea = React.forwardRef<
   HTMLTextAreaElement,
   React.ComponentProps<"textarea">
 >(({ className, ...props }, ref) => {
-  // Opened focused on a prefilled field, the caret belongs AFTER the value -
-  // a textarea gets this wrong on its own, every time.
   const caretRef = useInitialCaretAtEnd<HTMLTextAreaElement>(ref);
   return (
     <textarea

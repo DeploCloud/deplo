@@ -4,11 +4,6 @@ import assert from "node:assert/strict";
 import type { ContainerStat } from "../agent/gen/agent";
 import { aggregateContainerStats } from "./container-metrics";
 
-/**
- * The fold from one host frame to one stack's numbers. Its own file because it is
- * pure: no database, no identity, no buffer.
- */
-
 const HOST = { memTotal: 23.42 * 1024 ** 3, cpuCores: 8 };
 
 function stat(name: string, over: Partial<ContainerStat> = {}): ContainerStat {
@@ -16,7 +11,7 @@ function stat(name: string, over: Partial<ContainerStat> = {}): ContainerStat {
     name,
     cpuPct: 0,
     memUsed: 0,
-    memLimit: HOST.memTotal, // what the agent sends for an UNCAPPED container
+    memLimit: HOST.memTotal,
     memPct: 0,
     netRx: 0,
     netTx: 0,
@@ -35,9 +30,6 @@ function stat(name: string, over: Partial<ContainerStat> = {}): ContainerStat {
   };
 }
 
-// Summing each container's limit reported 50.3 GB of ceiling on a 23.42 GiB host,
-// and moved the denominator with the RUNNING COUNT: stopping one container of a
-// stack changed its memory percentage without the usage changing at all.
 test("the memory ceiling is the machine, counted once and unmoved by a stop", () => {
   const two = aggregateContainerStats(
     "prj_1",
@@ -48,7 +40,6 @@ test("the memory ceiling is the machine, counted once and unmoved by a stop", ()
   assert.equal(two.memLimit, HOST.memTotal);
   assert.equal(two.memUsed, 1000);
 
-  // The worker stops. Usage falls by its share; the CEILING does not move.
   const one = aggregateContainerStats(
     "prj_1",
     [
@@ -63,9 +54,6 @@ test("the memory ceiling is the machine, counted once and unmoved by a stop", ()
   assert.equal(one.running, 1);
 });
 
-// The clamp is what keeps a hand-written `mem_limit` meaningful: those caps are
-// real budgets, and only the agent's "uncapped means the whole machine" needs
-// collapsing.
 test("real per-container caps are still the budget when they are smaller", () => {
   const cap = 512 * 1024 ** 2;
   const agg = aggregateContainerStats(
@@ -80,9 +68,6 @@ test("real per-container caps are still the budget when they are smaller", () =>
   assert.equal(agg.memLimit, 2 * cap);
 });
 
-// A compose sidecar on `network_mode: service:x` reads the SAME
-// /proc/<pid>/net/dev as the container it joined, so summing the stack counted
-// every byte twice.
 test("containers sharing a network namespace contribute one counter", () => {
   const agg = aggregateContainerStats(
     "prj_1",
@@ -95,7 +80,6 @@ test("containers sharing a network namespace contribute one counter", () => {
   );
   assert.equal(agg.netRx, 500, "the shared namespace was counted twice");
   assert.equal(agg.netTx, 100);
-  // Everything that is genuinely per-container still sums.
   assert.equal(agg.pids, 2);
 });
 
@@ -112,8 +96,6 @@ test("separate namespaces still both count", () => {
   assert.equal(agg.netRx, 800);
 });
 
-// An agent too old to report a namespace cannot prove anything is shared, so
-// every container counts for itself exactly as it did before the field existed.
 test("no namespace id falls back to per-container counting", () => {
   const agg = aggregateContainerStats(
     "prj_1",
@@ -124,8 +106,6 @@ test("no namespace id falls back to per-container counting", () => {
   assert.equal(agg.netRx, 800);
 });
 
-// `network_mode: host` reads the WHOLE MACHINE's counters - an idle container
-// reported 51 GB that way. Those bytes belong to the server's own chart.
 test("a host-networked container adds no traffic to its stack", () => {
   const agg = aggregateContainerStats(
     "prj_1",
@@ -137,13 +117,10 @@ test("a host-networked container adds no traffic to its stack", () => {
     HOST,
   );
   assert.equal(agg.netRx, 500);
-  // It is still part of the stack for everything else.
   assert.equal(agg.running, 2);
   assert.equal(agg.memUsed, 40);
 });
 
-// `cpu` is a percentage of ONE core, so the tab needs the machine's core count
-// to also read it as "3.0 of 8 cores".
 test("the frame's core count rides along with the sample", () => {
   const agg = aggregateContainerStats(
     "prj_1",

@@ -2,13 +2,8 @@ import { cn } from "@/lib/utils";
 
 export type SecurityLevel = "weak" | "good" | "strong";
 
-/** How many of the three plates are lit, and in which colour. */
 const LIT: Record<SecurityLevel, number> = { weak: 1, good: 2, strong: 3 };
 
-/**
- * The Security page's mark: three plates of a shield, one per factor the account
- * actually carries.
- */
 export function SecurityGraphic({
   level,
   className,
@@ -35,7 +30,6 @@ export function SecurityGraphic({
         <rect x="234" y="14" width="4" height="56" rx="2" />
       </g>
 
-      {/* Left: the password, always there - it is what an account is made of. */}
       <rect
         x="54"
         y="24"
@@ -52,7 +46,6 @@ export function SecurityGraphic({
         <circle cx="96" cy="41" r="3.5" />
       </g>
 
-      {/* Middle: the second factor - a phone showing a code. */}
       <rect
         x="126"
         y="14"
@@ -70,7 +63,6 @@ export function SecurityGraphic({
         <rect x="133" y="46" width="20" height="4" rx="2" />
       </g>
 
-      {/* Right: the passkey, the plate most accounts are missing. */}
       <path
         d="M178 20 h40 a6 6 0 0 1 6 6 v16 c0 12-11 18-26 22-15-4-26-10-26-22 V26 a6 6 0 0 1 6-6 z"
         fill={plate(2)}

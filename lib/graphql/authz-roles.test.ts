@@ -7,31 +7,25 @@ import { graphql } from "graphql";
 
 import { makeTestDb, type TestDb } from "../db/test-harness";
 import { __setTestDb, __resetTestDb } from "../db/client";
-import { teamRoles as teamRolesTable } from "../db/schema/control-plane";
+import { teamRoles as teamRolesTable } from "../db/schema/control-plane/access-control";
 import { schema } from "./schema";
 import type { GraphQLContext } from "./context";
 import { runWithIdentity } from "../auth/request-context";
-import { getCurrentUser } from "../auth";
+import { getCurrentUser } from "../auth/current-user";
 import {
   getActiveTeamId,
   membershipFor,
   reachableCapabilities,
 } from "../membership";
-import { createRole, updateRole, deleteRole } from "../data/roles";
-import { updateMember } from "../data/members";
+import { createRole, updateRole, deleteRole } from "../data/roles/role-editing";
+import { updateMember } from "../data/members/assignment";
 import {
   seedIdentity,
   TRUNCATE_IDENTITY,
   TEAM_A,
   USER_1,
 } from "../data/identity-test-helpers";
-import { ALL_CAPABILITIES, type Capability } from "../types";
-
-/**
- * Roles, end to end: a role is not a preset that a member's permissions drift away
- * from - it IS what they can do, so the only honest test of one is what the API
- * does after it is assigned and after it is edited.
- */
+import { ALL_CAPABILITIES, type Capability } from "../types/identity";
 
 let db: TestDb;
 let pg: PGlite;
@@ -64,7 +58,6 @@ beforeEach(async () => {
 const asOwner = <T>(fn: () => Promise<T>): Promise<T> =>
   runWithIdentity({ userId: USER_1, teamId: TEAM_A }, fn);
 
-/** Effective capabilities the authorization layer will actually read. */
 async function effectiveCaps(userId = USER_M): Promise<Capability[]> {
   return runWithIdentity({ userId, teamId: TEAM_A }, async () => {
     const m = await membershipFor(userId, TEAM_A);
@@ -137,8 +130,6 @@ test("deleting a role is refused while somebody still holds it", async () => {
 });
 
 test("a hand-picked capability set is not a role, and a role edit doesn't touch it", async () => {
-  // "Custom" - role_id NULL. The member list shows it as such, and it must be
-  // immune to edits of the role they were previously on.
   const role = await asOwner(() =>
     createRole({ name: "Ops", capabilities: ["deploy_apps", "view_logs"] }),
   );
@@ -171,7 +162,6 @@ test("a role's two-factor mandate closes the whole team to a member who hasn't e
     }),
   );
   await asOwner(() => updateMember({ userId: USER_M, roleId: role.id }));
-  // Not "fewer permissions" - none at all, reads included.
   await assert.rejects(
     () => effectiveCaps(),
     /two-factor/i,
@@ -188,7 +178,6 @@ test("a role's two-factor mandate closes the whole team to a member who hasn't e
 });
 
 test("a role from another team can't be assigned into this one", async () => {
-  // TEAM_B's roles are seeded lazily; forge one directly and try to use it.
   await db.insert(teamRolesTable).values({
     id: "role_foreign",
     teamId: "team_b",
@@ -213,7 +202,6 @@ test("the Owner role is locked: it cannot be narrowed into a trap", async () => 
     .from(teamRolesTable)
     .where(eq(teamRolesTable.builtinKey, "owner"));
   if (!owner) {
-    // Roles are seeded lazily - touch them, then re-read.
     await asOwner(() => createRole({ name: "Seeder", capabilities: ["view"] }));
   }
   const [ownerRole] = await db

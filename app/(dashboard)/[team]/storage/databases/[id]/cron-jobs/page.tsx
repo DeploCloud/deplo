@@ -1,9 +1,9 @@
 import { notFound } from "next/navigation";
 import { Lock } from "lucide-react";
 
-import { getDatabase } from "@/lib/data/databases";
+import { getDatabase } from "@/lib/data/databases/rows";
 import { hasCapability } from "@/lib/membership";
-import { listDatabaseCronJobs } from "@/lib/data/crons";
+import { listDatabaseCronJobs } from "@/lib/data/crons/listing";
 import { PageHeader } from "@/components/shared/page-header";
 import { EmptyState } from "@/components/shared/empty-state";
 import { CronJobsList } from "@/components/crons/cron-jobs-list";
@@ -17,9 +17,6 @@ export default async function DatabaseCronJobsPage(
   const db = await getDatabase(id);
   if (!db) notFound();
 
-  // TWO capabilities, and the second is not belt-and-braces: `manage_crons` is
-  // seeded from EITHER console capability, so app-console access alone must not
-  // reach inside a database. The data layer enforces the same pair.
   const [canCron, canConsole] = await Promise.all([
     hasCapability("manage_crons"),
     hasCapability("open_database_console"),

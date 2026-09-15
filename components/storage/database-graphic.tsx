@@ -1,6 +1,5 @@
 import { cn } from "@/lib/utils";
 
-/** The Databases empty-state illustration: the outline of a database that is not there, and a tumbleweed bouncing through the space where it would be. */
 export function DatabaseGraphic({ className }: { className?: string }) {
   return (
     <svg

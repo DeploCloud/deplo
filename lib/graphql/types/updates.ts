@@ -55,8 +55,6 @@ const ChangelogRef = builder
 builder.queryFields((t) => ({
   updateInfo: t.field({
     type: UpdateInfoRef,
-    // Instance admin, like the changelog beside it: nobody else can apply an
-    // update, and the page that applies it is theirs.
     authScopes: { instanceAdmin: true },
     description:
       "Check the upstream repository for a newer Deplo release; cached for an hour.",

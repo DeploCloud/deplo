@@ -8,36 +8,18 @@ import { TableCell, TableRow } from "@/components/ui/table";
 import { cn } from "@/lib/utils";
 import type { ActionResult } from "@/lib/result";
 
-/**
- * Optimistic creation: the thing appears the instant you ask for it. It is not a
- * lie - the placeholder never pretends to be finished: it pulses, it is not
- * interactive, and it says what it is waiting on.
- */
 export type PendingCreate = {
   id: string;
-  /** What the user typed - the identity of the thing being created. */
   label: string;
-  /** What is happening to it, present tense: "Adding domain…", "Connecting…". */
   note: string;
-  /**
-   * The mutation came back OK and the refresh is on its way.
-   */
   settled: boolean;
 };
 
-/** How long a settled placeholder waits for its real row before giving up and
- *  removing itself - a backstop for a refresh that never lands. */
 const ARRIVAL_TIMEOUT_MS = 15_000;
 
 type CreateOptions<T> = {
-  /** Toasted when the background work actually finished. */
   success?: string;
   onSuccess?: (data: T | undefined) => void;
-  /**
-   * Called with the server's message after it has been toasted - the dialog
-   * uses it to reopen itself with the values the user typed, which a modal that
-   * closed optimistically would otherwise have thrown away.
-   */
   onError?: (error: string) => void;
 };
 
@@ -56,10 +38,6 @@ export function PendingCreateProvider({
   count,
   children,
 }: {
-  /**
-   * How many of these things the server currently lists (`domains.length`,
-   * `users.length`, …).
-   */
   count: number;
   children: React.ReactNode;
 }) {
@@ -67,11 +45,8 @@ export function PendingCreateProvider({
   const [pending, setPending] = React.useState<PendingCreate[]>([]);
   const [, startTransition] = React.useTransition();
   const nextId = React.useRef(0);
-  // The last `count` this provider reacted to.
   const [seen, setSeen] = React.useState(count);
 
-  // Adjusting state during render: the alternative, an effect, runs AFTER the commit,
-  // which is exactly one frame of the placeholder and the real row side by side.
   if (count !== seen) {
     const landed = count - seen;
     setSeen(count);
@@ -89,25 +64,16 @@ export function PendingCreateProvider({
       const id = `pending-${nextId.current++}`;
       setPending((p) => [...p, { ...placeholder, id, settled: false }]);
 
-      // The transition is owned by the PROVIDER, not the dialog: the dialog is
-      // closed (and may be unmounted) long before the work finishes, and a
-      // transition whose owner is gone can no longer commit anything.
       startTransition(async () => {
         const res = await mutate();
         if (!res.ok) {
           setPending((p) => p.filter((x) => x.id !== id));
           toast.error(res.error);
-          // Refresh on failure too: several of these mutations write the row
-          // first and fail later, on the part that touches the server agent -
-          // an error can still leave something real the user has to see.
           router.refresh();
           opts?.onError?.(res.error);
           return;
         }
         if (opts?.success) toast.success(opts.success);
-        // Ask for the real row and mark the placeholder settled - it keeps its
-        // seat until `count` says the row is actually rendered. The timer is
-        // only a backstop for a refresh that never brings one.
         router.refresh();
         setPending((p) =>
           p.map((x) => (x.id === id ? { ...x, settled: true } : x)),
@@ -143,10 +109,6 @@ export function usePendingCreate(): PendingCreateApi {
   return ctx;
 }
 
-/**
- * Renders the list, falling back to `emptyState` only when there is genuinely
- * nothing to show, not even a creation in flight.
- */
 export function PendingList({
   empty,
   emptyState,
@@ -161,21 +123,12 @@ export function PendingList({
   return (
     <>
       {children}
-      {/**
-       * The empty state usually carries its own "Add …" dialog - the one the user just
-       * submitted from, when this is the FIRST item of the list.
-       */}
       {empty && <div className="hidden">{emptyState}</div>}
     </>
   );
 }
 
-/**
- * The placeholders as CARDS - drop this inside the same grid container as the
- * real cards so they flow with them.
- */
 export function PendingCards({
-  /** Skeleton bars under the name, to land near the real card's height. */
   lines = 2,
   className,
 }: {
@@ -222,11 +175,6 @@ export function PendingCards({
   );
 }
 
-/**
- * The placeholders as TABLE ROWS - drop this inside `<TableBody>` after the
- * real rows. `columns` is the table's column count; the name occupies the first
- * cell and the rest are skeleton bars, so the row keeps the table's shape.
- */
 export function PendingRows({ columns }: { columns: number }) {
   const { pending } = usePendingCreate();
   return (

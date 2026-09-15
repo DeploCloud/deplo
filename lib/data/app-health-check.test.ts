@@ -17,15 +17,9 @@ import {
   seedApp,
   TRUNCATE_PROJECT_GRAPH,
 } from "./app-graph-test-helpers";
-import { updateAppHealthCheck } from "./apps";
+import { updateAppHealthCheck } from "./apps/settings";
 import { loadAppGraph } from "./app-graph-load";
-import type { HealthCheck } from "../types";
-
-/**
- * The team-scoped writer for an app's health check: it round-trips through the
- * assembler (off ⇒ `healthCheck: null`), refuses a cross-team id, and refuses a
- * compose stack outright.
- */
+import type { HealthCheck } from "../types/container";
 
 const CHECK: HealthCheck = {
   type: "http",
@@ -101,8 +95,6 @@ test("a command check keeps its command and drops the http fields", async () => 
   assert.equal(h?.path, null);
 });
 
-// The YAML is its author's. A `healthcheck:` written there is the one that runs,
-// and a second one from Deplo would be a silent override.
 test("a compose stack is refused", async () => {
   await seedApp(db, { id: "prj_2", teamId: TEAM_A, source: "compose" });
   await assert.rejects(

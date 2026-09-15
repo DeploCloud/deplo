@@ -12,24 +12,17 @@ process.env.DEPLO_DATA_DIR = mkdtempSync(join(tmpdir(), "deplo-pg-"));
 import { makeTestDb, type TestDb } from "../db/test-harness";
 import { __setTestDb, __resetTestDb } from "../db/client";
 import { runWithIdentity } from "../auth/request-context";
+import { domains as domainsTable } from "../db/schema/control-plane/domains";
 import {
-  domains as domainsTable,
   envVars as envVarsTable,
   sharedEnvVarApps as sharedLinksTable,
-} from "../db/schema/control-plane";
+} from "../db/schema/control-plane/env-vars";
 import { seedIdentity, TEAM_A, TEAM_B, USER_1 } from "./identity-test-helpers";
 import { seedServer, TRUNCATE_PROJECT_GRAPH } from "./app-graph-test-helpers";
 import { seedDatabase } from "./backup-test-helpers";
-import { createApp } from "./apps";
-import { saveSharedVar } from "./shared-vars";
+import { createApp } from "./apps/create";
+import { saveSharedVar } from "./shared-vars/authoring";
 import { loadAppGraph } from "./app-graph-load";
-
-/**
- * What the new-app wizard can decide AT CREATION beyond the source: the extra
- * compose flags, the type of an initial variable, and which of the team's shared
- * variables the app is linked to - which has to happen before the first deploy,
- * not after it.
- */
 
 let db: TestDb;
 let pg: PGlite;
@@ -67,7 +60,6 @@ beforeEach(async () => {
 const asUser1 = <T>(fn: () => Promise<T>): Promise<T> =>
   runWithIdentity({ userId: USER_1, teamId: TEAM_A }, fn);
 
-/** A compose app that never deploys, so these tests never reach an agent. */
 const newApp = (
   extra: Parameters<typeof createApp>[0] extends infer T ? Partial<T> : never,
 ) =>
@@ -96,8 +88,6 @@ test("an app is created with no extra flags by default", async () => {
 });
 
 test("a flag that would repoint the command is refused at creation", async () => {
-  // The same allow-list the settings page enforces: this value also arrives from
-  // the bearer API, and from there it would land in a host's argv.
   await assert.rejects(
     () => asUser1(() => newApp({ composeUpArgs: "-p other" })),
     /Deplo's to set/,
@@ -118,8 +108,6 @@ test("an initial variable is created secret when the create says so", async () =
     .from(envVarsTable)
     .where(eq(envVarsTable.appId, app.id));
   const byKey = Object.fromEntries(rows.map((r) => [r.key, r.type]));
-  // Neither name would have been guessed: the heuristic reads the key, and
-  // "LICENSE_CODE" is not one of the words it knows.
   assert.equal(byKey.API_URL, "plain");
   assert.equal(byKey.LICENSE_CODE, "secret");
 });
@@ -145,8 +133,6 @@ test("shared variables are linked as part of the create", async () => {
         eq(sharedLinksTable.varId, varId),
       ),
     );
-  // ADR-0012: the link IS the injection, so a var picked in the wizard has to be
-  // attached before the first deploy reads the app's environment.
   assert.equal(links.length, 1);
 });
 
@@ -169,11 +155,6 @@ test("another team's shared variable is not linkable at creation", async () => {
   );
 });
 
-/**
- * One hostname, two services: the shape a stack with a single BASE_URL needs.
- * The extra used to be pushed onto an invented host, because its own primary had
- * just taken the name.
- */
 test("an extra domain shares the primary's host when it answers on a path", async () => {
   const app = await asUser1(() =>
     newApp({
@@ -200,12 +181,10 @@ test("an extra domain shares the primary's host when it answers on a path", asyn
 
   const primary = rows.find((r) => r.primary);
   const extra = rows.find((r) => !r.primary);
-  // The database is never the front door, and the client is what nothing depends on.
   assert.equal(primary?.service, "client");
   assert.equal(extra?.service, "backend");
   assert.equal(extra?.pathPrefix, "/api");
   assert.equal(extra?.port, 3001);
-  // Same address, different path - not a second invented hostname.
   assert.equal(extra?.name, primary?.name);
 });
 
@@ -226,15 +205,10 @@ test("an extra domain with no host of its own gets one generated", async () => {
   assert.match(extra.name, /^shop-admin-/);
 });
 
-/**
- * The two refusals `addDomain` makes for a human, made on the automatic path too:
- * either row would be an address that answers nothing.
- */
 test("an extra naming a container the stack does not have is skipped", async () => {
   const app = await asUser1(() =>
     newApp({
       compose: "services:\n  web:\n    image: nginx\n",
-      // A template that renamed a service in its compose and not in its config.
       extraDomains: [{ service: "web-ui", port: 3000, host: "" }],
     }),
   );
@@ -287,11 +261,6 @@ test("an extra cannot take a hostname another team already serves", async () => 
   assert.notEqual(extra.name, "shared.example.com");
 });
 
-/**
- * A generated `…nip.io` host is not a domain claim, so picking which services get
- * an address must not turn creating an app into a `manage_domains` action - the
- * whole point of the wizard's picker is that a Member can use it.
- */
 test("a member who may not manage domains still gets the generated hosts", async () => {
   const app = await runWithIdentity(
     { userId: "member_1", teamId: TEAM_A },
@@ -329,11 +298,6 @@ test("but a REAL hostname on an extra is still a claim", async () => {
   );
 });
 
-/**
- * The stack that started this: five services, not one published port, and a
- * frontend that talks to its own API. What the wizard sends when the user ticks
- * the backend too.
- */
 const ANALYTICS_STACK = `services:
   store_clickhouse:
     image: clickhouse/clickhouse-server:25.5
@@ -374,7 +338,6 @@ test("a five-service stack routes its frontend, and the API only if asked", asyn
 
   const primary = rows.find((r) => r.primary);
   const extra = rows.find((r) => !r.primary);
-  // Not ClickHouse, not Postgres, not Redis: the one nothing waits on.
   assert.equal(primary?.service, "store_client");
   assert.equal(extra?.service, "store_backend");
   assert.notEqual(extra?.name, primary?.name, "each gets its own address");
@@ -382,10 +345,6 @@ test("a five-service stack routes its frontend, and the API only if asked", asyn
 });
 
 test("a service that would take over a database's address is refused", async () => {
-  // `databases.host` IS the container's DNS name on the network it sits on, so a
-  // same-named service SHARING that network collects the connections its owner's
-  // apps make to it. The victim is another app of the same team, at the same
-  // placement: since ADR-0028 that is who can still be robbed.
   await seedDatabase(db, { id: "db_1", name: "analytics", teamId: TEAM_A });
 
   for (const [label, svc] of [
@@ -401,7 +360,6 @@ test("a service that would take over a database's address is refused", async () 
       label,
     );
 
-  // `hostname:` registers in the embedded DNS exactly like the service name.
   await assert.rejects(
     () =>
       asUser1(() =>
@@ -414,7 +372,6 @@ test("a service that would take over a database's address is refused", async () 
     "via hostname",
   );
 
-  // A name nothing else answers to is nobody's business.
   const ok = await asUser1(() =>
     newApp({ compose: "services:\n  db-orders:\n    image: nginx:1.27\n" }),
   );
@@ -422,9 +379,6 @@ test("a service that would take over a database's address is refused", async () 
 });
 
 test("another team's database is not a clash - it is on another network", async () => {
-  // Before ADR-0028 every container on the host shared one network, so this WAS a
-  // takeover and the check was instance-wide. Now the two never share a network,
-  // and refusing here would only stop a team from using an ordinary name.
   await seedDatabase(db, { id: "db_2", name: "billing", teamId: TEAM_B });
   const ok = await asUser1(() =>
     newApp({ compose: "services:\n  db-billing:\n    image: nginx:1.27\n" }),
@@ -433,9 +387,6 @@ test("another team's database is not a clash - it is on another network", async 
 });
 
 test("the service the source named keeps the address even with no port", async () => {
-  // A one-click template that declares `SERVICE_FQDN_<NAME>` without the `_<PORT>`
-  // spelling names its service and no port. Dropping the service over the missing
-  // port re-guessed one, and on this stack the guess is a different container.
   const app = await asUser1(() =>
     newApp({
       compose: ANALYTICS_STACK,
@@ -448,8 +399,6 @@ test("the service the source named keeps the address even with no port", async (
     .from(domainsTable)
     .where(eq(domainsTable.appId, app.id));
   assert.equal(row.service, "store_backend");
-  // Nothing published and no healthcheck: the conventional web port, which is
-  // what the render would have reached on its own.
   assert.equal(row.port, 80);
 });
 

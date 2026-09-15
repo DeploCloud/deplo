@@ -6,10 +6,8 @@ import { eq } from "drizzle-orm";
 
 import { makeTestDb, type TestDb } from "../db/test-harness";
 import { __setTestDb, __resetTestDb } from "../db/client";
-import {
-  deployments as deploymentsTable,
-  serverTeams as serverTeamsTable,
-} from "../db/schema/control-plane";
+import { deployments as deploymentsTable } from "../db/schema/control-plane/deployments";
+import { serverTeams as serverTeamsTable } from "../db/schema/control-plane/servers";
 import { seedServerRow } from "../data/infra-test-helpers";
 import { seedIdentity, TEAM_A, USER_1 } from "../data/identity-test-helpers";
 import {
@@ -18,12 +16,7 @@ import {
   TRUNCATE_PROJECT_GRAPH,
 } from "../data/app-graph-test-helpers";
 import { resolveBuildPlan } from "./build-server";
-import type { Server } from "../types";
-
-/**
- * The build plan against a real fleet (pglite): team access, and how many builds
- * each host is already running.
- */
+import type { Server } from "../types/server";
 
 let db: TestDb;
 let pg: PGlite;
@@ -55,8 +48,6 @@ beforeEach(async () => {
   await seedIdentity(db, {
     users: [{ id: USER_1, teamId: TEAM_A, role: "owner" }],
   });
-  // The Deplo host answers on DEPLO_SERVER_IP, which is what makes it the default
-  // fallback with nothing configured.
   await seedServerRow(db, { id: PANEL, ip: "10.9.0.1", host: "10.9.0.1" });
   target = await seedServerRow(db, {
     id: TARGET,
@@ -91,8 +82,6 @@ test("a build server that is down hands the build to the Deplo host", async () =
 });
 
 test("a fallback this team cannot reach is never asked to build", async () => {
-  // It would be handed the app's source and its DECRYPTED env, so the grant is the
-  // whole question - being marked as a fallback is not enough.
   await seedServerRow(db, {
     id: SPARE,
     ip: "203.0.113.12",

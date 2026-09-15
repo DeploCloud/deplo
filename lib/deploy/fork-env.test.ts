@@ -16,19 +16,14 @@ import {
   appPreviewEnvVars as previewVarsTable,
   envVarTargets as envVarTargetsTable,
   envVars as envVarsTable,
-} from "../db/schema/control-plane";
+} from "../db/schema/control-plane/env-vars";
 import { seedIdentity, TEAM_A, USER_1 } from "../data/identity-test-helpers";
 import {
   seedApp,
   seedServer,
   TRUNCATE_PROJECT_GRAPH,
 } from "../data/app-graph-test-helpers";
-import { appEnv } from "./build";
-
-/**
- * A fork's code is a stranger's (ADR-0017 §7): its preview gets the preview-only
- * overrides and nothing the app itself was given, whatever the variable's type.
- */
+import { appEnv } from "./build/deploy-env";
 
 let db: TestDb;
 let pg: PGlite;

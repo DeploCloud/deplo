@@ -5,13 +5,10 @@ import { SimpleTooltip } from "@/components/ui/tooltip";
 import { cn, formatBytes } from "@/lib/utils";
 import type { DestinationCardView } from "@/components/storage/destination-actions";
 
-/** Past this share of the disk the bar goes amber, like the metrics tiles. */
 const FULL_PCT = 80;
 
 interface Shares {
-  /** What this destination's own artifacts take, as a % of the disk. */
   backups: number;
-  /** What everything else on that filesystem takes, as a %. */
   other: number;
   usedPct: number;
   used: number;
@@ -19,11 +16,6 @@ interface Shares {
   otherBytes: number;
 }
 
-/**
- * Split a measured filesystem into "our backups" / "everything else" / free. The
- * stored figure is the control plane's accounting and the free figure is the
- * host's, so clamp rather than trust the subtraction.
- */
 export function spaceShares(
   storedBytes: number,
   freeBytes: number,
@@ -42,7 +34,6 @@ export function spaceShares(
   };
 }
 
-/** True when this destination has been measured at least once. */
 export function measured(dest: DestinationCardView): boolean {
   return dest.freeBytes !== null && Boolean(dest.totalBytes);
 }
@@ -74,10 +65,6 @@ function Bar({ shares, className }: { shares: Shares; className?: string }) {
   );
 }
 
-/**
- * The disk a server destination sits on, as one bar. The figures behind it are
- * `dl` rows on the card, so the bar itself only has to show the proportion.
- */
 export function DestinationBar({ dest }: { dest: DestinationCardView }) {
   if (!measured(dest)) return null;
   const shares = spaceShares(
@@ -94,7 +81,6 @@ export function DestinationBar({ dest }: { dest: DestinationCardView }) {
   );
 }
 
-/** "331 GB free of 431 GB · 23% used", or why there is no figure yet. */
 export function spaceLabel(dest: DestinationCardView): string {
   if (!measured(dest)) return "Measured when tested";
   const shares = spaceShares(
@@ -105,13 +91,11 @@ export function spaceLabel(dest: DestinationCardView): string {
   return `${formatBytes(dest.freeBytes!)} free of ${formatBytes(dest.totalBytes!)} · ${Math.round(shares.usedPct)}% used`;
 }
 
-/** "412 MB in 1 backup" - what this destination is actually holding. */
 export function storedLabel(dest: DestinationCardView): string {
   if (dest.storedCount === 0) return "None yet";
   return `${formatBytes(dest.storedBytes)} in ${dest.storedCount} ${dest.storedCount === 1 ? "backup" : "backups"}`;
 }
 
-/** The same figure squeezed into a table cell: a short bar, or the stored size. */
 export function DestinationSpaceCell({ dest }: { dest: DestinationCardView }) {
   if (dest.kind !== "server")
     return (

@@ -6,12 +6,6 @@ import { buildSchema, parse, validate, type GraphQLSchema } from "graphql";
 
 import { assertVariablesDeclared } from "./graphql-vars";
 
-/**
- * The two things that go wrong with the inline documents the dashboard sends:
- * a variable nobody declared (dropped in silence by the server) and a field the
- * schema no longer has.
- */
-
 const DOC = `
   mutation StartMigration($input: MigrationSourceInput!, $queued: [MigrationQueuedTeamInput!]) {
     startMigration(input: $input, queued: $queued)
@@ -23,8 +17,6 @@ test("a variable the document declares passes", () => {
   assertVariablesDeclared(DOC, undefined);
 });
 
-// The bug this exists for: the call site grew a `queued` argument, the document
-// kept the old header, and every team but the first was dropped without a word.
 test("a variable the document does NOT declare throws", () => {
   assert.throws(
     () => assertVariablesDeclared(DOC, { input: {}, keepSources: true }),
@@ -38,8 +30,6 @@ test("a variable named in the SELECTION does not count as declared", () => {
     /\$orgName/,
   );
 });
-
-/* ---- every inline document the UI sends ---------------------------- */
 
 let cached: GraphQLSchema | undefined;
 const sdl = () =>
@@ -55,7 +45,6 @@ function sources(dir: string, out: string[] = []): string[] {
   return out;
 }
 
-/** Every `/* GraphQL *\/` template in a file, minus the interpolated ones. */
 function documentsIn(path: string): string[] {
   const text = readFileSync(path, "utf8");
   return [...text.matchAll(/\/\* GraphQL \*\/\s*`([\s\S]*?)`/g)]

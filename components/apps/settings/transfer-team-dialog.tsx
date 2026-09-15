@@ -58,9 +58,6 @@ const INFO_QUERY = /* GraphQL */ `
 const plural = (n: number, one: string, many: string) =>
   `${n} ${n === 1 ? one : many}`;
 
-/**
- * Hand this app to another team the viewer belongs to.
- */
 export function TransferTeamDialog({
   trigger,
   appId,
@@ -78,8 +75,6 @@ export function TransferTeamDialog({
   const selectId = React.useId();
 
   const handleOpenChange = (v: boolean) => {
-    // Reset on close so a reopen re-reads the impact (a shared variable may have
-    // been linked, a backup scheduled) instead of flashing a stale summary.
     if (!v) {
       setInfo(null);
       setFailed(false);
@@ -95,8 +90,6 @@ export function TransferTeamDialog({
       .then((d) => {
         if (cancelled) return;
         setInfo(d.appTransferInfo);
-        // One candidate is the overwhelmingly common case - preselect it so the
-        // operator only has to confirm.
         if (d.appTransferInfo.targets.length === 1)
           setTeamId(d.appTransferInfo.targets[0].id);
       })
@@ -263,8 +256,6 @@ export function TransferTeamDialog({
           `,
           { appId, teamId },
         );
-        // The app is gone from the active team: the settings page it was opened
-        // from no longer resolves, so leave for the overview.
         if (res.ok) router.push("/");
         return res;
       }}

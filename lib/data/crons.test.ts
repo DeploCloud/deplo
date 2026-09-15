@@ -6,12 +6,12 @@ import { eq } from "drizzle-orm";
 
 import { makeTestDb, type TestDb } from "../db/test-harness";
 import { __setTestDb, __resetTestDb } from "../db/client";
+import { apps as appsTable } from "../db/schema/control-plane/apps";
 import {
-  apps as appsTable,
   cronJobEnv,
   cronJobs as cronJobsTable,
   cronRuns as cronRunsTable,
-} from "../db/schema/control-plane";
+} from "../db/schema/control-plane/crons";
 import { runWithIdentity } from "../auth/request-context";
 import { decryptSecret } from "../crypto";
 import { seedIdentity, TEAM_A, TEAM_B, USER_1 } from "./identity-test-helpers";
@@ -23,15 +23,12 @@ import {
   seedCronRun,
   TRUNCATE_CRONS,
 } from "./cron-test-helpers";
-import * as crons from "./crons";
+import * as cronsCrud from "./crons/job-crud";
+import * as cronsListing from "./crons/listing";
+import * as cronsRuns from "./crons/runs";
 
-/**
- * The GATES and the VALIDATION - the half of the feature that is a security
- * boundary rather than a scheduler. The mechanics are covered in
- * lib/crons/scheduler.test.ts against a fake agent; nothing here reaches a host.
- */
+const crons = { ...cronsCrud, ...cronsListing, ...cronsRuns };
 
-/** The other team's owner. `identity-test-helpers` only exports USER_1. */
 const USER_2 = "user_2";
 
 let db: TestDb;
@@ -82,15 +79,11 @@ const validJob = {
   command: "php artisan invoices:send",
 };
 
-/* ---- Gates ------------------------------------------------------- */
-
 test("another team cannot read or write this team's cron jobs", async () => {
   const id = await asOwner(
     async () => (await crons.createCronJob("app", "prj_1", validJob)).id,
   );
 
-  // An app id from another team must read as "not found", never as "denied" -
-  // the gate is not an oracle for which ids exist.
   await assert.rejects(
     () => asOtherTeam(() => crons.listAppCronJobs("prj_1")),
     /not found/i,
@@ -113,8 +106,6 @@ test("another team cannot read or write this team's cron jobs", async () => {
 });
 
 test("a database job needs database-console access as well", async () => {
-  // `manage_crons` is seeded from EITHER console capability, so app-console
-  // access alone must not reach inside a database. Strip the database one.
   await db.execute(
     `delete from membership_capabilities where capability = 'open_database_console'`,
   );
@@ -122,7 +113,6 @@ test("a database job needs database-console access as well", async () => {
     () => asOwner(() => crons.createCronJob("database", "db_1", validJob)),
     /permission/i,
   );
-  // The app side still works with exactly the same set.
   await asOwner(() => crons.createCronJob("app", "prj_1", validJob));
 });
 
@@ -140,11 +130,7 @@ test("without manage_crons nothing is readable or writable", async () => {
   );
 });
 
-/* ---- Validation -------------------------------------------------- */
-
 test("an unparseable schedule is refused, not stored", async () => {
-  // The scheduler treats an unparseable cron as "never matches", so storing one
-  // would leave a job the UI calls enabled that silently never runs.
   await assert.rejects(
     () =>
       asOwner(() =>
@@ -204,8 +190,6 @@ test("two jobs on one app cannot share a name", async () => {
 });
 
 test("timeout x attempts is clamped to 24 hours", async () => {
-  // 24h x 4 attempts would hold the job's `running` slot for four days and, under
-  // overlap=skip, starve every later fire.
   await assert.rejects(
     () =>
       asOwner(() =>
@@ -217,7 +201,6 @@ test("timeout x attempts is clamped to 24 hours", async () => {
       ),
     /Lower the timeout or the retries/,
   );
-  // Each on its own is fine.
   await asOwner(() =>
     crons.createCronJob("app", "prj_1", {
       ...validJob,
@@ -233,7 +216,6 @@ test("the clamp reads the STORED value when only one side is edited", async () =
       timeoutSeconds: 12 * 3600,
     }),
   );
-  // 12h is fine alone; asking for 3 attempts of it is 36 hours.
   await assert.rejects(
     () => asOwner(() => crons.updateCronJob(job.id, { maxAttempts: 3 })),
     /Lower the timeout or the retries/,
@@ -258,8 +240,6 @@ test("retention, attempts and shell are bounded", async () => {
   }
 });
 
-/* ---- Secrets ----------------------------------------------------- */
-
 test("job variables are encrypted and have no read path", async () => {
   const job = await asOwner(() =>
     crons.createCronJob("app", "prj_1", {
@@ -267,11 +247,9 @@ test("job variables are encrypted and have no read path", async () => {
       env: [{ key: "API_KEY", value: "s3cr3t" }],
     }),
   );
-  // The DTO carries the NAME and never the value.
   assert.deepEqual(job.envKeys, ["API_KEY"]);
   assert.equal(JSON.stringify(job).includes("s3cr3t"), false);
 
-  // And what is at rest is ciphertext.
   const rows = await db
     .select()
     .from(cronJobEnv)
@@ -314,15 +292,12 @@ test("editing the environment replaces it wholesale", async () => {
   );
 });
 
-/* ---- Reads ------------------------------------------------------- */
-
 test("the view carries the master switch and the pickable services", async () => {
   await asOwner(() => crons.createCronJob("app", "prj_1", validJob));
   const view = await asOwner(() => crons.listAppCronJobs("prj_1"));
   assert.equal(view.enabled, true);
   assert.equal(view.targetKind, "app");
   assert.equal(view.jobs.length, 1);
-  // A single-image app offers its own slug as the one container.
   assert.deepEqual(view.services, ["web"]);
 });
 
@@ -335,7 +310,6 @@ test("nextRunAt is computed in the job's zone, and only while enabled", async ()
     }),
   );
   assert.ok(job.nextRunAt, "an enabled job says when it runs next");
-  // 03:00 Rome is never 03:00Z - that is the whole point of storing the zone.
   assert.equal(new Date(job.nextRunAt!).getUTCHours() === 3, false);
 
   const off = await asOwner(() =>
@@ -374,8 +348,6 @@ test("a job says whether a run is in flight right now", async () => {
 
   await seedCronRun(db, { id: "cronrun_1", jobId: job.id });
   const view = await asOwner(() => crons.listAppCronJobs("prj_1"));
-  // `lastStatus` cannot answer this - it is written when a run SETTLES, so it
-  // never says `running` and a job mid-flight still reads as its last outcome.
   assert.equal(view.jobs[0].running, true);
   assert.equal(view.jobs[0].lastStatus, null);
 
@@ -390,9 +362,6 @@ test("a job says whether a run is in flight right now", async () => {
 });
 
 test("Run now answers with a skipped run while one is in flight", async () => {
-  // The setting says "if it is still running, skip this run" - a button press is
-  // not the one caller allowed to start a second copy. Nothing reaches a host:
-  // the overlap rule is decided in the store, before any agent is dialled.
   const job = await asOwner(() =>
     crons.createCronJob("app", "prj_1", { ...validJob, overlap: "skip" }),
   );
@@ -409,8 +378,6 @@ test("Run now answers with a skipped run while one is in flight", async () => {
 });
 
 test("Run now refuses while the master switch is off", async () => {
-  // The page is hidden when the switch is off, so the API must not be the one
-  // way around the opt-in.
   const job = await asOwner(() =>
     crons.createCronJob("app", "prj_1", validJob),
   );
@@ -421,11 +388,7 @@ test("Run now refuses while the master switch is off", async () => {
   );
 });
 
-/* ---- The team-wide list ------------------------------------------ */
-
 test("listTeamCronJobs finds a job through the app it hangs off", async () => {
-  // `seedApp` names an app after its id; give it a real one so ref and name
-  // cannot be confused for each other.
   await db
     .update(appsTable)
     .set({ name: "Web" })
@@ -447,8 +410,6 @@ test("a job whose parent the caller cannot see is not listed", async () => {
   const id = await asOwner(
     async () => (await crons.createCronJob("app", "prj_1", validJob)).id,
   );
-  // Re-home the APP, leaving the job row in team A: visibility has to come from
-  // the parent, so the job must vanish even though its own team_id still matches.
   await db
     .update(appsTable)
     .set({ teamId: TEAM_B })
@@ -462,8 +423,6 @@ test("a job whose parent the caller cannot see is not listed", async () => {
   );
 });
 
-/* ---- The edges the live matrix found ------------------------------ */
-
 test("a variable left without a value keeps the one it had", async () => {
   const job = await asOwner(() =>
     crons.createCronJob("app", "prj_1", {
@@ -474,7 +433,6 @@ test("a variable left without a value keeps the one it had", async () => {
       ],
     }),
   );
-  // The editor cannot read A back, so it sends A with no value and a new C.
   const updated = await asOwner(() =>
     crons.updateCronJob(job.id, {
       env: [
@@ -489,7 +447,6 @@ test("a variable left without a value keeps the one it had", async () => {
     .from(cronJobEnv)
     .where(eq(cronJobEnv.jobId, job.id));
   assert.equal(decryptSecret(rows.find((r) => r.key === "A")!.valueEnc), "1");
-  // A key that was never stored has nothing to keep.
   await assert.rejects(
     asOwner(() =>
       crons.updateCronJob(job.id, { env: [{ key: "Z", value: null }] }),
@@ -508,7 +465,6 @@ test("a schedule that never comes up is refused", async () => {
     ),
     /never comes up/,
   );
-  // Leap day is rare, not impossible.
   const job = await asOwner(() =>
     crons.createCronJob("app", "prj_1", {
       ...validJob,
@@ -516,7 +472,6 @@ test("a schedule that never comes up is refused", async () => {
     }),
   );
   assert.equal(job.schedule, "0 0 29 2 *");
-  // Names and macros are schedules too.
   const named = await asOwner(() =>
     crons.updateCronJob(job.id, { schedule: "0 9 * * MON-FRI" }),
   );
@@ -540,8 +495,6 @@ test("editing a job onto a container the stack does not have is refused", async 
     asOwner(() => crons.updateCronJob(job.id, { service: "ghost" })),
     /No container named "ghost"/,
   );
-  // With no routed domain, "the app's own" is the first service declared -
-  // never whichever container the host happened to list first.
   const view = await asOwner(() => crons.listAppCronJobs("prj_stack"));
   assert.equal(view.primaryService, "web");
   assert.deepEqual(view.services, ["web", "worker"]);
@@ -561,8 +514,6 @@ test("a database job cannot name a container", async () => {
 test("running as root on an app that reaches the server takes the host grant", async () => {
   const asMember = <T>(fn: () => Promise<T>): Promise<T> =>
     runWithIdentity({ userId: "user_3", teamId: TEAM_A }, fn);
-  // Without host reach anybody with manage_crons may run as root: the container
-  // is the boundary and root inside it is the image's own business.
   await asMember(() =>
     crons.createCronJob("app", "prj_1", { ...validJob, user: "root" }),
   );
@@ -592,7 +543,6 @@ test("running as root on an app that reaches the server takes the host grant", a
     () => asMember(() => crons.updateCronJob(job.id, { user: "root" })),
     /Bind server folders/,
   );
-  // The grant holder (an owner is an instance admin here) may.
   await asOwner(() => crons.updateCronJob(job.id, { user: "root" }));
 });
 

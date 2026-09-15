@@ -1,17 +1,11 @@
 import "server-only";
 
 import { listFolders } from "./folders";
-import { listProjects } from "./projects";
+import { listProjects } from "./projects/read";
 import { listEnvironmentsForProject } from "./environments";
 import type { OverviewPlacement } from "../overview-links";
 
-/**
- * Resolving the Overview drill-in that a creation flow was opened from. This is a
- * display/preselect helper, NOT the gate: `createApp` re-validates the destination
- * and requires `deploy` on the target folder.
- */
 export interface ResolvedPlacement {
-  /** What the UI shows, e.g. "Marketing" or "Shop · Production". */
   label: string;
   folderId: string | null;
   projectId: string | null;
@@ -39,8 +33,6 @@ export async function resolveOverviewPlacement(
       (p) => p.id === requested.projectId,
     );
     if (!project) return null;
-    // No explicit environment (or one that no longer exists) ⇒ the project's
-    // default, matching where a drag-into-project move lands an app.
     const environments = await listEnvironmentsForProject(project.id);
     const environment =
       (requested.environmentId

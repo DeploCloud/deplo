@@ -6,10 +6,6 @@ import { signState, verifyState } from "@/lib/crypto";
 import { githubManifestAccess } from "@/lib/git/provider-access";
 import { safeReturnPath } from "@/lib/utils";
 
-/**
- * GitHub App Manifest flow helpers.
- */
-
 export interface AppManifest {
   name: string;
   url: string;
@@ -23,7 +19,6 @@ export interface AppManifest {
   default_events: string[];
 }
 
-/** Where the browser POSTs the manifest to create the App (user or org scope). */
 export function manifestCreateUrl(org?: string | null): string {
   return org && org.trim()
     ? `https://github.com/organizations/${encodeURIComponent(
@@ -32,18 +27,11 @@ export function manifestCreateUrl(org?: string | null): string {
     : "https://github.com/settings/apps/new";
 }
 
-/**
- * Build the manifest.
- */
 export function buildManifest(publicUrl: string): AppManifest {
   const base = publicUrl.replace(/\/+$/, "");
   const suffix = randomBytes(3).toString("hex");
-  // The same list the access check diffs against, so an App is never created
-  // missing something Deplo will then warn about.
   const access = githubManifestAccess();
   return {
-    // App names are globally unique on GitHub; a short random suffix avoids
-    // collisions across instances.
     name: `Deplo ${suffix}`,
     url: base,
     hook_attributes: { url: `${base}/api/github/webhook`, active: true },
@@ -68,10 +56,6 @@ export interface ManifestConversion {
   html_url: string;
 }
 
-/**
- * Exchange a one-time manifest `code` for the created App's credentials.
- * Called once, server-side, from the callback route.
- */
 export async function exchangeManifestCode(
   code: string,
 ): Promise<ManifestConversion> {
@@ -94,16 +78,6 @@ export async function exchangeManifestCode(
   return (await res.json()) as ManifestConversion;
 }
 
-/* ------------------------------------------------------------------ */
-/* Connect state (CSRF + where to send the browser back)               */
-/* ------------------------------------------------------------------ */
-
-/**
- * The signed `state` that rides both hops of the connect flow: the manifest POST
- * (GitHub echoes it to `/api/github/callback`) and the install link
- * (`installations/new?state=…`, which GitHub echoes to `/api/github/setup` -
- * documented as the way to "return people back to that state after they install").
- */
 export function signConnectState(
   userId: string,
   returnTo?: string | null,
@@ -112,9 +86,6 @@ export function signConnectState(
   return signState(back ? `github:${userId}:${back}` : `github:${userId}`);
 }
 
-/**
- * Verify a state minted by {@link signConnectState}.
- */
 export function readConnectState(
   token: string | null | undefined,
   userId: string,

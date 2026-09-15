@@ -51,7 +51,6 @@ test("broken YAML throws with the position the lint reads", () => {
     assert.fail("should have thrown");
   } catch (e) {
     assert.match((e as Error).message, /tab/i);
-    // 0-based, the shape every caller already reads off a load error.
     assert.deepEqual((e as { mark?: unknown }).mark, { line: 1, column: 0 });
     assert.equal(
       / at line \d+, column \d+:/.test((e as Error).message),

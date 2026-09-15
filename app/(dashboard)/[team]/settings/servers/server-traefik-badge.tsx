@@ -12,17 +12,11 @@ import {
   type ServerHealthState,
 } from "./server-health-provider";
 
-/**
- * Whether a Traefik proxy is running on this host - under the SAME honesty rule as
- * the health chip beside it. The flag is not wrong, it is just *old*, and a badge
- * that can't say how old it is can only mislead.
- */
 export function ServerTraefikBadge({
   serverId,
   fallback,
 }: {
   serverId: string;
-  /** The stored observation, for the render before the provider's state settles. */
   fallback: ServerHealthState;
 }) {
   const { health, now } = useServerHealth();
@@ -37,8 +31,6 @@ export function ServerTraefikBadge({
             : "No Traefik proxy is running on this host. Apps deployed here won't be reachable by domain until one is."
         }
       >
-        {/* Green is reserved for the one fact that matters at a glance - the server
-            being online. A proxy that is up is ordinary; one that is missing is not. */}
         <Badge variant={state.traefikEnabled ? "muted" : "destructive"}>
           <Network className="size-3" />
           Traefik {state.traefikEnabled ? "on" : "off"}
@@ -47,7 +39,6 @@ export function ServerTraefikBadge({
     );
   }
 
-  // We can't see the host, so we can't answer the question.
   const lastKnown = state.traefikEnabled ? "running" : "not running";
   const tip =
     state.status === "provisioning"

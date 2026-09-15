@@ -39,9 +39,6 @@ type ConsoleInfoResponse = {
   consoleInfo: (ConsoleInfo & { running: boolean }) | null;
 };
 
-/**
- * An App's console, following the app's live running state.
- */
 export function LiveConsole({
   appId,
   title,
@@ -54,13 +51,9 @@ export function LiveConsole({
   initialRunning: boolean;
 }) {
   const running = useLiveRunning(initialRunning);
-  // Console info for the *current* running session. Display is gated on `running`, so
-  // we never null this on stop - it is simply ignored, which keeps all state writes
-  // inside async callbacks (no synchronous effect churn).
   const [info, setInfo] = React.useState<ConsoleInfo | null>(
     initialRunning ? initialInfo : null,
   );
-  // Running but no console info yet means we're fetching it post-start.
   const loading = running && !info;
 
   React.useEffect(() => {
@@ -82,8 +75,6 @@ export function LiveConsole({
     };
   }, [running, appId]);
 
-  // Stable identity: the pane re-probes whenever this changes, so a new closure
-  // per render would put it in a loop.
   const probeShell = React.useCallback(
     async (containerName: string) => {
       const res = await gqlAction(

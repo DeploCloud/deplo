@@ -7,15 +7,15 @@ import { eq } from "drizzle-orm";
 import { makeTestDb, truncateAll, type TestDb } from "../db/test-harness";
 import { __setTestDb, __resetTestDb } from "../db/client";
 import {
-  folders as foldersTable,
   folderGrants as folderGrantsTable,
   memberships as membershipsTable,
   membershipCapabilities as membershipCapabilitiesTable,
-  users as usersTable,
-} from "../db/schema/control-plane";
+} from "../db/schema/control-plane/access-control";
+import { users as usersTable } from "../db/schema/control-plane/identity";
+import { folders as foldersTable } from "../db/schema/control-plane/projects";
 import { seedIdentity, TEAM_A, TEAM_B } from "./identity-test-helpers";
 import { runWithIdentity } from "../auth/request-context";
-import { ALL_CAPABILITIES } from "../types";
+import { ALL_CAPABILITIES } from "../types/identity";
 import { renameFolder, deleteFolder, setFolderColor } from "./folders";
 import {
   folderCapabilities,
@@ -24,15 +24,9 @@ import {
   setFolderGrant,
 } from "./folder-access";
 
-/**
- * The ACTIVE-TEAM boundary, probed from the one direction the app-shaped gates
- * don't cover: a folder id belonging to a team that is not the request's.
- */
-
 let db: TestDb;
 let pg: PGlite;
 const T0 = "2026-01-01T00:00:00.000Z";
-/** In BOTH teams: owner of alpha, and holds organize/delete folders in beta. */
 const BOTH = "u_both";
 const FOLDER_B = "fld_in_beta";
 
@@ -54,7 +48,6 @@ beforeEach(async () => {
       { id: `${BOTH}_b`, teamId: TEAM_B, role: "owner" },
     ],
   });
-  // The same person, also a member of beta with the full set there.
   await db.insert(membershipsTable).values({
     id: "mem_both_in_b",
     userId: BOTH,
@@ -86,7 +79,6 @@ async function folderStillNamed(name: string): Promise<boolean> {
   return rows[0]?.name === name;
 }
 
-/** A read-only bearer token, minted in alpha, acting in alpha. */
 const readOnlyTokenInAlpha = {
   userId: BOTH,
   teamId: TEAM_A,
@@ -168,8 +160,6 @@ test("and the capability resolver itself answers nothing for the foreign folder"
 });
 
 test("nor hand out standing capabilities on it to a beta member", async () => {
-  // A second beta member for the token to arm. The grant OUTLIVES the token, so
-  // this is the variant that survives revocation.
   await db.insert(usersTable).values({
     id: "u_beta_member",
     email: "beta@example.io",

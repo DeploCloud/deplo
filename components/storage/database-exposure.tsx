@@ -18,13 +18,8 @@ import {
   MIN_USER_PORT,
   MAX_PORT,
 } from "@/lib/databases/ports";
-import type { DatabaseDTO } from "@/lib/data/databases";
+import type { DatabaseDTO } from "@/lib/data/databases/rows";
 
-/**
- * Publishing a database's port lives on the Overview AND in Settings, so the
- * rules live here and only the arrangement differs.
- * https://deplo.build/docs/guides/data/databases
- */
 export function useDatabaseExposure(db: DatabaseDTO) {
   const router = useRouter();
   const [pending, startTransition] = React.useTransition();
@@ -95,7 +90,6 @@ export function useDatabaseExposure(db: DatabaseDTO) {
 
 export type DatabaseExposure = ReturnType<typeof useDatabaseExposure>;
 
-/** The two gates in one control: the Capability, then the instance grant. */
 export function ExposureSwitch({
   checked,
   onCheckedChange,
@@ -118,8 +112,6 @@ export function ExposureSwitch({
   return (
     <Tooltip>
       <TooltipTrigger asChild>
-        {/* A disabled control fires no pointer events, so the tooltip hangs off
-            a focusable wrapper instead. */}
         <span tabIndex={0}>
           <Switch checked={checked} disabled />
         </span>
@@ -139,7 +131,6 @@ export function ExposurePortRow({
   exposure: DatabaseExposure;
   canExposePorts: boolean;
   canConfigure: boolean;
-  /** Settings passes the (possibly changed) move target so Generate asks it. */
   serverId?: string;
   extraInfo?: React.ReactNode;
 }) {

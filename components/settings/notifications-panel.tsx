@@ -38,21 +38,15 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { gqlAction } from "@/lib/graphql-client";
 import { DEFAULT_ALERTS } from "@/lib/alerts";
-import { ALL_CHANNELS } from "@/lib/types";
+import { ALL_CHANNELS } from "@/lib/types/notification";
 import { cn } from "@/lib/utils";
 import type {
   NotificationChannel,
   NotificationChannelInstance,
-} from "@/lib/types";
+} from "@/lib/types/notification";
 
-/**
- * The three the picker leads with.
- */
 const FEATURED: NotificationChannel[] = ["discord", "email", "webhook"];
 
-/**
- * The notification settings.
- */
 export function NotificationsPanel({
   initial,
   vapidPublicKey,
@@ -60,30 +54,22 @@ export function NotificationsPanel({
 }: {
   initial: NotificationChannelInstance[];
   vapidPublicKey: string;
-  /** Cosmetic: the real gate is `manage_notifications` in the data layer. */
   canManage: boolean;
 }) {
   const router = useRouter();
   const [open, setOpen] = React.useState(false);
-  /** The channel being edited, or null while creating a new one. */
   const [editingId, setEditingId] = React.useState<string | null>(null);
-  /** The working copy. Null while creating and no type has been picked yet. */
   const [draft, setDraft] = React.useState<Draft | null>(null);
   const [secrets, setSecrets] = React.useState<Secrets>({});
-  /** What the draft looked like when the modal opened, so Cancel is a cancel. */
   const [snapshot, setSnapshot] = React.useState<string>("");
   const [saving, startSave] = React.useTransition();
   const [testing, setTesting] = React.useState(false);
   const [deleting, setDeleting] =
     React.useState<NotificationChannelInstance | null>(null);
-  // A removed channel leaves the grid on the click; the count above it follows,
-  // because a list that shed a row and a badge that still counts it disagree.
   const { visible, remove, restore } = useOptimisticRemove(
     initial,
     (c) => c.id,
   );
-  // A card switch flips on the click; the entry retires once the refresh behind
-  // it serves the same value, so a change made elsewhere is never masked.
   const [pendingEnabled, setPendingEnabled] = React.useState<
     Record<string, boolean>
   >({});
@@ -121,16 +107,11 @@ export function NotificationsPanel({
     setOpen(true);
   }
 
-  /** A channel of this kind that nobody has configured yet. */
   function pickKind(kind: NotificationChannel) {
     setDraft({
       kind,
       name: "",
-      // Every kind starts on, EXCEPT browser push: turning that switch on is what asks
-      // this device for permission and registers it (`toggle`), so a push channel born
-      // already-on would be saved enabled with no device behind it and would deliver
       enabled: kind !== "push",
-      // ntfy is the one kind with a meaningful default address.
       url: kind === "ntfy" ? "https://ntfy.sh" : "",
       target: "",
       emailFrom: "",
@@ -140,8 +121,6 @@ export function NotificationsPanel({
       smtpUser: "",
       secretSet: false,
       secret2Set: false,
-      // Nothing is written for these until Save: a channel with no stored rows
-      // already resolves to exactly this.
       alerts: [...DEFAULT_ALERTS],
     });
   }
@@ -152,8 +131,6 @@ export function NotificationsPanel({
 
   function save() {
     if (!draft) return;
-    // The modal closes on the click and the write settles behind it; the draft
-    // stays in state, so a refusal is one reopen away from being corrected.
     setOpen(false);
     startSave(async () => {
       const res = await gqlAction(
@@ -184,7 +161,6 @@ export function NotificationsPanel({
     }
   }
 
-  /** The modal's switch. */
   async function toggle(on: boolean) {
     if (!draft) return;
     if (draft.kind === "push" && on && !(await registerPush(vapidPublicKey)))
@@ -192,7 +168,6 @@ export function NotificationsPanel({
     patchDraft({ enabled: on });
   }
 
-  /** The card's switch: the same flip, saved on the spot. */
   async function setEnabled(
     instance: NotificationChannelInstance,
     on: boolean,
@@ -202,7 +177,6 @@ export function NotificationsPanel({
     setPendingEnabled((p) => ({ ...p, [instance.id]: on }));
     const res = await gqlAction(
       `mutation($id: ID, $input: JSON!) { saveNotificationChannel(id: $id, input: $input) }`,
-      // Empty secrets keep the stored ones, so a flip never retypes a token.
       { id: instance.id, input: { ...instance, enabled: on, secrets: {} } },
     );
     if (!res.ok) {
@@ -222,10 +196,6 @@ export function NotificationsPanel({
 
   return (
     <div className="space-y-6">
-      {/**
-       * The page header lives HERE, not in the server page, because "Add channel" belongs
-       * in it and only this component can open the modal.
-       */}
       <PageHeader
         docs="notifications.overview"
         title="Notifications"
@@ -243,17 +213,11 @@ export function NotificationsPanel({
       <div
         className={cn(
           "grid items-start gap-6",
-          // No sidebar column while the list is empty: the phone moves INTO the
-          // empty state there, and a 260px hole beside it would be a column
-          // holding nothing.
           channels.length > 0 && "xl:grid-cols-[minmax(0,1fr)_260px]",
         )}
       >
         <div className="min-w-0 space-y-4">
           {channels.length === 0 ? (
-            // Deliberately NOT wrapped in the card: a dashed box inside a card
-            // inside the page is three surfaces for one message. The card is
-            // what holds the LIST, so it arrives with the list.
             <EmptyState
               graphic={<NotificationIllustration caption={false} />}
               className="py-12"
@@ -262,8 +226,6 @@ export function NotificationsPanel({
               description="Add a channel, then pick what it should tell you about."
             />
           ) : (
-            // No wrapper card: the channels ARE the cards, and a card holding cards is two
-            // surfaces for one list.
             <div className="space-y-3">
               <div className="flex w-fit flex-wrap items-center gap-1.5 px-1 text-sm font-medium">
                 <Bell className="size-4" />
@@ -295,9 +257,6 @@ export function NotificationsPanel({
           )}
         </div>
 
-        {/* Decoration, and the only thing on this page that says what it is FOR.
-            Outside the branch above: the phone is what the page is about, empty
-            or not, so it does not come and go with the list. */}
         {channels.length > 0 && (
           <aside className="hidden xl:sticky xl:top-20 xl:block">
             <NotificationIllustration />
@@ -305,19 +264,11 @@ export function NotificationsPanel({
         )}
       </div>
 
-      {/**
-       * ONE modal for whichever channel is open, so only one alert picker is ever mounted
-       * - which is also what keeps its per-row DOM ids unique. `max-h` is a floor for
-       * short viewports - without it a 600px laptop would push the footer off screen.
-       */}
       <Dialog open={open} onOpenChange={(next) => !next && setOpen(false)}>
         <DialogContent
           selfManaged
           className="h-[46rem] max-h-[85vh] max-w-2xl grid-rows-[minmax(0,1fr)] gap-0 p-0"
         >
-          {/* A real form, so Enter in a webhook field saves instead of doing
-              nothing. THIS is where a channel is saved: a page-level Save made
-              no sense when everything you can change lives in here. */}
           <form
             className="grid min-h-0 grid-rows-[auto_minmax(0,1fr)_auto]"
             onSubmit={(e) => {
@@ -326,7 +277,6 @@ export function NotificationsPanel({
               else setOpen(false);
             }}
           >
-            {/* pr-12 keeps the switch clear of the modal's own close button. */}
             <div className="flex items-start gap-3 border-b border-border p-4 pr-12">
               {draft && brand ? (
                 <>
@@ -405,8 +355,6 @@ export function NotificationsPanel({
                       value={draft.name}
                       disabled={!canManage}
                       onChange={(e) => patchDraft({ name: e.target.value })}
-                      // Optional on purpose: it earns its place when a team has
-                      // two of a kind, and asks for nothing when it does not.
                       placeholder={brand?.label}
                     />
                   </div>
@@ -430,9 +378,6 @@ export function NotificationsPanel({
 
             <DialogFooter className="items-center gap-1.5 border-t border-border p-4">
               <div className="flex flex-wrap items-center gap-1.5">
-                {/* Only in the add flow: picking a kind replaced the picker
-                    with this form, so there is a screen to go back to. An
-                    existing channel was opened straight from the grid. */}
                 {draft && !editingId && (
                   <Button
                     type="button"
@@ -447,9 +392,6 @@ export function NotificationsPanel({
                     Back
                   </Button>
                 )}
-                {/* A test dials whatever the SERVER has stored, so it is only
-                    offered once there IS something stored and nothing is
-                    pending on top of it. */}
                 {editingId && (
                   <>
                     <Button
@@ -524,13 +466,7 @@ export function NotificationsPanel({
   );
 }
 
-/**
- * Turning browser push on: this device has to grant permission and register a
- * worker before the flag is worth anything. True when it did.
- */
 async function registerPush(vapidPublicKey: string): Promise<boolean> {
-  // A service worker needs a secure context. Say so, instead of failing with
-  // a browser console message nobody will read.
   if (
     typeof window === "undefined" ||
     !("serviceWorker" in navigator) ||
@@ -572,11 +508,6 @@ async function registerPush(vapidPublicKey: string): Promise<boolean> {
   }
 }
 
-/**
- * One choice in the Add picker. The featured three stand up (mark above the
- * name, centred, taller) so the eye lands on them first; the rest keep the
- * compact row shape, which is what makes "the rest" read as a list.
- */
 function KindTile({
   kind,
   featured,
@@ -627,11 +558,6 @@ function KindTile({
   );
 }
 
-/**
- * One configured channel: what it is called, where it sends, whether it is on
- * and how much it is told. The left side is the button; the trash sits outside
- * it, the shape a registry row already uses.
- */
 function ChannelRow({
   instance,
   canManage,
@@ -646,17 +572,9 @@ function ChannelRow({
   onToggle: (on: boolean) => void;
 }) {
   const brand = CHANNEL_BRAND[instance.kind];
-  // A stored channel's secrets are already set, so the row asks for nothing extra.
   const ready = isChannelReady(instance, {});
   const target = channelTarget(instance);
-  // A channel with nothing ticked is configured, on, and silent - the one state
-  // that looks healthy and delivers nothing. It reads as a warning, like an
-  // unfinished setup, because it has the same consequence.
   const noAlerts = instance.alerts.length === 0;
-  // Only the states that need doing something about. A healthy channel says
-  // nothing here: the dot on the right already reports it, and a count of how
-  // many alerts are ticked is a number nobody acts on from this row.
-  // "Off" is not among them: the switch on the right already says it.
   const status = !instance.enabled
     ? ""
     : !ready
@@ -677,8 +595,6 @@ function ChannelRow({
             <span className="truncate text-sm font-medium">
               {instance.name || brand.label}
             </span>
-            {/* The type, only once a name has taken its place. On an unnamed row
-                the title already says Discord and a badge would say it twice. */}
             {instance.name && <Badge variant="secondary">{brand.label}</Badge>}
             {brand.beta && (
               <Badge variant="info" className="px-1.5 py-0 text-[10px]">
@@ -703,8 +619,6 @@ function ChannelRow({
           </span>
         </span>
       </button>
-      {/* Outside the button: the switch is its own control, and nesting one in
-          another would make every flip open the modal too. */}
       <Switch
         checked={instance.enabled}
         disabled={!canManage}

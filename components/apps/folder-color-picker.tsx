@@ -13,11 +13,6 @@ import {
 import { FOLDER_COLORS } from "@/lib/folder-colors";
 import { SimpleTooltip } from "@/components/ui/tooltip";
 
-/**
- * Controlled colour picker for a folder: a row of curated swatches (plus a
- * "default / no colour" choice) and a free-form HEX field with a native colour
- * input and a live contrast preview.
- */
 export function FolderColorPicker({
   value,
   onChange,
@@ -27,20 +22,16 @@ export function FolderColorPicker({
   onChange: (value: string | null) => void;
   idPrefix?: string;
 }) {
-  // The HEX field keeps its own text state so a half-typed value ("#3b8") never
-  // clobbers the committed colour; we lift a value up only once it parses.
   const [hex, setHex] = React.useState(value ?? "");
 
   const current = (value ?? "").toLowerCase();
   const invalid = hex.trim() !== "" && !isHexColor(hex);
 
-  /** Choose a swatch / the default - sets both the field text and the value. */
   function pick(next: string | null) {
     setHex(next ?? "");
     onChange(next);
   }
 
-  /** Free-form HEX typing - keep the raw text, lift up only once it parses. */
   function commitHex(next: string) {
     setHex(next);
     const trimmed = next.trim();
@@ -54,7 +45,6 @@ export function FolderColorPicker({
   return (
     <div className="space-y-3">
       <div className="flex flex-wrap gap-2">
-        {/* Default: clears the colour back to the neutral tile. */}
         <SimpleTooltip content="Default (no colour)">
           <button
             type="button"
@@ -118,7 +108,6 @@ export function FolderColorPicker({
             spellCheck={false}
             aria-invalid={invalid}
           />
-          {/* Live contrast preview - the icon colour is auto-derived. */}
           <div
             className="flex size-9 shrink-0 items-center justify-center rounded-md border border-black/10"
             style={

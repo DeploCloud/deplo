@@ -19,12 +19,8 @@ import {
 import { FieldLabel } from "@/components/ui/info-tip";
 import { GitProviderMark } from "@/components/shared/brand-icons";
 import { gqlAction } from "@/lib/graphql-client";
-import type { GitProviderChoice } from "@/lib/types";
+import type { GitProviderChoice } from "@/lib/types/git";
 
-/**
- * The provider is already chosen, it was picked in the Connect menu, so this
- * dialog only asks for what Deplo cannot know: the address and the token.
- */
 export function ConnectGitProviderDialog({
   provider,
   isInstanceAdmin,
@@ -36,7 +32,6 @@ export function ConnectGitProviderDialog({
   isInstanceAdmin: boolean;
   next?: string | null;
   onClose: () => void;
-  /** Told which connection was just made, for a caller that can select it. */
   onConnected?: (id: string) => void;
 }) {
   const router = useRouter();
@@ -79,8 +74,6 @@ export function ConnectGitProviderDialog({
       toast.success("Provider connected");
       onClose();
       if (res.data) onConnected?.(res.data.id);
-      // Straight back to whatever sent the user here (the create-app wizard's source
-      // picker, an app's source settings), where the new connection is now in the list.
       if (next) router.push(next);
       else router.refresh();
     });
@@ -171,11 +164,6 @@ export function ConnectGitProviderDialog({
               )}
             </div>
 
-            {/**
-             * Self-hosted GitLab/Gitea is often on the same private network as the fleet, and
-             * the SSRF guard on the address refuses that outright - so the ordinary form would
-             * reject a perfectly normal setup.
-             */}
             {isInstanceAdmin && (
               <label className="flex cursor-pointer items-start gap-2.5 rounded-lg border border-border p-3 text-sm">
                 <Checkbox

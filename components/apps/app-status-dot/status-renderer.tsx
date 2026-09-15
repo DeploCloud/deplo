@@ -3,7 +3,7 @@
 import { StatusBadge, StatusDot } from "@/components/shared/status-badge";
 import { SimpleTooltip } from "@/components/ui/tooltip";
 import { displayStatus, type DisplayStatus } from "@/lib/apps/display-status";
-import type { AppStatus } from "@/lib/types";
+import type { AppStatus } from "@/lib/types/app";
 import type { AppRuntimeView } from "@/components/apps/use-app-runtime";
 import type { OverviewRuntimeView } from "../apps-grid/overview-state";
 

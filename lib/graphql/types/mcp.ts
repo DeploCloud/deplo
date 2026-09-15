@@ -12,10 +12,6 @@ import {
   type McpTeamDTO,
 } from "@/lib/data/mcp-clients";
 
-/* ------------------------------------------------------------------ */
-/* Object types                                                        */
-/* ------------------------------------------------------------------ */
-
 export const McpSettingsRef = builder
   .objectRef<McpSettings>("McpSettings")
   .implement({
@@ -45,10 +41,6 @@ export const McpTeamRef = builder.objectRef<McpTeamDTO>("McpTeam").implement({
   }),
 });
 
-/* ------------------------------------------------------------------ */
-/* Queries                                                             */
-/* ------------------------------------------------------------------ */
-
 builder.queryFields((t) => ({
   mcpSettings: t.field({
     type: McpSettingsRef,
@@ -73,9 +65,6 @@ builder.queryFields((t) => ({
     resolve: () => countMcpAgents(),
   }),
   mcpConnected: t.boolean({
-    // `loggedIn`, not `manage_mcp`: this answers one yes/no about a token the caller
-    // has just minted, and the person who mints a token holds `manage_tokens`, which
-    // is not `manage_mcp`.
     authScopes: { loggedIn: true },
     description:
       "Has this API token spoken MCP yet? What the connect wizard waits on " +
@@ -84,10 +73,6 @@ builder.queryFields((t) => ({
     resolve: (_p, a) => mcpTokenConnected(a.tokenId),
   }),
 }));
-
-/* ------------------------------------------------------------------ */
-/* Mutations                                                           */
-/* ------------------------------------------------------------------ */
 
 builder.mutationFields((t) => ({
   setMcpSettings: t.field({

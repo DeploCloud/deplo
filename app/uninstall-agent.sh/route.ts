@@ -1,10 +1,5 @@
 import { renderUninstallScript } from "@/lib/agent/uninstall-script";
 
-/**
- * The LEGACY uninstaller URL, kept because the one-liner it serves is pasted into
- * runbooks and printed by every older panel: `curl -fsSL
- * <panel>/uninstall-agent.sh | sudo bash -s -- --yes`.
- */
 export async function GET() {
   const script = await renderUninstallScript({ agentOnly: true });
   return new Response(script, {

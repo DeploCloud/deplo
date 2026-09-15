@@ -9,13 +9,9 @@ import {
   type GraphQLSchema,
 } from "graphql";
 
-import { MCP_TOOLS } from "./tools";
+import { MCP_TOOLS } from "./tools/catalog";
 import { CAPABILITY_META } from "../capabilities";
-import { ALL_CAPABILITIES } from "../types";
-
-/**
- * The load-bearing test for the MCP server.
- */
+import { ALL_CAPABILITIES } from "../types/identity";
 
 let cached: GraphQLSchema | undefined;
 function sdl(): GraphQLSchema {
@@ -51,8 +47,6 @@ test("tool names are unique, snake_case, and unprefixed", () => {
     assert.ok(!seen.has(t.name), `duplicate tool name ${t.name}`);
     seen.add(t.name);
     assert.match(t.name, /^[a-z][a-z0-9_]*$/, `${t.name} is not snake_case`);
-    // Clients already namespace by server name; a `deplo_` prefix would read as
-    // `mcp__deplo__deplo_list_apps` in the model's tool list.
     assert.ok(
       !t.name.startsWith("deplo_"),
       `${t.name} is redundantly prefixed`,
@@ -60,11 +54,6 @@ test("tool names are unique, snake_case, and unprefixed", () => {
   }
 });
 
-/**
- * Rule 1 of `lib/mcp/tools.ts`, enforced rather than trusted. A secret that
- * reaches a model's context window has left Deplo for a third party's logs and
- * cannot be revoked from there, so no capability may unlock one over MCP.
- */
 test("no tool can reveal a secret", () => {
   for (const t of MCP_TOOLS) {
     assert.doesNotMatch(
@@ -80,7 +69,6 @@ test("no tool can reveal a secret", () => {
   }
 });
 
-/** Console exec is RCE by another name - the token preset's own words. */
 test("no tool runs an arbitrary command in a container", () => {
   for (const t of MCP_TOOLS)
     assert.doesNotMatch(
@@ -124,7 +112,6 @@ test("a paginated tool accepts limit and offset", () => {
 test("every tool is described well enough to choose between", () => {
   for (const t of MCP_TOOLS) {
     assert.ok(t.title.length > 2, `${t.name} has no title`);
-    // A one-word description is how a model picks the wrong tool.
     assert.ok(
       t.description.length > 30,
       `${t.name}'s description is too thin to choose by: ${t.description}`,
@@ -133,11 +120,6 @@ test("every tool is described well enough to choose between", () => {
   }
 });
 
-/**
- * A conditional document whose branches are all off returns `{}` with NO error,
- * which `runGraphql` reports as success and a model reads as "done". So a merged
- * tool has to refuse the combination itself, before the document runs.
- */
 test("a merged tool maps its own arguments", () => {
   for (const t of MCP_TOOLS) {
     if (!/@include|@skip/.test(t.query)) continue;
@@ -172,10 +154,6 @@ test("an argument combination that lights no branch is refused", () => {
   }
 });
 
-/**
- * The list is read whole, by a model, on every connection. 220 is above the
- * longest one written so far, so this only stops it creeping up a row at a time.
- */
 test("a description stays short enough to read them all", () => {
   for (const t of MCP_TOOLS)
     assert.ok(
@@ -190,17 +168,10 @@ test("the escape hatch is present and honestly flagged", () => {
   assert.ok(q && m, "both passthrough tools must exist");
   assert.equal(q.readOnly, true);
   assert.ok(!q.destructive);
-  // One tool for every write there is, so the client has to ask before each.
   assert.equal(m.destructive, true);
   assert.ok(!m.readOnly);
 });
 
-/**
- * Variable coercion runs over EVERY declared variable, `@include` or not. So the
- * branch that is switched off still has to be handed values its types accept -
- * a placeholder of `undefined` for a non-null input object fails the whole call
- * with a message about a field the caller never mentioned.
- */
 test("every branch of a merged tool coerces its variables", async () => {
   const cases: [string, Record<string, unknown>][] = [
     ["metrics", { kind: "app", id: "prj_1" }],
@@ -280,8 +251,6 @@ test("every branch of a merged tool coerces its variables", async () => {
     ["update_server", { serverId: "srv_1", buildFallback: true }],
   ];
 
-  // Executed against the SDL, which carries no resolvers: fields answer null and
-  // the only errors that can surface are the coercion ones this is looking for.
   for (const [name, args] of cases) {
     const t = MCP_TOOLS.find((x) => x.name === name);
     assert.ok(t, `${name} is gone - stale case`);
@@ -303,8 +272,6 @@ test("every branch of a merged tool coerces its variables", async () => {
 });
 
 test("every merged tool is covered by the coercion table above", () => {
-  // So a new merge cannot be added without a case, which is how the last one
-  // shipped a branch that could not coerce.
   const merged = MCP_TOOLS.filter((t) => /@include|@skip/.test(t.query)).map(
     (t) => t.name,
   );

@@ -15,9 +15,8 @@ import { Button } from "@/components/ui/button";
 import { InfoTip } from "@/components/ui/info-tip";
 import { gqlAction } from "@/lib/graphql-client";
 import { CapabilityTip, useAppCan } from "@/components/apps/app-capabilities";
-import type { DeploySource } from "@/lib/types";
+import type { DeploySource } from "@/lib/types/app";
 
-/** What the button does per source: only a source Deplo builds has layers. */
 const REBUILD_TIP: Record<DeploySource, string> = {
   github:
     "A full deployment from the current source, for a container that looks stuck. Cached layers are reused.",
@@ -30,9 +29,6 @@ const REBUILD_TIP: Record<DeploySource, string> = {
     "Pulls every service's image again and replaces every container, for a stack that looks stuck.",
 };
 
-/**
- * Advanced settings: rebuild the container.
- */
 export function RebuildContainerCard({
   appId,
   slug,
@@ -44,7 +40,6 @@ export function RebuildContainerCard({
 }) {
   const router = useRouter();
   const [pending, startTransition] = React.useTransition();
-  // A rebuild IS a deployment, so it answers to the deploy permission.
   const can = useAppCan("deploy_apps");
 
   function rebuild() {
@@ -61,8 +56,6 @@ export function RebuildContainerCard({
         return;
       }
       toast.success("Rebuild started");
-      // Land on the live build when we know which one it is; the list is the
-      // fallback (it shows the same build at the top, already building).
       router.push(
         res.data
           ? `/apps/${slug}/deployments/${res.data}`
@@ -79,7 +72,6 @@ export function RebuildContainerCard({
           Rebuild container
           <InfoTip content={REBUILD_TIP[source]} docs="deploy.trace" />
         </CardTitle>
-        {/* The consequence, which is the thing you want to know before clicking. */}
         <CardDescription>
           Volumes, domains and data are untouched, and the current container
           keeps serving until the new build is ready.

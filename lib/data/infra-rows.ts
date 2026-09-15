@@ -1,25 +1,14 @@
 import type { InferInsertModel, InferSelectModel } from "drizzle-orm";
 
+import { activities } from "../db/schema/control-plane/activity";
 import {
-  activities,
   githubApps,
   githubInstallation,
-  servers,
-} from "../db/schema/control-plane";
-import type {
-  Activity,
-  ActivityType,
-  GithubApp,
-  GithubInstallation,
-  Server,
-  ServerStatus,
-} from "../types";
-
-/**
- * The ONE relational-rows ↔ domain-objects mapping for the infra/integrations
- * tables (relational-store PLAN Step 6 cut-set (e)): `servers`, `github_apps`,
- * `github_installation`, `activities`.
- */
+} from "../db/schema/control-plane/integrations";
+import { servers } from "../db/schema/control-plane/servers";
+import type { Activity, ActivityType } from "../types/activity";
+import type { GithubApp, GithubInstallation } from "../types/git";
+import type { Server, ServerStatus } from "../types/server";
 
 export type ServerRow = InferSelectModel<typeof servers>;
 export type ServerInsert = InferInsertModel<typeof servers>;
@@ -32,13 +21,6 @@ export type GithubInstallationInsert = InferInsertModel<
 export type ActivityRow = InferSelectModel<typeof activities>;
 export type ActivityInsert = InferInsertModel<typeof activities>;
 
-/* ------------------------------------------------------------------ */
-/* servers (flattens ServerAgent + ServerBootstrap)                    */
-/* ------------------------------------------------------------------ */
-
-/**
- * Which {@link Server} fields are folded into which `servers` columns.
- */
 const SERVER_FIELDS = {
   id: true,
   name: true,
@@ -69,7 +51,6 @@ const SERVER_FIELDS = {
 } satisfies Record<keyof Server, true>;
 void SERVER_FIELDS;
 
-/** Explode a {@link Server} (+ its nested agent/bootstrap) into a `servers` row. */
 export function serverToRow(s: Server): ServerInsert {
   return {
     id: s.id,
@@ -88,34 +69,23 @@ export function serverToRow(s: Server): ServerInsert {
     buildOnly: s.buildOnly,
     buildFallback: s.buildFallback,
     importOnly: s.importOnly,
-    // The retry state itself (attempts, next_at, run_id) is written by targeted
-    // UPDATEs, never from a DTO round trip - a full row write from a shape that cannot
-    // carry it would reset the ladder on every unrelated save.
     uninstallError: s.uninstallError,
     hostArch: s.hostArch,
     deployConcurrency: s.deployConcurrency,
-    // Flattened ServerAgent (NULL columns when not yet provisioned).
     agentPort: s.agent?.port ?? null,
     agentCertFingerprint: s.agent?.certFingerprint ?? null,
     agentCertPem: s.agent?.certPem ?? null,
     agentVersion: s.agent?.version ?? null,
-    // Flattened ServerBootstrap (NULL columns once provisioned / never set).
     bootstrapTokenHash: s.bootstrap?.tokenHash ?? null,
     bootstrapExpiresAt: s.bootstrap?.expiresAt ?? null,
     bootstrapUsedAt: s.bootstrap?.usedAt ?? null,
     lastSeenAt: s.lastSeenAt ?? null,
-    // The health OBSERVATION behind `status`. Absent means "never probed" - a
-    // distinct, honest state the UI renders as "Unknown", so neither is defaulted.
     statusCheckedAt: s.statusCheckedAt ?? null,
     statusMessage: s.statusMessage ?? null,
     createdAt: s.createdAt,
   };
 }
 
-/**
- * Reassemble a `servers` row into a {@link Server}, rebuilding the nested
- * `agent`/`bootstrap` objects from their flattened columns.
- */
 export function assembleServer(row: ServerRow): Server {
   const server: Server = {
     id: row.id,
@@ -132,16 +102,11 @@ export function assembleServer(row: ServerRow): Server {
     allTeams: row.allTeams,
     storageOnly: row.storageOnly ?? false,
     buildOnly: row.buildOnly ?? false,
-    // NULL is automatic, not false: the Deplo host is a fallback until someone says
-    // otherwise, and every row predating the column is still un-answered.
     buildFallback: row.buildFallback ?? null,
     importOnly: row.importOnly ?? false,
     uninstallPending: row.uninstallNextAt !== null,
     uninstallError: row.uninstallError ?? "",
-    // "" is "the agent never told us", which never matches another host's arch -
-    // so an un-upgraded server is simply not offered as a builder.
     hostArch: row.hostArch ?? "",
-    // NULL-safe: rows created before the column default to strict serialization.
     deployConcurrency: row.deployConcurrency ?? 1,
     createdAt: row.createdAt,
   };
@@ -167,11 +132,6 @@ export function assembleServer(row: ServerRow): Server {
   return server;
 }
 
-/* ------------------------------------------------------------------ */
-/* github_apps                                                         */
-/* ------------------------------------------------------------------ */
-
-/** Explode a {@link GithubApp} into its `github_apps` row. */
 export function githubAppToRow(a: GithubApp): GithubAppInsert {
   return {
     id: a.id,
@@ -188,7 +148,6 @@ export function githubAppToRow(a: GithubApp): GithubAppInsert {
   } satisfies Record<keyof GithubApp, unknown> as GithubAppInsert;
 }
 
-/** Reassemble a `github_apps` row into a {@link GithubApp}. */
 export function assembleGithubApp(row: GithubAppRow): GithubApp {
   return {
     id: row.id,
@@ -205,11 +164,6 @@ export function assembleGithubApp(row: GithubAppRow): GithubApp {
   };
 }
 
-/* ------------------------------------------------------------------ */
-/* github_installation                                                 */
-/* ------------------------------------------------------------------ */
-
-/** Explode a {@link GithubInstallation} into its `github_installation` row. */
 export function githubInstallationToRow(
   i: GithubInstallation,
 ): GithubInstallationInsert {
@@ -227,7 +181,6 @@ export function githubInstallationToRow(
   > as GithubInstallationInsert;
 }
 
-/** Reassemble a `github_installation` row into a {@link GithubInstallation}. */
 export function assembleGithubInstallation(
   row: GithubInstallationRow,
 ): GithubInstallation {
@@ -242,15 +195,6 @@ export function assembleGithubInstallation(
   };
 }
 
-/* ------------------------------------------------------------------ */
-/* activities (history; seq asymmetry)                                 */
-/* ------------------------------------------------------------------ */
-
-/**
- * Explode an {@link Activity} into its `activities` row. NEVER writes `seq` - it
- * is a `bigint identity` the DB assigns in insertion order (PLAN §5), so a copy /
- * insert in source-array order reproduces the history's order.
- */
 export function activityToRow(a: Omit<Activity, "seq">): ActivityInsert {
   return {
     id: a.id,
@@ -259,9 +203,6 @@ export function activityToRow(a: Omit<Activity, "seq">): ActivityInsert {
     message: a.message,
     actor: a.actor,
     actorUserId: a.actorUserId,
-    // Named only to satisfy the `Record<keyof Activity>` guard, which is what
-    // makes a new field impossible to forget here. It is a display DECORATION
-    // resolved from `actor_user_id` on the way out; there is no column to write.
     actorUser: undefined,
     actorProvider: a.actorProvider,
     appId: a.appId,
@@ -270,10 +211,6 @@ export function activityToRow(a: Omit<Activity, "seq">): ActivityInsert {
   } satisfies Record<keyof Omit<Activity, "seq">, unknown> as ActivityInsert;
 }
 
-/**
- * Reassemble an `activities` row into an {@link Activity}. `seq` travels with the
- * row: it is the tie-break the feed's keyset cursor pages on.
- */
 export function assembleActivity(row: ActivityRow): Activity {
   return {
     id: row.id,
@@ -283,8 +220,6 @@ export function assembleActivity(row: ActivityRow): Activity {
     message: row.message,
     actor: row.actor,
     actorUserId: row.actorUserId,
-    // A DECORATION the caller batch-resolves, never a column. Null here so the
-    // one shape stays honest: a list that has not looked the actor up says so.
     actorUser: null,
     actorProvider: row.actorProvider ?? null,
     appId: row.appId,

@@ -1,36 +1,21 @@
-import type { AppStatus, DatabaseStatus, DatabaseType } from "@/lib/types";
+import type { AppStatus } from "@/lib/types/app";
+import type { DatabaseStatus, DatabaseType } from "@/lib/types/database";
 
-/**
- * One thing whose logs can be watched: an App or a database. Flat and pure - it
- * is keyed in the URL, in a cookie and by the filter, so it has exactly one
- * identity ({@link LogTarget.key}) and imports no React and no `server-only`.
- */
 export interface LogTarget {
-  /** `app:<slug>` or `db:<id>`. The URL, the cookie value, the combobox key and
-   *  the React key are all this string. */
   key: string;
   kind: "app" | "database";
   name: string;
-  /** The App's slug, or the database's engine. The second thing typing matches -
-   *  the rows themselves show the name, and the tree above it says the rest. */
   detail: string;
   status: AppStatus | DatabaseStatus;
   logo: string | null;
-  /** Databases only: picks the engine's brand mark when there is no logo. */
   type?: DatabaseType;
-  /** Where the app sits on the Overview. All three are TOLERATED when they point
-   *  at nothing: a folder the caller holds no grant on never comes back. */
   projectId?: string | null;
   environmentId?: string | null;
   folderId?: string | null;
 }
 
-/** Remembers the last target so the sidebar's Logs entry reopens it. Written by
- *  the client, and validated against the readable list on every read. */
 export const LOG_TARGET_COOKIE = "deplo_logs_target";
 
-/** A cookie is attacker-writable text. Anything longer than this is not a key
- *  we ever wrote, so it is dropped before it reaches a lookup. */
 const MAX_KEY_LENGTH = 256;
 
 export function appTargetKey(slug: string): string {
@@ -41,8 +26,6 @@ export function databaseTargetKey(id: string): string {
   return `db:${id}`;
 }
 
-/** Where a target is watched. The two kinds get their own query param rather
- *  than one opaque `?target=app:foo`, so the URL reads as English. */
 export function logTargetHref(key: string): string {
   const sep = key.indexOf(":");
   if (sep === -1) return "/logs";
@@ -53,9 +36,6 @@ export function logTargetHref(key: string): string {
   return param ? `/logs?${param}=${encodeURIComponent(ref)}` : "/logs";
 }
 
-/** The target's own Overview: where "Open <name>" in the picker goes. The
- *  toolbar picker stands in for the pane title on the general Logs page, so
- *  without this the way back to the thing itself would be gone. */
 export function logTargetOverviewHref(key: string): string {
   const sep = key.indexOf(":");
   if (sep === -1) return "/";
@@ -67,16 +47,8 @@ export function logTargetOverviewHref(key: string): string {
   return "/";
 }
 
-/** The chooser, forced: the one URL that ignores the remembered target without
- *  forgetting it, and the only way back to it when a team has a single target
- *  (which `/logs` opens straight away). */
 export const LOG_CHOOSER_HREF = "/logs?pick=1";
 
-/**
- * Which target the Logs page should show, given what the URL asks for and what the
- * browser remembers. The order is the whole contract: `pick` beats everything (it
- * is how somebody gets back to the chooser), then the URL, then the cookie.
- */
 export function resolveLogTarget(
   targets: LogTarget[],
   from: {
@@ -99,8 +71,6 @@ export function resolveLogTarget(
   return byKey(targets, cookie);
 }
 
-/** A search param arrives as a string, an array (repeated key) or nothing. Take
- *  the first, the way `placementFromSearchParams` does for the Overview. */
 function first(v: string | string[] | undefined): string | undefined {
   const s = Array.isArray(v) ? v[0] : v;
   return s ? s : undefined;
@@ -110,26 +80,13 @@ function byKey(targets: LogTarget[], key: string): LogTarget | null {
   return targets.find((t) => t.key === key) ?? null;
 }
 
-/* ------------------------------------------------------------------ */
-/* The tree the picker draws                                           */
-/* ------------------------------------------------------------------ */
-
-/** One row of the Logs picker: a heading, or something to open. */
 export interface LogTreeRow {
-  /** The target's key on a selectable row, `grp:<kind>:<id>` on a heading. */
   key: string;
-  /** Indentation, 0-based. */
   depth: number;
   kind: "project" | "environment" | "folder" | "section" | "target";
   name: string;
-  /** A project's or folder's accent colour, when it has one. */
   color?: string | null;
-  /** Set on exactly the rows that can be picked. */
   target?: LogTarget;
-  /**
-   * Lowercased: this row's own words, every ANCESTOR's, and, on a heading, every
-   * descendant's.
-   */
   haystack: string;
 }
 
@@ -141,11 +98,6 @@ interface TreeFolder {
   color?: string | null;
 }
 
-/**
- * The readable targets, arranged the way the Overview arranges them: each project
- * with its environments, then the folders (nesting as deep as they do), then the
- * apps that sit at the top level, and the databases in a section of their own.
- */
 export function buildLogTree(
   targets: LogTarget[],
   ctx: {
@@ -290,7 +242,6 @@ function targetRow(t: LogTarget, depth: number, trail: string): LogTreeRow {
   };
 }
 
-/** A heading plus its children, or NOTHING when nothing readable is under it. */
 function group(
   head: {
     key: string;
@@ -312,16 +263,12 @@ function group(
       kind: head.kind,
       name: head.name,
       color: head.color,
-      // Every descendant's words, so a heading survives a query that only one
-      // app three levels down answers to.
       haystack: `${inside} ${rows.map((r) => r.haystack).join(" ")}`,
     },
     ...rows,
   ];
 }
 
-/** Does this row match what somebody typed? Case-insensitive and space-
- *  separated, so "api prod" narrows the way a person expects. */
 export function logTreeMatches(row: LogTreeRow, query: string): boolean {
   const terms = query.toLowerCase().split(/\s+/).filter(Boolean);
   return terms.every((t) => row.haystack.includes(t));

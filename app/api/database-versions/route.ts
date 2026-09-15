@@ -1,17 +1,8 @@
 import { type NextRequest } from "next/server";
-import { getCurrentUser } from "@/lib/auth";
+import { getCurrentUser } from "@/lib/auth/current-user";
 import { listTags } from "@/lib/registry/client";
-import type { DatabaseType } from "@/lib/types";
+import type { DatabaseType } from "@/lib/types/database";
 
-/**
- * Real, current engine versions for the database "Version" autocomplete - synced
- * live from Docker Hub so the list tracks new releases (e.g. Postgres 18)
- * automatically, instead of a hardcoded list that goes stale.
- */
-
-// The Docker Hub repo whose tags back each engine (mirrors DB_IMAGES in
-// lib/deploy/database-compose.ts). `listTags` expands bare Hub names to
-// `library/…` itself; clickhouse ships under its own org.
 const HUB_REPO: Record<DatabaseType, string> = {
   postgres: "postgres",
   mysql: "mysql",
@@ -21,9 +12,6 @@ const HUB_REPO: Record<DatabaseType, string> = {
   clickhouse: "clickhouse/clickhouse-server",
 };
 
-// Recent, real majors per engine - the offline fallback AND a floor merged into
-// the live list so common versions are always present even when Hub returns a
-// thin batch. Keep these current; the live fetch is the real source of truth.
 const FALLBACK: Record<DatabaseType, string[]> = {
   postgres: ["18", "17", "16", "15"],
   mysql: ["9.1", "8.4", "8.0"],
@@ -33,19 +21,17 @@ const FALLBACK: Record<DatabaseType, string[]> = {
   clickhouse: ["25.8", "25.3", "24"],
 };
 
-const TTL_MS = 6 * 60 * 60 * 1000; // 6h - engine majors change slowly.
+const TTL_MS = 6 * 60 * 60 * 1000;
 const cache = new Map<DatabaseType, { at: number; versions: string[] }>();
 
 function isEngine(v: string | null): v is DatabaseType {
   return v != null && Object.hasOwn(HUB_REPO, v);
 }
 
-/** Clean numeric tag ("18", "18.1", "8.4"); rejects "18-alpine", "latest", "". */
 function isCleanVersion(tag: string): boolean {
   return /^\d+(\.\d+){0,2}$/.test(tag);
 }
 
-/** Descending semantic-ish sort (18 before 17.6 before 17 before 16). */
 function compareDesc(a: string, b: string): number {
   const pa = a.split(".").map(Number);
   const pb = b.split(".").map(Number);
@@ -62,18 +48,13 @@ async function versionsFor(engine: DatabaseType): Promise<string[]> {
 
   let live: string[] = [];
   try {
-    // A generous batch (Hub orders by last_updated, so recent majors/minors are
-    // near the top among many variant tags we filter out).
     const tags = await listTags(HUB_REPO[engine], 100);
     live = tags.map((t) => t.name).filter(isCleanVersion);
-  } catch {
-    // Unreachable / rate-limited: fall back to the floor below.
-  }
+  } catch {}
 
   const merged = Array.from(new Set([...live, ...FALLBACK[engine]])).sort(
     compareDesc,
   );
-  // Cap so the dropdown stays scannable; free text covers anything trimmed.
   const versions = merged.slice(0, 40);
   cache.set(engine, { at: Date.now(), versions });
   return versions;

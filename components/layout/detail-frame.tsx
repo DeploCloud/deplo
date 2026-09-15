@@ -3,11 +3,6 @@
 import { Loader2 } from "lucide-react";
 import { useFullBleedRoute } from "@/components/layout/shell-frame";
 
-/**
- * The body of an app's or a database's section pages. `sidecars` is whatever must
- * render either way and draws nothing - the nav publisher that puts the app's
- * sub-menu in the sidebar, the live-status seed.
- */
 export function DetailFrame({
   header,
   sidecars,
@@ -16,8 +11,6 @@ export function DetailFrame({
 }: {
   header: React.ReactNode;
   sidecars?: React.ReactNode;
-  /** A migration is still writing this app or database: the whole page renders
-   *  inert, so nothing here can be pressed while the run owns the row. */
   locked?: boolean;
   children: React.ReactNode;
 }) {
@@ -59,7 +52,6 @@ export function DetailFrame({
   );
 }
 
-/** Why the page below it does nothing. */
 function MigrationNotice() {
   return (
     <div className="flex items-start gap-2.5 rounded-lg border border-border bg-surface px-4 py-3 text-sm">

@@ -34,7 +34,6 @@ export function DestinationCard({
   canManage,
 }: {
   dest: DestinationCardView;
-  /** `manage_backup_destinations`. Gates testing, the recovery key and removal. */
   canManage: boolean;
 }) {
   const router = useRouter();
@@ -43,8 +42,6 @@ export function DestinationCard({
     canManage,
   });
   const isServer = dest.kind === "server";
-  // What decides whether there is a key to save is the KEYPAIR, not the kind: a
-  // bucket connected since bucket artifacts started being encrypted has one too.
   const encrypted = dest.encrypted;
 
   return (
@@ -61,8 +58,6 @@ export function DestinationCard({
                 )}
               </div>
               <div className="min-w-0">
-                {/* The name owns the title line: three-up there is no room for
-                    it AND two chips, and a truncated name is a useless card. */}
                 <p className="truncate font-medium">{dest.name}</p>
                 <p className="mt-1 flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
                   <span className="truncate">
@@ -78,10 +73,6 @@ export function DestinationCard({
                       Beta
                     </Badge>
                   )}
-                  {/**
-                   * A property of the destination, so it sits with its name - not a row in the
-                   * detail list, where "Encryption: Always on" read as a setting somebody chose.
-                   */}
                   {encrypted && (
                     <SimpleTooltip content="Backups here are encrypted before they leave the server. Only this destination's recovery key can open them.">
                       <Badge
@@ -102,8 +93,6 @@ export function DestinationCard({
             </div>
           </div>
 
-          {/* The proportion only: every figure behind it is a row below, so a
-              three-up card is not carrying a panel. */}
           {isServer && <DestinationBar dest={dest} />}
 
           <dl className="grid gap-1 text-xs">
@@ -158,11 +147,6 @@ export function DestinationCard({
             <Row label="Added">{timeAgo(dest.createdAt)}</Row>
           </dl>
 
-          {/**
-           * The UNENCRYPTED nudge, and it is deliberately the loudest thing on the card. So
-           * the nudge asks for the only thing that actually fixes it, rather than offering a
-           * button that would quietly re-encrypt nothing.
-           */}
           {!encrypted && (
             <div className="flex w-full items-start gap-2 rounded-lg border border-[var(--warning)]/30 bg-[var(--warning)]/5 p-3 text-left">
               <ShieldOff className="mt-0.5 size-3.5 shrink-0 text-[var(--warning)]" />
@@ -179,9 +163,6 @@ export function DestinationCard({
             </div>
           )}
 
-          {/* The recovery-key nudge. These backups are encrypted, so a key kept
-              only inside Deplo is a key that dies with the instance the backups
-              exist to survive. Stays until someone downloads it. */}
           {encrypted && canManage && !dest.recoveryKeySavedAt && (
             <RecoveryKeyNudge
               destinationId={dest.id}
@@ -189,8 +170,6 @@ export function DestinationCard({
             />
           )}
 
-          {/* Why the badge is red, right on the card. The status alone used to be
-              the whole story, so a failing destination said "Error" and stopped. */}
           {dest.lastTestError && canManage && (
             <button
               type="button"
@@ -217,7 +196,6 @@ export function DestinationCard({
   );
 }
 
-/** One `label: value` line of the card's detail list. */
 function Row({
   label,
   children,

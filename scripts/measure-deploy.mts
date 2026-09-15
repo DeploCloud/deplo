@@ -1,16 +1,12 @@
-/**
- * Trigger one deployment of an app and report where its time went, straight from
- * deployment_logs.
- */
 import { desc, eq, asc } from "drizzle-orm";
 
 import { getDb } from "../lib/db/client";
+import { apps } from "../lib/db/schema/control-plane/apps";
 import {
-  apps,
   deployments,
   deploymentLogs,
-} from "../lib/db/schema/control-plane";
-import { startDeployment } from "../lib/deploy/build";
+} from "../lib/db/schema/control-plane/deployments";
+import { startDeployment } from "../lib/deploy/build/deploy-start";
 
 const slug = process.argv[2];
 if (!slug) {
@@ -29,7 +25,6 @@ console.log(`Deploying ${app.name} (${app.slug}) on server ${app.serverId}…`);
 const depId = await startDeployment(app.id, { creator: "measure-deploy" });
 console.log(`deployment ${depId}`);
 
-// Poll until it leaves the running states.
 const started = Date.now();
 let status = "queued";
 while (Date.now() - started < 20 * 60_000) {
@@ -52,7 +47,6 @@ console.log(
   `\nstatus=${dep?.status}  total=${((dep?.buildDurationMs ?? 0) / 1000).toFixed(1)}s`,
 );
 
-// Where the time went: every BuildKit "#N ... DONE Xs" plus our own phase lines.
 const logs = await db
   .select({ ts: deploymentLogs.ts, text: deploymentLogs.text })
   .from(deploymentLogs)
@@ -74,7 +68,6 @@ for (const l of logs) {
   }
 }
 
-// Recent history for the same app, so a change is visible as a trend.
 const recent = await db
   .select({
     id: deployments.id,

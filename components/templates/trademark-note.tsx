@@ -1,7 +1,3 @@
-/**
- * The catalogue draws other people's logos and names. One line saying whose they
- * are, on every page that shows them.
- */
 export function TrademarkNote() {
   return (
     <div className="border-t border-border pt-6 text-center">

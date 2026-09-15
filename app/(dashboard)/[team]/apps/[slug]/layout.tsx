@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { ExternalLink } from "lucide-react";
-import { getAppBySlug } from "@/lib/data/apps";
+import { getAppBySlug } from "@/lib/data/apps/listing";
 import { appCapabilities } from "@/lib/data/node-access";
 import { appTypeLabel, truncate } from "@/lib/utils";
 import { AppCapabilitiesProvider } from "@/components/apps/app-capabilities";
@@ -20,11 +20,8 @@ import {
 } from "@/components/apps/app-live-status";
 import { titleClass } from "@/components/shared/page-header";
 
-// Cap the app-name portion of the browser-tab title so the trailing
-// "- <Section> - Deplo" stays legible instead of a long name crowding it out.
 const PROJECT_TITLE_MAX = 24;
 
-// Titles nest as "<project> - <section> - Deplo".
 export async function generateMetadata(
   props: LayoutProps<"/[team]/apps/[slug]">,
 ): Promise<Metadata> {
@@ -45,15 +42,9 @@ export default async function AppLayout(
 ) {
   const { slug } = await props.params;
   const project = await getAppBySlug(slug);
-  // Gone, or on its way out: a delete is irreversible from the moment it is
-  // confirmed, so the app's pages stop existing then rather than when its host
-  // finishes the teardown, otherwise a reload during that window serves back every
   if (!project || project.deletingAt) notFound();
-  // What this viewer may do to THIS app - grants included, which the sidebar's
-  // team-wide union can't answer.
   const capabilities = await appCapabilities(project.id);
 
-  // Seed for the live-status subscription (kept current client-side thereafter).
   const initialLive: LiveApp = {
     id: project.id,
     slug: project.slug,
@@ -66,10 +57,6 @@ export default async function AppLayout(
   return (
     <AppLiveStatusProvider key={initialLive.slug} initial={initialLive}>
       <AppCapabilitiesProvider capabilities={capabilities}>
-        {/**
-         * An app's pages are forms and detail views, not grids - they stay at a readable
-         * width instead of the wide shell the list pages use.
-         */}
         <DetailFrame
           locked={Boolean(project.migrationRunId)}
           header={
@@ -89,14 +76,8 @@ export default async function AppLayout(
                   <div>
                     <div className="flex items-center gap-2">
                       <h1 className={titleClass.page}>{project.name}</h1>
-                      {/* The live container lifecycle (Running / Stopped / Building /
-                    Error) - the header's headline status, distinct from any
-                    deployment status shown further down the page. */}
                       <AppStatusBadge status={project.status} />
                     </div>
-                    {/* The subtitle slot: the live URL when a domain is linked,
-                  otherwise what this App *is*, never an empty line under the
-                  name. */}
                     {project.productionUrl ? (
                       <a
                         href={project.productionUrl}
@@ -139,10 +120,6 @@ export default async function AppLayout(
             </div>
           }
           sidecars={
-            /**
-             * Publishes this app's live/per-app facts to the sidebar, which renders the app
-             * sub-menu in place of the main nav.
-             */
             <AppNavSync
               slug={slug}
               logo={project.logo}

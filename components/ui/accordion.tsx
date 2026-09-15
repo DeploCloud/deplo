@@ -47,15 +47,10 @@ const AccordionContent = React.forwardRef<
     { className, children, onAnimationStart, onAnimationEnd, ...props },
     ref,
   ) => {
-    // `overflow: hidden` is what turns the open/close height animation into a slide
-    // instead of a spill, but it clips ANYTHING a child paints outside its own box,
-    // and a focus ring is exactly that.
     const [animating, setAnimating] = React.useState(false);
     return (
       <AccordionPrimitive.Content
         ref={ref}
-        // Guarded on the target: `animate-in` children bubble their own animation
-        // events through here, and they must not pin the panel shut.
         onAnimationStart={(event) => {
           if (event.target === event.currentTarget) setAnimating(true);
           onAnimationStart?.(event);
@@ -66,7 +61,6 @@ const AccordionContent = React.forwardRef<
         }}
         className={cn(
           "text-sm data-[state=closed]:animate-accordion-up data-[state=open]:animate-accordion-down",
-          // Closed (or mid-animation) it must clip; open and settled it must not.
           animating ? "overflow-hidden" : "data-[state=closed]:overflow-hidden",
         )}
         {...props}

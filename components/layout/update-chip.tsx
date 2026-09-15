@@ -11,10 +11,6 @@ import {
 } from "@/components/ui/tooltip";
 import { useUpstreamUpdate } from "./update-state";
 
-/**
- * The update notice as a header chip: nothing moves, nothing to dismiss, and it
- * sits where the other instance-wide chips already live.
- */
 export function UpdateChip() {
   const update = useUpstreamUpdate();
   if (!update) return null;

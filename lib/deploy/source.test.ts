@@ -11,7 +11,8 @@ import {
   resolveBuildDir,
   RootDirectoryNotFound,
 } from "./source";
-import type { GitRepo, UploadArchive } from "../types";
+import type { UploadArchive } from "../types/app";
+import type { GitRepo } from "../types/build";
 
 const repo: GitRepo = {
   provider: "git",
@@ -27,14 +28,11 @@ const upload: UploadArchive = {
   uploadedAt: "now",
 };
 
-// ---- planDeploySource: which source a deployment builds from ----
-
 test("docker-image needs an image set, and carries it", () => {
   assert.deepEqual(
     planDeploySource({ source: "docker-image", dockerImage: "nginx:1" }),
     { kind: "docker-image", image: "nginx:1" },
   );
-  // docker-image source with no image falls through to none.
   assert.deepEqual(planDeploySource({ source: "docker-image" }), {
     kind: "none",
   });
@@ -56,7 +54,6 @@ test("upload only when source is upload AND an archive is present", () => {
 });
 
 test("a repo present alongside an upload still prefers git (repo check first)", () => {
-  // Mirrors the engine's historical else-if order: repo before upload.
   assert.deepEqual(planDeploySource({ source: "upload", repo, upload }), {
     kind: "git",
     repo,
@@ -67,14 +64,10 @@ test("nothing deployable → none", () => {
   assert.deepEqual(planDeploySource({ source: "git" }), { kind: "none" });
 });
 
-// ---- normalizeRootRel / isExplicitRoot: pure path normalisation ----
-
 test("normalizeRootRel: backslashes → slashes, leading ./ and / stripped", () => {
   assert.equal(normalizeRootRel("apps\\web"), "apps/web");
   assert.equal(normalizeRootRel("./apps/web"), "apps/web");
   assert.equal(normalizeRootRel("/apps/web"), "apps/web");
-  // "", ".", null, undefined all collapse to "" - the leading-dot strip turns
-  // the "." fallback into "". (Faithful to the original inline normalisation.)
   assert.equal(normalizeRootRel(""), "");
   assert.equal(normalizeRootRel(null), "");
   assert.equal(normalizeRootRel(undefined), "");
@@ -85,12 +78,9 @@ test("isExplicitRoot: only a real subdirectory counts", () => {
   assert.equal(isExplicitRoot("apps/web"), true);
   assert.equal(isExplicitRoot("."), false);
   assert.equal(isExplicitRoot(""), false);
-  // The normalised forms of "" / "." / null all read as non-explicit.
   assert.equal(isExplicitRoot(normalizeRootRel(".")), false);
   assert.equal(isExplicitRoot(normalizeRootRel("apps")), true);
 });
-
-// ---- resolveBuildDir: the one shared rootDirectory containment ----
 
 test("resolveBuildDir: no rootDirectory → the tree root", async () => {
   const root = await mkdtemp(join(tmpdir(), "deplo-src-"));
@@ -148,7 +138,7 @@ test("resolveBuildDir: explicit-but-missing root falls back silently when !failO
       rootDirectory: "nope",
       failOnMissing: false,
     });
-    assert.equal(got, await realpath(root)); // upload behaviour: build the root
+    assert.equal(got, await realpath(root));
   } finally {
     await rm(root, { recursive: true, force: true });
   }
@@ -158,14 +148,12 @@ test("resolveBuildDir: a symlink escaping the tree is rejected (contained to roo
   const root = await mkdtemp(join(tmpdir(), "deplo-src-"));
   const outside = await mkdtemp(join(tmpdir(), "deplo-out-"));
   try {
-    // Plant a symlink inside the tree pointing OUT of it.
     await symlink(outside, join(root, "escape"));
     const got = await resolveBuildDir({
       root,
       rootDirectory: "escape",
       failOnMissing: false,
     });
-    // safeBuildDir refuses the escape and falls back to the canonical root.
     assert.equal(got, await realpath(root));
   } finally {
     await rm(root, { recursive: true, force: true });

@@ -15,16 +15,10 @@ import { SimpleTooltip } from "@/components/ui/tooltip";
 import { CleanupHistory } from "@/components/settings/cleanup-history";
 import { gqlAction, gqlSubscribe } from "@/lib/graphql-client";
 import { formatBytes } from "@/lib/utils";
-import type {
-  CleanupPolicy,
-  CleanupRunDTO,
-  CleanupScopeId,
-} from "@/lib/data/docker-cleanup";
+import type { CleanupPolicy } from "@/lib/data/docker-cleanup/policy";
+import type { CleanupRunDTO } from "@/lib/data/docker-cleanup/run-history";
+import type { CleanupScopeId } from "@/lib/data/docker-cleanup/scopes";
 import type { ServerSummary } from "./server-detail-tabs";
-
-/**
- * The Cleanup tab: reclaiming Docker disk on THIS host.
- */
 
 const RUN_FIELDS = `
   id serverId serverName trigger actor status error reclaimedBytes
@@ -38,9 +32,6 @@ const CLEANUP_RUNS_SUBSCRIPTION = /* GraphQL */ `
   }
 `;
 
-/**
- * The scopes, in the allow-list's order.
- */
 const SCOPES: { id: CleanupScopeId; label: string; info: React.ReactNode }[] = [
   {
     id: "build_cache",
@@ -121,8 +112,6 @@ const SCOPES: { id: CleanupScopeId; label: string; info: React.ReactNode }[] = [
   },
 ];
 
-/** The policy as the form holds it: the numbers as text, so a half-typed field is a
- *  half-typed field and not a `NaN` (the bounds are clamped server-side anyway). */
 interface PolicyForm {
   enabled: boolean;
   schedule: string;
@@ -167,13 +156,8 @@ export function ServerCleanupTab({
   const [saving, startSave] = React.useTransition();
   const [starting, setStarting] = React.useState(false);
   const [runs, setRuns] = React.useState(cleanup.runs);
-  /** The runs THIS tab started, so only the admin who clicked gets the result
-   *  toast. Not every other open page, and not the nightly sweep nobody asked for. */
   const startedHere = React.useRef(new Set<string>());
 
-  // A save ends in router.refresh(), which re-renders this tree with the PERSISTED
-  // policy. Adopt it as the new baseline (the supported "adjust state during render"
-  // pattern) or the form would keep reading dirty against what it just saved.
   if (saved !== cleanup.policy) {
     setSaved(cleanup.policy);
     setForm(toForm(cleanup.policy));
@@ -188,8 +172,6 @@ export function ServerCleanupTab({
       (data) => {
         const next = data.dockerCleanupRuns;
         if (!next) return;
-        // The stream is instance-wide (one history, one fleet); this page is one
-        // host, so it keeps its own rows and ignores the rest.
         setRuns(next.filter((r) => r.serverId === server.id));
         for (const run of next) {
           if (run.status === "running" || !startedHere.current.has(run.id))
@@ -204,8 +186,6 @@ export function ServerCleanupTab({
           }
         }
       },
-      // A dropped stream self-heals (gqlSubscribe retries and the generator re-emits
-      // the current snapshot), so a blip is not worth a toast.
       (e) => console.warn("[cleanup] live history stream error:", e.message),
     );
   }, [server.id]);
@@ -235,13 +215,9 @@ export function ServerCleanupTab({
             minAgeHours: Number(form.minAgeHours) || 0,
             keepImagesPerApp: Number(form.keepImagesPerApp) || 1,
             scopes: form.scopes,
-            // Deliberately absent: this page is one host, and sending the list
-            // would rewrite every OTHER host's membership from a stale snapshot.
           },
         },
       );
-      // The server rejects an unparseable cron rather than repairing it. Surface
-      // that message as written, it names the field and the fix.
       if (!res.ok) {
         toast.error(res.error);
         return;
@@ -274,11 +250,6 @@ export function ServerCleanupTab({
     });
   }
 
-  /**
-   * One click, no confirmation: it reclaims exactly the SAVED policy's scopes on
-   * this host now. Nothing here is destructive: the agent's allow-list never
-   * removes a container, a named volume, or anything a container still uses.
-   */
   function runNow() {
     setStarting(true);
     startSave(async () => {
@@ -289,8 +260,6 @@ export function ServerCleanupTab({
         { serverId: server.id },
       );
       setStarting(false);
-      // Only pre-flight refusals reach here, an empty scope set, a sweep already
-      // running on this host. Anything the HOST fails at lands on the run row.
       if (!res.ok) {
         toast.error(res.error);
         return;
@@ -330,8 +299,6 @@ export function ServerCleanupTab({
             }
             side="right"
           >
-            {/* A wrapping span keeps the tooltip reachable: a disabled button
-                swallows pointer events. */}
             <span tabIndex={0}>
               <Button
                 onClick={runNow}

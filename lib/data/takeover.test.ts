@@ -27,12 +27,6 @@ import {
   takeoverStatus,
 } from "./takeover";
 
-/**
- * The takeover's state, which is the handshake between a browser and an installer
- * that cannot see each other. Getting it wrong means a machine whose ports belong
- * to nobody, so nothing may move backwards.
- */
-
 let db: TestDb;
 let pg: PGlite;
 
@@ -68,11 +62,9 @@ beforeEach(async () => {
 const asUser = <T>(userId: string, fn: () => Promise<T>): Promise<T> =>
   runWithIdentity({ userId, teamId: TEAM_A }, fn);
 
-/** Every read is `cache`d per request, so each assertion needs its own context. */
 const read = () =>
   runWithIdentity({ userId: ADMIN, teamId: TEAM_A }, takeoverStatus);
 
-/** A finished run, which is what taking the ports is allowed to follow. */
 async function seedFinishedRun(
   id: string,
   status = "done",
@@ -92,11 +84,9 @@ async function seedPending(platform = "dokploy"): Promise<void> {
   await asUser(ADMIN, ensureTakeoverFromEnv);
 }
 
-// Before the cutover Deplo's proxy waits on loopback, so the configured https
-// address is exactly the one that does not answer; the request came in through
-// the old panel's proxy, and that is where a remote machine can enrol.
 test("until the cutover, what Deplo hands out names the address it was reached on", async (t) => {
-  const { instancePublicBaseUrl } = await import("./instance-settings");
+  const { instancePublicBaseUrl } =
+    await import("./instance-settings/settings-store");
   const previous = process.env.DEPLO_PUBLIC_URL;
   process.env.DEPLO_PUBLIC_URL = "https://deplo-abc.nip.io";
   t.after(() => {
@@ -107,7 +97,6 @@ test("until the cutover, what Deplo hands out names the address it was reached o
     host: "deplo-abc.nip.io",
     "x-forwarded-proto": "http",
   });
-  // No takeover: the configured address, whatever the request says.
   assert.equal(
     await asUser(ADMIN, () => instancePublicBaseUrl(sideDoor)),
     "https://deplo-abc.nip.io",
@@ -117,12 +106,10 @@ test("until the cutover, what Deplo hands out names the address it was reached o
     await asUser(ADMIN, () => instancePublicBaseUrl(sideDoor)),
     "http://deplo-abc.nip.io",
   );
-  // Outside a request there is nothing to prefer, and the configured one answers.
   assert.equal(
     await asUser(ADMIN, () => instancePublicBaseUrl()),
     "https://deplo-abc.nip.io",
   );
-  // Once the ports are Deplo's, the configured address is the one that answers.
   await asUser(ADMIN, () => requestTakeover(null, { discardData: true }));
   await asUser(ADMIN, () => markTakeoverProgress("done"));
   assert.equal(
@@ -168,7 +155,6 @@ test("a restart mid-run does not send the operator back to the beginning", async
   await seedPending();
   await seedFinishedRun("run_1");
   await asUser(ADMIN, () => requestTakeover("run_1"));
-  // Boot again with the same env var still set, as every restart does.
   await asUser(ADMIN, ensureTakeoverFromEnv);
   assert.equal((await read())?.state, "ready");
 });
@@ -179,7 +165,6 @@ test("the ladder only ever goes forward", async () => {
   await asUser(ADMIN, () => requestTakeover("run_1"));
   assert.equal((await read())?.runId, "run_1");
 
-  // `done` is the installer's to report, and only from `ready`.
   await asUser(ADMIN, () => markTakeoverProgress("done"));
   assert.equal((await read())?.state, "done");
 
@@ -195,7 +180,6 @@ test("the ladder only ever goes forward", async () => {
     "the ports have moved; there is nothing to hand back",
   );
 
-  // The removal is the same confirmed action, so the installer reports it too.
   await asUser(ADMIN, () => markTakeoverProgress("removing"));
   await asUser(ADMIN, () => markTakeoverProgress("removed"));
   assert.equal((await read())?.state, "removed");
@@ -209,8 +193,6 @@ test("a later host state is taken from ready and done: a lost report cannot stra
   await seedPending();
   await seedFinishedRun("run_1");
   await asUser(ADMIN, () => requestTakeover("run_1"));
-  // The host moved the ports and removed the panel, but its `done` and
-  // `removing` never arrived (the panel was restarting under the removal).
   await asUser(ADMIN, () => markTakeoverProgress("removed"));
   assert.equal((await read())?.state, "removed");
 });
@@ -220,7 +202,6 @@ test("a cutover that rolled back can be asked for again, and says why", async ()
   await seedFinishedRun("run_1");
   await asUser(ADMIN, () => requestTakeover("run_1"));
 
-  // The installer's report: the ports are back where they were, with the reason.
   await asUser(ADMIN, () =>
     markTakeoverProgress("failed", "Deplo did not answer after the move"),
   );
@@ -229,13 +210,11 @@ test("a cutover that rolled back can be asked for again, and says why", async ()
   assert.equal(t?.error, "Deplo did not answer after the move");
   assert.equal(t?.runId, "run_1", "the run that finished is still the one");
 
-  // Try again is the same request, and the reason goes with the failure.
   await asUser(ADMIN, () => requestTakeover("run_1", { noOtherTeams: true }));
   t = await read();
   assert.equal(t?.state, "ready");
   assert.equal(t?.error, null);
 
-  // Only a cutover in flight can fail; a finished one cannot.
   await asUser(ADMIN, () => markTakeoverProgress("done"));
   await assert.rejects(
     () => asUser(ADMIN, () => markTakeoverProgress("failed", "late")),
@@ -246,8 +225,6 @@ test("a cutover that rolled back can be asked for again, and says why", async ()
 test("a service that arrived without its data holds the ports until the loss is accepted", async () => {
   await seedPending();
   await seedFinishedRun("run_1");
-  // A database the run landed on whose copy failed: the marker on the row is
-  // what says so, and the report's lines are how the run names it.
   await seedServerRow(db, {
     id: "srv_1",
     name: "box",
@@ -292,7 +269,6 @@ test("a loss in an earlier team's run holds the ports as much as the last one's"
     `insert into migration_run_items (id, run_id, path, source_kind, source_name, outcome, target_kind, target_id, message)
      values ('item_1', 'run_1', 'mx / production / mxpg', 'postgres', 'mxpg', 'created', 'database', 'db_1', null);`,
   );
-  // The takeover is asked for with the LAST run, whose own copies were fine.
   await assert.rejects(
     () => asUser(ADMIN, () => requestTakeover("run_2")),
     /mxpg/,
@@ -388,7 +364,6 @@ test("a browser reaching the panel is stamped once", async () => {
   const first = await read();
   assert.equal(first?.seenExternalRequest, true);
 
-  // Stamped once: the installer only asks whether it EVER happened.
   await asUser(ADMIN, noteBrowserReached);
   assert.equal((await read())?.seenExternalRequest, true);
 });
@@ -405,7 +380,6 @@ test("backing out with no run to undo still ends the takeover", async () => {
   assert.equal((await read())?.state, "cancelled");
 });
 
-/** A run that stopped one service over there, the way the data phase records it. */
 async function seedStoppedTarget(): Promise<void> {
   await db.execute(
     `insert into migration_runs
@@ -426,8 +400,6 @@ test("backing out before the ports were even asked for still restarts what was s
   await seedPending();
   await seedStoppedTarget();
 
-  // The takeover's own runId is written by requestTakeover, which a cancel at
-  // this point has not reached - so the undo has to find the stop itself.
   assert.equal((await read())?.runId, null);
 
   const calls: string[] = [];
@@ -452,7 +424,6 @@ test("a stop that will not undo is named, not swallowed", async (t) => {
   assert.equal(res.restarted, 0);
   assert.equal(res.left.length, 1);
   assert.match(res.left[0], /^netcase: /);
-  // The takeover still ends: leaving it open would strand the machine.
   assert.equal((await read())?.state, "cancelled");
 });
 
@@ -477,9 +448,6 @@ test("the ports are not handed over for a migration that never finished", async 
   assert.equal((await read())?.state, "pending");
 });
 
-// The cutover stops that panel for good and nothing here can start it again, so
-// a run that says another team is still owed holds the ports until the operator
-// overrules it on purpose.
 test("the ports wait for the teams the migration says are still owed", async () => {
   await seedPending();
   await seedFinishedRun("run_queued", "done", true);
@@ -496,10 +464,6 @@ test("the ports wait for the teams the migration says are still owed", async () 
   assert.equal(after.state, "ready");
 });
 
-/* ---- the clean install --------------------------------------------- */
-
-// The operator keeps nothing, so there is no run to wait for. Deleting the other
-// platform IS the errand, and this is the only door into it.
 test("a clean takeover reaches ready with no run at all", async () => {
   await seedPending();
   const after = await asUser(ADMIN, () =>

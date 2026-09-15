@@ -8,11 +8,6 @@ import {
   avatarSeedFromName,
 } from "@/lib/apps/avatar-shared";
 
-/**
- * The picture a team being imported will be created with. Held, not saved -
- * the team does not exist yet, so this is the onboarding wizard's `quiet` mode.
- * No panel's own team picture is read: only one of the two keeps one.
- */
 export function TeamImagePicker({
   name,
   image,
@@ -20,7 +15,6 @@ export function TeamImagePicker({
   disabled,
 }: {
   name: string;
-  /** Null is the team's initials, which is where every import starts. */
   image: string | null;
   onChange: (image: string | null) => void;
   disabled?: boolean;

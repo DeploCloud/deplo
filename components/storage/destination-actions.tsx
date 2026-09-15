@@ -34,7 +34,6 @@ import {
 import { useOptimisticRow } from "@/components/shared/optimistic-list";
 import { gql, gqlAction } from "@/lib/graphql-client";
 
-/** What the card and the table row need. Narrower than the DTO, no secrets. */
 export interface DestinationCardView {
   id: string;
   name: string;
@@ -51,12 +50,9 @@ export interface DestinationCardView {
   accessKeyMasked: string | null;
   serverName: string | null;
   resolvedPath: string | null;
-  /** Whether artifacts written here are encrypted - true for every server
-   *  destination, and for any bucket connected since buckets were encrypted. */
   encrypted: boolean;
   freeBytes: number | null;
   totalBytes: number | null;
-  /** Bytes and artifact count this destination currently holds. */
   storedBytes: number;
   storedCount: number;
   recoveryKeySavedAt: string | null;
@@ -72,38 +68,25 @@ export const PROVIDER_LABEL: Record<string, string> = {
   other: "S3-compatible",
 };
 
-/** What removing a destination destroys, so the dialog can name it. */
 interface RemovalImpact {
   schedules: number;
   runs: number;
   artifacts: number;
 }
 
-/** "3 schedules", "1 schedule" - the plural nobody should hand-write twice. */
 function plural(n: number, one: string, many = `${one}s`): string {
   return `${n} ${n === 1 ? one : many}`;
 }
 
-/**
- * The first line of an agent message, for the toast. Errors can arrive as a
- * multi-line provider dump; the toast gets the actionable first line and the
- * connection log keeps every byte.
- */
 export function firstLine(text: string): string {
   return text.split("\n")[0]?.trim() ?? "";
 }
 
-/**
- * Everything a destination can have done to it, in one place: the ⋯ menu, the
- * connection log, the removal confirm, and the test the card's refresh runs.
- * Rendered identically by the card and by the table row.
- */
 export function useDestinationActions({
   dest,
   canManage,
 }: {
   dest: DestinationCardView;
-  /** `manage_backup_destinations`. Gates testing, the recovery key and removal. */
   canManage: boolean;
 }): {
   pending: boolean;
@@ -116,19 +99,13 @@ export function useDestinationActions({
   const router = useRouter();
   const [pending, startTransition] = React.useTransition();
   const [confirmOpen, setConfirmOpen] = React.useState(false);
-  // The row leaves the list on the click: the destination is dropped server-side
-  // before any artifact sweeping starts, and that sweep can run for as long as
-  // the bucket is big.
   const { hide, restore } = useOptimisticRow(dest.id);
-  // What the removal takes with it, fetched when the dialog opens. Null while
-  // unknown, so the copy never asserts a count it does not have.
   const [impact, setImpact] = React.useState<RemovalImpact | null>(null);
   const [alsoDeleteFiles, setAlsoDeleteFiles] = React.useState(false);
   const [logOpen, setLogOpen] = React.useState(false);
   const isServer = dest.kind === "server";
   const encrypted = dest.encrypted;
 
-  /** Test the destination and say what actually happened. */
   const test = React.useCallback(() => {
     startTransition(async () => {
       try {
@@ -139,8 +116,6 @@ export function useDestinationActions({
           { id: dest.id },
         );
         const report = data.testDestination.report;
-        // Repaint the badge and the free-space figure from the persisted verdict
-        // either way.
         router.refresh();
         if (report.ok) {
           toast.success(
@@ -158,24 +133,17 @@ export function useDestinationActions({
           },
         );
       } catch (e) {
-        // The mutation itself failed (offline, not permitted, destination gone):
-        // no verdict was recorded, so say only what we know.
         toast.error(e instanceof Error ? e.message : "The test could not run");
       }
     });
   }, [dest.id, dest.name, router]);
 
-  /** Hand over the recovery key as a file (see `recovery-key.tsx`), then repaint
-   *  so the nudge goes away. */
   const saveRecoveryKey = React.useCallback(() => {
     startTransition(async () => {
       if (await downloadRecoveryKey(dest.id)) router.refresh();
     });
   }, [dest.id, router]);
 
-  // Reset on CLOSE, in the handler rather than in the effect: a synchronous
-  // setState inside an effect cascades a render, and the repo's dialogs already
-  // do their resetting where the close actually happens.
   function onConfirmOpenChange(next: boolean) {
     if (!next) {
       setImpact(null);
@@ -184,7 +152,6 @@ export function useDestinationActions({
     setConfirmOpen(next);
   }
 
-  // Fetch the impact each time the dialog opens - a backup may have run since.
   React.useEffect(() => {
     if (!confirmOpen) return;
     let cancelled = false;
@@ -198,7 +165,6 @@ export function useDestinationActions({
         if (!cancelled) setImpact(d.destinationRemovalImpact);
       })
       .catch(() => {
-        // Unknown stays unknown: the dialog then says only what it is sure of.
         if (!cancelled) setImpact(null);
       });
     return () => {
@@ -228,9 +194,6 @@ export function useDestinationActions({
           side="left"
         >
           <DropdownMenuItem
-            // destinationTestReport declares the same capability the test does,
-            // so without this the item is a click that ends in an authorization
-            // error for a plain Member.
             disabled={!canManage}
             onSelect={() => setLogOpen(true)}
           >
@@ -277,14 +240,9 @@ export function useDestinationActions({
         onOpenChange={setLogOpen}
         destinationId={dest.id}
         destinationName={dest.name}
-        // A re-run from inside the dialog repaints the badge too.
         onTested={() => router.refresh()}
       />
 
-      {/**
-       * The copy used to say backups "will stop running", which was not what
-       * happened: the schedules and the whole run history are DELETED.
-       */}
       <ConfirmAction
         open={confirmOpen}
         onOpenChange={onConfirmOpenChange}
@@ -313,7 +271,6 @@ export function useDestinationActions({
         extra={
           impact && impact.artifacts > 0 ? (
             <div className="grid gap-3">
-              {/* Removing the destination deletes its keypair with it. */}
               {encrypted && !alsoDeleteFiles && !dest.recoveryKeySavedAt && (
                 <RecoveryKeyNudge
                   destinationId={dest.id}
@@ -342,9 +299,6 @@ export function useDestinationActions({
             </div>
           ) : undefined
         }
-        // Typed, like a restore. This deletes every schedule and the whole run
-        // history, and with the box ticked the backup files as well - there is no
-        // undo for any of it, and it used to be one click.
         confirmText={dest.name}
         confirmLabel="Remove destination"
         successMessage="Destination removed"

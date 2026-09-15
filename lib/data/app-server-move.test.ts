@@ -7,13 +7,13 @@ import { eq } from "drizzle-orm";
 
 import { makeTestDb, type TestDb } from "../db/test-harness";
 import { __setTestDb, __resetTestDb } from "../db/client";
+import { apps as appsTable } from "../db/schema/control-plane/apps";
 import {
-  apps as appsTable,
   deployments as deploymentsTable,
-  domains as domainsTable,
   pendingTeardowns,
-  servers as serversTable,
-} from "../db/schema/control-plane";
+} from "../db/schema/control-plane/deployments";
+import { domains as domainsTable } from "../db/schema/control-plane/domains";
+import { servers as serversTable } from "../db/schema/control-plane/servers";
 import { runWithIdentity } from "../auth/request-context";
 import {
   seedIdentity,
@@ -27,24 +27,18 @@ import {
   TRUNCATE_PROJECT_GRAPH,
   SERVER_1,
 } from "./app-graph-test-helpers";
-import {
-  __setAgentConnectorForTest,
-  AgentUnreachableError,
-  type AgentConnection,
-} from "../infra/agent-client";
-import { deleteApp, updateAppSource } from "./apps";
+import { __setAgentConnectorForTest } from "../infra/agent-client/connect";
+import type { AgentConnection } from "../infra/agent-client/connection";
+import { AgentUnreachableError } from "../infra/agent-client/errors";
+import { deleteApp } from "./apps/delete";
+import { updateAppSource } from "./apps/source";
 import { completePendingAppMigration } from "./app-migration";
 import { acceptDataCopyLoss } from "./data-copy";
-import { startDeployment } from "../deploy/build";
+import { startDeployment } from "../deploy/build/deploy-start";
 import {
   __setRunnerForTest,
   __resetQueueForTest,
 } from "../deploy/deploy-queue";
-
-/**
- * Moving an app to another server: what the save records, and what the deploy
- * that lands there does with the data the old host still holds.
- */
 
 let db: TestDb;
 let pg: PGlite;
@@ -57,7 +51,6 @@ const SLUG = "mv";
 const VOL = "deplo-mv-data";
 const T0 = "2026-01-01T00:00:00.000Z";
 
-/** A gzipped tar holding one real file. */
 function tarWith(name: string, content: string): Buffer {
   const header = Buffer.alloc(512);
   header.write(name, 0, "latin1");
@@ -81,7 +74,6 @@ function tarWith(name: string, content: string): Buffer {
   body.write(content, 0, "latin1");
   return gzipSync(Buffer.concat([header, body, Buffer.alloc(1024)]));
 }
-/** What the agent exports for a missing files dir: a header-only archive. */
 const emptyTar = () => gzipSync(Buffer.alloc(1024));
 const REAL = tarWith("data/real.db", "REAL");
 const FILES = tarWith("files/config.yml", "CFG");
@@ -214,7 +206,6 @@ function fleet(hosts: Record<string, Host>) {
 before(async () => {
   ({ db, pg } = await makeTestDb());
   __setTestDb(db);
-  // The move's deploy is enqueued for real; the runner is not what is under test.
   __setRunnerForTest(async () => {});
 });
 
@@ -263,7 +254,6 @@ async function teardownsQueuedOn(serverId: string) {
     .where(eq(pendingTeardowns.serverId, serverId));
 }
 
-/** An app with one Storage volume, single-image, living on `serverId`. */
 async function seedMovable(serverId = SRV_A) {
   await seedApp(db, { id: APP, slug: SLUG, source: "docker-image", serverId });
   await db
@@ -299,10 +289,6 @@ volumes:
 const quiet = () => {};
 const collect = (into: string[]) => (level: string, text: string) =>
   void into.push(`${level}: ${text}`);
-
-/* ------------------------------------------------------------------ */
-/* What the save records                                               */
-/* ------------------------------------------------------------------ */
 
 test("a move marks the old server as the data's home and queues the deploy that carries it", async () => {
   await seedMovable();
@@ -386,10 +372,6 @@ test("an app whose import copy failed is not moved until that is resolved", asyn
     .where(eq(appsTable.id, APP));
   await assert.rejects(() => move(SRV_B), /did not come across/);
 });
-
-/* ------------------------------------------------------------------ */
-/* What the deploy on the new server does with the data                */
-/* ------------------------------------------------------------------ */
 
 async function pendingMove(opts: { from?: string; to?: string } = {}) {
   await seedMovable(opts.to ?? SRV_B);
@@ -503,11 +485,9 @@ test("an unreachable old server holds the move: stopped on the new server, block
     "not serving an empty app as if nothing happened",
   );
 
-  // The next deploy is the retry: not refused by the copy block.
   await assert.doesNotReject(() =>
     asOwner(() => startDeployment(APP, { creator: "o" })),
   );
-  // Without the marker the same block refuses, as it does for an import.
   await db
     .update(appsTable)
     .set({ migrateFromServerId: null })
@@ -556,7 +536,6 @@ test("a retry after a hold copies the data once the old server answers", async (
 });
 
 test("a deploy that lands on a server the app has since left removes its stray stack and copies nothing", async () => {
-  // Moved A → B, then re-targeted to C before B's deploy finished.
   await pendingMove({ to: SRV_C });
   const A = host({
     stackYaml: SINGLE_YAML,

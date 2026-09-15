@@ -30,15 +30,10 @@ import { templatesHref, type OverviewPlacement } from "@/lib/overview-links";
 import type { LogoAccent } from "@/lib/templates/logo-color";
 import { titleClass } from "@/components/shared/page-header";
 
-/** A row needs enough cards to be worth scrolling. */
 const MIN_RAIL_SIZE = 4;
-/** Cards per category row. The rest of a category is one chip away. */
 const RAIL_LIMIT = 12;
-/** The A-to-Z grid opens on this many: the whole catalogue is 380+ cards. */
 const GRID_LIMIT = 12;
 
-/** slug → what its logo needs: a hue to wash the card in, a plate to be visible
- *  at all, or nothing. Absent when the logo asked for neither. */
 type Accents = Record<string, LogoAccent>;
 
 interface Category {
@@ -56,18 +51,9 @@ export function TemplateStore({
   initialQuery,
   initialCategory,
 }: {
-  /** The catalogue trimmed to what a card draws (see `StoreTemplate`),
-   *  asset URLs resolved server-side. */
   templates: StoreTemplate[];
-  /**
-   * The accents, still in flight: reading them decodes every logo, so they
-   * arrive as a promise and only the cards wait behind `<Suspense>`. Never
-   * painted uncoloured first - a catalogue that changes shade reads as broken. */
   accents: Promise<Accents>;
-  /** Whether the storefront's Deploy button leads anywhere for this member. */
   canDeploy: boolean;
-  /** The Overview drill-in the store was opened from, carried on to the wizard
-   *  so a template deployed from inside a folder is created IN that folder. */
   placement?: OverviewPlacement | null;
   initialQuery: string;
   initialCategory: string;
@@ -88,14 +74,10 @@ export function TemplateStore({
     [placement],
   );
 
-  // The filter lives in the URL so coming back from a template's page restores
-  // it. Debounced, or every keystroke would be a history entry.
   const categoryRef = React.useRef(category);
   React.useEffect(() => {
     categoryRef.current = category;
   }, [category]);
-  // Guarded on a real keystroke: on mount `q` is already what the URL says, and
-  // rewriting it to itself costs a server render on every visit to the store.
   const typed = React.useRef(false);
   React.useEffect(() => {
     if (!typed.current) return;
@@ -114,8 +96,6 @@ export function TemplateStore({
     [href, q, router],
   );
 
-  // Categories the catalogue actually uses, most populated first - derived from
-  // the entries rather than fetched, so a chip can never offer an empty filter.
   const categories = React.useMemo<Category[]>(() => {
     const seen = new Map<string, Category>();
     for (const t of templates) {
@@ -209,9 +189,6 @@ function TemplateRefreshButton() {
   );
 }
 
-/** The cards: everything that needs a logo accent, and so everything that waits
- *  for one. Split out of {@link TemplateStore} purely to be the child of its
- *  `<Suspense>` - the search field above stays usable while this streams. */
 function StoreResults({
   templates,
   accents: pending,
@@ -255,8 +232,6 @@ function StoreResults({
   );
 
   const browsing = !query && !category;
-  // A card keeps the drill-in it was opened from, so the wizard two pages
-  // later still creates the App in that folder.
   const scope = templatesHref(placement).split("?")[1] ?? "";
   const cardHref = (slug: string) =>
     scope ? `/templates/${slug}?${scope}` : `/templates/${slug}`;

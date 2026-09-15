@@ -5,9 +5,6 @@ import { ArrowRight, Check } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 
-/**
- * One option as a big, clickable card - icon, title, one-line blurb, tick.
- */
 export function ChoiceCard({
   title,
   blurb,
@@ -22,21 +19,16 @@ export function ChoiceCard({
   title: string;
   blurb: string;
   icon: React.ComponentType<{ className?: string }>;
-  /** Absent on a card that ACTS: it moves on, so it holds nothing to show. */
   selected?: boolean;
   disabled?: boolean;
-  /** Shown instead of the blurb while disabled - say WHY, not that it is off. */
   disabledNote?: string;
   multi?: boolean;
-  /** The card IS the answer: picking it moves on, so it points instead of ticking. */
   arrow?: boolean;
   onSelect: () => void;
 }) {
   return (
     <button
       type="button"
-      // With an arrow the card is an action, not a choice held on screen: it
-      // moves on, so there is no checked state to announce.
       role={arrow ? undefined : multi ? "checkbox" : "radio"}
       aria-checked={arrow ? undefined : selected}
       disabled={disabled}
@@ -47,9 +39,7 @@ export function ChoiceCard({
         "disabled:cursor-not-allowed disabled:opacity-50",
         selected
           ? "border-primary bg-primary-wash ring-1 ring-primary/60"
-          : // Opaque: these cards also sit on the dotted ground, which must not
-            // show through them.
-            "border-border bg-background hover:border-foreground/20 hover:bg-surface",
+          : "border-border bg-background hover:border-foreground/20 hover:bg-surface",
       )}
     >
       <span
@@ -77,7 +67,6 @@ export function ChoiceCard({
   );
 }
 
-/** The square tick of a card that is itself the control. */
 export function CheckMark({
   selected,
   className,

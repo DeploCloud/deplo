@@ -3,27 +3,15 @@ import "server-only";
 import { eq } from "drizzle-orm";
 
 import { getDb } from "../db/client";
-import {
-  memberships as membershipsTable,
-  users as usersTable,
-} from "../db/schema/control-plane";
+import { memberships as membershipsTable } from "../db/schema/control-plane/access-control";
+import { users as usersTable } from "../db/schema/control-plane/identity";
 import { rateLimit } from "../security";
 import { dispatchToTeams } from "./dispatch";
 
-/**
- * "Somebody is guessing a password." A second implementation would be a second
- * thing to get wrong.
- */
-
-/** Failures inside the window before it is worth telling anyone. */
 const BURST_LIMIT = 5;
 const BURST_WINDOW_MS = 10 * 60_000;
 
-/**
- * Count one failed sign-in and alert if it is now a burst.
- */
 export async function noteFailedLogin(subject: string): Promise<void> {
-  // `rateLimit` returns ok while under the limit; the first refusal IS the burst.
   const burst = await rateLimit(`failed-login:${subject}`, {
     limit: BURST_LIMIT,
     windowMs: BURST_WINDOW_MS,

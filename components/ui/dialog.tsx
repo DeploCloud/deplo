@@ -19,9 +19,7 @@ const DialogOverlay = React.forwardRef<
   <DialogPrimitive.Overlay
     ref={ref}
     className={cn(
-      // pointer-events-auto is load-bearing: while a modal is open Radix sets
-      // `pointer-events: none` on <body>, which the overlay would otherwise INHERIT -
-      // letting clicks fall through to background elements that opt back in with
+      // pointer-events-auto: Radix sets pointer-events:none on <body> while a modal is open and the overlay would INHERIT it.
       "pointer-events-auto fixed inset-0 z-50 bg-black/70 backdrop-blur-sm data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:animate-in data-[state=open]:fade-in-0",
       className,
     )}
@@ -34,13 +32,7 @@ const DialogContent = React.forwardRef<
   React.ElementRef<typeof DialogPrimitive.Content>,
   React.ComponentPropsWithoutRef<typeof DialogPrimitive.Content> & {
     hideClose?: boolean;
-    /**
-     * This dialog owns its own height and scrolling - skip the bounded shell.
-     * For the wizards, whose `grid-rows` addresses the content's direct
-     * children, and the backup wizard, whose animated height must overflow.
-     */
     selfManaged?: boolean;
-    /** Extra classes for the backdrop - a heavier blur, say. */
     overlayClassName?: string;
   }
 >(
@@ -69,36 +61,23 @@ const DialogContent = React.forwardRef<
             else if (ref) ref.current = node;
           }}
           className={cn(
-            // grid-cols-[minmax(0,1fr)]: a grid item's automatic minimum size is its
-            // min-content width, so one wide child (an unwrapped <pre>, a long URL) would
-            // stretch the column past max-w-* and push the content out of the modal instead of
             "fixed top-[50%] left-[50%] z-50 grid w-full max-w-lg translate-x-[-50%] translate-y-[-50%] grid-cols-[minmax(0,1fr)] gap-4 rounded-xl border border-border bg-background p-6 shadow-2xl duration-200 data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-95 data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95",
-            // Centred with a translate and nothing bounding it, a dialog taller than the window
-            // used to run off BOTH edges at once - and Radix scroll-locks the page behind it,
-            // so neither end could be reached.
             !selfManaged && "max-h-[85dvh] grid-rows-[minmax(0,1fr)]",
             className,
           )}
           onInteractOutside={(event) => {
-            // Swallow the outside-dismiss when this gesture just closed a nested
-            // popper (Select/menu/popover); otherwise defer to the caller.
             if (nestedLayerJustDismissed()) {
               event.preventDefault();
               return;
             }
             onInteractOutside?.(event);
           }}
-          // Every modal in the app is this component, so none of them can open with
-          // a focus ring on an info icon or a tooltip already showing.
           onOpenAutoFocus={(event) => {
             onOpenAutoFocus?.(event);
             overlayAutoFocus(event, contentRef.current);
           }}
           {...props}
         >
-          {/* The scroll lives on a WRAPPER: the close button is absolutely positioned
-          and would scroll away with the body. `focus-safe-scroll` stops a
-          focused full-width field having its ring sliced by the clip. */}
           {selfManaged ? (
             children
           ) : (
@@ -133,12 +112,7 @@ const DialogHeader = ({
 );
 DialogHeader.displayName = "DialogHeader";
 
-/**
- * A footer of exactly TWO controls is the one-primary-one-secondary shape, and
- * there Cancel sits at the far LEFT, apart from the action it is not. Counted
- * with `toArray`, so an absent `{cond && <Button/>}` does not split the row. A
- * caller that needs the other shape passes `sm:justify-end` and wins.
- */
+// A two-control footer splits, secondary far left; toArray means an absent {cond && <Button/>} does not count, and sm:justify-end opts out.
 const DialogFooter = ({
   className,
   children,
@@ -181,7 +155,6 @@ const DialogDescription = React.forwardRef<
   <DialogPrimitive.Description
     ref={ref}
     className={cn(
-      // The important half of a description is <strong>: white, not muted.
       "text-sm leading-relaxed text-muted-foreground [&_strong]:font-medium [&_strong]:text-foreground",
       className,
     )}

@@ -5,17 +5,11 @@ import { veilProps } from "@/components/templates/veil";
 import type { LogoAccent } from "@/lib/templates/logo-color";
 import { defaultVariant, type CatalogTemplate } from "@/templates/types";
 
-/**
- * What the browser needs to draw a template, and nothing else. The store is a
- * client component, so an untrimmed catalogue crosses the RSC boundary 388 times
- * over: 368 KB against 103 KB measured. The rest is fetched by the slug page.
- */
 export interface StoreTemplate {
   slug: string;
   name: string;
   shortDescription: string;
   logo: string | null;
-  /** How many variants the family has: one means Deploy can skip the page. */
   variants: number;
   category: { slug: string; name: string; icon: string };
 }
@@ -36,11 +30,6 @@ export function toStoreTemplate(t: CatalogTemplate): StoreTemplate {
   };
 }
 
-/**
- * One template in the store. The whole card is the link - deploying is a decision
- * made on the template's own page. `accent` is what its logo's pixels said; a
- * logo that said neither hue nor theme renders plain.
- */
 export function TemplateCard({
   template,
   accent,

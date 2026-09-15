@@ -6,10 +6,6 @@ import {
   startTwoFactorEnrolment,
 } from "@/lib/data/two-factor";
 
-/**
- * Two-factor enrolment and teardown for the CURRENT account.
- */
-
 const TwoFactorEnrolmentRef = builder
   .objectRef<{ totpUri: string; recoveryCodes: string[] }>("TwoFactorEnrolment")
   .implement({

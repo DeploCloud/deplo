@@ -6,12 +6,7 @@ import {
   declaredPort,
   composeRoutePort,
   detectDefaultApp,
-} from "./compose-lint";
-
-/**
- * Which service a compose stack's first domain points at. The old rule - first
- * service, port 80 - handed a whole analytics stack's address to its ClickHouse.
- */
+} from "./compose-lint/routing";
 
 const RYBBIT = `
 services:
@@ -129,8 +124,6 @@ services:
 });
 
 test("a fully-qualified image is still the database it is", () => {
-  // Podman and pinned registries write the long form; the short check read it as
-  // some unknown web image and handed it the app's address.
   assert.deepEqual(
     detectDefaultApp(`
 services:
@@ -144,8 +137,6 @@ services:
 });
 
 test("an image Deplo does not know is saved by the dependency graph", () => {
-  // `bitnami/postgresql` is not one of the six repos, so the graph is what keeps
-  // the address off it: the app waits on the database, nothing waits on the app.
   assert.deepEqual(
     detectDefaultApp(`
 services:
@@ -198,8 +189,6 @@ test("declaredPort reads the long form and ignores a range it cannot resolve", (
 });
 
 test("with two published services, the one nothing waits on is the front door", () => {
-  // A published port says "route here" for BOTH tiers, so document order is not
-  // the tie-breaker: the API is written first, the UI is what a visitor wants.
   assert.deepEqual(
     detectDefaultApp(`
 services:
@@ -238,13 +227,8 @@ services:
 `;
   assert.equal(composeRoutePort(compose, "published"), 3000);
   assert.equal(composeRoutePort(compose, "exposed"), 9000);
-  // The one a one-click template usually leaves: nothing published, a healthcheck
-  // that dials the real port.
   assert.equal(composeRoutePort(compose, "checked"), 5678);
-  // Nothing said at all - the conventional web port, which is what the renderer
-  // would have fallen back to anyway.
   assert.equal(composeRoutePort(compose, "silent"), 80);
-  // Not in the stack: there is no port to answer with.
   assert.equal(composeRoutePort(compose, "absent"), null);
   assert.equal(composeRoutePort(null, "published"), null);
 });

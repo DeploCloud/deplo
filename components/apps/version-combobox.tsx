@@ -5,11 +5,6 @@ import { Loader2 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 
-/**
- * A free-text input with a lazy autocomplete dropdown, backing the "pick a
- * builder/runtime version" fields in build settings. Items load lazily on first
- * focus, so the network call happens only when the field opens.
- */
 export interface VersionItem {
   value: string;
   label: string;
@@ -18,7 +13,6 @@ export interface VersionItem {
 export interface VersionComboboxProps {
   value: string;
   onChange: (value: string) => void;
-  /** Fetch the suggestion list once, lazily, on first focus. */
   load: () => Promise<VersionItem[]>;
   placeholder?: string;
   id?: string;
@@ -40,20 +34,16 @@ export function VersionCombobox({
   const containerRef = React.useRef<HTMLDivElement | null>(null);
   const loadedRef = React.useRef(false);
 
-  // Fetch the suggestion list once, on first focus (lazy - no call until opened).
   const runLoad = React.useCallback(() => {
     if (loadedRef.current) return;
     loadedRef.current = true;
     setLoading(true);
     load()
       .then((list) => setItems(Array.isArray(list) ? list : []))
-      .catch(() => {
-        // Leave the list empty; the field still accepts free text.
-      })
+      .catch(() => {})
       .finally(() => setLoading(false));
   }, [load]);
 
-  // Filter by what's typed (case-insensitive substring over value AND label).
   const q = value.trim().toLowerCase();
   const filtered = React.useMemo(
     () =>
@@ -65,11 +55,8 @@ export function VersionCombobox({
       ),
     [items, q],
   );
-  // Guard against a stale index after the list shrinks (e.g. more typing) so the
-  // Enter key never selects past the end.
   const activeIndex = highlight < filtered.length ? highlight : 0;
 
-  // Close the dropdown on outside click.
   React.useEffect(() => {
     function onClick(e: MouseEvent) {
       if (

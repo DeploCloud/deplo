@@ -6,7 +6,7 @@ import type { PGlite } from "@electric-sql/pglite";
 import { makeTestDb, type TestDb } from "../db/test-harness";
 import { __setTestDb, __resetTestDb } from "../db/client";
 import { eq } from "drizzle-orm";
-import { apps as appsTable } from "../db/schema/control-plane";
+import { apps as appsTable } from "../db/schema/control-plane/apps";
 import { runWithIdentity } from "../auth/request-context";
 import { seedIdentity, TEAM_A, TEAM_B } from "./identity-test-helpers";
 import {
@@ -14,34 +14,24 @@ import {
   seedServer,
   TRUNCATE_PROJECT_GRAPH,
 } from "./app-graph-test-helpers";
+import { ensureAutoDomain } from "./domains/auto-domains";
+import { addDomain, updateDomain } from "./domains/crud";
 import {
-  addDomain,
-  assertPreviewBaseNotAnotherTeams,
-  ensureAutoDomain,
-  routableRoutes,
-  updateDomain,
   __setDnsResolve4ForTest,
   __resetDnsResolve4ForTest,
-} from "./domains";
-
-/**
- * A hostname belongs to ONE TEAM. These tests are the guard, and the third one is
- * the half that must NOT regress: inside one team the shared-hostname feature
- * still works.
- */
+} from "./domains/dns-check";
+import { assertPreviewBaseNotAnotherTeams } from "./domains/hostname-claim";
+import { routableRoutes } from "./domains/routes";
 
 let db: TestDb;
 let pg: PGlite;
 
 const HOST = "shared-host.example.com";
-/** Both apps on the SAME server - the ordinary single-server self-host. */
 const HOST_IP = "10.0.0.1";
 
 before(async () => {
   ({ db, pg } = await makeTestDb());
   __setTestDb(db);
-  // The victim's DNS points at the shared host, as it must for their own app to
-  // work. That is the only DNS fact in play.
   __setDnsResolve4ForTest(async () => [HOST_IP]);
 });
 
@@ -88,7 +78,6 @@ const asAttacker = <T>(fn: () => Promise<T>) =>
 
 test("another team cannot attach a path route to a hostname this team owns", async () => {
   const own = await asVictim(() => addDomain("prj_victim", HOST, {}));
-  // The precondition that makes the hijack land: the row is live, not pending.
   assert.equal(own.status, "valid");
 
   await assert.rejects(
@@ -122,8 +111,6 @@ test("the same team may still share one hostname across two apps by path", async
 
 test("an import claims a hostname this team serves on another path", async () => {
   await asVictim(() => addDomain("prj_victim", HOST, {}));
-  // The import shape: a frontend on `/` and an API on `/api`, both created with
-  // the host they answered on over there.
   const name = await asVictim(() =>
     ensureAutoDomain("prj_sibling", {
       slug: "sibling",
@@ -168,8 +155,6 @@ test("the SAME path on the same hostname is not handed out twice", async () => {
       defaultPort: 3000,
     }),
   );
-  // The row would break the stored uniqueness, so the app gets an address of its
-  // own instead of failing to be created at all.
   assert.notEqual(name, HOST);
   assert.match(name, /\.nip\.io$/);
 });
@@ -193,13 +178,7 @@ test("the same row can still be edited without tripping over itself", async () =
   await asVictim(() => updateDomain(own.id, { port: 8080 }));
 });
 
-/**
- * A preview host never enters the `domains` table: `previewHost` builds
- * `<slug>-pr-<n>.<base>` straight into a Traefik router, with `letsencrypt` by
- * default. So the guard above has a twin here, or the takeover it closes is
- * reachable one level down - routers AND certificate orders under a name that
- * belongs to somebody else.
- */
+// A preview host never enters `domains`, so the guard above needs this twin or the takeover is one level down.
 test("a preview base domain under another team's hostname is refused", async () => {
   await asVictim(() => addDomain("prj_victim", HOST, {}));
   await assert.rejects(
@@ -218,13 +197,11 @@ test("a team may point previews at a domain it already serves", async () => {
   await asVictim(() => addDomain("prj_victim", HOST, {}));
   await assertPreviewBaseNotAnotherTeams(HOST, TEAM_A);
   await assertPreviewBaseNotAnotherTeams(`preview.${HOST}`, TEAM_A);
-  // And a hostname nobody serves is nobody's to refuse.
   await assertPreviewBaseNotAnotherTeams("unclaimed.example.com", TEAM_B);
 });
 
 test("a suffix that is not a label boundary is not a claim", async () => {
   await asVictim(() => addDomain("prj_victim", HOST, {}));
-  // `notvictim.com` merely ENDS WITH the victim's host; it is a different name.
   await assertPreviewBaseNotAnotherTeams(`not${HOST}`, TEAM_B);
 });
 
@@ -267,8 +244,6 @@ test("a preview base domain claims its zone against other teams' hostnames, both
     .update(appsTable)
     .set({ previewBaseDomain: "preview.victim.example" })
     .where(eq(appsTable.id, "prj_victim"));
-  // A preview host never enters `domains`, so the exact-name check alone let an
-  // attacker route a path under it.
   await assert.rejects(
     asAttacker(() =>
       addDomain("prj_attacker", "blog-pr-7.preview.victim.example", {
@@ -281,7 +256,6 @@ test("a preview base domain claims its zone against other teams' hostnames, both
     asAttacker(() => addDomain("prj_attacker", "preview.victim.example", {})),
     /another team's preview domain/,
   );
-  // ...and the same base, or a zone around it, is not another team's to take.
   await assert.rejects(
     () => assertPreviewBaseNotAnotherTeams("preview.victim.example", TEAM_B),
     /another team/,
@@ -290,7 +264,6 @@ test("a preview base domain claims its zone against other teams' hostnames, both
     () => assertPreviewBaseNotAnotherTeams("victim.example", TEAM_B),
     /another team/,
   );
-  // The owning team keeps its own zone.
   await assertPreviewBaseNotAnotherTeams("preview.victim.example", TEAM_A);
   await asVictim(() =>
     addDomain("prj_victim", "docs.preview.victim.example", {}),

@@ -6,15 +6,8 @@ import { Button } from "@/components/ui/button";
 import { XtermView, type XtermApi } from "@/components/apps/xterm-lazy";
 import type { ConsoleControls } from "@/components/console/console-controls";
 
-/** Where the attach stream is. Named for the pane, which renders the dot and
- *  the label for it - this component has no chrome of its own any more. */
 export type AttachStatus = "connecting" | "live" | "ended" | "error";
 
-/**
- * Interactive `docker attach` to a running container's PID 1, rendered in a real
- * xterm.js terminal. Detaching kills only our local attach client, never the
- * container (spawn is `--sig-proxy=false`).
- */
 export function ContainerAttach({
   appId,
   containerName,
@@ -26,31 +19,19 @@ export function ContainerAttach({
   appId: string;
   containerName: string;
   openStdin: boolean;
-  /**
-   * Override the attach endpoint - the database console passes
-   * `/api/databases/<id>/attach` (same SSE/POST contract). Default: the app
-   * route for `appId`.
-   */
   apiBase?: string;
-  /** Reported up so the pane's one toolbar carries the state, instead of this
-   *  component growing a second toolbar under it. */
   onStatus?: (status: AttachStatus) => void;
-  /** Hands the toolbar its Clear / Copy / Download handles once mounted. */
   onControls?: (controls: ConsoleControls) => void;
 }) {
   const [status, setStatus] = React.useState<AttachStatus>("connecting");
-  // Gate the stream on the terminal being mounted + fitted, so the GET can carry
-  // the real initial pty size instead of a guess.
   const [ready, setReady] = React.useState(false);
   const term = React.useRef<XtermApi | null>(null);
   const size = React.useRef({ cols: 80, rows: 24 });
   const sessionId = React.useRef<string | null>(null);
-  // Bumped on reattach to retrigger the stream effect with a fresh connection.
   const [attempt, setAttempt] = React.useState(0);
 
   const base = apiBase ?? `/api/apps/${encodeURIComponent(appId)}/attach`;
 
-  // One POST helper for both stdin bytes and resize frames - same session route.
   const post = React.useCallback(
     (
       payload: { data: string } | { resize: { cols: number; rows: number } },
@@ -74,9 +55,7 @@ export function ContainerAttach({
     )}&cols=${cols}&rows=${rows}`;
     const es = new EventSource(url);
 
-    // Custom `session` frame carries the server-side session id. (Not "open" -
-    // that name collides with EventSource's reserved connection-open event,
-    // whose data is undefined.)
+    // Not "open": that name collides with the reserved EventSource event.
     es.addEventListener("session", (e) => {
       sessionId.current = JSON.parse((e as MessageEvent).data);
       setStatus("live");
@@ -89,9 +68,6 @@ export function ContainerAttach({
       setStatus("ended");
       es.close();
     });
-    // Native EventSource error: the connection dropped or failed to open. If we
-    // never went live (no `session` frame), the attach failed (stopped/404);
-    // once live, an error just means the stream ended.
     es.onerror = () => {
       setStatus((s) => (s === "live" ? "ended" : "error"));
       es.close();
@@ -99,9 +75,6 @@ export function ContainerAttach({
 
     return () => {
       es.close();
-      // Best-effort detach so the server reaps the docker attach child promptly
-      // instead of waiting for the idle timeout. sendBeacon survives unload;
-      // fall back to a keepalive DELETE when it's unavailable.
       const id = sessionId.current;
       if (id) {
         const delUrl = `${base}?sessionId=${encodeURIComponent(id)}`;
@@ -114,8 +87,6 @@ export function ContainerAttach({
     };
   }, [ready, base, containerName, attempt]);
 
-  // Both callbacks behind refs: a fresh closure each render must not re-run the
-  // mount path (`onReady` fires once) nor retrigger the status effect.
   const onStatusRef = React.useRef(onStatus);
   const onControlsRef = React.useRef(onControls);
   React.useEffect(() => {
@@ -131,15 +102,12 @@ export function ContainerAttach({
     term.current = api;
     size.current = api.fit();
     setReady(true);
-    // Nothing to repaint on an attach stream - clearing really is just wiping
-    // the screen, and the container keeps writing into it.
     onControlsRef.current?.({
       clear: () => api.reset(),
       text: () => api.getText(),
     });
   }, []);
 
-  // Every keystroke (incl. control sequences) → the container's stdin, raw.
   const onData = React.useCallback(
     (d: string) => {
       if (openStdin) post({ data: d });
@@ -147,7 +115,6 @@ export function ContainerAttach({
     [openStdin, post],
   );
 
-  // Refit → reseed the pty so the shell/TUI wraps at the real width.
   const onResize = React.useCallback(
     (cols: number, rows: number) => {
       size.current = { cols, rows };

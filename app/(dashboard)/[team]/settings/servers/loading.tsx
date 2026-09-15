@@ -9,10 +9,6 @@ export default function Loading() {
       aria-busy
       aria-label="Loading servers"
     >
-      {/**
-       * PageHeader - "Servers" + description + Check-status / Check-for-updates /
-       * Add-server actions.
-       */}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="space-y-1">
           <Skeleton className="h-7 w-24" />
@@ -25,18 +21,15 @@ export default function Loading() {
         </div>
       </div>
 
-      {/* ListToolbar: search + the "what it is for" filter */}
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
         <Skeleton className="h-9 flex-1 rounded-md" />
         <Skeleton className="h-9 w-full rounded-md sm:w-44" />
       </div>
 
-      {/* Server card grid */}
       <div className="grid gap-4 sm:grid-cols-2">
         {Array.from({ length: 4 }).map((_, card) => (
           <Card key={card}>
             <CardHeader className="space-y-3">
-              {/* Name + health chip + access badge, then check-status + actions buttons */}
               <div className="flex items-center gap-2">
                 <Skeleton className="h-4 w-40" />
                 <Skeleton className="h-5 w-24 rounded-md" />
@@ -46,7 +39,6 @@ export default function Loading() {
                   <Skeleton className="size-8 shrink-0 rounded-md" />
                 </div>
               </div>
-              {/* IP + Traefik + agent-version badges */}
               <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
                 <Skeleton className="h-4 w-28" />
                 <Skeleton className="h-5 w-24 rounded-md" />
@@ -54,7 +46,6 @@ export default function Loading() {
               </div>
             </CardHeader>
             <CardContent>
-              {/* Four hardware-spec tiles */}
               <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
                 {Array.from({ length: 4 }).map((_, spec) => (
                   <div

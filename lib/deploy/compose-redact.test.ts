@@ -7,11 +7,6 @@ import {
   redactComposeForDisplay,
 } from "./compose-redact";
 
-/**
- * "View full compose" is served at the `view` floor, so everything the render
- * RESOLVES into the file has to be masked on the way out.
- */
-
 const HTPASSWD =
   "alice:$$2y$$10$$abcdefghijklmnopqrstuvABCDEFGHIJKLMNOPQRSTUVWXYZ012345";
 
@@ -53,13 +48,11 @@ test("a whole rendered stack loses its env values AND its htpasswd", () => {
 
   const out = redactComposeForDisplay(yaml);
 
-  // Values gone, names kept.
   assert.ok(!out.includes("postgres://u:p@db/x"));
   assert.ok(!out.includes("sk-live-1234567890"));
   assert.ok(out.includes("DATABASE_URL="));
   assert.ok(out.includes("API_KEY:"));
   assert.ok(out.includes("- PASSTHROUGH"));
-  // The credential is gone, and the rest of the routing is untouched.
   assert.ok(!out.includes("alice"));
   assert.ok(!out.includes("2y$$10"));
   assert.ok(out.includes("traefik.enable=true"));
@@ -71,9 +64,6 @@ test("a stack with nothing to hide is returned byte-identical", () => {
   assert.equal(redactComposeForDisplay(yaml), yaml);
 });
 
-/**
- * A multi-line value is a value.
- */
 test("a block scalar is masked whole, body and all", () => {
   const out = redactComposeForDisplay(`services:
   app:
@@ -96,12 +86,9 @@ test("a block scalar is masked whole, body and all", () => {
   assert.ok(!out.includes("BEGIN PRIVATE KEY"));
   assert.ok(!out.includes("MIIEvQIBADANBg"));
   assert.ok(!out.includes("external_url"));
-  // The keys still show, and the value after the block is masked normally -
-  // swallowing the body must not swallow the rest of the environment.
   assert.ok(out.includes(`GITLAB_OMNIBUS_CONFIG: "${MASKED}"`));
   assert.ok(out.includes(`PRIVATE_KEY: "${MASKED}"`));
   assert.ok(out.includes(`AFTER: "${MASKED}"`));
-  // Everything outside `environment:` is untouched.
   assert.ok(out.includes('- "80:80"'));
   assert.ok(out.includes("image: gitlab/gitlab-ce:17"));
 });

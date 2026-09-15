@@ -11,10 +11,6 @@ import { InfoTip } from "@/components/ui/info-tip";
 import { TwoFactorGraphic } from "@/components/settings/two-factor-graphic";
 import { gqlAction } from "@/lib/graphql-client";
 
-/**
- * The team-wide two-factor policy. One switch, because that is the whole decision:
- * either this team's work is behind a second factor or it is not.
- */
 export function TeamSecurityCard({
   requireTwoFactor,
   canManage,
@@ -23,7 +19,6 @@ export function TeamSecurityCard({
 }: {
   requireTwoFactor: boolean;
   canManage: boolean;
-  /** Members of this team with no second factor yet. */
   without: number;
   total: number;
 }) {
@@ -32,8 +27,6 @@ export function TeamSecurityCard({
   const [pending, startTransition] = React.useTransition();
 
   function toggle(next: boolean) {
-    // Optimistic: the switch moves now and snaps back if the server refuses
-    // (which it does when the actor has no second factor of their own).
     setOn(next);
     startTransition(async () => {
       const res = await gqlAction(
@@ -55,8 +48,6 @@ export function TeamSecurityCard({
   }
 
   return (
-    // A flex column so the illustration takes the slack: the card's height is
-    // set by its neighbour in the row, and the content has to reach the bottom.
     <Card className="flex flex-col">
       <CardHeader>
         <CardTitle className="flex w-fit items-center gap-2 text-base">
@@ -68,9 +59,6 @@ export function TeamSecurityCard({
         </CardTitle>
       </CardHeader>
       <CardContent className="flex flex-1 flex-col gap-3">
-        {/* The box still takes the slack, so the card keeps its neighbour's
-            height; the drawing is capped at its own 80px so a tall card stops
-            blowing it up. */}
         <div className="flex min-h-0 flex-1 items-center justify-center py-2">
           <TwoFactorGraphic className="max-h-20" />
         </div>

@@ -2,22 +2,10 @@ import { createHash, randomBytes } from "node:crypto";
 
 import { requireAuth } from "./better-auth";
 
-/**
- * Drive the REAL OAuth flow in-process, through Better Auth's own handler. A
- * hand-inserted row would agree with whatever the code does and prove nothing.
- */
-
-/**
- * Requests are addressed to the instance's OWN public URL, not to localhost.
- */
 function base(): string {
   return process.env.DEPLO_PUBLIC_URL ?? "http://localhost";
 }
 
-/**
- * Every POST carries `Origin`, because Better Auth refuses a cookie-carrying POST
- * without one (`MISSING_OR_NULL_ORIGIN`) - the browser-side CSRF defence.
- */
 function call(path: string, init?: RequestInit): Promise<Response> {
   const headers = new Headers(init?.headers);
   if (init?.method === "POST") headers.set("origin", base());
@@ -32,12 +20,8 @@ export function pkcePair(): { verifier: string; challenge: string } {
   return { verifier, challenge };
 }
 
-/**
- * The status a SUCCESSFUL dynamic registration answers with.
- */
 export const REGISTRATION_CREATED = 201;
 
-/** RFC 7591 dynamic registration, unauthenticated - the claude.ai path. */
 export async function registerClient(
   overrides: Record<string, unknown> = {},
 ): Promise<{ status: number; body: Record<string, unknown> }> {
@@ -57,11 +41,6 @@ export async function registerClient(
   return { status: res.status, body };
 }
 
-/**
- * Mint the session cookie a signed-in browser would then send. IN-PROCESS, not
- * over HTTP, because that is what Deplo itself does: the browser signs in through
- * the GraphQL `login` mutation, which calls `signInEmail` exactly like this.
- */
 export async function signIn(email: string, password: string): Promise<string> {
   const res = (await requireAuth().api.signInEmail({
     body: { email, password },
@@ -77,9 +56,7 @@ export async function signIn(email: string, password: string): Promise<string> {
 
 export interface AuthorizeResult {
   status: number;
-  /** Where the authorize leg sent the browser. */
   location: string | null;
-  /** The signed authorization query the consent page is handed. */
   oauthQuery: string | null;
 }
 
@@ -100,7 +77,6 @@ export async function authorize(
   return { status: res.status, location, oauthQuery };
 }
 
-/** Approve or decline. Returns the URL the browser is sent to next. */
 export async function consent(
   cookie: string,
   body: { accept: boolean; scope?: string; oauth_query?: string },
@@ -126,7 +102,6 @@ export async function exchange(
   return { status: res.status, body };
 }
 
-/** Trade a refresh token for a fresh access token, as a client does hourly. */
 export async function refresh(
   refreshToken: string,
   clientId: string,
@@ -150,10 +125,6 @@ export interface FullFlowResult {
   redirectUri: string;
 }
 
-/**
- * Register → sign in → authorize → consent → exchange, and hand back every
- * credential the flow produced.
- */
 export async function fullFlow(opts: {
   email: string;
   password: string;

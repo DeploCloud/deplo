@@ -5,13 +5,11 @@ import { ArrowLeft } from "lucide-react";
 import { DeploMark } from "@/components/logo";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import {
-  getServerById,
-  getServerTeamIds,
-  serverRole,
-} from "@/lib/data/servers";
+import { getServerById, serverRole } from "@/lib/data/servers/roster";
+import { getServerTeamIds } from "@/lib/data/servers/team-access";
 import { listAllTeamsForAdmin } from "@/lib/data/teams";
-import { getCleanupPolicy, listCleanupRuns } from "@/lib/data/docker-cleanup";
+import { getCleanupPolicy } from "@/lib/data/docker-cleanup/policy";
+import { listCleanupRuns } from "@/lib/data/docker-cleanup/run-history";
 import { isInstanceAdmin } from "@/lib/membership";
 import { hydrateServerSpecs } from "@/lib/data/monitoring";
 import {
@@ -40,20 +38,14 @@ export async function generateMetadata(
   return { title: server ? `${serverLabel(server)} · Servers` : "Server" };
 }
 
-/**
- * One server's management page.
- */
 export default async function ServerDetailPage(
   props: PageProps<"/[team]/settings/servers/[id]">,
 ) {
-  // Instance-admin, like the list page and for the same reason: this view spans
-  // servers restricted to other teams, and every action on it is host-wide.
   if (!(await isInstanceAdmin())) notFound();
 
   const { id } = await props.params;
   const server = await getServerById(id);
   if (!server) notFound();
-  // A migration source has no management page.
   if (server.importOnly) notFound();
 
   const [expectedAgentVersion, teamIds, teamsRaw, policy, runs] =
@@ -65,8 +57,6 @@ export default async function ServerDetailPage(
       listCleanupRuns({ serverId: id }),
     ]);
 
-  // Fills in capacity specs for a server that has never been measured, reusing
-  // the same helper the list page uses; no per-second polling.
   const [hydrated] = await hydrateServerSpecs([server]);
   const self = deploHostSelfAddresses();
   const isDeploHost = isDeploHostServer(server, self);
@@ -89,8 +79,6 @@ export default async function ServerDetailPage(
 
   return (
     <ServerHealthProvider seed={seed}>
-      {/* A settings detail page is forms and readouts, not a grid - it stays at a
-          readable width like the App pages do, rather than the wide list shell. */}
       <div className="mx-auto w-full max-w-5xl space-y-6">
         <div className="space-y-3">
           <Button
@@ -104,8 +92,6 @@ export default async function ServerDetailPage(
               Servers
             </Link>
           </Button>
-          {/* One line: only the name gives ground, or a long one wraps the h1
-              and drops the chip, the badge and the button onto their own. */}
           <div className="flex items-center gap-2">
             <h1
               className={`${titleClass.page} min-w-0 truncate`}
@@ -151,8 +137,6 @@ export default async function ServerDetailPage(
             dockerVersion: hydrated.dockerVersion,
             allTeams: hydrated.allTeams,
             deployConcurrency: hydrated.deployConcurrency,
-            // Never "import": a migration source 404s above, so the summary's
-            // three-role union still holds here.
             role: serverRole(hydrated) as "everything" | "build" | "storage",
             buildFallback: isBuildFallbackServer(hydrated, self),
             isDeploHost,
@@ -168,9 +152,6 @@ export default async function ServerDetailPage(
           accessTeamIds={teamIds}
           cleanup={{
             policy,
-            // This server's own sweeps. The policy stays instance-wide (it is one
-            // row for the whole fleet); the tab says so where it is edited, and
-            // only this host's membership, button and history are per-server.
             runs,
           }}
         />

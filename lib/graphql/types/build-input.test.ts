@@ -3,12 +3,6 @@ import assert from "node:assert/strict";
 
 import { remapBuildInput } from "./build-input";
 
-/**
- * Regression coverage for the "build settings don't save" bug: the GraphQL
- * `BuildConfigInput` names three fields differently from the stored BuildConfig
- * (`settings`/`rootDir`/`outputDir`), and the shallow merge in updateAppBuild keys
- */
-
 test("remapBuildInput re-keys rootDir → rootDirectory", () => {
   const out = remapBuildInput({ rootDir: "apps/web" });
   assert.equal(out.rootDirectory, "apps/web");
@@ -47,8 +41,6 @@ test("remapBuildInput passes matching fields through untouched", () => {
 });
 
 test("remapBuildInput only re-keys fields that are present (partial input)", () => {
-  // The Edit dialog can send just one field; an absent key must NOT appear in the
-  // output, so the downstream merge preserves the stored value for it.
   const out = remapBuildInput({ rootDir: "src" });
   assert.deepEqual(Object.keys(out), ["rootDirectory"]);
   assert.ok(!("outputDirectory" in out));
@@ -56,15 +48,12 @@ test("remapBuildInput only re-keys fields that are present (partial input)", () 
 });
 
 test("remapBuildInput keeps an explicit empty-string edit (clearing a field)", () => {
-  // Clearing Root Directory back to "" is a real edit, not a no-op - it must
-  // reach the store, not be treated as absent.
   const out = remapBuildInput({ rootDir: "", outputDir: "" });
   assert.equal(out.rootDirectory, "");
   assert.equal(out.outputDirectory, "");
 });
 
 test("remapBuildInput end-to-end: the merge persists the edited rootDirectory", () => {
-  // Mirrors the shallow merge in updateAppBuild: { ...existing, ...remapped }.
   const existing = {
     buildMethod: "nixpacks",
     methodSettings: {},

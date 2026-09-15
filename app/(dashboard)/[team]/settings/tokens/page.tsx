@@ -1,7 +1,7 @@
 import { reachesWholeTeam, requireActiveTeamId } from "@/lib/membership";
-import { listTokens } from "@/lib/data/tokens";
-import { listProjects } from "@/lib/data/projects";
-import { listApps } from "@/lib/data/apps";
+import { listTokens } from "@/lib/data/tokens/listing";
+import { listProjects } from "@/lib/data/projects/read";
+import { listApps } from "@/lib/data/apps/listing";
 import { listFolders } from "@/lib/data/folders";
 import { listMyTeams } from "@/lib/data/teams";
 import { PageHeader } from "@/components/shared/page-header";
@@ -14,8 +14,6 @@ import { TokenGraphic } from "@/components/settings/tokens/token-graphic";
 export const metadata = { title: "Settings · API tokens" };
 
 export default async function TokensPage() {
-  // Your own tokens, whatever team they act in. The scope picker behind each
-  // needs whole-team reach, so a narrowed role stops here.
   if (!(await reachesWholeTeam()))
     return (
       <OutsideYourAccess
@@ -34,8 +32,6 @@ export default async function TokensPage() {
       listMyTeams(),
       requireActiveTeamId(),
     ]);
-  // A token can reach teams and apps this page can't name; `scopeLabel` falls
-  // back to a count for anything missing here rather than showing a blank.
   const names = Object.fromEntries(
     [...teams, ...projects, ...folders, ...apps].map((n) => [n.id, n.name]),
   );

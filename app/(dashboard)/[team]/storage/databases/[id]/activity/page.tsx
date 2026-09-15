@@ -1,15 +1,11 @@
 import { notFound } from "next/navigation";
 
-import { getDatabase } from "@/lib/data/databases";
+import { getDatabase } from "@/lib/data/databases/rows";
 import { PageHeader } from "@/components/shared/page-header";
 import { ScopedActivity } from "@/components/activity/scoped-activity";
 
 export const metadata = { title: "Activity" };
 
-/**
- * The app page's twin: the team's audit trail narrowed to this database. Its
- * history starts where `activities.database_id` did (migration 0134).
- */
 export default async function DatabaseActivityPage(
   props: PageProps<"/[team]/storage/databases/[id]/activity">,
 ) {

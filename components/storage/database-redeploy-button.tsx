@@ -8,10 +8,6 @@ import { Button } from "@/components/ui/button";
 import { SimpleTooltip } from "@/components/ui/tooltip";
 import { gqlAction } from "@/lib/graphql-client";
 
-/**
- * Re-render the database's compose from its current settings and reroute it - the
- * "apply my pending edits" verb, and the migration path that stamps the Deplo.
- */
 export function DatabaseRedeployButton({
   id,
   variant = "default",

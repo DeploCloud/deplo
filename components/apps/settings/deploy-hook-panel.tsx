@@ -15,11 +15,6 @@ import { useOptimisticValue } from "@/components/shared/use-optimistic-value";
 import { copyText } from "@/lib/clipboard";
 import { gqlAction } from "@/lib/graphql-client";
 
-/**
- * The app's DEPLOY HOOK: one URL that deploys it, for everything that can't click
- * the dashboard - a GitLab or Bitbucket webhook, a CI job that just pushed a new
- * image, a cron on someone's laptop.
- */
 export function DeployHookPanel({
   appId,
   enabled: initialEnabled,
@@ -27,8 +22,6 @@ export function DeployHookPanel({
 }: {
   appId: string;
   enabled: boolean;
-  /** The hook URL with its secret segment dotted out - what the covered chip
-   * shows, so the shape of the link is legible without revealing it. */
   maskedUrl: string;
 }) {
   const [enabled, applyEnabled] = useOptimisticValue(initialEnabled);
@@ -36,7 +29,6 @@ export function DeployHookPanel({
   const [revealed, setRevealed] = React.useState(false);
   const [pending, setPending] = React.useState(false);
 
-  /** The real URL, fetched once and kept for the life of the panel. */
   const resolve = React.useCallback(async () => {
     if (url !== null) return url;
     setPending(true);
@@ -73,8 +65,6 @@ export function DeployHookPanel({
       (d) => d.rotateAppDeployHook,
     );
     if (res.ok) {
-      // Show the new link straight away: the old one is dead from this moment,
-      // so whoever rotated it needs the replacement in front of them.
       setUrl(res.data ?? null);
       setRevealed(true);
     }
@@ -155,8 +145,6 @@ export function DeployHookPanel({
         />
       </div>
 
-      {/* The whole call, ready to paste - only once the URL is on screen, so a
-          "copy" never hands over a command with dots where the token goes. */}
       {revealed && url && (
         <CommandLine
           command={`curl -X POST -H "Authorization: Bearer deplo_your_token" ${url}`}
@@ -181,8 +169,6 @@ export function DeployHookPanel({
   );
 }
 
-/** Copy the URL, fetching it first when it hasn't been revealed, so it can go
- * to the clipboard without ever going on screen. */
 function CopyResolved({ resolve }: { resolve: () => Promise<string | null> }) {
   const [copied, setCopied] = React.useState(false);
   const [busy, setBusy] = React.useState(false);
@@ -193,7 +179,7 @@ function CopyResolved({ resolve }: { resolve: () => Promise<string | null> }) {
     setBusy(true);
     const v = await resolve();
     setBusy(false);
-    if (v === null) return; // resolve() already said why
+    if (v === null) return;
     if (!(await copyText(v))) return;
     setCopied(true);
     window.clearTimeout(timer.current);

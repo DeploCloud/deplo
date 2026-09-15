@@ -5,13 +5,8 @@ import { ChevronLeft, ChevronRight } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { titleClass } from "@/components/shared/page-header";
 
-/** How far the row fades out on the side that has more to show. */
 const FADE = "56px";
 
-/**
- * A row of cards that scrolls sideways. Native overflow and CSS scroll snap, no
- * carousel; `ScrollArea` takes no orientation and mounts a vertical scrollbar.
- * The arrows are for the mouse and only appear where there is somewhere to go. */
 export function TemplateRail({
   title,
   subtitle,
@@ -22,7 +17,6 @@ export function TemplateRail({
   title: string;
   subtitle?: string;
   icon?: React.ReactNode;
-  /** A way out of the row when its cards are a slice of something bigger. */
   action?: React.ReactNode;
   children: React.ReactNode;
 }) {
@@ -32,8 +26,6 @@ export function TemplateRail({
   const measure = React.useCallback(() => {
     const el = ref.current;
     if (!el) return;
-    // 1px of slack: sub-pixel layout leaves scrollLeft a hair short of the end
-    // and would keep the right arrow lit on a fully scrolled row.
     setEdges({
       left: el.scrollLeft > 1,
       right: el.scrollLeft + el.clientWidth < el.scrollWidth - 1,
@@ -58,9 +50,6 @@ export function TemplateRail({
       });
   };
 
-  // Masked, not overlaid: a gradient in the page's own colour would be a fill
-  // nobody chose, and the row sits on two different surfaces. RIGHT ONLY - the
-  // left edge is where a card starts, and a card cut by a fade reads as broken.
   const mask = edges.right
     ? `linear-gradient(to right, black calc(100% - ${FADE}), transparent 100%)`
     : undefined;
@@ -125,8 +114,6 @@ function RailArrow({
       className={cn(
         "flex size-8 items-center justify-center rounded-md border border-border text-muted-foreground transition",
         "hover:text-foreground focus-visible:opacity-100",
-        // Idle rows stay quiet: the arrows fade in with the row, and an edge
-        // with nothing behind it never lights up at all.
         enabled
           ? "opacity-0 group-hover/rail:opacity-100"
           : "cursor-default opacity-0",

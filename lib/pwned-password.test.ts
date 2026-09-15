@@ -12,7 +12,6 @@ const SHA1 = createHash("sha1")
 const PREFIX = SHA1.slice(0, 5);
 const SUFFIX = SHA1.slice(5);
 
-/** Swap `fetch`, run, put it back - the module reads the global on every call. */
 async function withFetch(
   impl: (url: string) => Promise<Response> | Response,
   run: () => Promise<void>,

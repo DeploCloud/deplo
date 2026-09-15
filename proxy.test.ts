@@ -4,12 +4,6 @@ import { NextRequest } from "next/server";
 
 import { proxy } from "./proxy";
 
-/**
- * The headers that decide whether the panel is usable at all on the address it
- * answers on WITHOUT any DNS: its server's own `http://<ip>:3000`. Deciding
- * `isHttps` from `DEPLO_PUBLIC_URL` rather than from the request sent
- */
-
 const PANEL = "https://deplo.example.com";
 const previous = process.env.DEPLO_PUBLIC_URL;
 
@@ -18,7 +12,6 @@ afterEach(() => {
   else process.env.DEPLO_PUBLIC_URL = previous;
 });
 
-/** `/login` is public, so the proxy answers with headers instead of a redirect. */
 function headersFor(url: string, headers: Record<string, string> = {}) {
   process.env.DEPLO_PUBLIC_URL = PANEL;
   const res = proxy(new NextRequest(new Request(url, { headers })));
@@ -38,7 +31,6 @@ test("the panel's own address, behind a proxy that terminates TLS, is treated as
 });
 
 test("a request that arrived on plain http gets NEITHER upgrade nor HSTS", () => {
-  // The IP address, reached directly: no proxy, no TLS, no x-forwarded-proto.
   const { csp, hsts } = headersFor("http://198.51.100.7:3000/login", {
     host: "198.51.100.7:3000",
   });
@@ -51,8 +43,6 @@ test("a request that arrived on plain http gets NEITHER upgrade nor HSTS", () =>
 });
 
 test("x-forwarded-proto: http is believed over the configured address", () => {
-  // The panel was moved to http from Settings, Deplo. The env var still says
-  // https and always will - the setting is stored in the database.
   const { csp, hsts } = headersFor("http://deplo.example.com/login", {
     host: "deplo.example.com",
     "x-forwarded-proto": "http",
@@ -78,8 +68,6 @@ test("with no proxy header at all, only the configured host counts as https", ()
 });
 
 test("a page served over http may still ask the panel's own https address", () => {
-  // The takeover screen rides the old panel's proxy over http and probes its own
-  // https origin to know when the ports have moved; same host, other scheme.
   const { csp } = headersFor("http://deplo.example.com/login", {
     host: "deplo.example.com",
     "x-forwarded-proto": "http",
@@ -88,8 +76,6 @@ test("a page served over http may still ask the panel's own https address", () =
 });
 
 test("the generated host gets no HSTS, so its certificate warning stays skippable", () => {
-  // HSTS is what takes "Proceed anyway" away from a browser, and no public CA
-  // issues for nip.io - together that is a panel nobody can open.
   const { csp, hsts } = headersFor("https://deplo-cb007109.nip.io/login", {
     host: "deplo-cb007109.nip.io",
     "x-forwarded-proto": "https",
@@ -99,7 +85,6 @@ test("the generated host gets no HSTS, so its certificate warning stays skippabl
 });
 
 test("HSTS is remembered for months, so it never carries preload or subdomains", () => {
-  // Both were traps.
   const { hsts } = headersFor("http://deplo.example.com/login", {
     host: "deplo.example.com",
     "x-forwarded-proto": "https",

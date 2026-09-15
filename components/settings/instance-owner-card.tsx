@@ -23,21 +23,15 @@ export type OwnerCandidate = {
   avatarUrl: string | null;
 };
 
-/**
- * Who owns this instance, and the one place ownership changes hands.
- */
 export function InstanceOwnerCard({
   ownerName,
   viewerIsOwner,
   viewerTwoFactorEnabled,
   candidates,
 }: {
-  /** The current owner's display name, or null on an unowned instance. */
   ownerName: string | null;
   viewerIsOwner: boolean;
-  /** The transfer asks for a code as well when the viewer's account has 2FA. */
   viewerTwoFactorEnabled: boolean;
-  /** Active instance admins who could take it. Empty is a real state. */
   candidates: OwnerCandidate[];
 }) {
   const router = useRouter();
@@ -76,8 +70,6 @@ export function InstanceOwnerCard({
             Only the owner can hand the instance over.
           </p>
         ) : candidates.length === 0 ? (
-          // Nothing to offer the crown to: the server would refuse a transfer to
-          // a non-admin, so say what to do instead of showing an empty picker.
           <p className="text-sm text-muted-foreground">
             There is no other instance admin to hand it to.{" "}
             <Link
@@ -92,8 +84,6 @@ export function InstanceOwnerCard({
           <div className="flex flex-wrap items-end gap-3">
             <div className="min-w-56 flex-1 space-y-2">
               <Label htmlFor="instance-successor">Hand it to</Label>
-              {/* Typed, not picked: an instance with many admins is a list to
-                  scroll, and the name is the thing the operator already knows. */}
               <Combobox<OwnerCandidate>
                 id="instance-successor"
                 items={candidates}
@@ -193,9 +183,6 @@ export function InstanceOwnerCard({
               }`,
               { userId: picked.userId, password, code: code || null },
             );
-            // The crown moved: this viewer is no longer the owner, so the card
-            // has to re-render as the read-only half rather than keep offering
-            // a transfer it can no longer perform.
             if (res.ok) {
               setSuccessor("");
               router.refresh();

@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
 
-import { requireUser } from "@/lib/auth";
+import { requireUser } from "@/lib/auth/current-user";
 import { isInstanceAdmin } from "@/lib/membership";
 import {
   noteBrowserReached,
@@ -8,17 +8,20 @@ import {
   takeoverStatus,
 } from "@/lib/data/takeover";
 import { getTeamIdentity } from "@/lib/data/teams";
-import { listBuildServerChoices, listServerChoices } from "@/lib/data/servers";
+import {
+  listBuildServerChoices,
+  listServerChoices,
+} from "@/lib/data/servers/roster";
+import { listMigrationTargetTeams } from "@/lib/data/migration-import/gates";
 import {
   listAllMigrationRuns,
   listMigrationRuns,
-  listMigrationTargetTeams,
   resumableMigration,
   resumableMigrationAnywhere,
-} from "@/lib/data/migration-import";
+} from "@/lib/data/migration-import/run-queries";
 import { canExposePorts } from "@/lib/membership";
 import { panelFallbackHost, sameMachineHost } from "@/lib/deploy/domains";
-import { MigrationWizard } from "@/components/settings/migrations/migration-wizard";
+import { MigrationWizard } from "@/components/settings/migrations/migration-wizard/wizard";
 import { TakeoverCancel } from "@/components/takeover/takeover-actions";
 import { TakeoverPreflight } from "@/components/takeover/takeover-preflight";
 import { SOURCE_COPY } from "@/components/settings/migrations/sources";
@@ -27,34 +30,20 @@ import { AuthChrome } from "@/components/auth/auth-chrome";
 
 export const metadata = { title: "Take over this machine" };
 
-/**
- * The whole screen while Deplo is replacing another panel on this machine. Not a
- * settings page: until the ports are Deplo's there is nothing else to do here,
- * and a dashboard around it would offer deploys onto a machine somebody else
- * still owns.
- */
 export default async function TakeoverPage() {
   const status = await takeoverStatus();
   if (!status || status.state === "cancelled") redirect("/");
-  // The machine is Deplo's: there is nothing left here to show. Land the way
-  // the step itself does, celebration included - a refresh mid-removal can
-  // reach this before the step's own poll sees `removed`.
   if (status.state === "removed")
     redirect(
       `/?welcome=1&takeover=${encodeURIComponent(SOURCE_COPY[status.platform].name)}`,
     );
 
   await requireUser();
-  // Rendering this page IS the proof that a browser got through - see the
-  // installer's own "nothing has opened this yet" advice.
   await noteBrowserReached();
 
   const copy = SOURCE_COPY[status.platform];
   const sourceUrl = takeoverSourceUrl(status.platform);
 
-  // Each source team lands in a team of the operator's choosing, so the runs
-  // and the one to open on are read across every team - for the admin, which
-  // whoever installed Deplo is.
   const admin = await isInstanceAdmin();
   const [team, targetTeams, servers, buildServers, runs, resumable, mayExpose] =
     await Promise.all([
@@ -67,17 +56,11 @@ export default async function TakeoverPage() {
       canExposePorts(),
     ]);
 
-  // Something has to have come across before there is any point taking the ports.
   const finished = runs.find((r) => r.status === "done") ?? null;
-  // What no run could copy, every team's included: the old panel holds the
-  // only copy, and the cutover stops it for good.
-  // Every team's services are named in it, so only the operator reads it.
   const dataLoss = finished && admin ? await takeoverDataLoss() : [];
 
   return (
     <Screen
-      // Only while the machine is still the other panel's. Once the ports have
-      // been asked for there is nothing here to back out of.
       footer={
         (status.state === "pending" || status.state === "failed") && (
           <TakeoverCancel
@@ -87,8 +70,6 @@ export default async function TakeoverPage() {
         )
       }
     >
-      {/* The wizard watches the run it started itself, in whichever team it
-          lands, so this screen needs no shell around it to see it. */}
       <MigrationWizard
         teamId={team.id}
         targetTeams={targetTeams}
@@ -99,8 +80,6 @@ export default async function TakeoverPage() {
         isInstanceAdmin={admin}
         canExposePorts={mayExpose}
         prefill={{ url: sourceUrl, kind: status.platform }}
-        // Measured before anything moves, and only when something is going to
-        // be copied - it probes the agent, which the cutover is busy with.
         preflight={
           admin && status.state === "pending" ? <TakeoverPreflight /> : null
         }
@@ -112,60 +91,43 @@ export default async function TakeoverPage() {
           error: status.error,
           dataLoss,
         }}
-        // Everything came across and the report has been closed, so the last
-        // step is the only one with anything left in it.
         startOnTakeover={finished != null && resumable == null}
       />
     </Screen>
   );
 }
 
-/** The mark and nothing else: until the ports have moved there is no dashboard
- *  behind this screen to offer a way back to. */
 function Screen({
   children,
   footer,
 }: {
   children: React.ReactNode;
-  /** The way back out, at the foot of the page rather than under the wizard. */
   footer?: React.ReactNode;
 }) {
   return (
     <div className="relative flex min-h-dvh flex-col">
       <div className="deplo-grid-bg pointer-events-none absolute inset-0" />
-      {/* The same furniture every signed-out screen carries: theme, and the
-          three links at the foot. */}
       <AuthChrome />
       <header className="relative z-10 px-6 py-5">
         <DeploLogo />
       </header>
       <main className="relative z-10 flex flex-1 items-center justify-center px-4 py-8">
-        {/* Wide enough for the People step's grid; every other step keeps its
-            own narrower measure. */}
         <div className="w-full max-w-3xl space-y-6">{children}</div>
       </main>
-      {/* Clear of AuthChrome's own row of links, which sits at the page's foot. */}
       {footer && <footer className="relative z-10 px-4 pb-14">{footer}</footer>}
     </div>
   );
 }
 
-/** Where the other panel answers on this machine, from the installer's own IP. */
 function takeoverSourceUrl(platform: "dokploy" | "coolify"): string {
   const ip = process.env.DEPLO_SERVER_IP?.trim() || "127.0.0.1";
   return `http://${ip}:${platform === "coolify" ? 8000 : 3000}`;
 }
 
-/**
- * Where this dashboard answers once the ports have moved: its host on 443, never
- * a port this container was started with while another panel still held 443.
- */
 function finalPanelUrl(): string {
   const pub = process.env.DEPLO_PUBLIC_URL?.trim() ?? "";
   try {
     if (pub.startsWith("https://")) return `https://${new URL(pub).hostname}`;
-  } catch {
-    /* not an address: fall through to the generated host */
-  }
+  } catch {}
   return `https://${panelFallbackHost()}`;
 }

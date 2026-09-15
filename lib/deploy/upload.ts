@@ -1,7 +1,5 @@
 import "server-only";
 
-// https://deplo.build/docs/guides/deploy/upload-code
-
 import { mkdir, rm, readdir, stat } from "node:fs/promises";
 import { createReadStream, createWriteStream } from "node:fs";
 import { spawn } from "node:child_process";
@@ -13,31 +11,23 @@ import { join, basename, relative } from "node:path";
 import { newId, nowIso } from "../ids";
 import { spawnStream } from "../infra/exec";
 import { MAX_UPLOAD_BYTES, archiveExt } from "./upload-shared";
-import type { UploadArchive } from "../types";
+import type { UploadArchive } from "../types/app";
 
 export { MAX_UPLOAD_BYTES, archiveExt };
 
 const DATA_DIR = process.env.DEPLO_DATA_DIR || "/data";
 const UPLOAD_DIR = join(DATA_DIR, "uploads");
 
-/** Thrown by storeUpload when the stream exceeds MAX_UPLOAD_BYTES mid-write. */
 export const ARCHIVE_TOO_LARGE = "ARCHIVE_TOO_LARGE";
 
-/**
- * Hard ceiling on the DECOMPRESSED size of an uploaded archive. 4 GiB comfortably
- * fits any real source tree while refusing a bomb long before it can fill the
- * disk.
- */
-const MAX_EXTRACTED_BYTES = 4 * 1024 * 1024 * 1024; // 4 GiB
+const MAX_EXTRACTED_BYTES = 4 * 1024 * 1024 * 1024;
 
-/** Message thrown when an archive would (or did) expand past MAX_EXTRACTED_BYTES. */
 const EXTRACTED_TOO_LARGE = "archive exceeds the 4 GiB extraction limit";
 
 function appUploadDir(appId: string): string {
   return join(UPLOAD_DIR, appId);
 }
 
-/** A Transform that fails the pipeline the instant the byte cap is exceeded. */
 function capBytes(
   maxBytes: number,
   errMsg: string = ARCHIVE_TOO_LARGE,
@@ -55,11 +45,6 @@ function capBytes(
   });
 }
 
-/**
- * Stream an uploaded archive's body to disk and return the pointer to persist on
- * the project. Call {@link pruneUploads} after the new pointer is committed to
- * drop stale ones. Caller validates the extension via {@link archiveExt} first.
- */
 export async function storeUpload(opts: {
   appId: string;
   filename: string;
@@ -74,8 +59,6 @@ export async function storeUpload(opts: {
 
   try {
     if (body) {
-      // `request.body` is the DOM ReadableStream; Readable.fromWeb wants Node's
-      // structurally-identical stream/web type. Cast across the lib boundary.
       const nodeBody = body as unknown as NodeReadableStream<Uint8Array>;
       await streamPipeline(
         Readable.fromWeb(nodeBody),
@@ -86,7 +69,6 @@ export async function storeUpload(opts: {
       await streamPipeline(Readable.from([]), createWriteStream(path));
     }
   } catch (err) {
-    // streamPipeline destroyed the write stream already; drop the partial file.
     await rm(dir, { recursive: true, force: true }).catch(() => {});
     throw err;
   }
@@ -101,9 +83,6 @@ export async function storeUpload(opts: {
   };
 }
 
-/**
- * Remove every upload subdir for a project except `keepId`.
- */
 export async function pruneUploads(
   appId: string,
   keepId: string,
@@ -124,18 +103,12 @@ export async function pruneUploads(
   );
 }
 
-/** Delete a project's stored uploads (used when the project is deleted). */
 export async function removeUploads(appId: string): Promise<void> {
   await rm(appUploadDir(appId), { recursive: true, force: true }).catch(
     () => {},
   );
 }
 
-/**
- * Extract a stored archive into `destDir`, which must already exist. Security -
- * symlinks: an uploaded archive is fully attacker-controlled, so after the extract
- * we walk the tree and REJECT any symbolic link.
- */
 export async function extractArchive(
   archive: UploadArchive,
   destDir: string,
@@ -147,8 +120,6 @@ export async function extractArchive(
 
   try {
     if (isZip) {
-      // Refuse a declared decompression bomb before writing a single byte: the
-      // central directory's uncompressed total is cheap to read via `unzip -l`.
       const declared = await zipDeclaredBytes(archive.path);
       if (declared != null && declared > MAX_EXTRACTED_BYTES) {
         throw new Error(`${EXTRACTED_TOO_LARGE} (declares ${declared} bytes)`);
@@ -161,30 +132,20 @@ export async function extractArchive(
         { timeout: 300_000 },
       );
       if (code !== 0) throw new Error(`unzip failed (exit ${code})`);
-      // Backstop: a lying central directory can under-report, so measure the
-      // extracted tree and reject if it blew past the budget after all.
       await assertTreeWithinBudget(destDir);
     } else {
       log(`tar -x ${archive.filename}`);
-      // Drive the decompression ourselves so a gzip bomb is capped DURING extraction
-      // (aborted before it can fill the disk), not merely detected once 500 GB has
-      // already landed.
       await extractTarBounded(archive, destDir, isGzip, log);
     }
 
     await rejectSymlinks(destDir);
     return collapseSingleRoot(destDir);
   } catch (err) {
-    // Abort path: never leave a partial (possibly oversized) tree on disk.
     await rm(destDir, { recursive: true, force: true }).catch(() => {});
     throw err;
   }
 }
 
-/**
- * Extract a tarball into `destDir` with a hard cap on DECOMPRESSED bytes. A gzip
- * bomb therefore fails mid-stream, before it can fill the shared disk.
- */
 async function extractTarBounded(
   archive: UploadArchive,
   destDir: string,
@@ -192,8 +153,8 @@ async function extractTarBounded(
   log: (line: string) => void,
 ): Promise<void> {
   const child = spawn("tar", ["-x", "-C", destDir], { windowsHide: true });
-  child.stdin?.on("error", () => {}); // swallow EPIPE if tar exits first
-  child.stdout?.resume(); // drain (tar -x is silent) so it can't backpressure
+  child.stdin?.on("error", () => {});
+  child.stdout?.resume();
   let stderr = "";
   child.stderr?.on("data", (c: Buffer) => {
     stderr += c.toString();
@@ -227,8 +188,6 @@ async function extractTarBounded(
     await exit;
     clearTimeout(timer);
     if (timedOut) throw new Error("tar timed out after 300000ms");
-    // `err` already carries EXTRACTED_TOO_LARGE on a cap breach (the meaningful
-    // failure), or the decompression error otherwise - surface it as-is.
     throw err;
   }
 
@@ -241,10 +200,6 @@ async function extractTarBounded(
   }
 }
 
-/**
- * Uncompressed byte total declared by a zip's central directory, read via `unzip
- * -l` (which decompresses nothing).
- */
 async function zipDeclaredBytes(archivePath: string): Promise<number | null> {
   const lines: string[] = [];
   let code: number;
@@ -268,10 +223,6 @@ async function zipDeclaredBytes(archivePath: string): Promise<number | null> {
   return null;
 }
 
-/**
- * Sum the real file sizes under `dir` (symlinks already rejected upstream) and
- * throw {@link EXTRACTED_TOO_LARGE} once the total crosses the budget.
- */
 async function assertTreeWithinBudget(dir: string): Promise<void> {
   let total = 0;
   const stack = [dir];
@@ -292,11 +243,6 @@ async function assertTreeWithinBudget(dir: string): Promise<void> {
   }
 }
 
-/**
- * Recursively walk `dir` (via lstat, so links are not followed) and throw on
- * the first symbolic link. Prevents a planted link from surviving into the
- * build, where a user-controlled path could follow it out of the temp dir.
- */
 export async function rejectSymlinks(dir: string): Promise<void> {
   const stack = [dir];
   while (stack.length) {
@@ -314,10 +260,6 @@ export async function rejectSymlinks(dir: string): Promise<void> {
   }
 }
 
-/**
- * If `dir` contains exactly one entry and it is a real directory, return that
- * subdirectory; otherwise return `dir` unchanged.
- */
 async function collapseSingleRoot(dir: string): Promise<string> {
   let entries;
   try {
@@ -331,5 +273,4 @@ async function collapseSingleRoot(dir: string): Promise<string> {
   return dir;
 }
 
-// `safeBuildDir` (the rootDirectory containment guard) now lives in .
 export { safeBuildDir } from "./path-safety";

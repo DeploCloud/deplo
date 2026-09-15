@@ -16,9 +16,6 @@ type El = {
   select(): void;
 };
 
-/** A page whose dialog traps focus the way Radix does: whatever is focused
- *  outside the dialog is pulled straight back in. `hostile` traps its own
- *  children too, so nothing can hold the selection. */
 function fakeDom({ hostile = false } = {}) {
   const copied: string[] = [];
   const el = (tag: string): El => {
@@ -61,7 +58,6 @@ function fakeDom({ hostile = false } = {}) {
     activeElement: button as El,
     createElement: (tag: string) => el(tag),
     execCommand: (cmd: string) => {
-      // A browser answers true even when the selection is gone.
       if (cmd === "copy")
         copied.push(
           doc.activeElement.tag === "textarea"

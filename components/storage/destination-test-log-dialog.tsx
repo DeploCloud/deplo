@@ -16,9 +16,8 @@ import { CodeBlock } from "@/components/shared/code-block";
 import { LogLines, LogRow } from "@/components/shared/log-line-row";
 import { cn, timeAgo } from "@/lib/utils";
 import { gql } from "@/lib/graphql-client";
-import type { LogLevel } from "@/lib/types";
+import type { LogLevel } from "@/lib/types/deployment";
 
-/** Mirror of the GraphQL `S3TestReport` shape (see lib/data/s3-test-report.ts). */
 export type S3TestReportView = {
   ok: boolean;
   never: boolean;
@@ -43,11 +42,6 @@ export const S3_TEST_REPORT_FIELDS = `
   command
 `;
 
-/**
- * The full debug output of a destination's "Test connection": the verdict, the
- * probe sequence with the step it stopped at, the agent's verbatim message, and
- * the commands that reproduce the same calls by hand.
- */
 export function DestinationTestLogDialog({
   open,
   onOpenChange,
@@ -59,19 +53,13 @@ export function DestinationTestLogDialog({
   onOpenChange: (v: boolean) => void;
   destinationId: string;
   destinationName: string;
-  /** Called after a re-run so the card's badge can follow the new verdict. */
   onTested?: (report: S3TestReportView) => void;
 }) {
   const [report, setReport] = React.useState<S3TestReportView | null>(null);
   const [loadError, setLoadError] = React.useState<string | null>(null);
-  // A failed RE-RUN is shown ABOVE the report, not instead of it: losing the log
-  // you opened because the retry could not reach the server is the wrong trade.
   const [runError, setRunError] = React.useState<string | null>(null);
   const [running, setRunning] = React.useState(false);
 
-  // Load the stored report on each open so it reflects a test run from the card
-  // meanwhile. Aborts if the dialog closes mid-flight; the reset happens on
-  // CLOSE, so re-opening shows the spinner rather than the previous verdict.
   React.useEffect(() => {
     if (!open) return;
     const controller = new AbortController();
@@ -174,7 +162,6 @@ export function DestinationTestLogDialog({
   );
 }
 
-/** Verdict badge + the four facts that frame the log. */
 function Verdict({ report }: { report: S3TestReportView }) {
   const facts: { label: string; value: string }[] = [
     {
@@ -228,7 +215,6 @@ const STEP_CLASS = {
   skipped: "text-muted-foreground",
 } as const;
 
-/** The probe sequence, so "where did it break" is answerable at a glance. */
 function Steps({ steps }: { steps: S3TestReportView["steps"] }) {
   return (
     <Section title="What Deplo checked">

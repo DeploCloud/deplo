@@ -1,17 +1,10 @@
 import { type NextRequest } from "next/server";
 
-import { getCurrentUser } from "@/lib/auth";
+import { getCurrentUser } from "@/lib/auth/current-user";
 import { isCrossSite, crossSiteRefused } from "@/lib/http/same-origin";
-import { prepareUploadRestore } from "@/lib/data/backups";
+import { prepareUploadRestore } from "@/lib/data/backups/upload-restore";
 import { statusForBackupError } from "@/lib/backups/http-status";
 
-/**
- * Restore an app or a database from an artifact the operator uploads. It is used
- * for this request and nothing else: never stored, never logged, never written to
- * the Activity trail.
- */
-
-// Long-lived streamed response; must run at request time on the Node runtime.
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
@@ -41,8 +34,6 @@ export async function POST(request: NextRequest) {
       body: request.body,
     });
   } catch (e) {
-    // Everything that can refuse has refused by here - the capability, another restore
-    // already running, the file itself, the key.
     const message = e instanceof Error ? e.message : String(e);
     return Response.json(
       { error: message },
@@ -72,9 +63,6 @@ export async function POST(request: NextRequest) {
               }),
         );
       } catch (e) {
-        // The stream already carries a 200, so a failure this late is a last
-        // line rather than a status. The data layer settles the app's status and
-        // records the failure on its own way out.
         controller.enqueue(
           line({
             ok: false,
@@ -85,13 +73,8 @@ export async function POST(request: NextRequest) {
       }
     },
     cancel() {
-      // The browser went away mid-restore. Returning into the generator is what
-      // runs its cleanup: the agent connection closes, the target comes off
-      // "restoring", and the interruption is recorded rather than left hanging.
       void events.return(undefined);
-      // .unless nothing ever pulled from it, in which case there is no `finally` to
-      // return into - a generator abandoned before its first `next()` runs none of its
-      // body.
+      // A generator abandoned before its first next() runs no finally, so cleanup needs this too.
       void restore.abandon();
     },
   });
@@ -100,7 +83,6 @@ export async function POST(request: NextRequest) {
     headers: {
       "Content-Type": "application/x-ndjson; charset=utf-8",
       "Cache-Control": "no-cache, no-transform",
-      // Disable proxy buffering (nginx) so the log lines arrive as they happen.
       "X-Accel-Buffering": "no",
     },
   });

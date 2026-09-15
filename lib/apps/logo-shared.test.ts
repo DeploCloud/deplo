@@ -76,8 +76,8 @@ test("isAnimatedWebp: spots the ANIM flag in an extended WebP header", () => {
     return bytes;
   };
   assert.equal(isAnimatedWebp(head("VP8X", 0x02)), true);
-  assert.equal(isAnimatedWebp(head("VP8X", 0x12)), true); // ANIM + ALPHA
-  assert.equal(isAnimatedWebp(head("VP8X", 0x10)), false); // extended, still
-  assert.equal(isAnimatedWebp(head("VP8 ", 0x02)), false); // plain lossy WebP
-  assert.equal(isAnimatedWebp(new Uint8Array(4)), false); // truncated
+  assert.equal(isAnimatedWebp(head("VP8X", 0x12)), true);
+  assert.equal(isAnimatedWebp(head("VP8X", 0x10)), false);
+  assert.equal(isAnimatedWebp(head("VP8 ", 0x02)), false);
+  assert.equal(isAnimatedWebp(new Uint8Array(4)), false);
 });

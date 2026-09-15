@@ -17,11 +17,6 @@ import {
   Workflow,
 } from "lucide-react";
 
-/**
- * Category icons, named by the catalog as lucide ids. Explicit imports rather
- * than `lucide-react/dynamic`, which reaches for the whole set at runtime. An
- * unknown category falls back to `Package` instead of rendering nothing.
- */
 const ICONS: Record<string, React.ComponentType<{ className?: string }>> = {
   activity: Activity,
   "chart-line": ChartLine,

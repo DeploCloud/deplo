@@ -1,6 +1,6 @@
 import { notFound } from "next/navigation";
 import { Lock } from "lucide-react";
-import { getDatabase } from "@/lib/data/databases";
+import { getDatabase } from "@/lib/data/databases/rows";
 import { getDatabaseConsoleInfo } from "@/lib/data/database-console";
 import { hasCapability } from "@/lib/membership";
 import { EmptyState } from "@/components/shared/empty-state";
@@ -15,8 +15,6 @@ export default async function DatabaseConsolePage(
   const db = await getDatabase(id);
   if (!db) notFound();
 
-  // A live shell into the database container is an infra-class operation - the
-  // sidebar chip is hidden without it, but guard the page too.
   if (!(await hasCapability("open_database_console"))) {
     return (
       <div className="flex min-h-0 flex-1 items-center justify-center p-6">
@@ -32,8 +30,6 @@ export default async function DatabaseConsolePage(
 
   const info = await getDatabaseConsoleInfo(id);
 
-  // Full-bleed, like an App's console and both log panes: the terminal fills the
-  // frame and its toolbar carries the name, so there is no page header here.
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <DatabaseConsole

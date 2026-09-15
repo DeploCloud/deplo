@@ -2,11 +2,8 @@ import SchemaBuilder from "@pothos/core";
 import ScopeAuthPlugin from "@pothos/plugin-scope-auth";
 import { DateTimeResolver, JSONResolver } from "graphql-scalars";
 import type { GraphQLContext } from "./context";
-import type { Capability } from "@/lib/types";
+import type { Capability } from "@/lib/types/identity";
 
-/**
- * The code-first schema builder.
- */
 export const builder = new SchemaBuilder<{
   Context: GraphQLContext;
   Scalars: {
@@ -14,11 +11,8 @@ export const builder = new SchemaBuilder<{
     JSON: { Input: unknown; Output: unknown };
   };
   AuthScopes: {
-    /** Caller is authenticated (cookie session or valid API token). */
     loggedIn: boolean;
-    /** Caller holds the given capability in the active team. */
     capability: Capability;
-    /** Caller is a global instance admin. */
     instanceAdmin: boolean;
   };
 }>({
@@ -27,8 +21,7 @@ export const builder = new SchemaBuilder<{
     authScopes: (ctx) => ({
       loggedIn: !!ctx.viewer,
       capability: (cap: Capability) => ctx.capabilities.includes(cap),
-      // Instance administration is opt-in PER TOKEN, never inherited from the person (see
-      // `tokenHoldsInstanceAdmin` in lib/membership.ts).
+      // Instance admin is opt-in PER TOKEN, never inherited from the person holding it.
       instanceAdmin:
         !!ctx.viewer?.isInstanceAdmin &&
         (!ctx.identity?.token || ctx.identity.token.instanceAdmin),

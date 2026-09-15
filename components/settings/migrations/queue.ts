@@ -1,31 +1,16 @@
 import type { SourceKind } from "./sources";
 
-/**
- * The teams of one panel waiting their turn. A token reads exactly ONE team on
- * both products, so bringing several over is several tokens and several runs -
- * this is the list, and the wizard walks it.
- */
-
-/** Where a source team lands: a team that exists, or one made for it at Start. */
 export type TeamTarget = { kind: "existing"; teamId: string } | { kind: "new" };
 
 export interface QueuedTeam {
-  /** The panel's key for this team. Emptied when its turn is over. */
   apiKey: string;
-  /** The team's own id over there, which is what a duplicate is judged on. Null
-   *  from a panel that would not say - then the key itself is the only tell. */
   sourceTeamId: string | null;
-  /** The source team's name, which a new team here is named after. */
   name: string;
-  /** The picture a NEW team is created with. Null is its initials, and that is
-   *  where every row starts: no panel's own team picture is read. */
   image: string | null;
-  /** The Deplo team it lands in. */
   target: TeamTarget;
   status: "waiting" | "done" | "skipped" | "stopped" | "failed";
 }
 
-/** What `identifyMigrationSource` answers. */
 export interface SourceTeam {
   platform: SourceKind;
   teamId: string | null;
@@ -33,21 +18,14 @@ export interface SourceTeam {
   otherTeams: string[] | null;
 }
 
-/** The team's own name, else its id - and "" when the panel says neither, which
- *  the list renders as "An unnamed organization" rather than as a name. */
 export function teamLabel(t: SourceTeam): string {
   return t.teamName?.trim() || t.teamId || "";
 }
 
-/** Two names for one team, whatever anyone typed around them. */
 export function sameTeamName(a: string, b: string): boolean {
   return a.trim().toLowerCase() === b.trim().toLowerCase();
 }
 
-/**
- * Where a source team lands unless somebody says otherwise: the team here of
- * the same name, else one made for it - the separation they had over there.
- */
 export function defaultTarget(
   name: string,
   teams: { id: string; name: string }[],
@@ -58,15 +36,10 @@ export function defaultTarget(
   return home ? { kind: "existing", teamId: home.id } : { kind: "new" };
 }
 
-/**
- * Add one token to the list, or say why not. The same team twice would import it
- * twice, and a panel that will not name its teams leaves the key as the only tell.
- */
 export function addTeam(
   queue: QueuedTeam[],
   team: SourceTeam,
   apiKey: string,
-  /** The teams this person may land a migration in, for the default. */
   teams: { id: string; name: string }[] = [],
 ): { queue: QueuedTeam[]; error: null } | { queue: null; error: string } {
   const key = apiKey.trim();
@@ -95,7 +68,6 @@ export function addTeam(
   };
 }
 
-/** The same list with team `i` landing somewhere else. */
 export function retarget(
   queue: QueuedTeam[],
   i: number,
@@ -104,10 +76,6 @@ export function retarget(
   return queue.map((q, j) => (j === i ? { ...q, target } : q));
 }
 
-/**
- * The panel's teams no token here covers yet. Empty when the panel cannot say,
- * which on Coolify it never can - there the wizard asks instead of listing.
- */
 export function uncoveredTeams(
   all: string[] | null,
   queue: QueuedTeam[],
@@ -119,7 +87,6 @@ export function uncoveredTeams(
   return all.filter((n) => n.trim() && !have.has(n.trim().toLowerCase()));
 }
 
-/** How many teams are still behind the one whose turn it is. */
 export function teamsAfter(queue: QueuedTeam[], at: number): number {
   return Math.max(0, queue.length - at - 1);
 }

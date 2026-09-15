@@ -7,9 +7,9 @@ import { __setTestDb, __resetTestDb } from "../db/client";
 import { runWithIdentity } from "../auth/request-context";
 import { seedIdentity, TEAM_A, USER_1 } from "./identity-test-helpers";
 import { seedServer, seedApp } from "./app-graph-test-helpers";
-import { redeploy } from "./deployments";
-import { rebuildApp } from "./apps";
-import { deployments as deploymentsTable } from "../db/schema/control-plane";
+import { redeploy } from "./deployments/stack-actions";
+import { rebuildApp } from "./apps/lifecycle";
+import { deployments as deploymentsTable } from "../db/schema/control-plane/deployments";
 import { eq } from "drizzle-orm";
 
 let db: TestDb;

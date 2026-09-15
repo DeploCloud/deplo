@@ -1,28 +1,32 @@
 import { builder } from "../builder";
 import { retryNetworkIsolationSweep } from "@/lib/deploy/network-migration";
 import {
-  getInstanceSettings,
-  getPanelAddressImpact,
-  getPanelHttps,
   listCertificateAccounts,
   setCertificateEmail,
+  type CertificateAccount,
+} from "@/lib/data/instance-settings/certificate-accounts";
+import {
+  checkPanelDns,
+  type PanelDns,
+} from "@/lib/data/instance-settings/panel-address";
+import {
+  getPanelAddressImpact,
+  type PanelAddressImpact,
+} from "@/lib/data/instance-settings/panel-address-impact";
+import {
+  getPanelHttps,
   setPanelFallback,
   setPanelHttps,
+  setPanelUrl,
+  type PanelHttps,
+} from "@/lib/data/instance-settings/panel-route";
+import {
+  getInstanceSettings,
   setGravatarEnabled,
   setLogMaxDays,
-  checkPanelDns,
-  setPanelUrl,
-  type CertificateAccount,
   type InstanceSettings,
-  type PanelAddressImpact,
-  type PanelDns,
-  type PanelHttps,
-} from "@/lib/data/instance-settings";
+} from "@/lib/data/instance-settings/settings-store";
 import { markWelcomeSeen } from "@/lib/data/instance-owner";
-
-/* ------------------------------------------------------------------ */
-/* Object types                                                        */
-/* ------------------------------------------------------------------ */
 
 const InstanceSettingsRef = builder
   .objectRef<InstanceSettings>("InstanceSettings")
@@ -156,10 +160,6 @@ const CertificateAccountRef = builder
     }),
   });
 
-/* ------------------------------------------------------------------ */
-/* Queries                                                             */
-/* ------------------------------------------------------------------ */
-
 builder.queryFields((t) => ({
   instanceSettings: t.field({
     type: InstanceSettingsRef,
@@ -186,10 +186,6 @@ const PanelDnsRef = builder.objectRef<PanelDns>("PanelDns").implement({
     resolved: t.exposeStringList("resolved"),
   }),
 });
-
-/* ------------------------------------------------------------------ */
-/* Mutations                                                           */
-/* ------------------------------------------------------------------ */
 
 builder.mutationFields((t) => ({
   setPanelUrl: t.field({

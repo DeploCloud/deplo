@@ -10,21 +10,17 @@ import { twoFactor as twoFactorTable } from "../db/schema/auth";
 import {
   users as usersTable,
   teams as teamsTable,
-} from "../db/schema/control-plane";
+} from "../db/schema/control-plane/identity";
 import { runWithIdentity } from "../auth/request-context";
 import { seedIdentity, TEAM_A, USER_1 } from "./identity-test-helpers";
 import { requireAuth } from "../auth/better-auth";
-import { setUserPassword } from "../auth";
+import { setUserPassword } from "../auth/password-credential";
 import {
   disableTwoFactor,
   regenerateRecoveryCodes,
   startTwoFactorEnrolment,
 } from "./two-factor";
-import { resetUserTwoFactor } from "./members";
-
-/**
- * The step-up rules around two-factor, and the door they were put in front of.
- */
+import { resetUserTwoFactor } from "./members/instance-users";
 
 let db: TestDb;
 let pg: PGlite;
@@ -58,7 +54,6 @@ beforeEach(async () => {
 const asUser = <T>(userId: string, fn: () => Promise<T>): Promise<T> =>
   runWithIdentity({ userId, teamId: TEAM_A }, fn);
 
-/** Put a user in the state "two-factor is on", without a real enrolment. */
 async function seedTwoFactor(userId: string) {
   await db
     .update(usersTable)
@@ -73,11 +68,6 @@ async function seedTwoFactor(userId: string) {
   });
 }
 
-/* ------------------------------------------------------------------ */
-/* The gate on the plugin's own endpoints                              */
-/* ------------------------------------------------------------------ */
-
-/** Post to a Better Auth route the way a browser would: through the handler. */
 async function overHttp(path: string, body: unknown) {
   return requireAuth().handler(
     new Request(`http://localhost/api/auth${path}`, {
@@ -104,17 +94,11 @@ for (const path of [
 }
 
 test("the gate leaves the rest of Better Auth alone", async () => {
-  // A neighbouring endpoint proves the matcher is scoped to /two-factor/ and has not
-  // quietly closed the whole auth surface.
   const res = await requireAuth().handler(
     new Request("http://localhost/api/auth/get-session", { method: "GET" }),
   );
   assert.notEqual(res.status, 403, "get-session still reaches its own handler");
 });
-
-/* ------------------------------------------------------------------ */
-/* Step-up on the Deplo path                                           */
-/* ------------------------------------------------------------------ */
 
 test("enrolment is refused when two-factor is already on", async () => {
   await seedTwoFactor(USER_1);
@@ -163,15 +147,10 @@ test("regenerating recovery codes needs a code, not just the password", async ()
       asUser(USER_1, () =>
         regenerateRecoveryCodes({ password: PASSWORD, code: "000000" }),
       ),
-    // The password is right, so whatever refuses this can only be the code.
     (e: Error) => !/password/.test(e.message),
     "a valid password alone must not mint a fresh set of bypass codes",
   );
 });
-
-/* ------------------------------------------------------------------ */
-/* The admin escape hatch                                              */
-/* ------------------------------------------------------------------ */
 
 test("an admin cannot reset their own two-factor", async () => {
   await db

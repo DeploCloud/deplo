@@ -13,7 +13,6 @@ test("every allowed flag passes with either boolean", () => {
     assert.equal(validateS3Args(`${name}=true`), null, name);
     assert.equal(validateS3Args(`${name}=false`), null, name);
   }
-  // And several at once, which is how a broken gateway usually needs them.
   assert.equal(
     validateS3Args(
       "--s3-sign-accept-encoding=false --s3-force-path-style=true",
@@ -30,8 +29,6 @@ test("empty is fine - the field is optional", () => {
 });
 
 test("a flag Deplo cannot apply is refused BY NAME, with the list", () => {
-  // The point of the allowlist: a real rclone flag that the agent has no mapping
-  // for must not be accepted and silently dropped.
   const msg = validateS3Args("--s3-upload-cutoff=200M");
   assert.match(msg ?? "", /doesn't know "--s3-upload-cutoff"/);
   assert.match(msg ?? "", /--s3-sign-accept-encoding/);

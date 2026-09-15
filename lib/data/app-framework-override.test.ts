@@ -17,15 +17,9 @@ import {
   seedApp,
   TRUNCATE_PROJECT_GRAPH,
 } from "./app-graph-test-helpers";
-import { setAppFramework } from "./apps";
+import { setAppFramework } from "./apps/settings";
 import { loadAppGraph } from "./app-graph-load";
 import { effectiveFramework } from "../apps/framework-catalog";
-
-/**
- * Correcting the framework Deplo detected. The whole point of the feature is
- * that the correction OUTLIVES detection - a deploy re-reads the source on every
- * push, and that write must not take the user's answer with it.
- */
 
 let db: TestDb;
 let pg: PGlite;
@@ -55,7 +49,6 @@ beforeEach(async () => {
 const asUser1 = <T>(fn: () => Promise<T>): Promise<T> =>
   runWithIdentity({ userId: USER_1, teamId: TEAM_A }, fn);
 
-/** What a deploy's re-detection writes: the `framework` column, and only it. */
 const detect = (id: string, framework: string) =>
   pg.exec(`update apps set framework = '${framework}' where id = '${id}'`);
 
@@ -75,11 +68,8 @@ test("the correction wins, and a later deploy's detection does not undo it", asy
 
   const corrected = (await loadAppGraph("prj_1"))!;
   assert.equal(effectiveFramework(corrected), "vite");
-  // Detection's own answer is still on the row - that is what lets the UI say
-  // "we detected Next.js" beside the user's Vite.
   assert.equal(corrected.framework, "nextjs");
 
-  // The next push re-detects Next.js all over again. The choice must survive.
   await detect("prj_1", "nextjs");
   const afterDeploy = (await loadAppGraph("prj_1"))!;
   assert.equal(effectiveFramework(afterDeploy), "vite");

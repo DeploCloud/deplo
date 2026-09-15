@@ -18,13 +18,8 @@ import {
   TRUNCATE_PROJECT_GRAPH,
 } from "./app-graph-test-helpers";
 import { seedDatabase } from "./backup-test-helpers";
-import { memberships as membershipsTable } from "../db/schema/control-plane";
+import { memberships as membershipsTable } from "../db/schema/control-plane/access-control";
 import { myTeamSlugOwning } from "./teams";
-
-/**
- * Resolving the team that OWNS a resource, which is what a link written before
- * the team was in the address (a notification, a bookmark) is redirected with.
- */
 
 let db: TestDb;
 let pg: PGlite;
@@ -49,8 +44,6 @@ beforeEach(async () => {
       { id: USER_2, teamId: TEAM_B, role: "owner" },
     ],
   });
-  // USER_1 is in BOTH teams: the case the function exists for is a resource that
-  // lives outside the team the request is currently in.
   await db.insert(membershipsTable).values({
     id: `mem_${USER_1}_${TEAM_B}`,
     userId: USER_1,
@@ -64,21 +57,18 @@ beforeEach(async () => {
   await seedDatabase(db, { id: "db_b", name: "main", teamId: TEAM_B });
 });
 
-/** USER_1 acting with TEAM_A active, which is what a flat link arrives on. */
 const asUser1 = <T>(fn: () => Promise<T>): Promise<T> =>
   runWithIdentity({ userId: USER_1, teamId: TEAM_A }, fn);
 
 test("an app names the team that owns it, not the active one", async () => {
   await asUser1(async () => {
     assert.equal(await myTeamSlugOwning("app", "web"), "alpha");
-    // The whole point: `shop` is in the OTHER team, and a link to it still opens.
     assert.equal(await myTeamSlugOwning("app", "shop"), "beta");
     assert.equal(await myTeamSlugOwning("database", "db_b"), "beta");
   });
 });
 
 test("a resource in a team the viewer is not in names nothing", async () => {
-  // USER_2 is only in beta, so alpha's app must not name alpha to them.
   await runWithIdentity({ userId: USER_2, teamId: TEAM_B }, async () => {
     assert.equal(await myTeamSlugOwning("app", "web"), null);
     assert.equal(await myTeamSlugOwning("app", "shop"), "beta");

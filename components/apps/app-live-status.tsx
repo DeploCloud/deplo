@@ -2,11 +2,9 @@
 
 import * as React from "react";
 import { gqlSubscribe } from "@/lib/graphql-client";
-import type { AppStatus, DeploymentStatus } from "@/lib/types";
+import type { AppStatus } from "@/lib/types/app";
+import type { DeploymentStatus } from "@/lib/types/deployment";
 
-/**
- * The live, client-tracked slice of an app's state.
- */
 export type LiveApp = {
   id: string;
   slug: string;
@@ -43,11 +41,6 @@ type SubResult = {
 
 const LiveAppContext = React.createContext<LiveApp | null>(null);
 
-/**
- * Provides the live project state to the app layout subtree. `initial` is
- * the server-rendered snapshot (so the first paint is correct and SSR-stable);
- * the subscription then pushes every change.
- */
 export function AppLiveStatusProvider({
   initial,
   children,
@@ -55,8 +48,7 @@ export function AppLiveStatusProvider({
   initial: LiveApp;
   children: React.ReactNode;
 }) {
-  // The provider is keyed by slug in the layout, so it remounts (and re-seeds
-  // from `initial`) on slug navigation, no re-seed effect needed.
+  // Keyed by slug in the layout, so it remounts and re-seeds from `initial`; no re-seed effect.
   const [live, setLive] = React.useState<LiveApp>(initial);
 
   React.useEffect(() => {
@@ -84,33 +76,19 @@ export function AppLiveStatusProvider({
   );
 }
 
-/**
- * Read the live project state. Returns null outside a provider, so callers can
- * fall back to their server-rendered props (e.g. a page rendered without the
- * provider in its tree).
- */
 export function useLiveApp(): LiveApp | null {
   return React.useContext(LiveAppContext);
 }
 
-/**
- * The app's live status, falling back to a server-rendered value when no
- * provider is mounted above the caller.
- */
 export function useLiveStatus(fallback: AppStatus): AppStatus {
   return useLiveApp()?.status ?? fallback;
 }
 
-/**
- * True when this app has never been deployed: no deployment row at all, and it has
- * not been started either.
- */
 export function useNeverDeployed(): boolean {
   const live = useLiveApp();
   return !!live && live.latestDeploymentId === null && live.status === "idle";
 }
 
-/** True when the app's container is running (status === "active"). */
 export function useLiveRunning(fallback: boolean): boolean {
   const live = useLiveApp();
   return live ? live.status === "active" : fallback;

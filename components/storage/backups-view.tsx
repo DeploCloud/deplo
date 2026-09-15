@@ -33,10 +33,9 @@ import { OptimisticList } from "@/components/shared/optimistic-list";
 import { BackupRow } from "@/components/storage/backup-row";
 import { BackupCard } from "@/components/storage/backup-card";
 import { gqlAction } from "@/lib/graphql-client";
-import type { BackupDTO } from "@/lib/data/backups";
-import type { DestinationOption } from "@/lib/data/destinations";
+import type { BackupDTO } from "@/lib/data/backups/schedules";
+import type { DestinationOption } from "@/lib/data/destinations/dto";
 
-/** shadcn `SelectItem` can't hold "", so "any" needs a sentinel of its own. */
 const ALL = "__all__";
 
 const STATUS_LABELS: Record<string, string> = {
@@ -46,10 +45,6 @@ const STATUS_LABELS: Record<string, string> = {
   never: "Never run",
 };
 
-/**
- * The Backups tab: search, target / outcome / destination filters, and a table
- * or a grid of cards.
- */
 export function BackupsView({
   backups,
   destinations,
@@ -85,9 +80,6 @@ export function BackupsView({
 
   const rowProps = { destinations, canManage, canRestore, canTestDestinations };
 
-  /* ---- Multi-selection (marquee + ctrl/shift-click) + bulk actions ------- */
-  // Only what is ON SCREEN is selectable, in display order, so a shift-click
-  // range spans the list exactly as it reads.
   const visibleIds = filtered.map((b) => b.id);
   const selection = useCardSelection(visibleIds);
   const {
@@ -110,9 +102,6 @@ export function BackupsView({
 
   const selectionNoun = `${selectionCount} schedule${selectionCount === 1 ? "" : "s"}`;
 
-  // One mutation per selected schedule - there is no bulk endpoint. The first
-  // refusal is surfaced verbatim and the selection SURVIVES it, so re-confirming
-  // retries.
   async function bulkRun(
     mutation: string,
     vars: (id: string) => Record<string, unknown>,

@@ -1,10 +1,5 @@
-import type { ResourceLimits } from "../types";
+import type { ResourceLimits } from "../types/container";
 
-/**
- * The pure data model behind the Resources settings form - the string ⇄ number
- * mapping, dirty-key serialization, and quick-pick presets, with NO React so it
- * unit-tests directly (the same split as `volumesKey` / `breadcrumb-model`).
- */
 export interface ResourceLimitsForm {
   memoryMb: string;
   memoryReservationMb: string;
@@ -38,7 +33,6 @@ export const EMPTY_RESOURCE_FORM: ResourceLimitsForm = {
 const numStr = (n: number | null | undefined): string =>
   n == null ? "" : String(n);
 
-/** Current saved limits → the editable form (null ⇒ everything blank). */
 export function resourcesToForm(r: ResourceLimits | null): ResourceLimitsForm {
   if (!r) return { ...EMPTY_RESOURCE_FORM };
   return {
@@ -57,7 +51,6 @@ export function resourcesToForm(r: ResourceLimits | null): ResourceLimitsForm {
   };
 }
 
-/** Parse a whole-number field: ""→null, else rounded (the server range-checks). */
 function intOrNull(s: string): number | null {
   const t = s.trim();
   if (!t) return null;
@@ -65,10 +58,6 @@ function intOrNull(s: string): number | null {
   return Number.isFinite(n) ? Math.round(n) : null;
 }
 
-/**
- * Form → the `ResourceLimitsInput` GraphQL variables (the whole set; ""→null
- * clears that dimension). Cores are converted to milli-CPUs here.
- */
 export function formToLimitsInput(
   f: ResourceLimitsForm,
 ): Record<string, number | string | null> {
@@ -93,11 +82,9 @@ export function formToLimitsInput(
   };
 }
 
-/** A stable key for dirty-tracking (form matches its saved snapshot iff equal). */
 export const serializeResourceForm = (f: ResourceLimitsForm): string =>
   JSON.stringify(formToLimitsInput(f));
 
-/** Quick-pick sizes filling Memory + CPU (the common two). */
 export const RESOURCE_PRESETS: {
   label: string;
   memoryMb: number;
@@ -110,7 +97,6 @@ export const RESOURCE_PRESETS: {
   { label: "Large", memoryMb: 4096, cpuCores: 4 },
 ];
 
-/** The preset whose Memory+CPU exactly matches the current form, if any. */
 export function activeResourcePreset(
   f: ResourceLimitsForm,
 ): (typeof RESOURCE_PRESETS)[number] | undefined {
@@ -120,16 +106,13 @@ export function activeResourcePreset(
   );
 }
 
-/** A Memory + CPU pair in the form's units. */
 export interface ResourceSize {
   memoryMb: number;
   cpuCores: number;
 }
 
-/** The owning machine's capacity; 0 on either axis means "not reported yet". */
 export type HostCapacity = ResourceSize;
 
-/** False only when the host is known and too small on some axis. */
 export function sizeFitsHost(
   size: ResourceSize,
   host: HostCapacity | null,
@@ -141,7 +124,6 @@ export function sizeFitsHost(
   );
 }
 
-/** The highest memory (bytes) and CPU (% of one core) in a metrics window. */
 export function usagePeak(
   samples: readonly { memUsed: number; cpu: number }[],
 ): ResourceSize | null {
@@ -159,10 +141,6 @@ const HEADROOM = 1.5;
 const roundUp = (n: number, step: number) =>
   Math.max(step, Math.ceil(n / step) * step);
 
-/**
- * The size to suggest for a peak: the smallest preset with 1.5x headroom on both
- * axes, else twice the peak rounded up; null when the host cannot give headroom.
- */
 export function suggestedSize(
   peak: ResourceSize,
   host: HostCapacity | null,
@@ -182,12 +160,10 @@ export function suggestedSize(
   return sizeFitsHost(custom, host) ? custom : null;
 }
 
-/** "256 MB" / "1 GB" / "1.5 GB" in the form's own unit. */
 export function fmtMemMb(mb: number): string {
   return mb >= 1024 ? `${Number((mb / 1024).toFixed(2))} GB` : `${mb} MB`;
 }
 
-/** "0.5 CPU" / "1 CPU" / "2 CPUs". */
 export function fmtCpu(cores: number): string {
   const n = Number(cores.toFixed(2));
   return `${n} CPU${n > 1 ? "s" : ""}`;

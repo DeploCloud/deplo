@@ -1,10 +1,9 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-import { validateVolumes, deriveVolumeName } from "./apps";
-import type { VolumeMount } from "../types";
+import { validateVolumes, deriveVolumeName } from "./apps/volumes";
+import type { VolumeMount } from "../types/container";
 
-/** A volume row with sensible defaults; override per case. */
 function vol(p: Partial<VolumeMount>): VolumeMount {
   return { id: "vol_x", name: "", mountPath: "/data", readOnly: false, ...p };
 }
@@ -123,7 +122,6 @@ test("rejects a mount path that collides with a template config file", () => {
       ),
     /config file/,
   );
-  // Also when the volume would shadow a directory holding a config file.
   assert.throws(
     () =>
       validateVolumes(
@@ -145,10 +143,6 @@ test("mints an id when a row has none", () => {
 test("deriveVolumeName falls back to 'data' for the root path", () => {
   assert.equal(deriveVolumeName("/"), "data");
 });
-
-/* ------------------------------------------------------------------ */
-/* Host bind mounts (type: "host")                                     */
-/* ------------------------------------------------------------------ */
 
 test("accepts a host bind mount and keeps type + hostPath", () => {
   const out = validateVolumes(
@@ -208,7 +202,6 @@ test("host mount: rejects '..' traversal in the host path", () => {
 });
 
 test("host mount: the host SOURCE may point at an otherwise-reserved path", () => {
-  // RESERVED_MOUNT_PREFIXES guard the in-container TARGET, not the host source.
   const out = validateVolumes(
     [vol({ type: "host", hostPath: "/etc/myapp", mountPath: "/data" })],
     null,
@@ -251,8 +244,6 @@ test("host mount: keeps a propagation, and leaves the key ABSENT without one", (
       propagation: "rslave",
     },
   ]);
-  // No propagation ⇒ no key at all, so the row (and the mount line it renders)
-  // is byte-identical to one written before the field existed.
   const plain = validateVolumes(
     [vol({ type: "host", hostPath: "/srv/neon", mountPath: "/srv/neon" })],
     null,
@@ -269,8 +260,6 @@ test("host mount: rejects a propagation outside the closed set", () => {
             type: "host",
             hostPath: "/srv/x",
             mountPath: "/data",
-            // Docker's non-recursive modes and anything invented are refused
-            // here, not passed through into a compose mount line.
             propagation: "shared" as never,
           }),
         ],
@@ -281,9 +270,6 @@ test("host mount: rejects a propagation outside the closed set", () => {
 });
 
 test("propagation is dropped for a named volume and an app-files bind", () => {
-  // Docker rejects the option on a managed volume, and a files-dir bind has no
-  // submounts. A value left behind by a row that used to be a Bind must not ride
-  // along into the mount line.
   const out = validateVolumes(
     [
       vol({ name: "data", mountPath: "/data", propagation: "rslave" }),
@@ -300,8 +286,6 @@ test("propagation is dropped for a named volume and an app-files bind", () => {
 });
 
 test("host mount: does not enforce docker-name rules and ignores name dupes", () => {
-  // Two host mounts can share a derived name (no top-level volumes entry), but
-  // their mountPaths must still differ.
   const out = validateVolumes(
     [
       vol({ type: "host", hostPath: "/a", mountPath: "/data" }),
@@ -311,10 +295,6 @@ test("host mount: does not enforce docker-name rules and ignores name dupes", ()
   );
   assert.equal(out?.length, 2);
 });
-
-/* ------------------------------------------------------------------ */
-/* App-files binds (type: "app")                               */
-/* ------------------------------------------------------------------ */
 
 test("accepts a project bind and keeps type + projectPath", () => {
   const out = validateVolumes(
@@ -332,7 +312,6 @@ test("accepts a project bind and keeps type + projectPath", () => {
     {
       id: "vol_p",
       type: "app",
-      // Name is derived from the mount path with non-alnum runs collapsed to "-".
       name: "app-config-toml",
       projectPath: "config.toml",
       mountPath: "/app/config.toml",
@@ -378,7 +357,6 @@ test("project bind: rejects a '..' escape (the rename-vuln guard)", () => {
       ),
     /cannot contain "\.\."/,
   );
-  // …including a climb dressed up as same-project self-reference.
   assert.throws(
     () =>
       validateVolumes(
@@ -415,9 +393,6 @@ test("project bind: rejects an absolute or empty projectPath", () => {
 });
 
 test("every mount path refuses `$`, which compose fills in at `up`", () => {
-  // `.../${X}` is written into the stack file verbatim and substituted from the
-  // env-file, so a Files bind climbs wherever the variable points - out of the app's
-  // own directory, with no permission asked for anywhere.
   for (const v of [
     vol({ type: "app", projectPath: "${X}", mountPath: "/data" }),
     vol({ type: "named", name: "data", mountPath: "/data/${X}" }),
@@ -444,11 +419,6 @@ test("project bind: rejects spaces or a colon in the projectPath", () => {
     /spaces, ":" or "\$"/,
   );
 });
-
-/* ------------------------------------------------------------------ */
-/* Compose stacks: the service a volume mounts into                    */
-/* (a compose app configures storage in Deplo, not by editing YAML)    */
-/* ------------------------------------------------------------------ */
 
 test("compose: keeps a service the compose declares", () => {
   const out = validateVolumes(

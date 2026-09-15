@@ -3,11 +3,6 @@ import { AlertTriangle, ExternalLink } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
-/**
- * What a git host has not allowed, in that host's own words. One block for every
- * surface that raises it, so the same gap never reads two different ways.
- * https://deplo.build/docs/guides/git-providers
- */
 export function GitAccessNotice({
   heading,
   items,
@@ -16,12 +11,8 @@ export function GitAccessNotice({
   className,
 }: {
   heading: string;
-  /** The provider's own labels, and what each one unlocks. */
   items?: { key?: string; label: string; unlocks: string }[];
-  /** A sentence the check produced verbatim, under the list. */
   note?: string | null;
-  /** Where it is fixed - on the provider (`href`) or right here (`onClick`).
-   *  Null for a reader who cannot fix it. */
   fix?: {
     label: string;
     href?: string;

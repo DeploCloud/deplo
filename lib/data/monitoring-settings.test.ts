@@ -5,7 +5,7 @@ import type { PGlite } from "@electric-sql/pglite";
 
 import { makeTestDb, type TestDb } from "../db/test-harness";
 import { __setTestDb, __resetTestDb } from "../db/client";
-import { monitoringSettings } from "../db/schema/control-plane";
+import { monitoringSettings } from "../db/schema/control-plane/instance";
 import { runWithIdentity } from "../auth/request-context";
 import { seedIdentity, TEAM_A, USER_1 } from "./identity-test-helpers";
 import { seedServer, SERVER_1 } from "./app-graph-test-helpers";
@@ -30,12 +30,6 @@ import {
 } from "../monitoring/supervisor";
 import type { ServerMetrics } from "./monitoring";
 
-/**
- * Tests for the "save metrics on server" feature: the `monitoring_settings`
- * singleton (missing row = default ON, `manage_infra`-gated write) and the
- * in-memory history ring buffer it controls (lib/monitoring/history.ts) -
- */
-
 let db: TestDb;
 let pg: PGlite;
 
@@ -49,7 +43,6 @@ after(async () => {
   await pg.close();
 });
 
-/** A second, capability-poor principal: `view` only, so no `manage_infra`. */
 const USER_VIEWER = "user_viewer";
 
 beforeEach(async () => {
@@ -68,7 +61,6 @@ beforeEach(async () => {
     ],
   });
   await seedServer(db);
-  // Both are process-global; a previous test's state must never leak in.
   clearMetricsHistory();
   __resetMonitoringSettingsMemo();
 });
@@ -79,7 +71,6 @@ const asOwner = <T>(fn: () => Promise<T>): Promise<T> =>
 const asViewer = <T>(fn: () => Promise<T>): Promise<T> =>
   runWithIdentity({ userId: USER_VIEWER, teamId: TEAM_A }, fn);
 
-/** A minimal online measurement at `ts` (override any field). */
 function sample(ts: number, over: Partial<ServerMetrics> = {}): ServerMetrics {
   return {
     serverId: SERVER_1,
@@ -108,13 +99,7 @@ function sample(ts: number, over: Partial<ServerMetrics> = {}): ServerMetrics {
   };
 }
 
-/* ------------------------------------------------------------------ */
-/* The ring buffer                                                     */
-/* ------------------------------------------------------------------ */
-
 test("recordMetricsSample keeps online measurements, oldest first", () => {
-  // Wall-clock-relative timestamps: getMetricsHistory evicts by Date.now(), so a
-  // sample stamped in 1970 would be "older than the window" on arrival.
   const t0 = Date.now() - 5000;
   recordMetricsSample(sample(t0));
   recordMetricsSample(sample(t0 + 1000));
@@ -134,7 +119,7 @@ test("offline snapshots are refused - a gap, never a zero", () => {
 test("a sample landing within the min gap of the last is dropped (two viewers)", () => {
   const t0 = Date.now() - 5000;
   recordMetricsSample(sample(t0));
-  recordMetricsSample(sample(t0 + 100)); // a second tab's poll, 100ms later
+  recordMetricsSample(sample(t0 + 100));
   recordMetricsSample(sample(t0 + 1000));
   assert.deepEqual(
     getMetricsHistory(SERVER_1).map((s) => s.ts),
@@ -161,10 +146,6 @@ test("pruneMetricsHistoryTo forgets servers not in the live fleet", () => {
   assert.deepEqual(getMetricsHistory("srv_gone"), []);
 });
 
-/* ------------------------------------------------------------------ */
-/* The settings singleton                                              */
-/* ------------------------------------------------------------------ */
-
 test("missing row reads back as the default: saving ON", async () => {
   await asOwner(async () => {
     const s = await getMonitoringSettings();
@@ -182,7 +163,6 @@ test("setSaveMetrics(false) persists, reads back, and drops the buffer", async (
     assert.ok(s.updatedAt);
     assert.equal((await getMonitoringSettings()).saveMetrics, false);
   });
-  // OFF must mean nothing stays saved, not "stops growing".
   assert.deepEqual(getMetricsHistory(SERVER_1), []);
 });
 
@@ -205,19 +185,13 @@ test("a viewer without manage_infra cannot flip the switch", async () => {
 
 test("the poll-path memo is busted by a write", async () => {
   await asOwner(async () => {
-    assert.equal(await isMetricsSavingEnabled(), true); // memoises the default
+    assert.equal(await isMetricsSavingEnabled(), true);
     await setSaveMetrics(false);
-    assert.equal(await isMetricsSavingEnabled(), false); // sees the write at once
+    assert.equal(await isMetricsSavingEnabled(), false);
   });
 });
 
-/* ------------------------------------------------------------------ */
-/* The supervisor's reconcile (successor to the collector tick)        */
-/* ------------------------------------------------------------------ */
-
 test("a reconcile starts no stream for a server with no enrolled agent", async () => {
-  // The seeded server never called home, so it has no agent cert and there is nothing
-  // to dial.
   await reconcileMetricsStreams();
   assert.deepEqual(__streamModes(), {}, "no loop for an agentless server");
   assert.deepEqual(getMetricsHistory(SERVER_1), []);

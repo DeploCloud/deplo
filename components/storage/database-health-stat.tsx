@@ -8,12 +8,8 @@ import { useDatabaseRuntime } from "@/components/storage/use-database-runtime";
 import { useLiveDatabaseStatus } from "@/components/storage/database-live-status";
 import { databaseDisplayStatus } from "@/lib/databases/display-status";
 import { sinceShort } from "@/lib/utils";
-import type { DatabaseStatus } from "@/lib/types";
+import type { DatabaseStatus } from "@/lib/types/database";
 
-/**
- * A database the row calls running but the agent can see no container for was
- * provisioned before the deplo.* labels existed. Redeploy stamps them.
- */
 export function DatabaseRelabelNotice({
   id,
   status,
@@ -41,10 +37,6 @@ export function DatabaseRelabelNotice({
   );
 }
 
-/**
- * The header badge answers "is it up". This answers what it cannot: does the
- * engine's own healthcheck pass, and has the container been dying.
- */
 export function DatabaseHealthStat({
   id,
   status,
@@ -70,8 +62,7 @@ export function DatabaseHealthStat({
             : "No healthcheck";
 
   const restarts = container?.restartCount ?? 0;
-  // 0 means never started OR an agent older than the field - either way there is
-  // no uptime to claim.
+  // 0 means never started OR an agent older than the field - either way, no uptime to claim.
   const startedAt = container?.startedAtUnix ?? 0;
 
   return (

@@ -26,10 +26,6 @@ const ACCEPT_DATABASE = /* GraphQL */ `
   }
 `;
 
-/**
- * The data a migration could not bring, said where somebody is about to press
- * Deploy.
- */
 export function DataCopyNotice({
   kind,
   id,
@@ -41,11 +37,8 @@ export function DataCopyNotice({
   kind: "app" | "database";
   id: string;
   name: string;
-  /** `dataCopyError` from the row. Empty renders nothing. */
   error: string;
-  /** Whether the viewer holds the capability that would start it. */
   canAccept: boolean;
-  /** A server MOVE that could not copy: a redeploy is the retry, not a re-import. */
   move?: boolean;
 }) {
   const router = useRouter();
@@ -68,9 +61,6 @@ export function DataCopyNotice({
               ? "Its storage is empty, so it is kept stopped: redeploy to copy the data again, or accept starting without it."
               : `Its storage is empty, so ${verb.toLowerCase()} is held until the data is copied again or you accept starting without it.`}
           </p>
-          {/* Verbatim, and monospaced: this is the host's or the engine's own
-              sentence, and it is what tells someone whether the copy is worth
-              retrying or the source is simply gone. */}
           <p className="rounded bg-muted px-2 py-1 font-mono text-xs break-words text-muted-foreground">
             {error}
           </p>

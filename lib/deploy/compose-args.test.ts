@@ -9,12 +9,6 @@ import {
   validateComposeUpArgs,
 } from "./compose-args";
 
-/**
- * The app's extra `docker compose up` flags. Two things have to hold: what the
- * settings page previews is exactly what the host runs, and nothing that would
- * repoint the command at another stack can ever be stored.
- */
-
 test("flags are split into argv tokens, whitespace and all", () => {
   assert.deepEqual(parseComposeUpArgs("--pull always"), ["--pull", "always"]);
   assert.deepEqual(
@@ -39,8 +33,6 @@ test("ordinary compose flags are accepted", () => {
 });
 
 test("the flags that choose the stack are refused", () => {
-  // Each of these would aim the command at a different project, file or env,
-  // which is how a deploy reports green while the real app never restarted.
   for (const denied of [
     "-p other",
     "--project-name=other",
@@ -57,8 +49,6 @@ test("the flags that choose the stack are refused", () => {
 });
 
 test("a whole command, pasted in, is refused with a reason", () => {
-  // The failure mode of the "custom command" design this replaces: someone pastes
-  // the entire invocation. Name the first token so it is obvious why.
   const problem = validateComposeUpArgs("compose -p app -f app.yml up -d");
   assert.ok(problem);
   assert.match(problem!, /Extra flags only/);
@@ -93,8 +83,6 @@ test("the preview is the command, not a description of it", () => {
     composeUpCommandPreview({ slug: "api", usesEnvFile: false, extra: [] }),
     "docker compose -p deplo-api -f /data/stacks/api.yml up -d --remove-orphans",
   );
-  // A compose stack interpolates ${VAR}, so its bring-up carries an env-file,
-  // and a deploy of it pulls.
   assert.equal(
     composeUpCommandPreview({
       slug: "api",
@@ -104,7 +92,6 @@ test("the preview is the command, not a description of it", () => {
     "docker compose -p deplo-api -f /data/stacks/api.yml --env-file /data/stacks/api.env " +
       "up -d --remove-orphans --pull always --wait",
   );
-  // The operator's own --pull is the one that runs.
   assert.equal(
     composeUpCommandPreview({
       slug: "api",
@@ -123,7 +110,6 @@ test("a compose stack's deploy pulls unless the operator chose a pull policy", (
     "always",
     "--wait",
   ]);
-  // `--pull missing` is how an image that exists only on the host keeps working.
   assert.deepEqual(composeDeployArgs(["--pull", "missing"]), [
     "--pull",
     "missing",
@@ -132,7 +118,6 @@ test("a compose stack's deploy pulls unless the operator chose a pull policy", (
     "--wait",
     "--pull=never",
   ]);
-  // The agent drops the whole set past its cap, so a set at the cap stays as is.
   const atCap = Array.from(
     { length: COMPOSE_UP_ARGS_MAX_TOKENS - 1 },
     () => "--wait",

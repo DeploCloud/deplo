@@ -5,18 +5,10 @@ import {
   WebAuthnError,
 } from "@simplewebauthn/browser";
 
-/**
- * The browser half of a passkey ceremony. Everything else about passkeys is a
- * GraphQL round trip; this is the one part that cannot be, because
- * `navigator.credentials` lives in the page.
- */
-
-/** Whether this browser can do WebAuthn at all. Safe to call during render. */
 export function passkeysSupported(): boolean {
   return typeof window !== "undefined" && browserSupportsWebAuthn();
 }
 
-/** Run `navigator.credentials.create` with the server's creation options. */
 export async function createPasskeyCredential(
   optionsJSON: unknown,
 ): Promise<unknown> {
@@ -27,7 +19,6 @@ export async function createPasskeyCredential(
   });
 }
 
-/** Run `navigator.credentials.get` with the server's request options. */
 export async function getPasskeyAssertion(
   optionsJSON: unknown,
 ): Promise<unknown> {
@@ -38,9 +29,6 @@ export async function getPasskeyAssertion(
   });
 }
 
-/**
- * Turn whatever the ceremony threw into one line a person can act on.
- */
 export function passkeyError(e: unknown, panelUrl?: string | null): string {
   const wrongPlace = panelUrl
     ? `Passkeys only work on ${panelUrl}. Open the panel there and try again.`
@@ -63,8 +51,6 @@ export function passkeyError(e: unknown, panelUrl?: string | null): string {
         return "Your device refused to create the passkey. Try a different one.";
     }
   }
-  // The bare DOMExceptions, for a browser that threw before the library could
-  // narrow it (or a case the library does not cover).
   if (e instanceof Error) {
     if (e.name === "NotAllowedError")
       return "Cancelled, or it timed out. Try again.";

@@ -1,14 +1,11 @@
-/**
- * Roll a LOCALLY BUILT agent binary onto the remote fleet, for the window where
- * the fix exists but the GitHub release does not yet. A server with a deploy in
- * flight is skipped, because the agent re-execs to apply the update.
- */
 import { inArray } from "drizzle-orm";
 
-import { listAllServers, markServerSeen } from "../lib/data/servers";
+import { markServerSeen } from "../lib/data/servers/agent-handshake";
+import { listAllServers } from "../lib/data/servers/roster";
 import { getDb } from "../lib/db/client";
-import { deployments } from "../lib/db/schema/control-plane";
-import { agentPreflight, connectAgent } from "../lib/infra/agent-client";
+import { deployments } from "../lib/db/schema/control-plane/deployments";
+import { connectAgent } from "../lib/infra/agent-client/connect";
+import { agentPreflight } from "../lib/infra/agent-client/preflight";
 
 const [version, baseUrl] = process.argv
   .slice(2)
@@ -21,7 +18,6 @@ if (!version || !baseUrl) {
   process.exit(1);
 }
 
-/** Read `sha256  filename` lines and index them by arch. */
 async function resolveBinaries(): Promise<
   Record<string, { url: string; sha256: string }>
 > {
@@ -112,7 +108,6 @@ for (const [i, s] of remotes.entries()) {
     conn.close();
   }
 
-  // Trust Hello, not the response echo: the agent re-execs after replying.
   let confirmed = "";
   for (let attempt = 0; attempt < 20; attempt++) {
     await new Promise((r) => setTimeout(r, 1500));
@@ -132,9 +127,7 @@ for (const [i, s] of remotes.entries()) {
         );
         break;
       }
-    } catch {
-      // Still re-execing; keep waiting.
-    }
+    } catch {}
   }
   if (!confirmed) {
     console.log(`FAIL  ${label}, never came back on a new version. Stopping.`);

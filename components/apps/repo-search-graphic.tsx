@@ -1,10 +1,5 @@
 import { cn } from "@/lib/utils";
 
-/**
- * The "nothing matched" picture for a repository list: an empty list with the
- * lens still over it. Static and colourless on purpose - it sits inside a
- * scrolling picker, where movement would read as loading.
- */
 export function RepoSearchGraphic({ className }: { className?: string }) {
   return (
     <svg
@@ -14,7 +9,6 @@ export function RepoSearchGraphic({ className }: { className?: string }) {
       aria-label="An empty list of repositories under a magnifying glass"
       className={cn("size-24", className)}
     >
-      {/* The list itself: the furniture of the picture. */}
       <rect
         x="14"
         y="20"
@@ -24,8 +18,6 @@ export function RepoSearchGraphic({ className }: { className?: string }) {
         className="stroke-border"
         strokeWidth="2.5"
       />
-      {/* The rows: `--ring`, not `--border`, because they ARE the picture - the
-          panel around them is the only furniture here. */}
       <rect
         x="27"
         y="35"
@@ -47,8 +39,6 @@ export function RepoSearchGraphic({ className }: { className?: string }) {
         />
       ))}
 
-      {/* The lens is the subject. No fill: the empty rows have to be visible
-          THROUGH the glass, or it is a disc covering them rather than a search. */}
       <circle
         cx="74"
         cy="70"
@@ -65,7 +55,6 @@ export function RepoSearchGraphic({ className }: { className?: string }) {
         strokeWidth="4"
         strokeLinecap="round"
       />
-      {/* The glint: what tells you it is glass and not a ring. */}
       <path
         d="M65 63a11 11 0 0 1 7-5"
         className="stroke-background"

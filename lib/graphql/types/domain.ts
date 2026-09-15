@@ -3,25 +3,18 @@ import { DomainStatusEnum } from "./enums";
 import {
   listDomains,
   addDomain,
-  dismissImportedDomains,
   updateDomain,
-  verifyDomain,
-  setPrimaryDomain,
   removeDomain,
   type DomainConfig,
   type DomainPatch,
-} from "@/lib/data/domains";
-import { rerouteApp } from "@/lib/deploy/build";
+} from "@/lib/data/domains/crud";
+import { verifyDomain } from "@/lib/data/domains/dns-check";
+import { dismissImportedDomains } from "@/lib/data/domains/imported-routes";
+import { setPrimaryDomain } from "@/lib/data/domains/primary-domain";
+import { rerouteApp } from "@/lib/deploy/build/reroute";
 import { isRoutableDomain } from "@/lib/deploy/cloudflare";
-import type { Domain } from "@/lib/types";
+import type { Domain } from "@/lib/types/domain";
 
-/* ------------------------------------------------------------------ */
-/* Local enums                                                         */
-/* ------------------------------------------------------------------ */
-
-// These two unions are domain-local (CertProvider / DomainEntrypoint live in
-// lib/types.ts but are not in the shared enums module), so they are defined here
-// and exported to nothing.
 const CertProviderEnum = builder.enumType("CertProvider", {
   values: ["letsencrypt", "cloudflare", "none", "custom"] as const,
 });
@@ -30,9 +23,6 @@ const DomainEntrypointEnum = builder.enumType("DomainEntrypoint", {
   values: ["websecure", "web"] as const,
 });
 
-// The `www` ⇄ non-`www` pairing, expressed relative to the domain being written:
-// `toThis` makes the counterpart hostname 301 here, `toCounterpart` makes THIS
-// hostname 301 to its counterpart (which serves the app and inherits `primary`),
 const DomainWwwRedirectEnum = builder.enumType("DomainWwwRedirect", {
   description:
     "Which half of a www / non-www pair serves the app, relative to this domain. " +
@@ -41,13 +31,6 @@ const DomainWwwRedirectEnum = builder.enumType("DomainWwwRedirect", {
   values: ["none", "toThis", "toCounterpart"] as const,
 });
 
-/* ------------------------------------------------------------------ */
-/* Object types                                                        */
-/* ------------------------------------------------------------------ */
-
-// listDomains() decorates each row with its owning app's name/slug; addDomain
-// and verifyDomain return a bare Domain. The ref is typed on the bare Domain and
-// the decoration fields are nullable so both shapes satisfy it.
 type DomainRow = Domain & { serviceName?: string; appSlug?: string };
 
 export const DomainRef = builder.objectRef<DomainRow>("Domain").implement({
@@ -119,20 +102,11 @@ export const DomainRef = builder.objectRef<DomainRow>("Domain").implement({
         "`dismissImportedDomains`.",
     }),
     createdAt: t.exposeString("createdAt"),
-    // Present only on rows from listDomains (decorated with the owning project);
-    // null on a freshly-added/verified domain returned bare by the data layer.
     serviceName: t.exposeString("serviceName", { nullable: true }),
     appSlug: t.exposeString("appSlug", { nullable: true }),
   }),
 });
 
-/* ------------------------------------------------------------------ */
-/* Inputs                                                              */
-/* ------------------------------------------------------------------ */
-
-// The routing knobs a user sets when adding a domain - mirrors DomainConfig in
-// the data layer. All optional; an omitted certProvider means NO certificate
-// (plain HTTP) - a cert is only registered when explicitly requested.
 const DomainConfigInput = builder.inputType("DomainConfigInput", {
   description:
     "Per-domain routing config; an omitted certProvider means no certificate " +
@@ -151,9 +125,6 @@ const DomainConfigInput = builder.inputType("DomainConfigInput", {
   }),
 });
 
-// A full-domain edit - every field the Edit dialog can change. Mirrors the
-// DomainPatch interface; each field optional so the mutation sends only what
-// changed. `port`/`entrypoint` accept null to clear an override (revert to auto).
 const DomainPatchInput = builder.inputType("DomainPatchInput", {
   description:
     "Partial domain edit; only the provided fields are changed. Null clears an override.",
@@ -171,10 +142,6 @@ const DomainPatchInput = builder.inputType("DomainPatchInput", {
   }),
 });
 
-/* ------------------------------------------------------------------ */
-/* Queries                                                             */
-/* ------------------------------------------------------------------ */
-
 builder.queryFields((t) => ({
   domains: t.field({
     type: [DomainRef],
@@ -185,10 +152,6 @@ builder.queryFields((t) => ({
     resolve: (_r, { appId }) => listDomains(appId ?? undefined),
   }),
 }));
-
-/* ------------------------------------------------------------------ */
-/* Mutations (every domain server action)                              */
-/* ------------------------------------------------------------------ */
 
 builder.mutationFields((t) => ({
   dismissImportedDomains: t.field({
@@ -216,7 +179,6 @@ builder.mutationFields((t) => ({
     resolve: async (_r, { appId, name, config }) => {
       const cfg: DomainConfig = {
         port: config?.port ?? null,
-        // Enum args arrive as the runtime string union; pass through as-is.
         entrypoint: config?.entrypoint ?? undefined,
         certProvider: config?.certProvider ?? undefined,
         middlewares: config?.middlewares ?? undefined,
@@ -243,8 +205,6 @@ builder.mutationFields((t) => ({
     resolve: async (_r, { id, patch }) => {
       const next: DomainPatch = {
         name: patch.name ?? undefined,
-        // `port` is tri-state in the patch (value / null clears / absent leaves):
-        // only forward it when the arg was supplied.
         port: patch.port === undefined ? undefined : patch.port,
         entrypoint:
           patch.entrypoint === undefined ? undefined : patch.entrypoint,
@@ -270,12 +230,7 @@ builder.mutationFields((t) => ({
       "domain onto the `cloudflare` provider.",
     args: { id: t.arg.string({ required: true }) },
     resolve: async (_r, { id }) => {
-      // Verifying is what flips a host to `valid` - i.e. what makes it routable
-      // in the first place. Without the reroute the domain reports "verified"
-      // while the container still carries labels that never mentioned it.
       const domain = await verifyDomain(id);
-      // Re-apply routing when the check changed anything, or whenever the host is
-      // routable (so a manual Verify can still heal drifted labels).
       const routable = isRoutableDomain(domain);
       if (domain.statusChanged || routable) await applyRouting(domain.appId);
       return domain;
@@ -304,11 +259,6 @@ builder.mutationFields((t) => ({
   }),
 }));
 
-/**
- * Push an app's current routing to its RUNNING container. The write is already
- * committed when this runs, so a failure has to say so: told only "unreachable",
- * a caller (an AI agent especially) retries an add that in fact landed.
- */
 async function applyRouting(appId: string): Promise<void> {
   try {
     await rerouteApp(appId);
@@ -321,9 +271,6 @@ async function applyRouting(appId: string): Promise<void> {
   }
 }
 
-/** Reload a domain by id after updateDomain (which returns only the appId)
- * so the mutation can return the updated entity. Scopes the lookup to the
- * affected project, matching project.ts's reloadApp helper. */
 async function reloadDomain(id: string, appId: string): Promise<DomainRow> {
   const all = await listDomains(appId);
   const found = all.find((d) => d.id === id);

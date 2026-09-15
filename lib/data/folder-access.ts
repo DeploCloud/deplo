@@ -4,13 +4,13 @@ import { and, eq } from "drizzle-orm";
 
 import { getDb } from "../db/client";
 import {
-  folders as foldersTable,
   folderGrants as folderGrantsTable,
   memberships as membershipsTable,
-  apps as appsTable,
-  users as usersTable,
-} from "../db/schema/control-plane";
-import { assertUser, getCurrentUser } from "../auth";
+} from "../db/schema/control-plane/access-control";
+import { apps as appsTable } from "../db/schema/control-plane/apps";
+import { users as usersTable } from "../db/schema/control-plane/identity";
+import { folders as foldersTable } from "../db/schema/control-plane/projects";
+import { assertUser, getCurrentUser } from "../auth/current-user";
 import { getActiveTeamId, isInstanceAdmin, membershipFor } from "../membership";
 import {
   CAPABILITY_META,
@@ -20,54 +20,27 @@ import {
 import { holdsManageTeam, nodeCapabilities, withView } from "./node-access";
 import { memberScopeFor } from "./node-scope";
 import { avatarResolver, avatarUrlFor } from "../avatar";
-import { type Capability } from "../types";
+import type { Capability } from "../types/identity";
 import { inAppScope } from "../auth/request-context";
 
-/**
- * Per-folder authorization - the folder half of the node model in {@link
- * module:lib/data/node-access}, which owns the maths for all three node kinds
- * (App, Folder, Project) and is where the precedence rules are documented.
- */
-
-/** A folder access grant as surfaced to the Share UI. */
 export interface FolderGrant {
   folderId: string;
   userId: string;
   username: string;
   name: string;
   avatarColor: string;
-  /** Resolved picture: uploaded image, else Gravatar, else null for the monogram. */
   avatarUrl: string | null;
-  /** The capabilities this user holds on the folder, exactly as granted. */
   capabilities: Capability[];
-  /** True for the owner row (implicit, never stored in `folder_grants`). */
   isOwner: boolean;
 }
 
-/* ------------------------------------------------------------------ */
-/* Pure helpers (exported for unit tests)                              */
-/* ------------------------------------------------------------------ */
-
-/**
- * Intersect `caps` with `bound` - how a per-folder capability set is clamped to a
- * user's live team caps (and how a grant is clamped to what the granter holds).
- */
 export { boundedBy };
 
-/** {@link module:lib/data/node-access}'s `view` floor, re-exported for callers here. */
 export { withView };
 
-/* ------------------------------------------------------------------ */
-/* Internal lookups                                                    */
-/* ------------------------------------------------------------------ */
-
-/** A folder's team + owner in one query, or null when it doesn't exist. */
 async function folderRow(
   folderId: string,
 ): Promise<{ teamId: string; ownerUserId: string | null } | null> {
-  // Scoped to the ACTIVE team, not merely looked up by id. `null` here means "no such
-  // folder", which is the answer every caller already handles and the one that never
-  // leaks whether the id exists somewhere else.
   const activeTeamId = await getActiveTeamId();
   if (!activeTeamId) return null;
   const rows = await getDb()
@@ -84,7 +57,6 @@ async function folderRow(
   return f ? { teamId: f.teamId, ownerUserId: f.ownerUserId ?? null } : null;
 }
 
-/** A user's live team capabilities in a team (empty if not a member). */
 async function teamCapsFor(
   userId: string,
   teamId: string,
@@ -93,39 +65,21 @@ async function teamCapsFor(
   return m?.capabilities ?? [];
 }
 
-/**
- * True if the given user is a folder super-user for `teamId` - an instance admin
- * OR a member holding `manage_team`. Such a user sees and manages every folder in
- * the team regardless of ownership.
- */
 async function isFolderSuperUser(
   userId: string,
   teamId: string,
   admin: boolean,
 ): Promise<boolean> {
   if (admin) return true;
-  // The token-CLAMPED capability on purpose.
   return (await teamCapsFor(userId, teamId)).includes("manage_team");
 }
 
-/* ------------------------------------------------------------------ */
-/* Effective capabilities (the single source of truth)                 */
-/* ------------------------------------------------------------------ */
-
-/**
- * The CURRENT caller's effective capabilities on `folderId`.
- */
 export async function folderCapabilities(
   folderId: string,
 ): Promise<Capability[]> {
   return nodeCapabilities({ kind: "folder", id: folderId });
 }
 
-/**
- * Gate a folder mutation on a specific capability. Throws "Folder not found" when
- * the caller can't see the folder at all (never leak existence), else a
- * user-facing permission error when the capability is absent.
- */
 export async function requireFolderCapability(
   folderId: string,
   cap: Capability,
@@ -140,29 +94,19 @@ export async function requireFolderCapability(
   return { teamId: f!.teamId, userName };
 }
 
-/** True if the caller can SEE the folder at all (owner, grantee, or super-user). */
 export async function canSeeFolder(folderId: string): Promise<boolean> {
   return (await folderCapabilities(folderId)).length > 0;
 }
 
-/**
- * FOLDER-SCOPE a project action. Throws the same user-facing errors as
- * `requireFolderCapability` - "Folder not found" if the folder is invisible, a
- * permission error otherwise.
- */
 export async function requireFolderCapabilityForApp(
   appId: string,
   cap: Capability,
 ): Promise<void> {
   const placement = await appPlacement(appId);
-  if (!placement) return; // the surrounding team scope owns existence
-  // A narrowed API token reaches nothing outside its scope, whatever the node
-  // grants say - the same answer `appGate` gives.
+  if (!placement) return;
   if (!inAppScope({ id: appId, ...placement }))
     throw new Error("App not found");
   const caps = await nodeCapabilities({ kind: "app", id: appId });
-  // Invisible folder ⇒ the app inside it is off-limits; don't leak that the app
-  // exists via a capability-specific message.
   if (caps.length === 0) throw new Error("App not found");
   if (!caps.includes(cap)) {
     throw new Error(
@@ -171,7 +115,6 @@ export async function requireFolderCapabilityForApp(
   }
 }
 
-/** Where the app is filed, or null when the row does not exist at all. */
 async function appPlacement(
   appId: string,
 ): Promise<{ folderId: string | null; projectId: string | null } | null> {
@@ -183,44 +126,29 @@ async function appPlacement(
   return rows[0] ?? null;
 }
 
-/** True if the caller is the folder's owner OR a super-user (admin/manage_team). */
 export async function folderIsOwnerOrAdmin(folderId: string): Promise<boolean> {
   const user = await getCurrentUser();
   if (!user) return false;
   const f = await folderRow(folderId);
   if (!f) return false;
-  // `isInstanceAdmin()`, not the stored flag: administration is opt-in per API
-  // token, and this answer has to match `requireFolderOwnerOrAdmin` - a Share
-  // button that appears and then refuses is worse than one that never appeared.
   if (await isFolderSuperUser(user.id, f.teamId, await isInstanceAdmin()))
     return true;
   return f.ownerUserId === user.id;
 }
 
-/**
- * The set of folder ids in `teamId` the caller may SEE, or the sentinel `"all"`
- * for a super-user (who sees every folder). So the owned/granted set is seeded
- * first, then every descendant is pulled in.
- */
 export async function visibleFolderIds(
   teamId: string,
 ): Promise<Set<string> | "all"> {
   const user = await getCurrentUser();
   if (!user) return new Set();
-  // VISIBILITY, not power: reach is a property of the person, and the token narrows
-  // only what may be done with it.
   const admin = await isInstanceAdmin();
   const scope = admin ? null : await memberScopeFor(user.id, teamId);
-  // A scoped ROLE is not a super-user, whatever `manage_team` says.
   if (!scope && (admin || (await holdsManageTeam(user.id, teamId))))
     return "all";
-  // Not a super-user and not a member ⇒ nothing visible.
   if (!admin && (await teamCapsFor(user.id, teamId)).length === 0)
     return new Set();
 
   const visible = new Set<string>();
-  // What the role reaches, before anything they own or were granted: those are
-  // added below and EXTEND the scope rather than being filtered by it.
   for (const id of scope?.folderIds ?? []) visible.add(id);
   const owned = await getDb()
     .select({ id: foldersTable.id })
@@ -232,7 +160,6 @@ export async function visibleFolderIds(
       ),
     );
   for (const r of owned) visible.add(r.id);
-  // Folders this user holds any grant on (join to scope grants to this team).
   const granted = await getDb()
     .select({ folderId: folderGrantsTable.folderId })
     .from(folderGrantsTable)
@@ -246,13 +173,11 @@ export async function visibleFolderIds(
   for (const r of granted) visible.add(r.folderId);
   if (visible.size === 0) return visible;
 
-  // Pull in every descendant of what they can already reach. One query for the
-  // team's parent links, then a fixpoint walk - bounded by the folder count, so
-  // a cycle in `parent_id` can't spin it.
   const links = await getDb()
     .select({ id: foldersTable.id, parentId: foldersTable.parentId })
     .from(foldersTable)
     .where(eq(foldersTable.teamId, teamId));
+  // Fixpoint walk bounded by the folder count, so a cycle in parent_id cannot spin it.
   for (let pass = 0; pass < links.length; pass++) {
     let grew = false;
     for (const f of links) {
@@ -266,15 +191,7 @@ export async function visibleFolderIds(
   return visible;
 }
 
-/* ------------------------------------------------------------------ */
-/* Grant administration (owner / super-user only)                      */
-/* ------------------------------------------------------------------ */
-
-/**
- * Gate grant administration: the caller must be the folder OWNER or a super-user
- * (admin / `manage_team`). A grantee, even one holding every folder capability,
- * may NEVER re-share. Returns the folder's team + owner and the acting user id.
- */
+// A grantee, even one holding every folder capability, may never re-share.
 async function requireFolderOwnerOrAdmin(folderId: string): Promise<{
   teamId: string;
   ownerUserId: string | null;
@@ -284,14 +201,10 @@ async function requireFolderOwnerOrAdmin(folderId: string): Promise<{
   const f = await folderRow(folderId);
   if (!f) throw new Error("Folder not found");
   const admin = await isInstanceAdmin();
-  // Ownership requires LIVE team membership: a folder's owner_user_id is NOT cleared
-  // when the owner merely leaves the team (only on account deletion - see the schema
-  // comment), so a bare `ownerUserId === user.id` would let an ex-member keep
   const isOwner =
     f.ownerUserId === user.id &&
     (admin || (await teamCapsFor(user.id, f.teamId)).length > 0);
   if (!isOwner && !(await isFolderSuperUser(user.id, f.teamId, admin))) {
-    // Don't leak existence to a caller who can't administer sharing.
     if (!(await canSeeFolder(folderId))) throw new Error("Folder not found");
     throw new Error("Only the folder owner can share this folder");
   }
@@ -302,7 +215,6 @@ async function requireFolderOwnerOrAdmin(folderId: string): Promise<{
   };
 }
 
-/** Look up a user's public identity fields (for the grant DTOs). */
 async function userIdentity(userId: string): Promise<{
   username: string;
   name: string;
@@ -314,7 +226,6 @@ async function userIdentity(userId: string): Promise<{
       username: usersTable.username,
       name: usersTable.name,
       avatarColor: usersTable.avatarColor,
-      // Consumed by `avatarUrl` and dropped - a grant DTO carries no email.
       image: usersTable.image,
       email: usersTable.email,
     })
@@ -331,10 +242,6 @@ async function userIdentity(userId: string): Promise<{
   };
 }
 
-/**
- * The folder's owner (as an implicit `isOwner` row) plus every grantee, each with
- * the capabilities they actually hold here.
- */
 export async function listFolderGrants(
   folderId: string,
 ): Promise<FolderGrant[]> {
@@ -351,14 +258,12 @@ export async function listFolderGrants(
         name: id.name,
         avatarColor: id.avatarColor,
         avatarUrl: id.avatarUrl,
-        // The owner's effective caps are their live team caps (+ view).
         capabilities: withView(await teamCapsFor(ownerUserId, teamId)),
         isOwner: true,
       });
     }
   }
 
-  // Distinct grantees on this folder.
   const rows = await getDb()
     .select({
       userId: folderGrantsTable.userId,
@@ -373,7 +278,7 @@ export async function listFolderGrants(
     rawByUser.set(r.userId, list);
   }
   for (const [userId, raw] of rawByUser) {
-    if (userId === ownerUserId) continue; // never double-list the owner
+    if (userId === ownerUserId) continue;
     const id = await userIdentity(userId);
     if (!id) continue;
     out.push({
@@ -390,11 +295,6 @@ export async function listFolderGrants(
   return out;
 }
 
-/**
- * The capabilities the CURRENT caller may hand out on this folder - exactly their
- * own effective folder caps. Drives the Share dialog's checkbox set so a granter
- * can never offer a capability they don't hold. Owner / super-user only.
- */
 export async function grantableFolderCapabilities(
   folderId: string,
 ): Promise<Capability[]> {
@@ -402,11 +302,6 @@ export async function grantableFolderCapabilities(
   return folderCapabilities(folderId);
 }
 
-/**
- * Grant (or replace) a user's capabilities on a folder. The target must be a team
- * member and not the owner. Membership is still required, because that is what the
- * live revoke hangs on.
- */
 export async function setFolderGrant(
   folderId: string,
   userId: string,
@@ -420,7 +315,6 @@ export async function setFolderGrant(
   if (targetTeamCaps.length === 0)
     throw new Error("That user is not a member of this team");
 
-  // What the granter may hand out = their own effective folder caps.
   const granterCaps = await folderCapabilities(folderId);
   const bounded = withView(
     boundedBy(boundedBy(caps, granterCaps), NODE_GRANTABLE_CAPABILITIES),
@@ -435,9 +329,6 @@ export async function setFolderGrant(
           eq(folderGrantsTable.userId, userId),
         ),
       );
-    // `view` is implied for anyone with any access, so it's never stored as a grant row -
-    // a grantee with only `view` would be indistinguishable from someone with no
-    // grant at all.
     const toStore = bounded.filter((c) => c !== "view");
     if (toStore.length > 0) {
       await tx
@@ -449,10 +340,6 @@ export async function setFolderGrant(
   return listFolderGrants(folderId);
 }
 
-/**
- * Revoke a grantee's entire access to a folder. Removing the owner is a no-op
- * (ownership isn't a grant). Owner / super-user only. Returns the fresh list.
- */
 export async function removeFolderGrant(
   folderId: string,
   userId: string,
@@ -471,10 +358,6 @@ export async function removeFolderGrant(
   return listFolderGrants(folderId);
 }
 
-/**
- * Team members who could be granted access to a folder but aren't yet (and aren't
- * the owner), optionally filtered by a name/username query.
- */
 export async function folderShareCandidates(
   folderId: string,
   query?: string,
@@ -494,7 +377,6 @@ export async function folderShareCandidates(
       username: usersTable.username,
       name: usersTable.name,
       avatarColor: usersTable.avatarColor,
-      // Consumed by `avatarUrl` below and dropped.
       image: usersTable.image,
       email: usersTable.email,
     })

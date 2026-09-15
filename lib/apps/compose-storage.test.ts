@@ -3,10 +3,6 @@ import assert from "node:assert/strict";
 
 import { composeDeclaredMounts } from "./compose-storage";
 
-/**
- * What the Storage tab shows for a stack whose volumes live in its own compose.
- */
-
 const stack = (compose: string) => ({
   slug: "wp",
   source: "compose",

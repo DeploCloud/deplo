@@ -3,21 +3,12 @@ import "server-only";
 import { dispatchServerAlert } from "./dispatch";
 import type { ServerMetrics } from "../data/monitoring";
 
-/**
- * "This server is about to stop working" - the one thing the metrics stream knew
- * and never told anybody.
- */
-
-/** Percent at which a metric counts as "in trouble". */
 export const LIMIT_PCT = { cpu: 90, mem: 90, disk: 90 } as const;
-/** Percent it must fall back under before the condition is considered over. */
 export const CLEAR_PCT = 85;
-/** How long it must stay above the limit before anybody is told. */
 export const SUSTAIN_MS = 5 * 60_000;
 
 type Metric = "cpu" | "mem" | "disk";
 
-/** Since when this metric has been over the limit, and whether we said so. */
 interface High {
   since: number;
   alerted: boolean;
@@ -45,7 +36,6 @@ export function checkResourceThresholds(
     dispatchServerAlert(serverId, alert);
 }
 
-/** What a snapshot decides, before anything is sent. Pure enough to unit-test. */
 export interface ThresholdAlert {
   key: "server_disk_low" | "server_resources_high";
   dedupe: { id: string; state: "high" | "ok" };
@@ -87,8 +77,7 @@ export function evaluateThresholds(
         path: "/monitoring",
       });
     } else if (value < CLEAR_PCT) {
-      // Only announce a recovery from something that was actually announced,
-      // otherwise every healthy server says "back to normal" on its first frame.
+      // Only announce a recovery that was announced, or every healthy server says "back to normal" after a restart.
       const wasAlerted = highSince.get(slot)?.alerted === true;
       highSince.delete(slot);
       if (wasAlerted)
@@ -120,7 +109,6 @@ function gb(bytes: number): string {
   return `${(bytes / 1024 ** 3).toFixed(1)} GB`;
 }
 
-/** Test hook - the sustain map outlives a single test file otherwise. */
 export function __resetThresholds(): void {
   highSince.clear();
 }

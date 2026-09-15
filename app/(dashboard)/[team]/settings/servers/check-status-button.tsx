@@ -10,11 +10,6 @@ import { SimpleTooltip } from "@/components/ui/tooltip";
 import { gqlAction } from "@/lib/graphql-client";
 import { useServerHealth } from "./server-health-provider";
 
-/**
- * "Check status" - re-probe ONE server's agent on demand. It forces past the
- * ambient 15s window (a short server-side floor still applies, so a mashed button
- * can't fan out dials). behind a menu would be the wrong default.
- */
 export function CheckStatusButton({
   serverId,
   serverName,
@@ -41,10 +36,6 @@ export function CheckStatusButton({
   );
 }
 
-/**
- * The fleet's one refresh: re-probe every agent AND re-resolve the latest agent
- * release. Two buttons asked the operator to know which question they had.
- */
 export function RefreshFleetButton() {
   const router = useRouter();
   const { checkAll, sweeping } = useServerHealth();
@@ -63,8 +54,6 @@ export function RefreshFleetButton() {
         toast.error(res.error);
         return;
       }
-      // Re-run the server-side reads so each server's "Update agent" points at
-      // the freshly resolved version.
       router.refresh();
     });
   }

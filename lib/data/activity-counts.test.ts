@@ -15,11 +15,6 @@ import {
   activityCountsByType,
 } from "./activity";
 
-/**
- * The counts beside the Activity feed. They drive filter links, so the thing that
- * matters is that they can never describe a row the reader cannot open.
- */
-
 let db: TestDb;
 let pg: PGlite;
 
@@ -107,8 +102,6 @@ test("counts stay blind to their own dimension", async () => {
   await seedActivity(db, { id: "a_3", teamId: TEAM_A, type: "app" });
 
   await asUser1(async () => {
-    // The page passes its own dimension empty: picking a person narrows the
-    // events beside them, and never collapses the people to a list of one.
     assert.deepEqual(
       await activityCountsByType({ actorUserIds: [USER_1], types: [] }),
       [
@@ -118,7 +111,6 @@ test("counts stay blind to their own dimension", async () => {
     );
     assert.deepEqual(
       await activityCountsByActor({ types: ["app"], actorUserIds: [] }),
-      // Tied, so the key decides - and it decides the same way every render.
       [
         { actorUserId: ACTOR_SYSTEM, count: 1 },
         { actorUserId: USER_1, count: 1 },

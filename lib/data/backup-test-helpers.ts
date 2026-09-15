@@ -1,10 +1,12 @@
 import {
   backups as backupsTable,
   backupRuns as backupRunsTable,
+  backupDestination as destTable,
+} from "../db/schema/control-plane/backups";
+import {
   databaseMounts as databaseMountsTable,
   databases as databasesTable,
-  backupDestination as destTable,
-} from "../db/schema/control-plane";
+} from "../db/schema/control-plane/databases";
 import {
   backupToRow,
   backupRunToRow,
@@ -13,26 +15,17 @@ import {
 } from "./backup-rows";
 import { encryptSecret } from "../crypto";
 import type { TestDb } from "../db/test-harness";
-import type { Backup, BackupRun, Database, BackupDestination } from "../types";
+import type { Backup, BackupRun, BackupDestination } from "../types/backup";
+import type { Database } from "../types/database";
 import { TEAM_A } from "./identity-test-helpers";
 import { SERVER_1 } from "./app-graph-test-helpers";
 
-/**
- * Shared seeding for the backups cut-set (d) data-layer + scheduler tests
- * (relational-store PLAN Step 5).
- */
-
 const T0 = "2026-01-01T00:00:00.000Z";
 
-/** Truncate every backups-cut-set table (call in `beforeEach` before seeding). */
 export const TRUNCATE_BACKUPS = `truncate table
   pending_teardowns, backup_runs, backups, databases, backup_destination
   restart identity cascade;`;
 
-/**
- * Wait for every floated `provisionDatabase` to finish. Call it before truncating
- * and before closing: it drains what is in flight.
- */
 export async function settleProvisioning(db: TestDb): Promise<void> {
   for (let i = 0; i < 400; i++) {
     const rows = await db
@@ -41,8 +34,6 @@ export async function settleProvisioning(db: TestDb): Promise<void> {
     if (!rows.some((r) => r.status === "provisioning")) break;
     await new Promise((r) => setTimeout(r, 5));
   }
-  // The status flip is not the last thing provisioning does (the readiness alert
-  // is dispatched after it, and floats too), so give the tail a turn to land.
   await new Promise((r) => setTimeout(r, 100));
 }
 
@@ -55,14 +46,11 @@ export interface SeedDatabaseOpts {
   username?: string;
   dbName?: string;
   status?: Database["status"];
-  /** Publish a host port, the way an exposed database's row really looks. */
   exposedPublicly?: boolean;
   exposedPort?: number | null;
-  /** The engine's config files, seeded into `database_mounts` alongside the row. */
   mounts?: Database["mounts"];
 }
 
-/** Seed one database row (its `connection_string_enc` is a real encrypted value). */
 export async function seedDatabase(
   db: TestDb,
   opts: SeedDatabaseOpts,
@@ -79,8 +67,6 @@ export async function seedDatabase(
     logo: null,
     type,
     version: "16",
-    // Defaults mirror what createDatabase / the 0014 backfill produce: the
-    // engine login `app` and the logical DB == the service name (`db-<name>`).
     username: opts.username ?? (type === "redis" ? "default" : "app"),
     dbName: opts.dbName ?? `db-${name}`,
     status: opts.status ?? "running",
@@ -116,16 +102,12 @@ export async function seedDatabase(
 export interface SeedDestinationOpts {
   id: string;
   teamId?: string;
-  /** `s3` only: seed the pre-encryption shape (no keypair, plaintext objects). */
   legacyPlaintext?: boolean;
   name?: string;
   status?: BackupDestination["status"];
-  /** `s3` (the default) or a folder on `serverId`. */
   kind?: BackupDestination["kind"];
-  /** Required for kind `server`. */
   serverId?: string;
   path?: string | null;
-  /** Last-test verdict, for the connection-log report. Default: never tested. */
   lastTest?: {
     at: string;
     error?: string | null;
@@ -134,9 +116,6 @@ export interface SeedDestinationOpts {
   };
 }
 
-/**
- * Seed one backup destination.
- */
 export async function seedDestination(
   db: TestDb,
   opts: SeedDestinationOpts,
@@ -186,9 +165,6 @@ export async function seedDestination(
           secretKeyEnc: encryptSecret("secret_test"),
           serverId: null,
           path: null,
-          // A bucket destination is encrypted too now. `legacyPlaintext` seeds
-          // the shape an instance created before that: no keypair, artifacts in
-          // the clear, and everything still has to keep working for it.
           ...(opts.legacyPlaintext
             ? { ageRecipient: null, ageIdentityEnc: null }
             : {
@@ -200,13 +176,8 @@ export async function seedDestination(
   return row.id;
 }
 
-/** Back-compat alias: most tests only ever wanted "a destination that exists". */
 export const seedS3 = seedDestination;
 
-/**
- * A syntactically real age keypair. Not generated: these tests never encrypt
- * anything, and a fixed pair keeps them deterministic.
- */
 const AGE_RECIPIENT =
   "age1ajphv95pnsjagt46mqghtvszrkrv2xay73pjvvedum2xhj4624ts2ujm3l";
 const AGE_IDENTITY =
@@ -225,7 +196,6 @@ export interface SeedBackupOpts {
   retentionCount?: number;
 }
 
-/** Seed one backup SCHEDULE. */
 export async function seedBackup(
   db: TestDb,
   opts: SeedBackupOpts,
@@ -270,7 +240,6 @@ export interface SeedRunOpts {
   finishedAt?: string | null;
 }
 
-/** Seed one backup RUN (history). `seq` is DB-assigned in insert order. */
 export async function seedRun(db: TestDb, opts: SeedRunOpts): Promise<string> {
   const targetKind = opts.targetKind ?? "database";
   const row: BackupRun = {
@@ -281,8 +250,6 @@ export async function seedRun(db: TestDb, opts: SeedRunOpts): Promise<string> {
     databaseId: targetKind === "database" ? (opts.databaseId ?? null) : null,
     appId: targetKind === "app" ? (opts.appId ?? null) : null,
     destinationId: opts.destinationId,
-    // Survives the ON DELETE SET NULL on the two columns above, which is what
-    // lets retention and the orphan sweep still find a deleted target's files.
     targetId:
       (targetKind === "database" ? opts.databaseId : opts.appId) ??
       opts.targetId ??

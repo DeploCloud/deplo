@@ -6,11 +6,6 @@ import { TriangleAlert, X } from "lucide-react";
 import Link from "@/components/ui/link";
 import { Button } from "@/components/ui/button";
 
-/**
- * The warning an App carries when it names a repository but no credential to reach
- * it with. Dismissal is this browser's only - the app is still uncloneable, so it
- * must not go quiet for the rest of the team - and keyed to the repo it named.
- */
 export function RepoLinkNotice({
   slug,
   repoName,
@@ -30,16 +25,12 @@ export function RepoLinkNotice({
     }
   }, [key]);
 
-  // `null` is "not read yet": rendering before the stored answer is in would
-  // flash a notice the reader closed on the last visit.
   if (dismissed === null || dismissed === repoName) return null;
 
   function dismiss() {
     try {
       window.localStorage.setItem(key, repoName);
-    } catch {
-      /* private mode, blocked storage - it just shows again */
-    }
+    } catch {}
     setDismissed(repoName);
   }
 

@@ -19,7 +19,6 @@ import {
   supportsFrameworkDetection,
 } from "./framework-catalog";
 
-/** A package.json with the given direct dependencies. */
 function pkg(deps: Record<string, string>, dev: Record<string, string> = {}) {
   return { dependencies: deps, devDependencies: dev };
 }
@@ -60,8 +59,6 @@ test("names the framework from a single decisive dependency", () => {
 });
 
 test("a meta-framework wins over the library it is built on", () => {
-  // Every one of these repos also declares the base library; reporting React,
-  // Vue or Vite for them would name the ingredient instead of the dish.
   assert.equal(
     detectFramework(
       ["package.json"],
@@ -93,9 +90,6 @@ test("a meta-framework wins over the library it is built on", () => {
 });
 
 test("a bare Vite SPA is Vite, not the library it renders with", () => {
-  // Vue 3 and Solid both scaffold as plain Vite projects today, and a Vite
-  // project is served by `vite preview` on 4173, which is the reason the
-  // catalog refuses to name them: the port would be a guess.
   assert.equal(
     detectFramework(
       ["package.json", "vite.config.ts"],
@@ -114,8 +108,6 @@ test("a bare Vite SPA is Vite, not the library it renders with", () => {
 });
 
 test("a config file at the build root is enough on its own", () => {
-  // No manifest at all (or one that declares nothing useful): the file is the
-  // signal. `next.config.mjs` cannot belong to anything but Next.js.
   assert.equal(detectFramework(["next.config.mjs"], null), "nextjs");
   assert.equal(detectFramework(["nuxt.config.ts"], null), "nuxt");
   assert.equal(detectFramework(["angular.json"], null), "angular");
@@ -144,11 +136,8 @@ test("only the build root's own files count", () => {
     "apps/api/package.json",
     "packages/ui/src/index.ts",
   ];
-  // At the repo root there is no manifest and no config - a Next.js config three
-  // directories down says nothing about what is being deployed.
   assert.deepEqual(rootFileNames(tree), ["readme.md"]);
   assert.equal(detectFramework(rootFileNames(tree), null), null);
-  // Pointed at the sub-app, the same tree is unambiguous.
   assert.deepEqual(rootFileNames(tree, "apps/web").sort(), [
     "next.config.js",
     "package.json",
@@ -164,7 +153,6 @@ test("root-relative path lists are normalised the way trees actually arrive", ()
   assert.deepEqual(rootFileNames(["apps/web/vite.config.ts"], "apps/web/"), [
     "vite.config.ts",
   ]);
-  // A root that only PREFIX-matches another directory must not leak into it.
   assert.deepEqual(
     rootFileNames(["apps/web-admin/package.json"], "apps/web"),
     [],
@@ -177,8 +165,6 @@ test("dependencies are read from both blocks and nowhere else", () => {
     devDependencies: { typescript: "5.7.0" },
   });
   assert.deepEqual([...deps].sort(), ["next", "typescript"]);
-  // A framework listed only as a peer/optional dependency is not a statement
-  // about what the app IS.
   const manifest = { peerDependencies: { next: "15.0.0" } } as never;
   assert.equal(declaredDependencies(manifest).size, 0);
 });
@@ -189,7 +175,6 @@ test("a hostile or malformed package.json is survivable, never thrown", () => {
   assert.equal(parsePackageManifest("[]"), null);
   assert.equal(parsePackageManifest('"a string"'), null);
   assert.deepEqual(parsePackageManifest("{}"), {});
-  // Non-object dependency blocks must not crash the walk.
   assert.equal(
     detectFramework(["package.json"], JSON.parse('{"dependencies": "next"}')),
     "node",
@@ -212,7 +197,6 @@ test("a user's correction outranks detection, and only when it's set", () => {
     effectiveFramework({ framework: "nextjs", frameworkOverride: "vite" }),
     "vite",
   );
-  // A correction on an app detection never named is still the answer.
   assert.equal(
     effectiveFramework({ framework: null, frameworkOverride: "vite" }),
     "vite",
@@ -225,7 +209,6 @@ test("a user's correction outranks detection, and only when it's set", () => {
 
 test("a framework gets a start only where no builder derives one", () => {
   const none = new Set<string>();
-  // SvelteKit's answer is its ADAPTER's: a node server, or a directory to serve.
   assert.deepEqual(
     frameworkDefaults("sveltekit", new Set(["@sveltejs/adapter-node"])),
     {
@@ -240,7 +223,6 @@ test("a framework gets a start only where no builder derives one", () => {
       startCommand: null,
     },
   );
-  // adapter-auto is the one a builder already handles.
   assert.deepEqual(
     frameworkDefaults("sveltekit", new Set(["@sveltejs/adapter-auto"])),
     {
@@ -252,7 +234,6 @@ test("a framework gets a start only where no builder derives one", () => {
     frameworkDefaults("adonisjs", none).startCommand,
     "node build/bin/server.js",
   );
-  // Everything a builder handles keeps both halves null.
   for (const id of ["nextjs", "vite", "express", "astro", null] as const) {
     assert.deepEqual(frameworkDefaults(id, none), {
       staticOutput: null,
@@ -269,7 +250,6 @@ test("an Angular workspace's output directory carries its project name", () => {
   });
   assert.equal(angularOutputDir(modern), "dist/shop/browser");
 
-  // Pre-17 spelling: `architect`, a browser builder, an explicit outputPath.
   const legacy = JSON.stringify({
     projects: {
       shop: {
@@ -284,7 +264,6 @@ test("an Angular workspace's output directory carries its project name", () => {
   });
   assert.equal(angularOutputDir(legacy), "dist/web");
 
-  // `outputPath` as an object, and defaultProject choosing between two.
   const pair = JSON.stringify({
     defaultProject: "b",
     projects: {
@@ -301,7 +280,6 @@ test("an Angular workspace's output directory carries its project name", () => {
   });
   assert.equal(angularOutputDir(pair), "out/browser");
 
-  // Junk, and a path that climbs, are both "no answer" rather than a bad one.
   assert.equal(angularOutputDir("not json"), null);
   assert.equal(angularOutputDir("{}"), null);
   assert.equal(
@@ -328,16 +306,13 @@ test("the catalog itself stays coherent", () => {
         framework.defaultPort <= 65535,
       `${framework.id} has an unusable default port`,
     );
-    // Every entry must be reachable by at least one signal, or it can never win.
     assert.ok(
       framework.dependencies.length + framework.files.length > 0,
       `${framework.id} can never match`,
     );
-    // Markers are matched lowercase; a capitalised one would never fire.
     for (const file of framework.files) {
       assert.equal(file, file.toLowerCase(), `${framework.id} marker ${file}`);
     }
-    // A serve directory is relative to the build root: never absolute, never a climb.
     if (framework.staticOutput !== undefined) {
       assert.match(
         framework.staticOutput,
@@ -351,7 +326,6 @@ test("the catalog itself stays coherent", () => {
   }
   assert.equal(isFrameworkId("no-such-framework"), false);
   assert.equal(frameworkById(null), null);
-  // The catch-all is last, or it would swallow every JavaScript app.
   assert.equal(FRAMEWORKS[FRAMEWORKS.length - 1].id, "node");
 });
 
@@ -361,9 +335,7 @@ test("the package manager comes from the lockfile at the build root", () => {
   assert.equal(packageManagerFrom(["pnpm-lock.yaml"]), "pnpm");
   assert.equal(packageManagerFrom(["yarn.lock"]), "yarn");
   assert.equal(packageManagerFrom(["package-lock.json"]), "npm");
-  // Nothing to go on is npm, the one that always works.
   assert.equal(packageManagerFrom([]), "npm");
-  // The list is matched lowercase, like every other root-file rule.
   assert.equal(packageManagerFrom(["PNPM-LOCK.YAML"]), "pnpm");
 });
 
@@ -374,15 +346,12 @@ test("the build command comes from the repo's own script, spelled for its manage
   assert.deepEqual(detectCommands(["pnpm-lock.yaml"], manifest), {
     buildCommand: "pnpm run build",
   });
-  // yarn is the one that takes the script name bare.
   assert.deepEqual(detectCommands(["yarn.lock"], manifest), {
     buildCommand: "yarn build",
   });
 });
 
 test("a start script is never promoted to the app's start command", () => {
-  // The real shapes that made this a bug: each of these `start` scripts runs a
-  // DEV server, and as an override it turns off the builder's static deploy.
   for (const start of [
     "gatsby develop",
     "ng serve",
@@ -401,9 +370,6 @@ test("a start script is never promoted to the app's start command", () => {
 });
 
 test("a repo that declares nothing gets no command invented for it", () => {
-  // A Go service, a manifest with no scripts, an empty script body, and a
-  // scripts block that isn't an object at all - all four say the same thing:
-  // nothing, so the builder decides.
   assert.deepEqual(detectCommands(["go.mod"], null), { buildCommand: null });
   assert.deepEqual(
     detectCommands([], parsePackageManifest('{"dependencies":{"next":"15"}}')),
@@ -417,7 +383,6 @@ test("a repo that declares nothing gets no command invented for it", () => {
     detectCommands([], parsePackageManifest('{"scripts":["build"]}')),
     { buildCommand: null },
   );
-  // A non-string body is user JSON, not a command.
   assert.deepEqual(
     detectCommands([], parsePackageManifest('{"scripts":{"build":42}}')),
     { buildCommand: null },

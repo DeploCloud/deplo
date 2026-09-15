@@ -11,7 +11,7 @@ import { decryptSecret } from "../crypto";
 import {
   envVars as envVarsTable,
   appPreviewEnvVars as previewEnvVarsTable,
-} from "../db/schema/control-plane";
+} from "../db/schema/control-plane/env-vars";
 import {
   seedApp,
   seedServer,
@@ -24,14 +24,9 @@ import {
   USER_1,
 } from "./identity-test-helpers";
 import { importEnv, listEnv, renameEnv, setAppEnv, upsertEnv } from "./env";
-import { listSharedVars, saveSharedVar } from "./shared-vars";
+import { saveSharedVar } from "./shared-vars/authoring";
+import { listSharedVars } from "./shared-vars/team-view";
 import { listPreviewEnvVars, setPreviewEnvVar } from "./previews";
-
-/**
- * A SECRET variable is write-only AND immutable, on every env layer. So: create
- * it, delete it, never edit it - and never make it plain again. `plain` ->
- * `secret` stays open, because hardening is never the thing you gate.
- */
 
 let db: TestDb;
 let pg: PGlite;
@@ -62,7 +57,6 @@ beforeEach(async () => {
 const as1 = <T>(fn: () => Promise<T>): Promise<T> =>
   runWithIdentity({ userId: USER_1, teamId: TEAM_A }, fn);
 
-/** The stored ciphertext, so a test can prove the value survived a refusal. */
 async function storedValue(key: string): Promise<string> {
   const [row] = await db
     .select({ valueEnc: envVarsTable.valueEnc })
@@ -74,16 +68,12 @@ async function storedValue(key: string): Promise<string> {
 const seedSecret = (key = "API_KEY", value = "s3cr3t") =>
   as1(() => upsertEnv({ appId: APP, key, value, type: "secret" }));
 
-/* ------------------------------------------------------------------ */
-/* The app's own variables                                             */
-/* ------------------------------------------------------------------ */
-
 test("upsertEnv refuses to edit a secret, and the value survives the refusal", async () => {
   await seedSecret();
   for (const attempt of [
-    { value: MASK, type: "plain" as const }, // the downgrade
-    { value: MASK, type: "secret" as const }, // a targets-only save
-    { value: "rotated", type: "secret" as const }, // an honest rotation
+    { value: MASK, type: "plain" as const },
+    { value: MASK, type: "secret" as const },
+    { value: "rotated", type: "secret" as const },
   ]) {
     await assert.rejects(
       () => as1(() => upsertEnv({ appId: APP, key: "API_KEY", ...attempt })),
@@ -102,7 +92,6 @@ test("upsertEnv still PROMOTES a plain var to secret", async () => {
   await as1(() =>
     upsertEnv({ appId: APP, key: "TOKEN", value: "v1", type: "plain" }),
   );
-  // Editing a plain var is ordinary work, including hardening it.
   await as1(() =>
     upsertEnv({ appId: APP, key: "TOKEN", value: "v2", type: "plain" }),
   );
@@ -113,7 +102,6 @@ test("upsertEnv still PROMOTES a plain var to secret", async () => {
   assert.equal(row!.type, "secret");
   assert.equal(row!.masked, true);
   assert.equal(await storedValue("TOKEN"), "v2");
-  // And the ratchet only turns one way.
   await assert.rejects(
     () =>
       as1(() =>
@@ -165,10 +153,6 @@ test("setAppEnv leaves a secret alone whatever value arrives", async () => {
   );
 });
 
-/* ------------------------------------------------------------------ */
-/* Shared variables - frozen value, but re-sharable                    */
-/* ------------------------------------------------------------------ */
-
 const sharedSecret = () =>
   as1(() =>
     saveSharedVar({
@@ -193,9 +177,9 @@ test("saveSharedVar refuses a value, key or type change on a secret", async () =
     projectIds: [],
   };
   for (const attempt of [
-    { ...base, type: "plain" as const }, // the downgrade
-    { ...base, value: "sk_live_attacker" }, // an overwrite
-    { ...base, key: "RENAMED" }, // a rename
+    { ...base, type: "plain" as const },
+    { ...base, value: "sk_live_attacker" },
+    { ...base, key: "RENAMED" },
   ]) {
     await assert.rejects(
       () => as1(() => saveSharedVar(attempt)),
@@ -214,9 +198,6 @@ test("saveSharedVar refuses a value, key or type change on a secret", async () =
 });
 
 test("but a secret can still be RE-SHARED - that never exposes it", async () => {
-  // Changing who receives a secret neither reads it back nor could ever expose
-  // it, and forbidding it would mean deleting and retyping a credential every
-  // time a new app needs one.
   const id = await sharedSecret();
   await as1(() =>
     saveSharedVar({
@@ -237,13 +218,7 @@ test("but a secret can still be RE-SHARED - that never exposes it", async () => 
   assert.equal(v!.masked, true);
 });
 
-/* ------------------------------------------------------------------ */
-/* Instance-wide and preview overrides                                 */
-/* ------------------------------------------------------------------ */
-
 test("an INSTANCE-owned secret refuses the same edit", async () => {
-  // team_id NULL: the migrated "All teams" globals, editable only by an instance
-  // admin. The freeze is the same one every other layer has.
   const now = new Date().toISOString();
   await pg.exec(`
     insert into shared_env_vars
@@ -252,8 +227,6 @@ test("an INSTANCE-owned secret refuses the same edit", async () => {
     insert into shared_env_var_teams (var_id, team_id)
       values ('svar_ig', '${TEAM_A}');
   `);
-  // USER_1 is the instance admin here, so the refusal is the SECRET freeze, not
-  // the ownership gate.
   await assert.rejects(
     () =>
       as1(() =>
@@ -273,9 +246,6 @@ test("an INSTANCE-owned secret refuses the same edit", async () => {
 
 test("setPreviewEnvVar refuses to overwrite a secret override", async () => {
   await as1(() => setPreviewEnvVar(APP, "PREVIEW_KEY", "p", "secret"));
-  // The upsert here was blind and its `type` defaults to plain, so re-adding the
-  // key downgraded the row, which also strips the filter that keeps a secret out
-  // of a FORK's preview container.
   await assert.rejects(
     () => as1(() => setPreviewEnvVar(APP, "PREVIEW_KEY", "leaked")),
     /cannot be edited/i,

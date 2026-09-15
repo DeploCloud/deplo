@@ -1,7 +1,3 @@
-/**
- * Translate a `BuildConfigInput` (GraphQL) into the stored {@link BuildConfig}
- * shape.
- */
 export function remapBuildInput(build: unknown): Record<string, unknown> {
   const { settings, rootDir, outputDir, ...rest } = (build ?? {}) as Record<
     string,

@@ -13,23 +13,17 @@ process.env.DEPLO_DATA_DIR = mkdtempSync(join(tmpdir(), "deplo-pg-"));
 import { makeTestDb, type TestDb } from "../db/test-harness";
 import { __setTestDb, __resetTestDb } from "../db/client";
 import { runWithIdentity } from "../auth/request-context";
-import { apps as appsTable } from "../db/schema/control-plane";
+import { apps as appsTable } from "../db/schema/control-plane/apps";
 import { seedIdentity, TEAM_A, USER_1 } from "./identity-test-helpers";
 import { seedServer, TRUNCATE_PROJECT_GRAPH } from "./app-graph-test-helpers";
-import { createApp, updateAppLogo } from "./apps";
-
-/**
- * An app's icon wears a contrast plate only while it is the TEMPLATE's icon.
- * The column is also the provenance, so a logo the user set has to clear it -
- * otherwise their upload inherits a plate nobody asked for.
- */
+import { createApp } from "./apps/create";
+import { updateAppLogo } from "./apps/logo";
 
 let db: TestDb;
 let pg: PGlite;
 
 const COMPOSE = "services:\n  web:\n    image: nginx:1.27\n";
 
-/** A 32x32 image of one colour, as the data-URI an app actually stores. */
 async function dataUri(fill: number[]): Promise<string> {
   const raw = Buffer.alloc(32 * 32 * 4);
   for (let i = 0; i < raw.length; i += 4) raw.set(fill, i);
@@ -86,8 +80,6 @@ test("a template's monochrome logo is stored with the plate it needs", async () 
 });
 
 test("the same logo from anywhere else gets no plate", async () => {
-  // An import carries an icon from another platform: not a template's, so it is
-  // drawn exactly as it arrived.
   const logo = await dataUri([0, 0, 0, 255]);
   const app = await asUser1(() => newApp({ logo }));
   assert.equal(await toneOf(app.id), null);

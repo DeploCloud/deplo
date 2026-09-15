@@ -13,10 +13,8 @@ import {
   seedApp,
   TRUNCATE_PROJECT_GRAPH,
 } from "./app-graph-test-helpers";
-import {
-  apps as appsTable,
-  domains as domainsTable,
-} from "../db/schema/control-plane";
+import { apps as appsTable } from "../db/schema/control-plane/apps";
+import { domains as domainsTable } from "../db/schema/control-plane/domains";
 import {
   listAllAppEnv,
   listEnvManageableApps,
@@ -24,12 +22,6 @@ import {
   upsertEnv,
   renameEnv,
 } from "./env";
-
-/**
- * The app descriptor `listAllAppEnv` hands the Variables page: its logo and its
- * PRIMARY domain are what the shared-var wizard's app cards show, so an app is
- * recognised by sight. A non-primary domain must never take that slot.
- */
 
 let db: TestDb;
 let pg: PGlite;
@@ -89,8 +81,6 @@ test("listAllAppEnv carries each app's logo and PRIMARY domain", async () => {
   assert.equal(web?.logo, "https://cdn.example/logo.png");
   assert.equal(web?.primaryDomain, "shop.example.com");
 
-  // An app with neither: both fields are null, never undefined (the cards fall
-  // back to the generic glyph + the slug).
   const bare = byId.get("app_bare");
   assert.equal(bare?.logo, null);
   assert.equal(bare?.primaryDomain, null);
@@ -100,7 +90,6 @@ test("listEnvManageableApps names the team's apps for the wizard picker", async 
   const apps = await runWithIdentity({ userId: USER_1, teamId: TEAM_A }, () =>
     listEnvManageableApps(),
   );
-  // Name-sorted, which is the order the "Specific apps" picker shows.
   assert.deepEqual(
     apps.map((a) => a.slug),
     ["bare", "web"],
@@ -126,7 +115,7 @@ test("renameEnv moves the key in place, preserving value, type and identity", as
     (e) => e.key === "OLD_NAME",
   )!;
 
-  await asUser1(() => renameEnv(before.id, "new_name")); // trims + case-tolerant key rule
+  await asUser1(() => renameEnv(before.id, "new_name"));
 
   const after = await asUser1(() => listEnv("app_web"));
   assert.equal(
@@ -134,7 +123,6 @@ test("renameEnv moves the key in place, preserving value, type and identity", as
     false,
   );
   const renamed = after.find((e) => e.key === "new_name")!;
-  // Same ROW - the value and type ride along, no new var was minted.
   assert.equal(renamed.id, before.id);
   assert.equal(renamed.value, "keepme");
   assert.equal(renamed.type, "plain");
@@ -156,7 +144,6 @@ test("renameEnv refuses to collide with an existing key on the same app", async 
     () => asUser1(() => renameEnv(beta.id, "ALPHA")),
     /already exists/,
   );
-  // Neither var was touched - the guard fires before the update.
   const rows = await asUser1(() => listEnv("app_web"));
   assert.deepEqual(rows.map((e) => e.key).sort(), ["ALPHA", "BETA"]);
 });

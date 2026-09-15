@@ -10,7 +10,7 @@ import { RevealChip } from "@/components/shared/reveal-chip";
 import { copyText } from "@/lib/clipboard";
 import { gqlAction } from "@/lib/graphql-client";
 import { cn, timeAgo } from "@/lib/utils";
-import type { RegistrationLinkDTO } from "@/lib/data/members";
+import type { RegistrationLinkDTO } from "@/lib/data/members/registration-links";
 
 const REVEAL = /* GraphQL */ `
   mutation ($id: String!) {
@@ -18,18 +18,12 @@ const REVEAL = /* GraphQL */ `
   }
 `;
 
-/**
- * One pending registration link: what it is, when it dies, and the link itself -
- * coverable, copyable, as many times as the admin needs within its 24 hours.
- */
 export function RegistrationLinkRow({
   link,
   onRemoved,
   onRestored,
 }: {
   link: RegistrationLinkDTO;
-  /** Revoking takes the row off the list on the click and puts it back if the
-   *  mutation is refused. Owned by the panel, which holds the links. */
   onRemoved?: () => void;
   onRestored?: () => void;
 }) {
@@ -41,9 +35,6 @@ export function RegistrationLinkRow({
   const [revoking, startRevoke] = React.useTransition();
 
   const left = useTimeLeft(link.expiresAt);
-  // Live truth, not the server's snapshot: a row that was pending when the page
-  // rendered goes dead while it sits on screen, and the affordances have to go
-  // with it.
   const expired = left != null && left.ms <= 0;
   const canReveal = link.canReveal && !expired;
 
@@ -57,8 +48,6 @@ export function RegistrationLinkRow({
     );
     setPending(false);
     if (!res.ok) {
-      // The server's message says which of "used / revoked / expired / too old"
-      // it is - all four are things the admin needs to hear verbatim.
       toast.error(res.error);
       return null;
     }
@@ -175,8 +164,6 @@ export function RegistrationLinkRow({
             onToggle={canReveal ? toggle : undefined}
             pending={pending}
             placeholder={link.linkMasked}
-            // Not just inert - padlocked, with the reason. A chip that simply
-            // doesn't open leaves the admin clicking at it.
             locked={!canReveal}
             lockedHint={
               expired
@@ -196,7 +183,6 @@ export function RegistrationLinkRow({
   );
 }
 
-/** The live line: how long is left, and the wall-clock moment it dies. */
 function Expiry({
   expiresAt,
   left,
@@ -204,9 +190,6 @@ function Expiry({
   expiresAt: string;
   left: TimeLeft | null;
 }) {
-  // Nothing until the clock is mounted: both halves of this line depend on the
-  // reader's clock and locale, and a server-rendered guess would only differ
-  // from what the browser then paints (a hydration mismatch on every row).
   if (!left) return <p className="h-4" />;
   const expired = left.ms <= 0;
   return (
@@ -236,15 +219,9 @@ function Expiry({
 
 interface TimeLeft {
   ms: number;
-  /** `23h 59m 12s` - the seconds are there so the clock visibly runs. */
   label: string;
 }
 
-/**
- * Time left, ticking every second. Null until mounted, so the server never renders
- * a clock the client disagrees with a moment later (a hydration mismatch on every
- * row).
- */
 function useTimeLeft(expiresAt: string): TimeLeft | null {
   const [left, setLeft] = React.useState<TimeLeft | null>(null);
 
@@ -270,11 +247,6 @@ function formatLeft(ms: number): string {
   return h > 0 ? `${h}h ${m}m ${s}s` : `${m}m ${s}s`;
 }
 
-/**
- * "today, 22 Jul at 20:15" / "tomorrow, 23 Jul at 09:12" - the day in words
- * because that is how the operator thinks about it, and the date beside it because
- * that is what they will write down.
- */
 export function atClock(iso: string): string {
   const date = new Date(iso);
   const time = date.toLocaleTimeString([], {

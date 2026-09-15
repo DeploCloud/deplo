@@ -1,15 +1,5 @@
 import type * as React from "react";
 
-/**
- * A React portal moves the DOM node; it does NOT move the React parent. A sealed
- * surface therefore never dismisses on a backdrop click.
- */
-
-/**
- * Wraps a listener map so each handler only runs for events that started inside
- * the element the map is spread on. Propagation itself is untouched, so Radix's
- * dismiss and focus handling (native, on `document`) behave exactly as before.
- */
 export function scopeListenersToSubtree<L extends object>(listeners: L): L {
   const scoped: Record<string, unknown> = {
     ...(listeners as Record<string, unknown>),

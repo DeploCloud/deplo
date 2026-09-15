@@ -15,11 +15,6 @@ import { tags as t } from "@lezer/highlight";
 import { yaml as yamlLang } from "@codemirror/lang-yaml";
 import { classifyYamlScalar, type YamlScalarKind } from "./editor-language";
 
-/**
- * The lint gutter draws its markers as a `content:` image, which cannot read a
- * CSS variable - so the severity colours are the token values, spelled out.
- * The glyph is black on all three: it has to stay legible on amber.
- */
 function markerSvg(content: string): string {
   return `url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 40">${encodeURIComponent(content)}</svg>')`;
 }
@@ -38,17 +33,8 @@ const INFO_MARKER =
   '<circle cx="20" cy="12.5" r="2.2" fill="#000"/>' +
   '<path fill="#000" d="M17.9 17.5h4.2v12h-4.2z"/>';
 
-/**
- * Editors stop growing here and scroll inside, so a long file never stretches
- * the page. Must sit on the editor, not the scroller: a cap on the scroller
- * alone leaves the bordered box at full document height.
- */
 export const EDITOR_MAX_HEIGHT = "60vh";
 
-/**
- * Shared CodeMirror chrome for the dashboard's editors: Deplo tokens for the
- * frame, VSCode Dark+/Light+ tokens (--code-*) for the syntax.
- */
 export const deploTheme = EditorView.theme({
   "&": {
     backgroundColor: "var(--background)",
@@ -88,12 +74,10 @@ export const deploTheme = EditorView.theme({
       backgroundColor: "color-mix(in srgb, var(--ring) 40%, transparent)",
     },
 
-  // --- Plain YAML scalars, classified by text (see yamlScalarHighlighter) ---
   ".cm-yamlNumber": { color: "var(--code-number)" },
   ".cm-yamlConstant": { color: "var(--code-constant)" },
   ".cm-yamlString": { color: "var(--code-string)" },
 
-  // --- Diagnostics: underline marks, severity-coloured ---
   ".cm-lintRange-error": {
     backgroundImage: "none",
     textDecoration: "underline wavy var(--destructive)",
@@ -110,12 +94,10 @@ export const deploTheme = EditorView.theme({
     textUnderlineOffset: "3px",
   },
 
-  // --- Gutter severity markers, matching ComposeLintSummary's icons ---
   ".cm-lint-marker-error": { content: markerSvg(ERROR_MARKER) },
   ".cm-lint-marker-warning": { content: markerSvg(WARNING_MARKER) },
   ".cm-lint-marker-info": { content: markerSvg(INFO_MARKER) },
 
-  // --- The hover tooltip (was unstyled → white text on white) ---
   ".cm-tooltip": {
     backgroundColor: "var(--popover)",
     color: "var(--popover-foreground)",
@@ -124,8 +106,6 @@ export const deploTheme = EditorView.theme({
     boxShadow: "0 4px 12px color-mix(in srgb, black 15%, transparent)",
     overflow: "hidden",
   },
-  // Two shapes: the gutter marker's tooltip IS the .cm-tooltip element, the one
-  // hovering the squiggle is a .cm-tooltip-section inside a .cm-tooltip-hover.
   ".cm-tooltip-lint": { padding: "0", maxWidth: "20rem" },
   ".cm-tooltip-lint .cm-diagnostic": {
     padding: "6px 10px",
@@ -146,14 +126,12 @@ export const deploTheme = EditorView.theme({
     fontSize: "10px",
   },
 
-  // --- Lint panel (when opened via keymap) ---
   ".cm-panels": {
     backgroundColor: "var(--popover)",
     color: "var(--popover-foreground)",
     borderTop: "1px solid var(--border)",
   },
 
-  // --- Autocomplete dropdown (image name / tag suggestions) ---
   ".cm-tooltip.cm-tooltip-autocomplete": {
     backgroundColor: "var(--popover)",
     border: "1px solid var(--border)",
@@ -193,10 +171,6 @@ export const deploTheme = EditorView.theme({
   },
 });
 
-/**
- * Only the tags `@lezer/yaml` actually emits. `content` is left out on purpose:
- * plain scalars are coloured by yamlScalarHighlighter, which can read the text.
- */
 export const deploHighlight = HighlightStyle.define([
   {
     tag: [t.definition(t.propertyName), t.propertyName],
@@ -230,11 +204,9 @@ function scalarDecorations(view: EditorView): DecorationSet {
       from,
       to,
       enter(node) {
-        // A key is a Literal too, and keeps the property colour instead.
         if (node.name === "Key") return false;
         if (node.name !== "Literal" && node.name !== "BlockLiteralContent")
           return;
-        // Straddling nodes come back once per visible range.
         if (node.from <= lastFrom) return;
         const text = view.state.doc.sliceString(node.from, node.to);
         builder.add(node.from, node.to, scalarMarks[classifyYamlScalar(text)]);
@@ -264,7 +236,6 @@ const yamlScalarHighlighter = ViewPlugin.fromClass(
   { decorations: (v) => v.decorations },
 );
 
-/** YAML parsing plus the plain-scalar colouring the parser cannot give us. */
 export function yamlExtensions(): Extension[] {
   return [yamlLang(), yamlScalarHighlighter];
 }

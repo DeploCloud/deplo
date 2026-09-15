@@ -1,9 +1,9 @@
 import { redirect } from "next/navigation";
 import { withTeam } from "@/lib/team-path";
 import { cookies } from "next/headers";
-import { listApps } from "@/lib/data/apps";
-import { listDatabases } from "@/lib/data/databases";
-import { listProjects } from "@/lib/data/projects";
+import { listApps } from "@/lib/data/apps/listing";
+import { listDatabases } from "@/lib/data/databases/rows";
+import { listProjects } from "@/lib/data/projects/read";
 import { listAllEnvironmentsForTeam } from "@/lib/data/environments";
 import { listFolders } from "@/lib/data/folders";
 import { getLogsInfo } from "@/lib/data/console";
@@ -26,27 +26,19 @@ import {
   resolveLogTarget,
   type LogTarget,
 } from "@/components/logs/log-target";
-import { DEFAULT_LOG_RANGE_DAYS } from "@/lib/types";
+import { DEFAULT_LOG_RANGE_DAYS } from "@/lib/types/deployment";
 
 export const metadata = { title: "Logs" };
 
-/**
- * The general Logs page: pick a thing, then watch its logs full screen.
- */
 export default async function LogsPage(props: PageProps<"/[team]/logs">) {
   const { team } = await props.params;
   const params = await props.searchParams;
 
   const apps = await listApps();
-  // `view_logs` is held PER APP (ADR-0016). `listApps` already resolves each app's
-  // capabilities in one batched pass and hands them back on the summary, so this is
-  // the same answer `hasAppCapability` would give, without a call per row.
   const readableApps = apps.filter((a) =>
     a.capabilities?.includes("view_logs"),
   );
 
-  // A database belongs to the team and to no project, so its logs are gated
-  // team-wide.
   const canReadDatabases =
     (await hasCapability("view_logs")) && (await reachesWholeTeam());
   const databases = canReadDatabases ? await listDatabases() : [];
@@ -59,9 +51,6 @@ export default async function LogsPage(props: PageProps<"/[team]/logs">) {
       detail: a.slug,
       status: a.status,
       logo: a.logo,
-      // Where the picker files it. All three are tolerated when they point at
-      // something this viewer cannot see - the tree drops the app to the top
-      // level rather than out of the list.
       projectId: a.projectId ?? null,
       environmentId: a.environmentId ?? null,
       folderId: a.folderId ?? null,
@@ -85,14 +74,10 @@ export default async function LogsPage(props: PageProps<"/[team]/logs">) {
     cookie: remembered,
   });
 
-  // One readable target is not a choice: open it. `?pick=1` still forces the
-  // chooser, which is the only way to see it on such an instance. Outside any
-  // try/catch: `redirect` works by throwing.
   const pick = Array.isArray(params.pick) ? params.pick[0] : params.pick;
   if (!target && !pick && targets.length === 1)
     redirect(withTeam(logTargetHref(targets[0]!.key), team));
 
-  // The shape of the Overview, for the picker to file the targets into.
   const [projects, environments, folders] = await Promise.all([
     listProjects(),
     listAllEnvironmentsForTeam(),
@@ -102,9 +87,6 @@ export default async function LogsPage(props: PageProps<"/[team]/logs">) {
 
   if (!target) return <LogChooser rows={rows} />;
 
-  // Reopening the remembered target puts it in the URL rather than rendering it
-  // at a bare `/logs`, so a link somebody copies shows the logs they meant and
-  // Back walks the targets they actually visited.
   const askedFor = params.app ?? params.db;
   if (!askedFor) redirect(withTeam(logTargetHref(target.key), team));
 
@@ -114,9 +96,6 @@ export default async function LogsPage(props: PageProps<"/[team]/logs">) {
     const db = databases.find((d) => d.id === target.key.slice("db:".length))!;
     const info = await getDatabaseLogsInfo(db.id);
     return (
-      // Keyed per target: Next reuses this route segment when only the search params
-      // change, so without it the SSE buffer and the container picker would survive a
-      // switch and show one database's output under another's name.
       <DatabaseLiveStatusProvider
         key={target.key}
         initial={{ id: db.id, name: db.name, status: db.status }}
@@ -150,8 +129,6 @@ export default async function LogsPage(props: PageProps<"/[team]/logs">) {
   };
 
   return (
-    // The App's own layout mounts this provider; `/logs` sits outside it, and
-    // without one the pane cannot follow a deploy that starts while it is open.
     <AppLiveStatusProvider key={target.key} initial={initialLive}>
       <LiveLogs
         appId={app.id}

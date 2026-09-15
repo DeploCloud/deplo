@@ -2,7 +2,7 @@ import { notFound } from "next/navigation";
 import Link from "@/components/ui/link";
 import { GitPullRequest } from "lucide-react";
 
-import { getAppBySlug } from "@/lib/data/apps";
+import { getAppBySlug } from "@/lib/data/apps/listing";
 import { listAppPreviews } from "@/lib/data/previews";
 import { hasCapability } from "@/lib/membership";
 import { GitHubIcon } from "@/components/shared/brand-icons";
@@ -16,9 +16,6 @@ import { PullRequestGraphic } from "@/components/apps/previews/pull-request-grap
 
 export const metadata = { title: "Pull requests" };
 
-/**
- * Pull request previews for one app.
- */
 export default async function AppPullRequestsPage(
   props: PageProps<"/[team]/apps/[slug]/pull-requests">,
 ) {
@@ -28,8 +25,6 @@ export default async function AppPullRequestsPage(
   const [view, canDeploy, canManageGit] = await Promise.all([
     listAppPreviews(app.id),
     hasCapability("manage_previews"),
-    // Everyone is told WHY previews cannot run; only whoever can change the App
-    // on GitHub is sent there.
     hasCapability("manage_git"),
   ]);
 
@@ -42,10 +37,6 @@ export default async function AppPullRequestsPage(
 
   return (
     <div className="space-y-4">
-      {/**
-       * The same heading shape as Domains and Environment next door: a section title
-       * inside the app, not a page title.
-       */}
       <div className="flex items-center justify-between gap-3">
         <div>
           <h3 className="text-sm font-medium">Pull request previews</h3>

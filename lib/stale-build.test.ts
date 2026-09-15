@@ -3,10 +3,6 @@ import assert from "node:assert/strict";
 
 import { isStaleBuildError, reloadOnce } from "./stale-build";
 
-/**
- * The error boundaries turn a stale-build error into "reload", and anything else
- * into "Something went wrong".
- */
 test("recognises a chunk that the current build no longer has", () => {
   const turbopack = new Error(
     "Failed to load chunk /_next/static/chunks/41cv1p9day2ol.js from module 964893",
@@ -14,7 +10,6 @@ test("recognises a chunk that the current build no longer has", () => {
   turbopack.name = "ChunkLoadError";
   assert.equal(isStaleBuildError(turbopack), true);
 
-  // Same failure, other bundlers/browsers.
   assert.equal(
     isStaleBuildError(
       new Error("Loading chunk 493 failed. (missing: /_next/…)"),
@@ -40,7 +35,6 @@ test("recognises a chunk that the current build no longer has", () => {
     true,
   );
 
-  // The name alone is enough - some bundlers throw it with an empty message.
   const bare = new Error("");
   bare.name = "ChunkLoadError";
   assert.equal(isStaleBuildError(bare), true);
@@ -60,7 +54,6 @@ test("reloads once, then leaves it to the user", () => {
   try {
     assert.equal(reloadOnce(), true);
     assert.equal(reloads, 1);
-    // A build whose chunks are missing too would otherwise reload forever.
     assert.equal(reloadOnce(), false);
     assert.equal(reloads, 1);
   } finally {
@@ -77,7 +70,6 @@ test("a real crash is never mistaken for a stale tab", () => {
     ),
     false,
   );
-  // A server error reaches the boundary as a digest-only Error.
   const digested = Object.assign(new Error(""), { digest: "1234567890" });
   assert.equal(isStaleBuildError(digested), false);
   assert.equal(isStaleBuildError(null), false);

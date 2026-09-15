@@ -8,12 +8,8 @@ import { ConsoleEmpty, ConsolePane } from "@/components/console/console-pane";
 import { useLiveDatabaseStatus } from "@/components/storage/database-live-status";
 import type { PaneTitle } from "@/components/shared/pane-title";
 import type { ConsoleInstance } from "@/lib/data/console";
-import type { DatabaseStatus } from "@/lib/types";
+import type { DatabaseStatus } from "@/lib/types/database";
 
-/**
- * A database's console - the same {@link ConsolePane} an App gets, pointed at the
- * database endpoints.
- */
 export function DatabaseConsole({
   id,
   title,
@@ -28,7 +24,6 @@ export function DatabaseConsole({
   const status = useLiveDatabaseStatus(serverStatus);
   const running = status === "running";
 
-  // Stable identities - the pane re-probes / re-binds when these change.
   const exec = React.useCallback(
     (command: string) =>
       gqlAction(

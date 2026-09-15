@@ -12,12 +12,6 @@ import {
   withTraefikCertificates,
 } from "./traefik-stack";
 
-/**
- * These lock the two properties that make rewriting a live host's reverse-proxy
- * config survivable: 1.
- */
-
-/** What install-agent.sh actually writes, acme path expanded as the shell leaves it. */
 const INSTALLED = `services:
   traefik:
     image: traefik:v3.7
@@ -58,11 +52,6 @@ type Doc = {
 const parse = (s: string) => yaml.load(s) as Doc;
 const commandOf = (s: string) => parse(s).services.traefik.command ?? [];
 
-/**
- * A host whose proxy the operator maintains by hand: comments explaining the
- * flags. They are something only that host has, and they have to survive Deplo
- * editing the file.
- */
 const HAND_MAINTAINED = `# Traefik - edge router for every site on this host.
 #
 # Keep the static config in \`command:\` flags: a config file would win over them.
@@ -84,9 +73,6 @@ services:
 const commentsIn = (s: string) => (s.match(/^\s*#/gm) ?? []).length;
 
 test("editing the stack keeps the comments the operator wrote in it", () => {
-  // A load/dump through plain objects keeps every setting and erases every line
-  // explaining it. On a hand-maintained proxy those lines are the documentation
-  // of the box, and there is one backup on the host, not a history.
   const before = commentsIn(HAND_MAINTAINED);
   assert.equal(before, 5);
 
@@ -94,28 +80,19 @@ test("editing the stack keeps the comments the operator wrote in it", () => {
     commentsIn(withTraefikCertificates(HAND_MAINTAINED, [CERT])),
     before,
   );
-  // Including the paragraph written above the flag being CHANGED: an entry keeps
-  // its node (and its comment) when only its value moves.
   const remailed = withAcmeEmail(HAND_MAINTAINED, "certs@acme.com");
   assert.equal(commentsIn(remailed), before);
   assert.ok(remailed.includes("MUST stay `letsencrypt`"));
   assert.equal(acmeEmail(remailed), "certs@acme.com");
 });
 
-/* ------------------------------------------------------------------ */
-/* The Let's Encrypt account email                                     */
-/* ------------------------------------------------------------------ */
-
 test("acmeEmail reads the address off the host's own resolver", () => {
   assert.equal(acmeEmail(INSTALLED), "ops@acme.com");
-  // A resolver with no email flag is a resolver with no address, which is a
-  // different answer from "there is no resolver here" (null) below.
   const noEmail = INSTALLED.replace(
     "      - --certificatesresolvers.letsencrypt.acme.email=ops@acme.com\n",
     "",
   );
   assert.equal(acmeEmail(noEmail), "");
-  // A host behind someone else's TLS termination issues no certificates at all.
   const noAcme = INSTALLED.split("\n")
     .filter((l) => !l.includes("--certificatesresolvers."))
     .join("\n");
@@ -134,8 +111,6 @@ test("changing the email moves ONE flag and leaves the rest of the host alone", 
     1,
     "two email flags would leave Traefik reading whichever it saw last",
   );
-  // Everything only that host knows survives: the storage path, the challenge,
-  // the ports, the acme volume.
   assert.ok(
     commandOf(out).includes(
       "--certificatesresolvers.letsencrypt.acme.storage=/acme/acme.json",
@@ -180,14 +155,6 @@ test("a proxy that issues no certificates refuses the setting instead of pretend
   assert.throws(() => withAcmeEmail(INSTALLED, "   "), /Enter the email/i);
 });
 
-/* ------------------------------------------------------------------ */
-/* Custom certificates                                                 */
-/* ------------------------------------------------------------------ */
-
-/**
- * The certificate half locks three things: 1. an operator's own file provider is
- * used, never duplicated.
- */
 const CERT = {
   certPem: "-----BEGIN CERTIFICATE-----\nAAA\n-----END CERTIFICATE-----\n",
   keyPem: "-----BEGIN PRIVATE KEY-----\nBBB\n-----END PRIVATE KEY-----\n",
@@ -201,8 +168,6 @@ test("an installed certificate survives the round trip through the stack file", 
   const out = withTraefikCertificates(INSTALLED, [CERT, CERT2]);
   assert.deepEqual(traefikCertificates(out), [CERT, CERT2]);
 
-  // The file provider is what makes Traefik read it at all, and the file has to
-  // land in the directory that provider watches.
   assert.ok(
     commandOf(out).includes("--providers.file.directory=/deplo-dynamic"),
   );
@@ -219,7 +184,6 @@ test("an installed certificate survives the round trip through the stack file", 
     doc.configs?.["deplo-certificates"]?.content?.includes("BEGIN CERTIFICATE"),
   );
 
-  // Everything the host already had is still there, same rule as the dashboard.
   assert.ok(
     commandOf(out).includes(
       "--certificatesresolvers.letsencrypt.acme.email=ops@acme.com",
@@ -245,8 +209,6 @@ test("removing the last certificate leaves the file as it was found", () => {
   const withCert = withTraefikCertificates(INSTALLED, [CERT]);
   const cleared = withTraefikCertificates(withCert, []);
   assert.deepEqual(traefikCertificates(cleared), []);
-  // Byte-for-byte what it was, plus the one flag every write now carries. See
-  // "every write heals the entrypoint" below for why it is not taken back out.
   const healed = parse(INSTALLED) as Doc;
   healed.services.traefik.command = [
     ...(healed.services.traefik.command ?? []),
@@ -256,9 +218,6 @@ test("removing the last certificate leaves the file as it was found", () => {
 });
 
 test("every write heals the entrypoint, not just the one that publishes the panel", () => {
-  // A host installed before the flag existed keeps redirecting every plain-http route
-  // it serves - the panel when its HTTPS is off, and EVERY app domain on the `none`
-  // certificate provider, which is the default a new domain is born with.
   const FLAG = "--entrypoints.web.http.redirections.entrypoint.priority=1";
   assert.ok(
     !commandOf(INSTALLED).includes(FLAG),
@@ -300,7 +259,6 @@ test("an operator's own file provider is reused, never a second one declared", (
   )[0];
   assert.equal(mount.target, "/etc/traefik/dynamic/deplo-certificates.yml");
 
-  // Their flag is theirs: removing our certificate must not unload their config.
   const cleared = withTraefikCertificates(out, []);
   assert.ok(
     commandOf(cleared).includes(
@@ -322,9 +280,6 @@ test("a proxy pinned to a single config file refuses instead of replacing it", (
 });
 
 test("a config directory the operator mounted read-only refuses instead of taking the proxy down", () => {
-  // Docker cannot create our file inside a `:ro` mount, and it says so on `up` -
-  // after the old container is gone. Refusing here costs a toast; not refusing
-  // costs every site on the host until someone SSHes in.
   const readOnly = INSTALLED.replace(
     "      - --providers.docker=true",
     "      - --providers.docker=true\n      - --providers.file.directory=/etc/traefik/dynamic",
@@ -334,16 +289,12 @@ test("a config directory the operator mounted read-only refuses instead of takin
   );
   assert.throws(() => withTraefikCertificates(readOnly, [CERT]), /read-only/i);
 
-  // An ANCESTOR is just as unwritable, and the long mount syntax says the same
-  // thing a different way.
   const ancestor = readOnly.replace(
     "      - /srv/traefik/dynamic:/etc/traefik/dynamic:ro",
     "      - type: bind\n        source: /srv/traefik\n        target: /etc/traefik\n        read_only: true",
   );
   assert.throws(() => withTraefikCertificates(ancestor, [CERT]), /read-only/i);
 
-  // And the read-only mounts every proxy has elsewhere are none of its business:
-  // INSTALLED already carries `/var/run/docker.sock:…:ro`.
   assert.equal(
     traefikCertificates(withTraefikCertificates(INSTALLED, [CERT])).length,
     1,
@@ -358,15 +309,10 @@ test("a stack with no certificates of ours reports none", () => {
 test("the certificate file is mounted 0400 - it holds a private key", () => {
   const doc = parse(withTraefikCertificates(INSTALLED, [CERT]));
   const mount = (doc.services.traefik.configs as Array<{ mode?: number }>)[0];
-  // 256 IS 0400. Compose's default for a config is 0444, which every process in
-  // that container can read.
   assert.equal(mount.mode, 256);
 });
 
 test("a proxy running as its own user keeps compose's default mode", () => {
-  // 0400 is owned by root. A Traefik the operator moved onto a `user:` of their
-  // own could not read it, and an unreadable certificate file is a proxy quietly
-  // serving its self-signed default - worse than a readable one.
   const asUser = INSTALLED.replace(
     "    container_name: deplo-traefik",
     '    container_name: deplo-traefik\n    user: "1000:1000"',
@@ -379,8 +325,6 @@ test("a proxy running as its own user keeps compose's default mode", () => {
 });
 
 test("anything the operator added to our certificate file survives an install", () => {
-  // deplo-certificates.yml is a Traefik dynamic-config file like any other, and an
-  // operator may have put a TLS policy or a middleware in it.
   const first = withTraefikCertificates(INSTALLED, [CERT]);
   const doc = parse(first) as Doc & {
     configs: Record<string, { content: string }>;
@@ -406,9 +350,6 @@ test("anything the operator added to our certificate file survives an install", 
 });
 
 test("a certificate file mangled by hand still takes a new certificate", () => {
-  // Preserving what the operator wrote is best-effort: a `tls:` holding a string
-  // is not a Traefik config, and refusing the install over it would leave the
-  // host with a broken file AND no way to fix it from the UI.
   const broken = withTraefikCertificates(INSTALLED, [CERT]).replace(
     /content: \|[\s\S]*$/,
     'content: |\n      tls: "nonsense"\n',
@@ -417,13 +358,6 @@ test("a certificate file mangled by hand still takes a new certificate", () => {
   assert.deepEqual(traefikCertificates(out), [CERT2]);
 });
 
-/* ------------------------------------------------------------------ */
-/* The panel's own route                                               */
-/* ------------------------------------------------------------------ */
-
-/**
- * What `install.sh` writes on a host installed with a domain, verbatim.
- */
 const INSTALLED_WITH_PANEL = `services:
   traefik:
     image: traefik:v3.7
@@ -507,7 +441,6 @@ const PANEL_ROUTE = {
   target: "http://deplo:3000",
 };
 
-/** The dynamic-config file our router lives in, parsed. */
 const panelFileOf = (s: string) =>
   yaml.load(
     (parse(s) as Doc & { configs: Record<string, { content: string }> })
@@ -540,7 +473,6 @@ test("turning HTTPS off moves the panel to plain http, and back", () => {
   );
   assert.equal(panelRoute(off)?.https, false);
 
-  // And back, without the operator having to re-state where the panel lives.
   const on = withPanelRoute(off, {
     ...panelRoute(off)!,
     https: true,
@@ -550,8 +482,6 @@ test("turning HTTPS off moves the panel to plain http, and back", () => {
 });
 
 test("a plain-http panel outranks the entrypoint redirect, which is what makes it reachable", () => {
-  // MEASURED on traefik:v3.7, not assumed: an entrypoint redirection answers 301
-  // ahead of EVERY router on that entrypoint, including one pinned to MaxInt32.
   assert.ok(
     !commandOf(INSTALLED).some((c) =>
       c.includes("redirections.entrypoint.priority"),
@@ -585,8 +515,6 @@ test("a plain-http panel outranks the entrypoint redirect, which is what makes i
     1,
     "applying twice must not stack the flag",
   );
-  // Above the redirect, and far below any real route: an app's Host() router
-  // gets its rule length, a PathPrefix router gets a million.
   assert.equal(panelFileOf(off).http.routers["deplo-panel"].priority, 2);
 });
 
@@ -622,9 +550,6 @@ test("a proxy with no redirect at all gets no flag invented for it", () => {
 });
 
 test("https with no resolver on the host still terminates TLS", () => {
-  // A host whose proxy orders from nobody serves the certificate the operator
-  // installed. Naming a resolver it does not define would have Traefik answer
-  // with its self-signed default instead.
   const out = withPanelRoute(INSTALLED_WITH_PANEL, {
     ...PANEL_ROUTE,
     certResolver: null,
@@ -634,9 +559,6 @@ test("https with no resolver on the host still terminates TLS", () => {
 });
 
 test("a host that resolves certificates under another name keeps that name", () => {
-  // DNS-01 against a provider of the operator's own: pointing the panel at
-  // `letsencrypt` would name a resolver this host does not define, and Traefik
-  // answers that with its self-signed default.
   const dns = INSTALLED_WITH_PANEL.replace(
     /certificatesresolvers\.letsencrypt/g,
     "certificatesresolvers.cloudflare",
@@ -663,8 +585,6 @@ test("moving the panel's address rewrites only the rule", () => {
     domain: "New.Example.COM",
   });
   const route = panelRoute(moved);
-  // Lower-cased: a Host() rule is matched case-sensitively by Traefik, and a
-  // browser sends the host lower-case whatever the operator typed.
   assert.equal(route?.domain, "new.example.com");
   assert.equal(
     route?.target,
@@ -675,9 +595,6 @@ test("moving the panel's address rewrites only the rule", () => {
 });
 
 test("the fallback certificate survives every edit made from the panel", () => {
-  // Nothing here writes it - install.sh does, once - so an edit that dropped it
-  // would leave the browser re-accepting a new certificate after every restart,
-  // and an agent pinning one that no longer exists.
   const certOf = (yaml_: string) =>
     (parse(yaml_) as Doc & { configs?: Record<string, { content: string }> })
       .configs?.["deplo-default-cert"]?.content;
@@ -694,10 +611,6 @@ test("the fallback certificate survives every edit made from the panel", () => {
 });
 
 test("the installer's two-router file survives a panel edit byte for byte", () => {
-  // The KEEP IN SYNC contract with install.sh: re-rendering what it wrote must
-  // reproduce it, or the first edit from the panel leaves an operator reading a
-  // diff nobody asked for. The dynamic-config file, not the whole stack: the
-  // top-level `configs` key is re-appended, which moves it below `networks`.
   const config = (yaml_: string) =>
     (parse(yaml_) as Doc & { configs: Record<string, { content: string }> })
       .configs["deplo-panel"].content;
@@ -709,8 +622,6 @@ test("the installer's two-router file survives a panel edit byte for byte", () =
 });
 
 test("the generated host keeps answering when the domain moves", () => {
-  // The reason it exists: it replaced the open <ip>:3000 as the way back in, so
-  // a panel whose domain, DNS or certificate broke is still reachable.
   const moved = withPanelRoute(INSTALLED_WITH_PANEL, {
     ...panelRoute(INSTALLED_WITH_PANEL)!,
     domain: "new.example.com",
@@ -741,8 +652,6 @@ test("the fallback follows the panel onto plain http", () => {
 });
 
 test("a panel that IS the generated host gets one router, not two identical ones", () => {
-  // Two rules matching the same Host at the same priority is a conflict Traefik
-  // resolves by picking one, so the duplicate is dropped rather than written.
   const out = withPanelRoute(INSTALLED_WITH_PANEL, {
     ...PANEL_ROUTE,
     domain: PANEL_ROUTE.fallbackDomain,
@@ -765,9 +674,6 @@ test("turning the backup address off drops that router and nothing else", () => 
 });
 
 test("the panel's target is read live, never assumed", () => {
-  // A panel running on the host rather than in a container (the from-source
-  // setup) is reached through the docker gateway. Re-rendering it from a
-  // template would send every request into a container that does not exist.
   const onHost = INSTALLED_WITH_PANEL.replace(
     "http://deplo:3000",
     "http://host.docker.internal:3000",
@@ -778,17 +684,11 @@ test("the panel's target is read live, never assumed", () => {
 });
 
 test("a panel published the old way, by labels, is reported as not ours", () => {
-  // The pre-existing shape: labels on the panel's own container, in a compose
-  // file no agent RPC can write. Claiming it would publish a second router
-  // fighting the first; reporting null is what lets the UI say so.
   assert.equal(panelRoute(INSTALLED), null);
   assert.equal(panelRoute("not: [a, compose, file"), null);
 });
 
 test("certificates and the panel share one file provider without evicting each other", () => {
-  // The bug this locks out: removing the last certificate used to strip the file
-  // provider flags, which would unload the panel's own route with them - the
-  // operator deletes a certificate and the page they did it from goes dark.
   const withCert = withTraefikCertificates(INSTALLED_WITH_PANEL, [CERT]);
   assert.deepEqual(traefikCertificates(withCert), [CERT]);
   assert.deepEqual(panelRoute(withCert), PANEL_ROUTE);
@@ -801,7 +701,6 @@ test("certificates and the panel share one file provider without evicting each o
   assert.deepEqual(panelRoute(noCert), PANEL_ROUTE);
   assert.deepEqual(traefikCertificates(noCert), []);
 
-  // And the other way round: unpublishing the panel keeps the certificates.
   const noPanel = withPanelRoute(withCert, null);
   assert.equal(panelRoute(noPanel), null);
   assert.deepEqual(traefikCertificates(noPanel), [CERT]);
@@ -809,15 +708,12 @@ test("certificates and the panel share one file provider without evicting each o
     commandOf(noPanel).includes("--providers.file.directory=/deplo-dynamic"),
   );
 
-  // With both gone the fallback certificate still needs it, and it is what the
-  // browser and the agent's pin both remember across a restart.
   const stillCert = withTraefikCertificates(noPanel, []);
   assert.ok(
     commandOf(stillCert).includes("--providers.file.directory=/deplo-dynamic"),
     "the fallback certificate is served through the same provider",
   );
 
-  // Only on a stack that never had one does the provider we added come back out.
   const noFallback = INSTALLED_WITH_PANEL.replace(
     /\n {2}deplo-default-cert:\n(?: {4}.*\n| {6,}.*\n)*/,
     "\n",

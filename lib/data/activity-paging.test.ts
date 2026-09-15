@@ -8,7 +8,7 @@ import { __setTestDb, __resetTestDb } from "../db/client";
 import {
   folders as foldersTable,
   projects as projectsTable,
-} from "../db/schema/control-plane";
+} from "../db/schema/control-plane/projects";
 import { runWithIdentity } from "../auth/request-context";
 import { seedIdentity, TEAM_A, TEAM_B, USER_1 } from "./identity-test-helpers";
 import { TRUNCATE_INFRA, seedActivity } from "./infra-test-helpers";
@@ -26,11 +26,6 @@ import {
   recordActivity,
   type ActivityFilter,
 } from "./activity";
-
-/**
- * The Activity feed's keyset paging and its filters. The filters exist to NARROW
- * a trail, so the first thing asserted is that none of them can widen one.
- */
 
 let db: TestDb;
 let pg: PGlite;
@@ -64,7 +59,6 @@ beforeEach(async () => {
 const asUser1 = <T>(fn: () => Promise<T>): Promise<T> =>
   runWithIdentity({ userId: USER_1, teamId: TEAM_A }, fn);
 
-/** Walk the whole feed `size` rows at a time, following the keyset cursor. */
 async function pageThrough(
   size: number,
   filter: ActivityFilter = {},
@@ -80,13 +74,7 @@ async function pageThrough(
   }
 }
 
-/* ------------------------------------------------------------------ */
-/* keyset paging                                                       */
-/* ------------------------------------------------------------------ */
-
 test("paging: the cursor walks a same-instant tie without skipping or repeating", async () => {
-  // Five rows sharing ONE timestamp: only `seq` separates them, which is the
-  // whole reason the cursor is a tuple and not a date.
   for (let i = 1; i <= 5; i++)
     await seedActivity(db, { id: `act_${i}`, teamId: TEAM_A, createdAt: T0 });
 
@@ -107,8 +95,6 @@ test("paging: the cursor crosses a timestamp boundary cleanly", async () => {
 
   await asUser1(async () => {
     assert.deepEqual(await pageThrough(2), ["act_b", "act_a", "act_old"]);
-    // A page size that lands exactly on the boundary is the case that repeats a
-    // row when the cursor only compares the timestamp.
     assert.deepEqual(await pageThrough(1), ["act_b", "act_a", "act_old"]);
   });
 });
@@ -120,10 +106,6 @@ test("paging: a cursor never reaches another team's rows", async () => {
     assert.deepEqual(await pageThrough(1), ["act_a"]);
   });
 });
-
-/* ------------------------------------------------------------------ */
-/* filters                                                             */
-/* ------------------------------------------------------------------ */
 
 test("filters: types keeps only the picked kinds", async () => {
   await seedActivity(db, { id: "a_app", teamId: TEAM_A, type: "app" });
@@ -164,7 +146,6 @@ test("filters: actorUserIds picks people, and ACTOR_SYSTEM picks what has none",
       ),
       ["a_sys"],
     );
-    // Both together is a union, not an intersection.
     assert.equal(
       (await listActivity(50, { actorUserIds: [USER_1, ACTOR_SYSTEM] })).length,
       2,
@@ -225,8 +206,6 @@ test("filters: resourceIds resolves an app, its folder and its project", async (
         ["a_in"],
         `${what} reaches the app's rows, and nothing else`,
       );
-    // Deliberate: a team-level row belongs to no app, so asking about an app
-    // hides it. Same rule the role scope already applies.
     assert.equal(
       (await listActivity(50, { resourceIds: ["prj_in"] })).some(
         (a) => a.id === "a_team",
@@ -237,8 +216,6 @@ test("filters: resourceIds resolves an app, its folder and its project", async (
 });
 
 test("filters: resourceIds reaches a database, which is not an app", async () => {
-  // `app_id` cannot hold a database id (its FK points at `apps`), so the feed
-  // matches `database_id` too - the whole reason the column exists.
   await seedServer(db);
   await seedApp(db, { id: "prj_1" });
   await seedDatabase(db, { id: "db_1" });
@@ -253,7 +230,6 @@ test("filters: resourceIds reaches a database, which is not an app", async () =>
       (await listActivity(50, { resourceIds: ["db_1"] })).map((a) => a.id),
       ["a_db1"],
     );
-    // One filter, both kinds: the Resource facet mixes them in one list.
     assert.deepEqual(
       (await listActivity(50, { resourceIds: ["db_1", "prj_1"] })).map(
         (a) => a.id,
@@ -288,10 +264,6 @@ test("filters: another team's app id reaches none of this team's rows", async ()
   });
 });
 
-/* ------------------------------------------------------------------ */
-/* month counts and the actor list                                     */
-/* ------------------------------------------------------------------ */
-
 test("activityMonths: buckets in UTC whatever the session timezone is", async () => {
   await seedActivity(db, { id: "a_1", teamId: TEAM_A, createdAt: MAY });
   await seedActivity(db, { id: "a_2", teamId: TEAM_A, createdAt: AUG });
@@ -304,8 +276,6 @@ test("activityMonths: buckets in UTC whatever the session timezone is", async ()
       { month: "2026-05", count: 1 },
     ];
     assert.deepEqual(await activityMonths(), expected);
-    // A raw timestamptz expression renders in the SESSION's zone, which is why
-    // the query says `at time zone` instead of trusting the default.
     await pg.exec("set time zone 'Etc/GMT-1'");
     assert.deepEqual(await activityMonths(), expected);
     await pg.exec("set time zone 'UTC'");
@@ -359,10 +329,6 @@ test("listActivityActors: one row per person, one bucket for everything else", a
     assert.equal(actors[1]!.label, "System");
   });
 });
-
-/* ------------------------------------------------------------------ */
-/* the four new types                                                  */
-/* ------------------------------------------------------------------ */
 
 test("types: the four types split out of `member` survive the round trip", async () => {
   await asUser1(async () => {

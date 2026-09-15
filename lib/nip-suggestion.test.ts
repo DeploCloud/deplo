@@ -3,11 +3,7 @@ import assert from "node:assert/strict";
 
 import { regenerateNipDomain } from "./nip-suggestion";
 
-/**
- * The one thing Generate must never do is move the hostname to a different server.
- */
-
-const HEX = "9487cf1e.nip.io"; // 148.135.207.30
+const HEX = "9487cf1e.nip.io";
 
 test("only the words change, and they do change", () => {
   const first = `traefik-brave-otter-${HEX}`;
@@ -19,7 +15,6 @@ test("only the words change, and they do change", () => {
     assert.match(next, /^traefik-[a-z0-9]+-[a-z0-9]+-9487cf1e\.nip\.io$/i);
     seen.add(next);
   }
-  // Fifty rolls of ~427k word pairs landing on one name would not be randomness.
   assert.ok(seen.size > 1, "Generate must actually generate");
 });
 

@@ -1,6 +1,5 @@
 import { cn } from "@/lib/utils";
 
-/** The monitoring empty-state illustration: a trace drawing itself across a panel, lighting its live edge when it lands, then clearing and starting over. */
 export function MonitoringGraphic({ className }: { className?: string }) {
   return (
     <svg

@@ -22,10 +22,6 @@ import {
   type ContainerInstanceMetrics,
 } from "@/lib/data/container-metrics";
 
-/* ------------------------------------------------------------------ */
-/* Object types                                                        */
-/* ------------------------------------------------------------------ */
-
 const ServerMetricsRef = builder
   .objectRef<ServerMetrics>("ServerMetrics")
   .implement({
@@ -35,7 +31,6 @@ const ServerMetricsRef = builder
     fields: (t) => ({
       serverId: t.exposeID("serverId"),
       online: t.exposeBoolean("online"),
-      // Live Traefik state, so the badge updates with the poll (no reload).
       traefik: t.exposeBoolean("traefik"),
       cpu: t.exposeFloat("cpu"),
       cpuCores: t.exposeInt("cpuCores"),
@@ -55,7 +50,6 @@ const ServerMetricsRef = builder
       diskPct: t.exposeFloat("diskPct"),
       netRx: t.exposeFloat("netRx"),
       netTx: t.exposeFloat("netTx"),
-      // load is the [1m, 5m, 15m] tuple - expose as a list of floats.
       load: t.field({
         type: ["Float"],
         description: "Load averages over [1m, 5m, 15m].",
@@ -63,8 +57,6 @@ const ServerMetricsRef = builder
       }),
       uptimeSec: t.exposeInt("uptimeSec"),
       containers: t.exposeInt("containers"),
-      // Live agent-version pair, so the version badge and the "Update agent"
-      // target update with the poll rather than waiting for a reload.
       agentVersion: t.exposeString("agentVersion", { nullable: true }),
       expectedAgentVersion: t.exposeString("expectedAgentVersion"),
       source: t.exposeString("source", {
@@ -72,12 +64,9 @@ const ServerMetricsRef = builder
           'Which sampler produced this frame: "cgroup2" | "docker-stats". Empty ' +
           "when the reading did not come from the telemetry stream.",
       }),
-      // Epoch milliseconds; expose as Float to avoid 32-bit Int overflow.
       ts: t.exposeFloat("ts"),
     }),
   });
-
-/* ---- Per-app / per-database container metrics (the Monitoring TAB) ---- */
 
 const ContainerInstanceMetricsRef = builder
   .objectRef<ContainerInstanceMetrics>("ContainerInstanceMetrics")
@@ -140,7 +129,6 @@ const ContainerMetricsSampleRef = builder
     fields: (t) => ({
       id: t.exposeID("id"),
       online: t.exposeBoolean("online"),
-      // Epoch milliseconds; Float to avoid 32-bit Int overflow, like ServerMetrics.
       ts: t.exposeFloat("ts"),
       cpu: t.exposeFloat("cpu"),
       memUsed: t.exposeFloat("memUsed"),
@@ -244,22 +232,14 @@ const MonitoringSettingsRef = builder
       "Instance-wide monitoring settings (a fleet-scoped singleton, like the " +
       "Docker cleanup policy).",
     fields: (t) => ({
-      // Whether the control plane keeps a rolling in-memory metrics history per
-      // server, so the Monitoring charts survive a page reload.
       saveMetrics: t.exposeBoolean("saveMetrics"),
       updatedAt: t.exposeString("updatedAt", { nullable: true }),
     }),
   });
 
-/* ------------------------------------------------------------------ */
-/* Queries (the polling actions - serverMetrics)                       */
-/* ------------------------------------------------------------------ */
-
 builder.queryFields((t) => ({
   serverMetrics: t.field({
     type: ServerMetricsRef,
-    // Every call dials the owning server's agent (fresh mTLS connect + cert work) with
-    // no rate limit - an infra action, not a dashboard read.
     authScopes: { capability: "view_metrics" },
     description: "A fresh live metrics snapshot for one server.",
     args: { serverId: t.arg.string({ required: true }) },
@@ -291,8 +271,6 @@ builder.queryFields((t) => ({
     resolve: () => getMonitoringSettings(),
   }),
 
-  // Per-app / per-database live metrics (the Monitoring tab). Team-scoped in the
-  // data layer (null for an unknown/cross-team id); polled ~1s like serverMetrics.
   appMetrics: t.field({
     type: ContainerMetricsRef,
     nullable: true,
@@ -331,15 +309,9 @@ builder.queryFields((t) => ({
   }),
 }));
 
-/* ------------------------------------------------------------------ */
-/* Mutations                                                           */
-/* ------------------------------------------------------------------ */
-
 builder.mutationFields((t) => ({
   setSaveMetrics: t.field({
     type: MonitoringSettingsRef,
-    // Instance-wide infra, the cleanup-policy gate; enforced again in the data
-    // layer (defense in depth).
     authScopes: { capability: "manage_monitoring" },
     description:
       "Turn saving server metrics on the control plane on or off. Turning it " +
@@ -347,6 +319,4 @@ builder.mutationFields((t) => ({
     args: { enabled: t.arg.boolean({ required: true }) },
     resolve: (_r, { enabled }) => setSaveMetrics(enabled),
   }),
-
-  // There is deliberately NO per-app / per-database "Save metrics" mutation.
 }));

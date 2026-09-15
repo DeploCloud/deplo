@@ -46,25 +46,20 @@ import {
   type TeamOption,
 } from "@/components/servers/server-team-access";
 import { ServerReadinessDialog } from "@/components/servers/server-readiness-dialog";
-import type { CleanupPolicy, CleanupRunDTO } from "@/lib/data/docker-cleanup";
+import type { CleanupPolicy } from "@/lib/data/docker-cleanup/policy";
+import type { CleanupRunDTO } from "@/lib/data/docker-cleanup/run-history";
 import { AgentVersionBadge } from "../agent-version-badge";
 import { ServerMaintenanceTab } from "./maintenance-tab";
 import { ServerCleanupTab } from "./cleanup-tab";
-import { ServerAdvancedTab } from "./advanced-tab";
+import { ServerAdvancedTab } from "./advanced-tab/server-advanced-tab";
 import { ServerCertificatesTab } from "./certificates-tab";
 import { DocsLink } from "@/components/ui/docs-link";
-
-/**
- * The six tabs of a server's management page.
- */
 
 export type ServerSummary = {
   id: string;
   name: string;
   ip: string;
-  /** The dial address as typed by the operator (usually identical to ip). */
   host: string;
-  /** The agent's gRPC port; null while the server is still provisioning. */
   agentPort: number | null;
   status: string;
   cpuCores: number;
@@ -73,21 +68,12 @@ export type ServerSummary = {
   dockerVersion: string;
   allTeams: boolean;
   deployConcurrency: number;
-  /** What this server is for, editable from the Advanced tab. All three are
-   *  settable on a host that HAS Docker; one installed without it stays on
-   *  "storage" until its install command is re-run. */
   role: "everything" | "build" | "storage";
-  /** Whether this host compiles for an app whose own build server is down. */
   buildFallback: boolean;
   isDeploHost: boolean;
   provisioning: boolean;
-  /** null when the agent has never reported one. */
   agentVersion: string | null;
-  /** The version "Update agent" would install - the latest agent release. */
   expectedAgentVersion: string;
-  /** Whether to offer the update at all. Computed server-side (lib/version.ts is
-   *  server-only), and true when the reported version is unknown or unparseable
-   *  so the repair path never disappears on the hosts that need it. */
   agentUpdateAvailable: boolean;
 };
 
@@ -123,8 +109,6 @@ export function ServerDetailTabs({
     if (tab === "overview") next.delete("tab");
     else next.set("tab", tab);
     const s = next.toString();
-    // replace, not push: flipping between tabs is not navigation the back button should
-    // have to walk through one step at a time.
     window.history.replaceState(
       null,
       "",
@@ -187,10 +171,6 @@ export function ServerDetailTabs({
   );
 }
 
-/* ------------------------------------------------------------------ */
-/* Overview                                                            */
-/* ------------------------------------------------------------------ */
-
 function Spec({
   icon: Icon,
   label,
@@ -223,8 +203,6 @@ function OverviewTab({ server }: { server: ServerSummary }) {
   const [confirmUpdate, setConfirmUpdate] = React.useState(false);
   const [name, setName] = React.useState(server.name);
 
-  // Stored capacity, persisted from the agent. 0 means never measured, which is
-  // an em dash rather than a confident "0 cores".
   const ramGb = server.memoryMb ? Math.round(server.memoryMb / 1024) : 0;
   const num = (n: number) => (n > 0 ? String(n) : "—");
 
@@ -242,7 +220,6 @@ function OverviewTab({ server }: { server: ServerSummary }) {
         toast.error(res.error);
         return;
       }
-      // The field shows what was STORED, not what was typed.
       setName(next);
       toast.success(`Server renamed to ${next}`);
       router.refresh();
@@ -337,9 +314,6 @@ function OverviewTab({ server }: { server: ServerSummary }) {
         </CardHeader>
         <CardContent className="flex flex-wrap items-center gap-3">
           <AgentVersionBadge version={server.agentVersion} />
-          {/**
-           * Only when there is something to install.
-           */}
           {server.agentUpdateAvailable ? (
             <Button
               size="sm"
@@ -404,10 +378,6 @@ function OverviewTab({ server }: { server: ServerSummary }) {
   );
 }
 
-/* ------------------------------------------------------------------ */
-/* Access                                                              */
-/* ------------------------------------------------------------------ */
-
 function AccessTab({
   server,
   teams,
@@ -442,7 +412,6 @@ function AccessTab({
           },
         },
       );
-      // Surfaces the "these teams still have apps/databases here" block verbatim.
       if (!res.ok) {
         toast.error(res.error);
         return;

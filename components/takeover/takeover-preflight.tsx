@@ -3,10 +3,6 @@ import { HardDrive, PlugZap } from "lucide-react";
 import { takeoverPreflight } from "@/lib/data/takeover";
 import { formatBytes } from "@/lib/utils";
 
-/**
- * The two things that otherwise only show up half way through a volume copy: a
- * disk with no room for a second copy, and an agent nobody can dial.
- */
 export async function TakeoverPreflight() {
   const pre = await takeoverPreflight();
   if (!pre) return null;

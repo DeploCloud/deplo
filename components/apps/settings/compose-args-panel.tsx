@@ -15,11 +15,6 @@ import {
 import { UnsavedChangesGuard } from "@/components/apps/unsaved-changes-guard";
 import { gqlAction } from "@/lib/graphql-client";
 
-/**
- * Extra flags for the `docker compose up` that brings this app up. Validated as
- * you type, with the offending token named - the field is advanced, but "invalid
- * input" would still leave you guessing which of six flags Deplo objected to.
- */
 export function ComposeArgsPanel({
   appId,
   slug,
@@ -28,10 +23,7 @@ export function ComposeArgsPanel({
 }: {
   appId: string;
   slug: string;
-  /** The stored flags, or null for the untouched command. */
   value: string | null;
-  /** A compose stack interpolates `${VAR}`, so its bring-up carries an env-file -
-   * shown in the preview so it matches what the host actually runs. */
   usesEnvFile: boolean;
 }) {
   const router = useRouter();
@@ -42,8 +34,6 @@ export function ComposeArgsPanel({
   const error = React.useMemo(() => validateComposeUpArgs(text), [text]);
   const extra = React.useMemo(() => parseComposeUpArgs(text), [text]);
   const dirty = text.trim() !== saved.trim();
-  // The whole command, from the same builder the deploy path uses, so it can't
-  // drift; the operator's flags are always its tail, printed in full contrast.
   const yours = error ? "" : extra.join(" ");
   const full = composeUpCommandPreview({
     slug,
@@ -124,8 +114,6 @@ export function ComposeArgsPanel({
         </Button>
       </div>
 
-      {/* The command as the owning server will run it: Deplo's part muted, yours
-          in full contrast. Scrolls on its own so a long flag never widens the card. */}
       <div className="overflow-x-auto rounded-md border border-border bg-surface px-3 py-2">
         <code className="flex items-baseline gap-1.5 font-mono text-[0.7rem] leading-relaxed whitespace-pre">
           <Terminal
@@ -141,8 +129,6 @@ export function ComposeArgsPanel({
 
       {error && <p className="text-xs text-destructive">{error}</p>}
 
-      {/* Its own, because this panel's Save is its own: the page's guard tracks
-          the source and build cards, and never saw these flags. */}
       <UnsavedChangesGuard when={dirty} />
     </form>
   );

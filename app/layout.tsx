@@ -23,8 +23,6 @@ export const metadata: Metadata = {
     template: "%s - Deplo",
   },
   icons: { icon: "/favicon.ico" },
-  // Private operations panel: no page is ever indexed. Reinforced by
-  // app/robots.ts and the X-Robots-Tag header (next.config.ts + proxy.ts).
   robots: {
     index: false,
     follow: false,
@@ -40,9 +38,7 @@ export const metadata: Metadata = {
 export default async function RootLayout({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
-  // Zero-flash theming WITHOUT an inline bootstrap script (React 19.2 refuses to run
-  // scripts rendered through React and warns): the client writes the resolved theme
-  // to a `theme` cookie, and the server paints the matching <html> class here on the
+  // No inline bootstrap script: React 19.2 refuses to run scripts rendered through React, so the theme rides this cookie.
   const stored = (await cookies()).get("theme")?.value;
   const theme = stored === "light" ? "light" : "dark";
 

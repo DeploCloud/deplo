@@ -1,7 +1,6 @@
 import { MARK_PATH, MARK_VIEWBOX } from "@/components/logo";
 import { cn } from "@/lib/utils";
 
-/** The Updates mark: the releases behind this one, and the one it is running. */
 export function UpdateGraphic({ className }: { className?: string }) {
   return (
     <svg
@@ -11,7 +10,6 @@ export function UpdateGraphic({ className }: { className?: string }) {
       aria-label="A timeline of Deplo releases, with the one this instance runs marked"
       className={cn("h-auto w-full", className)}
     >
-      {/* The line the releases hang off. */}
       <path
         d="M30 22 V198"
         className="stroke-border"
@@ -19,13 +17,10 @@ export function UpdateGraphic({ className }: { className?: string }) {
         strokeLinecap="round"
       />
 
-      {/* Newest, still ahead of this instance. */}
       <circle cx="30" cy="39" r="6" fill="var(--success)" />
       <Release y="16" accent />
-      {/* The ones in between. */}
       <circle cx="30" cy="101" r="5" className="fill-ring" />
       <Release y="78" />
-      {/* The one running here. */}
       <circle cx="30" cy="163" r="5" className="fill-ring" />
       <rect
         x="48"
@@ -54,7 +49,6 @@ export function UpdateGraphic({ className }: { className?: string }) {
   );
 }
 
-/** One published release: a tag and two lines of notes. */
 function Release({ y, accent }: { y: string; accent?: boolean }) {
   const top = Number(y);
   return (

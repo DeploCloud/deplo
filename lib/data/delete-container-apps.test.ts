@@ -5,27 +5,18 @@ import { eq, inArray } from "drizzle-orm";
 
 import { makeTestDb, type TestDb } from "../db/test-harness";
 import { __setTestDb, __resetTestDb } from "../db/client";
+import { apps as appsTable } from "../db/schema/control-plane/apps";
 import {
-  apps as appsTable,
   folders as foldersTable,
   projects as projectsTable,
-} from "../db/schema/control-plane";
+} from "../db/schema/control-plane/projects";
 import { runWithIdentity } from "../auth/request-context";
 import { seedIdentity, TEAM_A, TEAM_B, USER_1 } from "./identity-test-helpers";
 import { seedServer, seedApp } from "./app-graph-test-helpers";
 import { createFolder, deleteFolder, moveAppToFolder } from "./folders";
-import {
-  createProject,
-  deleteProject,
-  moveAppToProject,
-  moveAppToEnvironment,
-} from "./projects";
+import { createProject, deleteProject } from "./projects/lifecycle";
+import { moveAppToProject, moveAppToEnvironment } from "./projects/placement";
 import { createEnvironment } from "./environments";
-
-/**
- * The "Delete all apps" option on a folder's / project's delete: which apps it
- * actually takes with it, and what the default delete still keeps.
- */
 
 let db: TestDb;
 let pg: PGlite;
@@ -58,8 +49,6 @@ beforeEach(async () => {
     ],
     users: [
       { id: USER_1, teamId: TEAM_A, role: "owner" },
-      // Tidies the grid, destroys nothing: the folder is theirs to delete, the
-      // apps in it are not.
       {
         id: USER_2,
         teamId: TEAM_A,
@@ -71,7 +60,6 @@ beforeEach(async () => {
   await seedServer(db);
 });
 
-/** The apps on their way out: stamped for deletion, or already dropped. */
 async function doomed(ids: string[]): Promise<string[]> {
   const rows = await db
     .select({ id: appsTable.id, deletingAt: appsTable.deletingAt })
@@ -81,7 +69,6 @@ async function doomed(ids: string[]): Promise<string[]> {
   return ids.filter((id) => !alive.has(id) || alive.get(id) != null).sort();
 }
 
-/** Let the background teardown finish, so the next test starts on a clean db. */
 async function waitGone(ids: string[]): Promise<void> {
   for (let i = 0; i < 200; i++) {
     const rows = await db
@@ -113,8 +100,6 @@ test("a folder's Delete all apps takes its whole subtree, and nothing else", asy
       ["svc_nested", "svc_top"],
       "a sibling folder and a top-level app are left alone",
     );
-    // The option deletes APPS, not structure: the subfolder still falls back to
-    // the deleted folder's own parent, like it does without the option.
     const left = await db
       .select({ id: foldersTable.id, parentId: foldersTable.parentId })
       .from(foldersTable);
@@ -155,8 +140,6 @@ test("a project's Delete all apps covers every environment and a folder filed un
     await moveAppToProject("svc_staging", project.id);
     await moveAppToEnvironment("svc_staging", staging.id);
     await moveAppToProject("svc_blog", other.id);
-    // The pre-ADR-0009 shape the project tile still counts: a folder filed under
-    // the project, with an app inside and no project link of its own.
     const legacy = await createFolder("Legacy");
     await seedApp(db, { id: "svc_legacy", teamId: TEAM_A });
     await moveAppToFolder("svc_legacy", legacy.id);
@@ -193,14 +176,11 @@ test("one app the caller may not delete refuses the whole delete", async () => {
       /permission/i,
     );
 
-    // Nothing half-done: the app is neither stamped nor gone, and the folder it
-    // was in is still there.
     assert.deepEqual(await doomed(["svc_in"]), []);
     assert.equal(
       (await db.select({ id: foldersTable.id }).from(foldersTable)).length,
       1,
     );
-    // The plain delete, which is all they may do, still works.
     await deleteFolder(folder.id);
     assert.deepEqual(await doomed(["svc_in"]), []);
   });

@@ -1,16 +1,10 @@
 import { cn } from "@/lib/utils";
 
-/**
- * The lifted card that follows the cursor. A multi-selection drag stacks a
- * couple of card-shaped layers behind it and badges the count, so the whole
- * block reads as moving together, not just the card the drag started from.
- */
 export function DragStack({
   count,
   className,
   children,
 }: {
-  /** How many cards move together (1 = a plain single-card drag). */
   count: number;
   className?: string;
   children: React.ReactNode;

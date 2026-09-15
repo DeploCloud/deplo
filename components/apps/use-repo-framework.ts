@@ -3,24 +3,15 @@
 import * as React from "react";
 import { gql } from "@/lib/graphql-client";
 import { supportsFrameworkDetection } from "@/lib/apps/framework-catalog";
-import type { BuildMethod } from "@/lib/types";
-
-/**
- * Live reading of a repository the user is still choosing - the new-app wizard's
- * "we already know what this is" moment, before any app row exists to carry the
- * answer. Two independent halves: the framework, and the repo's own build command.
- */
+import type { BuildMethod } from "@/lib/types/build";
 
 export interface RecognizedFramework {
   id: string;
   name: string;
   defaultPort: number;
-  /** The directory to serve, when the framework builds one and runs no server. */
   staticOutput: string | null;
 }
 
-/** The repo's own build command, and the framework's own start where a builder
- * derives none. */
 export interface RepoCommands {
   buildCommand: string | null;
   startCommand: string | null;
@@ -28,8 +19,6 @@ export interface RepoCommands {
 
 const NO_COMMANDS: RepoCommands = { buildCommand: null, startCommand: null };
 
-/** The wire shape: every field can be null - a Go repo has commands and no
- *  framework, an empty one has neither. */
 interface RepoRead {
   id: string | null;
   name: string | null;
@@ -39,12 +28,9 @@ interface RepoRead {
   buildCommand: string | null;
 }
 
-/** How long the inputs must hold still before a request goes out. Long enough
- * that typing a repo URL character by character costs one read, not twenty. */
 const SETTLE_MS = 400;
 
 export interface RepoFrameworkInput {
-  /** `owner/name`, or null when there is no GitHub repository to read yet. */
   repo: string | null;
   url?: string | null;
   branch?: string | null;
@@ -61,9 +47,6 @@ export function useRepoFramework(input: RepoFrameworkInput): {
   const { repo, url, branch, installationId, buildMethod, rootDirectory } =
     input;
 
-  /**
-   * Everything the answer depends on, as one value.
-   */
   const query =
     repo && supportsFrameworkDetection(buildMethod)
       ? JSON.stringify({
@@ -104,8 +87,6 @@ export function useRepoFramework(input: RepoFrameworkInput): {
             setAnswer({ query, read: data.detectRepoFramework ?? null });
           }
         })
-        // Nothing is broken when a repository can't be read - the badge simply
-        // never appears. Recording the empty answer stops the skeleton.
         .catch(() => {
           if (!controller.signal.aborted) setAnswer({ query, read: null });
         });

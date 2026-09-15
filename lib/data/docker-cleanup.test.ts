@@ -11,7 +11,7 @@ import {
   dockerCleanupPolicyScopes as policyScopesTable,
   dockerCleanupRunItems as runItemsTable,
   dockerCleanupRuns as runsTable,
-} from "../db/schema/control-plane";
+} from "../db/schema/control-plane/docker-cleanup";
 import { runWithIdentity } from "../auth/request-context";
 import { seedIdentity, TEAM_A, USER_1 } from "./identity-test-helpers";
 import {
@@ -28,25 +28,25 @@ import {
 } from "./docker-cleanup-test-helpers";
 import { CleanupScope } from "../agent/gen/agent";
 import {
-  __settleCleanupSweeps,
-  CLEANUP_SCOPES,
-  deploySweepScopes,
-  getCleanupPolicy,
+  serversWithDeploySweepInFlight,
+  sweepSupersededAppImages,
+} from "./docker-cleanup/deploy-sweep";
+import {
   liveNetworkNames,
   liveStackSlugs,
+} from "./docker-cleanup/live-inventory";
+import {
+  getCleanupPolicy,
+  setServerCleanupExcluded,
+  updateCleanupPolicy,
+} from "./docker-cleanup/policy";
+import {
   listCleanupRuns,
   pruneCleanupRunHistory,
   reconcileInFlightCleanupRuns,
-  runCleanupNow,
-  serversWithDeploySweepInFlight,
-  setServerCleanupExcluded,
-  sweepSupersededAppImages,
-  updateCleanupPolicy,
-} from "./docker-cleanup";
-
-/**
- * Data-layer tests for `docker-cleanup` against pglite.
- */
+} from "./docker-cleanup/run-history";
+import { CLEANUP_SCOPES, deploySweepScopes } from "./docker-cleanup/scopes";
+import { __settleCleanupSweeps, runCleanupNow } from "./docker-cleanup/sweep";
 
 let db: TestDb;
 let pg: PGlite;
@@ -61,13 +61,7 @@ after(async () => {
   await pg.close();
 });
 
-/** A second, capability-poor principal: `view` only, so no `manage_infra`. */
 const USER_VIEWER = "user_viewer";
-/**
- * The principal this feature's gate exists for: a full `manage_infra` holder in the
- * team who is NOT an instance admin. Docker cleanup is one instance-wide policy over
- * hosts every team shares, so a team capability must not reach it.
- */
 const USER_INFRA = "user_infra";
 
 beforeEach(async () => {
@@ -103,7 +97,6 @@ const asViewer = <T>(fn: () => Promise<T>): Promise<T> =>
 const asInfraMember = <T>(fn: () => Promise<T>): Promise<T> =>
   runWithIdentity({ userId: USER_INFRA, teamId: TEAM_A }, fn);
 
-/** A valid policy input; spread over it to make one field wrong. */
 const VALID_INPUT = {
   enabled: true,
   schedule: "0 4 * * *",
@@ -117,10 +110,6 @@ const scopeRows = () =>
 
 const allRuns = () => db.select().from(runsTable);
 
-/* ------------------------------------------------------------------ */
-/* (a) The cron is rejected, not repaired                              */
-/* ------------------------------------------------------------------ */
-
 test("updateCleanupPolicy rejects an unparseable cron and writes nothing", async () => {
   await asOwner(async () => {
     await assert.rejects(
@@ -133,18 +122,12 @@ test("updateCleanupPolicy rejects an unparseable cron and writes nothing", async
       /not a valid cron expression/,
     );
   });
-  // The rejection is the whole point: an accepted-but-unparseable cron never matches,
-  // so the UI would report an enabled cleanup that silently never runs.
   assert.equal(
     (await db.select().from(policyTable)).length,
     0,
     "no policy row was written",
   );
 });
-
-/* ------------------------------------------------------------------ */
-/* (b) The numbers are clamped, not rejected                           */
-/* ------------------------------------------------------------------ */
 
 test("updateCleanupPolicy clamps minAgeHours and keepImagesPerApp into range", async () => {
   const tooLow = await asOwner(() =>
@@ -177,15 +160,10 @@ test("updateCleanupPolicy clamps minAgeHours and keepImagesPerApp into range", a
   assert.equal(tooHigh.minAgeHours, 8760, "a year is the ceiling");
   assert.equal(tooHigh.keepImagesPerApp, 20);
 
-  // Clamped on the way to the ROW, not just in the returned DTO.
   const [row] = await db.select().from(policyTable);
   assert.equal(row!.minAgeHours, 8760);
   assert.equal(row!.keepImagesPerApp, 20);
 });
-
-/* ------------------------------------------------------------------ */
-/* (c) The scopes junction is a whole-set replace                      */
-/* ------------------------------------------------------------------ */
 
 test("updateCleanupPolicy replaces the scopes junction whole-set", async () => {
   await seedCleanupPolicy(db, {
@@ -196,8 +174,6 @@ test("updateCleanupPolicy replaces the scopes junction whole-set", async () => {
     updateCleanupPolicy({ ...VALID_INPUT, scopes: ["unused_app_images"] }),
   );
 
-  // The three previously-selected scopes are GONE, not merged with the new one: a
-  // scope that survived an unchecked box would reclaim things the operator refused.
   assert.deepEqual(saved.scopes, ["unused_app_images"]);
   assert.deepEqual(
     (await scopeRows()).map((r) => r.scope),
@@ -211,7 +187,6 @@ test("updateCleanupPolicy refuses a scope outside the allow-list", async () => {
       () =>
         updateCleanupPolicy({
           ...VALID_INPUT,
-          // The forbidden verbs have no scope id, and inventing one must not create it.
           scopes: ["system_prune"] as never,
         }),
       /is not a Docker cleanup scope/,
@@ -219,22 +194,11 @@ test("updateCleanupPolicy refuses a scope outside the allow-list", async () => {
   });
 });
 
-/* ------------------------------------------------------------------ */
-/* (d) A missing policy row reads as the documented defaults           */
-/* ------------------------------------------------------------------ */
-
 test("getCleanupPolicy on a never-configured instance is ENABLED with every scope", async () => {
   const policy = await asOwner(() => getCleanupPolicy());
 
-  // Flipped by an explicit owner decision (2026-07): disk hygiene is the platform's
-  // job, so a fresh install sweeps daily without anyone finding the settings page.
-  // The scheduler reads through the same path, so this default is live behavior.
   assert.equal(policy.enabled, true, "cleanup is ON by default");
   assert.equal(policy.schedule, "0 4 * * *");
-  // A DAY, not a week: the old 168h default was the root cause of a recurring disk
-  // saturation - a fast-redeploying host fills in hours, so nothing ever aged into
-  // eligibility and every sweep "succeeded" with 0 bytes (migration 0040 moves
-  // stored policies off the old default too).
   assert.equal(policy.minAgeHours, 24);
   assert.equal(policy.keepImagesPerApp, 1);
   assert.equal(
@@ -243,9 +207,6 @@ test("getCleanupPolicy on a never-configured instance is ENABLED with every scop
     "a missing row is legible as 'never saved'",
   );
   assert.deepEqual(policy.excludedServerIds, []);
-  // Every scope, `unused_app_images` included: its guardrails (keepImagesPerApp ≥ 1,
-  // a referenced image is never a candidate) make the worst case a rebuild of an OLD
-  // version, never a stranded app.
   assert.deepEqual(policy.scopes, [
     "build_cache",
     "dangling_images",
@@ -257,13 +218,8 @@ test("getCleanupPolicy on a never-configured instance is ENABLED with every scop
   ]);
 });
 
-// A saved policy stores the scopes that were SELECTED, so one added later is simply
-// absent from it. Reading that absence as "turned off" made every new scope dead on
-// arrival: this instance's policy was saved 2026-07-19 and had never once run
-// `leftover_app_files` (shipped 08-23), nor would it have run `leftover_networks`.
 test("a scope added after the policy was saved is ON, not silently off", async () => {
   await seedCleanupPolicy(db, {
-    // The four that existed when this policy was written, and nothing since.
     scopes: [
       "build_cache",
       "dangling_images",
@@ -280,18 +236,14 @@ test("a scope added after the policy was saved is ON, not silently off", async (
   assert.ok(policy.scopes.includes("leftover_networks"));
   assert.ok(policy.scopes.includes("orphan_volumes"));
   assert.ok(policy.scopes.includes("unused_pulled_images"));
-  // The retired scope is dropped on read, never thrown on.
   assert.ok(
     !policy.scopes.some((s) => (s as string) === "orphan_buildkit_cache"),
   );
 });
 
-// The other half, and the reason this is not just "default everything on": a scope
-// the operator DID see and turn off has to stay off.
 test("a scope the operator unticked stays off", async () => {
   await seedCleanupPolicy(db, {
     scopes: ["dangling_images", "orphan_volumes", "unused_app_images"],
-    // Saved after every scope below existed, so the absence IS a decision.
     updatedAt: "2026-12-01T00:00:00.000Z",
   });
   const policy = await asOwner(() => getCleanupPolicy());
@@ -311,10 +263,6 @@ test("a saved policy always wins over the defaults - an explicit disable survive
     "the operator's disable is never overridden",
   );
 });
-
-/* ------------------------------------------------------------------ */
-/* (e) instance-admin gates every entry point                          */
-/* ------------------------------------------------------------------ */
 
 const denied = /Only an instance admin can do that/;
 
@@ -339,29 +287,20 @@ async function assertEveryEntryPointRefused() {
   );
 }
 
-/* ------------------------------------------------------------------ */
-/* Per-host membership                                                 */
-/* ------------------------------------------------------------------ */
-
 test("a server's own page toggles only ITS membership, never the whole list", async () => {
   await seedCleanupPolicy(db, { enabled: true });
   await seedServer(db, "srv_second");
 
   await asOwner(async () => {
-    // Two hosts left out, as the fleet-wide save would have written them.
     await updateCleanupPolicy({
       ...VALID_INPUT,
       scopes: [...VALID_INPUT.scopes],
       excludedServerIds: [SERVER_1, "srv_second"],
     });
 
-    // The per-host toggle brings ONE back in. The other host's membership is a
-    // decision someone else made on another page, and it must survive this one.
     const after = await setServerCleanupExcluded(SERVER_1, false);
     assert.deepEqual(after.excludedServerIds, ["srv_second"]);
 
-    // Idempotent both ways: a double click is not an error, and re-excluding does
-    // not write a second row.
     await setServerCleanupExcluded(SERVER_1, true);
     const twice = await setServerCleanupExcluded(SERVER_1, true);
     assert.deepEqual(
@@ -383,31 +322,20 @@ test("a per-host toggle for a server that does not exist is refused", async () =
 test("a plain member is refused by every entry point", async () => {
   await seedCleanupPolicy(db, { enabled: true });
   await asViewer(assertEveryEntryPointRefused);
-  // The gate holds BEFORE any side effect: no run row, and the policy is untouched.
   assert.equal((await allRuns()).length, 0);
 });
 
 test("manage_infra alone does NOT reach Docker cleanup - the gate is instance-admin", async () => {
   await seedCleanupPolicy(db, { enabled: true });
 
-  // The whole point of the gate: this member may manage their own team's infra, but
-  // the cleanup policy is a single instance-wide row and the sweep deletes on hosts
-  // shared with every other team. Nothing here is theirs to decide.
   await asInfraMember(assertEveryEntryPointRefused);
 
   assert.equal((await allRuns()).length, 0);
 });
 
-/* ------------------------------------------------------------------ */
-/* (f) History never lies                                              */
-/* ------------------------------------------------------------------ */
-
 test("runCleanupNow answers `running` at once and records the failure in the background", async () => {
   await seedCleanupPolicy(db, { enabled: true });
 
-  // THE contract the UI is built on: the call returns a `running` run without waiting
-  // for the host, so "Clean up now" is a click, not a spinner, and it does NOT throw
-  // for anything the host fails at, because by then there is no caller left to tell.
   const started = await asOwner(() => runCleanupNow(SERVER_1));
   assert.equal(started.status, "running");
   assert.equal(started.finishedAt, null);
@@ -415,13 +343,8 @@ test("runCleanupNow answers `running` at once and records the failure in the bac
   assert.equal(started.actor, USER_1);
   assert.deepEqual(started.items, []);
 
-  // The detached half settles the same row it handed back. (Nothing in production
-  // awaits this - a page can be closed the moment the button is clicked.)
   await __settleCleanupSweeps();
 
-  // The seeded server has no agent, and the invariant holds: the `running` row was
-  // written BEFORE the dial, so a sweep that could not even start is a `failed` run,
-  // not a sweep that never happened.
   const runs = await allRuns();
   assert.equal(runs.length, 1, "the attempt landed in the history");
   const run = runs[0]!;
@@ -438,7 +361,6 @@ test("runCleanupNow answers `running` at once and records the failure in the bac
     "the failure text is the one the operator can act on",
   );
 
-  // And it is readable back through the gated history read.
   const listed = await asOwner(() => listCleanupRuns({ serverId: SERVER_1 }));
   assert.equal(listed.length, 1);
   assert.equal(listed[0]!.status, "failed");
@@ -446,30 +368,21 @@ test("runCleanupNow answers `running` at once and records the failure in the bac
 
 test("a second sweep is refused while one is already running on that host", async () => {
   await seedCleanupPolicy(db, { enabled: true });
-  // A sweep in flight on this host - durably, so the guard holds across control-plane
-  // instances too, not just within one process.
   await seedCleanupRun(db, {
     id: "dcr_live",
     status: "running",
     startedAt: new Date().toISOString(),
   });
 
-  // Refused BEFORE anything is recorded: this is a pre-flight problem, so it is one of
-  // the few things the mutation still throws - the button says the host is busy rather
-  // than stacking a second `docker rmi` sweep that would race the first's candidates.
   await asOwner(async () => {
     await assert.rejects(() => runCleanupNow(SERVER_1), /already running/);
   });
   assert.equal((await allRuns()).length, 1, "no second run row was written");
 });
 
-/* ------------------------------------------------------------------ */
-/* (g) The boot reconcile settles stranded runs                        */
-/* ------------------------------------------------------------------ */
-
 test("reconcileInFlightCleanupRuns fails a stranded run and leaves a fresh one alone", async () => {
-  const stranded = new Date(Date.now() - 2 * 60 * 60_000).toISOString(); // 2h ago
-  const fresh = new Date(Date.now() - 5 * 60_000).toISOString(); // 5min ago
+  const stranded = new Date(Date.now() - 2 * 60 * 60_000).toISOString();
+  const fresh = new Date(Date.now() - 5 * 60_000).toISOString();
   await seedCleanupRun(db, {
     id: "dcr_stranded",
     status: "running",
@@ -481,7 +394,6 @@ test("reconcileInFlightCleanupRuns fails a stranded run and leaves a fresh one a
     startedAt: fresh,
   });
 
-  // Session-free by construction - a boot hook has no user to gate on.
   const flipped = await reconcileInFlightCleanupRuns();
   assert.equal(
     flipped,
@@ -500,8 +412,6 @@ test("reconcileInFlightCleanupRuns fails a stranded run and leaves a fresh one a
   );
   assert.ok(strandedRow!.finishedAt);
 
-  // A sweep that is genuinely still in flight must survive: flipping it would let the
-  // scheduler stack a second `docker rmi` sweep on a host already running one.
   const [freshRow] = await db
     .select()
     .from(runsTable)
@@ -510,13 +420,7 @@ test("reconcileInFlightCleanupRuns fails a stranded run and leaves a fresh one a
   assert.equal(freshRow!.finishedAt, null);
 });
 
-/* ------------------------------------------------------------------ */
-/* (h) Retention: 3 runs per server, pruned by the executor            */
-/* ------------------------------------------------------------------ */
-
 test("pruneCleanupRunHistory keeps the newest 3×servers and never a running row", async () => {
-  // ONE seeded server (beforeEach) → the cap is 3. The oldest row is `running` (a
-  // stranded sweep only the boot reconcile may settle) and five terminal rows follow.
   await seedCleanupRun(db, {
     id: "dcr_stuck",
     status: "running",
@@ -548,7 +452,6 @@ test("pruneCleanupRunHistory keeps the newest 3×servers and never a running row
   const left = (await allRuns()).map((r) => r.id).sort();
   assert.deepEqual(left, ["dcr_stuck", "dcr_t3", "dcr_t4", "dcr_t5"]);
 
-  // The deleted runs took their per-scope items with them (FK CASCADE), no orphans.
   const itemRuns = (await db.select().from(runItemsTable))
     .map((i) => i.runId)
     .sort();
@@ -557,7 +460,6 @@ test("pruneCleanupRunHistory keeps the newest 3×servers and never a running row
 
 test("the executor prunes after every sweep - even a failed one", async () => {
   await seedCleanupPolicy(db, { enabled: true });
-  // Six terminal rows, all older than the run about to happen. Cap (1 server) = 3.
   for (let i = 1; i <= 6; i++) {
     await seedCleanupRun(db, {
       id: `dcr_h${i}`,
@@ -565,12 +467,9 @@ test("the executor prunes after every sweep - even a failed one", async () => {
     });
   }
 
-  // The seeded server has no agent → the sweep fails, but it is still a run…
   await asOwner(() => runCleanupNow(SERVER_1));
   await __settleCleanupSweeps();
 
-  // …and the history is back at the cap: the just-failed run plus the two newest
-  // survivors. Retention rides the executor - there is no janitor to schedule.
   const runs = await allRuns();
   assert.equal(runs.length, 3);
   const ids = runs.map((r) => r.id);
@@ -583,10 +482,6 @@ test("the executor prunes after every sweep - even a failed one", async () => {
     "the fresh failed run is the newest kept row",
   );
 });
-
-/* ------------------------------------------------------------------ */
-/* (g) The deploy-time sweep: gated by the policy, silent, deploy-safe */
-/* ------------------------------------------------------------------ */
 
 test("the deploy-time sweep runs the image and cache scopes the policy has, nothing else", () => {
   assert.deepEqual(
@@ -607,13 +502,9 @@ test("the deploy-time sweep runs the image and cache scopes the policy has, noth
 });
 
 test("sweepSupersededAppImages honors the policy's controls and never throws", async () => {
-  // Neither deploy-time scope checked → the sweep is off. No dial, no rows.
   await seedCleanupPolicy(db, { scopes: ["dangling_images"] });
   assert.equal(await sweepSupersededAppImages(SERVER_1), 0);
 
-  // Scope on but the server opted out of automatic sweeps → skipped: nobody is
-  // standing in front of a button here (unlike runCleanupNow, which ignores the
-  // exclusion list on purpose).
   await pg.exec(TRUNCATE_CLEANUP);
   await seedCleanupPolicy(db, {
     scopes: ["unused_app_images"],
@@ -621,9 +512,6 @@ test("sweepSupersededAppImages honors the policy's controls and never throws", a
   });
   assert.equal(await sweepSupersededAppImages(SERVER_1), 0);
 
-  // Scope on and not excluded: the seeded server has no agent, so the dial fails -
-  // swallowed and reported as 0 bytes, because a failed sweep must never fail the
-  // deploy that just succeeded. And history-silent by design: no run row, ever.
   await pg.exec(TRUNCATE_CLEANUP);
   await seedCleanupPolicy(db, { scopes: ["unused_app_images"] });
   assert.equal(await sweepSupersededAppImages(SERVER_1), 0);
@@ -632,8 +520,6 @@ test("sweepSupersededAppImages honors the policy's controls and never throws", a
     0,
     "the deploy-time sweep writes no history",
   );
-  // The in-flight signal the scheduler reads must be cleaned up on every exit path -
-  // a leaked id would exclude that host from the nightly sweep forever.
   assert.deepEqual(
     serversWithDeploySweepInFlight(),
     [],
@@ -641,15 +527,6 @@ test("sweepSupersededAppImages honors the policy's controls and never throws", a
   );
 });
 
-/* ------------------------------------------------------------------ */
-/* the live-slug inventory the leftover-files scope is judged against   */
-/* ------------------------------------------------------------------ */
-
-/**
- * Every KIND of stack that owns a files directory has to be in this list. A kind
- * left out is not a missing feature, it is the sweep deleting a live stack's
- * config files - which is why the assertion names all three rather than a count.
- */
 test("the live inventory names apps, their previews and databases", async () => {
   await seedApp(db, { id: "prj_live", slug: "web" });
   await seedPreview(db, { id: "prv_live", appId: "prj_live", prNumber: 7 });
@@ -661,12 +538,6 @@ test("the live inventory names apps, their previews and databases", async () => 
   assert.ok(slugs.includes("db-shop"), `databases: ${slugs}`);
 });
 
-/**
- * A preview's row outlives its stack, and a row is not a stack: once the teardown
- * is confirmed, its files dir and its network are litter the sweep must be free to
- * reclaim. Counting every row kept one Docker network per closed pull request,
- * which on a default daemon is a hard ceiling of about thirty.
- */
 test("a torn-down preview vouches for neither a files dir nor a network", async () => {
   await seedApp(db, { id: "prj_live", slug: "web" });
   await seedPreview(db, { id: "prv_up", appId: "prj_live", prNumber: 7 });
@@ -677,7 +548,6 @@ test("a torn-down preview vouches for neither a files dir nor a network", async 
     state: "closed",
     tornDownAt: "2026-01-01T00:00:00.000Z",
   });
-  // Evicted, and the host was unreachable: the containers are still out there.
   await seedPreview(db, {
     id: "prv_evicted",
     appId: "prj_live",

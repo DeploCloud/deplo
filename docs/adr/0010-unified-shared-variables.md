@@ -80,7 +80,7 @@ per target) and `lib/deploy/env-resolve.test.ts` (the precedence unit parity).
   The dedicated "Shared groups" button on the app Environment tab is gone; shared vars are
   linked from the Add-variable modal's "Shared" tab.
 - `lib/data/shared-env.ts`, `lib/data/environment-env.ts`, and their GraphQL modules are
-  removed; `lib/data/shared-vars.ts` owns the unified model. `global-env.ts` is instance-only.
+  removed; `lib/data/shared-vars/` owns the unified model. `global-env.ts` is instance-only.
 - Behaviour change (deliberate): the three modes now auto-apply to _future_ apps in scope,
   where a shared group previously required attaching each app. Existing links are preserved,
   so nothing loses a variable at migration time.

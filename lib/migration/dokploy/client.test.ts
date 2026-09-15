@@ -10,12 +10,6 @@ import {
   normalizeSourceBaseUrl,
 } from "../transport";
 
-/**
- * The transport half of the import. Both cases here were measured against a real
- * Dokploy: a repo-backed stack answering the JSON body `null`, and the bare
- * "fetch failed" every connection problem used to arrive as.
- */
-
 const cred = {
   kind: "dokploy" as const,
   baseUrl: "http://dokploy.test:3000",
@@ -35,11 +29,9 @@ function answers(body: unknown): void {
 test("a compose Dokploy has not resolved yet is nothing, not the string null", async (t) => {
   t.after(__resetMigrationFetchForTest);
 
-  // What the endpoint really answers for a git-backed stack it has not cloned.
   answers(null);
   assert.equal(await getConvertedCompose(cred, "c1"), null);
 
-  // The same body arriving as text, which is how a Dokploy behind a proxy sends it.
   __setMigrationFetchForTest(
     async () => new Response("null\n", { status: 200 }),
   );
@@ -62,7 +54,6 @@ test("a real compose comes through, however Dokploy wraps it", async (t) => {
   assert.match((await getConvertedCompose(cred, "c1")) ?? "", /^services:/);
 });
 
-/** Route by procedure, which is the last path segment of a Dokploy call. */
 function routes(by: Record<string, unknown>): void {
   __setMigrationFetchForTest(async (input: RequestInfo | URL) => {
     const url = new URL(String(input instanceof Request ? input.url : input));
@@ -78,8 +69,6 @@ function routes(by: Record<string, unknown>): void {
 test("a network the PANEL attached is reported, not silently dropped", async (t) => {
   t.after(__resetMigrationFetchForTest);
 
-  // The compose file never names it: Dokploy holds the attachment on its own row
-  // and injects it at deploy time, so nothing in the YAML says it existed.
   routes({
     "network.all": [{ networkId: "n1", name: "shared-net" }],
     "compose.one": {
@@ -93,7 +82,6 @@ test("a network the PANEL attached is reported, not silently dropped", async (t)
     "Attached on {panel} to shared-net, a network on the server rather than part of this app - here every app in the same Environment already shares one network.",
   ]);
 
-  // An application carries the same attachment under its own column.
   routes({
     "network.all": [{ networkId: "n1", name: "shared-net" }],
     "application.one": { applicationId: "a1", networkIds: ["n1"] },
@@ -101,7 +89,6 @@ test("a network the PANEL attached is reported, not silently dropped", async (t)
   const app = await dokployClient(cred).getService("application", "a1");
   assert.match(String(app.platformNotes?.[0]), /shared-net/);
 
-  // Nothing attached, nothing said.
   routes({ "compose.one": { composeId: "c2", serviceNetworks: [] } });
   assert.deepEqual(
     (await dokployClient(cred).getService("compose", "c2")).platformNotes,
@@ -109,8 +96,6 @@ test("a network the PANEL attached is reported, not silently dropped", async (t)
   );
 });
 
-// Measured on v0.30.5: the file carries the panel's own basic-auth middleware and
-// whatever the operator added by hand; only the latter is worth a line.
 test("a middleware written into the app's own Traefik file is reported by name", async (t) => {
   t.after(__resetMigrationFetchForTest);
   const traefik = `http:
@@ -143,7 +128,6 @@ test("a middleware written into the app's own Traefik file is reported by name",
   assert.match(notes[0], /custom middleware, mx-headers \(headers\)/);
   assert.doesNotMatch(notes[0], /auth-mxweb/);
 
-  // Nothing but the panel's own: no line at all. And no file: no line either.
   routes({
     "application.one": {
       applicationId: "a1",
@@ -182,7 +166,6 @@ test("the organization's S3 stores come across whole, or not at all", async (t) 
         accessKey: "AK",
         secretAccessKey: "SK",
       },
-      // A row the key may not read fully: no secret, no destination.
       {
         name: "half",
         endpoint: "https://s3.acme.test",
@@ -201,13 +184,10 @@ test("the organization's S3 stores come across whole, or not at all", async (t) 
       secretAccessKey: "SK",
     },
   ]);
-  // An older Dokploy without the procedure answers nothing, never a failure.
   routes({});
   assert.deepEqual(await dokployClient(cred).listBackupDestinations(), []);
 });
 
-// Measured on a two-machine Dokploy: every service on the remote server read as
-// stopped, because the panel was asked about its OWN host's containers.
 test("a service on a remote machine is inspected on that machine", async (t) => {
   t.after(__resetMigrationFetchForTest);
   const asked: string[] = [];
@@ -255,7 +235,6 @@ test("a service on a remote machine is inspected on that machine", async (t) => 
     asked.join(","),
   );
   assert.ok(asked.includes("docker.getConfig?serverId=srv-2"), asked.join(","));
-  // The panel's own host carries no id, and none is sent.
   asked.length = 0;
   await dokployClient(cred).serviceRuntime({ ...query, serverId: "" });
   assert.ok(
@@ -267,9 +246,6 @@ test("a service on a remote machine is inspected on that machine", async (t) => 
 test("a Dokploy with no networks endpoint still imports", async (t) => {
   t.after(__resetMigrationFetchForTest);
 
-  // `network.all` arrived with Dokploy's own Networks feature. On an older one the
-  // procedure 404s, and an import that died there would be a worse answer than a
-  // note that names the id.
   routes({
     "application.one": { applicationId: "a1", networkIds: ["n1"] },
   });
@@ -277,7 +253,6 @@ test("a Dokploy with no networks endpoint still imports", async (t) => {
   assert.match(String(app.platformNotes?.[0]), /n1/);
 });
 
-/** The panel every message in these tests is about. */
 const DOKPLOY = { name: "Dokploy", portHint: ":3000" };
 
 test("a connection failure says which one it was", () => {
@@ -303,7 +278,6 @@ test("a connection failure says which one it was", () => {
   );
   assert.match(timeout, /did not answer within/);
 
-  // Even an unrecognised one names the address instead of saying "fetch failed".
   assert.match(
     describeTransportError(
       new TypeError("fetch failed"),
@@ -315,8 +289,6 @@ test("a connection failure says which one it was", () => {
 });
 
 test("an https IP with a bad certificate is told it is the wrong field", () => {
-  // The trap this exists for: the NEXT step asks for the machine's own address, and a
-  // fair number of people come back and put it in the PANEL field.
   const certFail = (baseUrl: string) =>
     describeTransportError(
       Object.assign(new TypeError("fetch failed"), {
@@ -330,14 +302,10 @@ test("an https IP with a bad certificate is told it is the wrong field", () => {
   assert.match(onIp, /issued for the panel's NAME/);
   assert.match(onIp, /asked for at the next step/);
 
-  // A NAME with a bad certificate is a certificate problem and nothing else -
-  // saying "wrong field" there would send someone to edit a field that is right.
   const onName = certFail("https://dokploy.acme.com");
   assert.doesNotMatch(onName, /next step/);
   assert.match(onName, /certificate/);
 
-  // http on an IP is the same-machine case the field's own placeholder suggests,
-  // so it never gets the lecture.
   assert.doesNotMatch(certFail("http://172.17.0.1:3000"), /next step/);
 });
 
@@ -349,8 +317,6 @@ test("a failure raised by the transport reaches the caller readable", async (t) 
     });
   });
   await assert.rejects(listProjects(cred), /Nothing is listening/);
-  // The compose call still swallows: a stack Dokploy cannot resolve is a report
-  // line, never a failed import.
   assert.equal(await getConvertedCompose(cred, "c1"), null);
 });
 
@@ -364,9 +330,6 @@ test("the address keeps rejecting a key smuggled into it", () => {
 test("starting a service again calls the stop procedure's own mirror", async (t) => {
   t.after(__resetMigrationFetchForTest);
 
-  // Measured against a real Dokploy: `compose.stop` and `compose.start` are a
-  // pair, and `application.start` exists too (it answered with its own tRPC
-  // path, not a 404).
   const seen: { url: string; body: string }[] = [];
   __setMigrationFetchForTest(async (input, init) => {
     seen.push({
@@ -408,14 +371,11 @@ test("a key that has run out of requests says where to raise it", async () => {
   __resetMigrationFetchForTest();
 });
 
-// Measured on Dokploy v0.30.5: a key at its limit answers 401 Unauthorized, the
-// same status as a wrong key. Only the history tells the two apart.
 test("a 401 on a key that was accepted moments ago is the rate limit, not a typo", async (t) => {
   t.after(__resetMigrationFetchForTest);
   const fresh = { ...cred, apiKey: "born-limited" };
   const unauthorized = () =>
     new Response(JSON.stringify({ message: "Unauthorized" }), { status: 401 });
-  // Never accepted: a plain refusal, said as one.
   __setMigrationFetchForTest(async () => unauthorized());
   await assert.rejects(
     () => listProjects(fresh),
@@ -425,7 +385,6 @@ test("a 401 on a key that was accepted moments ago is the rate limit, not a typo
     () => listProjects(fresh),
     (e: Error) => !/rate limit/.test(e.message),
   );
-  // Accepted once, then refused: the limit.
   let calls = 0;
   __setMigrationFetchForTest(async () =>
     ++calls === 1
@@ -442,9 +401,6 @@ test("a 401 on a key that was accepted moments ago is the rate limit, not a typo
   );
 });
 
-// A key is minted FOR one organization (Dokploy's own dialog picks one), and
-// `organization.all` is the list the dialog is filled from - so the ones a key
-// does not cover can be named instead of guessed at.
 test("a key names its own organization and the ones it does not cover", async (t) => {
   t.after(__resetMigrationFetchForTest);
 
@@ -467,14 +423,10 @@ test("a key names its own organization and the ones it does not cover", async (t
   });
 
   const src = dokployClient(cred);
-  // The id and the name, and nothing else: the picture Dokploy keeps is not
-  // read, because Coolify has none and one list must not read two ways.
   assert.deepEqual(await src.sourceTeam(), { id: "org_1", name: "Idra Arts" });
   assert.deepEqual(await src.otherTeams(), ["Acme", "org_3"]);
 });
 
-// An older Dokploy has no such procedure, and not knowing must never fail an
-// import - or name teams that are not there.
 test("a Dokploy that will not list its organizations says so", async (t) => {
   t.after(__resetMigrationFetchForTest);
 

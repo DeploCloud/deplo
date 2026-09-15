@@ -3,15 +3,10 @@ import assert from "node:assert/strict";
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 
-/**
- * UI copy is short: a modal description is one sentence, a tooltip carries the
- * constraint, and anything longer is a `<DocsLink>` away in the manual.
- */
 const MODAL = 120;
 const TOOLTIP = 160;
 const PARAGRAPH = 200;
 
-/** Components whose `description` is a modal's, not a card's. */
 const MODALS = new Set([
   "ConfirmAction",
   "DeleteWithArtifacts",
@@ -27,7 +22,6 @@ function walk(dir: string, out: string[] = []) {
   return out;
 }
 
-/** The JSX expression starting at `{`, up to its matching brace. */
 function braced(src: string, start: number) {
   let depth = 0;
   for (let i = start; i < src.length; i++) {
@@ -51,8 +45,6 @@ function skipString(src: string, start: number) {
   return src.length;
 }
 
-/** Drop every `{...}` expression, braces balanced, so a ternary is not read as
- *  prose. */
 function stripExpressions(value: string) {
   let out = "";
   for (let i = 0; i < value.length; i++) {
@@ -64,8 +56,6 @@ function stripExpressions(value: string) {
   return out;
 }
 
-/** Every sentence a reader can end up seeing: the static JSX text, and each
- *  literal a branch may render. */
 function sentences(value: string): string[] {
   const literals = [
     ...value.matchAll(/"((?:[^"\\]|\\.)*)"|`((?:[^`\\]|\\.)*)`/g),

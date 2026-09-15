@@ -1,10 +1,5 @@
 import { cn } from "@/lib/utils";
 
-/**
- * Which machine a row is, in every picker that asks for a server: the host running
- * Deplo itself, or a remote that only runs the deploy agent. Said on BOTH, so the
- * contrast is the message rather than a lone badge you have to know is missing.
- */
 export function ServerRoleHint({
   isDeploHost,
   className,

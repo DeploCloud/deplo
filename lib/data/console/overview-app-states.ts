@@ -3,7 +3,7 @@ import "server-only";
 import { and, eq, inArray, isNull } from "drizzle-orm";
 
 import { getDb } from "../../db/client";
-import { apps as appsTable } from "../../db/schema/control-plane";
+import { apps as appsTable } from "../../db/schema/control-plane/apps";
 import { requireActiveTeamId } from "../../membership";
 import { appCapabilitiesForTeam } from "../node-access";
 import { inAppScope } from "../../auth/request-context";
@@ -14,7 +14,7 @@ import {
 } from "../../monitoring/container-history";
 import { metricsStreamUnsupported } from "../../monitoring/stream-modes";
 import { HEALTH_CHECK_DEFAULTS } from "../../deploy/health-check";
-import type { AppStatus } from "../../types";
+import type { AppStatus } from "../../types/app";
 import type { AppRuntime } from "./index";
 
 export type OverviewRuntime = Pick<

@@ -4,9 +4,6 @@ import {
   StoreRailsSkeleton,
 } from "@/components/templates/store-skeleton";
 
-/** Mirrors the store's real layout: the search header, the chip row and the rails.
- *  The chips and rails come from `store-skeleton.tsx`, which the store itself
- *  renders while its logo accents stream - one shape, one place to change it. */
 export default function Loading() {
   return (
     <div

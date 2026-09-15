@@ -29,16 +29,12 @@ import {
 } from "@/components/env/env-rows-editor";
 import { SecretRow } from "@/components/env/secret-row";
 
-/** A variable typed into the wizard: no row exists yet, so it carries its own
- *  type instead of reading one back. */
 export interface DraftEnvRow {
   key: string;
   value: string;
-  /** Undefined lets the key's own name decide, which is what the server does. */
   secret?: boolean;
 }
 
-/** The team's shared variables, as much of one as the picker shows. */
 export interface LinkableSharedVar {
   id: string;
   key: string;
@@ -49,11 +45,6 @@ export interface LinkableSharedVar {
 const TABS = ["variables", "shared"] as const;
 type Tab = (typeof TABS)[number];
 
-/**
- * The variables modal with no app behind it: everything typed or ticked here is
- * held by the wizard and sent with `createApp`, so the FIRST deploy already has
- * it. Same two tabs the app's Environment tab shows.
- */
 export function EnvDraftDialog({
   open,
   onOpenChange,
@@ -79,8 +70,6 @@ export function EnvDraftDialog({
             <DocsLink topic="env.overview" />
           </DialogDescription>
         </DialogHeader>
-        {/* The body mounts with the dialog, so it starts from what the wizard
-            holds and a cancelled edit leaves nothing behind. */}
         <EnvDraftBody
           rows={rows}
           sharedIds={sharedIds}
@@ -121,8 +110,6 @@ function EnvDraftBody({
   function onSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (invalid) return;
-    // Batch-level, like the app's own Add dialog. Left off, the row carries no
-    // type at all and the key's name decides - which is what a template wants.
     onSave(
       filledRows(draft).map((r) => ({
         key: r.key.trim(),

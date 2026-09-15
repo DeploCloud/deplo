@@ -1,7 +1,7 @@
 import { notFound } from "next/navigation";
-import { getDatabase } from "@/lib/data/databases";
+import { getDatabase } from "@/lib/data/databases/rows";
 import { getDatabaseMetricsHistory } from "@/lib/data/container-metrics";
-import { listServers } from "@/lib/data/servers";
+import { listServers } from "@/lib/data/servers/roster";
 import { isInstanceAdmin } from "@/lib/membership";
 import { serverLabel } from "@/lib/utils";
 import { PageHeader } from "@/components/shared/page-header";
@@ -18,8 +18,6 @@ export default async function DatabaseMonitoringPage(
   const db = await getDatabase(id);
   if (!db) notFound();
 
-  // The buffered window, so the charts render full on the first paint. Nothing
-  // gates it: the telemetry stream carries this database's container regardless.
   const [initialHistory, servers, canManageServers] = await Promise.all([
     getDatabaseMetricsHistory(db.id),
     listServers(),

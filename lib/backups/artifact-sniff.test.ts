@@ -5,12 +5,6 @@ import zlib from "node:zlib";
 import { SNIFF_HEAD_BYTES, sniffArtifact } from "./artifact-sniff";
 import { looksEncrypted, looksGzip } from "./artifact-format";
 
-/**
- * The sniffer is the last thing standing between an uploaded file and an agent
- * that stops the stack, wipes every volume and untars whatever arrives.
- */
-
-/** A buffer that IS a tar as far as the head check is concerned. */
 function tarLike(size = 8192): Buffer {
   const buf = Buffer.alloc(size);
   buf.write("volumes/data/deplo.db", 0);
@@ -18,14 +12,12 @@ function tarLike(size = 8192): Buffer {
   return buf;
 }
 
-/** A database dump: gzip of something that is emphatically not a tar. */
 function dumpLike(size = 8192): Buffer {
   const buf = Buffer.alloc(size);
   buf.write("PGDMP", 0);
   return buf;
 }
 
-/** Incompressible filler, so a gzip of it is bigger than one age chunk. */
 function bulky(size: number): Buffer {
   const buf = tarLike(size);
   for (let i = 1024; i < size; i += 16)
@@ -79,7 +71,6 @@ test("a file that is neither age nor gzip is refused", async () => {
 });
 
 test("a database dump uploaded onto an APP is refused", async () => {
-  // The mix-up that would otherwise wipe every volume and restore nothing.
   await assert.rejects(
     () => sniffArtifact(zlib.gzipSync(dumpLike()), APP),
     /not an app backup/,
@@ -125,9 +116,6 @@ test("a key that is not a key is told apart from a key that does not fit", async
 });
 
 test("a big encrypted artifact is judged from its truncated head", async () => {
-  // The real shape: only the first 128 KiB ever reaches the sniffer, so the last
-  // age chunk it holds is cut in half and the gzip stream ends mid-stream.
-  // Neither is a failure - one whole chunk is all the tar magic needs.
   const { artifact, key } = await encrypt(
     zlib.gzipSync(bulky(4 * 1024 * 1024)),
   );
@@ -144,8 +132,6 @@ test("a big encrypted artifact is judged from its truncated head", async () => {
 });
 
 test("a head too short to hold one age chunk decrypts to nothing and is refused", async () => {
-  // Not a hazard, but it must fail CLOSED: with no plaintext there is no tar
-  // magic, so an app restore is refused rather than waved through.
   const { artifact, key } = await encrypt(
     zlib.gzipSync(bulky(4 * 1024 * 1024)),
   );
@@ -160,8 +146,6 @@ test("a head too short to hold one age chunk decrypts to nothing and is refused"
 });
 
 test("gzip that inflates past the cap is still judged, not swallowed", async () => {
-  // 4 MiB of zeroes compress to a few KiB: the guard against a decompression
-  // bomb must not also blind the tar check.
   const { encrypted } = await sniffArtifact(
     zlib.gzipSync(tarLike(4 * 1024 * 1024)),
     APP,

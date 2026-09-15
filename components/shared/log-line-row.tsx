@@ -7,29 +7,13 @@ import {
   LEVEL_ROW_CLASS,
   LEVEL_TEXT_CLASS,
 } from "@/lib/log-levels";
-import type { LogLevel } from "@/lib/types";
+import type { LogLevel } from "@/lib/types/deployment";
 
-/**
- * The one row shape every log console renders: the build-log stream, the
- * deployments Logs page, and the app's live runtime logs.
- */
-
-/** Width of the level chip's gutter. Sized for the longest label (SUCCESS) with
- *  room to breathe, so no label is ever clipped and every message starts at the
- *  same x. Reserved whether or not a chip is drawn in it. */
 const CHIP_WIDTH = "w-[calc(var(--log-fs)*4.92)]";
 const CHIP = `h-[calc(var(--log-fs)*1.38)] ${CHIP_WIDTH}`;
 
-/**
- * Matches http(s) URLs inside a log line.
- */
 const URL_RE = /(https?:\/\/[^\s]+?)(?=[.,;:!?)\]}]*(?:\s|$))/g;
 
-/**
- * Wrap every case-insensitive occurrence of `term` in a `<mark>`, returning React
- * nodes. `indexOf` rather than a regex: the term is arbitrary user input, and
- * scanning for a literal needs no escaping and cannot backtrack.
- */
 function markMatches(text: string, term: string): React.ReactNode {
   if (!term) return text;
   const hay = text.toLowerCase();
@@ -53,11 +37,6 @@ function markMatches(text: string, term: string): React.ReactNode {
   return out;
 }
 
-/**
- * Render a log message with any http(s) URLs turned into links that open in a new
- * tab (underlined). Everything between URLs stays plain text, so `whitespace-pre-wrap`
- * on the parent still governs wrapping and indentation.
- */
 function LinkifiedText({
   text,
   highlight = "",
@@ -69,7 +48,6 @@ function LinkifiedText({
   return (
     <>
       {parts.map((part, i) =>
-        // Odd indices are the captured URLs (see URL_RE); even are plain text.
         i % 2 === 1 ? (
           <a
             key={i}
@@ -99,9 +77,6 @@ export function LevelChip({
     <span
       className={cn(
         CHIP,
-        // `self-start` + a fixed height is the whole fix: the chip never grows
-        // with the line it labels. `leading-none` keeps the text centred in the
-        // box rather than riding the row's line-height.
         "inline-flex shrink-0 items-center justify-center self-start rounded select-none",
         "text-[length:calc(var(--log-fs)*0.77)] leading-none font-semibold tracking-wide uppercase",
         LEVEL_BADGE_CLASS[level] ?? "bg-zinc-700/30 text-zinc-300",
@@ -113,11 +88,6 @@ export function LevelChip({
   );
 }
 
-/**
- * The scrolling body of a log console. Owns the vertical rhythm - a small,
- * consistent gap between lines so a dense stream reads as lines rather than as a
- * wall, and the monospace type.
- */
 export function LogLines({
   children,
   className,
@@ -147,23 +117,10 @@ export function LogRow({
 }: {
   level: LogLevel;
   text: string;
-  /** Rendered as a dim, tabular gutter. Omitted by streams that carry no clock. */
   time?: string;
-  /**
-   * Colour the message to match its level.
-   */
   tintMessage?: boolean;
-  /**
-   * `"auto"` draws the chip only when there is something to say - i.e. not for
-   * `info`.
-   */
   chip?: "always" | "auto";
-  /**
-   * Draw this row on the banded background instead of the bare slab - the caller
-   * alternates it, so a live stream reads as lines rather than as one black field.
-   */
   zebra?: boolean;
-  /** Search term to mark inside the message. Composes with ANSI and links. */
   highlight?: string;
 }) {
   const showChip = chip === "always" || level !== "info";
@@ -171,19 +128,12 @@ export function LogRow({
   return (
     <div
       className={cn(
-        // items-start, not the default stretch - see LevelChip.
         "group relative flex items-start gap-3 rounded-md py-px pr-1.5 pl-3 log-row",
         "transition-colors",
-        // Before the level, never after: `cn` keeps the LAST background, so a
-        // warn or error row wins its wash back and only the neutral lines band.
         zebra && "bg-terminal-stripe",
-        // The level's own faint wash, hover included. `info` supplies only the
-        // neutral hover, so an ordinary line stays an ordinary line.
         LEVEL_ROW_CLASS[level] ?? "hover:bg-surface",
       )}
     >
-      {/* The rail. Absolute so it costs no horizontal space and spans the full
-          row height, wrapped lines included. */}
       <span
         aria-hidden
         className={cn(
@@ -201,8 +151,6 @@ export function LogRow({
       {showChip ? (
         <LevelChip level={level} />
       ) : (
-        // The gutter is reserved even with no chip in it, so the message column
-        // does not shift left and right as levels change from line to line.
         <span aria-hidden className={cn(CHIP_WIDTH, "shrink-0")} />
       )}
 
@@ -228,8 +176,6 @@ export function LogRow({
   );
 }
 
-/** Message-bar widths for the placeholder rows, so the block reads as log lines
- *  of differing length rather than as a solid slab. */
 const SKELETON_WIDTHS = [
   "w-[38%]",
   "w-[62%]",
@@ -241,10 +187,6 @@ const SKELETON_WIDTHS = [
   "w-[50%]",
 ];
 
-/**
- * Placeholder lines for a console that has no rows yet but is still waiting on
- * data (a build that has been claimed but hasn't printed anything).
- */
 export function LogLinesSkeleton() {
   return (
     <div aria-hidden className="space-y-0.5">
@@ -252,8 +194,6 @@ export function LogLinesSkeleton() {
         <div
           key={i}
           className="flex animate-pulse items-start gap-3 py-px pr-1.5 pl-3"
-          // Staggered so the rows breathe one after another, the way lines
-          // actually arrive, instead of blinking in unison.
           style={{ animationDelay: `${i * 120}ms` }}
         >
           <span className="h-[var(--log-fs)] w-[calc(var(--log-fs)*4)] shrink-0 rounded bg-zinc-800" />

@@ -8,23 +8,16 @@ import { __setTestDb, __resetTestDb } from "../db/client";
 import { runWithIdentity } from "../auth/request-context";
 import { seedIdentity, TEAM_A, USER_1 } from "./identity-test-helpers";
 import { TRUNCATE_INFRA, seedServerRow } from "./infra-test-helpers";
-import { getServerById, updateServerAddress } from "./servers";
+import { updateServerAddress } from "./servers/agent-maintenance";
+import { getServerById } from "./servers/roster";
 
-// The verify-first probe mints a real control-plane client cert (lib/agent/pki
-// derives its CA from DEPLO_SECRET); pin one so the dial can be built at all.
 process.env.DEPLO_SECRET = "test-secret-for-server-address-aaaaaaaa";
-
-/**
- * updateServerAddress is the migration verb: rewrite where Deplo dials an agent
- * without touching its pinned trust.
- */
 
 let db: TestDb;
 let pg: PGlite;
 
 const PROVISIONED = "srv_addr_prov";
 const BARE = "srv_addr_bare";
-/** Refused instantly on any box: nothing binds TCP port 1 in a test run. */
 const DEAD_LOCAL = "127.0.0.1";
 
 before(async () => {
@@ -113,8 +106,6 @@ test("an unprovisioned server needs no probe: both columns follow the address", 
 });
 
 test("verify-first: an unanswered probe refuses and writes NOTHING", async () => {
-  // Loopback, not TEST-NET: the probe must FAIL, and a connection refused is
-  // instant where a non-routable SYN sits out the whole Hello deadline.
   await assert.rejects(() =>
     asAdmin(() =>
       updateServerAddress({ id: PROVISIONED, address: "127.0.0.2" }),
@@ -135,20 +126,15 @@ test("force skips the probe, writes the row, and keeps trust pinned - with the c
       force: true,
     }),
   );
-  // The SAN refresh could not reach the (dead) old address; that is exactly the
-  // force scenario, so it degrades to a warning rather than a refusal.
   assert.match(warning ?? "", /certificate/i);
   const server = await asAdmin(() => getServerById(PROVISIONED));
   assert.equal(server?.ip, "192.0.2.99");
   assert.equal(server?.host, "192.0.2.99");
   assert.equal(server?.agent?.port, 9443);
-  // The address changed; the identity did not.
   assert.equal(server?.agent?.certFingerprint, "sha256:pinned");
 });
 
 test("keepHost writes only where Deplo dials, leaving the address it was registered at", async () => {
-  // The migration wizard's case: a server registered at the other platform's PANEL
-  // address, which behind a proxy is the proxy's.
   await asAdmin(() =>
     updateServerAddress({ id: BARE, address: "192.0.2.20", keepHost: true }),
   );

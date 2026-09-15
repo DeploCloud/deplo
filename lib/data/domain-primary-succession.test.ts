@@ -11,10 +11,8 @@ process.env.DEPLO_DATA_DIR = mkdtempSync(join(tmpdir(), "deplo-pg-"));
 
 import { makeTestDb, type TestDb } from "../db/test-harness";
 import { __setTestDb, __resetTestDb } from "../db/client";
-import {
-  apps as appsTable,
-  domains as domainsTable,
-} from "../db/schema/control-plane";
+import { apps as appsTable } from "../db/schema/control-plane/apps";
+import { domains as domainsTable } from "../db/schema/control-plane/domains";
 import { runWithIdentity } from "../auth/request-context";
 import { seedIdentity, TEAM_A, USER_1 } from "./identity-test-helpers";
 import {
@@ -22,24 +20,15 @@ import {
   seedApp,
   TRUNCATE_PROJECT_GRAPH,
 } from "./app-graph-test-helpers";
+import { addDomain, removeDomain, updateDomain } from "./domains/crud";
 import {
-  addDomain,
-  removeDomain,
-  setPrimaryDomain,
-  updateDomain,
-  successorPrimary,
   __setDnsResolve4ForTest,
   __resetDnsResolve4ForTest,
-} from "./domains";
-import type { Domain } from "../types";
+} from "./domains/dns-check";
+import { setPrimaryDomain, successorPrimary } from "./domains/primary-domain";
+import type { Domain } from "../types/domain";
 
-/**
- * What happens to an app's CANONICAL host when its primary domain is deleted. The
- * primary is what the app card's subtitle, the title-bar link and the first deploy
- * route all read (through `apps.production_url`).
- */
-
-const SERVER_IP = "10.0.0.1"; // seedServer's ip
+const SERVER_IP = "10.0.0.1";
 const T = (n: number) => `2026-01-0${n}T00:00:00.000Z`;
 
 let db: TestDb;
@@ -100,7 +89,6 @@ async function seedDomains(rows: SeedDomain[]): Promise<void> {
   await syncUrlDirect();
 }
 
-/** The URL as the app card / title bar reads it. */
 async function url(): Promise<string | null> {
   const [row] = await db
     .select({ u: appsTable.productionUrl })
@@ -109,8 +97,6 @@ async function url(): Promise<string | null> {
   return row?.u ?? null;
 }
 
-/** Seeding writes rows directly, so start each test from the URL a consistent
- * app would already have (the app row itself is seeded with a null URL). */
 async function syncUrlDirect(): Promise<void> {
   const rows = await db
     .select()
@@ -134,10 +120,6 @@ async function primaryName(): Promise<string | null> {
     .where(eq(domainsTable.appId, "prj_1"));
   return rows.find((r) => r.isPrimary)?.name ?? null;
 }
-
-/* ------------------------------------------------------------------ */
-/* The heir: same service, then same port                              */
-/* ------------------------------------------------------------------ */
 
 test("deleting the primary hands the crown to the same service, not the oldest sibling", async () => {
   await seedDomains([
@@ -243,10 +225,6 @@ test("a misconfigured host still beats no primary at all", async () => {
   assert.equal(await url(), "http://broken.example.com");
 });
 
-/* ------------------------------------------------------------------ */
-/* The URL itself                                                      */
-/* ------------------------------------------------------------------ */
-
 test("deleting the LAST domain clears the URL - the card reads 'No domain yet'", async () => {
   await seedDomains([{ id: "d_pri", name: "example.com", primary: true }]);
   assert.equal(await url(), "http://example.com");
@@ -292,36 +270,27 @@ test("deleting a NON-primary domain leaves the primary and the URL alone", async
 });
 
 test("the URL follows every other domain change too (add, rename, set-primary)", async () => {
-  // The first domain of an app IS its canonical URL.
   const first = await asUser1(() =>
     addDomain("prj_1", "first.example.com", {}),
   );
   assert.equal(await url(), "http://first.example.com");
 
-  // A second one doesn't steal the crown...
   const second = await asUser1(() =>
     addDomain("prj_1", "second.example.com", {}),
   );
   assert.equal(await url(), "http://first.example.com");
 
-  // ...until it is made primary.
   await asUser1(() => setPrimaryDomain(second.id));
   assert.equal(await url(), "http://second.example.com");
 
-  // A rename of the primary moves the URL with it.
   await asUser1(() => updateDomain(second.id, { name: "renamed.example.com" }));
   assert.equal(await url(), "http://renamed.example.com");
 
-  // Putting a certificate on it flips the scheme.
   await asUser1(() => updateDomain(second.id, { certProvider: "letsencrypt" }));
   assert.equal(await url(), "https://renamed.example.com");
 
   assert.equal(first.primary, true, "the first domain was born primary");
 });
-
-/* ------------------------------------------------------------------ */
-/* The pure ranking                                                    */
-/* ------------------------------------------------------------------ */
 
 test("successorPrimary is pure, deterministic and null-safe", () => {
   const d = (over: Partial<Domain>): Domain =>
@@ -340,7 +309,6 @@ test("successorPrimary is pure, deterministic and null-safe", () => {
 
   assert.equal(successorPrimary([], { service: "web", port: 80 }), null);
 
-  // A domain with no service/port matches a removed one that had none either.
   const bare = d({ name: "bare.example.com" });
   assert.equal(
     successorPrimary([d({ name: "other.example.com", port: 8080 }), bare], {
@@ -350,7 +318,6 @@ test("successorPrimary is pure, deterministic and null-safe", () => {
     "bare.example.com",
   );
 
-  // Equal rank ⇒ oldest, then name, never "whatever the table returned".
   const a = d({ name: "a.example.com", createdAt: T(2) });
   const b = d({ name: "b.example.com", createdAt: T(1) });
   assert.equal(
@@ -363,14 +330,8 @@ test("successorPrimary is pure, deterministic and null-safe", () => {
   );
 });
 
-/* ------------------------------------------------------------------ */
-/* The build port and the hostnames that follow it                     */
-/* ------------------------------------------------------------------ */
-
 test("changing the build port moves the domains that were routing to the old one", async () => {
-  const { updateAppBuild } = await import("./apps");
-  // One hostname born on the build port (3000, what a seeded app carries), one
-  // deliberately pointed somewhere else.
+  const { updateAppBuild } = await import("./apps/build-settings");
   await seedDomains([
     { id: "d_follows", name: "follows.example.com", primary: true, port: 3000 },
     { id: "d_pinned", name: "pinned.example.com", port: 8080 },

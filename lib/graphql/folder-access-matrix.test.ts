@@ -19,18 +19,18 @@ process.env.DEPLO_PUBLIC_URL = "https://deplo.test";
 
 import { makeTestDb, truncateAll, type TestDb } from "../db/test-harness";
 import { __setTestDb, __resetTestDb } from "../db/client";
+import { membershipCapabilities as membershipCapabilitiesTable } from "../db/schema/control-plane/access-control";
+import { apps as appsTable } from "../db/schema/control-plane/apps";
 import {
   appBasicAuthUsers as basicAuthTable,
   domains as domainsTable,
-  envVars as envVarsTable,
-  folders as foldersTable,
-  membershipCapabilities as membershipCapabilitiesTable,
-  apps as appsTable,
-} from "../db/schema/control-plane";
+} from "../db/schema/control-plane/domains";
+import { envVars as envVarsTable } from "../db/schema/control-plane/env-vars";
+import { folders as foldersTable } from "../db/schema/control-plane/projects";
 import { schema } from "./schema";
 import { type GraphQLContext } from "./context";
 import { runWithIdentity, type RequestIdentity } from "../auth/request-context";
-import { getCurrentUser } from "../auth";
+import { getCurrentUser } from "../auth/current-user";
 import { getActiveTeamId, reachableCapabilities } from "../membership";
 import { seedIdentity, TEAM_A } from "../data/identity-test-helpers";
 import {
@@ -38,19 +38,13 @@ import {
   seedServer,
   seedDeployment,
 } from "../data/app-graph-test-helpers";
-import { ALL_CAPABILITIES } from "../types";
+import { ALL_CAPABILITIES } from "../types/identity";
 import { encryptSecret } from "../crypto";
 import {
   __setRunnerForTest,
   __resetQueueForTest,
 } from "../deploy/deploy-queue";
 import { eq } from "drizzle-orm";
-
-/**
- * The PRIVATE-FOLDER matrix: every field of the public API, driven by a member who
- * holds every team capability there is, against an app inside a folder that is not
- * theirs.
- */
 
 let db: TestDb;
 let pg: PGlite;
@@ -82,8 +76,6 @@ async function seedAll(): Promise<void> {
       { id: INTRUDER, teamId: TEAM_A, role: "member", isInstanceAdmin: false },
     ],
   });
-  // The INTRUDER holds EVERY team capability except `manage_team`, which makes
-  // its holder a folder super-user in its own right and would mask the question.
   await db.delete(membershipCapabilitiesTable);
   await db.insert(membershipCapabilitiesTable).values([
     ...ALL_CAPABILITIES.map((capability) => ({

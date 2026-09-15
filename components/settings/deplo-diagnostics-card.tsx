@@ -7,7 +7,6 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { InfoTip } from "@/components/ui/info-tip";
 import { CopyButton } from "@/components/shared/copy-button";
 
-/** One host, as a bug report needs to see it. */
 export interface DiagnosticHost {
   name: string;
   agentVersion: string | null;
@@ -21,10 +20,6 @@ function pad(value: string, width: number): string {
     : value + " ".repeat(width - value.length);
 }
 
-/**
- * Everything an issue about this instance has to state, in one block nobody has
- * to go and collect from four screens.
- */
 export function DeploDiagnosticsCard({
   version,
   panelUrl,

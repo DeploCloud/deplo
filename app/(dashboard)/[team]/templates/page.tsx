@@ -11,7 +11,6 @@ import { listCatalog } from "@/templates/catalog";
 
 export const metadata = { title: "Templates" };
 
-/** `?q=` / `?category=` arrive as strings or repeated params. */
 function one(value: string | string[] | undefined): string {
   return (Array.isArray(value) ? value[0] : value) ?? "";
 }
@@ -21,15 +20,11 @@ export default async function TemplatesPage(
 ) {
   const searchParams = await props.searchParams;
 
-  // The catalogue is a catalogue: anyone on the team may read it.
   const [placement, canDeploy] = await Promise.all([
     resolveOverviewPlacement(placementFromSearchParams(searchParams)),
     hasCapability("create_apps"),
   ]);
 
-  // The catalogue lives on a remote service. An instance with no egress (or a
-  // service having a bad day) gets a page that says so, not an error boundary
-  // over the whole dashboard section.
   const templates = await listCatalog().catch(() => null);
   if (!templates)
     return (
@@ -46,9 +41,6 @@ export default async function TemplatesPage(
   return (
     <TemplateStore
       templates={templates.map(toStoreTemplate)}
-      // Not awaited: reading the accents fetches and decodes every logo in the catalogue,
-      // which costs a cold process seconds. A catalogue having a bad day costs colour,
-      // never the page.
       accents={templateAccents(templates).catch(() => ({}))}
       canDeploy={canDeploy}
       placement={placement}

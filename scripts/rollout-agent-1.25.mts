@@ -1,36 +1,24 @@
-/**
- * Fleet rollout of deplo-agent v1.25.0 - per-app image retention
- * (`DockerCleanupRequest.keep_per_slug`), which is what carries each App's
- * rollback depth to the host that enforces it.
- */
 import { and, eq, inArray, sql } from "drizzle-orm";
 
 import { getDb } from "../lib/db/client";
-import { deployments, apps } from "../lib/db/schema/control-plane";
-import { listAllServers, markServerSeen } from "../lib/data/servers";
-import {
-  agentPreflight,
-  runAgentCleanup,
-  selfUpdateServerAgent,
-} from "../lib/infra/agent-client";
+import { apps } from "../lib/db/schema/control-plane/apps";
+import { deployments } from "../lib/db/schema/control-plane/deployments";
+import { markServerSeen } from "../lib/data/servers/agent-handshake";
+import { listAllServers } from "../lib/data/servers/roster";
+import { selfUpdateServerAgent } from "../lib/infra/agent-client/agent-lifecycle";
+import { runAgentCleanup } from "../lib/infra/agent-client/docker-cleanup";
+import { agentPreflight } from "../lib/infra/agent-client/preflight";
 import { CleanupScope } from "../lib/agent/gen/agent";
 
 const TARGET = "1.25.0";
 const KEEP_PER_SLUG_CAP = "cleanup.keep-per-slug";
-/** Capabilities the control plane relies on; one disappearing = a regression. */
 const REQUIRED_CAPS = [
   "self-update",
   "backup",
   "docker-cleanup",
   "container-stats",
 ];
-/** Probe without touching any agent binary (the BEFORE half of §7). */
 const probeOnly = process.argv.includes("--probe-only");
-/**
- * `--only <name>` stops after that one server. §4's ordering is not a formality:
- * the canary is updated and verified on its own - including a real deploy, which
- * is the check a re-exec actually threatens - before anything else is touched.
- */
 const only = (() => {
   const i = process.argv.indexOf("--only");
   return i === -1 ? null : process.argv[i + 1];
@@ -50,7 +38,6 @@ async function inFlightDeploys(serverId: string): Promise<number> {
   return rows.length;
 }
 
-/** The map the sweep really sends for this host: rollback depth + the live one. */
 async function keepPerSlugFor(
   serverId: string,
 ): Promise<Record<string, number>> {
@@ -74,7 +61,6 @@ async function dryRunImages(
     minAgeHours: 24,
     keepImagesPerApp,
     keepPerSlug,
-    // Images only: this dry run asks for no scope that reads the inventory.
     liveSlugs: [],
     liveNetworks: [],
   });
@@ -87,7 +73,6 @@ async function dryRunImages(
   };
 }
 
-/** §7: the three retention shapes on one host, compared. */
 async function probe(serverId: string, name: string): Promise<void> {
   const hello = await agentPreflight(serverId);
   const map = await keepPerSlugFor(serverId);
@@ -110,8 +95,6 @@ async function probe(serverId: string, name: string): Promise<void> {
     `[${name}]   C raised scalar=${raised}  would remove ${c.count} (${c.bytes} B)`,
   );
 
-  // Only meaningful once the agent reads the map; before the update B == A by
-  // construction (the field is ignored), which is itself worth seeing printed.
   const subsetB = [...b.ids].every((x) => a.ids.has(x));
   const subsetC = [...c.ids].every((x) => a.ids.has(x));
   console.log(
@@ -171,8 +154,6 @@ async function main(): Promise<void> {
   const servers = (await listAllServers()).filter((s) =>
     Boolean(s.agent?.certFingerprint),
   );
-  // Canary = the remote with the fewest Apps: if the binary is bad the control
-  // plane is still up to observe it and the blast radius is one host.
   const counts = new Map<string, number>();
   for (const row of await getDb()
     .select({ serverId: apps.serverId })

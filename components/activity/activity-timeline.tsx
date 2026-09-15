@@ -9,49 +9,33 @@ import { DatabaseLogo } from "@/components/storage/database-logo";
 import { ACTIVITY_ICON, UNKNOWN_ACTIVITY_ICON } from "@/lib/activity-types";
 import { MONTH_SHORT } from "@/lib/activity-filter";
 import { cn, gitProfileUrl, timeAgoShort } from "@/lib/utils";
-import type {
-  Activity,
-  ActivityType,
-  DatabaseType,
-  VarAuthor,
-} from "@/lib/types";
+import type { Activity, ActivityType } from "@/lib/types/activity";
+import type { DatabaseType } from "@/lib/types/database";
+import type { VarAuthor } from "@/lib/types/identity";
 
-/** One row of the trail, trimmed to what the timeline draws. */
 export interface ActivityItem {
   id: string;
   type: ActivityType;
   message: string;
   actor: string;
   actorUser: VarAuthor | null;
-  /** The git host `actor` is a login on - a webhook push. Null for a member here
-   *  and for an actor with no host, like `system`. */
   actorProvider: string | null;
   createdAt: string;
-  /** The app this happened to, when it happened to one. */
   appId: string | null;
-  /** The database this happened to. Never set together with `appId`. */
   databaseId: string | null;
-  /** Keyset position, for paging past this row. */
   cursor: string;
 }
 
-/**
- * The apps a mention may link to, by id. Built from what the caller can LIST, so
- * an app they cannot see is named in the sentence and stays plain text.
- */
 export type AppLinks = Record<
   string,
   { name: string; slug: string; logo?: string | null }
 >;
 
-/** The databases a mention may link to, by id - the twin of {@link AppLinks}. */
 export type DatabaseLinks = Record<
   string,
   { name: string; logo: string | null; type: DatabaseType }
 >;
 
-/** Only what the caller could list: an app they cannot reach stays plain text in
- *  the sentence rather than becoming a link into a 404. */
 export function toAppLinks(
   apps: { id: string; name: string; slug: string; logo: string | null }[],
 ): AppLinks {
@@ -60,7 +44,6 @@ export function toAppLinks(
   );
 }
 
-/** The database twin of {@link toAppLinks}. */
 export function toDatabaseLinks(
   databases: {
     id: string;
@@ -89,8 +72,6 @@ export function toActivityItem(a: Activity): ActivityItem {
   };
 }
 
-/** Where the app's name starts in the sentence, or -1. Whole word only: an app
- *  called `api` must not light up the middle of `api-gateway`. */
 export function mentionAt(message: string, name: string): number {
   const edge = (c: string | undefined) => c === undefined || !/[\w-]/.test(c);
   for (let i = message.indexOf(name); i >= 0; i = message.indexOf(name, i + 1))
@@ -98,7 +79,6 @@ export function mentionAt(message: string, name: string): number {
   return -1;
 }
 
-/** The resource a row happened to, resolved for display, or undefined. */
 function mentioned(
   item: ActivityItem,
   appLinks: AppLinks | undefined,
@@ -121,12 +101,6 @@ function mentioned(
   return undefined;
 }
 
-/**
- * The message, with the app or database it names turned into a link carrying that
- * resource's own picture. The sentence is prose written at the call site, so the
- * NAME is the only handle there is - no match, no link, and the row reads as it
- * always did.
- */
 function messageWithLink(
   item: ActivityItem,
   appLinks: AppLinks | undefined,
@@ -144,8 +118,6 @@ function messageWithLink(
         href={target.href}
         className="font-medium text-foreground underline-offset-2 hover:underline"
       >
-        {/* Inline-block on the MARK, not on the link: a flex link takes its
-            baseline from the picture and lifts the name off the line. */}
         {showMark && (
           <span className="mr-1 inline-block align-text-bottom">
             {target.mark}
@@ -158,12 +130,6 @@ function messageWithLink(
   );
 }
 
-/**
- * `2026-08-26T14:32:11Z` -> `26 Aug, 14:32`. Read straight off the ISO string in
- * UTC, like the month headings bucket, so a row can never sit under "August"
- * while its own clock reads September. No `Date`, so the server and the browser
- * cannot disagree; the year is the heading's job.
- */
 export function stamp(iso: string): string {
   const m = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})/.exec(iso);
   if (!m) return "";
@@ -186,24 +152,15 @@ const MONTHS = [
   "December",
 ];
 
-/** `2026-08` -> `August 2026`. Spelled out rather than localised, so the server
- *  and the browser cannot render two different strings. */
 export function monthLabel(key: string): string {
   const [year, month] = key.split("-");
   return `${MONTHS[Number(month) - 1] ?? key} ${year}`;
 }
 
-/** The UTC month a row belongs to, matching what `activityMonths` counts. */
 export function monthKey(createdAt: string): string {
   return createdAt.slice(0, 7);
 }
 
-/**
- * The marker on the rail: the person who acted. Non-human actors ("Deplo",
- * "system", a webhook) have no face, so they get the event's own glyph - and so
- * does a feed that is already ONE person's, where their face ten times over says
- * nothing the page has not already said.
- */
 function ActivityMarker({
   item,
   size,
@@ -214,12 +171,7 @@ function ActivityMarker({
   showActor: boolean;
 }) {
   const box = size === "lg" ? "size-8" : "size-6";
-  // The ring masks the rail behind the marker, so it only belongs where there is
-  // a rail: in a card it paints a fat page-background halo around the glyph.
   const rail = size === "lg" ? "ring-4 ring-background" : "";
-  // `relative` with NO z-index on purpose: it already paints over the rail (a
-  // positioned sibling earlier in the list), and any z of its own would raise it
-  // through the sticky month heading on the way past.
   if (item.actorUser && showActor)
     return (
       <UserAvatar
@@ -244,7 +196,6 @@ function ActivityMarker({
   );
 }
 
-/** Who did it, when, and what happened - in that order. */
 export function ActivityRow({
   item,
   repeats,
@@ -255,13 +206,9 @@ export function ActivityRow({
   databaseLinks,
 }: {
   item: ActivityItem;
-  /** Every `createdAt` in the run this row stands for, newest first. */
   repeats?: string[];
   size?: "md" | "lg";
-  /** Off on a page that already names the person, like a member's own tab. */
   showActor?: boolean;
-  /** The resource's own picture beside its name. Off where the row is already
-   *  small, like the Overview card. */
   showMark?: boolean;
   appLinks?: AppLinks;
   databaseLinks?: DatabaseLinks;
@@ -269,13 +216,7 @@ export function ActivityRow({
   const times = repeats ?? [item.createdAt];
   const many = times.length > 1;
   const sentence = messageWithLink(item, appLinks, databaseLinks, showMark);
-  // One column of clocks down the right edge, folded run or not - but only where
-  // there is a page's width for it. In a card the sentence wraps, and a stamp
-  // pinned right lands in the middle of it.
   const stampAtEnd = size === "lg";
-  // The first line always keeps the marker's height and rides its centre, folded
-  // run or not: unfolding a row must move nothing, and every row's actor line
-  // sits at the same height beside its own face.
   const headerLine = cn(
     "flex flex-wrap content-center items-baseline gap-x-1.5 text-sm",
     size === "lg" ? "min-h-8" : "min-h-6",
@@ -284,8 +225,6 @@ export function ActivityRow({
     <>
       {showActor &&
         (item.actorProvider ? (
-          // A push is an account on a git host, and the trail says so with the
-          // host's mark rather than a name nobody here answers to.
           <GitAccount
             login={item.actor}
             provider={item.actorProvider}
@@ -300,7 +239,6 @@ export function ActivityRow({
         dateTime={item.createdAt}
         title={new Date(item.createdAt).toUTCString()}
         className="text-xs text-muted-foreground"
-        // The server and the browser render this a moment apart.
         suppressHydrationWarning
       >
         {timeAgoShort(item.createdAt)}
@@ -317,8 +255,6 @@ export function ActivityRow({
       <ActivityMarker item={item} size={size} showActor={showActor} />
       <div className="min-w-0 flex-1">
         {many ? (
-          // `details` rather than React state: a run folds and unfolds with no
-          // JavaScript, which is what keeps this row renderable from an RSC.
           <details open className="group">
             <summary
               className={cn(
@@ -329,8 +265,6 @@ export function ActivityRow({
               {header}
               <ChevronRight className="size-3.5 self-center text-muted-foreground transition-transform group-open:rotate-90" />
             </summary>
-            {/* The sentence once per occurrence with its own clock beside it: a
-                folded run must not cost the trail a single "what" or "when". */}
             <ul className="mt-1 space-y-1">
               {times.map((t, i) => (
                 <li
@@ -363,12 +297,6 @@ export function ActivityRow({
   );
 }
 
-/**
- * Fold a run of identical events by the same person into one row. Seven
- * "Deploying docs" from one account is one thing that happened seven times, not
- * seven things, and read as seven rows it buries everything else. Consecutive
- * only, and never across a month heading.
- */
 export function foldRuns(
   items: ActivityItem[],
 ): { item: ActivityItem; times: string[] }[] {
@@ -389,7 +317,6 @@ export function foldRuns(
   return runs;
 }
 
-/** The month's own heading, riding the rail. */
 function MonthHeading({
   month,
   count,
@@ -418,16 +345,8 @@ function MonthHeading({
   );
 }
 
-/** Where a month pins: under the topbar (h-14), plus the 60px filter row while
- *  that row is above the feed. From `lg` the filters move into the rail, so the
- *  heading goes back to riding the topbar. */
 const HEADING_OFFSET = "top-14 sm:top-[7.25rem] lg:top-14";
 
-/**
- * The vertical trail: one rail, the actor's face on it, the sentence beside it.
- * `compact` drops the rail and the month headings for the Overview card and a
- * member's own tab.
- */
 export function ActivityTimeline({
   items,
   variant = "full",
@@ -440,19 +359,15 @@ export function ActivityTimeline({
 }: {
   items: ActivityItem[];
   variant?: "full" | "compact";
-  /** `{ "2026-08": 42 }`, for the month headings. */
   monthCounts?: Record<string, number>;
   showActor?: boolean;
   showMark?: boolean;
   appLinks?: AppLinks;
   databaseLinks?: DatabaseLinks;
-  /** The loader / end-of-list footer, inside the rail. */
   children?: React.ReactNode;
 }) {
   const full = variant === "full";
   const size = full ? "lg" : "md";
-  // Built flat rather than nested per month: the rail is ONE line down the whole
-  // list, so a month cannot own a container of its own.
   const rows: React.ReactNode[] = [];
   let month = "";
   for (const run of foldRuns(items)) {

@@ -1,15 +1,11 @@
 import "server-only";
 
-// https://deplo.build/docs/guides/git-providers
-
 import { and, count, eq } from "drizzle-orm";
 
 import { getDb } from "../db/client";
-import {
-  apps as appsTable,
-  gitConnections as gitConnectionsTable,
-} from "../db/schema/control-plane";
-import { getCurrentUser } from "../auth";
+import { apps as appsTable } from "../db/schema/control-plane/apps";
+import { gitConnections as gitConnectionsTable } from "../db/schema/control-plane/integrations";
+import { getCurrentUser } from "../auth/current-user";
 import { decryptSecret, decryptSecretOrThrow, encryptSecret } from "../crypto";
 import { newId, nowIso } from "../ids";
 import {
@@ -20,41 +16,26 @@ import {
 } from "../membership";
 import { assertSafeOutboundUrl } from "../outbound-url";
 import { PUBLIC_URL_PLACEHOLDER, resolveManifestBaseUrl } from "../public-url";
+import { providerFor, KNOWN_PROVIDERS } from "../git/providers/registry";
+import type { GitCredential, RepoSummary } from "../git/providers/types";
 import {
   ensureWebhook,
   hasWebhook,
-  providerFor,
   removeWebhook,
-  KNOWN_PROVIDERS,
-  type GitCredential,
-  type RepoSummary,
-} from "../git/providers";
+} from "../git/providers/webhooks";
 import {
   grantedFromScopes,
   missingAccess,
   type AccessRequirement,
 } from "../git/provider-access";
 import { recordActivity } from "./activity";
-import type { GitConnection, GitProviderId, GitRepo } from "../types";
+import type { GitRepo } from "../types/build";
+import type { GitConnection, GitProviderId } from "../types/git";
 import { randomBytes } from "node:crypto";
 
-/**
- * Git connections - a team's stored credentials for every git host that is not
- * GitHub. A connection's token is write-only like every other secret in Deplo: you
- * can replace it, never read it back.
- */
-
-/** A connection as the UI sees it: no token, plus what depends on it. */
 export interface GitConnectionDTO extends GitConnection {
-  /** Apps whose clone this connection authenticates. Drives the delete warning. */
   appCount: number;
-  /** Whether this provider can list repositories and register webhooks. */
   hasApi: boolean;
-  /**
-   * What the provider says this token may NOT do, of what Deplo needs. Empty for
-   * a provider that does not report its scopes - a checklist is honest there, an
-   * accusation is not.
-   */
   missingAccess: AccessRequirement[];
 }
 
@@ -82,16 +63,11 @@ function toDTO(
     missingAccess: missingAccess(
       row.provider as GitProviderId,
       grantedFromScopes(row.provider as GitProviderId, row.tokenScopes),
-      // A connection is not an app: previews are a GitHub feature, so only the
-      // core half is ever reported here.
       { previews: false },
     ),
   };
 }
 
-/**
- * The active team's connections, newest first.
- */
 export async function listGitConnections(): Promise<GitConnectionDTO[]> {
   const teamId = await requireActiveTeamId();
   const db = getDb();
@@ -99,7 +75,6 @@ export async function listGitConnections(): Promise<GitConnectionDTO[]> {
     .select()
     .from(gitConnectionsTable)
     .where(eq(gitConnectionsTable.teamId, teamId));
-  // One grouped count instead of a query per connection.
   const usage = await db
     .select({ id: appsTable.repoConnectionId, n: count() })
     .from(appsTable)
@@ -111,10 +86,6 @@ export async function listGitConnections(): Promise<GitConnectionDTO[]> {
     .sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1));
 }
 
-/**
- * A connection's decrypted credentials. Never expose it through GraphQL, and never
- * return it to a client.
- */
 export async function readGitCredential(
   connectionId: string,
 ): Promise<(GitCredential & { webhookSecret: string; teamId: string }) | null> {
@@ -130,17 +101,12 @@ export async function readGitCredential(
     provider: row.provider as GitProviderId,
     baseUrl: row.baseUrl,
     username: row.username,
-    // Strict on the token: it authenticates a clone and every provider call, so
-    // decrypting to "" turned a key mismatch into the provider's own "bad credentials"
-    // - sending whoever hit it to rotate a token that was never the problem.
     token: decryptSecretOrThrow(row.tokenEnc, "This git connection's token"),
     webhookSecret: decryptSecret(row.webhookSecretEnc),
     teamId: row.teamId,
   };
 }
 
-/** Whether a connection id belongs to this team. The guard that keeps a crafted
- *  request from borrowing another team's token to clone their private repo. */
 export async function gitConnectionInTeam(
   connectionId: string,
   teamId: string,
@@ -158,7 +124,6 @@ export async function gitConnectionInTeam(
   return rows.length > 0;
 }
 
-/** The same, but refusing a connection outside the caller's active team. */
 async function requireOwnCredential(
   connectionId: string,
 ): Promise<GitCredential & { webhookSecret: string; teamId: string }> {
@@ -169,13 +134,6 @@ async function requireOwnCredential(
   return cred;
 }
 
-/* ------------------------------------------------------------------ */
-/* The webhook address                                                 */
-/* ------------------------------------------------------------------ */
-
-/**
- * Where a provider posts its push deliveries for this connection.
- */
 export function gitWebhookUrl(webhookToken: string): string {
   const base = resolveManifestBaseUrl();
   if (base === PUBLIC_URL_PLACEHOLDER) return "";
@@ -193,29 +151,15 @@ async function webhookTokenFor(connectionId: string): Promise<string> {
   return row?.token ?? "";
 }
 
-/* ------------------------------------------------------------------ */
-/* Mutations                                                           */
-/* ------------------------------------------------------------------ */
-
 export interface ConnectGitProviderInput {
   provider: string;
   label: string;
   baseUrl: string;
   username: string;
   token: string;
-  /**
-   * Let this connection's address point inside the deployment. Instance-admin
-   * only (enforced below, not by the caller), for a git server on the operator's
-   * own LAN. Absent/false ⇒ the ordinary SSRF guard applies.
-   */
   allowPrivateEndpoint?: boolean | null;
 }
 
-/**
- * Normalise a user-typed host into an origin: https by default, no trailing slash,
- * no path, no embedded credentials - and, unless this connection was deliberately
- * allowed to, not an address inside the deployment.
- */
 async function cleanBaseUrl(
   raw: string,
   allowPrivate: boolean,
@@ -239,17 +183,11 @@ async function cleanBaseUrl(
   return u.origin;
 }
 
-/**
- * Connect a git provider: prove the token works, then store it encrypted.
- */
 export async function connectGitProvider(
   input: ConnectGitProviderInput,
 ): Promise<GitConnectionDTO> {
   const { teamId } = await requireCapability("manage_git");
   const user = (await getCurrentUser())!;
-  // An unrecognised provider degrades to plain git (credentials only) rather
-  // than being stored verbatim: `provider` comes from a client request and it
-  // decides which HTTP client we later point at the user's host.
   const provider: GitProviderId = KNOWN_PROVIDERS.has(
     input.provider as GitProviderId,
   )
@@ -257,9 +195,6 @@ export async function connectGitProvider(
     : "git";
   const adapter = providerFor(provider);
 
-  // Reaching inside the deployment is an instance-level decision, exactly like a
-  // private S3 endpoint: `manage_git` is a team capability, and a team
-  // capability must never be enough to aim the control plane at its own network.
   const allowPrivateEndpoint = Boolean(input.allowPrivateEndpoint);
   if (allowPrivateEndpoint) await requireInstanceAdmin();
 
@@ -273,8 +208,6 @@ export async function connectGitProvider(
   if (!username) throw new Error("Enter the username the token belongs to");
 
   const cred: GitCredential = { provider, baseUrl, username, token };
-  // A plain git server has no API to ask, so there is nothing to prove until the
-  // first clone. Every other provider is verified now.
   const account = adapter.api ? await adapter.api.whoami(cred) : null;
 
   const row = {
@@ -312,12 +245,9 @@ export async function connectGitProvider(
 export interface UpdateGitConnectionInput {
   label?: string | null;
   username?: string | null;
-  /** A replacement token. Absent/empty ⇒ keep the stored one. */
   token?: string | null;
 }
 
-/** Rename a connection or rotate its token. A new token is proven before it
- *  replaces the working one. */
 export async function updateGitConnection(
   id: string,
   input: UpdateGitConnectionInput,
@@ -328,8 +258,6 @@ export async function updateGitConnection(
 
   const username = input.username?.trim() || current.username;
   const token = input.token?.trim() || current.token;
-  // A replacement token can carry different scopes, so the answer is kept rather
-  // than discarded: the old token's scopes must not describe the new one.
   const account =
     adapter.api && (token !== current.token || username !== current.username)
       ? await adapter.api.whoami({ ...current, username, token })
@@ -375,9 +303,6 @@ async function appCountFor(id: string, teamId: string): Promise<number> {
   return Number(row?.n ?? 0);
 }
 
-/**
- * Disconnect a provider.
- */
 export async function removeGitConnection(id: string): Promise<number> {
   const { teamId } = await requireCapability("manage_git");
   const db = getDb();
@@ -425,11 +350,6 @@ export async function removeGitConnection(id: string): Promise<number> {
   return unlinked;
 }
 
-/**
- * Ask the provider who the token belongs to, and record the answer. The manual
- * half of the health story (the sweep in `lib/notify/maintenance.ts` is the
- * automatic half) - both write the same two columns.
- */
 export async function testGitConnection(id: string): Promise<GitConnectionDTO> {
   await requireCapability("manage_git");
   const teamId = await requireActiveTeamId();
@@ -455,17 +375,10 @@ export async function testGitConnection(id: string): Promise<GitConnectionDTO> {
   return toDTO(updated[0], await appCountFor(id, teamId));
 }
 
-/**
- * Probe a credential and return the health columns it implies. Shared by "Test
- * connection" and the maintenance sweep so the two can never disagree about what
- * "failing" means.
- */
 export async function probeCredential(
   cred: GitCredential,
 ): Promise<Partial<typeof gitConnectionsTable.$inferInsert>> {
   const adapter = providerFor(cred.provider);
-  // A plain git server has nothing to probe; it is healthy until a clone says
-  // otherwise.
   if (!adapter.api) {
     return { health: "ok", healthError: "", lastCheckedAt: nowIso() };
   }
@@ -489,16 +402,9 @@ export async function probeCredential(
   }
 }
 
-/* ------------------------------------------------------------------ */
-/* Browsing (the repo picker)                                          */
-/* ------------------------------------------------------------------ */
-
 export async function listGitRepos(
   connectionId: string,
 ): Promise<RepoSummary[]> {
-  // A narrowed API token (scoped to specific projects) must not enumerate the
-  // whole team's git host through the connection's PAT - this is a team-level
-  // browse, and a token minting an app passes its repo URL directly instead.
   await requireTeamWide("the team's git repositories");
   const cred = await requireOwnCredential(connectionId);
   const api = providerFor(cred.provider).api;
@@ -517,18 +423,10 @@ export async function listGitBranches(
   return api.listBranches(cred, fullName);
 }
 
-/* ------------------------------------------------------------------ */
-/* Push webhook, registered on the user's behalf                       */
-/* ------------------------------------------------------------------ */
-
-/** What the Deploy Source card shows about an app's push trigger. */
 export interface GitWebhookStatus {
-  /** False when this repo needs no webhook (GitHub App, plain URL, plain git). */
   applicable: boolean;
   installed: boolean;
-  /** The address to paste when we could not register it ourselves. */
   url: string;
-  /** The provider's refusal, verbatim, or "". */
   error: string;
 }
 
@@ -539,9 +437,6 @@ const NOT_APPLICABLE: GitWebhookStatus = {
   error: "",
 };
 
-/**
- * Register our push webhook on the repository, if it is not already there.
- */
 export async function syncAppWebhook(
   repo: GitRepo | null,
 ): Promise<GitWebhookStatus> {
@@ -571,11 +466,6 @@ export async function syncAppWebhook(
   }
 }
 
-/**
- * Whether the hook is registered right now, asked of the provider rather than
- * remembered in a column - somebody deleting it on the provider's side is
- * exactly the case a stored flag would get wrong.
- */
 export async function appWebhookStatus(
   repo: GitRepo | null,
 ): Promise<GitWebhookStatus> {
@@ -609,16 +499,12 @@ export async function appWebhookStatus(
   }
 }
 
-/** Best-effort removal when an app stops deploying from a connection's repo. */
 export async function dropAppWebhook(repo: GitRepo | null): Promise<void> {
   if (!repo?.connectionId || !repo.repo) return;
   const cred = await readGitCredential(repo.connectionId);
   if (!cred) return;
   const url = gitWebhookUrl(await webhookTokenFor(repo.connectionId));
   if (!url) return;
-  // Another app may still deploy from the same repository through the same
-  // connection, in which case the hook must stay: it is keyed on (connection,
-  // repo), not on the app.
   const [still] = await getDb()
     .select({ n: count() })
     .from(appsTable)

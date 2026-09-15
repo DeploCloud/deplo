@@ -64,7 +64,6 @@ const STEPS: { id: StepId; label: string }[] = [
   { id: "codes", label: "Recovery" },
 ];
 
-/** Per-step heading, icon and one line of orientation. */
 const COPY: Record<
   StepId,
   {
@@ -96,10 +95,8 @@ const COPY: Record<
   },
 };
 
-/** Apps that work, named so a non-expert has somewhere to start. */
 const APPS = ["1Password", "Bitwarden", "Google Authenticator", "Aegis"];
 
-/** The `secret` an authenticator would read out of the otpauth:// URI. */
 function secretOf(uri: string): string {
   try {
     return new URL(uri).searchParams.get("secret") ?? "";
@@ -108,10 +105,6 @@ function secretOf(uri: string): string {
   }
 }
 
-/**
- * Turn two-factor authentication on, in four steps: confirm the password, scan the
- * QR, prove the authenticator works, save the recovery codes.
- */
 export function TwoFactorWizard({
   open,
   onOpenChange,
@@ -146,12 +139,9 @@ export function TwoFactorWizard({
 
   function close() {
     onOpenChange(false);
-    // Deferred so the dialog's close animation does not play over a form that
-    // has already been blanked.
     setTimeout(reset, 200);
   }
 
-  /** Step 1: password -> enrol, receiving the URI + the codes in one response. */
   async function enable() {
     setPending(true);
     setError(null);
@@ -169,7 +159,6 @@ export function TwoFactorWizard({
     setStep("scan");
   }
 
-  /** Step 3: prove the authenticator is in sync before anything depends on it. */
   async function verify(submitted = code) {
     if (submitted.length !== 6 || pending) return;
     setPending(true);
@@ -178,8 +167,6 @@ export function TwoFactorWizard({
     setPending(false);
     if (!res.ok) {
       setError(res.error);
-      // Clear it: a rejected code is never worth re-submitting, and an empty
-      // field is a clearer instruction than a red one full of stale digits.
       setCode("");
       return;
     }
@@ -192,7 +179,6 @@ export function TwoFactorWizard({
     router.refresh();
   }
 
-  /** Enter runs whatever the current step's primary button does. */
   function onSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (pending) return;
@@ -235,13 +221,10 @@ export function TwoFactorWizard({
       <DialogContent
         selfManaged
         className="sm:max-w-lg"
-        // Once the codes are on screen they exist nowhere else, so a stray click
-        // outside must not be what loses them.
         hideClose={locked}
         onInteractOutside={(e) => locked && e.preventDefault()}
         onEscapeKeyDown={(e) => locked && e.preventDefault()}
       >
-        {/* pr-8 keeps the rail clear of the absolutely-positioned close X. */}
         <DialogHeader className="space-y-0 pr-8">
           <DialogTitle className="sr-only">
             Turn on two-factor authentication
@@ -252,19 +235,13 @@ export function TwoFactorWizard({
           <WizardStepper
             steps={STEPS}
             current={step}
-            // Strictly forward: every step depends on the response of the one
-            // before it, so there is nothing to go back and edit.
             reachable={(s) => s === step}
             onSelect={setStep}
           />
         </DialogHeader>
 
         <form onSubmit={onSubmit} className="grid gap-4">
-          {/* The height is the STEP's, measured: a wizard padded to its tallest
-              step spends a third of itself on air, and the QR step scrolled. */}
           <AnimatedHeight className="mx-auto flex w-full max-w-md flex-col gap-5 py-2">
-            {/* One heading block, same shape on every step, so the eye lands
-                in the same place each time the body swaps under it. */}
             <div className="flex flex-col items-center gap-2 text-center">
               <span
                 className={cn(
@@ -335,25 +312,18 @@ export function TwoFactorWizard({
 
             {step === "scan" && (
               <div className="grid gap-4 sm:grid-cols-[auto_minmax(0,1fr)] sm:items-center">
-                {/* Black on white regardless of theme, framed deplo-style. */}
                 <div className="mx-auto w-fit rounded-2xl border border-border bg-white p-3 shadow-sm ring-1 ring-black/5">
                   <QRCodeSVG
                     value={totpUri}
                     size={180}
                     bgColor="#ffffff"
                     fgColor="#0a0a0a"
-                    // "H" (30% recovery) is what pays for the excavated middle: the mark covers ~6% of
-                    // the area, so the code still reads with room to spare. Any lower level and the
-                    // logo breaks it - see lib/two-factor-qr.test.ts.
                     level="H"
                     marginSize={0}
                     imageSettings={{
                       src: deploMarkDataUri(),
                       height: 44,
                       width: 44,
-                      // Clear the modules under the badge rather than painting
-                      // over them: a scanner that sees half a module there
-                      // reads noise, not a gap it can reconstruct.
                       excavate: true,
                     }}
                   />
@@ -372,7 +342,6 @@ export function TwoFactorWizard({
                 <OtpInput
                   value={code}
                   onChange={setCode}
-                  // Six digits in means there is nothing left to decide.
                   onComplete={(v) => void verify(v)}
                   disabled={pending}
                   invalid={!!error}
@@ -438,8 +407,6 @@ export function TwoFactorWizard({
               type="button"
               variant="ghost"
               onClick={() => setStep(STEPS[index - 1].id)}
-              // Nothing before "scan" can be revisited (the enrolment already
-              // happened) and nothing after "verify" can be undone.
               disabled={step !== "verify" || pending}
               className={cn(step !== "verify" && "invisible")}
             >

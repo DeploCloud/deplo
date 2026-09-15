@@ -1,10 +1,6 @@
 import { CloudflareIcon } from "@/components/shared/brand-icons";
 import { CopyButton } from "@/components/shared/copy-button";
 
-/**
- * Cloudflare answers for a hostname, so its A records are anycast and say nothing
- * about the origin. Shown wherever a DNS check comes back `cloudflare`.
- */
 export function CloudflareNote({ serverIp }: { serverIp?: string | null }) {
   return (
     <div className="flex items-start gap-3 rounded-md border border-[#f38020]/30 bg-[#f38020]/10 px-3 py-2.5">

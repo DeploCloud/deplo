@@ -15,25 +15,15 @@ export interface CurrentUpload {
   uploadedAt: string;
 }
 
-/**
- * Drag-and-drop / file-picker upload of a code archive for an "upload"-source
- * project. - Deferred mode (`onSelect` is passed, no app exists yet): the create
- * wizard captures the picked File and uploads it itself after the app is created.
- */
 export function UploadInput({
   appId,
   current,
   onSelect,
   file,
 }: {
-  /** Settings mode: the existing app to stream the archive to. */
   appId?: string;
-  /** Settings mode: the archive currently stored on the app, if any. */
   current?: CurrentUpload | null;
-  /** Deferred mode: report the picked File (or null when cleared) to the parent. */
   onSelect?: (file: File | null) => void;
-  /** Deferred mode, CONTROLLED: a file the parent already holds (one dropped on
-   *  another page) so the chip shows it too. */
   file?: File | null;
 }) {
   const router = useRouter();
@@ -41,9 +31,6 @@ export function UploadInput({
   const inputRef = React.useRef<HTMLInputElement>(null);
   const [dragging, setDragging] = React.useState(false);
   const [progress, setProgress] = React.useState<number | null>(null);
-  // Deferred mode: the File held for the parent to upload post-create. A parent
-  // that passes `file` owns it instead - the archive may have been picked on a
-  // different page entirely.
   const [picked, setPicked] = React.useState<File | null>(null);
   const selected = file !== undefined ? file : picked;
 
@@ -60,8 +47,6 @@ export function UploadInput({
       return;
     }
 
-    // Deferred mode: just hand the File to the parent - the create wizard streams
-    // it after the app exists (there's nothing to upload to yet).
     if (deferred) {
       setPicked(chosen);
       onSelect!(chosen);
@@ -72,8 +57,6 @@ export function UploadInput({
     uploadArchive(appId!, chosen, setProgress)
       .then(() => {
         setProgress(null);
-        // Archive stored, not deployed - refresh so it shows as the current
-        // upload and the form's "Save & Deploy" button enables.
         toast.success("Archive saved - click Save & Deploy to deploy it");
         router.refresh();
       })
@@ -91,8 +74,6 @@ export function UploadInput({
     if (file) handle(file);
   }
 
-  // What to show in the "current archive" chip: the just-picked File in deferred
-  // mode, otherwise the archive already stored on the app.
   const shown = deferred
     ? selected
       ? { filename: selected.name, size: selected.size, uploadedAt: null }

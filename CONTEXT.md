@@ -401,7 +401,7 @@ capability and degrades with `AgentBackupUnsupportedError` until it ships
 Agent
 code in its own repo (**DeploCloud/deplo-agent**), contract in
 [`proto/agent.proto`](../proto/agent.proto), control-plane side in [`lib/agent/`](../lib/agent/) +
-[`lib/infra/agent-client.ts`](../lib/infra/agent-client.ts).)_
+[`lib/infra/agent-client/`](../lib/infra/agent-client/).)_
 _Avoid_: agent (ambiguous - say "server agent"), node, worker, runner (CI term), daemon
 (reserve for the Docker daemon it drives), Deplo agent on the remote being a "second Deplo".
 
@@ -443,7 +443,7 @@ gate is and stays the mandatory live Hello pre-flight (ADR-0006), and `servers.s
 health prober's alone. Its discipline is **honesty**: a Hello flag proves the agent _knows how to
 run_ Nixpacks, not that the nixpacks binary is on the host (it is fetched on the first build),
 and Docker being unreachable forces the agent's Traefik answer false, so that row is **skipped**,
-not warned. Classified by [`lib/infra/server-readiness.ts`](../lib/infra/server-readiness.ts)
+not warned. Classified by [`lib/infra/server-readiness/classify.ts`](../lib/infra/server-readiness/classify.ts)
 (pure), orchestrated by [`lib/data/server-readiness.ts`](../lib/data/server-readiness.ts)
 (instance-admin, dials once, writes nothing).
 _Avoid_: "health check" (that is the Hello classifier - `checkServerHealth`), calling readiness a
@@ -702,7 +702,7 @@ A run that is not the last of the series carries `keep_sources`, which is what s
 taking the agents off machines the next team still has to read; the sources are handed
 from team to team with each run (`handOverMigrationSources`).
 The whole domain is spelled **migration**, wire included (`scanMigrationSource`,
-`importMigrationProject`, `migrationRuns`, `lib/data/migration-import.ts`). The older `import`
+`importMigrationProject`, `migrationRuns`, `lib/data/migration-import/`). The older `import`
 spelling was kept for a while on the argument that renaming a published schema would break the
 MCP tools; it turned out no MCP tool names a field here, and `scanDokploy` pointed at a Coolify
 panel was a lie, which is worse than an old name.

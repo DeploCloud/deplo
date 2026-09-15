@@ -10,7 +10,7 @@ import {
   Settings,
 } from "lucide-react";
 import { DeploLogo } from "@/components/logo";
-import { sidebarMenuFor } from "@/components/layout/nav-config";
+import { sidebarMenuFor } from "@/components/layout/nav-config/active-route";
 import { SidebarNav } from "./sidebar-nav";
 import { SidebarTips } from "./sidebar-tips";
 import { useSidebar } from "./sidebar-state";
@@ -24,14 +24,6 @@ import {
 import { cn } from "@/lib/utils";
 import { docsUrl } from "@/lib/docs";
 
-/**
- * Desktop sidebar. Collapsed flag and width come from SidebarProvider, which
- * persists them; the transition is suppressed during a drag and on first paint
- * so neither animates unexpectedly. Collapsing SLIDES the whole panel out: the
- * content keeps its width and translates, so nothing reflows on the way - and a
- * drag past the floor is the same slide, following the cursor (`peek`).
- */
-/** The two rows in the sidebar's footer wear one shape. */
 const FOOTER_LINK =
   "group flex cursor-pointer items-center gap-2.5 rounded-md px-3 py-2 text-sm text-muted-foreground transition-colors hover:bg-surface hover:text-foreground focus-visible:bg-surface";
 
@@ -42,10 +34,8 @@ export function Sidebar({
 }: {
   capabilities?: string[];
   isAdmin?: boolean;
-  /** Feeds the nudge cards above the footer; see sidebar-tips. */
   hasSecondFactor?: boolean;
 }) {
-  // The footer stands down inside a drill-in; the nav there has its own way out.
   const { menu } = sidebarMenuFor(useFlatPathname());
   const { collapsed, hydrated, width, peek, dragging, toggle, startResize } =
     useSidebar();
@@ -99,7 +89,6 @@ export function Sidebar({
           </Tooltip>
         </div>
 
-        {/* Opens the command palette - the sidebar has no search of its own. */}
         <div className="px-3 pb-1">
           <SearchTrigger />
         </div>
@@ -108,8 +97,6 @@ export function Sidebar({
           <SidebarNav capabilities={capabilities} isAdmin={isAdmin} />
         </div>
 
-        {/* Nudges sit above the footer and only in the main menu: a drill-in's
-          nav is a place someone went on purpose. */}
         {menu === "main" && (
           <div className="px-3 pb-2">
             <SidebarTips
@@ -120,12 +107,6 @@ export function Sidebar({
           </div>
         )}
 
-        {/* Outside the scroller: the manual and the way into Settings are both
-          reachable from any page, however far down the nav has been scrolled.
-          Settings sits here rather than in the workspace nav because it is a
-          way OUT of the workspace, not a place in it - and for the same reason
-          it is gone inside a drill-in, where the nav's own first row is the way
-          back and a second exit underneath only competes with it. */}
         {menu === "main" && (
           <div className="space-y-0.5 border-t border-border p-2">
             <Tooltip delayDuration={400}>
@@ -160,7 +141,6 @@ export function Sidebar({
         )}
       </div>
 
-      {/* Drag-to-resize handle on the right edge */}
       <div
         onPointerDown={startResize}
         role="separator"
@@ -175,11 +155,6 @@ export function Sidebar({
   );
 }
 
-/**
- * Brings the sidebar back once it has collapsed to zero width. It renders at the
- * head of the topbar (desktop only - the mobile nav is a sheet with its own
- * trigger) so the control stays top-left, in line with the collapse button.
- */
 export function SidebarExpandButton() {
   const { collapsed, toggle } = useSidebar();
   if (!collapsed) return null;

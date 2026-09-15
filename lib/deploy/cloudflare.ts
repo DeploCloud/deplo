@@ -1,15 +1,5 @@
-/**
- * Cloudflare-awareness for the domain DNS check. `cloudflare` therefore means
- * "plausible but unverified", never "confirmed": the domain may just as well be
- * forwarded to somebody else's server.
- */
+import type { CertProvider, DomainStatus } from "../types/domain";
 
-import type { CertProvider, DomainStatus } from "../types";
-
-/**
- * Cloudflare's published proxy **IPv4** ranges - the anycast addresses a domain
- * resolves to while proxied through Cloudflare.
- */
 export const CLOUDFLARE_IPV4_RANGES = [
   "173.245.48.0/20",
   "103.21.244.0/22",
@@ -28,9 +18,6 @@ export const CLOUDFLARE_IPV4_RANGES = [
   "131.0.72.0/22",
 ] as const;
 
-/**
- * Cloudflare's published proxy **IPv6** ranges.
- */
 export const CLOUDFLARE_IPV6_RANGES = [
   "2400:cb00::/32",
   "2606:4700::/32",
@@ -41,8 +28,6 @@ export const CLOUDFLARE_IPV6_RANGES = [
   "2c0f:f248::/32",
 ] as const;
 
-/** Parse a dotted-quad into an unsigned 32-bit int, or null if it is not a
- * syntactically valid IPv4 (each octet a plain 0-255 integer). */
 function ipv4ToInt(ip: string): number | null {
   const parts = ip.trim().split(".");
   if (parts.length !== 4) return null;
@@ -53,10 +38,9 @@ function ipv4ToInt(ip: string): number | null {
     if (octet > 255) return null;
     n = (n << 8) | octet;
   }
-  return n >>> 0; // force unsigned
+  return n >>> 0;
 }
 
-/** True iff the 32-bit `ipInt` falls inside the `a.b.c.d/bits` CIDR. */
 function inV4Cidr(ipInt: number, cidr: string): boolean {
   const slash = cidr.indexOf("/");
   const baseInt = ipv4ToInt(cidr.slice(0, slash));
@@ -65,19 +49,15 @@ function inV4Cidr(ipInt: number, cidr: string): boolean {
     return false;
   }
   if (bits === 0) return true;
-  // A /bits mask, unsigned. (bits is 13-22 for every Cloudflare range, never 0.)
   const mask = (0xffffffff << (32 - bits)) >>> 0;
   return (ipInt & mask) >>> 0 === (baseInt & mask) >>> 0;
 }
 
-/** Expand an IPv6 literal (including `::` compression) to a 128-bit BigInt, or
- * null if it is not a parseable IPv6 address. IPv4-mapped tails are not needed
- * for Cloudflare's ranges, so they are treated as invalid. */
 function ipv6ToBigInt(ip: string): bigint | null {
   const raw = ip.trim();
   if (!raw.includes(":")) return null;
   const halves = raw.split("::");
-  if (halves.length > 2) return null; // more than one "::" is illegal
+  if (halves.length > 2) return null;
   const head = halves[0] ? halves[0].split(":") : [];
   const tail =
     halves.length === 2 ? (halves[1] ? halves[1].split(":") : []) : [];
@@ -87,9 +67,6 @@ function ipv6ToBigInt(ip: string): bigint | null {
     halves.length === 2
       ? [...head, ...Array(missing).fill("0"), ...tail]
       : head;
-  // BigInt(...) constructor calls, not `0n`/`16n` literals: the literal syntax
-  // needs target ES2020 but this project targets ES2017 (the `bigint` type
-  // itself is available via the `esnext` lib).
   let n = BigInt(0);
   for (const g of groups) {
     if (!/^[0-9a-fA-F]{1,4}$/.test(g)) return null;
@@ -98,7 +75,6 @@ function ipv6ToBigInt(ip: string): bigint | null {
   return n;
 }
 
-/** True iff the 128-bit `ipInt` falls inside the `prefix/bits` IPv6 CIDR. */
 function inV6Cidr(ipInt: bigint, cidr: string): boolean {
   const slash = cidr.indexOf("/");
   const baseInt = ipv6ToBigInt(cidr.slice(0, slash));
@@ -111,11 +87,6 @@ function inV6Cidr(ipInt: bigint, cidr: string): boolean {
   return (ipInt & mask) === (baseInt & mask);
 }
 
-/**
- * True iff `ip` (an IPv4 dotted-quad or IPv6 literal) belongs to one of
- * Cloudflare's published proxy ranges - i.e. the address is a Cloudflare edge, so
- * a domain resolving to it is sitting behind the orange-cloud proxy rather than
- */
 export function isCloudflareIp(ip: string): boolean {
   if (ip.includes(":")) {
     const v6 = ipv6ToBigInt(ip);
@@ -125,16 +96,8 @@ export function isCloudflareIp(ip: string): boolean {
   return v4 !== null && CLOUDFLARE_IPV4_RANGES.some((c) => inV4Cidr(v4, c));
 }
 
-/** The three outcomes of classifying a domain's resolved A records against the
- * server it should point at. A subset of `DomainStatus` (the settled states a
- * verify can produce - `pending`/`error` are lifecycle states set elsewhere). */
 export type DomainDnsClass = "valid" | "cloudflare" | "misconfigured";
 
-/**
- * Classify a domain's resolved A records against the `target` server IP it must
- * point at - the CORE of the DNS check, kept pure so it is exhaustively testable
- * without a live resolver: - `valid` an A record points straight at this server.
- */
 export function classifyDomainDns(
   resolvedIps: string[],
   target: string,
@@ -144,36 +107,19 @@ export function classifyDomainDns(
   return "misconfigured";
 }
 
-/** The shape both routability answers read: the settled DNS status plus the
- * user's own "something else answers for this hostname" declaration. */
 export interface DomainReach {
   status: DomainStatus;
   proxied?: boolean | null;
 }
 
-/**
- * Whether something answers for the hostname in FRONT of this server - detected
- * (Cloudflare's anycast) or declared by the user for any other proxy. Either way
- * DNS cannot see the origin.
- */
 export function isProxiedDomain(d: DomainReach): boolean {
   return d.status === "cloudflare" || d.proxied === true;
 }
 
-/**
- * Whether a domain gets a Traefik router at all: its DNS points straight here, or
- * a proxy answers for it. A `pending`/`misconfigured` host that nothing fronts
- * has no working DNS and is left off.
- */
 export function isRoutableDomain(d: DomainReach): boolean {
   return d.status === "valid" || isProxiedDomain(d);
 }
 
-/**
- * The certificate provider a domain carries once a DNS check has settled its
- * status - the ONE place the "proxied ⇒ Cloudflare issues the certificate" rule
- * lives, so adding, verifying and renaming a domain all reach the same answer.
- */
 export function certProviderForDns<T extends CertProvider | undefined>(
   status: DomainStatus,
   current: T,

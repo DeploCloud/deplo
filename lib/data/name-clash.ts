@@ -1,31 +1,21 @@
 import "server-only";
 
-// https://deplo.build/docs/advanced/network-isolation
-
 import { and, eq, inArray, isNull, ne } from "drizzle-orm";
 
 import { getDb } from "../db/client";
-import {
-  apps as appsTable,
-  databases as databasesTable,
-} from "../db/schema/control-plane";
-import { composeNamesOnNetwork } from "../deploy/compose-stack";
+import { apps as appsTable } from "../db/schema/control-plane/apps";
+import { databases as databasesTable } from "../db/schema/control-plane/databases";
+import { composeNamesOnNetwork } from "../deploy/compose-stack/compose-read";
 import { appNetwork } from "../deploy/network";
 import { stackName } from "../deploy/deploy-key";
 import { withKeyedLock } from "./keyed-mutex";
 
-/** Where a workload would sit: the two fields that decide its network. */
 export interface Placement {
   teamId: string;
   environmentId: string | null;
   serverId: string;
 }
 
-/**
- * The DNS names already answered on `to`'s network, by everything but `exceptId`.
- * Only a neighbour on the SAME network AND host contests a name - a Docker network
- * lives on one machine, so another Environment's database is not a clash.
- */
 export async function namesOnNetwork(
   to: Placement,
   exceptId: string,
@@ -44,9 +34,6 @@ export async function namesOnNetwork(
         serverId: appsTable.serverId,
       })
       .from(appsTable)
-      // Narrowed to what can contest the name at all: a neighbour on another host
-      // shares no network, whatever its placement. Without this every create and
-      // every move read the full compose text of every app the team owns.
       .where(
         and(
           eq(appsTable.teamId, to.teamId),
@@ -91,11 +78,6 @@ export async function namesOnNetwork(
   return taken;
 }
 
-/**
- * Every DNS name a neighbour already answers to on `to`'s network. The refusal
- * below is one answer to it; an import's is to RENAME what would collide, so a
- * second one-click stack with its own `db` arrives instead of failing.
- */
 export async function namesTakenOnNetwork(
   to: Placement,
   exceptId = "",
@@ -103,11 +85,6 @@ export async function namesTakenOnNetwork(
   return new Set((await namesOnNetwork(to, exceptId)).keys());
 }
 
-/**
- * Who else answers on this workload's network, by display name. A Docker network
- * lives on one machine, so moving away from `to.serverId` cuts the app off from
- * every one of them.
- */
 export async function neighboursOnNetwork(
   to: Placement,
   exceptId: string,
@@ -115,18 +92,10 @@ export async function neighboursOnNetwork(
   return [...new Set((await namesOnNetwork(to, exceptId)).values())].sort();
 }
 
-/**
- * Refuse a workload whose DNS names a neighbour on the destination network already
- * answers to: Docker round-robins a claimed name, so half the lookups reach the
- * wrong one and it reads as an intermittent fault. Every writer has to ask.
- */
 export async function assertNoNameClash(opts: {
   to: Placement;
-  /** The names the thing being placed would answer to. */
   claims: string[];
-  /** The row being created or moved, excluded from its own check. */
   exceptId: string;
-  /** How to name the thing in the refusal. */
   subject: string;
 }): Promise<void> {
   const claims = opts.claims.map((c) => c.trim().toLowerCase()).filter(Boolean);
@@ -135,12 +104,6 @@ export async function assertNoNameClash(opts: {
   for (const claim of claims) {
     const owner = taken.get(claim);
     if (!owner) continue;
-    // Say WHICH name is free, not just that this one is taken: the refusal reaches
-    // a non-expert who now has to open a compose file, and "call it db-2" is a five
-    // second edit where "rename it" is a problem to solve. The import rewrites the
-    // name itself instead - it can, because it generated the file; a compose the
-    // user wrote is theirs, and renaming a service under them breaks the references
-    // inside it.
     let free = `${claim}-2`;
     for (let n = 2; taken.has(free); n++) free = `${claim}-${n}`;
     throw new Error(
@@ -152,12 +115,6 @@ export async function assertNoNameClash(opts: {
   }
 }
 
-/**
- * The names that WOULD collide if these apps landed on `to`, said rather than
- * refused. A delete cannot be turned down for a name collision - the environment
- * is going away either way - so its reparenting reports what it created instead of
- * failing or, worse, saying nothing.
- */
 export async function nameClashesOnMove(
   appIds: string[],
   to: Omit<Placement, "serverId">,
@@ -179,8 +136,6 @@ export async function nameClashesOnMove(
       ? composeNamesOnNetwork(row.compose)
       : [stackName(row.slug)];
     try {
-      // Each app keeps its OWN host: a network lives on one machine, so two apps
-      // landing in the same Environment from different servers do not collide.
       await assertNoNameClash({
         to: { ...to, serverId: row.serverId },
         claims,
@@ -195,9 +150,7 @@ export async function nameClashesOnMove(
 }
 
 /**
- * Serialise everything that checks a name against a network and then writes to it:
- * the check and the write are two statements, and the names live inside a compose
- * file with no unique constraint underneath to catch two concurrent moves.
+ * withNetworkLock serialises the check of a name against a network and the write to it.
  *
  * ponytail: per-process lock, so it serialises one control plane, not two against
  * one database. A Postgres advisory lock keyed the same way is the real fix.

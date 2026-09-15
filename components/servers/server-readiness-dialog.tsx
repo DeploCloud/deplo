@@ -29,20 +29,6 @@ import { gqlAction } from "@/lib/graphql-client";
 import { cn } from "@/lib/utils";
 import { DocsLink } from "@/components/ui/docs-link";
 
-/**
- * The readiness REPORT for one server. Nothing is persisted, which is why this
- * deliberately does NOT `router.refresh()`. A `runId` ref discards a response a
- * newer run has superseded. */
-
-/* ------------------------------------------------------------------ */
-/* Wire types                                                          */
-/* ------------------------------------------------------------------ */
-
-/**
- * Declared LOCALLY on purpose. The canonical types import `./agent-client`,
- * which is `server-only` and pulls in `@grpc/grpc-js`, so naming them from a
- * client component would drag the agent client into the browser bundle.
- */
 type ReadinessSeverity = "pass" | "info" | "warn" | "fail" | "skip";
 type ReadinessGroup =
   "agent" | "docker" | "routing" | "capacity" | "build" | "config";
@@ -85,10 +71,6 @@ const CHECK_READINESS = /* GraphQL */ `
     }
   }
 `;
-
-/* ------------------------------------------------------------------ */
-/* Presentation tables                                                 */
-/* ------------------------------------------------------------------ */
 
 const VERDICT_META: Record<
   ReadinessVerdict,
@@ -136,7 +118,6 @@ const SEVERITY_META: Record<
   skip: { icon: CircleHelp, tone: "text-muted-foreground/70" },
 };
 
-/** The counts row: only non-zero counts render, worst first. */
 const COUNTS: readonly {
   severity: ReadinessSeverity;
   label: string;
@@ -187,10 +168,6 @@ const GROUP_LABELS: Record<ReadinessGroup, string> = {
   config: "Deplo configuration",
 };
 
-/**
- * The honest caveats, in a tooltip rather than helper text: they qualify what
- * the whole group can prove, and a reader only needs them when they doubt a row.
- */
 const GROUP_INFO: Partial<Record<ReadinessGroup, string>> = {
   routing:
     'Deplo looks for a running container whose image or name contains "traefik", and bind-tests ports 80 and 443 on the host. It cannot tell whether that container is the one it installed.',
@@ -199,10 +176,6 @@ const GROUP_INFO: Partial<Record<ReadinessGroup, string>> = {
   build:
     "Supported means this server's agent knows how to run the build method. The images and binaries it needs are fetched on the first build that uses it - Deplo cannot check from here that they are already on the host.",
 };
-
-/* ------------------------------------------------------------------ */
-/* The dialog                                                          */
-/* ------------------------------------------------------------------ */
 
 export function ServerReadinessDialog({
   serverId,
@@ -220,11 +193,6 @@ export function ServerReadinessDialog({
   const [report, setReport] = React.useState<ReadinessReportRow | null>(null);
   const [error, setError] = React.useState<string | null>(null);
 
-  /**
-   * `reset` drops the previous report before probing. The OPEN path passes it,
-   * "Run again" does not, so rows stay on screen. It lives here rather than the
-   * effect body because setState from an effect is a cascading render.
-   */
   const run = React.useCallback(
     (opts?: { reset?: boolean }) => {
       const id = ++runId.current;
@@ -235,11 +203,9 @@ export function ServerReadinessDialog({
         const res = await gqlAction<{
           checkServerReadiness: ReadinessReportRow;
         }>(CHECK_READINESS, { id: serverId });
-        // A newer run, or a reopen, superseded this one; its answer is stale.
         if (id !== runId.current) return;
         setLoading(false);
         if (!res.ok) {
-          // The server's message, verbatim (e.g. "Server not found").
           setError(res.error);
           toast.error(res.error);
           return;
@@ -253,9 +219,6 @@ export function ServerReadinessDialog({
 
   React.useEffect(() => {
     if (!open) return;
-    // Opening the dialog IS the probe - it synchronises with an external system (the
-    // owning server's agent), and `run` manages its own state. Same shape, and the
-    // same scoped exemption, as the repo-picker's load-on-change effect.
     // eslint-disable-next-line react-hooks/set-state-in-effect
     run({ reset: true });
   }, [open, run]);
@@ -282,9 +245,6 @@ export function ServerReadinessDialog({
           className="grid grid-cols-[minmax(0,1fr)] gap-4"
           scroll={false}
         >
-          {/* On a re-run the previous report stays below this banner: a probe that is
-            still in flight has nothing better to show, and blanking the rows would
-            throw away the answer the operator is comparing against. */}
           {loading ? (
             <div className="flex items-center justify-center gap-2 py-8 text-sm text-muted-foreground">
               <Loader2 className="size-4 animate-spin" />

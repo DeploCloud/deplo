@@ -9,10 +9,6 @@ import {
 } from "./thresholds";
 import type { ServerMetrics } from "../data/monitoring";
 
-/**
- * The resource detector, evaluated without a dispatcher.
- */
-
 beforeEach(() => __resetThresholds());
 
 function sample(over: Partial<ServerMetrics> = {}): ServerMetrics {
@@ -71,13 +67,9 @@ test("disk gets its own key, because the answer is different", () => {
 test("a value inside the hysteresis band does not announce a recovery", () => {
   evaluate(sample({ cpu: 91 }), 0);
   evaluate(sample({ cpu: 91 }), SUSTAIN_MS + 1);
-  // 89 is under the limit but still inside the band. 91 -> 89 -> 91 must not
-  // flap the alert closed and open again; the condition is simply still on.
   assert.deepEqual(evaluate(sample({ cpu: 89 }), SUSTAIN_MS + 2), []);
   const stillHigh = evaluate(sample({ cpu: 91 }), SUSTAIN_MS + 3);
   assert.equal(stillHigh[0]?.dedupe.state, "high");
-  // Repeating "high" is what the cooldown throttles into an hourly re-nag
-  // (cooldown.test.ts) - what matters here is that it never becomes an "ok".
   assert.equal(
     stillHigh.some((a) => a.dedupe.state === "ok"),
     false,
@@ -94,7 +86,5 @@ test("falling below the clear band announces the recovery exactly once", () => {
 });
 
 test("a server that was never in trouble never reports a recovery", () => {
-  // The bug this guards: on the first frame after a restart, every healthy host
-  // in the fleet would otherwise announce itself "back to normal".
   assert.deepEqual(evaluate(sample({ cpu: 1, memPct: 1, diskPct: 1 }), 0), []);
 });

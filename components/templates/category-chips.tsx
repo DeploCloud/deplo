@@ -18,34 +18,22 @@ export interface ChipCategory {
   count: number;
 }
 
-/** `gap-2`, in pixels - the fit arithmetic has to know the gap it is spending. */
 const GAP = 8;
-/** Tailwind's `sm`. Below it the row scrolls and nothing is hidden. */
 const DESKTOP = 640;
-/** Reserved for the "More" trigger until it has been measured for real. */
 const MORE_FALLBACK = 96;
 
-/**
- * The category filter. A scrolling row on a phone, where the thumb already
- * swipes; on desktop the chips that fit stay chips and the rest fold into
- * "More", which also keeps the row exactly one line tall at every width.
- */
 export function CategoryChips({
   categories,
   active,
   onSelect,
 }: {
   categories: ChipCategory[];
-  /** Selected category slug, or "" for All. */
   active: string;
   onSelect: (slug: string) => void;
 }) {
   const rowRef = React.useRef<HTMLDivElement>(null);
   const moreRef = React.useRef<HTMLButtonElement>(null);
-  // Measured once, while every chip is still in the DOM, and reused after the
-  // row has been trimmed - a hidden chip can no longer report its own width.
   const widths = React.useRef<number[] | null>(null);
-  // null = show everything (the first paint, and every phone).
   const [fits, setFits] = React.useState<number | null>(null);
 
   const measure = React.useCallback(() => {
@@ -54,18 +42,16 @@ export function CategoryChips({
 
     if (widths.current === null) {
       const chips = row.querySelectorAll<HTMLElement>("[data-chip]");
-      if (chips.length !== categories.length) return; // not laid out yet
+      if (chips.length !== categories.length) return;
       widths.current = [...chips].map((c) => c.getBoundingClientRect().width);
     }
     const all = widths.current;
 
     if (window.innerWidth < DESKTOP) {
-      setFits(null); // the row scrolls; every chip stays reachable
+      setFits(null);
       return;
     }
 
-    // The All chip is not optional, it is how you clear the filter, so the
-    // budget starts after it.
     const allChip = row.querySelector<HTMLElement>("[data-all-chip]");
     const budget =
       row.clientWidth - (allChip?.getBoundingClientRect().width ?? 0) - GAP;
@@ -87,16 +73,12 @@ export function CategoryChips({
       setFits(null);
       return;
     }
-    // Something has to fold, so the trigger has to be paid for too.
     const moreWidth =
       moreRef.current?.getBoundingClientRect().width ?? MORE_FALLBACK;
     setFits(Math.max(0, countThatFit(budget - GAP - moreWidth)));
   }, [categories.length]);
 
   React.useEffect(() => {
-    // Next frame, not this one: the first measurement has to read a laid-out
-    // row, and measuring straight from the effect would also set state inside
-    // the render that scheduled it.
     const frame = requestAnimationFrame(measure);
     const row = rowRef.current;
     if (!row || typeof ResizeObserver === "undefined")
@@ -112,8 +94,6 @@ export function CategoryChips({
   let shown = fits === null ? categories : categories.slice(0, fits);
   let hidden = fits === null ? [] : categories.slice(fits);
 
-  // A filter you cannot see you applied is worse than one chip fewer: if the
-  // selection folded into the menu, trade the last visible chip for it.
   const activeHidden = active && hidden.some((c) => c.slug === active);
   if (activeHidden) {
     const picked = hidden.find((c) => c.slug === active)!;
@@ -126,8 +106,6 @@ export function CategoryChips({
       ref={rowRef}
       className={cn(
         "flex items-center gap-2",
-        // Phone: one scrolling line, no bar. Desktop: nothing overflows, so
-        // there is nothing to scroll.
         fits === null
           ? "-mx-1 scrollbar-none overflow-x-auto px-1 pb-1"
           : "min-w-0",

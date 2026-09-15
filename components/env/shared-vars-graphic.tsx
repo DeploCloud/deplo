@@ -1,6 +1,5 @@
 import { cn } from "@/lib/utils";
 
-/** The Shared variables empty-state illustration: one definition at the top, streaming down three branches into three apps that light up as it lands. */
 export function SharedVarsGraphic({ className }: { className?: string }) {
   return (
     <svg

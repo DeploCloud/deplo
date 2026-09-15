@@ -45,7 +45,7 @@ It says the feature is not _finished_, and an unfinished feature costs more visi
 
 2. **The foundations stay, and they are the contract for the revival.** Kept deliberately:
    - `installed_plugins` (the table is **not** dropped - the feature returns without a migration),
-     plus `InstalledPlugin` in `lib/types.ts`;
+     plus `InstalledPlugin` in `lib/types/integration.ts`;
    - `lib/plugins/manifest.ts`: the catalog/manifest wire contract and the `${…}` placeholder
      grammar, pure and still tested;
    - `lib/plugins/runtime.ts`: naming, compose render, lifecycle and teardown, with its frozen

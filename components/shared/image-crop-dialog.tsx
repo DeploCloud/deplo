@@ -31,26 +31,10 @@ import {
   type CropView,
 } from "@/lib/apps/crop-geometry";
 
-/**
- * Choose what a picture is cropped to before it is saved. The preview is a CANVAS
- * drawn from {@link cropRect}, not an <img> under a CSS transform, so the preview
- * and the exported file come out of the same three numbers and cannot drift apart.
- */
-
-/** How big the working bitmap is allowed to get. A 24-megapixel phone photo is
- *  ~190 MB decoded and would be redrawn on every pointermove; 2048 keeps 1:1
- *  pixels up to 4x zoom on a 512px export and costs 16 MB. */
 const WORK_EDGE_PX = 2048;
 
-/** The preview's backing store. Twice the 320px frame, so it stays crisp on a
- *  2x display without a devicePixelRatio dance. */
 const PREVIEW_PX = 640;
 
-/**
- * Whether a picked LOGO should go through the dialog at all. WebP is the one type
- * that can be either, and a moving logo that came back still would be a silent
- * regression - so its header is read before deciding.
- */
 export async function isCroppableLogo(file: File): Promise<boolean> {
   if (
     !CROPPABLE_LOGO_TYPES.includes(
@@ -74,17 +58,9 @@ export function ImageCropDialog({
   onClose,
   onCropped,
 }: {
-  /** The picked file. Non-null OPENS the dialog - "a file is waiting" and "the
-   *  dialog is up" are the same fact, so there is no separate `open` prop. */
   file: File | null;
-  /**
-   * `avatar`: zoom 1 fills the square, 256px out, circular mask - a profile
-   * picture with transparent bars is the one outcome worth forbidding.
-   */
   variant?: "avatar" | "logo";
-  /** Cancel, Esc, a click outside, or a file that will not decode. */
   onClose: () => void;
-  /** A `data:image/webp;base64,...` square. The caller saves it. */
   onCropped: (dataUri: string) => void;
 }) {
   const mode = variant === "avatar" ? "cover" : "fit";
@@ -95,17 +71,11 @@ export function ImageCropDialog({
   const canvasRef = React.useRef<HTMLCanvasElement>(null);
   const bitmapRef = React.useRef<ImageBitmap | null>(null);
   const srcRef = React.useRef<CropSource | null>(null);
-  // The view lives in a ref and the canvas is painted by hand, so a pan has
-  // nothing for a re-render to do.
   const viewRef = React.useRef<CropView>({ cx: 0, cy: 0, zoom: 1 });
-  // Tagged with the file it came from, so a newly picked one is simply not
-  // "decoded" yet - no reset to write, and nothing stale to paint from.
   const [decoded, setDecoded] = React.useState<{
     file: File;
     source: CropSource;
   } | null>(null);
-  // The zoom is mirrored into state only because the slider is a controlled
-  // input - and a drag never moves it.
   const [zoom, setZoom] = React.useState(1);
   const src = decoded?.file === file ? decoded.source : null;
 
@@ -117,8 +87,6 @@ export function ImageCropDialog({
     const ctx = cv.getContext("2d");
     if (!ctx) return;
     const { sx, sy, size } = cropRect(viewRef.current, s);
-    // Load-bearing: in `fit` mode the padding is transparent, so without this
-    // the previous frame stays visible through it.
     ctx.clearRect(0, 0, cv.width, cv.height);
     ctx.drawImage(bmp, sx, sy, size, size, 0, 0, cv.width, cv.height);
   }, []);
@@ -132,14 +100,11 @@ export function ImageCropDialog({
     [draw],
   );
 
-  // Decode once per picked file, downscaling anything huge to a working copy.
   React.useEffect(() => {
     if (!file) return;
     let cancelled = false;
     void (async () => {
       try {
-        // `imageOrientation` is what turns a portrait phone photo the right way
-        // up; every formula downstream then reads already-rotated dimensions.
         let bmp = await createImageBitmap(file, {
           imageOrientation: "from-image",
         });
@@ -174,25 +139,17 @@ export function ImageCropDialog({
       bitmapRef.current?.close();
       bitmapRef.current = null;
       srcRef.current = null;
-      // Dropped together with the bitmap they describe: the same file picked
-      // twice would otherwise re-open with Save enabled over a bitmap that is
-      // no longer there, and a Save that quietly does nothing.
       setDecoded(null);
     };
-    // `onClose` is the caller's inline arrow and would re-run this every render.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [file, mode, apply]);
 
-  // Wheel by hand, not onWheel: React registers `wheel` on the root as passive,
-  // so preventDefault() there is a no-op and ctrl+wheel would zoom the browser.
   React.useEffect(() => {
     const el = surfaceRef.current;
     if (!el || !src) return;
     const onWheel = (e: WheelEvent) => {
       e.preventDefault();
       const r = el.getBoundingClientRect();
-      // deltaMode 1 is DOM_DELTA_LINE (Firefox): ~3 per notch, not ~100. exp()
-      // keeps zoom multiplicative, so up-then-down lands back where it started.
       const f = Math.exp(-e.deltaY * (e.deltaMode === 1 ? 0.03 : 0.002));
       apply(
         zoomTo(
@@ -218,13 +175,9 @@ export function ImageCropDialog({
     const pts = pointersRef.current;
     pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
     if (pts.size > 1) {
-      // A second finger joins the drag already in flight; the distance is only
-      // meaningful from the next move on.
       pinchRef.current = 0;
       return;
     }
-    // Snapshotted at press, like use-card-selection.ts: the frame cannot change
-    // mid-gesture, and measuring per move is layout thrash.
     const rect = e.currentTarget.getBoundingClientRect();
 
     const onMove = (ev: PointerEvent) => {
@@ -262,8 +215,6 @@ export function ImageCropDialog({
       window.removeEventListener("pointerup", onEnd);
       window.removeEventListener("pointercancel", onEnd);
     };
-    // On window, not the element: the drag survives the pointer leaving the
-    // dialog, and touch fires pointercancel when the OS takes the gesture.
     window.addEventListener("pointermove", onMove);
     window.addEventListener("pointerup", onEnd);
     window.addEventListener("pointercancel", onEnd);
@@ -298,7 +249,6 @@ export function ImageCropDialog({
         apply(zoomTo(viewRef.current, s, viewRef.current.zoom / 1.2));
         break;
       default:
-        // Tab must still leave and Esc must still close.
         return;
     }
     e.preventDefault();
@@ -316,12 +266,7 @@ export function ImageCropDialog({
       const ctx = canvas.getContext("2d");
       if (!ctx) throw new Error("no 2d context");
       const { sx, sy, size } = cropRect(viewRef.current, s);
-      // The source square may run past the bitmap in `fit` mode: drawImage
-      // clips source and destination in the same proportion, so the padding
-      // comes out transparent with no letterboxing math here.
       ctx.drawImage(bmp, sx, sy, size, size, 0, 0, edge, edge);
-      // A browser that cannot encode WebP answers with a PNG data-URI, which
-      // both validators accept and which keeps the alpha - no fallback branch.
       onCropped(canvas.toDataURL("image/webp", 0.85));
     } catch {
       toast.error("Could not read that image");
@@ -359,11 +304,8 @@ export function ImageCropDialog({
                 height={PREVIEW_PX}
                 className="size-full"
               />
-              {/* Rule of thirds: two elements, four lines, exact thirds. */}
               <div className="pointer-events-none absolute inset-y-0 left-1/3 w-1/3 border-x border-ring" />
               <div className="pointer-events-none absolute inset-x-0 top-1/3 h-1/3 border-y border-ring" />
-              {/* The mask: the spread paints everything outside the shape in the
-                  dialog's own colour, and the parent's overflow-hidden clips it. */}
               <div
                 className={cn(
                   "pointer-events-none absolute inset-0 shadow-[0_0_0_9999px_var(--card)] ring-1 ring-border",

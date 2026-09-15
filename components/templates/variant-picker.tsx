@@ -10,36 +10,25 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 
-/** One deployable variant of the family, plus the URL that selects it. */
 export interface VariantOption {
   slug: string;
   name: string;
   href: string;
 }
 
-/**
- * Which variant of a template family the page shows; only rendered when there is
- * more than one. The choice rides `?variant=` and `replace`s rather than
- * `push`es, because picking a variant refines the page you are on. It starts on
- * the family DEFAULT, which is the variant the page is already describing. */
 export function VariantPicker({
   variants,
   selected,
 }: {
   variants: VariantOption[];
-  /** The variant the page is showing - the family default until one is picked. */
   selected: string;
 }) {
   const router = useRouter();
   const [, startTransition] = React.useTransition();
-  // The trigger says what was clicked while the RSC navigation is in flight; React
-  // drops the optimistic value once the transition lands and `selected` is the
-  // server's answer.
   const [shown, showOptimistically] = React.useOptimistic(selected);
 
   return (
     <Select
-      // Radix reserves the empty string, so "nothing chosen" is `undefined`.
       value={shown || undefined}
       onValueChange={(slug) => {
         const next = variants.find((v) => v.slug === slug);

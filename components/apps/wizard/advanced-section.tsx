@@ -6,16 +6,10 @@ import { ChevronDown } from "lucide-react";
 import { Collapse } from "@/components/shared/collapse";
 import { cn } from "@/lib/utils";
 
-/**
- * The wizard's one collapsed drawer. Everything a first deploy does not need to
- * decide lives here, with its summary on the trigger so nobody has to open it to
- * find out where the app lands.
- */
 export function AdvancedSection({
   summary,
   children,
 }: {
-  /** What the closed drawer already tells you, e.g. the target server. */
   summary?: React.ReactNode;
   children: React.ReactNode;
 }) {
@@ -50,7 +44,6 @@ export function AdvancedSection({
   );
 }
 
-/** One titled block inside the drawer - the same rule-and-label the build fields use. */
 export function AdvancedGroup({
   title,
   children,

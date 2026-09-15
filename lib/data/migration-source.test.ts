@@ -13,25 +13,16 @@ import {
   SERVER_1,
   TRUNCATE_PROJECT_GRAPH,
 } from "./app-graph-test-helpers";
-import {
-  addServer,
-  listServersForTeam,
-  getPrimaryServer,
-  updateServerAgent,
-} from "./servers";
-import { updateAppSource } from "./apps";
+import { updateServerAgent } from "./servers/agent-maintenance";
+import { addServer } from "./servers/enrollment";
+import { listServersForTeam, getPrimaryServer } from "./servers/roster";
+import { updateAppSource } from "./apps/source";
 import { setAppPreviewSettings } from "./previews";
-import { createDestination } from "./destinations";
-import { runCleanupNow } from "./docker-cleanup";
+import { createDestination } from "./destinations/create";
+import { runCleanupNow } from "./docker-cleanup/sweep";
 import { checkServerReadiness } from "./server-readiness";
-import { servers as serversTable } from "../db/schema/control-plane";
+import { servers as serversTable } from "../db/schema/control-plane/servers";
 import { eq } from "drizzle-orm";
-
-/**
- * A MIGRATION SOURCE is not a server you have - it is a server you are LEAVING.
- * Deplo installs an agent on the other platform's host because a volume can only
- * be read by the agent standing on the disk that holds it.
- */
 
 let db: TestDb;
 let pg: PGlite;
@@ -42,9 +33,6 @@ before(async () => {
   ({ db, pg } = await makeTestDb());
   __setTestDb(db);
   process.env.DEPLO_PUBLIC_URL = "https://deplo.test";
-  // Pin what this instance believes its own address is: addServer refuses a
-  // migration source registered on the Deplo host, and without this the guard
-  // would compare against whatever NICs the runner happens to have.
   process.env.DEPLO_SERVER_IP = "192.0.2.200";
 });
 
@@ -62,17 +50,14 @@ beforeEach(async () => {
       { id: USER_2, teamId: TEAM_B, role: "owner" },
     ],
   });
-  await seedServer(db); // SERVER_1: an ordinary host, all teams
+  await seedServer(db);
 });
 
-/** The other team's owner, to prove a migration source is invisible outside the
- *  one team that is migrating. */
 const USER_2 = "user_2";
 
 const asTeamA = <T>(fn: () => Promise<T>): Promise<T> =>
   runWithIdentity({ userId: USER_1, teamId: TEAM_A }, fn);
 
-/** Register one the way the import wizard does, and give it a live agent. */
 async function migrationSource(host = HOST): Promise<string> {
   const { server } = await asTeamA(() =>
     addServer({ name: "dokploy-host", host, importOnly: true }),
@@ -86,9 +71,6 @@ async function migrationSource(host = HOST): Promise<string> {
 
 test("a migration source belongs to the team that is migrating, and to no other", async () => {
   const id = await migrationSource();
-  // Servers are the one cross-team resource and default to all_teams - which
-  // would put the machine somebody is migrating from, by name and address, in
-  // every other team's picker.
   const mine = await listServersForTeam(TEAM_A);
   assert.ok(
     mine.some((s) => s.id === id),
@@ -139,8 +121,6 @@ test("previews cannot be pinned to a migration source", async () => {
 });
 
 test("a migration source is never the team's primary server", async () => {
-  // "Primary" is the default place to put something, and a caller that takes it
-  // would be aiming at a host that refuses everything.
   const id = await migrationSource();
   await db.delete(serversTable).where(eq(serversTable.id, SERVER_1));
   await asTeamA(async () => {
@@ -165,9 +145,6 @@ test("backups are never stored on a migration source", async () => {
 });
 
 test("Deplo does not reclaim disk on a machine it is only importing from", async () => {
-  // The manual sweep, which is reachable from the API and from MCP - the
-  // scheduler's own filter does not cover it. A prune there would delete the
-  // other platform's images while it is running on them.
   const id = await migrationSource();
   await assert.rejects(
     () => asTeamA(() => runCleanupNow(id)),
@@ -176,9 +153,6 @@ test("Deplo does not reclaim disk on a machine it is only importing from", async
 });
 
 test("readiness is not a question asked of a migration source", async () => {
-  // It has no Traefik of ours and something else owns :80 - both true, both
-  // normal, and reporting them as findings would describe a healthy machine as
-  // broken.
   const id = await migrationSource();
   await assert.rejects(
     () => asTeamA(() => checkServerReadiness(id)),
@@ -187,8 +161,6 @@ test("readiness is not a question asked of a migration source", async () => {
 });
 
 test("the agent on a migration source is not upgraded, it is removed", async () => {
-  // Upgrading an agent is maintenance of a host we run. This one we do not - and
-  // the only thing that ever happens to its agent is that it goes away.
   const id = await migrationSource();
   await assert.rejects(
     () => asTeamA(() => updateServerAgent(id)),

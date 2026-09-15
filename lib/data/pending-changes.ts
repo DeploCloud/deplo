@@ -3,19 +3,15 @@ import "server-only";
 import { and, eq, inArray } from "drizzle-orm";
 
 import { getDb } from "../db/client";
+import { apps as appsTable } from "../db/schema/control-plane/apps";
 import {
-  apps as appsTable,
   sharedEnvVars as varsTable,
   sharedEnvVarApps as appJunction,
   sharedEnvVarTeams as teamJunction,
-} from "../db/schema/control-plane";
+} from "../db/schema/control-plane/env-vars";
 import { nowIso } from "../ids";
 import { requireAppCapability } from "./node-access";
 
-/**
- * Stamp apps whose saved config is not live yet. Not a gate: every caller has
- * already passed its own capability check, and the stamp only drives a banner.
- */
 export async function markPendingChanges(appIds: string[]): Promise<void> {
   if (appIds.length === 0) return;
   await getDb()
@@ -24,10 +20,6 @@ export async function markPendingChanges(appIds: string[]): Promise<void> {
     .where(inArray(appsTable.id, appIds));
 }
 
-/**
- * The apps one shared variable reaches: its per-app links (ADR-0012), plus every
- * app of every team it auto-injects into.
- */
 export async function markPendingChangesForSharedVar(
   varId: string,
 ): Promise<void> {
@@ -64,10 +56,6 @@ export async function markPendingChangesForSharedVar(
     );
 }
 
-/**
- * Clear the stamp without deploying: the change was undone, or it was never one a
- * deploy has to carry. A hint, not a fact about the running stack.
- */
 export async function dismissPendingChanges(appId: string): Promise<void> {
   const { teamId } = await requireAppCapability(appId, "manage_env");
   await getDb()

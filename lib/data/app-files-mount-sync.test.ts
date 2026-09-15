@@ -6,7 +6,7 @@ import { eq } from "drizzle-orm";
 
 import { makeTestDb, type TestDb } from "../db/test-harness";
 import { __setTestDb, __resetTestDb } from "../db/client";
-import { appMounts as appMountsTable } from "../db/schema/control-plane";
+import { appMounts as appMountsTable } from "../db/schema/control-plane/apps";
 import { runWithIdentity } from "../auth/request-context";
 import { seedIdentity, TEAM_A, USER_1 } from "./identity-test-helpers";
 import {
@@ -14,13 +14,8 @@ import {
   seedApp,
   TRUNCATE_PROJECT_GRAPH,
 } from "./app-graph-test-helpers";
-import { __setAgentConnectorForTest } from "../infra/agent-client";
+import { __setAgentConnectorForTest } from "../infra/agent-client/connect";
 import { writeAppFile } from "./app-files";
-
-/**
- * A compose stack's config files live in `app_mounts` and the agent re-writes them
- * from there on EVERY bring-up.
- */
 
 let db: TestDb;
 let pg: PGlite;
@@ -36,15 +31,13 @@ const entry = (path: string) => ({
 before(async () => {
   ({ db, pg } = await makeTestDb());
   __setTestDb(db);
-  // The agent is a stub: this is about what the DATABASE does after each write,
-  // and the containment rules already have their own tests against a real tree.
   __setAgentConnectorForTest(
     async () =>
       ({
         writeFile: async (_s: string, path: string) => entry(path),
         close: () => {},
       }) as unknown as Awaited<
-        ReturnType<typeof import("../infra/agent-client").connectAgent>
+        ReturnType<typeof import("../infra/agent-client/connect").connectAgent>
       >,
   );
 });
@@ -87,7 +80,6 @@ test("editing a config file updates the copy the deploy writes back", async () =
   );
 });
 
-// An ordinary file in the tree is not a config file, and must not become one.
 test("a file that is not a config file leaves the rows alone", async () => {
   await asUser(() => writeAppFile("prj_web", "notes.txt", "hello"));
   assert.deepEqual(

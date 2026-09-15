@@ -9,8 +9,8 @@ import { __setTestDb, __resetTestDb } from "../db/client";
 import {
   membershipCapabilities as membershipCapabilitiesTable,
   memberships as membershipsTable,
-  teams as teamsTable,
-} from "../db/schema/control-plane";
+} from "../db/schema/control-plane/access-control";
+import { teams as teamsTable } from "../db/schema/control-plane/identity";
 import { capabilitiesForRole } from "../membership-shared";
 import { runWithIdentity } from "../auth/request-context";
 import {
@@ -18,12 +18,8 @@ import {
   TRUNCATE_IDENTITY,
   TEAM_A,
 } from "./identity-test-helpers";
-import { removeMember } from "./members";
+import { removeMember } from "./members/removal";
 import { transferTeamOwnership } from "./team-ownership";
-
-/**
- * Handing a team over - the one write that ever moves `teams.founder_user_id`.
- */
 
 let db: TestDb;
 let pg: PGlite;
@@ -50,7 +46,6 @@ beforeEach(async () => {
 const asUser = <T>(userId: string, fn: () => Promise<T>): Promise<T> =>
   runWithIdentity({ userId, teamId: TEAM_A }, fn);
 
-/** The founder, a second (assigned) owner, and a plain member. */
 async function seedTeam(opts: { suspendOwner?: boolean } = {}) {
   await seedIdentity(db, {
     teams: [{ id: TEAM_A, slug: "alpha", founderUserId: FOUNDER }],
@@ -106,13 +101,6 @@ test("a wrong password refuses the transfer", async () => {
   assert.equal(await founderOf(TEAM_A), FOUNDER);
 });
 
-/**
- * The crown IS full access, so a plain member can receive it - the transfer puts
- * them on the Owner role itself. Requiring the rank up front blocked nothing (the
- * same admin grants it with one click) and allowed the incoherent end state this
- * asserts against: a crowned member who reaches only part of their own team, and
- * whose permissions no one is allowed to widen ever again.
- */
 test("a plain member is put on the Owner role by the transfer", async () => {
   await seedTeam();
   await asUser(FOUNDER, () =>
@@ -142,7 +130,6 @@ test("a plain member is put on the Owner role by the transfer", async () => {
   assert.equal(m.custom, false);
   assert.notEqual(m.roleId, null);
 
-  // The effective set every authorization check reads is the Owner one.
   const caps = await db
     .select({ capability: membershipCapabilitiesTable.capability })
     .from(membershipCapabilitiesTable)
@@ -184,15 +171,6 @@ test("somebody outside the team can't be handed it", async () => {
   assert.equal(await founderOf(TEAM_A), FOUNDER);
 });
 
-/* ------------------------------------------------------------------ */
-/* The crown actually moves                                            */
-/* ------------------------------------------------------------------ */
-
-/**
- * The column changing is not the point - every founder guard reading it is. So
- * this drives the invariant from the other side: after the transfer the NEW
- * founder is the unremovable one, and the old one is just an owner again.
- */
 test("after the transfer, protection follows the crown", async () => {
   await seedTeam();
   await asUser(FOUNDER, () =>
@@ -200,7 +178,6 @@ test("after the transfer, protection follows the crown", async () => {
   );
 
   await asUser(OWNER, async () => {
-    // The new founder is protected by the guard that used to protect FOUNDER.
     await assert.rejects(
       () =>
         runWithIdentity({ userId: FOUNDER, teamId: TEAM_A }, () =>
@@ -208,7 +185,6 @@ test("after the transfer, protection follows the crown", async () => {
         ),
       /primary owner can't be removed/,
     );
-    // And the ex-founder is now an ordinary owner: removable by the new one.
     await removeMember(FOUNDER);
   });
 });

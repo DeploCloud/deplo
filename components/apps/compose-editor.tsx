@@ -23,7 +23,10 @@ import {
   completionKeymap,
   type CompletionSource,
 } from "@codemirror/autocomplete";
-import { lintCompose, type LintDiagnostic } from "@/lib/deploy/compose-lint";
+import {
+  lintCompose,
+  type LintDiagnostic,
+} from "@/lib/deploy/compose-lint/lint";
 import { imageCompletionSource } from "@/components/apps/compose-image-complete";
 import {
   deploSyntaxHighlighting,
@@ -32,11 +35,6 @@ import {
   yamlExtensions,
 } from "@/components/apps/editor-theme";
 
-/**
- * CodeMirror-based docker-compose editor with live, client-side linting.
- */
-
-/** Convert one Deplo lint diagnostic to a CodeMirror Diagnostic with offsets. */
 function toCmDiagnostic(
   view: EditorView,
   d: LintDiagnostic,
@@ -44,8 +42,6 @@ function toCmDiagnostic(
   const doc = view.state.doc;
   const lineNo = Math.min(Math.max(d.line, 1), doc.lines);
   const line = doc.line(lineNo);
-  // Highlight the whole line (minus leading indent) when no column, else from
-  // the column to end of line - enough to make the marker findable.
   const from = d.column
     ? Math.min(line.from + d.column - 1, line.to)
     : line.from;
@@ -72,7 +68,6 @@ const composeLinter = linter(
 export interface ComposeEditorProps {
   value: string;
   onChange: (value: string) => void;
-  /** Surfaced so the parent can show a summary / disable save on errors. */
   onDiagnostics?: (diagnostics: LintDiagnostic[]) => void;
   placeholder?: string;
   minHeight?: number;
@@ -89,8 +84,6 @@ export function ComposeEditor({
 }: ComposeEditorProps) {
   const hostRef = React.useRef<HTMLDivElement | null>(null);
   const viewRef = React.useRef<EditorView | null>(null);
-  // Keep the latest callbacks without forcing the editor to rebuild. Updated in
-  // an effect (not during render) so the editor reads the current closures.
   const onChangeRef = React.useRef(onChange);
   const onDiagnosticsRef = React.useRef(onDiagnostics);
   React.useEffect(() => {
@@ -98,7 +91,6 @@ export function ComposeEditor({
     onDiagnosticsRef.current = onDiagnostics;
   });
 
-  // A stable Compartment for the height theme, created once.
   const [heightComp] = React.useState(() => new Compartment());
 
   React.useEffect(() => {
@@ -151,19 +143,15 @@ export function ComposeEditor({
 
     const view = new EditorView({ state, parent: hostRef.current });
     viewRef.current = view;
-    // Emit an initial lint pass so the parent's summary is populated on mount.
     onDiagnosticsRef.current?.(lintCompose(value));
 
     return () => {
       view.destroy();
       viewRef.current = null;
     };
-    // Build the editor once; external value sync is handled in the effect below.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Push controlled value changes in from outside (e.g. a reset) without
-  // clobbering the user's cursor while they type the same value back.
   React.useEffect(() => {
     const view = viewRef.current;
     if (!view) return;

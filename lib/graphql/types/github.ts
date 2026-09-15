@@ -6,7 +6,7 @@ import {
   type GithubAppDTO,
   type GithubInstallationDTO,
 } from "@/lib/data/github";
-import { assertUser } from "@/lib/auth";
+import { assertUser } from "@/lib/auth/current-user";
 import {
   resolveManifestBaseUrl,
   PUBLIC_URL_PLACEHOLDER,
@@ -22,19 +22,11 @@ import {
   type GithubRepoSummary,
 } from "@/lib/github/app";
 
-/**
- * The start of the GitHub App manifest flow: the GitHub URL to POST to plus the
- * manifest the browser submits and the signed CSRF state echoed to our callback.
- */
 interface GithubConnectStart {
   actionUrl: string;
   manifest: string;
   state: string;
 }
-
-/* ------------------------------------------------------------------ */
-/* Object types                                                        */
-/* ------------------------------------------------------------------ */
 
 const GithubInstallationRef = builder
   .objectRef<GithubInstallationDTO>("GithubInstallation")
@@ -72,7 +64,6 @@ export const GithubAppRef = builder
     }),
   });
 
-/** Repositories accessible to an installation (for source pickers). */
 const GithubRepoRef = builder
   .objectRef<GithubRepoSummary>("GithubRepo")
   .implement({
@@ -98,10 +89,6 @@ const GithubConnectStartRef = builder
       state: t.exposeString("state"),
     }),
   });
-
-/* ------------------------------------------------------------------ */
-/* Queries                                                             */
-/* ------------------------------------------------------------------ */
 
 builder.queryFields((t) => ({
   githubApps: t.field({
@@ -141,10 +128,6 @@ builder.queryFields((t) => ({
   }),
 }));
 
-/* ------------------------------------------------------------------ */
-/* Mutations (every GitHub server action)                              */
-/* ------------------------------------------------------------------ */
-
 builder.mutationFields((t) => ({
   startGithubConnect: t.field({
     type: GithubConnectStartRef,
@@ -161,8 +144,6 @@ builder.mutationFields((t) => ({
     },
     resolve: async (_r, { org, returnTo }): Promise<GithubConnectStart> => {
       const user = await assertUser();
-      // The manifest base is baked permanently into the App on GitHub, so it
-      // must be an explicit, externally-reachable URL, never a host guess.
       const base = resolveManifestBaseUrl();
       if (base === PUBLIC_URL_PLACEHOLDER) {
         throw new Error(

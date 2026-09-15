@@ -2,21 +2,10 @@
 
 import * as React from "react";
 
-/** A panel body caps here so its footer stays on screen and the whole modal
- *  stays inside its 85vh box - the chrome (header + tabs + footer) is ~14rem. */
 export const PANEL_BODY_MAX = "max-h-[calc(85vh-14rem)]";
 
-/** The same, for a track nested INSIDE a panel of another one: the chrome is a
- *  back row and a second header taller (measured 276px), so the outer 14rem
- *  allowance overflows the modal and clips the inner footer. */
 export const PANEL_BODY_MAX_NESTED = "max-h-[calc(85vh-18rem)]";
 
-/**
- * Panels on ONE horizontal track that slides between them, with the viewport's
- * height easing to whichever panel is showing - so the slide glides instead of
- * jumping. Every panel stays mounted (that is what makes the slide possible);
- * the ones off-screen are `inert`.
- */
 export function SlidingPanels<T extends string>({
   panels,
   current,
@@ -34,8 +23,6 @@ export function SlidingPanels<T extends string>({
   const [heights, setHeights] = React.useState<Partial<Record<T, number>>>({});
   const height = heights[current] || undefined;
 
-  // Created once (lazy state init, so `new ResizeObserver` never runs on the
-  // server); a single instance keeps every panel measured.
   const [observer] = React.useState<ResizeObserver | null>(() =>
     typeof ResizeObserver === "undefined"
       ? null
@@ -54,7 +41,6 @@ export function SlidingPanels<T extends string>({
   );
   React.useEffect(() => () => observer?.disconnect(), [observer]);
 
-  // Measure on attach and observe for later size changes; unobserve on detach.
   const registerPanel = React.useCallback(
     (t: T) => (el: HTMLElement | null) => {
       const prev = els.current[t];

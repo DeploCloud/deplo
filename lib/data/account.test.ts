@@ -6,15 +6,10 @@ import { eq } from "drizzle-orm";
 
 import { makeTestDb, type TestDb } from "../db/test-harness";
 import { __setTestDb, __resetTestDb } from "../db/client";
-import { users as usersTable } from "../db/schema/control-plane";
+import { users as usersTable } from "../db/schema/control-plane/identity";
 import { runWithIdentity } from "../auth/request-context";
 import { seedIdentity, TEAM_A, USER_1 } from "./identity-test-helpers";
 import { updateProfile } from "./account";
-
-/**
- * The handle is instance-wide and unique, so a rename has to refuse a taken one
- * and an invalid one before it ever reaches the unique index.
- */
 
 let db: TestDb;
 let pg: PGlite;

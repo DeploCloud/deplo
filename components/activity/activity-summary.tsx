@@ -8,18 +8,16 @@ import { UserAvatar } from "@/components/shared/user-avatar";
 import { ACTIVITY_ICON, UNKNOWN_ACTIVITY_ICON } from "@/lib/activity-types";
 import { activityHref, type ActivityParams } from "@/lib/activity-filter";
 import { cn } from "@/lib/utils";
-import type { ActivityType, VarAuthor } from "@/lib/types";
+import type { ActivityType } from "@/lib/types/activity";
+import type { VarAuthor } from "@/lib/types/identity";
 
-/** One line of a block: something to narrow by, and how often it happened. */
 export interface SummaryCount {
   value: string;
   label: string;
   count: number;
-  /** People only. Null for the system bucket, which has no face. */
   author?: VarAuthor | null;
 }
 
-/** How many lines a block shows before "Show N more". */
 const SHOWN = 5;
 
 function toggled(values: string[], value: string): string[] {
@@ -28,10 +26,6 @@ function toggled(values: string[], value: string): string[] {
     : [...values, value];
 }
 
-/**
- * How the window breaks down, by kind of event and by person. Every line is a
- * filter: the counts and the feed answer the same question from two ends.
- */
 export function ActivitySummary({
   label,
   params,
@@ -40,7 +34,6 @@ export function ActivitySummary({
   people,
   className,
 }: {
-  /** The window the counts describe, stated because it need not match the feed. */
   label: string;
   params: ActivityParams;
   base?: string;
@@ -145,7 +138,6 @@ function Block({
               <Link
                 href={href(row.value)}
                 replace
-                // Ten variants of this page, none of them likely to be opened.
                 prefetch={false}
                 aria-current={on ? "true" : undefined}
                 className={cn(

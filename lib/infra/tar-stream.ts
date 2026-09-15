@@ -1,46 +1,17 @@
-/**
- * A minimal, streaming TAR reader - enough to pull ONE named entry out of an
- * archive that arrives as a sequence of chunks, without ever holding the whole
- * archive (or any entry we don't want) in memory.
- */
-
 const BLOCK_SIZE = 512;
-/** A meta entry (PAX/GNU long name) never legitimately exceeds this. */
 const MAX_META_BYTES = 64 * 1024;
 
-/** One regular-file entry surfaced by {@link tarEntries}. */
 export interface TarEntry {
-  /** POSIX path as written by the producer (prefix/long-name already applied). */
   name: string;
-  /** Byte length declared by the header. */
   size: number;
-  /**
-   * The entry's bytes, or null when the caller's `read` predicate declined it -
-   * declined entries are streamed past, never buffered.
-   */
   bytes: Buffer | null;
 }
 
 export interface TarEntriesOptions {
-  /**
-   * Decide whether an entry's bytes are worth buffering. Called once per regular
-   * file, BEFORE any of its data is read. Default: buffer nothing (metadata-only
-   * scan).
-   */
   read?: (entry: { name: string; size: number }) => boolean;
-  /**
-   * Give up (end the iteration) once this many raw archive bytes have been
-   * consumed. The guard that keeps a scan of an unexpectedly huge directory
-   * bounded. Default: unbounded.
-   */
   maxScanBytes?: number;
 }
 
-/**
- * A FIFO of byte chunks that hands out exact-length slices without re-copying
- * the backlog on every push (the naive `Buffer.concat` per chunk is quadratic
- * over a large archive).
- */
 class ByteQueue {
   private chunks: Buffer[] = [];
   private queued = 0;
@@ -55,7 +26,6 @@ class ByteQueue {
     this.queued += chunk.length;
   }
 
-  /** Remove and return exactly `n` bytes, or null when fewer are queued. */
   take(n: number): Buffer | null {
     if (n > this.queued) return null;
     if (n === 0) return Buffer.alloc(0);
@@ -78,7 +48,6 @@ class ByteQueue {
     return out;
   }
 
-  /** Drop up to `n` bytes; returns how many were actually dropped. */
   drop(n: number): number {
     let dropped = 0;
     while (dropped < n && this.chunks.length > 0) {
@@ -104,17 +73,12 @@ interface RawHeader {
   type: string;
 }
 
-/** Read a NUL-terminated ASCII field. */
 function readString(block: Buffer, start: number, length: number): string {
   const raw = block.subarray(start, start + length);
   const end = raw.indexOf(0);
   return raw.subarray(0, end === -1 ? raw.length : end).toString("latin1");
 }
 
-/**
- * Read a numeric header field. Returns -1 for a field we can't trust - the caller
- * treats that as a corrupt archive rather than guessing a length.
- */
 function readNumber(block: Buffer, start: number, length: number): number {
   const raw = block.subarray(start, start + length);
   if (raw.length > 0 && (raw[0] & 0x80) !== 0) {
@@ -132,16 +96,11 @@ function readNumber(block: Buffer, start: number, length: number): number {
   return Number.isSafeInteger(value) ? value : -1;
 }
 
-/** Whether every byte of a block is zero (the archive's end marker). */
 function isZeroBlock(block: Buffer): boolean {
   for (let i = 0; i < block.length; i++) if (block[i] !== 0) return false;
   return true;
 }
 
-/**
- * Validate a header block's checksum: the sum of its bytes with the checksum field
- * itself read as spaces.
- */
 function checksumOk(block: Buffer): boolean {
   const stored = readNumber(block, 148, 8);
   if (stored < 0) return false;
@@ -162,20 +121,16 @@ function parseHeader(block: Buffer): RawHeader | null {
   const magic = readString(block, 257, 6);
   return {
     name: readString(block, 0, 100),
-    // The `prefix` field only means anything under ustar/GNU magic.
     prefix: magic.startsWith("ustar") ? readString(block, 345, 155) : "",
     size,
     type: String.fromCharCode(block[156] || 0x30),
   };
 }
 
-/**
- * The `path=` override out of a PAX record blob, or null when absent.
- */
 function paxPath(data: Buffer): string | null {
   let offset = 0;
   while (offset < data.length) {
-    const space = data.indexOf(0x20, offset); // " "
+    const space = data.indexOf(0x20, offset);
     if (space === -1) break;
     const length = Number(data.subarray(offset, space).toString("latin1"));
     if (!Number.isSafeInteger(length) || length <= 0) break;
@@ -192,11 +147,6 @@ function paxPath(data: Buffer): string | null {
   return null;
 }
 
-/**
- * Where the parser is: between entries (expecting a 512-byte header block), or
- * inside one's payload. `collected` is null for an entry whose bytes the caller
- * declined - its data is streamed past, never buffered.
- */
 type ParserState =
   | { kind: "header" }
   | {
@@ -209,15 +159,10 @@ type ParserState =
       collected: Buffer[] | null;
     };
 
-/** A regular file - `0`, the legacy NUL, and GNU's contiguous `7`. */
 function isRegularFile(type: string): boolean {
   return type === "0" || type === "\0" || type === "7";
 }
 
-/**
- * Iterate the regular-file entries of a tar stream, buffering only the entries the
- * `read` predicate accepts.
- */
 export async function* tarEntries(
   chunks: AsyncIterable<Uint8Array>,
   opts: TarEntriesOptions = {},
@@ -228,7 +173,6 @@ export async function* tarEntries(
 
   let scanned = 0;
   let zeroBlocks = 0;
-  /** Name carried by a preceding GNU `L` / PAX `path=` record, if any. */
   let overrideName: string | null = null;
   let state: ParserState = { kind: "header" };
 
@@ -241,14 +185,12 @@ export async function* tarEntries(
         const block = queue.take(BLOCK_SIZE);
         if (!block) break;
         if (isZeroBlock(block)) {
-          // Two consecutive zero blocks close the archive; a single one inside a
-          // padded stream is tolerated.
           if (++zeroBlocks >= 2) return;
           continue;
         }
         zeroBlocks = 0;
         const header = parseHeader(block);
-        if (!header) return; // corrupt / desynchronised - stop, never guess
+        if (!header) return;
         const name: string =
           overrideName ??
           (header.prefix ? `${header.prefix}/${header.name}` : header.name);
@@ -275,7 +217,7 @@ export async function* tarEntries(
 
       if (state.remaining > 0) {
         const available = Math.min(state.remaining, queue.length);
-        if (available === 0) break; // wait for the next chunk
+        if (available === 0) break;
         const part = queue.take(available)!;
         state.collected?.push(part);
         state.remaining -= available;
@@ -309,8 +251,6 @@ export async function* tarEntries(
         overrideName = entry.bytes ? paxPath(entry.bytes) : null;
         continue;
       }
-      // A global PAX header (`g`) applies to the whole archive and carries no
-      // per-entry name; anything else (dir, link, device) is skipped outright.
       overrideName = null;
       if (entry.type === "g" || !isRegularFile(entry.type)) continue;
       yield { name: entry.name, size: entry.size, bytes: entry.bytes };
@@ -320,24 +260,16 @@ export async function* tarEntries(
   }
 }
 
-/** Strip a single leading `./` so `./a/b` and `a/b` compare equal. */
 function normalizeEntryName(name: string): string {
   return name.replace(/^\.\/+/, "");
 }
 
 export interface ReadTarEntryOptions {
-  /** Archive-relative path to extract (a leading `./` is ignored on both sides). */
   name: string;
-  /** Refuse (and skip) a matching entry larger than this. */
   maxEntryBytes: number;
-  /** Stop scanning after this many raw archive bytes. */
   maxScanBytes: number;
 }
 
-/**
- * Pull ONE named entry's bytes out of a tar stream, or null when it isn't there
- * (or is bigger than `maxEntryBytes`, or the scan budget ran out first).
- */
 export async function readTarEntry(
   chunks: AsyncIterable<Uint8Array>,
   opts: ReadTarEntryOptions,

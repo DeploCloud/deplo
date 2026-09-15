@@ -1,15 +1,5 @@
-/**
- * The rule a variable name must satisfy, mirroring the server's
- * (`lib/data/env.ts`) so a bad key fails loudly in the form instead of at the
- * mutation.
- */
 export const KEY_RE = /^[A-Z_][A-Z0-9_]*$/i;
 
-/**
- * Parse `.env` text into KEY=VALUE pairs (skips blanks/comments; strips one layer
- * of surrounding quotes). Key validation is done server-side. Feeds the
- * Add-variable modal's paste-a-`.env` flow.
- */
 export function parseEnv(text: string): { key: string; value: string }[] {
   const out: { key: string; value: string }[] = [];
   for (const raw of text.split("\n")) {

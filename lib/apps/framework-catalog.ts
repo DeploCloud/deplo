@@ -1,15 +1,5 @@
-/**
- * The JavaScript frameworks Deplo recognises in an app's own source, and the one
- * thing it derives from each: the port that framework's production server listens
- * on out of the box.
- */
-import type { BuildMethod } from "../types";
+import type { BuildMethod } from "../types/build";
 
-/**
- * A recognised framework. Ids are stable - they are persisted on the app row and
- * key the brand marks in `components/shared/framework-icons.tsx`, so renaming one
- * silently drops the icon for every app already carrying it.
- */
 export type FrameworkId =
   | "nextjs"
   | "nuxt"
@@ -39,38 +29,13 @@ export type FrameworkId =
 
 export interface FrameworkDefinition {
   id: FrameworkId;
-  /** Display name, spelled the way the project spells it. */
   name: string;
-  /**
-   * `package.json` dependency names that identify it - ANY match is a hit.
-   * Read from `dependencies` + `devDependencies` only (a transitive dep is not a
-   * statement about what the app IS).
-   */
   dependencies: readonly string[];
-  /**
-   * Config filenames at the build root that identify it - ANY match is a hit.
-   * Lowercase, and matched only at the root (a `next.config.js` buried in an
-   * example dir says nothing about the app being deployed).
-   */
   files: readonly string[];
-  /**
-   * The port this framework's production server binds when nothing tells it
-   * otherwise.
-   */
   defaultPort: number;
-  /**
-   * For a framework whose production artifact is a DIRECTORY and that no builder
-   * serves: the directory to serve. Absent means the framework runs a server, or
-   * the builder already recognises it.
-   */
   staticOutput?: string;
 }
 
-/**
- * Every framework, in DETECTION PRIORITY ORDER - the first match wins, so the list
- * runs most-specific to least. Two orderings carry real weight: - Meta-frameworks
- * before the libraries they build on. - Frontend/fullstack before backend.
- */
 export const FRAMEWORKS: readonly FrameworkDefinition[] = [
   {
     id: "nextjs",
@@ -113,8 +78,6 @@ export const FRAMEWORKS: readonly FrameworkDefinition[] = [
     defaultPort: 3000,
   },
   {
-    // Remix v3 shipped as React Router v7 - a different framework name, same
-    // lineage, and it is what a repo scaffolded today carries.
     id: "react-router",
     name: "React Router",
     dependencies: [
@@ -138,7 +101,6 @@ export const FRAMEWORKS: readonly FrameworkDefinition[] = [
     name: "Gatsby",
     dependencies: ["gatsby"],
     files: ["gatsby-config.js", "gatsby-config.mjs", "gatsby-config.ts"],
-    // `gatsby serve` binds 9000, not the 8000 of `gatsby develop`.
     defaultPort: 9000,
     staticOutput: "public",
   },
@@ -184,9 +146,6 @@ export const FRAMEWORKS: readonly FrameworkDefinition[] = [
   {
     id: "solid",
     name: "SolidStart",
-    // SolidStart (a server), NOT a bare `solid-js` SPA: that one is a Vite
-    // project served by `vite preview`, so it belongs to Vite's entry and Vite's
-    // port. Same rule as Vue below.
     dependencies: ["@solidjs/start", "solid-start"],
     files: [],
     defaultPort: 3000,
@@ -200,7 +159,6 @@ export const FRAMEWORKS: readonly FrameworkDefinition[] = [
     staticOutput: "_site",
   },
   {
-    // Vue CLI specifically.
     id: "vue",
     name: "Vue",
     dependencies: ["@vue/cli-service"],
@@ -211,8 +169,6 @@ export const FRAMEWORKS: readonly FrameworkDefinition[] = [
   {
     id: "preact",
     name: "Preact",
-    // Bare `preact` is safe to name: every current Preact scaffold is a Vite
-    // project, so the port is the same either way.
     dependencies: ["preact"],
     files: [],
     defaultPort: 4173,
@@ -227,8 +183,6 @@ export const FRAMEWORKS: readonly FrameworkDefinition[] = [
   {
     id: "cra",
     name: "Create React App",
-    // `react-scripts`, never a bare `react`: every React meta-framework above
-    // depends on react, so the bare package identifies nothing.
     dependencies: ["react-scripts"],
     files: [],
     defaultPort: 3000,
@@ -238,8 +192,6 @@ export const FRAMEWORKS: readonly FrameworkDefinition[] = [
     name: "Vite",
     dependencies: ["vite"],
     files: ["vite.config.js", "vite.config.mjs", "vite.config.ts"],
-    // `vite preview` binds 4173 and ignores PORT - one of the two frameworks
-    // this whole registry exists to get right.
     defaultPort: 4173,
   },
   {
@@ -273,7 +225,6 @@ export const FRAMEWORKS: readonly FrameworkDefinition[] = [
   {
     id: "node",
     name: "Node.js",
-    // The catch-all: no dependency names it, the presence of a manifest does.
     dependencies: [],
     files: ["package.json"],
     defaultPort: 3000,
@@ -284,24 +235,16 @@ const BY_ID = new Map<string, FrameworkDefinition>(
   FRAMEWORKS.map((f) => [f.id, f]),
 );
 
-/** The definition for a stored id, or null when the id is unknown (an app row
- * written by a newer/older catalog than the one running). */
 export function frameworkById(
   id: string | null | undefined,
 ): FrameworkDefinition | null {
   return id ? (BY_ID.get(id) ?? null) : null;
 }
 
-/** Narrow an untrusted string to a catalog id. */
 export function isFrameworkId(value: string): value is FrameworkId {
   return BY_ID.has(value);
 }
 
-/**
- * The framework an app actually IS: the user's correction when they made one,
- * otherwise what the last deploy read from the source. has exactly one answer and
- * a stale override can never outlive being cleared.
- */
 export function effectiveFramework(app: {
   framework: string | null;
   frameworkOverride: string | null;
@@ -309,11 +252,6 @@ export function effectiveFramework(app: {
   return app.frameworkOverride ?? app.framework;
 }
 
-/**
- * Whether framework recognition applies to a build method at all. With a
- * Dockerfile or the static builder the user has already spelled the build out;
- * detection there would be a label that changes nothing.
- */
 export function supportsFrameworkDetection(method: BuildMethod): boolean {
   return method === "nixpacks" || method === "railpack";
 }

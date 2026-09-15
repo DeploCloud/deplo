@@ -3,30 +3,18 @@ import "server-only";
 import { and, eq, isNull } from "drizzle-orm";
 
 import { getDb } from "../db/client";
-import {
-  apps as appsTable,
-  databases as databasesTable,
-  instanceSettings,
-} from "../db/schema/control-plane";
+import { apps as appsTable } from "../db/schema/control-plane/apps";
+import { databases as databasesTable } from "../db/schema/control-plane/databases";
+import { instanceSettings } from "../db/schema/control-plane/instance";
 import { nowIso } from "../ids";
 import { recordActivity } from "../data/activity";
 import { requireInstanceAdmin } from "../membership";
-import { reapplyDatabaseNetwork } from "../data/databases";
+import { reapplyDatabaseNetwork } from "../data/databases/environment-move";
 import { usesAsHost } from "./cross-network";
-import { rerouteApp } from "./build";
+import { rerouteApp } from "./build/reroute";
 
-/**
- * Move every existing stack onto the network its placement owns - the one-time
- * migration from the single shared network.
- * https://deplo.build/docs/advanced/network-isolation
- *
- * Serial per host: this brings up every container on a machine. A stack that
- * cannot be moved is LEFT WHERE IT IS, so a failure is a delay, never an outage.
- */
 export async function runNetworkIsolationSweep(): Promise<void> {
   const db = getDb();
-  // Claim the sweep: one UPDATE, so a second control plane on the same database
-  // finds no unclaimed row and does nothing.
   const claimed = await db
     .update(instanceSettings)
     .set({ networkSweepAt: nowIso(), updatedAt: nowIso() })
@@ -51,7 +39,6 @@ export async function runNetworkIsolationSweep(): Promise<void> {
     .select({ id: databasesTable.id, serverId: databasesTable.serverId })
     .from(databasesTable);
 
-  // Group by host, then work one host at a time.
   const byServer = new Map<string, { apps: string[]; dbs: string[] }>();
   const bucket = (s: string) => {
     let b = byServer.get(s);
@@ -65,9 +52,6 @@ export async function runNetworkIsolationSweep(): Promise<void> {
   for (const [, work] of byServer) {
     for (const id of work.apps) {
       try {
-        // `deferred` is NOT success: a stopped or mid-deploy stack keeps running on
-        // the network it was created with, and the sweep only ever runs once. Left
-        // uncounted, the banner said every app had moved while some never did.
         if ((await rerouteApp(id)) === "deferred") {
           failed++;
           await recordActivity(
@@ -107,11 +91,6 @@ export async function runNetworkIsolationSweep(): Promise<void> {
   );
 }
 
-/**
- * Give each placement-less database the Environment that actually uses it, when
- * exactly one does. Ambiguous (two Environments) or unused stays at the team
- * level: guessing there would take a database away from half its callers.
- */
 async function placeDatabasesByUsage(): Promise<number> {
   const db = getDb();
   const loose = await db
@@ -125,9 +104,6 @@ async function placeDatabasesByUsage(): Promise<number> {
     .where(isNull(databasesTable.environmentId));
   if (loose.length === 0) return 0;
 
-  // Every app that could name one, with the Environment it would pull it into.
-  // Resolved ONCE per app: decrypting an app's env for each loose database in
-  // turn is the same answer computed N times.
   const users = await db
     .select({
       environmentId: appsTable.environmentId,
@@ -150,13 +126,8 @@ async function placeDatabasesByUsage(): Promise<number> {
 
   let placed = 0;
   for (const d of loose) {
-    // Every PLACEMENT that names this database, the team's top level included -
-    // skipping the top-level users read "one Environment uses it" while three apps
-    // outside every Environment did too, and the move took it away from them.
     const places = new Set<string>();
     for (const app of users) {
-      // Same TEAM and same HOST, or this would file one team's database into
-      // another team's Environment because both happened to use the name.
       if (app.teamId !== d.teamId || app.serverId !== d.serverId) continue;
       const h = haystack.get(app.id);
       if (!h) continue;
@@ -167,10 +138,6 @@ async function placeDatabasesByUsage(): Promise<number> {
     }
     const only = soleEnvironmentUsing(places);
     if (!only) {
-      // Used from two places at once, so there is no placement that keeps every
-      // caller: it stays at the team level and the apps in Environments stop
-      // resolving it. Said out loud - this is a one-time move nobody asked for,
-      // and the banner only counts stacks that failed to REROUTE.
       if (places.size > 1)
         await recordActivity(
           "database",
@@ -194,21 +161,14 @@ async function placeDatabasesByUsage(): Promise<number> {
   return placed;
 }
 
-/**
- * The Environment to file a loose database into: the one placement that names it,
- * and only when that placement IS an Environment. Two of them is ambiguous, and
- * the team's top level (`""`) is where it already sits - moving it there from
- * there is a no-op, and moving it AWAY from there takes it from its users.
- */
 export function soleEnvironmentUsing(places: Set<string>): string | null {
   if (places.size !== 1) return null;
   return [...places][0] || null;
 }
 
-/** An app's resolved env, or nothing when it cannot be read. */
 async function safeAppEnv(appId: string): Promise<Record<string, string>> {
   try {
-    const { appEnv } = await import("./build");
+    const { appEnv } = await import("./build/deploy-env");
     return await appEnv(appId);
   } catch {
     return {};
@@ -219,7 +179,6 @@ function message(e: unknown): string {
   return e instanceof Error ? e.message : String(e);
 }
 
-/** What the Overview banner reads: how many stacks the sweep left behind. */
 export async function networkSweepFailures(): Promise<number> {
   const row = (
     await getDb()
@@ -231,10 +190,7 @@ export async function networkSweepFailures(): Promise<number> {
   return row?.failed ?? 0;
 }
 
-/** Re-run the sweep - the banner's "Try again". */
 export async function retryNetworkIsolationSweep(): Promise<void> {
-  // The field's authScopes are a contract, not the boundary: this brings up every
-  // container on every host in the instance.
   await requireInstanceAdmin();
   await getDb()
     .update(instanceSettings)

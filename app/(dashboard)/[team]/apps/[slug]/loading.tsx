@@ -9,7 +9,6 @@ export default function Loading() {
       aria-busy
       aria-label="Loading app overview"
     >
-      {/* Production hero */}
       <Card>
         <CardHeader className="flex-row items-center justify-between space-y-0">
           <Skeleton className="h-5 w-44" />
@@ -17,7 +16,6 @@ export default function Loading() {
         </CardHeader>
         <CardContent>
           <div className="grid gap-6 md:grid-cols-2">
-            {/* Left column: domain, status, created */}
             <div className="space-y-4">
               <div className="space-y-1.5">
                 <Skeleton className="h-3 w-14" />
@@ -32,7 +30,6 @@ export default function Loading() {
                 <Skeleton className="h-4 w-48" />
               </div>
             </div>
-            {/* Right column: source (branch + commit message), build time, actions */}
             <div className="space-y-4">
               <div className="space-y-1.5">
                 <Skeleton className="h-3 w-14" />
@@ -52,7 +49,6 @@ export default function Loading() {
         </CardContent>
       </Card>
 
-      {/* Deployments */}
       <div className="space-y-3">
         <Skeleton className="h-6 w-36" />
         <div className="overflow-hidden rounded-xl border border-border">

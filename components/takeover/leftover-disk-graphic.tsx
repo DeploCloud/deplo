@@ -1,6 +1,5 @@
 import { cn } from "@/lib/utils";
 
-/** The old panel: stopped, and still taking its share of the machine's disk. */
 export function LeftoverDiskGraphic({ className }: { className?: string }) {
   return (
     <svg

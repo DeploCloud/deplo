@@ -5,10 +5,6 @@ import {
   type StorageFile,
 } from "@/lib/data/app-files";
 
-/* ------------------------------------------------------------------ */
-/* Object types                                                        */
-/* ------------------------------------------------------------------ */
-
 const StorageFileRef = builder
   .objectRef<StorageFile>("AppStorageFile")
   .implement({
@@ -17,16 +13,10 @@ const StorageFileRef = builder
       "yet is a normal answer rather than an error.",
     fields: (t) => ({
       path: t.exposeString("path"),
-      // "text" | "new" | "folder" | "binary" | "too-large".
       state: t.exposeString("state"),
-      // The body; always "" for anything but "text".
       text: t.exposeString("text"),
     }),
   });
-
-/* ------------------------------------------------------------------ */
-/* Queries                                                             */
-/* ------------------------------------------------------------------ */
 
 builder.queryFields((t) => ({
   appStorageFile: t.field({
@@ -43,10 +33,6 @@ builder.queryFields((t) => ({
     resolve: (_r, { appId, path }) => readAppStorageFile(appId, path),
   }),
 }));
-
-/* ------------------------------------------------------------------ */
-/* Mutations                                                           */
-/* ------------------------------------------------------------------ */
 
 builder.mutationFields((t) => ({
   writeAppFile: t.field({

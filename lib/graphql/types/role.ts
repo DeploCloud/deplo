@@ -1,19 +1,13 @@
 import { builder } from "../builder";
 import { RoleEnum, CapabilityEnum } from "./enums";
+import { resetRole } from "@/lib/data/roles/builtin-roles";
 import {
-  listRoles,
   createRole,
   updateRole,
-  resetRole,
   deleteRole,
-  type TeamRoleDTO,
-} from "@/lib/data/roles";
+} from "@/lib/data/roles/role-editing";
+import { listRoles, type TeamRoleDTO } from "@/lib/data/roles/role-list";
 
-/* ------------------------------------------------------------------ */
-/* Object types                                                        */
-/* ------------------------------------------------------------------ */
-
-/** What a scoped role reaches. Absent on a role that reaches the whole team. */
 const RoleScopeRef = builder
   .objectRef<{
     projectIds: string[];
@@ -78,16 +72,11 @@ export const TeamRoleRef = builder
     }),
   });
 
-/* ------------------------------------------------------------------ */
-/* Inputs                                                              */
-/* ------------------------------------------------------------------ */
-
 const RoleScopeInputType = builder.inputType("RoleScopeInput", {
   description:
     "The nodes a role reaches. Ticking a project, one of its environments or a folder covers everything inside it, now and later; omit the field entirely for the whole team.",
   fields: (t) => ({
     projectIds: t.stringList({ required: false }),
-    /** One environment of a project - the finest cut inside one. */
     environmentIds: t.stringList({ required: false }),
     folderIds: t.stringList({ required: false }),
     appIds: t.stringList({ required: false }),
@@ -98,7 +87,6 @@ const CreateRoleInputType = builder.inputType("CreateRoleInput", {
   fields: (t) => ({
     name: t.string({ required: true }),
     description: t.string({ required: false }),
-    // Omitted / empty ⇒ a view-only role. `view` is added server-side either way.
     capabilities: t.field({ type: [CapabilityEnum], required: false }),
     requireTwoFactor: t.boolean({ required: false }),
     scope: t.field({ type: RoleScopeInputType, required: false }),
@@ -112,17 +100,10 @@ const UpdateRoleInputType = builder.inputType("UpdateRoleInput", {
     description: t.string({ required: false }),
     capabilities: t.field({ type: [CapabilityEnum], required: false }),
     requireTwoFactor: t.boolean({ required: false }),
-    // Absent leaves the reach alone; present replaces it, and `{}` with no ids
-    // is a role that reaches nothing rather than one that reaches everything.
-    // Clearing a scope is `clearScope`, so "absent" can never mean "widen".
     scope: t.field({ type: RoleScopeInputType, required: false }),
     clearScope: t.boolean({ required: false }),
   }),
 });
-
-/* ------------------------------------------------------------------ */
-/* Queries                                                             */
-/* ------------------------------------------------------------------ */
 
 builder.queryFields((t) => ({
   teamRoles: t.field({
@@ -133,10 +114,6 @@ builder.queryFields((t) => ({
     resolve: () => listRoles(),
   }),
 }));
-
-/* ------------------------------------------------------------------ */
-/* Mutations                                                           */
-/* ------------------------------------------------------------------ */
 
 builder.mutationFields((t) => ({
   createRole: t.field({
@@ -173,9 +150,7 @@ builder.mutationFields((t) => ({
         description: input.description ?? null,
         capabilities: (input.capabilities ?? undefined) as never,
         requireTwoFactor: input.requireTwoFactor ?? false,
-        // Three states, not two: a scope to set, an explicit clear, or absent (leave the
-        // reach alone). Absent must never mean "widen", or every client that predates this
-        // field would quietly unlimit every role it renames.
+        // Absent must never mean "widen", or a client predating this field unlimits a role it renames.
         scope: input.clearScope
           ? null
           : input.scope

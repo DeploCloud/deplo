@@ -15,12 +15,8 @@ import { Badge } from "@/components/ui/badge";
 import { SimpleTooltip } from "@/components/ui/tooltip";
 import { CAPABILITY_META } from "@/lib/capabilities";
 import { cn } from "@/lib/utils";
-import type { Capability } from "@/lib/types";
+import type { Capability } from "@/lib/types/identity";
 
-/**
- * One MCP tool, flattened for the browser. Importing the table into a client
- * component instead would put every tool's query text in the bundle.
- */
 export interface McpToolSummary {
   name: string;
   title: string;
@@ -30,16 +26,12 @@ export interface McpToolSummary {
   destructive: boolean;
 }
 
-/**
- * What an agent can actually do, behind a link.
- */
 export function ToolsDialog({
   tools,
   highlight,
   trigger,
 }: {
   tools: McpToolSummary[];
-  /** Capabilities to mark as reached. Omitted ⇒ nothing is marked. */
   highlight?: string[];
   trigger: React.ReactNode;
 }) {
@@ -133,8 +125,6 @@ function ToolRow({
   tool: McpToolSummary;
   held: Set<string> | null;
 }) {
-  // `requires: null` is the always-on floor, so it is reached by any token.
-  // `instanceAdmin` is not a team capability and can never be in the set.
   const reached =
     held === null ||
     tool.requires === null ||
@@ -144,8 +134,6 @@ function ToolRow({
     <div
       className={cn(
         "flex items-start justify-between gap-4 p-3",
-        // Dimmed, not hidden: seeing what a wider token would add is half the
-        // reason to open this from the permissions step.
         !reached && "opacity-45",
       )}
     >

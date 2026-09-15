@@ -12,8 +12,10 @@ import {
   SERVER_1,
   TRUNCATE_PROJECT_GRAPH,
 } from "./app-graph-test-helpers";
-import { renameServer, getServerById, addServer } from "./servers";
-import { activities } from "../db/schema/control-plane";
+import { addServer } from "./servers/enrollment";
+import { getServerById } from "./servers/roster";
+import { renameServer } from "./servers/settings";
+import { activities } from "../db/schema/control-plane/activity";
 
 let db: TestDb;
 let pg: PGlite;

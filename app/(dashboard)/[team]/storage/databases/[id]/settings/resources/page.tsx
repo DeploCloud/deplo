@@ -1,16 +1,15 @@
 import { notFound } from "next/navigation";
 import { Cpu } from "lucide-react";
-import { getDatabase } from "@/lib/data/databases";
+import { getDatabase } from "@/lib/data/databases/rows";
 import { getDatabaseMetricsHistory } from "@/lib/data/container-metrics";
-import { listServers } from "@/lib/data/servers";
+import { listServers } from "@/lib/data/servers/roster";
 import { canMountHostVolumes, hasCapability } from "@/lib/membership";
 import { serverLabel } from "@/lib/utils";
 import { SettingsSection } from "@/components/apps/settings/settings-shared";
-import { ResourceLimitsForm } from "@/components/apps/settings/resource-limits-form";
+import { ResourceLimitsForm } from "@/components/apps/settings/resource-limits-form/resource-limits-form";
 
 export const metadata = { title: "Resources" };
 
-/** Per-database caps - the app form, saving through updateDatabaseResources. */
 export default async function DatabaseResourcesSettingsPage(
   props: PageProps<"/[team]/storage/databases/[id]/settings/resources">,
 ) {
@@ -36,7 +35,6 @@ export default async function DatabaseResourcesSettingsPage(
         docs="resources.overview"
         info="Cap how much RAM, CPU, disk and processes this database may use. Applied on the next redeploy."
       />
-      {/* InnoDB needs headroom: a too-small cap is a silent restart loop. */}
       {(db.type === "mysql" || db.type === "mariadb") && (
         <p className="rounded-lg border border-dashed border-border p-4 text-sm text-muted-foreground">
           {db.type === "mysql" ? "MySQL" : "MariaDB"} generally needs at least{" "}

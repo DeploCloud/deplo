@@ -9,18 +9,8 @@ import {
 export { isMap, isScalar, isSeq, visit, Scalar } from "yaml";
 export type { Document, YAMLMap, YAMLSeq } from "yaml";
 
-/**
- * The one YAML seam. READING is `yaml`, not js-yaml, for two things js-yaml gets
- * wrong on a compose file somebody wrote by hand: it refuses an explicitly tagged
- * merge key (`!!merge <<:`, the idiom of every large stack) and it turns a bare
- * `2026-01-01` into a Date, which comes back out as a timestamp.
- */
 const READ = { merge: true, logLevel: "error" } as const;
 
-/**
- * js-yaml's error shape, which the callers already read: a `.mark` with 0-based
- * line/column, and a message that does not repeat the position.
- */
 function asLoadError(e: unknown): unknown {
   if (!(e instanceof YAMLParseError)) return e;
   const at = e.linePos?.[0];
@@ -39,10 +29,6 @@ export function load(src: string): unknown {
   }
 }
 
-/**
- * The document itself: anchors, merge keys, comments and layout kept, so a rewrite
- * can hand the file back as its author wrote it.
- */
 export function parseDocument(src: string): Document {
   return parseYamlDocument(src, READ);
 }

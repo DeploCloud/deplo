@@ -7,16 +7,11 @@ import {
   renderResourceLimitsYaml,
   mergeResourceLimits,
 } from "./resources";
-import { renderCompose } from "./build";
-import { buildComposeStack } from "./compose-stack";
-import type { ResourceLimits } from "../types";
-import type { RoutableDomain } from "../data/domains";
+import { renderCompose } from "./build/compose-render";
+import { buildComposeStack } from "./compose-stack/render";
+import type { ResourceLimits } from "../types/container";
+import type { RoutableDomain } from "../data/domains/routes";
 
-/**
- * Per-app resource limits → `docker compose up` keys.
- */
-
-/** A ResourceLimits with everything unset, overlaid with `p`. */
 function mk(p: Partial<ResourceLimits>): ResourceLimits {
   return {
     memoryMb: null,
@@ -34,8 +29,6 @@ function mk(p: Partial<ResourceLimits>): ResourceLimits {
     ...p,
   };
 }
-
-/* ---- resourceLimitsToComposeKeys ------------------------------------ */
 
 test("no limits ⇒ empty key set (null and all-null both)", () => {
   assert.deepEqual(resourceLimitsToComposeKeys(null), {});
@@ -91,8 +84,6 @@ test("ulimits is emitted only for the sub-limits that are set", () => {
   );
 });
 
-/* ---- renderResourceLimitsYaml --------------------------------------- */
-
 test("YAML fragment is empty when there are no limits", () => {
   assert.equal(renderResourceLimitsYaml(null, 4), "");
   assert.equal(renderResourceLimitsYaml(mk({}), 4), "");
@@ -103,11 +94,9 @@ test("YAML fragment indents nested maps correctly and re-parses", () => {
     mk({ memoryMb: 512, nofile: 1024, storageGb: 10 }),
     4,
   );
-  // Service-level keys at 4 spaces, nested map keys at 6.
   assert.match(frag, /^ {4}mem_limit: 512m$/m);
   assert.match(frag, /^ {4}ulimits:$/m);
   assert.match(frag, /^ {6}nofile: 1024$/m);
-  // The fragment is valid YAML on its own (indentation is internally consistent).
   const parsed = yaml.load(frag.replace(/^ {4}/gm, "")) as Record<
     string,
     unknown
@@ -115,8 +104,6 @@ test("YAML fragment indents nested maps correctly and re-parses", () => {
   assert.equal(parsed.mem_limit, "512m");
   assert.deepEqual(parsed.storage_opt, { size: "10G" });
 });
-
-/* ---- renderCompose (single-image) integration ----------------------- */
 
 const route: RoutableDomain = {
   name: "demo.example.com",
@@ -170,17 +157,13 @@ test("renderCompose emits the limit keys and the stack still parses", () => {
   assert.equal(svc.pids_limit, 100);
   assert.deepEqual(svc.ulimits, { nofile: 1024 });
   assert.deepEqual(svc.storage_opt, { size: "10G" });
-  // The image/labels/network keys are still present alongside the new ones.
   assert.equal(svc.image, "deplo/demo:abc");
   assert.ok(Array.isArray(svc.labels));
 });
 
-/* ---- mergeResourceLimits (compose-stack overlay) -------------------- */
-
 test("mergeResourceLimits is existing-wins and a no-op for null", () => {
   const svc: Record<string, unknown> = { image: "x", mem_limit: "1g" };
   mergeResourceLimits(svc, mk({ memoryMb: 512, cpuMilli: 1000 }));
-  // The service's own mem_limit is kept; the missing cpus is added.
   assert.equal(svc.mem_limit, "1g");
   assert.equal(svc.cpus, "1");
 
@@ -188,8 +171,6 @@ test("mergeResourceLimits is existing-wins and a no-op for null", () => {
   mergeResourceLimits(untouched, null);
   assert.deepEqual(untouched, { image: "x" });
 });
-
-/* ---- buildComposeStack integration ---------------------------------- */
 
 test("buildComposeStack applies caps to every service, existing-wins", () => {
   const compose = [
@@ -212,8 +193,6 @@ test("buildComposeStack applies caps to every service, existing-wins", () => {
   const doc = yaml.load(out) as {
     services: Record<string, Record<string, unknown>>;
   };
-  // `web` had no limit ⇒ gets the app-level cap; `worker` keeps its own mem_limit
-  // but still gets the (absent) cpus cap.
   assert.equal(doc.services.web.mem_limit, "512m");
   assert.equal(doc.services.web.cpus, "1");
   assert.equal(doc.services.worker.mem_limit, "2g");

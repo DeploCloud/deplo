@@ -1,29 +1,15 @@
 import { status as GrpcStatus } from "@grpc/grpc-js";
 
 import { ContractVersion, type HelloResponse } from "../agent/gen/agent";
-import { AgentUnreachableError } from "./agent-client";
-import type { ServerStatus } from "../types";
-
-/**
- * The health CLASSIFIER: given the outcome of one agent `Hello` - a response, or
- * the error it rejected with - decide what the server's status is and what we tell
- * the operator.
- */
+import { AgentUnreachableError } from "./agent-client/errors";
+import type { ServerStatus } from "../types/server";
 
 export interface ServerHealth {
   status: ServerStatus;
-  /**
-   * The operator-facing reason, or null when `online`. Drawn from the CLOSED set
-   * below - see the warning on {@link classifyServerHealth}.
-   */
   message: string | null;
 }
 
-/**
- * Every reason string this classifier can produce. A closed set, on purpose:
- * `status_message` is persisted and served over GraphQL, and the raw errors it
- * would otherwise carry are not safe to store.
- */
+// A closed set because status_message is persisted: a raw transport error is not safe to store.
 export const HEALTH_MESSAGES = {
   untrusted:
     "The agent's certificate is not the one we trust for this server. Reissue the install command to re-provision it.",
@@ -40,11 +26,6 @@ export const HEALTH_MESSAGES = {
   timedOut: "The agent did not answer within the health-check deadline.",
 } as const;
 
-/**
- * Node's TLS layer rejects an EXPIRED (or not-yet-valid) peer certificate with an
- * error whose code is `CERT_HAS_EXPIRED` / `CERT_NOT_YET_VALID` and whose message
- * is "certificate has expired" / "certificate is not yet valid".
- */
 const CERT_VALIDITY_RE =
   /CERT_HAS_EXPIRED|CERT_NOT_YET_VALID|certificate has expired|certificate is not yet valid/i;
 
@@ -54,25 +35,14 @@ function isCertValidityError(err: AgentUnreachableError): boolean {
   return CERT_VALIDITY_RE.test(err.message);
 }
 
-/**
- * Classify one Hello outcome. The states, and why each is where it is: - a TRUST
- * failure is `error`, never `offline`.
- */
 export function classifyServerHealth(
   hello: HelloResponse | null,
   err: unknown,
-  /**
-   * A storage-only server holds backups and runs nothing, so it has no Docker on
-   * purpose.
-   */
   opts: { storageOnly?: boolean } = {},
 ): ServerHealth {
   if (err instanceof AgentUnreachableError) {
     if (err.trust)
       return { status: "error", message: HEALTH_MESSAGES.untrusted };
-    // A cert-validity failure (expired / not-yet-valid) is the host answering with a
-    // stale identity, not a dead host - surface it as its own re-bootstrap `error`
-    // rather than the misleading "connection refused" it flattens into.
     if (isCertValidityError(err))
       return { status: "error", message: HEALTH_MESSAGES.certExpired };
     return {
@@ -92,24 +62,14 @@ export function classifyServerHealth(
   return { status: "online", message: null };
 }
 
-/**
- * Whether a failed probe is worth retrying once before we demote the server.
- */
 export function isRetryableProbeFailure(err: unknown): boolean {
   return err instanceof AgentUnreachableError && !err.trust;
 }
 
-/**
- * What a FEATURE says when its host did not answer. Never the raw transport
- * error: it embeds the dial address, and "Something went wrong" tells the
- * operator nothing about which of the two machines is at fault.
- * https://deplo.build/docs/concepts/servers-and-the-agent
- */
 export function unreachableMessage(err: unknown): string | null {
   if (!(err instanceof AgentUnreachableError)) return null;
   if (err.trust) return HEALTH_MESSAGES.untrusted;
   if (isCertValidityError(err)) return HEALTH_MESSAGES.certExpired;
-  // No gRPC code means our own throw site ("not provisioned"), already safe copy.
   if (typeof err.code !== "number") return err.message;
   return err.code === GrpcStatus.DEADLINE_EXCEEDED
     ? "This server did not answer in time - it may be overloaded, or unreachable."

@@ -44,8 +44,6 @@ test("a token becomes a team on the list", () => {
   ]);
 });
 
-// Where a source team lands unless somebody says otherwise: the team here of
-// the same name, else one made for it - the separation they had over there.
 test("a source team lands in its namesake, else in a team of its own", () => {
   const teams = [
     { id: "team_1", name: "Acme Corp" },
@@ -57,10 +55,8 @@ test("a source team lands in its namesake, else in a team of its own", () => {
   });
   assert.deepEqual(defaultTarget("Marketing", teams), { kind: "new" });
   assert.deepEqual(defaultTarget("", teams), { kind: "new" });
-  // The default rides onto the row.
   const q = added([], team(), "tok-a", teams);
   assert.deepEqual(q[0]?.target, { kind: "existing", teamId: "team_1" });
-  // A team the panel would not name has no name here either, so it matches nobody.
   const nameless = added([], team({ teamId: null, teamName: null }), "tok-b", [
     { id: "team_9", name: "Nameless" },
   ]);
@@ -75,28 +71,21 @@ test("a row can be pointed somewhere else, and the rest stay put", () => {
   assert.equal(next[1]?.apiKey, "tok-b");
 });
 
-// Only one of the two panels keeps a team picture, so a list carrying it would
-// read differently depending on where a row came from. A new team starts on its
-// initials and the operator picks from there.
 test("a row starts with no picture of its own", () => {
   const q = added([], team(), "tok-a");
   assert.equal(q[0]?.image, null);
 });
 
-// Two tokens of ONE team would import that team twice.
 test("the same team twice is refused by its id", () => {
   const q = added([], team(), "tok-a");
   const again = addTeam(q, team({ teamName: "Acme" }), "tok-b");
   assert.match(again.error ?? "", /already on the list/);
 });
 
-// A panel that will not name its teams leaves the key as the only tell.
 test("the same key twice is refused even with no id", () => {
   const q = added([], team({ teamId: null, teamName: null }), "tok-a");
-  // "" and not a placeholder: the list draws "An unnamed organization" from it.
   assert.equal(q[0]?.name, "");
   assert.match(addTeam(q, team({ teamId: null }), "tok-a").error ?? "", /key/);
-  // A second team of the same nameless panel is still a second team.
   assert.equal(addTeam(q, team({ teamId: null }), "tok-b").error, null);
 });
 
@@ -104,8 +93,6 @@ test("a blank key is not a team", () => {
   assert.match(addTeam([], team(), "  ").error ?? "", /Paste the key/);
 });
 
-// Dokploy names the organizations a key does not cover; Coolify cannot, and
-// answers null - which is not the same fact as "nothing is missing".
 test("only the teams no token covers are named", () => {
   const q = added([], team({ teamName: "Acme Corp" }), "tok-a");
   assert.deepEqual(uncoveredTeams(["Acme Corp", "Ops", "Marketing"], q), [
@@ -116,7 +103,6 @@ test("only the teams no token covers are named", () => {
   assert.deepEqual(uncoveredTeams(null, q), []);
 });
 
-// What decides `keepSources` on a run, and what holds the takeover.
 test("the teams still behind this one are counted", () => {
   const q = [team(), team({ teamId: "2" }), team({ teamId: "3" })].reduce(
     (acc, t, i) => added(acc, t, `tok-${i}`),

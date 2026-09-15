@@ -20,21 +20,15 @@ import { ConfirmAction } from "@/components/shared/confirm-action";
 import { gqlAction } from "@/lib/graphql-client";
 import { cn } from "@/lib/utils";
 
-/** Both actions are outline-destructive: neither is the one you reach for. */
 const dangerButton =
   "self-start border-destructive/40 text-destructive hover:bg-destructive-wash-strong hover:text-destructive";
 
-/** A member this team could be handed to. */
 export interface TransferCandidate {
   userId: string;
   username: string;
   name: string;
 }
 
-/**
- * Settings → General danger zone. `onlyTeam` disables the delete with an
- * explanation: a user must always keep at least one team.
- */
 export function TeamDangerZone({
   teamId,
   teamName,
@@ -50,16 +44,12 @@ export function TeamDangerZone({
   teamName: string;
   onlyTeam: boolean;
   canDelete: boolean;
-  /** Shared variables this team owns - they go with it. */
   sharedVars: number;
-  /** How many of those are landing in ANOTHER team's apps right now. */
   sharedVarsOtherTeamsUse: number;
-  /** Only the team's primary owner may hand it over (lib/data/team-ownership.ts). */
   canTransfer: boolean;
   candidates: TransferCandidate[];
   viewerTwoFactorEnabled: boolean;
 }) {
-  // The one thing on this screen that reaches OUTSIDE the team being deleted.
   const sharedVarsCaveat =
     sharedVarsOtherTeamsUse > 0
       ? ` Its ${sharedVars} shared variable${sharedVars === 1 ? "" : "s"} go too, ${sharedVarsOtherTeamsUse} of which ${sharedVarsOtherTeamsUse === 1 ? "is" : "are"} in another team's apps right now.`
@@ -122,16 +112,11 @@ export function TeamDangerZone({
               successMessage="Team deleted"
               confirmText={teamName}
               onConfirm={async () => {
-                // Echo back the id the user confirmed - the server fails closed if
-                // the active team changed in another tab meanwhile.
                 const res = await gqlAction(
                   `mutation($teamId: String!) { deleteTeam(teamId: $teamId) }`,
                   { teamId },
                 );
                 if (res.ok) {
-                  // A full navigation, not the router: it puts the team back on
-                  // the path, and this one no longer exists. `/` picks the next
-                  // team, or the create-team screen when there is none.
                   window.location.assign("/");
                 }
                 return res;
@@ -231,8 +216,6 @@ function TransferOwnership({
                 onChange={(e) => setPassword(e.target.value)}
               />
             </div>
-            {/* Only when the account has a second factor: asking everyone for a
-                code they may not have is a dead end, not a guard. */}
             {viewerTwoFactorEnabled && (
               <div className="space-y-2">
                 <Label htmlFor="transfer-code">

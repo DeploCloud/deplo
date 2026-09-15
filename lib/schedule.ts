@@ -1,16 +1,7 @@
-/**
- * Schedules the way a person states them, "every day at 03:00", with cron kept
- * as the *storage* format, not the *input* format.
- */
-
 import { expandCronMacro, parseCron } from "./backups/cron";
 
 export { nextCronRun, parseCron } from "./backups/cron";
 
-/**
- * The schedule shapes the UI can express as controls. `custom` is the escape
- * hatch - it has no parts, the caller keeps the raw cron string.
- */
 export type ScheduleMode =
   | "every-minute"
   | "every-5-minutes"
@@ -25,17 +16,11 @@ export type ScheduleMode =
   | "monthly"
   | "custom";
 
-/** A mode with fixed parameters, i.e. one cron string and nothing to configure. */
 type FixedMode = Exclude<
   ScheduleMode,
   "custom" | "daily" | "weekly" | "monthly"
 >;
 
-/**
- * The canonical expression for every fixed-interval mode. These are the only
- * strings the picker ever produces for those modes, which is what makes
- * `partsFromCron` a plain lookup for them.
- */
 const FIXED_CRON: Record<FixedMode, string> = {
   "every-minute": "* * * * *",
   "every-5-minutes": "*/5 * * * *",
@@ -47,11 +32,9 @@ const FIXED_CRON: Record<FixedMode, string> = {
   "every-12-hours": "0 */12 * * *",
 };
 
-/** One entry per selectable preset, in the order the picker lists them. */
 export interface ScheduleOption {
   mode: Exclude<ScheduleMode, "custom">;
   label: string;
-  /** Heading the option is listed under. */
   group: "Minutes" | "Hours" | "Days and longer";
 }
 
@@ -69,7 +52,6 @@ export const SCHEDULE_OPTIONS: readonly ScheduleOption[] = [
   { mode: "monthly", label: "Every month", group: "Days and longer" },
 ];
 
-/** Weekday names indexed by cron day-of-week (0 = Sunday). */
 export const WEEKDAY_LABELS: readonly string[] = [
   "Sunday",
   "Monday",
@@ -80,7 +62,6 @@ export const WEEKDAY_LABELS: readonly string[] = [
   "Saturday",
 ];
 
-/** The same weekdays, abbreviated - for the compact description a table cell wants. */
 const WEEKDAY_SHORT: readonly string[] = [
   "Sun",
   "Mon",
@@ -91,28 +72,15 @@ const WEEKDAY_SHORT: readonly string[] = [
   "Sat",
 ];
 
-/**
- * Highest day-of-month a monthly schedule may pick.
- */
 export const MAX_MONTH_DAY = 28;
 
-/** The platform-wide default: daily at 03:00 UTC. */
 export const DEFAULT_SCHEDULE = "0 3 * * *";
 
-/**
- * A schedule as the picker's controls hold it. The fields a given `mode` doesn't
- * use are still carried so switching modes keeps the time the user already
- * chose.
- */
 export interface ScheduleParts {
   mode: ScheduleMode;
-  /** Hour of day, UTC (0-23). Used by daily / weekly / monthly. */
   hour: number;
-  /** Minute past the hour (0-59). Used by daily / weekly / monthly. */
   minute: number;
-  /** Cron day-of-week, 0 = Sunday. Used by weekly. */
   weekday: number;
-  /** Day of month, 1-{@link MAX_MONTH_DAY}. Used by monthly. */
   day: number;
 }
 
@@ -127,18 +95,15 @@ export const DEFAULT_PARTS: ScheduleParts = {
 const clamp = (n: number, lo: number, hi: number) =>
   Number.isFinite(n) ? Math.min(hi, Math.max(lo, Math.trunc(n))) : lo;
 
-/** Collapse runs of whitespace so a hand-typed expression compares by value. */
 const normalize = (cron: string) =>
   expandCronMacro(cron).trim().replace(/\s+/g, " ");
 
-/** A field that is a bare integer inside `[min, max]`, else null. */
 function intField(field: string, min: number, max: number): number | null {
   if (!/^\d+$/.test(field)) return null;
   const n = Number(field);
   return n >= min && n <= max ? n : null;
 }
 
-/** The cron expression for these parts. `custom` has none - callers keep their raw text. */
 export function cronFromParts(parts: ScheduleParts): string {
   const minute = clamp(parts.minute, 0, 59);
   const hour = clamp(parts.hour, 0, 23);
@@ -156,11 +121,6 @@ export function cronFromParts(parts: ScheduleParts): string {
   }
 }
 
-/**
- * Read an expression back into controls, or null when it says something the
- * controls can't (a comma list, a range, a specific month, day 29+). Null is the
- * signal to fall back to the raw-cron escape hatch, never an error.
- */
 export function partsFromCron(cron: string): ScheduleParts | null {
   const expr = normalize(cron);
   const fields = expr.split(" ");
@@ -171,7 +131,6 @@ export function partsFromCron(cron: string): ScheduleParts | null {
   }
 
   const [minuteField, hourField, domField, monthField, dowField] = fields;
-  // A month restriction ("only in June") has no control, so it stays custom.
   if (monthField !== "*") return null;
   const minute = intField(minuteField, 0, 59);
   const hour = intField(hourField, 0, 23);
@@ -182,7 +141,6 @@ export function partsFromCron(cron: string): ScheduleParts | null {
   if (domField === "*") {
     const dow = intField(dowField, 0, 7);
     if (dow === null) return null;
-    // Cron accepts both 0 and 7 for Sunday; the control only knows 0.
     return {
       ...DEFAULT_PARTS,
       mode: "weekly",
@@ -196,13 +154,11 @@ export function partsFromCron(cron: string): ScheduleParts | null {
     if (day === null) return null;
     return { ...DEFAULT_PARTS, mode: "monthly", hour, minute, day };
   }
-  // Both day fields restricted - the Vixie union rule, which no control models.
   return null;
 }
 
 const pad = (n: number) => String(n).padStart(2, "0");
 
-/** "1st", "2nd", "3rd", "4th"… for a day of the month. */
 function ordinal(day: number): string {
   const rest = day % 100;
   if (rest >= 11 && rest <= 13) return `${day}th`;
@@ -220,10 +176,6 @@ function ordinal(day: number): string {
 
 const FIXED_LABELS = new Map(SCHEDULE_OPTIONS.map((o) => [o.mode, o.label]));
 
-/**
- * Say what an expression does in one phrase - "Every week on Sunday at 03:00 UTC",
- * or null when it isn't one of the shapes the picker knows.
- */
 export function describeCron(
   cron: string,
   opts?: { compact?: boolean; timeZone?: string },
@@ -250,13 +202,6 @@ export function describeCron(
   }
 }
 
-/**
- * Would the scheduler ever fire this expression?
- */
-/**
- * A backup may not fire more often than every 15 minutes - a dump that often pins
- * the host's disk. Shared so the picker hides exactly what `createBackup` refuses.
- */
 export function backupTooFrequent(cron: string): boolean {
   const minute = cron.trim().split(/\s+/)[0] ?? "";
   const step = /^\*\/(\d+)$/.exec(minute);
@@ -272,7 +217,6 @@ export function isValidSchedule(cron: string): boolean {
   return parseCron(cron) !== null;
 }
 
-/** The message shown when {@link isValidSchedule} says no - shared by UI and API. */
 export function invalidScheduleMessage(cron: string): string {
   return (
     `"${cron.trim()}" is not a valid cron expression. Use 5 fields - ` +

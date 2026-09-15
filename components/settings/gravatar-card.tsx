@@ -16,10 +16,6 @@ import { Switch } from "@/components/ui/switch";
 import { FieldLabel } from "@/components/ui/info-tip";
 import { gqlAction } from "@/lib/graphql-client";
 
-/**
- * Whether somebody with no uploaded picture falls back to their Gravatar. Off by
- * default: it is every member's browser that dials gravatar.com, not the panel.
- */
 export function GravatarCard({ enabled }: { enabled: boolean }) {
   const router = useRouter();
   const [on, setOn] = React.useState(enabled);

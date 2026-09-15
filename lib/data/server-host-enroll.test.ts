@@ -7,12 +7,8 @@ import { makeTestDb, type TestDb } from "../db/test-harness";
 import { __setTestDb, __resetTestDb } from "../db/client";
 import { sha256Hex } from "../crypto";
 import { TRUNCATE_INFRA, seedServerRow } from "./infra-test-helpers";
-import { ensureDeploHostServer, listAllServers } from "./servers";
-
-/**
- * Enrolling the machine Deplo runs on - "agent 0" - is what stops a fresh install
- * from coming up with an empty server list and no way to deploy without SSH.
- */
+import { ensureDeploHostServer } from "./servers/enrollment";
+import { listAllServers } from "./servers/roster";
 
 const TOKEN = "host-token-for-tests-aaaaaaaaaaaaaaaa";
 const HOST_IP = "203.0.113.7";
@@ -72,8 +68,6 @@ test("re-arms a host still waiting for its first call-home", async () => {
   await ensureDeploHostServer();
   const before = (await listAllServers())[0]!;
 
-  // The stored token expires in an hour; re-running the installer days later is
-  // the documented repair, so the expiry has to move or the retry 401s.
   await db.execute(
     `update servers set bootstrap_expires_at = now() - interval '1 day',
        bootstrap_token_hash = 'stale'`,
@@ -121,8 +115,6 @@ test("does nothing without the installer's environment", async () => {
   await ensureDeploHostServer();
   assert.equal((await listAllServers()).length, 0);
 
-  // A row we cannot dial is worse than no row: the agent's cert SANs are pinned
-  // to whatever address it declares.
   process.env.DEPLO_HOST_BOOTSTRAP_TOKEN = TOKEN;
   delete process.env.DEPLO_SERVER_IP;
   await ensureDeploHostServer();

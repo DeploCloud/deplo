@@ -3,11 +3,6 @@ import assert from "node:assert/strict";
 
 import { getTemplateBlueprint } from "./templates-blueprint";
 
-/**
- * The template.toml the catalog serves is remote input that ends up in a real
- * deploy, so the parser is what this covers: the env it injects, the service
- * Traefik is pointed at, and the invariant that a generated secret is the SAME
- */
 const CONFIG = `
 [variables]
 main_domain = "\${domain}"
@@ -50,23 +45,17 @@ test("resolves env, domains and mounts from a template's config", () => {
   assert.equal(env.APP_URL, "https://demo.example.com");
   assert.match(env.DB_PASSWORD, /^.{24}$/);
 
-  // Every publicly routed service, first one first - that is what `expose` is.
   assert.deepEqual(bp.exposes, [
     { service: "web", port: 8080, host: "demo.example.com" },
     { service: "api", port: 9000, host: "api.demo.example.com" },
   ]);
   assert.deepEqual(bp.expose, bp.exposes[0]);
 
-  // The mount must carry the SAME generated secret the env got, or the stack
-  // boots with a config file that disagrees with its own environment.
   assert.equal(bp.mounts.length, 1);
   assert.equal(bp.mounts[0].filePath, "app.conf");
   assert.equal(bp.mounts[0].content.trim(), `password = ${env.DB_PASSWORD}`);
 });
 
-/**
- * Which entry gets the app's generated main domain.
- */
 const PRIMARY_CONFIG = `
 [variables]
 main_domain = "\${domain}"
@@ -100,9 +89,6 @@ test("an explicitly marked primary wins over document order", () => {
     { domain: "demo.example.com" },
   );
 
-  // The marked entry is hoisted, the rest keep document order, and every host
-  // travels with its own entry. `primary = false` marks nothing, and a SECOND
-  // marker does not take it off the first - an app has one main domain.
   assert.deepEqual(bp.exposes, [
     { service: "garage-webui", port: 3909, host: "web-ui.demo.example.com" },
     { service: "garage", port: 3900, host: "demo.example.com" },
@@ -111,10 +97,6 @@ test("an explicitly marked primary wins over document order", () => {
   assert.deepEqual(bp.expose, bp.exposes[0]);
 });
 
-/**
- * One base URL, two services: the split a stack whose frontend and API share a
- * hostname needs. Deplo never guesses a path - the template says it or nobody does.
- */
 const PATH_CONFIG = `
 [variables]
 main_domain = "\${domain}"
@@ -148,7 +130,6 @@ test("a domain entry carries its path, and one without a host survives", () => {
   assert.deepEqual(bp.exposes, [
     { service: "client", port: 3002, host: "demo.example.com" },
     { service: "backend", port: 3001, host: "demo.example.com", path: "/api" },
-    // No host declared: creation generates one rather than dropping the service.
     { service: "admin", port: 3003, host: undefined },
   ]);
 });

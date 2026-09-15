@@ -17,14 +17,8 @@ import {
   seedApp,
   TRUNCATE_PROJECT_GRAPH,
 } from "./app-graph-test-helpers";
-import { setAppComposeUpArgs } from "./apps";
+import { setAppComposeUpArgs } from "./apps/settings";
 import { loadAppGraph } from "./app-graph-load";
-
-/**
- * The app's extra `docker compose up` flags, at the data layer: they are stored
- * as the deploy edge will send them, refused when they would repoint the command,
- * and never writable across a team boundary.
- */
 
 let db: TestDb;
 let pg: PGlite;
@@ -61,8 +55,6 @@ test("an app starts on the untouched bring-up command", async () => {
 
 test("flags are stored the way the deploy edge will send them", async () => {
   await seedApp(db, { id: "prj_1", teamId: TEAM_A });
-  // Ragged whitespace in, canonical argv out, so the settings page shows the
-  // command that actually runs, with no stray spacing to puzzle over.
   await asUser1(() =>
     setAppComposeUpArgs("prj_1", "  --pull   always \n --wait "),
   );
@@ -84,8 +76,6 @@ test("clearing goes back to the default command", async () => {
 
 test("a flag that would repoint the command never reaches the column", async () => {
   await seedApp(db, { id: "prj_1", teamId: TEAM_A });
-  // The validation is here, not only in the form: the same value arrives from
-  // the bearer API, and from there it would land in a host's argv.
   await assert.rejects(
     () =>
       asUser1(() => setAppComposeUpArgs("prj_1", "--force-recreate -p other")),

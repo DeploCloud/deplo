@@ -25,17 +25,11 @@ import { UnsavedChangesGuard } from "@/components/apps/unsaved-changes-guard";
 import { DirtyHint } from "@/components/apps/settings/settings-shared";
 import { formatBytes } from "@/lib/utils";
 import { gqlAction } from "@/lib/graphql-client";
-import type { DatabaseDTO } from "@/lib/data/databases";
+import type { DatabaseDTO } from "@/lib/data/databases/rows";
 
-/**
- * General settings for a database: its name and logo - its identity, so they share
- * one card, exactly like an App's General. The copy says so, because "will this
- * drop my database?"
- */
 export function DatabaseGeneralSettings({ db }: { db: DatabaseDTO }) {
   const router = useRouter();
   const [name, setName] = React.useState(db.name);
-  // Null ⇒ no uploaded logo, so the UI shows the ENGINE's real brand mark.
   const [logo, setLogo] = React.useState<string | null>(db.logo);
   const [picked, setPicked] = React.useState<File | null>(null);
   const logoInputRef = React.useRef<HTMLInputElement>(null);
@@ -45,7 +39,6 @@ export function DatabaseGeneralSettings({ db }: { db: DatabaseDTO }) {
   const nameDirty = name.trim() !== savedName;
 
   function saveName() {
-    // Saved on the click - the field already shows the new name.
     const previous = savedName;
     const next = name.trim();
     setSavedName(next);
@@ -81,8 +74,6 @@ export function DatabaseGeneralSettings({ db }: { db: DatabaseDTO }) {
     });
   }
 
-  // Validate a picked image (type + size) and either open the crop dialog or,
-  // for the formats a canvas cannot handle, store the file exactly as uploaded.
   async function pickLogo(file: File) {
     if (
       !LOGO_IMAGE_TYPES.includes(file.type as (typeof LOGO_IMAGE_TYPES)[number])
@@ -117,7 +108,6 @@ export function DatabaseGeneralSettings({ db }: { db: DatabaseDTO }) {
     <>
       <Card>
         <CardContent className="space-y-6 pt-6">
-          {/* Logo */}
           <div className="space-y-3">
             <FieldLabel
               info={`Shown for this database on the dashboard. Defaults to the ${engine} logo - upload an image to use your own`}
@@ -180,7 +170,6 @@ export function DatabaseGeneralSettings({ db }: { db: DatabaseDTO }) {
             />
           </div>
 
-          {/* Name - saved with the button below; the logo saves on pick. */}
           <div className="max-w-md space-y-2 border-t border-border pt-6">
             <Label htmlFor="db-name">Database name</Label>
             <Input
@@ -208,7 +197,6 @@ export function DatabaseGeneralSettings({ db }: { db: DatabaseDTO }) {
         </CardFooter>
       </Card>
 
-      {/* Warn before leaving with an unsaved name (the logo saves on pick). */}
       <UnsavedChangesGuard when={nameDirty} />
     </>
   );

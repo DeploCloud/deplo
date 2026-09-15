@@ -7,7 +7,6 @@ import { DayPicker, type DayPickerProps } from "react-day-picker";
 import { cn } from "@/lib/utils";
 import { buttonVariants } from "@/components/ui/button";
 
-/** The shadcn calendar over react-day-picker, painted in the theme's own tokens. */
 export function Calendar({
   className,
   classNames,
@@ -17,8 +16,6 @@ export function Calendar({
   return (
     <DayPicker
       showOutsideDays={showOutsideDays}
-      // `relative`, or the absolutely-positioned nav buttons below anchor
-      // themselves to whatever positioned ancestor the popover happens to have.
       className={cn("relative p-3", className)}
       classNames={{
         months: "flex flex-col gap-4 sm:flex-row",
@@ -38,8 +35,6 @@ export function Calendar({
         weekdays: "flex",
         weekday: "w-8 text-xs font-normal text-muted-foreground",
         week: "mt-1 flex w-full",
-        // The range's own background is drawn on the CELL, so consecutive days
-        // join into one band instead of a row of separate pills.
         day: cn(
           "relative size-8 p-0 text-center text-sm",
           "[&:has(>[data-range-middle])]:bg-accent",

@@ -31,7 +31,7 @@ import {
   TEAM_A,
   TEAM_B,
 } from "./identity-test-helpers";
-import { listMembers } from "./members";
+import { listMembers } from "./members/roster";
 import {
   createTeam,
   getTeam,
@@ -41,18 +41,10 @@ import {
   updateTeamAvatar,
 } from "./teams";
 import { updateMyAvatar } from "./account";
-import { setGravatarEnabled } from "./instance-settings";
-import {
-  memberships as membershipsTable,
-  teams as teamsTable,
-} from "../db/schema/control-plane";
+import { setGravatarEnabled } from "./instance-settings/settings-store";
+import { memberships as membershipsTable } from "../db/schema/control-plane/access-control";
+import { teams as teamsTable } from "../db/schema/control-plane/identity";
 import { eq } from "drizzle-orm";
-
-/**
- * Profile pictures, and the four things that would hurt if they slipped. The
- * instance-wide Gravatar switch is REAL: off must emit no address anywhere, not
- * merely hide it in one component.
- */
 
 let db: TestDb;
 let pg: PGlite;
@@ -61,7 +53,6 @@ const OWNER = "owner1";
 const MEMBER = "member2";
 const OUTSIDER = "outsider3";
 
-/** A 1x1 WebP, as the picker would produce it. */
 const PICTURE =
   "data:image/webp;base64,UklGRhoAAABXRUJQVlA4TA0AAAAvAAAAEAcQERGIiP4H";
 
@@ -84,8 +75,6 @@ beforeEach(async () => {
       { id: OUTSIDER, teamId: TEAM_B, role: "owner", isInstanceAdmin: false },
     ],
   });
-  // The switch is off on a fresh instance, so the tests below turn it on to have
-  // anything to assert. That default has its own test in instance-settings.
   await as(OWNER, () => setGravatarEnabled(true));
 });
 
@@ -95,7 +84,6 @@ const as = <T>(
   teamId = TEAM_A,
 ): Promise<T> => runWithIdentity({ userId, teamId }, fn);
 
-/** Put the owner in TEAM_B as well, so they have two teams to arrange. */
 const joinTeamB = (id: string) =>
   db.insert(membershipsTable).values({
     id,
@@ -108,20 +96,13 @@ const joinTeamB = (id: string) =>
 const memberRow = async (userId: string) =>
   (await as(OWNER, () => listMembers())).find((m) => m.userId === userId)!;
 
-/* ------------------------------------------------------------------ */
-/* A person's picture                                                  */
-/* ------------------------------------------------------------------ */
-
 test("no uploaded picture resolves to a Gravatar address built from the email", async () => {
   const row = await memberRow(MEMBER);
-  // seedIdentity gives every user `<id>@example.io`.
   const expected = sha256Hex(`${MEMBER}@example.io`);
   assert.equal(
     row.avatarUrl,
     `https://gravatar.com/avatar/${expected}?s=160&d=404`,
   );
-  // `d=404` is load-bearing: without it Gravatar paints a generated pattern over
-  // everyone who never signed up, instead of 404ing into their monogram.
   assert.match(row.avatarUrl!, /d=404/);
 });
 
@@ -158,7 +139,6 @@ test("a value that is not a plain image data-URI is refused, and stores nothing"
       `must refuse ${bad}`,
     );
   }
-  // Still their Gravatar: nothing was written by any of those.
   assert.match(
     (await memberRow(MEMBER)).avatarUrl!,
     /^https:\/\/gravatar\.com\//,
@@ -167,12 +147,8 @@ test("a value that is not a plain image data-URI is refused, and stores nothing"
 
 test("with the instance switch off, no Gravatar address is emitted anywhere", async () => {
   await as(OWNER, () => setGravatarEnabled(false));
-  // Null, and the component draws the letters of their name - the same fallback
-  // a team has. Nothing about them leaves the instance.
   assert.equal((await memberRow(MEMBER)).avatarUrl, null);
 
-  // An UPLOADED picture is unaffected - the switch is about talking to
-  // gravatar.com, not about whether people may have a face.
   await as(MEMBER, () => updateMyAvatar(PICTURE));
   assert.equal((await memberRow(MEMBER)).avatarUrl, PICTURE);
 });
@@ -180,7 +156,6 @@ test("with the instance switch off, no Gravatar address is emitted anywhere", as
 test("nothing chosen leaves the letters to the component, like a team", async () => {
   await as(OWNER, () => setGravatarEnabled(false));
   assert.equal((await memberRow(MEMBER)).avatarUrl, null);
-  // And that null is what the picture is built from, per name.
   assert.equal(
     initialsFallbackUrl("Ada Lovelace"),
     "/api/avatar/initials/default/Ada-Lovelace.svg",
@@ -189,13 +164,11 @@ test("nothing chosen leaves the letters to the component, like a team", async ()
 
 test("a preset face is stored as a marker and served from this instance", async () => {
   await as(MEMBER, () => updateMyAvatar("pixelbot:terminal:zoe"));
-  // Beats Gravatar, which is still on: an explicit pick outranks a fallback.
   assert.equal(
     (await memberRow(MEMBER)).avatarUrl,
     "/api/avatar/pixelbot/terminal/zoe.svg",
   );
 
-  // The letters ARE the seed of an initials picture.
   await as(MEMBER, () => updateMyAvatar("initials:electric:AL"));
   assert.equal(
     (await memberRow(MEMBER)).avatarUrl,
@@ -232,9 +205,7 @@ test("a seed that is not a plain word is refused, in and out of the URL", async 
     "pixelbot:",
     `pixelbot:terminal:${"a".repeat(65)}`,
     "pixelbot:evil.com/x",
-    // A preset of the OTHER style: each style owns its own list.
     "initials:terminal:AL",
-    // "?" ends a URL path, so the picture would never arrive.
     "initials:default:?",
     "nosuchstyle:electric:AL",
     "glyphs:electric:zoe",
@@ -249,7 +220,6 @@ test("a seed that is not a plain word is refused, in and out of the URL", async 
 });
 
 test("the picker reads back the source it just wrote", () => {
-  // What rings the tile in use: the picker only ever sees the resolved URL.
   for (const { style, preset } of AVATAR_PACKS) {
     const url = avatarPreviewUrl(`${style}:${preset}:zoe`);
     assert.equal(url, `/api/avatar/${style}/${preset}/zoe.svg`);
@@ -279,7 +249,6 @@ test("the picker reads back the source it just wrote", () => {
     kind: "gravatar",
   });
 
-  // The wizard holds the raw value instead: same answer, no account yet.
   assert.deepEqual(avatarChoiceFromValue("planets:electric:zoe"), {
     kind: "generated",
     style: "planets",
@@ -295,12 +264,10 @@ test("the picker reads back the source it just wrote", () => {
 });
 
 test("a name with no picture falls back to its letters, drawn by DiceBear", () => {
-  // Never a monogram the app draws itself: same renderer as every other avatar.
   assert.equal(
     initialsFallbackUrl("Acme Corp"),
     "/api/avatar/initials/default/Acme-Corp.svg",
   );
-  // Same initials, different seed - so two teams are not one picture.
   assert.notEqual(
     initialsFallbackUrl("Acme Corp"),
     initialsFallbackUrl("Acme Inc"),
@@ -312,8 +279,6 @@ test("a name with no picture falls back to its letters, drawn by DiceBear", () =
 });
 
 test("the initials pack varies the palette, every other one is four fixed variants", () => {
-  // The bug this pins: the letters ARE the name, so a row of four SEEDS there
-  // draws four strangers instead of four palettes.
   const initials = packRow(
     { style: "initials", preset: "default", label: "Initials" },
     "AL",
@@ -354,8 +319,6 @@ test("a face nobody picked is random, and never the letters", () => {
 });
 
 test("no name yet: a person's row is still drawn, a team's is not", () => {
-  // The bug this pins: an empty seed (or the "?" that stood in for one) drew
-  // four missing pictures in the wizard's picker.
   assert.equal(previewSeed(""), FALLBACK_SEED);
   assert.equal(previewSeed("AL"), "AL");
   assert.equal(
@@ -374,8 +337,6 @@ test("no name yet: a person's row is still drawn, a team's is not", () => {
 });
 
 test("nothing in a pack's row is generated from who is looking", () => {
-  // No picture is derived from an id or a name any more: two people opening the
-  // picker are offered the identical four, which is what makes them cacheable.
   for (const pack of AVATAR_PACKS) {
     const mine = packRow(pack, "AL");
     const theirs = packRow(pack, "AL");
@@ -390,10 +351,6 @@ test("nothing in a pack's row is generated from who is looking", () => {
   }
 });
 
-/* ------------------------------------------------------------------ */
-/* A team's picture                                                    */
-/* ------------------------------------------------------------------ */
-
 test("a team picture needs manage_team, and the topbar identity carries it", async () => {
   await assert.rejects(
     as(MEMBER, () => updateTeamAvatar(PICTURE)),
@@ -403,8 +360,6 @@ test("a team picture needs manage_team, and the topbar identity carries it", asy
 
   await as(OWNER, () => updateTeamAvatar(PICTURE));
   assert.equal((await as(OWNER, () => getTeam())).avatarUrl, PICTURE);
-  // getTeamIdentity is what the topbar switcher's trigger renders - the most
-  // seen avatar in the product - and it is a DIFFERENT query from getTeam.
   assert.equal((await as(MEMBER, () => getTeamIdentity())).avatarUrl, PICTURE);
 
   await as(OWNER, () => updateTeamAvatar(null));
@@ -412,8 +367,6 @@ test("a team picture needs manage_team, and the topbar identity carries it", asy
 });
 
 test("a team picture is scoped to the ACTIVE team, never another one", async () => {
-  // The outsider owns TEAM_B and holds manage_team there, so the capability gate
-  // passes; only the team scoping stops TEAM_A being repainted.
   await as(OUTSIDER, () => updateTeamAvatar(PICTURE), TEAM_B);
 
   const [a] = await db
@@ -423,8 +376,6 @@ test("a team picture is scoped to the ACTIVE team, never another one", async () 
   assert.equal(a!.image, null, "the other team's row must be untouched");
 });
 
-// Only the refusal half: createTeam ends in `setActiveTeam`, which writes a
-// cookie, and the pglite harness has no request scope to write it into.
 test("a team picture is validated at creation, not only when it is changed", async () => {
   await assert.rejects(
     as(MEMBER, () => createTeam({ name: "Bad", image: "https://x.io/a.png" })),
@@ -438,8 +389,6 @@ test("a team may wear a generated picture, not a person's sources", async () => 
     (await as(OWNER, () => getTeam())).avatarUrl,
     "/api/avatar/initials/electric/Acme-Corp.svg",
   );
-  // A team has no address, no monogram of its own to fall back to, and no
-  // character pack: a face is a person's, and the picker offers it none.
   assert.deepEqual(
     packsFor(true).map((p) => p.style),
     ["initials"],
@@ -450,7 +399,6 @@ test("a team may wear a generated picture, not a person's sources", async () => 
       /Unsupported/i,
       `must refuse ${bad}`,
     );
-  // Clearing goes back to the letters of the name, drawn on the fly.
   await as(OWNER, () => updateTeamAvatar(null));
   assert.equal((await as(OWNER, () => getTeam())).avatarUrl, null);
 });
@@ -461,10 +409,6 @@ test("a team picture is refused the same values a person's is", async () => {
     /Unsupported/i,
   );
 });
-
-/* ------------------------------------------------------------------ */
-/* The switcher order                                                  */
-/* ------------------------------------------------------------------ */
 
 test("the switcher order is per PERSON: dragging does not move anyone else's", async () => {
   await joinTeamB("mbr_owner_b");
@@ -479,7 +423,6 @@ test("the switcher order is per PERSON: dragging does not move anyone else's", a
     flipped,
   );
 
-  // The outsider is in TEAM_B too and never dragged anything.
   assert.deepEqual(
     (await as(OUTSIDER, () => listMyTeams(), TEAM_B)).map((t) => t.id),
     [TEAM_B],
@@ -490,8 +433,6 @@ test("the switcher order is per PERSON: dragging does not move anyone else's", a
 test("reorder ignores a team you are not in, and keeps the ones you left out", async () => {
   await joinTeamB("mbr_owner_b2");
 
-  // A foreign id and a duplicate: both dropped, and the team the client left out
-  // still comes back rather than vanishing from the switcher.
   await as(OWNER, () => reorderMyTeams(["team_nope", TEAM_B, TEAM_B]));
   const after = (await as(OWNER, () => listMyTeams())).map((t) => t.id);
   assert.deepEqual(after, [TEAM_B, TEAM_A]);

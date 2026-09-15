@@ -5,12 +5,12 @@ import { eq } from "drizzle-orm";
 
 import { makeTestDb, type TestDb } from "../db/test-harness";
 import { __setTestDb, __resetTestDb } from "../db/client";
+import { apps as appsTable } from "../db/schema/control-plane/apps";
+import { databases as databasesTable } from "../db/schema/control-plane/databases";
 import {
-  apps as appsTable,
-  databases as databasesTable,
   environments as environmentsTable,
   projects as projectsTable,
-} from "../db/schema/control-plane";
+} from "../db/schema/control-plane/projects";
 import { runWithIdentity } from "../auth/request-context";
 import { seedIdentity, TEAM_A, USER_1 } from "./identity-test-helpers";
 import {
@@ -20,12 +20,6 @@ import {
 } from "./app-graph-test-helpers";
 import { deleteEnvironment } from "./environments";
 import { seedDatabase } from "./backup-test-helpers";
-
-/**
- * Deleting an environment re-parents its apps rather than deleting them (ADR-0009:
- * an environment is a sub-folder of apps, so removing the sub-folder keeps its
- * contents in the project).
- */
 
 let db: TestDb;
 let pg: PGlite;
@@ -44,7 +38,6 @@ after(async () => {
 const asUser1 = <T>(fn: () => Promise<T>): Promise<T> =>
   runWithIdentity({ userId: USER_1, teamId: TEAM_A }, fn);
 
-/** Three environments; `defaultId` is the default (null ⇒ the project has none). */
 async function seedProjectWith(defaultId: string | null): Promise<void> {
   await pg.exec(`${TRUNCATE_PROJECT_GRAPH}
     truncate table environments, projects, membership_capabilities, memberships,
@@ -87,9 +80,6 @@ async function seedProjectWith(defaultId: string | null): Promise<void> {
 const homeOf = async (appId: string) =>
   (await db.select().from(appsTable).where(eq(appsTable.id, appId)))[0]!;
 
-// A database follows the apps rather than the FK's `set null`: landing on the team's
-// network would take it away from the very apps that were using it, which is the one
-// thing an environment delete must not do.
 test("deleting an environment re-parents its databases too", async () => {
   await seedProjectWith("environ_prod");
   const dbId = await seedDatabase(db, { id: "db_moved", teamId: TEAM_A });
@@ -119,9 +109,6 @@ test("deleting an environment re-parents its apps to the project's default", asy
 });
 
 test("with no default anywhere, the apps still land somewhere real", async () => {
-  // A project with no default at all shouldn't happen - creation seeds one and this
-  // refuses to delete it, so if it ever does, silently clearing `environment_id` is
-  // the worst possible answer: the apps vanish from the drill-in with nothing to
   await seedProjectWith(null);
   await asUser1(() => deleteEnvironment("environ_dev"));
   const app = await homeOf("prj_moved");
@@ -139,9 +126,6 @@ test("the default is undeletable, so a project always keeps one", async () => {
     () => asUser1(() => deleteEnvironment("environ_prod")),
     /default environment/i,
   );
-  // Emptying the project down to its default still leaves it standing - the
-  // default guard is what enforces "at least one" in practice, and the explicit
-  // last-one guard below it only ever fires for a project with no default.
   await asUser1(() => deleteEnvironment("environ_dev"));
   await asUser1(() => deleteEnvironment("environ_stage"));
   await assert.rejects(

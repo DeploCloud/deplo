@@ -51,11 +51,6 @@ const PAGE = /* GraphQL */ `
   }
 `;
 
-/**
- * The trail, extended as it is scrolled. The first page is rendered by the
- * server; every later one is a keyset read past the last row we hold, so a row
- * written while you scroll can never shift the page under you.
- */
 export function ActivityFeed({
   initialItems,
   monthCounts,
@@ -69,10 +64,8 @@ export function ActivityFeed({
   monthCounts: Record<string, number>;
   appLinks: AppLinks;
   databaseLinks: DatabaseLinks;
-  /** The filter arguments, repeated verbatim for every later page. */
   variables: Record<string, unknown>;
   pageSize: number;
-  /** False on a feed that is already one person's - see {@link ActivityTimeline}. */
   showActor?: boolean;
 }) {
   const [items, setItems] = React.useState(initialItems);
@@ -110,8 +103,6 @@ export function ActivityFeed({
     );
     io.observe(node);
     return () => io.disconnect();
-    // `items` is in here on purpose: a sentinel still in view after a batch lands
-    // never fires again, so a tall viewport would stall one page in.
   }, [done, loading, error, loadMore, items]);
 
   return (

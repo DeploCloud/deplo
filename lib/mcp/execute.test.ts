@@ -12,18 +12,13 @@ import {
   USER_1,
 } from "../data/leaf-test-helpers";
 import { runWithIdentity } from "../auth/request-context";
-import { createToken, authenticateToken } from "../data/tokens";
-import { getCurrentUser } from "../auth";
+import { authenticateToken } from "../data/tokens/authenticate";
+import { createToken } from "../data/tokens/mint";
+import { getCurrentUser } from "../auth/current-user";
 import { getActiveTeamId, reachableCapabilities } from "../membership";
 import { admitPassthrough, deniedRootFields, runGraphql } from "./execute";
 import { schema } from "../graphql/schema";
-import { MCP_TOOLS } from "./tools";
-
-/**
- * The one thing in `lib/mcp` that would be catastrophic to get wrong. So if
- * `runGraphql` ever stopped wrapping `execute` in `runWithIdentity`, tools would
- * keep working, keep returning data, and quietly return it as the wrong caller.
- */
+import { MCP_TOOLS } from "./tools/catalog";
 
 let db: TestDb;
 let pg: PGlite;
@@ -45,7 +40,6 @@ beforeEach(async () => {
   await seedIdentity(db);
 });
 
-/** Mint a token, authenticate it, and build the context `/api/mcp` would build. */
 async function contextFor(
   capabilities: Parameters<typeof createToken>[0]["capabilities"],
 ) {
@@ -86,7 +80,6 @@ test("a tool's document resolves as the token, in the token's team", async () =>
 });
 
 test("a capability the token was not granted is refused, not silently allowed", async () => {
-  // `view` only: the token may look, and nothing else.
   const ctx = await contextFor(["view"]);
   const del = MCP_TOOLS.find((t) => t.name === "delete_app")!;
 
@@ -98,9 +91,6 @@ test("a capability the token was not granted is refused, not silently allowed", 
 });
 
 test("the team hint decides which team a document resolves in", async () => {
-  // USER_1 belongs to TEAM_A only, so TEAM_B is unreachable and the hint must be
-  // ignored rather than honoured - a token can never be talked into a team its
-  // creator has no membership in.
   const raw = await runWithIdentity({ userId: USER_1, teamId: TEAM_A }, () =>
     createToken({ name: "mcp", capabilities: ["view"] }),
   );
@@ -112,15 +102,6 @@ test("the team hint decides which team a document resolves in", async () => {
     "an unreachable hint falls back, never through",
   );
 });
-
-/* ------------------------------------------------------------------ *
- * The escape hatch's door
- * ------------------------------------------------------------------ */
-
-/**
- * `tools.test.ts` enforces ADR-0021 rule 4 by scanning each row's `query`, and
- * the passthrough's is empty - so the rule is only as real as these tests.
- */
 
 const refusal = (query: string, kind: "query" | "mutation" = "query") => {
   try {
@@ -140,8 +121,6 @@ test("the passthrough refuses every field that hands back a credential", () => {
     const kind = schema.getMutationType()!.getFields()[field]
       ? "mutation"
       : "query";
-    // The guard runs before validation, so a bare field name is enough and the
-    // assertion cannot pass on some unrelated complaint.
     const message = refusal(`${kind} X { ${field} }`, kind);
     assert.match(
       message,
@@ -170,8 +149,6 @@ test("a denied field is refused from inside a fragment too", () => {
 });
 
 test("a field that merely shares a denied name is not refused", () => {
-  // `login` is a denied root mutation. The guard reads the PARENT TYPE, so a
-  // field called `login` on some object would still be readable.
   const guard = deniedRootFields();
   assert.ok(guard.has("login"));
   assert.equal(refusal(`query X { apps { id slug } }`), "");
@@ -209,15 +186,11 @@ test("the passthrough carries /api/graphql's own depth limit", () => {
 });
 
 test("an unknown field is a refusal, not a silently empty answer", () => {
-  // Unvalidated, graphql-js drops the field and answers `{"apps":[{}]}`, which
-  // reads to a model as "that field is empty" rather than "you misspelled it".
   assert.match(refusal(`query X { apps { naem } }`), /Cannot query field/);
 });
 
 test("a driver error reaches the model masked, exactly as it reaches /api/graphql", async () => {
   const ctx = await contextFor(["view"]);
-  // A NUL byte in a bound parameter is refused by Postgres itself, so the error
-  // is the driver's - the kind whose message carries the SQL and its values.
   const res = await runGraphql(
     'query { app(slug: "a\u0000b") { id } }',
     {},

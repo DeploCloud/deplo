@@ -1,24 +1,13 @@
-import { authenticateToken } from "@/lib/data/tokens";
+import { authenticateToken } from "@/lib/data/tokens/authenticate";
 import { appInTeam } from "@/lib/data/app-graph-load";
 import { verifyDeployHookToken } from "@/lib/data/deploy-hook";
-import { redeploy } from "@/lib/data/deployments";
+import { redeploy } from "@/lib/data/deployments/stack-actions";
 import { runWithIdentity } from "@/lib/auth/request-context";
 import { owningTeamId } from "@/lib/data/deploy-hook";
-
-/**
- * The deploy hook: `POST /api/apps/<id>/deploy-hook/<token>` deploys the app. REST
- * rather than GraphQL because a webhook sender (GitLab, a CI runner, a registry)
- * posts to a URL it is given and cannot compose a query.
- */
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-/**
- * Opening the hook URL in a browser is the first thing anyone does with it, and a
- * bare 405 renders as the browser's own "this page isn't working", which reads as
- * "Deplo is broken", not "you used the wrong verb".
- */
 export async function GET() {
   return Response.json(
     {
@@ -35,20 +24,12 @@ export async function GET() {
 
 export async function POST(
   request: Request,
-  // Spelled out rather than `RouteContext<"…">`: that generated type only exists
-  // after a build has run, and this file must typecheck before one has.
   ctx: { params: Promise<{ id: string; token: string }> },
 ) {
-  // The bearer token comes FIRST: until the caller has proved they are a member
-  // of some team, the URL token must not be able to tell them whether an app
-  // exists, or whether its hook is switched off.
+  // Bearer first: until the caller proves team membership, the URL token must not reveal whether an app exists.
   const header = request.headers.get("authorization") ?? "";
-  // The scheme is case-INSENSITIVE (RFC 9110 §11.1) and `lib/graphql/context.ts`
-  // already treats it that way.
   const raw = /^bearer /i.test(header) ? header.slice(7).trim() : "";
   const { id: hookAppId } = await ctx.params;
-  // A token's scope can span teams, so say which one this call is about: the team
-  // that owns the app in the URL.
   let principal = null;
   let refusal = "";
   try {
@@ -70,9 +51,7 @@ export async function POST(
 
   const { token } = await ctx.params;
   const appId = hookAppId;
-  // Everything from here runs as the token, so an app its project scope excludes
-  // answers exactly like an app that isn't there. The reachability check has to
-  // come BEFORE the "hook is off" branch, or the 403 stays an existence oracle.
+  // Checked BEFORE the "hook is off" branch, or that 403 stays an existence oracle.
   const notFound = await runWithIdentity(principal, async () => {
     if (!(await appInTeam(appId, principal.teamId))) return true;
     return false;
@@ -90,17 +69,13 @@ export async function POST(
         },
         { status: 403 },
       );
-    // A wrong token and an unknown app answer identically: a caller holding a
-    // token for team A must not be able to probe team B's app ids.
     return Response.json({ error: "Deploy hook not found" }, { status: 404 });
   }
   if (hook.teamId !== principal.teamId)
     return Response.json({ error: "Deploy hook not found" }, { status: 404 });
 
   try {
-    // Back onto the normal path: inside runWithIdentity the whole data layer
-    // resolves this API token's grant, so `redeploy` applies every gate - no
-    // capability check is duplicated here, and none can be skipped.
+    // redeploy applies every gate inside runWithIdentity; duplicating a capability check here is a bug.
     const deployment = await runWithIdentity(principal, () => redeploy(appId));
     return Response.json({
       deploymentId: deployment.id,
@@ -109,8 +84,6 @@ export async function POST(
       url: deployment.url || null,
     });
   } catch (e) {
-    // `redeploy` throws for a real reason the caller can act on, no
-    // `deploy_apps`, no access to the app's folder, two-factor required.
     return Response.json({ error: (e as Error).message }, { status: 403 });
   }
 }

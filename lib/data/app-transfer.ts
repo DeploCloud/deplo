@@ -6,87 +6,71 @@ import { and, asc, count, eq, inArray, ne, sql } from "drizzle-orm";
 import { getDb } from "../db/client";
 import { teamAvatarUrl } from "../avatar";
 import {
-  activities as activitiesTable,
+  memberships as membershipsTable,
+  membershipCapabilities as membershipCapabilitiesTable,
+  appGrants as appGrantsTable,
+  teamRoleScopeApps,
+} from "../db/schema/control-plane/access-control";
+import { activities as activitiesTable } from "../db/schema/control-plane/activity";
+import { apiTokenApps as apiTokenAppsTable } from "../db/schema/control-plane/api-tokens";
+import {
   appEnvironments as appEnvironmentsTable,
   apps as appsTable,
+} from "../db/schema/control-plane/apps";
+import {
   backups as backupsTable,
   backupRuns as backupRunsTable,
-  apiTokenApps as apiTokenAppsTable,
-  cronJobs as cronJobsTable,
-  environments as environmentsTable,
-  folders as foldersTable,
+} from "../db/schema/control-plane/backups";
+import { cronJobs as cronJobsTable } from "../db/schema/control-plane/crons";
+import { teamAppOrder } from "../db/schema/control-plane/display-order";
+import { sharedEnvVarApps as sharedEnvVarAppsTable } from "../db/schema/control-plane/env-vars";
+import { teams as teamsTable } from "../db/schema/control-plane/identity";
+import {
   gitConnections as gitConnectionsTable,
   githubApps as githubAppsTable,
   githubInstallation as githubInstallationTable,
-  memberships as membershipsTable,
-  membershipCapabilities as membershipCapabilitiesTable,
+} from "../db/schema/control-plane/integrations";
+import {
+  environments as environmentsTable,
+  folders as foldersTable,
   projects as projectsTable,
+} from "../db/schema/control-plane/projects";
+import {
   servers as serversTable,
   serverTeams as serverTeamsTable,
-  sharedEnvVarApps as sharedEnvVarAppsTable,
-  appGrants as appGrantsTable,
-  teamAppOrder,
-  teamRoleScopeApps,
-  teams as teamsTable,
-} from "../db/schema/control-plane";
-import { getCurrentUser } from "../auth";
+} from "../db/schema/control-plane/servers";
+import { getCurrentUser } from "../auth/current-user";
 import { nowIso } from "../ids";
 import { holdsTeamWideCapability, membershipFor } from "../membership";
 import { currentIdentity } from "../auth/request-context";
 import { recordActivity } from "./activity";
-import { reapplyNetworkAfterMove } from "../deploy/build";
+import { reapplyNetworkAfterMove } from "../deploy/build/reroute";
 import { assertNoNameClash, withNetworkLock } from "./name-clash";
-import { composeNamesOnNetwork } from "../deploy/compose-stack";
+import { composeNamesOnNetwork } from "../deploy/compose-stack/compose-read";
 import { stackName } from "../deploy/deploy-key";
 import { requireAppCapability } from "./node-access";
-import { assertServerAccessibleTx } from "./servers";
+import { assertServerAccessibleTx } from "./servers/team-access";
 import { withKeyedLock } from "./keyed-mutex";
-
-/**
- * Transferring an App to another team - the Danger Zone action that hands a whole
- * app (its build config, variables, domains, deployments and volumes) to a
- * different team the SAME person belongs to.
- */
 
 export interface AppTransferTarget {
   id: string;
   name: string;
-  /** The team's picture, so the picker names it the way the switcher does. */
   avatarUrl: string | null;
-  /**
-   * False when the app's server is restricted and NOT shared with that team.
-   * The transfer is refused (an app must stay on a host its team may target);
-   * an instance admin opens the server up in Settings → Servers.
-   */
   serverAvailable: boolean;
-  /**
-   * True when that team has its own GitHub App installed on the repository's
-   * account, so the repository connection follows the app.
-   */
   githubFollows: boolean;
 }
 
 export interface AppTransferInfo {
   appName: string;
   serverName: string;
-  /** Where the app sits inside its current team ("folder Marketing"), or null at the top level. */
   homeLabel: string | null;
-  /** Shared variables linked to this app - links that do not survive the move. */
   sharedVarCount: number;
-  /** Backup schedules targeting this app - they point at the source team's destination. */
   backupCount: number;
   githubConnected: boolean;
-  /**
-   * The label of the git connection authenticating this app's clone, or null.
-   * Unlike a GitHub installation it can never follow the app: a token for the same
-   * host says nothing about whether it can read this repository.
-   */
   gitConnectionLabel: string | null;
-  /** Every OTHER team the viewer belongs to WITH `deploy`, alphabetical. */
   targets: AppTransferTarget[];
 }
 
-/** The owning GitHub account of `owner/name` (or of a repo URL), lowercased. */
 function repoOwner(repo: string | null, url: string | null): string | null {
   const fromRepo = repo?.split("/")[0]?.trim();
   if (fromRepo) return fromRepo.toLowerCase();
@@ -97,7 +81,6 @@ function repoOwner(repo: string | null, url: string | null): string | null {
   return path ? path.toLowerCase() : null;
 }
 
-/** The app row every function here works from, team-scoped by the caller. */
 const appColumns = {
   id: appsTable.id,
   name: appsTable.name,
@@ -113,14 +96,8 @@ const appColumns = {
   autoDeploy: appsTable.autoDeploy,
 };
 
-/**
- * Everything the transfer dialog needs in ONE round trip: what the app is about to
- * lose, and which teams can take it.
- */
 export const appTransferInfo = cache(
   async (appId: string): Promise<AppTransferInfo> => {
-    // The APP's gate, not the team's - the same one `transferAppToTeam` below applies,
-    // so what this screen shows and what the move allows agree.
     const { userId, teamId } = await requireAppCapability(appId, "move_apps");
     const db = getDb();
     const app = (
@@ -132,9 +109,6 @@ export const appTransferInfo = cache(
     )[0];
     if (!app) throw new Error("App not found");
 
-    // Candidate teams: the viewer's OTHER memberships that carry `deploy` - the
-    // "can manage apps there" bar, resolved from the capability junction (the
-    // role name is only a preset, never the authority).
     const candidates = await db
       .select({
         id: teamsTable.id,
@@ -177,8 +151,6 @@ export const appTransferInfo = cache(
           ).map((r) => r.teamId),
         );
 
-    // Which candidates could keep the repository connected - i.e. already have a
-    // GitHub App installed on the SAME account as the app's repository.
     const owner = repoOwner(app.repoRepo, app.repoUrl);
     const githubConnected = Boolean(app.repoInstallationId);
     const followTeams = new Set<string>();
@@ -239,7 +211,6 @@ export const appTransferInfo = cache(
   },
 );
 
-/** "folder Marketing" / "project Shop (production)" / null at the top level. */
 async function homeLabelFor(app: {
   folderId: string | null;
   projectId: string | null;
@@ -279,11 +250,6 @@ async function homeLabelFor(app: {
   return null;
 }
 
-/**
- * Hand this app over to another team. On the DESTINATION side the bar is the one
- * the mission states: the viewer must belong to that team and hold `move_apps`
- * there (they must be able to manage apps where the app lands).
- */
 export async function transferAppToTeam(
   appId: string,
   destTeamId: string,
@@ -304,18 +270,12 @@ export async function transferAppToTeam(
   if (destTeamId === teamId)
     throw new Error("That app is already in this team");
 
-  // A SCOPED API token must not move an app into a team outside its scope - and
-  // reaching the team through ONE project of it is outside: the app lands at the
-  // destination's top level.
   const tokenScope = currentIdentity()?.token?.scope;
   if (tokenScope && !tokenScope.wholeTeamIds.includes(destTeamId))
     throw new Error("This API token can't move apps into that team.");
 
   const dest = await membershipFor(userId, destTeamId);
   if (!dest) throw new Error("You're not a member of that team");
-  // Team-wide, not the raw membership row: `membershipFor` never clamps to the
-  // token for a team other than the request's, and a member whose reach there is
-  // a few nodes could not touch the app once it landed.
   if (!(await holdsTeamWideCapability(destTeamId, "move_apps")))
     throw new Error("You don't have permission to manage apps in that team");
   const destTeam = (
@@ -326,8 +286,6 @@ export async function transferAppToTeam(
       .limit(1)
   )[0];
   if (!destTeam) throw new Error("Team not found");
-  // What it would answer to on the destination team's network - checked under the
-  // lock below, where the write happens.
   const [claimSource] = await db
     .select({ slug: appsTable.slug, compose: appsTable.compose })
     .from(appsTable)
@@ -341,9 +299,6 @@ export async function transferAppToTeam(
       .limit(1)
   )[0];
 
-  // The app must land on a host the destination team may target - refuse with a
-  // message that says who fixes it, rather than parking the app on a server it can't
-  // reach.
   const server = (
     await db
       .select({ name: serversTable.name, allTeams: serversTable.allTeams })
@@ -371,8 +326,6 @@ export async function transferAppToTeam(
       );
   }
 
-  // The GitHub connection is a credential of the SOURCE team's GitHub App, so it may
-  // not simply ride along.
   let installationId = app.repoInstallationId;
   if (installationId) {
     const owner = repoOwner(app.repoRepo, app.repoUrl);
@@ -396,22 +349,13 @@ export async function transferAppToTeam(
       : undefined;
     installationId = match?.id ?? null;
   }
-  // A git connection is a token owned by the SOURCE team, so unlike the GitHub
-  // installation it has no "same account" test that could let it follow: holding a
-  // token for the same host says nothing about whether it can read this repo.
   const connectionDropped = Boolean(app.repoConnectionId);
   const githubDropped =
     Boolean(app.repoInstallationId) && installationId === null;
 
-  // The app's lifecycle lock, the same one a deploy and a delete take, so the
-  // hand-over can't interleave with a bring-up of the very stack it re-homes.
-  // The destination team's network, held for the check AND the write: two moves
-  // landing there at once otherwise both read the same name as free.
   await withNetworkLock(
     { teamId: destTeamId, environmentId: null },
     async () => {
-      // It lands on the destination team's own network, where its service names may
-      // already be taken - and Docker would split the lookups rather than complain.
       await assertNoNameClash({
         to: { teamId: destTeamId, environmentId: null, serverId: app.serverId },
         claims: claimSource?.compose?.trim()
@@ -427,8 +371,6 @@ export async function transferAppToTeam(
             .update(appsTable)
             .set({
               teamId: destTeamId,
-              // Folders, projects and environments belong to the SOURCE team: the app
-              // lands at the destination's top level, exactly like a fresh app.
               folderId: null,
               projectId: null,
               environmentId: null,
@@ -440,29 +382,19 @@ export async function transferAppToTeam(
               updatedAt: nowIso(),
             })
             .where(and(eq(appsTable.id, appId), eq(appsTable.teamId, teamId)));
-          // Per-environment runtime state of environments it no longer lives in.
           await tx
             .delete(appEnvironmentsTable)
             .where(eq(appEnvironmentsTable.appId, appId));
-          // Manual display order is per team; the app joins the destination's tail.
           await tx.delete(teamAppOrder).where(eq(teamAppOrder.appId, appId));
-          // Per-node access is a fact about the SOURCE team, exactly like the folder and
-          // project links cleared above.
           await tx
             .delete(appGrantsTable)
             .where(eq(appGrantsTable.appId, appId));
           await tx
             .delete(teamRoleScopeApps)
             .where(eq(teamRoleScopeApps.appId, appId));
-          // Shared variables stay with the team that owns them (ADR-0012: injection
-          // is the per-app link and nothing else) - the links go, the values never
-          // travel.
           await tx
             .delete(sharedEnvVarAppsTable)
             .where(eq(sharedEnvVarAppsTable.appId, appId));
-          // Backup schedules point at the SOURCE team's backup destination, which the
-          // destination team cannot see, read or rotate. The runs already taken stay
-          // as that team's history (its destination, its audit trail).
           await tx
             .delete(backupsTable)
             .where(
@@ -471,8 +403,6 @@ export async function transferAppToTeam(
                 eq(backupsTable.teamId, teamId),
               ),
             );
-          // Cron jobs carry BOTH team_id and app_id, like backups, and, like them, point at
-          // the SOURCE team and run the SOURCE team's command in the container.
           await tx
             .delete(cronJobsTable)
             .where(
@@ -481,15 +411,9 @@ export async function transferAppToTeam(
                 eq(cronJobsTable.teamId, teamId),
               ),
             );
-          // An API token SCOPED to this app is the source team's credential, and its reach is
-          // derived live from `apps.teamId`, so a surviving row would follow the app into
-          // the destination team and show up in ITS "tokens reaching this team" list without
           await tx
             .delete(apiTokenAppsTable)
             .where(eq(apiTokenAppsTable.appId, appId));
-          // Their POINTER to the app goes, though, and that is not bookkeeping. They would
-          // sit on the destination forever. Nulling it makes them ordinary orphans, which is
-          // what they are, and the sweep reclaims them after the usual keep window.
           await tx
             .update(backupRunsTable)
             .set({ appId: null })
@@ -499,8 +423,6 @@ export async function transferAppToTeam(
                 eq(backupRunsTable.teamId, teamId),
               ),
             );
-          // Keep the source team's log entries, drop the pointer: those rows must not
-          // deep-link members into an app their team no longer owns.
           await tx
             .update(activitiesTable)
             .set({ appId: null })
@@ -510,8 +432,6 @@ export async function transferAppToTeam(
     },
   );
 
-  // The app changed TEAM, so it changed network too - the destination's top level
-  // is the destination team's own. Outside the transaction: it is an agent call.
   await reapplyNetworkAfterMove([appId]);
 
   await recordActivity(

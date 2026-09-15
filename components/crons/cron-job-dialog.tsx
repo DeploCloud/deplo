@@ -36,13 +36,7 @@ import { SchedulePicker } from "@/components/shared/schedule-picker";
 import { TimezonePicker } from "@/components/servers/timezone-picker";
 import { dstSkipWarning } from "@/lib/crons/cron-tz";
 import { gqlAction } from "@/lib/graphql-client";
-import type { CronJobDTO } from "@/lib/data/crons";
-
-/**
- * Create or edit one cron job. Name, target, schedule and command are the form;
- * anything with a defensible default is under Advanced. Two things are said out
- * loud: timeout x retries (the server refuses the product) and the DST hour.
- */
+import type { CronJobDTO } from "@/lib/data/crons/dto";
 
 const SERVICE_INHERIT = "__default__";
 
@@ -67,7 +61,6 @@ interface EnvRow {
   value: string;
 }
 
-/** The browser's own zone, which is almost always what the author means. */
 function browserZone(): string {
   try {
     return Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
@@ -89,23 +82,14 @@ export function CronJobDialog({
   onOpenChange: (o: boolean) => void;
   targetKind: "app" | "database";
   targetId: string;
-  /** Compose services a job can run in. Empty for a database (one container). */
   services: string[];
-  /** Where a job that picks no container runs - named in the picker. */
   primaryService?: string | null;
-  /** Absent ⇒ create. */
   job?: CronJobDTO;
 }) {
   const router = useRouter();
   const [pending, startTransition] = React.useTransition();
-  // Read once, lazily: the timezone list shows a live clock per zone, and
-  // reading `Date.now()` during render would be impure (and re-read on every
-  // keystroke). A minute's drift in a picker nobody keeps open costs nothing.
   const [pickerNow] = React.useState(() => Date.now());
 
-  // Seeded at MOUNT, not in an effect: the caller mounts this component only
-  // while the dialog is open, so mounting IS opening - and a lazy initializer
-  // cannot be fought by a prop mid-typing the way a sync effect can.
   const [name, setName] = React.useState(job?.name ?? "");
   const [description, setDescription] = React.useState(job?.description ?? "");
   const [service, setService] = React.useState(job?.service ?? SERVICE_INHERIT);
@@ -129,10 +113,7 @@ export function CronJobDialog({
   const [env, setEnv] = React.useState<EnvRow[]>(() =>
     (job?.envKeys ?? []).map((key) => ({ key, value: "" })),
   );
-  /** Editing keeps the stored variables unless the author touches them: their
-   *  values are unreadable, so sending the list back would blank every secret. */
   const [envTouched, setEnvTouched] = React.useState(false);
-  /** A stored key sent back blank means "keep it" - the server carries the value over. */
   const storedKeys = React.useMemo(() => new Set(job?.envKeys ?? []), [job]);
 
   const timeout = Number(timeoutMinutes) || 0;
@@ -217,7 +198,6 @@ export function CronJobDialog({
                   autoFocus
                 />
               </div>
-              {/* A database is a single container, so there is nothing to pick. */}
               {services.length > 1 && (
                 <div className="space-y-2">
                   <FieldLabel
@@ -262,9 +242,6 @@ export function CronJobDialog({
                   >
                     Timezone
                   </FieldLabel>
-                  {/* The READER's clock, not a server's: the whole point of the
-                    field is "03:00 means 03:00 where you are". Safe to read at
-                    render because the dialog's content only mounts on open. */}
                   <TimezonePicker
                     id="cron-timezone"
                     value={timezone}
@@ -453,8 +430,6 @@ export function CronJobDialog({
                     </div>
                   </div>
 
-                  {/* The two multiply, and the server refuses the product - better
-                    to say so while it can still be changed. */}
                   {attempts > 1 && (
                     <p
                       className={

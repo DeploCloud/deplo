@@ -18,9 +18,6 @@ import { FolderColorPicker } from "@/components/apps/folder-color-picker";
 import { gqlAction } from "@/lib/graphql-client";
 import { DocsLink } from "@/components/ui/docs-link";
 
-/**
- * Create a Project CONTAINER (ADR-0008) in the active team.
- */
 export function CreateProjectDialog({
   open,
   onOpenChange,

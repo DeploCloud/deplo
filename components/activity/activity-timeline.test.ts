@@ -27,25 +27,15 @@ function row(over: Partial<ActivityItem> & { id: string }): ActivityItem {
   };
 }
 
-/* ------------------------------------------------------------------ */
-/* stamp                                                               */
-/* ------------------------------------------------------------------ */
-
 test("stamp reads the ISO string in UTC, so no clock can disagree with it", () => {
   assert.equal(stamp("2026-08-26T14:32:11.000Z"), "26 Aug, 14:32");
   assert.equal(stamp("2026-01-02T00:05:00.000Z"), "2 Jan, 00:05");
-  // The month heading above the row carries the year, so the row does not.
   assert.equal(stamp("2025-12-31T23:59:00.000Z"), "31 Dec, 23:59");
   assert.equal(stamp("not a date"), "");
 });
 
-/* ------------------------------------------------------------------ */
-/* mentionAt                                                           */
-/* ------------------------------------------------------------------ */
-
 test("mentionAt finds the app's name only as a whole word", () => {
   assert.equal(mentionAt("Deployed api to production", "api"), 9);
-  // The one that matters: a short name must not light up inside a longer one.
   assert.equal(mentionAt("Deployed api-gateway to production", "api"), -1);
   assert.equal(mentionAt("Deployed api-gateway", "api-gateway"), 9);
   assert.equal(mentionAt("Updated build settings", "api"), -1);
@@ -54,10 +44,6 @@ test("mentionAt finds the app's name only as a whole word", () => {
 test("mentionAt skips a bad boundary and takes the next real one", () => {
   assert.equal(mentionAt("api-gateway restarted; api is fine", "api"), 23);
 });
-
-/* ------------------------------------------------------------------ */
-/* foldRuns                                                            */
-/* ------------------------------------------------------------------ */
 
 test("foldRuns folds a consecutive run by one person into one entry", () => {
   const runs = foldRuns([
@@ -88,8 +74,6 @@ test("foldRuns keeps a different person, message, app or database apart", () => 
 });
 
 test("foldRuns keeps two databases apart under one message", () => {
-  // "Restarted database x" is the same sentence for every database, so without
-  // the id two of them would collapse into one row that names only the first.
   const dbRow = (id: string, databaseId: string) =>
     row({
       id,
@@ -140,12 +124,6 @@ test("foldRuns never folds across a month heading", () => {
   );
 });
 
-/* ------------------------------------------------------------------ */
-/* The header line                                                     */
-/* ------------------------------------------------------------------ */
-
-/** The class list of the row's first line - the `summary` of a folded run, or
- *  the actor `p` of a row standing alone. */
 function headerClass(item: ActivityItem, repeats?: string[]): string {
   const html = renderToStaticMarkup(
     createElement(ActivityRow, { item, repeats }),
@@ -154,8 +132,6 @@ function headerClass(item: ActivityItem, repeats?: string[]): string {
 }
 
 test("the header line is the same height folded, unfolded or alone", () => {
-  // Unfolding a run used to move its own first line: the geometry hung off
-  // `:not([open])`, so opening one shifted the text off the marker's centre.
   const one = headerClass(row({ id: "a" }));
   const run = headerClass(row({ id: "b" }), [
     "2026-08-26T14:32:11.000Z",

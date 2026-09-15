@@ -29,7 +29,7 @@ import {
   supportsFrameworkDetection,
 } from "@/lib/apps/framework-catalog";
 import { cn } from "@/lib/utils";
-import type { BuildMethod, BuildMethodSettings } from "@/lib/types";
+import type { BuildMethod, BuildMethodSettings } from "@/lib/types/build";
 
 interface MethodMeta {
   id: BuildMethod;
@@ -38,7 +38,6 @@ interface MethodMeta {
   blurb: string;
 }
 
-/** The selectable build methods, in the order shown in the picker. */
 export const BUILD_METHODS: MethodMeta[] = [
   {
     id: "railpack",
@@ -66,11 +65,6 @@ export const BUILD_METHODS: MethodMeta[] = [
   },
 ];
 
-/**
- * Per-method build settings. Renders the method picker (a radio group of cards)
- * plus a panel with only the fields the selected method actually uses. Driven by
- * the parent's BuildConfig state.
- */
 export function BuildMethodFields({
   method,
   settings,
@@ -84,21 +78,12 @@ export function BuildMethodFields({
   settings: BuildMethodSettings;
   onMethodChange: (m: BuildMethod) => void;
   onSettingsChange: (patch: Partial<BuildMethodSettings>) => void;
-  /**
-   * The framework in force - the user's correction if they made one, else what the
-   * last deploy read.
-   */
   framework?: string | null;
-  /** What DETECTION found, so the field can say whose answer is showing. */
   detectedFramework?: string | null;
-  /** Correct it (null ⇒ back to detection). Omitted ⇒ no framework field at all,
-   * which is what a caller with no source to read (the create wizard) wants. */
   onFrameworkChange?: (id: string | null) => void;
 }) {
   return (
     <div className="space-y-4">
-      {/* No heading of its own: the caller titles this group, and two "Build
-          method" labels stacked on each other is noise. */}
       <div
         role="radiogroup"
         aria-label="Build method"
@@ -126,7 +111,6 @@ export function BuildMethodFields({
   );
 }
 
-/** One selectable build-method card: icon, name, blurb, and a radio indicator. */
 function MethodCard({
   meta,
   selected,
@@ -167,7 +151,6 @@ function MethodCard({
           {meta.blurb}
         </span>
       </span>
-      {/* Radio dot - the unambiguous "this one is selected" cue. */}
       <span
         aria-hidden
         className={cn(
@@ -181,10 +164,6 @@ function MethodCard({
   );
 }
 
-/**
- * The selected method's own settings, grouped into a labelled panel so it reads as
- * "the {method} configuration" rather than loose fields under the picker.
- */
 function MethodSettings({
   method,
   settings,
@@ -301,18 +280,12 @@ function MethodSettings({
   );
 }
 
-/** The Select's stand-in for "no override" - Radix cannot hold an empty value. */
 const AUTO = "__auto";
 
-/** The frameworks a user picks from, by display name - a picker is searched
- * alphabetically, unlike the catalog's detection-priority order. */
 const FRAMEWORK_CHOICES = [...FRAMEWORKS].sort((a, b) =>
   a.name.localeCompare(b.name),
 );
 
-/**
- * Which framework the builder should treat this app as.
- */
 function FrameworkField({
   framework,
   detected,
@@ -420,7 +393,6 @@ function TextField({
   placeholder?: string;
   help?: string;
   docs?: DocsTopic;
-  /** For a field that has to span the grid rather than sit in one column. */
   className?: string;
 }) {
   return (

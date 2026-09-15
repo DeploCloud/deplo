@@ -1,6 +1,5 @@
 import { cn } from "@/lib/utils";
 
-/** The Registries empty-state illustration: a whale afloat with its containers, breathing. */
 export function RegistryGraphic({ className }: { className?: string }) {
   return (
     <svg

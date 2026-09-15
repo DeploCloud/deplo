@@ -1,20 +1,5 @@
-/**
- * The `www` / non-`www` pair of a hostname - the one place that knows which two
- * hostnames are "the same site" and which of them a browser should end up on.
- */
-
-/**
- * Which hostname of a `www`/non-`www` pair serves the app, expressed relative to
- * the domain being edited: - `none`, nothing is paired; only this hostname is
- * routed.
- */
 export type WwwRedirect = "none" | "toThis" | "toCounterpart";
 
-/**
- * Two-label public suffixes common enough to be worth knowing, so `example.co.uk`
- * reads as an apex (its `www.` variant is meaningful) while `api.example.com` does
- * not.
- */
 const TWO_LABEL_SUFFIXES = new Set([
   "co.uk",
   "org.uk",
@@ -67,14 +52,8 @@ const TWO_LABEL_SUFFIXES = new Set([
   "co.at",
 ]);
 
-/**
- * Hosts whose `www.` variant is never meaningful: the zero-config wildcard-DNS
- * services Deplo generates its own hostnames on.
- */
 const WILDCARD_DNS_SUFFIXES = [".nip.io", ".sslip.io", ".localhost"];
 
-/** Normalise a hostname the way the domain layer stores one: trimmed, lowercase,
- * no scheme, no trailing dot or slash. */
 function clean(host: string): string {
   return host
     .trim()
@@ -83,14 +62,9 @@ function clean(host: string): string {
     .replace(/[./]+$/, "");
 }
 
-/**
- * The other half of a hostname's `www` pair, or null when the hostname has no
- * meaningful one.
- */
 export function wwwCounterpart(host: string): string | null {
   const h = clean(host);
   if (!h || h.includes("/") || h.includes(" ")) return null;
-  // An IP literal has no www variant.
   if (/^[0-9.]+$/.test(h)) return null;
   if (h.startsWith("www.")) {
     const bare = h.slice(4);
@@ -106,15 +80,10 @@ export function wwwCounterpart(host: string): string | null {
   return apex ? `www.${h}` : null;
 }
 
-/** A host on public wildcard DNS: it resolves without a record, and no public
- *  certificate authority issues for it. */
 export function isWildcardDnsHost(host: string): boolean {
   return WILDCARD_DNS_SUFFIXES.some((s) => host.endsWith(s));
 }
 
-/**
- * The {@link WwwRedirect} state a domain is currently in, read off the app's rows.
- */
 export function deriveWwwRedirect(
   host: string,
   domains: { name: string; redirectTo?: string | null }[],

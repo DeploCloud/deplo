@@ -14,12 +14,6 @@ import {
   verifyPassword,
 } from "./crypto";
 
-/**
- * `htpasswdLine` produces a Traefik-compatible `user:$2b$<cost>$<salt+hash>`
- * credential - bcrypt, which Traefik's `go-htpasswd` reads alongside the MD5
- * (apr1) scheme this used to emit.
- */
-
 test("htpasswdLine: shape is user:$2b$<cost>$…", async () => {
   const line = await htpasswdLine("alice", "s3cret");
   const m = line.match(/^alice:(\$2[aby]\$(\d{2})\$[./A-Za-z0-9]{53})$/);
@@ -46,13 +40,6 @@ test("htpasswdLine: username is preserved verbatim", async () => {
   assert.ok((await htpasswdLine("Admin_1", "x")).startsWith("Admin_1:$2"));
 });
 
-/* ------------------------------------------------------------------ */
-/* Password hashing: the stored work factor, and upgrading past it      */
-/* ------------------------------------------------------------------ */
-
-/**
- * The point of these is the MIGRATION, not the algorithm.
- */
 const legacyHash = (password: string, salt: Buffer) =>
   `scrypt$${salt.toString("hex")}$${scryptSync(password, salt, 64).toString("hex")}`;
 
@@ -61,8 +48,6 @@ test("hashPassword: the stored form carries its own scrypt parameters", async ()
   const parts = stored.split("$");
   assert.equal(parts.length, 6, "scheme, N, r, p, salt, hash");
   assert.equal(parts[0], "scrypt");
-  // Whatever the current cost is, it must be a number the verifier can read
-  // back - and stronger than what node would have defaulted to.
   assert.ok(
     Number(parts[1]) > 16384,
     `N=${parts[1]} must beat the old default`,
@@ -110,17 +95,11 @@ test("passwordNeedsRehash: true for a legacy hash, false for a fresh one", async
 });
 
 test("passwordNeedsRehash: never downgrades a hash stronger than the current cost", () => {
-  // What an OLDER binary must do when it meets a hash a NEWER one wrote: leave
-  // it alone. Comparing the tuple field-by-field would get this wrong the first
-  // time anybody tunes r instead of N.
   const stronger = `scrypt$1048576$8$1$${"ab".repeat(16)}$${"cd".repeat(32)}`;
   assert.equal(passwordNeedsRehash(stronger), false);
 });
 
 test("passwordNeedsRehash: an unparseable hash is not a rehash candidate", () => {
-  // It cannot be verified either, so there is no login for the upgrade to ride
-  // on - saying "true" here would only invite a caller to rewrite a row it
-  // never authenticated.
   assert.equal(passwordNeedsRehash("not-a-hash"), false);
 });
 
@@ -131,15 +110,6 @@ test("hashPassword: the same password twice gives different stored values", asyn
   );
 });
 
-/* ------------------------------------------------------------------ */
-/* Stored secrets: telling "empty" apart from "unreadable"              */
-/* ------------------------------------------------------------------ */
-
-/**
- * `decryptSecret` answers `""` for both "the stored secret IS empty" and "this
- * ciphertext will not open", and every caller that acted on the difference read
- * the second as the first - an app deployed with a blank API key, a destination
- */
 function underSecret<T>(secret: string, fn: () => T): T {
   const before = process.env.DEPLO_SECRET;
   process.env.DEPLO_SECRET = secret;
@@ -162,8 +132,6 @@ test("tryDecryptSecret: a round trip reports ok with the original value", () => 
 });
 
 test("tryDecryptSecret: an EMPTY secret is ok, not a failure", () => {
-  // The case no heuristic can recover: a legitimately blank variable has a
-  // perfectly valid ciphertext, so "plaintext is empty" cannot mean "broken".
   const sealed = underSecret("secret-one-aaaaaaaaaaaaaaaa", () =>
     encryptSecret(""),
   );
@@ -212,8 +180,6 @@ test("decryptSecretOrThrow: names the value and blames the right cause", () => {
 });
 
 test("decryptSecretOrThrow: an empty stored value is returned, not thrown", () => {
-  // Otherwise the strict variant would be unusable at the deploy edge, where a
-  // blank variable is an ordinary thing for someone to have set.
   const sealed = underSecret("secret-one-aaaaaaaaaaaaaaaa", () =>
     encryptSecret(""),
   );

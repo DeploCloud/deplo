@@ -13,15 +13,9 @@ import { loadEnvVarsForApp } from "../data/app-graph-load";
 import {
   loadAutoInjectedVarsForApp,
   loadSharedVarsForApp,
-} from "../data/shared-vars";
+} from "../data/shared-vars/deploy-entries";
 import { resolveEnvEntries } from "../deploy/env-resolve";
-import type { EnvTarget } from "../types";
-
-/**
- * Migration parity for ADR-0027: `instance_env_vars` folds into `shared_env_vars`
- * as instance-OWNED rows. Every app must resolve the same key -> valueEnc map, on
- * every target, before and after 0131 + 0132.
- */
+import type { EnvTarget } from "../types/env";
 
 const T0 = "2026-01-01T00:00:00.000Z";
 const MIG_DIR = path.join(process.cwd(), "lib", "db", "migrations");
@@ -52,8 +46,6 @@ before(async () => {
   const freeze = (f: string) => Number(f.slice(0, 4)) <= 130;
   for (const f of files.filter(freeze)) await applyFile(f);
 
-  // The old world, in raw SQL: `instance_env_vars` is gone from the live drizzle
-  // schema, and `shared_env_vars.team_wide` with it.
   await pg.exec(`
     insert into users (id, email, username, name, role, is_instance_admin, suspended, avatar_color, created_at, updated_at)
       values ('user_1', 'u@example.io', 'user_1', 'user_1', 'owner', true, false, '#abc', '${T0}', '${T0}');
@@ -105,7 +97,6 @@ after(async () => {
   await pg.close();
 });
 
-/** The resolved key -> valueEnc map for one (app, target), exactly like appEnv. */
 async function resolved(
   appId: string,
   target: EnvTarget,
@@ -128,10 +119,8 @@ async function resolved(
 }
 
 test("every instance global still reaches every app, on every target", async () => {
-  // Byte-identical to what the instance-global layer resolved at 0130: the same
-  // keys, the same ciphertext, in the same lowest-precedence slot.
   assert.deepEqual(await resolved("app_a", "production"), {
-    G_PLAIN: "enc:appwins", // the app's own value still outranks the global
+    G_PLAIN: "enc:appwins",
     G_SECRET: "enc:gsecret",
     G_PROD: "enc:gprod",
     G_NOTARGET: "enc:gnone",
@@ -141,7 +130,6 @@ test("every instance global still reaches every app, on every target", async () 
     G_SECRET: "enc:gsecret",
     G_NOTARGET: "enc:gnone",
   });
-  // A DIFFERENT team gets them too - that is what instance-wide meant.
   assert.deepEqual(await resolved("app_b", "production"), {
     G_PLAIN: "enc:global",
     G_SECRET: "enc:gsecret",
@@ -171,8 +159,6 @@ test("the migrated globals are instance-OWNED and auto-injecting", async () => {
 });
 
 test("auto_inject is unconditional, not `reaches more than one team`", async () => {
-  // The single-team instance is the common self-hosted shape: a cardinality rule
-  // would silently stop injecting every global it has.
   const one = await pg.query<{ n: number }>(
     `select count(*)::int as n from shared_env_var_teams
        where var_id = (select id from shared_env_vars where key = 'G_PROD')`,

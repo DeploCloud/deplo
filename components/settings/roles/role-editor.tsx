@@ -21,22 +21,19 @@ import { FieldLabel, InfoTip } from "@/components/ui/info-tip";
 import { ConfirmAction } from "@/components/shared/confirm-action";
 import { PermissionPicker } from "@/components/settings/permission-picker";
 import { gqlAction } from "@/lib/graphql-client";
-import { ALL_CAPABILITIES, type Capability } from "@/lib/types";
+import { ALL_CAPABILITIES, type Capability } from "@/lib/types/identity";
 import { CAPABILITY_CATEGORIES, CAPABILITY_META } from "@/lib/capabilities";
 import { PROJECT_SCOPED_CAPABILITIES } from "@/lib/membership-shared";
+import { ScopePicker } from "@/components/settings/tokens/scope-picker/picker";
 import {
-  ScopePicker,
   coversEverything,
   everythingSelection,
   type ScopeSelection,
-} from "@/components/settings/tokens/scope-picker";
-import type { ScopeTreeTeam } from "@/lib/data/tokens";
+} from "@/components/settings/tokens/scope-picker/selection";
+import type { ScopeTreeTeam } from "@/lib/data/tokens/scope-tree";
 import { sameCapabilities } from "@/lib/membership-shared";
-import type { TeamRoleDTO } from "@/lib/data/roles";
+import type { TeamRoleDTO } from "@/lib/data/roles/role-list";
 
-/**
- * The role editor: a page, not a dialog.
- */
 export function RoleEditor({
   mode,
   role,
@@ -45,12 +42,9 @@ export function RoleEditor({
   tree,
 }: {
   mode: "create" | "edit";
-  /** The role being edited. */
   role?: TeamRoleDTO;
-  /** The role a new one was started from (chosen in the "New role" menu). */
   basedOn?: TeamRoleDTO | null;
   canManage: boolean;
-  /** The team's projects, folders and apps - the tree the Scope card draws. */
   tree: ScopeTreeTeam[];
 }) {
   const router = useRouter();
@@ -66,9 +60,6 @@ export function RoleEditor({
         basedOn?.capabilities ?? ["view" as Capability],
       requireTwoFactor:
         role?.requireTwoFactor ?? basedOn?.requireTwoFactor ?? false,
-      // Unrestricted shows as everything ticked, not as an empty tree: this is
-      // the control an admin narrows, and starting it blank made "reaches the
-      // whole team" look identical to "reaches nothing".
       scope:
         (role?.scope ?? basedOn?.scope ?? null) != null
           ? toSelection(role?.scope ?? basedOn?.scope ?? null)
@@ -92,11 +83,7 @@ export function RoleEditor({
     (scope.environmentIds?.length ?? 0) +
     scope.folderIds.length +
     scope.appIds.length;
-  // Untick anything at all and the role is limited; put every top-level node back and
-  // it is unrestricted again, which is stored as no scope at all, so the project
-  // somebody creates tomorrow is included.
   const scoped = !coversEverything(tree, scope);
-  // What the scope silences.
   const mutedCaps = React.useMemo(
     () =>
       scoped
@@ -153,8 +140,6 @@ export function RoleEditor({
             description,
             capabilities: caps,
             requireTwoFactor: twoFactor,
-            // Two fields, because "absent" has to keep meaning "leave it alone"
-            // for every client that predates the scope.
             scope: scoped ? scopeInput(scope) : undefined,
             clearScope: !scoped,
           },
@@ -252,8 +237,6 @@ export function RoleEditor({
           </CardContent>
         </Card>
 
-        {/* Scope before Permissions, as the token editor orders them: the reach
-            decides what the permissions MEAN, so it is read first. */}
         <Card>
           <CardContent className="pt-6">
             <ScopePicker
@@ -289,8 +272,6 @@ export function RoleEditor({
         </Card>
       </div>
 
-      {/* Right rail: what this role will grant, and the primary action -
-          sticky on desktop so it stays reachable while scrolling the list. */}
       <aside className="h-fit space-y-4 xl:sticky xl:top-20">
         <Card>
           <CardHeader>
@@ -512,11 +493,6 @@ export function RoleEditor({
   );
 }
 
-/* ------------------------------------------------------------------ */
-/* Pure helpers                                                        */
-/* ------------------------------------------------------------------ */
-
-/** The DTO's scope as the picker's selection. Null (unrestricted) is empty. */
 function toSelection(
   scope: {
     projectIds: string[];
@@ -534,9 +510,6 @@ function toSelection(
   };
 }
 
-/**
- * The four fields `RoleScopeInput` defines, and only those.
- */
 function scopeInput(scope: ScopeSelection) {
   return {
     projectIds: scope.projectIds,
@@ -546,7 +519,6 @@ function scopeInput(scope: ScopeSelection) {
   };
 }
 
-/** Order-blind: the picker emits its sets in whatever order it walked them. */
 function sameScope(a: ScopeSelection, b: ScopeSelection): boolean {
   const same = (x: string[], y: string[]) =>
     x.length === y.length && [...x].sort().join() === [...y].sort().join();
@@ -558,7 +530,6 @@ function sameScope(a: ScopeSelection, b: ScopeSelection): boolean {
   );
 }
 
-/** "2 projects and 1 app" - the one-line shape of a scope. */
 function describeScope(scope: ScopeSelection): string {
   const plural = (n: number, one: string) =>
     `${n} ${n === 1 ? one : `${one}s`}`;

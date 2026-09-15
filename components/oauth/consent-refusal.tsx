@@ -4,11 +4,6 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { ConsentShell } from "@/components/oauth/consent-shell";
 
-/**
- * Why a connection cannot be approved, in one line. Never a bare redirect: the
- * person is mid-flow inside someone else's product, and a silent bounce reads
- * as Deplo being broken.
- */
 export function ConsentRefusal({
   clientName,
   title,
@@ -20,8 +15,6 @@ export function ConsentRefusal({
 }) {
   return (
     <ConsentShell>
-      {/* Same centred column as the approval screen, so the two read as one
-          product rather than as a screen and its error page. */}
       <Card>
         <div className="grid justify-items-center gap-4 p-6 text-center">
           <span className="flex size-14 items-center justify-center rounded-full bg-muted">

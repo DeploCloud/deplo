@@ -1,15 +1,7 @@
-/**
- * The HTTP half both source clients share: one timeout, one test seam, and one
- * vocabulary for a connection that did not work.
- */
-
-/** How long one call to a panel may take. */
 export const REQUEST_TIMEOUT_MS = 15_000;
 
-/** The panel a message is about. Only the words differ between products. */
 export interface PanelIdentity {
   name: string;
-  /** What it listens on when nothing is in front of it. */
   portHint: string;
 }
 
@@ -20,7 +12,6 @@ export type FetchLike = (
 
 let doFetch: FetchLike = (input, init) => fetch(input, init);
 
-/** Swap the transport in tests (the import suites drive recorded fixtures). */
 export function __setMigrationFetchForTest(fn: FetchLike): void {
   doFetch = fn;
 }
@@ -29,16 +20,10 @@ export function __resetMigrationFetchForTest(): void {
   doFetch = (input, init) => fetch(input, init);
 }
 
-/**
- * An https URL whose host is a bare IP. Deliberately not "any IP": `http://` on an
- * IP is the everyday same-machine case, and the placeholder on that very field
- * suggests one.
- */
 function isBareIpHttps(baseUrl: string): boolean {
   try {
     const u = new URL(baseUrl);
     if (u.protocol !== "https:") return false;
-    // `hostname` strips the brackets an IPv6 literal is written with.
     return (
       /^\d{1,3}(\.\d{1,3}){3}$/.test(u.hostname) || u.hostname.includes(":")
     );
@@ -47,7 +32,6 @@ function isBareIpHttps(baseUrl: string): boolean {
   }
 }
 
-/** The hostname alone, for naming the panel's own http port as the way out. */
 function hostOf(baseUrl: string): string {
   try {
     return new URL(baseUrl).hostname;
@@ -56,10 +40,6 @@ function hostOf(baseUrl: string): string {
   }
 }
 
-/**
- * A transport failure, said out loud. All of these read the same otherwise, so the
- * user is left guessing on the one screen where guessing costs the most.
- */
 export function describeTransportError(
   err: unknown,
   baseUrl: string,
@@ -98,11 +78,8 @@ export function describeTransportError(
     case "SELF_SIGNED_CERT_IN_CHAIN":
     case "UNABLE_TO_VERIFY_LEAF_SIGNATURE":
     case "ERR_TLS_CERT_ALTNAME_INVALID": {
-      // The trap, named.
       if (isBareIpHttps(baseUrl))
         return `${baseUrl} answered with a certificate this machine does not trust (${code}) - which is what an IP address gets, because the certificate is issued for the panel's NAME. Put the address you open ${panel.name} on in your browser here. The machine's own address is asked for at the next step, and it is not this field.`;
-      // Nothing here can be told to accept a certificate, so the only way out is
-      // the panel's own http port, in front of whatever is presenting this one.
       const host = hostOf(baseUrl);
       const via = host ? `, typically http://${host}${panel.portHint}` : "";
       return `The https certificate ${at} is not one this machine trusts (${code}). Deplo cannot be told to accept it - use ${panel.name}'s plain http address instead${via}.`;
@@ -115,11 +92,6 @@ export function describeTransportError(
   }
 }
 
-/**
- * The panel never answered at all: DNS, refused, TLS, timeout. Told apart from a
- * refusal because detection must stop on one and carry on past the other - a
- * machine that does not answer will not answer the second guess either.
- */
 export class PanelUnreachableError extends Error {
   constructor(message: string) {
     super(message);
@@ -127,11 +99,6 @@ export class PanelUnreachableError extends Error {
   }
 }
 
-/**
- * A 5xx spoken by whatever sits IN FRONT of the panel. Nothing is answering behind
- * it, so this is unreachable rather than a refusal - and the body is the proxy's
- * own page, never the panel's words. Cloudflare's 52x are all in here.
- */
 const GATEWAY_STATUS = new Set([
   502, 503, 504, 520, 521, 522, 523, 524, 525, 526, 527,
 ]);
@@ -144,21 +111,11 @@ function refuseGateway(res: Response, baseUrl: string): void {
   );
 }
 
-/**
- * What the PANEL said, capped - or nothing. An html page is some other server's
- * words (a proxy, a front page, a 404 from whatever else lives at that address),
- * and quoting three hundred characters of it at somebody helps nobody.
- */
 export function panelSaid(body: string): string {
   const said = body.trim();
   return said.startsWith("<") ? "" : said.slice(0, 300);
 }
 
-/**
- * A failure the next attempt may not hit. Kept narrow on purpose: a wrong address
- * (DNS, nothing listening) or a certificate this machine will not trust has to
- * fail on the Connect screen, not three attempts later.
- */
 const TRANSIENT_CODES = new Set([
   "ECONNRESET",
   "EPIPE",
@@ -169,7 +126,6 @@ const TRANSIENT_CODES = new Set([
   "UND_ERR_CONNECT_TIMEOUT",
 ]);
 
-/** How long to wait before each extra attempt. Length = how many there are. */
 const RETRY_DELAYS_MS = [300, 1_200];
 
 function isTransient(err: unknown): boolean {
@@ -185,12 +141,6 @@ function isTransient(err: unknown): boolean {
   return typeof cause?.code === "string" && TRANSIENT_CODES.has(cause.code);
 }
 
-/**
- * Every call goes out through here so no caller can leak a bare "fetch failed" -
- * and so one blip does not end a migration. A run reads the panel hundreds of
- * times; a single reset used to fail the data phase with every service after it
- * left empty.
- */
 export async function sendRequest(
   baseUrl: string,
   url: string,
@@ -200,8 +150,6 @@ export async function sendRequest(
   let last: unknown;
   for (let attempt = 0; ; attempt++) {
     try {
-      // A retry needs its OWN deadline: `AbortSignal.timeout` fires once and stays
-      // aborted, so reusing the caller's would abort the second attempt instantly.
       const res = await doFetch(
         url,
         attempt === 0
@@ -220,7 +168,6 @@ export async function sendRequest(
   throw new PanelUnreachableError(describeTransportError(last, baseUrl, panel));
 }
 
-/** Origin with no trailing slash and no trailing `/api`, however it was typed. */
 export function normalizeSourceBaseUrl(raw: string): string {
   const trimmed = raw.trim();
   const withScheme = /^https?:\/\//i.test(trimmed)
@@ -236,8 +183,6 @@ export function normalizeSourceBaseUrl(raw: string): string {
   return `${u.origin}${path}`;
 }
 
-/** A redirect is refused rather than followed: the address that answers directly
- *  is the one the import has to keep using. */
 export function refuseRedirect(res: Response, panel: PanelIdentity): void {
   if (res.status < 300 || res.status >= 400) return;
   const to = res.headers.get("location") ?? "";
