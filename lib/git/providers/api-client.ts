@@ -24,6 +24,7 @@ const REQUEST_TIMEOUT_MS = 15_000;
 function timedFetch(target: string, init: RequestInit): Promise<Response> {
   return fetch(target, {
     ...init,
+    // The base URL is SSRF-checked once, when the connection is saved; a 302 is the way out, so redirects are refused.
     redirect: "manual",
     signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
   });

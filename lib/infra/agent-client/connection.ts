@@ -65,6 +65,7 @@ export interface AgentConsoleInstance {
   openStdin: boolean;
   tty: boolean;
   state: string;
+  // "" when the image has no healthcheck, and from an agent older than the field - never read it as healthy.
   health: string;
   restartCount: number;
   startedAtUnix: number;
@@ -98,6 +99,7 @@ export interface AgentStartJobRequest {
   timeoutSeconds: number;
   workdir: string;
   user: string;
+  // The NAME rides argv, the VALUE the docker client's own env, so a secret is never readable from ps.
   env: { name: string; value: string }[];
 }
 

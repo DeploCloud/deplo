@@ -19,6 +19,7 @@ import {
 } from "./hello-capabilities";
 import { resolveTarget } from "./mtls-channel";
 
+// An agent that ignores keep_per_slug falls back on the scalar and deletes the images rollback keeps.
 export function compensateKeepPerSlug(
   req: DockerCleanupRequest,
   hello: HelloResponse,

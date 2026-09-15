@@ -81,6 +81,7 @@ function downloadBase(tag: string): string {
   return `https://github.com/${AGENT_REPO}/releases/download/${tag}`;
 }
 
+// No api.github.com call: its 60 an hour per instance run out, and an exhausted budget 503'd /install-agent.sh.
 async function fetchPinnedRelease(): Promise<AgentRelease | null> {
   const base = downloadBase(`v${FALLBACK_AGENT_VERSION}`);
   let sums: Map<string, string>;
@@ -126,6 +127,7 @@ async function fetchLatestRelease(): Promise<AgentRelease | null> {
   try {
     const res = await fetch(checksumAsset.browser_download_url, {
       headers: { "User-Agent": GH_HEADERS["User-Agent"] },
+      // Without it Next's Data Cache serves a prior release's checksums.txt against the fresh binaries.
       cache: "no-store",
     });
     if (!res.ok) return null;

@@ -178,6 +178,7 @@ export function useDeploymentFilters({
     );
     io.observe(el);
     return () => io.disconnect();
+    // `shown` is a dep on purpose: a sentinel still in view never crosses the threshold again.
   }, [hasMore, shown]);
 
   const sweepAppId = scopeAppId ?? effectiveAppFilter ?? null;

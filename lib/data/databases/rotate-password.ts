@@ -24,6 +24,7 @@ import { renderDatabaseStackYaml, rerouteRequest } from "./stack";
 import { resolveTeamServer } from "./server-ports";
 import type { Database } from "../../types/database";
 
+// postgres/mysql/mariadb/mongodb keep users INSIDE the data volume; redis/clickhouse rotate on re-render.
 export function rotationExecCommand(
   db: Database,
   oldPassword: string,
@@ -47,6 +48,7 @@ export function rotationExecCommand(
           : []),
         "FLUSH PRIVILEGES;",
       ].join(" ");
+      // MariaDB 11 dropped the mysql* compatibility symlinks its images used to ship.
       const client = db.type === "mariadb" ? "mariadb" : "mysql";
       return `${client} -uroot -p${old} -e ${shellQuote(stmts)}`;
     }
@@ -84,6 +86,7 @@ export async function rotateDatabasePassword(
 
   const newPassword = input.password?.trim() || randomToken(24);
   assertPasswordSafe(newPassword);
+  // The policy only bounds a password a person typed: a generated token is base64url and often fails it.
   if (input.password?.trim()) assertPasswordPolicy(newPassword);
 
   let newConn = "";

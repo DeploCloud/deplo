@@ -56,10 +56,12 @@ export function buildComposeStack(input: ComposeStackInput): string {
 
   const services = doc.services;
 
+  // Stamped on EVERY service, or sidecars are invisible to the container count, console and teardown.
   const tracking = [
     ...deploLabels(trackingId, deployKey),
     ...(trackingId === appId ? [] : [`deplo.app=${appId}`]),
   ];
+  // Off by default: an image's own `traefik.*` labels ride in, and Traefik reads the container.
   const containerLabels = [...tracking, "traefik.enable=false"];
   for (const [serviceName, svc] of Object.entries(services)) {
     if (svc && typeof svc === "object") {
@@ -68,6 +70,7 @@ export function buildComposeStack(input: ComposeStackInput): string {
       delete (svc as App).container_name;
       if (input.stripPublishedPorts) delete (svc as App).ports;
       if (input.filesDir) rewriteAppVolumes(svc as App, input.filesDir);
+      // The `domains` table is the only routing source: a hand-written router could claim another host.
       stripTraefikLabels(svc as App);
       mergeLabels(svc as App, containerLabels);
       mergeBuildLabels(svc as App, serviceName, tracking);

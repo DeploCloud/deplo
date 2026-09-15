@@ -87,11 +87,13 @@ export async function setPanelUrl(
   const url =
     input === null || input.trim() === "" ? null : normalizePanelUrl(input);
   const current = await instancePublicBaseUrl();
+  // Counted before the write: rpId derives from the address, so afterwards there is no way to say what it invalidated.
   const lostPasskeys =
     url !== null &&
     (hostOf(url) !== hostOf(current) || schemeOf(url) !== schemeOf(current))
       ? await passkeysBoundToThisAddress()
       : 0;
+  // The routing moves FIRST and throws if it could not: an address nothing routes to breaks every install command on this page.
   if (url) await movePanelRoute(url);
   await rememberPanelUrl(url);
 

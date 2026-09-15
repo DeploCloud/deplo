@@ -35,6 +35,7 @@ export interface ToolExecution {
   error?: string;
 }
 
+// Runs in-process against the schema /api/graphql serves - no second authorization path (ADR-0021).
 export async function runGraphql(
   query: string | DocumentNode,
   variables: Record<string, unknown>,
@@ -48,6 +49,7 @@ export async function runGraphql(
       variableValues: variables,
       contextValue: ctx,
     });
+  // No identity must resolve NOTHING rather than run unattributed; runWithIdentity has no null form.
   const value = await (ctx.identity
     ? runWithIdentity(ctx.identity, run)
     : run());
@@ -56,6 +58,7 @@ export async function runGraphql(
   return { data: value.data ?? null, error };
 }
 
+// Hand-listed because they hand back a credential or run code without a reveal* name (ADR-0021 rule 4).
 const IRREGULAR = [
   "execConsole",
   "execDatabaseConsole",
@@ -115,6 +118,7 @@ export function admitPassthrough(
           : `graphql_${kind === "query" ? "query" : "mutate"} runs ${kind} operations only, and this document is a ${op.operation}. Use graphql_${op.operation === "mutation" ? "mutate" : "query"}.`,
       );
 
+  // Before validate(), so a denied field hears why; parent-typed, so a login FIELD stays readable.
   const blocked = deniedRootFields();
   const typeInfo = new TypeInfo(schema);
   visit(

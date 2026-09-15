@@ -31,6 +31,7 @@ export function diskCheck(metrics: HostMetrics | null): ReadinessCheck {
       detail: READINESS_MESSAGES.diskUnmeasured,
       hint: READINESS_HINTS.retry,
     };
+  // Classify and print the SAME number: classifying the raw field while printing the fallback passed a 98% host.
   const rawPct = Number(metrics.diskPct);
   const pct = Math.floor(
     Number.isFinite(rawPct) && rawPct > 0 ? rawPct : (used / total) * 100,

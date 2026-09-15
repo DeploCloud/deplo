@@ -18,6 +18,7 @@ async function passthrough(
     args.variables ?? {},
     ctx,
   );
+  // Thrown, not returned: the handler's catch is what turns it into an isError instead of a success.
   if (error) throw new Error(error);
   return data;
 }

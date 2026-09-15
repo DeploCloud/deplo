@@ -95,6 +95,7 @@ export function coolifyApplication(
     installCommand: row.install_command ?? null,
     buildCommand: row.build_command ?? null,
     dockerImage: image,
+    // The PATH: Coolify's own dockerfile column is the inline text somebody typed into the panel.
     dockerfile: row.dockerfile_location?.trim().replace(/^\/+/, "") || null,
     dockerContextPath: null,
     dockerBuildStage: row.dockerfile_target_build ?? null,
@@ -154,6 +155,7 @@ export function coolifyHealthCheck(
   };
 }
 
+// ports_exposes is the only column naming the port; without it every migrated app landed on 3000 and answered 502.
 export function coolifyFallbackPort(row: CoolifyApplication): number | null {
   return firstExposed(row.ports_exposes);
 }

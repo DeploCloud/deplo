@@ -71,6 +71,7 @@ function SharedVarEditForm({
             teamIds: editing.teamIds,
             environmentIds: editing.environmentIds,
             projectIds: editing.projectIds,
+            // `appIds` is deliberately absent: an edit must never widen who the variable reaches.
           },
         },
       );

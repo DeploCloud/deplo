@@ -157,6 +157,7 @@ export const bitbucket: GitProviderApi = {
         isTag: ch.new?.type === "tag",
         refName: ch.new?.name ?? ch.old?.name ?? "",
         deleted: !ch.new,
+        // Bitbucket sends no file list, so the watch-path filters fail open rather than blocking every deploy.
         changedPaths: [],
       },
       repoFullName,

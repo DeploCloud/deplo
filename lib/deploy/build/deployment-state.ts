@@ -125,6 +125,7 @@ export async function settlePreviewDeployState(
     .update(appPreviewsTable)
     .set({
       ...(status === undefined ? {} : { status }),
+      // The stack is about to exist again: from here on a teardown is owed.
       ...(status === "building" ? { tornDownAt: null } : {}),
       lastActivityAt: nowIso(),
       updatedAt: nowIso(),
@@ -133,6 +134,7 @@ export async function settlePreviewDeployState(
       and(
         eq(appPreviewsTable.id, previewId),
         eq(appPreviewsTable.state, "open"),
+        // Evicted or closed mid-build refuses the write, and the stack just brought up goes down below.
         notInArray(appPreviewsTable.status, ["evicted", "blocked"]),
       ),
     )
@@ -212,6 +214,7 @@ export async function commitOutcome(
   appPatch: Partial<typeof appsTable.$inferInsert>,
   opts: { rollback?: boolean } = {},
 ): Promise<boolean> {
+  // The CAS is the cancel check: a "Stop build" that already claimed the row must win over this outcome.
   if (!(await setDep(depId, depPatch, { onlyIfNotCanceled: true }))) {
     await markStopped(depId, target);
     return false;
@@ -285,6 +288,7 @@ export function isInFlightStatus(s: Deployment["status"]): boolean {
   return s === "queued" || s === "building";
 }
 
+// Queued deploys are DURABLE across a restart: no build ever started, so only `building` is orphaned.
 export async function reconcileInFlightDeployments(): Promise<number> {
   const db = getDb();
   const orphaned = await db

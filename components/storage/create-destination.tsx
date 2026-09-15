@@ -79,6 +79,7 @@ const PROVIDERS: { id: S3Provider; name: string; endpointHint: string }[] = [
   { id: "other", name: "Other S3-compatible", endpointHint: "https://..." },
 ];
 
+// "https://..." is a placeholder, not a URL: it used to be saved as an unusable destination.
 function endpointOrHint(typed: string, hint: string): string {
   const value = typed.trim() || hint;
   return value.includes("...") ? "" : value;
@@ -145,6 +146,7 @@ export function CreateDestination({
     (k: keyof typeof s3) => (e: React.ChangeEvent<HTMLInputElement>) =>
       setS3((f) => ({ ...f, [k]: e.target.value }));
 
+  // Everything the SERVER asks for: checking only the bucket let a keyless form close, then fail.
   const valid =
     kind === "server"
       ? Boolean(serverId) && servers.length > 0

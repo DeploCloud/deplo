@@ -1,3 +1,4 @@
+// A slug can never contain `__`, which is the whole collision proof.
 const SEP = "__";
 
 export const PREVIEW_SUFFIX_RE = /^pr-\d+$/;

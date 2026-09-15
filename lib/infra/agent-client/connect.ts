@@ -49,6 +49,7 @@ export function __setAgentConnectorForTest(
   connector = fn ?? null;
 }
 
+// The sole entry to a host (ADR-0006): an unreachable agent throws, there is no in-process fallback.
 export async function connectAgent(serverId: string): Promise<AgentConnection> {
   if (connector) return connector(serverId);
   const target = await resolveTarget(serverId);

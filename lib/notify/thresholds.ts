@@ -77,6 +77,7 @@ export function evaluateThresholds(
         path: "/monitoring",
       });
     } else if (value < CLEAR_PCT) {
+      // Only announce a recovery that was announced, or every healthy server says "back to normal" after a restart.
       const wasAlerted = highSince.get(slot)?.alerted === true;
       highSince.delete(slot);
       if (wasAlerted)

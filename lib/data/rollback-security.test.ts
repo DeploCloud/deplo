@@ -370,6 +370,7 @@ test("a preview stack is deliberately absent from the map", async () => {
     serverId: SERVER_1,
     imageRef: "deplo/web__pr-7:dpl_pr",
   });
+  // The agent groups images by the `deplo.slug` label, so naming a preview hands it the app's retention budget.
   const map = await rollbackKeepBySlug(SERVER_1);
   assert.deepEqual(Object.keys(map), ["web"]);
 });

@@ -35,6 +35,7 @@ export function mapAppEnv(
     rows,
     new Map([...home.shared].map(([k, v]) => [k, v.value] as const)),
   );
+  // Typed secret only where the panel said so: a secret is immutable here and a fork's preview drops it.
   const secretKeys = new Set(detail.secretEnvKeys ?? []);
   const env = rows.map((e) => ({
     ...e,

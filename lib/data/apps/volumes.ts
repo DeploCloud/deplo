@@ -53,6 +53,7 @@ export function validateVolumes(
     }
     const mountPath = (v.mountPath ?? "").trim().replace(/\/+$/, "") || "/";
 
+    // "$" too: a path holding one interpolates from the env-file at up, so it never means what it says.
     if (!/^\/[^\s:$]*$/.test(mountPath) || mountPath.length < 2) {
       throw new Error(
         `Mount path must be an absolute path with no spaces, ":" or "$": "${v.mountPath}"`,
@@ -183,6 +184,7 @@ export async function setAppVolumes(
 ): Promise<void> {
   const { membership } = await requireAppCapability(id, "configure_apps");
 
+  // A host bind mount escapes the per-app sandbox, so it takes the dedicated grant on top of configure_apps.
   if (volumes.some((v) => v.type === "host")) {
     await requireMountHostVolumes();
   }

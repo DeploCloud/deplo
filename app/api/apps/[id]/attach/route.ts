@@ -58,6 +58,7 @@ export async function GET(
     return Response.json({ error: resolved.reason }, { status });
   }
 
+  // Bind the session to the caller and active team; POST/DELETE re-check both, so the id alone never keeps a demoted caller writing to PID 1.
   const teamId = await requireActiveTeamId();
 
   const tty = resolved.instance.tty;
@@ -214,6 +215,7 @@ export async function DELETE(
   const sessionId = request.nextUrl.searchParams.get("sessionId") ?? "";
   const session = sessionId ? attach.get(sessionId, appId) : undefined;
   if (session) {
+    // Detach is a mutation on a live session: gate it exactly like a write.
     if (!(await stillAuthorized(appId, session, user.id)))
       return Response.json({ error: "Forbidden" }, { status: 403 });
     attach.destroy(sessionId);

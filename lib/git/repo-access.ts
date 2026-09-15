@@ -52,6 +52,7 @@ export async function repoCloneRefusal(repo: GitRepo): Promise<string | null> {
     await checkRepoVisible(null, full, AbortSignal.timeout(CHECK_TIMEOUT_MS));
     return null;
   } catch (e) {
+    // ONLY a 404 counts: unauthenticated GitHub answers 403 when its 60/h budget is exhausted, which this one is.
     const is404 = /\(404\)/.test(
       e instanceof Error ? e.message : String(e ?? ""),
     );

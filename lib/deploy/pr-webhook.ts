@@ -80,6 +80,7 @@ export function parsePullRequestEvent(
     headCloneUrl: pr.head?.repo?.clone_url ?? "",
     baseRepo,
     baseBranch: pr.base?.ref ?? "",
+    // NOT `head.repo.fork`: an unrelated repo in the same org reports `fork: false` and is as untrusted.
     isFork: !headRepo || headRepo !== baseRepo,
     draft: Boolean(pr.draft),
     merged: Boolean(pr.merged),

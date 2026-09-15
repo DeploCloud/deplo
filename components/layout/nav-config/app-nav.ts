@@ -179,6 +179,7 @@ export function appSettingsNav(slug: string, isGithubApp = true): NavSection[] {
           href: `${base}/access`,
           icon: ShieldCheck,
           tooltip: "HTTP basic auth",
+          // Basic auth has its own Capability, holdable on this app alone (ADR-0016).
           requires: "manage_basic_auth",
         },
         {

@@ -51,6 +51,7 @@ export function assertNetworkModeIsNotANetwork(
 ): void {
   if (typeof mode !== "string") return;
   const value = mode.trim();
+  // `container:deplo-traefik` lands inside the proxy, which sits on every tenant network of the host.
   if (/^container:/i.test(value)) {
     throw new Error(
       `\`network_mode: ${value}\` on service \`${service}\` joins another ` +
@@ -74,6 +75,7 @@ export function assertNetworkModeIsNotANetwork(
   }
 }
 
+// `sharedNetworkKeys` resolves by name, so a name filled in at run time is invisible to the collapse.
 export function assertNoInterpolatedNetworkName(doc: ComposeDoc): void {
   const declared = doc.networks;
   if (!declared || typeof declared !== "object" || Array.isArray(declared))
@@ -119,6 +121,7 @@ export function createAppWiring(services: Record<string, App>): WireApp {
     const nets = target.networks;
     if (nets && typeof nets === "object" && !Array.isArray(nets)) {
       const map = nets as Record<string, unknown>;
+      // ADD the key, never rebuild the block as a list: flattening dropped the author's own `aliases`.
       if (!(INFRA_NETWORK in map)) map[INFRA_NETWORK] = null;
     } else {
       const existing = declaredNetworkKeys(target) ?? [];
@@ -153,6 +156,7 @@ export function joinEveryService(opts: {
       : "";
   };
   const reserved = Object.keys(services).filter((name) => keepOff(name) !== "");
+  // Only `internal: true` is isolation - frontend/backend is organisation, not a request to be sealed.
   const internalNetworks = internalNetworkKeys(doc);
   const onlyInternal = (name: string): boolean => {
     const joined = declaredNetworkKeys(services[name]) ?? ["default"];
@@ -194,6 +198,7 @@ export function joinEveryService(opts: {
   }
 }
 
+// ADR-0028: the choke point - every key resolving to a network Deplo owns collapses onto one `deplo`.
 export function collapseOntoStackNetwork(
   doc: ComposeDoc,
   services: Record<string, App>,
@@ -201,6 +206,7 @@ export function collapseOntoStackNetwork(
 ): void {
   assertNoInterpolatedNetworkName(doc);
   const sharedKeys = sharedNetworkKeys(doc as { networks?: unknown });
+  // A service with no `networks:` joins `default`, so a `default` Deplo owns took the whole stack there.
   const defaultIsShared = sharedKeys.has("default");
   for (const [name, raw] of Object.entries(services)) {
     const svc = raw as App | undefined;

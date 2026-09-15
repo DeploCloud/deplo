@@ -17,6 +17,7 @@ interface RunOpts {
   noThrow?: boolean;
 }
 
+// Only the dormant plugin sweep still calls this; per-app host actions go through the agent (ADR-0006, ADR-0013).
 export function docker(
   args: string[],
   opts: RunOpts = {},

@@ -50,6 +50,7 @@ export async function ensureTeamRoles(
   for (const key of BUILTIN_ROLE_KEYS) {
     if (byKey.has(key)) continue;
     const id = newId("role");
+    // A concurrent first read of the same team races us; the partial unique index on (team_id, builtin_key) decides.
     const inserted = await db
       .insert(teamRolesTable)
       .values({
@@ -103,6 +104,7 @@ async function adoptMatchingMemberships(
     list.push(r.capability as Capability);
     capsByRole.set(r.roleId, list);
   }
+  // Adoption compares effective sets, so a hand-picked superset must never be adopted into a scoped role.
   const scopedRoles = new Set(
     roleIds.length
       ? (

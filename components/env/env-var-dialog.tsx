@@ -139,6 +139,7 @@ function EditForm({
   function submit() {
     onOpenChange(false);
     startTransition(async () => {
+      // The rename goes first: it is keyed by id, so it cannot clash with the upsert below.
       if (renamed) {
         const r = await gqlAction<{ renameEnv: { id: string } }>(
           `mutation($id: String!, $newKey: String!) {
@@ -152,6 +153,7 @@ function EditForm({
           return;
         }
       }
+      // No `targets`: the server defaults every variable to every runtime.
       const res = await gqlAction<{ upsertEnv: { id: string } }>(
         `mutation($input: UpsertEnvInput!) { upsertEnv(input: $input) { id } }`,
         {

@@ -178,6 +178,7 @@ test("the same row can still be edited without tripping over itself", async () =
   await asVictim(() => updateDomain(own.id, { port: 8080 }));
 });
 
+// A preview host never enters `domains`, so the guard above needs this twin or the takeover is one level down.
 test("a preview base domain under another team's hostname is refused", async () => {
   await asVictim(() => addDomain("prj_victim", HOST, {}));
   await assert.rejects(

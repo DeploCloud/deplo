@@ -56,6 +56,7 @@ export function ExecTerminal({
         reset: () => api.reset(),
       },
       promptStr,
+      // Visible prompt width: the SGR wrapper is zero-width, +1 = the space.
       prompt.length + 1,
       (cmd) => void run(cmd),
     );

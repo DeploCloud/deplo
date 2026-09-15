@@ -225,6 +225,7 @@ export async function updateMember(input: {
     const caps = m.granular
       ? boundedBy(assignment.capabilities, NODE_GRANTABLE_CAPABILITIES)
       : assignment.capabilities;
+    // The founder's role and capabilities are immutable, instance admins included, so the creator can never be locked out.
     if (input.userId === founderId) {
       throw new Error(
         "The team's primary owner's role and permissions can't be changed.",

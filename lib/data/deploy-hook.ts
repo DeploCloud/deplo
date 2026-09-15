@@ -95,6 +95,7 @@ export async function setDeployHookEnabled(
 
 export type DeployHookRejection = "not-found" | "disabled" | "bad-token";
 
+// Runs before any identity exists, so it is un-gated by design; the route re-enters the gates via runWithIdentity.
 export async function verifyDeployHookToken(
   appId: string,
   token: string,
@@ -118,6 +119,7 @@ export async function verifyDeployHookToken(
   return { ok: true, teamId: row.teamId };
 }
 
+// Un-gated like verifyDeployHookToken above: both run before the hook call has an identity.
 export async function owningTeamId(appId: string): Promise<string | null> {
   const rows = await getDb()
     .select({ teamId: appsTable.teamId })

@@ -31,6 +31,7 @@ export const databases = pgTable(
     username: text("username").notNull(),
     dbName: text("db_name").notNull(),
     status: text("status").notNull(),
+    // An engine started on a volume a failed copy emptied does not fail, it INITIALISES a brand new database.
     dataCopyError: text("data_copy_error").notNull().default(""),
     migrationRunId: text("migration_run_id"),
     serverId: text("server_id")

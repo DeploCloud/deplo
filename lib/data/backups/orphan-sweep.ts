@@ -24,6 +24,7 @@ export async function sweepOrphanedBackupArtifacts(): Promise<number> {
     isNull(backupRunsTable.databaseId),
   );
 
+  // Stamped when first seen orphaned and acted on only once the stamp is old - nothing goes today.
   await getDb()
     .update(backupRunsTable)
     .set({ orphanedAt: nowIso() })
@@ -99,6 +100,7 @@ export async function sweepOrphanedBackupArtifacts(): Promise<number> {
   return reclaimed;
 }
 
+// DERIVED from the agent RPC deadline: two independent numbers once declared a live run dead.
 const RUN_ORPHAN_AFTER_MS = BACKUP_RUN_MAX_MS;
 
 export async function reconcileInFlightBackupRuns(): Promise<number> {

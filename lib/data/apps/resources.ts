@@ -121,6 +121,7 @@ export async function updateAppResources(
   const user = (await getCurrentUser())!;
   const cleaned = cleanResourceLimits(input);
 
+  // A negative oom_score_adj spares THIS container and kills its neighbours, so it takes the host grant.
   if (cleaned.oomScoreAdj != null && cleaned.oomScoreAdj < 0) {
     await requireMountHostVolumes();
   }

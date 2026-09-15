@@ -69,6 +69,7 @@ export async function claimRun(
   return run ? { run, job, target } : null;
 }
 
+// Reap must run before this: the overlap rule reads the running rows. Several matching minutes fire once, on the last.
 export async function fireDueJobs(
   minutes: Date[],
   heartbeat: () => Promise<boolean> = async () => true,

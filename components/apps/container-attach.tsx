@@ -55,6 +55,7 @@ export function ContainerAttach({
     )}&cols=${cols}&rows=${rows}`;
     const es = new EventSource(url);
 
+    // Not "open": that name collides with the reserved EventSource event.
     es.addEventListener("session", (e) => {
       sessionId.current = JSON.parse((e as MessageEvent).data);
       setStatus("live");

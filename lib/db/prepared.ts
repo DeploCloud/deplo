@@ -12,6 +12,7 @@ export function prepared<T>(
   let byKey = byClient.get(db);
   if (!byKey) byClient.set(db, (byKey = new Map()));
   let query = byKey.get(key) as T | undefined;
+  // Unnamed on purpose, so a pooler in transaction mode keeps working.
   if (!query)
     byKey.set(key, (query = build(db).prepare(undefined as unknown as string)));
   return query;

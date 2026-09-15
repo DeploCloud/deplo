@@ -51,6 +51,7 @@ export async function ownerCeiling(
   return withinActor(caps, { capabilities: ceiling } as Membership, "token");
 }
 
+// listTokens already hides its owner's other credentials, and a write must not reach what a read may not name.
 export function requireOwnOrSession(tokenId: string): void {
   const acting = currentIdentity()?.token;
   if (acting && acting.id !== tokenId) throw new Error("Token not found");

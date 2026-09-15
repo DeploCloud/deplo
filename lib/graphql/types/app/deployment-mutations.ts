@@ -23,9 +23,11 @@ builder.mutationFields((t) => ({
     description: "Render the docker-compose stack an app would deploy.",
     args: { appId: t.arg.string({ required: true }) },
     resolve: async (_r, { appId }) => {
+      // Team-scopes the request before rendering: renderAppStack itself is unscoped.
       const project = await getAppById(appId);
       if (!project) throw new Error("App not found");
       const yaml = await renderAppStack(project.id);
+      // Served at the view floor: masks env values and the basic-auth htpasswd Traefik label.
       return yaml === null ? null : redactComposeForDisplay(yaml);
     },
   }),

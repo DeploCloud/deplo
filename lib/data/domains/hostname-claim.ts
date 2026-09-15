@@ -44,6 +44,7 @@ export async function assertHostnameNotAnotherTeams(
     throw new Error(
       `${name} is already routed by another team on this Deplo. A hostname belongs to one team.`,
     );
+  // A preview host never enters domains, so another team's claim on that zone lives on its preview base.
   for (const base of await foreignPreviewBases(teamId))
     if (name === base || name.endsWith(`.${base}`))
       throw new Error(

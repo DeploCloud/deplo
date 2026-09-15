@@ -75,6 +75,7 @@ export function SortableItem({
   }, [isDragging]);
 
   function onClickCapture(e: React.MouseEvent<HTMLDivElement>) {
+    // Portals move the DOM node, not the React parent, so a portalled menu clicks through here.
     if (!e.currentTarget.contains(e.target as Node)) return;
     const onControls = Boolean(
       (e.target as HTMLElement).closest?.("[data-card-actions]"),

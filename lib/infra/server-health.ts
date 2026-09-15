@@ -9,6 +9,7 @@ export interface ServerHealth {
   message: string | null;
 }
 
+// A closed set because status_message is persisted: a raw transport error is not safe to store.
 export const HEALTH_MESSAGES = {
   untrusted:
     "The agent's certificate is not the one we trust for this server. Reissue the install command to re-provision it.",

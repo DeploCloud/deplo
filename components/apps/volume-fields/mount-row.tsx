@@ -42,6 +42,7 @@ import { DocsLink } from "@/components/ui/docs-link";
 import { KIND_ICON, KindCard } from "./kind-picker";
 import { Field } from "./field";
 
+// Radix forbids an empty item value, so "stored as absent" needs a sentinel of its own.
 const SERVICE_AUTO = "auto";
 
 const PROPAGATION_NONE = "none";

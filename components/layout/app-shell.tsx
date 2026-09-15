@@ -31,6 +31,7 @@ export function AppShell({
   breadcrumb: BreadcrumbGraph;
   capabilities: string[];
   isAdmin: boolean;
+  // A passkey that works here already counts as a second factor (ADR-0024).
   hasPasskey?: boolean;
   children: React.ReactNode;
 }) {

@@ -9,6 +9,7 @@ export const RoleEnum = builder.enumType("Role", {
   values: ["owner", "member", "viewer"] as const,
 });
 
+// The retired coarse names stay as deprecated input aliases, so an old API client keeps working.
 export const CapabilityEnum = builder.enumType("Capability", {
   values: Object.fromEntries([
     ...ALL_CAPABILITIES.map((c) => [c, { value: c }]),

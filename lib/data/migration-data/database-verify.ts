@@ -55,6 +55,7 @@ const CONTENT_COUNT: Partial<
     command: `psql -U ${a.username} -d ${a.dbName} -tAc "select count(*) from information_schema.tables where table_schema not in ('pg_catalog','information_schema')"`,
     noun: "table",
   }),
+  // -D <db> + database() because a single quote cannot be escaped inside single quotes in POSIX sh.
   mysql: (a) => ({
     command: `sh -c 'mysql -u root -p"$MYSQL_ROOT_PASSWORD" -N -B -D ${a.dbName} -e "select count(*) from information_schema.tables where table_schema = database()"'`,
     noun: "table",

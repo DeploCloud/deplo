@@ -34,6 +34,7 @@ export async function rateLimit(
         greatest(0, ceil(extract(epoch from ("reset_at" - now()))))::int as retry_after
     `);
 
+    // drizzle's execute returns the DRIVER's shape: node-postgres { rows }, pglite the array itself.
     const rows = (
       Array.isArray(result)
         ? result
@@ -50,6 +51,7 @@ export async function rateLimit(
     if (count > opts.limit) return { ok: false, remaining: 0, retryAfterSec };
     return { ok: true, remaining: opts.limit - count, retryAfterSec: 0 };
   } catch {
+    // Fails open: a limiter that locks everyone out on a database blip is worse than one that stops counting.
     return { ok: true, remaining: opts.limit - 1, retryAfterSec: 0 };
   }
 }

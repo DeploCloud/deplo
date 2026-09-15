@@ -89,6 +89,7 @@ export async function loadRoleScopes(
   return out;
 }
 
+// A node the actor cannot reach answers as one not in the team: a refusal must never confirm which private folders exist.
 export async function resolveRoleScope(
   teamId: string,
   actingUserId: string,

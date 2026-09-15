@@ -27,6 +27,7 @@ export function assembleDomain(
     primary: row.isPrimary,
     redirectTo: row.redirectTo,
     ssl: row.ssl,
+    // source/entrypoint/certProvider are nullable with NO default: the auto/manual tri-state, never coerce an absent one.
     ...(row.source != null ? { source: row.source as Domain["source"] } : {}),
     ...(row.port != null ? { port: row.port } : {}),
     ...(row.entrypoint != null

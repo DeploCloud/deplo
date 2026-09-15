@@ -114,6 +114,7 @@ function globToRegExp(glob: string): RegExp {
     if (c === "*") {
       if (glob[i + 1] === "*") {
         i++;
+        // `**/` matches zero or more WHOLE segments: `**/c.json` matches `c.json`, not `myc.json`.
         if (glob[i + 1] === "/") {
           re += "(?:.*/)?";
           i++;

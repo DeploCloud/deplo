@@ -151,6 +151,7 @@ test("a teamId that is not the active team fails closed (stale tab)", async () =
   assert.equal(await teamExists(TEAM_B), true);
 });
 
+// A stale token is silently rescoped to the user's first team; the delete must refuse that.
 test("a bearer token scoped to a team the user left fails closed", async () => {
   await seedIdentity(db);
 

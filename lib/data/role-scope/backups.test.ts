@@ -42,6 +42,7 @@ test("a backup schedule is reachable only through the app it belongs to", async 
     [],
     "the schedules of an app they can't reach, and of a database, are not theirs",
   );
+  // `manage_backups` survives the project clamp, so the team-wide capability check alone let this through.
   await assert.rejects(
     () => as(DEV, () => toggleBackup("bk_db", false)),
     /not found/i,
@@ -71,6 +72,7 @@ test("a backup RUN history is reachable only through the app it belongs to", asy
     appId: APP_IN_PRC,
     destinationId: "s3_main",
   });
+  // Real out-of-scope data to leak: a probe against an empty table would pass whatever the gate did.
   await seedRun(h.db, {
     id: "run_in",
     targetKind: "app",
@@ -92,12 +94,14 @@ test("a backup RUN history is reachable only through the app it belongs to", asy
      select id, 'manage_backups' from memberships where user_id = '${DEV}'`,
   );
 
+  // The control runs FIRST, or a gate that simply refuses everything would pass this test.
   assert.deepEqual(
     (await as(DEV, () => listBackupRuns({ appId: APP_IN_PRC }))).map(
       (r) => r.id,
     ),
     ["run_in"],
   );
+  // `backupTargetInScope` used to fall through to `appInTeam`, which scopes on the TOKEN's reach, null here.
   assert.deepEqual(
     await as(DEV, () => listBackupRuns({ appId: APP_OUT_PRC })),
     [],

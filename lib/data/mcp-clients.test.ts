@@ -198,6 +198,7 @@ test("naming nothing means every team you may connect agents to, live", async ()
   ]);
 });
 
+// A crafted `/oauth/consent?client_id=` link used to mint a live token for a client the victim never heard of.
 test("no approval on file mints nothing", async () => {
   await pg.query(`delete from oauth_consent`);
   await assert.rejects(

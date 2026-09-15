@@ -87,6 +87,7 @@ export function OtpInput({
             ref={(el) => {
               refs.current[i] = el;
             }}
+            // Not type="number": it brings spinners, accepts "e" and "-", and strips leading zeros.
             type="text"
             inputMode="numeric"
             pattern="[0-9]*"

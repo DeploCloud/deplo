@@ -26,6 +26,7 @@ export async function POST(
   request: Request,
   ctx: { params: Promise<{ id: string; token: string }> },
 ) {
+  // Bearer first: until the caller proves team membership, the URL token must not reveal whether an app exists.
   const header = request.headers.get("authorization") ?? "";
   const raw = /^bearer /i.test(header) ? header.slice(7).trim() : "";
   const { id: hookAppId } = await ctx.params;
@@ -50,6 +51,7 @@ export async function POST(
 
   const { token } = await ctx.params;
   const appId = hookAppId;
+  // Checked BEFORE the "hook is off" branch, or that 403 stays an existence oracle.
   const notFound = await runWithIdentity(principal, async () => {
     if (!(await appInTeam(appId, principal.teamId))) return true;
     return false;
@@ -73,6 +75,7 @@ export async function POST(
     return Response.json({ error: "Deploy hook not found" }, { status: 404 });
 
   try {
+    // redeploy applies every gate inside runWithIdentity; duplicating a capability check here is a bug.
     const deployment = await runWithIdentity(principal, () => redeploy(appId));
     return Response.json({
       deploymentId: deployment.id,

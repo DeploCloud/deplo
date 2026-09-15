@@ -68,6 +68,7 @@ import * as cpNotifications from "./schema/control-plane/notifications";
 import * as cpProjects from "./schema/control-plane/projects";
 import * as cpServers from "./schema/control-plane/servers";
 
+// Better Auth resolves a model to schema[modelName], so users backs its user model (ADR-0014).
 export const schema = {
   session,
   account,

@@ -21,6 +21,7 @@ import { mapLimit } from "../../utils";
 import { errMsg } from "./lifecycle";
 import type { App } from "../../types/app";
 
+// The point of no return: from here every gate refuses the app, and nothing ever clears the stamp.
 async function markAppsDeleting(ids: string[]): Promise<void> {
   if (ids.length === 0) return;
   await getDb()
@@ -45,6 +46,7 @@ async function destroyApp(project: App, actor: string): Promise<void> {
   const id = project.id;
 
   const tornDown = await withKeyedLock(`app-lifecycle:${id}`, async () => {
+    // Previews FIRST: the DELETE below cascades their rows away, and with them the only record those containers exist.
     await destroyPreviewsForApp(id).catch(() => {});
 
     const ok = await teardownOrQueue({
@@ -134,6 +136,7 @@ async function beginAppsDelete(
   if (apps.length === 0) return { apps, actor: user.name };
 
   for (const p of apps) {
+    // Gate EACH app on its own node (ADR-0016): a bulk delete is not a way around per-folder access.
     await requireAppCapability(p.id, "delete_apps");
   }
   await markAppsDeleting(apps.map((p) => p.id));

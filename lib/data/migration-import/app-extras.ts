@@ -79,6 +79,7 @@ export async function landAppExtras(
     }
   }
 
+  // One panel fills healthCheck, the other keeps the same thing in Swarm's own shape.
   const health =
     (detail as SourceApplication).healthCheck ??
     swarmHealthCheck((detail as SourceApplication).healthCheckSwarm);

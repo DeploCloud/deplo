@@ -28,6 +28,7 @@ export const apps = pgTable(
     folderId: text("folder_id").references(() => folders.id, {
       onDelete: "set null",
     }),
+    // ON DELETE SET NULL: deleting a Project orphans its apps to the team top level (ADR-0008).
     projectId: text("project_id").references(() => projects.id, {
       onDelete: "set null",
     }),
@@ -74,6 +75,7 @@ export const apps = pgTable(
     deployHookTokenEnc: text("deploy_hook_token_enc"),
     deployHookEnabled: boolean("deploy_hook_enabled").notNull().default(true),
     composeUpArgs: text("compose_up_args"),
+    // A deploy has no user of its own, so this is who a revoked host-privilege grant is read against.
     hostReachBy: text("host_reach_by"),
     rollbackKeep: integer("rollback_keep").notNull().default(3),
     resourceMemLimitMb: integer("resource_mem_limit_mb"),
@@ -103,6 +105,7 @@ export const apps = pgTable(
     previewBaseDomain: text("preview_base_domain"),
     previewMaxActive: integer("preview_max_active"),
     previewTtlDays: integer("preview_ttl_days"),
+    // NULL means approve: a fork pull request is attacker-authored code, so it waits for a member to unblock it.
     previewForkPolicy: text("preview_fork_policy"),
     previewServerId: text("preview_server_id").references(() => servers.id, {
       onDelete: "set null",
@@ -121,6 +124,7 @@ export const apps = pgTable(
       (): AnyPgColumn => deployments.id,
       { onDelete: "set null" },
     ),
+    // ON DELETE SET NULL: removing an account must never destroy an app the team still runs.
     createdByUserId: text("created_by_user_id").references(() => users.id, {
       onDelete: "set null",
     }),

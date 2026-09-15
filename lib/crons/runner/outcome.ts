@@ -117,6 +117,7 @@ export async function settleOrRetry(
   fields: SettleFields,
   at: Date = new Date(),
 ): Promise<void> {
+  // "lost" never retries: the command probably finished and we only stopped watching, so a rerun could double-charge.
   const retryable = status === "failed" || status === "timedout";
   if (retryable && r.run.attempt + 1 < r.run.maxAttempts) {
     await getDb()

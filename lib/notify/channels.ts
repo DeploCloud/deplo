@@ -144,6 +144,7 @@ export async function sendToChannel(
           priority: 5,
         },
         signal,
+        // In a header, never ?token=: a query string lands in every access log on the way.
         { "X-Gotify-Key": channel.token },
       );
       return;

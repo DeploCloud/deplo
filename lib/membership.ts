@@ -231,6 +231,7 @@ function clampToToken(
   const id = currentIdentity();
   if (!id?.token || id.userId !== userId || id.teamId !== teamId) return caps;
   const own = boundedBy(caps, id.token.capabilities);
+  // Depth strips, breadth does not: a token holding this team WHOLLY keeps every capability it was given.
   return narrowedScope() ? boundedBy(own, PROJECT_SCOPED_CAPABILITIES) : own;
 }
 
@@ -261,6 +262,7 @@ export async function requireActiveTeamId(): Promise<string> {
   const teamId = await getActiveTeamId();
   if (!teamId) throw new Error("No active team");
   const user = await getCurrentUser();
+  // The twin of the guard in membershipFor, and both are needed: reads never go through membershipFor.
   if (user) await assertTwoFactor(user.id, teamId);
   return teamId;
 }
@@ -343,6 +345,7 @@ export const reachableCapabilities = cache(async (): Promise<Capability[]> => {
   if (granted.length === 0) return own;
   const union = new Set<Capability>([
     ...own,
+    // A node grant bypasses membershipFor, so the token clamp has to be applied here too.
     ...clampToToken(granted, user.id, teamId),
   ]);
   return ALL_CAPABILITIES.filter((c) => union.has(c));
@@ -377,6 +380,7 @@ export async function requireInstanceAdmin(): Promise<{ userId: string }> {
   return { userId: user.id };
 }
 
+// Instance-admin is opt-in PER TOKEN, never inherited from the person holding it.
 function tokenHoldsInstanceAdmin(): boolean {
   const token = currentIdentity()?.token;
   return !token || token.instanceAdmin;
@@ -425,12 +429,14 @@ export async function currentMemberScope(): Promise<NodeScope | null> {
 export async function reachesWholeTeam(): Promise<boolean> {
   if (narrowedScope()) return false;
   const user = await getCurrentUser();
+  // Fail closed: the next caller will not prove a session first.
   if (!user) return false;
   const teamId = await getActiveTeamId();
   if (!teamId) return false;
   return (await memberScopeFor(user.id, teamId)) == null;
 }
 
+// Re-reads the stored user because the grant flags are server-enforced only and never ride on PublicUser.
 async function hasGrant(
   user: { id: string } | null,
   flag: "canExposePorts" | "canMountHostVolumes",

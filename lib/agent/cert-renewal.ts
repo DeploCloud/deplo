@@ -54,6 +54,7 @@ export async function renewAgentCertIfDue(
     const { csrPem } = await conn.renewalCsr();
     const dialHosts = [row.ip, row.host].filter(Boolean) as string[];
     const signed = await signAgentCsr(csrPem, dialHosts);
+    // Install and hot-swap first, repin after: repinning a cert the agent never installed locks Deplo out.
     const res = await conn.installRenewedCert({
       certPem: signed.certPem,
       caPem: "",

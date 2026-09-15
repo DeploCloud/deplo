@@ -75,6 +75,7 @@ export async function ensureAutoDomain(
   const preferredPath = normalizePath(opts.preferredPath);
   let name: string;
   if (preferredOk && !(await domainNameExists(preferred!, preferredPath))) {
+    // A preferred host gets what a typed one gets: not the panel's address, not a name another team routes.
     assertNotPanelHost(preferred!);
     const owner = (
       await getDb()
@@ -94,6 +95,7 @@ export async function ensureAutoDomain(
     nipEmbeddedIp(name) != null
       ? ("valid" as const)
       : await checkDomainDns(name, opts.ip);
+  // An absent provider reads as letsencrypt at the deploy edge, so the born-without-a-cert default is written.
   const certProvider = certProviderForDns(status, opts.certProvider ?? "none");
   const domain: Domain = {
     id: newId("dom"),

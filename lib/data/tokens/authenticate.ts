@@ -76,7 +76,9 @@ async function oauthTokenRow(raw: string): Promise<TokenRow | null> {
       and(
         eq(oauthAccessToken.token, hash),
         gt(oauthAccessToken.expiresAt, new Date()),
+        // RFC 7009 revocation stamps the row rather than deleting it.
         isNull(oauthAccessToken.revoked),
+        // The plugin's own token lookup skips this, so a disabled client's credential would keep resolving.
         or(isNull(oauthClient.disabled), eq(oauthClient.disabled, false)),
       ),
     )
@@ -92,13 +94,16 @@ async function identityForTokenRow(
   match: TokenRow,
   teamHint?: string | null,
 ): Promise<RequestIdentity | null> {
+  // Expiry before the team is picked, before the membership read, before the usage stamp: that order is the guarantee.
   if (match.expiresAt && Date.parse(match.expiresAt) <= Date.now()) return null;
   const scope = match.scoped ? await loadScope(match.id) : null;
 
+  // Fail closed: the token acts only in teams where its owner is still a member holding manage_tokens.
   const mine = await tokenReach(match.userId);
   let reachable = scope
     ? mine.filter((t) => scope.teamIds.includes(t.id))
     : mine;
+  // A team's MCP switch kills the credentials minted through it on every door, not only /api/mcp.
   if (match.oauthClientId && reachable.length > 0) {
     const off = new Set(
       (

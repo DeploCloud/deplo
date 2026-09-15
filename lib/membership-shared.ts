@@ -23,6 +23,7 @@ export const CAPABILITY_PRESETS: Record<Role, Capability[]> = {
   viewer: presetOf("view"),
 };
 
+// Built from the coarse names through the MIGRATION's own mapping, so an untouched role still reads as unmodified.
 function presetOf(...legacy: string[]): Capability[] {
   const set = new Set(
     legacy.flatMap((n) => LEGACY_CAPABILITY_EXPANSION[n] ?? []),

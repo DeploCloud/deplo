@@ -46,6 +46,7 @@ export function protectedResourceMetadata(): ProtectedResourceMetadata | null {
 }
 
 export const OAUTH_CORS_HEADERS: Record<string, string> = {
+  // Safe without Allow-Credentials: these endpoints are bearer-only and have no cookie path.
   "access-control-allow-origin": "*",
   "access-control-allow-methods": "GET, POST, OPTIONS",
   "access-control-allow-headers":

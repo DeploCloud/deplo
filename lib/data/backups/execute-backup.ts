@@ -34,6 +34,7 @@ import type { BackupRun, BackupTargetKind } from "../../types/backup";
 
 export const backupRunsInFlight = new Map<string, AbortController>();
 
+// Read from the ROW, not from memory: two runs seconds apart once tarred one 61 GB volume in parallel.
 export async function assertNotAlreadyBackingUp(
   teamId: string,
   targetId: string,
@@ -84,6 +85,7 @@ export async function executeBackup(
     databaseId: opts.kind === "database" ? opts.databaseId : null,
     appId: opts.kind === "app" ? opts.appId : null,
     destinationId: opts.destinationId,
+    // Denormalized: the two FK columns above are ON DELETE SET NULL, so deleting the target blanks them.
     targetId: (opts.kind === "database" ? opts.databaseId : opts.appId) ?? "",
     objectKey: "",
     sizeBytes: 0,
@@ -201,6 +203,7 @@ export async function executeBackup(
       .where(
         and(
           eq(backupRunsTable.id, runId),
+          // running is part of the WHERE: a cancel that landed meanwhile must not be flipped back to success.
           eq(backupRunsTable.status, "running"),
         ),
       )
@@ -290,6 +293,7 @@ export async function cancelBackupRun(runId: string): Promise<boolean> {
       finishedAt: nowIso(),
     })
     .where(
+      // Compare-and-swap first, abort second: a dump that finished a second ago keeps its real artifact.
       and(eq(backupRunsTable.id, runId), eq(backupRunsTable.status, "running")),
     )
     .returning({ id: backupRunsTable.id });

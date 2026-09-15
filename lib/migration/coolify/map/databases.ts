@@ -16,6 +16,7 @@ const DB_KIND: Record<string, SourceDbKind> = {
   dragonfly: "dragonfly",
 };
 
+// Coolify 4.x answers with database_type on both endpoints; reading type alone dropped every database in silence.
 export function coolifyDbKindOf(
   row: Pick<CoolifyDatabase, "database_type" | "type" | "image">,
 ): SourceDbKind | null {
@@ -24,6 +25,7 @@ export function coolifyDbKindOf(
   );
 }
 
+// KeyDB's table carries no database_type at all, so the image is the only column left that names the engine.
 function kindFromImage(image: string | null | undefined): SourceDbKind | null {
   const ref = (image ?? "").toLowerCase();
   if (!ref) return null;
@@ -79,6 +81,7 @@ const DB_FIELDS: Record<
   unknown: {},
 };
 
+// Coolify drops the password key entirely for a token without read:sensitive, so presence proves the scope, not value.
 export function coolifyDbSecretsVisible(
   row: CoolifyDatabase,
   kind: SourceDbKind,
@@ -128,6 +131,7 @@ export function coolifyDatabase(
     dockerImage: row.image ?? null,
     databaseName: pick(row, f.database) ?? pickEnv(extras.env, f.database),
     databaseUser: pick(row, f.user) ?? pickEnv(extras.env, f.user),
+    // Redis keeps its password only in the resource's variables; minting a new one broke every app that talked to it.
     databasePassword: pick(row, f.password) ?? pickEnv(extras.env, f.password),
     databaseRootPassword: pick(row, f.root) ?? pickEnv(extras.env, f.root),
     env: extras.env ?? null,

@@ -74,6 +74,7 @@ export async function POST(request: NextRequest) {
     },
     cancel() {
       void events.return(undefined);
+      // A generator abandoned before its first next() runs no finally, so cleanup needs this too.
       void restore.abandon();
     },
   });

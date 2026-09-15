@@ -79,6 +79,7 @@ const STOP_PER_CONTAINER_MS = 20_000;
 const STOP_DEADLINE_CAP_MS = 240_000;
 const STOP_POLL_MS = 1_500;
 
+// GET /servers/{uuid}/resources is the only reliable join: an application's destination_id is a network, not a machine.
 async function serverOfResource(
   c: SourceCredential,
 ): Promise<Map<string, string>> {
@@ -451,6 +452,7 @@ async function serviceRuntime(
   const status = await resourceStatus(c, group, svc.id);
   const running = status.startsWith("running");
   const notes: string[] = [];
+  // Coolify renames every volume a stack declares to <uuid>_<key>, honouring neither external: true nor a pinned name:.
   const pinnedPaths = new Map(
     composeVolumeMounts(svc.composeFile ?? "").map((m) => [
       m.name,
@@ -499,6 +501,7 @@ async function stopService(
   }
 }
 
+// No polling on the way back: Coolify's status reads exited for minutes after the container is up again.
 async function startService(
   c: SourceCredential,
   kind: string,

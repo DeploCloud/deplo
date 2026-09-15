@@ -75,6 +75,7 @@ export const sharedEnvVars = pgTable(
     key: text("key").notNull(),
     valueEnc: text("value_enc").notNull(),
     type: text("type").notNull(),
+    // A column, not count(teams) > 1: deleting a team cascades a junction row away and must not disarm the variable.
     autoInject: boolean("auto_inject").notNull().default(false),
     createdByUserId: text("created_by_user_id").references(() => users.id, {
       onDelete: "set null",

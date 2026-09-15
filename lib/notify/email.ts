@@ -49,6 +49,7 @@ export async function sendEmail(
     return;
   }
 
+  // Without this, SMTP is the one channel that can dial the control plane's own network.
   await assertSafeOutboundHost(cfg.host, "SMTP host");
   const { createTransport } = await import("nodemailer");
   try {

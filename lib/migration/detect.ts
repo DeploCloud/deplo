@@ -24,6 +24,7 @@ const PROBE: Record<
 
 const DEPLO_PANEL: PanelIdentity = { name: "Deplo", portHint: ":3000" };
 
+// Deplo's /api/health answers {"ok":true} word for word as Dokploy's, so only the GraphQL endpoint tells them apart.
 async function answersAsDeplo(baseUrl: string): Promise<boolean> {
   try {
     const res = await sendRequest(

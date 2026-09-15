@@ -62,6 +62,7 @@ export async function mintRegistrationLink(input: {
   const rawToken = randomToken(24);
   const now = nowIso();
   const linkId = newId("reg");
+  // Every read and the consume UPDATE filter on expires_at, so a stale link dies with no sweep job to run.
   const expiresAt = new Date(
     Date.now() + REGISTRATION_TTL_HOURS * 3_600_000,
   ).toISOString();

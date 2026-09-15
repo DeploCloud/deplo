@@ -84,6 +84,7 @@ export const passkey = pgTable(
     userId: text("user_id")
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
+    // UNIQUE, not merely indexed: auth resolves findOne({credentialID}), so a duplicate would let row order pick the account.
     credentialID: text("credential_id").notNull().unique(),
     counter: integer("counter").notNull(),
     deviceType: text("device_type").notNull(),
@@ -159,6 +160,7 @@ export const oauthRefreshToken = pgTable(
       .references(() => users.id, { onDelete: "cascade" }),
     referenceId: text("reference_id"),
     authorizationCodeId: text("authorization_code_id"),
+    // RFC 8707 audiences bound to the grant, not validated per request - that is what GHSA-p2fr-6hmx-4528 was about.
     resources: text("resources").array(),
     requestedUserInfoClaims: text("requested_user_info_claims").array(),
     expiresAt: timestamp("expires_at"),
@@ -252,6 +254,7 @@ export const oauthResource = pgTable("oauth_resource", {
   metadata: jsonb("metadata"),
 });
 
+// enforcePerClientResources is ON, so a client with no row here can request nothing.
 export const oauthClientResource = pgTable(
   "oauth_client_resource",
   {

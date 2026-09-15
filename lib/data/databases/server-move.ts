@@ -114,6 +114,7 @@ export async function updateDatabase(
         const moved = await migrateWorkloadData(movingFrom, targetServer.id, {
           volumeNames: [dbVolumeHostName(cur.host)],
         });
+        // A wrong volume name lands nothing rather than failing, so refuse before the old host is torn down.
         if (moved.missing.length > 0)
           throw new Error(
             `${moved.missing.join(", ")} is not on that server, so there was nothing to move`,
@@ -139,6 +140,7 @@ export async function updateDatabase(
       try {
         const old = await connectAgent(movingFrom);
         try {
+          // Only reached once the copy landed: this destroys the OLD data volume too.
           const r = await old.destroyStack(cur.host, true);
           if (!r.ok)
             moveWarning =

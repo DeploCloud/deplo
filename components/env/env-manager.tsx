@@ -78,6 +78,7 @@ export function EnvManager({
   const [deleteId, setDeleteId] = React.useState<string | null>(null);
   const router = useRouter();
 
+  // The vars this app opted into (ADR-0012) plus the ones injected with no opt-in (ADR-0027).
   const appliedShared = React.useMemo(
     () => sharedVars.filter((v) => v.linked || v.autoInject),
     [sharedVars],

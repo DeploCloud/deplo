@@ -16,6 +16,7 @@ import { type CronRunDTO, toRunDTO } from "./dto";
 import { gateJob } from "./gates";
 import { MAX_KEEP_RUNS } from "./job-validate";
 
+// Gated on manage_crons and not view: stdout can hold anything the command printed, the job's environment included.
 export async function listCronRuns(
   jobId: string,
   limit = 50,

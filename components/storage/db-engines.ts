@@ -10,6 +10,7 @@ export const DB_TYPES: {
   { id: "mariadb", name: "MariaDB", versions: ["11", "10"] },
   { id: "mongodb", name: "MongoDB", versions: ["8", "7"] },
   { id: "redis", name: "Redis", versions: ["8", "7"] },
+  // ClickHouse publishes no bare-major tag ("25" and "26" are 404), so the default is minor-qualified.
   { id: "clickhouse", name: "ClickHouse", versions: ["25.8", "25.3", "24"] },
 ];
 

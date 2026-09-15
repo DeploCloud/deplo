@@ -29,6 +29,7 @@ export type DokployDbKind = (typeof DOKPLOY_DB_KINDS)[number];
 
 const DOKPLOY_PANEL: PanelIdentity = { name: "Dokploy", portHint: ":3000" };
 
+// A key at its rate limit answers 401 exactly like a wrong key, so only one accepted moments ago proves the limit.
 const accepted = new Set<string>();
 const acceptedKey = (c: SourceCredential) => `${c.baseUrl}|${c.apiKey}`;
 
@@ -349,6 +350,7 @@ export interface DokployContainer {
 
 export type DokployRuntime = "swarm" | "standalone";
 
+// Without serverId Dokploy looks on its OWN host: every service on a remote server used to read as stopped.
 export async function listAppContainers(
   c: SourceCredential,
   appName: string,

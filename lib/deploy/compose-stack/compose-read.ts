@@ -12,6 +12,7 @@ import type { App, ComposeDoc } from "./types";
 
 export { detectDefaultApp } from "../compose-lint/routing";
 
+// `docker compose` interpolates `$VAR` in every value it reads, so an authored `$` arrived gutted.
 export function escapeComposeDollars(encoded: string): string {
   return encoded.replace(/\$/g, "$$$$");
 }
@@ -94,6 +95,7 @@ export function composeEnvValues(compose: string): Record<string, string> {
   return out;
 }
 
+// What a clash guard must ask: a service on a private network of its own is nobody's neighbour.
 export function composeNamesOnNetwork(compose: string): string[] {
   let doc: ComposeDoc;
   try {

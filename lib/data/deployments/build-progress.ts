@@ -37,6 +37,7 @@ export async function getQueuePosition(
     .where(eq(deploymentsTable.id, deploymentId))
     .limit(1);
   if (!target) return null;
+  // Per-app reach, not the team-only check above: without it a scoped member could probe deployment ids.
   if (!(await hasAppCapability(target.appId, "view_logs"))) return null;
   if (target.status !== "queued" || !target.serverId) return null;
 

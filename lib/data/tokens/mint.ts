@@ -57,6 +57,7 @@ export const DEFAULT_TOKEN_DAYS = 90;
 
 async function defaultExpiry(): Promise<string> {
   const ninety = Date.now() + DEFAULT_TOKEN_DAYS * 24 * 60 * 60 * 1000;
+  // A token minted by a token never outlives it, so the default is the sooner of the two.
   const parent = await actingTokenExpiry();
   const at = parent ? Math.min(ninety, Date.parse(parent)) : ninety;
   return new Date(at).toISOString();
@@ -160,6 +161,7 @@ export async function updateToken(
   assertScopeWithinActingToken(scope, scoped);
 
   const db = getDb();
+  // Read and gate before the transaction: these helpers query on their own connection, and pglite deadlocks inside one.
   const existing = (
     await db
       .select({ instanceAdmin: apiTokens.instanceAdmin })
@@ -172,6 +174,7 @@ export async function updateToken(
   const reach = await reachOf(scope, userId);
   const capabilities = await ownerCeiling(userId, input.capabilities, reach);
 
+  // Keeping the instance-admin bit alive is itself an instance-admin action.
   if (existing.instanceAdmin) await requireInstanceAdmin();
 
   await db.transaction(async (tx) => {

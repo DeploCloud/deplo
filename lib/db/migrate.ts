@@ -14,6 +14,7 @@ export async function runMigrations(): Promise<void> {
   if (applied) return;
   const client = await getPool().connect();
   try {
+    // Drizzle's migrator takes no lock of its own, so two instances would both apply the same DDL.
     await client.query("SELECT pg_advisory_lock($1)", [MIGRATION_LOCK_KEY]);
     try {
       await migrate(getDb(), {
@@ -23,6 +24,7 @@ export async function runMigrations(): Promise<void> {
     } finally {
       await client
         .query("SELECT pg_advisory_unlock($1)", [MIGRATION_LOCK_KEY])
+        // Swallowed: an unlock error must never mask a real migrate() failure.
         .catch(() => {});
     }
   } finally {

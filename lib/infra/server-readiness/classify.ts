@@ -107,6 +107,7 @@ export function classifyServerReadiness(
           },
   );
 
+  // The agent forces traefikRunning false when Docker is unreachable, so with Docker down we never looked.
   const traefik: boolean | null = hello.dockerAvailable
     ? hello.traefikRunning
     : null;

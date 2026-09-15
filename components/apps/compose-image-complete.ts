@@ -65,6 +65,7 @@ export async function imageCompletionSource(
         type: "constant",
         detail: t.lastUpdated ? relativeDate(t.lastUpdated) : undefined,
       }));
+      // filter:false - the registry already matched the fragment, so prefix scoring must not hide a tag.
       return { from: tagFrom, options, filter: false };
     }
 

@@ -102,6 +102,7 @@ async function s3DestinationFields(input: CreateDestinationInput) {
   const region = (input.region ?? "").trim() || "auto";
   assertUsableRegion(region);
   const allowPrivateEndpoint = Boolean(input.allowPrivateEndpoint);
+  // The agent dials this address as root, so reaching inside the network is never a team capability.
   if (allowPrivateEndpoint) await requireInstanceAdmin();
   if (!allowPrivateEndpoint)
     await assertSafeOutboundUrl((input.endpoint ?? "").trim(), "Endpoint", {

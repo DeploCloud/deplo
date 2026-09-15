@@ -83,6 +83,7 @@ async function pendingLoginEmail(): Promise<string | null> {
   return rows[0]?.email ?? null;
 }
 
+// Every bucket counts on every attempt - an `||` chain short-circuited and left one uncounted.
 async function checkLimits(
   checks: { key: string; limit: number; windowMs: number }[],
 ): Promise<string | null> {
@@ -165,6 +166,7 @@ builder.mutationFields((t) => ({
       if (!parsed.success)
         throw new Error(parsed.error.issues[0]?.message ?? "Invalid input");
       const email = await emailForIdentifier(parsed.data.email);
+      // Per-account AND per-client, never one global counter: that one locks every user out.
       const limited = await checkLimits([
         { key: `login:email:${email}`, limit: 8, windowMs: 60_000 },
         { key: await clientKey("login"), limit: 30, windowMs: 60_000 },
@@ -314,6 +316,7 @@ builder.mutationFields((t) => ({
       const usernameError = validateUsername(username);
       if (usernameError) throw new Error(usernameError);
 
+      // Team handling follows the link's stored mode, never anything the client sent.
       const info = await getRegistrationLinkInfo(parsed.data.token);
       if (!info.valid)
         throw new Error("This registration link is no longer valid");

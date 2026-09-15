@@ -27,6 +27,7 @@ export interface TokenScope {
   appProjectIds: string[];
 }
 
+// next dev compiles RSC and route handlers into separate module registries, so a module-level ALS would be two stores.
 const STORE_KEY = Symbol.for("deplo.request-identity.als");
 const g = globalThis as unknown as {
   [STORE_KEY]?: AsyncLocalStorage<RequestIdentity>;

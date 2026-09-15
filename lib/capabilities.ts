@@ -192,6 +192,7 @@ export const CAPABILITY_META: Record<Capability, CapabilityMeta> = {
       "Connect, test and remove the places backups are stored, and download the key that decrypts them.",
     keywords:
       "bucket s3 server disk storage remote credentials minio garage path recovery key",
+    // It hands over the recovery key, which decrypts EVERY artifact at a destination.
     sensitive: true,
   },
 

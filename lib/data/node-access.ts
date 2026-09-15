@@ -100,6 +100,7 @@ const buildIndex = cache(async function buildIndex(
   teamId: string,
   admin: boolean,
 ): Promise<GrantIndex | null> {
+  // THE gate, first and always: membership existence carries the two-factor policy, and nothing below survives it.
   const membership = await membershipFor(userId, teamId);
   const base = membership?.capabilities ?? [];
   if (!admin && base.length === 0) return null;
@@ -425,12 +426,14 @@ function resolveFrom(
       (r) =>
         r.owner ||
         r.grants.length > 0 ||
+        // Not folderInScope: a null scope means unrestricted, which must not dissolve folder privacy.
         Boolean(index.roleScope?.folderIds.includes(r.id)),
     )
   ) {
     return [];
   }
 
+  // Most specific wins, and a node's grants REPLACE the team role's set inside it rather than adding to it (ADR-0016).
   for (const rung of rungs) {
     if (rung.owner) return clamp(index.base);
     if (rung.grants.length > 0) return clamp(rung.grants);
@@ -485,6 +488,7 @@ export async function nodeCapabilities(node: NodeRef): Promise<Capability[]> {
   return resolveOne(user.id, node, await isInstanceAdmin(), activeTeamId);
 }
 
+// Kept apart from nodeCapabilities on purpose: a nullable userId meaning skip-the-check is how the hole comes back.
 export async function nodeCapabilitiesFor(
   userId: string,
   teamId: string,

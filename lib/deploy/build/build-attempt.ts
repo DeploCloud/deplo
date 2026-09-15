@@ -100,6 +100,7 @@ export async function resolveBuildServerFor(
   }
 }
 
+// Both classes of "that host did not answer": matching one is how the build-server fallback never fired.
 function agentIsDown(e: unknown): boolean {
   return (
     e instanceof AgentUnavailableError || e instanceof AgentUnreachableError
@@ -214,6 +215,7 @@ async function buildOnBuildServer(opts: {
   }
 }
 
+// Agents are a star and cannot dial each other, so the image relays through the control plane.
 async function relayBuiltImage(
   buildServerId: string,
   targetServerId: string,
@@ -285,6 +287,7 @@ export async function tryAgent(opts: {
           return { outcome: "failed", commitSha: "" };
       }
       if (builders.length > 0 && planBuilds(opts.plan)) {
+        // Claimed BEFORE the build: the in-flight count behind `leastBusy` reads this column.
         await setDep(opts.depId, { buildServerId: builders[0]!.id });
         const leg = await buildOnBuildServer({
           ...opts,

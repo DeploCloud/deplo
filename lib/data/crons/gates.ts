@@ -25,6 +25,7 @@ export async function gateApp(appId: string) {
   return { app, teamId };
 }
 
+// Running as root on an app whose compose reaches the server is the host grant by another door.
 export async function assertRunAsAllowed(
   app: { id: string } | null,
   user: string | null | undefined,

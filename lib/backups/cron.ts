@@ -127,6 +127,7 @@ function dayMatches(c: ParsedCron, at: Date): boolean {
   if (c.domAny && c.dowAny) return true;
   if (c.domAny) return dowMatch;
   if (c.dowAny) return domMatch;
+  // Vixie rule: with both day fields restricted, the day matches when EITHER does.
   return domMatch || dowMatch;
 }
 

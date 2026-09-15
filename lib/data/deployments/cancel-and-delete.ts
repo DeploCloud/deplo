@@ -30,6 +30,7 @@ export async function cancelDeployment(id: string): Promise<boolean> {
     .where(
       and(
         eq(deploymentsTable.id, id),
+        // Part of the WHERE, not a pre-check: a build that finished since the read must not be flipped to canceled.
         inArray(deploymentsTable.status, ["queued", "building"]),
       ),
     )
@@ -92,6 +93,7 @@ async function removeDeploymentRows(
     )
     .returning({ id: deploymentsTable.id, appId: deploymentsTable.appId });
   const apps = new Set(deleted.map((d) => d.appId));
+  // Deleting the latest deployment NULLs the app's pointer (FK set-null), so the live reads must refresh.
   for (const sid of apps) publishAppChanged(sid);
   if (deleted.length > 0)
     await recordActivity(

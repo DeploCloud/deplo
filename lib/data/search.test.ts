@@ -51,6 +51,7 @@ beforeEach(async () => {
       { id: TEAM_C, slug: "gamma" },
     ],
   });
+  // The same person in two teams: without this second membership every cross-team assertion below passes anyway.
   await pg.query(
     `insert into memberships (id, user_id, team_id, role, created_at)
      values ('mem_user_1_b', $1, $2, 'owner', '2026-01-01T00:00:00.000Z')`,

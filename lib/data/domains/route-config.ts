@@ -17,6 +17,7 @@ export function normalizePath(input?: string | null): string {
       p = new URL(p).pathname;
     } catch {}
   }
+  // Interpolated into a Traefik backtick literal inside a router rule, so these never reach the rule grammar.
   p = p.replace(/[`"\u0000-\u001f]/g, "");
   if (!p.startsWith("/")) p = `/${p}`;
   p = p.replace(/\/+$/, "");
@@ -51,6 +52,7 @@ export function resolveApp(
   const names = composeServiceNames(project.compose);
   if (!names.includes(service))
     throw new Error(`No container named "${service}" in the compose file`);
+  // The reserved names are the platform's own on the shared network, refused at save instead of at every render.
   const claim = composeServiceReservedClaim(project.compose, service);
   if (claim) throw new Error(reservedNameMessage(claim));
   return service;

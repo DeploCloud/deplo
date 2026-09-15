@@ -31,6 +31,7 @@ export const cronJobs = pgTable(
     description: text("description").notNull().default(""),
     service: text("service"),
     schedule: text("schedule").notNull(),
+    // Validated on write: Intl throws on an unknown zone, which would take down the whole scheduler tick.
     timezone: text("timezone").notNull().default("UTC"),
     shell: text("shell").notNull().default("sh"),
     command: text("command").notNull(),
@@ -94,6 +95,7 @@ export const cronRuns = pgTable(
     trigger: text("trigger").notNull().default("schedule"),
     actor: text("actor").notNull().default("Scheduler"),
     scheduledFor: isoTimestamptz("scheduled_for").notNull(),
+    // Wall-clock key for an hour-pinned schedule, instant key otherwise: the two halves of DST need opposite keys.
     dedupeKey: text("dedupe_key").notNull(),
     startedAt: isoTimestamptz("started_at").notNull(),
     finishedAt: isoTimestamptz("finished_at"),

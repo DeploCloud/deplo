@@ -9,6 +9,7 @@ export function authRequestHeaders(
   request: Headers | null | undefined,
   cookie: string,
   opts: {
+    // Off on https: honouring a plain twin would let a cookie planted over http sign somebody in on the https address.
     twinCookieNames?: boolean;
   } = {},
 ): Headers {

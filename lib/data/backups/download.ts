@@ -18,6 +18,7 @@ import { anyBackupCapableServer, downloadTargetFor } from "./target-lookup";
 import { requireBackupCapability } from "./target-access";
 import type { BackupRun } from "../../types/backup";
 
+// The caller MUST call close() when the response ends - the agent connection stays open behind it.
 export async function downloadBackupArtifact(runId: string): Promise<{
   filename: string;
   sizeBytes: number | null;
@@ -42,6 +43,7 @@ export async function downloadBackupArtifact(runId: string): Promise<{
       "This backup did not complete successfully and cannot be downloaded",
     );
   await requireBackupCapability(run, "restore_backups");
+  // An app archive carries the app's variables decrypted, so handing the bytes over is a reveal.
   if (run.targetKind === "app" && run.appId)
     await requireAppCapability(run.appId, "reveal_secrets");
 

@@ -44,6 +44,7 @@ export async function listApps(query?: string): Promise<AppSummary[]> {
     appOrderRank(teamId),
   ]);
 
+  // A token's project scope applies HERE: loadAppsByTeam is an engine primitive and never filters itself.
   const scoped = all.filter((p) => inAppScope(p) && !p.deletingAt);
   const reach = await appCapabilitiesForTeam(
     teamId,

@@ -211,6 +211,7 @@ builder.mutationFields((t) => ({
       input: t.arg({ type: PreviewSettingsInput, required: true }),
     },
     resolve: async (_r, { appId, input }) => {
+      // An explicit null CLEARS: `?? undefined` here made "back to the app's port" a no-op save.
       await setAppPreviewSettings(String(appId), {
         enabled: input.enabled ?? undefined,
         baseDomain: input.baseDomain,

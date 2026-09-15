@@ -104,6 +104,7 @@ export function buildSpecFor(build: BuildConfig): BuildSpec {
     startCommand: b.startCommand ?? "",
     outputDirectory: b.outputDirectory ?? "",
     skipInstall: b.installCommand === "",
+    // A proto3 string cannot carry NULL ("work it out") apart from "" ("run nothing"), so these say it.
     skipBuild: b.buildCommand === "",
     runtimeVersion,
     runtimeLanguage: runtimeVersion ? "node" : "",
@@ -174,6 +175,7 @@ async function filesPathState(
   }
 }
 
+// Docker answers a missing bind source with an empty DIRECTORY, so file-shaped binds are created first.
 export async function ensureFileBinds(
   conn: Pick<
     AgentConnection,
@@ -234,6 +236,7 @@ export async function runAgentDeploy(opts: {
       "the agent reports Docker is not available on the target server",
     );
   }
+  // A HARD gate: an older agent reads `build_only` as absent and runs production on the build server.
   if (opts.buildOnly && !hello.capabilities.includes("deploy.build-only")) {
     throw new AgentUnavailableError(
       "this build server's agent is too old to build without deploying - update it " +
@@ -275,6 +278,7 @@ export async function runAgentDeploy(opts: {
   }
   const req = await buildDeployRequest({
     ...opts,
+    // A fork preview is a stranger's code, so every pull of this deploy goes unauthenticated.
     registryAuth: opts.forkPreview
       ? []
       : await loadRegistryAuthsForApp(opts.appId),
@@ -291,6 +295,7 @@ export async function runAgentDeploy(opts: {
     );
   }
 
+  // A reattach replays everything AFTER this seq, so a reconnect never double-logs and misses nothing.
   const cursor = { seq: 0 };
 
   let started = false;

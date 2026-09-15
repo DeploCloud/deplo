@@ -183,6 +183,7 @@ async function reapOne(
     if (r.run.nextAttemptAt) {
       if (now < new Date(r.run.nextAttemptAt)) return true;
     } else if (now.getTime() - Date.parse(r.run.startedAt) > STALE_CLAIM_MS) {
+      // Claimed but never launched: Deplo stopped mid-fire, and launching it now is the catch-up ADR-0018 rules out.
       await settle(
         r,
         "skipped",

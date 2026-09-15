@@ -20,6 +20,7 @@ function formatterFor(tz: string): Intl.DateTimeFormat {
   if (!f) {
     f = new Intl.DateTimeFormat("en-US", {
       timeZone: tz,
+      // Load-bearing: en-US's default cycle formats midnight as hour 24, so "0 0 * * *" would never match.
       hourCycle: "h23",
       year: "numeric",
       month: "2-digit",
@@ -124,6 +125,7 @@ export function pinsHour(expr: string): boolean {
 
 const pad = (n: number) => String(n).padStart(2, "0");
 
+// Two key shapes: DST breaks pinned-hour and interval schedules in opposite directions (ADR-0018).
 export function dedupeKeyFor(expr: string, at: Date, tz: string): string {
   if (!pinsHour(expr)) return at.toISOString().slice(0, 16);
   const p = zoneParts(at, tz);

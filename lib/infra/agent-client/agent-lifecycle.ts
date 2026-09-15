@@ -39,6 +39,7 @@ export async function selfUpdateServerAgent(
           `(target v${release.version}). Re-run the install command to upgrade it.`,
       );
     }
+    // Forward-only: a GitHub blip resolves the pinned fallback, which can be older, and the agent cannot downgrade.
     if (isNewer(hello.agentVersion, release.version))
       throw new Error(
         `This server already runs agent v${hello.agentVersion}, newer than the latest release Deplo can see (v${release.version}). Nothing to install.`,

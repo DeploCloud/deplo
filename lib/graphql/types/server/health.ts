@@ -93,6 +93,7 @@ const ServerReadinessReportRef = builder
     }),
   });
 
+// Mutations though they only read: the route serves GET, so a query here is reachable by a plain link.
 builder.mutationFields((t) => ({
   checkServerHealth: t.field({
     type: ServerRef,

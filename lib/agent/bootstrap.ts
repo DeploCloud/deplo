@@ -51,6 +51,7 @@ export function installCommand(opts: {
     importOnly,
   } = opts;
   const fp = fingerprint ? ` '${fingerprint}'` : "";
+  // Set after sudo, which drops the caller's environment - before it, the flag is silently ignored.
   const env = importOnly
     ? "DEPLO_IMPORT_ONLY=1 "
     : storageOnly
@@ -58,6 +59,7 @@ export function installCommand(opts: {
       : buildOnly
         ? "DEPLO_BUILD_ONLY=1 "
         : "";
+  // Download then run, never curl | bash (a failed fetch exits 0 silently); --output, not -o, which ad blockers strip.
   return `curl -${curlFlags(insecure)} '${baseUrl}/install-agent.sh' --output /tmp/deplo-agent-install.sh && sudo ${env}bash /tmp/deplo-agent-install.sh '${rawToken}' '${baseUrl}'${fp}`;
 }
 

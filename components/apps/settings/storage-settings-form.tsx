@@ -230,6 +230,7 @@ export function StorageSettingsForm({
     const committedVolumesKey = volumesKey(volumes, containerWorkdir);
     const targets = fileTargets;
     startTransition(async () => {
+      // Files first, so no row is ever saved pointing at a file that isn't there.
       const written: { id: string; path: string; text: string }[] = [];
       if (canManageFiles) {
         for (const t of targets) {

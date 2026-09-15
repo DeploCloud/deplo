@@ -313,6 +313,7 @@ const UpdateUserAdminInputType = builder.inputType("UpdateUserAdminInput", {
   }),
 });
 
+// All default to FALSE: an omitted flag must never be read as "destroy that too".
 const DeleteUserInputType = builder.inputType("DeleteUserInput", {
   fields: (t) => ({
     userId: t.string({ required: true }),

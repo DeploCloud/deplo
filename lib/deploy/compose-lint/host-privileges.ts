@@ -11,6 +11,7 @@ import {
   isHostBindSource,
 } from "./volumes";
 
+// Every key here reaches the host like a `docker.sock` bind, so all take `canMountHostVolumes`.
 const HOST_PRIVILEGE_KEYS = [
   "privileged",
   "cap_add",
@@ -38,8 +39,10 @@ const HOST_PRIVILEGE_KEYS = [
   "extra_hosts",
 ] as const;
 
+// An ALLOWLIST: every other value is a docker NETWORK NAME, joined with DNS while `networks:` is empty.
 const SAFE_NETWORK_MODE = /^(none|default)$/i;
 
+// Hardening is never gated - a prompt in front of the safer choice is one people learn to skip.
 const SAFE_SECURITY_OPTS = /^no-new-privileges(?:[:=]\s*true)?$/i;
 
 export function hostPrivilegeKeys(svc: Record<string, unknown>): string[] {
@@ -51,6 +54,7 @@ export function hostPrivilegeKeys(svc: Record<string, unknown>): string[] {
       if (composeTruthy(v) || isInterpolated(v)) out.push(key);
       continue;
     }
+    // Only a NEGATIVE adjust matters: the kernel then kills the neighbours instead of this container.
     if (key === "oom_score_adj") {
       const n = typeof v === "number" ? v : Number(String(v).trim());
       if ((Number.isFinite(n) && n < 0) || isInterpolated(v)) out.push(key);

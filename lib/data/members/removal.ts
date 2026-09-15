@@ -53,6 +53,7 @@ export async function removeMember(userId: string): Promise<void> {
       .where(eq(usersTable.id, userId))
       .limit(1);
     username = u[0]?.username ?? "";
+    // A grant hangs off the node it names and a folder off its owner, so neither leaves with the membership row.
     await clearNodeGrants(tx, userId, teamId);
     handed = await handOverFolders(
       tx,

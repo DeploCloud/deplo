@@ -27,6 +27,7 @@ import type { GitRepo } from "../../types/build";
 export const ON_IMPORT_SOURCE =
   "That server is a migration source - it only exists to import from another platform.";
 
+// The ref rides into the compose image: scalar unquoted, so a YAML metacharacter could inject compose keys.
 const IMAGE_REF_RE = /^[A-Za-z0-9][A-Za-z0-9._\-/:@]*$/;
 
 export function assertImageRef(
@@ -50,6 +51,7 @@ export async function assertComposeSavable(
     await requireExposePorts();
   }
   if (compose != null) assertComposeWithinLimits(compose);
+  // composeHostReach is EVERY way out of the container, not only a bind mount, and all of it is one grant.
   const reach = compose != null ? composeHostReach(compose) : [];
   if (reach.length > 0) await requireMountHostVolumes(reach.join(", "));
   if (compose != null) {
@@ -63,6 +65,7 @@ export async function assertComposeSavable(
   return reach;
 }
 
+// Drops a credential from another team rather than cloning a private repo with it.
 export async function scopeRepoCredentials(
   repo: GitRepo | null,
   teamId: string,

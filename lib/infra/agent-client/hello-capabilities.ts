@@ -14,6 +14,7 @@ export const BACKUP_S3_ARGS_CAPABILITY = "backup-s3-args";
 
 export const BACKUP_S3_READ_CAPABILITY = "backup-s3-read";
 
+// Hard gate: with it the agent takes only DATA from an outside-the-fleet artifact, never its compose/env/mounts.
 export const BACKUP_UNTRUSTED_CONFIG_CAPABILITY = "backup-untrusted-config";
 
 export const CRON_CAPABILITY = "cron";
@@ -34,6 +35,7 @@ export const DOCKER_CLEANUP_CAPABILITY = "docker-cleanup";
 
 export const CLEANUP_KEEP_PER_SLUG_CAPABILITY = "cleanup.keep-per-slug";
 
+// An agent answers an unknown scope with INVALID_ARGUMENT, which fails the whole sweep.
 export const CLEANUP_SCOPE_CAPABILITY: Partial<Record<CleanupScope, string>> = {
   [CleanupScope.CLEANUP_SCOPE_LEFTOVER_APP_FILES]: "cleanup.leftover-files",
   [CleanupScope.CLEANUP_SCOPE_LEFTOVER_NETWORKS]: "cleanup.leftover-networks",

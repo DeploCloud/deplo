@@ -6,6 +6,7 @@ export const PLATFORM_NETWORKS = [
   "deplo-socket",
 ] as const;
 
+// ADR-0028: an Environment owns a network, and this module is the only place the name is derived.
 export function appNetwork(a: {
   environmentId?: string | null;
   teamId: string;
@@ -40,6 +41,7 @@ export function deployNetwork(
 
 export function explainNetworkError(message: string): string {
   if (
+    // Docker worded this differently across versions, and the hosts that hit the ceiling are old.
     !/predefined address pools|non-overlapping ipv4 address pool|could not find an available/i.test(
       message,
     )

@@ -55,6 +55,7 @@ function isAsyncIterable(v: unknown): v is AsyncIterable<unknown> {
   );
 }
 
+// The wrap is re-applied around every TICK, not only around the iterator's creation.
 function perTick<T>(
   source: AsyncIterable<T>,
   wrap: <R>(fn: () => R) => R,
@@ -70,6 +71,7 @@ function perTick<T>(
   } as AsyncIterableIterator<T>;
 }
 
+// A POST must be JSON: a cross-site form could otherwise post a mutation with the session cookie.
 const requireJsonPost: Plugin = {
   onRequest({ request, endResponse, fetchAPI }) {
     if (request.method !== "POST") return;
@@ -94,6 +96,7 @@ const requireJsonPost: Plugin = {
 export const yoga = createYoga({
   schema,
   graphqlEndpoint: "/api/graphql",
+  // Same-origin panel: reflecting an Origin with credentials would let any site use the cookie.
   cors: false,
   context: ({ request }) => buildContext(request),
   plugins: [

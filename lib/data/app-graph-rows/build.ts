@@ -72,6 +72,7 @@ export function buildToRow(appId: string, b: BuildConfig): AppBuildInsert {
   };
 }
 
+// The agent pastes this into a download URL it runs as root, so a "/" or ".." would fetch somebody else's asset.
 export function cleanToolVersion(
   raw: string | null | undefined,
 ): string | null {

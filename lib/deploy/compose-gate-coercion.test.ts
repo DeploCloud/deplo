@@ -19,6 +19,7 @@ import {
 const svc = (body: string): string =>
   `services:\n  a:\n    image: alpine\n${body}`;
 
+// `docker compose` reads the same bytes as YAML 1.1, so `yes`, `on` and `y` are booleans the gate must cast.
 test("compose's own booleans are true: yes, on, y and a quoted true", () => {
   for (const v of [true, 1, "yes", "Yes", "YES", "on", "y", "1", "true"])
     assert.equal(composeTruthy(v), true, `${String(v)} should read as true`);
@@ -74,6 +75,7 @@ test("`$$` is compose's escape and interpolates nothing", () => {
   assert.equal(interpolates("/plain/path"), false);
 });
 
+// `${HOSTPATH}:/host` with HOSTPATH=/ binds the whole server, and the env-file is written after every check.
 test("an interpolated volume source is a host bind until proven otherwise", () => {
   assert.equal(
     composeHasHostBindMount(svc('    volumes:\n      - "${HOSTPATH}:/host"')),

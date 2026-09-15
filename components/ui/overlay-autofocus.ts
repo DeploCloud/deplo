@@ -9,6 +9,7 @@ export function isOverlayAutoFocusing(): boolean {
   return autoFocusing;
 }
 
+// Radix focuses the first tabbable on open and Chrome carries :focus-visible over, so a hint icon would open its own tooltip.
 export function overlayAutoFocus(event: Event, content: HTMLElement | null) {
   autoFocusing = true;
   setTimeout(() => {

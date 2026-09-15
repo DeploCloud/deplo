@@ -73,6 +73,7 @@ export async function backupToDestination(
   if (dest.kind === "s3" || destServer === target.serverId) {
     const conn = await connectBackupAgent(target.serverId, {
       store: dest.kind === "server",
+      // An agent ignoring the recipient would write the app's decrypted env to the bucket in the clear.
       encryptedS3: dest.kind === "s3" && !!dest.ageRecipient,
       s3Args: hasS3Args(dest),
     });
@@ -159,6 +160,7 @@ async function relayBackup(
   signal?: AbortSignal,
 ): Promise<BackupOutcome> {
   const dest = creds.destination;
+  // store: true though the SOURCE writes nothing: stream_out rides the same backup-store capability.
   const src = await connectBackupAgent(target.serverId, { store: true });
   let sink: AgentConnection | null = null;
   let release = abortWith(signal, src);
@@ -237,6 +239,7 @@ async function relayBackup(
     const mismatch = digestMismatch(produced, landed);
     if (mismatch) {
       try {
+        // Unlike every other failure here, this one already committed a file on the destination.
         await sink.storeDelete(storeTargetFor(dest, objectKey));
       } catch (e) {
         console.warn(

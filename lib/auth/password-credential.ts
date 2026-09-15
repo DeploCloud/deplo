@@ -7,6 +7,7 @@ import { createLocalAccountIssuer } from "better-auth";
 import { hashPassword, verifyPassword } from "../crypto";
 import { newId } from "../ids";
 
+// Required since Better Auth 1.7.0, which keys an account on (issuer, accountId).
 export const CREDENTIAL_ISSUER = createLocalAccountIssuer("credential");
 
 export async function insertCredentialAccount(

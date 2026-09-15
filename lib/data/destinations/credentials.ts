@@ -74,6 +74,8 @@ export function storeTargetFor(
   return { root: d.path ?? "", objectKey };
 }
 
+// The single seam of ADR-0019: the DESTINATION's host for a server store, the workload's for s3.
+// Getting it wrong is silent - retention would dial the app's host for an artifact living elsewhere.
 export function destinationServerId(
   d: Pick<BackupDestination, "kind" | "serverId">,
   targetServerId: string,

@@ -150,6 +150,7 @@ builder.mutationFields((t) => ({
         description: input.description ?? null,
         capabilities: (input.capabilities ?? undefined) as never,
         requireTwoFactor: input.requireTwoFactor ?? false,
+        // Absent must never mean "widen", or a client predating this field unlimits a role it renames.
         scope: input.clearScope
           ? null
           : input.scope

@@ -63,7 +63,9 @@ export async function deleteBackupRun(runId: string): Promise<void> {
       throw new Error(
         "No server on this instance can reach the destination this backup is kept in",
       );
+    // Artifact first, record second, or the object outlives everything that could name it.
     const res = await deleteFromDestination(creds, via, run.objectKey);
+    // The agent resolves ok:false for a destination-side refusal rather than throwing.
     if (!res.ok)
       throw new Error(res.error || "The backup file could not be deleted.");
   }
@@ -117,6 +119,7 @@ export async function deleteBackupArtifacts(input: {
     (r) => r.status === "success" && r.objectKey,
   );
 
+  // By exact key, never by prefix: two server destinations on one host share the same managed folder.
   const results = await deleteManyFromDestination(
     creds,
     input.serverId,
@@ -130,6 +133,7 @@ export async function deleteBackupArtifacts(input: {
     );
   const deleted = results.reduce((n, r) => n + r.deleted, 0);
 
+  // A running run owns no artifact yet, so dropping its row would orphan the dump it is about to land.
   const removable = runs.filter((r) => r.status !== "running").map((r) => r.id);
   if (removable.length > 0)
     await getDb()
@@ -183,6 +187,7 @@ export async function deleteAllBackupArtifacts(input: {
     input.kind === "app"
       ? await requireAppCapability(input.targetId, "delete_apps")
       : await requireCapability("delete_databases");
+  // The capability alone cannot see a project clamp, so a narrowed token is refused by this scope check.
   if (!(await backupTargetInScope(input.kind, input.targetId)))
     throw new Error("Not found");
   const serverId =

@@ -21,6 +21,7 @@ export interface AppPlacementInput {
   environmentId?: string | null;
 }
 
+// Authorized exactly like a move into the same destination, or a create smuggles an app into a foreign folder.
 export async function resolveNewAppPlacement(
   input: AppPlacementInput,
   teamId: string,

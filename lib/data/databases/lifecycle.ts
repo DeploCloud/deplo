@@ -33,6 +33,7 @@ export async function setDatabaseRunning(
   await withKeyedLock(id, async () => {
     const cur = await requireDatabase(id, teamId);
     assertNotProvisioning(cur, "starting or stopping it");
+    // Reroute before starting: compose start returns the container to the network it was CREATED on.
     if (running && (await rerouteDatabase(id)) === "rerouted") {
       await getDb()
         .update(databasesTable)
@@ -108,6 +109,7 @@ export async function redeployDatabase(id: string): Promise<void> {
     name = cur.name;
     assertNotProvisioning(cur, "redeploying it");
     assertDataCopyIntact(cur.name, cur.dataCopyError);
+    // Redis auth rides a --requirepass flag re-applied on every boot, so an empty password disables it.
     const password = databasePassword(cur);
     const yaml = renderDatabaseStackYaml(cur, password);
     const conn = await connectAgent(cur.serverId);
@@ -209,12 +211,14 @@ export async function deleteDatabase(
     }
     if (failure) {
       console.warn(`[databases] teardown of ${db.host} failed: ${failure.why}`);
+      // Nothing is removed from Deplo unless the host proved the container and the volume are gone.
       if (!opts.force)
         throw new Error(
           `${db.name} was NOT deleted: ${failure.why}. Nothing has been removed ` +
             `from Deplo. ${failure.retry}, or delete it anyway and Deplo will ` +
             `keep retrying the teardown on that host.`,
         );
+      // Forced: the row goes now and the queue keeps retrying until the host confirms both are gone.
       await enqueueTeardowns([
         {
           serverId: db.serverId,

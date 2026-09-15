@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 
 import type { PGlite } from "@electric-sql/pglite";
 
+// Set BEFORE the modules load: with a public URL the deploy hook never reads request headers.
 process.env.DEPLO_PUBLIC_URL = "https://deplo.test";
 
 import { makeTestDb, type TestDb } from "../db/test-harness";
@@ -266,6 +267,7 @@ test("nor enumerate them from an app it does reach", async () => {
     "a session still sees the whole team's shared vars from any app",
   );
 
+  // manage_env survives the project clamp, so this page cannot refuse - it must hold the catalogue back.
   const theirs = await scoped(() => listSharedVarsForApp(APP_IN));
   assert.deepEqual(
     theirs.map((v) => v.key),
@@ -327,6 +329,7 @@ test("nor delete one", async () => {
   );
 });
 
+// The defence is upstream: move_apps is absent from PROJECT_SCOPED_CAPABILITIES, so the clamp strips it.
 test("a narrowed token holds no move at all, in or out of its scope", async () => {
   await asUser(() => createFolder("Mine"));
   const fld = (await asUser(() => listFolders()))[0]!.id;

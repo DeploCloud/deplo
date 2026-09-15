@@ -88,6 +88,7 @@ export function renderCompose(opts: {
         .join("\n") +
       "\n"
     : "";
+  // Exactly "" when the app has none, so the stack stays byte-identical (the reroute contract).
   const appVolsYaml = vols.length
     ? "    volumes:\n" +
       vols
@@ -176,6 +177,7 @@ export async function renderDeployStack(opts: {
     routes: opts.routes,
     env,
     basicAuthUsers,
+    // A prebuilt image is deployed as-is: injecting PORT would override the address its author baked in.
     injectPort: project.source !== "docker-image",
     volumes: project.volumes ?? [],
     ports: preview ? [] : portMappings(project.ports),

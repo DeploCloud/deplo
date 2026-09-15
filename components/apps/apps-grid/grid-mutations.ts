@@ -198,6 +198,7 @@ export function useGridMutations({
         clearSelection();
       } else {
         toast.error(failed.error);
+        // Revert here: an all-failed batch refreshes to identical props, so hidden ids stay hidden.
         setMovedIds((prev) => {
           const next = new Set(prev);
           ids.forEach((id) => next.delete(id));

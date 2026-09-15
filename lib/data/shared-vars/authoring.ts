@@ -71,6 +71,7 @@ export async function saveSharedVar(input: {
   const teamIds = [...new Set(input.teamIds)];
   const reach = await currentReach(input.id);
   for (const t of teamIds) {
+    // Skipped for a team it already reaches: re-asking made an instance-wide variable unsavable by most admins.
     if (t === teamId || reach.teams.includes(t)) continue;
     if (!(await holdsTeamWideCapability(t, "manage_env")))
       throw new Error("Team not found");
@@ -174,6 +175,7 @@ export async function saveSharedVar(input: {
           key,
           ...(keepValue ? {} : { valueEnc: encryptSecret(input.value) }),
           type: input.type,
+          // ADR-0027 §4: the stored column, never the count - a reach row lost to a cascade must not disarm it on the next save.
           autoInject:
             teamIds.length > 1 ||
             (existing[0].autoInject && lostTeams.length === 0),

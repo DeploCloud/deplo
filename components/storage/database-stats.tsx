@@ -41,6 +41,7 @@ export function StatCard({
   );
 }
 
+// `bytes === null` means the agent cannot answer yet: a dash, never a zero that reads as empty.
 export function DataStat({
   db,
   metrics,
@@ -52,6 +53,7 @@ export function DataStat({
   bytes: number | null | undefined;
   href: string;
 }) {
+  // Docker reports the HOST's RAM as the limit when nothing caps the container, so use the stored cap.
   const capMb = db.resources?.memoryMb ?? null;
   const ram =
     metrics?.online && metrics.memUsed > 0

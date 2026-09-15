@@ -38,6 +38,7 @@ export const folders = pgTable(
   ],
 );
 
+// Project container ids are prc_; prj_ is an App, minted before this table existed (ADR-0008).
 export const projects = pgTable(
   "projects",
   {

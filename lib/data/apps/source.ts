@@ -96,6 +96,7 @@ export async function updateAppSource(
     }
   }
 
+  // A preview's teardown resolves the host from the app row: once it names the new machine, the old stacks are unreachable.
   if (current && moving && !current.previewServerId) {
     await stopPreviewsForServerChange(id, input.serverId!);
   }
@@ -106,6 +107,7 @@ export async function updateAppSource(
   } = { moved: false, stray: null, strayServerId: null };
   const before: { repo: GitRepo | null } = { repo: null };
 
+  // Service names live inside a compose file with no unique constraint under them, so check and write share one lock.
   await withNetworkLock(
     {
       teamId: membership.teamId,
@@ -165,6 +167,7 @@ export async function updateAppSource(
 
         const newIp = resolveServerIp(serversById.get(serverId));
 
+        // Auto nip.io hosts encode the old IP, so a move re-hosts them or Traefik keeps pointing at the old machine.
         if (newIp !== oldIp) {
           const appDomains = await loadDomainsForApp(p.id, tx);
           for (const dom of appDomains) {

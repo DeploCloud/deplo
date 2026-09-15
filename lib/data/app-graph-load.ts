@@ -98,6 +98,7 @@ async function assembleApps(db: DbReader, rows: AppRow[]): Promise<App[]> {
   return rows.map((r) => assembleApp(r, children.get(r.id)!));
 }
 
+// NOT team-scoped: an engine primitive, so every caller applies its own team and folder gates.
 export async function loadAppGraph(
   id: string,
   db: DbReader = getDb(),
@@ -334,6 +335,7 @@ export function appScopeWhere(): SQL | undefined {
   if (scope.folderIds.length > 0)
     clauses.push(inArray(apps.folderId, scope.folderIds));
   if (scope.appIds.length > 0) clauses.push(inArray(apps.id, scope.appIds));
+  // Fail closed: `inArray(col, [])` has changed behaviour across Drizzle versions.
   if (clauses.length === 0) return sql`false`;
   return clauses.length === 1 ? clauses[0] : or(...clauses)!;
 }

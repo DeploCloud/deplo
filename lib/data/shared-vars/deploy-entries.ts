@@ -19,6 +19,7 @@ const DEPLOY_COLUMNS = {
   id: varsTable.id,
   key: varsTable.key,
   valueEnc: varsTable.valueEnc,
+  // A loader that dropped this column answered "not a secret" for a team's whole shared set at fork preview.
   type: varsTable.type,
   createdAt: varsTable.createdAt,
 } as const;
@@ -72,6 +73,7 @@ async function teamOfApp(appId: string): Promise<string | null> {
   return app?.teamId ?? null;
 }
 
+// Only the vars this app is explicitly linked to inject; an availability scope never does (ADR-0012).
 export async function loadSharedVarsForApp(
   appId: string,
 ): Promise<SharedVarEntry[]> {

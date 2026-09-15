@@ -48,6 +48,7 @@ export function AppLiveStatusProvider({
   initial: LiveApp;
   children: React.ReactNode;
 }) {
+  // Keyed by slug in the layout, so it remounts and re-seeds from `initial`; no re-seed effect.
   const [live, setLive] = React.useState<LiveApp>(initial);
 
   React.useEffect(() => {

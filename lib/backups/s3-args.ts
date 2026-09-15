@@ -36,6 +36,7 @@ export function validateS3Args(raw: string): string | null {
     if (eq < 0) return `"${token}" needs a value, like ${token}=true.`;
     const name = token.slice(0, eq);
     const value = token.slice(eq + 1);
+    // An allowlist: a real flag the agent has no mapping for must be refused, never accepted and silently dropped.
     if (!(name in S3_ARGS_ALLOWED))
       return `Deplo doesn't know "${name}". The flags it applies are: ${allowedList()}.`;
     if (value !== "true" && value !== "false")

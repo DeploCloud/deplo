@@ -26,6 +26,7 @@ export const users = pgTable(
       .notNull()
       .default(false),
     avatarColor: text("avatar_color").notNull(),
+    // Dead since migration 0055: sessions are Better Auth rows, so revoking them is a DELETE, not a version bump.
     tokenVersion: integer("token_version").notNull().default(0),
     twoFactorEnabled: boolean("two_factor_enabled").notNull().default(false),
     emailVerified: boolean("email_verified").notNull().default(true),
@@ -46,6 +47,7 @@ export const teams = pgTable(
   {
     id: text("id").primaryKey(),
     name: text("name").notNull(),
+    // Frozen after creation: the API takes it in X-Deplo-Team instead of the id, so a rename breaks every caller.
     slug: text("slug").notNull(),
     plan: text("plan").notNull(),
     founderUserId: text("founder_user_id").references(() => users.id, {

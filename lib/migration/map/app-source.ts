@@ -146,6 +146,7 @@ export function cloneTarget(
     case "gitlab": {
       const owner = a.gitlabOwner?.trim();
       const repository = a.gitlabRepository?.trim();
+      // gitlabPathNamespace is the FULL project path: appending the repository made it group/repo/repo.git, a 404.
       const path =
         a.gitlabPathNamespace?.trim() ||
         (owner && repository ? `${owner}/${repository}` : "");

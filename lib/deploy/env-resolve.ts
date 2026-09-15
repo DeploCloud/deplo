@@ -1,5 +1,6 @@
 import type { EnvTarget } from "../types/env";
 
+// Required on every layer: a fork preview drops secret-typed values, so a loader that forgets breaks.
 export type EnvEntryType = "plain" | "secret";
 
 export interface TargetedEnvEntry {

@@ -100,6 +100,7 @@ async function contextForTeam(
   if (!identity || identity.teamId !== match.id) throw refusal;
 
   return runWithIdentity(identity, async () => {
+    // Re-read: the door checked the INITIAL team, so a team argument must not keep working where MCP was turned off since.
     const why = refusalFor(match.id, await listMcpTeams());
     if (why) throw new Error(why);
     const [viewer, teamId, capabilities] = await Promise.all([
@@ -113,6 +114,7 @@ async function contextForTeam(
 
 export async function POST(request: Request) {
   const header = request.headers.get("authorization") ?? "";
+  // Case-insensitive: matching "Bearer " exactly was a real bug on the deploy hook.
   const raw = /^bearer /i.test(header) ? header.slice(7).trim() : "";
   if (!raw)
     return refuse(

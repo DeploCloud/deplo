@@ -14,6 +14,7 @@ export async function setActiveTeamCookie(teamId: string) {
   const store = await cookies();
   store.set(ACTIVE_TEAM_COOKIE, teamId, {
     httpOnly: true,
+    // Per REQUEST, not per instance: on the panel's plain-http IP address a Secure cookie is one the browser drops.
     secure: await requestIsHttps(),
     sameSite: "lax",
     path: "/",

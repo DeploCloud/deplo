@@ -6,6 +6,7 @@ import yaml, {
   type Document,
 } from "../../yaml";
 
+// Every host-escape gate parses here and fails open on unreadable YAML: one shape gets past all of them.
 export function loadComposeDoc<T>(composeYaml: string): T | null {
   try {
     return yaml.load(composeYaml) as T | null;
@@ -34,6 +35,7 @@ export function servicesOf(
   return services;
 }
 
+// Unquoted YAML reads `022` as 22 and `1.10` as 1.1, and the container is handed a value nobody wrote.
 export function keepAuthoredEnvText(doc: Document): boolean {
   let changed = false;
   visit(doc, {
@@ -55,6 +57,7 @@ export function keepAuthoredEnvText(doc: Document): boolean {
   return changed;
 }
 
+// `$$` is compose's escape and interpolates nothing; `$VAR` without braces interpolates like `${VAR}`.
 export function interpolates(value: string): boolean {
   return /(^|[^$])\$(\$\$)*[^$]/.test(`${value.trim()} `);
 }
@@ -63,6 +66,7 @@ export function isInterpolated(v: unknown): boolean {
   return typeof v === "string" && interpolates(v);
 }
 
+// Compose casts to a typed bool, so `privileged: yes` reached the host past a gate testing `=== true`.
 export function composeTruthy(v: unknown): boolean {
   if (typeof v === "boolean") return v;
   if (typeof v === "number") return v === 1;
@@ -96,6 +100,7 @@ const tooManyEntries = () =>
     "The compose file expands to too many entries - unroll its YAML anchors.",
   );
 
+// A few nested YAML aliases turn 400 bytes into gigabytes when the renderer dumps them resolved.
 export function assertComposeWithinLimits(composeYaml: string): void {
   if (Buffer.byteLength(composeYaml, "utf8") > MAX_COMPOSE_BYTES)
     throw new Error("The compose file is too large (256 KiB max).");

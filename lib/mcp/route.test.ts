@@ -65,6 +65,7 @@ after(async () => {
 beforeEach(async () => {
   await pg.exec(TRUNCATE);
   await seedIdentity(db);
+  // USER_1 owns BOTH teams: without a second membership these tests would pass for the wrong reason.
   await pg.query(
     `insert into memberships (id, user_id, team_id, role, created_at)
      values ('mem_user_1_b', $1, $2, 'owner', '2026-01-01T00:00:00.000Z')`,
@@ -445,6 +446,7 @@ test("an authorization code presented as a bearer authenticates nothing", async 
   assert.equal(res.status, 401);
 });
 
+// id_tokens are HS256-signed with the CLIENT's own secret, so accepting one lets any client forge an identity.
 test("an id_token presented as a bearer authenticates nothing", async () => {
   const flow = await fullFlow({
     email: EMAIL,
@@ -456,6 +458,7 @@ test("an id_token presented as a bearer authenticates nothing", async () => {
   assert.equal(res.status, 401);
 });
 
+// Cookie-authenticable, /api/mcp would put every signed-in browser one cross-site POST from driving the team.
 test("a session cookie alone reaches no tool", async () => {
   const conn = await connect(["view"]);
   const res = await mcp(null, { cookie: `__Secure-deplo.session_token=x` });
@@ -727,6 +730,7 @@ test("the MCP route contains no authorization check of its own", async () => {
     assert.ok(!src.includes(forbidden), `${forbidden} appeared in the route`);
 });
 
+// `withMcpAuth` / `getMcpSession` skip Deplo's identity resolution and never read `client.disabled`.
 test("better-auth's own MCP helpers are imported nowhere", async () => {
   const { execSync } = await import("node:child_process");
   const hits = execSync(

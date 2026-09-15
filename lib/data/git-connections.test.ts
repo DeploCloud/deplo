@@ -321,6 +321,7 @@ test("an address inside the deployment is refused", async () => {
   }
 });
 
+// Refusing only the literal address would have stopped nothing.
 test("a NAME that resolves inside the deployment is refused too", async () => {
   await assert.rejects(
     () => asTeamA(() => connectTo("https://git.internal.example.com")),

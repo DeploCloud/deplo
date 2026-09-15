@@ -122,6 +122,7 @@ export async function importDatabaseService(
   const withPassword = {
     ...base,
     password: spec.password ?? undefined,
+    // Another platform's random token is not a password a person chose, so the account policy stays off it.
     passwordIsGenerated: true,
   };
 

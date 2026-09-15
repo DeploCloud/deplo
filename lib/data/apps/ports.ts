@@ -57,6 +57,7 @@ export async function setAppPorts(
 ): Promise<void> {
   const { membership } = await requireAppCapability(id, "configure_apps");
 
+  // A published port is reachable past the proxy and every gate it applies, so it takes its own grant.
   if (ports.length > 0) await requireExposePorts();
   const user = (await getCurrentUser())!;
   const validated = validatePorts(ports);
@@ -73,6 +74,7 @@ export async function setAppPorts(
 
   // ponytail: rows only, no agent probe - a port something OUTSIDE Deplo holds
   for (const p of validated)
+    // A host port is a singleton on a shared machine: the row that would collide can belong to another team.
     if (await hostPortClaimed(app.serverId, p.published, { appId: id }))
       throw new Error(
         `Port ${p.published} is already published on this server. Pick a different one.`,

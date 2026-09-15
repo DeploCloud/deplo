@@ -75,6 +75,7 @@ export async function listDeployments(filter?: {
       environmentId: p.environmentId ?? null,
     })),
   );
+  // A deployment names its app, its commit and its URL, so an app in a folder the caller cannot see contributes none.
   const teamApps = scopedApps.filter((p) => (reach.get(p.id)?.length ?? 0) > 0);
   const byId = new Map(teamApps.map((p) => [p.id, p] as const));
   const appIds = filter?.appId
@@ -171,6 +172,7 @@ export async function getDeployment(
   const dep = await loadDeployment(id);
   if (!dep) return null;
   if (!(await appInTeam(dep.appId, teamId))) return null;
+  // Same answer for "no such deployment" and "not yours", so the two cannot be told apart.
   if ((await appCapabilities(dep.appId)).length === 0) return null;
   const creators = await loadUserIdentities([dep.creatorUserId]);
   return {

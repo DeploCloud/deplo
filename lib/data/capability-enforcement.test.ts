@@ -526,6 +526,7 @@ test("instance-admin is per-token: a plain token minted by an admin is not an ad
     setFolderGrant("fld_private", CREATOR, ["deploy_apps"]),
   );
 
+  // Everything EXCEPT manage_team, which makes any member a folder super-user and would mask the question.
   await asToken(OWNER, allBut("manage_team"), async () => {
     assert.equal(
       await outcome(() =>

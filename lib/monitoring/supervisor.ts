@@ -44,12 +44,14 @@ import {
   recordContainerSample,
 } from "./container-history";
 
+// Move it and GAP_MS must move too - chart-gaps.test.ts pins the relationship.
 export const RECONNECT_BACKOFF_CAP_MS = 10_000;
 
 export const STREAM_INTERVAL_MS = 5_000;
 
 const MIN_STREAM_MS = STREAM_INTERVAL_MS;
 
+// Must stay under the 15s THROTTLE_MS in lib/data/server-health.ts, or the heartbeat is dropped.
 export const HEALTH_WRITE_MS = 8_000;
 
 export const APP_STATUS_RECONCILE_MS = 30_000;
@@ -130,6 +132,7 @@ function hostSampleFrom(
     agentVersion: facts.agentVersion,
     expectedAgentVersion: facts.expectedAgentVersion,
     source: frame.source,
+    // Stamped on receipt, not from the frame: host clock skew must never move a chart point.
     ts: Date.now(),
   };
 }
@@ -140,6 +143,7 @@ async function ingestFrame(
   facts: ConnectionFacts,
 ): Promise<Map<string, ContainerStat[]>> {
   const host = hostSampleFrom(serverId, frame, facts);
+  // Above the save-metrics gate on purpose: turning charts off must not turn alerting off.
   if (host)
     checkResourceThresholds(serverId, facts.serverName || serverId, host);
   if (host && (await isMetricsSavingEnabled())) recordMetricsSample(host);
@@ -195,6 +199,7 @@ async function runStreamLoop(
   while (!signal.aborted && !state.stopping) {
     let conn: AgentConnection | null = null;
     let openedAt: number | null = null;
+    // streamMetrics takes no AbortSignal (the RPC deadline is the contract's only cancel), so abort closes the channel.
     const onAbort = () => conn?.close();
     signal.addEventListener("abort", onAbort, { once: true });
     try {
@@ -231,6 +236,7 @@ async function runStreamLoop(
         includeContainers: true,
       })) {
         if (signal.aborted || state.stopping) break;
+        // Only a received frame resets it: resetting at connect re-dialled hot forever when a stream died at the dial.
         attempt = 0;
 
         const byProject = await ingestFrame(serverId, frame, facts);

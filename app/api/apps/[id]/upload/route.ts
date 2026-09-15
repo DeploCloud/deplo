@@ -54,6 +54,7 @@ export async function POST(
     return Response.json({ error: "App not found" }, { status: 404 });
 
   try {
+    // Gate BEFORE any bytes hit disk: setAppUpload re-checks deploy only once the whole stream is written.
     await requireAppCapability(appId, "deploy_apps");
   } catch (err) {
     const message =

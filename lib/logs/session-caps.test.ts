@@ -15,6 +15,7 @@ afterEach(() => {
   for (const id of __allSessionIdsForTest()) destroy(id);
 });
 
+// Regression: a ceiling must evict only the caller's OWN streams, never close other people's consoles.
 test("the per-app cap and the global cap only ever evict the same user's sessions", () => {
   const mine: string[] = [];
   for (const user of ["user_a", "user_b", "user_c", "user_d"])

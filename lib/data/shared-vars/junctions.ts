@@ -79,6 +79,7 @@ export async function replaceAppLinks(
       .values(appIds.map((appId) => ({ varId, appId })));
 }
 
+// Scoped by the APP's team: counting a receiving team's opt-in made the owner's own save ask for manage_env elsewhere.
 export async function currentAppLinks(
   teamId: string,
   varId: string | undefined,

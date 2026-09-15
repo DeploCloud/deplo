@@ -83,6 +83,7 @@ export async function landAppStorage(
           ", ",
         )} did not come across. An admin turns it on with "Bind server folders" in Settings → Users.`,
     );
+    // setAppVolumes takes the whole set or nothing, so one refused entry used to leave the app with none.
     volumes = volumes.filter((v) => v.type !== "host");
   }
   const refusedMounts: string[] = [];

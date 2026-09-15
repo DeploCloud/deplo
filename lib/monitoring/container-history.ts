@@ -86,6 +86,7 @@ export function clearContainerHistory(id?: string): void {
   }
 }
 
+// Only deletion forgets a resource: a container merely absent from a frame must not be pruned.
 export function pruneContainerHistoryTo(ids: ReadonlySet<string>): void {
   for (const id of buffers.keys()) {
     if (!ids.has(id)) buffers.delete(id);

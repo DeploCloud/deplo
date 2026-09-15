@@ -38,6 +38,7 @@ export const metadata: Metadata = {
 export default async function RootLayout({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
+  // No inline bootstrap script: React 19.2 refuses to run scripts rendered through React, so the theme rides this cookie.
   const stored = (await cookies()).get("theme")?.value;
   const theme = stored === "light" ? "light" : "dark";
 

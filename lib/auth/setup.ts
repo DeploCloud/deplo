@@ -21,6 +21,7 @@ export function checkSetupKey(
   presented: string | null | undefined,
 ): SetupKeyState {
   const expected = process.env.DEPLO_SETUP_KEY?.trim();
+  // No key configured leaves setup as it was: the first account goes to whoever reaches the panel first.
   if (!expected) return "ok";
   if (!presented) return "missing";
   return constantTimeEquals(presented, expected) ? "ok" : "wrong";

@@ -109,6 +109,7 @@ const deployments = () => getDb().select().from(deploymentsTable);
 
 test("a delivery signed by another App triggers nothing on this installation", async () => {
   const res = await POST(pushDelivery(ATTACKER_SECRET, ATTACKER_APP_NUMERIC));
+  // Acknowledged like any delivery Deplo cannot act on: a 4xx would confirm the caller guessed the installation id.
   assert.equal(res.status, 200);
   assert.deepEqual(await deployments(), []);
 });
@@ -121,6 +122,7 @@ test("the App's OWN installation still deploys", async () => {
   assert.equal(rows[0].appId, "prj_victim");
 });
 
+// `githubRepos` is loggedIn-only, so the team check has to live in the data layer.
 test("listing repos/branches refuses another team's installation id (IDOR)", async () => {
   await runWithIdentity({ userId: "u_attacker", teamId: TEAM_B }, async () => {
     await assert.rejects(

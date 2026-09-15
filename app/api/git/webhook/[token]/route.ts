@@ -8,6 +8,7 @@ import { dispatchPushEvent } from "@/lib/deploy/git-webhook-dispatch";
 import { providerFor } from "@/lib/git/providers/registry";
 import { readTextCapped } from "@/lib/http/body-cap";
 
+// The URL token names the provider: sniffing headers would let attacker-controlled input pick the verification rule.
 export async function POST(
   request: Request,
   ctx: { params: Promise<{ token: string }> },

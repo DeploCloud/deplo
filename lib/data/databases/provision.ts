@@ -104,6 +104,7 @@ export async function createDatabase(input: {
     throw new Error(
       `A database stack named "db-${slug}" already exists on ${server.name}. Database stacks share a per-host namespace - pick a different name.`,
     );
+  // A deleted database the host has not confirmed still owns this name and its data volume there.
   const pending = await getDb()
     .select({ id: pendingTeardownsTable.id })
     .from(pendingTeardownsTable)
@@ -199,6 +200,7 @@ export async function createDatabase(input: {
       subject: "the database",
     });
     await getDb().transaction(async (tx) => {
+      // Re-asserted inside the tx (SHARE-locks the server row) against a concurrent access restrict.
       await assertServerAccessibleTx(tx, server.id, teamId);
       await tx.insert(databasesTable).values(databaseToRow(db));
     });

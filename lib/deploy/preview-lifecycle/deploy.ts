@@ -30,6 +30,7 @@ export async function deployPreviewRow(
   if (!p) return null;
   const settings = await previewSettings(p.appId);
   const max = settings?.maxActive ?? PREVIEW_MAX_ACTIVE_DEFAULT;
+  // Claim and queue under the lock eviction takes: a sibling's eviction wrote `queued` over `evicted`.
   return withKeyedLock(`preview-cap:${p.appId}`, async () => {
     const fresh = (
       await getDb()

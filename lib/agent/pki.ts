@@ -164,6 +164,7 @@ export async function signAgentCsr(
   hosts: string[],
 ): Promise<SignedAgentCert> {
   const csr = new x509.Pkcs10CertificateRequest(csrPem);
+  // The CSR self-signature is proof of possession: a forged or replayed CSR is never signed.
   if (!(await csr.verify())) {
     throw new Error("agent CSR self-signature is invalid");
   }

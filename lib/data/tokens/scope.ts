@@ -78,6 +78,7 @@ export async function resolveScopeInput(
   for (const id of teamIds)
     if (!mine.has(id))
       throw new Error("You can't use API tokens in one of those teams");
+  // Breadth alone is not enough: a token holding one project of a team reaches that team and could otherwise tick all of it.
   const acting = currentIdentity()?.token?.scope;
   const withinActing = (ok: boolean) => {
     if (acting && !ok)
@@ -89,6 +90,7 @@ export async function resolveScopeInput(
     withinActing(!acting || acting.wholeTeamIds.includes(id));
   const reached = new Set<string>(teamIds);
   const whole = new Set(teamIds);
+  // Refused, not reinterpreted: loadScope lets the narrower tick win, so both would read as whole-team and act as one app.
   const narrower = (teamId: string) => {
     if (whole.has(teamId))
       throw new Error(

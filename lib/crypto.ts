@@ -10,6 +10,7 @@ import {
   createHmac,
   createHash,
 } from "node:crypto";
+// Pure JS, no native binding: it has to load on the musl runtime image without a rebuild step.
 import { hash as bcryptHash } from "bcryptjs";
 
 function rootSecret(): string {
@@ -36,10 +37,13 @@ export function deriveKey(purpose: string): Buffer {
   return key;
 }
 
+// Safe to raise: verifyPassword reads each hash's own parameters and login re-hashes a weaker one in place.
 const SCRYPT_PARAMS = { N: 65536, r: 8, p: 1 } as const;
+// Node caps scrypt memory at 32 MiB by default, well under the 128 * N * r this needs.
 const SCRYPT_MAXMEM = 512 * 1024 * 1024;
 const SCRYPT_KEYLEN = 64;
 
+// What node's scryptSync defaults to: every hash written before the parameters were recorded used it.
 const LEGACY_PARAMS = { N: 16384, r: 8, p: 1 } as const;
 
 interface ScryptParams {
@@ -174,6 +178,7 @@ export function tryDecryptSecret(
   }
 }
 
+// Answers "" for BOTH an empty value and a ciphertext that will not open; use decryptSecretOrThrow where that matters.
 export function decryptSecret(payload: string): string {
   const res = tryDecryptSecret(payload);
   return res.ok ? res.value : "";

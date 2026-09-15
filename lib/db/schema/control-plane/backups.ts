@@ -131,6 +131,7 @@ export const backupRuns = pgTable(
     destinationId: text("destination_id")
       .notNull()
       .references(() => backupDestination.id, { onDelete: "restrict" }),
+    // The two FKs above are ON DELETE SET NULL, which blanked the only thing naming what an artifact belonged to.
     targetId: text("target_id").notNull(),
     objectKey: text("object_key").notNull(),
     sizeBytes: bigint("size_bytes", { mode: "number" }).notNull(),

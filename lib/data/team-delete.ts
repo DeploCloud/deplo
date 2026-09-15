@@ -42,6 +42,7 @@ interface DeleteTeamContext {
   onlyTeam: boolean;
 }
 
+// Deleting a team removes every membership including the founder's, so the gate is founder-or-instance-admin, not manage_team.
 async function deleteTeamContext(): Promise<DeleteTeamContext> {
   const { userId, teamId, membership } = await requireMembership();
   const override = currentIdentity();
@@ -209,6 +210,7 @@ export async function deleteTeam(teamId: string): Promise<void> {
 
   const db = getDb();
   const plan = await withKeyedLock(
+    // Serialized per USER: two concurrent deletes would each see the other team alive and strand the caller with zero teams.
     `team-delete:${ctx.userId}`,
     async (): Promise<TeardownPlan | null> => {
       const mine = await teamsForUser(ctx.userId);

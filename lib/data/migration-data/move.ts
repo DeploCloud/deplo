@@ -256,6 +256,7 @@ async function runMoveMigrationServiceData(
     };
   }
 
+  // Asked BEFORE the stopService below, which cannot be taken back.
   if (!(await sourceAgentReachable(sourceServerId))) {
     return refuse({
       message: UNREACHABLE_SOURCE_AGENT,
@@ -279,6 +280,7 @@ async function runMoveMigrationServiceData(
   }
 
   if (landed.targetKind === "database") {
+    // A floated first provision may still be running initdb into the very volume about to be replaced.
     const settled = await waitForProvision(landed.targetId, teamId);
     if (!settled)
       return refuse({
@@ -333,6 +335,7 @@ async function runMoveMigrationServiceData(
     await recordSourceStopped(input.runId, input.sourceId, input.sourceKind);
 
   try {
+    // Untarring into a volume a container is still writing to is the same mistake in the other direction.
     await stopStackOn(landed.targetServerId, landed.targetSlug);
     await recordStoppedForCopy(landed, teamId);
   } catch {}

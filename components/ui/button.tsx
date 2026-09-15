@@ -49,6 +49,7 @@ const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
         className={cn(buttonVariants({ variant, size, className }))}
         ref={ref}
         data-variant={variant ?? "default"}
+        // A bare <button> in a <form> defaults to type="submit", which would make every dialog Cancel an accidental submit.
         {...(asChild ? (type ? { type } : {}) : { type: type ?? "button" })}
         {...props}
       />

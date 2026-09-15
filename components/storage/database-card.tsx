@@ -62,6 +62,7 @@ export function DatabaseCard({
   pollMs?: number;
   canReveal?: boolean;
 }) {
+  // `inert`, not pointer-events-none, which the actions cluster opted back out of - Delete worked.
   if (db.migrationRunId)
     return (
       <div
@@ -308,6 +309,7 @@ function CardActions({
     });
   }
 
+  // An app reaches a database by name only from its own environment (ADR-0028).
   function moveToEnvironment(environmentId: string | null) {
     startTransition(async () => {
       const res = await gqlAction(

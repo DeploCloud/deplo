@@ -2,6 +2,7 @@ import "server-only";
 
 import { builder } from "./builder";
 
+// A type module reaches the schema only by being imported here; there is no other registration.
 import "./types/account";
 import "./types/activity";
 import "./types/auth";

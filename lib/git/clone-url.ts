@@ -62,6 +62,7 @@ export async function resolveCloneUrl(repo: GitRepo): Promise<string> {
   } catch {
     return repo.url;
   }
+  // Bind the credential to the connection's OWN host, or a repo URL pointing elsewhere would carry the token.
   if (parsed.host.toLowerCase() !== connHost) return repo.url;
   parsed.username = cred.username;
   parsed.password = cred.token;

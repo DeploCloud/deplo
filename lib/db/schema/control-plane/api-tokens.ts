@@ -24,6 +24,7 @@ export const apiTokens = pgTable(
     tokenHash: text("token_hash").notNull(),
     prefix: text("prefix").notNull(),
     instanceAdmin: boolean("instance_admin").notNull().default(false),
+    // Scope INTENT: a deleted project cascades its junction row away, and an emptied scope must not widen the token.
     scoped: boolean("scoped").notNull().default(false),
     oauthClientId: text("oauth_client_id"),
     expiresAt: isoTimestamptz("expires_at"),

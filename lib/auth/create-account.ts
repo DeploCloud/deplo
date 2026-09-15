@@ -140,6 +140,7 @@ export async function createAccountWithTeam(
 
     if (opts.isInstanceOwner) {
       const claimed = await tx
+        // Also the atomic first-run guard: the crown is claimed in the same transaction as the account it belongs to.
         .insert(instanceSettingsTable)
         .values({ id: "default", ownerUserId: user.id, updatedAt: now })
         .onConflictDoUpdate({

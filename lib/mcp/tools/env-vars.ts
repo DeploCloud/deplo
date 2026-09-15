@@ -8,6 +8,7 @@ export const ENV: McpToolDef[] = [
     description:
       "An app's variables. Secret values are masked and there is no way to reveal them over MCP - read the key names, not the values.",
     group: "Environment",
+    // manage_env, not view: without it listEnv answers an empty list, which reads as "no variables".
     requires: "manage_env",
     readOnly: true,
     idempotent: true,

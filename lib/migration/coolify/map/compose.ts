@@ -53,6 +53,7 @@ export function coolifyCompose(
       "The compose file that came across is {panel}'s rendered copy, not the one you wrote - read it before deploying.",
     );
   const app = row as CoolifyApplication;
+  // A one-click service has no fqdn column at all: its address lives in the SERVICE_FQDN_* variables.
   const magic = coolifyServiceFqdns(extras.env, composeServices(raw ?? parsed));
   const onCompose = {
     service: composeServiceExposingPort(raw ?? parsed),

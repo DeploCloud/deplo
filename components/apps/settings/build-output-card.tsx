@@ -73,6 +73,7 @@ export function BuildOutputCard({
   const showInstallCommand = showBuildCommand;
   const showOutputDirectory = method === "static";
 
+  // Empty is "work it out" (null), never the empty string that skips a step.
   function setCommand(
     key: "installCommand" | "buildCommand" | "startCommand" | "outputDirectory",
     value: string,

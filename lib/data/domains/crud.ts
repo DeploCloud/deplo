@@ -107,6 +107,7 @@ export async function addDomain(
   name: string,
   config: DomainConfig = {},
 ): Promise<Domain> {
+  // Check-then-write: one hostname at a time is what closes the race between two teams adding the same name.
   return withKeyedLock(`domain:${name.trim().toLowerCase()}`, () =>
     addDomainUnlocked(appId, name, config),
   );
@@ -272,6 +273,7 @@ async function updateDomainUnlocked(
     throw new Error(
       nextPath ? "Domain + path already added" : "Domain already added",
     );
+  // A rename is the other way onto another team's hostname, so it gets the same refusal addDomain makes.
   await assertHostnameNotAnotherTeams(nextName, membership.teamId, id);
 
   const next: Domain = { ...current, name: nextName };
@@ -357,6 +359,7 @@ export async function removeDomain(id: string): Promise<string> {
         dom,
       )
     : null;
+  // The succession rides in the delete's own transaction: half-applied would leave the canonical host undefined.
   await getDb().transaction(async (tx) => {
     await tx.delete(domainsTable).where(eq(domainsTable.id, id));
     for (const d of orphaned)

@@ -67,6 +67,7 @@ export function wireDomainRoutes(opts: {
     const service = route.service;
     if (!service || !services[service]) continue;
     const reservedClaim = serviceReservedClaim(service, services[service]);
+    // Skipped, never thrown: a throw here would take the whole stack down, deploy included.
     if (reservedClaim) {
       input.onWarn?.(
         `\`${route.name}\` points at service \`${service}\`, which answers to ` +
@@ -90,11 +91,13 @@ export function wireDomainRoutes(opts: {
       services[service] as App,
       traefikLabels({
         network: input.network,
+        // `safe()` alone collapses `.` to `-`, so two hosts differing only there shared one router key.
         router: `${keySeed.replace(/[^a-zA-Z0-9_-]/g, "-")}-${hash6(keySeed)}`,
         domains: [route.name],
         port,
         entrypoint: route.entrypoint,
         tls: route.tls,
+        // Carried per route: a compose app on a plain nip.io answered only at an unprinted address.
         certResolver: route.certResolver,
         pathPrefix: route.pathPrefix,
         stripPrefix: route.stripPrefix,

@@ -33,11 +33,13 @@ export const deployments = pgTable(
     appId: text("app_id")
       .notNull()
       .references(() => apps.id, { onDelete: "cascade" }),
+    // Denormalized and deliberately not a FK: a deployment is history and must survive its server's deletion.
     serverId: text("server_id"),
     buildServerId: text("build_server_id"),
     status: text("status").notNull(),
     environment: text("environment").notNull(),
     deployKey: text("deploy_key").notNull(),
+    // SET NULL, not cascade: destroying a preview must not delete the build history of what it deployed.
     previewId: text("preview_id").references(
       (): AnyPgColumn => appPreviews.id,
       {

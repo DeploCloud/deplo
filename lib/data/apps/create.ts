@@ -232,6 +232,7 @@ export async function createApp(input: CreateAppInput): Promise<AppSummary> {
     ...(input.extraDomains ?? []).map((e) => e.host),
   ].some(isHostnameClaim);
   if (claimsAHostname) await requireCapability("manage_domains");
+  // create_apps is gated on the DESTINATION: a per-folder grant can hold it where the team role does not.
   const placement = await resolveNewAppPlacement(input, membership.teamId);
   const user = (await getCurrentUser())!;
   const slugBase = input.name
@@ -246,6 +247,7 @@ export async function createApp(input: CreateAppInput): Promise<AppSummary> {
     ),
   );
 
+  // A slug still awaiting teardown stays taken, or the new app adopts the old one's volumes and files.
   for (const p of await getDb()
     .select({ deployKey: pendingTeardownsTable.deployKey })
     .from(pendingTeardownsTable))
@@ -439,6 +441,7 @@ export async function createApp(input: CreateAppInput): Promise<AppSummary> {
       for (let attempt = 0; ; attempt++) {
         try {
           await getDb().transaction(async (tx) => {
+            // Re-asserted inside the tx so a concurrent setServerTeams restrict cannot land this app on a lost server.
             await assertServerAccessibleTx(tx, server.id, membership.teamId);
 
             await tx.insert(appsTable).values({
@@ -533,6 +536,7 @@ export async function createApp(input: CreateAppInput): Promise<AppSummary> {
   }
 
   const wantsDeploy = input.deploy !== false;
+  // create_apps is not deploy_apps: the first deploy is asked for separately, else the app is born idle.
   if (
     !isUpload &&
     wantsDeploy &&

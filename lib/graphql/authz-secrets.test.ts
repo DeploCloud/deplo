@@ -110,6 +110,7 @@ async function readAs(userId: string, doc: string): Promise<string> {
       identity: null,
     };
     const result = await graphql({ schema, source: doc, contextValue: ctx });
+    // The whole payload, errors included: a message quoting the value is a leak too.
     return JSON.stringify(result);
   });
 }

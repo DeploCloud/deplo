@@ -62,6 +62,7 @@ export function DatabaseHealthStat({
             : "No healthcheck";
 
   const restarts = container?.restartCount ?? 0;
+  // 0 means never started OR an agent older than the field - either way, no uptime to claim.
   const startedAt = container?.startedAtUnix ?? 0;
 
   return (

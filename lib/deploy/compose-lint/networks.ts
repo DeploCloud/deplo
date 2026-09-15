@@ -9,6 +9,7 @@ import {
   servicesOf,
 } from "./document";
 
+// Names Traefik still resolves by DNS on every tenant network - a claimed `deplo` collects its cookies.
 export const RESERVED_SHARED_NETWORK_NAMES = new Set([
   "deplo",
   "postgres",
@@ -85,6 +86,7 @@ function resolvedNetworkName(key: string, raw: unknown): string | null {
   return composeTruthy(ext) ? key : null;
 }
 
+// The platform's names take a compose PROJECT PREFIX on a host: Traefik's is `traefik_deplo-socket`.
 export function isDeploNetwork(name: string): boolean {
   const n = name.trim();
   if (isTenantNetwork(n)) return true;
@@ -93,6 +95,7 @@ export function isDeploNetwork(name: string): boolean {
   return /^deplo-[a-z0-9][a-z0-9_.-]*_default$/i.test(n);
 }
 
+// Resolved by NAME, not by key: a `default` pinned to a `deplo-env-` name joins another team's network.
 export function sharedNetworkKeys(doc: { networks?: unknown }): Set<string> {
   const keys = new Set<string>([INFRA_NETWORK]);
   const declared = doc.networks;
@@ -119,6 +122,7 @@ function joinsSharedNetwork(
       ? Object.keys(n as object)
       : null;
   if (keys) return keys.some((k) => shared.has(k) || interpolates(k));
+  // A service that declares no `networks:` joins `default`, which is a key like any other.
   return shared.has("default");
 }
 

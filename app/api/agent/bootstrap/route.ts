@@ -37,6 +37,7 @@ export async function POST(request: Request) {
       agentPort,
       advertisedHost,
     });
+    // The agent recomputes this HMAC and refuses a mismatch, binding the CA it carries to a party that knew the token.
     const payload = JSON.stringify({ certPem, caPem });
     const mac = signResponse(token, payload);
     return new Response(payload, {

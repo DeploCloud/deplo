@@ -43,6 +43,7 @@ export async function GET(
 
   const { id: appId } = await ctx.params;
   const target = request.nextUrl.searchParams.get("container") ?? undefined;
+  // Number(null) is 0 (finite), so a missing param must fall back to 500, never --tail 0 (follow-only, empty viewer).
   const rawTail = request.nextUrl.searchParams.get("tail");
   const parsedTail = rawTail !== null ? Number(rawTail) : NaN;
   const tail = Number.isFinite(parsedTail)
@@ -145,6 +146,7 @@ export async function DELETE(
   const { id: appId } = await ctx.params;
   const sessionId = request.nextUrl.searchParams.get("sessionId") ?? "";
   const session = sessionId ? logs.get(sessionId, appId) : undefined;
+  // Only the opener may close it: a session id is otherwise a capability to cut short somebody else's stream.
   if (session && session.userId === user.id) logs.destroy(sessionId);
   return Response.json({ ok: true });
 }

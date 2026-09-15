@@ -35,6 +35,7 @@ const Toaster = ({ ...props }: ToasterProps) => {
       richColors
       closeButton
       className="toaster group"
+      // Inline, not a stylesheet rule: that is what beats sonner's own richColors declarations whatever the injection order.
       style={TOAST_VARS}
       toastOptions={{
         classNames: {

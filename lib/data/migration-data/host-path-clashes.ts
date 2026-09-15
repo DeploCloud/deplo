@@ -34,6 +34,7 @@ export async function hostPathOwners(
       teamId: appsTable.teamId,
     })
     .from(appsTable)
+    // Cross-team on purpose: the copy WIPES its target first, so another team's bind on that path counts.
     .where(eq(appsTable.serverId, serverId));
   const mine = rows
     .filter((r) => r.id !== exceptAppId)

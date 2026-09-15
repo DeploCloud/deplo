@@ -66,6 +66,7 @@ export function setHostTimezone(
   );
 }
 
+// Serialised per host: interleaved rewrites put the old stack back, leaving a cert that reports itself installed.
 const stackWrites = new Map<string, Promise<unknown>>();
 
 export function withTraefikStackLock<T>(

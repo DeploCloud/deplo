@@ -64,6 +64,7 @@ export function UnsavedChangesGuard({
         return;
       }
       if (href === window.location.pathname + window.location.search) return;
+      // Capture phase + stopPropagation runs before Next's delegated Link handler.
       e.preventDefault();
       e.stopPropagation();
       setPendingHref(href);

@@ -51,6 +51,7 @@ export async function* activeDeploymentsStream(
   }
 }
 
+// teamId/userId are passed in: cookies() is not callable across an SSE stream's iteration ticks.
 export async function* appStatusStream(
   slug: string,
   teamId: string | null,

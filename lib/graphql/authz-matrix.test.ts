@@ -246,8 +246,10 @@ async function call(p: Principal, e: Endpoint): Promise<string[]> {
       ),
       timeout,
     ]);
+    // A timeout is counted as the gate letting it through, never as a refusal.
     if (result === "timeout") return [];
     const errors = result.errors ?? [];
+    // A document that does not validate would silently pass every assertion below.
     const invalid = errors.filter((err) => !err.path);
     assert.equal(
       invalid.length,

@@ -21,6 +21,7 @@ export const builder = new SchemaBuilder<{
     authScopes: (ctx) => ({
       loggedIn: !!ctx.viewer,
       capability: (cap: Capability) => ctx.capabilities.includes(cap),
+      // Instance admin is opt-in PER TOKEN, never inherited from the person holding it.
       instanceAdmin:
         !!ctx.viewer?.isInstanceAdmin &&
         (!ctx.identity?.token || ctx.identity.token.instanceAdmin),

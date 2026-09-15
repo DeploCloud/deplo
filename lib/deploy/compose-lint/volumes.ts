@@ -9,6 +9,7 @@ export function volumeSource(v: unknown): string | null {
   if (typeof v === "string") {
     const idx = v.indexOf(":");
     if (idx > 0) return v.slice(0, idx);
+    // No ":" is a named volume unless compose fills the entry in: `- ${MOUNT}` is `/:/host` at run time.
     return interpolates(v) ? v : null;
   }
   if (v && typeof v === "object") {
@@ -101,6 +102,7 @@ export function volumeTarget(v: unknown): {
   return { mountPath: "", readOnly: false };
 }
 
+// `external:` or a pinned `name:` attaches an existing volume by host name - another team's data.
 export function foreignVolumeKeys(volumes: Record<string, unknown>): string[] {
   const out: string[] = [];
   for (const [key, raw] of Object.entries(volumes)) {
@@ -111,6 +113,7 @@ export function foreignVolumeKeys(volumes: Record<string, unknown>): string[] {
       (typeof external === "object" && external !== null) ||
       composeTruthy(external) ||
       (typeof v.name === "string" && v.name.trim() !== "") ||
+      // `driver_opts: {type: none, device: /, o: bind}` is a host bind declared one level up.
       (v.driver_opts != null &&
         typeof v.driver_opts === "object" &&
         Object.keys(v.driver_opts as object).length > 0);

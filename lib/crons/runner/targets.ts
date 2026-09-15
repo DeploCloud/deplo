@@ -115,6 +115,7 @@ export async function listSchedulableJobs(): Promise<SchedulableJob[]> {
       appsTable,
       and(
         eq(appsTable.id, cronJobsTable.appId),
+        // Defense in depth: a cron job only ever resolves a target in its OWN team.
         eq(appsTable.teamId, cronJobsTable.teamId),
       ),
     )

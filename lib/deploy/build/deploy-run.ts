@@ -121,6 +121,7 @@ async function runDeployment(depId: string): Promise<void> {
   const target = targetFor(dep, project);
   const trackingId = preview ? preview.id : project.id;
   const domain = preview ? preview.host : await primaryDomainName(project.id);
+  // A preview host is never a `domains` row: it would leak into the production routers and cert quota.
   const routeDomains = await routableForDeploy(
     project.id,
     dep.environment,
@@ -139,6 +140,7 @@ async function runDeployment(depId: string): Promise<void> {
       }
     : null;
 
+  // Claim only while still queued - the terminal CAS covers a cancel during the build, not before it.
   const claimed = await getDb()
     .update(deploymentsTable)
     .set({ status: "building", startedAt: new Date(started).toISOString() })
@@ -163,6 +165,7 @@ async function runDeployment(depId: string): Promise<void> {
   }
 
   try {
+    // Nothing host-local happens here: every build method runs on the agent (ADR-0006).
     const { noCache, reason: noCacheReason } = noCacheForDeploy(project.build);
     const forceRecreate = dep.forceRecreate;
 

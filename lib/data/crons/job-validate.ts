@@ -51,6 +51,7 @@ export function buildPatch(
   }
   if (input.schedule !== undefined) {
     const schedule = input.schedule.trim().replace(/\s+/g, " ");
+    // The scheduler treats an unparseable expression as never matching, so a stored one is a job the UI calls enabled that never runs.
     if (!isValidSchedule(schedule))
       throw new Error(invalidScheduleMessage(schedule));
     patch.schedule = schedule;
@@ -141,6 +142,7 @@ export function buildPatch(
 
   const timeout = patch.timeoutSeconds ?? current?.timeoutSeconds ?? 3600;
   const attempts = patch.maxAttempts ?? current?.maxAttempts ?? 1;
+  // The timeout is PER ATTEMPT, so their product is the honest worst case a retrying run holds the job's slot for.
   if (timeout * attempts > MAX_TOTAL_SECONDS) {
     throw new Error(
       `${attempts} attempts of ${Math.round(timeout / 60)} minutes could run for ` +

@@ -109,6 +109,7 @@ export async function stopPreviewsForServerChange(
   return victims.length;
 }
 
+// Must run before the app row goes: the FK cascade drops the only record these containers exist.
 export async function destroyPreviewsForApp(appId: string): Promise<void> {
   const rows = await getDb()
     .select({

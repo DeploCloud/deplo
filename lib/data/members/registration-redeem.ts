@@ -113,6 +113,7 @@ export async function getRegistrationLinkAssignments(
   }));
 }
 
+// Takes the caller's tx so check-create-consume is one atomic section with the account and team it creates.
 export async function consumeRegistrationLink(
   tx: DbTx,
   rawToken: string,

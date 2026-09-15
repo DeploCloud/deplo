@@ -215,6 +215,7 @@ export const BACKUP_SCHEDULES: McpToolDef[] = [
           "Editing a schedule needs name, destinationId and schedule; pass enabled alone to only switch it on or off.",
         );
       }
+      // Every input object is coerced whatever @include says, so the off branch needs valid values too.
       const fields = {
         name: a.name ?? "",
         destinationId: a.destinationId ?? "",

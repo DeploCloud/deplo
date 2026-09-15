@@ -23,6 +23,7 @@ export const MountPropagationEnum = builder.enumType("MountPropagation", {
   values: MOUNT_PROPAGATIONS,
 });
 
+// An enum, not a String: an unknown value used to fall through to a managed volume, with no error.
 export const VolumeKindEnum = builder.enumType("VolumeKind", {
   description:
     'What the mount is: "named" is a Volume Deplo creates and keeps, "app" a ' +

@@ -127,6 +127,7 @@ export function DatabasesGrid({
     );
   });
 
+  // Only when nothing is filtering: a drop on a filtered view would persist a partial order.
   const reorderable = canReorder && !filtering;
 
   const visibleIds = filtered.filter((d) => !d.migrationRunId).map((d) => d.id);

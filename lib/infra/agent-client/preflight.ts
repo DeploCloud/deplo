@@ -128,6 +128,7 @@ export async function connectBackupAgent(
           `Update the agent on this server, then try again.`,
       );
     }
+    // Fail, never downgrade: an agent without it writes the artifact, decrypted env and all, in plaintext under a .age key.
     if (
       opts.encryptedS3 &&
       !hello.capabilities?.includes(BACKUP_ENCRYPT_S3_CAPABILITY)

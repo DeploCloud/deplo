@@ -52,6 +52,7 @@ export async function remoteTarget(server: Server): Promise<DialTarget> {
   const host = server.ip || server.host;
   return {
     address: `${host}:${agent.port}`,
+    // SNI forbids an IP servername: an IP host verifies against the localhost DNS SAN signAgentCsr always adds.
     serverName: IPV4_RE.test(host) ? "localhost" : host,
     clientCreds: {
       certPem: client.certPem,
@@ -80,6 +81,7 @@ export function openChannel(target: DialTarget): AgentChannel {
     Buffer.from(keyPem),
     Buffer.from(certPem),
     {
+      // Runs after the standard CA-chain and hostname checks, never instead of them - the pin only adds a refusal.
       checkServerIdentity: (_host, cert) => {
         const got = peerFingerprint(cert);
         if (got !== target.pinnedFingerprint) {
@@ -97,6 +99,7 @@ export function openChannel(target: DialTarget): AgentChannel {
     "grpc.default_authority": target.serverName,
     "grpc.max_receive_message_length": 256 * 1024 * 1024,
     "grpc.max_send_message_length": 256 * 1024 * 1024,
+    // grpc-js defaults to 65535 bytes and never tunes it from the measured BDP, so a stream is capped at window/RTT.
     "grpc-node.flow_control_window": 16 * 1024 * 1024,
     "grpc.keepalive_time_ms": 30_000,
     "grpc.keepalive_timeout_ms": 10_000,
@@ -129,6 +132,7 @@ export function openChannel(target: DialTarget): AgentChannel {
     });
 
   let helloOnce: Promise<HelloResponse> | null = null;
+  // ADR-0028: an agent that creates no network fails at compose up in docker's words, naming neither host nor fix.
   const assertNetworkCapable = async (network: string) => {
     if (!network) return;
     const hello = await (helloOnce ??= sayHello());

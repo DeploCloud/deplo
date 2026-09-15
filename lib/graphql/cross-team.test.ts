@@ -535,6 +535,7 @@ function deepSelection(type: GraphQLOutputType, depth = 0): string {
   return ` { ${parts.join(" ")} }`;
 }
 
+// A SERVER is deliberately shared across teams, so it is not a sentinel.
 const SENTINELS = [
   B.app,
   "b-app",
@@ -604,6 +605,7 @@ test("no query hands back another team's data", async () => {
     const hit = SENTINELS.filter((sentinel) => body.includes(sentinel));
     if (hit.length > 0) leaks.push(`${q.name} → ${hit.join(", ")}`);
   }
+  // THE CONTROL: team B's own owner must surface those sentinels, or the sweep proves nothing.
   const owner: RequestIdentity = { userId: B.user, teamId: TEAM_B };
   const ownerCtx = await runWithIdentity(
     owner,

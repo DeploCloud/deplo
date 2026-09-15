@@ -50,6 +50,7 @@ export function formatDateTime(input: Date | string | number): string {
   });
 }
 
+// UTC on purpose: a locale-aware format never matches between SSR and hydration.
 export function formatClockTime(ts: string, withMillis = false): string {
   const d = new Date(ts);
   if (Number.isNaN(d.getTime())) return "";
@@ -80,6 +81,7 @@ export function serverLabel(server: { name: string }): string {
   return server.name;
 }
 
+// Not read off the provider adapters: this module is client-imported and they pull in node:crypto.
 const COMMIT_PATH: Record<string, string> = {
   github: "/commit/",
   gitea: "/commit/",

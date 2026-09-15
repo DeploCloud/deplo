@@ -14,6 +14,7 @@ import {
 } from "../../db/schema/control-plane/env-vars";
 import type { EnvTarget, SharedVar } from "../../types/env";
 
+// Every READ uses this; a write keeps its own eq(teamId), because seeing is not editing (ADR-0027).
 export function visibleTo(teamId: string) {
   return or(
     eq(varsTable.teamId, teamId),

@@ -19,6 +19,7 @@ import type { Deployment } from "../../types/deployment";
 
 const ROLLBACK_SCAN_LIMIT = 200;
 
+// Rollback re-runs an image a past build left ON THE HOST, Deplo pushes to no registry, so it must match retention.
 export async function canRollbackTo(dep: Deployment): Promise<boolean> {
   if (!dep.imageRef || dep.rollbackOf || dep.status !== "ready") return false;
   const [app] = await getDb()

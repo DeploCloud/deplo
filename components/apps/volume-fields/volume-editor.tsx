@@ -30,6 +30,7 @@ export function VolumeFields({
   composeMounts?: ComposeMount[];
   composeServices?: string[];
   defaultComposeService?: string | null;
+  // COSMETIC only - the authoritative gate is `requireMountHostVolumes()` inside `setAppVolumes`.
   canMountHostVolumes?: boolean;
   containerWorkdir?: string | null;
   revealProblems?: boolean;

@@ -41,6 +41,7 @@ export function sessionCookieNames(): [string, string] {
   return [SESSION_COOKIE_NAME, `${SECURE_COOKIE_PREFIX}${SESSION_COOKIE_NAME}`];
 }
 
+// Network only: ctx.request is absent for the auth.api.* calls in lib/data/two-factor.ts, which verify a code first.
 const twoFactorGate = createAuthMiddleware(async (ctx) => {
   if (!ctx.path.startsWith("/two-factor/") || !ctx.request) return;
   throw new APIError("FORBIDDEN", {
@@ -59,6 +60,7 @@ const passkeyGate = createAuthMiddleware(async (ctx) => {
   });
 });
 
+// Deplo's own sign-in is the only path that limits per ACCOUNT, raises failed_logins and refuses a suspended account.
 const DEPLO_OWNED_AUTH_PATHS = [
   "/sign-in/",
   "/sign-up/",
@@ -91,6 +93,7 @@ const deploOwnedGate = createAuthMiddleware(async (ctx) => {
   });
 });
 
+// A passkey SATISFIES a team's two-factor mandate (ADR-0024), so an unverified ceremony cannot be shrugged off here.
 const requireUserVerified = ({
   verification,
 }: {
@@ -155,6 +158,7 @@ function oauthProviderOptions() {
 
     cachedTrustedClients: new Set<string>(),
 
+    // The user model IS the users table (ADR-0014), so a default set would leak is_instance_admin and suspended.
     customUserInfoClaims: ({
       user,
     }: {
@@ -194,6 +198,7 @@ function createAuth(db: DrizzleClient) {
     user: { modelName: "users" },
     emailAndPassword: {
       enabled: true,
+      // Better Auth must never INSERT into users: it knows nothing about that table's NOT NULL columns (ADR-0014).
       disableSignUp: true,
       minPasswordLength: 8,
       password: {
@@ -210,6 +215,7 @@ function createAuth(db: DrizzleClient) {
       cookiePrefix: "deplo",
       database: { generateId: () => newId("bas") },
       ipAddress: {
+        // Better Auth's x-forwarded-for default returns NO address for a chain over one hop without trustedProxies.
         ipAddressHeaders: ["cf-connecting-ip", "x-real-ip", "x-forwarded-for"],
       },
     },
@@ -221,6 +227,7 @@ function createAuth(db: DrizzleClient) {
       }),
       oauthProvider(oauthProviderOptions()),
       passkey(passkeyOptions()),
+      // MUST stay last: it is an after hook forwarding Set-Cookie, so anything appended after it is not seen.
       nextCookies(),
     ],
   });

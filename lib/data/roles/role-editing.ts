@@ -136,6 +136,7 @@ export async function updateRole(input: {
           .from(teamRoleCapabilitiesTable)
           .where(eq(teamRoleCapabilitiesTable.roleId, role.id))
       ).map((r) => r.capability as Capability);
+    // Un-scoping hands holders the whole authored set, so it is bounded like every other widening.
     if (role.scoped && !scoped) withinActor(authored, membership);
     if (capabilities !== undefined) {
       await tx
@@ -146,6 +147,7 @@ export async function updateRole(input: {
         .values(capabilities.map((c) => ({ roleId: role.id, capability: c })));
     }
     await syncMembersOfRole(tx, teamId, role.id, authored, scoped);
+    // After the sync: scoping a role clamps its team-wide capabilities away, so a reach change can lose the last administrator.
     await assertTeamAdminCoverage(tx, teamId);
   });
   await recordActivity(

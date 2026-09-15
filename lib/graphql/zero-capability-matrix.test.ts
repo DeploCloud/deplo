@@ -111,6 +111,7 @@ async function seedAll(): Promise<void> {
     createdAt: T0,
     updatedAt: T0,
   });
+  // Owned by the subject: folder privacy would otherwise mask every missing capability check.
   await db.insert(foldersTable).values({
     id: F.folder,
     teamId: TEAM_A,

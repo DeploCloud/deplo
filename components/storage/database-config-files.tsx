@@ -78,6 +78,7 @@ export function DatabaseConfigFiles({
   dataDir,
 }: {
   db: DatabaseDTO;
+  // `DB_DATA_DIRS` sits next to the compose renderer, which is server-only, so the page passes it in.
   dataDir: string;
 }) {
   const router = useRouter();

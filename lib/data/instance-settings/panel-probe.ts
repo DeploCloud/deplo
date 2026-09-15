@@ -11,6 +11,7 @@ export type PanelReachability = {
   error: string | null;
 };
 
+// The one sanctioned exemption from lib/outbound-url.ts: it dials the panel's own address, so the gate is instance admin here.
 export async function probePanel(url: string): Promise<PanelReachability> {
   await requireInstanceAdmin();
   try {
@@ -50,6 +51,7 @@ function getTolerant(
     const get = target.protocol === "https:" ? httpsGet : httpGet;
     const req = get(
       target,
+      // The generated host serves Traefik's self-signed certificate, which fetch refuses outright.
       { rejectUnauthorized: false, timeout: 6_000 },
       (res) => {
         const location = res.headers.location;

@@ -101,6 +101,7 @@ test("reconcileInFlightBackupRuns is idempotent / a no-op with nothing stale", a
   assert.equal(await reconcileInFlightBackupRuns(), 0);
 });
 
+// The FKs are ON DELETE SET NULL, so deleting an app used to blank the only columns naming its artifacts.
 test("a deleted target's runs stay findable, and the sweep stamps them", async () => {
   await seedRun(db, {
     id: "r_1",

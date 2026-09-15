@@ -43,6 +43,7 @@ export function AppSearch({
     [initialFolder, initialProject, initialEnv],
   );
 
+  // `view` via ref: a stale closure must not clobber a view chosen mid-debounce.
   const viewRef = React.useRef(view);
   React.useEffect(() => {
     viewRef.current = view;

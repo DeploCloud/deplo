@@ -37,6 +37,7 @@ function laneFor(serverId: string): ServerLane {
 
 let overrideRunner: ((depId: string) => Promise<void>) | null = null;
 function invokeRunner(depId: string): Promise<void> {
+  // Read at call time, never at module eval, so the deploy-run import cycle is never load-bearing.
   return (overrideRunner ?? runDeploymentGuarded)(depId);
 }
 
@@ -126,6 +127,7 @@ async function pump(serverId: string, lane: ServerLane): Promise<void> {
       while (lane.running.size < concurrency) {
         const next = await pickNext(serverId);
         if (!next) break;
+        // Reserved before the runner claims queued -> building, or a re-drain picks it twice.
         lane.running.add(next.id);
         busyKeys.add(next.key);
         startOne(serverId, next.id, next.key);

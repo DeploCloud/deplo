@@ -151,6 +151,7 @@ export async function sendWebPushTo(
   const gone: string[] = [];
   const results = await Promise.allSettled(
     subs.map(async (s) => {
+      // Re-validated at the dial: a saved endpoint's host can rebind to an internal address.
       await assertSafeOutboundUrl(s.endpoint, "Push endpoint");
       return webpush.sendNotification(
         { endpoint: s.endpoint, keys: { p256dh: s.p256dh, auth: s.auth } },

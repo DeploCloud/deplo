@@ -323,6 +323,7 @@ test("revoking beta's reach takes beta's per-app links with it", async () => {
       projectIds: [],
     }),
   );
+  // Left behind, the row would inject again the moment beta is re-shared with.
   assert.deepEqual(
     await db.select().from(appJunction).where(eq(appJunction.varId, id)),
     [],

@@ -20,6 +20,7 @@ export function useInitialCaretAtEnd<
   return nodeRef;
 }
 
+// setSelectionRange throws on every other input type (number, email, date); a textarea always allows it.
 const SELECTABLE_INPUT_TYPES = new Set([
   "text",
   "search",

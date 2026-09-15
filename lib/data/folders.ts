@@ -361,6 +361,7 @@ export async function deleteFolder(
     id,
     "delete_folders",
   );
+  // Before the folder row goes, while its apps still resolve THROUGH it (ADR-0016).
   if (opts.deleteApps) {
     const { deleteAppsIn } = await import("./apps/bulk");
     await deleteAppsIn({ folderId: id });
@@ -434,6 +435,7 @@ export async function moveAppToFolder(
       })
       .where(eq(appsTable.id, appId));
   });
+  // The placement IS the network (ADR-0028), so the stack has to be brought up again to follow.
   await reapplyNetworkAfterMove([appId]);
   await warnLostNeighbours([appId], teamId, folderId ? null : null);
   if (msg) await recordActivity("app", msg, userName, appId, teamId);

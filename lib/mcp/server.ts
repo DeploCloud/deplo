@@ -28,6 +28,7 @@ const TEAM_ARG = z
     "Team id or slug, from list_teams. Omit for this connection's default team.",
   );
 
+// Cosmetic: a tool that slips this filter is still refused in lib/data, which is the boundary.
 function visible(tool: McpToolDef, principal: McpPrincipal): boolean {
   if (tool.requires === null) return true;
   if (tool.requires === "instanceAdmin") return principal.instanceAdmin;
@@ -107,10 +108,12 @@ export function buildMcpServer(principal: McpPrincipal): McpServer {
       {
         title: tool.title,
         description: tool.description,
+        // passthrough: zod drops an unknown key silently, so a wrong argument read back as "none given".
         inputSchema: tool.input.extend({ team: TEAM_ARG }).passthrough(),
         annotations: {
           ...(tool.readOnly ? { readOnlyHint: true } : {}),
           ...(tool.idempotent ? { idempotentHint: true } : {}),
+          // Both default to TRUE upstream, so they stay explicit.
           destructiveHint: tool.destructive ?? false,
           openWorldHint: false,
         },
@@ -133,6 +136,7 @@ export function buildMcpServer(principal: McpPrincipal): McpServer {
           };
           const ctx = team ? await principal.forTeam(team) : principal.gql;
 
+          // A run tool skips runGraphql, and the SDK handler runs outside the scope the route opened.
           if (tool.run) {
             const go = () => tool.run!(rest, ctx);
             return text(

@@ -22,6 +22,7 @@ import {
 } from "../../types/identity";
 import { type Db } from "./role-guards";
 
+// Strip these from everyone and the team locks itself out of member and team administration irrecoverably.
 const CRITICAL: { cap: Capability; label: string }[] = [
   { cap: "manage_members", label: "manage members" },
   { cap: "manage_roles", label: "manage roles" },
@@ -58,6 +59,7 @@ export async function capabilitiesByMembership(
   return byId;
 }
 
+// Two concurrent role edits serialize here instead of both leaving the team with zero admins.
 export async function lockTeamMemberships(
   tx: DbTx,
   teamId: string,
@@ -69,6 +71,7 @@ export async function lockTeamMemberships(
     .for("update");
 }
 
+// Runs inside the transaction so it sees the write, and throws to roll it back.
 export async function assertTeamAdminCoverage(
   tx: DbTx,
   teamId: string,
@@ -95,6 +98,7 @@ export async function assertTeamAdminCoverage(
   }
 }
 
+// A role edit re-writes membership_capabilities in the same transaction, so every check reads effective capabilities, never a role.
 export async function syncMembersOfRole(
   tx: DbTx,
   teamId: string,
@@ -159,6 +163,7 @@ function sanitizeCapabilities(caps: Capability[] | undefined): Capability[] {
   return ALL_CAPABILITIES.filter((c) => set.has(c));
 }
 
+// Without this a plain manage_members holder could author a role more powerful than their own.
 export function withinActor(
   caps: Capability[] | undefined,
   actor: Membership,

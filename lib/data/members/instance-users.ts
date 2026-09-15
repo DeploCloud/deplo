@@ -210,6 +210,7 @@ export async function updateUserAdmin(input: {
     )[0];
     if (!target) throw new Error("User not found");
 
+    // Read under the same transaction as the writes it vetoes, so a concurrent transferInstanceOwner cannot slip between.
     const ownerUserId = await instanceOwnerUserId(tx);
 
     if (
@@ -267,6 +268,7 @@ export async function updateUserAdmin(input: {
     if (newPassword) await setUserPassword(input.userId, newPassword, tx);
   });
 
+  // They no longer control the credential, so every live cookie of theirs has to die with it.
   if (newPassword) await revokeAllSessions(input.userId);
   if (input.suspended) await revokeAllSessions(input.userId);
 

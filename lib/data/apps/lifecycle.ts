@@ -23,6 +23,7 @@ export function errMsg(e: unknown): string {
   return e instanceof Error ? e.message : String(e);
 }
 
+// Neither gated nor team-scoped: every caller resolved the app through a capability check first.
 export async function setAppStatus(
   id: string,
   status: AppStatus,
@@ -61,9 +62,11 @@ export async function startApp(id: string): Promise<void> {
   if (!project || project.teamId !== membership.teamId)
     throw new Error("App not found");
 
+  // Start is a second door onto the same volumes and skips the deploy pipeline, so it needs the same refusal.
   assertDataCopyIntact(project.name, project.dataCopyError);
   await setAppStatus(id, "active");
   try {
+    // compose start starts what it FINDS, on the network it was created with, so a moved stack must be re-rendered.
     if ((await rerouteApp(id)) !== "rerouted")
       await startContainer(project.slug);
   } catch (e) {

@@ -155,6 +155,7 @@ export const gitlab: GitProviderApi = {
     };
     const repoFullName = p.project?.path_with_namespace ?? "";
     if (!repoFullName || !p.ref) return [];
+    // GitLab has no deleted flag: an all-zero after sha is the deletion.
     const deleted = /^0+$/.test(p.after ?? "");
     return [
       {

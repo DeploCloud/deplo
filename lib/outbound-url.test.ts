@@ -7,6 +7,7 @@ import {
   assertSafeOutboundUrl,
 } from "./outbound-url";
 
+// Every IPv6 spelling of an internal IPv4 - v4-mapped, NAT64, 6to4, Teredo - is judged as that IPv4.
 before(() => {
   __setDnsLookupForTest(async (host) => {
     if (host === "nat64.example") return [{ address: "64:ff9b::7f00:1" }];

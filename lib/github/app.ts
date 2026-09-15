@@ -485,6 +485,7 @@ function toPullRequestSummary(
     headSha: p.head?.sha ?? "",
     headRepo,
     headCloneUrl: p.head?.repo?.clone_url ?? null,
+    // NOT head.repo.fork: an unrelated repo in the same organisation reports fork: false and is just as untrusted.
     fromFork: !headRepo || headRepo !== baseRepo,
     draft: Boolean(p.draft),
     authorLogin: p.user?.login ?? "",

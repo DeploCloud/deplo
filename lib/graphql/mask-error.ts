@@ -4,6 +4,7 @@ import { GraphQLError } from "graphql";
 
 import { unreachableMessage } from "../infra/server-health";
 
+// A `.code` means Drizzle, pg or gRPC built it: those carry SQL, bound params or a dial address.
 function isInternalError(e: unknown): boolean {
   if (!(e instanceof Error)) return true;
   if (e.name === "DrizzleQueryError" || e.message.startsWith("Failed query:"))

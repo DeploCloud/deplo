@@ -74,6 +74,7 @@ test("a scope whose every node was deleted stops resolving, it does not widen", 
         })
       ).raw,
   );
+  // The FK cascades the junction row away; without `scoped` on the token itself it would widen to the team.
   await db.delete(projectsTable).where(eq(projectsTable.id, "prc_a"));
 
   assert.equal(await authenticateToken(raw), null);

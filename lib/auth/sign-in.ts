@@ -23,6 +23,7 @@ export interface LoginResult {
   requiresTwoFactor?: boolean;
 }
 
+// An unknown username falls through unchanged: no answer here differs, so this is not an account-existence oracle.
 export async function emailForIdentifier(identifier: string): Promise<string> {
   const value = identifier.toLowerCase().trim();
   if (!value || value.includes("@")) return value;
@@ -49,6 +50,7 @@ export async function login(
       asResponse: false,
     });
     await keepAuthCookiesUsableOverHttp();
+    // Suspension is checked only after the password verified, so it is never a pre-auth account-existence oracle.
     const account = (
       await getDb()
         .select({ id: usersTable.id, suspended: usersTable.suspended })
@@ -60,6 +62,7 @@ export async function login(
       await revokeAllSessions(account.id).catch(() => {});
       return { ok: false, error: "This account has been suspended" };
     }
+    // Fire-and-forget on purpose: a failed re-hash must never make a correct password look wrong.
     void upgradePasswordHash(normalized, password);
     if (res && "twoFactorRedirect" in res && res.twoFactorRedirect)
       return { ok: false, requiresTwoFactor: true };
@@ -96,6 +99,7 @@ async function upgradePasswordHash(
       .where(
         and(
           eq(accountTable.id, row.id),
+          // The old hash is in the WHERE: a password changed in another tab must not be reverted by this re-hash.
           eq(accountTable.password, row.password),
         ),
       );

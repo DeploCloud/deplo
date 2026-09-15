@@ -64,6 +64,7 @@ test("a hostname is resolved, so a name pointing inside is refused too", async (
   }
 });
 
+// `2130706433`, `127.1` and `0177.0.0.1` sail past a dotted-quad regex; inet_aton dials the real address.
 test("the bare-host guard resolves non-canonical numeric IPs instead of trusting them", async () => {
   const resolved: Record<string, string> = {
     "2130706433": "127.0.0.1",
@@ -126,6 +127,7 @@ test("the bare-host guard canonicalizes non-canonical IPv6 literals too", async 
   }
 });
 
+// A zone id makes `new URL()` throw, and a throw used to mean allowed; NAT64 hides an IPv4 from v6 patterns.
 test("the bare-host guard refuses a zone-id literal and reads NAT64's embedded IPv4", async () => {
   __setDnsLookupForTest(async (host) => {
     if (host === "smtp.example.com") return [{ address: "93.184.216.34" }];

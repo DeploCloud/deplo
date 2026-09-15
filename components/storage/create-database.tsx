@@ -92,6 +92,7 @@ export function CreateDatabase({
     : noServers
       ? "Provision a server first"
       : null;
+  // A soft router.refresh() reconciles `servers` in place, so the mount-only initializer can be stale.
   const effectiveServerId =
     servers.find((s) => s.id === serverId)?.id ?? servers[0]?.id ?? "";
 

@@ -59,6 +59,7 @@ export function SharedVarWizardBody({
   const [step, setStep] = React.useState<StepId>(
     editing ? "scope" : "variable",
   );
+  // A secret's DTO value is the MASK, which the server reads back as "keep the stored value".
   const [rows, setRows] = React.useState<EnvRow[]>(() =>
     editing ? [{ key: editing.key, value: editing.value }] : emptyRow(),
   );
@@ -140,6 +141,7 @@ export function SharedVarWizardBody({
     environmentIds: picked.projects
       ? checkedProjects.flatMap(([, s]) => (s.mode === "some" ? s.envIds : []))
       : [],
+    // Always sent: `saveSharedVar` replaces the whole link set, so an empty array unlinks every app.
     appIds: picked.apps ? appIds : [],
   };
 

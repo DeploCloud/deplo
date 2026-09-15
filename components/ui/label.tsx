@@ -11,6 +11,7 @@ const Label = React.forwardRef<
   <LabelPrimitive.Root
     ref={ref}
     className={cn(
+      // block is load-bearing: Tailwind v4 puts space-y-* on the FIRST child as margin-block-end, not margin-top on the next.
       "block text-sm leading-none font-medium peer-disabled:cursor-not-allowed peer-disabled:opacity-70",
       className,
     )}

@@ -10,6 +10,7 @@ import { teamsForServerAlerts } from "./server-teams";
 import type { AlertKey } from "../types/notification";
 
 export interface Alert {
+  // Passed in, never read from AsyncLocalStorage: the dispatcher runs detached, where it would answer null.
   teamId: string;
   key: AlertKey;
   title: string;

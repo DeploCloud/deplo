@@ -58,6 +58,7 @@ export const NAV: NavSection[] = [
         icon: LayoutTemplate,
         tooltip: "One-click deploy templates",
       },
+      // Plugins deliberately have no nav entry (ADR-0013): the feature is deferred and /plugins/<slug> stays reserved.
     ],
   },
   {

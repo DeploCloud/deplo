@@ -58,6 +58,7 @@ export async function POST(request: Request) {
     return new Response("ok", { status: 200 });
   }
 
+  // The installation MUST belong to the App whose secret verified this signature.
   const installRows = await getDb()
     .select()
     .from(githubInstallationTable)

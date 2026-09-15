@@ -177,6 +177,7 @@ export async function visibleFolderIds(
     .select({ id: foldersTable.id, parentId: foldersTable.parentId })
     .from(foldersTable)
     .where(eq(foldersTable.teamId, teamId));
+  // Fixpoint walk bounded by the folder count, so a cycle in parent_id cannot spin it.
   for (let pass = 0; pass < links.length; pass++) {
     let grew = false;
     for (const f of links) {
@@ -190,6 +191,7 @@ export async function visibleFolderIds(
   return visible;
 }
 
+// A grantee, even one holding every folder capability, may never re-share.
 async function requireFolderOwnerOrAdmin(folderId: string): Promise<{
   teamId: string;
   ownerUserId: string | null;

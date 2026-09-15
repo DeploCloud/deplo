@@ -58,6 +58,7 @@ export async function loadComposeText(
       sourceName: name,
       outcome: "failed",
       targetKind: "app",
+      // That panel keeps every stack's compose on the resource itself and has no resolved-file endpoint.
       message:
         sourceClient(c).platform === "coolify"
           ? "{panel} handed over no compose file for this stack. A token without root is what usually does that - mint one with it and import again. Otherwise create the app and paste the compose in."
@@ -135,6 +136,7 @@ export async function resolveAppSource(
       serverId: await landingServerId(home.serverId),
     });
     const mine = new Set(composeNamesOnNetwork(compose));
+    // One network per Environment (ADR-0028), so two stacks that both call their database db collide.
     const renamed = renameClashingServices(
       compose,
       new Set([...takenNames].filter((n) => mine.has(n))),

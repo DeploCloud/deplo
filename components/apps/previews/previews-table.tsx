@@ -97,6 +97,7 @@ export function PreviewsTable({
     });
   }
 
+  // Closed, evicted and blocked previews hold no slot: counting them reads "at its limit" too early.
   const liveCount = rows.filter(
     (p) => !p.closed && p.status !== "evicted" && p.status !== "blocked",
   ).length;

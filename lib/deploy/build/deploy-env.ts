@@ -46,6 +46,7 @@ async function resolvedEntries(
     loadAutoInjectedVarsForApp(appId),
     target === "preview" ? loadPreviewEnvOverrides(appId) : Promise.resolve([]),
   ]);
+  // A fork gets the preview-only overrides and nothing inherited: a plain value is often a credential.
   const dropSecrets = Boolean(preview?.isFork);
   const keep = <T extends { type: EnvEntryType }>(
     list: T[],

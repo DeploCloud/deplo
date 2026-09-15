@@ -217,6 +217,7 @@ async function visibleNodes(
   const folders = new Set<string>();
   const apps = new Set<string>();
   for (const teamId of teamIds) {
+    // A team the caller cannot resolve at all (an unmet two-factor policy) contributes nothing rather than taking the picker down.
     try {
       const seen = await visibleFolderIds(teamId);
       for (const f of folderRows)
