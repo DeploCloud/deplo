@@ -199,6 +199,8 @@ export async function runConfigPhase(
     await setProgress(row.id, { doneSteps: done });
   }
 
+  if (await stopped(row.id)) return;
+
   const [after] = await getDb()
     .select({ created: runsTable.created, skipped: runsTable.skipped })
     .from(runsTable)
@@ -209,6 +211,7 @@ export async function runConfigPhase(
       "Nothing came across, so Deplo stopped before touching any data. The report says what refused.",
     );
 
+  if (await stopped(row.id)) return;
   await setProgress(row.id, {
     phase: "data",
     doneSteps: 0,

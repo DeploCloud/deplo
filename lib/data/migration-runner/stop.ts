@@ -5,15 +5,10 @@ import { and, eq } from "drizzle-orm";
 import { getDb } from "../../db/client";
 import { migrationRuns as runsTable } from "../../db/schema/control-plane/migration";
 import { publishMigrationChanged } from "../../graphql/pubsub";
-import { nowIso } from "../../ids";
-import { markRunTargetsUncopied } from "../migration-data/recopy";
 import { restartSourcesStoppedByRun } from "../migration-data/source-cutover";
 import { assertImportGate } from "../migration-import/gates";
 import { stopMigration } from "../migration-import/revert";
-import {
-  appendRunItem,
-  releaseMigrating,
-} from "../migration-import/run-report";
+import { appendRunItem } from "../migration-import/run-report";
 import { STALE_MS, credentialFor, panelNameFor } from "./runner-state";
 
 export async function requestStopMigrationRun(runId: string): Promise<void> {
@@ -63,14 +58,6 @@ async function stopRun(runId: string): Promise<void> {
     .where(eq(runsTable.id, runId))
     .limit(1);
   if (row && row.phase === "data") {
-    await getDb()
-      .update(runsTable)
-      .set({ status: "stopped", finishedAt: nowIso(), reportSeenAt: nowIso() })
-      .where(and(eq(runsTable.id, runId), eq(runsTable.status, "running")));
-    await releaseMigrating(runId);
-    await markRunTargetsUncopied(runId, "the migration was stopped").catch(
-      () => 0,
-    );
     let restarted = { restarted: 0, left: [] as string[] };
     try {
       const c = await credentialFor(row);
@@ -87,11 +74,10 @@ async function stopRun(runId: string): Promise<void> {
       sourceKind: "run",
       sourceName: "Migration",
       outcome: "manual",
-      message: `Stopped during the data step. Everything created here was kept; the lines above name every service whose data is not here yet. ${restarted.restarted > 0 ? `${restarted.restarted} service(s) were started again on {panel}.` : ""}${restarted.left.length > 0 ? ` Still stopped on {panel}: ${restarted.left.join("; ")}.` : ""} Deplo's agent stays on the source machines so the copy can run again.`,
+      message: `Stopped during the data step, so everything it created here is removed. The copy reads {panel}, it never empties it, so your data is still there. ${restarted.restarted > 0 ? `${restarted.restarted} service(s) were started again on {panel}.` : ""}${restarted.left.length > 0 ? ` Still stopped on {panel}: ${restarted.left.join("; ")}.` : ""}`,
     });
-  } else {
-    await stopMigration(runId);
   }
+  await stopMigration(runId);
   await getDb()
     .update(runsTable)
     .set({ apiKeyEnc: null, runnerOwner: null, phase: "done" })

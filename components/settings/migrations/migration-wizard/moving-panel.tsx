@@ -137,7 +137,7 @@ export function MovingPanel({
                 <strong>There is no half-migrated state to keep.</strong>
               </>
             }
-            consequence={`Every app, database and project it created here is removed with its data, and ${panelName} is not started back up.`}
+            consequence={`Every app, database and project it created here is removed with its data, and anything it stopped on ${panelName} is started again.`}
             onConfirm={async () => {
               onStop();
               return { ok: true as const, data: null };
