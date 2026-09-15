@@ -58,7 +58,7 @@ git push --follow-tags
 it just wrote**. That matters: the drift it makes impossible has already happened once here.
 `chore(release): Deplo 1.2.0` bumped the file, the tag and the image while a hand-written constant
 in `lib/version.ts` stayed at `1.1.0`, so every fully updated instance announced a phantom update
-forever. The constant is now read from `package.json` (`lib/version.ts:18`) and the tag is derived
+forever. The constant is now read from `package.json` (`DEPLO_VERSION` in `lib/version.ts`) and the tag is derived
 too, so there is exactly one place a version can be wrong, and no script of ours in between.
 
 **Before you tag**, run the same checks CI runs, because a red tag has already published an image:
@@ -68,7 +68,7 @@ bun run lint && bun run test && bunx next typegen && bunx tsc --noEmit
 ```
 
 `bun run test` needs `DEPLO_DATABASE_URL` **unset** (the suite is pglite in-process) and takes
-about 11 minutes. `next typegen` before `tsc` is not optional on a clean tree, see AGENTS.md.
+about ten minutes. `next typegen` before `tsc` is not optional on a clean tree, see AGENTS.md.
 
 ## What the tag sets off
 
@@ -83,12 +83,13 @@ about 11 minutes. `next typegen` before `tsc` is not optional on a clean tree, s
    `releases/latest`, the dashboard banner offers the update, and `deplo_update_available` fires
    once per version.
 
-## Two things that are not this
+## Three things that are not this
 
 - **The server agent** (`DeploCloud/deplo-agent`) versions on its own clock, in its own repo. It is
   on the **0.x line too** since 24 Aug 2026, when its 1.x numbering was reset alongside the control
-  plane. The same two buckets apply, and its offline fallback (`FALLBACK_AGENT_VERSION`,
-  `lib/agent/release.ts`) follows the fleet in its own `chore(agent):` commit.
+  plane. The same two buckets apply, and its offline fallback (`FALLBACK_AGENT_VERSION`, declared in
+  `lib/version.ts` and re-exported by `lib/agent/release.ts`) follows the fleet in its own
+  `chore(agent):` commit.
 - **The fleet only ever moves forward.** `updateServerAgent` has no version argument anywhere in the
   path: it installs `releases/latest`, whatever that resolves to. So a control-plane release that
   needs a newer agent ships the agent **first**, and the reset above was a deliberate one-off, not a

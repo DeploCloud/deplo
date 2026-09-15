@@ -12,6 +12,17 @@ the deeper docs it links (this file points; it does not restate them).
 - **`docs/agents/`**: `issue-tracker.md`, `triage-labels.md`, `domain.md`, `releasing.md`,
   `fleet-rollout.md`.
 
+**Every count in this file is a snapshot of a moving tree** (44 Capabilities, 102 tables, 184 MCP
+tools, 32 ADRs, the pin list). The rule they carry is the durable part; re-derive the number
+before you rely on it, and fix the line here when it has moved:
+
+```sh
+node --import tsx -e 'const m=await import("./lib/capabilities.ts");console.log(Object.keys(m.CAPABILITY_META).length)'
+node --import tsx -e 'const m=await import("./lib/mcp/tools/catalog.ts");console.log(m.MCP_TOOLS.length)'
+grep -rho "pgTable(" lib/db/schema | wc -l   # tables ; ls docs/adr/[0-9]*.md | wc -l   # ADRs
+node -e 'console.log(require("./package.json").overrides)'
+```
+
 ## Core mission - the north star every feature answers to
 
 **Deplo exists to make self-hosting exhaustively simple.** The experience to match is the one the
@@ -164,9 +175,9 @@ route `UI → GraphQL → lib/data/* → connectAgent(serverId) → agent`.
   the only live caller is the boot sweep that removes ones an older version left behind. Don't
   wire anything new to it, and read ADR-0013 before reviving it - the return is expected to go
   through the agent, not the socket.
-  `lib/deploy/build/` also retains a now-dead local build path + host `ensureNetwork`/`mkdir`;
-  the live path passes `skipBuild:true → runAgentDeploy`. Don't mistake the dead path for a
-  violation and don't revive it.
+  `lib/infra/docker.ts` is the only local `docker` CLI wrapper left and the plugin sweep is its
+  only caller (the file says so at the top); every build now goes out through `runAgentDeploy`
+  (`lib/deploy/agent-deploy.ts`). A new import of `infra/docker` is a violation, not an exception.
 
 ## Tech stack
 
@@ -226,17 +237,23 @@ is remapped onto the control-plane `users` table. Deploy execution is the Go age
   `typegen` emits them without a build and needs no environment. Run it before `tsc` in a clean
   tree too.
   `docker-image.yml` is separate and still fires only on a `v*` tag.
-- **`overrides` in `package.json` are security pins, not preferences.** Three are left:
-  `esbuild` (the only one still stopping a live advisory - `drizzle-kit` and `tsx` both pin
-  ranges at or below 0.24.2), plus `postcss` and `js-yaml`, which still pull older copies into
-  the tree when removed. `graphql` is a different animal: a FUNCTIONAL pin, because
-  `graphql-yoga@5` peers `^15 || ^16` and will not take 17.
-  **Re-check every pin when you bump anything** - the rule is empirical, not historical: drop the
-  override, `bun install`, and read `bun audit` (bare, not `--audit-level=high`, or a moderate
-  hides). If nothing appears and no lower copy reappears, delete the entry rather than leaving a
-  stale one. That is how `nanoid`, `sharp`, `protobufjs` and `brace-expansion` were removed in
-  August 2026: upstream had moved past all four, and the `brace-expansion` pin had become
-  actively harmful - it held v1 while `eslint@10`'s minimatch needs the v2 `expand` export.
+- **`overrides` in `package.json` are pins with a reason, never preferences.** Eight, in three
+  kinds (the file is the list; this is why each one is there):
+  - **Security**: `esbuild`, `postcss`, `js-yaml` - transitives that still pull an older, flagged
+    copy into the tree when the entry goes.
+  - **Functional**: `graphql` (`^17.0.2`). It used to hold 16 because `graphql-yoga@5` refused 17;
+    yoga 5.23 peers `^15 || ^16 || ^17`, so the pin now holds the tree **on** 17 instead. Two
+    copies of `graphql` and Pothos and yoga stop recognising each other's types.
+  - **Dedupe** (`"$@codemirror/state"` = whatever the root dependency resolves to):
+    `@codemirror/state`, `@codemirror/view`, `@codemirror/language`, plus
+    `baseline-browser-mapping` (a `browserslist` transitive). Two copies of a CodeMirror package
+    break the editor at runtime, where nothing type-checks it for you.
+    **Re-check every pin when you bump anything** - the rule is empirical, not historical: drop the
+    override, `bun install`, and read `bun audit` (bare, not `--audit-level=high`, or a moderate
+    hides). If nothing appears and no lower copy reappears, delete the entry rather than leaving a
+    stale one. That is how `nanoid`, `sharp`, `protobufjs` and `brace-expansion` were removed in
+    August 2026: upstream had moved past all four, and the `brace-expansion` pin had become
+    actively harmful - it held v1 while `eslint@10`'s minimatch needs the v2 `expand` export.
 
 ## API layer (Pothos + yoga)
 
@@ -260,24 +277,32 @@ scripts/gen-schema.ts`. Both halves of that prefix are load-bearing: the shim
   `schema.graphql` is generated output, **never hand-edit**, and nothing auto-runs it (no hook,
   no CI drift check).
 - Validation = **Pothos arg requiredness** + hand-rolled cleaners (`cleanName`,
-  `normalizeHexColor`, `validateUsername`). Zod lives in only two files (`types/auth.ts`,
-  `lib/plugins/manifest.ts`) - don't spread it.
+  `normalizeHexColor`, `validateUsername`). Zod is for **schemas a machine reads**: every
+  `lib/mcp/tools/*` input shape (that is what MCP publishes), plus `types/auth.ts` and
+  `lib/plugins/manifest.ts`. Don't reach for it to validate a GraphQL arg.
 - Auth mutations (`login`/`logout`/`completeSetup`, `types/auth.ts`) are intentionally **public**
   (no `authScopes`) and keep their rate-limiting; the route owns cookie writes.
 - graphql-armor limits (depth 12 / aliases 30 / cost 5000) live only in `yoga.ts`.
-- **Stays REST** (`app/api/*/route.ts`, cookie auth via `getCurrentUser()`, no bearer token):
-  `apps/[id]/upload` (raw archive), `.../logs` (SSE), `.../attach`, `databases/[id]/logs` (SSE),
-  `databases/[id]/attach` (SSE siblings of the app routes - reuse `lib/logs/session.ts` +
-  `lib/attach/session.ts`), `github/webhook|callback|setup`, `auth/[...all]`, `agent/bootstrap`,
-  `health`, `node-versions`, `railpack-versions`, `registry/images`.
-  `avatar/[style]/[preset]/[seed]` is REST and **unauthenticated**: it renders a
-  deterministic picture from the path and reads nothing, and onboarding shows the picker
-  before an account exists. The styles and their presets are a FIXED list
-  (`lib/apps/avatar-shared.ts`): four packs plus `initials`, each preset one of DiceBear's
-  own published option sets - never a free-form option, never a style off the list.
-  **Two exceptions to the cookie rule**, both authenticating with an API token
-  (`Authorization: Bearer deplo_…`) and both re-entering the normal gates via `runWithIdentity`,
-  never bypass them with a hand-rolled capability check:
+- **Stays REST** (`app/api/*/route.ts`), and each one is grouped by what authenticates it -
+  a new route joins one of these groups or it is a GraphQL field instead:
+  - **Session cookie** (`getCurrentUser()`, no bearer token): `apps/[id]/upload` (raw archive),
+    `.../logs` (SSE), `.../attach`, `databases/[id]/logs` (SSE), `databases/[id]/attach` (SSE
+    siblings of the app routes - reuse `lib/logs/session.ts` + `lib/attach/session.ts`),
+    `backups/[runId]/download`, `backups/restore-upload`, `node-versions`,
+    `railpack-versions`, `database-versions`, `registry/images`, `github/callback|setup`.
+  - **A signature or a URL token, never a cookie**: `github/webhook` (HMAC over the body),
+    `git/webhook/[token]` (the URL token names the provider - sniffing headers would let the
+    caller pick the verification rule), `agent/bootstrap` (one-shot enrollment token),
+    `takeover` (Bearer `DEPLO_HOST_BOOTSTRAP_TOKEN`, dialed by the host's takeover unit).
+  - **Better Auth's own surface**: `auth/[...all]`, mounted whole and gated shut (see below).
+  - **Unauthenticated on purpose**: `health` (liveness, reads nothing) and
+    `avatar/[style]/[preset]/[seed]`, which renders a deterministic picture from the path and
+    reads nothing - onboarding shows the picker before an account exists. Its styles and presets
+    are a FIXED list (`lib/apps/avatar-shared.ts`): four packs plus `initials`, each preset one
+    of DiceBear's own published option sets - never a free-form option, never a style off the list.
+  - **An API token** (`Authorization: Bearer deplo_<secret>`): the two below.
+    **The two API-token routes** re-enter the normal gates via `runWithIdentity` and
+    never bypass them with a hand-rolled capability check:
   - `apps/[id]/deploy-hook/[token]` (the **deploy hook**): a webhook sender can't compose a
     GraphQL query, so it POSTs a URL and lets `redeploy` apply the gates.
   - `mcp` (the **MCP server**, ADR-0021): JSON-RPC, not GraphQL, because that is what AI agents
@@ -286,7 +311,7 @@ scripts/gen-schema.ts`. Both halves of that prefix are load-bearing: the shim
     Adding a tool is adding a row; adding an authorization check there is a bug - it belongs in
     `lib/data/*`. Regenerate nothing, but keep `lib/mcp/tools.test.ts` green: it validates every
     document against `schema.graphql`, which is what stops a renamed field from silently
-    breaking sixty tools.
+    breaking all 184 of them (`MCP_TOOLS` in `lib/mcp/tools/catalog.ts`).
 
 ## Data & mutations (the security boundary)
 
@@ -423,8 +448,10 @@ scripts/gen-schema.ts`. Both halves of that prefix are load-bearing: the shim
 ## Persistence, secrets, auth
 
 - **Postgres is the only control-plane store** (`lib/db/pg.ts`, one bounded pool). There is **no
-  JSON/document store** - the old `deplo_state` JSONB was fully normalized into ~55 tables; **never
-  add a JSONB column** (nested → child table, list → ordered/junction table). `*_at` columns use
+  JSON/document store** - the old `deplo_state` JSONB was fully normalized into 102 tables (89
+  under `schema/control-plane/`, plus 12 Better Auth and 1 scheduler); **never add a JSONB
+  column** (nested → child table, list → ordered/junction table). The `jsonb` columns in
+  `schema/auth.ts` are Better Auth's own and are not a precedent. `*_at` columns use
   the `isoTimestamptz` custom type, never plain `timestamp` (Better Auth tables aside).
 - **`DEPLO_SECRET` derives every key** via `deriveKey(purpose)`: `secrets` (AES-256-GCM), `session`
   (HMAC), `state` (CSRF), `agent-mtls-ca` (CA seed), `better-auth`. Rotating it is destructive -
@@ -550,8 +577,9 @@ scripts/gen-schema.ts`. Both halves of that prefix are load-bearing: the shim
   extracted and built with the Build & Output settings below. Use Save & Deploy to build and release
   it." Section hints, stage descriptions and "what this does" blurbs go in the title's tooltip.
   **The strongest version of this rule is not moving the words but removing the need for them** - an
-  empty box behind an "(auto-detected)" placeholder needs a paragraph, and a row that shows who
-  decides the value needs none (`components/shared/override-row.tsx`).
+  empty box behind an "(auto-detected)" placeholder needs a paragraph, and a plain field whose
+  placeholder IS the default needs none - reference `components/apps/settings/build-output-card.tsx`,
+  where plain fields replaced an override switch that hid the very command it was explaining.
 - **Never invent a name for a thing the world already names.** If a control, pattern or concept
   already has a label every user has seen a hundred times, use THAT label - exactly, not a
   synonym you find tidier. It is **"Select all" / "Unselect all"**, never "Select these" /

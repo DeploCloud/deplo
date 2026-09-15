@@ -47,7 +47,7 @@ bunx next typegen && bunx tsc --noEmit
 **`bun run test` needs `DEPLO_DATABASE_URL` to be UNSET.** The suite runs in-process
 against pglite, and with a real database URL exported the lease and scheduler tests bind
 to it and fail. If your shell exports it, run `env -u DEPLO_DATABASE_URL bun run test`.
-The full suite takes roughly 12 minutes.
+The full suite takes about ten minutes.
 
 **`bunx next typegen` before `tsc` is not optional.** `PageProps`, `LayoutProps` and
 `RouteContext` are generated globals under `.next/types`. On a fresh checkout a bare

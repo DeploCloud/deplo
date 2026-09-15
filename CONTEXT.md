@@ -253,7 +253,7 @@ the event), trigger.
 ### Structure
 
 **App**:
-The **deployable unit** (formerly _Project_, then _Service_, now **App** - the Project→Service step is [ADR-0008](../docs/adr/0008-projects-own-environments-services-are-the-deployable-unit.md)):
+The **deployable unit** (formerly _Project_, then _Service_, now **App** - the Project→Service step is [ADR-0008](docs/adr/0008-projects-own-environments-services-are-the-deployable-unit.md)):
 a repository or template turned into a Docker stack `deplo-<slug>` fronted by Traefik.
 Owns its build config, source, domains, env vars, and deployments. It may sit at the
 team top level, inside a **Folder**, and/or belong to a
@@ -271,11 +271,11 @@ values: **queued**, **building**, **active**, **error**, **stopping**, **idle**.
 "stopped": `idle` **is** the stopped state, and "Stopped" is only the (grey) label it renders
 with. What the UI shows is never the raw column - two folds sit on top of it, split **by
 direction**. **Downward** is live and never persisted: `displayStatus`
-([`lib/apps/display-status.ts`](../lib/apps/display-status.ts)) folds an `active` App with a
+([`lib/apps/display-status.ts`](lib/apps/display-status.ts)) folds an `active` App with a
 live runtime probe into **restarting** / **unhealthy** / **down**, because
 `active` is the only value that is a claim _about the host_ and so the only one worth
 contradicting. **Upward** is persisted and belongs to the telemetry stream:
-([`lib/data/app-status-reconcile.ts`](../lib/data/app-status-reconcile.ts)) clears a stale
+([`lib/data/app-status-reconcile.ts`](lib/data/app-status-reconcile.ts)) clears a stale
 `error` off an App whose containers a `StreamMetrics` frame proves are running - the one
 transition anything reconciles, guarded to Apps with no in-flight **Deployment**, no pending
 server move, and containers on the host that reported them. An App **absent** from a frame is
@@ -301,11 +301,11 @@ would be a label that changes nothing. The one thing derived FROM it is the App'
 container **Port** - the port that framework's production server actually binds (Vite's 4173,
 Angular's 4200), applied while the user is creating the App and theirs to override from the
 moment they touch the field. Catalog (ids, names, ports, signals) in
-[`lib/apps/framework-catalog.ts`](../lib/apps/framework-catalog.ts), the pure rules in
-[`framework-detect.ts`](../lib/apps/framework-detect.ts), the source reads in
-[`framework-source.ts`](../lib/apps/framework-source.ts), and the marks - inlined, never a
+[`lib/apps/framework-catalog.ts`](lib/apps/framework-catalog.ts), the pure rules in
+[`framework-detect.ts`](lib/apps/framework-detect.ts), the source reads in
+[`framework-source.ts`](lib/apps/framework-source.ts), and the marks - inlined, never a
 CDN, because a self-hosted Deplo may have no internet - in
-[`components/shared/framework-icons.tsx`](../components/shared/framework-icons.tsx).
+[`components/shared/framework-icons.tsx`](components/shared/framework-icons.tsx).
 _Avoid_: framework **preset** (the user-picked kind was removed on purpose - the builders
 detect the stack), calling it a build method (that is the separate `buildMethod` axis),
 stack (that word is the App's Docker **Production stack**), language (recognition names a
@@ -374,7 +374,7 @@ install - by an **HMAC over the bootstrap response keyed by the one-time token**
 work). Because a remote agent's key must never leave the box, the agent **generates its own key
 and sends a CSR**; the control plane CA **signs the CSR** (it never sees the agent's private key).
 Health is **read live** (never a stored value that goes stale). See
-[ADR-0006](../docs/adr/0006-server-agent-is-a-per-host-go-binary.md). _(**Parts A + B + C + D
+[ADR-0006](docs/adr/0006-server-agent-is-a-per-host-go-binary.md). _(**Parts A + B + C + D
 built - the full arc is complete**: the localhost server's deploy runs through the agent (Part A),
 and a **remote** agent is real (Part B) - call-home provisioning, remote routing with
 fingerprint-pinned mTLS, the **git source the agent clones itself**, and **reconnection/replay** so
@@ -397,11 +397,11 @@ and the "View full compose" preview also go through the owning agent (`Reroute`/
 `S3Check`/`S3Delete` and a `removeVolumes` flag on `DestroyStack`, so dumps/archives and the
 S3 transfer happen agent-side (an S3 client in the binary); the control plane preflights the
 capability and degrades with `AgentBackupUnsupportedError` until it ships
-([ADR-0007](../docs/adr/0007-backups-route-through-the-owning-agent-databases-become-agent-provisioned.md)).
+([ADR-0007](docs/adr/0007-backups-route-through-the-owning-agent-databases-become-agent-provisioned.md)).
 Agent
 code in its own repo (**DeploCloud/deplo-agent**), contract in
-[`proto/agent.proto`](../proto/agent.proto), control-plane side in [`lib/agent/`](../lib/agent/) +
-[`lib/infra/agent-client/`](../lib/infra/agent-client/).)_
+`proto/agent.proto` (in `DeploCloud/deplo-agent`), control-plane side in [`lib/agent/`](lib/agent/) +
+[`lib/infra/agent-client/`](lib/infra/agent-client/).)_
 _Avoid_: agent (ambiguous - say "server agent"), node, worker, runner (CI term), daemon
 (reserve for the Docker daemon it drives), Deplo agent on the remote being a "second Deplo".
 
@@ -417,12 +417,12 @@ unsupported contract, application error), **offline** (nothing answered, confirm
 The stored value is a **cache the UI must qualify**, never a **gate**: past a staleness window the
 Servers page renders it as _Unknown_ rather than a confident stale green, and **nothing in the
 deploy path consults it** - the gate there is the mandatory live Hello pre-flight
-([ADR-0006](../docs/adr/0006-server-agent-is-a-per-host-go-binary.md)). Probing is throttled and
+([ADR-0006](docs/adr/0006-server-agent-is-a-per-host-go-binary.md)). Probing is throttled and
 watermarked on probe-START time, and an inconclusive probe writes **nothing** (a fabricated
 check is the same lie as a stale badge). Written by the Servers page's on-load sweep, the
 per-server _Check status_ button, and the metrics poll - all through the one recorder
-([`lib/data/server-health.ts`](../lib/data/server-health.ts)), classified by
-[`lib/infra/server-health.ts`](../lib/infra/server-health.ts).
+([`lib/data/server-health.ts`](lib/data/server-health.ts)), classified by
+[`lib/infra/server-health.ts`](lib/infra/server-health.ts).
 _Avoid_: "the server is up/down" (say which of the five), treating **warning** as a soft
 **error** (it is a _deployability_ verdict), gating anything on the stored status.
 
@@ -443,8 +443,8 @@ gate is and stays the mandatory live Hello pre-flight (ADR-0006), and `servers.s
 health prober's alone. Its discipline is **honesty**: a Hello flag proves the agent _knows how to
 run_ Nixpacks, not that the nixpacks binary is on the host (it is fetched on the first build),
 and Docker being unreachable forces the agent's Traefik answer false, so that row is **skipped**,
-not warned. Classified by [`lib/infra/server-readiness/classify.ts`](../lib/infra/server-readiness/classify.ts)
-(pure), orchestrated by [`lib/data/server-readiness.ts`](../lib/data/server-readiness.ts)
+not warned. Classified by [`lib/infra/server-readiness/classify.ts`](lib/infra/server-readiness/classify.ts)
+(pure), orchestrated by [`lib/data/server-readiness.ts`](lib/data/server-readiness.ts)
 (instance-admin, dials once, writes nothing).
 _Avoid_: "health check" (that is the Hello classifier - `checkServerHealth`), calling readiness a
 **status** or a **Capability** (that word is the authz term; the agent's Hello flags are only
@@ -634,7 +634,7 @@ the connection string never changes. **Agent-provisioned like an app** - it has 
 via `StartStack`/`StopStack`, and **deleted via `DestroyStack(removeVolumes: true)`** so its
 data volume is reclaimed (a plain `DestroyStack` would orphan it). The control plane never
 touches the host Docker socket for a DB. See
-[ADR-0007](../docs/adr/0007-backups-route-through-the-owning-agent-databases-become-agent-provisioned.md).
+[ADR-0007](docs/adr/0007-backups-route-through-the-owning-agent-databases-become-agent-provisioned.md).
 _Avoid_: DB instance, datastore (use "database"), local database (none are local now - every
 DB lives on an agent, the Deplo host included).
 
@@ -658,7 +658,7 @@ agent's verbatim message, and the equivalent commands to reproduce it by hand. A
 probe is a normal result of `testDestination`, NOT a mutation error - read `report.ok`; the
 mutation used to return only the destination, which is how the UI came to report success
 over a failing bucket. See
-[ADR-0019](../docs/adr/0019-a-backup-destination-is-a-bucket-or-a-server.md).
+[ADR-0019](docs/adr/0019-a-backup-destination-is-a-bucket-or-a-server.md).
 _Avoid_: "S3 destination" for the concept (it is one kind of destination now); bucket (an S3
 destination is bucket + endpoint + region + creds + verdict); "folder" for the app-grouping
 sense in the same sentence (a destination's folder is a path on a disk); "connection
@@ -690,8 +690,10 @@ Bringing another platform's teams into Deplo, and the word the UI uses everywher
 `Settings → System → Migrations` (instance admins), two tabs - the wizard that runs one,
 and the History of every team's runs. A **migration run** is the stored row plus the
 **report** it leaves behind (`migration_runs` + `migration_run_items`), readable from either
-tab in the same dialog. The wizard is five steps - Connect, Install, Review, People, Done -
-and Install is where the **migration source** gets its agent.
+tab in the same dialog. The wizard's steps are `choose, connect, install, review, people, takeover, done`
+(`components/settings/migrations/steps.ts`), and `stepsFor()` shows a subset: People only when the
+admin can invite, Take over only on a takeover, and a "start clean" takeover skips straight to
+those last two. Install is where the **migration source** gets its agent.
 A token of either panel reads exactly ONE team over there (Coolify binds it to the team it
 was minted in, a Dokploy key carries one `organizationId`), so a panel with three teams is
 three tokens and **three runs**, one after another. Connect collects them as the **Teams to
@@ -731,25 +733,24 @@ one there; the alternative is telling somebody to move their data by hand over S
 the thing the product refuses to do. `servers.import_only`, the third specialised role and
 exclusive with the other two (`servers_role_exclusive` counts all three).
 It is the narrowest role there is, and the only one that is somebody else's machine: out of
-every deploy picker AND every build picker (it HAS Docker - it is the other platform's own host
-
-- so every check that reads `storage_only` alone would offer it, and a build ships an App's
-  source and DECRYPTED env to the builder), never a **backup destination**, never swept by
-  **Docker cleanup**, absent from **Monitoring** and from the fleet count, and refused by the
-  host-management verbs. It is **born only from a migration**, granted to the one team
-  running it (never `all_teams`), and `setServerRole` refuses it in BOTH directions:
-  the installer put no Traefik, no shared `deplo` network and no `daemon.json` change on that
-  host, and no database write can undo that - re-running the install command is the way in and
-  the way out.
-  It is also the ONLY server with a real agent-side uninstall: `SelfUninstall` removes the unit,
-  the binary and the agent state dir (never Docker, never a container), and the control plane
-  then forgets the row - the host-side `uninstall.sh --agent-only` stays the answer for an unreachable
-  or already-de-trusted host ([ADR-0011](../docs/adr/0011-server-removal-is-trust-revocation-not-a-host-uninstall.md),
-  which anticipated exactly this shape). Listed apart from the fleet on Settings → Servers, with
-  one action: **Uninstall agent**.
-  _Avoid_: import server (ambiguous with a migration RUN), Dokploy host / Coolify host (those
-  are the other platforms' names for their own machines), source server (that is the volume-copy
-  sense in `resolveSourceServer`).
+every deploy picker AND every build picker (it HAS Docker - it is the other platform's own
+host, so every check that reads `storage_only` alone would offer it, and a build ships an App's
+source and DECRYPTED env to the builder), never a **backup destination**, never swept by
+**Docker cleanup**, absent from **Monitoring** and from the fleet count, and refused by the
+host-management verbs. It is **born only from a migration**, granted to the one team
+running it (never `all_teams`), and `setServerRole` refuses it in BOTH directions:
+the installer put no Traefik, no shared `deplo` network and no `daemon.json` change on that
+host, and no database write can undo that - re-running the install command is the way in and
+the way out.
+It is also the ONLY server with a real agent-side uninstall: `SelfUninstall` removes the unit,
+the binary and the agent state dir (never Docker, never a container), and the control plane
+then forgets the row - the host-side `uninstall.sh --agent-only` stays the answer for an unreachable
+or already-de-trusted host ([ADR-0011](docs/adr/0011-server-removal-is-trust-revocation-not-a-host-uninstall.md),
+which anticipated exactly this shape). Listed apart from the fleet on Settings → Servers, with
+one action: **Uninstall agent**.
+_Avoid_: import server (ambiguous with a migration RUN), Dokploy host / Coolify host (those
+are the other platforms' names for their own machines), source server (that is the volume-copy
+sense in `resolveSourceServer`).
 
 **Backup**:
 A **schedule**: a cron expression + **backup destination** + retention (**a count** - how many
@@ -772,8 +773,8 @@ drop-and-recreate per engine, app wipe-and-untar (stop → wipe → untar → `R
 full data+config restore), and so requires a typed confirmation. An artifact on a **server**
 destination can also be DOWNLOADED (decrypted on the way out, gated on `restore_backups`);
 one in a bucket cannot, because you already have your own credentials for it. See
-[ADR-0007](../docs/adr/0007-backups-route-through-the-owning-agent-databases-become-agent-provisioned.md)
-and [ADR-0019](../docs/adr/0019-a-backup-destination-is-a-bucket-or-a-server.md).
+[ADR-0007](docs/adr/0007-backups-route-through-the-owning-agent-databases-become-agent-provisioned.md)
+and [ADR-0019](docs/adr/0019-a-backup-destination-is-a-bucket-or-a-server.md).
 _Avoid_: backup (that is the schedule), artifact (use for the stored object specifically),
 restore point.
 

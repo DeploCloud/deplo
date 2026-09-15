@@ -19,12 +19,12 @@ reissued, so a server keeps its identity and stays online across the upgrade.
    so there is nothing for the fleet to pick up. It then builds static
    (`CGO_ENABLED=0 -trimpath`) `linux/amd64` + `linux/arm64`, runs `sha256sum` over both into
    `checksums.txt`, and publishes all three as release assets.
-3. **Bump the control plane's offline fallback**: `FALLBACK_AGENT_VERSION` in
-   `lib/agent/release.ts` (re-exported as `EXPECTED_AGENT_VERSION` from `lib/version.ts`). This is
-   _only_ the value used when GitHub is unreachable; the live "expected" comes from
-   `resolveExpectedAgentVersion()`. Keep it conservative: `isAgentOutdated` treats an older or
-   unparseable expected version as "nothing is outdated", so a stale fallback under-reports rather
-   than false-flagging healthy agents.
+3. **Bump the control plane's offline fallback**: `FALLBACK_AGENT_VERSION`, declared in
+   `lib/version.ts` and re-exported by `lib/agent/release.ts`. This is _only_ the value used when
+   GitHub is unreachable; the live "expected" comes from `resolveExpectedAgentVersion()`. Keep it
+   conservative: the comparison is `agentUpdateAvailable(reported, expected)` (`lib/version.ts`),
+   which answers false on an older or unparseable expected version, so a stale fallback
+   under-reports rather than false-flagging healthy agents.
 4. **Bust the memo.** `resolveLatestAgentRelease()` caches for `CACHE_TTL_MS = 300_000` (5 minutes,
    in-process, on a global `Symbol` so the RSC and route-handler module graphs share one cell). The
    Servers page header's **Check for updates** runs the `checkAgentUpdates` mutation →
@@ -96,7 +96,7 @@ docker exec postgres psql "$DEPLO_DATABASE_URL" -c \
     group by s.id order by apps;"
 ```
 
-At time of writing this fleet is:
+A snapshot, not a source of truth - the query above is. At the time of writing the fleet was:
 
 | order      | server          | id                     | apps | note                                   |
 | ---------- | --------------- | ---------------------- | ---- | -------------------------------------- |
@@ -216,10 +216,11 @@ Skip it and the badge lags. Note _what_ corrects it, because it is not the healt
 `recordServerHealth` (`lib/data/server-health.ts`) writes `status` / `statusMessage` /
 `statusCheckedAt`, plus `lastSeenAt` only on an `online`/`warning` probe, and never
 `agent_version`. The paths that do refresh it from a live Hello all go through `markServerSeen`:
-the **metrics poll** (`lib/data/monitoring.ts`), the **deploy preflight** (`agentPreflight`), and -
-on `feat/monitoring-telemetry-stream` - the telemetry **stream supervisor**
-(`lib/monitoring/supervisor.ts`), which does one `markServerSeen` per connection off the opening
-Hello and supersedes the poll for agents advertising `metrics-stream`. On a quiet server with
+the **metrics poll** (`lib/data/monitoring.ts`), the **deploy preflight** (`agentPreflight`,
+`lib/infra/agent-client/preflight.ts`), and the telemetry **stream supervisor**
+(`lib/monitoring/supervisor.ts`, on main since the telemetry stream landed), which does one
+`markServerSeen` per connection off the opening Hello and supersedes the poll for agents
+advertising `metrics-stream`. On a quiet server with
 nobody on Monitoring, a stale badge can persist for a long time.
 
 `markServerSeen` only pins the _version_ when `agent_port is not null` (the `case` wraps just

@@ -1,52 +1,28 @@
 @AGENTS.md
 
+`AGENTS.md` (imported above) is the whole brief: architecture, the agent boundary, layout,
+API, data/security, UI conventions, vocabulary, working rules. This file only adds what is
+not in it. **Don't restate AGENTS.md here** - a rule written twice drifts in one place.
+
 ## Core mission (north star)
 
-**Deplo makes self-hosting exhaustively simple. The user must NEVER be required to know Docker or
-SSH** - that non-requirement is the whole differentiator vs. the other self-hosted platforms. The
-experience to match is the one the big clouds give, on the user's own infrastructure, and the
-audience is everyone who wants it - people leaving a cloud over the bill, teams that never
-self-hosted, and other platforms' users too, but never _only_ that last group.
-Every feature is tested exhaustively and judged on UX/DX for a non-expert: if the happy path only
-works from a shell or by hand-editing YAML, the feature is unfinished. Favor
-derived/live/automatic over manual, and use infrastructure the user already has rather than
-demanding they stand up more.
+**Deplo makes self-hosting exhaustively simple: the user must NEVER be required to know Docker,
+SSH or YAML to get full value out of it.** Every feature names its audience - **non-expert**
+(default-on, zero config) or **expert** (advanced mode, opt-in, never on the first-run path) -
+assumes a TEAM with different Capabilities rather than one operator who owns the box, and could
+be offered as a managed service without a fork. Favour derived/live/automatic over manual.
 
-Also binding:
-
-- **Every feature must make sense in the UX and name its audience - exactly two exist:**
-  **non-expert** (default-on, obvious, zero config) or **expert** (_advanced mode_: opt-in, behind
-  an "Advanced" affordance, never on the first-run path).
-- **Design for teams and companies, not just the solo self-hoster.** Assume several people with
-  different Capabilities share one instance and that the actor is not the instance owner:
-  active-team scoping, server-side Capability gates, per-folder grants, an Activity trail readable
-  in the UI. Roles/members/tokens/2FA are product, not plumbing. Orthogonal to non-expert vs
-  expert; the single-user path must not get heavier for it.
-- **Don't build what almost nobody will realistically use long-term.** The goal is being far
-  simpler than competing self-hosted platforms, not matching their feature list. First launch must
-  sell the **pricing difference vs. the clouds**, not force a tour of tons of settings with
-  advanced options exposed by default.
-- **Build everything so it could become a managed service.** Deplo plans its own proprietary cloud
-  later (idea still rough): keep things multi-tenant-safe and free of "operator == end user"
-  assumptions, while self-hosted + open source stay first-class and never get starved for it.
-- **Flag a mission conflict once, then build it.** A request (yours or the user's) that collides
-  with the above gets at most three lines of warning _before_ the code (what it collides with, the
-  cheaper thing covering the same need), and then you build it anyway. Only the five listed
-  conflicts count; "feels like scope creep" doesn't. If the user reaffirms, it's decided.
-
-Full statement in `AGENTS.md` → "Core mission" (the five conflicts are listed under
-"Flag a mission conflict once, then build it").
+`AGENTS.md` → "Core mission" has the full statement, including the five conflicts that are worth
+flagging (in three lines, before the code, then you build it anyway) and the reason for each.
 
 ## Agent skills
 
-### Issue tracker
-
-Issues and PRDs live in the DeploCloud/deplo GitHub Issues, managed via the `gh` CLI. See `docs/agents/issue-tracker.md`.
-
-### Triage labels
-
-Five canonical triage roles, each mapped to its default label string. See `docs/agents/triage-labels.md`.
-
-### Domain docs
-
-Single-context: one `CONTEXT.md` + `docs/adr/` at the repo root. See `docs/agents/domain.md`.
+- **Issues and PRDs**: GitHub Issues in `DeploCloud/deplo`, driven with the `gh` CLI, including
+  the `wayfinder:*` map/ticket flow. See `docs/agents/issue-tracker.md`.
+- **Labels**: the repo has GitHub's defaults plus `wayfinder:*` and `dependencies`. There is no
+  `needs-triage` / `ready-for-agent` label - inventing one in `gh issue create --label` fails the
+  command. See `docs/agents/triage-labels.md`.
+- **Domain docs**: single-context - one `CONTEXT.md` (glossary) + `docs/adr/` at the repo root.
+  See `docs/agents/domain.md`.
+- **Shipping**: `docs/agents/releasing.md` (control plane, never bump on your own initiative) and
+  `docs/agents/fleet-rollout.md` (the `deplo-agent` fleet, forward-only).

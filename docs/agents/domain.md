@@ -1,38 +1,33 @@
-# Domain Docs
+# Domain docs
 
-How the engineering skills should consume this repo's domain documentation when exploring the codebase.
+Where this repo keeps its ubiquitous language and its decisions, and how a skill should consume
+them.
 
-## Before exploring, read these
+## Read before you explore
 
-- **`CONTEXT.md`** at the repo root, or
-- **`CONTEXT-MAP.md`** at the repo root if it exists - it points at one `CONTEXT.md` per context. Read each one relevant to the topic.
-- **`docs/adr/`**: read ADRs that touch the area you're about to work in. In multi-context repos, also check `src/<context>/docs/adr/` for context-scoped decisions.
+- **`CONTEXT.md`** at the repo root: the glossary. Every entry carries an _Avoid_ line naming the
+  synonyms this project refuses (App not service, Project not group, Capability not permission,
+  active team not current team).
+- **`docs/adr/`**: numbered decisions, indexed in `docs/adr/README.md` (0001-0032 today). Read the
+  ones that touch the area you are about to change - ADR-0006 (the agent boundary) and ADR-0031
+  (the URL names the team) constrain almost everything.
 
-If any of these files don't exist, **proceed silently**. Don't flag their absence; don't suggest creating them upfront. The producer skill (`/grill-with-docs`) creates them lazily when terms or decisions actually get resolved.
-
-## File structure
-
-This repo is **single-context**: one `CONTEXT.md` + `docs/adr/` at the repo root.
-
-```
-/
-├── CONTEXT.md
-├── docs/adr/
-│   ├── 0001-event-sourced-orders.md
-│   └── 0002-postgres-for-write-model.md
-└── src/
-```
-
-(For reference, a multi-context repo signals itself with a `CONTEXT-MAP.md` at the root pointing to per-context `CONTEXT.md` files under `src/<context>/`. That's not how this repo is laid out.)
+This repo is **single-context**: one `CONTEXT.md` + one `docs/adr/` at the root, no
+`CONTEXT-MAP.md`, no per-context `src/<context>/` trees. The code lives in `app/`, `lib/` and
+`components/` - a skill that expects `src/` is reading a different repo's layout.
 
 ## Use the glossary's vocabulary
 
-When your output names a domain concept (in an issue title, a refactor proposal, a hypothesis, a test name), use the term as defined in `CONTEXT.md`. Don't drift to synonyms the glossary explicitly avoids.
+When your output names a domain concept - an issue title, a test name, a proposal, a UI string -
+use the term `CONTEXT.md` defines, not a synonym you find tidier. A concept that is missing from
+the glossary is a signal: either you are inventing language (reconsider) or there is a real gap
+worth filling with a new entry in the same shape as its neighbours.
 
-If the concept you need isn't in the glossary yet, that's a signal - either you're inventing language the project doesn't use (reconsider) or there's a real gap (note it for `/grill-with-docs`).
+## Flag ADR conflicts, don't silently override
 
-## Flag ADR conflicts
+If what you are about to write contradicts an ADR, say so before writing it:
 
-If your output contradicts an existing ADR, surface it explicitly rather than silently overriding:
+> _Contradicts ADR-0028 (an Environment owns a network), but worth reopening because X._
 
-> _Contradicts ADR-0007 (event-sourced orders), but worth reopening because…_
+The decision then either changes with the owner's agreement and a new ADR, or your design does.
+Never leave the code and the ADR disagreeing without a line saying which one won.

@@ -6,7 +6,7 @@ be amended, superseded or retired without its record being rewritten, so an ADR
 read alone can be misleading.
 
 For how the system behaves **today**, read the
-[user documentation](../README.md); for the vocabulary, `CONTEXT.md` at the
+[user documentation](https://deplo.build/docs); for the vocabulary, `CONTEXT.md` at the
 repository root.
 
 ## The live ones
@@ -71,6 +71,6 @@ product. They are kept as history.
 
 ## See also
 
-- [User documentation](../README.md)
+- [User documentation](https://deplo.build/docs) - the manual, in `DeploCloud/docs`
 - [`AGENTS.md`](../../AGENTS.md) - the architecture rules these decisions produced
 - [`CONTEXT.md`](../../CONTEXT.md) - the glossary

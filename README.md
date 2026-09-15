@@ -28,7 +28,7 @@ Instead of paying more and more for increasingly complex cloud platforms, Deplo 
 </p>
 
 <p align="center">
-Connect your repository, deploy your application, and let Deplo handle the infrastructure — without the unnecessary complexity.
+Connect your repository, deploy your application, and let Deplo handle the infrastructure, without the unnecessary complexity.
 </p>
 
 <p align="center">
@@ -78,6 +78,6 @@ Whether you want to improve the platform, build integrations, fix bugs, or help 
 
 ## License
 
-Deplo is an open source software. See the [LICENSE](https://github.com/DeploCloud/deplo-agent/blob/main/LICENSE) file for the full license terms.
+Deplo is open source software, licensed under the GNU AGPL v3. See the [LICENSE](https://github.com/DeploCloud/deplo/blob/main/LICENSE) file for the full license terms.
 
 [deplo.build](https://deplo.build)
