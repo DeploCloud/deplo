@@ -26,7 +26,14 @@ const nextConfig: NextConfig = {
   poweredByHeader: false,
   reactStrictMode: true,
   allowedDevOrigins: devOrigins(),
-  serverExternalPackages: ["pg", "better-auth", "nodemailer", "web-push"],
+  // Bundling @peculiar/x509 runs its tsyringe decorators before pki.ts's reflect-metadata import.
+  serverExternalPackages: [
+    "pg",
+    "better-auth",
+    "nodemailer",
+    "web-push",
+    "@peculiar/x509",
+  ],
   outputFileTracingIncludes: {
     "/[team]/templates": [
       "./node_modules/@img/sharp-linuxmusl-x64/**",
