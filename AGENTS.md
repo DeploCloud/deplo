@@ -1,8 +1,8 @@
 # AGENTS.md
 
-Agent-facing guide for **Deplo** - a self-hosted deploy platform that turns repos and
-templates into Docker stacks fronted by Traefik. Read this before writing code, then lean on
-the deeper docs it links (this file points; it does not restate them).
+Agent-facing guide for **Deplo** - a deploy platform that turns repos and templates into Docker
+stacks fronted by Traefik, on machines its users choose. Read this before writing code, then lean
+on the deeper docs it links (this file points; it does not restate them).
 
 - **`CONTEXT.md`** (repo root): authoritative glossary / ubiquitous language. Single-context repo.
 - **`docs/adr/`**: numbered decisions, indexed in its `README.md`. Contradicting one? Surface it, don't silently override.
@@ -25,29 +25,47 @@ node -e 'console.log(require("./package.json").overrides)'
 
 ## Core mission - the north star every feature answers to
 
-**Deplo exists to make self-hosting exhaustively simple.** The experience to match is the one the
-big cloud platforms give: push, and it is live, with the platform doing the operations. The user
-must **never be required to know Docker or SSH** to get full value out of Deplo - that
-non-requirement is the whole differentiator from the other self-hosted platforms, which assume the
-operator lives in a shell.
+**Deplo gives a developer the cloud experience on a machine of their own choosing.** Connect a
+repo, push, and it is live, with the platform doing the operations: builds, addresses,
+certificates, databases, backups, rollbacks. Which machine it runs on - a rented server, a box in
+an office, a one-click install at a host - is Deplo's problem to solve, never a subject the user
+has to study.
 
-The audience is everyone who wants that experience on their own infrastructure: people leaving a
-cloud over the bill, teams that never self-hosted at all, and people already running a competing
-open-source platform who are tired of the shell. Winning the last group matters, but designing only
-for it would aim the product far too low.
+**The user must never be required to know Docker, SSH, TCP/IP, DNS or YAML.** Not to start, not to
+get full value, not to dig themselves out of a bad day. Deplo is not a control panel for people who
+already run servers, and that is the whole difference: every other platform in this space is built
+for an operator who lives in a shell, and reads like it.
+
+**The audience is everyone who deploys on a cloud platform today.** Push-to-deploy, preview URLs, a
+managed database, no server in sight. They leave over the bill, over a limit, or because the data
+has to sit somewhere specific, and they arrive with a cloud's mental model and none of an
+operator's vocabulary. Deplo meets that model as it is. Operators tired of the shell are a welcome
+second group; designing for them would aim the product far too low.
+
+**The distribution model is mass-market software.** The shape to picture is the software an
+ordinary person installs to put their own site online: it ships to everyone, installs in one step,
+gets offered by hosts as a one-click product, and ends up with far more people than could ever have
+built it. That is the ceiling Deplo is built for, not the few thousand who enjoy a terminal.
+Install, first run, update and recovery are product surfaces held to the same bar as deploying an
+App, and "run this command on the box" is never an answer a user is handed.
 
 Consequences that bind every design and review decision:
 
-- **No feature may push Docker/SSH/YAML knowledge onto the user as a prerequisite.** If a flow
-  only works when the user drops to a shell or hand-edits compose, it is unfinished, not done.
-  The escape hatch may exist for experts; the _happy path_ must not need it.
+- **No feature may make infrastructure knowledge a prerequisite.** A shell, an SSH key, a Docker
+  concept, a DNS record hand-typed, a port chosen by the user, a compose file edited by hand: if a
+  flow only works when the user reaches for one of those, it is unfinished, not done. The escape
+  hatch may exist for experts; the _happy path_ must not need it.
+- **Say it in the user's words, not the machine's.** Labels, copy and errors come from the world the
+  audience already has - deploy, domain, database, logs, backup - not from the plumbing underneath:
+  container, socket, reverse proxy, bind mount, daemon. A word the reader has to look up is a
+  feature they will not use, and naming the product itself in jargon is the same mistake at the top.
 - **Every feature is tested exhaustively and judged on UX/DX**, not just "does it function."
   "Generally useful, obvious, and safe for a non-expert" is the bar. Half a feature that assumes
   operator expertise is a regression against the mission.
 - **Favor derived / live / automatic over manual.** Disaster recovery, backups, secrets, status,
-  URLs - the platform should do the operator's job for them, using infrastructure they already
-  have (e.g. the fleet itself), not ask them to stand up more (an S3 bucket, an external DB) as a
-  precondition.
+  URLs - the platform should do the operational work for the user, using infrastructure they
+  already have (e.g. the fleet itself), not ask them to stand up more (an S3 bucket, an external
+  DB) as a precondition.
 - **Every feature must earn its place in the UX and name its audience - one of exactly two.**
   Either it is **for the non-expert** (on by default, obvious, safe, delivers value with zero
   configuration) or it is **for the expert** (_advanced mode_: opt-in, behind an "Advanced"
@@ -60,24 +78,24 @@ Consequences that bind every design and review decision:
   wants. This axis is orthogonal to non-expert/expert: every feature answers both.
 - **Don't build what nobody will realistically use.** Losing focus on Deplo's principles looks
   exactly like a stream of individually-defensible features that, long-term, almost no one turns
-  on. Breadth is not the goal - being _far simpler than every competing self-hosted platform_ is.
-  "another platform has that setting too" is an argument _against_ shipping it, not for.
+  on. Breadth is not the goal - being _far simpler than every competing platform_ is. "another
+  platform has that setting too" is an argument _against_ shipping it, not for.
 
-When weighing a design, ask: _would a competent developer who has never touched Docker or SSH
+When weighing a design, ask: _would a competent developer who has never administered a server
 succeed on the happy path, with the platform doing the operational heavy lifting?_ If not,
 reconsider.
 
 ### First run should sell the price tag, not a settings audit
 
-Someone moving off a cloud platform to self-hosting must, on first launch, be struck by **the
-pricing difference**, not by having to inspect and configure a mountain of options, with advanced settings
+Someone arriving from a cloud platform must, on first launch, be struck by **the pricing
+difference**, not by having to inspect and configure a mountain of options, with advanced settings
 staring at them by default. Ship opinionated defaults, keep the default surface as small as it can
 be while still useful, and put everything else behind advanced mode. Every knob visible at first
 run is a tax on the one thing that makes the switch worth it.
 
 ### Teams and companies are first-class, not an afterthought
 
-The other self-hosted platforms are shaped around one operator on one box, with sharing bolted on
+The other platforms in this space are shaped around one operator on one box, with sharing bolted on
 afterwards; the clouds Deplo measures itself against are not. Deplo aims at the collaboration case
 from the start: a team, up to a whole company, working in the same instance under least privilege.
 Concretely:
@@ -98,14 +116,15 @@ so anything only a company needs obeys the first-run rule above and stays out of
 
 ### Everything must be easy to turn into a managed service
 
-Beyond self-hosted, where Deplo aims at enterprise-grade, more scalable features than the
-competition - the intent is to eventually run **Deplo's own proprietary cloud**. The idea is still
-rough, but the constraint it puts on today's code is concrete: **whatever we build should one day be
-easy to offer as a managed service.** In practice that means multi-tenant-safe by construction, no
-assumption that the operator and the end user are the same person, and no dependence on the user
-having shell/root on the box (which the core mission already forbids). This never displaces the
-priorities: **self-hosted and open source stay first-class**, and the cloud is an additional
-distribution of the same system, never a fork, never a reason to starve the self-hosted path.
+Beyond the installable product, where Deplo aims at enterprise-grade, more scalable features than
+the competition - the intent is to eventually run **Deplo's own proprietary cloud**. The idea is
+still rough, but the constraint it puts on today's code is concrete: **whatever we build should one
+day be easy to offer as a managed service.** In practice that means multi-tenant-safe by
+construction, no assumption that the operator and the end user are the same person, and no
+dependence on the user having shell/root on the box (which the core mission already forbids). This
+never displaces the priorities: **the installable, open-source product stays first-class**, and the
+cloud is an additional distribution of the same system, never a fork, never a reason to starve the
+install.
 
 ### Flag a mission conflict once, then build it
 
@@ -116,7 +135,9 @@ and wait for an answer.
 
 A conflict is one of these, named explicitly:
 
-- The happy path needs Docker, SSH, or hand-edited YAML.
+- The happy path needs Docker, SSH, a shell, DNS surgery, or hand-edited YAML.
+- It only makes sense to someone who already runs servers - the label, the copy or the concept is
+  infrastructure the audience does not have words for.
 - You cannot say which of the two audiences it serves (non-expert default-on / expert advanced mode).
 - It adds surface to the first-run path that a new user must read past.
 - It only works when the actor owns the instance, or it breaks under active-team scoping.
@@ -710,6 +731,10 @@ container-folder, never container/group/folder) · **Capability** (never permiss
 installed catalog feature, never an App - deferred, see ADR-0013) · **active team** (never current/selected) ·
 **Environment** (never "env target"). If a concept isn't in the glossary, you're probably inventing
 language - reconsider, or note the gap.
+
+**Never define the product in jargon.** Deplo is not described to anyone - user, agent, reader - as
+"self-hosted", "self-hosting", "a Docker manager" or "a control panel". It is a deploy platform that
+runs on a machine you choose. See "Core mission" for why the words are the product.
 
 ## Working rules
 

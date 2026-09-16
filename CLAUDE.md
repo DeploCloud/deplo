@@ -6,14 +6,18 @@ not in it. **Don't restate AGENTS.md here** - a rule written twice drifts in one
 
 ## Core mission (north star)
 
-**Deplo makes self-hosting exhaustively simple: the user must NEVER be required to know Docker,
-SSH or YAML to get full value out of it.** Every feature names its audience - **non-expert**
-(default-on, zero config) or **expert** (advanced mode, opt-in, never on the first-run path) -
-assumes a TEAM with different Capabilities rather than one operator who owns the box, and could
-be offered as a managed service without a fork. Favour derived/live/automatic over manual.
+**Deplo gives a developer the cloud experience on a machine of their own choosing: push, and it is
+live, with the platform doing the operations.** The user must NEVER be required to know Docker, SSH,
+TCP/IP, DNS or YAML to get full value out of it, and the product is never described in that jargon
+either - the audience is people who deploy on cloud platforms today, not operators. Every feature
+names its audience - **non-expert** (default-on, zero config) or **expert** (advanced mode, opt-in,
+never on the first-run path) - assumes a TEAM with different Capabilities rather than one operator
+who owns the box, and could be offered as a managed service without a fork. Favour
+derived/live/automatic over manual.
 
-`AGENTS.md` → "Core mission" has the full statement, including the five conflicts that are worth
-flagging (in three lines, before the code, then you build it anyway) and the reason for each.
+`AGENTS.md` → "Core mission" has the full statement, including the distribution model it is built
+for and the six conflicts that are worth flagging (in three lines, before the code, then you build
+it anyway) and the reason for each.
 
 ## Agent skills
 
