@@ -16,7 +16,69 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # One runner per architecture, not QEMU on one: an emulated `next build` takes
+  # the release from 5 minutes to ~40 and crashes on its own schedule. GitHub's
+  # arm64 runners are free on a public repository.
   build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: amd64
+            platform: linux/amd64
+            runner: ubuntu-latest
+          - arch: arm64
+            platform: linux/arm64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Name the image
+        id: image
+        run: echo "IMAGE=ghcr.io/$(echo '${{ github.repository }}' | tr '[:upper:]' '[:lower:]')" >> "$GITHUB_OUTPUT"
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.repository_owner }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e # v4
+
+      # Pushed by digest and tagless on purpose: the tags go on the index the merge
+      # job creates, so one architecture finishing first never owns `:latest` alone.
+      - name: Build and push by digest
+        id: build
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
+        with:
+          context: .
+          platforms: ${{ matrix.platform }}
+          outputs: type=image,name=${{ steps.image.outputs.IMAGE }},push-by-digest=true,name-canonical=true,push=true
+          cache-from: type=gha,scope=${{ matrix.arch }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.arch }}
+
+      - name: Export the digest
+        run: |
+          mkdir -p /tmp/digests
+          digest='${{ steps.build.outputs.digest }}'
+          touch "/tmp/digests/${digest#sha256:}"
+
+      - name: Upload the digest
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: digest-${{ matrix.arch }}
+          path: /tmp/digests/*
+          if-no-files-found: error
+          retention-days: 1
+
+  merge:
+    needs: build
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -26,11 +88,20 @@ jobs:
       id-token: write
       attestations: write
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-
       - name: Extract version from tag
         id: version
         run: echo "VERSION=${GITHUB_REF#refs/tags/v}" >> "$GITHUB_OUTPUT"
+
+      - name: Name the image
+        id: image
+        run: echo "IMAGE=ghcr.io/$(echo '${{ github.repository }}' | tr '[:upper:]' '[:lower:]')" >> "$GITHUB_OUTPUT"
+
+      - name: Download the digests
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          path: /tmp/digests
+          pattern: digest-*
+          merge-multiple: true
 
       - name: Log in to GitHub Container Registry
         uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4
@@ -39,31 +110,28 @@ jobs:
           username: ${{ github.repository_owner }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Convert repository owner to lowercase
-        id: repo_owner
-        run: echo "OWNER=$(echo '${{ github.repository_owner }}' | tr '[:upper:]' '[:lower:]')" >> "$GITHUB_OUTPUT"
-
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e # v4
 
-      - name: Build and push Docker images
+      # The tags land here, on the index over both architectures. Everything below
+      # attests the index digest, so one signature covers amd64 and arm64.
+      - name: Create the multi-architecture image
         id: build
-        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
-        with:
-          context: .
-          push: true
-          tags: |
-            ghcr.io/${{ steps.repo_owner.outputs.OWNER }}/${{ github.event.repository.name }}:latest
-            ghcr.io/${{ steps.repo_owner.outputs.OWNER }}/${{ github.event.repository.name }}:${{ steps.version.outputs.VERSION }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+        working-directory: /tmp/digests
+        run: |
+          IMAGE='${{ steps.image.outputs.IMAGE }}'
+          VERSION='${{ steps.version.outputs.VERSION }}'
+          docker buildx imagetools create -t "$IMAGE:latest" -t "$IMAGE:$VERSION" \
+            $(printf "$IMAGE@sha256:%s " *)
+          digest="$(docker buildx imagetools inspect "$IMAGE:$VERSION" --format '{{json .Manifest}}' | jq -r .digest)"
+          echo "digest=$digest" >> "$GITHUB_OUTPUT"
 
       # Proves this workflow built this exact digest. `push-to-registry` stores it on
       # ghcr, so `gh attestation verify` works without cloning anything.
       - name: Attest the image provenance
         uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4
         with:
-          subject-name: ghcr.io/${{ steps.repo_owner.outputs.OWNER }}/${{ github.event.repository.name }}
+          subject-name: ${{ steps.image.outputs.IMAGE }}
           subject-digest: ${{ steps.build.outputs.digest }}
           push-to-registry: true
 
@@ -73,7 +141,7 @@ jobs:
       - name: Generate the SBOM
         uses: anchore/sbom-action@3ad7283483fc7af8ff2b4ea19663c2d5ca935e26 # v0.24.2
         with:
-          image: ghcr.io/${{ steps.repo_owner.outputs.OWNER }}/${{ github.event.repository.name }}:${{ steps.version.outputs.VERSION }}
+          image: ${{ steps.image.outputs.IMAGE }}:${{ steps.version.outputs.VERSION }}
           format: spdx-json
           output-file: deplo-${{ steps.version.outputs.VERSION }}.spdx.json
           upload-artifact: false
@@ -83,7 +151,7 @@ jobs:
       - name: Attest the SBOM
         uses: actions/attest-sbom@c604332985a26aa8cf1bdc465b92731239ec6b9e # v4.1.0
         with:
-          subject-name: ghcr.io/${{ steps.repo_owner.outputs.OWNER }}/${{ github.event.repository.name }}
+          subject-name: ${{ steps.image.outputs.IMAGE }}
           subject-digest: ${{ steps.build.outputs.digest }}
           sbom-path: deplo-${{ steps.version.outputs.VERSION }}.spdx.json
           push-to-registry: true
