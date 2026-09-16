@@ -1,10 +1,11 @@
 "use client";
 
 import * as React from "react";
-import { Boxes, Layers, Users } from "lucide-react";
+import { Boxes, Layers } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { SimpleTooltip } from "@/components/ui/tooltip";
 import { AppLogo } from "@/components/shared/project-logo";
+import { TeamAvatar } from "@/components/shared/user-avatar";
 import type { SharedVarDTO } from "@/lib/data/shared-vars/team-view";
 
 const CHIP_LIMIT = 2;
@@ -23,7 +24,11 @@ export function SharedWithChips({
   limit?: number;
 }) {
   const groups: Chip[][] = [
-    v.teams.map((t) => ({ key: t.id, name: t.name, icon: glyph(Users) })),
+    v.teams.map((t) => ({
+      key: t.id,
+      name: t.name,
+      icon: <TeamAvatar name={t.name} avatarUrl={t.avatarUrl} size="xs" />,
+    })),
     v.projects.map((p) => ({ key: p.id, name: p.name, icon: glyph(Boxes) })),
     v.environments.map((e) => ({
       key: e.id,

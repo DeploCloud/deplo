@@ -30,6 +30,7 @@ import { SharedVarsGraphic } from "@/components/env/shared-vars-graphic";
 import { EnvValueCell } from "@/components/env/env-value-cell";
 import { TimeAgo } from "@/components/shared/time-ago";
 import { EnvAuthorCell } from "@/components/env/env-author-cell";
+import { TeamAvatar } from "@/components/shared/user-avatar";
 import { SharedVarEditDialog } from "@/components/env/shared-var-edit-dialog";
 import { EnvEditButton } from "@/components/env/env-edit-button";
 import { SharedWithChips } from "@/components/env/shared-with-chips";
@@ -259,7 +260,15 @@ export function SharedVarsManager({
                           variant="outline"
                           className="gap-1 text-[10px] font-normal"
                         >
-                          <Users className="size-3" />
+                          {v.ownerTeam ? (
+                            <TeamAvatar
+                              name={v.ownerTeam.name}
+                              avatarUrl={v.ownerTeam.avatarUrl}
+                              size="xs"
+                            />
+                          ) : (
+                            <Users className="size-3" />
+                          )}
                           {v.ownerTeam?.name ?? "Every team"}
                         </Badge>
                       )}

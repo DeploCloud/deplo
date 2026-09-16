@@ -56,3 +56,20 @@ test("a document that selects a name selects the picture with it", () => {
   }
   assert.deepEqual(offenders, []);
 });
+
+const MARKS = /<(TeamAvatar|UserAvatar|TeamMark)\b/g;
+
+test("a rendered avatar is always handed its picture", () => {
+  const offenders: string[] = [];
+  for (const file of [...walk("app"), ...walk("components")]) {
+    if (file.includes(".test.")) continue;
+    const src = readFileSync(file, "utf8");
+    for (const m of src.matchAll(MARKS)) {
+      const end = src.indexOf("/>", m.index);
+      const props = src.slice(m.index, end === -1 ? undefined : end);
+      if (!props.includes("avatarUrl"))
+        offenders.push(`${file}: <${m[1]} without avatarUrl`);
+    }
+  }
+  assert.deepEqual(offenders, []);
+});

@@ -125,7 +125,7 @@ export function ScopeTree({
           <div key={team.id}>
             <Row
               depth={0}
-              mark={<TeamMark name={team.name} />}
+              mark={<TeamMark name={team.name} avatarUrl={team.avatarUrl} />}
               label={team.name}
               meta={teamMeta(team)}
               checkbox={teamPickable}
