@@ -13,6 +13,7 @@ import {
   readableTextColor,
   repoCredentialMissing,
   safeReturnPath,
+  shortId,
   timeAgoShort,
 } from "./utils";
 import { FOLDER_COLORS } from "./folder-colors";
@@ -232,4 +233,23 @@ test("gitProfileUrl links a pusher's account, and only when it can", () => {
     gitProfileUrl("gitlab", "../admin", "https://gitlab.com/a/b"),
     null,
   );
+});
+
+test("shortId maps every random byte onto its alphabet evenly", () => {
+  const real = crypto.getRandomValues.bind(crypto);
+  let next = 0;
+  crypto.getRandomValues = ((a: Uint8Array) => {
+    for (let i = 0; i < a.length; i++) a[i] = next++ & 0xff;
+    return a;
+  }) as typeof crypto.getRandomValues;
+  try {
+    // Every byte value exactly once: modulo bias shows up as an uneven tally.
+    const counts = new Map<string, number>();
+    for (let i = 0; i < 32; i++)
+      for (const ch of shortId()) counts.set(ch, (counts.get(ch) ?? 0) + 1);
+    assert.equal(counts.size, 32);
+    assert.deepEqual([...new Set(counts.values())], [8]);
+  } finally {
+    crypto.getRandomValues = real;
+  }
 });

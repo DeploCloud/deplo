@@ -285,11 +285,13 @@ export async function mapLimit<T>(
   );
 }
 
+// 32 letters, masked not moduloed: 256 is a whole number of alphabets, so no
+// character comes up more often than another.
 export function shortId(length = 8): string {
-  const alphabet = "abcdefghijklmnopqrstuvwxyz0123456789";
+  const alphabet = "abcdefghijklmnopqrstuvwxyz234567";
   let out = "";
   const bytes = crypto.getRandomValues(new Uint8Array(length));
-  for (let i = 0; i < length; i++) out += alphabet[bytes[i] % alphabet.length];
+  for (let i = 0; i < length; i++) out += alphabet[bytes[i] & 31];
   return out;
 }
 
