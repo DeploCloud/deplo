@@ -1,9 +1,8 @@
-// @peculiar/x509 v2 resolves through tsyringe, which needs the Reflect polyfill loaded first.
-import "reflect-metadata";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import tls from "node:tls";
 import { X509Certificate } from "node:crypto";
+import { readFileSync } from "node:fs";
 
 import * as x509 from "@peculiar/x509";
 import {
@@ -287,4 +286,12 @@ test("the agent refuses a client that presents no CA-signed cert", async () => {
       ).unref();
     });
   });
+});
+
+// A second copy splits the ASN.1 schema registry once Next bundles it, and every agent dial
+// then dies on "Cannot get schema for 'AlgorithmIdentifier'".
+test("the lockfile holds one copy of the certificate packages", () => {
+  const lock = readFileSync(new URL("../../bun.lock", import.meta.url), "utf8");
+  const nested = lock.match(/"[^"]+\/@peculiar\/(?:x509|asn1-x509)"/g) ?? [];
+  assert.deepEqual(nested, []);
 });

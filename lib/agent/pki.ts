@@ -1,6 +1,4 @@
 import "server-only";
-// @peculiar/x509 v2 resolves through tsyringe, which needs the Reflect polyfill loaded first.
-import "reflect-metadata";
 
 import * as x509 from "@peculiar/x509";
 import {
@@ -47,7 +45,7 @@ async function toWebCryptoKeys(node: KeyObject): Promise<CryptoKeyPair> {
   const publicKey = await crypto.subtle.importKey("spki", spki, alg, true, [
     "verify",
   ]);
-  // x509 v2 types against the DOM CryptoKey; node's webcrypto is structurally its own.
+  // x509 types against the DOM CryptoKey; node's webcrypto is structurally its own.
   return { privateKey, publicKey } as unknown as CryptoKeyPair;
 }
 

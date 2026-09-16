@@ -1,5 +1,3 @@
-// @peculiar/x509 v2 resolves through tsyringe, which needs the Reflect polyfill loaded first.
-import "reflect-metadata";
 import { test, before, after, beforeEach } from "node:test";
 import assert from "node:assert/strict";
 
