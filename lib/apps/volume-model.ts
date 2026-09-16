@@ -109,14 +109,16 @@ export const RESERVED_MOUNT_PREFIXES = [
   "/var/run",
 ];
 
+// Only a Volume takes the whole prefix: it is the one kind with no grant, and an empty
+// disk over /etc hides the image's own files. A File or a Bind may sit inside one.
 export function reservedMountPath(
   mountPath: string,
   kind: VolumeKind,
 ): boolean {
   return RESERVED_MOUNT_PREFIXES.some((r) =>
-    kind === "app"
-      ? mountPath === r
-      : mountPath === r || mountPath.startsWith(r + "/"),
+    kind === "named"
+      ? mountPath === r || mountPath.startsWith(r + "/")
+      : mountPath === r,
   );
 }
 

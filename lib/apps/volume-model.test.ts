@@ -256,6 +256,18 @@ test("a File may sit inside a system directory, but never replace one", () => {
   }
 });
 
+test("a Bind may sit inside a system directory, but never replace one", () => {
+  const bind = (mountPath: string) =>
+    volumeProblem(
+      vol({ type: "host", hostPath: "/var/run/docker.sock", mountPath }),
+    );
+  assert.equal(bind("/var/run/docker.sock"), null);
+  assert.equal(bind("/usr/share/nginx/html"), null);
+  for (const p of RESERVED_MOUNT_PREFIXES) {
+    assert.match(bind(p)!.message, /system/, p);
+  }
+});
+
 test("a Bind wants an absolute server path", () => {
   assert.match(
     volumeProblem(vol({ type: "host" }))!.message,
