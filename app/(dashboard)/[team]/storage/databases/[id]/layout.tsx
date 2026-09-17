@@ -44,6 +44,7 @@ export default async function DatabaseLayout(
     id: db.id,
     name: db.name,
     status: db.status,
+    restartLoopStoppedAt: db.restartLoopStoppedAt,
   };
 
   return (

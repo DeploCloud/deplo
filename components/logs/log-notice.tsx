@@ -16,6 +16,7 @@ export interface LogNotice {
   short: string;
   title: string;
   body: string;
+  action?: React.ReactNode;
 }
 
 const TONE: Record<LogNotice["tone"], string> = {
@@ -54,6 +55,7 @@ export function LogNoticeChip({
       <PopoverContent align="start" className="w-80 space-y-1 text-sm">
         <p className="font-medium">{notice.title}</p>
         <p className="text-muted-foreground">{notice.body}</p>
+        {notice.action ? <div className="pt-2">{notice.action}</div> : null}
       </PopoverContent>
     </Popover>
   );

@@ -124,6 +124,7 @@ export async function seedApp(db: TestDb, opts: SeedAppOpts): Promise<string> {
     status: opts.status ?? "active",
     previewEnabled: false,
     cronEnabled: false,
+    restartLoopGuard: true,
     consoleEnabled: false,
     autoDeploy: true,
     deployHookEnabled: true,

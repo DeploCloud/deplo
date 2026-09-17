@@ -65,6 +65,8 @@ export interface App {
   previewEnabled: boolean;
   cronEnabled: boolean;
   consoleEnabled: boolean;
+  restartLoopGuard: boolean;
+  restartLoopStoppedAt?: string | null;
   deployHookEnabled: boolean;
   composeUpArgs: string | null;
   rollbackKeep: number;

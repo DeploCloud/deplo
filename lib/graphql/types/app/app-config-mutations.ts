@@ -30,6 +30,7 @@ import {
   updateAppHealthCheck,
   setAppFramework,
   setAppComposeUpArgs,
+  setAppRestartLoopGuard,
 } from "@/lib/data/apps/settings";
 import { updateAppSource } from "@/lib/data/apps/source";
 import { setAppVolumes } from "@/lib/data/apps/volumes";
@@ -284,6 +285,21 @@ builder.mutationFields((t) => ({
           protocol: p.protocol === "udp" ? ("udp" as const) : ("tcp" as const),
         })),
       );
+      return reloadApp(id);
+    },
+  }),
+  setAppRestartLoopGuard: t.field({
+    type: AppRef,
+    authScopes: { capability: "configure_apps" },
+    description:
+      "Turn restart loop protection on or off for one app. Applies at once - " +
+      "there is nothing to redeploy.",
+    args: {
+      id: t.arg.string({ required: true }),
+      value: t.arg.boolean({ required: true }),
+    },
+    resolve: async (_r, { id, value }) => {
+      await setAppRestartLoopGuard(id, value);
       return reloadApp(id);
     },
   }),

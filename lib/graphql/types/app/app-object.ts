@@ -172,6 +172,17 @@ export const AppRef = builder.objectRef<AppSummary>("App").implement({
         "Whether this app's deploy hook answers. The hook URL itself is never " +
         "a field - read it back with revealAppDeployHook.",
     }),
+    restartLoopGuard: t.exposeBoolean("restartLoopGuard", {
+      description:
+        "Whether Deplo stops this app's container once it has restarted 10 " +
+        "times in half an hour. On by default; off lets it keep crashing.",
+    }),
+    restartLoopStoppedAt: t.exposeString("restartLoopStoppedAt", {
+      nullable: true,
+      description:
+        "When restart loop protection last stopped this app, or null. Cleared " +
+        "by a start or a successful deploy.",
+    }),
     composeUpArgs: t.exposeString("composeUpArgs", {
       nullable: true,
       description:

@@ -390,6 +390,7 @@ export async function createApp(input: CreateAppInput): Promise<AppSummary> {
     previewEnabled: false,
     cronEnabled: false,
     consoleEnabled: false,
+    restartLoopGuard: true,
     autoDeploy: input.autoDeploy ?? true,
     deployHookEnabled: true,
     composeUpArgs: rawComposeArgs

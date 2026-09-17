@@ -10,6 +10,7 @@ import { DatabaseConfigFiles } from "@/components/storage/database-config-files"
 import { DB_DATA_DIRS } from "@/lib/deploy/database-compose";
 import { DatabaseDanger } from "@/components/storage/database-danger";
 import { CronSettingsForm } from "@/components/crons/cron-settings-form";
+import { RestartLoopForm } from "@/components/apps/settings/restart-loop-form";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -42,15 +43,15 @@ export default async function DatabaseAdvancedSettingsPage(
         info="Turn on the advanced features, override the engine image or command, rebuild the database from scratch, or delete it."
       />
 
-      {canConsole && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">Advanced features</CardTitle>
-            <CardDescription>
-              Powerful extras, off the everyday path until you need them.
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-3">
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Advanced features</CardTitle>
+          <CardDescription>
+            Powerful extras, off the everyday path until you need them.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          {canConsole && (
             <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border p-4">
               <div className="min-w-56 flex-1 space-y-1">
                 <p className="flex items-center gap-2 text-sm font-medium">
@@ -70,18 +71,24 @@ export default async function DatabaseAdvancedSettingsPage(
                 </Link>
               </Button>
             </div>
+          )}
 
-            {cron && (
-              <CronSettingsForm
-                targetKind="database"
-                targetId={db.id}
-                enabled={cron.enabled}
-                jobCount={cron.jobs.length}
-              />
-            )}
-          </CardContent>
-        </Card>
-      )}
+          {cron && (
+            <CronSettingsForm
+              targetKind="database"
+              targetId={db.id}
+              enabled={cron.enabled}
+              jobCount={cron.jobs.length}
+            />
+          )}
+
+          <RestartLoopForm
+            targetKind="database"
+            targetId={db.id}
+            enabled={db.restartLoopGuard}
+          />
+        </CardContent>
+      </Card>
 
       <DatabaseImageSettings db={db} />
       <DatabaseConfigFiles db={db} dataDir={DB_DATA_DIRS[db.type]} />

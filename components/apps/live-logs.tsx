@@ -2,8 +2,10 @@
 
 import * as React from "react";
 import Link from "@/components/ui/link";
-import { CircleAlert, RotateCw, ScrollText } from "lucide-react";
-import { gql } from "@/lib/graphql-client";
+import { CircleAlert, Play, RotateCw, ScrollText } from "lucide-react";
+import { toast } from "sonner";
+import { useRouter } from "@/lib/nav";
+import { gql, gqlAction } from "@/lib/graphql-client";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/shared/empty-state";
 import { ContainerLogs } from "@/components/apps/container-logs";
@@ -14,6 +16,7 @@ import {
   type AppRuntimeView,
 } from "@/components/apps/use-app-runtime";
 import type { LogNotice } from "@/components/logs/log-notice";
+import { RESTART_LOOP_THRESHOLD } from "@/lib/monitoring/restart-loop";
 import { PaneTitleLink, type PaneTitle } from "@/components/shared/pane-title";
 import type { ConsoleInstance } from "@/lib/data/console";
 
@@ -143,7 +146,10 @@ export function LiveLogs({
       appId={appId}
       instances={instances}
       runtime={runtime}
-      notice={runtimeNotice(runtime)}
+      notice={runtimeNotice(runtime, {
+        stoppedAt: live?.restartLoopStoppedAt,
+        action: <StartAfterLoopButton appId={appId} />,
+      })}
       title={title}
       toolbar={toolbar}
       supportsTimeline={supportsTimeline}
@@ -152,10 +158,56 @@ export function LiveLogs({
   );
 }
 
+function StartAfterLoopButton({ appId }: { appId: string }) {
+  const router = useRouter();
+  const [pending, startTransition] = React.useTransition();
+  return (
+    <Button
+      size="sm"
+      variant="outline"
+      disabled={pending}
+      onClick={() =>
+        startTransition(async () => {
+          const res = await gqlAction(
+            /* GraphQL */ `
+              mutation ($id: String!) {
+                startApp(id: $id) {
+                  id
+                }
+              }
+            `,
+            { id: appId },
+          );
+          if (res.ok) {
+            toast.success("Container started");
+            router.refresh();
+          } else toast.error(res.error);
+        })
+      }
+    >
+      <Play className="size-4" />
+      Start
+    </Button>
+  );
+}
+
 export function runtimeNotice(
   runtime: AppRuntimeView | null,
+  guard?: { stoppedAt?: string | null; action?: React.ReactNode },
 ): LogNotice | null {
   if (!runtime || runtime.unreachable || runtime.total === 0) return null;
+
+  // Outranks every other notice: it is the most specific thing that happened.
+  if (guard?.stoppedAt && runtime.running < runtime.total) {
+    return {
+      tone: "error",
+      icon: RotateCw,
+      short: "Stopped",
+      title: `Deplo stopped this container after ${RESTART_LOOP_THRESHOLD} restarts`,
+      body: `It crashed ${RESTART_LOOP_THRESHOLD} times in half an hour, so Deplo stopped retrying. The error that kills it is in the output below.`,
+      action: guard.action,
+    };
+  }
 
   if (runtime.missing.length > 0) {
     return {

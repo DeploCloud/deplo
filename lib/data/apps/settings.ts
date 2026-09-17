@@ -75,6 +75,26 @@ export async function updateAppHealthCheck(
   );
 }
 
+export async function setAppRestartLoopGuard(
+  id: string,
+  enabled: boolean,
+): Promise<void> {
+  const { membership } = await requireAppCapability(id, "configure_apps");
+  const user = (await getCurrentUser())!;
+  const rows = await getDb()
+    .update(appsTable)
+    .set({ restartLoopGuard: enabled, updatedAt: nowIso() })
+    .where(and(eq(appsTable.id, id), eq(appsTable.teamId, membership.teamId)))
+    .returning({ name: appsTable.name });
+  if (rows.length === 0) throw new Error("App not found");
+  await recordActivity(
+    "app",
+    `${enabled ? "Turned on" : "Turned off"} restart loop protection for ${rows[0].name}`,
+    user.name,
+    id,
+  );
+}
+
 export async function setAppUpload(
   id: string,
   upload: UploadArchive,

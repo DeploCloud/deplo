@@ -188,6 +188,8 @@ export async function createDatabase(input: {
     customImage,
     customCommand: null,
     cronEnabled: false,
+    restartLoopGuard: true,
+    restartLoopStoppedAt: null,
     mounts: [],
     sizeMb: 0,
     createdAt: nowIso(),

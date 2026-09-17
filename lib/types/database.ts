@@ -29,6 +29,8 @@ export interface Database {
   customImage: string | null;
   customCommand: string | null;
   cronEnabled: boolean;
+  restartLoopGuard: boolean;
+  restartLoopStoppedAt: string | null;
   mounts: DatabaseMount[];
   sizeMb: number;
   createdAt: string;

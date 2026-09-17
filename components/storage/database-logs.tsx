@@ -4,7 +4,7 @@ import * as React from "react";
 import { ScrollText } from "lucide-react";
 import { ContainerLogs } from "@/components/apps/container-logs";
 import { useDatabaseRuntime } from "@/components/storage/use-database-runtime";
-import { useLiveDatabaseStatus } from "@/components/storage/database-live-status";
+import { useLiveDatabase } from "@/components/storage/database-live-status";
 import { runtimeNotice } from "@/components/apps/live-logs";
 import { PaneTitleLink, type PaneTitle } from "@/components/shared/pane-title";
 import type { ConsoleInstance } from "@/lib/data/console";
@@ -29,8 +29,12 @@ export function DatabaseLogs({
   logMaxDays: number;
   toolbar?: React.ReactNode;
 }) {
-  const status = useLiveDatabaseStatus(serverStatus);
-  const runtime = useDatabaseRuntime(id, { enabled: status === "running" });
+  const live = useLiveDatabase();
+  const status = live?.status ?? serverStatus;
+  // A stopped loop still has a container, and its notice is the reason to keep reading it.
+  const runtime = useDatabaseRuntime(id, {
+    enabled: status === "running" || Boolean(live?.restartLoopStoppedAt),
+  });
 
   if (!streamable && !instances.length) {
     return (
@@ -55,7 +59,9 @@ export function DatabaseLogs({
       appId={id}
       instances={instances}
       runtime={runtime}
-      notice={runtimeNotice(runtime)}
+      notice={runtimeNotice(runtime, {
+        stoppedAt: live?.restartLoopStoppedAt,
+      })}
       title={title}
       toolbar={toolbar}
       supportsTimeline={supportsTimeline}

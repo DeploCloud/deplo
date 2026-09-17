@@ -33,6 +33,7 @@ import {
   updateDatabaseLogo,
   updateDatabaseResources,
   updateDatabaseImage,
+  setDatabaseRestartLoopGuard,
 } from "@/lib/data/databases/settings";
 import type { ResourceLimitsInput } from "@/lib/data/apps/resources";
 import { hasCapability } from "@/lib/membership";
@@ -114,6 +115,17 @@ export const DatabaseRef = builder
           "file can carry a password. Saving them applies immediately.",
         resolve: async (d) =>
           (await hasCapability("configure_databases")) ? d.mounts : [],
+      }),
+      restartLoopGuard: t.exposeBoolean("restartLoopGuard", {
+        description:
+          "Whether Deplo stops this database's container once it has restarted " +
+          "10 times in half an hour. On by default.",
+      }),
+      restartLoopStoppedAt: t.exposeString("restartLoopStoppedAt", {
+        nullable: true,
+        description:
+          "When restart loop protection last stopped this database, or null. " +
+          "Cleared by a start or a restart.",
       }),
       sizeMb: t.exposeInt("sizeMb"),
       createdAt: t.exposeString("createdAt"),
@@ -262,6 +274,21 @@ builder.mutationFields((t) => ({
         exposedPublicly: input.exposedPublicly ?? undefined,
         exposedPort: input.exposedPort ?? undefined,
       }),
+  }),
+  setDatabaseRestartLoopGuard: t.field({
+    type: "Boolean",
+    authScopes: { capability: "configure_databases" },
+    description:
+      "Turn restart loop protection on or off for one database. Applies at " +
+      "once - there is nothing to redeploy.",
+    args: {
+      id: t.arg.string({ required: true }),
+      value: t.arg.boolean({ required: true }),
+    },
+    resolve: async (_r, { id, value }) => {
+      await setDatabaseRestartLoopGuard(id, value);
+      return true;
+    },
   }),
   moveDatabaseToEnvironment: t.field({
     type: "Boolean",

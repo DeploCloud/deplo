@@ -82,6 +82,8 @@ export async function seedDatabase(
     customImage: null,
     customCommand: null,
     cronEnabled: false,
+    restartLoopGuard: true,
+    restartLoopStoppedAt: null,
     mounts: opts.mounts ?? [],
     sizeMb: 0,
     createdAt: T0,

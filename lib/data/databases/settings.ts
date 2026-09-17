@@ -138,6 +138,35 @@ export async function updateDatabaseResources(
   );
 }
 
+export async function setDatabaseRestartLoopGuard(
+  id: string,
+  enabled: boolean,
+): Promise<void> {
+  const { membership } = await requireCapability("configure_databases");
+  const user = (await getCurrentUser())!;
+  const updated = await getDb()
+    .update(databasesTable)
+    .set({ restartLoopGuard: enabled })
+    .where(
+      and(
+        eq(databasesTable.id, id),
+        eq(databasesTable.teamId, membership.teamId),
+      ),
+    )
+    .returning({ name: databasesTable.name });
+  if (updated.length === 0) throw new Error("Not found");
+  publishDatabaseChanged(id);
+  await recordActivity(
+    "database",
+    `${enabled ? "Turned on" : "Turned off"} restart loop protection for ${updated[0].name}`,
+    user.name,
+    null,
+    membership.teamId,
+    null,
+    id,
+  );
+}
+
 export async function updateDatabaseImage(
   id: string,
   input: {

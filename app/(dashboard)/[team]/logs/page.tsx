@@ -98,7 +98,12 @@ export default async function LogsPage(props: PageProps<"/[team]/logs">) {
     return (
       <DatabaseLiveStatusProvider
         key={target.key}
-        initial={{ id: db.id, name: db.name, status: db.status }}
+        initial={{
+          id: db.id,
+          name: db.name,
+          status: db.status,
+          restartLoopStoppedAt: db.restartLoopStoppedAt,
+        }}
       >
         <DatabaseLogs
           id={db.id}
@@ -124,6 +129,7 @@ export default async function LogsPage(props: PageProps<"/[team]/logs">) {
     slug: app.slug,
     status: app.status,
     productionUrl: app.productionUrl ?? null,
+    restartLoopStoppedAt: app.restartLoopStoppedAt ?? null,
     latestDeploymentId: latest?.id ?? null,
     latestDeploymentStatus: latest?.status ?? null,
   };

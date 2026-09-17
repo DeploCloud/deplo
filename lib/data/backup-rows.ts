@@ -62,6 +62,8 @@ export function databaseToRow(d: Database): DatabaseInsert {
     customImage: d.customImage,
     customCommand: d.customCommand,
     cronEnabled: d.cronEnabled,
+    restartLoopGuard: d.restartLoopGuard,
+    restartLoopStoppedAt: d.restartLoopStoppedAt,
     sizeMb: d.sizeMb,
     createdAt: d.createdAt,
   } satisfies Record<
@@ -97,6 +99,8 @@ export function assembleDatabase(
     customImage: row.customImage,
     customCommand: row.customCommand,
     cronEnabled: row.cronEnabled,
+    restartLoopGuard: row.restartLoopGuard,
+    restartLoopStoppedAt: row.restartLoopStoppedAt ?? null,
     mounts,
     sizeMb: row.sizeMb,
     createdAt: row.createdAt,

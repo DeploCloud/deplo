@@ -12,6 +12,7 @@ export type LiveApp = {
   productionUrl: string | null;
   latestDeploymentId: string | null;
   latestDeploymentStatus: DeploymentStatus | null;
+  restartLoopStoppedAt: string | null;
 };
 
 const PROJECT_STATUS_SUBSCRIPTION = /* GraphQL */ `
@@ -21,6 +22,7 @@ const PROJECT_STATUS_SUBSCRIPTION = /* GraphQL */ `
       slug
       status
       productionUrl
+      restartLoopStoppedAt
       latestDeployment {
         id
         status
@@ -35,6 +37,7 @@ type SubResult = {
     slug: string;
     status: AppStatus;
     productionUrl: string | null;
+    restartLoopStoppedAt: string | null;
     latestDeployment: { id: string; status: DeploymentStatus } | null;
   };
 };
@@ -63,6 +66,7 @@ export function AppLiveStatusProvider({
           slug: p.slug,
           status: p.status,
           productionUrl: p.productionUrl,
+          restartLoopStoppedAt: p.restartLoopStoppedAt,
           latestDeploymentId: p.latestDeployment?.id ?? null,
           latestDeploymentStatus: p.latestDeployment?.status ?? null,
         });

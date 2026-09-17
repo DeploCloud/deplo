@@ -235,6 +235,16 @@ type App {
   resources: ResourceLimits
 
   """
+  Whether Deplo stops this app's container once it has restarted 10 times in half an hour. On by default; off lets it keep crashing.
+  """
+  restartLoopGuard: Boolean
+
+  """
+  When restart loop protection last stopped this app, or null. Cleared by a start or a successful deploy.
+  """
+  restartLoopStoppedAt: String
+
+  """
   How many previous deployments this app can be rolled back to (0-20, default 3). Retention: its server keeps this many of the app's images behind the running one. 0 means there is nothing to go back to.
   """
   rollbackKeep: Int
@@ -1313,6 +1323,16 @@ type Database {
   Per-database resource caps applied at provision/redeploy time, or null when no limits are set.
   """
   resources: ResourceLimits
+
+  """
+  Whether Deplo stops this database's container once it has restarted 10 times in half an hour. On by default.
+  """
+  restartLoopGuard: Boolean
+
+  """
+  When restart loop protection last stopped this database, or null. Cleared by a start or a restart.
+  """
+  restartLoopStoppedAt: String
   serverId: ID
   sizeMb: Int
   status: DatabaseStatus
@@ -3562,6 +3582,11 @@ type Mutation {
   setAppPreviewSettings(appId: ID!, input: AppPreviewSettingsInput!): Boolean
 
   """
+  Turn restart loop protection on or off for one app. Applies at once - there is nothing to redeploy.
+  """
+  setAppRestartLoopGuard(id: String!, value: Boolean!): App
+
+  """
   How many previous deployments this app can be rolled back to (0-20, default 3). It is retention: the app's server keeps this many of its images behind the running one. Takes effect on the next sweep - lowering it removes nothing now, and raising it cannot bring back images already removed.
   """
   setAppRollbackKeep(count: Int!, id: String!): App
@@ -3596,6 +3621,11 @@ type Mutation {
   Replace the database's config files (whole set - an omitted file is removed) and APPLY them: the files are written next to the stack and the container is recreated, unlike the image/command overrides beside them. A path inside the engine's data directory is refused.
   """
   setDatabaseMounts(id: String!, mounts: [DatabaseMountInput!]!): Database
+
+  """
+  Turn restart loop protection on or off for one database. Applies at once - there is nothing to redeploy.
+  """
+  setDatabaseRestartLoopGuard(id: String!, value: Boolean!): Boolean
   setDatabaseRunning(id: String!, running: Boolean!): Database
 
   """Make an environment the project's default (unsets the previous one)."""

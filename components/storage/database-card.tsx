@@ -72,7 +72,12 @@ export function DatabaseCard({
         className="pointer-events-none animate-pulse opacity-70 select-none"
       >
         <DatabaseLiveStatusProvider
-          initial={{ id: db.id, name: db.name, status: db.status }}
+          initial={{
+            id: db.id,
+            name: db.name,
+            status: db.status,
+            restartLoopStoppedAt: db.restartLoopStoppedAt,
+          }}
         >
           {view === "list" ? (
             <DatabaseCardList
@@ -101,7 +106,12 @@ export function DatabaseCard({
 
   return (
     <DatabaseLiveStatusProvider
-      initial={{ id: db.id, name: db.name, status: db.status }}
+      initial={{
+        id: db.id,
+        name: db.name,
+        status: db.status,
+        restartLoopStoppedAt: db.restartLoopStoppedAt,
+      }}
     >
       {view === "list" ? (
         <DatabaseCardList

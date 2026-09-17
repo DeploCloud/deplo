@@ -11,6 +11,7 @@ import { DangerSettings } from "@/components/apps/settings/danger-settings";
 import { RebuildContainerCard } from "@/components/apps/settings/rebuild-container-card";
 import { ConsoleSettingsForm } from "@/components/apps/settings/console-settings-form";
 import { HealthCheckForm } from "@/components/apps/settings/health-check-form";
+import { RestartLoopForm } from "@/components/apps/settings/restart-loop-form";
 import { PublishedPortsForm } from "@/components/apps/settings/published-ports-form";
 import { CronSettingsForm } from "@/components/crons/cron-settings-form";
 import { BuildCachePanel } from "@/components/apps/settings/build-cache-panel";
@@ -98,6 +99,14 @@ export default async function AppAdvancedSettingsPage(
               />
             </CapabilityFieldset>
           )}
+
+          <CapabilityFieldset cap="configure_apps">
+            <RestartLoopForm
+              targetKind="app"
+              targetId={project.id}
+              enabled={project.restartLoopGuard}
+            />
+          </CapabilityFieldset>
 
           {project.source !== "compose" && (
             <CapabilityFieldset cap="configure_apps">

@@ -8,6 +8,7 @@ export type LiveDatabase = {
   id: string;
   name: string;
   status: DatabaseStatus;
+  restartLoopStoppedAt: string | null;
 };
 
 const DATABASE_STATUS_SUBSCRIPTION = /* GraphQL */ `
@@ -16,12 +17,18 @@ const DATABASE_STATUS_SUBSCRIPTION = /* GraphQL */ `
       id
       name
       status
+      restartLoopStoppedAt
     }
   }
 `;
 
 type SubResult = {
-  databaseStatus: { id: string; name: string; status: DatabaseStatus } | null;
+  databaseStatus: {
+    id: string;
+    name: string;
+    status: DatabaseStatus;
+    restartLoopStoppedAt: string | null;
+  } | null;
 };
 
 const LiveDatabaseContext = React.createContext<LiveDatabase | null>(null);
@@ -42,7 +49,12 @@ export function DatabaseLiveStatusProvider({
       (data) => {
         const d = data.databaseStatus;
         if (!d) return;
-        setLive({ id: d.id, name: d.name, status: d.status });
+        setLive({
+          id: d.id,
+          name: d.name,
+          status: d.status,
+          restartLoopStoppedAt: d.restartLoopStoppedAt,
+        });
       },
     );
     return unsubscribe;

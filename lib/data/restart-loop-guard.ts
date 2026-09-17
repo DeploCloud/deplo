@@ -14,7 +14,7 @@ import {
   forgetContainers,
   loopingContainers,
 } from "../monitoring/restart-loop";
-import { publishAppChanged } from "../graphql/pubsub";
+import { publishAppChanged, publishDatabaseChanged } from "../graphql/pubsub";
 import { dispatchAlert } from "../notify/dispatch";
 import { recordActivity } from "./activity";
 import { nowIso } from "../ids";
@@ -83,7 +83,7 @@ export async function stopLoopingWorkloads(
           .update(databasesTable)
           .set({ status: "error", restartLoopStoppedAt: nowIso() })
           .where(eq(databasesTable.id, db.id))
-          .then(() => undefined),
+          .then(() => publishDatabaseChanged(db.id)),
       activity: (message: string) =>
         recordActivity(
           "database",
