@@ -4,8 +4,6 @@ import {
   GitBranch,
   GitPullRequest,
   Clock,
-  ScrollText,
-  ExternalLink,
   ArrowRight,
   Plus,
 } from "lucide-react";
@@ -154,35 +152,24 @@ export default async function AppOverview(
                   <p className="flex items-center gap-1.5 text-sm">
                     <Clock className="size-3.5" />
                     {formatBuildDuration(prod.buildDurationMs)}
-                  </p>
-                </div>
-                <div className="flex gap-2 pt-1">
-                  <Button size="sm" variant="outline" asChild>
-                    <Link href={`/apps/${slug}/deployments/${prod.id}`}>
-                      <ScrollText className="size-4" />
+                    <Link
+                      href={`/apps/${slug}/deployments/${prod.id}`}
+                      className="ml-1 text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
+                    >
                       Build Logs
                     </Link>
-                  </Button>
-                  {project.productionUrl ? (
-                    <Button size="sm" variant="outline" asChild>
-                      <a
-                        href={project.productionUrl}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                      >
-                        <ExternalLink className="size-4" />
-                        Visit
-                      </a>
-                    </Button>
-                  ) : (
+                  </p>
+                </div>
+                {!project.productionUrl && (
+                  <div className="flex gap-2 pt-1">
                     <Button size="sm" variant="outline" asChild>
                       <Link href={`/apps/${slug}/domains`}>
                         <Plus className="size-4" />
                         Add domain
                       </Link>
                     </Button>
-                  )}
-                </div>
+                  </div>
+                )}
               </div>
             </div>
           ) : (
