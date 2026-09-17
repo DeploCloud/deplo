@@ -3,12 +3,14 @@ import {
   type DropAnimation,
 } from "@dnd-kit/core";
 
-/** Shared by every card grid: a decelerating drop, never dnd-kit's overshoot. */
+/** Shared by every card grid. The card stays HIDDEN under the flying overlay
+ * (a 0.4 ghost pops to full the instant the overlay vanishes), so the landing
+ * is a swap nobody sees. */
 export const DRAG_DROP_ANIMATION: DropAnimation = {
-  duration: 260,
-  easing: "cubic-bezier(0.2, 0, 0, 1)",
+  duration: 240,
+  easing: "cubic-bezier(0.22, 0.61, 0.36, 1)",
   sideEffects: defaultDropAnimationSideEffects({
-    styles: { active: { opacity: "0.4" } },
+    styles: { active: { opacity: "0" } },
   }),
 };
 

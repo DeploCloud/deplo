@@ -15,6 +15,7 @@ import {
 } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { InfoTip } from "@/components/ui/info-tip";
 import { SimpleTooltip } from "@/components/ui/tooltip";
 import { EmptyState } from "@/components/shared/empty-state";
 import { ConfirmAction } from "@/components/shared/confirm-action";
@@ -416,13 +417,11 @@ function SharedRowActions({
 
 function LooksLikeSecretBadge() {
   return (
-    <SimpleTooltip content="This name usually holds a credential. Edit it and turn on Secret: the value is then write-only and nothing shows it again.">
-      <Badge
-        variant="warning"
-        className="text-[10px] font-normal whitespace-nowrap"
-      >
-        Warning
-      </Badge>
-    </SimpleTooltip>
+    <InfoTip
+      tone="warning"
+      label="This name usually holds a credential"
+      className="size-4"
+      content="This name usually holds a credential. Edit it and turn on Secret: the value is then write-only and nothing shows it again."
+    />
   );
 }

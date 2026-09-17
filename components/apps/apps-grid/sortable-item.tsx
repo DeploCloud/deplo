@@ -131,12 +131,14 @@ export function SortableItem({
     >
       <div
         className={cn(
-          // The transition is what smooths the DROP: the jiggle rests at
-          // ±0.55deg, so without it every card snaps back the instant it ends.
-          "rounded-xl transition-[transform,opacity] duration-200 ease-out",
+          // The jiggle rests at ±0.55deg, so without a transition every card
+          // snaps back the instant a drop ends it.
+          "rounded-xl transition-transform duration-200 ease-out",
           dragging && !isDragging && "animate-jiggle",
           isDragging && "opacity-40",
-          !isDragging && groupDragging && "opacity-40",
+          !isDragging &&
+            groupDragging &&
+            "opacity-40 transition-opacity duration-150",
           isDragging && scaleOut && "scale-0",
         )}
         style={

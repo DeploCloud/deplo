@@ -44,7 +44,7 @@ export function InfoTip({
           <Info className="size-3.5" aria-hidden />
         </button>
       </TooltipTrigger>
-      <TooltipContent side={side} className="max-w-xs leading-relaxed">
+      <TooltipContent side={side} className="max-w-xs leading-6">
         {content}
         {docs && (
           <DocsLink
