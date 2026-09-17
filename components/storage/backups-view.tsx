@@ -183,7 +183,7 @@ export function BackupsView({
             description="No backup schedule matches the current search and filters."
           />
         ) : view === "grid" ? (
-          <div className="grid items-start gap-4 sm:grid-cols-2 xl:grid-cols-3">
+          <div className="grid items-start gap-4 sm:grid-cols-2 lg:grid-cols-3">
             <OptimisticList>
               {filtered.map((b) => (
                 <SelectableCard

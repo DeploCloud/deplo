@@ -130,7 +130,7 @@ export function GitPanel({
           description="Connect a host and its repositories are yours to import and deploy on every push."
         />
       ) : (
-        <div className="grid items-start gap-4 sm:grid-cols-2 3xl:grid-cols-3">
+        <div className="grid items-start gap-4 sm:grid-cols-2 2xl:grid-cols-3">
           {apps.map((app) => (
             <GithubAppCard
               key={app.id}

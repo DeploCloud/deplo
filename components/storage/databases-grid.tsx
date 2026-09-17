@@ -449,7 +449,7 @@ function DatabaseBulkActions({
 function gridClass(view: View): string {
   return view === "list"
     ? "flex flex-col gap-3"
-    : "grid gap-4 sm:grid-cols-2 xl:grid-cols-3";
+    : "grid gap-4 sm:grid-cols-2 lg:grid-cols-3";
 }
 
 function SortableCard({

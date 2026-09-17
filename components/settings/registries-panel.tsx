@@ -145,7 +145,7 @@ function RegistriesBody({ registries }: { registries: RegistryDTO[] }) {
           description="Connect one and its private images are yours to deploy, with the credentials kept here."
         />
       ) : (
-        <div className="grid items-start gap-4 sm:grid-cols-2 3xl:grid-cols-3">
+        <div className="grid items-start gap-4 sm:grid-cols-2 2xl:grid-cols-3">
           {rows.map((r) => (
             <RegistryCard
               key={r.id}

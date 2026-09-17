@@ -7,19 +7,19 @@ const ROW_FILL = [
   "",
   "hidden sm:flex",
   "hidden sm:flex",
-  "hidden 3xl:flex",
-  "hidden 3xl:flex",
+  "hidden 2xl:flex",
+  "hidden 2xl:flex",
 ];
 
 export default function Loading() {
   return (
     <div
-      className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_300px]"
+      className="grid gap-6 2xl:grid-cols-[minmax(0,1fr)_300px]"
       role="status"
       aria-busy
       aria-label="Loading dashboard"
     >
-      <div className="order-2 space-y-6 lg:order-2">
+      <div className="order-2 hidden space-y-6 2xl:block">
         <Card>
           <CardHeader className="pb-3">
             <Skeleton className="h-4 w-28" />
@@ -39,7 +39,7 @@ export default function Loading() {
         </Card>
       </div>
 
-      <div className="order-1 space-y-5 lg:order-1">
+      <div className="order-1 space-y-5">
         <div className="flex items-center justify-between gap-3">
           <Skeleton className="h-8 w-28" />
           <Skeleton className="h-8 w-28 rounded-md" />
@@ -51,7 +51,7 @@ export default function Loading() {
           <Skeleton className="hidden size-9 rounded-md sm:block" />
         </div>
 
-        <div className="grid gap-4 sm:grid-cols-2 3xl:grid-cols-3">
+        <div className="grid gap-4 sm:grid-cols-2 2xl:grid-cols-3">
           {ROW_FILL.map((fill, i) => (
             <Card key={i} className={cn("flex flex-col gap-4 p-5", fill)}>
               <div className="flex items-start justify-between gap-3">

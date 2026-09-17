@@ -6,8 +6,8 @@ const ROW_FILL = [
   "",
   "hidden sm:block",
   "hidden sm:block",
-  "hidden 3xl:block",
-  "hidden 3xl:block",
+  "hidden lg:block",
+  "hidden lg:block",
 ];
 
 export default function Loading() {

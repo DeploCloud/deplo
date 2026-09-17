@@ -166,7 +166,7 @@ export function UsersPanel({
           description="No account matches the current search and filters."
         />
       ) : view === "grid" ? (
-        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
           {shown.map((u) => (
             <UserRow
               key={u.userId}

@@ -35,5 +35,5 @@ export type GridProps = AppsGridProps & {
 export function gridClass(view: "grid" | "list"): string {
   return view === "list"
     ? "flex flex-col gap-3"
-    : "grid gap-4 sm:grid-cols-2 3xl:grid-cols-3";
+    : "grid gap-4 sm:grid-cols-2 2xl:grid-cols-3";
 }
