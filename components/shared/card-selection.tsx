@@ -7,7 +7,7 @@ import { cn } from "@/lib/utils";
 import type { CardSelection } from "@/components/shared/use-card-selection";
 
 export const MARQUEE_BOX =
-  "pointer-events-none absolute z-20 hidden rounded-xl border-2 border-primary";
+  "pointer-events-none absolute z-10 hidden rounded-xl border-2 border-primary";
 
 export const SELECTED_RING =
   "ring-2 ring-primary ring-offset-2 ring-offset-background";

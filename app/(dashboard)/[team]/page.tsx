@@ -213,7 +213,7 @@ export default async function OverviewPage(props: PageProps<"/[team]">) {
   ].join("|");
 
   return (
-    <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_300px]">
+    <div className="grid gap-6 3xl:grid-cols-[minmax(0,1fr)_300px]">
       <WelcomeCelebration
         show={welcome === "1" || firstRun}
         takeoverOf={takenOverFrom?.slice(0, 40) || null}
@@ -221,7 +221,7 @@ export default async function OverviewPage(props: PageProps<"/[team]">) {
       {canDeploy && (
         <ArchiveDropZone href={newAppHref(placement, { source: "upload" })} />
       )}
-      <div className="relative z-30 order-2 space-y-6 lg:order-2">
+      <div className="relative z-20 order-2 hidden space-y-6 3xl:block">
         <Card>
           <CardHeader className="pb-3">
             <CardTitle className="text-sm lg:text-sm">
@@ -258,7 +258,7 @@ export default async function OverviewPage(props: PageProps<"/[team]">) {
         </Card>
       </div>
 
-      <div className="order-1 space-y-5 lg:order-1">
+      <div className="order-1 space-y-5">
         <PageHeader
           title="Overview"
           actions={
