@@ -1,4 +1,4 @@
-import { Activity as ActivityIcon } from "lucide-react";
+import { History as ActivityIcon } from "lucide-react";
 
 import {
   activityCountsByActor,

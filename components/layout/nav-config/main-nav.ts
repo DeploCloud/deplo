@@ -5,7 +5,7 @@ import {
   Database,
   LayoutTemplate,
   Activity,
-  LineChart,
+  History,
   Braces,
 } from "lucide-react";
 
@@ -65,14 +65,14 @@ export const NAV: NavSection[] = [
       {
         label: "Activity",
         href: "/activity",
-        icon: Activity,
+        icon: History,
         tooltip: "Audit log of workspace events",
         requires: "view_activity",
       },
       {
         label: "Monitoring",
         href: "/monitoring",
-        icon: LineChart,
+        icon: Activity,
         tooltip: "Real-time server metrics",
         requires: "view_metrics",
       },

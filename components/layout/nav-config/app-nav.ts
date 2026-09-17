@@ -6,7 +6,7 @@ import {
   ScrollText,
   Settings,
   Activity,
-  LineChart,
+  History,
   Braces,
   Globe,
   SquareTerminal,
@@ -97,7 +97,7 @@ export function appNav(slug: string, f: AppNavFlags): NavSection[] {
     {
       label: "Monitoring",
       href: `${base}/monitoring`,
-      icon: LineChart,
+      icon: Activity,
       tooltip: "Live resource usage",
       requires: "view_metrics",
     },
@@ -110,7 +110,7 @@ export function appNav(slug: string, f: AppNavFlags): NavSection[] {
     {
       label: "Activity",
       href: `${base}/activity`,
-      icon: Activity,
+      icon: History,
       tooltip: "Who changed what, and when",
       requires: "view_activity",
     },

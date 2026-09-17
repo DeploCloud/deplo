@@ -116,36 +116,39 @@ export function Sidebar({
         )}
 
         {menu === "main" && (
-          <div className="space-y-0.5 border-t border-border p-2">
-            <Tooltip delayDuration={400}>
-              <TooltipTrigger asChild>
-                <a
-                  href={docsUrl("docs.home")}
-                  target="_blank"
-                  rel="noreferrer"
-                  aria-label="Documentation"
-                  className={FOOTER_LINK}
-                >
-                  <BookOpen className="size-4 shrink-0 group-hover:text-foreground" />
-                  Documentation
-                </a>
-              </TooltipTrigger>
-              <TooltipContent side="right">Documentation</TooltipContent>
-            </Tooltip>
-            <Tooltip delayDuration={400}>
-              <TooltipTrigger asChild>
-                <Link
-                  href="/settings"
-                  aria-label="Settings"
-                  className={FOOTER_LINK}
-                >
-                  <Settings className="size-4 shrink-0 group-hover:text-foreground" />
-                  Settings
-                </Link>
-              </TooltipTrigger>
-              <TooltipContent side="right">Settings</TooltipContent>
-            </Tooltip>
-          </div>
+          <>
+            <hr className="mx-2 border-t border-sidebar-border" />
+            <div className="space-y-0.5 p-2">
+              <Tooltip delayDuration={400}>
+                <TooltipTrigger asChild>
+                  <a
+                    href={docsUrl("docs.home")}
+                    target="_blank"
+                    rel="noreferrer"
+                    aria-label="Documentation"
+                    className={FOOTER_LINK}
+                  >
+                    <BookOpen className="size-4 shrink-0 group-hover:text-foreground" />
+                    Documentation
+                  </a>
+                </TooltipTrigger>
+                <TooltipContent side="right">Documentation</TooltipContent>
+              </Tooltip>
+              <Tooltip delayDuration={400}>
+                <TooltipTrigger asChild>
+                  <Link
+                    href="/settings"
+                    aria-label="Settings"
+                    className={FOOTER_LINK}
+                  >
+                    <Settings className="size-4 shrink-0 group-hover:text-foreground" />
+                    Settings
+                  </Link>
+                </TooltipTrigger>
+                <TooltipContent side="right">Settings</TooltipContent>
+              </Tooltip>
+            </div>
+          </>
         )}
       </div>
 

@@ -4,7 +4,7 @@ import {
   ScrollText,
   Settings,
   Activity,
-  LineChart,
+  History,
   SquareTerminal,
   Archive,
   Settings2,
@@ -60,7 +60,7 @@ export function databaseNav(
         {
           label: "Monitoring",
           href: `${base}/monitoring`,
-          icon: LineChart,
+          icon: Activity,
           tooltip: "Live resource usage",
         },
         ...itemIf(f.consoleAcknowledged || onConsole, {
@@ -87,7 +87,7 @@ export function databaseNav(
         {
           label: "Activity",
           href: `${base}/activity`,
-          icon: Activity,
+          icon: History,
           tooltip: "Who changed what, and when",
           requires: "view_activity",
         },
