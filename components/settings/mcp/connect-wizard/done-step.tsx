@@ -23,7 +23,7 @@ export function DoneStep({
       <RobotGraphic
         state={connected ? "connected" : "reaching"}
         accent={agent.veil}
-        className="h-48 w-auto"
+        className="h-64 w-auto sm:h-80"
       />
 
       <div>
