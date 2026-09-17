@@ -236,6 +236,7 @@ function DisconnectedNotification() {
         <span className="mx-1.5 h-5 w-px bg-border" />
         <Button
           size="sm"
+          variant="secondary"
           className="relative overflow-hidden rounded-full"
           onClick={() => (restored ? window.location.reload() : retryNow())}
         >
@@ -243,7 +244,7 @@ function DisconnectedNotification() {
             <span
               key={cycleKey}
               aria-hidden
-              className="absolute inset-0 origin-left bg-[color-mix(in_srgb,var(--primary-foreground)_20%,var(--primary))] motion-reduce:hidden"
+              className="absolute inset-0 origin-left bg-[color-mix(in_srgb,var(--foreground)_12%,var(--secondary))] motion-reduce:hidden"
               style={{
                 animation: `reconnect-progress ${cycleMs}ms linear forwards`,
               }}

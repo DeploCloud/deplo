@@ -418,10 +418,10 @@ function LooksLikeSecretBadge() {
   return (
     <SimpleTooltip content="This name usually holds a credential. Edit it and turn on Secret: the value is then write-only and nothing shows it again.">
       <Badge
-        variant="outline"
+        variant="warning"
         className="text-[10px] font-normal whitespace-nowrap"
       >
-        Secret?
+        Warning
       </Badge>
     </SimpleTooltip>
   );
