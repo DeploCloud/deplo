@@ -211,96 +211,63 @@ function DisconnectedNotification() {
 
   useBlockNavigationWhileDisconnected(!restored);
 
-  const tone = restored
-    ? {
-        core: "border-emerald-500/30 bg-emerald-500/15 text-emerald-500",
-        glow: "#10b981",
-      }
-    : {
-        core: "border-destructive/30 bg-destructive-wash-strong text-destructive",
-        glow: "var(--destructive)",
-      };
-
   return createPortal(
-    <div className="pointer-events-none fixed inset-x-0 bottom-0 z-[2147483647] flex justify-center p-4">
+    <div className="pointer-events-none fixed inset-x-0 bottom-6 z-[2147483647] flex justify-center px-4">
       <div
         role="status"
         aria-live="polite"
         aria-labelledby="server-connection-lost-title"
-        aria-describedby="server-connection-lost-description"
-        className="pointer-events-auto relative isolate w-full max-w-sm animate-in duration-300 fade-in-0 slide-in-from-bottom-4"
+        className="pointer-events-auto flex animate-in items-center gap-1 rounded-full border border-border bg-popover/95 py-1.5 pr-1.5 pl-4 shadow-lg backdrop-blur duration-300 fade-in-0 slide-in-from-bottom-4 supports-[backdrop-filter]:bg-popover/80"
       >
-        <div
-          aria-hidden
-          className="pointer-events-none absolute -inset-10 -z-10 opacity-80 blur-3xl transition-colors duration-500"
-          style={{
-            background: `radial-gradient(60% 60% at 50% 50%, color-mix(in srgb, ${tone.glow} 40%, transparent), transparent 72%)`,
-          }}
-        />
-
-        <div className="overflow-hidden rounded-xl border border-border bg-card p-3.5 shadow-2xl">
-          <div className="flex items-center gap-2.5">
+        {restored ? (
+          <Wifi className="size-4 shrink-0 text-[var(--success)]" />
+        ) : (
+          <WifiOff className="size-4 shrink-0 text-destructive" />
+        )}
+        <span
+          id="server-connection-lost-title"
+          className="ml-1.5 text-sm font-medium whitespace-nowrap"
+        >
+          {restored ? "Back online" : "Connection lost"}
+        </span>
+        <span className="hidden text-sm whitespace-nowrap text-muted-foreground sm:inline">
+          {restored ? "· reloading" : "· actions paused"}
+        </span>
+        <span className="mx-1.5 h-5 w-px bg-border" />
+        <Button
+          size="sm"
+          className="relative overflow-hidden rounded-full"
+          onClick={() => (restored ? window.location.reload() : retryNow())}
+        >
+          {!restored && !checking && (
             <span
-              className={`flex size-7 shrink-0 items-center justify-center rounded-lg border shadow-sm transition-colors duration-500 ${tone.core}`}
-            >
-              {restored ? (
-                <Wifi className="size-4 animate-in duration-300 zoom-in-50" />
-              ) : (
-                <WifiOff className="size-4" />
-              )}
-            </span>
-            <h2
-              id="server-connection-lost-title"
-              className="text-sm font-semibold tracking-tight text-foreground"
-            >
-              {restored ? "Back online" : "Connection lost"}
-            </h2>
-          </div>
-
-          <p
-            id="server-connection-lost-description"
-            className="mt-2 text-xs leading-relaxed text-muted-foreground"
-          >
-            {restored
-              ? "Reconnected - reloading to pick up right where you left off."
-              : "Can’t reach the server. You can keep reading this page - navigation and actions are paused until it’s back."}
-          </p>
-
-          <Button
-            size="sm"
-            className="relative mt-3 w-full overflow-hidden"
-            onClick={() => (restored ? window.location.reload() : retryNow())}
-          >
-            {!restored && !checking && (
-              <span
-                key={cycleKey}
-                aria-hidden
-                className="absolute inset-0 origin-left bg-[color-mix(in_srgb,var(--primary-foreground)_20%,var(--primary))] motion-reduce:hidden"
-                style={{
-                  animation: `reconnect-progress ${cycleMs}ms linear forwards`,
-                }}
-              />
+              key={cycleKey}
+              aria-hidden
+              className="absolute inset-0 origin-left bg-[color-mix(in_srgb,var(--primary-foreground)_20%,var(--primary))] motion-reduce:hidden"
+              style={{
+                animation: `reconnect-progress ${cycleMs}ms linear forwards`,
+              }}
+            />
+          )}
+          <span className="relative z-10 inline-flex items-center gap-2">
+            {restored ? (
+              <>
+                <Loader2 className="animate-spin" />
+                Reloading
+              </>
+            ) : checking ? (
+              <>
+                <Loader2 className="animate-spin" />
+                Checking
+              </>
+            ) : (
+              <>
+                <RefreshCw />
+                Retry now
+              </>
             )}
-            <span className="relative z-10 inline-flex items-center gap-2">
-              {restored ? (
-                <>
-                  <Loader2 className="animate-spin" />
-                  Reloading
-                </>
-              ) : checking ? (
-                <>
-                  <Loader2 className="animate-spin" />
-                  Checking
-                </>
-              ) : (
-                <>
-                  <RefreshCw />
-                  Retry now
-                </>
-              )}
-            </span>
-          </Button>
-        </div>
+          </span>
+        </Button>
       </div>
     </div>,
     document.body,
