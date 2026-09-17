@@ -57,6 +57,8 @@ export const databases = pgTable(
     customImage: text("custom_image"),
     customCommand: text("custom_command"),
     cronEnabled: boolean("cron_enabled").notNull().default(false),
+    restartLoopGuard: boolean("restart_loop_guard").notNull().default(true),
+    restartLoopStoppedAt: isoTimestamptz("restart_loop_stopped_at"),
     sizeMb: bigint("size_mb", { mode: "number" }).notNull(),
     createdAt: isoTimestamptz("created_at").notNull(),
   },

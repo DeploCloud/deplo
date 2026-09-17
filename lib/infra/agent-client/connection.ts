@@ -136,7 +136,10 @@ export interface AgentConnection {
   ): AsyncGenerator<MetricsSample, void, unknown>;
   deploy(req: DeployRequest): AsyncGenerator<DeployEvent, void, unknown>;
   reattach(req: ReattachRequest): AsyncGenerator<DeployEvent, void, unknown>;
-  stopStack(slug: string): Promise<{ ok: boolean; error: string }>;
+  stopStack(
+    slug: string,
+    services?: string[],
+  ): Promise<{ ok: boolean; error: string }>;
   startStack(slug: string): Promise<{ ok: boolean; error: string }>;
   destroyStack(
     slug: string,

@@ -10,6 +10,7 @@ import { nowIso } from "../ids";
 import type { ContainerStat as PbContainerStat } from "../agent/gen/agent";
 import type { Deployment } from "../types/deployment";
 import { reportAppHealth } from "../notify/apps";
+import { stopLoopingWorkloads } from "./restart-loop-guard";
 
 const IN_PROGRESS: Deployment["status"][] = ["queued", "building"];
 
@@ -34,12 +35,19 @@ export async function reconcileAppStatusFromTelemetry(
   void reportAppHealth(serverId, crashing, running).catch((e) =>
     console.error("[deplo] app health alerting failed:", e),
   );
+  void stopLoopingWorkloads(serverId, byProject).catch((e) =>
+    console.error("[deplo] restart-loop guard failed:", e),
+  );
   if (running.length === 0) return [];
 
   try {
     const corrected = await getDb()
       .update(appsTable)
-      .set({ status: "active", updatedAt: nowIso() })
+      .set({
+        status: "active",
+        restartLoopStoppedAt: null,
+        updatedAt: nowIso(),
+      })
       .where(
         and(
           inArray(appsTable.id, running),

@@ -37,7 +37,7 @@ export async function setDatabaseRunning(
     if (running && (await rerouteDatabase(id)) === "rerouted") {
       await getDb()
         .update(databasesTable)
-        .set({ status: "running" })
+        .set({ status: "running", restartLoopStoppedAt: null })
         .where(eq(databasesTable.id, id));
       publishDatabaseChanged(id);
       return;
@@ -57,7 +57,10 @@ export async function setDatabaseRunning(
     }
     await getDb()
       .update(databasesTable)
-      .set({ status: running ? "running" : "stopped" })
+      .set({
+        status: running ? "running" : "stopped",
+        ...(running ? { restartLoopStoppedAt: null } : {}),
+      })
       .where(eq(databasesTable.id, id));
     publishDatabaseChanged(id);
   });
@@ -85,7 +88,7 @@ export async function restartDatabase(id: string): Promise<void> {
     }
     await getDb()
       .update(databasesTable)
-      .set({ status: "running" })
+      .set({ status: "running", restartLoopStoppedAt: null })
       .where(eq(databasesTable.id, id));
     publishDatabaseChanged(id);
   });

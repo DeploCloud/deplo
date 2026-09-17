@@ -41,10 +41,10 @@ export function stackRpc(
         { normalise: toAgentError },
       );
     },
-    stopStack(slug: string) {
+    stopStack(slug: string, services: string[] = []) {
       return new Promise<{ ok: boolean; error: string }>((resolve, reject) => {
         client.stopStack(
-          { slug, removeVolumes: false, reclaimVolumes: [] },
+          { slug, removeVolumes: false, reclaimVolumes: [], services },
           new Metadata(),
           { deadline: new Date(Date.now() + STACK_DEADLINE_MS) },
           (err, resp) =>
@@ -57,7 +57,7 @@ export function stackRpc(
     startStack(slug: string) {
       return new Promise<{ ok: boolean; error: string }>((resolve, reject) => {
         client.startStack(
-          { slug, removeVolumes: false, reclaimVolumes: [] },
+          { slug, removeVolumes: false, reclaimVolumes: [], services: [] },
           new Metadata(),
           { deadline: new Date(Date.now() + STACK_DEADLINE_MS) },
           (err, resp) =>
@@ -74,7 +74,7 @@ export function stackRpc(
     ) {
       return new Promise<{ ok: boolean; error: string }>((resolve, reject) => {
         client.destroyStack(
-          { slug, removeVolumes, reclaimVolumes },
+          { slug, removeVolumes, reclaimVolumes, services: [] },
           new Metadata(),
           { deadline: new Date(Date.now() + STACK_DEADLINE_MS) },
           (err, resp) =>
@@ -118,7 +118,7 @@ export function stackRpc(
       return new Promise<{ exists: boolean; yaml: string }>(
         (resolve, reject) => {
           client.readStack(
-            { slug, removeVolumes: false, reclaimVolumes: [] },
+            { slug, removeVolumes: false, reclaimVolumes: [], services: [] },
             (err, resp) =>
               err
                 ? reject(toAgentError(err))

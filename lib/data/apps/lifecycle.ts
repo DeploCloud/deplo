@@ -64,6 +64,10 @@ export async function startApp(id: string): Promise<void> {
 
   // Start is a second door onto the same volumes and skips the deploy pipeline, so it needs the same refusal.
   assertDataCopyIntact(project.name, project.dataCopyError);
+  await getDb()
+    .update(appsTable)
+    .set({ restartLoopStoppedAt: null })
+    .where(eq(appsTable.id, id));
   await setAppStatus(id, "active");
   try {
     // compose start starts what it FINDS, on the network it was created with, so a moved stack must be re-rendered.

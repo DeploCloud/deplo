@@ -223,7 +223,7 @@ export async function commitOutcome(
   await setDeployState(
     target,
     ok && target.kind !== "preview"
-      ? { ...appPatch, pendingChangesAt: null }
+      ? { ...appPatch, pendingChangesAt: null, restartLoopStoppedAt: null }
       : appPatch,
   );
   const what =

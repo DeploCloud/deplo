@@ -26,12 +26,16 @@ export async function owningServerIdForDeployKey(
   return server ? server.id : null;
 }
 
-export async function stopContainer(deployKey: string): Promise<void> {
+// `services` names compose services to stop instead of the whole stack; empty stops everything.
+export async function stopContainer(
+  deployKey: string,
+  services: string[] = [],
+): Promise<void> {
   const serverId = await owningServerIdForDeployKey(deployKey);
   if (!serverId) return;
   const conn = await connectAgent(serverId);
   try {
-    const r = await conn.stopStack(deployKey);
+    const r = await conn.stopStack(deployKey, services);
     if (!r.ok) throw new Error(r.error || "agent failed to stop the stack");
   } finally {
     conn.close();

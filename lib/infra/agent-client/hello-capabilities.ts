@@ -46,3 +46,6 @@ export const CLEANUP_SCOPE_CAPABILITY: Partial<Record<CleanupScope, string>> = {
 export const HOSTOPS_CAPABILITY = "hostops";
 
 export const CONTROL_PLANE_UPDATE_CAPABILITY = "control-plane.update";
+
+// Without it StopStack can only stop a WHOLE stack, so the restart-loop guard leaves a multi-service stack alone.
+export const STOP_SERVICES_CAPABILITY = "stack.stop-services";

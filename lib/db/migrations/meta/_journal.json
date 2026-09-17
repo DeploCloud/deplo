@@ -1135,6 +1135,13 @@
       "when": 1788900600806,
       "tag": "0161_panel_fallback_off",
       "breakpoints": true
+    },
+    {
+      "idx": 162,
+      "version": "7",
+      "when": 1788900601806,
+      "tag": "0162_restart_loop_guard",
+      "breakpoints": true
     }
   ]
 }

@@ -120,6 +120,8 @@ export const apps = pgTable(
     previewRequiredLabels: text("preview_required_labels"),
     cronEnabled: boolean("cron_enabled").notNull().default(false),
     consoleEnabled: boolean("console_enabled").notNull().default(false),
+    restartLoopGuard: boolean("restart_loop_guard").notNull().default(true),
+    restartLoopStoppedAt: isoTimestamptz("restart_loop_stopped_at"),
     latestDeploymentId: text("latest_deployment_id").references(
       (): AnyPgColumn => deployments.id,
       { onDelete: "set null" },

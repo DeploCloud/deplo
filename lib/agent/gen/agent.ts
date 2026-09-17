@@ -850,6 +850,12 @@ export interface StackRef {
    * this can only ever reclaim volumes Deplo itself creates.
    */
   reclaimVolumes: string[];
+  /**
+   * StopStack only: stop just these compose services instead of the whole stack. Empty
+   * stops everything, which is what every caller before the restart-loop guard meant.
+   * Field 4 is ADDITIVE (contract stays V1); gated on the `stack.stop-services` capability.
+   */
+  services: string[];
 }
 
 export interface StackResult {
@@ -5288,7 +5294,7 @@ export const DeployResult: MessageFns<DeployResult> = {
 };
 
 function createBaseStackRef(): StackRef {
-  return { slug: "", removeVolumes: false, reclaimVolumes: [] };
+  return { slug: "", removeVolumes: false, reclaimVolumes: [], services: [] };
 }
 
 export const StackRef: MessageFns<StackRef> = {
@@ -5301,6 +5307,9 @@ export const StackRef: MessageFns<StackRef> = {
     }
     for (const v of message.reclaimVolumes) {
       writer.uint32(26).string(v!);
+    }
+    for (const v of message.services) {
+      writer.uint32(34).string(v!);
     }
     return writer;
   },
@@ -5342,6 +5351,14 @@ export const StackRef: MessageFns<StackRef> = {
             message.reclaimVolumes.push(reader.string());
             continue;
           }
+          case 4: {
+            if (tag !== 34) {
+              break;
+            }
+
+            message.services.push(reader.string());
+            continue;
+          }
         }
         if ((tag & 7) === 4 || tag === 0) {
           break;
@@ -5367,6 +5384,7 @@ export const StackRef: MessageFns<StackRef> = {
         : globalThis.Array.isArray(object?.reclaim_volumes)
         ? object.reclaim_volumes.map((e: any) => globalThis.String(e))
         : [],
+      services: globalThis.Array.isArray(object?.services) ? object.services.map((e: any) => globalThis.String(e)) : [],
     };
   },
 
@@ -5381,6 +5399,9 @@ export const StackRef: MessageFns<StackRef> = {
     if (message.reclaimVolumes?.length) {
       obj.reclaimVolumes = message.reclaimVolumes;
     }
+    if (message.services?.length) {
+      obj.services = message.services;
+    }
     return obj;
   },
 
@@ -5392,6 +5413,7 @@ export const StackRef: MessageFns<StackRef> = {
     message.slug = object.slug ?? "";
     message.removeVolumes = object.removeVolumes ?? false;
     message.reclaimVolumes = object.reclaimVolumes?.map((e) => e) || [];
+    message.services = object.services?.map((e) => e) || [];
     return message;
   },
 };
