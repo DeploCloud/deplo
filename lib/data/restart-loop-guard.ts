@@ -176,7 +176,7 @@ function noDeployInFlight() {
   );
 }
 
-function guardedApps(serverId: string, ids: string[]) {
+export function guardedApps(serverId: string, ids: string[]) {
   return getDb()
     .select({
       id: appsTable.id,
@@ -199,7 +199,7 @@ function guardedApps(serverId: string, ids: string[]) {
     );
 }
 
-function guardedDatabases(serverId: string, ids: string[]) {
+export function guardedDatabases(serverId: string, ids: string[]) {
   return getDb()
     .select({
       id: databasesTable.id,
