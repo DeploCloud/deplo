@@ -179,9 +179,7 @@ export function SidebarNav({
               {section.title}
             </div>
           ) : (
-            i > 0 && (
-              <hr className="-mx-2 my-2 border-t border-sidebar-border" />
-            )
+            i > 0 && <hr className="my-2 border-t border-sidebar-border" />
           )}
           {section.items.map((item) => {
             const active = isActive(item.href, item.exact);
