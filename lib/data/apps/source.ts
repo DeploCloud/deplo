@@ -211,6 +211,7 @@ export async function updateAppSource(
                   hostReachBy: editReach.length > 0 ? user.id : null,
                 }
               : {}),
+            pendingChangesAt: nowIso(),
             updatedAt: nowIso(),
           })
           .where(eq(appsTable.id, id));

@@ -22,6 +22,7 @@ import { envVars as envVarsTable } from "../db/schema/control-plane/env-vars";
 import { eq } from "drizzle-orm";
 import { upsertEnv, deleteEnv } from "./env";
 import { updateAppResources } from "./apps/resources";
+import { updateAppSource } from "./apps/source";
 import {
   dismissPendingChanges,
   markPendingChangesForSharedVar,
@@ -93,6 +94,19 @@ test("an env write stamps the app, a delete stamps it again", async () => {
 test("a setting that only a deploy applies stamps the app", async () => {
   await seedApp(db, { id: "prj_1", teamId: TEAM_A });
   await asUser1(() => updateAppResources("prj_1", { memoryMb: 512 }));
+  assert.notEqual(await pendingAt("prj_1"), null);
+});
+
+test("editing the compose stamps the app", async () => {
+  await seedApp(db, { id: "prj_1", teamId: TEAM_A, source: "compose" });
+  await asUser1(() =>
+    updateAppSource("prj_1", {
+      source: "compose",
+      repo: null,
+      dockerImage: null,
+      compose: "services:\n  web:\n    image: nginx\n",
+    }),
+  );
   assert.notEqual(await pendingAt("prj_1"), null);
 });
 
