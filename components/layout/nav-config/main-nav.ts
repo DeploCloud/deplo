@@ -37,7 +37,6 @@ export const NAV: NavSection[] = [
     ],
   },
   {
-    title: "Infrastructure",
     items: [
       {
         label: "Storage",
@@ -62,7 +61,6 @@ export const NAV: NavSection[] = [
     ],
   },
   {
-    title: "Workspace",
     items: [
       {
         label: "Activity",
