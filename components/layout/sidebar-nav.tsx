@@ -164,11 +164,7 @@ export function SidebarNav({
   return (
     <nav
       ref={navRef}
-      className={cn(
-        "relative isolate flex flex-col pt-1 pb-3",
-        collapsed ? "px-2" : "px-3",
-        slide,
-      )}
+      className={cn("relative isolate flex flex-col px-2 pt-1 pb-3", slide)}
     >
       <SlidingBackground rect={bgRect} />
       {rendered.map((section, i) => (

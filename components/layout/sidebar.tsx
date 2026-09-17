@@ -89,7 +89,7 @@ export function Sidebar({
           </Tooltip>
         </div>
 
-        <div className="px-3 pb-1">
+        <div className="px-2 pb-1">
           <SearchTrigger />
         </div>
 
@@ -98,7 +98,7 @@ export function Sidebar({
         </div>
 
         {menu === "main" && (
-          <div className="px-3 pb-2">
+          <div className="px-2 pb-2">
             <SidebarTips
               hasSecondFactor={hasSecondFactor}
               capabilities={capabilities}
