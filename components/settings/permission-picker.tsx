@@ -128,7 +128,7 @@ export function PermissionPicker({
 
       {sections.length === 0 && !viewShown ? (
         <p className="rounded-lg border border-dashed border-border px-3 py-8 text-center text-sm text-muted-foreground">
-          No permission matches “{query}”.
+          No permission matches your search.
         </p>
       ) : (
         <div

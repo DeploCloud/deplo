@@ -119,7 +119,7 @@ export default async function AppPullRequestsPage(
             graphic={<PullRequestGraphic />}
             title="No pull request previews yet"
             docs="previews.overview"
-            description={`Open a pull request against ${view.branch} and Deplo builds it a preview with its own URL, then posts the link on the pull request.`}
+            description="Open a pull request against this app's deploy branch and Deplo builds it a preview with its own URL, then posts the link on the pull request."
           />
         ) : (
           <PreviewsTable

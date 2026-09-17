@@ -309,7 +309,7 @@ export default async function OverviewPage(props: PageProps<"/[team]">) {
             <EmptyState
               icon={Rocket}
               title="No apps match your search"
-              description={`Nothing found for “${query}”.`}
+              description="Try a different search, or clear it to see everything."
             />
           ) : openFolder ? (
             <div className="space-y-6">
@@ -318,7 +318,7 @@ export default async function OverviewPage(props: PageProps<"/[team]">) {
               </div>
               <EmptyState
                 icon={Folder}
-                title={`${openFolder.name} is empty`}
+                title="This folder is empty"
                 description={
                   canDeploy
                     ? "Create an app here, drag apps onto this folder from the Overview, or use an app’s “Move to folder” menu."
@@ -352,8 +352,8 @@ export default async function OverviewPage(props: PageProps<"/[team]">) {
                 icon={Boxes}
                 title={
                   selectedEnv
-                    ? `No apps in ${selectedEnv.name}`
-                    : `${openProject.name} is empty`
+                    ? "No apps in this environment"
+                    : "This project is empty"
                 }
                 description={
                   canDeploy

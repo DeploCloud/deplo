@@ -53,7 +53,7 @@ export function AppsSection({
       {shown.length === 0 ? (
         <p className="text-xs text-muted-foreground">
           {q.trim()
-            ? `No app matches “${q.trim()}”.`
+            ? "No app matches your search."
             : "This team has no apps yet."}
         </p>
       ) : (

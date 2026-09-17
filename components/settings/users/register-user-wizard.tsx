@@ -320,7 +320,7 @@ export function RegisterUserWizard({
                   {!loadingTeams && shownTeams.length === 0 && (
                     <p className="rounded-lg border border-dashed border-border px-3 py-6 text-center text-sm text-muted-foreground">
                       {teamFilter
-                        ? `No team matches “${teamQuery.trim()}”.`
+                        ? "No team matches your search."
                         : "You are not in any team yet."}
                     </p>
                   )}

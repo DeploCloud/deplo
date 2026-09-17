@@ -68,7 +68,7 @@ export function ProjectsSection({
       {shown.length === 0 && (
         <p className="text-xs text-muted-foreground">
           {q.trim()
-            ? `No project matches “${q.trim()}”.`
+            ? "No project matches your search."
             : "This team has no projects yet."}
         </p>
       )}
