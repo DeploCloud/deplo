@@ -200,7 +200,7 @@ export function ProjectContainerCard({
   );
 
   const actions = (
-    <div className="pointer-events-auto relative z-10 flex items-center gap-1">
+    <div className="pointer-events-auto relative z-10 flex items-center gap-1 self-center">
       {dragHandle}
       <DropdownMenu>
         <div
