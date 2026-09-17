@@ -27,6 +27,7 @@ type SidebarState = {
   peek: number;
   toggle: () => void;
   startResize: (e: React.PointerEvent) => void;
+  resetWidth: () => void;
 };
 
 const SidebarContext = React.createContext<SidebarState | null>(null);
@@ -65,6 +66,14 @@ export function SidebarProvider({ children }: { children: React.ReactNode }) {
       } catch {}
       return { ...prev, collapsed: next };
     });
+  }, []);
+
+  const resetWidth = React.useCallback(() => {
+    widthRef.current = DEFAULT_WIDTH;
+    setState((prev) => ({ ...prev, width: DEFAULT_WIDTH }));
+    try {
+      window.localStorage.setItem(WIDTH_KEY, String(DEFAULT_WIDTH));
+    } catch {}
   }, []);
 
   const startResize = React.useCallback((e: React.PointerEvent) => {
@@ -114,8 +123,9 @@ export function SidebarProvider({ children }: { children: React.ReactNode }) {
       peek: drag.peek,
       toggle,
       startResize,
+      resetWidth,
     }),
-    [state, drag, toggle, startResize],
+    [state, drag, toggle, startResize, resetWidth],
   );
 
   return (

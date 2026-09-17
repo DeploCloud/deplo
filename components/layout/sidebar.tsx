@@ -37,8 +37,16 @@ export function Sidebar({
   hasSecondFactor?: boolean;
 }) {
   const { menu } = sidebarMenuFor(useFlatPathname());
-  const { collapsed, hydrated, width, peek, dragging, toggle, startResize } =
-    useSidebar();
+  const {
+    collapsed,
+    hydrated,
+    width,
+    peek,
+    dragging,
+    toggle,
+    startResize,
+    resetWidth,
+  } = useSidebar();
   return (
     <aside
       data-collapsed={collapsed}
@@ -143,6 +151,8 @@ export function Sidebar({
 
       <div
         onPointerDown={startResize}
+        onDoubleClick={resetWidth}
+        title="Double-click to reset the width"
         role="separator"
         aria-orientation="vertical"
         aria-label="Resize sidebar"
