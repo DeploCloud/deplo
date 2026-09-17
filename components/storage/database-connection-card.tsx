@@ -77,7 +77,7 @@ export function DatabaseConnectionCard({
           canReveal={canReveal}
         />
 
-        <div className="grid gap-5 sm:grid-cols-2">
+        <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
           <div className="min-w-0">
             <AddressLabel
               label="Internal"
@@ -89,7 +89,7 @@ export function DatabaseConnectionCard({
             </div>
           </div>
 
-          <div className="min-w-0 space-y-3">
+          <div className="min-w-0">
             <div className="flex items-start justify-between gap-3">
               <div className="min-w-0">
                 <AddressLabel
@@ -120,15 +120,17 @@ export function DatabaseConnectionCard({
                 canConfigure={canConfigure}
               />
             </div>
+          </div>
 
-            {exposure.exposed && (
+          {exposure.exposed && (
+            <div className="min-w-0">
               <ExposurePortRow
                 exposure={exposure}
                 canExposePorts={canExposePorts}
                 canConfigure={canConfigure}
               />
-            )}
-          </div>
+            </div>
+          )}
         </div>
 
         <dl className="grid grid-cols-2 items-start gap-x-6 gap-y-4 border-t border-border pt-4 text-sm lg:grid-cols-3">
