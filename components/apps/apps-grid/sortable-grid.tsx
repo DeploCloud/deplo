@@ -11,12 +11,10 @@ import {
   TouchSensor,
   useSensor,
   useSensors,
-  defaultDropAnimationSideEffects,
   type CollisionDetection,
   type DragEndEvent,
   type DragOverEvent,
   type DragStartEvent,
-  type DropAnimation,
 } from "@dnd-kit/core";
 import {
   SortableContext,
@@ -30,7 +28,7 @@ import { ProjectContainerCard } from "../project-container-card";
 import { CreateFolderDialog } from "../create-folder-dialog";
 import { useCardSelection } from "@/components/shared/use-card-selection";
 import { MARQUEE_BOX } from "@/components/shared/card-selection";
-import { DragStack } from "@/components/shared/drag-stack";
+import { DragStack, DRAG_DROP_ANIMATION } from "@/components/shared/drag-stack";
 import { cn } from "@/lib/utils";
 import { gridClass, type GridProps } from "./grid-contract";
 import { DroppableBreadcrumb, UNGROUP_DROP_ID } from "./folder-trail";
@@ -39,12 +37,6 @@ import { SelectionActionBar, type SelectionBulk } from "./selection-action-bar";
 import { BulkDeleteConfirm } from "./bulk-delete-confirm";
 import { useGridArrangement } from "./grid-arrangement";
 import { useGridMutations } from "./grid-mutations";
-
-const DRAG_DROP_ANIMATION: DropAnimation = {
-  sideEffects: defaultDropAnimationSideEffects({
-    styles: { active: { opacity: "0.4" } },
-  }),
-};
 
 export function SortableGrid({
   services,

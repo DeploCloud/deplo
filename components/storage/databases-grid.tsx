@@ -12,10 +12,8 @@ import {
   TouchSensor,
   useSensor,
   useSensors,
-  defaultDropAnimationSideEffects,
   type DragEndEvent,
   type DragStartEvent,
-  type DropAnimation,
 } from "@dnd-kit/core";
 import {
   SortableContext,
@@ -51,7 +49,7 @@ import {
   SELECTED_RING,
   useSelectionShortcuts,
 } from "@/components/shared/card-selection";
-import { DragStack } from "@/components/shared/drag-stack";
+import { DragStack, DRAG_DROP_ANIMATION } from "@/components/shared/drag-stack";
 import {
   PendingCards,
   usePendingCreate,
@@ -391,12 +389,6 @@ export function DatabasesGrid({
 }
 
 const DELETE_DATABASE = `mutation($id: String!) { deleteDatabase(id: $id) }`;
-
-const DRAG_DROP_ANIMATION: DropAnimation = {
-  sideEffects: defaultDropAnimationSideEffects({
-    styles: { active: { opacity: "0.4" } },
-  }),
-};
 
 function DatabaseBulkActions({
   canControl,

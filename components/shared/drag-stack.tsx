@@ -1,3 +1,17 @@
+import {
+  defaultDropAnimationSideEffects,
+  type DropAnimation,
+} from "@dnd-kit/core";
+
+/** Shared by every card grid: a decelerating drop, never dnd-kit's overshoot. */
+export const DRAG_DROP_ANIMATION: DropAnimation = {
+  duration: 260,
+  easing: "cubic-bezier(0.2, 0, 0, 1)",
+  sideEffects: defaultDropAnimationSideEffects({
+    styles: { active: { opacity: "0.4" } },
+  }),
+};
+
 import { cn } from "@/lib/utils";
 
 export function DragStack({
