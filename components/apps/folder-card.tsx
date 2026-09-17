@@ -316,7 +316,7 @@ export function FolderCard({
 
   const actions =
     canManageThisFolder || canShare || bulk.available ? (
-      <div className="pointer-events-auto relative z-10 flex items-center gap-1 self-center">
+      <div className="pointer-events-auto relative z-10 flex items-center gap-1 self-center [&_button:hover]:bg-card-hover">
         {dragHandle}
         <div
           data-card-actions

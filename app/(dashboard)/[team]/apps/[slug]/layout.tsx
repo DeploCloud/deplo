@@ -1,12 +1,9 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
-import { ExternalLink } from "lucide-react";
 import { getAppBySlug } from "@/lib/data/apps/listing";
 import { appCapabilities } from "@/lib/data/node-access";
 import { appTypeLabel, truncate } from "@/lib/utils";
 import { AppCapabilitiesProvider } from "@/components/apps/app-capabilities";
-import { Button } from "@/components/ui/button";
-import { SimpleTooltip } from "@/components/ui/tooltip";
 import { AppLogo } from "@/components/shared/project-logo";
 import { LogoEditLink } from "@/components/shared/logo-edit-link";
 import { RedeployButton } from "@/components/apps/redeploy-button";
@@ -95,20 +92,6 @@ export default async function AppLayout(
                   </div>
                 </div>
                 <div className="flex flex-wrap items-center gap-2">
-                  {project.productionUrl && (
-                    <SimpleTooltip content="Open the live site in a new tab">
-                      <Button variant="default" size="sm" asChild>
-                        <a
-                          href={project.productionUrl}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                        >
-                          <ExternalLink className="size-4" />
-                          Visit
-                        </a>
-                      </Button>
-                    </SimpleTooltip>
-                  )}
                   <AppControls appId={project.id} status={project.status} />
                   <RedeployButton
                     appId={project.id}

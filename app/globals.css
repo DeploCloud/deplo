@@ -209,6 +209,7 @@
   /* Filled washes: a tint composed ONTO the page, never an alpha - the dotted
      ground sits under every page and shows through anything translucent.
      `-strong` is the same hue one step up (selected/hover). */
+  --color-card-hover: color-mix(in srgb, var(--foreground) 5%, var(--card));
   --color-surface: color-mix(in srgb, var(--muted) 35%, var(--background));
   --color-surface-strong: color-mix(
     in srgb,
