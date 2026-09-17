@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { Info } from "lucide-react";
+import { Info, TriangleAlert } from "lucide-react";
 import { Label } from "@/components/ui/label";
 import {
   Tooltip,
@@ -21,6 +21,7 @@ export function InfoTip({
   side = "top",
   className,
   label = "More information",
+  tone = "info",
 }: {
   content: React.ReactNode;
   docs?: DocsTopic;
@@ -28,7 +29,9 @@ export function InfoTip({
   side?: Side;
   className?: string;
   label?: string;
+  tone?: "info" | "warning";
 }) {
+  const Icon = tone === "warning" ? TriangleAlert : Info;
   return (
     <Tooltip>
       <TooltipTrigger asChild>
@@ -37,11 +40,14 @@ export function InfoTip({
           aria-label={label}
           data-hint-trigger=""
           className={cn(
-            "inline-flex size-3.5 shrink-0 cursor-help items-center justify-center rounded-full text-muted-foreground/70 transition-colors outline-none hover:text-foreground focus-visible:text-foreground focus-visible:ring-2 focus-visible:ring-ring",
+            "inline-flex size-3.5 shrink-0 cursor-help items-center justify-center rounded-full transition-colors outline-none focus-visible:ring-2 focus-visible:ring-ring",
+            tone === "warning"
+              ? "text-[var(--warning)] hover:text-[var(--warning)] focus-visible:text-[var(--warning)]"
+              : "text-muted-foreground/70 hover:text-foreground focus-visible:text-foreground",
             className,
           )}
         >
-          <Info className="size-3.5" aria-hidden />
+          <Icon className="size-3.5" aria-hidden />
         </button>
       </TooltipTrigger>
       <TooltipContent side={side} className="max-w-xs leading-6">
