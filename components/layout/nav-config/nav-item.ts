@@ -35,6 +35,8 @@ export interface NavSection {
   title?: string;
   items: NavItem[];
   iconless?: boolean;
+  /** A lone "Back to …" link: the section after it needs no divider. */
+  backLink?: boolean;
 }
 
 export function backSection(
@@ -44,6 +46,7 @@ export function backSection(
   back = false,
 ): NavSection {
   return {
+    backLink: true,
     items: [
       {
         label,

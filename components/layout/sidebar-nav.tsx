@@ -168,7 +168,13 @@ export function SidebarNav({
     >
       <SlidingBackground rect={bgRect} />
       {rendered.map((section, i) => (
-        <div key={i} className="flex flex-col gap-0.5">
+        <div
+          key={i}
+          className={cn(
+            "flex flex-col gap-0.5",
+            rendered[i - 1]?.backLink && "pt-0.5",
+          )}
+        >
           {section.title && !collapsed ? (
             <div
               className={cn(
@@ -179,7 +185,10 @@ export function SidebarNav({
               {section.title}
             </div>
           ) : (
-            i > 0 && <hr className="my-2 border-t border-sidebar-border" />
+            i > 0 &&
+            !rendered[i - 1]?.backLink && (
+              <hr className="my-2 border-t border-sidebar-border" />
+            )
           )}
           {section.items.map((item) => {
             const active = isActive(item.href, item.exact);
