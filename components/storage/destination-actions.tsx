@@ -3,13 +3,7 @@
 import * as React from "react";
 import { useRouter } from "@/lib/nav";
 import { toast } from "sonner";
-import {
-  KeyRound,
-  MoreHorizontal,
-  PlugZap,
-  ScrollText,
-  Trash2,
-} from "lucide-react";
+import { KeyRound, Logs, MoreHorizontal, PlugZap, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -197,7 +191,7 @@ export function useDestinationActions({
             disabled={!canManage}
             onSelect={() => setLogOpen(true)}
           >
-            <ScrollText className="size-4" />
+            <Logs className="size-4" />
             Connection log
           </DropdownMenuItem>
         </SimpleTooltip>

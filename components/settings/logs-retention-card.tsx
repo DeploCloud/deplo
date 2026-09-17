@@ -3,7 +3,7 @@
 import * as React from "react";
 import { useRouter } from "@/lib/nav";
 import { toast } from "sonner";
-import { Save, ScrollText } from "lucide-react";
+import { Logs, Save } from "lucide-react";
 import {
   Card,
   CardContent,
@@ -60,7 +60,7 @@ export function LogsRetentionCard({ logMaxDays }: { logMaxDays: number }) {
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2 text-base">
-            <ScrollText className="size-4 text-muted-foreground" />
+            <Logs className="size-4 text-muted-foreground" />
             Logs
           </CardTitle>
           <CardDescription>

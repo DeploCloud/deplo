@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { ScrollText } from "lucide-react";
+import { Logs } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -111,7 +111,7 @@ export function MigrationsHistory({ runs }: { runs: ImportRun[] }) {
                     size="sm"
                     onClick={() => setOpen(r)}
                   >
-                    <ScrollText className="size-4" />
+                    <Logs className="size-4" />
                     Show log
                   </Button>
                 </TableCell>

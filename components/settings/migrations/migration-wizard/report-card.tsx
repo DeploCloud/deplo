@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { ScrollText, TriangleAlert } from "lucide-react";
+import { Logs, TriangleAlert } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -102,7 +102,7 @@ export function ReportCard({
       />
       <div className="flex flex-wrap items-center justify-between gap-2">
         <Button variant="outline" onClick={onShowLog}>
-          <ScrollText className="size-4" />
+          <Logs className="size-4" />
           Show log
         </Button>
         <Button onClick={onContinue}>Continue</Button>

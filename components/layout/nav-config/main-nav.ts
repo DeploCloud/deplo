@@ -1,7 +1,7 @@
 import {
   LayoutGrid,
   Rocket,
-  ScrollText,
+  Logs,
   Database,
   LayoutTemplate,
   Activity,
@@ -30,7 +30,7 @@ export const NAV: NavSection[] = [
       {
         label: "Logs",
         href: "/logs",
-        icon: ScrollText,
+        icon: Logs,
         tooltip: "Runtime and build logs",
         requires: "view_logs",
       },

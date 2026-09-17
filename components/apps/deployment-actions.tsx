@@ -7,7 +7,7 @@ import { toast } from "sonner";
 import {
   MoreHorizontal,
   ExternalLink,
-  ScrollText,
+  Logs,
   RotateCw,
   Undo2,
   GitPullRequest,
@@ -124,7 +124,7 @@ export function DeploymentActions({
         <SimpleTooltip content="Open this deployment - build logs & details">
           <Button variant="ghost" size="icon-sm" asChild>
             <Link href={detailHref} aria-label="Open deployment">
-              <ScrollText className="size-4" />
+              <Logs className="size-4" />
             </Link>
           </Button>
         </SimpleTooltip>

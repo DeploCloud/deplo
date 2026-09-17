@@ -2,14 +2,7 @@
 
 import * as React from "react";
 import { useRouter } from "@/lib/nav";
-import {
-  Cloud,
-  Lock,
-  RotateCw,
-  ScrollText,
-  Server,
-  ShieldOff,
-} from "lucide-react";
+import { Cloud, Lock, Logs, RotateCw, Server, ShieldOff } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -176,7 +169,7 @@ export function DestinationCard({
               onClick={openLog}
               className="flex w-full items-start gap-2 rounded-lg border border-destructive/30 bg-destructive-wash p-3 text-left transition-colors hover:bg-destructive-wash-strong"
             >
-              <ScrollText className="mt-0.5 size-3.5 shrink-0 text-destructive" />
+              <Logs className="mt-0.5 size-3.5 shrink-0 text-destructive" />
               <span className="min-w-0 flex-1 space-y-0.5">
                 <span className="block truncate text-xs text-destructive">
                   {firstLine(dest.lastTestError)}

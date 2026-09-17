@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { Repeat, ScrollText } from "lucide-react";
+import { Logs, Repeat } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { ConfettiBurst } from "@/components/shared/confetti-burst";
@@ -75,7 +75,7 @@ export function DoneStep({
             <div className="flex flex-wrap items-center gap-2">
               {onShowLog && (
                 <Button variant="outline" onClick={onShowLog}>
-                  <ScrollText className="size-4" />
+                  <Logs className="size-4" />
                   Show log
                 </Button>
               )}

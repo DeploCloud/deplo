@@ -3,7 +3,7 @@ import {
   Timer,
   LayoutDashboard,
   Rocket,
-  ScrollText,
+  Logs,
   Settings,
   Activity,
   History,
@@ -90,7 +90,7 @@ export function appNav(slug: string, f: AppNavFlags): NavSection[] {
     {
       label: "Logs",
       href: `${base}/logs`,
-      icon: ScrollText,
+      icon: Logs,
       tooltip: "Runtime & build logs",
       requires: "view_logs",
     },

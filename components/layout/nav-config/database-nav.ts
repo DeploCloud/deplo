@@ -1,7 +1,7 @@
 import {
   Timer,
   LayoutDashboard,
-  ScrollText,
+  Logs,
   Settings,
   Activity,
   History,
@@ -54,7 +54,7 @@ export function databaseNav(
         {
           label: "Logs",
           href: `${base}/logs`,
-          icon: ScrollText,
+          icon: Logs,
           tooltip: "Runtime logs",
         },
         {

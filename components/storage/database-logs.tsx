@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { ScrollText } from "lucide-react";
+import { Logs } from "lucide-react";
 import { ContainerLogs } from "@/components/apps/container-logs";
 import { useDatabaseRuntime } from "@/components/storage/use-database-runtime";
 import { useLiveDatabase } from "@/components/storage/database-live-status";
@@ -40,7 +40,7 @@ export function DatabaseLogs({
     return (
       <div className="flex min-h-0 flex-1 flex-col">
         <div className="flex flex-wrap items-center gap-2 border-b border-border bg-surface px-3 py-2">
-          <ScrollText className="size-4 shrink-0 text-muted-foreground" />
+          <Logs className="size-4 shrink-0 text-muted-foreground" />
           <PaneTitleLink title={title} />
           {toolbar}
         </div>

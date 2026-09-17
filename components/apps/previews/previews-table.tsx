@@ -9,9 +9,9 @@ import {
   GitBranch,
   GitFork,
   GitPullRequest,
+  Logs,
   MoreHorizontal,
   RotateCw,
-  ScrollText,
   ShieldAlert,
   Trash2,
 } from "lucide-react";
@@ -255,7 +255,7 @@ export function PreviewsTable({
                             <Link
                               href={`/apps/${appSlug}/deployments/${p.latestDeploymentId}`}
                             >
-                              <ScrollText className="size-4" />
+                              <Logs className="size-4" />
                             </Link>
                           </Button>
                         </SimpleTooltip>

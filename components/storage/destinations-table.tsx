@@ -2,14 +2,7 @@
 
 import * as React from "react";
 import { useRouter } from "@/lib/nav";
-import {
-  Cloud,
-  KeyRound,
-  Lock,
-  ScrollText,
-  Server,
-  ShieldOff,
-} from "lucide-react";
+import { Cloud, KeyRound, Lock, Logs, Server, ShieldOff } from "lucide-react";
 import {
   Table,
   TableBody,
@@ -134,7 +127,7 @@ function DestinationRow({
                 aria-label="Open connection log"
                 onClick={openLog}
               >
-                <ScrollText className="size-3.5 shrink-0 text-destructive" />
+                <Logs className="size-3.5 shrink-0 text-destructive" />
               </button>
             </SimpleTooltip>
           )}

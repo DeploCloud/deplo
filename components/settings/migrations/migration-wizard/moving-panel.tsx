@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { cn } from "@/lib/utils";
-import { CircleStop, Loader2, ScrollText } from "lucide-react";
+import { CircleStop, Loader2, Logs } from "lucide-react";
 
 import { formatBuildDuration } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -145,7 +145,7 @@ export function MovingPanel({
           />
         )}
         <Button variant="ghost" onClick={onShowLog}>
-          <ScrollText className="size-4" />
+          <Logs className="size-4" />
           Show log
         </Button>
       </div>
