@@ -10,13 +10,6 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { useGraphqlMutation } from "@/lib/use-graphql";
 import { toast } from "sonner";
 import { CopyButton } from "@/components/shared/copy-button";
@@ -32,6 +25,11 @@ import {
 import { DB_NAMES, ENGINE_CREDS } from "@/components/storage/db-engines";
 import { timeAgoShort } from "@/lib/utils";
 import type { DatabaseDTO } from "@/lib/data/databases/rows";
+import {
+  EnvironmentCombobox,
+  NO_ENVIRONMENT,
+  type EnvironmentOption,
+} from "./environment-combobox";
 
 export function DatabaseConnectionCard({
   db,
@@ -50,7 +48,7 @@ export function DatabaseConnectionCard({
   canConfigure: boolean;
   canExposePorts: boolean;
   environmentLabel?: string | null;
-  environments?: { id: string; label: string }[];
+  environments?: EnvironmentOption[];
 }) {
   const exposure = useDatabaseExposure(db);
   const creds = ENGINE_CREDS[db.type];
@@ -236,7 +234,7 @@ function EnvironmentPicker({
   label,
 }: {
   value: string | null;
-  environments: { id: string; label: string }[];
+  environments: EnvironmentOption[];
   canConfigure: boolean;
   databaseId: string;
   label: string;
@@ -252,27 +250,18 @@ function EnvironmentPicker({
   if (!canConfigure || environments.length === 0)
     return <p className="truncate text-sm">{label}</p>;
   return (
-    <Select
-      value={value ?? "none"}
-      disabled={pending}
-      onValueChange={(next) =>
-        void run({
-          id: databaseId,
-          environmentId: next === "none" ? null : next,
-        })
-      }
-    >
-      <SelectTrigger className="mt-1 h-8 w-full">
-        <SelectValue />
-      </SelectTrigger>
-      <SelectContent>
-        <SelectItem value="none">No environment</SelectItem>
-        {environments.map((e) => (
-          <SelectItem key={e.id} value={e.id}>
-            {e.label}
-          </SelectItem>
-        ))}
-      </SelectContent>
-    </Select>
+    <div className="mt-1">
+      <EnvironmentCombobox
+        value={value ?? NO_ENVIRONMENT}
+        disabled={pending}
+        environments={environments}
+        onChange={(next) =>
+          void run({
+            id: databaseId,
+            environmentId: next === NO_ENVIRONMENT ? null : next,
+          })
+        }
+      />
+    </div>
   );
 }

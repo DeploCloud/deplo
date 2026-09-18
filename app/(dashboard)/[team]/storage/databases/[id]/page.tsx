@@ -36,7 +36,9 @@ export default async function DatabaseOverviewPage(
   const environmentLabel = env ? `${env.projectName} / ${env.name}` : null;
   const environments = allEnvs.map((e) => ({
     id: e.id,
-    label: `${e.projectName} / ${e.name}`,
+    name: e.name,
+    projectId: e.projectId,
+    projectName: e.projectName,
   }));
   const monitoringHref = `/storage/databases/${db.id}/monitoring`;
 

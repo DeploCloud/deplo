@@ -121,7 +121,9 @@ export default async function StoragePage(props: PageProps<"/[team]/storage">) {
     }));
   const dbEnvironments = (await listAllEnvironmentsForTeam()).map((e) => ({
     id: e.id,
-    label: `${e.projectName} / ${e.name}`,
+    name: e.name,
+    projectId: e.projectId,
+    projectName: e.projectName,
   }));
   const serverNames = Object.fromEntries(servers.map((s) => [s.id, s.name]));
   const destinationServers = servers

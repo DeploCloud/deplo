@@ -40,6 +40,7 @@ import { gqlAction } from "@/lib/graphql-client";
 import { DatabaseLogo } from "./database-logo";
 import { DB_NAMES } from "./db-engines";
 import type { DatabaseDTO } from "@/lib/data/databases/rows";
+import type { EnvironmentOption } from "./environment-combobox";
 
 export function DatabaseCard({
   db,
@@ -54,7 +55,7 @@ export function DatabaseCard({
 }: {
   db: DatabaseDTO;
   serverName?: string;
-  environments?: { id: string; label: string }[];
+  environments?: EnvironmentOption[];
   canConfigure?: boolean;
   view?: "grid" | "list";
   dragHandle?: React.ReactNode;
@@ -147,7 +148,7 @@ interface Inner {
   dragActive: boolean;
   pollMs: number;
   canReveal: boolean;
-  environments: { id: string; label: string }[];
+  environments: EnvironmentOption[];
   canConfigure: boolean;
 }
 
@@ -296,7 +297,7 @@ function CardActions({
   dragHandle?: React.ReactNode;
   pollMs: number;
   listView?: boolean;
-  environments: { id: string; label: string }[];
+  environments: EnvironmentOption[];
   canConfigure: boolean;
 }) {
   const router = useRouter();
@@ -396,7 +397,7 @@ function CardActions({
                 {environments.map((e) => (
                   <SimpleTooltip
                     key={e.id}
-                    content={`Move to ${e.label}`}
+                    content={`Move to ${e.projectName} / ${e.name}`}
                     side="left"
                   >
                     <DropdownMenuItem
@@ -405,7 +406,7 @@ function CardActions({
                         !canConfigure || pending || e.id === db.environmentId
                       }
                     >
-                      {e.label}
+                      {e.projectName} / {e.name}
                     </DropdownMenuItem>
                   </SimpleTooltip>
                 ))}
