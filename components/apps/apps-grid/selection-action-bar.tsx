@@ -107,6 +107,7 @@ export function SelectionActionBar({
         </Button>
         <Button
           variant="ghost"
+          className="rounded-full!"
           size="icon-sm"
           aria-label="Clear selection"
           onClick={selection.onClear}
