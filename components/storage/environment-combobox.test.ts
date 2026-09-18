@@ -8,12 +8,8 @@ const env = (
   name: string,
   projectId: string,
   projectName: string,
-) => ({
-  id,
-  name,
-  projectId,
-  projectName,
-});
+  projectColor: string | null = null,
+) => ({ id, name, projectId, projectName, projectColor });
 
 test("the tree opens with no environment, then a header per project", () => {
   const rows = rowsFor([
@@ -55,4 +51,17 @@ test("two projects sharing a name stay apart", () => {
     env("e2", "Production", "p2", "Web"),
   ]);
   assert.equal(rows.filter((r) => r.kind === "project").length, 2);
+});
+
+test("a project's colour rides down to its environments", () => {
+  const [, header, child] = rowsFor([
+    env("e1", "Production", "p1", "Neonflix", "#7c3aed"),
+  ]);
+  assert.equal(header.kind === "project" && header.color, "#7c3aed");
+  assert.equal(child.kind === "env" && child.color, "#7c3aed");
+});
+
+test("a project with no colour carries none, it does not invent one", () => {
+  const [, header] = rowsFor([env("e1", "Production", "p1", "Neonflix")]);
+  assert.equal(header.kind === "project" && header.color, null);
 });

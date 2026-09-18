@@ -159,6 +159,7 @@ export interface TeamEnvironment {
   kind: EnvironmentKind;
   projectId: string;
   projectName: string;
+  projectColor: string | null;
 }
 
 export async function listAllEnvironmentsForTeam(): Promise<TeamEnvironment[]> {
@@ -171,6 +172,7 @@ export async function listAllEnvironmentsForTeam(): Promise<TeamEnvironment[]> {
       kind: environmentsTable.kind,
       projectId: environmentsTable.projectId,
       projectName: projectsTable.name,
+      projectColor: projectsTable.color,
     })
     .from(environmentsTable)
     .innerJoin(projectsTable, eq(environmentsTable.projectId, projectsTable.id))
@@ -189,6 +191,7 @@ export async function listAllEnvironmentsForTeam(): Promise<TeamEnvironment[]> {
       kind: r.kind as EnvironmentKind,
       projectId: r.projectId,
       projectName: r.projectName,
+      projectColor: r.projectColor,
     }));
 }
 

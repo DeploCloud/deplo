@@ -124,6 +124,7 @@ export default async function StoragePage(props: PageProps<"/[team]/storage">) {
     name: e.name,
     projectId: e.projectId,
     projectName: e.projectName,
+    projectColor: e.projectColor,
   }));
   const serverNames = Object.fromEntries(servers.map((s) => [s.id, s.name]));
   const destinationServers = servers

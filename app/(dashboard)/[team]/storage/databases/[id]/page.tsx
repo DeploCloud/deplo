@@ -39,6 +39,7 @@ export default async function DatabaseOverviewPage(
     name: e.name,
     projectId: e.projectId,
     projectName: e.projectName,
+    projectColor: e.projectColor,
   }));
   const monitoringHref = `/storage/databases/${db.id}/monitoring`;
 
