@@ -313,7 +313,10 @@ function OverviewTab({ server }: { server: ServerSummary }) {
           </p>
         </CardHeader>
         <CardContent className="flex flex-wrap items-center gap-3">
-          <AgentVersionBadge version={server.agentVersion} />
+          <AgentVersionBadge
+            version={server.agentVersion}
+            expected={server.expectedAgentVersion}
+          />
           {server.agentUpdateAvailable ? (
             <Button
               size="sm"

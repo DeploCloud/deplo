@@ -1,5 +1,9 @@
 import { builder } from "../builder";
 import {
+  fleetAgentStatus,
+  type FleetAgentStatus,
+} from "@/lib/data/servers/agent-rollout";
+import {
   applyDeploUpdate,
   getUpdateInfo,
   listDeploReleases,
@@ -52,7 +56,41 @@ const ChangelogRef = builder
     }),
   });
 
+const FleetAgentRef = builder
+  .objectRef<FleetAgentStatus["behind"][number]>("FleetAgent")
+  .implement({
+    description: "One server whose agent is older than the fleet version.",
+    fields: (t) => ({
+      id: t.exposeID("id"),
+      name: t.exposeString("name"),
+      version: t.exposeString("version", { nullable: true }),
+    }),
+  });
+
+const FleetAgentsRef = builder
+  .objectRef<FleetAgentStatus>("FleetAgents")
+  .implement({
+    description:
+      "How far the server agents are from the version this panel expects. They follow a panel update on their own, so `behind` is what that rollout has not carried yet.",
+    fields: (t) => ({
+      expected: t.exposeString("expected"),
+      total: t.exposeInt("total"),
+      behind: t.field({ type: [FleetAgentRef], resolve: (f) => f.behind }),
+      updating: t.exposeBoolean("updating", {
+        description:
+          "A rollout is still owed: Deplo retries every 15 minutes until every server is on `expected`.",
+      }),
+    }),
+  });
+
 builder.queryFields((t) => ({
+  fleetAgents: t.field({
+    type: FleetAgentsRef,
+    authScopes: { instanceAdmin: true },
+    description:
+      "The fleet's agent versions, and whether Deplo is still rolling an update out to them.",
+    resolve: () => fleetAgentStatus(),
+  }),
   updateInfo: t.field({
     type: UpdateInfoRef,
     authScopes: { instanceAdmin: true },

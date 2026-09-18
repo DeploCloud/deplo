@@ -31,9 +31,10 @@ import { UpdateGraphic } from "@/components/settings/update-graphic";
 import { gqlAction } from "@/lib/graphql-client";
 
 export interface FleetSummary {
-  total: number;
-  outdated: number;
   expected: string;
+  total: number;
+  behind: { id: string; name: string; version: string | null }[];
+  updating: boolean;
 }
 
 type UpdateInfo = {
@@ -53,6 +54,21 @@ type Release = {
   prerelease: boolean;
   current: boolean;
 };
+
+const FLEET_QUERY = /* GraphQL */ `
+  query FleetAgents {
+    fleetAgents {
+      expected
+      total
+      updating
+      behind {
+        id
+        name
+        version
+      }
+    }
+  }
+`;
 
 const UPDATES_QUERY = /* GraphQL */ `
   query DeploUpdates {
@@ -83,6 +99,36 @@ type UpdatesData = {
   deploChangelog: { error?: string | null; releases: Release[] } | null;
 };
 
+const POLL_MS = 10_000;
+const POLL_TRIES = 30;
+
+function useFleetAgents(seed: FleetSummary): FleetSummary {
+  const [fleet, setFleet] = React.useState(seed);
+
+  React.useEffect(() => {
+    if (!fleet.updating) return;
+    let stop = false;
+    let tries = 0;
+    const poll = async () => {
+      const res = await gqlAction<{ fleetAgents: FleetSummary }, FleetSummary>(
+        FLEET_QUERY,
+        undefined,
+        (d) => d.fleetAgents,
+      );
+      if (stop) return;
+      if (res.ok && res.data) setFleet(res.data);
+      if (++tries < POLL_TRIES) timer = setTimeout(poll, POLL_MS);
+    };
+    let timer = setTimeout(poll, POLL_MS);
+    return () => {
+      stop = true;
+      clearTimeout(timer);
+    };
+  }, [fleet.updating]);
+
+  return fleet;
+}
+
 function day(iso: string | null): string {
   if (!iso) return "";
   return new Date(iso).toLocaleDateString(undefined, { dateStyle: "medium" });
@@ -91,12 +137,13 @@ function day(iso: string | null): string {
 export function DeploUpdatesTab({
   active,
   version,
-  fleet,
+  fleet: seed,
 }: {
   active: boolean;
   version: string;
   fleet: FleetSummary;
 }) {
+  const fleet = useFleetAgents(seed);
   const [info, setInfo] = React.useState<UpdateInfo | null>(null);
   const [releases, setReleases] = React.useState<Release[] | null>(null);
   const [listError, setListError] = React.useState<string | null>(null);
@@ -246,7 +293,11 @@ export function DeploUpdatesTab({
                     {info?.updateAvailable && info.latest && (
                       <ConfirmAction
                         variant="default"
-                        title={`Update Deplo to ${info.latest}?`}
+                        title={
+                          fleet.total > 0
+                            ? `Update Deplo to ${info.latest}, then its ${fleet.total} server${fleet.total === 1 ? "" : "s"}?`
+                            : `Update Deplo to ${info.latest}?`
+                        }
                         description={
                           <>
                             The machine Deplo runs on pulls the new version and
@@ -289,16 +340,20 @@ export function DeploUpdatesTab({
                 <ServerIcon className="size-4" />
                 Server agents
                 <InfoTip
-                  content="Every server runs a small agent Deplo talks to. They update one at a time, from each server's page."
+                  content="Every server runs a small agent. Deplo brings them to the panel's version by itself, one server at a time."
                   docs="servers.overview"
                 />
               </CardTitle>
             </CardHeader>
-            <CardContent className="space-y-3">
+            <CardContent className="space-y-2">
               <FleetLine fleet={fleet} />
-              <Button variant="outline" size="sm" asChild>
-                <Link href="/settings/servers">Open Servers</Link>
-              </Button>
+              {fleet.behind.map((server) => (
+                <BehindLine
+                  key={server.id}
+                  server={server}
+                  updating={fleet.updating}
+                />
+              ))}
             </CardContent>
           </Card>
         </div>
@@ -407,10 +462,10 @@ function FleetLine({ fleet }: { fleet: FleetSummary }) {
     return (
       <p className="text-sm text-muted-foreground">No servers connected yet.</p>
     );
-  const upToDate = fleet.total - fleet.outdated;
+  const upToDate = fleet.total - fleet.behind.length;
   return (
     <p className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm">
-      {fleet.outdated === 0 ? (
+      {fleet.behind.length === 0 ? (
         <CheckCircle2 className="size-4 text-[var(--success)]" />
       ) : (
         <ArrowUpRight className="size-4 text-[var(--success)]" />
@@ -419,11 +474,34 @@ function FleetLine({ fleet }: { fleet: FleetSummary }) {
         {upToDate} of {fleet.total}
       </span>
       on v{fleet.expected}
-      {fleet.outdated > 0 && (
-        <span className="text-muted-foreground">
-          · {fleet.outdated} can be updated
-        </span>
+    </p>
+  );
+}
+
+function BehindLine({
+  server,
+  updating,
+}: {
+  server: FleetSummary["behind"][number];
+  updating: boolean;
+}) {
+  return (
+    <p className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm">
+      {updating ? (
+        <Loader2 className="size-4 animate-spin" />
+      ) : (
+        <TriangleAlert className="size-4 text-[var(--warning)]" />
       )}
+      <span className="font-medium">{server.name}</span>
+      <span className="text-muted-foreground">
+        {server.version ? `is on v${server.version}` : "has no agent version"}
+      </span>
+      <Link
+        href={`/settings/servers/${server.id}`}
+        className="text-foreground underline underline-offset-4"
+      >
+        Manage
+      </Link>
     </p>
   );
 }

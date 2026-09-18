@@ -244,6 +244,8 @@ export async function applyDeploUpdate(): Promise<DeploUpdateStarted> {
       res.error || "Deplo could not start the update on this host",
     );
 
+  const { markAgentRolloutPending } = await import("./servers/agent-rollout");
+  await markAgentRolloutPending(user.name);
   await recordActivity(
     "server",
     `Started the update of Deplo to v${version}`,

@@ -30,7 +30,8 @@ reissued, so a server keeps its identity and stays online across the upgrade.
    Servers page header's **Check for updates** runs the `checkAgentUpdates` mutation →
    `refreshAgentRelease()`, which clears the cell and re-resolves immediately. The underlying
    fetches are `cache: "no-store"`, so there is no on-disk Data Cache to also defeat.
-5. **Update each server, one at a time**, in the order in §4.
+5. **Update each server, one at a time**, in the order in §4 - by hand for an agent-only release.
+   A control-plane release needs none of this: the new panel walks that same order itself (§3).
 
 ## 2. The asset-name contract
 
@@ -63,18 +64,44 @@ from what CI actually signed off on. Per-arch resolution needs _both_ the asset 
 `checksums.txt` line; an arch missing either is dropped, and the release is only usable if at least
 one arch survives.
 
-## 3. There is no "update all servers"
+## 3. The panel carries the fleet - and there is still no "update all" mutation
 
-Only **`updateServerAgent(id: String!): String`** exists (`schema.graphql:1594`,
-`lib/graphql/types/server/enrollment.ts`, `lib/data/servers/agent-maintenance.ts`). One server per call. There is no batch
-mutation, no queue, no "update fleet" button - a rollout is N deliberate calls.
+**A panel update rolls the agents forward on its own** (`lib/data/servers/agent-rollout.ts`). The
+new control plane compares `instance_settings.booted_version` to `DEPLO_VERSION` at boot: a version
+that moved means the panel just updated, so it walks the fleet in §4's order, one host at a time,
+and retries every 15 minutes until every provisioned server is on the expected version. The marker
+is `instance_settings.agent_rollout_by`, written by `applyDeploUpdate` with the name of whoever
+clicked (so the Activity entries are signed by a person, not by the scheduler) and cleared by the
+first pass that leaves nobody behind. A shell-run `install.sh` update is caught by the same
+version comparison and signed "Deplo".
+
+What it skips, and why the distinction matters:
+
+- **A deploy in flight** on that host (`queued`/`building`, read through
+  `coalesce(deployments.server_id, apps.server_id)` - see §5) - skipped, retried in 15 minutes.
+- **Unreachable at preflight** - skipped, retried. It never stops the pass: one dead host must not
+  hold the rest of the fleet back forever.
+- **`AgentUpdateUnsupportedError`** (too old to self-update, needs `install-agent.sh` re-run) -
+  skipped for the same reason, since it is a permanent condition.
+- **Anything else during the update, or a host that never comes back on a new version** - the pass
+  **stops**. A release that breaks one agent must not break four.
+
+**There is still no batch GraphQL mutation.** The API surface is unchanged:
+**`updateServerAgent(id: String!): String`** (`lib/graphql/types/server/enrollment.ts`,
+`lib/data/servers/agent-maintenance.ts`), one server per call, which is what the button on a
+server's own page calls when that host is behind - the only place in the UI that updates an agent
+by hand. `fleetAgents` is the read side: expected version, total, who is behind, and whether a
+rollout is still owed. The Updates tab shows that and nothing else; it has no agent action.
 
 Contrast health, which _does_ have a fleet-wide action: `checkAllServerHealth(force: Boolean)` probes
-every provisioned server and is what the Servers page runs on load. Do not reason by analogy from
-one to the other; the absence of a batch update is what makes the ordering below enforceable by hand.
+every provisioned server and is what the Servers page runs on load.
 
 Both are `authScopes: { instanceAdmin: true }` at the field, and `updateServerAgent` calls
-`requireInstanceAdmin()` inside the data layer (the real gate).
+`requireInstanceAdmin()` inside the data layer (the real gate). The automatic rollout runs at boot
+with no identity at all, so it calls the infra seam directly - which is why §7 applies to it.
+
+**Driving a rollout by hand is still supported and still the release procedure**: the scripted path
+in §6 is unchanged, and the order it walks is the order the panel walks.
 
 ## 4. Order: canary → the rest → the Deplo host LAST
 

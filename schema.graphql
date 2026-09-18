@@ -1878,6 +1878,27 @@ input ExtraDomainInput {
   service: String!
 }
 
+"""One server whose agent is older than the fleet version."""
+type FleetAgent {
+  id: ID
+  name: String
+  version: String
+}
+
+"""
+How far the server agents are from the version this panel expects. They follow a panel update on their own, so `behind` is what that rollout has not carried yet.
+"""
+type FleetAgents {
+  behind: [FleetAgent!]
+  expected: String
+  total: Int
+
+  """
+  A rollout is still owed: Deplo retries every 15 minutes until every server is on `expected`.
+  """
+  updating: Boolean
+}
+
 """
 One server's headline reading for the Monitoring page's fleet list, plus a thinned CPU/memory trace.
 """
@@ -4402,6 +4423,11 @@ type Query {
 
   """The environments of a Project container, in display order."""
   environments(projectId: ID!): [Environment!]
+
+  """
+  The fleet's agent versions, and whether Deplo is still rolling an update out to them.
+  """
+  fleetAgents: FleetAgents
 
   """
   Every server's newest reading plus a thinned trace, for the Monitoring page's fleet list. Reads the control plane's buffers only - no agent is dialled, so watching N hosts costs what watching one does.
