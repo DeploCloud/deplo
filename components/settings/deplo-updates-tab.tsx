@@ -21,6 +21,14 @@ import {
   AccordionTrigger,
 } from "@/components/ui/accordion";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
 import { InfoTip } from "@/components/ui/info-tip";
 import { EmptyState } from "@/components/shared/empty-state";
 import { CommandLine } from "@/components/shared/code-block";
@@ -347,13 +355,16 @@ export function DeploUpdatesTab({
             </CardHeader>
             <CardContent className="space-y-2">
               <FleetLine fleet={fleet} />
-              {fleet.behind.map((server) => (
+              {fleet.behind.slice(0, BEHIND_SHOWN).map((server) => (
                 <BehindLine
                   key={server.id}
                   server={server}
                   updating={fleet.updating}
                 />
               ))}
+              {fleet.behind.length > BEHIND_SHOWN && (
+                <BehindDialog fleet={fleet} />
+              )}
             </CardContent>
           </Card>
         </div>
@@ -475,6 +486,39 @@ function FleetLine({ fleet }: { fleet: FleetSummary }) {
       </span>
       on v{fleet.expected}
     </p>
+  );
+}
+
+const BEHIND_SHOWN = 3;
+
+function BehindDialog({ fleet }: { fleet: FleetSummary }) {
+  return (
+    <Dialog>
+      <DialogTrigger asChild>
+        <Button variant="link" size="sm" className="h-auto p-0">
+          Read more
+        </Button>
+      </DialogTrigger>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>
+            {fleet.behind.length} servers are behind v{fleet.expected}
+          </DialogTitle>
+          <DialogDescription>
+            Deplo updates each of them on its own, and retries every 15 minutes.
+          </DialogDescription>
+        </DialogHeader>
+        <div className="max-h-80 space-y-2 overflow-y-auto">
+          {fleet.behind.map((server) => (
+            <BehindLine
+              key={server.id}
+              server={server}
+              updating={fleet.updating}
+            />
+          ))}
+        </div>
+      </DialogContent>
+    </Dialog>
   );
 }
 

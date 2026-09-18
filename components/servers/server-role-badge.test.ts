@@ -29,5 +29,5 @@ test("each flag names its own use, and no flag is everything", () => {
 
 test("every use has a chip", () => {
   for (const use of ["everything", "build", "storage", "import"] as const)
-    assert.ok(SERVER_USES[use].label && SERVER_USES[use].className);
+    assert.ok(SERVER_USES[use].label && SERVER_USES[use].title);
 });

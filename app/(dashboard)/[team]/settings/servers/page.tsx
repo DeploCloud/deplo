@@ -202,18 +202,6 @@ function ServerCard({
             <span className="font-mono text-muted-foreground">{server.ip}</span>
             <CopyButton value={server.ip} className="size-6" />
           </span>
-          {serverUse(server) === "everything" && (
-            <ServerTraefikBadge
-              serverId={server.id}
-              fallback={{
-                status: server.status,
-                checkedAt: server.statusCheckedAt ?? null,
-                message: server.statusMessage ?? null,
-                traefikEnabled: server.traefikEnabled,
-                lastReachedAt: server.lastSeenAt ?? null,
-              }}
-            />
-          )}
           <AgentVersionBadge version={agentVersion} expected={expected} />
         </div>
         {server.uninstallPending && (

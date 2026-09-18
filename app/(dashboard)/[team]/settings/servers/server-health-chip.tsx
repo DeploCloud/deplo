@@ -84,6 +84,20 @@ export function ServerHealthChip({
     .filter(Boolean)
     .join(" · ");
 
+  // Online is the resting state: a chip that says "Online" next to a green dot says it twice.
+  if (state.status === "online")
+    return (
+      <SimpleTooltip content={`${LABELS.online} · ${tip}`}>
+        <span role="img" aria-label="Online" className="flex items-center">
+          {checking ? (
+            <Loader2 className="size-3 animate-spin" />
+          ) : (
+            <StatusDot status="online" />
+          )}
+        </span>
+      </SimpleTooltip>
+    );
+
   return (
     <SimpleTooltip content={tip}>
       <Badge variant={VARIANTS[state.status]} className="gap-1.5">
