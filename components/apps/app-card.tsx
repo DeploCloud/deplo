@@ -503,6 +503,25 @@ export function AppCard({
     />
   );
 
+  const subtitle = project.productionUrl ? (
+    <a
+      href={project.productionUrl}
+      target="_blank"
+      rel="noreferrer"
+      tabIndex={dragActive ? -1 : undefined}
+      className={cn(
+        "relative z-[1] mt-1 block truncate text-xs text-muted-foreground hover:text-foreground hover:underline",
+        dragActive ? "pointer-events-none" : "pointer-events-auto",
+      )}
+    >
+      {project.productionUrl.replace(/^https?:\/\//, "")}
+    </a>
+  ) : (
+    <p className="mt-1 truncate text-xs text-muted-foreground">
+      {appTypeLabel(project)}
+    </p>
+  );
+
   const identity = project.repo ? (
     <>
       <GitHubIcon className="size-3.5 shrink-0" />
@@ -528,11 +547,7 @@ export function AppCard({
           <AppLogo logo={project.logo} tone={project.logoTone} size={36} />
           <div className="min-w-0 flex-1">
             <span className="block truncate font-medium">{project.name}</span>
-            <p className="mt-1 truncate text-xs text-muted-foreground">
-              {project.productionUrl
-                ? project.productionUrl.replace(/^https?:\/\//, "")
-                : appTypeLabel(project)}
-            </p>
+            {subtitle}
           </div>
 
           {dep ? (
@@ -576,11 +591,7 @@ export function AppCard({
                 <span className="block truncate font-medium">
                   {project.name}
                 </span>
-                <p className="mt-1 truncate text-xs text-muted-foreground">
-                  {project.productionUrl
-                    ? project.productionUrl.replace(/^https?:\/\//, "")
-                    : appTypeLabel(project)}
-                </p>
+                {subtitle}
               </div>
             </div>
 
