@@ -27,7 +27,8 @@ import { loadAppGraph } from "./app-graph-load";
 let db: TestDb;
 let pg: PGlite;
 
-const COMPOSE = "services:\n  web:\n    image: nginx:1.27\n";
+const COMPOSE =
+  'services:\n  web:\n    image: nginx:1.27\n    expose:\n      - "80"\n';
 
 before(async () => {
   ({ db, pg } = await makeTestDb());
@@ -162,7 +163,8 @@ test("an extra domain shares the primary's host when it answers on a path", asyn
         "services:\n" +
         "  db:\n    image: postgres:17\n" +
         "  backend:\n    image: acme/api\n" +
-        "  client:\n    image: acme/web\n    depends_on:\n      - backend\n",
+        '  client:\n    image: acme/web\n    expose:\n      - "80"\n' +
+        "    depends_on:\n      - backend\n",
       extraDomains: [
         { service: "backend", port: 3001, host: "", path: "/api" },
       ],
@@ -192,7 +194,8 @@ test("an extra domain with no host of its own gets one generated", async () => {
   const app = await asUser1(() =>
     newApp({
       compose:
-        "services:\n  web:\n    image: nginx\n  admin:\n    image: acme/admin\n",
+        'services:\n  web:\n    image: nginx\n    expose:\n      - "80"\n' +
+        "  admin:\n    image: acme/admin\n",
       extraDomains: [{ service: "admin", port: 3003, host: "" }],
     }),
   );
@@ -208,7 +211,8 @@ test("an extra domain with no host of its own gets one generated", async () => {
 test("an extra naming a container the stack does not have is skipped", async () => {
   const app = await asUser1(() =>
     newApp({
-      compose: "services:\n  web:\n    image: nginx\n",
+      compose:
+        'services:\n  web:\n    image: nginx\n    expose:\n      - "80"\n',
       extraDomains: [{ service: "web-ui", port: 3000, host: "" }],
     }),
   );
@@ -223,7 +227,8 @@ test("an extra naming a container Deplo answers to is skipped", async () => {
   const app = await asUser1(() =>
     newApp({
       compose:
-        "services:\n  web:\n    image: nginx\n  postgres:\n    image: postgres:17\n",
+        'services:\n  web:\n    image: nginx\n    expose:\n      - "80"\n' +
+        "  postgres:\n    image: postgres:17\n",
       extraDomains: [{ service: "postgres", port: 5432, host: "" }],
     }),
   );
@@ -314,6 +319,8 @@ const ANALYTICS_STACK = `services:
         condition: service_started
   store_client:
     image: acme/client:v2
+    ports:
+      - "3002:3000"
     depends_on:
       - store_backend
 `;
@@ -411,4 +418,75 @@ test("a service the stack does not have is not taken over a real one", async () 
     .from(domainsTable)
     .where(eq(domainsTable.appId, app.id));
   assert.equal(row.service, "store_client");
+});
+
+test("a stack with no web service is born without an address", async () => {
+  const app = await asUser1(() =>
+    newApp({
+      compose:
+        "services:\n  worker:\n    image: acme/worker\n  db:\n    image: postgres:17\n",
+    }),
+  );
+  const rows = await db
+    .select({ name: domainsTable.name })
+    .from(domainsTable)
+    .where(eq(domainsTable.appId, app.id));
+  assert.equal(rows.length, 0, "nothing serves HTTP, so nothing is addressed");
+});
+
+test("a stack that publishes a port is addressed on that service", async () => {
+  const app = await asUser1(() =>
+    newApp({
+      compose:
+        "services:\n  db:\n    image: postgres:17\n" +
+        '  web:\n    image: acme/web\n    expose:\n      - "8000"\n',
+    }),
+  );
+  const rows = await db
+    .select({ service: domainsTable.service, port: domainsTable.port })
+    .from(domainsTable)
+    .where(eq(domainsTable.appId, app.id));
+  assert.deepEqual(rows, [{ service: "web", port: 8000 }]);
+});
+
+test("a stack with no web service still takes the address it asked for", async () => {
+  const app = await asUser1(() =>
+    newApp({
+      compose: "services:\n  worker:\n    image: acme/worker\n",
+      autoDomain: "worker-ui.acme.com",
+    }),
+  );
+  const rows = await db
+    .select({ name: domainsTable.name })
+    .from(domainsTable)
+    .where(eq(domainsTable.appId, app.id));
+  assert.deepEqual(rows, [{ name: "worker-ui.acme.com" }]);
+});
+
+test("a database image gets no address, a web image does", async () => {
+  const cache = await asUser1(() =>
+    newApp({
+      name: "cache",
+      source: "docker-image",
+      dockerImage: "redis:7",
+      compose: null,
+      build: { port: 6379 },
+    }),
+  );
+  const site = await asUser1(() =>
+    newApp({
+      name: "site",
+      source: "docker-image",
+      dockerImage: "nginx:1.27",
+      compose: null,
+      build: { port: 80 },
+    }),
+  );
+  const rowsFor = async (id: string) =>
+    db
+      .select({ name: domainsTable.name })
+      .from(domainsTable)
+      .where(eq(domainsTable.appId, id));
+  assert.equal((await rowsFor(cache.id)).length, 0);
+  assert.equal((await rowsFor(site.id)).length, 1);
 });

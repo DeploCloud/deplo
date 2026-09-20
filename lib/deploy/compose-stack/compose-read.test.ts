@@ -16,14 +16,14 @@ test("detectDefaultApp prefers a service that publishes a port", () => {
   });
 });
 
-test("detectDefaultApp falls back to the first service on port 80", () => {
-  assert.deepEqual(
+test("detectDefaultApp: a lone service that declares no port is not a web service", () => {
+  assert.equal(
     detectDefaultApp(`
 services:
   only:
     image: nginx
 `),
-    { service: "only", port: 80 },
+    null,
   );
 });
 
@@ -35,6 +35,8 @@ services:
     image: postgres:16
   web:
     image: nginx
+    ports:
+      - "8080:80"
 `),
     { service: "web", port: 80 },
   );

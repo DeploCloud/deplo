@@ -25,6 +25,8 @@ services:
         condition: service_started
   rybbit_client:
     image: ghcr.io/rybbit-io/rybbit-client:v2.7.0
+    ports:
+      - "3002:3000"
     depends_on:
       - rybbit_backend
 `;
@@ -32,7 +34,7 @@ services:
 test("detectDefaultApp routes the front door, not the database", () => {
   assert.deepEqual(detectDefaultApp(RYBBIT), {
     service: "rybbit_client",
-    port: 80,
+    port: 3000,
   });
 });
 
@@ -51,14 +53,29 @@ services:
   );
 });
 
-test("detectDefaultApp keeps a datastore when there is nothing else", () => {
+test("detectDefaultApp keeps a published datastore when there is nothing else", () => {
   assert.deepEqual(
     detectDefaultApp(`
 services:
   cache:
     image: redis:7-alpine
+    ports:
+      - "6379:6379"
 `),
-    { service: "cache", port: 80 },
+    { service: "cache", port: 6379 },
+  );
+});
+
+test("a stack where nothing declares a port has no web service", () => {
+  assert.equal(
+    detectDefaultApp(`
+services:
+  worker:
+    image: acme/worker
+  db:
+    image: postgres:17
+`),
+    null,
   );
 });
 
@@ -96,6 +113,8 @@ services:
     image: redis:7
   web:
     image: nginx
+    ports:
+      - "8080:80"
 `),
     [
       {
@@ -131,8 +150,10 @@ services:
     image: docker.io/library/postgres:17
   app:
     image: acme/app
+    expose:
+      - "3000"
 `),
-    { service: "app", port: 80 },
+    { service: "app", port: 3000 },
   );
 });
 
@@ -142,12 +163,16 @@ test("an image Deplo does not know is saved by the dependency graph", () => {
 services:
   db:
     image: bitnami/postgresql:16
+    ports:
+      - "5432:5432"
   app:
     image: acme/app
+    ports:
+      - "8080:3000"
     depends_on:
       - db
 `),
-    { service: "app", port: 80 },
+    { service: "app", port: 3000 },
   );
 });
 
@@ -157,24 +182,28 @@ test("a dependency cycle falls back to document order", () => {
 services:
   a:
     image: acme/a
+    ports:
+      - "8000:8000"
     depends_on: [b]
   b:
     image: acme/b
+    ports:
+      - "9000:9000"
     depends_on: [a]
 `),
-    { service: "a", port: 80 },
+    { service: "a", port: 8000 },
   );
 });
 
-test("a service written with no body at all is still a candidate", () => {
-  assert.deepEqual(
+test("a service written with no body at all declares no port", () => {
+  assert.equal(
     detectDefaultApp(`
 services:
   web:
   db:
     image: postgres:17
 `),
-    { service: "web", port: 80 },
+    null,
   );
 });
 
