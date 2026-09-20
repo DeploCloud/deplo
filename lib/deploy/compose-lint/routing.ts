@@ -86,9 +86,11 @@ export function detectDefaultApp(
   const depended = dependedUpon(services);
   const front = (list: string[]): string =>
     list.find((n) => !depended.has(n)) ?? list[0];
+  // No port declared anywhere means no web service: an address here would answer nothing.
   const withPort = names.filter((n) => declaredPort(services[n]));
-  const service = front(withPort.length > 0 ? withPort : names);
-  return { service, port: declaredPort(services[service]) ?? 80 };
+  if (withPort.length === 0) return null;
+  const service = front(withPort);
+  return { service, port: declaredPort(services[service])! };
 }
 
 export interface ComposeRouteCandidate {

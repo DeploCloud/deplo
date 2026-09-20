@@ -40,6 +40,7 @@ import type { EnvEntryType } from "../../deploy/env-resolve";
 import { recordActivity } from "../activity";
 import { setSharedVarAppLink } from "../shared-vars/app-links";
 import { imageExposedPort } from "../../registry/client";
+import { isDatastoreImage } from "../../databases/images";
 import { buildConfigFor } from "../../frameworks";
 import type { App, DeploySource } from "../../types/app";
 import type { BuildConfig, GitRepo } from "../../types/build";
@@ -209,14 +210,13 @@ export async function composeNameClashes(
   }));
 }
 
-async function withImagePort(
+async function imagePortFor(
   input: Pick<CreateAppInput, "source" | "dockerImage" | "build">,
-): Promise<Partial<BuildConfig> | undefined> {
+): Promise<number | null> {
   const image = input.dockerImage?.trim();
-  if (input.source !== "docker-image" || !image) return input.build;
-  if (input.build?.port) return input.build;
-  const port = await imageExposedPort(image).catch(() => null);
-  return port ? { ...input.build, port } : input.build;
+  if (input.source !== "docker-image" || !image || input.build?.port)
+    return null;
+  return await imageExposedPort(image).catch(() => null);
 }
 
 export async function createApp(input: CreateAppInput): Promise<AppSummary> {
@@ -358,6 +358,7 @@ export async function createApp(input: CreateAppInput): Promise<AppSummary> {
     });
 
   const isUpload = input.source === "upload";
+  const imagePort = await imagePortFor(input);
 
   const logo = input.logo && isValidLogoValue(input.logo) ? input.logo : null;
 
@@ -384,7 +385,9 @@ export async function createApp(input: CreateAppInput): Promise<AppSummary> {
     upload: null,
     compose: input.compose ?? null,
     mounts: input.mounts?.length ? input.mounts : null,
-    build: buildConfigFor(await withImagePort(input)),
+    build: buildConfigFor(
+      imagePort ? { ...input.build, port: imagePort } : input.build,
+    ),
     productionUrl: null,
     status: isUpload ? "idle" : "queued",
     previewEnabled: false,
@@ -510,7 +513,14 @@ export async function createApp(input: CreateAppInput): Promise<AppSummary> {
     ? "letsencrypt"
     : "none";
 
-  if (!input.noAutoDomain)
+  // An address only where traffic has somewhere to land: a stack of workers gets none.
+  const imageIsWeb =
+    input.source !== "docker-image" ||
+    (!isDatastoreImage(input.dockerImage) &&
+      (input.build?.port != null || imagePort != null));
+  const wantsAddress = input.compose ? detected != null : imageIsWeb;
+
+  if (!input.noAutoDomain && (input.autoDomain || wantsAddress))
     await ensureAutoDomain(project.id, {
       slug,
       ip,
@@ -588,7 +598,7 @@ export async function createAppFromTemplate(
       host: expose.host ?? "",
       path: expose.path ?? null,
     })),
-    autoDomain,
+    autoDomain: blueprint.expose ? autoDomain : null,
     autoDomainPath: blueprint.expose?.path ?? null,
     mounts: blueprint.mounts,
     serverId: input.serverId,
