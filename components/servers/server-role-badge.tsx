@@ -2,39 +2,34 @@ import type { ElementType } from "react";
 import { Archive, DownloadCloud, Hammer, ServerCog } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
-import { cn } from "@/lib/utils";
 import type { ServerRole } from "./server-role-options";
 
 export type ServerUse = ServerRole | "import";
 
 export const SERVER_USES: Record<
   ServerUse,
-  { label: string; icon: ElementType; className: string; title: string }
+  { label: string; icon: ElementType; title: string }
 > = {
   everything: {
     label: "Everything",
     icon: ServerCog,
-    className: "bg-info-wash text-info",
     title: "Runs your deployments and builds them.",
   },
   build: {
     label: "Build only",
     icon: Hammer,
-    className: "bg-warning-wash-strong text-warning",
     title:
       "This server only builds images, for apps that run on your other servers. Nothing is deployed here and it has no proxy.",
   },
   storage: {
     label: "Backups only",
     icon: Archive,
-    className: "bg-violet-wash text-violet",
     title:
       "This server only holds backup files. It has no Docker and nothing is deployed here.",
   },
   import: {
     label: "Migration source",
     icon: DownloadCloud,
-    className: "bg-chart-3/15 text-chart-3",
     title:
       "Another platform's host. Deplo installed its agent there to read the data being imported, and removes it when the migration is done.",
   },
@@ -54,13 +49,9 @@ export function serverUse(server: {
 }
 
 export function ServerUseBadge({ use }: { use: ServerUse }) {
-  const { label, icon: Icon, className, title } = SERVER_USES[use];
+  const { label, icon: Icon, title } = SERVER_USES[use];
   return (
-    <Badge
-      variant="muted"
-      className={cn("shrink-0 gap-1 border-transparent", className)}
-      title={title}
-    >
+    <Badge variant="muted" className="shrink-0 gap-1" title={title}>
       <Icon className="size-3" />
       {label}
     </Badge>

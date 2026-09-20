@@ -41,7 +41,7 @@
     "@escape.tech/graphql-armor-cost-limit": "^2.4.3",
     "@escape.tech/graphql-armor-max-aliases": "^2.6.2",
     "@escape.tech/graphql-armor-max-depth": "^2.4.2",
-    "@grpc/grpc-js": "^1.14.4",
+    "@grpc/grpc-js": "^1.14.5",
     "@lezer/highlight": "^1.2.3",
     "@modelcontextprotocol/server": "^2.0.0",
     "@peculiar/x509": "^1.14.3",
@@ -66,7 +66,7 @@
     "@xterm/xterm": "^6.0.0",
     "age-encryption": "^0.3.1",
     "bcryptjs": "^3.0.3",
-    "better-auth": "^1.7.2",
+    "better-auth": "1.7.2",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "cmdk": "^1.1.1",
@@ -74,9 +74,9 @@
     "drizzle-orm": "^0.45.2",
     "graphql": "^17.0.2",
     "graphql-scalars": "^2.0.0",
-    "graphql-yoga": "^5.23.0",
-    "js-yaml": "^4.3.2",
-    "lucide-react": "^1.46.0",
+    "graphql-yoga": "^5.24.1",
+    "js-yaml": "^5.4.2",
+    "lucide-react": "^1.47.0",
     "next": "16.3.5",
     "nodemailer": "^10.0.10",
     "pg": "^8.23.0",
@@ -98,9 +98,8 @@
   "devDependencies": {
     "@electric-sql/pglite": "^0.5.8",
     "@tailwindcss/postcss": "^4.3.3",
-    "@types/js-yaml": "^4.0.9",
-    "@types/node": "^26.6.0",
-    "@types/nodemailer": "^8.0.1",
+    "@types/node": "^26.6.2",
+    "@types/nodemailer": "^8.0.2",
     "@types/pg": "^8.23.1",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
@@ -111,11 +110,11 @@
     "eslint": "^9.39.5",
     "eslint-config-next": "16.3.5",
     "lint-staged": "^17.5.1",
-    "prettier": "^3.9.6",
+    "prettier": "^3.9.8",
     "prettier-plugin-tailwindcss": "^0.8.1",
     "tailwindcss": "^4.3.3",
-    "ts-proto": "^2.12.3",
-    "tsx": "^4.23.13",
+    "ts-proto": "^2.12.4",
+    "tsx": "^4.23.15",
     "typescript": "^6.0.3"
   },
   "ignoreScripts": [
@@ -131,9 +130,6 @@
     "@codemirror/state": "$@codemirror/state",
     "@codemirror/view": "$@codemirror/view",
     "@codemirror/language": "$@codemirror/language",
-    "esbuild": "^0.28.2",
-    "js-yaml": "^4.3.2",
-    "postcss": "^8.5.26",
-    "baseline-browser-mapping": "^2.11.21"
+    "esbuild": "^0.28.2"
   }
 }

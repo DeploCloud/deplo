@@ -28,6 +28,9 @@ export const instanceSettings = pgTable("instance_settings", {
   takeoverRunId: text("takeover_run_id"),
   takeoverSeenExternalAt: isoTimestamptz("takeover_seen_external_at"),
   welcomeSeenAt: isoTimestamptz("welcome_seen_at"),
+  // The version this process booted on, and who asked for the agent rollout that follows a panel update.
+  bootedVersion: text("booted_version"),
+  agentRolloutBy: text("agent_rollout_by"),
   updatedAt: isoTimestamptz("updated_at").notNull(),
 });
 

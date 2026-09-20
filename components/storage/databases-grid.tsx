@@ -62,6 +62,7 @@ import { reorderBlock } from "@/lib/reorder-block";
 import { cn } from "@/lib/utils";
 import type { DatabaseDTO } from "@/lib/data/databases/rows";
 import type { DatabaseStatus, DatabaseType } from "@/lib/types/database";
+import type { EnvironmentOption } from "./environment-combobox";
 
 type View = ListView;
 
@@ -85,7 +86,7 @@ export function DatabasesGrid({
 }: {
   databases: DatabaseDTO[];
   serverNames: Record<string, string>;
-  environments?: { id: string; label: string }[];
+  environments?: EnvironmentOption[];
   canConfigure?: boolean;
   canReorder: boolean;
   canReveal: boolean;

@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import type { PGlite } from "@electric-sql/pglite";
 import { makeTestDb, type TestDb } from "../../db/test-harness";
 import { eq } from "drizzle-orm";
-import yaml from "js-yaml";
+import * as yaml from "js-yaml";
 import {
   appMounts as appMountsTable,
   appVolumes as appVolumesTable,

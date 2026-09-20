@@ -41,8 +41,11 @@ import { DB_NAMES, DB_TYPES as TYPES, ENGINE_CREDS } from "./db-engines";
 import { DatabaseLogo } from "./database-logo";
 import { DbVersionInput } from "./db-version-input";
 import type { DatabaseType } from "@/lib/types/database";
-
-const TOP_LEVEL = "__none__";
+import {
+  EnvironmentCombobox,
+  NO_ENVIRONMENT,
+  type EnvironmentOption,
+} from "./environment-combobox";
 
 export function CreateDatabase({
   servers,
@@ -53,7 +56,7 @@ export function CreateDatabase({
   size = "default",
 }: {
   servers: { id: string; name: string; isDeploHost: boolean }[];
-  environments?: { id: string; label: string }[];
+  environments?: EnvironmentOption[];
   canCreate: boolean;
   canExposePorts?: boolean;
   autoOpen?: boolean;
@@ -76,7 +79,8 @@ export function CreateDatabase({
     TYPES.find((t) => t.id === "postgres")!.versions[0],
   );
   const [serverId, setServerId] = React.useState<string>(servers[0]?.id ?? "");
-  const [environmentId, setEnvironmentId] = React.useState<string>(TOP_LEVEL);
+  const [environmentId, setEnvironmentId] =
+    React.useState<string>(NO_ENVIRONMENT);
   const [username, setUsername] = React.useState("");
   const [dbName, setDbName] = React.useState("");
   const [password, setPassword] = React.useState("");
@@ -137,7 +141,7 @@ export function CreateDatabase({
       type,
       version,
       serverId: effectiveServerId || null,
-      environmentId: environmentId === TOP_LEVEL ? null : environmentId,
+      environmentId: environmentId === NO_ENVIRONMENT ? null : environmentId,
       username: creds.username && username.trim() ? username.trim() : null,
       dbName: creds.dbName && dbName.trim() ? dbName.trim() : null,
       password: creds.password && password ? password : null,
@@ -351,19 +355,11 @@ export function CreateDatabase({
                 >
                   Environment
                 </FieldLabel>
-                <Select value={environmentId} onValueChange={setEnvironmentId}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value={TOP_LEVEL}>No environment</SelectItem>
-                    {environments.map((e) => (
-                      <SelectItem key={e.id} value={e.id}>
-                        {e.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <EnvironmentCombobox
+                  value={environmentId}
+                  onChange={setEnvironmentId}
+                  environments={environments}
+                />
               </div>
             )}
             <div className="space-y-3 rounded-lg border border-border p-3">

@@ -40,6 +40,7 @@ import { isInstanceAdmin } from "@/lib/membership";
 import { hydrateServerSpecs } from "@/lib/data/monitoring";
 import { serverLabel } from "@/lib/utils";
 import { reportedAgentVersion } from "@/lib/version";
+import { resolveExpectedAgentVersion } from "@/lib/agent/release";
 import type { Server } from "@/lib/types/server";
 import type { TeamOption } from "@/components/servers/server-team-access";
 import { AgentVersionBadge } from "./agent-version-badge";
@@ -136,11 +137,13 @@ function ServerCard({
   specs,
   accessTeamIds,
   isDeploHost,
+  expected,
 }: {
   server: Server;
   specs: Promise<Server>;
   accessTeamIds: string[];
   isDeploHost: boolean;
+  expected: string;
 }) {
   const agentVersion = reportedAgentVersion(server);
   const accessLabel = server.allTeams
@@ -199,19 +202,7 @@ function ServerCard({
             <span className="font-mono text-muted-foreground">{server.ip}</span>
             <CopyButton value={server.ip} className="size-6" />
           </span>
-          {serverUse(server) === "everything" && (
-            <ServerTraefikBadge
-              serverId={server.id}
-              fallback={{
-                status: server.status,
-                checkedAt: server.statusCheckedAt ?? null,
-                message: server.statusMessage ?? null,
-                traefikEnabled: server.traefikEnabled,
-                lastReachedAt: server.lastSeenAt ?? null,
-              }}
-            />
-          )}
-          <AgentVersionBadge version={agentVersion} />
+          <AgentVersionBadge version={agentVersion} expected={expected} />
         </div>
         {server.uninstallPending && (
           <p className="text-xs text-muted-foreground">
@@ -241,10 +232,12 @@ function ServerListRow({
   server,
   accessTeamIds,
   isDeploHost,
+  expected,
 }: {
   server: Server;
   accessTeamIds: string[];
   isDeploHost: boolean;
+  expected: string;
 }) {
   const health = {
     status: server.status,
@@ -283,7 +276,10 @@ function ServerListRow({
         )}
       </TableCell>
       <TableCell>
-        <AgentVersionBadge version={reportedAgentVersion(server)} />
+        <AgentVersionBadge
+          version={reportedAgentVersion(server)}
+          expected={expected}
+        />
       </TableCell>
       <TableCell className="text-muted-foreground">
         {server.allTeams
@@ -317,10 +313,11 @@ export default async function ServersPage(
   const autoOpenServer =
     (Array.isArray(newParam) ? newParam[0] : newParam) === "1";
 
-  const [serversRaw, serverTeamIds, teamsRaw] = await Promise.all([
+  const [serversRaw, serverTeamIds, teamsRaw, expected] = await Promise.all([
     listAllServers().then((all) => all.filter((s) => !s.importOnly)),
     listAllServerTeamIds(),
     listAllTeamsForAdmin(),
+    resolveExpectedAgentVersion(),
   ]);
   const measured = hydrateServerSpecs(serversRaw)
     .catch(() => serversRaw)
@@ -352,6 +349,7 @@ export default async function ServersPage(
         specs={specsFor(server)}
         accessTeamIds={serverTeamIds.get(server.id) ?? []}
         isDeploHost={isDeploHostServer(server, selfAddrs)}
+        expected={expected}
       />
     ),
     row: (
@@ -359,6 +357,7 @@ export default async function ServersPage(
         server={server}
         accessTeamIds={serverTeamIds.get(server.id) ?? []}
         isDeploHost={isDeploHostServer(server, selfAddrs)}
+        expected={expected}
       />
     ),
   }));

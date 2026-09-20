@@ -62,12 +62,23 @@ export function ServersList({ items }: { items: ServerListItem[] }) {
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="all">All servers</SelectItem>
-                {SERVER_USE_IDS.filter((id) => id !== "import").map((id) => (
-                  <SelectItem key={id} value={id}>
-                    {SERVER_USES[id].label}
-                  </SelectItem>
-                ))}
+                <SelectItem value="all">
+                  <span className="flex items-center gap-2">
+                    <ServerIcon className="size-4" />
+                    All servers
+                  </span>
+                </SelectItem>
+                {SERVER_USE_IDS.filter((id) => id !== "import").map((id) => {
+                  const { label, icon: Icon } = SERVER_USES[id];
+                  return (
+                    <SelectItem key={id} value={id}>
+                      <span className="flex items-center gap-2">
+                        <Icon className="size-4" />
+                        {label}
+                      </span>
+                    </SelectItem>
+                  );
+                })}
               </SelectContent>
             </Select>
           }

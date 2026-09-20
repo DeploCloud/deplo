@@ -4,6 +4,7 @@ import { DatabaseHealthStat } from "@/components/storage/database-health-stat";
 import { BackupsStat } from "@/components/storage/database-stats";
 import type { DatabaseBackupSummary } from "@/lib/data/backups/run-listing";
 import type { DatabaseDTO } from "@/lib/data/databases/rows";
+import type { EnvironmentOption } from "./environment-combobox";
 
 export function DatabaseOverview({
   db,
@@ -22,7 +23,7 @@ export function DatabaseOverview({
   serverName: string;
   serverHost: string;
   environmentLabel?: string | null;
-  environments?: { id: string; label: string }[];
+  environments?: EnvironmentOption[];
   canReveal: boolean;
   canConfigure: boolean;
   canExposePorts: boolean;

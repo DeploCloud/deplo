@@ -9,28 +9,22 @@ import { listAllUsers } from "@/lib/data/members/instance-users";
 import { listAllServers } from "@/lib/data/servers/roster";
 import { getCurrentUser } from "@/lib/auth/current-user";
 import { isInstanceAdmin } from "@/lib/membership";
-import { agentUpdateAvailable, reportedAgentVersion } from "@/lib/version";
-import { resolveExpectedAgentVersion } from "@/lib/agent/release";
+import { reportedAgentVersion } from "@/lib/version";
+import { fleetAgentStatus } from "@/lib/data/servers/agent-rollout";
 
 export const metadata = { title: "Settings · Deplo" };
 
 export default async function DeploSettingsPage() {
   if (!(await isInstanceAdmin())) notFound();
-  const [
-    settings,
-    viewerIsOwner,
-    users,
-    servers,
-    expectedAgentVersion,
-    viewer,
-  ] = await Promise.all([
-    getInstanceSettings(),
-    viewerIsInstanceOwner(),
-    listAllUsers(),
-    listAllServers(),
-    resolveExpectedAgentVersion(),
-    getCurrentUser(),
-  ]);
+  const [settings, viewerIsOwner, users, servers, fleet, viewer] =
+    await Promise.all([
+      getInstanceSettings(),
+      viewerIsInstanceOwner(),
+      listAllUsers(),
+      listAllServers(),
+      fleetAgentStatus(),
+      getCurrentUser(),
+    ]);
 
   const ownerCandidates = users
     .filter((u) => u.isInstanceAdmin && !u.isInstanceOwner && !u.suspended)
@@ -41,20 +35,14 @@ export default async function DeploSettingsPage() {
       avatarUrl: u.avatarUrl,
     }));
 
-  const fleetHosts = servers.filter((s) => !s.importOnly);
-  const fleet = {
-    total: fleetHosts.length,
-    outdated: fleetHosts.filter((s) =>
-      agentUpdateAvailable(reportedAgentVersion(s), expectedAgentVersion),
-    ).length,
-    expected: expectedAgentVersion,
-  };
-  const hosts = fleetHosts.map((s) => ({
-    name: s.name,
-    agentVersion: reportedAgentVersion(s),
-    dockerVersion: s.dockerVersion,
-    hostArch: s.hostArch,
-  }));
+  const hosts = servers
+    .filter((s) => !s.importOnly)
+    .map((s) => ({
+      name: s.name,
+      agentVersion: reportedAgentVersion(s),
+      dockerVersion: s.dockerVersion,
+      hostArch: s.hostArch,
+    }));
 
   return (
     <div className="space-y-3">

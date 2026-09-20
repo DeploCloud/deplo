@@ -95,6 +95,13 @@ export async function register(): Promise<void> {
     console.error("[deplo] network isolation sweep failed to start:", e);
   }
   try {
+    const { startAgentRollout } =
+      await import("./lib/data/servers/agent-rollout");
+    await startAgentRollout();
+  } catch (e) {
+    console.error("[deplo] agent rollout startup failed:", e);
+  }
+  try {
     const { startPreviewReaper } = await import("./lib/previews/reaper");
     startPreviewReaper();
   } catch (e) {

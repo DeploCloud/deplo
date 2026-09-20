@@ -1,4 +1,4 @@
-import jsyaml from "js-yaml";
+import { dump } from "js-yaml";
 import {
   parse as parseYaml,
   parseDocument as parseYamlDocument,
@@ -33,7 +33,7 @@ export function parseDocument(src: string): Document {
   return parseYamlDocument(src, READ);
 }
 
-export const dump = jsyaml.dump;
+export { dump };
 
 const yaml = { load, dump, parseDocument };
 export default yaml;

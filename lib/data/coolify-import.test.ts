@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { eq } from "drizzle-orm";
-import yaml from "js-yaml";
+import * as yaml from "js-yaml";
 
 process.env.DEPLO_DATA_DIR = mkdtempSync(join(tmpdir(), "deplo-pg-"));
 
