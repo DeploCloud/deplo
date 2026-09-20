@@ -16,7 +16,7 @@ import {
   deploHostSelfAddresses,
   isDeploHostServer,
   isIpv4,
-  nipEmbeddedIp,
+  wildcardEmbeddedIp,
   panelFallbackHost,
 } from "../lib/deploy/domains";
 
@@ -46,7 +46,7 @@ Deplo recover - break-glass account recovery (run on the Deplo host)
   ${CMD} panel-address <address|->
       Move the panel's own route onto <address> (a domain, optionally with
       http:// or https://), on the server that runs Deplo. Pass "-" for the
-      generated deplo-<hex>.nip.io address, which also turns the backup address
+      generated deplo-<hex>.deplo.site address, which also turns the backup address
       back on. The way back in when the panel's domain is what broke.
 
   ${CMD} server-address <server> <address> [agentPort]
@@ -319,7 +319,7 @@ async function cmdPanelAddress(arg: string) {
   let https = current.https;
   if (generated) {
     domain = panelFallbackHost(isIpv4(server.ip ?? "") ? server.ip : undefined);
-    if (!nipEmbeddedIp(domain))
+    if (!wildcardEmbeddedIp(domain))
       fail(
         `Deplo cannot work out the generated address on ${server.name}. Pass a domain instead.`,
       );

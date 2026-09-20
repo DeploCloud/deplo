@@ -20,6 +20,7 @@ import { DocsLink } from "@/components/ui/docs-link";
 import { gqlAction } from "@/lib/graphql-client";
 import type { InstanceSettings } from "@/lib/data/instance-settings/settings-store";
 import { hostPart } from "./panel-address-card";
+import { usePanelHttps } from "./panel-http-card";
 
 export function PanelBackupAddressCard({
   settings,
@@ -30,7 +31,11 @@ export function PanelBackupAddressCard({
   const [confirming, setConfirming] = React.useState(false);
   const [pending, startTransition] = React.useTransition();
 
-  const url = settings.panelFallbackUrl;
+  // What Traefik routes today, not what Deplo would mint now: an older install is on its own zone.
+  const { cert } = usePanelHttps();
+  const url = cert?.fallbackDomain
+    ? `https://${cert.fallbackDomain}`
+    : settings.panelFallbackUrl;
   const off = settings.panelFallbackDisabled;
   const isOwnAddress = !!url && url === settings.panelUrl;
 

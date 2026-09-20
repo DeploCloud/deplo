@@ -5,8 +5,8 @@ import { previewCommentBody, retryTransient } from "./preview-comment";
 import { TransientGithubError } from "../github/app";
 
 const at = {
-  url: "http://blog-pr-42-abc123-0a000001.nip.io",
-  host: "blog-pr-42-abc123-0a000001.nip.io",
+  url: "http://blog-pr-42-abc123-0a000001.deplo.site",
+  host: "blog-pr-42-abc123-0a000001.deplo.site",
   buildLogUrl: "https://deplo.example.com/acme/apps/blog/deployments/dpl_1",
 };
 

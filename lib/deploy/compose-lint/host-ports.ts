@@ -15,6 +15,30 @@ export function isValidPortMapping(p: unknown): boolean {
   return false;
 }
 
+// Published on every address, 53 also claims 127.0.0.53, the machine's own resolver stub, and
+// every other container stops resolving anything.
+export function unboundDnsPort(p: unknown): boolean {
+  if (p && typeof p === "object") {
+    const entry = p as { published?: unknown; host_ip?: unknown };
+    return Number(entry.published) === 53 && isEveryAddress(entry.host_ip);
+  }
+  if (typeof p !== "string") return false;
+  const mapping = p.trim();
+  if (interpolates(mapping)) return false;
+  const parts = mapping.split("/")[0].split(":");
+  if (parts.length < 2) return false;
+  const hostPort = parts[parts.length - 2];
+  const hostIp = parts.slice(0, parts.length - 2).join(":");
+  return Number(hostPort) === 53 && isEveryAddress(hostIp);
+}
+
+function isEveryAddress(ip: unknown): boolean {
+  const bare = String(ip ?? "")
+    .trim()
+    .replace(/[[\]]/g, "");
+  return bare === "" || bare === "0.0.0.0" || bare === "::";
+}
+
 // `expose:` binds nothing and is not counted: gating it charged the grant for two thirds of the fleet.
 export function composePublishesPorts(composeYaml: string): boolean {
   const doc = loadComposeDoc<ComposeDocShape>(composeYaml);

@@ -407,7 +407,7 @@ configs:
             tls:
               certResolver: letsencrypt
           deplo-panel-fallback:
-            rule: Host(\`deplo-cb007109.nip.io\`)
+            rule: Host(\`deplo-cb007109.deplo.site\`)
             entryPoints:
               - websecure
             service: deplo-panel
@@ -435,7 +435,7 @@ networks:
 
 const PANEL_ROUTE = {
   domain: "deplo.example.com",
-  fallbackDomain: "deplo-cb007109.nip.io",
+  fallbackDomain: "deplo-cb007109.deplo.site",
   https: true,
   certResolver: "letsencrypt",
   target: "http://deplo:3000",
@@ -631,7 +631,7 @@ test("the generated host keeps answering when the domain moves", () => {
   assert.equal(routers["deplo-panel"].rule, "Host(`new.example.com`)");
   assert.equal(
     routers["deplo-panel-fallback"].rule,
-    "Host(`deplo-cb007109.nip.io`)",
+    "Host(`deplo-cb007109.deplo.site`)",
   );
   assert.equal(
     routers["deplo-panel-fallback"].service,
@@ -657,7 +657,10 @@ test("a panel that IS the generated host gets one router, not two identical ones
     domain: PANEL_ROUTE.fallbackDomain,
   });
   const routers = panelFileOf(out).http.routers;
-  assert.equal(routers["deplo-panel"].rule, "Host(`deplo-cb007109.nip.io`)");
+  assert.equal(
+    routers["deplo-panel"].rule,
+    "Host(`deplo-cb007109.deplo.site`)",
+  );
   assert.equal(routers["deplo-panel-fallback"], undefined);
   assert.equal(panelRoute(out)?.fallbackDomain, null);
 });

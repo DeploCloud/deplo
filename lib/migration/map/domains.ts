@@ -4,7 +4,8 @@ import type { SourceDomain } from "../model";
 
 import type { Mapped } from "./source-platform";
 
-const THROWAWAY_HOST_RE = /(^|\.)(traefik\.me|sslip\.io|nip\.io|localhost)$/i;
+const THROWAWAY_HOST_RE =
+  /(^|\.)(traefik\.me|sslip\.io|nip\.io|deplo\.site|localhost)$/i;
 
 export function isThrowawayHost(host: string): boolean {
   return THROWAWAY_HOST_RE.test(host.trim().toLowerCase());

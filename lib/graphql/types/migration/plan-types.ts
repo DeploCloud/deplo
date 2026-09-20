@@ -50,7 +50,7 @@ export const PlanServiceRef = builder
       }),
       domains: t.exposeStringList("domains", {
         description:
-          "The hostnames that would come across. The panel's generated throwaway hosts (traefik.me, sslip.io, nip.io) are already dropped - Deplo mints its own.",
+          "The hostnames that would come across. The panel's generated throwaway hosts (traefik.me, sslip.io, nip.io, deplo.site) are already dropped - Deplo mints its own.",
       }),
       logo: t.exposeString("logo", {
         nullable: true,

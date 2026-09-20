@@ -12,7 +12,7 @@ import {
   withPanelRoute,
   type PanelRoute,
 } from "../../deploy/traefik-stack";
-import { panelFallbackHost } from "../../deploy/domains";
+import { isPanelFallbackHost, panelFallbackHost } from "../../deploy/domains";
 import { recordActivity } from "../activity";
 import {
   SETTINGS_ID,
@@ -231,7 +231,7 @@ export async function setPanelFallback(
   await withTraefikStackLock(host.id, async () => {
     const info = await fetchHostInfo(host.id);
     const current = await currentPanelRoute(info.traefikComposeYaml);
-    if (!enabled && current.domain === panelFallbackHost())
+    if (!enabled && isPanelFallbackHost(current.domain))
       throw new Error(
         `${current.domain} is the panel's own address right now. Give the panel a domain first.`,
       );

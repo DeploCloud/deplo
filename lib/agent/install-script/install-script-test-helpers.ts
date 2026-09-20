@@ -98,7 +98,7 @@ configs:
             tls:
               certResolver: letsencrypt
           deplo-panel-fallback:
-            rule: Host(\`deplo-cb00710b.nip.io\`)
+            rule: Host(\`deplo-cb00710b.deplo.site\`)
             entryPoints:
               - websecure
             service: deplo-panel
@@ -132,7 +132,7 @@ export async function updatedHost(stack = LIVE_STACK) {
 
 export async function adopt(dir: string) {
   return bash(`set -euo pipefail
-MODE=update; DEPLO_DOMAIN=""; PANEL_HTTPS=true; FALLBACK_HOST=deplo-cb00710b.nip.io
+MODE=update; DEPLO_DOMAIN=""; PANEL_HTTPS=true; FALLBACK_HOST=deplo-cb00710b.deplo.site
 ENV_FILE=${dir}/.env; TRAEFIK_COMPOSE=${dir}/docker-compose.yml
 ${await shellFn("install.sh", "live_panel_route")}
 ${await shellFn("install.sh", "adopt_live_panel_route")}

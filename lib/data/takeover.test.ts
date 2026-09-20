@@ -88,33 +88,33 @@ test("until the cutover, what Deplo hands out names the address it was reached o
   const { instancePublicBaseUrl } =
     await import("./instance-settings/settings-store");
   const previous = process.env.DEPLO_PUBLIC_URL;
-  process.env.DEPLO_PUBLIC_URL = "https://deplo-abc.nip.io";
+  process.env.DEPLO_PUBLIC_URL = "https://deplo-abc.deplo.site";
   t.after(() => {
     if (previous === undefined) delete process.env.DEPLO_PUBLIC_URL;
     else process.env.DEPLO_PUBLIC_URL = previous;
   });
   const sideDoor = new Headers({
-    host: "deplo-abc.nip.io",
+    host: "deplo-abc.deplo.site",
     "x-forwarded-proto": "http",
   });
   assert.equal(
     await asUser(ADMIN, () => instancePublicBaseUrl(sideDoor)),
-    "https://deplo-abc.nip.io",
+    "https://deplo-abc.deplo.site",
   );
   await seedPending();
   assert.equal(
     await asUser(ADMIN, () => instancePublicBaseUrl(sideDoor)),
-    "http://deplo-abc.nip.io",
+    "http://deplo-abc.deplo.site",
   );
   assert.equal(
     await asUser(ADMIN, () => instancePublicBaseUrl()),
-    "https://deplo-abc.nip.io",
+    "https://deplo-abc.deplo.site",
   );
   await asUser(ADMIN, () => requestTakeover(null, { discardData: true }));
   await asUser(ADMIN, () => markTakeoverProgress("done"));
   assert.equal(
     await asUser(ADMIN, () => instancePublicBaseUrl(sideDoor)),
-    "https://deplo-abc.nip.io",
+    "https://deplo-abc.deplo.site",
   );
 });
 

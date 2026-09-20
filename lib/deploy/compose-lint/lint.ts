@@ -1,7 +1,7 @@
 import yaml from "../../yaml";
 
 import { interpolates } from "./document";
-import { isValidPortMapping } from "./host-ports";
+import { isValidPortMapping, unboundDnsPort } from "./host-ports";
 import {
   composeBuildReachesHost,
   composeUsesExternalMerge,
@@ -278,6 +278,13 @@ export function lintCompose(source: string): LintDiagnostic[] {
               severity: "warning",
               rule: "port-mapping",
               message: `\`${name}.ports\` entry \`${stringifyPort(p)}\` is not a valid port mapping (expected "HOST:CONTAINER" or a number).`,
+              line: portsLine,
+            });
+          } else if (unboundDnsPort(p)) {
+            diags.push({
+              severity: "warning",
+              rule: "dns-port-unbound",
+              message: `\`${name}.ports\` publishes 53 on every address, which takes over this machine's own DNS and stops other apps resolving anything. Bind it to the public address: "203.0.113.10:53:53/udp".`,
               line: portsLine,
             });
           }

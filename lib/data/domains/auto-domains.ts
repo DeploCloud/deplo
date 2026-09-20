@@ -9,8 +9,8 @@ import { newId, nowIso } from "../../ids";
 import {
   isIpv4,
   isLoopbackIp,
-  nipEmbeddedIp,
-  rehostNip,
+  wildcardEmbeddedIp,
+  rehostWildcard,
 } from "../../deploy/domains";
 import { certProviderForDns, isRoutableDomain } from "../../deploy/cloudflare";
 import { composeServiceReservedClaim } from "../../deploy/compose-lint/networks";
@@ -53,9 +53,9 @@ export async function ensureAutoDomain(
       isIpv4(opts.ip) &&
       !isLoopbackIp(opts.ip)
     ) {
-      const embedded = nipEmbeddedIp(primary.name);
+      const embedded = wildcardEmbeddedIp(primary.name);
       if (embedded && embedded !== opts.ip) {
-        const fixed = rehostNip(primary.name, opts.ip);
+        const fixed = rehostWildcard(primary.name, opts.ip);
         if (fixed !== primary.name) {
           await getDb()
             .update(domainsTable)
@@ -71,7 +71,7 @@ export async function ensureAutoDomain(
   const preferred = normalizePreferredHost(opts.preferred) || undefined;
   const preferredOk =
     !!preferred &&
-    (nipEmbeddedIp(preferred) != null || DOMAIN_RE.test(preferred));
+    (wildcardEmbeddedIp(preferred) != null || DOMAIN_RE.test(preferred));
   const preferredPath = normalizePath(opts.preferredPath);
   let name: string;
   if (preferredOk && !(await domainNameExists(preferred!, preferredPath))) {
@@ -92,7 +92,7 @@ export async function ensureAutoDomain(
   }
   const pathPrefix = name === preferred ? preferredPath : "";
   const status =
-    nipEmbeddedIp(name) != null
+    wildcardEmbeddedIp(name) != null
       ? ("valid" as const)
       : await checkDomainDns(name, opts.ip);
   // An absent provider reads as letsencrypt at the deploy edge, so the born-without-a-cert default is written.

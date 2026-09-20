@@ -26,6 +26,7 @@ import { nowIso } from "../../ids";
 import { requireInstanceAdmin } from "../../membership";
 import { passkeyRelyingParty } from "../../public-url";
 import { panelFallbackHost } from "../../deploy/domains";
+import { panelRoute } from "../../deploy/traefik-stack";
 import {
   deploHostServer,
   instancePublicBaseUrl,
@@ -83,7 +84,7 @@ export async function getPanelAddressImpact(
   const hostIp = reachableHostIp(host);
   base.panelFallbackUrl =
     hostIp && !(await loadSettings()).panelFallbackDisabled
-      ? `https://${panelFallbackHost(hostIp)}`
+      ? `https://${(await routedFallbackHost(host?.id)) ?? panelFallbackHost(hostIp)}`
       : null;
   if (!base.hostChanges && !base.schemeChanges) return base;
 
@@ -176,4 +177,16 @@ export async function passkeysBoundToThisAddress(): Promise<number> {
     .from(passkey)
     .where(eq(passkey.rpId, rp.rpId));
   return Number(row?.n ?? 0);
+}
+
+// The host that answers today: an install born before deplo.site keeps its own.
+async function routedFallbackHost(serverId?: string): Promise<string | null> {
+  if (!serverId) return null;
+  try {
+    const { fetchHostInfo } = await import("../../infra/agent-client/host-ops");
+    const yaml = (await fetchHostInfo(serverId)).traefikComposeYaml;
+    return yaml ? (panelRoute(yaml)?.fallbackDomain ?? null) : null;
+  } catch {
+    return null;
+  }
 }

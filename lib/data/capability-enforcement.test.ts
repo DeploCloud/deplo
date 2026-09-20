@@ -364,7 +364,7 @@ test("create_apps is not permission to claim a hostname", async () => {
       source: "docker-image",
       repo: null,
       dockerImage: "nginx:1.27",
-      autoDomain: "app-blue-otter-7f000001.nip.io",
+      autoDomain: "app-blue-otter-7f000001.deplo.site",
     });
     assert.ok(fromTemplate.id);
   });

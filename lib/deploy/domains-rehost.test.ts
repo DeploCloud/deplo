@@ -4,10 +4,10 @@ import assert from "node:assert/strict";
 import {
   ipToHex,
   hexToIp,
-  rehostNip,
-  rehostEmbeddedNip,
+  rehostWildcard,
+  rehostEmbeddedWildcard,
   rehostBlueprintHosts,
-  nipEmbeddedIp,
+  wildcardEmbeddedIp,
   panelFallbackHost,
   instanceHost,
 } from "./domains";
@@ -18,9 +18,9 @@ const MASTER_HEX = "5f87d0d0";
 const REMOTE_HEX = "9859fe85";
 
 test("the panel's own generated host carries this server's IP", () => {
-  assert.equal(panelFallbackHost("1.2.3.4"), "deplo-01020304.nip.io");
-  assert.equal(panelFallbackHost(MASTER), `deplo-${MASTER_HEX}.nip.io`);
-  assert.equal(nipEmbeddedIp(panelFallbackHost(REMOTE)), REMOTE);
+  assert.equal(panelFallbackHost("1.2.3.4"), "deplo-01020304.deplo.site");
+  assert.equal(panelFallbackHost(MASTER), `deplo-${MASTER_HEX}.deplo.site`);
+  assert.equal(wildcardEmbeddedIp(panelFallbackHost(REMOTE)), REMOTE);
 });
 
 test("the instance reads its own IP back out of its generated address", () => {
@@ -56,44 +56,64 @@ test("hexToIp is the inverse of ipToHex, and rejects non-hex / bad width", () =>
   assert.equal(hexToIp(""), null);
 });
 
-test("nipEmbeddedIp extracts the embedded IPv4 (and only an anchored nip host)", () => {
+test("wildcardEmbeddedIp extracts the embedded IPv4 (and only an anchored generated host)", () => {
   assert.equal(
-    nipEmbeddedIp(`garage-charming-otter-${MASTER_HEX}.nip.io`),
+    wildcardEmbeddedIp(`garage-otter-${MASTER_HEX}.deplo.site`),
     MASTER,
   );
   assert.equal(
-    nipEmbeddedIp(`web-ui-garage-bold-lynx-${MASTER_HEX}.nip.io`),
+    wildcardEmbeddedIp(`garage-charming-otter-${MASTER_HEX}.nip.io`),
+    MASTER,
+    "a name minted before deplo.site still reads",
+  );
+  assert.equal(
+    wildcardEmbeddedIp(`web-ui-garage-bold-lynx-${MASTER_HEX}.nip.io`),
     MASTER,
   );
-  assert.equal(nipEmbeddedIp("garage.example.com"), null);
+  assert.equal(wildcardEmbeddedIp("garage.example.com"), null);
   assert.equal(
-    nipEmbeddedIp(`https://garage-x-y-${MASTER_HEX}.nip.io/x`),
+    wildcardEmbeddedIp(`https://garage-x-y-${MASTER_HEX}.nip.io/x`),
     null,
   );
-  assert.equal(nipEmbeddedIp("garage-charming-otter.nip.io"), null);
+  assert.equal(wildcardEmbeddedIp("garage-charming-otter.nip.io"), null);
 });
 
-test("rehostNip swaps only the hex IP, preserving the words", () => {
+test("rehostWildcard swaps only the hex IP, preserving the words", () => {
   assert.equal(
-    rehostNip(`garage-s3-charming-otter-${MASTER_HEX}.nip.io`, REMOTE),
-    `garage-s3-charming-otter-${REMOTE_HEX}.nip.io`,
+    rehostWildcard(`garage-s3-otter-${MASTER_HEX}.deplo.site`, REMOTE),
+    `garage-s3-otter-${REMOTE_HEX}.deplo.site`,
   );
 });
 
-test("rehostNip moves a web-ui.* extra (exposes[].host) to the remote IP", () => {
+test("rehostWildcard keeps a legacy host in its own zone", () => {
   assert.equal(
-    rehostNip(`web-ui-garage-bold-lynx-${MASTER_HEX}.nip.io`, REMOTE),
+    rehostWildcard(`garage-s3-charming-otter-${MASTER_HEX}.nip.io`, REMOTE),
+    `garage-s3-charming-otter-${REMOTE_HEX}.nip.io`,
+    "moving a server must not move an app onto another zone",
+  );
+  assert.equal(
+    rehostWildcard(`old-app-${MASTER_HEX}.sslip.io`, REMOTE),
+    `old-app-${REMOTE_HEX}.sslip.io`,
+  );
+});
+
+test("rehostWildcard moves a web-ui.* extra (exposes[].host) to the remote IP", () => {
+  assert.equal(
+    rehostWildcard(`web-ui-garage-bold-lynx-${MASTER_HEX}.nip.io`, REMOTE),
     `web-ui-garage-bold-lynx-${REMOTE_HEX}.nip.io`,
   );
 });
 
-test("rehostNip is a no-op for a non-nip host", () => {
-  assert.equal(rehostNip("garage.example.com", REMOTE), "garage.example.com");
+test("rehostWildcard is a no-op for a host outside the wildcard zones", () => {
+  assert.equal(
+    rehostWildcard("garage.example.com", REMOTE),
+    "garage.example.com",
+  );
 });
 
-test("rehostEmbeddedNip rewrites the host inside a free-text env value, keeping surrounding text", () => {
+test("rehostEmbeddedWildcard rewrites the host inside a free-text env value, keeping surrounding text", () => {
   assert.equal(
-    rehostEmbeddedNip(
+    rehostEmbeddedWildcard(
       `https://garage-keen-puma-${MASTER_HEX}.nip.io/health`,
       MASTER,
       REMOTE,
@@ -102,25 +122,25 @@ test("rehostEmbeddedNip rewrites the host inside a free-text env value, keeping 
   );
 });
 
-test("rehostEmbeddedNip rewrites every occurrence in one value", () => {
+test("rehostEmbeddedWildcard rewrites every occurrence in one value", () => {
   const v = `A=http://a-x-y-${MASTER_HEX}.nip.io B=http://b-x-y-${MASTER_HEX}.nip.io`;
   assert.equal(
-    rehostEmbeddedNip(v, MASTER, REMOTE),
+    rehostEmbeddedWildcard(v, MASTER, REMOTE),
     `A=http://a-x-y-${REMOTE_HEX}.nip.io B=http://b-x-y-${REMOTE_HEX}.nip.io`,
   );
 });
 
-test("rehostEmbeddedNip only touches the matching fromIp (leaves other nip hosts alone)", () => {
+test("rehostEmbeddedWildcard only touches the matching fromIp (leaves other generated hosts alone)", () => {
   const otherHex = ipToHex("10.0.0.9");
   assert.equal(
-    rehostEmbeddedNip(`x-a-b-${otherHex}.nip.io`, MASTER, REMOTE),
+    rehostEmbeddedWildcard(`x-a-b-${otherHex}.nip.io`, MASTER, REMOTE),
     `x-a-b-${otherHex}.nip.io`,
   );
 });
 
-test("rehostEmbeddedNip is a no-op when the value has no nip host", () => {
+test("rehostEmbeddedWildcard is a no-op when the value has no generated host", () => {
   assert.equal(
-    rehostEmbeddedNip("http://garage:3900", MASTER, REMOTE),
+    rehostEmbeddedWildcard("http://garage:3900", MASTER, REMOTE),
     "http://garage:3900",
   );
 });

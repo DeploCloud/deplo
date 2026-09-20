@@ -8,8 +8,8 @@ import {
   domainTlsConfig,
 } from "./domains";
 
-const HOST = "appflowy-keen-puma-01020304.nip.io";
-const EXTRA = "web-ui-appflowy-bold-lynx-01020304.nip.io";
+const HOST = "appflowy-keen-puma-01020304.deplo.site";
+const EXTRA = "web-ui-appflowy-bold-lynx-01020304.deplo.site";
 
 test("blueprintWantsTls fires on an https URL to the app's OWN host in env", () => {
   assert.equal(

@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import {
   FRIENDLY_ADJECTIVES,
   FRIENDLY_ANIMALS,
-  friendlyWords,
+  friendlyWord,
 } from "./friendly-words";
 
 test("every word is a plain lowercase label", () => {
@@ -19,11 +19,17 @@ test("no duplicates, and enough of both to keep names varied", () => {
   assert.ok(FRIENDLY_ANIMALS.length >= 40);
 });
 
-test("a pair is two known words joined by one dash", () => {
-  for (let i = 0; i < 200; i++) {
-    const [adjective, animal, ...rest] = friendlyWords().split("-");
-    assert.equal(rest.length, 0);
-    assert.ok(FRIENDLY_ADJECTIVES.includes(adjective!));
-    assert.ok(FRIENDLY_ANIMALS.includes(animal!));
+test("a word is one known label, from either list", () => {
+  const seen = new Set<string>();
+  for (let i = 0; i < 400; i++) {
+    const w = friendlyWord();
+    assert.ok(
+      FRIENDLY_ADJECTIVES.includes(w) || FRIENDLY_ANIMALS.includes(w),
+      w,
+    );
+    seen.add(w);
   }
+  assert.ok(seen.size > 40, `only ${seen.size} distinct words in 400 draws`);
+  assert.ok(FRIENDLY_ADJECTIVES.some((a) => seen.has(a)));
+  assert.ok(FRIENDLY_ANIMALS.some((a) => seen.has(a)));
 });

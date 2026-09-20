@@ -43,7 +43,7 @@ test("repointing previews at another server stops the ones running on the old on
     { actor: "o" },
   );
   assert.ok(
-    (await rowOf(h.db, up.previewId!)).host.endsWith("-0a000001.nip.io"),
+    (await rowOf(h.db, up.previewId!)).host.endsWith("-0a000001.deplo.site"),
   );
   const blocked = await openOrSyncPreview(
     "prj_1",
@@ -61,7 +61,7 @@ test("repointing previews at another server stops the ones running on the old on
   );
   assert.equal((await previewSettings("prj_1"))!.serverId, "srv_other");
   const moved = await rowOf(h.db, up.previewId!);
-  assert.ok(moved.host.endsWith("-0a000002.nip.io"), moved.host);
+  assert.ok(moved.host.endsWith("-0a000002.deplo.site"), moved.host);
   assert.ok(moved.url.includes(moved.host), moved.url);
 
   await deployPreviewRow(up.previewId!, { actor: "o" });

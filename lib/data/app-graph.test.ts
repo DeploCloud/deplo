@@ -46,7 +46,7 @@ import { uniqueAutoDomainName } from "./domains/hostname-claim";
 import { setPrimaryDomain } from "./domains/primary-domain";
 import { routableRoutes } from "./domains/routes";
 import { loadDomainsForApp } from "./app-graph-load";
-import { nipDomain, nipEmbeddedIp } from "../deploy/domains";
+import { wildcardDomain, wildcardEmbeddedIp } from "../deploy/domains";
 import { upsertEnv, listEnv } from "./env";
 import { setSharedVarAppLink } from "./shared-vars/app-links";
 import { saveSharedVar } from "./shared-vars/authoring";
@@ -432,7 +432,7 @@ test("uniqueAutoDomainName never returns a host that already exists globally", a
 test("ensureExtraDomain regenerates (not skips) when the template host collides with ANOTHER project", async () => {
   await seedApp(db, { id: "prj_a", slug: "alpha" });
   await seedApp(db, { id: "prj_b", slug: "beta" });
-  const shared = `shared-charming-otter-${"01020304"}.nip.io`;
+  const shared = `shared-charming-otter-${"01020304"}.deplo.site`;
   await asUser1(() =>
     ensureExtraDomain("prj_a", shared, {
       port: 80,
@@ -457,7 +457,7 @@ test("ensureExtraDomain regenerates (not skips) when the template host collides 
     "B did not reuse A's colliding host",
   );
   assert.equal(
-    nipEmbeddedIp(bDomains[0].name),
+    wildcardEmbeddedIp(bDomains[0].name),
     IP,
     "B's host still encodes the IP",
   );
@@ -467,7 +467,7 @@ test("ensureExtraDomain regenerates (not skips) when the template host collides 
 
 test("ensureExtraDomain is idempotent on the SAME project (re-run does not duplicate)", async () => {
   await seedApp(db, { id: "prj_c", slug: "gamma" });
-  const host = `gamma-bold-lynx-${"01020304"}.nip.io`;
+  const host = `gamma-bold-lynx-${"01020304"}.deplo.site`;
   await asUser1(async () => {
     await ensureExtraDomain("prj_c", host, {
       port: 80,
@@ -493,7 +493,7 @@ test("ensureExtraDomain is idempotent on the SAME project (re-run does not dupli
 
 test("a template's displaced domain gets an address of its own, not silence", async () => {
   const serverIp = "10.0.0.1";
-  const main = nipDomain("garage-s3", "bold-otter", serverIp);
+  const main = wildcardDomain("garage-s3", "bold-otter", serverIp);
   const app = await asUser1(() =>
     createApp({
       name: "Garage S3",
@@ -529,7 +529,7 @@ test("a template's displaced domain gets an address of its own, not silence", as
     "the displaced entry did not vanish onto the primary's host",
   );
   assert.equal(
-    nipEmbeddedIp(extra.name),
+    wildcardEmbeddedIp(extra.name),
     serverIp,
     "its regenerated host points at the same server",
   );
@@ -540,7 +540,7 @@ test("a template's displaced domain gets an address of its own, not silence", as
 test("ensureAutoDomain regenerates when its `preferred` host belongs to another project", async () => {
   await seedApp(db, { id: "prj_x", slug: "xeno" });
   await seedApp(db, { id: "prj_y", slug: "yeti" });
-  const preferred = `pref-keen-puma-${"01020304"}.nip.io`;
+  const preferred = `pref-keen-puma-${"01020304"}.deplo.site`;
   const xName = await asUser1(() =>
     ensureAutoDomain("prj_x", {
       slug: "xeno",
@@ -559,7 +559,7 @@ test("ensureAutoDomain regenerates when its `preferred` host belongs to another 
     }),
   );
   assert.notEqual(yName, preferred, "Y regenerated rather than colliding");
-  assert.equal(nipEmbeddedIp(yName), IP);
+  assert.equal(wildcardEmbeddedIp(yName), IP);
 });
 
 test("a path row on an already-verified hostname inherits its DNS status (and routes)", async () => {
@@ -637,7 +637,7 @@ test("auto domains are born plain-HTTP unless the blueprint opted into TLS", asy
       defaultPort: 80,
       certProvider: "letsencrypt",
     });
-    await ensureExtraDomain("prj_2", "tls-extra-keen-owl-01020304.nip.io", {
+    await ensureExtraDomain("prj_2", "tls-extra-keen-owl-01020304.deplo.site", {
       port: 81,
       service: "web",
       slug: "tls",

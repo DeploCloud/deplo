@@ -422,7 +422,9 @@ test("only an instance admin may ask", async () => {
   await assert.rejects(() => asUser(MEMBER, checkPanelDns));
 });
 
+// What this install was born with, and what Deplo mints for the same IP today.
 const FALLBACK = "deplo-cb00710a.nip.io";
+const MINTED = "deplo-cb00710a.deplo.site";
 
 const TRAEFIK_STACK = `services:
   traefik:
@@ -482,7 +484,16 @@ test("the backup address goes off, and stays off when the scheme moves", async (
     assert.equal(
       (await asUser(ADMIN, getPanelHttps)).fallbackDomain,
       FALLBACK,
-      "it is on until somebody turns it off",
+      "it reads what Traefik routes, not what Deplo would mint now",
+    );
+
+    const before = await asUser(ADMIN, () =>
+      getPanelAddressImpact("moved.example.com"),
+    );
+    assert.equal(
+      before.panelFallbackUrl,
+      `https://${FALLBACK}`,
+      "the way back in has to be the host that answers, not the one Deplo would mint",
     );
 
     const off = await asUser(ADMIN, () => setPanelFallback(false));
@@ -500,8 +511,8 @@ test("the backup address goes off, and stays off when the scheme moves", async (
 
     const on = await asUser(ADMIN, () => setPanelFallback(true));
     assert.equal(on.panelFallbackDisabled, false);
-    assert.equal(panelRoute(host.yaml)?.fallbackDomain, FALLBACK);
-    assert.equal(on.panelFallbackUrl, `https://${FALLBACK}`);
+    assert.equal(panelRoute(host.yaml)?.fallbackDomain, MINTED);
+    assert.equal(on.panelFallbackUrl, `https://${MINTED}`);
   });
 });
 

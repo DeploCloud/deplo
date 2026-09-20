@@ -161,7 +161,7 @@ const PreviewSettingsInput = builder.inputType("AppPreviewSettingsInput", {
       required: false,
       description:
         "e.g. `preview.example.com`, with a wildcard DNS record pointing here. " +
-        "Empty clears it back to the zero-configuration nip.io default.",
+        "Empty clears it back to the zero-configuration generated default.",
     }),
     maxActive: t.int({ required: false }),
     ttlDays: t.int({ required: false }),

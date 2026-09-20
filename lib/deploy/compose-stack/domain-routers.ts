@@ -97,7 +97,7 @@ export function wireDomainRoutes(opts: {
         port,
         entrypoint: route.entrypoint,
         tls: route.tls,
-        // Carried per route: a compose app on a plain nip.io answered only at an unprinted address.
+        // Carried per route: a compose app on a plain generated host answered only at an unprinted address.
         certResolver: route.certResolver,
         pathPrefix: route.pathPrefix,
         stripPrefix: route.stripPrefix,

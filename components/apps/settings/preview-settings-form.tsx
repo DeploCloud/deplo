@@ -196,7 +196,7 @@ export function PreviewSettingsForm(props: PreviewSettingsFormProps) {
               <div className="grid gap-1.5">
                 <FieldLabel
                   htmlFor="pv-domain"
-                  info="Empty gives every preview a working nip.io address, no DNS needed. Set your own domain and point a wildcard record at this server."
+                  info="Empty gives every preview a working generated address, no DNS needed. Set your own domain and point a wildcard record at this server."
                   docs="previews.settings"
                 >
                   Preview domain
@@ -213,7 +213,7 @@ export function PreviewSettingsForm(props: PreviewSettingsFormProps) {
               <SettingRow
                 label="HTTPS"
                 htmlFor="pv-https"
-                info="Give every preview its own certificate. Needs a preview domain - a nip.io address can never hold one."
+                info="Give every preview its own certificate. Needs a preview domain - a generated address can never hold one."
                 docs="previews.settings"
               >
                 <div className="flex items-center gap-3">

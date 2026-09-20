@@ -8,10 +8,10 @@ import { domains as domainsTable } from "../../db/schema/control-plane/domains";
 import { newId } from "../../ids";
 import { requireActiveTeamId } from "../../membership";
 import {
-  panelFallbackHost,
-  nipDomain,
-  randomWords,
-  nipEmbeddedIp,
+  isPanelFallbackHost,
+  wildcardDomain,
+  randomWord,
+  wildcardEmbeddedIp,
 } from "../../deploy/domains";
 import { publicBaseUrl } from "../../public-url";
 
@@ -27,7 +27,9 @@ export function normalizePreferredHost(raw: string | null | undefined): string {
 
 export function isHostnameClaim(raw: string | null | undefined): boolean {
   const host = normalizePreferredHost(raw);
-  return host !== "" && DOMAIN_RE.test(host) && nipEmbeddedIp(host) == null;
+  return (
+    host !== "" && DOMAIN_RE.test(host) && wildcardEmbeddedIp(host) == null
+  );
 }
 
 export async function assertHostnameNotAnotherTeams(
@@ -72,7 +74,7 @@ export function isPanelHost(name: string): boolean {
     const url = publicBaseUrl();
     own = url ? new URL(url).hostname.toLowerCase() : null;
   } catch {}
-  return name === own || name === panelFallbackHost();
+  return name === own || isPanelFallbackHost(name);
 }
 
 export function assertNotPanelHost(name: string): void {
@@ -126,8 +128,8 @@ export async function uniqueAutoDomainName(
   ip: string,
 ): Promise<string> {
   for (let attempt = 0; attempt < 20; attempt++) {
-    const candidate = nipDomain(label, randomWords(), ip);
+    const candidate = wildcardDomain(label, randomWord(), ip);
     if (!(await domainNameExists(candidate))) return candidate;
   }
-  return nipDomain(label, `${randomWords()}-${newId("").slice(1, 5)}`, ip);
+  return wildcardDomain(label, `${randomWord()}-${newId("").slice(1, 5)}`, ip);
 }

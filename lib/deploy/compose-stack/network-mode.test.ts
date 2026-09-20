@@ -16,8 +16,8 @@ services:
 `,
     {
       domainRoutes: [
-        route("demo.1.2.3.4.nip.io", "web", 80),
-        route("agent.1.2.3.4.nip.io", "agent", 8123),
+        route("demo.1.2.3.4.deplo.site", "web", 80),
+        route("agent.1.2.3.4.deplo.site", "agent", 8123),
       ],
     },
   );
@@ -33,7 +33,7 @@ services:
   assert.ok((doc.services.web.networks as string[]).includes("deplo"));
   assert.ok(
     labelsOf(doc.services.web).some((l) =>
-      l.includes("Host(`demo.1.2.3.4.nip.io`)"),
+      l.includes("Host(`demo.1.2.3.4.deplo.site`)"),
     ),
   );
 });
@@ -47,7 +47,7 @@ services:
     network_mode: host
     privileged: true
 `,
-    { domainRoutes: [route("ha.1.2.3.4.nip.io", "homeassistant", 8123)] },
+    { domainRoutes: [route("ha.1.2.3.4.deplo.site", "homeassistant", 8123)] },
   );
   assert.equal(doc.services.homeassistant.networks, undefined);
   assert.deepEqual(

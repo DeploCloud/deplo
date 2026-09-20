@@ -31,7 +31,7 @@ test("the fallback certificate names the IP only, never a host Traefik would ord
     );
   const fn = await shellFn("install.sh", "ensure_default_cert");
   const env = `CERT_DIR=${dir}; DEFAULT_CERT_PEM=${dir}/default.pem; DEFAULT_CERT_KEY=${dir}/default-key.pem
-FALLBACK_HOST=deplo-cb00710b.nip.io; TARGET_IP=203.0.113.7; exec 9>/dev/null`;
+FALLBACK_HOST=deplo-cb00710b.deplo.site; TARGET_IP=203.0.113.7; exec 9>/dev/null`;
   await bash(`set -euo pipefail\n${env}\n${fn}\nensure_default_cert`);
   assert.equal(await san(`${dir}/default.pem`), "IPAddress:203.0.113.7");
 
@@ -40,8 +40,8 @@ FALLBACK_HOST=deplo-cb00710b.nip.io; TARGET_IP=203.0.113.7; exec 9>/dev/null`;
   assert.equal(await readFile(`${dir}/default.pem`, "utf8"), before);
 
   await bash(`openssl req -x509 -newkey rsa:2048 -sha256 -days 1 -nodes \
-    -keyout ${dir}/default-key.pem -out ${dir}/default.pem -subj /CN=deplo-cb00710b.nip.io \
-    -addext "subjectAltName=DNS:deplo-cb00710b.nip.io,IP:203.0.113.7" 2>/dev/null`);
+    -keyout ${dir}/default-key.pem -out ${dir}/default.pem -subj /CN=deplo-cb00710b.deplo.site \
+    -addext "subjectAltName=DNS:deplo-cb00710b.deplo.site,IP:203.0.113.7" 2>/dev/null`);
   await bash(`set -euo pipefail\n${env}\n${fn}\nensure_default_cert`);
   assert.equal(await san(`${dir}/default.pem`), "IPAddress:203.0.113.7");
   await rm(dir, { recursive: true, force: true });

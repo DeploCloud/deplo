@@ -1,3 +1,5 @@
+import { WILDCARD_SUFFIXES } from "./wildcard-dns";
+
 export type WwwRedirect = "none" | "toThis" | "toCounterpart";
 
 const TWO_LABEL_SUFFIXES = new Set([
@@ -52,7 +54,10 @@ const TWO_LABEL_SUFFIXES = new Set([
   "co.at",
 ]);
 
-const WILDCARD_DNS_SUFFIXES = [".nip.io", ".sslip.io", ".localhost"];
+const WILDCARD_DNS_SUFFIXES = [
+  ...WILDCARD_SUFFIXES.map((s) => `.${s}`),
+  ".localhost",
+];
 
 function clean(host: string): string {
   return host

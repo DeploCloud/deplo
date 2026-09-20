@@ -24,9 +24,10 @@ test("stripping a leading www is unambiguous even on a deep host", () => {
 });
 
 test("generated zero-config hosts are excluded", () => {
+  assert.equal(wwwCounterpart("app-otter-7f000001.deplo.site"), null);
   assert.equal(wwwCounterpart("app-brave-otter-7f000001.nip.io"), null);
   assert.equal(wwwCounterpart("app.1.2.3.4.sslip.io"), null);
-  assert.equal(wwwCounterpart("www.app-x-7f000001.nip.io"), null);
+  assert.equal(wwwCounterpart("www.app-x-7f000001.deplo.site"), null);
 });
 
 test("junk and IP literals yield nothing", () => {

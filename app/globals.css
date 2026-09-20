@@ -314,7 +314,7 @@ html body[data-scroll-locked] {
   }
   /* A grid with no `grid-cols-*` at the current breakpoint lays its items out in
      IMPLICIT tracks, and an implicit track is `auto`, which can never shrink
-     below its widest item's min-content. One unbreakable string (a nip.io host,
+     below its widest item's min-content. One unbreakable string (a generated host,
      a webhook URL, a row of badges) therefore pushed the track past the phone's
      width and the whole page scrolled sideways. `grid-cols-*` already expands to
      `repeat(N, minmax(0, 1fr))`; this gives the implicit track the same floor, so
@@ -330,7 +330,7 @@ html body[data-scroll-locked] {
     -webkit-font-smoothing: antialiased;
     text-rendering: optimizeLegibility;
     /* Half the strings on screen are not prose: an error from Docker, a
-       nip.io host, a container id - and one of them longer than a phone's
+       generated host, a container id - and one of them longer than a phone's
        width used to paint straight past the page edge. Only ever breaks a word
        that has no other way to fit; `truncate` and `whitespace-pre` still win
        where they are set. */

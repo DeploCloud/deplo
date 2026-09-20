@@ -177,7 +177,7 @@ test("a compose preview emits a router that names a service", () => {
     trackingId: "prv_1",
     domainRoutes: [
       {
-        name: "blog-pr-42-abc-0a000001.nip.io",
+        name: "blog-pr-42-abc-0a000001.deplo.site",
         service: "web",
         port: 80,
         pathPrefix: "",
@@ -192,7 +192,7 @@ test("a compose preview emits a router that names a service", () => {
     "the preview must carry Traefik router labels, or nobody can reach it",
   );
   assert.ok(
-    yaml.includes("blog-pr-42-abc-0a000001.nip.io"),
+    yaml.includes("blog-pr-42-abc-0a000001.deplo.site"),
     "the router must answer on the preview's own host",
   );
 });
@@ -209,7 +209,7 @@ test("a serviceless route is exactly what used to make it unreachable", () => {
     trackingId: "prv_2",
     domainRoutes: [
       {
-        name: "blog-pr-43-abc-0a000001.nip.io",
+        name: "blog-pr-43-abc-0a000001.deplo.site",
         service: null,
         port: null,
         pathPrefix: "",
@@ -218,7 +218,7 @@ test("a serviceless route is exactly what used to make it unreachable", () => {
     ],
   });
   assert.ok(
-    !yaml.includes("blog-pr-43-abc-0a000001.nip.io"),
+    !yaml.includes("blog-pr-43-abc-0a000001.deplo.site"),
     "a serviceless route wires nothing - this is the bug previewRouteTarget exists to prevent",
   );
 });
@@ -235,7 +235,7 @@ test("a preview publishes no host ports, so two of them can coexist", () => {
     trackingId: "prv_3",
     domainRoutes: [
       {
-        name: "h.nip.io",
+        name: "h.deplo.site",
         service: "web",
         port: 80,
         pathPrefix: "",

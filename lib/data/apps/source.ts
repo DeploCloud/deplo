@@ -16,8 +16,8 @@ import { assertNoNameClash, withNetworkLock } from "../name-clash";
 import { composeNamesOnNetwork } from "../../deploy/compose-stack/compose-read";
 import { stackName } from "../../deploy/deploy-key";
 import {
-  nipEmbeddedIp,
-  rehostNip,
+  wildcardEmbeddedIp,
+  rehostWildcard,
   resolveServerIp,
 } from "../../deploy/domains";
 import { stopPreviewsForServerChange } from "../../deploy/preview-lifecycle/close";
@@ -167,14 +167,17 @@ export async function updateAppSource(
 
         const newIp = resolveServerIp(serversById.get(serverId));
 
-        // Auto nip.io hosts encode the old IP, so a move re-hosts them or Traefik keeps pointing at the old machine.
+        // Auto generated hosts encode the old IP, so a move re-hosts them or Traefik keeps pointing at the old machine.
         if (newIp !== oldIp) {
           const appDomains = await loadDomainsForApp(p.id, tx);
           for (const dom of appDomains) {
-            if (dom.source === "auto" && nipEmbeddedIp(dom.name) === oldIp) {
+            if (
+              dom.source === "auto" &&
+              wildcardEmbeddedIp(dom.name) === oldIp
+            ) {
               await tx
                 .update(domainsTable)
-                .set({ name: rehostNip(dom.name, newIp) })
+                .set({ name: rehostWildcard(dom.name, newIp) })
                 .where(eq(domainsTable.id, dom.id));
             }
           }

@@ -5,7 +5,7 @@
 #   curl -fsSL https://raw.githubusercontent.com/DeploCloud/deplo/main/install.sh | bash
 #
 # The dashboard is ALWAYS served over HTTPS by Traefik, on a real hostname, and
-# the installer never asks for one: it generates deplo-<hex>.nip.io, which
+# the installer never asks for one: it generates deplo-<hex>.deplo.site, which
 # resolves to this server with no DNS to set up. Your own domain is opt-in, on
 # the command line. Port 3000 is published on 127.0.0.1 only, so the way back in
 # when the proxy itself is what broke is an SSH tunnel, never the open internet.
@@ -396,7 +396,7 @@ is_real_domain() {
   esac
 }
 
-# The 8-char hex of an IPv4, the label nip.io routes on: 1.2.3.4 -> 01020304.
+# The 8-char hex of an IPv4, the label the wildcard routes on: 1.2.3.4 -> 01020304.
 # KEEP IN SYNC with `ipToHex` in lib/deploy/domains.ts.
 ip_hex() {
   local IFS=.
@@ -907,11 +907,11 @@ else
   ok "Address: $SERVER_IP"
 fi
 
-# The dashboard's own address when nobody gives it a domain. nip.io is public
-# wildcard DNS: a host whose last label before .nip.io is an IPv4 in hex resolves
-# to that IP, with nothing to set up. Same shape lib/deploy/domains.ts mints for
-# apps, so the panel and the apps on it read alike.
-FALLBACK_HOST="deplo-$(ip_hex "$TARGET_IP" || ip_hex 127.0.0.1).nip.io"
+# The dashboard's own address when nobody gives it a domain. deplo.site is public
+# wildcard DNS: a host whose last label before .deplo.site is an IPv4 in hex
+# resolves to that IP, with nothing to set up. Same shape lib/deploy/domains.ts
+# mints for apps, so the panel and the apps on it read alike.
+FALLBACK_HOST="deplo-$(ip_hex "$TARGET_IP" || ip_hex 127.0.0.1).deplo.site"
 
 # What the panel serves RIGHT NOW. Its settings page moves the panel's address and
 # its certificate contact by rewriting the proxy's stack file, never this .env, so
@@ -975,12 +975,12 @@ else
   fi
   # The generated host is only an address if this network resolves it. Some
   # resolvers drop answers pointing into a private range (DNS rebind protection),
-  # which is exactly what a nip.io host for a LAN address is.
+  # which is exactly what a generated host for a LAN address is.
   if [ "${DEPLO_SKIP_NET_CHECKS:-0}" != 1 ]; then
     case " $(resolve_a "$FALLBACK_HOST" | tr '\n' ' ') " in
       *" $TARGET_IP "*) ok "$FALLBACK_HOST $G_ARROW $TARGET_IP" ;;
       *) pf_warn "$FALLBACK_HOST does not resolve from this host." \
-           "nip.io needs public DNS. If this network blocks it, re-run with --domain <your domain>." ;;
+           "The generated host needs public DNS. If this network blocks it, re-run with --domain <your domain>." ;;
     esac
   fi
 fi

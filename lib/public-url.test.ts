@@ -113,7 +113,7 @@ test("with no request to read, the instance's own answer stands", async () => {
 test("the stored address is shared across module registries", () => {
   const slot = Symbol.for("deplo.public-url.stored");
   const shared = globalThis as unknown as Record<symbol, unknown>;
-  process.env.DEPLO_PUBLIC_URL = "https://deplo-c6336407.nip.io";
+  process.env.DEPLO_PUBLIC_URL = "https://deplo-c6336407.deplo.site";
 
   setStoredPublicBaseUrl("https://panel.example.com/");
   assert.equal(shared[slot], "https://panel.example.com");

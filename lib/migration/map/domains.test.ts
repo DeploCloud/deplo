@@ -8,6 +8,7 @@ test("isThrowawayHost only matches the generated hosts", () => {
     "app-abc.traefik.me",
     "1.2.3.4.sslip.io",
     "x.nip.io",
+    "x.deplo.site",
     "api.localhost",
   ])
     assert.equal(isThrowawayHost(host), true, host);

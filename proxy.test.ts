@@ -76,8 +76,8 @@ test("a page served over http may still ask the panel's own https address", () =
 });
 
 test("the generated host gets no HSTS, so its certificate warning stays skippable", () => {
-  const { csp, hsts } = headersFor("https://deplo-cb007109.nip.io/login", {
-    host: "deplo-cb007109.nip.io",
+  const { csp, hsts } = headersFor("https://deplo-cb007109.deplo.site/login", {
+    host: "deplo-cb007109.deplo.site",
     "x-forwarded-proto": "https",
   });
   assert.equal(hsts, null);

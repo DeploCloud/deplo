@@ -46,7 +46,7 @@ export function buildDoc(
     name: "deplo-demo",
     deployKey: "demo",
     appId: "p1",
-    domainRoutes: [route("demo.1.2.3.4.nip.io", "web", 80)],
+    domainRoutes: [route("demo.1.2.3.4.deplo.site", "web", 80)],
     ...extra,
   });
   return yaml.load(out) as Doc;

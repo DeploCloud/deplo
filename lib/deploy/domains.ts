@@ -2,7 +2,12 @@ import "server-only";
 
 import { networkInterfaces } from "node:os";
 import { readFileSync } from "node:fs";
-import { friendlyWords } from "../friendly-words";
+import { friendlyWord } from "../friendly-words";
+import {
+  WILDCARD_DOMAIN,
+  WILDCARD_SUFFIXES,
+  wildcardSuffixGroup,
+} from "../wildcard-dns";
 import { hash6 } from "./routing";
 import type { CertProvider, DomainEntrypoint } from "../types/domain";
 import { publicBaseUrl } from "../public-url";
@@ -82,7 +87,7 @@ export function instanceHost(): string {
     if (isIpv4(fromEnv)) return fromEnv;
     warnOnce(
       "bad-server-ip",
-      `DEPLO_SERVER_IP="${fromEnv}" is not a valid IPv4 and was ignored. nip.io domains require a literal IPv4 address.`,
+      `DEPLO_SERVER_IP="${fromEnv}" is not a valid IPv4 and was ignored. Generated domains require a literal IPv4 address.`,
     );
   }
 
@@ -91,7 +96,7 @@ export function instanceHost(): string {
     try {
       const host = new URL(pub).hostname;
       if (isIpv4(host)) return host;
-      const embedded = nipEmbeddedIp(host);
+      const embedded = wildcardEmbeddedIp(host);
       if (embedded) return embedded;
     } catch {}
   }
@@ -102,7 +107,7 @@ export function instanceHost(): string {
   warnOnce(
     "loopback-fallback",
     "Could not determine this server's public IP; falling back to 127.0.0.1. " +
-      "Generated nip.io URLs will only work on this machine. " +
+      "Generated URLs will only work on this machine. " +
       "Set DEPLO_SERVER_IP=<public-IPv4> and restart.",
   );
   return "127.0.0.1";
@@ -252,31 +257,51 @@ export function hexToIp(hex: string): string | null {
   return isIpv4(ip) ? ip : null;
 }
 
-const NIP_HEXIP_RE = /-([0-9a-f]{8})\.nip\.io$/i;
-const NIP_HEXIP_EMBEDDED_RE = /-([0-9a-f]{8})\.nip\.io/gi;
+const SUFFIX_GROUP = wildcardSuffixGroup();
+const WILDCARD_HEXIP_RE = new RegExp(`-([0-9a-f]{8})\\.${SUFFIX_GROUP}$`, "i");
+const WILDCARD_HEXIP_EMBEDDED_RE = new RegExp(
+  `-([0-9a-f]{8})\\.${SUFFIX_GROUP}`,
+  "gi",
+);
 
-export function nipEmbeddedIp(name: string): string | null {
-  const m = NIP_HEXIP_RE.exec(name.trim());
+export function wildcardEmbeddedIp(name: string): string | null {
+  const m = WILDCARD_HEXIP_RE.exec(name.trim());
   return m ? hexToIp(m[1]) : null;
 }
 
 export function panelFallbackHost(ip = instanceHost()): string {
-  return `deplo-${ipToHex(ip)}.nip.io`;
+  return `deplo-${ipToHex(ip)}.${WILDCARD_DOMAIN}`;
 }
 
-export function rehostNip(name: string, ip: string): string {
-  return name.replace(NIP_HEXIP_RE, `-${ipToHex(ip)}.nip.io`);
+// A host minted before deplo.site keeps answering, so the panel still owns its old address.
+export function isPanelFallbackHost(
+  name: string,
+  ip = instanceHost(),
+): boolean {
+  const host = name.trim().toLowerCase();
+  const hex = ipToHex(ip);
+  return WILDCARD_SUFFIXES.some((s) => host === `deplo-${hex}.${s}`);
 }
 
-export function rehostEmbeddedNip(
+// Keeps the zone the host was minted in: an existing .nip.io name only changes its IP.
+export function rehostWildcard(name: string, ip: string): string {
+  return name.replace(
+    WILDCARD_HEXIP_RE,
+    (_whole, _hex: string, suffix: string) => `-${ipToHex(ip)}.${suffix}`,
+  );
+}
+
+export function rehostEmbeddedWildcard(
   value: string,
   fromIp: string,
   toIp: string,
 ): string {
   const fromHex = ipToHex(fromIp);
   const toHex = ipToHex(toIp);
-  return value.replace(NIP_HEXIP_EMBEDDED_RE, (whole, hex: string) =>
-    hex.toLowerCase() === fromHex ? `-${toHex}.nip.io` : whole,
+  return value.replace(
+    WILDCARD_HEXIP_EMBEDDED_RE,
+    (whole, hex: string, suffix: string) =>
+      hex.toLowerCase() === fromHex ? `-${toHex}.${suffix}` : whole,
   );
 }
 
@@ -295,7 +320,7 @@ export function rehostBlueprintHosts<T extends BlueprintHosts>(
 ): T {
   if (fromIp === toIp) return input;
   const rehostHost = (host: string): string =>
-    nipEmbeddedIp(host) === fromIp ? rehostNip(host, toIp) : host;
+    wildcardEmbeddedIp(host) === fromIp ? rehostWildcard(host, toIp) : host;
   return {
     ...input,
     autoDomain: input.autoDomain
@@ -307,17 +332,17 @@ export function rehostBlueprintHosts<T extends BlueprintHosts>(
     env: input.env?.length
       ? input.env.map((e) => ({
           ...e,
-          value: rehostEmbeddedNip(e.value, fromIp, toIp),
+          value: rehostEmbeddedWildcard(e.value, fromIp, toIp),
         }))
       : input.env,
   };
 }
 
-export function randomWords(): string {
-  return friendlyWords();
+export function randomWord(): string {
+  return friendlyWord();
 }
 
-export function nipDomain(
+export function wildcardDomain(
   label: string,
   words: string,
   ip = instanceHost(),
@@ -331,11 +356,11 @@ export function nipDomain(
   const head = clean(label)
     .slice(0, Math.max(1, 62 - tail.length))
     .replace(/-+$/, "");
-  return `${head}-${tail}.nip.io`;
+  return `${head}-${tail}.${WILDCARD_DOMAIN}`;
 }
 
 export function productionDomain(slug: string, ip = instanceHost()): string {
-  return nipDomain(slug, randomWords(), ip);
+  return wildcardDomain(slug, randomWord(), ip);
 }
 
 export function previewHost(opts: {
@@ -355,7 +380,11 @@ export function previewHost(opts: {
     };
   }
   return {
-    host: nipDomain(label, hash6(`${opts.appId}:${opts.prNumber}`), opts.ip),
+    host: wildcardDomain(
+      label,
+      hash6(`${opts.appId}:${opts.prNumber}`),
+      opts.ip,
+    ),
     certProvider: "none",
   };
 }

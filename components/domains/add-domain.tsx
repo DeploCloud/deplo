@@ -26,7 +26,7 @@ import {
 } from "@/components/domains/domain-config-fields";
 import { usePendingCreate } from "@/components/shared/pending-create";
 import { gqlAction } from "@/lib/graphql-client";
-import { regenerateNipDomain } from "@/lib/nip-suggestion";
+import { regenerateAutoDomain } from "@/lib/auto-domain-suggestion";
 import { DocsLink } from "@/components/ui/docs-link";
 
 export interface AddDomainApp {
@@ -206,7 +206,7 @@ export function AddDomain({ project, suggestedDomain }: AddDomainProps) {
                       size="sm"
                       className="h-7 px-2 text-xs text-muted-foreground"
                       onClick={() => {
-                        const next = regenerateNipDomain(suggestedDomain);
+                        const next = regenerateAutoDomain(suggestedDomain);
                         setSuggestion(next);
                         setName(next);
                       }}

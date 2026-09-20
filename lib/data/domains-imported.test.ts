@@ -86,11 +86,15 @@ test("each source host is re-hosted once, keeping its whole route", async () => 
   const all = await rows();
   assert.equal(all.length, 2);
   for (const d of all) {
-    assert.match(d.name, /\.nip\.io$/, "Deplo mints its own temporary address");
+    assert.match(
+      d.name,
+      /\.deplo\.site$/,
+      "Deplo mints its own temporary address",
+    );
     assert.equal(
       d.status,
       "valid",
-      "a nip.io host resolves here by construction",
+      "a generated host resolves here by construction",
     );
     assert.equal(d.isPrimary, false);
   }

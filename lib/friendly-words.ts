@@ -120,8 +120,7 @@ export const FRIENDLY_ANIMALS: readonly string[] = [
   "wren",
 ];
 
-export function friendlyWords(): string {
-  const pick = (list: readonly string[]) =>
-    list[Math.floor(Math.random() * list.length)]!;
-  return `${pick(FRIENDLY_ADJECTIVES)}-${pick(FRIENDLY_ANIMALS)}`;
+export function friendlyWord(): string {
+  const all = [...FRIENDLY_ADJECTIVES, ...FRIENDLY_ANIMALS];
+  return all[Math.floor(Math.random() * all.length)]!;
 }

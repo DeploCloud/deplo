@@ -17,7 +17,7 @@ services:
 `,
     {
       envKeys: ["FOO", "BAR"],
-      domainRoutes: [route("demo.1.2.3.4.nip.io", "web", 80)],
+      domainRoutes: [route("demo.1.2.3.4.deplo.site", "web", 80)],
     },
   );
   assert.deepEqual(envOf(doc.services.web), ["FOO", "BAR"]);
@@ -112,7 +112,7 @@ services:
     name: "deplo-demo",
     deployKey: "demo",
     appId: "p1",
-    domainRoutes: [route("demo.1.2.3.4.nip.io", "web", 80)],
+    domainRoutes: [route("demo.1.2.3.4.deplo.site", "web", 80)],
     envKeys: ["FOO", "BAR"],
   });
   const doc = yaml.load(out) as Doc;

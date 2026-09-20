@@ -2,75 +2,70 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 
 import {
-  nipDomain,
-  randomWords,
+  wildcardDomain,
+  randomWord,
   productionDomain,
   previewHost,
   isValidPreviewBaseDomain,
-  nipEmbeddedIp,
+  wildcardEmbeddedIp,
 } from "./domains";
 
 const IP = "1.2.3.4";
 const HEX = "01020304";
 
-test("nipDomain builds <label>-<words>-<hexip>.nip.io", () => {
+test("wildcardDomain builds <label>-<word>-<hexip>.deplo.site", () => {
   assert.equal(
-    nipDomain("myapp", "charming-otter", IP),
-    `myapp-charming-otter-${HEX}.nip.io`,
+    wildcardDomain("myapp", "otter", IP),
+    `myapp-otter-${HEX}.deplo.site`,
   );
 });
 
-test("nipDomain sanitises the label and words to DNS-safe segments", () => {
+test("wildcardDomain sanitises the label and words to DNS-safe segments", () => {
   assert.equal(
-    nipDomain("My App!", "Bold Lynx", IP),
-    `my-app-bold-lynx-${HEX}.nip.io`,
+    wildcardDomain("My App!", "Bold Lynx", IP),
+    `my-app-bold-lynx-${HEX}.deplo.site`,
   );
 });
 
-test("nipDomain keeps the first label inside the 63-character DNS limit", () => {
-  const host = nipDomain(
+test("wildcardDomain keeps the first label inside the 63-character DNS limit", () => {
+  const host = wildcardDomain(
     "analytics-production-stack-rybbit_clickhouse_worker",
     "charming-otter",
     IP,
   );
   const label = host.split(".")[0];
   assert.ok(label.length <= 63, `label is ${label.length} characters`);
-  assert.ok(host.endsWith(`-charming-otter-${HEX}.nip.io`));
+  assert.ok(host.endsWith(`-charming-otter-${HEX}.deplo.site`));
   assert.ok(!label.includes("--"));
 });
 
-test("nipDomain output round-trips through nipEmbeddedIp", () => {
-  const host = nipDomain("svc", "keen-puma", "95.135.208.208");
-  assert.equal(nipEmbeddedIp(host), "95.135.208.208");
+test("wildcardDomain output round-trips through wildcardEmbeddedIp", () => {
+  const host = wildcardDomain("svc", "keen-puma", "95.135.208.208");
+  assert.equal(wildcardEmbeddedIp(host), "95.135.208.208");
 });
 
-test("the hex IP is the LAST label before .nip.io (nip.io's hex form requirement)", () => {
-  const host = nipDomain("svc", "warm-finch", IP);
+test("the hex IP is the LAST label before the zone (the wildcard's hex form)", () => {
+  const host = wildcardDomain("svc", "warm-finch", IP);
   assert.ok(
-    host.endsWith(`-${HEX}.nip.io`),
+    host.endsWith(`-${HEX}.deplo.site`),
     `expected hex IP as the trailing label, got ${host}`,
   );
 });
 
-test("randomWords yields a hyphenated adjective-animal pair (lowercase, two parts)", () => {
+test("randomWord yields one lowercase word, no dash", () => {
   for (let i = 0; i < 25; i++) {
-    const w = randomWords();
-    const parts = w.split("-");
-    assert.equal(parts.length, 2, `expected two words, got "${w}"`);
-    assert.ok(
-      parts.every((p) => /^[a-z]+$/.test(p)),
-      `non-[a-z] word in "${w}"`,
-    );
+    const w = randomWord();
+    assert.match(w, /^[a-z]+$/, `expected one plain word, got "${w}"`);
   }
 });
 
-test("productionDomain bakes fresh random words for the slug", () => {
+test("productionDomain bakes a fresh random word for the slug", () => {
   const host = productionDomain("blog", IP);
   assert.ok(
-    new RegExp(`^blog-[a-z]+-[a-z]+-${HEX}\\.nip\\.io$`).test(host),
+    new RegExp(`^blog-[a-z]+-${HEX}\\.deplo\\.site$`).test(host),
     `unexpected production domain shape: ${host}`,
   );
-  assert.equal(nipEmbeddedIp(host), IP);
+  assert.equal(wildcardEmbeddedIp(host), IP);
 });
 
 test("a preview host is DETERMINISTIC per (app, pull request)", () => {
@@ -88,10 +83,10 @@ test("a preview host is DETERMINISTIC per (app, pull request)", () => {
   });
   assert.deepEqual(first, again);
   assert.ok(
-    new RegExp(`^blog-pr-42-[a-z0-9]+-${HEX}\\.nip\\.io$`).test(first.host),
+    new RegExp(`^blog-pr-42-[a-z0-9]+-${HEX}\\.deplo\\.site$`).test(first.host),
     `unexpected preview host shape: ${first.host}`,
   );
-  assert.equal(nipEmbeddedIp(first.host), IP);
+  assert.equal(wildcardEmbeddedIp(first.host), IP);
 });
 
 test("different apps and different pull requests get different preview hosts", () => {
@@ -102,7 +97,7 @@ test("different apps and different pull requests get different preview hosts", (
   assert.notEqual(a.host, c.host, "two apps must not share one preview host");
 });
 
-test("a nip.io preview host asks for NO certificate", () => {
+test("a generated preview host asks for NO certificate", () => {
   assert.equal(
     previewHost({ appId: "prj_1", slug: "blog", prNumber: 42, ip: IP })
       .certProvider,

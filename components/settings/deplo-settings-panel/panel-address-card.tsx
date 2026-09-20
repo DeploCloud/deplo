@@ -19,6 +19,7 @@ import { CopyButton } from "@/components/shared/copy-button";
 import { CloudflareNote } from "@/components/domains/cloudflare-note";
 import { RevealChip } from "@/components/shared/reveal-chip";
 import { PanelAddressDialog } from "@/components/settings/panel-address-dialog";
+import { usePanelHttps } from "./panel-http-card";
 import { gqlAction } from "@/lib/graphql-client";
 import { cn } from "@/lib/utils";
 import type { PanelDns } from "@/lib/data/instance-settings/panel-address";
@@ -35,6 +36,11 @@ export const hostPart = (url: string) => url.replace(/^https?:\/\//i, "");
 
 export function PanelAddressCard({ settings }: { settings: InstanceSettings }) {
   const router = useRouter();
+  // What Traefik routes today, not what Deplo would mint now: an older install is on its own zone.
+  const { cert } = usePanelHttps();
+  const routedFallbackUrl = cert?.fallbackDomain
+    ? `https://${cert.fallbackDomain}`
+    : null;
   const current = settings.storedPanelUrl ?? settings.panelUrl;
   const scheme = current.startsWith("http://") ? "http" : "https";
   const [value, setValue] = React.useState(hostPart(current));
@@ -127,7 +133,7 @@ export function PanelAddressCard({ settings }: { settings: InstanceSettings }) {
         <PanelDnsBlock dns={dns} serverIp={settings.deploHostIp} />
 
         <PanelFallbackRow
-          url={settings.panelFallbackUrl}
+          url={routedFallbackUrl ?? settings.panelFallbackUrl}
           panelUrl={settings.panelUrl}
           disabled={settings.panelFallbackDisabled}
         />

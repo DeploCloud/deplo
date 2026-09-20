@@ -12,7 +12,7 @@ import { appPreviews as appPreviewsTable } from "../../db/schema/control-plane/d
 import { nowIso } from "../../ids";
 import { publishAppChanged } from "../../graphql/pubsub";
 import { syncPreviewComment } from "../preview-comment";
-import { rehostNip, resolveServerIp } from "../domains";
+import { rehostWildcard, resolveServerIp } from "../domains";
 import { mapLimit } from "../../utils";
 import { PREVIEW_MAX_ACTIVE_DEFAULT, previewSettings } from "./settings";
 import { hasStack } from "./slots";
@@ -94,7 +94,7 @@ export async function stopPreviewsForServerChange(
     (await getServerById(newServerId)) ?? undefined,
   );
   for (const r of rows) {
-    const host = rehostNip(r.host, newIp);
+    const host = rehostWildcard(r.host, newIp);
     if (host === r.host) continue;
     await getDb()
       .update(appPreviewsTable)

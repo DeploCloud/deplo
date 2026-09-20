@@ -12,7 +12,7 @@ services:
     ports:
       - "25565:25565"
 `,
-    { domainRoutes: [route("demo.1.2.3.4.nip.io", "minecraft", 25565)] },
+    { domainRoutes: [route("demo.1.2.3.4.deplo.site", "minecraft", 25565)] },
   );
   assert.deepEqual(doc.services.minecraft.ports, ["25565:25565"]);
 });

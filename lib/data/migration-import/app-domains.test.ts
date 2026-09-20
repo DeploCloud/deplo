@@ -108,7 +108,7 @@ test("an app never arrives with fewer addresses than it had", async () => {
     .where(eq(domainsTable.appId, web.id));
 
   assert.equal(doms.length, 2, "two addresses over there, two here");
-  for (const d of doms) assert.match(d.name, /\.nip\.io$/);
+  for (const d of doms) assert.match(d.name, /\.deplo\.site$/);
   assert.deepEqual(doms.map((d) => d.importedFrom).sort(), [
     "blink-web-abc.traefik.me",
     "blink.acme.test",
@@ -137,7 +137,7 @@ test("the primary domain is the real hostname, not Dokploy's throwaway one", asy
   assert.equal(doms.length, 2);
   const rehosted = doms.find((d) => !d.isPrimary)!;
   assert.equal(rehosted.importedFrom, "blink-web-abc.traefik.me");
-  assert.match(rehosted.name, /\.nip\.io$/);
+  assert.match(rehosted.name, /\.deplo\.site$/);
   assert.equal(rehosted.port, 3000);
   assert.equal(rehosted.status, "valid");
   assert.equal(rehosted.certProvider, "none");
@@ -178,7 +178,7 @@ test("on a takeover the throwaway address stays, because it names this machine",
     doms.map((d) => d.name).join(", "),
   );
   assert.equal(
-    doms.some((d) => d.name.endsWith(".nip.io")),
+    doms.some((d) => d.name.endsWith(".deplo.site")),
     false,
   );
   const report = await asOwner(() => getMigrationRun(runId));

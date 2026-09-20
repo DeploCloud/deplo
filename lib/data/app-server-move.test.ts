@@ -415,13 +415,13 @@ test("a failed copy rolls the move back: the app is on its old server, running, 
     .update(appsTable)
     .set({
       buildServerId: SRV_B,
-      productionUrl: "https://mv-word-0a000002.nip.io",
+      productionUrl: "https://mv-word-0a000002.deplo.site",
     })
     .where(eq(appsTable.id, APP));
   await db.insert(domainsTable).values({
     id: "dom_1",
     appId: APP,
-    name: "mv-word-0a000002.nip.io",
+    name: "mv-word-0a000002.deplo.site",
     status: "valid",
     isPrimary: true,
     ssl: false,
@@ -447,9 +447,9 @@ test("a failed copy rolls the move back: the app is on its old server, running, 
   assert.equal(r.migrateFromServerId, null);
   assert.equal(r.status, "active");
   assert.equal(r.buildServerId, SRV_A, "the build server followed it back");
-  assert.equal(r.productionUrl, "https://mv-word-0a000001.nip.io");
+  assert.equal(r.productionUrl, "https://mv-word-0a000001.deplo.site");
   const [dom] = await db.select().from(domainsTable);
-  assert.equal(dom.name, "mv-word-0a000001.nip.io", "the auto host too");
+  assert.equal(dom.name, "mv-word-0a000001.deplo.site", "the auto host too");
   assert.equal(A.running, true, "the old stack was started again");
   assert.ok(A.volumes.get(VOL)?.equals(REAL), "and its data is untouched");
   assert.equal(B.stackYaml, null, "the half-built new stack is gone");

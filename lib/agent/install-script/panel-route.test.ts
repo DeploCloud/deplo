@@ -12,14 +12,14 @@ import {
 
 test("the dashboard's address never carries the interim port", async () => {
   const out = await bash(`set -euo pipefail
-PANEL_HOST=deplo-cb00710b.nip.io
+PANEL_HOST=deplo-cb00710b.deplo.site
 ${await shellFn("install.sh", "panel_url")}
 HTTPS_PORT=8443; panel_url; echo
 HTTPS_PORT=443; panel_url; echo
 `);
   assert.equal(
     out,
-    "https://deplo-cb00710b.nip.io\nhttps://deplo-cb00710b.nip.io\n",
+    "https://deplo-cb00710b.deplo.site\nhttps://deplo-cb00710b.deplo.site\n",
     "the interim proxy port is loopback-only and no address anyone opens",
   );
 });
@@ -27,8 +27,8 @@ HTTPS_PORT=443; panel_url; echo
 test("the panel's router orders no certificate while the proxy waits on an interim port", async () => {
   const out = await bash(`set -euo pipefail
 ${await shellFn("install.sh", "panel_router")}
-HTTPS_PORT=8443; panel_router deplo-panel deplo-cb00710b.nip.io
-HTTPS_PORT=443; panel_router deplo-panel deplo-cb00710b.nip.io
+HTTPS_PORT=8443; panel_router deplo-panel deplo-cb00710b.deplo.site
+HTTPS_PORT=443; panel_router deplo-panel deplo-cb00710b.deplo.site
 `);
   const [waiting, live] = out.split("          deplo-panel:\n").slice(1);
   assert.match(waiting, /tls: \{\}/);

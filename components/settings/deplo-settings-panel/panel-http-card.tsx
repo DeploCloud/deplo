@@ -17,16 +17,18 @@ import { FieldLabel, InfoTip } from "@/components/ui/info-tip";
 import { PanelAddressDialog } from "@/components/settings/panel-address-dialog";
 import { gqlAction } from "@/lib/graphql-client";
 
-type PanelHttps = {
+export type PanelHttps = {
   domain: string | null;
+  fallbackDomain: string | null;
   enabled: boolean;
   certificateTrusted: boolean | null;
   unavailable: string | null;
 };
 
-const PANEL_HTTPS_FIELDS = "domain enabled certificateTrusted unavailable";
+const PANEL_HTTPS_FIELDS =
+  "domain fallbackDomain enabled certificateTrusted unavailable";
 
-function usePanelHttps(): {
+export function usePanelHttps(): {
   cert: PanelHttps | null;
   loading: boolean;
   setCert: (c: PanelHttps | null) => void;

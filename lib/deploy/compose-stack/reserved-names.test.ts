@@ -32,13 +32,13 @@ test("an OLD domain routed at a reserved name is skipped, not fatal", () => {
 `,
     {
       domainRoutes: [
-        route("db.1.2.3.4.nip.io", "postgres", 5432),
-        route("app.1.2.3.4.nip.io", "web", 80),
+        route("db.1.2.3.4.deplo.site", "postgres", 5432),
+        route("app.1.2.3.4.deplo.site", "web", 80),
       ],
     },
   );
   const pg = labelsOf(doc.services.postgres);
-  assert.ok(!pg.some((l) => l.includes("db.1.2.3.4.nip.io")));
+  assert.ok(!pg.some((l) => l.includes("db.1.2.3.4.deplo.site")));
   assert.ok(
     !(doc.services.postgres.networks as string[] | undefined)?.includes(
       "deplo",
@@ -47,7 +47,7 @@ test("an OLD domain routed at a reserved name is skipped, not fatal", () => {
   );
   assert.ok(
     labelsOf(doc.services.web).some((l) =>
-      l.includes("Host(`app.1.2.3.4.nip.io`)"),
+      l.includes("Host(`app.1.2.3.4.deplo.site`)"),
     ),
   );
 });

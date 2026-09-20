@@ -36,15 +36,15 @@ services:
 test("each domain route becomes one router to its named service", () => {
   const doc = buildDoc(WEB_API_COMPOSE, {
     domainRoutes: [
-      route("web.1.2.3.4.nip.io", "web", 80),
-      route("api.1.2.3.4.nip.io", "api", 8080),
+      route("web.1.2.3.4.deplo.site", "web", 80),
+      route("api.1.2.3.4.deplo.site", "api", 8080),
     ],
   });
   const web = labelsOf(doc.services.web);
   const api = labelsOf(doc.services.api);
-  assert.ok(web.some((l) => l.includes("Host(`web.1.2.3.4.nip.io`)")));
+  assert.ok(web.some((l) => l.includes("Host(`web.1.2.3.4.deplo.site`)")));
   assert.ok(web.some((l) => /loadbalancer\.server\.port=80$/.test(l)));
-  assert.ok(api.some((l) => l.includes("Host(`api.1.2.3.4.nip.io`)")));
+  assert.ok(api.some((l) => l.includes("Host(`api.1.2.3.4.deplo.site`)")));
   assert.ok(api.some((l) => /loadbalancer\.server\.port=8080$/.test(l)));
   assert.ok((doc.services.web.networks as string[]).includes("deplo"));
   assert.ok((doc.services.api.networks as string[]).includes("deplo"));
@@ -52,7 +52,7 @@ test("each domain route becomes one router to its named service", () => {
 
 test("a route with null port falls back to the service's compose port", () => {
   const doc = buildDoc(WEB_API_COMPOSE, {
-    domainRoutes: [route("api.1.2.3.4.nip.io", "api", null)],
+    domainRoutes: [route("api.1.2.3.4.deplo.site", "api", null)],
   });
   const api = labelsOf(doc.services.api);
   assert.ok(api.some((l) => /loadbalancer\.server\.port=8080$/.test(l)));
@@ -60,18 +60,20 @@ test("a route with null port falls back to the service's compose port", () => {
 
 test("a route whose service is null is skipped (no router emitted)", () => {
   const doc = buildDoc(WEB_API_COMPOSE, {
-    domainRoutes: [route("orphan.1.2.3.4.nip.io", null as unknown as string)],
+    domainRoutes: [
+      route("orphan.1.2.3.4.deplo.site", null as unknown as string),
+    ],
   });
   const all = [...labelsOf(doc.services.web), ...labelsOf(doc.services.api)];
-  assert.ok(!all.some((l) => l.includes("orphan.1.2.3.4.nip.io")));
+  assert.ok(!all.some((l) => l.includes("orphan.1.2.3.4.deplo.site")));
 });
 
 test("a route whose service is absent from the stack is skipped", () => {
   const doc = buildDoc(WEB_API_COMPOSE, {
-    domainRoutes: [route("ghost.1.2.3.4.nip.io", "nonesuch", 1234)],
+    domainRoutes: [route("ghost.1.2.3.4.deplo.site", "nonesuch", 1234)],
   });
   const all = [...labelsOf(doc.services.web), ...labelsOf(doc.services.api)];
-  assert.ok(!all.some((l) => l.includes("ghost.1.2.3.4.nip.io")));
+  assert.ok(!all.some((l) => l.includes("ghost.1.2.3.4.deplo.site")));
 });
 
 test("no domain routes ⇒ NO Traefik routers (the stack is built but unrouted)", () => {
@@ -93,13 +95,13 @@ services:
       - traefik.http.routers.evil.priority=1000
       - com.example.keep=yes
 `,
-    { domainRoutes: [route("real.1.2.3.4.nip.io", "web", 80)] },
+    { domainRoutes: [route("real.1.2.3.4.deplo.site", "web", 80)] },
   );
   const labels = labelsOf(doc.services.web);
   assert.ok(!labels.some((l) => l.includes("victim.com")));
   assert.ok(!labels.some((l) => l.includes("routers.evil")));
   assert.ok(labels.includes("com.example.keep=yes"));
-  assert.ok(labels.some((l) => l.includes("Host(`real.1.2.3.4.nip.io`)")));
+  assert.ok(labels.some((l) => l.includes("Host(`real.1.2.3.4.deplo.site`)")));
   assert.ok(
     labels.includes("traefik.docker.network=deplo-team-team_test"),
     "Traefik is pinned to the stack's OWN network, not the platform's",
@@ -116,7 +118,7 @@ services:
       - \${LBL}
       - com.example.version=\${TAG}
 `,
-    { domainRoutes: [route("real.1.2.3.4.nip.io", "web", 80)] },
+    { domainRoutes: [route("real.1.2.3.4.deplo.site", "web", 80)] },
   );
   const labels = labelsOf(doc.services.web);
   assert.ok(!labels.some((l) => l.startsWith("${LBL}")));
@@ -133,19 +135,19 @@ services:
       traefik.http.routers.evil.rule: Host(\`victim.com\`)
       com.example.keep: yes
 `,
-    { domainRoutes: [route("real.1.2.3.4.nip.io", "web", 80)] },
+    { domainRoutes: [route("real.1.2.3.4.deplo.site", "web", 80)] },
   );
   const labels = labelsOf(doc.services.web);
   assert.ok(!labels.some((l) => l.includes("victim.com")));
   assert.ok(labels.some((l) => l.startsWith("com.example.keep=")));
-  assert.ok(labels.some((l) => l.includes("Host(`real.1.2.3.4.nip.io`)")));
+  assert.ok(labels.some((l) => l.includes("Host(`real.1.2.3.4.deplo.site`)")));
 });
 
 test("a path-scoped route emits a PathPrefix rule + stripprefix middleware", () => {
   const doc = buildDoc(WEB_API_COMPOSE, {
     domainRoutes: [
       {
-        name: "app.1.2.3.4.nip.io",
+        name: "app.1.2.3.4.deplo.site",
         service: "api",
         port: 8080,
         pathPrefix: "/api",
@@ -167,7 +169,7 @@ services:
     expose:
       - "8080"
 `,
-    { domainRoutes: [route("demo.1.2.3.4.nip.io", "web", null)] },
+    { domainRoutes: [route("demo.1.2.3.4.deplo.site", "web", null)] },
   );
   assert.ok(
     labelsOf(doc.services.web).some((l) =>
@@ -187,7 +189,7 @@ test("buildComposeStack: a route with no certificate lands on the web entrypoint
     filesDir: "/data/stacks/files/app",
     domainRoutes: [
       {
-        name: "app-quiet-heron-0a000001.nip.io",
+        name: "app-quiet-heron-0a000001.deplo.site",
         service: "web",
         port: 80,
         entrypoint: "web",

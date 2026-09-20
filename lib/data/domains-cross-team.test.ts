@@ -156,7 +156,7 @@ test("the SAME path on the same hostname is not handed out twice", async () => {
     }),
   );
   assert.notEqual(name, HOST);
-  assert.match(name, /\.nip\.io$/);
+  assert.match(name, /\.deplo\.site$/);
 });
 
 test("a hostname another team serves is still not claimed by an import", async () => {
@@ -216,7 +216,11 @@ test("the panel's own addresses can't be claimed by an app", async () => {
     await runWithIdentity(
       { userId: "u_attacker", teamId: TEAM_B },
       async () => {
-        for (const host of ["panel.example.com", "deplo-0a000001.nip.io"]) {
+        for (const host of [
+          "panel.example.com",
+          "deplo-0a000001.deplo.site",
+          "deplo-0a000001.nip.io",
+        ]) {
           await assert.rejects(
             addDomain("prj_attacker", host),
             /this Deplo's own address/,

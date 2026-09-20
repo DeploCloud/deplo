@@ -84,3 +84,51 @@ volumes:
 `);
   assert.equal(needsHostAccess(plain), false);
 });
+
+test("publishing 53 on every address is warned about, an explicit address is not", () => {
+  const rulesFor = (entry: string) =>
+    lintCompose(
+      [
+        "services:",
+        "  dns:",
+        "    image: coredns/coredns:1.11.3",
+        "    ports:",
+        `      - ${entry}`,
+      ].join("\n"),
+    ).map((d) => d.rule);
+
+  for (const entry of ['"53:53/udp"', '"0.0.0.0:53:53"', '"53:53/tcp"']) {
+    assert.ok(
+      rulesFor(entry).includes("dns-port-unbound"),
+      `${entry} claims 127.0.0.53 and every container stops resolving`,
+    );
+  }
+  for (const entry of ['"203.0.113.10:53:53/udp"', '"8080:80"', '"53"']) {
+    assert.ok(
+      !rulesFor(entry).includes("dns-port-unbound"),
+      `${entry} leaves the machine's resolver alone`,
+    );
+  }
+
+  const long = (hostIp: string) =>
+    lintCompose(
+      [
+        "services:",
+        "  dns:",
+        "    image: coredns/coredns:1.11.3",
+        "    ports:",
+        "      - target: 53",
+        "        published: 53",
+        "        protocol: udp",
+        ...(hostIp ? [`        host_ip: "${hostIp}"`] : []),
+      ].join("\n"),
+    );
+  for (const hostIp of ["", "::"]) {
+    const hit = long(hostIp).find((d) => d.rule === "dns-port-unbound");
+    assert.equal(hit?.severity, "warning", `long syntax, host_ip "${hostIp}"`);
+  }
+  assert.ok(
+    !long("203.0.113.10").some((d) => d.rule === "dns-port-unbound"),
+    "an explicit address in the long syntax is fine too",
+  );
+});
