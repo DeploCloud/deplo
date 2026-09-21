@@ -3,12 +3,18 @@ import { notFound } from "next/navigation";
 import { getAppBySlug } from "@/lib/data/apps/listing";
 import { appCapabilities } from "@/lib/data/node-access";
 import { rollbackTarget } from "@/lib/data/deployments/rollback";
-import { appTypeLabel, repoWebUrl, truncate } from "@/lib/utils";
+import {
+  appBuildsItsOwnImage,
+  appTypeLabel,
+  repoWebUrl,
+  truncate,
+} from "@/lib/utils";
 import { AppCapabilitiesProvider } from "@/components/apps/app-capabilities";
 import { AppLogo } from "@/components/shared/project-logo";
 import { LogoEditLink } from "@/components/shared/logo-edit-link";
 import { RedeployButton } from "@/components/apps/redeploy-button";
 import { AppRollbackButton } from "@/components/apps/rollback-deployment";
+import { AppLifecycleButtons } from "@/components/apps/app-lifecycle";
 import { AppControls } from "@/components/apps/app-controls";
 import { AppStatusBadge } from "@/components/apps/app-status-dot";
 import { AppNavSync } from "@/components/apps/app-nav-sync";
@@ -42,9 +48,10 @@ export default async function AppLayout(
   const { slug } = await props.params;
   const project = await getAppBySlug(slug);
   if (!project || project.deletingAt) notFound();
+  const buildsOwnImage = appBuildsItsOwnImage(project);
   const [capabilities, rollback] = await Promise.all([
     appCapabilities(project.id),
-    rollbackTarget(project.id),
+    buildsOwnImage ? rollbackTarget(project.id) : null,
   ]);
 
   const initialLive: LiveApp = {
@@ -98,7 +105,14 @@ export default async function AppLayout(
                   </div>
                 </div>
                 <div className="flex flex-wrap items-center gap-2">
-                  <AppRollbackButton slug={project.slug} target={rollback} />
+                  {buildsOwnImage ? (
+                    <AppRollbackButton slug={project.slug} target={rollback} />
+                  ) : (
+                    <AppLifecycleButtons
+                      appId={project.id}
+                      status={project.status}
+                    />
+                  )}
                   <RedeployButton
                     appId={project.id}
                     slug={project.slug}
@@ -111,6 +125,7 @@ export default async function AppLayout(
                     status={project.status}
                     productionUrl={project.productionUrl ?? null}
                     repoUrl={repoWebUrl(project.repo)}
+                    showLifecycle={buildsOwnImage}
                   />
                 </div>
               </div>

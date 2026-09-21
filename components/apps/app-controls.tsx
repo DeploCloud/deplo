@@ -3,7 +3,6 @@
 import * as React from "react";
 import Link from "@/components/ui/link";
 import { useRouter } from "@/lib/nav";
-import { toast } from "sonner";
 import {
   MoreHorizontal,
   Play,
@@ -28,10 +27,7 @@ import { SimpleTooltip } from "@/components/ui/tooltip";
 import { DeleteWithArtifacts } from "@/components/shared/delete-with-artifacts";
 import { TransferTeamDialog } from "@/components/apps/settings/transfer-team-dialog";
 import { gqlAction } from "@/lib/graphql-client";
-import {
-  useLiveStatus,
-  useNeverDeployed,
-} from "@/components/apps/app-live-status";
+import { useAppLifecycle } from "@/components/apps/app-lifecycle";
 import { needsCapability, useAppCan } from "@/components/apps/app-capabilities";
 import type { AppStatus } from "@/lib/types/app";
 import type { Capability } from "@/lib/types/identity";
@@ -43,6 +39,7 @@ export function AppControls({
   status: serverStatus,
   productionUrl,
   repoUrl,
+  showLifecycle,
 }: {
   appId: string;
   slug: string;
@@ -50,56 +47,20 @@ export function AppControls({
   status: AppStatus;
   productionUrl: string | null;
   repoUrl: string | null;
+  showLifecycle: boolean;
 }) {
   const router = useRouter();
-  const [pending, startTransition] = React.useTransition();
   const [transferOpen, setTransferOpen] = React.useState(false);
   const [deleteOpen, setDeleteOpen] = React.useState(false);
-  const status = useLiveStatus(serverStatus);
-  const neverDeployed = useNeverDeployed();
-  const canControl = useAppCan("control_apps");
+  const { state, pending, canControl, start, stop, reload } = useAppLifecycle(
+    appId,
+    serverStatus,
+  );
   const canMove = useAppCan("move_apps");
   const canDelete = useAppCan("delete_apps");
-  const stopped = status === "idle";
-  const stopping = status === "stopping";
-  const restoring = status === "restoring";
 
   const tip = (cap: Capability, can: boolean, text: string) =>
     can ? text : needsCapability(cap);
-
-  function act(mutation: string, success: string) {
-    startTransition(async () => {
-      const res = await gqlAction(mutation, { id: appId });
-      if (res.ok) {
-        toast.success(success);
-        router.refresh();
-      } else {
-        toast.error(res.error);
-      }
-    });
-  }
-
-  function reload() {
-    startTransition(async () => {
-      const res = await gqlAction<{ reloadApp: string | null }, string>(
-        `mutation($id: String!) { reloadApp(id: $id) }`,
-        { id: appId },
-        (d) => d.reloadApp ?? "",
-      );
-      if (!res.ok) {
-        toast.error(res.error);
-        return;
-      }
-      toast.success(
-        res.data === "rerouted"
-          ? "Routing reloaded"
-          : res.data === "unchanged"
-            ? "Already up to date"
-            : "Saved - applies on the next deploy",
-      );
-      router.refresh();
-    });
-  }
 
   return (
     <>
@@ -115,9 +76,9 @@ export function AppControls({
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end" className="w-56">
-          {neverDeployed ? null : (
+          {!showLifecycle || state === "never-deployed" ? null : (
             <>
-              {restoring ? (
+              {state === "restoring" ? (
                 <SimpleTooltip
                   content="A backup is being restored into this app"
                   side="left"
@@ -127,7 +88,7 @@ export function AppControls({
                     Restoring
                   </DropdownMenuItem>
                 </SimpleTooltip>
-              ) : stopping ? (
+              ) : state === "stopping" ? (
                 <SimpleTooltip
                   content="The container is currently stopping"
                   side="left"
@@ -137,7 +98,7 @@ export function AppControls({
                     Stopping
                   </DropdownMenuItem>
                 </SimpleTooltip>
-              ) : stopped ? (
+              ) : state === "stopped" ? (
                 <SimpleTooltip
                   content={tip(
                     "control_apps",
@@ -146,15 +107,7 @@ export function AppControls({
                   )}
                   side="left"
                 >
-                  <DropdownMenuItem
-                    onSelect={() =>
-                      act(
-                        `mutation($id: String!) { startApp(id: $id) { id } }`,
-                        "Container started",
-                      )
-                    }
-                    disabled={!canControl}
-                  >
+                  <DropdownMenuItem onSelect={start} disabled={!canControl}>
                     <Play className="size-4" />
                     Start
                   </DropdownMenuItem>
@@ -168,15 +121,7 @@ export function AppControls({
                   )}
                   side="left"
                 >
-                  <DropdownMenuItem
-                    onSelect={() =>
-                      act(
-                        `mutation($id: String!) { stopApp(id: $id) { id } }`,
-                        "Container stopped",
-                      )
-                    }
-                    disabled={!canControl}
-                  >
+                  <DropdownMenuItem onSelect={stop} disabled={!canControl}>
                     <Square className="size-4" />
                     Stop
                   </DropdownMenuItem>
@@ -192,7 +137,7 @@ export function AppControls({
               >
                 <DropdownMenuItem
                   onSelect={reload}
-                  disabled={!canControl || restoring}
+                  disabled={!canControl || state === "restoring"}
                 >
                   <RefreshCw className="size-4" />
                   Reload

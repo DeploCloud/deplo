@@ -1,6 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
+  appBuildsItsOwnImage,
   appTypeLabel,
   cn,
   formatBuildDuration,
@@ -284,4 +285,59 @@ test("repoWebUrl points at the repository, repoCommitUrl at one commit", () => {
   assert.equal(repoCommitUrl(ssh, "abc123"), null);
   assert.equal(repoWebUrl(null), null);
   assert.equal(repoCommitUrl(gitlab, "  "), null);
+});
+
+test("appBuildsItsOwnImage picks the app header's first action", () => {
+  const base = {
+    source: "github",
+    compose: null,
+    repo: null,
+    dockerImage: null,
+  };
+  // true: the header keeps Rollback
+  assert.equal(appBuildsItsOwnImage(base), true);
+  assert.equal(
+    appBuildsItsOwnImage({ ...base, source: "git", repo: {} }),
+    true,
+  );
+  assert.equal(appBuildsItsOwnImage({ ...base, source: "upload" }), true);
+  assert.equal(
+    appBuildsItsOwnImage({
+      ...base,
+      source: "upload",
+      compose: "services: {}",
+    }),
+    true,
+  );
+  // false: the header gets Stop and Reload instead
+  assert.equal(
+    appBuildsItsOwnImage({
+      ...base,
+      source: "compose",
+      compose: "services: {}",
+    }),
+    false,
+  );
+  assert.equal(
+    appBuildsItsOwnImage({
+      ...base,
+      source: "docker-image",
+      dockerImage: "nginx:1",
+    }),
+    false,
+  );
+  // a stack even though the source says git, and not one once a repo is linked
+  assert.equal(
+    appBuildsItsOwnImage({ ...base, source: "git", compose: "services: {}" }),
+    false,
+  );
+  assert.equal(
+    appBuildsItsOwnImage({
+      ...base,
+      source: "git",
+      compose: "services: {}",
+      repo: {},
+    }),
+    true,
+  );
 });
