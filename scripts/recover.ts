@@ -1,5 +1,4 @@
 import { and, asc, eq } from "drizzle-orm";
-import { CREDENTIAL_ISSUER } from "@/lib/auth/password-credential";
 import { createInterface } from "node:readline";
 import { randomBytes } from "node:crypto";
 import { getDb } from "../lib/db/client";
@@ -183,7 +182,6 @@ async function cmdPassword(handle: string, given: string | undefined) {
         userId: user.id,
         accountId: user.id,
         providerId: "credential",
-        issuer: CREDENTIAL_ISSUER,
         password: await hashPassword(password),
       });
   await getDb().delete(sessionTable).where(eq(sessionTable.userId, user.id));

@@ -213,7 +213,12 @@ function createAuth(db: DrizzleClient) {
     advanced: {
       useSecureCookies: secureCookies(),
       cookiePrefix: "deplo",
-      database: { generateId: () => newId("bas") },
+      database: {
+        generateId: () => newId("bas"),
+        // `users` is Deplo's own table and Better Auth never inserts into it (disableSignUp above),
+        // so its NOT NULL columns are not the drift the 1.7.3 validator reads them as.
+        validateSchema: false,
+      },
       ipAddress: {
         // Better Auth's x-forwarded-for default returns NO address for a chain over one hop without trustedProxies.
         ipAddressHeaders: ["cf-connecting-ip", "x-real-ip", "x-forwarded-for"],

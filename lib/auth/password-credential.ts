@@ -6,10 +6,6 @@ import { account as accountTable } from "../db/schema/auth";
 import { hashPassword, verifyPassword } from "../crypto";
 import { newId } from "../ids";
 
-// Required since Better Auth 1.7.0, which keys an account on (issuer, accountId).
-// The value Better Auth 1.7.2 wrote. 1.7.5 dropped the helper; account.issuer stays NOT NULL.
-export const CREDENTIAL_ISSUER = "local:credential";
-
 export async function insertCredentialAccount(
   db: DrizzleClient | DbTx,
   userId: string,
@@ -20,7 +16,6 @@ export async function insertCredentialAccount(
     userId,
     accountId: userId,
     providerId: "credential",
-    issuer: CREDENTIAL_ISSUER,
     password: await hashPassword(password),
   });
 }
