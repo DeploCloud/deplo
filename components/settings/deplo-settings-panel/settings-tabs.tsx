@@ -19,6 +19,7 @@ import {
 } from "@/components/settings/deplo-diagnostics-card";
 import { LogsRetentionCard } from "@/components/settings/logs-retention-card";
 import { GravatarCard } from "@/components/settings/gravatar-card";
+import { UsageReportCard } from "@/components/settings/usage-report-card";
 import {
   InstanceOwnerCard,
   type OwnerCandidate,
@@ -86,6 +87,11 @@ export function DeploSettingsPanel({
         <div className="grid gap-4 lg:grid-cols-2">
           <PanelAddressCard settings={settings} />
           <CertificatesCard />
+          <UsageReportCard
+            enabled={settings.usageReportsEnabled}
+            forcedOff={settings.usageReportsForcedOff}
+            lastSentAt={settings.usageReportLastSentAt}
+          />
           <div className="lg:col-span-2">
             <InstanceOwnerCard
               ownerName={settings.ownerName}

@@ -182,6 +182,7 @@ export const DOCS = {
   "instance.admin": "operations/instance-administration",
   "instance.users": "operations/instance-administration#users",
   "instance.owner": "operations/instance-administration#instance-owner",
+  "instance.usageReports": "operations/anonymous-usage-statistics",
   "panel.address": "operations/panel-address-and-certificates",
   "panel.backupAddress":
     "operations/panel-address-and-certificates#turn-the-backup-address-off",

@@ -111,6 +111,19 @@ host-side `deplo recover` CLI (the one intended shell path in the product).
 _Avoid_: root user (that is Unix root), founder (that is the TEAM-level
 crown, `teams.founder_user_id`), super admin, instance admin (a different, lower tier).
 
+**Usage report**:
+The anonymous snapshot a Deplo instance sends to Deplo once a day while **Anonymous usage
+statistics** is on: versions, counts and feature switches, keyed by a random **instance id**
+that is re-minted whenever the setting goes from off to on, so turning it off severs the
+history. It carries nothing that names the instance, its hosts, its users or its apps.
+_Avoid_: telemetry, analytics, ping, heartbeat, phone-home.
+
+**Anonymous usage statistics**:
+The instance-admin setting, on by default, that decides whether **Usage reports** are sent.
+Any instance admin may turn it off at any time; off means nothing is sent. An install may
+force it off, and the switch then shows as disabled with that reason.
+_Avoid_: telemetry (in anything a person reads), tracking, opt-out.
+
 **Registration link**:
 A single-use link (`/register/<token>`) that lets a NEW person self-register a brand-new
 account **and their own team** - like first-run setup, not a join. Minted by an instance

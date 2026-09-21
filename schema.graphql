@@ -2243,6 +2243,19 @@ type InstanceSettings {
   """
   panelUrlSource: String
   storedPanelUrl: String
+
+  """When the last Usage report left, or null when none ever has."""
+  usageReportLastSentAt: String
+
+  """
+  Whether this instance sends Deplo one anonymous Usage report a day: versions, counts and feature switches, keyed by a random instance id, never a hostname, address, name or email. On by default; any instance admin may turn it off, and nothing more is sent from that moment.
+  """
+  usageReportsEnabled: Boolean
+
+  """
+  True when the install set DO_NOT_TRACK=1, which turns reporting off regardless of the switch above. The switch then shows as disabled with that reason rather than hiding.
+  """
+  usageReportsForcedOff: Boolean
   version: String
 }
 
@@ -3768,6 +3781,11 @@ type Mutation {
   setSharedVarAppLink(appId: String!, linked: Boolean!, varId: String!): Boolean
 
   """
+  Turn anonymous usage statistics on or off for the whole instance. Off takes effect at once - no final report, no goodbye - and clears the instance id, so turning it on again starts a history that cannot be joined to the old one. Recorded in Activity. Has no effect while the install set DO_NOT_TRACK=1.
+  """
+  setUsageReportsEnabled(enabled: Boolean!): InstanceSettings
+
+  """
   Set one person's role and per-node overrides in one team. Whole-set replace: node grants not sent are removed.
   """
   setUserTeamAccess(input: SetUserTeamAccessInput!): [UserTeamAccess!]
@@ -4656,6 +4674,11 @@ type Query {
   Check the upstream repository for a newer Deplo release; cached for an hour.
   """
   updateInfo: UpdateInfo
+
+  """
+  See what would be sent: the anonymous Usage report as it stands this second. A plain database read that dials nothing.
+  """
+  usageReport: UsageReportPreview
 
   """Full detail (incl. email) for one user."""
   userDetail(userId: String!): UserDetail
@@ -5868,6 +5891,20 @@ input UpsertEnvInput {
   targets: [EnvTarget!]
   type: EnvVarType!
   value: String!
+}
+
+"""
+The Usage report this instance would send right now, built live from the same code that sends it. Nothing stores a sent payload: what is shown here is what leaves.
+"""
+type UsageReportPreview {
+  """
+  The random id the reports are keyed by - quote it to ask Deplo to erase them. Null until the first send mints one; turning the switch off clears it and the next on mints a fresh one.
+  """
+  instanceId: String
+
+  """The whole document, pretty-printed JSON."""
+  json: String
+  lastSentAt: String
 }
 
 """

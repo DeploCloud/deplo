@@ -78,6 +78,7 @@ export interface SeedAppOpts {
   slug?: string;
   status?: App["status"];
   source?: App["source"];
+  repo?: App["repo"];
   resources?: App["resources"];
   rollbackKeep?: number;
   compose?: string | null;
@@ -112,7 +113,10 @@ export async function seedApp(db: TestDb, opts: SeedAppOpts): Promise<string> {
     frameworkOverride: null,
     framework: null,
     source: opts.source ?? "github",
-    repo: { provider: "github", url: "https://x", repo: "o/r", branch: "main" },
+    repo:
+      opts.repo !== undefined
+        ? opts.repo
+        : { provider: "github", url: "https://x", repo: "o/r", branch: "main" },
     dockerImage: null,
     upload: null,
     compose: opts.compose ?? null,

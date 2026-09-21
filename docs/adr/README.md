@@ -39,6 +39,7 @@ repository root.
 | [0030](0030-the-mcp-surface-is-a-curated-set-plus-an-escape-hatch.md)                     | The MCP surface is a curated set plus an escape hatch. **Amends 0021**                                                      |
 | [0031](0031-the-url-names-the-team.md)                                                    | The URL names the team, and it outranks the cookie                                                                          |
 | [0032](0032-an-api-token-is-personal.md)                                                  | An API token is personal, and a team governs it through the member                                                          |
+| [0033](0033-usage-reports-are-anonymous-opt-out-and-first-party.md)                       | Usage reports are anonymous, opt-out, and land on a service of our own                                                      |
 
 ## Amended or superseded
 

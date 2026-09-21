@@ -35,7 +35,10 @@ import {
   getInstanceSettings,
   instancePublicBaseUrl,
   setGravatarEnabled,
+  setUsageReportsEnabled,
+  usageReportState,
 } from "./instance-settings/settings-store";
+import { activities } from "../db/schema/control-plane/activity";
 import { gravatarEnabled } from "../avatar";
 import { panelRoute, withPanelRoute } from "../deploy/traefik-stack";
 import { __setAgentConnectorForTest } from "../infra/agent-client/connect";
@@ -382,6 +385,85 @@ test("setGravatarEnabled round-trips, and the read is ungated", async () => {
 
   await asUser(ADMIN, () => setGravatarEnabled(true));
   assert.equal(await asUser(MEMBER, () => gravatarEnabled()), true);
+});
+
+test("Anonymous usage statistics is ON by default, and only an instance admin can turn it off", async () => {
+  await pg.exec("truncate table activities restart identity cascade;");
+  const before = await asUser(ADMIN, () => getInstanceSettings());
+  assert.equal(before.usageReportsEnabled, true);
+  assert.equal(before.usageReportLastSentAt, null);
+  assert.equal(before.usageReportsForcedOff, false);
+
+  await assert.rejects(
+    asUser(MEMBER, () => setUsageReportsEnabled(false)),
+    /admin/i,
+    "a team seat must not decide this for the instance",
+  );
+  assert.equal(
+    (await asUser(ADMIN, () => getInstanceSettings())).usageReportsEnabled,
+    true,
+  );
+
+  const after = await asUser(ADMIN, () => setUsageReportsEnabled(false));
+  assert.equal(after.usageReportsEnabled, false);
+  const rows = await db
+    .select({ message: activities.message, type: activities.type })
+    .from(activities);
+  assert.deepEqual(rows, [
+    { type: "instance", message: "Turned off anonymous usage statistics" },
+  ]);
+});
+
+test("turning usage statistics off clears the instance id; on leaves it for the sender to mint", async () => {
+  await pg.exec("truncate table activities restart identity cascade;");
+  await db.insert(instanceSettings).values({
+    id: "default",
+    usageInstanceId: "11111111-1111-4111-8111-111111111111",
+    usageInstanceIdMintedAt: "2026-01-01T00:00:00.000Z",
+    usageReportSentAt: "2026-01-02T00:00:00.000Z",
+    updatedAt: "2026-01-02T00:00:00.000Z",
+  });
+
+  await asUser(ADMIN, () => setUsageReportsEnabled(false));
+  let state = await usageReportState();
+  assert.equal(state.enabled, false);
+  assert.equal(state.instanceId, null, "off severs the history");
+  assert.equal(state.mintedAt, null);
+  assert.equal(
+    state.lastSentAt,
+    "2026-01-02T00:00:00.000Z",
+    "the last-sent date stays so the card can still say when",
+  );
+
+  await asUser(ADMIN, () => setUsageReportsEnabled(true));
+  state = await usageReportState();
+  assert.equal(state.enabled, true);
+  assert.equal(state.instanceId, null, "a fresh id is the sender's to mint");
+
+  const rows = await db
+    .select({ message: activities.message })
+    .from(activities)
+    .orderBy(activities.createdAt);
+  assert.deepEqual(
+    rows.map((r) => r.message),
+    [
+      "Turned off anonymous usage statistics",
+      "Turned on anonymous usage statistics",
+    ],
+  );
+});
+
+test("DO_NOT_TRACK=1 shows the switch as forced off by the install", async () => {
+  const prev = process.env.DO_NOT_TRACK;
+  process.env.DO_NOT_TRACK = "1";
+  try {
+    const s = await asUser(ADMIN, () => getInstanceSettings());
+    assert.equal(s.usageReportsForcedOff, true);
+    assert.equal(s.usageReportsEnabled, true, "the stored switch is untouched");
+  } finally {
+    if (prev === undefined) delete process.env.DO_NOT_TRACK;
+    else process.env.DO_NOT_TRACK = prev;
+  }
 });
 
 const HOST_IP = "203.0.113.10";

@@ -31,6 +31,11 @@ export const instanceSettings = pgTable("instance_settings", {
   // The version this process booted on, and who asked for the agent rollout that follows a panel update.
   bootedVersion: text("booted_version"),
   agentRolloutBy: text("agent_rollout_by"),
+  // ADR-0033: the id is re-minted every time the switch goes from off to on.
+  usageReportsEnabled: boolean("usage_reports_enabled").notNull().default(true),
+  usageInstanceId: text("usage_instance_id"),
+  usageInstanceIdMintedAt: isoTimestamptz("usage_instance_id_minted_at"),
+  usageReportSentAt: isoTimestamptz("usage_report_sent_at"),
   updatedAt: isoTimestamptz("updated_at").notNull(),
 });
 
