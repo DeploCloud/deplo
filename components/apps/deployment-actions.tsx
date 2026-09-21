@@ -9,7 +9,7 @@ import {
   ExternalLink,
   Logs,
   RotateCw,
-  RotateCcw,
+  RotateCcwClock,
   GitPullRequest,
   Ban,
   Trash2,
@@ -168,7 +168,7 @@ export function DeploymentActions({
                 onSelect={() => setRollbackOpen(true)}
                 disabled={pending || !canRollbackApps}
               >
-                <RotateCcw className="size-4" />
+                <RotateCcwClock className="size-4" />
                 Rollback
               </DropdownMenuItem>
             )}

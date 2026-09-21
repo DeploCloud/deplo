@@ -3,7 +3,7 @@
 import * as React from "react";
 import { useRouter } from "@/lib/nav";
 import { toast } from "sonner";
-import { Save, RotateCcw } from "lucide-react";
+import { Save, RotateCcwClock } from "lucide-react";
 import {
   Card,
   CardContent,
@@ -65,7 +65,7 @@ export function RollbackSettingsForm({
       <Card>
         <CardHeader>
           <CardTitle className="flex w-fit items-center gap-2 text-base">
-            <RotateCcw className="size-4 text-muted-foreground" />
+            <RotateCcwClock className="size-4 text-muted-foreground" />
             Rollbacks
             <InfoTip
               content="Go back to an earlier deployment in seconds, without rebuilding."
