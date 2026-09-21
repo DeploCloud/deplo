@@ -11,7 +11,9 @@ import {
   normalizeHexColor,
   pickerInstallationId,
   readableTextColor,
+  repoCommitUrl,
   repoCredentialMissing,
+  repoWebUrl,
   safeReturnPath,
   shortId,
   timeAgoShort,
@@ -252,4 +254,34 @@ test("shortId maps every random byte onto its alphabet evenly", () => {
   } finally {
     crypto.getRandomValues = real;
   }
+});
+
+test("repoWebUrl points at the repository, repoCommitUrl at one commit", () => {
+  const gh = { provider: "github", repo: "acme/web", url: null };
+  assert.equal(repoWebUrl(gh), "https://github.com/acme/web");
+  assert.equal(
+    repoCommitUrl(gh, "abc123"),
+    "https://github.com/acme/web/commit/abc123",
+  );
+
+  const gitlab = {
+    provider: "gitlab",
+    repo: null,
+    url: "https://gitlab.com/acme/web.git",
+  };
+  assert.equal(repoWebUrl(gitlab), "https://gitlab.com/acme/web");
+  assert.equal(
+    repoCommitUrl(gitlab, "abc123"),
+    "https://gitlab.com/acme/web/-/commit/abc123",
+  );
+
+  const ssh = {
+    provider: "gitea",
+    repo: null,
+    url: "git@git.acme.com:t/a.git",
+  };
+  assert.equal(repoWebUrl(ssh), null);
+  assert.equal(repoCommitUrl(ssh, "abc123"), null);
+  assert.equal(repoWebUrl(null), null);
+  assert.equal(repoCommitUrl(gitlab, "  "), null);
 });

@@ -23,7 +23,7 @@ import {
   listDeployments,
   getDeployment,
 } from "./deployments/deployment-queries";
-import { rollbackDeployment } from "./deployments/rollback";
+import { rollbackDeployment, rollbackTarget } from "./deployments/rollback";
 import { loadDeploymentsForApp } from "./app-graph-load";
 import { getDb } from "../db/client";
 import { apps as appsTable } from "../db/schema/control-plane/apps";
@@ -83,6 +83,25 @@ const rollbackable = async () =>
 test("the live build is not a rollback target, the ones behind it are", async () => {
   await seedBuilds(3);
   assert.deepEqual(await rollbackable(), ["dpl_1", "dpl_2"]);
+});
+
+test("the header's Rollback aims at the newest build still on the host", async () => {
+  await seedBuilds(3);
+  assert.equal((await asUser1(() => rollbackTarget("prj_1")))?.id, "dpl_1");
+});
+
+test("a single build leaves the header with nothing to roll back to", async () => {
+  await seedBuilds(1);
+  assert.equal(await asUser1(() => rollbackTarget("prj_1")), null);
+});
+
+test("another team never gets a rollback target for this app", async () => {
+  await seedBuilds(3);
+  const target = await runWithIdentity(
+    { userId: "user_2", teamId: TEAM_B },
+    () => rollbackTarget("prj_1"),
+  );
+  assert.equal(target, null);
 });
 
 test("the window is rollback_keep deep, and nothing older is offered", async () => {

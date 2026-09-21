@@ -60,15 +60,21 @@ const plural = (n: number, one: string, many: string) =>
 
 export function TransferTeamDialog({
   trigger,
+  open: controlledOpen,
+  onOpenChange,
   appId,
   appName,
 }: {
-  trigger: React.ReactNode;
+  trigger?: React.ReactNode;
+  open?: boolean;
+  onOpenChange?: (v: boolean) => void;
   appId: string;
   appName: string;
 }) {
   const router = useRouter();
-  const [open, setOpen] = React.useState(false);
+  const [internalOpen, setInternalOpen] = React.useState(false);
+  const open = controlledOpen ?? internalOpen;
+  const setOpen = setInternalOpen;
   const [info, setInfo] = React.useState<TransferInfo | null>(null);
   const [failed, setFailed] = React.useState(false);
   const [teamId, setTeamId] = React.useState("");
@@ -81,6 +87,7 @@ export function TransferTeamDialog({
       setTeamId("");
     }
     setOpen(v);
+    onOpenChange?.(v);
   };
 
   React.useEffect(() => {

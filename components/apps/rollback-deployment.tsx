@@ -6,7 +6,9 @@ import { Undo2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ConfirmAction } from "@/components/shared/confirm-action";
 import { DocsLink } from "@/components/ui/docs-link";
-import { CapabilityTip } from "@/components/apps/app-capabilities";
+import { SimpleTooltip } from "@/components/ui/tooltip";
+import Link from "@/components/ui/link";
+import { CapabilityTip, useAppCan } from "@/components/apps/app-capabilities";
 import { gqlAction } from "@/lib/graphql-client";
 
 export function RollbackDialog({
@@ -113,5 +115,52 @@ export function RollbackButton({
         commitMessage={commitMessage}
       />
     </>
+  );
+}
+
+export function AppRollbackButton({
+  slug,
+  target,
+}: {
+  slug: string;
+  target: { id: string; commitSha: string; commitMessage: string } | null;
+}) {
+  const canRollback = useAppCan("rollback_apps");
+  const canBackups = useAppCan("manage_backups");
+
+  if (target)
+    return (
+      <RollbackButton
+        id={target.id}
+        appSlug={slug}
+        commitSha={target.commitSha}
+        commitMessage={target.commitMessage}
+        can={canRollback}
+      />
+    );
+
+  // Nothing left to go back to: a backup is the only way back.
+  const label = (
+    <>
+      <Undo2 className="size-4" />
+      Rollback
+    </>
+  );
+  if (!canBackups)
+    return (
+      <SimpleTooltip content="No earlier build is kept on the server to go back to">
+        <span className="inline-flex cursor-not-allowed">
+          <Button variant="outline" size="sm" disabled>
+            {label}
+          </Button>
+        </span>
+      </SimpleTooltip>
+    );
+  return (
+    <SimpleTooltip content="No earlier build to go back to - restore this app from a backup instead">
+      <Button variant="outline" size="sm" asChild>
+        <Link href={`/apps/${slug}/backups`}>{label}</Link>
+      </Button>
+    </SimpleTooltip>
   );
 }
