@@ -1,12 +1,13 @@
 import "server-only";
 
+import { cache } from "react";
 import { and, desc, eq } from "drizzle-orm";
 
 import { getDb } from "../../db/client";
 import { apps as appsTable } from "../../db/schema/control-plane/apps";
 import { deployments as deploymentsTable } from "../../db/schema/control-plane/deployments";
 import { getCurrentUser } from "../../auth/current-user";
-import { requireMembership } from "../../membership";
+import { requireActiveTeamId, requireMembership } from "../../membership";
 import { appBuildsItsOwnImage } from "../../utils";
 import { startDeployment } from "../../deploy/build/deploy-start";
 import {
@@ -88,6 +89,63 @@ export function rollbackTargetIds(
       .map((d) => d.id),
   );
 }
+
+// The build the app goes back to from the header: the newest one still on the host.
+export const rollbackTarget = cache(async function rollbackTarget(
+  appId: string,
+): Promise<{
+  id: string;
+  commitSha: string;
+  commitMessage: string;
+} | null> {
+  const teamId = await requireActiveTeamId();
+  const [app] = await getDb()
+    .select({
+      serverId: appsTable.serverId,
+      rollbackKeep: appsTable.rollbackKeep,
+      source: appsTable.source,
+      compose: appsTable.compose,
+      repoUrl: appsTable.repoUrl,
+      dockerImage: appsTable.dockerImage,
+    })
+    .from(appsTable)
+    .where(and(eq(appsTable.id, appId), eq(appsTable.teamId, teamId)))
+    .limit(1);
+  if (!app) return null;
+  const history = await getDb()
+    .select({
+      id: deploymentsTable.id,
+      status: deploymentsTable.status,
+      environment: deploymentsTable.environment,
+      imageRef: deploymentsTable.imageRef,
+      rollbackOf: deploymentsTable.rollbackOf,
+      serverId: deploymentsTable.serverId,
+      commitSha: deploymentsTable.commitSha,
+      commitMessage: deploymentsTable.commitMessage,
+    })
+    .from(deploymentsTable)
+    .where(
+      and(
+        eq(deploymentsTable.appId, appId),
+        eq(deploymentsTable.environment, "production"),
+        eq(deploymentsTable.status, "ready"),
+      ),
+    )
+    .orderBy(desc(deploymentsTable.createdAt), desc(deploymentsTable.seq))
+    .limit(ROLLBACK_SCAN_LIMIT);
+  const targets = rollbackTargetIds(
+    app,
+    history as Parameters<typeof rollbackTargetIds>[1],
+  );
+  const target = history.find((d) => targets.has(d.id));
+  return target
+    ? {
+        id: target.id,
+        commitSha: target.commitSha,
+        commitMessage: target.commitMessage,
+      }
+    : null;
+});
 
 export async function rollbackDeployment(
   deploymentId: string,

@@ -89,24 +89,34 @@ const COMMIT_PATH: Record<string, string> = {
   bitbucket: "/commits/",
 };
 
-export function repoCommitUrl(
-  repo:
-    | { provider?: string | null; repo?: string | null; url?: string | null }
-    | null
-    | undefined,
-  sha: string | null | undefined,
-): string | null {
-  const commit = sha?.trim();
-  if (!repo || !commit) return null;
+type RepoRef = {
+  provider?: string | null;
+  repo?: string | null;
+  url?: string | null;
+};
+
+export function repoWebUrl(repo: RepoRef | null | undefined): string | null {
+  if (!repo) return null;
   const slug = githubRepoSlug(repo);
-  if (slug) return `https://github.com/${slug}/commit/${commit}`;
-  const path = COMMIT_PATH[repo.provider ?? ""];
+  if (slug) return `https://github.com/${slug}`;
   const base = repo.url
     ?.trim()
     .replace(/\.git$/i, "")
     .replace(/\/+$/, "");
-  if (!path || !base || !/^https?:\/\//i.test(base)) return null;
-  return `${base}${path}${commit}`;
+  return base && /^https?:\/\//i.test(base) ? base : null;
+}
+
+export function repoCommitUrl(
+  repo: RepoRef | null | undefined,
+  sha: string | null | undefined,
+): string | null {
+  const commit = sha?.trim();
+  const base = repoWebUrl(repo);
+  if (!repo || !commit || !base) return null;
+  const path = githubRepoSlug(repo)
+    ? "/commit/"
+    : COMMIT_PATH[repo.provider ?? ""];
+  return path ? `${base}${path}${commit}` : null;
 }
 
 export function githubPullRequestUrl(
