@@ -98,12 +98,12 @@ export default async function AppLayout(
                   </div>
                 </div>
                 <div className="flex flex-wrap items-center gap-2">
+                  <AppRollbackButton slug={project.slug} target={rollback} />
                   <RedeployButton
                     appId={project.id}
                     slug={project.slug}
                     variant="default"
                   />
-                  <AppRollbackButton slug={project.slug} target={rollback} />
                   <AppControls
                     appId={project.id}
                     slug={project.slug}
