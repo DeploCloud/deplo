@@ -225,14 +225,6 @@ export function AppControls({
               </DropdownMenuItem>
             </SimpleTooltip>
           )}
-          <SimpleTooltip content="Open this app's settings" side="left">
-            <DropdownMenuItem asChild>
-              <Link href={`/apps/${slug}/settings`} className="cursor-pointer">
-                <Settings className="size-4" />
-                Settings
-              </Link>
-            </DropdownMenuItem>
-          </SimpleTooltip>
           <SimpleTooltip
             content={tip(
               "move_apps",
@@ -250,6 +242,14 @@ export function AppControls({
             </DropdownMenuItem>
           </SimpleTooltip>
 
+          <SimpleTooltip content="Open this app's settings" side="left">
+            <DropdownMenuItem asChild>
+              <Link href={`/apps/${slug}/settings`} className="cursor-pointer">
+                <Settings className="size-4" />
+                Settings
+              </Link>
+            </DropdownMenuItem>
+          </SimpleTooltip>
           <DropdownMenuSeparator />
           <SimpleTooltip
             content={tip(
