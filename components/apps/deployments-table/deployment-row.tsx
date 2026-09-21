@@ -4,7 +4,7 @@ import * as React from "react";
 import Link from "@/components/ui/link";
 import { useRouter, useTeamSlug } from "@/lib/nav";
 import { withTeam } from "@/lib/team-path";
-import { GitBranch, GitPullRequest, Hammer, Undo2 } from "lucide-react";
+import { GitBranch, GitPullRequest, Hammer, RotateCcw } from "lucide-react";
 import { DeploymentCreator } from "@/components/apps/deployment-creator";
 import { AppLogo } from "@/components/shared/project-logo";
 import { Badge } from "@/components/ui/badge";
@@ -159,7 +159,7 @@ export function DeploymentTableRow({
                 variant="outline"
                 className="gap-1 px-1.5 py-0 text-xs font-normal"
               >
-                <Undo2 className="size-3" />
+                <RotateCcw className="size-3" />
                 Rollback
               </Badge>
             </SimpleTooltip>

@@ -9,7 +9,7 @@ import {
   ExternalLink,
   Logs,
   RotateCw,
-  Undo2,
+  RotateCcw,
   GitPullRequest,
   Ban,
   Trash2,
@@ -168,7 +168,7 @@ export function DeploymentActions({
                 onSelect={() => setRollbackOpen(true)}
                 disabled={pending || !canRollbackApps}
               >
-                <Undo2 className="size-4" />
+                <RotateCcw className="size-4" />
                 Rollback
               </DropdownMenuItem>
             )}

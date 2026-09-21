@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { useRouter } from "@/lib/nav";
-import { Undo2 } from "lucide-react";
+import { RotateCcw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ConfirmAction } from "@/components/shared/confirm-action";
 import { DocsLink } from "@/components/ui/docs-link";
@@ -93,7 +93,7 @@ export function RollbackButton({
     return (
       <CapabilityTip cap="rollback_apps">
         <Button variant="outline" size={size} disabled>
-          <Undo2 className="size-4" />
+          <RotateCcw className="size-4" />
           Rollback
         </Button>
       </CapabilityTip>
@@ -103,7 +103,7 @@ export function RollbackButton({
   return (
     <>
       <Button variant="outline" size={size} onClick={() => setOpen(true)}>
-        <Undo2 className="size-4" />
+        <RotateCcw className="size-4" />
         Rollback
       </Button>
       <RollbackDialog
@@ -142,7 +142,7 @@ export function AppRollbackButton({
   // Nothing left to go back to: a backup is the only way back.
   const label = (
     <>
-      <Undo2 className="size-4" />
+      <RotateCcw className="size-4" />
       Rollback
     </>
   );
