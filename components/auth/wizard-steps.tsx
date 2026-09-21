@@ -332,6 +332,7 @@ export function TeamStep({
   submitLabel,
   onBack,
   pending = false,
+  note,
   onSubmit,
 }: {
   draft: TeamDraft;
@@ -341,6 +342,7 @@ export function TeamStep({
   submitLabel: string;
   onBack?: () => void;
   pending?: boolean;
+  note?: React.ReactNode;
   onSubmit: () => void;
 }) {
   const ready = draft.name.trim() !== "";
@@ -390,6 +392,7 @@ export function TeamStep({
           autoFocus
         />
       </div>
+      {note}
       <div className="flex items-center gap-2">
         {onBack && (
           <Button

@@ -131,6 +131,12 @@ export function OnboardingWizard({ setupKey }: { setupKey: string | null }) {
                 submitLabel="Create team"
                 onBack={() => go("account", "back")}
                 pending={pending}
+                note={
+                  <p className="text-xs text-muted-foreground">
+                    Deplo sends anonymous usage statistics. Turn this off any
+                    time in Settings → Deplo.
+                  </p>
+                }
                 onSubmit={submit}
               />
             )}

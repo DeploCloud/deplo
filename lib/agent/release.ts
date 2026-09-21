@@ -155,6 +155,15 @@ export function __resetReleaseCacheForTests(): void {
   cacheCell.lastGood = null;
 }
 
+// What the last successful lookup said, without dialing anybody.
+export function knownExpectedAgentVersion(): string {
+  return (
+    cacheCell.value?.release?.version ||
+    cacheCell.lastGood?.version ||
+    FALLBACK_AGENT_VERSION
+  );
+}
+
 export async function resolveExpectedAgentVersion(): Promise<string> {
   const release = await resolveLatestAgentRelease();
   return release?.version || FALLBACK_AGENT_VERSION;

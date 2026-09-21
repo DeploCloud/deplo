@@ -23,6 +23,7 @@ import { sweepDomainDns } from "../data/domains/dns-check";
 import { describeStackCertificates } from "../data/server-certificates";
 import { getUpdateInfo } from "../data/updates";
 import { sweepFinishedMigrationMarks } from "../data/migration-import/run-report";
+import { sendUsageReport } from "../usage-report/send";
 import { connectAgent } from "../infra/agent-client/connect";
 import {
   dispatchAlert,
@@ -44,6 +45,9 @@ export async function runMaintenanceSweep(): Promise<void> {
   await settle("migration marks", sweepFinishedMigrationMarks);
   await settle("oauth clients", sweepAbandonedOauthClients);
   await settle("expired challenges", sweepExpiredVerifications);
+  await settle("usage report", async () => {
+    await sendUsageReport();
+  });
 }
 
 async function sweepExpiredVerifications(): Promise<void> {

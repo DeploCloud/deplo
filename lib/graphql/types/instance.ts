@@ -24,9 +24,14 @@ import {
   getInstanceSettings,
   setGravatarEnabled,
   setLogMaxDays,
+  setUsageReportsEnabled,
   type InstanceSettings,
 } from "@/lib/data/instance-settings/settings-store";
 import { markWelcomeSeen } from "@/lib/data/instance-owner";
+import {
+  previewUsageReport,
+  type UsageReportPreview,
+} from "@/lib/data/usage-report";
 
 const InstanceSettingsRef = builder
   .objectRef<InstanceSettings>("InstanceSettings")
@@ -45,6 +50,19 @@ const InstanceSettingsRef = builder
       gravatarEnabled: t.exposeBoolean("gravatarEnabled", {
         description:
           "Whether a person with no uploaded picture falls back to their Gravatar. The panel never dials gravatar.com itself - it only computes the address, and each viewer's browser fetches it.",
+      }),
+      usageReportsEnabled: t.exposeBoolean("usageReportsEnabled", {
+        description:
+          "Whether this instance sends Deplo one anonymous Usage report a day: versions, counts and feature switches, keyed by a random instance id, never a hostname, address, name or email. On by default; any instance admin may turn it off, and nothing more is sent from that moment.",
+      }),
+      usageReportsForcedOff: t.exposeBoolean("usageReportsForcedOff", {
+        description:
+          "True when the install set DO_NOT_TRACK=1, which turns reporting off regardless of the switch above. The switch then shows as disabled with that reason rather than hiding.",
+      }),
+      usageReportLastSentAt: t.exposeString("usageReportLastSentAt", {
+        nullable: true,
+        description:
+          "When the last Usage report left, or null when none ever has.",
       }),
       panelUrlSource: t.exposeString("panelUrlSource", {
         description:
@@ -160,7 +178,32 @@ const CertificateAccountRef = builder
     }),
   });
 
+const UsageReportPreviewRef = builder
+  .objectRef<UsageReportPreview>("UsageReportPreview")
+  .implement({
+    description:
+      "The Usage report this instance would send right now, built live from the same code that sends it. Nothing stores a sent payload: what is shown here is what leaves.",
+    fields: (t) => ({
+      json: t.exposeString("json", {
+        description: "The whole document, pretty-printed JSON.",
+      }),
+      instanceId: t.exposeString("instanceId", {
+        nullable: true,
+        description:
+          "The random id the reports are keyed by - quote it to ask Deplo to erase them. Null until the first send mints one; turning the switch off clears it and the next on mints a fresh one.",
+      }),
+      lastSentAt: t.exposeString("lastSentAt", { nullable: true }),
+    }),
+  });
+
 builder.queryFields((t) => ({
+  usageReport: t.field({
+    type: UsageReportPreviewRef,
+    authScopes: { instanceAdmin: true },
+    description:
+      "See what would be sent: the anonymous Usage report as it stands this second. A plain database read that dials nothing.",
+    resolve: () => previewUsageReport(),
+  }),
   instanceSettings: t.field({
     type: InstanceSettingsRef,
     authScopes: { instanceAdmin: true },
@@ -241,6 +284,14 @@ builder.mutationFields((t) => ({
       "Turn Gravatar profile pictures on or off for the whole instance. On, a person with no uploaded picture falls back to the one registered against their address, and each VIEWER's browser fetches it - the panel itself never dials out, so an instance with no egress still works. Off, no Gravatar address is emitted anywhere and nothing about anybody leaves the instance. Instance-wide because it is a property of this deployment's egress and policy, not of one team's taste.",
     args: { enabled: t.arg.boolean({ required: true }) },
     resolve: (_r, { enabled }) => setGravatarEnabled(enabled),
+  }),
+  setUsageReportsEnabled: t.field({
+    type: InstanceSettingsRef,
+    authScopes: { instanceAdmin: true },
+    description:
+      "Turn anonymous usage statistics on or off for the whole instance. Off takes effect at once - no final report, no goodbye - and clears the instance id, so turning it on again starts a history that cannot be joined to the old one. Recorded in Activity. Has no effect while the install set DO_NOT_TRACK=1.",
+    args: { enabled: t.arg.boolean({ required: true }) },
+    resolve: (_r, { enabled }) => setUsageReportsEnabled(enabled),
   }),
   serverCertificateAccounts: t.field({
     type: [CertificateAccountRef],

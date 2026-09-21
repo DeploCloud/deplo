@@ -1,5 +1,7 @@
 import "server-only";
 
+import { randomUUID } from "node:crypto";
+
 import { cache } from "@/lib/request-cache";
 import { eq } from "drizzle-orm";
 import { headers } from "next/headers";
@@ -46,6 +48,9 @@ export type InstanceSettings = {
   deploHostIp: string | null;
   logMaxDays: number;
   gravatarEnabled: boolean;
+  usageReportsEnabled: boolean;
+  usageReportsForcedOff: boolean;
+  usageReportLastSentAt: string | null;
   version: string;
   deploHostId: string | null;
   deploHostName: string | null;
@@ -141,6 +146,101 @@ export async function setGravatarEnabled(
   return getInstanceSettings();
 }
 
+export type UsageReportState = {
+  enabled: boolean;
+  instanceId: string | null;
+  mintedAt: string | null;
+  lastSentAt: string | null;
+};
+
+// https://consoledonottrack.com - the install-time kill switch, and the only one (ADR-0033).
+export function usageReportsForcedOff(env = process.env): boolean {
+  const v = env.DO_NOT_TRACK?.trim().toLowerCase();
+  return v !== undefined && v !== "" && v !== "0" && v !== "false";
+}
+
+export async function usageReportState(): Promise<UsageReportState> {
+  const [row] = await getDb()
+    .select({
+      enabled: instanceSettings.usageReportsEnabled,
+      instanceId: instanceSettings.usageInstanceId,
+      mintedAt: instanceSettings.usageInstanceIdMintedAt,
+      lastSentAt: instanceSettings.usageReportSentAt,
+    })
+    .from(instanceSettings)
+    .where(eq(instanceSettings.id, SETTINGS_ID));
+  return {
+    enabled: row?.enabled ?? true,
+    instanceId: row?.instanceId ?? null,
+    mintedAt: row?.mintedAt ?? null,
+    lastSentAt: row?.lastSentAt ?? null,
+  };
+}
+
+// Ungated on purpose: the maintenance sweep runs with no identity and is the only caller.
+export async function mintUsageInstanceId(
+  now: Date,
+): Promise<{ instanceId: string; mintedAt: string }> {
+  const instanceId = randomUUID();
+  const mintedAt = now.toISOString();
+  await getDb()
+    .insert(instanceSettings)
+    .values({
+      id: SETTINGS_ID,
+      usageInstanceId: instanceId,
+      usageInstanceIdMintedAt: mintedAt,
+      updatedAt: mintedAt,
+    })
+    .onConflictDoUpdate({
+      target: instanceSettings.id,
+      set: { usageInstanceId: instanceId, usageInstanceIdMintedAt: mintedAt },
+    });
+  return { instanceId, mintedAt };
+}
+
+export async function stampUsageReportSent(now: Date): Promise<void> {
+  await getDb()
+    .update(instanceSettings)
+    .set({ usageReportSentAt: now.toISOString() })
+    .where(eq(instanceSettings.id, SETTINGS_ID));
+}
+
+export async function setUsageReportsEnabled(
+  enabled: boolean,
+): Promise<InstanceSettings> {
+  await requireInstanceAdmin();
+  const teamId = await requireActiveTeamId();
+  const user = (await getCurrentUser())!;
+
+  const now = nowIso();
+  // Off severs the history: the next on mints a fresh id at the first send.
+  const patch = enabled
+    ? { usageReportsEnabled: true }
+    : {
+        usageReportsEnabled: false,
+        usageInstanceId: null,
+        usageInstanceIdMintedAt: null,
+      };
+  await getDb()
+    .insert(instanceSettings)
+    .values({ id: SETTINGS_ID, ...patch, updatedAt: now })
+    .onConflictDoUpdate({
+      target: instanceSettings.id,
+      set: { ...patch, updatedAt: now },
+    });
+
+  await recordActivity(
+    "instance",
+    enabled
+      ? "Turned on anonymous usage statistics"
+      : "Turned off anonymous usage statistics",
+    user.name,
+    null,
+    teamId,
+  );
+  return getInstanceSettings();
+}
+
 export async function instancePublicBaseUrl(h?: Headers): Promise<string> {
   const { panelUrl } = await loadSettings();
   if (!h) {
@@ -186,9 +286,10 @@ export function reachableHostIp(host: { ip?: string } | null): string | null {
 export async function getInstanceSettings(): Promise<InstanceSettings> {
   await requireInstanceAdmin();
   const { panelUrl, logMaxDays, panelFallbackDisabled } = await loadSettings();
-  const [host, ownerName] = await Promise.all([
+  const [host, ownerName, usage] = await Promise.all([
     deploHostServer(),
     instanceOwnerName(),
+    usageReportState(),
   ]);
   const hostIp = reachableHostIp(host);
 
@@ -205,6 +306,9 @@ export async function getInstanceSettings(): Promise<InstanceSettings> {
     storedPanelUrl: panelUrl,
     logMaxDays: clampLogMaxDays(logMaxDays),
     gravatarEnabled: await gravatarEnabled(),
+    usageReportsEnabled: usage.enabled,
+    usageReportsForcedOff: usageReportsForcedOff(),
+    usageReportLastSentAt: usage.lastSentAt,
     version: DEPLO_VERSION,
     deploHostId: host?.id ?? null,
     deploHostName: host ? serverLabel(host) : null,

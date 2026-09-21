@@ -11,6 +11,7 @@
     "lint": "eslint",
     "build:recover": "node scripts/build-recover.mjs",
     "recover": "node --require ./lib/test/server-only-shim.cjs --import tsx scripts/recover.ts",
+    "usage-report:send": "node --require ./lib/test/server-only-shim.cjs --import tsx scripts/usage-report-send.ts",
     "gen:schema": "NODE_TEST_CONTEXT=1 node --require ./lib/test/server-only-shim.cjs --import tsx scripts/gen-schema.ts",
     "test": "node --require ./lib/test/server-only-shim.cjs --import tsx --test \"lib/**/*.test.ts\" \"components/**/*.test.ts\" \"templates/**/*.test.ts\" \"*.test.ts\"",
     "db:push": "drizzle-kit push",
