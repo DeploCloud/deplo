@@ -55,7 +55,7 @@ the promise that made people install Deplo in the first place.
    forgets it. The control plane treats any non-5xx answer as sent, so a limited instance
    goes quiet without being told. Raw reports live 90 days as `jsonb` beside typed
    columns for what the dashboard aggregates; daily roll-ups live forever. The dashboard
-   (`usage-dashboard.deplo.build`) has no auth code of its own and sits behind Deplo's
+   (`usaged.deplo.build`) has no auth code of its own and sits behind Deplo's
    domain basic auth. It shows distributions and adoption, never one instance.
 
 7. **A snapshot, not events.** Adding a field never bumps `schema`; a rename or removal
