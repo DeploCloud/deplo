@@ -9,5 +9,5 @@ export const WILDCARD_SUFFIXES: readonly string[] = [
 ];
 
 export function wildcardSuffixGroup(): string {
-  return `(${WILDCARD_SUFFIXES.map((s) => s.replace(/\./g, "\\.")).join("|")})`;
+  return `(${WILDCARD_SUFFIXES.map((s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|")})`;
 }
