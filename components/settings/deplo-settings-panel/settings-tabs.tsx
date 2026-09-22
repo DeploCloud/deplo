@@ -87,11 +87,6 @@ export function DeploSettingsPanel({
         <div className="grid gap-4 lg:grid-cols-2">
           <PanelAddressCard settings={settings} />
           <CertificatesCard />
-          <UsageReportCard
-            enabled={settings.usageReportsEnabled}
-            forcedOff={settings.usageReportsForcedOff}
-            lastSentAt={settings.usageReportLastSentAt}
-          />
           <div className="lg:col-span-2">
             <InstanceOwnerCard
               ownerName={settings.ownerName}
@@ -107,16 +102,19 @@ export function DeploSettingsPanel({
         <div className="grid gap-4 lg:grid-cols-2">
           <LogsRetentionCard logMaxDays={settings.logMaxDays} />
           <GravatarCard enabled={settings.gravatarEnabled} />
-          <div className="lg:col-span-2">
-            <DeploDiagnosticsCard
-              version={settings.version}
-              panelUrl={settings.panelUrl}
-              panelUrlSource={SOURCE_LABEL[settings.panelUrlSource]}
-              deploHostName={settings.deploHostName}
-              expectedAgentVersion={fleet.expected}
-              hosts={hosts}
-            />
-          </div>
+          <DeploDiagnosticsCard
+            version={settings.version}
+            panelUrl={settings.panelUrl}
+            panelUrlSource={SOURCE_LABEL[settings.panelUrlSource]}
+            deploHostName={settings.deploHostName}
+            expectedAgentVersion={fleet.expected}
+            hosts={hosts}
+          />
+          <UsageReportCard
+            enabled={settings.usageReportsEnabled}
+            forcedOff={settings.usageReportsForcedOff}
+            lastSentAt={settings.usageReportLastSentAt}
+          />
           <div className="lg:col-span-2">
             <PanelBackupAddressCard settings={settings} />
           </div>
