@@ -30,13 +30,13 @@ const POLL_MS = 500;
 const BOTTOM_THRESHOLD = 24;
 
 const DEPLOYMENT_LOGS_QUERY = /* GraphQL */ `
-  query DeploymentLogs($id: String!) {
+  query DeploymentLogs($id: String!, $after: Int!) {
     deployment(id: $id) {
       status
       queuePosition
       startedAt
       buildDurationMs
-      logs {
+      logs(after: $after) {
         ts
         level
         text
@@ -105,7 +105,11 @@ export function BuildLogStream({
     });
   }
 
+  // How many lines are held, so each poll asks only for the ones after them.
+  const received = React.useRef(initialLogs.length);
+
   React.useEffect(() => {
+    received.current = initialLogs.length;
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setLogs(initialLogs);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -113,17 +117,25 @@ export function BuildLogStream({
 
   React.useEffect(() => {
     let cancelled = false;
+    let busy = false;
     const controller = new AbortController();
 
     async function tick() {
+      if (busy) return;
+      busy = true;
       try {
+        const after = received.current;
         const data = await gql<LogsResponse>(
           DEPLOYMENT_LOGS_QUERY,
-          { id: deploymentId },
+          { id: deploymentId, after },
           controller.signal,
         );
         if (cancelled || !data.deployment) return;
-        setLogs(data.deployment.logs);
+        const fresh = data.deployment.logs;
+        if (fresh.length > 0 && received.current === after) {
+          received.current = after + fresh.length;
+          setLogs((prev) => prev.concat(fresh));
+        }
         setStatus(data.deployment.status);
         setQueuePosition(data.deployment.queuePosition ?? null);
         setStartedAt(data.deployment.startedAt ?? null);
@@ -132,7 +144,10 @@ export function BuildLogStream({
           lastSyncedStatus.current = data.deployment.status;
           router.refresh();
         }
-      } catch {}
+      } catch {
+      } finally {
+        busy = false;
+      }
     }
 
     tick();
@@ -166,15 +181,16 @@ export function BuildLogStream({
 
   const filters = useLogFilters(logs, BUILD_LEVELS);
 
-  const logText = React.useMemo(
+  const shown = filters.shown;
+  const logText = React.useCallback(
     () =>
-      filters.shown
+      shown
         .map(
           (l) =>
             `[${formatClockTime(l.ts)}] ${levelLabelPadded(l.level)} ${stripAnsi(l.text)}`,
         )
         .join("\n"),
-    [filters.shown],
+    [shown],
   );
 
   return (

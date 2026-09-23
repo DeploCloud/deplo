@@ -11,13 +11,16 @@ import { loadDeploymentLogs } from "../deployment-logs";
 import { hasAppCapability } from "../node-access";
 import type { LogLine } from "../../types/deployment";
 
-export async function getLogs(deploymentId: string): Promise<LogLine[]> {
+export async function getLogs(
+  deploymentId: string,
+  after = 0,
+): Promise<LogLine[]> {
   const teamId = await requireActiveTeamId();
   const dep = await loadDeployment(deploymentId);
   if (!dep) return [];
   if (!(await appInTeam(dep.appId, teamId))) return [];
   if (!(await hasAppCapability(dep.appId, "view_logs"))) return [];
-  return loadDeploymentLogs(deploymentId);
+  return loadDeploymentLogs(deploymentId, after);
 }
 
 export async function getQueuePosition(

@@ -91,8 +91,13 @@ export const DeploymentRef = builder
         type: [LogLineRef],
         authScopes: { capability: "view_logs" },
         description:
-          "Build logs for this deployment (most recent lines, capped).",
-        resolve: (d) => getLogs(d.id).then((lines) => lines.slice(-5000)),
+          "Build logs for this deployment (most recent lines, capped). With " +
+          "`after`, only the lines after that many, oldest first.",
+        args: { after: t.arg.int({ required: false }) },
+        resolve: (d, { after }) =>
+          after == null
+            ? getLogs(d.id).then((lines) => lines.slice(-5000))
+            : getLogs(d.id, after).then((lines) => lines.slice(0, 5000)),
       }),
       queuePosition: t.field({
         type: "Int",

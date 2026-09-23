@@ -1506,8 +1506,10 @@ type Deployment {
   environment: DeploymentEnvironment
   id: ID
 
-  """Build logs for this deployment (most recent lines, capped)."""
-  logs: [LogLine!]
+  """
+  Build logs for this deployment (most recent lines, capped). With `after`, only the lines after that many, oldest first.
+  """
+  logs(after: Int): [LogLine!]
 
   """
   The pull request number, denormalized so it survives the preview itself being reaped. Null for a production build.

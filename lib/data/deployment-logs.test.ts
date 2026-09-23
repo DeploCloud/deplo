@@ -88,6 +88,17 @@ test("loadDeploymentLogs flushes pending lines then reads them back", async () =
   );
 });
 
+test("loadDeploymentLogs with after returns only the newer lines", async () => {
+  for (const t of ["one", "two", "three", "four"]) appendLog("dpl_1", line(t));
+  await finalizeDeploymentLogs("dpl_1");
+  assert.deepEqual(
+    (await loadDeploymentLogs("dpl_1", 2)).map((l) => l.text),
+    ["three", "four"],
+  );
+  assert.deepEqual(await loadDeploymentLogs("dpl_1", 4), []);
+  assert.equal((await loadDeploymentLogs("dpl_1", -3)).length, 4);
+});
+
 test("a buffer that fills flushes immediately (no waiting for the timer)", async () => {
   for (let i = 0; i < 250; i++) appendLog("dpl_1", line(`L${i}`));
   await finalizeDeploymentLogs("dpl_1");
