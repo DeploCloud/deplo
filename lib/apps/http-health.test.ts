@@ -65,3 +65,13 @@ test("the verdict is reused until the interval has elapsed", () => {
   assert.equal(recentHttpHealth(app, 30, t0 + 1_000), "unhealthy");
   assert.equal(recentHttpHealth(app, 0, t0 + 1_000), null);
 });
+
+test("verdicts of apps nobody has checked for days are forgotten", () => {
+  const t0 = 1_000_000_000_000;
+  for (let i = 0; i < 300; i++) httpHealthVerdict(`prj_gone_${i}`, true, 3, t0);
+  const later = t0 + 3 * 24 * 60 * 60 * 1000;
+  httpHealthVerdict("prj_live", true, 3, later);
+  assert.equal(recentHttpHealth("prj_gone_0", 86_400 * 10, later), null);
+  assert.equal(recentHttpHealth("prj_live", 30, later), "healthy");
+  forgetHttpHealth("prj_live");
+});

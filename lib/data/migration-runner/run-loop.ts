@@ -140,13 +140,14 @@ async function drive(row: RunRow): Promise<void> {
     await advance(row);
   } catch (e) {
     if (e instanceof LeaseLost || lostLeases.has(row.id)) {
-      lostLeases.delete(row.id);
       held = false;
       return;
     }
     console.error("[migration] run", row.id, "failed:", e);
     await failRun(row, e instanceof Error ? e.message : String(e));
   } finally {
+    // A heartbeat can mark the lease lost on a pass that then ends cleanly.
+    lostLeases.delete(row.id);
     inflight.delete(row.id);
     if (held) await releaseLease(leaseFor(row.id), owner).catch(() => {});
   }

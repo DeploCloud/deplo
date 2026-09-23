@@ -14,9 +14,20 @@ const lastSeen = ((globalThis as Record<symbol, unknown>)[KEY] ??= new Map<
   Set<string>
 >()) as Map<string, Set<string>>;
 
-const ALERTED_KEY = Symbol.for("deplo.notify.crashloop.alerted");
+// app id -> the server it was alerted on.
+const ALERTED_KEY = Symbol.for("deplo.notify.crashloop.alerted-by-server");
 const alerted = ((globalThis as Record<symbol, unknown>)[ALERTED_KEY] ??=
-  new Set<string>()) as Set<string>;
+  new Map<string, string>()) as Map<string, string>;
+
+// An alerted app its server no longer reports (deleted, stopped, moved) will never recover.
+export function pruneAlerted(
+  alertedOn: Map<string, string>,
+  serverId: string,
+  reported: ReadonlySet<string>,
+): void {
+  for (const [id, srv] of alertedOn)
+    if (srv === serverId && !reported.has(id)) alertedOn.delete(id);
+}
 
 export async function reportAppHealth(
   serverId: string,
@@ -30,6 +41,7 @@ export async function reportAppHealth(
     (id) =>
       alerted.delete(id) && shouldFire("app_crash_loop", `app:${id}`, "ok"),
   );
+  pruneAlerted(alerted, serverId, new Set([...crashing, ...healthy]));
   const confirmed = crashing.filter((id) => previous.has(id));
   if (confirmed.length === 0 && recovered.length === 0) return;
 
@@ -39,7 +51,7 @@ export async function reportAppHealth(
     for (const id of confirmed) {
       const app = byId.get(id);
       if (!app) continue;
-      alerted.add(id);
+      alerted.set(id, serverId);
       dispatchAlert({
         teamId: app.teamId,
         key: "app_crash_loop",
