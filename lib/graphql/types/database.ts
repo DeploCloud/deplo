@@ -2,6 +2,7 @@ import { builder } from "../builder";
 import { DatabaseTypeEnum } from "./enums";
 import { ResourceLimitsRef, ResourceLimitsInputType } from "./resource-limits";
 import { pubSub } from "../pubsub";
+import { liveStream } from "../live-stream";
 import { memberScopeFor } from "@/lib/data/node-scope";
 import { acceptDataCopyLoss } from "@/lib/data/data-copy";
 import { moveDatabaseToEnvironment } from "@/lib/data/databases/environment-move";
@@ -585,22 +586,26 @@ builder.subscriptionFields((t) => ({
   }),
 }));
 
-export async function* databaseStatusStream(
+export function databaseStatusStream(
   id: string,
   teamId: string | null,
   userId: string | null,
-): AsyncGenerator<DatabaseDTO> {
-  if (!teamId || !userId) throw new Error("Database not found");
-  if (await memberScopeFor(userId, teamId))
-    throw new Error("Database not found");
-  const first = await getDatabaseForTeam(id, teamId);
-  if (!first) throw new Error("Database not found");
+) {
+  return liveStream(async function* (track): AsyncGenerator<DatabaseDTO> {
+    if (!teamId || !userId) throw new Error("Database not found");
+    if (await memberScopeFor(userId, teamId))
+      throw new Error("Database not found");
+    const first = await getDatabaseForTeam(id, teamId);
+    if (!first) throw new Error("Database not found");
 
-  yield first;
+    yield first;
 
-  for await (const changedId of pubSub.subscribe("databaseChanged", id)) {
-    const next = await getDatabaseForTeam(changedId, teamId);
-    if (!next) return;
-    yield next;
-  }
+    for await (const changedId of track(
+      pubSub.subscribe("databaseChanged", id),
+    )) {
+      const next = await getDatabaseForTeam(changedId, teamId);
+      if (!next) return;
+      yield next;
+    }
+  });
 }

@@ -6,6 +6,7 @@ import {
 } from "@/lib/data/apps/listing";
 import type { AppSummary } from "@/lib/data/apps/summary";
 import { pubSub, APP_ACTIVITY_TOPIC } from "../../pubsub";
+import { liveStream } from "../../live-stream";
 import { countActiveDeploymentsForTeam } from "@/lib/data/deployments/deployment-queries";
 
 builder.subscriptionType({});
@@ -32,41 +33,46 @@ builder.subscriptionFields((t) => ({
   }),
 }));
 
-export async function* activeDeploymentsStream(
+export function activeDeploymentsStream(
   teamId: string | null,
   userId: string | null,
-): AsyncGenerator<number> {
-  if (!teamId || !userId) throw new Error("Not signed in");
-  let last = await countActiveDeploymentsForTeam(teamId, userId);
-  yield last;
-  for await (const changedId of pubSub.subscribe(
-    "appActivity",
-    APP_ACTIVITY_TOPIC,
-  )) {
-    void changedId;
-    const next = await countActiveDeploymentsForTeam(teamId, userId);
-    if (next === last) continue;
-    last = next;
-    yield next;
-  }
+) {
+  return liveStream(async function* (track): AsyncGenerator<number> {
+    if (!teamId || !userId) throw new Error("Not signed in");
+    let last = await countActiveDeploymentsForTeam(teamId, userId);
+    yield last;
+    for await (const changedId of track(
+      pubSub.subscribe("appActivity", APP_ACTIVITY_TOPIC),
+    )) {
+      void changedId;
+      const next = await countActiveDeploymentsForTeam(teamId, userId);
+      if (next === last) continue;
+      last = next;
+      yield next;
+    }
+  });
 }
 
 // teamId/userId are passed in: cookies() is not callable across an SSE stream's iteration ticks.
-export async function* appStatusStream(
+export function appStatusStream(
   slug: string,
   teamId: string | null,
   userId: string | null,
-): AsyncGenerator<AppSummary> {
-  if (!teamId || !userId) throw new Error("App not found");
-  const project = await findAppSummaryBySlugForTeam(slug, teamId, userId);
-  if (!project) throw new Error("App not found");
-  const appId = project.id;
+) {
+  return liveStream(async function* (track): AsyncGenerator<AppSummary> {
+    if (!teamId || !userId) throw new Error("App not found");
+    const project = await findAppSummaryBySlugForTeam(slug, teamId, userId);
+    if (!project) throw new Error("App not found");
+    const appId = project.id;
 
-  yield project;
+    yield project;
 
-  for await (const changedId of pubSub.subscribe("appChanged", appId)) {
-    const next = await summarizeForTeam(changedId, teamId, userId);
-    if (!next) return;
-    yield next;
-  }
+    for await (const changedId of track(
+      pubSub.subscribe("appChanged", appId),
+    )) {
+      const next = await summarizeForTeam(changedId, teamId, userId);
+      if (!next) return;
+      yield next;
+    }
+  });
 }
