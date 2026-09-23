@@ -1,7 +1,11 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-import { getConvertedCompose, listProjects } from "./client";
+import {
+  __acceptedKeysForTest,
+  getConvertedCompose,
+  listProjects,
+} from "./client";
 import { dokployClient } from "./adapter";
 import {
   __resetMigrationFetchForTest,
@@ -399,6 +403,10 @@ test("a 401 on a key that was accepted moments ago is the rate limit, not a typo
     () => listProjects(fresh),
     /accepted moments ago[\s\S]*rate limit or was revoked/,
   );
+  for (const k of __acceptedKeysForTest()) {
+    assert.ok(!k.includes("born-limited"), "no raw key is kept in memory");
+    assert.match(k, /^[0-9a-f]{64}$/);
+  }
 });
 
 test("a key names its own organization and the ones it does not cover", async (t) => {
