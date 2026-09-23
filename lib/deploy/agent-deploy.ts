@@ -1,6 +1,5 @@
 import "server-only";
 
-import { spawn } from "node:child_process";
 import { access } from "node:fs/promises";
 import { join } from "node:path";
 import {
@@ -26,6 +25,7 @@ import { and, eq } from "drizzle-orm";
 import { getDb } from "../db/client";
 import { appVolumes as appVolumesTable } from "../db/schema/control-plane/apps";
 import { generateDockerfile } from "./dockerfile";
+import { tarDir, tarDirChunks } from "./context-tar";
 import {
   normalizeBuildConfig,
   DEFAULT_NODE_MAJOR,
@@ -320,7 +320,7 @@ export async function runAgentDeploy(opts: {
   }
   try {
     const outcome = await consumeStream(
-      first.deploy(req),
+      openDeployStream(first, req, opts.plan, hello.capabilities),
       opts.sink,
       cursor,
       () => {
@@ -385,6 +385,22 @@ export async function runAgentDeploy(opts: {
     "Could not reconnect to the agent to follow the deploy.",
   );
   return { ready: false, commitSha: "" };
+}
+
+// An upload's build folder goes up in chunks when the agent can take them, else whole.
+export function openDeployStream(
+  conn: Pick<AgentConnection, "deploy" | "deployStream">,
+  req: DeployRequest,
+  plan: AgentBuildPlan,
+  capabilities: readonly string[],
+): AsyncGenerator<DeployEvent, void, unknown> {
+  if (plan.kind !== "dockerfile") return conn.deploy(req);
+  if (capabilities.includes("deploy.context_stream")) {
+    return conn.deployStream(req, tarDirChunks(plan.buildDir));
+  }
+  return (async function* () {
+    yield* conn.deploy({ ...req, contextTar: await tarDir(plan.buildDir) });
+  })();
 }
 
 const REATTACH_MAX_TRIES = 5;
@@ -529,7 +545,6 @@ export async function buildDeployRequest(opts: {
 
   const { buildDir, build } = opts.plan;
   const normalized = normalizeBuildConfig(build);
-  const tar = await tarDir(buildDir);
 
   const heavyKind = heavyBuildKind(normalized.buildMethod);
   if (heavyKind !== null) {
@@ -538,7 +553,6 @@ export async function buildDeployRequest(opts: {
       sourceKind: SourceKind.SOURCE_KIND_UPLOAD,
       buildKind: heavyKind,
       buildSpec: buildSpecFor(normalized),
-      contextTar: tar,
     };
   }
 
@@ -572,7 +586,6 @@ export async function buildDeployRequest(opts: {
     sourceKind: SourceKind.SOURCE_KIND_UPLOAD,
     buildKind: BuildKind.BUILD_KIND_DOCKERFILE,
     dockerfile,
-    contextTar: tar,
   };
 }
 
@@ -596,24 +609,6 @@ function noProbeBuildFields(
           generatedDockerfile: generateDockerfile(normalized, Object.keys(env)),
         };
   return { buildKind: BuildKind.BUILD_KIND_DOCKERFILE, dockerfile };
-}
-
-function tarDir(dir: string): Promise<Uint8Array> {
-  return new Promise((resolve, reject) => {
-    const child = spawn("tar", ["--format=ustar", "-cf", "-", "-C", dir, "."], {
-      windowsHide: true,
-    });
-    const chunks: Buffer[] = [];
-    child.stdout.on("data", (c: Buffer) => chunks.push(c));
-    child.on("error", reject);
-    child.on("close", (code) => {
-      if (code !== 0) {
-        reject(new Error(`tar exited ${code} while archiving build context`));
-        return;
-      }
-      resolve(new Uint8Array(Buffer.concat(chunks)));
-    });
-  });
 }
 
 async function fileExists(p: string): Promise<boolean> {

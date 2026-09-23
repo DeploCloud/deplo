@@ -1,8 +1,12 @@
 import "server-only";
 
 import { Metadata } from "@grpc/grpc-js";
-import type { DeployRequest, ReattachRequest } from "../../agent/gen/agent";
-import { streamEvents } from "../stream-events";
+import type {
+  DeployRequest,
+  DeployUpload,
+  ReattachRequest,
+} from "../../agent/gen/agent";
+import { pumpClientStream, streamEvents } from "../stream-events";
 import type { AgentConnection } from "./connection";
 import { DEPLOY_DEADLINE_MS, STACK_DEADLINE_MS } from "./deadlines";
 import { toAgentError } from "./errors";
@@ -13,6 +17,7 @@ export function stackRpc(
 ): Pick<
   AgentConnection,
   | "deploy"
+  | "deployStream"
   | "reattach"
   | "stopStack"
   | "startStack"
@@ -31,6 +36,36 @@ export function stackRpc(
           }),
           { normalise: toAgentError },
         );
+      })();
+    },
+    deployStream(req: DeployRequest, context: AsyncIterable<Buffer>) {
+      return (async function* () {
+        await assertNetworkCapable(req.network);
+        const call = client.deployStream({
+          deadline: new Date(Date.now() + DEPLOY_DEADLINE_MS),
+        });
+        let uploadError: unknown = null;
+        const tracked = (async function* () {
+          try {
+            yield* context;
+          } catch (e) {
+            uploadError = e;
+            throw e;
+          }
+        })();
+        pumpClientStream<DeployUpload>(
+          call,
+          { request: { ...req, contextTar: new Uint8Array(0) } },
+          tracked,
+          (contextChunk) => ({ contextChunk }),
+          () => {},
+        );
+        try {
+          yield* streamEvents(call, { normalise: toAgentError });
+        } catch (e) {
+          // A failed upload cancels the call; name the upload, not "Cancelled".
+          throw uploadError ? toAgentError(uploadError) : e;
+        }
       })();
     },
     reattach(req: ReattachRequest) {

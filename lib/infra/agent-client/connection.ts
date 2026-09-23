@@ -135,6 +135,11 @@ export interface AgentConnection {
     req: MetricsStreamRequest,
   ): AsyncGenerator<MetricsSample, void, unknown>;
   deploy(req: DeployRequest): AsyncGenerator<DeployEvent, void, unknown>;
+  // Needs the `deploy.context_stream` capability; the context goes up in chunks.
+  deployStream(
+    req: DeployRequest,
+    context: AsyncIterable<Buffer>,
+  ): AsyncGenerator<DeployEvent, void, unknown>;
   reattach(req: ReattachRequest): AsyncGenerator<DeployEvent, void, unknown>;
   stopStack(
     slug: string,
