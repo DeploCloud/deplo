@@ -58,7 +58,14 @@ export function open(
   handle: AttachHandle,
   cleanup?: () => void,
 ): AttachSession {
-  enforceSessionCaps(appId, userId);
+  try {
+    enforceSessionCaps(appId, userId);
+  } catch (e) {
+    // A refused session still owns the stream and the agent connection it was handed.
+    handle.close();
+    cleanup?.();
+    throw e;
+  }
   const id = `att_${randomBytes(12).toString("hex")}`;
   const session: AttachSession = {
     id,

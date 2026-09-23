@@ -2,7 +2,13 @@ import { test, afterEach } from "node:test";
 import assert from "node:assert/strict";
 
 import type { AttachHandle } from "../infra/docker";
-import { open, destroy, __allSessionIdsForTest } from "./session";
+import {
+  open,
+  destroy,
+  subscribe,
+  MAX_BACKLOG_BYTES,
+  __allSessionIdsForTest,
+} from "./session";
 
 const handle = (): AttachHandle => ({
   onData: () => () => {},
@@ -48,4 +54,38 @@ test("one person holds at most 16 live sessions, whatever the apps", () => {
   const ids = __allSessionIdsForTest();
   assert.equal(ids.length, 16, "the oldest of A's own made room");
   assert.ok(ids.includes(seventeenth.id));
+});
+
+test("a refused session closes the stream and the connection it was handed", () => {
+  for (const user of ["user_a", "user_b", "user_c", "user_d"])
+    for (let app = 0; app < 4; app++)
+      for (let i = 0; i < 4; i++) open(`app_${app}`, user, "c", handle());
+
+  let closed = 0;
+  let cleaned = 0;
+  const refused = { ...handle(), close: () => void closed++ };
+  assert.throws(
+    () => open("app_9", "user_e", "c", refused, () => void cleaned++),
+    /Too many live sessions/,
+  );
+  assert.equal(closed, 1);
+  assert.equal(cleaned, 1);
+});
+
+test("output buffered before anyone subscribes is capped by bytes", () => {
+  let push: (chunk: Buffer) => void = () => {};
+  const s = open("app_0", "user_a", "c", {
+    ...handle(),
+    onData: (cb) => {
+      push = cb;
+      return () => {};
+    },
+  });
+  const chunk = Buffer.alloc(64 * 1024, 1);
+  for (let i = 0; i < 64; i++) push(chunk);
+
+  const got: Buffer[] = [];
+  subscribe(s, (c) => got.push(c));
+  const bytes = got.reduce((n, c) => n + c.length, 0);
+  assert.ok(bytes <= MAX_BACKLOG_BYTES && bytes > 0, `${bytes} bytes`);
 });

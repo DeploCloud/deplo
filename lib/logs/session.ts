@@ -11,6 +11,7 @@ export interface LogsSession {
   handle: AttachHandle;
   readonly subscribers: Set<(chunk: Buffer) => void>;
   backlog: Buffer[] | null;
+  backlogBytes: number;
   onExit?: (error?: string) => void;
   idleTimer?: NodeJS.Timeout;
   exited: boolean;
@@ -19,6 +20,8 @@ export interface LogsSession {
 const sessions = new Map<string, LogsSession>();
 
 const IDLE_MS = 30_000;
+// What a session holds before its viewer subscribes; the oldest chunks go first.
+export const MAX_BACKLOG_BYTES = 1024 * 1024;
 
 function armIdleReaper(s: LogsSession) {
   clearTimeout(s.idleTimer);
@@ -57,7 +60,14 @@ export function open(
   handle: AttachHandle,
   cleanup?: () => void,
 ): LogsSession {
-  enforceSessionCaps(appId, userId);
+  try {
+    enforceSessionCaps(appId, userId);
+  } catch (e) {
+    // A refused session still owns the stream and the agent connection it was handed.
+    handle.close();
+    cleanup?.();
+    throw e;
+  }
   const id = `log_${randomBytes(12).toString("hex")}`;
   const session: LogsSession = {
     id,
@@ -67,12 +77,16 @@ export function open(
     handle,
     subscribers: new Set(),
     backlog: [],
+    backlogBytes: 0,
     exited: false,
   };
 
   handle.onData((chunk) => {
     if (session.subscribers.size === 0 && session.backlog) {
       session.backlog.push(chunk);
+      session.backlogBytes += chunk.length;
+      while (session.backlogBytes > MAX_BACKLOG_BYTES && session.backlog.length)
+        session.backlogBytes -= session.backlog.shift()!.length;
       return;
     }
     for (const sub of session.subscribers) sub(chunk);
