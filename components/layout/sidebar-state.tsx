@@ -76,8 +76,11 @@ export function SidebarProvider({ children }: { children: React.ReactNode }) {
     } catch {}
   }, []);
 
+  const endResize = React.useRef<(() => void) | null>(null);
+
   const startResize = React.useCallback((e: React.PointerEvent) => {
     e.preventDefault();
+    endResize.current?.();
     setDrag({ active: true, peek: 0 });
 
     function onMove(ev: PointerEvent) {
@@ -91,6 +94,8 @@ export function SidebarProvider({ children }: { children: React.ReactNode }) {
       setDrag({ active: false, peek: 0 });
       window.removeEventListener("pointermove", onMove);
       window.removeEventListener("pointerup", onUp);
+      window.removeEventListener("pointercancel", onUp);
+      if (endResize.current === onUp) endResize.current = null;
       if (close) setState((prev) => ({ ...prev, collapsed: true }));
       try {
         window.localStorage.setItem(WIDTH_KEY, String(widthRef.current));
@@ -100,9 +105,13 @@ export function SidebarProvider({ children }: { children: React.ReactNode }) {
     function onUp() {
       finish(false);
     }
+    endResize.current = onUp;
     window.addEventListener("pointermove", onMove);
     window.addEventListener("pointerup", onUp);
+    window.addEventListener("pointercancel", onUp);
   }, []);
+
+  React.useEffect(() => () => endResize.current?.(), []);
 
   React.useEffect(() => {
     function onKey(e: KeyboardEvent) {

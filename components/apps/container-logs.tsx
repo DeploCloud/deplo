@@ -43,6 +43,12 @@ import type { ConsoleInstance } from "@/lib/data/console";
 import { stripAnsi } from "@/lib/ansi";
 import { mergeLogBurst } from "@/lib/logs/merge";
 import { splitTimestamp } from "@/lib/logs/window";
+import {
+  advanceParse,
+  capText,
+  emptyParse,
+  type ParseState,
+} from "@/lib/logs/incremental-parse";
 import { detectLogLevel, isLogContinuation } from "@/lib/log-level-detect";
 import { DEFAULT_LOG_RANGE_DAYS, type LogLevel } from "@/lib/types/deployment";
 import { cn } from "@/lib/utils";
@@ -62,13 +68,6 @@ const REPLAY_WINDOW_MS = 3_000;
 const MAX_BUFFER_CHARS = 512_000;
 const MAX_RENDER_LINES = 5_000;
 const MAX_DETECT_CHARS = 2_000;
-
-function capBuffer(text: string): string {
-  if (text.length <= MAX_BUFFER_CHARS) return text;
-  const tail = text.slice(-MAX_BUFFER_CHARS);
-  const nl = tail.indexOf("\n");
-  return nl === -1 ? tail : tail.slice(nl + 1);
-}
 
 function classifyLine(raw: string, prev: LogLevel): ParsedLine {
   const { ts, rest: text } = splitTimestamp(raw);
@@ -127,37 +126,22 @@ export function ContainerLogs({
   const replayBaseRef = React.useRef<string | null>(null);
   const replayBurstRef = React.useRef("");
   const replayUntilRef = React.useRef(0);
-  const parseRef = React.useRef<{
-    text: string;
-    parsedTo: number;
-    lines: ParsedLine[];
-  }>({ text: "", parsedTo: 0, lines: [] });
+  const parseRef = React.useRef<ParseState<ParsedLine>>(emptyParse());
 
-  const publishLines = React.useCallback(() => {
-    const text = outputRef.current;
+  const publishLines = React.useCallback((dropped = 0) => {
+    const next = advanceParse(
+      parseRef.current,
+      outputRef.current,
+      dropped,
+      (raw, prev) => classifyLine(raw, prev?.level ?? "info"),
+      MAX_RENDER_LINES,
+    );
+    parseRef.current = next;
+    const { text, parsedTo: from, lines: acc } = next;
     if (!text) {
-      parseRef.current = { text: "", parsedTo: 0, lines: [] };
       setLines([]);
       return;
     }
-    const prev = parseRef.current;
-    const appended = prev.text !== "" && text.startsWith(prev.text);
-    const acc = appended ? prev.lines : [];
-    let from = appended ? prev.parsedTo : 0;
-    const lastNl = text.lastIndexOf("\n");
-    if (lastNl >= from) {
-      let prev: LogLevel = acc.length ? acc[acc.length - 1]!.level : "info";
-      for (const line of text.slice(from, lastNl).split("\n")) {
-        const classified = classifyLine(line, prev);
-        prev = classified.level;
-        acc.push(classified);
-      }
-      from = lastNl + 1;
-    }
-    if (acc.length > MAX_RENDER_LINES) {
-      acc.splice(0, acc.length - MAX_RENDER_LINES);
-    }
-    parseRef.current = { text, parsedTo: from, lines: acc };
     const partial = text.slice(from);
     const tailLevel: LogLevel = acc.length
       ? acc[acc.length - 1]!.level
@@ -235,9 +219,10 @@ export function ContainerLogs({
         replayBurstRef.current = "";
         outputRef.current += text;
       }
-      outputRef.current = capBuffer(outputRef.current);
+      const uncapped = outputRef.current;
+      outputRef.current = capText(uncapped, MAX_BUFFER_CHARS);
       setOutput(outputRef.current);
-      publishLines();
+      publishLines(uncapped.length - outputRef.current.length);
     };
 
     es.addEventListener("session", (e) => {

@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { Terminal } from "@xterm/headless";
-import { LineEditor } from "./exec-line-editor";
+import { LineEditor, MAX_HISTORY } from "./exec-line-editor";
 
 const PROMPT = "p$";
 
@@ -189,6 +189,19 @@ test("↑/↓ browse history and restore the in-progress draft", async () => {
   ed.data(UP);
   await flush(term);
   assert.equal(row(term, 2), "p$ second");
+});
+
+test("history keeps only the most recent MAX_HISTORY commands", async () => {
+  const { term, ed } = makeEditor({ rows: 2 });
+  for (let i = 0; i < MAX_HISTORY + 2; i++) {
+    ed.data(`c${i}`);
+    ed.data("\r");
+    ed.freshPrompt();
+  }
+  for (let i = 0; i < MAX_HISTORY + 5; i++) ed.data(UP);
+  await flush(term);
+  const b = term.buffer.active;
+  assert.equal(row(term, b.baseY + b.cursorY), "p$ c2");
 });
 
 test("history entry can be edited mid-line before resubmit", async () => {

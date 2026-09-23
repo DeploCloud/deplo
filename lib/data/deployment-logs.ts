@@ -157,13 +157,18 @@ function classifyUnstated(line: LogLine): LogLine {
   return level === "info" ? line : { ...line, level };
 }
 
-export async function loadDeploymentLogs(depId: string): Promise<LogLine[]> {
+// `after` skips lines the caller already holds; lines are append-only, so an index is stable.
+export async function loadDeploymentLogs(
+  depId: string,
+  after = 0,
+): Promise<LogLine[]> {
   await finalizeDeploymentLogs(depId);
   const rows = await getDb()
     .select()
     .from(deploymentLogs)
     .where(eq(deploymentLogs.deploymentId, depId))
-    .orderBy(asc(deploymentLogs.id));
+    .orderBy(asc(deploymentLogs.id))
+    .offset(Math.max(0, Math.floor(after)));
   return rows.map((row) => classifyUnstated(assembleLogLine(row)));
 }
 

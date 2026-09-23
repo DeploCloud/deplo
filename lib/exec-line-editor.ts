@@ -17,6 +17,8 @@ function nextWord(line: string, caret: number): number {
   return i;
 }
 
+export const MAX_HISTORY = 500;
+
 export class LineEditor {
   private line = "";
   private caret = 0;
@@ -90,6 +92,8 @@ export class LineEditor {
           return;
         }
         this.history.unshift(cmd);
+        if (this.history.length > MAX_HISTORY)
+          this.history.length = MAX_HISTORY;
         this.onSubmit(cmd);
         return;
       }

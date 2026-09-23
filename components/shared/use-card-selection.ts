@@ -151,14 +151,23 @@ export function useCardSelection(orderedIds: string[]): CardSelection {
       const onUp = () => {
         window.removeEventListener("pointermove", onMove);
         window.removeEventListener("pointerup", onUp);
+        window.removeEventListener("pointercancel", onUp);
         region.style.userSelect = "";
         if (marqueeRef.current) marqueeRef.current.style.display = "none";
+        if (endDrag === onUp) endDrag = null;
       };
+      endDrag?.();
+      endDrag = onUp;
       window.addEventListener("pointermove", onMove);
       window.addEventListener("pointerup", onUp);
+      window.addEventListener("pointercancel", onUp);
     }
+    let endDrag: (() => void) | null = null;
     window.addEventListener("pointerdown", onPointerDown);
-    return () => window.removeEventListener("pointerdown", onPointerDown);
+    return () => {
+      window.removeEventListener("pointerdown", onPointerDown);
+      endDrag?.();
+    };
   }, []);
 
   return {
