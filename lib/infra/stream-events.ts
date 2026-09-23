@@ -2,12 +2,16 @@ import type { ClientReadableStream } from "@grpc/grpc-js";
 
 type Normalise = (err: unknown) => Error;
 
+// Without a bound a slow consumer let the queue grow without limit; pausing never drops a frame.
+export const DEFAULT_PAUSE_ABOVE = 256;
+
 export async function* streamEvents<E>(
   stream: ClientReadableStream<E>,
   opts: { maxQueued?: number; pauseAbove?: number; normalise?: Normalise } = {},
 ): AsyncGenerator<E, void, unknown> {
   const maxQueued = opts.maxQueued ?? 0;
-  const pauseAbove = opts.pauseAbove ?? 0;
+  const pauseAbove =
+    opts.pauseAbove ?? (maxQueued > 0 ? 0 : DEFAULT_PAUSE_ABOVE);
   const normalise =
     opts.normalise ??
     ((e: unknown) => (e instanceof Error ? e : new Error(String(e))));

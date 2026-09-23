@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { EventEmitter } from "node:events";
 
-import { streamEvents } from "./stream-events";
+import { DEFAULT_PAUSE_ABOVE, streamEvents } from "./stream-events";
 import type { ClientReadableStream } from "@grpc/grpc-js";
 
 class FakeStream<E> extends EventEmitter {
@@ -144,4 +144,15 @@ test("abandoning the generator cancels the RPC", async () => {
   assert.equal((await first).value, 1);
   await gen.return(undefined);
   assert.equal(s.cancelled, true);
+});
+
+test("with no bound given, a slow consumer pauses the producer instead of queueing forever", async () => {
+  const s = new FakeStream<number>();
+  const gen = streamEvents<number>(s.asStream());
+  const { first } = await prime(gen);
+  let sent = 0;
+  while (s.push(sent)) sent++;
+  assert.equal(sent, DEFAULT_PAUSE_ABOVE);
+  assert.equal((await first).value, 0);
+  await gen.return(undefined);
 });
