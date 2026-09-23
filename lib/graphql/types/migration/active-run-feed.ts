@@ -1,6 +1,7 @@
 import { builder } from "../../builder";
 import { ImportRunRef } from "./run-types";
 import { pubSub, MIGRATION_ACTIVITY_TOPIC } from "../../pubsub";
+import { liveStream } from "../../live-stream";
 import {
   headerMigrationForTeam,
   type ImportRunDTO,
@@ -18,22 +19,23 @@ builder.subscriptionFields((t) => ({
   }),
 }));
 
-export async function* activeMigrationStream(
-  teamId: string | null,
-): AsyncGenerator<ImportRunDTO | null> {
-  if (!teamId) throw new Error("Not signed in");
-  let last = await headerMigrationForTeam(teamId);
-  yield last;
-  for await (const ping of pubSub.subscribe(
-    "migrationActivity",
-    MIGRATION_ACTIVITY_TOPIC,
-  )) {
-    void ping;
-    const next = await headerMigrationForTeam(teamId);
-    if (sameRun(last, next)) continue;
-    last = next;
-    yield next;
-  }
+export function activeMigrationStream(teamId: string | null) {
+  return liveStream(
+    async function* (track): AsyncGenerator<ImportRunDTO | null> {
+      if (!teamId) throw new Error("Not signed in");
+      let last = await headerMigrationForTeam(teamId);
+      yield last;
+      for await (const ping of track(
+        pubSub.subscribe("migrationActivity", MIGRATION_ACTIVITY_TOPIC),
+      )) {
+        void ping;
+        const next = await headerMigrationForTeam(teamId);
+        if (sameRun(last, next)) continue;
+        last = next;
+        yield next;
+      }
+    },
+  );
 }
 
 function sameRun(a: ImportRunDTO | null, b: ImportRunDTO | null): boolean {

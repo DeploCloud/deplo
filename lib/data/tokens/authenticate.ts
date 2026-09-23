@@ -14,6 +14,7 @@ import { OAUTH_ACCESS_TOKEN_PREFIX } from "../../auth/oauth-metadata";
 import { nowIso } from "../../ids";
 import { membershipFor } from "../../membership";
 import { sha256Hex } from "../../crypto";
+import { sweepStale } from "../../stale-sweep";
 import type { Capability } from "../../types/identity";
 import { type RequestIdentity } from "../../auth/request-context";
 import { inCatalogOrder } from "./listing";
@@ -141,6 +142,7 @@ async function identityForTokenRow(
   const now = Date.now();
   if ((stampedAt.get(match.id) ?? 0) < now - STAMP_EVERY_MS) {
     stampedAt.set(match.id, now);
+    sweepStale(stampedAt, (t) => t, STAMP_EVERY_MS, now);
     void getDb()
       .update(apiTokens)
       .set({ lastUsedAt: nowIso() })

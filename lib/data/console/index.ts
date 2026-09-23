@@ -21,6 +21,7 @@ import {
   withinStartPeriod,
 } from "../../apps/http-health";
 import { isDockerLevelStderr } from "../../infra/docker";
+import { sweepStale } from "../../stale-sweep";
 import { connectAgent } from "../../infra/agent-client/connect";
 import type { AgentConnection } from "../../infra/agent-client/connection";
 import { AgentUnreachableError } from "../../infra/agent-client/errors";
@@ -199,6 +200,7 @@ export async function getAppRuntime(appId: string): Promise<AppRuntime | null> {
 
   const value = await probeRuntime(p);
   runtimeCache.set(p.id, { at: Date.now(), value });
+  sweepStale(runtimeCache, (e) => e.at, RUNTIME_TTL_MS);
   return value;
 }
 

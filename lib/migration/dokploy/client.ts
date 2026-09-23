@@ -1,3 +1,6 @@
+import { createHash } from "node:crypto";
+
+import { sweepStale } from "../../stale-sweep";
 import type { SourceCredential } from "../source";
 import {
   REQUEST_TIMEOUT_MS,
@@ -30,8 +33,21 @@ export type DokployDbKind = (typeof DOKPLOY_DB_KINDS)[number];
 const DOKPLOY_PANEL: PanelIdentity = { name: "Dokploy", portHint: ":3000" };
 
 // A key at its rate limit answers 401 exactly like a wrong key, so only one accepted moments ago proves the limit.
-const accepted = new Set<string>();
-const acceptedKey = (c: SourceCredential) => `${c.baseUrl}|${c.apiKey}`;
+// Hashed, so the process never holds a raw key; an hour without a success forgets it.
+const accepted = new Map<string, number>();
+const ACCEPTED_TTL_MS = 60 * 60 * 1000;
+const acceptedKey = (c: SourceCredential) =>
+  createHash("sha256").update(`${c.baseUrl}|${c.apiKey}`).digest("hex");
+const wasAccepted = (c: SourceCredential) =>
+  Date.now() - (accepted.get(acceptedKey(c)) ?? 0) < ACCEPTED_TTL_MS;
+function markAccepted(c: SourceCredential): void {
+  accepted.set(acceptedKey(c), Date.now());
+  sweepStale(accepted, (at) => at, ACCEPTED_TTL_MS, Date.now(), 0);
+}
+
+export function __acceptedKeysForTest(): string[] {
+  return [...accepted.keys()];
+}
 
 export function __resetAcceptedKeysForTest(): void {
   accepted.clear();
@@ -43,10 +59,7 @@ async function requestFailed(
   c: SourceCredential,
 ): Promise<Error> {
   const detail = panelSaid(await res.text().catch(() => ""));
-  if (
-    res.status === 429 ||
-    (res.status === 401 && accepted.has(acceptedKey(c)))
-  )
+  if (res.status === 429 || (res.status === 401 && wasAccepted(c)))
     return new Error(
       `Dokploy stopped accepting this API key on ${procedure} (${res.status}). It was accepted moments ago, so it has hit its rate limit or was revoked: open it in Dokploy under Settings, Profile, API/CLI, raise or disable its rate limit, and run the import again.`,
     );
@@ -83,7 +96,7 @@ async function get<T>(
 
   refuseRedirect(res, DOKPLOY_PANEL);
   if (!res.ok) throw await requestFailed(res, procedure, c);
-  accepted.add(acceptedKey(c));
+  markAccepted(c);
   return (await res.json()) as T;
 }
 
@@ -110,7 +123,7 @@ async function post<T>(
     DOKPLOY_PANEL,
   );
   if (!res.ok) throw await requestFailed(res, procedure, c);
-  accepted.add(acceptedKey(c));
+  markAccepted(c);
   return (await res.json().catch(() => null)) as T;
 }
 

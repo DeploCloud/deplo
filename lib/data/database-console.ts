@@ -17,6 +17,7 @@ import { serverSupports } from "../infra/agent-client/preflight";
 import { logMaxDays } from "./instance-settings/settings-store";
 import { effectiveDatabaseImage } from "../deploy/database-compose";
 import { isDockerLevelStderr } from "../infra/docker";
+import { sweepStale } from "../stale-sweep";
 import type {
   AppRuntime,
   ConsoleInfo,
@@ -41,6 +42,7 @@ export async function getDatabaseRuntime(
 
   const value = await probeRuntime(db);
   runtimeCache.set(db.id, { at: Date.now(), value });
+  sweepStale(runtimeCache, (e) => e.at, RUNTIME_TTL_MS);
   return value;
 }
 

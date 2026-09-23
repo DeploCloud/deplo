@@ -1,5 +1,6 @@
 import { builder } from "../builder";
 import { CLEANUP_RUNS_TOPIC, pubSub } from "../pubsub";
+import { liveStream } from "../live-stream";
 import {
   getCleanupPolicy,
   setServerCleanupExcluded,
@@ -231,12 +232,13 @@ builder.subscriptionFields((t) => ({
   }),
 }));
 
-export async function* cleanupRunsStream(): AsyncGenerator<CleanupRunDTO[]> {
-  yield await listCleanupRunsForSubscriber();
-  for await (const _ping of pubSub.subscribe(
-    "cleanupRunsChanged",
-    CLEANUP_RUNS_TOPIC,
-  )) {
+export function cleanupRunsStream() {
+  return liveStream(async function* (track): AsyncGenerator<CleanupRunDTO[]> {
     yield await listCleanupRunsForSubscriber();
-  }
+    for await (const _ping of track(
+      pubSub.subscribe("cleanupRunsChanged", CLEANUP_RUNS_TOPIC),
+    )) {
+      yield await listCleanupRunsForSubscriber();
+    }
+  });
 }

@@ -174,17 +174,18 @@ export function backoffFor(attempt: number): number {
   return Math.max(250, Math.round(base + jitter));
 }
 
-function sleep(ms: number, signal: AbortSignal): Promise<void> {
+// The signal lives as long as the server's loop: a listener left on it per tick is a leak.
+export function sleep(ms: number, signal: AbortSignal): Promise<void> {
   return new Promise((resolve) => {
-    const t = setTimeout(resolve, ms);
-    signal.addEventListener(
-      "abort",
-      () => {
-        clearTimeout(t);
-        resolve();
-      },
-      { once: true },
-    );
+    const onAbort = () => {
+      clearTimeout(t);
+      resolve();
+    };
+    const t = setTimeout(() => {
+      signal.removeEventListener("abort", onAbort);
+      resolve();
+    }, ms);
+    signal.addEventListener("abort", onAbort, { once: true });
   });
 }
 
