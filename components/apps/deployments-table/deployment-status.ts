@@ -4,6 +4,7 @@ import * as React from "react";
 import { useRouter } from "@/lib/nav";
 import { gqlSubscribe } from "@/lib/graphql-client";
 import type { DeploymentStatus } from "@/lib/types/deployment";
+import { withLiveStatus } from "./status-overlay";
 
 export const IN_PROGRESS = new Set<DeploymentStatus>(["queued", "building"]);
 
@@ -55,6 +56,11 @@ export function useLiveDeploymentStatuses(
     [overlay],
   );
 
+  const onScreen = React.useRef<ReadonlySet<string>>(new Set());
+  React.useEffect(() => {
+    onScreen.current = new Set(rows.map((r) => r.id));
+  }, [rows]);
+
   const slugKey = React.useMemo(() => {
     const s = new Set<string>();
     for (const r of rows)
@@ -71,12 +77,9 @@ export function useLiveDeploymentStatuses(
         (data) => {
           const dep = data.appStatus?.latestDeployment;
           if (!dep) return;
-          setOverlay((prev) => {
-            if (prev.get(dep.id) === dep.status) return prev;
-            const next = new Map(prev);
-            next.set(dep.id, dep.status);
-            return next;
-          });
+          setOverlay((prev) =>
+            withLiveStatus(prev, dep.id, dep.status, onScreen.current),
+          );
           if (!IN_PROGRESS.has(dep.status)) router.refresh();
         },
         () => {},
