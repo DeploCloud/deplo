@@ -61,6 +61,7 @@ async function rpc(
       headers: {
         "content-type": "application/json",
         accept: "application/json, text/event-stream",
+        "mcp-protocol-version": "2026-07-28",
         "mcp-method": method,
         ...((params as { name?: string }).name
           ? { "mcp-name": (params as { name: string }).name }

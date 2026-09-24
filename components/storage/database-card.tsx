@@ -14,6 +14,7 @@ import {
   Server as ServerIcon,
   Globe,
   Lock,
+  Pencil,
 } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -28,6 +29,7 @@ import {
   DropdownMenuSubTrigger,
 } from "@/components/ui/dropdown-menu";
 import { MenuSubTooltip, SimpleTooltip } from "@/components/ui/tooltip";
+import { RenameDialog } from "@/components/shared/rename-dialog";
 import { DeleteDatabaseDialog } from "@/components/storage/delete-database-dialog";
 import { DatabaseConnectionString } from "@/components/storage/database-connection-string";
 import { DatabaseLiveStatusProvider } from "@/components/storage/database-live-status";
@@ -303,6 +305,7 @@ function CardActions({
   const router = useRouter();
   const [pending, startTransition] = React.useTransition();
   const [confirmOpen, setConfirmOpen] = React.useState(false);
+  const [renameOpen, setRenameOpen] = React.useState(false);
   const running = db.status === "running";
   const href = `/storage/databases/${db.id}`;
 
@@ -366,6 +369,14 @@ function CardActions({
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="w-44">
+            <DropdownMenuItem
+              onSelect={() => setRenameOpen(true)}
+              disabled={!canConfigure}
+            >
+              <Pencil className="size-4" />
+              Rename
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
             <DropdownMenuItem asChild>
               <Link href={href}>
                 <ArrowUpRight className="size-4" />
@@ -440,6 +451,18 @@ function CardActions({
         </DropdownMenu>
       </div>
 
+      <RenameDialog
+        open={renameOpen}
+        onOpenChange={setRenameOpen}
+        noun="database"
+        name={db.name}
+        rename={(next) =>
+          gqlAction(
+            `mutation($id: String!, $name: String!) { renameDatabase(id: $id, name: $name) { id } }`,
+            { id: db.id, name: next },
+          )
+        }
+      />
       <DeleteDatabaseDialog
         open={confirmOpen}
         onOpenChange={setConfirmOpen}

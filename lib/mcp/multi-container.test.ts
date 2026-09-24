@@ -137,6 +137,7 @@ async function rpc(
     "content-type": "application/json",
     accept: "application/json, text/event-stream",
     authorization: `Bearer ${bearer}`,
+    "mcp-protocol-version": "2026-07-28",
     "mcp-method": method,
   };
   if (typeof params.name === "string") headers["mcp-name"] = params.name;

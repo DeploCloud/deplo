@@ -19,6 +19,7 @@ import {
   FolderInput,
   Boxes,
   TriangleAlert,
+  Pencil,
 } from "lucide-react";
 import { GitHubIcon } from "@/components/shared/brand-icons";
 import { describeAppSource } from "@/components/apps/app-source";
@@ -38,6 +39,7 @@ import { MenuSubTooltip, SimpleTooltip } from "@/components/ui/tooltip";
 import { AppLogo } from "@/components/shared/project-logo";
 import { AppStatusIndicator } from "@/components/apps/app-status-dot/status-renderer";
 import type { OverviewAppStateView } from "./apps-grid/overview-state";
+import { RenameDialog } from "@/components/shared/rename-dialog";
 import { DeleteWithArtifacts } from "@/components/shared/delete-with-artifacts";
 import {
   appTypeLabel,
@@ -122,6 +124,7 @@ export function AppCard({
   const router = useRouter();
   const [pending, startTransition] = React.useTransition();
   const [confirmOpen, setConfirmOpen] = React.useState(false);
+  const [renameOpen, setRenameOpen] = React.useState(false);
   const dep = project.latestDeployment;
   const caps = project.capabilities;
   const can = (c: Capability) => !caps || caps.includes(c);
@@ -232,6 +235,16 @@ export function AppCard({
 
   const menu = (K: MenuKit) => (
     <>
+      <SimpleTooltip content="Change this app's name" side="left">
+        <K.Item
+          onSelect={() => setRenameOpen(true)}
+          disabled={!can("configure_apps")}
+        >
+          <Pencil className="size-4" />
+          Rename
+        </K.Item>
+      </SimpleTooltip>
+      <K.Separator />
       {neverDeployed ? null : restoring ? (
         <SimpleTooltip
           content="A backup is being restored into this app"
@@ -463,31 +476,45 @@ export function AppCard({
   );
 
   const confirm = (
-    <DeleteWithArtifacts
-      open={confirmOpen}
-      onOpenChange={setConfirmOpen}
-      targetKind="app"
-      targetId={project.id}
-      targetName={project.name}
-      title="Delete app?"
-      description={
-        <>
-          Deleting <strong>{project.name}</strong> removes it for good.
-        </>
-      }
-      consequence="Its data, deployments, domains, variables and every backup it has stored go with it."
-      confirmLabel="Delete app"
-      successMessage="App deleted"
-      deleteMutation={() =>
-        gqlAction(`mutation($id: String!) { deleteApp(id: $id) }`, {
-          id: project.id,
-        })
-      }
-      onDeleted={() => {
-        onDeleted?.();
-        router.refresh();
-      }}
-    />
+    <>
+      <RenameDialog
+        open={renameOpen}
+        onOpenChange={setRenameOpen}
+        noun="app"
+        name={project.name}
+        rename={(next) =>
+          gqlAction(
+            `mutation($id: String!, $name: String!) { renameApp(id: $id, name: $name) { id } }`,
+            { id: project.id, name: next },
+          )
+        }
+      />
+      <DeleteWithArtifacts
+        open={confirmOpen}
+        onOpenChange={setConfirmOpen}
+        targetKind="app"
+        targetId={project.id}
+        targetName={project.name}
+        title="Delete app?"
+        description={
+          <>
+            Deleting <strong>{project.name}</strong> removes it for good.
+          </>
+        }
+        consequence="Its data, deployments, domains, variables and every backup it has stored go with it."
+        confirmLabel="Delete app"
+        successMessage="App deleted"
+        deleteMutation={() =>
+          gqlAction(`mutation($id: String!) { deleteApp(id: $id) }`, {
+            id: project.id,
+          })
+        }
+        onDeleted={() => {
+          onDeleted?.();
+          router.refresh();
+        }}
+      />
+    </>
   );
 
   const overlayLink = (
