@@ -88,9 +88,17 @@ jobs:
       id-token: write
       attestations: write
     steps:
+      # A canary tag (v0.3.0-canary.1) is a pre-release: it never moves `:latest`,
+      # and GitHub's `releases/latest` never names it, so stable installs stay put.
       - name: Extract version from tag
         id: version
-        run: echo "VERSION=${GITHUB_REF#refs/tags/v}" >> "$GITHUB_OUTPUT"
+        run: |
+          VERSION="${GITHUB_REF#refs/tags/v}"
+          echo "VERSION=$VERSION" >> "$GITHUB_OUTPUT"
+          case "$VERSION" in
+            *-*) echo "PRERELEASE=true" >> "$GITHUB_OUTPUT" ;;
+            *) echo "PRERELEASE=false" >> "$GITHUB_OUTPUT" ;;
+          esac
 
       - name: Name the image
         id: image
@@ -121,7 +129,9 @@ jobs:
         run: |
           IMAGE='${{ steps.image.outputs.IMAGE }}'
           VERSION='${{ steps.version.outputs.VERSION }}'
-          docker buildx imagetools create -t "$IMAGE:latest" -t "$IMAGE:$VERSION" \
+          TAGS=(-t "$IMAGE:$VERSION")
+          [ '${{ steps.version.outputs.PRERELEASE }}' = true ] || TAGS+=(-t "$IMAGE:latest")
+          docker buildx imagetools create "${TAGS[@]}" \
             $(printf "$IMAGE@sha256:%s " *)
           digest="$(docker buildx imagetools inspect "$IMAGE:$VERSION" --format '{{json .Manifest}}' | jq -r .digest)"
           echo "digest=$digest" >> "$GITHUB_OUTPUT"
@@ -164,4 +174,6 @@ jobs:
         uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3
         with:
           generate_release_notes: true
+          prerelease: ${{ steps.version.outputs.PRERELEASE == 'true' }}
+          make_latest: ${{ steps.version.outputs.PRERELEASE != 'true' }}
           files: deplo-${{ steps.version.outputs.VERSION }}.spdx.json

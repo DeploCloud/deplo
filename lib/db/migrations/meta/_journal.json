@@ -1163,6 +1163,13 @@
       "when": 1788900604806,
       "tag": "0165_usage_reports",
       "breakpoints": true
+    },
+    {
+      "idx": 166,
+      "version": "7",
+      "when": 1788900605806,
+      "tag": "0166_canary_releases",
+      "breakpoints": true
     }
   ]
 }

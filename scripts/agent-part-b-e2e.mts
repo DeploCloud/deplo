@@ -134,6 +134,7 @@ async function main() {
       uninstallError: "",
       hostArch: "amd64",
       deployConcurrency: 1,
+      agentCanary: false,
       createdAt: new Date(0).toISOString(),
       agent: {
         port: AGENT_PORT,

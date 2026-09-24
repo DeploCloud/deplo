@@ -7,6 +7,7 @@ import type {
   TraefikConfigResponse,
   UpdateControlPlaneResponse,
 } from "../../agent/gen/agent";
+import { isPrerelease } from "../../version";
 import { connectAgent, dial } from "./connect";
 import type { AgentConnection } from "./connection";
 import {
@@ -17,6 +18,7 @@ import {
   mapHostOpsUnsupported,
 } from "./errors";
 import {
+  CONTROL_PLANE_UPDATE_CANARY_CAPABILITY,
   CONTROL_PLANE_UPDATE_CAPABILITY,
   HOSTOPS_CAPABILITY,
 } from "./hello-capabilities";
@@ -116,6 +118,13 @@ export async function updateControlPlaneOn(
         CONTROL_PLANE_UPDATE_UNSUPPORTED_MESSAGE,
       );
     }
+    if (
+      isPrerelease(version) &&
+      !hello.capabilities.includes(CONTROL_PLANE_UPDATE_CANARY_CAPABILITY)
+    )
+      throw new Error(
+        "The agent on the Deplo host is too old to install a canary release. Update that server's agent first.",
+      );
     return await conn.updateControlPlane({ controlPlaneHint, version });
   } catch (e) {
     if (

@@ -2,6 +2,7 @@ import "server-only";
 
 import { status as GrpcStatus, type ServiceError } from "@grpc/grpc-js";
 import { isNewer } from "../../version";
+import type { AgentChannel } from "../../agent/release";
 import { connectAgent, dial } from "./connect";
 import {
   AgentUninstallUnsupportedError,
@@ -15,11 +16,12 @@ import { resolveTarget } from "./mtls-channel";
 
 export async function selfUpdateServerAgent(
   serverId: string,
+  channel: AgentChannel = "stable",
 ): Promise<{ version: string; restarting: boolean }> {
   const target = await resolveTarget(serverId);
 
   const { resolveLatestAgentRelease } = await import("../../agent/release");
-  const release = await resolveLatestAgentRelease();
+  const release = await resolveLatestAgentRelease(channel);
   if (!release) {
     throw new Error(
       "Could not resolve the latest agent release from GitHub - try again, or use Check for updates.",

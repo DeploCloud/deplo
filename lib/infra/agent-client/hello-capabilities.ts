@@ -47,5 +47,9 @@ export const HOSTOPS_CAPABILITY = "hostops";
 
 export const CONTROL_PLANE_UPDATE_CAPABILITY = "control-plane.update";
 
+// An older agent refuses any version that is not x.y.z, so a canary would fail at the host.
+export const CONTROL_PLANE_UPDATE_CANARY_CAPABILITY =
+  "control-plane.update.canary";
+
 // Without it StopStack can only stop a WHOLE stack, so the restart-loop guard leaves a multi-service stack alone.
 export const STOP_SERVICES_CAPABILITY = "stack.stop-services";

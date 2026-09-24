@@ -319,6 +319,11 @@ export default async function ServersPage(
     listAllTeamsForAdmin(),
     resolveExpectedAgentVersion(),
   ]);
+  const canaryExpected = serversRaw.some((s) => s.agentCanary)
+    ? await resolveExpectedAgentVersion("canary")
+    : expected;
+  const expectedFor = (server: Server) =>
+    server.agentCanary ? canaryExpected : expected;
   const measured = hydrateServerSpecs(serversRaw)
     .catch(() => serversRaw)
     .then((list) => new Map(list.map((s) => [s.id, s])));
@@ -349,7 +354,7 @@ export default async function ServersPage(
         specs={specsFor(server)}
         accessTeamIds={serverTeamIds.get(server.id) ?? []}
         isDeploHost={isDeploHostServer(server, selfAddrs)}
-        expected={expected}
+        expected={expectedFor(server)}
       />
     ),
     row: (
@@ -357,7 +362,7 @@ export default async function ServersPage(
         server={server}
         accessTeamIds={serverTeamIds.get(server.id) ?? []}
         isDeploHost={isDeploHostServer(server, selfAddrs)}
-        expected={expected}
+        expected={expectedFor(server)}
       />
     ),
   }));

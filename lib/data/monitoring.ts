@@ -7,7 +7,7 @@ import { markServerSeen, observedTraefik } from "./servers/agent-handshake";
 import { recordServerHealth } from "./server-health";
 import { classifyServerHealth } from "../infra/server-health";
 import { reportedAgentVersion } from "../version";
-import { resolveExpectedAgentVersion } from "../agent/release";
+import { expectedAgentVersionFor } from "../agent/release";
 import { nowIso } from "../ids";
 import { getMetricsHistory, recordMetricsSample } from "../monitoring/history";
 import { downsample } from "../monitoring/chart-geometry";
@@ -155,7 +155,7 @@ export async function getServerMetrics(
   await requireCapability("view_metrics");
   const server = await getServer(serverId);
   if (!server) throw new Error("Server not found");
-  const m = await metricsFor(server, await resolveExpectedAgentVersion());
+  const m = await metricsFor(server, await expectedAgentVersionFor(server));
   if (await isMetricsSavingEnabled()) recordMetricsSample(m);
   return m;
 }
@@ -233,11 +233,11 @@ export async function hydrateServerSpecs(servers: Server[]): Promise<Server[]> {
   const measurable = (s: Server) =>
     s.cpuCores === 0 && Boolean(s.agent?.certFingerprint) && !s.importOnly;
   if (!servers.some(measurable)) return servers;
-  const expected = await resolveExpectedAgentVersion();
   return Promise.all(
     servers.map(async (s) => {
       if (!measurable(s)) return s;
       try {
+        const expected = await expectedAgentVersionFor(s);
         const m = await withSpecTimeout(measureRemote(s, expected));
         if (m.cpuCores <= 0) return s;
         return {

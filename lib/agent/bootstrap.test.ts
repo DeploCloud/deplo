@@ -39,6 +39,7 @@ function provisioningServer(over: Partial<Server> = {}): Server {
     uninstallError: "",
     hostArch: "amd64",
     deployConcurrency: 1,
+    agentCanary: false,
     createdAt: new Date("2020-01-01").toISOString(),
     bootstrap: stored,
     ...over,

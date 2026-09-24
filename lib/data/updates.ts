@@ -4,11 +4,19 @@ import { revalidateTag } from "next/cache";
 
 import { hostname } from "node:os";
 
-import { DEPLO_VERSION, DEPLO_REPO, isNewer } from "../version";
+import { eq } from "drizzle-orm";
+
+import { getDb } from "../db/client";
+import { instanceSettings } from "../db/schema/control-plane/instance";
+import { nowIso } from "../ids";
+import { DEPLO_VERSION, DEPLO_REPO, isNewer, newestVersion } from "../version";
 import { resolveExpectedAgentVersion } from "../agent/release";
 import { requireActiveTeamId, requireInstanceAdmin } from "../membership";
 import { getCurrentUser } from "../auth/current-user";
-import { deploHostServer } from "./instance-settings/settings-store";
+import {
+  deploHostServer,
+  SETTINGS_ID,
+} from "./instance-settings/settings-store";
 import { recordActivity } from "./activity";
 
 export interface UpdateInfo {
@@ -19,6 +27,7 @@ export interface UpdateInfo {
   name: string | null;
   publishedAt: string | null;
   checkedAt: string;
+  canary: boolean;
   error?: string;
 }
 
@@ -76,7 +85,46 @@ function describeFailure(res: Response): string {
   return `GitHub API returned ${res.status}`;
 }
 
+/** Whether this instance is offered canary (pre-release) versions of Deplo. */
+export async function canaryReleasesEnabled(): Promise<boolean> {
+  const rows = await getDb()
+    .select({ canary: instanceSettings.canaryReleases })
+    .from(instanceSettings)
+    .where(eq(instanceSettings.id, SETTINGS_ID))
+    .limit(1);
+  return rows[0]?.canary ?? false;
+}
+
+function listUrl(): string {
+  return `https://api.github.com/repos/${DEPLO_REPO}/releases?per_page=${MAX_RELEASES}`;
+}
+
+// Stable asks GitHub for its "latest", which never names a pre-release; canary takes the newest of all.
+async function fetchNewestRelease(
+  init: RequestInit,
+  canary: boolean,
+): Promise<GitHubRelease | null | { error: string }> {
+  const res = await fetch(
+    canary
+      ? listUrl()
+      : `https://api.github.com/repos/${DEPLO_REPO}/releases/latest`,
+    { headers: GH_HEADERS, signal: AbortSignal.timeout(TIMEOUT_MS), ...init },
+  );
+  if (res.status === 404) return null;
+  if (!res.ok) return { error: describeFailure(res) };
+  const json = (await res.json()) as unknown;
+  if (!canary) return json as GitHubRelease;
+  if (!Array.isArray(json)) return null;
+  return newestVersion(
+    (json as GitHubRelease[]).filter(
+      (r) => r && !r.draft && typeof r.tag_name === "string",
+    ),
+    (r) => r.tag_name!,
+  );
+}
+
 async function fetchUpdateInfo(init: RequestInit): Promise<UpdateInfo> {
+  const canary = await canaryReleasesEnabled();
   const base: UpdateInfo = {
     current: DEPLO_VERSION,
     latest: null,
@@ -85,22 +133,13 @@ async function fetchUpdateInfo(init: RequestInit): Promise<UpdateInfo> {
     name: null,
     publishedAt: null,
     checkedAt: new Date().toISOString(),
+    canary,
   };
 
   try {
-    const res = await fetch(
-      `https://api.github.com/repos/${DEPLO_REPO}/releases/latest`,
-      {
-        headers: GH_HEADERS,
-        signal: AbortSignal.timeout(TIMEOUT_MS),
-        ...init,
-      },
-    );
-
-    if (res.status === 404) return base;
-    if (!res.ok) return { ...base, error: describeFailure(res) };
-
-    const json = (await res.json()) as GitHubRelease;
+    const json = await fetchNewestRelease(init, canary);
+    if (!json) return base;
+    if ("error" in json) return { ...base, error: json.error };
     const tag = typeof json.tag_name === "string" ? json.tag_name : null;
     if (!tag) return base;
 
@@ -134,6 +173,33 @@ export async function refreshUpdateInfo(): Promise<UpdateInfo> {
   return fetchUpdateInfo({ cache: "no-store" });
 }
 
+/** Offer canary versions as updates, or go back to stable ones. Installs nothing by itself. */
+export async function setCanaryReleases(enabled: boolean): Promise<UpdateInfo> {
+  await requireInstanceAdmin();
+  const teamId = await requireActiveTeamId();
+  const user = (await getCurrentUser())!;
+  if ((await canaryReleasesEnabled()) !== enabled) {
+    const now = nowIso();
+    await getDb()
+      .insert(instanceSettings)
+      .values({ id: SETTINGS_ID, canaryReleases: enabled, updatedAt: now })
+      .onConflictDoUpdate({
+        target: instanceSettings.id,
+        set: { canaryReleases: enabled, updatedAt: now },
+      });
+    await recordActivity(
+      "server",
+      enabled
+        ? "Switched Deplo to canary releases"
+        : "Switched Deplo back to stable releases",
+      user.name,
+      null,
+      teamId,
+    );
+  }
+  return getUpdateInfo();
+}
+
 export function releaseProse(body: string, url: string): string {
   const cut = body.search(
     /^\s{0,3}#{1,6}\s*what'?s\s+changed\b|^\s*\*\*full\s+changelog\*\*/im,
@@ -147,15 +213,13 @@ export async function listDeploReleases(): Promise<{
   error?: string;
 }> {
   await requireInstanceAdmin();
+  const canary = await canaryReleasesEnabled();
   try {
-    const res = await fetch(
-      `https://api.github.com/repos/${DEPLO_REPO}/releases?per_page=${MAX_RELEASES}`,
-      {
-        headers: GH_HEADERS,
-        signal: AbortSignal.timeout(TIMEOUT_MS),
-        ...CACHED,
-      },
-    );
+    const res = await fetch(listUrl(), {
+      headers: GH_HEADERS,
+      signal: AbortSignal.timeout(TIMEOUT_MS),
+      ...CACHED,
+    });
 
     if (res.status === 404) return { releases: [] };
     if (!res.ok) return { releases: [], error: describeFailure(res) };
@@ -190,7 +254,9 @@ export async function listDeploReleases(): Promise<{
           current: normalizeTag(tag) === DEPLO_VERSION,
         };
       })
-      .filter((r): r is DeploRelease => r !== null);
+      .filter((r): r is DeploRelease => r !== null)
+      // On stable a canary stays out of the list, unless it is the one running.
+      .filter((r) => canary || !r.prerelease || r.current);
 
     return { releases };
   } catch (e) {
@@ -237,7 +303,7 @@ export async function applyDeploUpdate(): Promise<DeploUpdateStarted> {
   const res = await updateControlPlaneOn(
     server.id,
     hostname(),
-    /^\d+\.\d+\.\d+$/.test(version) ? version : "",
+    /^\d+\.\d+\.\d+(-[0-9A-Za-z.]+)?$/.test(version) ? version : "",
   );
   if (!res.ok)
     throw new Error(

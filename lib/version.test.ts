@@ -1,7 +1,12 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-import { isNewer, agentUpdateAvailable } from "./version";
+import {
+  agentUpdateAvailable,
+  isNewer,
+  isPrerelease,
+  newestVersion,
+} from "./version";
 
 test("isNewer: strict semver greater-than across each component", () => {
   assert.equal(isNewer("1.0.1", "1.0.0"), true);
@@ -34,4 +39,38 @@ test("agentUpdateAvailable: an uncomparable version keeps the repair path", () =
   assert.equal(agentUpdateAvailable("dev", "1.1.0"), true);
   assert.equal(agentUpdateAvailable("1.1.0", ""), true);
   assert.equal(agentUpdateAvailable("1.1.0", "dev"), true);
+});
+
+test("isNewer: a canary sorts before its release and by its own number", () => {
+  assert.equal(isNewer("0.3.0", "0.3.0-canary.2"), true);
+  assert.equal(isNewer("0.3.0-canary.2", "0.3.0"), false);
+  assert.equal(isNewer("0.3.0-canary.2", "0.3.0-canary.1"), true);
+  assert.equal(isNewer("0.3.0-canary.10", "0.3.0-canary.9"), true);
+  assert.equal(isNewer("0.3.0-canary.1", "0.2.0"), true);
+  assert.equal(isNewer("0.2.1", "0.3.0-canary.1"), false);
+  assert.equal(isNewer("0.3.0-canary.1", "0.3.0-canary.1"), false);
+});
+
+test("isPrerelease and newestVersion", () => {
+  assert.equal(isPrerelease("v0.3.0-canary.1"), true);
+  assert.equal(isPrerelease("0.3.0"), false);
+  assert.equal(isPrerelease("dev"), false);
+  assert.equal(
+    newestVersion(
+      ["v0.2.0", "v0.3.0-canary.2", "junk", "v0.3.0-canary.10", "v0.2.9"],
+      (v) => v,
+    ),
+    "v0.3.0-canary.10",
+  );
+  assert.equal(
+    newestVersion([], (v: string) => v),
+    null,
+  );
+});
+
+test("a git-describe dev build reads as its tag, never as a canary of it", () => {
+  assert.equal(isNewer("0.2.0", "0.2.0-8-gb39f8a7"), false);
+  assert.equal(isPrerelease("0.2.0-8-gb39f8a7"), false);
+  assert.equal(agentUpdateAvailable("0.2.0-8-gb39f8a7", "0.2.0"), false);
+  assert.equal(agentUpdateAvailable("0.2.0-8-gb39f8a7", "0.2.1"), true);
 });

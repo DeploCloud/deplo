@@ -70,6 +70,21 @@ bun run lint && bun run test && bunx next typegen && bunx tsc --noEmit
 `bun run test` needs `DEPLO_DATABASE_URL` **unset** (the suite is pglite in-process) and takes
 about ten minutes. `next typegen` before `tsc` is not optional on a clean tree, see AGENTS.md.
 
+### Canary releases
+
+A canary is a pre-release of the NEXT version, for instances that opted in (Settings → Deplo →
+Updates, and per server under Advanced for the agent). Same rule: only when the owner asks.
+
+```bash
+bun pm version 0.3.0-canary.1 --message "chore(release): Deplo %s"
+git push --follow-tags
+```
+
+Anything after a `-` makes it one. `docker-image.yml` then pushes only `:0.3.0-canary.1` (never
+`:latest`) and marks the GitHub Release a pre-release, so `releases/latest`, the installer and every
+stable instance ignore it. Canaries sort below their release (`0.3.0-canary.9` < `0.3.0`), so the
+stable `0.3.0` is offered to canary instances as an update too.
+
 ## What the tag sets off
 
 1. `docker-image.yml` builds and pushes `ghcr.io/deplocloud/deplo:latest` and `:X.Y.Z`.

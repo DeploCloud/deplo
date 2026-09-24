@@ -6,6 +6,8 @@ import {
   FALLBACK_AGENT_VERSION,
   resolveLatestAgentRelease,
   refreshAgentRelease,
+  resolveExpectedAgentVersion,
+  expectedAgentVersionFor,
   __resetReleaseCacheForTests,
 } from "./release";
 
@@ -311,5 +313,77 @@ test("no release at all is still null, so no unverified binary is served", async
     assert.equal(await resolveLatestAgentRelease(), null);
   } finally {
     globalThis.fetch = orig;
+  }
+});
+
+function agentRelease(tag: string, extra: Record<string, unknown> = {}) {
+  return {
+    tag_name: tag,
+    ...extra,
+    assets: [
+      {
+        name: "deplo-agent-linux-amd64",
+        browser_download_url: `https://x/${tag}/amd64`,
+      },
+      {
+        name: "checksums.txt",
+        browser_download_url: `https://x/${tag}/checksums.txt`,
+      },
+    ],
+  };
+}
+
+function channelStub(latest: string, all: Record<string, unknown>[]) {
+  const orig = globalThis.fetch;
+  globalThis.fetch = (async (input: RequestInfo | URL) => {
+    const url = String(input);
+    if (url.includes("/releases/latest"))
+      return new Response(JSON.stringify(agentRelease(latest)));
+    if (url.includes("/releases?")) return new Response(JSON.stringify(all));
+    if (url.includes("checksums"))
+      return new Response(`${"a".repeat(64)}  deplo-agent-linux-amd64\n`);
+    throw new Error(`unexpected fetch: ${url}`);
+  }) as typeof fetch;
+  return () => void (globalThis.fetch = orig);
+}
+
+test("the canary channel takes the newest release, drafts aside; stable ignores it", async () => {
+  const restore = channelStub("v0.2.0", [
+    agentRelease("v0.4.0-canary.1", { draft: true }),
+    agentRelease("v0.3.0-canary.2", { prerelease: true }),
+    agentRelease("v0.3.0-canary.10", { prerelease: true }),
+    agentRelease("v0.2.0"),
+  ]);
+  __resetReleaseCacheForTests();
+  try {
+    assert.equal(await resolveExpectedAgentVersion("stable"), "0.2.0");
+    assert.equal(
+      await resolveExpectedAgentVersion("canary"),
+      "0.3.0-canary.10",
+    );
+    assert.equal(
+      await expectedAgentVersionFor({ agentCanary: true }),
+      "0.3.0-canary.10",
+    );
+    assert.equal(
+      await expectedAgentVersionFor({ agentCanary: false }),
+      "0.2.0",
+    );
+    const rel = await resolveLatestAgentRelease("canary");
+    assert.equal(rel!.binaries.amd64!.url, "https://x/v0.3.0-canary.10/amd64");
+  } finally {
+    restore();
+  }
+});
+
+test("the canary channel is never behind stable", async () => {
+  const restore = channelStub("v0.3.0", [
+    agentRelease("v0.3.0-canary.4", { prerelease: true }),
+  ]);
+  __resetReleaseCacheForTests();
+  try {
+    assert.equal(await resolveExpectedAgentVersion("canary"), "0.3.0");
+  } finally {
+    restore();
   }
 });

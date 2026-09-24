@@ -8,6 +8,7 @@ import {
   getUpdateInfo,
   listDeploReleases,
   refreshUpdateInfo,
+  setCanaryReleases,
   type DeploRelease,
   type DeploUpdateStarted,
   type UpdateInfo,
@@ -24,6 +25,10 @@ const UpdateInfoRef = builder.objectRef<UpdateInfo>("UpdateInfo").implement({
     name: t.exposeString("name", { nullable: true }),
     publishedAt: t.exposeString("publishedAt", { nullable: true }),
     checkedAt: t.exposeString("checkedAt"),
+    canary: t.exposeBoolean("canary", {
+      description:
+        "Whether canary (pre-release) versions count as updates. Off: only stable releases do.",
+    }),
     error: t.exposeString("error", { nullable: true }),
   }),
 });
@@ -102,7 +107,7 @@ builder.queryFields((t) => ({
     type: ChangelogRef,
     authScopes: { instanceAdmin: true },
     description:
-      "Deplo's published releases with their notes, newest first; cached for an hour and refreshed by checkForUpdates.",
+      "Deplo's published releases with their notes, newest first; canaries only while `updateInfo.canary` is on (or the one running). Cached for an hour and refreshed by checkForUpdates.",
     resolve: () => listDeploReleases(),
   }),
 }));
@@ -125,6 +130,14 @@ builder.mutationFields((t) => ({
     description:
       "Update this instance to the newest release: the agent on the machine Deplo runs on re-runs the installer.",
     resolve: () => applyDeploUpdate(),
+  }),
+  setCanaryReleases: t.field({
+    type: UpdateInfoRef,
+    authScopes: { instanceAdmin: true },
+    description:
+      "Offer canary (pre-release) versions of Deplo as updates, or go back to stable ones. Installs nothing: a newer version shows up as an update, and turning it off never downgrades a panel already on a canary.",
+    args: { enabled: t.arg.boolean({ required: true }) },
+    resolve: (_r, { enabled }) => setCanaryReleases(enabled),
   }),
   checkForUpdates: t.field({
     type: UpdateInfoRef,

@@ -1,6 +1,6 @@
 import "server-only";
 
-import { FALLBACK_AGENT_VERSION } from "../version";
+import { FALLBACK_AGENT_VERSION, isNewer, newestVersion } from "../version";
 
 export const AGENT_REPO = "DeploCloud/deplo-agent";
 
@@ -21,6 +21,7 @@ interface GitHubAsset {
 }
 interface GitHubRelease {
   tag_name?: string;
+  draft?: boolean;
   assets?: GitHubAsset[];
 }
 
@@ -44,14 +45,28 @@ function parseChecksums(text: string): Map<string, string> {
   return out;
 }
 
-const CACHE_KEY = Symbol.for("deplo.agent.release.cache");
+/** Which releases a server's agent is offered: stable only, or canaries too. */
+export type AgentChannel = "stable" | "canary";
+
+export function agentChannel(server: { agentCanary?: boolean }): AgentChannel {
+  return server.agentCanary ? "canary" : "stable";
+}
+
 type ReleaseCacheCell = {
   value: { at: number; release: AgentRelease | null } | null;
   lastGood?: AgentRelease | null;
 };
-const cacheCell: ReleaseCacheCell = ((globalThis as Record<symbol, unknown>)[
-  CACHE_KEY
-] ??= { value: null, lastGood: null }) as ReleaseCacheCell;
+function globalCell(key: string): ReleaseCacheCell {
+  return ((globalThis as Record<symbol, unknown>)[Symbol.for(key)] ??= {
+    value: null,
+    lastGood: null,
+  }) as ReleaseCacheCell;
+}
+const cacheCells: Record<AgentChannel, ReleaseCacheCell> = {
+  stable: globalCell("deplo.agent.release.cache"),
+  canary: globalCell("deplo.agent.release.cache.canary"),
+};
+const cacheCell = cacheCells.stable;
 const CACHE_TTL_MS = 300_000;
 const FAILURE_TTL_MS = 30_000;
 
@@ -59,7 +74,10 @@ function now(): number {
   return Date.now();
 }
 
-export async function resolveLatestAgentRelease(): Promise<AgentRelease | null> {
+export async function resolveLatestAgentRelease(
+  channel: AgentChannel = "stable",
+): Promise<AgentRelease | null> {
+  if (channel === "canary") return resolveCanaryRelease();
   const cache = cacheCell.value;
   const ttl = cache?.release ? CACHE_TTL_MS : FAILURE_TTL_MS;
   if (cache && now() - cache.at < ttl)
@@ -72,8 +90,29 @@ export async function resolveLatestAgentRelease(): Promise<AgentRelease | null> 
   return release ?? cacheCell.lastGood ?? null;
 }
 
+// The newest release of all, canary or not - never older than the stable one.
+async function resolveCanaryRelease(): Promise<AgentRelease | null> {
+  const cell = cacheCells.canary;
+  const cache = cell.value;
+  const ttl = cache?.release ? CACHE_TTL_MS : FAILURE_TTL_MS;
+  let canary: AgentRelease | null;
+  if (cache && now() - cache.at < ttl)
+    canary = cache.release ?? cell.lastGood ?? null;
+  else {
+    const fetched = await fetchNewestRelease();
+    cell.value = { at: now(), release: fetched };
+    if (fetched) cell.lastGood = fetched;
+    canary = fetched ?? cell.lastGood ?? null;
+  }
+  const stable = await resolveLatestAgentRelease("stable");
+  if (!canary) return stable;
+  if (!stable) return canary;
+  return isNewer(canary.version, stable.version) ? canary : stable;
+}
+
 export async function refreshAgentRelease(): Promise<AgentRelease | null> {
   cacheCell.value = null;
+  cacheCells.canary.value = null;
   return resolveLatestAgentRelease();
 }
 
@@ -116,7 +155,34 @@ async function fetchLatestRelease(): Promise<AgentRelease | null> {
   } catch {
     return null;
   }
+  return verifiedRelease(rel);
+}
 
+const CANARY_LOOKBACK = 15;
+
+async function fetchNewestRelease(): Promise<AgentRelease | null> {
+  let list: GitHubRelease[];
+  try {
+    const res = await fetch(
+      `https://api.github.com/repos/${AGENT_REPO}/releases?per_page=${CANARY_LOOKBACK}`,
+      { headers: GH_HEADERS, cache: "no-store" },
+    );
+    if (!res.ok) return null;
+    const json = (await res.json()) as unknown;
+    list = Array.isArray(json) ? (json as GitHubRelease[]) : [];
+  } catch {
+    return null;
+  }
+  const newest = newestVersion(
+    list.filter((r) => r && !r.draft && typeof r.tag_name === "string"),
+    (r) => r.tag_name!,
+  );
+  return newest ? verifiedRelease(newest) : null;
+}
+
+async function verifiedRelease(
+  rel: GitHubRelease,
+): Promise<AgentRelease | null> {
   const tag = typeof rel.tag_name === "string" ? rel.tag_name : null;
   const assets = Array.isArray(rel.assets) ? rel.assets : [];
   if (!tag || assets.length === 0) return null;
@@ -151,8 +217,10 @@ async function fetchLatestRelease(): Promise<AgentRelease | null> {
 }
 
 export function __resetReleaseCacheForTests(): void {
-  cacheCell.value = null;
-  cacheCell.lastGood = null;
+  for (const cell of Object.values(cacheCells)) {
+    cell.value = null;
+    cell.lastGood = null;
+  }
 }
 
 // What the last successful lookup said, without dialing anybody.
@@ -164,7 +232,16 @@ export function knownExpectedAgentVersion(): string {
   );
 }
 
-export async function resolveExpectedAgentVersion(): Promise<string> {
-  const release = await resolveLatestAgentRelease();
+export async function resolveExpectedAgentVersion(
+  channel: AgentChannel = "stable",
+): Promise<string> {
+  const release = await resolveLatestAgentRelease(channel);
   return release?.version || FALLBACK_AGENT_VERSION;
+}
+
+/** The version a server should run: the newest canary when it opted in, the stable one otherwise. */
+export function expectedAgentVersionFor(server: {
+  agentCanary?: boolean;
+}): Promise<string> {
+  return resolveExpectedAgentVersion(agentChannel(server));
 }
