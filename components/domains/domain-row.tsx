@@ -45,7 +45,10 @@ import {
   resolveDomainConfig,
   type DomainConfigState,
 } from "@/components/domains/domain-config-fields";
-import { useOptimisticRow } from "@/components/shared/optimistic-list";
+import {
+  OptimisticList,
+  useOptimisticRow,
+} from "@/components/shared/optimistic-list";
 import { gqlAction } from "@/lib/graphql-client";
 import { useAppCan } from "@/components/apps/app-capabilities";
 import { deriveWwwRedirect } from "@/lib/www-redirect";
@@ -66,6 +69,23 @@ function composeServices(compose?: string | null): string[] {
   } catch {
     return [];
   }
+}
+
+// Keyed here, not in the page: keys don't survive the RSC boundary, so a row could never hide.
+export function DomainRows({
+  domains,
+  ...rest
+}: { domains: Row[] } & Omit<
+  React.ComponentProps<typeof DomainRow>,
+  "domain" | "siblings"
+>) {
+  return (
+    <OptimisticList>
+      {domains.map((d) => (
+        <DomainRow key={d.id} domain={d} siblings={domains} {...rest} />
+      ))}
+    </OptimisticList>
+  );
 }
 
 export function DomainRow({
