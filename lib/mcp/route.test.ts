@@ -95,6 +95,7 @@ async function mcp(
   const headers: Record<string, string> = {
     "content-type": "application/json",
     accept: "application/json, text/event-stream",
+    "mcp-protocol-version": "2026-07-28",
     "mcp-method": "tools/call",
     "mcp-name": tool,
   };
@@ -579,6 +580,7 @@ test("the team argument is advertised on every tool, even with one team in reach
       headers: {
         "content-type": "application/json",
         accept: "application/json, text/event-stream",
+        "mcp-protocol-version": "2026-07-28",
         "mcp-method": "tools/list",
         authorization: `Bearer ${conn.accessToken}`,
       },
