@@ -1,5 +1,6 @@
 "use client";
 
+import * as React from "react";
 import { useSearchParams } from "@/lib/nav";
 import { CircleFadingArrowUp, Globe, SlidersHorizontal } from "lucide-react";
 
@@ -19,6 +20,7 @@ import {
 } from "@/components/settings/deplo-diagnostics-card";
 import { LogsRetentionCard } from "@/components/settings/logs-retention-card";
 import { GravatarCard } from "@/components/settings/gravatar-card";
+import { CanaryReleasesCard } from "@/components/settings/canary-releases-card";
 import { UsageReportCard } from "@/components/settings/usage-report-card";
 import {
   InstanceOwnerCard,
@@ -30,7 +32,7 @@ import { PanelBackupAddressCard } from "./panel-backup-address-card";
 import { PanelHttpCard } from "./panel-http-card";
 import { CertificatesCard } from "./certificates-card";
 
-const TABS = ["general", "advanced", "updates"] as const;
+const TABS = ["general", "updates", "advanced"] as const;
 type TabId = (typeof TABS)[number];
 
 export function DeploSettingsPanel({
@@ -40,7 +42,9 @@ export function DeploSettingsPanel({
   ownerCandidates,
   fleet,
   hosts,
+  canary: canarySeed,
 }: {
+  canary: boolean;
   settings: InstanceSettings;
   viewerIsOwner: boolean;
   viewerTwoFactorEnabled: boolean;
@@ -48,6 +52,7 @@ export function DeploSettingsPanel({
   fleet: FleetSummary;
   hosts: DiagnosticHost[];
 }) {
+  const [canary, setCanary] = React.useState(canarySeed);
   const params = useSearchParams();
   const requested = params.get("tab");
   const active: TabId = (TABS as readonly string[]).includes(requested ?? "")
@@ -73,13 +78,13 @@ export function DeploSettingsPanel({
           <Globe className="size-4" />
           General
         </UnderlineTabsTrigger>
-        <UnderlineTabsTrigger value="advanced">
-          <SlidersHorizontal className="size-4" />
-          Advanced
-        </UnderlineTabsTrigger>
         <UnderlineTabsTrigger value="updates">
           <CircleFadingArrowUp className="size-4" />
           Updates
+        </UnderlineTabsTrigger>
+        <UnderlineTabsTrigger value="advanced">
+          <SlidersHorizontal className="size-4" />
+          Advanced
         </UnderlineTabsTrigger>
       </UnderlineTabsList>
 
@@ -98,10 +103,23 @@ export function DeploSettingsPanel({
         </div>
       </TabsContent>
 
+      <TabsContent
+        value="updates"
+        forceMount
+        className="data-[state=inactive]:hidden"
+      >
+        <DeploUpdatesTab
+          active={active === "updates"}
+          version={settings.version}
+          canary={canary}
+          fleet={fleet}
+        />
+      </TabsContent>
       <TabsContent value="advanced">
         <div className="grid gap-4 lg:grid-cols-2">
           <LogsRetentionCard logMaxDays={settings.logMaxDays} />
           <GravatarCard enabled={settings.gravatarEnabled} />
+          <CanaryReleasesCard enabled={canary} onChange={setCanary} />
           <DeploDiagnosticsCard
             version={settings.version}
             panelUrl={settings.panelUrl}
@@ -122,18 +140,6 @@ export function DeploSettingsPanel({
             <PanelHttpCard />
           </div>
         </div>
-      </TabsContent>
-
-      <TabsContent
-        value="updates"
-        forceMount
-        className="data-[state=inactive]:hidden"
-      >
-        <DeploUpdatesTab
-          active={active === "updates"}
-          version={settings.version}
-          fleet={fleet}
-        />
       </TabsContent>
     </Tabs>
   );

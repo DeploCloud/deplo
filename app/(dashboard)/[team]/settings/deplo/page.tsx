@@ -11,12 +11,13 @@ import { getCurrentUser } from "@/lib/auth/current-user";
 import { isInstanceAdmin } from "@/lib/membership";
 import { reportedAgentVersion } from "@/lib/version";
 import { fleetAgentStatus } from "@/lib/data/servers/agent-rollout";
+import { canaryReleasesEnabled } from "@/lib/data/updates";
 
 export const metadata = { title: "Settings · Deplo" };
 
 export default async function DeploSettingsPage() {
   if (!(await isInstanceAdmin())) notFound();
-  const [settings, viewerIsOwner, users, servers, fleet, viewer] =
+  const [settings, viewerIsOwner, users, servers, fleet, viewer, canary] =
     await Promise.all([
       getInstanceSettings(),
       viewerIsInstanceOwner(),
@@ -24,6 +25,7 @@ export default async function DeploSettingsPage() {
       listAllServers(),
       fleetAgentStatus(),
       getCurrentUser(),
+      canaryReleasesEnabled(),
     ]);
 
   const ownerCandidates = users
@@ -67,6 +69,7 @@ export default async function DeploSettingsPage() {
         ownerCandidates={ownerCandidates}
         fleet={fleet}
         hosts={hosts}
+        canary={canary}
       />
     </div>
   );
