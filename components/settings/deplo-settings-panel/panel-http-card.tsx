@@ -60,7 +60,7 @@ export function PanelHttpCard() {
     return res;
   }
 
-  const enabled = cert?.enabled ?? true;
+  const enabled = cert?.enabled ?? false;
   const untrusted = !!cert?.enabled && cert.certificateTrusted === false;
   return (
     <SettingItem
@@ -135,8 +135,7 @@ function HttpsStatus({
   cert: PanelHttps | null;
   loading: boolean;
 }) {
-  if (loading)
-    return <span className="block h-4 w-64 animate-pulse rounded bg-muted" />;
+  if (loading) return "\u00a0";
   if (!cert) return null;
   if (cert.unavailable) return cert.unavailable;
   if (!cert.enabled)
