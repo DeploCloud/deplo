@@ -119,6 +119,7 @@ export const APPS_SETTINGS: McpToolDef[] = [
       "Expose container ports directly on the server (TCP/UDP), bypassing Traefik. The whole list at once; empty unpublishes all.",
     group: "Apps",
     requires: "configure_apps",
+    destructive: true,
     idempotent: true,
     input: z.object({
       appId,
