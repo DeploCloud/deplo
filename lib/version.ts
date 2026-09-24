@@ -3,7 +3,7 @@ import { version as packageVersion } from "../package.json";
 export const DEPLO_VERSION: string = packageVersion;
 export const DEPLO_REPO = "DeploCloud/deplo";
 
-export const FALLBACK_AGENT_VERSION = "0.2.0";
+export const FALLBACK_AGENT_VERSION = "0.3.0";
 
 type Semver = { core: [number, number, number]; pre: string[] };
 
