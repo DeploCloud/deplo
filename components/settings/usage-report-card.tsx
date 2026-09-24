@@ -7,13 +7,6 @@ import { BarChart3 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
-import {
   Dialog,
   DialogContent,
   DialogDescription,
@@ -22,7 +15,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { DocsLink } from "@/components/ui/docs-link";
-import { FieldLabel } from "@/components/ui/info-tip";
+import { SettingItem } from "@/components/settings/deplo-settings-panel/setting-item";
 import { Switch } from "@/components/ui/switch";
 import { CopyButton } from "@/components/shared/copy-button";
 import { gqlAction } from "@/lib/graphql-client";
@@ -98,54 +91,44 @@ export function UsageReportCard({
   }
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2 text-base">
-          <BarChart3 className="size-4 text-muted-foreground" />
-          Anonymous usage statistics
-        </CardTitle>
-        <CardDescription>
-          One report a day with versions, counts and feature switches, and
-          nothing that names this instance.{" "}
-          <DocsLink topic="instance.usageReports" />
-        </CardDescription>
-      </CardHeader>
-
-      <CardContent className="space-y-4">
-        <div className="flex items-center justify-between gap-4">
-          <div>
-            <FieldLabel
-              htmlFor="usage-reports-enabled"
-              info="Off stops the next report and clears the instance id, so turning it on again starts a history that cannot be joined to the old one."
-            >
-              Send usage statistics
-            </FieldLabel>
-            {forcedOff && (
-              <p className="mt-1 text-xs text-muted-foreground">
-                Turned off by the install
-              </p>
-            )}
-          </div>
+    <SettingItem
+      icon={BarChart3}
+      title="Anonymous usage statistics"
+      htmlFor="usage-reports-enabled"
+      info="Off stops the next report and clears the instance id, so turning it on again starts a history that cannot be joined to the old one."
+      description={
+        <>
+          <p>
+            One report a day with versions, counts and feature switches, and
+            nothing that names this instance.{" "}
+            <DocsLink topic="instance.usageReports" />
+          </p>
+          <p className="mt-1 text-xs">
+            {forcedOff
+              ? "Turned off by the install"
+              : `Last sent: ${lastSentAt ? formatDateTime(lastSentAt) : "Never"}`}
+          </p>
+        </>
+      }
+      control={
+        <>
+          <Button variant="outline" size="sm" onClick={showReport}>
+            See what would be sent
+          </Button>
           <Switch
             id="usage-reports-enabled"
             checked={forcedOff ? false : on}
             disabled={pending || forcedOff}
             onCheckedChange={toggle}
           />
-        </div>
-
-        <div className="flex items-center justify-between gap-4">
-          <p className="text-sm text-muted-foreground">
-            Last sent: {lastSentAt ? formatDateTime(lastSentAt) : "Never"}
-          </p>
-          <Button variant="outline" size="sm" onClick={showReport}>
-            See what would be sent
-          </Button>
-        </div>
-      </CardContent>
-
-      <UsageReportDialog open={open} onOpenChange={setOpen} preview={preview} />
-    </Card>
+          <UsageReportDialog
+            open={open}
+            onOpenChange={setOpen}
+            preview={preview}
+          />
+        </>
+      }
+    />
   );
 }
 

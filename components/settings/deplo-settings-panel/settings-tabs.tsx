@@ -1,7 +1,14 @@
 "use client";
 
+import * as React from "react";
 import { useSearchParams } from "@/lib/nav";
-import { CircleFadingArrowUp, Globe, SlidersHorizontal } from "lucide-react";
+import {
+  CircleFadingArrowUp,
+  Globe,
+  LifeBuoy,
+  ShieldCheck,
+  SlidersHorizontal,
+} from "lucide-react";
 
 import {
   Tabs,
@@ -19,6 +26,7 @@ import {
 } from "@/components/settings/deplo-diagnostics-card";
 import { LogsRetentionCard } from "@/components/settings/logs-retention-card";
 import { GravatarCard } from "@/components/settings/gravatar-card";
+import { CanaryReleasesCard } from "@/components/settings/canary-releases-card";
 import { UsageReportCard } from "@/components/settings/usage-report-card";
 import {
   InstanceOwnerCard,
@@ -29,8 +37,9 @@ import { PanelAddressCard, SOURCE_LABEL } from "./panel-address-card";
 import { PanelBackupAddressCard } from "./panel-backup-address-card";
 import { PanelHttpCard } from "./panel-http-card";
 import { CertificatesCard } from "./certificates-card";
+import { SettingGroup } from "./setting-item";
 
-const TABS = ["general", "advanced", "updates"] as const;
+const TABS = ["general", "updates", "advanced"] as const;
 type TabId = (typeof TABS)[number];
 
 export function DeploSettingsPanel({
@@ -40,7 +49,9 @@ export function DeploSettingsPanel({
   ownerCandidates,
   fleet,
   hosts,
+  canary: canarySeed,
 }: {
+  canary: boolean;
   settings: InstanceSettings;
   viewerIsOwner: boolean;
   viewerTwoFactorEnabled: boolean;
@@ -48,6 +59,7 @@ export function DeploSettingsPanel({
   fleet: FleetSummary;
   hosts: DiagnosticHost[];
 }) {
+  const [canary, setCanary] = React.useState(canarySeed);
   const params = useSearchParams();
   const requested = params.get("tab");
   const active: TabId = (TABS as readonly string[]).includes(requested ?? "")
@@ -73,13 +85,13 @@ export function DeploSettingsPanel({
           <Globe className="size-4" />
           General
         </UnderlineTabsTrigger>
-        <UnderlineTabsTrigger value="advanced">
-          <SlidersHorizontal className="size-4" />
-          Advanced
-        </UnderlineTabsTrigger>
         <UnderlineTabsTrigger value="updates">
           <CircleFadingArrowUp className="size-4" />
           Updates
+        </UnderlineTabsTrigger>
+        <UnderlineTabsTrigger value="advanced">
+          <SlidersHorizontal className="size-4" />
+          Advanced
         </UnderlineTabsTrigger>
       </UnderlineTabsList>
 
@@ -98,32 +110,6 @@ export function DeploSettingsPanel({
         </div>
       </TabsContent>
 
-      <TabsContent value="advanced">
-        <div className="grid gap-4 lg:grid-cols-2">
-          <LogsRetentionCard logMaxDays={settings.logMaxDays} />
-          <GravatarCard enabled={settings.gravatarEnabled} />
-          <DeploDiagnosticsCard
-            version={settings.version}
-            panelUrl={settings.panelUrl}
-            panelUrlSource={SOURCE_LABEL[settings.panelUrlSource]}
-            deploHostName={settings.deploHostName}
-            expectedAgentVersion={fleet.expected}
-            hosts={hosts}
-          />
-          <UsageReportCard
-            enabled={settings.usageReportsEnabled}
-            forcedOff={settings.usageReportsForcedOff}
-            lastSentAt={settings.usageReportLastSentAt}
-          />
-          <div className="lg:col-span-2">
-            <PanelBackupAddressCard settings={settings} />
-          </div>
-          <div className="lg:col-span-2">
-            <PanelHttpCard />
-          </div>
-        </div>
-      </TabsContent>
-
       <TabsContent
         value="updates"
         forceMount
@@ -132,8 +118,37 @@ export function DeploSettingsPanel({
         <DeploUpdatesTab
           active={active === "updates"}
           version={settings.version}
+          canary={canary}
           fleet={fleet}
         />
+      </TabsContent>
+      <TabsContent value="advanced" className="space-y-8">
+        <SettingGroup icon={SlidersHorizontal} title="Instance">
+          <LogsRetentionCard logMaxDays={settings.logMaxDays} />
+          <GravatarCard enabled={settings.gravatarEnabled} />
+          <CanaryReleasesCard enabled={canary} onChange={setCanary} />
+        </SettingGroup>
+        <SettingGroup icon={Globe} title="Panel access">
+          <PanelBackupAddressCard settings={settings} />
+          <PanelHttpCard />
+        </SettingGroup>
+        <SettingGroup icon={ShieldCheck} title="Privacy">
+          <UsageReportCard
+            enabled={settings.usageReportsEnabled}
+            forcedOff={settings.usageReportsForcedOff}
+            lastSentAt={settings.usageReportLastSentAt}
+          />
+        </SettingGroup>
+        <SettingGroup icon={LifeBuoy} title="Support">
+          <DeploDiagnosticsCard
+            version={settings.version}
+            panelUrl={settings.panelUrl}
+            panelUrlSource={SOURCE_LABEL[settings.panelUrlSource]}
+            deploHostName={settings.deploHostName}
+            expectedAgentVersion={fleet.expected}
+            hosts={hosts}
+          />
+        </SettingGroup>
       </TabsContent>
     </Tabs>
   );

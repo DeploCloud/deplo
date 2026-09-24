@@ -17,7 +17,6 @@ import {
   applyDeploUpdate,
   getUpdateInfo,
   listDeploReleases,
-  releaseProse,
   setCanaryReleases,
 } from "./updates";
 
@@ -155,27 +154,29 @@ test("without the panel's own machine as a server there is nobody to ask", async
   }
 });
 
-test("the changelog keeps the prose and drops the generated list", () => {
-  const body = [
-    "Hello, world. This is Deplo's first tagged build.",
-    "",
-    "Self-hosting without the shell.",
-    "",
-    "## What's Changed",
-    "* feat: dev mode by @someone in https://github.com/x/y/pull/1",
-    "",
-    "**Full Changelog**: https://github.com/x/y/commits/v0.1.0",
-  ].join("\n");
-  const prose = releaseProse(body, "https://example.com/r");
-  assert.match(prose, /first tagged build/);
-  assert.match(prose, /without the shell/);
-  assert.doesNotMatch(prose, /What's Changed|pull\/1|Full Changelog/);
-
-  assert.equal(
-    releaseProse("## What's Changed\n* only a list", "https://example.com/r"),
-    "[Read the notes on GitHub](https://example.com/r)",
+test("the changelog carries every release's notes whole, and marks the ones still to install", async () => {
+  const long = "x".repeat(10_000);
+  const body = `Intro.\n\n## What's Changed\n* feat: a by @someone\n\n${long}`;
+  const capture = captureFetch(() =>
+    json([
+      { tag_name: "v99.0.0", html_url: "u1", body },
+      { tag_name: `v${DEPLO_VERSION}`, html_url: "u2", body: "  now  " },
+    ]),
   );
-  assert.equal(releaseProse("", "https://example.com/r"), "");
+  try {
+    const { releases } = await asUser(ADMIN, listDeploReleases);
+    assert.equal(releases[0]!.body, body, "nothing is cut, not even the list");
+    assert.equal(releases[1]!.body, "now");
+    assert.deepEqual(
+      releases.map((r) => [r.tag, r.available, r.current]),
+      [
+        ["v99.0.0", true, false],
+        [`v${DEPLO_VERSION}`, false, true],
+      ],
+    );
+  } finally {
+    capture.restore();
+  }
 });
 
 const CANARY = "v99.1.0-canary.3";

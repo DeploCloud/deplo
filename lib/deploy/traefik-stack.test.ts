@@ -93,6 +93,12 @@ test("acmeEmail reads the address off the host's own resolver", () => {
     "",
   );
   assert.equal(acmeEmail(noEmail), "");
+  const placeholder = INSTALLED.replace("=ops@acme.com", "=${ACME_EMAIL}");
+  assert.equal(
+    acmeEmail(placeholder),
+    "",
+    "an unresolved variable is no address",
+  );
   const noAcme = INSTALLED.split("\n")
     .filter((l) => !l.includes("--certificatesresolvers."))
     .join("\n");

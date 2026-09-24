@@ -16,7 +16,6 @@ import { toast } from "sonner";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Switch } from "@/components/ui/switch";
 import {
   Accordion,
   AccordionContent,
@@ -65,6 +64,7 @@ type Release = {
   body: string;
   prerelease: boolean;
   current: boolean;
+  available: boolean;
 };
 
 const FLEET_QUERY = /* GraphQL */ `
@@ -102,6 +102,7 @@ const UPDATES_QUERY = /* GraphQL */ `
         body
         prerelease
         current
+        available
       }
     }
   }
@@ -150,10 +151,12 @@ function day(iso: string | null): string {
 export function DeploUpdatesTab({
   active,
   version,
+  canary,
   fleet: seed,
 }: {
   active: boolean;
   version: string;
+  canary: boolean;
   fleet: FleetSummary;
 }) {
   const fleet = useFleetAgents(seed);
@@ -181,11 +184,16 @@ export function DeploUpdatesTab({
     setListError(res.data?.deploChangelog?.error ?? null);
   }, []);
 
+  // The Advanced tab flips canary; the next visit here reads the versions it now offers.
+  React.useEffect(() => {
+    loaded.current = false;
+  }, [canary]);
+
   React.useEffect(() => {
     if (!active || loaded.current) return;
     loaded.current = true;
     void load();
-  }, [active, load]);
+  }, [active, canary, load]);
 
   async function check() {
     setChecking(true);
@@ -244,29 +252,6 @@ export function DeploUpdatesTab({
       clearTimeout(timer);
     };
   }, [updating, version]);
-
-  async function setCanary(enabled: boolean) {
-    setInfo((i) => (i ? { ...i, canary: enabled } : i));
-    const res = await gqlAction(
-      /* GraphQL */ `
-        mutation SetCanaryReleases($enabled: Boolean!) {
-          setCanaryReleases(enabled: $enabled) {
-            canary
-          }
-        }
-      `,
-      { enabled },
-    );
-    if (!res.ok) {
-      setInfo((i) => (i ? { ...i, canary: !enabled } : i));
-      toast.error(res.error);
-      return;
-    }
-    toast.success(
-      enabled ? "Canary releases turned on" : "Back to stable releases",
-    );
-    await load();
-  }
 
   async function startUpdate() {
     setManual(null);
@@ -367,11 +352,6 @@ export function DeploUpdatesTab({
                   </div>
                 </>
               )}
-              <CanaryRow
-                on={info?.canary ?? false}
-                disabled={!info || Boolean(updating)}
-                onChange={setCanary}
-              />
             </CardContent>
           </Card>
 
@@ -445,49 +425,6 @@ function Updating({
       <p className="text-xs text-muted-foreground">
         This page reloads itself when Deplo is back.
       </p>
-    </div>
-  );
-}
-
-function CanaryRow({
-  on,
-  disabled,
-  onChange,
-}: {
-  on: boolean;
-  disabled: boolean;
-  onChange: (on: boolean) => Promise<void>;
-}) {
-  const [pending, setPending] = React.useState(false);
-  return (
-    <div className="flex items-center justify-between gap-3 border-t border-border pt-3">
-      <div>
-        <p className="flex items-center gap-1.5 text-sm font-medium">
-          Canary releases
-          <InfoTip
-            content="New versions before they are marked stable. They can have bugs, and nothing installs until you click Update."
-            docs="upgrade.releases"
-          />
-        </p>
-        <p className="mt-1 text-sm text-muted-foreground">
-          {on
-            ? "Every new version shows up as an update."
-            : "Only stable versions show up as updates."}
-        </p>
-      </div>
-      <Switch
-        checked={on}
-        disabled={disabled || pending}
-        onCheckedChange={async (next) => {
-          setPending(true);
-          try {
-            await onChange(next);
-          } finally {
-            setPending(false);
-          }
-        }}
-        aria-label="Canary releases"
-      />
     </div>
   );
 }
@@ -663,7 +600,9 @@ function Changelog({
   return (
     <Accordion
       type="multiple"
-      defaultValue={[releases[0].tag]}
+      defaultValue={releases
+        .filter((r, i) => r.available || r.current || i === 0)
+        .map((r) => r.tag)}
       className="rounded-xl border border-border px-4"
     >
       {releases.map((r) => (
@@ -677,12 +616,13 @@ function Changelog({
                 </span>
               )}
               {r.current && <Badge variant="success">Installed</Badge>}
+              {r.available && <Badge variant="info">Update available</Badge>}
               {r.prerelease && <Badge variant="muted">Canary</Badge>}
             </span>
           </AccordionTrigger>
           <AccordionContent>
             {r.body ? (
-              <RemoteMarkdown source={r.body} />
+              <ReleaseNotes source={r.body} />
             ) : (
               <p className="text-sm text-muted-foreground">
                 This release shipped without notes.
@@ -700,5 +640,43 @@ function Changelog({
         </AccordionItem>
       ))}
     </Accordion>
+  );
+}
+
+const NOTES_CLAMP_PX = 320;
+
+function ReleaseNotes({ source }: { source: string }) {
+  const ref = React.useRef<HTMLDivElement>(null);
+  const [long, setLong] = React.useState(false);
+  const [expanded, setExpanded] = React.useState(false);
+
+  React.useLayoutEffect(() => {
+    const el = ref.current;
+    if (el) setLong(el.scrollHeight > NOTES_CLAMP_PX + 48);
+  }, [source]);
+
+  const clamped = long && !expanded;
+  return (
+    <div>
+      <div
+        ref={ref}
+        className="relative overflow-hidden"
+        style={clamped ? { maxHeight: NOTES_CLAMP_PX } : undefined}
+      >
+        <RemoteMarkdown source={source} />
+        {clamped && (
+          <div className="pointer-events-none absolute inset-x-0 bottom-0 h-20 bg-gradient-to-t from-background to-transparent" />
+        )}
+      </div>
+      {long && (
+        <button
+          type="button"
+          onClick={() => setExpanded((v) => !v)}
+          className="mt-2 text-sm font-medium text-foreground underline underline-offset-4"
+        >
+          {expanded ? "Show less" : "Read more"}
+        </button>
+      )}
+    </div>
   );
 }

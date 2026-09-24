@@ -3,8 +3,7 @@
 import * as React from "react";
 import { LifeBuoy } from "lucide-react";
 
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { InfoTip } from "@/components/ui/info-tip";
+import { SettingItem } from "@/components/settings/deplo-settings-panel/setting-item";
 import { CopyButton } from "@/components/shared/copy-button";
 
 export interface DiagnosticHost {
@@ -62,23 +61,16 @@ export function DeploDiagnosticsCard({
   ]);
 
   return (
-    <Card>
-      <CardHeader className="flex-row flex-wrap items-center justify-between gap-2 space-y-0">
-        <CardTitle className="flex w-fit items-center gap-2 text-base">
-          <LifeBuoy className="size-4" />
-          Diagnostics
-          <InfoTip
-            content="The versions this instance is running, ready to paste into a bug report."
-            docs="instance.admin"
-          />
-        </CardTitle>
-        <CopyButton value={report} label="Copy" />
-      </CardHeader>
-      <CardContent>
-        <pre className="overflow-x-auto rounded-lg border border-border bg-surface p-3 font-mono text-xs text-muted-foreground">
-          {report}
-        </pre>
-      </CardContent>
-    </Card>
+    <SettingItem
+      icon={LifeBuoy}
+      title="Diagnostics"
+      description="The versions this instance is running, ready to paste into a bug report."
+      docs="instance.admin"
+      control={<CopyButton value={report} label="Copy" />}
+    >
+      <pre className="overflow-x-auto rounded-lg border border-border bg-surface p-3 font-mono text-xs text-muted-foreground">
+        {report}
+      </pre>
+    </SettingItem>
   );
 }

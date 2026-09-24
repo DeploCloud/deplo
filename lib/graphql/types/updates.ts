@@ -45,6 +45,10 @@ const DeploReleaseRef = builder
       body: t.exposeString("body"),
       prerelease: t.exposeBoolean("prerelease"),
       current: t.exposeBoolean("current"),
+      available: t.exposeBoolean("available", {
+        description:
+          "Newer than the running version, so installing an update brings it in.",
+      }),
     }),
   });
 
