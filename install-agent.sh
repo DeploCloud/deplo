@@ -610,10 +610,25 @@ ensure_git() {
   fi
 }
 
+# The agent hands git a private repo's token through GIT_CONFIG_COUNT, which git
+# only reads from 2.31 on (Debian 11 ships 2.30): older clones go out anonymous.
+git_too_old() {
+  local v
+  v="$(git --version 2>/dev/null | sed -n 's/^git version \([0-9]*\)\.\([0-9]*\).*/\1 \2/p')"
+  [ -n "$v" ] || return 1
+  set -- $v
+  [ "$1" -lt 2 ] || { [ "$1" -eq 2 ] && [ "$2" -lt 31 ]; }
+}
+
 # A migration source only reads volumes, and a storage-only host only holds
 # backups: neither ever builds anything, so neither is worth changing for git.
 if [ "$STORAGE_ONLY" != "1" ] && [ "$IMPORT_ONLY" != "1" ]; then
   ensure_git
+  if git_too_old; then
+    warn "git $(git --version | awk '{print $3}') is too old for private repositories"
+    note "Apps from a private repository will not build until git is 2.31 or newer."
+    note "Debian 12 and Ubuntu 22.04 ship a recent enough one."
+  fi
 fi
 
 # 1b. Docker address pools ---------------------------------------------------
