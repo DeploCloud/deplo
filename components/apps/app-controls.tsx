@@ -14,6 +14,7 @@ import {
   Settings,
   ArrowLeftRight,
   Trash2,
+  Pencil,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -25,6 +26,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { SimpleTooltip } from "@/components/ui/tooltip";
 import { DeleteWithArtifacts } from "@/components/shared/delete-with-artifacts";
+import { RenameDialog } from "@/components/shared/rename-dialog";
 import { TransferTeamDialog } from "@/components/apps/settings/transfer-team-dialog";
 import { gqlAction } from "@/lib/graphql-client";
 import { useAppLifecycle } from "@/components/apps/app-lifecycle";
@@ -52,12 +54,14 @@ export function AppControls({
   const router = useRouter();
   const [transferOpen, setTransferOpen] = React.useState(false);
   const [deleteOpen, setDeleteOpen] = React.useState(false);
+  const [renameOpen, setRenameOpen] = React.useState(false);
   const { state, pending, canControl, start, stop, reload } = useAppLifecycle(
     appId,
     serverStatus,
   );
   const canMove = useAppCan("move_apps");
   const canDelete = useAppCan("delete_apps");
+  const canConfigure = useAppCan("configure_apps");
 
   const tip = (cap: Capability, can: boolean, text: string) =>
     can ? text : needsCapability(cap);
@@ -76,6 +80,23 @@ export function AppControls({
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end" className="w-56">
+          <SimpleTooltip
+            content={tip(
+              "configure_apps",
+              canConfigure,
+              "Change this app's name",
+            )}
+            side="left"
+          >
+            <DropdownMenuItem
+              onSelect={() => setRenameOpen(true)}
+              disabled={!canConfigure}
+            >
+              <Pencil className="size-4" />
+              Rename
+            </DropdownMenuItem>
+          </SimpleTooltip>
+          <DropdownMenuSeparator />
           {!showLifecycle || state === "never-deployed" ? null : (
             <>
               {state === "restoring" ? (
@@ -216,6 +237,18 @@ export function AppControls({
         </DropdownMenuContent>
       </DropdownMenu>
 
+      <RenameDialog
+        open={renameOpen}
+        onOpenChange={setRenameOpen}
+        noun="app"
+        name={name}
+        rename={(next) =>
+          gqlAction(
+            `mutation($id: String!, $name: String!) { renameApp(id: $id, name: $name) { id } }`,
+            { id: appId, name: next },
+          )
+        }
+      />
       <TransferTeamDialog
         open={transferOpen}
         onOpenChange={setTransferOpen}

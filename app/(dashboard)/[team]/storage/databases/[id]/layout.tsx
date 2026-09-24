@@ -11,6 +11,8 @@ import {
 } from "@/components/storage/database-live-status";
 import { DatabaseStatusBadge } from "@/components/storage/database-status-badge";
 import { DatabaseControls } from "@/components/storage/database-controls";
+import { DatabaseActionsMenu } from "@/components/storage/database-actions-menu";
+import { hasCapability } from "@/lib/membership";
 import { DatabaseRedeployButton } from "@/components/storage/database-redeploy-button";
 import { DbNavSync } from "@/components/storage/db-nav-store";
 import { DetailFrame } from "@/components/layout/detail-frame";
@@ -37,7 +39,11 @@ export default async function DatabaseLayout(
   props: LayoutProps<"/[team]/storage/databases/[id]">,
 ) {
   const { id } = await props.params;
-  const db = await getDatabase(id);
+  const [db, canConfigure, canDelete] = await Promise.all([
+    getDatabase(id),
+    hasCapability("configure_databases"),
+    hasCapability("delete_databases"),
+  ]);
   if (!db) notFound();
 
   const initialLive: LiveDatabase = {
@@ -80,6 +86,12 @@ export default async function DatabaseLayout(
             <div className="flex flex-wrap items-center gap-2">
               <DatabaseControls id={db.id} status={db.status} />
               <DatabaseRedeployButton id={db.id} />
+              <DatabaseActionsMenu
+                id={db.id}
+                name={db.name}
+                canConfigure={canConfigure}
+                canDelete={canDelete}
+              />
             </div>
           </div>
         }
