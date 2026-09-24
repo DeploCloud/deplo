@@ -1,6 +1,80 @@
 import * as z from "zod";
 import { appId, tool, type McpToolDef } from "./tool-def";
 import { APP_FIELDS } from "./apps-read";
+import type { App } from "../../types/app";
+
+const SOURCE = z.enum(["GIT", "GITHUB", "DOCKER_IMAGE", "COMPOSE"]);
+
+const CREDENTIALS = {
+  installationId: z
+    .string()
+    .optional()
+    .describe(
+      "GitHub App installation that clones the repo; see list_git_sources.",
+    ),
+  connectionId: z
+    .string()
+    .optional()
+    .describe("Git connection that clones the repo; see list_git_sources."),
+};
+
+const UPDATE_SOURCE_INPUT = z.object({
+  appId,
+  source: SOURCE,
+  repoUrl: z.string().optional(),
+  repo: z.string().optional(),
+  branch: z.string().optional(),
+  ...CREDENTIALS,
+  dockerImage: z.string().optional(),
+  compose: z.string().optional(),
+  serverId: z.string().optional(),
+});
+
+export const UPDATE_SOURCE = /* GraphQL */ `
+  mutation McpUpdateAppSource($id: String!, $input: UpdateSourceInput!) {
+    updateAppSource(id: $id, input: $input) { ${APP_FIELDS} }
+  }
+`;
+
+// Omitted fields keep the app's current value: updateAppSource rewrites the whole repo row.
+export function updateSourceVariables(
+  a: z.infer<typeof UPDATE_SOURCE_INPUT>,
+  current: Pick<App, "repo" | "dockerImage"> | null,
+) {
+  const git = a.source === "GIT" || a.source === "GITHUB";
+  const was = current?.repo ?? null;
+  const url = a.repoUrl ?? was?.url;
+  return {
+    id: a.appId,
+    input: {
+      source: a.source,
+      dockerImage:
+        a.dockerImage ??
+        (a.source === "DOCKER_IMAGE" ? current?.dockerImage : undefined),
+      compose: a.compose,
+      serverId: a.serverId,
+      repo:
+        git && url
+          ? {
+              url,
+              repo: a.repo ?? was?.repo ?? "",
+              branch: a.branch ?? was?.branch ?? "main",
+              provider:
+                a.source === "GITHUB"
+                  ? "github"
+                  : was && was.provider !== "github"
+                    ? was.provider
+                    : "git",
+              installationId: a.installationId ?? was?.installationId,
+              connectionId: a.connectionId ?? was?.connectionId,
+              triggerType: was?.triggerType,
+              watchPaths: was?.watchPaths,
+              submodules: was?.submodules,
+            }
+          : undefined,
+    },
+  };
+}
 
 export const APPS_CONFIG: McpToolDef[] = [
   tool({
@@ -61,10 +135,11 @@ export const APPS_CONFIG: McpToolDef[] = [
     requires: "create_apps",
     input: z.object({
       name: z.string(),
-      source: z.enum(["GIT", "GITHUB", "DOCKER_IMAGE", "COMPOSE"]),
+      source: SOURCE,
       repoUrl: z.string().optional().describe("Clone URL, for GIT/GITHUB."),
       repo: z.string().optional().describe('Owner/name, e.g. "acme/api".'),
       branch: z.string().optional().describe("Defaults to main."),
+      ...CREDENTIALS,
       dockerImage: z.string().optional().describe("For DOCKER_IMAGE."),
       compose: z.string().optional().describe("Compose YAML, for COMPOSE."),
       serverId: z.string().optional(),
@@ -95,6 +170,8 @@ export const APPS_CONFIG: McpToolDef[] = [
               repo: a.repo ?? "",
               branch: a.branch ?? "main",
               provider: a.source === "GITHUB" ? "github" : "git",
+              installationId: a.installationId,
+              connectionId: a.connectionId,
             }
           : undefined,
       },
@@ -149,42 +226,23 @@ export const APPS_CONFIG: McpToolDef[] = [
     name: "update_app_source",
     title: "Change where an app deploys from",
     description:
-      "Point the app at a different repo, branch, image or compose file, or move it to another server.",
+      "Point the app at a different repo, branch, image or compose file, or move it to another server. Omitted fields keep their current value.",
     group: "Apps",
     requires: "configure_apps",
     idempotent: true,
-    input: z.object({
-      appId,
-      source: z.enum(["GIT", "GITHUB", "DOCKER_IMAGE", "COMPOSE"]),
-      repoUrl: z.string().optional(),
-      repo: z.string().optional(),
-      branch: z.string().optional(),
-      dockerImage: z.string().optional(),
-      compose: z.string().optional(),
-      serverId: z.string().optional(),
-    }),
-    query: /* GraphQL */ `
-      mutation McpUpdateAppSource($id: String!, $input: UpdateSourceInput!) {
-        updateAppSource(id: $id, input: $input) { ${APP_FIELDS} }
-      }
-    `,
-    variables: (a) => ({
-      id: a.appId,
-      input: {
-        source: a.source,
-        dockerImage: a.dockerImage,
-        compose: a.compose,
-        serverId: a.serverId,
-        repo: a.repoUrl
-          ? {
-              url: a.repoUrl,
-              repo: a.repo ?? "",
-              branch: a.branch ?? "main",
-              provider: a.source === "GITHUB" ? "github" : "git",
-            }
-          : undefined,
-      },
-    }),
+    input: UPDATE_SOURCE_INPUT,
+    query: "",
+    run: async (a, ctx) => {
+      const { getAppById } = await import("../../data/apps/listing");
+      const { runGraphql } = await import("../execute");
+      const { data, error } = await runGraphql(
+        UPDATE_SOURCE,
+        updateSourceVariables(a, await getAppById(a.appId)),
+        ctx,
+      );
+      if (error) throw new Error(error);
+      return data;
+    },
   }),
   tool({
     name: "update_app_compose",
@@ -237,6 +295,7 @@ export const APPS_CONFIG: McpToolDef[] = [
       "Replace the app's volumes wholesale: pass the full list you want, not just the new one. Applied on the next deploy.",
     group: "Apps",
     requires: "configure_apps",
+    destructive: true,
     idempotent: true,
     input: z.object({
       appId,
