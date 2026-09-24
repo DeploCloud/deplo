@@ -27,6 +27,7 @@ import { getPanelAddressImpact } from "./instance-settings/panel-address-impact"
 import {
   getPanelHttps,
   moveWithRollback,
+  withRoutedScheme,
   setPanelFallback,
   setPanelHttps,
   setPanelUrl,
@@ -595,6 +596,25 @@ test("the backup address goes off, and stays off when the scheme moves", async (
     assert.equal(on.panelFallbackDisabled, false);
     assert.equal(panelRoute(host.yaml)?.fallbackDomain, MINTED);
     assert.equal(on.panelFallbackUrl, `https://${MINTED}`);
+  });
+});
+
+test("a new address keeps the scheme the proxy serves, whatever it was typed with", async (t) => {
+  await withSelfServer(t, async () => {
+    const host = fakeHost(panelStack());
+    assert.equal(
+      await withRoutedScheme("http://moved.example.com"),
+      "https://moved.example.com",
+    );
+    host.yaml = withPanelRoute(TRAEFIK_STACK, {
+      ...panelRoute(host.yaml)!,
+      https: false,
+      certResolver: null,
+    });
+    assert.equal(
+      await withRoutedScheme("https://moved.example.com"),
+      "http://moved.example.com",
+    );
   });
 });
 

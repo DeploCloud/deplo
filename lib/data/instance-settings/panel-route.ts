@@ -85,7 +85,9 @@ export async function setPanelUrl(
   const user = (await getCurrentUser())!;
 
   const url =
-    input === null || input.trim() === "" ? null : normalizePanelUrl(input);
+    input === null || input.trim() === ""
+      ? null
+      : await withRoutedScheme(normalizePanelUrl(input));
   const current = await instancePublicBaseUrl();
   // Counted before the write: rpId derives from the address, so afterwards there is no way to say what it invalidated.
   const lostPasskeys =
@@ -107,6 +109,22 @@ export async function setPanelUrl(
     teamId,
   );
   return getInstanceSettings();
+}
+
+// The HTTPS switch owns the scheme: a new address never turns it off on the way.
+export async function withRoutedScheme(url: string): Promise<string> {
+  const host = await deploHostServer();
+  if (!host) return url;
+  const { fetchHostInfo } = await import("../../infra/agent-client/host-ops");
+  let yaml: string;
+  try {
+    yaml = (await fetchHostInfo(host.id)).traefikComposeYaml;
+  } catch {
+    return url;
+  }
+  const route = yaml ? panelRoute(yaml) : null;
+  if (!route) return url;
+  return `${route.https ? "https" : "http"}://${new URL(url).host}`;
 }
 
 async function readPanelHttps(): Promise<PanelHttps> {

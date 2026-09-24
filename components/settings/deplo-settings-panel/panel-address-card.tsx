@@ -42,7 +42,10 @@ export function PanelAddressCard({ settings }: { settings: InstanceSettings }) {
     ? `https://${cert.fallbackDomain}`
     : null;
   const current = settings.storedPanelUrl ?? settings.panelUrl;
-  const scheme = current.startsWith("http://") ? "http" : "https";
+  const routed = cert && !cert.unavailable ? cert : null;
+  const scheme = (routed ? routed.enabled : !current.startsWith("http://"))
+    ? "https"
+    : "http";
   const [value, setValue] = React.useState(hostPart(current));
   const [confirming, setConfirming] = React.useState(false);
 
