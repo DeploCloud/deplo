@@ -5,6 +5,7 @@ import { toast } from "sonner";
 import { FlaskConical } from "lucide-react";
 
 import { Switch } from "@/components/ui/switch";
+import { ConfirmAction } from "@/components/shared/confirm-action";
 import { SettingItem } from "@/components/settings/deplo-settings-panel/setting-item";
 import { gqlAction } from "@/lib/graphql-client";
 
@@ -16,28 +17,29 @@ export function CanaryReleasesCard({
   onChange: (on: boolean) => void;
 }) {
   const [pending, startTransition] = React.useTransition();
+  const [confirming, setConfirming] = React.useState(false);
+
+  async function save(next: boolean) {
+    const res = await gqlAction(
+      /* GraphQL */ `
+        mutation SetCanaryReleases($enabled: Boolean!) {
+          setCanaryReleases(enabled: $enabled) {
+            canary
+          }
+        }
+      `,
+      { enabled: next },
+    );
+    if (res.ok) onChange(next);
+    return res;
+  }
 
   function toggle(next: boolean) {
-    onChange(next);
+    if (next) return setConfirming(true);
     startTransition(async () => {
-      const res = await gqlAction(
-        /* GraphQL */ `
-          mutation SetCanaryReleases($enabled: Boolean!) {
-            setCanaryReleases(enabled: $enabled) {
-              canary
-            }
-          }
-        `,
-        { enabled: next },
-      );
-      if (res.ok) {
-        toast.success(
-          next ? "Canary releases turned on" : "Back to stable releases",
-        );
-      } else {
-        onChange(!next);
-        toast.error(res.error);
-      }
+      const res = await save(false);
+      if (res.ok) toast.success("Back to stable releases");
+      else toast.error(res.error);
     });
   }
 
@@ -61,6 +63,23 @@ export function CanaryReleasesCard({
           onCheckedChange={toggle}
         />
       }
-    />
+    >
+      <ConfirmAction
+        open={confirming}
+        onOpenChange={setConfirming}
+        title="Turn on canary releases?"
+        description={
+          <>
+            From now on,{" "}
+            <strong>every new version shows up as an update</strong>, before it
+            is marked stable.
+          </>
+        }
+        consequence="Canary versions can be unstable and break the panel. Not recommended for production."
+        confirmLabel="Turn on canary releases"
+        successMessage="Canary releases turned on"
+        onConfirm={() => save(true)}
+      />
+    </SettingItem>
   );
 }
