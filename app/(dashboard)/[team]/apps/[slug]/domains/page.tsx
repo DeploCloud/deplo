@@ -18,14 +18,13 @@ import {
 import { AddDomain } from "@/components/domains/add-domain";
 import { DomainDnsAutoCheck } from "@/components/domains/domain-dns-auto-check";
 import { DomainGraphic } from "@/components/domains/domain-graphic";
-import { DomainRow } from "@/components/domains/domain-row";
+import { DomainRows } from "@/components/domains/domain-row";
 import { ImportedDomainsNotice } from "@/components/domains/imported-domains-notice";
 import {
   PendingCreateProvider,
   PendingList,
   PendingRows,
 } from "@/components/shared/pending-create";
-import { OptimisticList } from "@/components/shared/optimistic-list";
 
 export const metadata = { title: "App Domains" };
 
@@ -109,19 +108,13 @@ export default async function AppDomainsPage(
                 </TableRow>
               </TableHeader>
               <TableBody>
-                <OptimisticList>
-                  {domains.map((d) => (
-                    <DomainRow
-                      key={d.id}
-                      domain={d}
-                      compose={composeForBrowser}
-                      isCompose={isComposeStack}
-                      showContainer={showContainer}
-                      serverIp={serverIp}
-                      siblings={domains}
-                    />
-                  ))}
-                </OptimisticList>
+                <DomainRows
+                  domains={domains}
+                  compose={composeForBrowser}
+                  isCompose={isComposeStack}
+                  showContainer={showContainer}
+                  serverIp={serverIp}
+                />
                 <PendingRows columns={showContainer ? 4 : 3} />
               </TableBody>
             </Table>
