@@ -2,7 +2,13 @@
 
 import * as React from "react";
 import { useSearchParams } from "@/lib/nav";
-import { CircleFadingArrowUp, Globe, SlidersHorizontal } from "lucide-react";
+import {
+  CircleFadingArrowUp,
+  Globe,
+  LifeBuoy,
+  ShieldCheck,
+  SlidersHorizontal,
+} from "lucide-react";
 
 import {
   Tabs,
@@ -31,6 +37,7 @@ import { PanelAddressCard, SOURCE_LABEL } from "./panel-address-card";
 import { PanelBackupAddressCard } from "./panel-backup-address-card";
 import { PanelHttpCard } from "./panel-http-card";
 import { CertificatesCard } from "./certificates-card";
+import { SettingGroup } from "./setting-item";
 
 const TABS = ["general", "updates", "advanced"] as const;
 type TabId = (typeof TABS)[number];
@@ -115,11 +122,24 @@ export function DeploSettingsPanel({
           fleet={fleet}
         />
       </TabsContent>
-      <TabsContent value="advanced">
-        <div className="grid gap-4 lg:grid-cols-2">
+      <TabsContent value="advanced" className="space-y-8">
+        <SettingGroup icon={SlidersHorizontal} title="Instance">
           <LogsRetentionCard logMaxDays={settings.logMaxDays} />
           <GravatarCard enabled={settings.gravatarEnabled} />
           <CanaryReleasesCard enabled={canary} onChange={setCanary} />
+        </SettingGroup>
+        <SettingGroup icon={Globe} title="Panel access">
+          <PanelBackupAddressCard settings={settings} />
+          <PanelHttpCard />
+        </SettingGroup>
+        <SettingGroup icon={ShieldCheck} title="Privacy">
+          <UsageReportCard
+            enabled={settings.usageReportsEnabled}
+            forcedOff={settings.usageReportsForcedOff}
+            lastSentAt={settings.usageReportLastSentAt}
+          />
+        </SettingGroup>
+        <SettingGroup icon={LifeBuoy} title="Support">
           <DeploDiagnosticsCard
             version={settings.version}
             panelUrl={settings.panelUrl}
@@ -128,18 +148,7 @@ export function DeploSettingsPanel({
             expectedAgentVersion={fleet.expected}
             hosts={hosts}
           />
-          <UsageReportCard
-            enabled={settings.usageReportsEnabled}
-            forcedOff={settings.usageReportsForcedOff}
-            lastSentAt={settings.usageReportLastSentAt}
-          />
-          <div className="lg:col-span-2">
-            <PanelBackupAddressCard settings={settings} />
-          </div>
-          <div className="lg:col-span-2">
-            <PanelHttpCard />
-          </div>
-        </div>
+        </SettingGroup>
       </TabsContent>
     </Tabs>
   );

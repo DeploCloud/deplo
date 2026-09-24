@@ -5,15 +5,8 @@ import { useRouter } from "@/lib/nav";
 import { toast } from "sonner";
 import { UserRound } from "lucide-react";
 
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
 import { Switch } from "@/components/ui/switch";
-import { FieldLabel } from "@/components/ui/info-tip";
+import { SettingItem } from "@/components/settings/deplo-settings-panel/setting-item";
 import { gqlAction } from "@/lib/graphql-client";
 
 export function GravatarCard({ enabled }: { enabled: boolean }) {
@@ -44,33 +37,20 @@ export function GravatarCard({ enabled }: { enabled: boolean }) {
   }
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2 text-base">
-          <UserRound className="size-4 text-muted-foreground" />
-          Profile pictures
-        </CardTitle>
-        <CardDescription>
-          Where a picture comes from when someone has not uploaded one.
-        </CardDescription>
-      </CardHeader>
-
-      <CardContent>
-        <div className="flex items-center justify-between gap-4">
-          <FieldLabel
-            htmlFor="gravatar-enabled"
-            info="On, each browser fetches the picture from gravatar.com using a hash of the address. Off, nothing leaves this instance."
-          >
-            Use Gravatar
-          </FieldLabel>
-          <Switch
-            id="gravatar-enabled"
-            checked={on}
-            disabled={pending}
-            onCheckedChange={toggle}
-          />
-        </div>
-      </CardContent>
-    </Card>
+    <SettingItem
+      icon={UserRound}
+      title="Gravatar pictures"
+      htmlFor="gravatar-enabled"
+      info="On, each browser fetches the picture from gravatar.com using a hash of the address. Off, nothing leaves this instance."
+      description="For people who have not uploaded a picture of their own."
+      control={
+        <Switch
+          id="gravatar-enabled"
+          checked={on}
+          disabled={pending}
+          onCheckedChange={toggle}
+        />
+      }
+    />
   );
 }

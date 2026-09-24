@@ -4,17 +4,9 @@ import * as React from "react";
 import { useRouter } from "@/lib/nav";
 import { toast } from "sonner";
 import { Logs, Save } from "lucide-react";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardFooter,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { FieldLabel } from "@/components/ui/info-tip";
+import { SettingItem } from "@/components/settings/deplo-settings-panel/setting-item";
 import { DirtyHint } from "@/components/apps/settings/settings-shared";
 import { UnsavedChangesGuard } from "@/components/apps/unsaved-changes-guard";
 import { gqlAction } from "@/lib/graphql-client";
@@ -57,27 +49,17 @@ export function LogsRetentionCard({ logMaxDays }: { logMaxDays: number }) {
 
   return (
     <>
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2 text-base">
-            <Logs className="size-4 text-muted-foreground" />
-            Logs
-          </CardTitle>
-          <CardDescription>
-            How far back the time range on a log page can reach.
-          </CardDescription>
-        </CardHeader>
-
-        <CardContent className="grid gap-4 sm:max-w-xs">
-          <div className="space-y-2">
-            <FieldLabel
-              htmlFor="log-max-days"
-              info="A limit on what can be asked for, not on what a server keeps. Docker rotates a container's logs by size, so an older window can come back empty."
-              docs="logs.retention"
-            >
-              Maximum range
-            </FieldLabel>
-            <div className="relative">
+      <SettingItem
+        icon={Logs}
+        title="Log search range"
+        htmlFor="log-max-days"
+        info="A limit on what can be asked for, not on what a server keeps. Docker rotates a container's logs by size, so an older window can come back empty."
+        docs="logs.retention"
+        description="How far back the time range on a log page can reach."
+        control={
+          <>
+            <DirtyHint dirty={dirty} />
+            <div className="relative w-28">
               <Input
                 id="log-max-days"
                 type="number"
@@ -87,7 +69,7 @@ export function LogsRetentionCard({ logMaxDays }: { logMaxDays: number }) {
                 value={value}
                 onChange={(e) => setValue(e.target.value)}
                 className={cn(
-                  "pr-14",
+                  "pr-12",
                   "[appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none",
                 )}
               />
@@ -95,17 +77,13 @@ export function LogsRetentionCard({ logMaxDays }: { logMaxDays: number }) {
                 {parsed === 1 ? "day" : "days"}
               </span>
             </div>
-          </div>
-        </CardContent>
-
-        <CardFooter className="justify-between border-t border-border pt-4">
-          <DirtyHint dirty={dirty} />
-          <Button size="sm" onClick={save} disabled={pending || !dirty}>
-            <Save className="size-4" />
-            Save
-          </Button>
-        </CardFooter>
-      </Card>
+            <Button onClick={save} disabled={pending || !dirty}>
+              <Save className="size-4" />
+              Save
+            </Button>
+          </>
+        }
+      />
 
       <UnsavedChangesGuard when={dirty} />
     </>

@@ -1452,6 +1452,8 @@ type DeploChangelog {
 
 """One published release of Deplo, as the changelog renders it."""
 type DeploRelease {
+  """Newer than the running version, so installing an update brings it in."""
+  available: Boolean
   body: String
   current: Boolean
   name: String

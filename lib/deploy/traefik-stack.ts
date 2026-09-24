@@ -19,8 +19,9 @@ export function acmeEmail(currentYaml: string): string | null {
     traefikService(parseCompose(currentYaml)).get("command", true),
   );
   const flag = `--certificatesresolvers.${resolver}.acme.email=`;
-  const found = command.find((c) => c.startsWith(flag));
-  return found ? found.slice(flag.length) : "";
+  const found = command.find((c) => c.startsWith(flag))?.slice(flag.length);
+  // An older installer wrote `${ACME_EMAIL}` itself; its value lives in an env file the panel never reads.
+  return !found || found.startsWith("$") ? "" : found;
 }
 
 export function stackCertResolver(currentYaml: string): string | null {

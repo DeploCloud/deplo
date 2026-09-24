@@ -64,6 +64,7 @@ type Release = {
   body: string;
   prerelease: boolean;
   current: boolean;
+  available: boolean;
 };
 
 const FLEET_QUERY = /* GraphQL */ `
@@ -101,6 +102,7 @@ const UPDATES_QUERY = /* GraphQL */ `
         body
         prerelease
         current
+        available
       }
     }
   }
@@ -598,7 +600,9 @@ function Changelog({
   return (
     <Accordion
       type="multiple"
-      defaultValue={[releases[0].tag]}
+      defaultValue={releases
+        .filter((r, i) => r.available || r.current || i === 0)
+        .map((r) => r.tag)}
       className="rounded-xl border border-border px-4"
     >
       {releases.map((r) => (
@@ -612,12 +616,13 @@ function Changelog({
                 </span>
               )}
               {r.current && <Badge variant="success">Installed</Badge>}
+              {r.available && <Badge variant="info">Update available</Badge>}
               {r.prerelease && <Badge variant="muted">Canary</Badge>}
             </span>
           </AccordionTrigger>
           <AccordionContent>
             {r.body ? (
-              <RemoteMarkdown source={r.body} />
+              <ReleaseNotes source={r.body} />
             ) : (
               <p className="text-sm text-muted-foreground">
                 This release shipped without notes.
@@ -635,5 +640,43 @@ function Changelog({
         </AccordionItem>
       ))}
     </Accordion>
+  );
+}
+
+const NOTES_CLAMP_PX = 320;
+
+function ReleaseNotes({ source }: { source: string }) {
+  const ref = React.useRef<HTMLDivElement>(null);
+  const [long, setLong] = React.useState(false);
+  const [expanded, setExpanded] = React.useState(false);
+
+  React.useLayoutEffect(() => {
+    const el = ref.current;
+    if (el) setLong(el.scrollHeight > NOTES_CLAMP_PX + 48);
+  }, [source]);
+
+  const clamped = long && !expanded;
+  return (
+    <div>
+      <div
+        ref={ref}
+        className="relative overflow-hidden"
+        style={clamped ? { maxHeight: NOTES_CLAMP_PX } : undefined}
+      >
+        <RemoteMarkdown source={source} />
+        {clamped && (
+          <div className="pointer-events-none absolute inset-x-0 bottom-0 h-20 bg-gradient-to-t from-background to-transparent" />
+        )}
+      </div>
+      {long && (
+        <button
+          type="button"
+          onClick={() => setExpanded((v) => !v)}
+          className="mt-2 text-sm font-medium text-foreground underline underline-offset-4"
+        >
+          {expanded ? "Show less" : "Read more"}
+        </button>
+      )}
+    </div>
   );
 }

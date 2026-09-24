@@ -2,20 +2,13 @@
 
 import * as React from "react";
 import { useRouter } from "@/lib/nav";
-import { ShieldAlert, ShieldCheck } from "lucide-react";
+import { ShieldCheck } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
 import { Switch } from "@/components/ui/switch";
-import { FieldLabel, InfoTip } from "@/components/ui/info-tip";
 import { PanelAddressDialog } from "@/components/settings/panel-address-dialog";
 import { gqlAction } from "@/lib/graphql-client";
+import { SettingItem } from "./setting-item";
 
 export type PanelHttps = {
   domain: string | null;
@@ -68,39 +61,35 @@ export function PanelHttpCard() {
   }
 
   const enabled = cert?.enabled ?? true;
+  const untrusted = !!cert?.enabled && cert.certificateTrusted === false;
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2 text-base">
-          <ShieldAlert className="size-4 text-muted-foreground" />
-          Serve the panel over plain HTTP
-        </CardTitle>
-        <CardDescription>
-          For a panel on an internal network, where no certificate can be
-          issued.
-        </CardDescription>
-      </CardHeader>
-
-      <CardContent className="space-y-4">
-        <PanelServingRow cert={cert} loading={loading} />
-        <div className="flex items-center justify-between gap-4">
-          <FieldLabel
-            htmlFor="panel-http"
-            info="Every password and session cookie then crosses the network in clear, and passkeys stop working entirely."
-            docs="panel.https"
-          >
-            Turn HTTPS off
-          </FieldLabel>
-          <Switch
-            id="panel-http"
-            checked={!enabled}
-            disabled={loading || !cert || !!cert.unavailable}
-            onCheckedChange={() => setConfirming(true)}
-            aria-label="Serve the panel over plain HTTP"
-          />
-        </div>
-      </CardContent>
-
+    <SettingItem
+      icon={ShieldCheck}
+      title="HTTPS"
+      htmlFor="panel-http"
+      info="Off serves the panel over plain http, for an internal network where no certificate can be issued. Passwords then cross the network in clear."
+      docs="panel.https"
+      badge={
+        cert &&
+        (!cert.enabled ? (
+          <Badge variant="destructive">Off</Badge>
+        ) : untrusted ? (
+          <Badge variant="warning">Self-signed</Badge>
+        ) : (
+          <Badge variant="muted">On</Badge>
+        ))
+      }
+      description={<HttpsStatus cert={cert} loading={loading} />}
+      control={
+        <Switch
+          id="panel-http"
+          checked={enabled}
+          disabled={loading || !cert || !!cert.unavailable}
+          onCheckedChange={() => setConfirming(true)}
+          aria-label="HTTPS"
+        />
+      }
+    >
       {cert?.domain && (
         <PanelAddressDialog
           open={confirming}
@@ -135,11 +124,11 @@ export function PanelHttpCard() {
           onConfirm={turnOff}
         />
       )}
-    </Card>
+    </SettingItem>
   );
 }
 
-function PanelServingRow({
+function HttpsStatus({
   cert,
   loading,
 }: {
@@ -147,58 +136,16 @@ function PanelServingRow({
   loading: boolean;
 }) {
   if (loading)
-    return (
-      <div className="rounded-lg border border-border p-3">
-        <HttpsLabel />
-        <span className="mt-2 block h-4 w-64 animate-pulse rounded bg-muted" />
-      </div>
-    );
+    return <span className="block h-4 w-64 animate-pulse rounded bg-muted" />;
   if (!cert) return null;
-
-  const untrusted = cert.enabled && cert.certificateTrusted === false;
-  return (
-    <div className="rounded-lg border border-border p-3">
-      <HttpsLabel>
-        {cert.enabled ? (
-          untrusted ? (
-            <Badge variant="warning">Self-signed</Badge>
-          ) : (
-            <Badge variant="muted">Always on</Badge>
-          )
-        ) : (
-          <Badge variant="destructive">Off</Badge>
-        )}
-      </HttpsLabel>
-      {cert.unavailable ? (
-        <p className="mt-1 text-sm text-muted-foreground">{cert.unavailable}</p>
-      ) : !cert.enabled ? (
-        <p className="mt-1 text-sm text-[var(--warning)]">
-          Anyone signing in sends their password unencrypted.
-        </p>
-      ) : untrusted ? (
-        <p className="mt-1 text-sm text-muted-foreground">
-          The browser does not recognise this certificate. Set your own domain
-          under General to get one it does.
-        </p>
-      ) : (
-        <p className="mt-1 text-sm text-muted-foreground">
-          Let&apos;s Encrypt issues the certificate, and renews it on its own.
-        </p>
-      )}
-    </div>
-  );
-}
-
-function HttpsLabel({ children }: { children?: React.ReactNode }) {
-  return (
-    <div className="flex items-center gap-2 text-sm font-medium">
-      <ShieldCheck className="size-4 text-muted-foreground" />
-      HTTPS
-      {children}
-      <InfoTip
-        content="The panel is served over HTTPS and nothing else. Plain http is an advanced opt-out for an address no certificate can be issued for."
-        docs="panel.https"
-      />
-    </div>
-  );
+  if (cert.unavailable) return cert.unavailable;
+  if (!cert.enabled)
+    return (
+      <span className="text-[var(--warning)]">
+        Anyone signing in sends their password unencrypted.
+      </span>
+    );
+  if (cert.certificateTrusted === false)
+    return "The browser does not recognise this certificate. Set your own domain under General to get one it does.";
+  return "Let's Encrypt issues the certificate, and renews it on its own.";
 }
