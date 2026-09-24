@@ -12,8 +12,11 @@ import {
   TriangleAlert,
 } from "lucide-react";
 
+import { toast } from "sonner";
+
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Switch } from "@/components/ui/switch";
 import {
   Accordion,
   AccordionContent,
@@ -50,6 +53,7 @@ type UpdateInfo = {
   latest: string | null;
   updateAvailable: boolean;
   publishedAt: string | null;
+  canary: boolean;
   error?: string | null;
 };
 
@@ -85,6 +89,7 @@ const UPDATES_QUERY = /* GraphQL */ `
       latest
       updateAvailable
       publishedAt
+      canary
       error
     }
     deploChangelog {
@@ -240,6 +245,29 @@ export function DeploUpdatesTab({
     };
   }, [updating, version]);
 
+  async function setCanary(enabled: boolean) {
+    setInfo((i) => (i ? { ...i, canary: enabled } : i));
+    const res = await gqlAction(
+      /* GraphQL */ `
+        mutation SetCanaryReleases($enabled: Boolean!) {
+          setCanaryReleases(enabled: $enabled) {
+            canary
+          }
+        }
+      `,
+      { enabled },
+    );
+    if (!res.ok) {
+      setInfo((i) => (i ? { ...i, canary: !enabled } : i));
+      toast.error(res.error);
+      return;
+    }
+    toast.success(
+      enabled ? "Canary releases turned on" : "Back to stable releases",
+    );
+    await load();
+  }
+
   async function startUpdate() {
     setManual(null);
     setStalled(false);
@@ -339,6 +367,11 @@ export function DeploUpdatesTab({
                   </div>
                 </>
               )}
+              <CanaryRow
+                on={info?.canary ?? false}
+                disabled={!info || Boolean(updating)}
+                onChange={setCanary}
+              />
             </CardContent>
           </Card>
 
@@ -416,6 +449,49 @@ function Updating({
   );
 }
 
+function CanaryRow({
+  on,
+  disabled,
+  onChange,
+}: {
+  on: boolean;
+  disabled: boolean;
+  onChange: (on: boolean) => Promise<void>;
+}) {
+  const [pending, setPending] = React.useState(false);
+  return (
+    <div className="flex items-center justify-between gap-3 border-t border-border pt-3">
+      <div>
+        <p className="flex items-center gap-1.5 text-sm font-medium">
+          Canary releases
+          <InfoTip
+            content="New versions before they are marked stable. They can have bugs, and nothing installs until you click Update."
+            docs="upgrade.releases"
+          />
+        </p>
+        <p className="mt-1 text-sm text-muted-foreground">
+          {on
+            ? "Every new version shows up as an update."
+            : "Only stable versions show up as updates."}
+        </p>
+      </div>
+      <Switch
+        checked={on}
+        disabled={disabled || pending}
+        onCheckedChange={async (next) => {
+          setPending(true);
+          try {
+            await onChange(next);
+          } finally {
+            setPending(false);
+          }
+        }}
+        aria-label="Canary releases"
+      />
+    </div>
+  );
+}
+
 function ManualUpdate({ reason }: { reason: string }) {
   return (
     <div className="space-y-1.5">
@@ -457,6 +533,17 @@ function Verdict({
         <ArrowUpRight className="size-4 text-[var(--success)]" />
         <span className="font-medium">{info.latest}</span> is available
         <span className="text-muted-foreground">· you are on v{version}</span>
+      </p>
+    );
+  if (!info.canary && version.includes("-"))
+    return (
+      <p className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm">
+        <CheckCircle2 className="size-4 text-[var(--success)]" />
+        You&apos;re on a canary
+        <span className="font-mono text-muted-foreground">v{version}</span>
+        <span className="text-muted-foreground">
+          · the next stable version shows up here
+        </span>
       </p>
     );
   return (
@@ -590,7 +677,7 @@ function Changelog({
                 </span>
               )}
               {r.current && <Badge variant="success">Installed</Badge>}
-              {r.prerelease && <Badge variant="muted">Pre-release</Badge>}
+              {r.prerelease && <Badge variant="muted">Canary</Badge>}
             </span>
           </AccordionTrigger>
           <AccordionContent>

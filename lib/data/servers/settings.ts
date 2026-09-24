@@ -139,6 +139,30 @@ export async function setServerBuildFallback(
   return (await getServerById(id))!;
 }
 
+/** Offer canary agent releases as updates on this server. Installs nothing by itself. */
+export async function setServerAgentCanary(
+  id: string,
+  agentCanary: boolean,
+): Promise<Server> {
+  const { teamId, user, server } = await requireAdminServer(id);
+  assertNotMigrationSource(server);
+  if (server.agentCanary === agentCanary) return server;
+  await getDb()
+    .update(serversTable)
+    .set({ agentCanary })
+    .where(eq(serversTable.id, id));
+  await recordActivity(
+    "server",
+    agentCanary
+      ? `Switched the agent on ${server.name} to canary releases`
+      : `Switched the agent on ${server.name} back to stable releases`,
+    user.name,
+    null,
+    teamId,
+  );
+  return (await getServerById(id))!;
+}
+
 export async function setServerDeployConcurrency(
   id: string,
   concurrency: number,

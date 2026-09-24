@@ -107,6 +107,7 @@ export async function addServer(
     uninstallError: "",
     hostArch: "",
     deployConcurrency: 1,
+    agentCanary: false,
     createdAt: nowIso(),
     bootstrap: stored,
   };
@@ -248,6 +249,7 @@ export async function ensureDeploHostServer(): Promise<void> {
     uninstallError: "",
     hostArch: "",
     deployConcurrency: 1,
+    agentCanary: false,
     createdAt: nowIso(),
     bootstrap: stored,
   };

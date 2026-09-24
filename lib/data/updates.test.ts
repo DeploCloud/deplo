@@ -13,7 +13,13 @@ import {
   TRUNCATE_IDENTITY,
   TEAM_A,
 } from "./identity-test-helpers";
-import { applyDeploUpdate, listDeploReleases, releaseProse } from "./updates";
+import {
+  applyDeploUpdate,
+  getUpdateInfo,
+  listDeploReleases,
+  releaseProse,
+  setCanaryReleases,
+} from "./updates";
 
 let db: TestDb;
 let pg: PGlite;
@@ -170,4 +176,80 @@ test("the changelog keeps the prose and drops the generated list", () => {
     "[Read the notes on GitHub](https://example.com/r)",
   );
   assert.equal(releaseProse("", "https://example.com/r"), "");
+});
+
+const CANARY = "v99.1.0-canary.3";
+
+function releaseFeed(url: string): Response {
+  if (url.includes("/releases/latest"))
+    return json({ tag_name: "v99.0.0", html_url: "stable" });
+  return json([
+    { tag_name: CANARY, html_url: "canary", body: "early", prerelease: true },
+    { tag_name: "v99.0.0", html_url: "stable", body: "notes" },
+    { tag_name: `v${DEPLO_VERSION}-canary.1`, body: "", prerelease: true },
+  ]);
+}
+
+test("stable: only stable releases are updates, and canaries stay out of What changed", async () => {
+  const capture = captureFetch(releaseFeed);
+  try {
+    const info = await asUser(ADMIN, getUpdateInfo);
+    assert.equal(info.canary, false);
+    assert.equal(info.latest, "v99.0.0");
+    assert.equal(info.updateAvailable, true);
+    const { releases } = await asUser(ADMIN, listDeploReleases);
+    assert.deepEqual(
+      releases.map((r) => r.tag),
+      ["v99.0.0"],
+    );
+  } finally {
+    capture.restore();
+  }
+});
+
+test("canary: the newest release of all is the update, and What changed lists it", async () => {
+  const capture = captureFetch(releaseFeed);
+  try {
+    const info = await asUser(ADMIN, () => setCanaryReleases(true));
+    assert.equal(info.canary, true);
+    assert.equal(info.latest, CANARY);
+    assert.equal(info.updateAvailable, true);
+    const { releases } = await asUser(ADMIN, listDeploReleases);
+    assert.deepEqual(
+      releases.map((r) => [r.tag, r.prerelease]),
+      [
+        [CANARY, true],
+        ["v99.0.0", false],
+        [`v${DEPLO_VERSION}-canary.1`, true],
+      ],
+    );
+  } finally {
+    capture.restore();
+  }
+});
+
+test("switching channel installs nothing; switching back finds the latest stable again", async () => {
+  const capture = captureFetch(releaseFeed);
+  try {
+    await asUser(ADMIN, () => setCanaryReleases(true));
+    const back = await asUser(ADMIN, () => setCanaryReleases(false));
+    assert.equal(back.canary, false);
+    assert.equal(back.latest, "v99.0.0");
+    assert.ok(
+      capture.calls.every((c) => c.method === "GET"),
+      "the switch only reads the release list",
+    );
+  } finally {
+    capture.restore();
+  }
+});
+
+test("a member cannot switch the instance to canary releases", async () => {
+  const capture = captureFetch(releaseFeed);
+  try {
+    await assert.rejects(() => asUser(MEMBER, () => setCanaryReleases(true)));
+    assert.equal((await asUser(ADMIN, getUpdateInfo)).canary, false);
+  } finally {
+    capture.restore();
+  }
 });

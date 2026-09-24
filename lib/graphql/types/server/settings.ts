@@ -3,6 +3,7 @@ import { ServerRef } from "./server-ref";
 import { type ServerRole } from "@/lib/data/servers/roster";
 import {
   renameServer,
+  setServerAgentCanary,
   setServerDeployConcurrency,
   setServerBuildFallback,
   setServerRole,
@@ -53,6 +54,17 @@ builder.mutationFields((t) => ({
     },
     resolve: (_r, { id, buildFallback }) =>
       setServerBuildFallback(id, buildFallback ?? null),
+  }),
+  setServerAgentCanary: t.field({
+    type: ServerRef,
+    authScopes: { instanceAdmin: true },
+    description:
+      "Offer this server's agent canary (pre-release) versions as updates, or go back to stable ones. Nothing is installed by the switch: a newer version shows up as an update, and turning it off never downgrades an agent already on a canary.",
+    args: {
+      id: t.arg.string({ required: true }),
+      agentCanary: t.arg.boolean({ required: true }),
+    },
+    resolve: (_r, { id, agentCanary }) => setServerAgentCanary(id, agentCanary),
   }),
   setServerTeams: t.field({
     type: ServerRef,

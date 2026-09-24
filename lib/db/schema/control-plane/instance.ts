@@ -31,6 +31,8 @@ export const instanceSettings = pgTable("instance_settings", {
   // The version this process booted on, and who asked for the agent rollout that follows a panel update.
   bootedVersion: text("booted_version"),
   agentRolloutBy: text("agent_rollout_by"),
+  // Offer canary (pre-release) versions of Deplo as updates. Never installs one by itself.
+  canaryReleases: boolean("canary_releases").notNull().default(false),
   // ADR-0033: the id is re-minted every time the switch goes from off to on.
   usageReportsEnabled: boolean("usage_reports_enabled").notNull().default(true),
   usageInstanceId: text("usage_instance_id"),

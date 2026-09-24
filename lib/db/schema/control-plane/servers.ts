@@ -42,6 +42,7 @@ export const servers = pgTable(
     buildOnly: boolean("build_only").notNull().default(false),
     buildFallback: boolean("build_fallback"),
     importOnly: boolean("import_only").notNull().default(false),
+    agentCanary: boolean("agent_canary").notNull().default(false),
     uninstallNextAt: isoTimestamptz("uninstall_next_at"),
     uninstallAttempts: integer("uninstall_attempts").notNull().default(0),
     uninstallError: text("uninstall_error").notNull().default(""),

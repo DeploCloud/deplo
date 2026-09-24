@@ -5,6 +5,7 @@ import { getDb } from "../../db/client";
 import { servers as serversTable } from "../../db/schema/control-plane/servers";
 import { recordActivity } from "../activity";
 import { DEFAULT_AGENT_PORT } from "../../agent/bootstrap";
+import { agentChannel } from "../../agent/release";
 import { assertNotMigrationSource, requireAdminServer } from "./roster";
 
 export interface UpdateServerAddressInput {
@@ -114,7 +115,7 @@ export async function updateServerAgent(
 
   const { selfUpdateServerAgent } =
     await import("../../infra/agent-client/agent-lifecycle");
-  const result = await selfUpdateServerAgent(id);
+  const result = await selfUpdateServerAgent(id, agentChannel(server));
 
   await getDb()
     .update(serversTable)

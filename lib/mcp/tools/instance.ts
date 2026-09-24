@@ -31,6 +31,7 @@ export const INSTANCE: McpToolDef[] = [
           publishedAt
           url
           checkedAt
+          canary
           error
         }
       }
@@ -52,6 +53,27 @@ export const INSTANCE: McpToolDef[] = [
           updateAvailable
           publishedAt
           url
+          canary
+        }
+      }
+    `,
+  }),
+  tool({
+    name: "set_canary_releases",
+    title: "Turn canary releases on or off",
+    description:
+      "Offer pre-release versions of Deplo as updates. Nothing is installed; off never downgrades.",
+    group: "Instance",
+    requires: "instanceAdmin",
+    idempotent: true,
+    input: z.object({ enabled: z.boolean() }),
+    query: /* GraphQL */ `
+      mutation McpSetCanaryReleases($enabled: Boolean!) {
+        setCanaryReleases(enabled: $enabled) {
+          canary
+          current
+          latest
+          updateAvailable
         }
       }
     `,

@@ -103,6 +103,7 @@ function srv(over: Partial<Server> = {}): Server {
     uninstallError: "",
     hostArch: "amd64",
     deployConcurrency: 1,
+    agentCanary: false,
     createdAt: "2026-07-01T00:00:00.000Z",
     agent: {
       port: 9443,

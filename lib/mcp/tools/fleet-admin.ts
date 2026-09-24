@@ -63,7 +63,7 @@ export const FLEET: McpToolDef[] = [
     name: "update_server",
     title: "Change a server's address, role, teams or limits",
     description:
-      "Any of: the address Deplo dials, its role, which teams may use it, build fallback, deploy concurrency, timezone.",
+      "Any of: the address Deplo dials, its role, which teams may use it, build fallback, deploy concurrency, timezone, canary agent releases.",
     group: "Servers",
     requires: "instanceAdmin",
     idempotent: true,
@@ -77,6 +77,10 @@ export const FLEET: McpToolDef[] = [
       buildFallback: z.boolean().optional(),
       deployConcurrency: z.number().int().optional(),
       timezone: z.string().optional().describe("IANA zone."),
+      agentCanary: z
+        .boolean()
+        .optional()
+        .describe("Offer canary agent versions as updates."),
     }),
     variables: (a) => ({
       id: a.serverId,
@@ -91,12 +95,14 @@ export const FLEET: McpToolDef[] = [
       buildFallback: a.buildFallback,
       concurrency: a.deployConcurrency ?? 1,
       timezone: a.timezone ?? "",
+      agentCanary: a.agentCanary ?? false,
       setAddress: a.address !== undefined,
       setRole: a.role !== undefined,
       setTeams: a.allTeams !== undefined || a.teamIds !== undefined,
       setFallback: a.buildFallback !== undefined,
       setConcurrency: a.deployConcurrency !== undefined,
       setTimezone: a.timezone !== undefined,
+      setCanary: a.agentCanary !== undefined,
     }),
     query: /* GraphQL */ `
       mutation McpUpdateServer(
@@ -108,12 +114,14 @@ export const FLEET: McpToolDef[] = [
         $buildFallback: Boolean
         $concurrency: Int!
         $timezone: String!
+        $agentCanary: Boolean!
         $setAddress: Boolean!
         $setRole: Boolean!
         $setTeams: Boolean!
         $setFallback: Boolean!
         $setConcurrency: Boolean!
         $setTimezone: Boolean!
+        $setCanary: Boolean!
       ) {
         updateServerAddress(id: $id, address: $address, agentPort: $agentPort)
           @include(if: $setAddress)
@@ -138,6 +146,11 @@ export const FLEET: McpToolDef[] = [
         setServerTimezone(id: $id, timezone: $timezone)
           @include(if: $setTimezone) {
           timezone
+        }
+        setServerAgentCanary(id: $id, agentCanary: $agentCanary)
+          @include(if: $setCanary) {
+          id
+          agentCanary
         }
       }
     `,

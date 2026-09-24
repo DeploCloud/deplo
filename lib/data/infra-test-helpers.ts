@@ -43,6 +43,7 @@ export function makeServer(opts: Partial<Server> & { id: string }): Server {
     uninstallError: opts.uninstallError ?? "",
     hostArch: opts.hostArch ?? "amd64",
     deployConcurrency: opts.deployConcurrency ?? 1,
+    agentCanary: opts.agentCanary ?? false,
     createdAt: opts.createdAt ?? T0,
     agent: opts.agent,
     bootstrap: opts.bootstrap,

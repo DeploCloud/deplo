@@ -37,6 +37,8 @@ export interface Server {
   uninstallError: string;
   hostArch: string;
   deployConcurrency: number;
+  /** Offer this server canary agent releases as updates. */
+  agentCanary: boolean;
   createdAt: string;
   agent?: ServerAgent;
   bootstrap?: ServerBootstrap;

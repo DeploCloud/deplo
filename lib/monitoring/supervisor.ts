@@ -2,7 +2,7 @@ import "server-only";
 
 import { status as GrpcStatus } from "@grpc/grpc-js";
 
-import { listAllServers } from "../data/servers/roster";
+import { getServerById, listAllServers } from "../data/servers/roster";
 import {
   markServerSeen,
   observedTraefik,
@@ -25,7 +25,7 @@ import {
   toContainerSample,
 } from "../data/container-metrics";
 import { reconcileAppStatusFromTelemetry } from "../data/app-status-reconcile";
-import { resolveExpectedAgentVersion } from "../agent/release";
+import { expectedAgentVersionFor } from "../agent/release";
 import type { ServerMetrics } from "../data/monitoring";
 import type {
   ContainerStat,
@@ -213,7 +213,9 @@ async function runStreamLoop(
       const facts: ConnectionFacts = {
         agentVersion: hello.agentVersion || null,
         traefik: hello.traefikRunning,
-        expectedAgentVersion: await resolveExpectedAgentVersion(),
+        expectedAgentVersion: await expectedAgentVersionFor(
+          (await getServerById(serverId)) ?? {},
+        ),
         serverName,
       };
 
@@ -323,7 +325,7 @@ async function runPollLoop(
         const servers = await listAllServers();
         const server = servers.find((s) => s.id === serverId);
         if (!server) return;
-        const expected = await resolveExpectedAgentVersion();
+        const expected = await expectedAgentVersionFor(server);
         recordMetricsSample(await measureServerForCollector(server, expected));
       }
     } catch {}

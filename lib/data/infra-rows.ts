@@ -42,6 +42,7 @@ const SERVER_FIELDS = {
   buildFallback: true,
   hostArch: true,
   deployConcurrency: true,
+  agentCanary: true,
   createdAt: true,
   agent: true,
   bootstrap: true,
@@ -72,6 +73,7 @@ export function serverToRow(s: Server): ServerInsert {
     uninstallError: s.uninstallError,
     hostArch: s.hostArch,
     deployConcurrency: s.deployConcurrency,
+    agentCanary: s.agentCanary,
     agentPort: s.agent?.port ?? null,
     agentCertFingerprint: s.agent?.certFingerprint ?? null,
     agentCertPem: s.agent?.certPem ?? null,
@@ -108,6 +110,7 @@ export function assembleServer(row: ServerRow): Server {
     uninstallError: row.uninstallError ?? "",
     hostArch: row.hostArch ?? "",
     deployConcurrency: row.deployConcurrency ?? 1,
+    agentCanary: row.agentCanary ?? false,
     createdAt: row.createdAt,
   };
   if (row.agentPort !== null) {

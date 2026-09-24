@@ -124,6 +124,14 @@ Any instance admin may turn it off at any time; off means nothing is sent. An in
 force it off, and the switch then shows as disabled with that reason.
 _Avoid_: telemetry (in anything a person reads), tracking, opt-out.
 
+**Canary release**:
+A pre-release of the next Deplo or **server agent** version, tagged `x.y.z-canary.n`. Off by
+default. The panel opts in once (Settings → Deplo → Updates); each server's agent opts in on its
+own (Server → Advanced). Opting in only changes which versions count as an update: nothing
+installs until someone clicks Update, and opting out never downgrades.
+_Avoid_: beta (the whole product is in beta), nightly, pre-release (in anything a person reads),
+channel.
+
 **Registration link**:
 A single-use link (`/register/<token>`) that lets a NEW person self-register a brand-new
 account **and their own team** - like first-run setup, not a join. Minted by an instance

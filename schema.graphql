@@ -3633,6 +3633,11 @@ type Mutation {
   setAppVolumes(id: String!, volumes: [VolumeInput!]!): App
 
   """
+  Offer canary (pre-release) versions of Deplo as updates, or go back to stable ones. Installs nothing: a newer version shows up as an update, and turning it off never downgrades a panel already on a canary.
+  """
+  setCanaryReleases(enabled: Boolean!): UpdateInfo
+
+  """
   Point every manageable server's certificates at this account email, where Let's Encrypt sends expiry and revocation notices. Each host's proxy is recreated to pick it up, one host at a time, so routing there is interrupted for a few seconds; certificates already issued keep working. Servers Deplo cannot manage are skipped and reported as skipped, never counted as done.
   """
   setCertificateEmail(email: String!): [CertificateAccount!]
@@ -3748,6 +3753,11 @@ type Mutation {
   Turn saving server metrics on the control plane on or off. Turning it off also drops the buffered history.
   """
   setSaveMetrics(enabled: Boolean!): MonitoringSettings
+
+  """
+  Offer this server's agent canary (pre-release) versions as updates, or go back to stable ones. Nothing is installed by the switch: a newer version shows up as an update, and turning it off never downgrades an agent already on a canary.
+  """
+  setServerAgentCanary(agentCanary: Boolean!, id: String!): Server
 
   """
   Whether this host may compile for an app whose own build server could not be reached (the app's own server stays the last resort). Omit the flag to go back to automatic: the Deplo host builds as a fallback, no other server does. Refused on a host with no Docker of ours to build with.
@@ -4374,7 +4384,7 @@ type Query {
   deleteUserImpact(userId: String!): DeleteUserImpact
 
   """
-  Deplo's published releases with their notes, newest first; cached for an hour and refreshed by checkForUpdates.
+  Deplo's published releases with their notes, newest first; canaries only while `updateInfo.canary` is on (or the one running). Cached for an hour and refreshed by checkForUpdates.
   """
   deploChangelog: DeploChangelog
   deployment(id: String!): Deployment
@@ -5122,6 +5132,10 @@ type SearchTemplate {
 
 """A connected host running deployments (reached via its agent)."""
 type Server {
+  """
+  Whether this server is offered canary (pre-release) agent versions as updates. Nothing installs one on its own: the update stays a click. Set with setServerAgentCanary.
+  """
+  agentCanary: Boolean
   agentPort: Int
 
   """
@@ -5149,7 +5163,7 @@ type Server {
   dockerVersion: String
 
   """
-  The agent version this server should be running - the latest GitHub release of the agent (DeploCloud/deplo-agent). Resolved at request time and cached; falls back to a built-in version when GitHub is unreachable.
+  The agent version this server should be running - the latest GitHub release of the agent (DeploCloud/deplo-agent), or the newest canary when `agentCanary` is on. Resolved at request time and cached; falls back to a built-in version when GitHub is unreachable.
   """
   expectedAgentVersion: String
   host: String
@@ -5826,6 +5840,10 @@ input UpdateGitConnectionInput {
 Result of checking the upstream GitHub repository for a newer Deplo release.
 """
 type UpdateInfo {
+  """
+  Whether canary (pre-release) versions count as updates. Off: only stable releases do.
+  """
+  canary: Boolean
   checkedAt: String
   current: String
   error: String
