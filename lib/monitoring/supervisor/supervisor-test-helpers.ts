@@ -154,6 +154,7 @@ export function containerStat(
     restartCount: 0,
     netNsId: 0,
     netNsHost: false,
+    oomKills: 0,
     ...over,
   };
 }
