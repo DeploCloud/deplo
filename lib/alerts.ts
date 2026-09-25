@@ -34,6 +34,12 @@ export const ALERT_META: Record<AlertKey, AlertMeta> = {
     keywords: "crash loop down restarting unhealthy",
     defaultOn: true,
   },
+  app_out_of_memory: {
+    label: "App ran out of memory",
+    description: "An app used all the memory it may use and was killed.",
+    keywords: "oom memory ram killed limit leak",
+    defaultOn: true,
+  },
 
   database_ready: {
     label: "Database ready",
@@ -263,7 +269,7 @@ export const ALERT_CATEGORIES: {
     key: "apps",
     label: "Apps",
     description: "How your running apps behave.",
-    alerts: ["app_crash_loop"],
+    alerts: ["app_crash_loop", "app_out_of_memory"],
   },
   {
     key: "crons",
