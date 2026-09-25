@@ -9,7 +9,7 @@ import { publishAppChanged } from "../graphql/pubsub";
 import { nowIso } from "../ids";
 import type { ContainerStat as PbContainerStat } from "../agent/gen/agent";
 import type { Deployment } from "../types/deployment";
-import { reportAppHealth } from "../notify/apps";
+import { reportAppHealth, reportOutOfMemory } from "../notify/apps";
 import { stopLoopingWorkloads } from "./restart-loop-guard";
 
 const IN_PROGRESS: Deployment["status"][] = ["queued", "building"];
@@ -34,6 +34,9 @@ export async function reconcileAppStatusFromTelemetry(
   }
   void reportAppHealth(serverId, crashing, running).catch((e) =>
     console.error("[deplo] app health alerting failed:", e),
+  );
+  void reportOutOfMemory(serverId, byProject).catch((e) =>
+    console.error("[deplo] out-of-memory alerting failed:", e),
   );
   void stopLoopingWorkloads(serverId, byProject).catch((e) =>
     console.error("[deplo] restart-loop guard failed:", e),

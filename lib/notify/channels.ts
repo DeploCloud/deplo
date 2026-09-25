@@ -230,6 +230,7 @@ const DANGER = new Set<AlertKey>([
 ]);
 const GOOD = new Set<AlertKey>(["server_online", "database_ready"]);
 const WARN = new Set<AlertKey>([
+  "app_out_of_memory",
   "deployment_interrupted",
   "database_rebuilt",
   "database_deleted",

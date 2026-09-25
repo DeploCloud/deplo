@@ -2269,6 +2269,12 @@ export interface ContainerStat {
    * the panel points at the host chart instead.
    */
   netNsHost: boolean;
+  /**
+   * ADDITIVE (contract stays V1). How many times the kernel killed this container
+   * for running out of memory, counted from docker's `oom` events since the agent
+   * started. Keyed by container_id, so it never goes down for the same id.
+   */
+  oomKills: number;
 }
 
 export interface ContainerStatsResponse {
@@ -16555,6 +16561,7 @@ function createBaseContainerStat(): ContainerStat {
     restartCount: 0,
     netNsId: 0,
     netNsHost: false,
+    oomKills: 0,
   };
 }
 
@@ -16613,6 +16620,9 @@ export const ContainerStat: MessageFns<ContainerStat> = {
     }
     if (message.netNsHost !== false) {
       writer.uint32(144).bool(message.netNsHost);
+    }
+    if (message.oomKills !== 0) {
+      writer.uint32(152).int32(message.oomKills);
     }
     return writer;
   },
@@ -16774,6 +16784,14 @@ export const ContainerStat: MessageFns<ContainerStat> = {
             message.netNsHost = reader.bool();
             continue;
           }
+          case 19: {
+            if (tag !== 152) {
+              break;
+            }
+
+            message.oomKills = reader.int32();
+            continue;
+          }
         }
         if ((tag & 7) === 4 || tag === 0) {
           break;
@@ -16858,6 +16876,11 @@ export const ContainerStat: MessageFns<ContainerStat> = {
         : isSet(object.net_ns_host)
         ? globalThis.Boolean(object.net_ns_host)
         : false,
+      oomKills: isSet(object.oomKills)
+        ? globalThis.Number(object.oomKills)
+        : isSet(object.oom_kills)
+        ? globalThis.Number(object.oom_kills)
+        : 0,
     };
   },
 
@@ -16917,6 +16940,9 @@ export const ContainerStat: MessageFns<ContainerStat> = {
     if (message.netNsHost !== false) {
       obj.netNsHost = message.netNsHost;
     }
+    if (message.oomKills !== 0) {
+      obj.oomKills = Math.round(message.oomKills);
+    }
     return obj;
   },
 
@@ -16943,6 +16969,7 @@ export const ContainerStat: MessageFns<ContainerStat> = {
     message.restartCount = object.restartCount ?? 0;
     message.netNsId = object.netNsId ?? 0;
     message.netNsHost = object.netNsHost ?? false;
+    message.oomKills = object.oomKills ?? 0;
     return message;
   },
 };
