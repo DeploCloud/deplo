@@ -19,7 +19,12 @@ import {
 
 process.env.DEPLO_PUBLIC_URL = "https://deplo.test";
 
-import { makeTestDb, truncateAll, type TestDb } from "../db/test-harness";
+import {
+  makeTestDb,
+  truncateAll,
+  writeMark,
+  type TestDb,
+} from "../db/test-harness";
 import { __setTestDb, __resetTestDb } from "../db/client";
 import {
   membershipCapabilities as membershipCapabilitiesTable,
@@ -494,10 +499,15 @@ async function snapshotB(): Promise<string> {
 
 test("no mutation touches another team's rows", async () => {
   const touched: string[] = [];
+  let dirty = true;
+  let before = "";
   for (const m of MUTATIONS) {
-    await seedAll();
+    if (dirty) {
+      await seedAll();
+      before = await snapshotB();
+    }
     const principal = await asOwnerOfA();
-    const before = await snapshotB();
+    const mark = await writeMark(pg);
     try {
       await Promise.race([
         runWithIdentity(principal.identity, () =>
@@ -506,8 +516,8 @@ test("no mutation touches another team's rows", async () => {
         new Promise((r) => setTimeout(() => r("timeout"), 15_000)),
       ]);
     } catch {}
-    const after = await snapshotB();
-    if (before !== after) touched.push(m.name);
+    dirty = (await writeMark(pg)) !== mark;
+    if (dirty && (await snapshotB()) !== before) touched.push(m.name);
   }
   assert.deepEqual(
     touched,

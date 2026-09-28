@@ -18,7 +18,12 @@ import {
 
 process.env.DEPLO_PUBLIC_URL = "https://deplo.test";
 
-import { makeTestDb, truncateAll, type TestDb } from "../db/test-harness";
+import {
+  makeTestDb,
+  truncateAll,
+  writeMark,
+  type TestDb,
+} from "../db/test-harness";
 import { __setTestDb, __resetTestDb } from "../db/client";
 import {
   folderGrants as folderGrantsTable,
@@ -328,12 +333,18 @@ async function snapshot(): Promise<string> {
 
 test("a read-only token can't move ANY of another team's records", async () => {
   const touched: string[] = [];
+  let dirty = true;
+  let before = "";
   for (const m of docsFor("mutation")) {
-    await seedAll();
+    if (dirty) {
+      await seedAll();
+      before = await snapshot();
+    }
     const intruder = await principalFor(READ_ONLY_IN_ALPHA);
-    const before = await snapshot();
+    const mark = await writeMark(pg);
     await run(intruder, m.doc);
-    if ((await snapshot()) !== before) touched.push(m.name);
+    dirty = (await writeMark(pg)) !== mark;
+    if (dirty && (await snapshot()) !== before) touched.push(m.name);
   }
   assert.deepEqual(
     touched,
@@ -350,6 +361,7 @@ test("the sweep can see: beta's own owner moves the same fixture", async () => {
     const before = await snapshot();
     await run(owner, m.doc);
     if ((await snapshot()) !== before) moved.push(m.name);
+    if (moved.length > 5) break;
   }
   assert.ok(
     moved.length > 5,

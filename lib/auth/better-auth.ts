@@ -25,20 +25,18 @@ import {
   publicBaseUrl,
 } from "@/lib/public-url";
 import { MCP_RESOURCE_PATH } from "@/lib/auth/oauth-metadata";
+import { SESSION_TTL_SECONDS } from "./session-constants";
 
-export const SESSION_TTL_SECONDS = 60 * 60 * 24 * 7;
-export const SESSION_MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000;
-
-export const SESSION_COOKIE_NAME = "deplo.session_token";
-
-export const SECURE_COOKIE_PREFIX = "__Secure-";
+export {
+  SECURE_COOKIE_PREFIX,
+  SESSION_COOKIE_NAME,
+  SESSION_MAX_AGE_MS,
+  SESSION_TTL_SECONDS,
+  sessionCookieNames,
+} from "./session-constants";
 
 function secureCookies(): boolean {
   return cookiesAreSecure();
-}
-
-export function sessionCookieNames(): [string, string] {
-  return [SESSION_COOKIE_NAME, `${SECURE_COOKIE_PREFIX}${SESSION_COOKIE_NAME}`];
 }
 
 // Network only: ctx.request is absent for the auth.api.* calls in lib/data/two-factor.ts, which verify a code first.

@@ -17,7 +17,12 @@ import {
 
 process.env.DEPLO_PUBLIC_URL = "https://deplo.test";
 
-import { makeTestDb, truncateAll, type TestDb } from "../db/test-harness";
+import {
+  makeTestDb,
+  truncateAll,
+  writeMark,
+  type TestDb,
+} from "../db/test-harness";
 import { __setTestDb, __resetTestDb } from "../db/client";
 import {
   folderGrants as folderGrantsTable,
@@ -346,13 +351,19 @@ const OWN_PREFERENCES_ONLY = ["reorderMyTeams"];
 
 test("a member holding no capability can't move a single row", async () => {
   const touched: string[] = [];
+  let dirty = true;
+  let before = "";
   for (const m of docsFor("mutation")) {
     if (OWN_PREFERENCES_ONLY.includes(m.name)) continue;
-    await seedAll();
+    if (dirty) {
+      await seedAll();
+      before = await snapshot();
+    }
     const nobody = await principalFor(NOBODY);
-    const before = await snapshot();
+    const mark = await writeMark(pg);
     await run(nobody, m.doc);
-    if ((await snapshot()) !== before) touched.push(m.name);
+    dirty = (await writeMark(pg)) !== mark;
+    if (dirty && (await snapshot()) !== before) touched.push(m.name);
   }
   assert.deepEqual(
     touched,
@@ -385,6 +396,7 @@ test("the sweep can see: the owner moves the same fixture", async () => {
     const before = await snapshot();
     await run(owner, m.doc);
     if ((await snapshot()) !== before) moved.push(m.name);
+    if (moved.length > 10) break;
   }
   assert.ok(
     moved.length > 10,

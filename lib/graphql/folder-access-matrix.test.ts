@@ -17,7 +17,12 @@ import {
 
 process.env.DEPLO_PUBLIC_URL = "https://deplo.test";
 
-import { makeTestDb, truncateAll, type TestDb } from "../db/test-harness";
+import {
+  makeTestDb,
+  truncateAll,
+  writeMark,
+  type TestDb,
+} from "../db/test-harness";
 import { __setTestDb, __resetTestDb } from "../db/client";
 import { membershipCapabilities as membershipCapabilitiesTable } from "../db/schema/control-plane/access-control";
 import { apps as appsTable } from "../db/schema/control-plane/apps";
@@ -323,12 +328,18 @@ async function snapshot(): Promise<string> {
 
 test("no mutation touches the private folder's app", async () => {
   const touched: string[] = [];
+  let dirty = true;
+  let before = "";
   for (const m of docsFor("mutation")) {
-    await seedAll();
+    if (dirty) {
+      await seedAll();
+      before = await snapshot();
+    }
     const intruder = await principalFor(INTRUDER);
-    const before = await snapshot();
+    const mark = await writeMark(pg);
     await run(intruder, m.doc);
-    if ((await snapshot()) !== before) touched.push(m.name);
+    dirty = (await writeMark(pg)) !== mark;
+    if (dirty && (await snapshot()) !== before) touched.push(m.name);
   }
   assert.deepEqual(
     touched,

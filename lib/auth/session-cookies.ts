@@ -7,7 +7,7 @@ import {
   sessionCookieNames,
   SECURE_COOKIE_PREFIX,
   SESSION_TTL_SECONDS,
-} from "./better-auth";
+} from "./session-constants";
 import { cookiesAreSecure, requestIsHttps } from "../public-url";
 
 export async function setActiveTeamCookie(teamId: string) {

@@ -10,8 +10,7 @@ import { avatarUrlFor } from "../avatar";
 import type { PublicUser } from "../types/identity";
 import { currentIdentity } from "./request-context";
 import { authHeaders } from "./session-cookies";
-import { getAuth, SESSION_MAX_AGE_MS } from "./better-auth";
-import { isSetupNeeded } from "./setup";
+import { SESSION_MAX_AGE_MS } from "./session-constants";
 
 const PUBLIC_USER_COLS = {
   id: usersTable.id,
@@ -51,6 +50,8 @@ async function toPublic(u: {
 
 const currentSession = cache(async () => {
   if (currentIdentity()) return null;
+  // Lazy: a token, MCP or test identity never reads a cookie, so never pays for the auth library.
+  const { getAuth } = await import("./better-auth");
   const auth = getAuth();
   if (!auth) return null;
   const s = await auth.api
@@ -102,7 +103,10 @@ export const currentSessionAuthMethod = cache(
 
 export async function requireUser(): Promise<PublicUser> {
   const user = await getCurrentUser();
-  if (!user) redirect((await isSetupNeeded()) ? "/setup" : "/login");
+  if (!user) {
+    const { isSetupNeeded } = await import("./setup");
+    redirect((await isSetupNeeded()) ? "/setup" : "/login");
+  }
   return user;
 }
 
