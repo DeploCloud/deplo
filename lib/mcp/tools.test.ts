@@ -154,6 +154,16 @@ test("an argument combination that lights no branch is refused", () => {
   }
 });
 
+test("a tool that replaces a whole list is flagged destructive", () => {
+  for (const t of MCP_TOOLS)
+    if (/wholesale|whole (variable )?list/i.test(t.description))
+      assert.equal(
+        t.destructive,
+        true,
+        `${t.name} drops whatever the caller leaves out, so the client must ask first`,
+      );
+});
+
 test("a description stays short enough to read them all", () => {
   for (const t of MCP_TOOLS)
     assert.ok(
