@@ -7,6 +7,8 @@ import { apps as appsTable } from "../db/schema/control-plane/apps";
 import { deployments as deploymentsTable } from "../db/schema/control-plane/deployments";
 import { dispatchAlert } from "./dispatch";
 import { shouldFire } from "./cooldown";
+import { newOomKills } from "../monitoring/oom";
+import type { ContainerStat } from "../agent/gen/agent";
 
 const KEY = Symbol.for("deplo.notify.crashloop");
 const lastSeen = ((globalThis as Record<symbol, unknown>)[KEY] ??= new Map<
@@ -75,6 +77,28 @@ export async function reportAppHealth(
   } catch (e) {
     console.error("[deplo] app health alerting failed:", e);
   }
+}
+
+export async function reportOutOfMemory(
+  serverId: string,
+  byProject: ReadonlyMap<string, readonly ContainerStat[]>,
+): Promise<void> {
+  const hits = new Set(
+    newOomKills(serverId, [...byProject.values()].flat()).map((s) => s.name),
+  );
+  if (hits.size === 0) return;
+  const killed = [...byProject]
+    .filter(([, stats]) => stats.some((s) => hits.has(s.name)))
+    .map(([id]) => id);
+  for (const app of await appRows(serverId, killed))
+    dispatchAlert({
+      teamId: app.teamId,
+      key: "app_out_of_memory",
+      dedupe: { id: `app:${app.id}`, state: "oom" },
+      title: `${app.name} ran out of memory`,
+      body: "It used all the memory it may use and was killed. Give it more under Resources, or look for a leak in the logs.",
+      path: `/apps/${app.slug}`,
+    });
 }
 
 async function appRows(serverId: string, ids: string[]) {

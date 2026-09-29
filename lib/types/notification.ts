@@ -26,6 +26,7 @@ export type AlertKey =
   | "git_connection_failing"
   | "git_access_missing"
   | "app_crash_loop"
+  | "app_out_of_memory"
   | "cron_job_failed"
   | "cron_job_succeeded"
   | "database_ready"
@@ -64,6 +65,7 @@ export const ALL_ALERTS: AlertKey[] = [
   "git_connection_failing",
   "git_access_missing",
   "app_crash_loop",
+  "app_out_of_memory",
   "cron_job_failed",
   "cron_job_succeeded",
   "database_ready",
