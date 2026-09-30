@@ -12,6 +12,7 @@ export const DOCS = {
   "deploy.fromGit": "guides/deploy/from-git",
   "deploy.dockerImage": "guides/deploy/docker-image",
   "deploy.fromTemplate": "guides/deploy/from-template",
+  "deploy.button": "guides/deploy/deploy-button",
 
   "build.settings": "guides/releases/build-settings",
   "build.methods": "guides/releases/build-settings#the-four-build-methods",

@@ -519,7 +519,8 @@ scripts/gen-schema.ts`. Both halves of that prefix are load-bearing: the shim
   there. Nothing on this side verifies these hashes, so there is no legacy format to keep reading.
 - **Every user-supplied outbound address goes through `lib/outbound-url.ts` first**
   (`assertSafeOutboundUrl` / `assertSafeOutboundHost` for a bare SMTP host). S3 endpoints,
-  notification webhooks, push endpoints and git base URLs are all on it; reaching inside the
+  notification webhooks, push endpoints, git base URLs and a deploy button's compose URL
+  (`lib/templates/from-url.ts`, every redirect hop re-checked) are all on it; reaching inside the
   deployment is an `allowPrivateEndpoint` flag gated on `requireInstanceAdmin`, never on a team
   capability. A new `fetch` to an address a user typed is a hole until it is on this list.
   **Exactly one exemption**, named in that file: `probePanel` (`lib/data/instance-settings/panel-probe.ts`)
