@@ -68,6 +68,16 @@ test("composeOrigin: labels the repository, names the folder or the repo", () =>
     { label: "github.com/acme/stacks", name: "grafana" },
   );
   assert.deepEqual(
+    composeOrigin(
+      "https://github.com/DeploCloud/templates/blob/main/src/templates/actual-budget/default/docker-compose.yml",
+    ),
+    { label: "github.com/DeploCloud/templates", name: "actual-budget" },
+  );
+  assert.deepEqual(
+    composeOrigin("https://github.com/acme/app/blob/main/default/compose.yml"),
+    { label: "github.com/acme/app", name: "app" },
+  );
+  assert.deepEqual(
     composeOrigin("https://gitlab.com/team/app/-/blob/main/compose.yml"),
     { label: "gitlab.com/team/app", name: "app" },
   );
