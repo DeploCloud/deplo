@@ -29,6 +29,8 @@ import {
   templateLogoDataUri,
 } from "@/templates/catalog";
 import { templateAccent } from "@/lib/templates/logo-color";
+import { loadComposeFromUrl } from "@/lib/templates/from-url";
+import { docsUrl } from "@/lib/docs";
 import type { DeploySource } from "@/lib/types/app";
 
 export const metadata = { title: "New App" };
@@ -102,6 +104,7 @@ export default async function NewAppPage(props: PageProps<"/[team]/new">) {
   const variantId = one(params.variant);
   const repoParam = one(params.repo);
   const sourceParam = one(params.source);
+  const composeParam = one(params.compose);
   const presetSource = SOURCES.find((s) => s === sourceParam) ?? null;
 
   const template =
@@ -127,15 +130,46 @@ export default async function NewAppPage(props: PageProps<"/[team]/new">) {
       </FocusFrame>
     );
 
-  const autoDomain = template
-    ? productionDomain(template.slug, instanceHost())
-    : null;
-  const blueprint = template
-    ? getTemplateBlueprint(template, { domain: autoDomain ?? undefined })
+  const imported =
+    !template && composeParam ? await loadComposeFromUrl(composeParam) : null;
+  if (imported && !imported.ok)
+    return (
+      <FocusFrame exitHref={exitHref}>
+        <EmptyState
+          icon={CloudOff}
+          title="That compose file isn't available"
+          description={imported.error}
+          docs="deploy.button"
+          action={
+            <div className="flex gap-2">
+              <Button asChild size="sm" variant="outline">
+                <Link href={exitHref}>Back to overview</Link>
+              </Button>
+              <Button asChild size="sm">
+                <Link href="/new">Create from scratch</Link>
+              </Button>
+            </div>
+          }
+        />
+      </FocusFrame>
+    );
+
+  const spec =
+    template ??
+    (imported
+      ? {
+          slug: imported.name,
+          compose: imported.compose,
+          config: imported.config,
+        }
+      : null);
+  const autoDomain = spec ? productionDomain(spec.slug, instanceHost()) : null;
+  const blueprint = spec
+    ? getTemplateBlueprint(spec, { domain: autoDomain ?? undefined })
     : null;
   const logo = template
     ? await templateLogoDataUri(template.variant.logo)
-    : null;
+    : (imported?.logo ?? null);
   const veil = template
     ? await templateAccent(
         template.slug,
@@ -160,7 +194,7 @@ export default async function NewAppPage(props: PageProps<"/[team]/new">) {
   ]);
 
   return (
-    <FocusFrame exitHref={exitHref} narrow={Boolean(template)}>
+    <FocusFrame exitHref={exitHref} narrow={Boolean(spec)}>
       <NewAppWizard
         servers={servers}
         buildServers={buildServers}
@@ -194,10 +228,32 @@ export default async function NewAppPage(props: PageProps<"/[team]/new">) {
                 autoDomain,
                 mounts: blueprint?.mounts ?? [],
               }
-            : undefined
+            : imported && blueprint
+              ? {
+                  id: imported.name,
+                  name: imported.name,
+                  description: `From ${imported.origin}`,
+                  alerts: [
+                    {
+                      type: "warning",
+                      message:
+                        "Not from the Deplo catalog. Review it before you deploy.",
+                      link: docsUrl("deploy.button"),
+                    },
+                  ],
+                  logo,
+                  compose: blueprint.compose,
+                  env: blueprint.env,
+                  expose: blueprint.expose,
+                  exposes: blueprint.exposes,
+                  autoDomain: blueprint.expose ? autoDomain : null,
+                  mounts: blueprint.mounts,
+                  imported: true,
+                }
+              : undefined
         }
         presetRepo={repoParam}
-        presetName={template?.slug}
+        presetName={template?.slug ?? imported?.name}
         presetSource={presetSource}
         placement={placement}
         exitHref={exitHref}

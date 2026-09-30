@@ -84,7 +84,9 @@ export function DetailsStep({
         isTemplate ? template!.description : detailsDescription(source!)
       }
       meta={meta}
-      backLabel={isTemplate ? "Back to templates" : "Back"}
+      backLabel={
+        isTemplate && !template!.imported ? "Back to templates" : "Back"
+      }
       onBack={onBack}
       onNext={onNext}
       nextLabel={usesGit ? "Next" : "Deploy"}
@@ -113,7 +115,7 @@ export function DetailsStep({
 
       {isTemplate && <TemplateAlerts alerts={template!.alerts} />}
 
-      {useCompose && !isTemplate && (
+      {useCompose && (!isTemplate || template!.imported) && (
         <ComposeSummary
           services={composeServices}
           diagnostics={composeDiags}

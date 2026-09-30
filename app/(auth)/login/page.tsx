@@ -18,6 +18,7 @@ import {
 } from "@/lib/passkey-client";
 import { DocsLink } from "@/components/ui/docs-link";
 import { cn } from "@/lib/utils";
+import { safeNext } from "@/lib/team-path";
 
 const LOGIN = /* GraphQL */ `
   mutation Login($email: String!, $password: String!) {
@@ -55,13 +56,6 @@ const VERIFY_2FA = /* GraphQL */ `
     }
   }
 `;
-
-function safeNext(raw: string | null): string {
-  if (!raw) return "/";
-  if (/^\/invite\/[A-Za-z0-9_-]+$/.test(raw)) return raw;
-  if (/^\/oauth\/consent\?/.test(raw)) return raw;
-  return "/";
-}
 
 export default function LoginPage() {
   const next = useSearchParams().get("next");

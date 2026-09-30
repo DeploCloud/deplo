@@ -42,6 +42,9 @@ export async function legacyRedirect(
   const search = query.toString();
   const path = `/${[section, ...rest].join("/")}${search ? `?${search}` : ""}`;
   const slug = await teamFor(section, rest);
+  // A stale session passes the proxy; sign-in keeps the target when safeNext allows it.
+  if (!slug && !(await getCurrentUser()))
+    redirect(`/login?next=${encodeURIComponent(path)}`);
   if (!slug) redirect("/welcome");
   redirect(withTeam(path, slug));
 }

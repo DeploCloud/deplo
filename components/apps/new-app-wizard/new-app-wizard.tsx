@@ -308,7 +308,7 @@ export function NewAppWizard({
       onEditEnv={() => setEnvOpen(true)}
       source={source}
       useCompose={useCompose}
-      templateCompose={templateCompose}
+      templateCompose={templateCompose && !template?.imported}
       buildsImage={buildsImage}
       usesGit={usesGit}
       build={build}

@@ -92,3 +92,15 @@ test("HSTS is remembered for months, so it never carries preload or subdomains",
   assert.doesNotMatch(hsts ?? "", /preload/);
   assert.doesNotMatch(hsts ?? "", /includeSubDomains/);
 });
+
+test("a signed-out visit to /new keeps where it was going, other pages do not", () => {
+  process.env.DEPLO_PUBLIC_URL = PANEL;
+  const loginFor = (url: string) =>
+    proxy(new NextRequest(new Request(url))).headers.get("location") ?? "";
+  const target = "/new?compose=https%3A%2F%2Fgithub.com%2Facme%2Fapp";
+  assert.equal(
+    new URL(loginFor(`${PANEL}${target}`)).searchParams.get("next"),
+    target,
+  );
+  assert.equal(new URL(loginFor(`${PANEL}/apps/web`)).search, "");
+});

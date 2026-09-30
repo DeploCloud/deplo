@@ -40,6 +40,7 @@ export interface WizardTemplate {
   exposes: { service: string; port: number; host?: string; path?: string }[];
   autoDomain: string | null;
   mounts: { filePath: string; content: string }[];
+  imported?: boolean;
 }
 
 export interface WizardPlacement {
