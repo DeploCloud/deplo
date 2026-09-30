@@ -45,7 +45,12 @@ export function composeOrigin(input: string): { label: string; name: string } {
       ? [parts.slice(0, dash), parts.slice(dash + 3)]
       : [parts.slice(0, -1), parts.slice(-1)];
   const host = github ? "github.com" : url.hostname;
-  const folder = file.length > 1 ? file.at(-2) : repo.at(-1);
+  // The catalogue layout is <template>/default/: that variant folder says nothing about the app.
+  const folder =
+    file
+      .slice(0, -1)
+      .filter((part) => part !== "default")
+      .at(-1) ?? repo.at(-1);
   return { label: [host, ...repo].join("/"), name: folder ?? host };
 }
 
