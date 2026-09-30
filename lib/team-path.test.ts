@@ -10,6 +10,7 @@ import {
   pickTeamSlug,
   teamSlugFromPath,
   withTeam,
+  safeNext,
 } from "./team-path";
 
 test("prefixes a dashboard path, query and hash included", () => {
@@ -154,4 +155,25 @@ test("a path that already names a team is left alone", () => {
 test("the root keeps its query where it belongs", () => {
   assert.equal(withTeam("/?project=prj_1", "acme"), "/acme?project=prj_1");
   assert.equal(withTeam("/#tail", "acme"), "/acme#tail");
+});
+
+test("safeNext: sign-in returns only to known same-origin shapes", () => {
+  for (const ok of [
+    "/new?compose=https%3A%2F%2Fgithub.com%2Facme%2Fapp",
+    "/acme/new?compose=x",
+    "/new",
+    "/invite/abc_1",
+    "/oauth/consent?client_id=x",
+  ])
+    assert.equal(safeNext(ok), ok, ok);
+  for (const bad of [
+    null,
+    "//evil.com/new",
+    "https://evil.com/new",
+    "/\\evil.com/new",
+    "/acme/apps/new-thing",
+    "/a/b/new",
+    "/new#x",
+  ])
+    assert.equal(safeNext(bad), "/", String(bad));
 });

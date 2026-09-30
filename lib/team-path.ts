@@ -98,3 +98,18 @@ export function flatPath(pathname: string): string {
   if (!slug) return pathname;
   return pathname.slice(slug.length + 1) || "/";
 }
+
+// A deploy button lands a signed-out visitor on /new, and signing in has to bring them back.
+const NEW_APP_PATH = /^\/(?:[a-z0-9-]+\/)?new(?:\?[^#\\]*)?$/;
+
+export function isNewAppPath(path: string): boolean {
+  return NEW_APP_PATH.test(path);
+}
+
+export function safeNext(raw: string | null | undefined): string {
+  if (!raw) return "/";
+  if (/^\/invite\/[A-Za-z0-9_-]+$/.test(raw)) return raw;
+  if (/^\/oauth\/consent\?/.test(raw)) return raw;
+  if (isNewAppPath(raw)) return raw;
+  return "/";
+}

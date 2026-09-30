@@ -6,6 +6,7 @@ import {
   ACTIVE_TEAM_COOKIE,
   ACTIVE_TEAM_TTL_SECONDS,
   TEAM_HEADER,
+  isNewAppPath,
   teamSlugFromPath,
 } from "@/lib/team-path";
 
@@ -86,9 +87,9 @@ export function proxy(request: NextRequest) {
 
   if (!hasSession && !isPublic) {
     const url = request.nextUrl.clone();
-    const back = pathname.startsWith("/oauth/")
-      ? pathname + request.nextUrl.search
-      : null;
+    const here = pathname + request.nextUrl.search;
+    const back =
+      pathname.startsWith("/oauth/") || isNewAppPath(here) ? here : null;
     url.pathname = "/login";
     url.search = back ? `?next=${encodeURIComponent(back)}` : "";
     return NextResponse.redirect(url);
