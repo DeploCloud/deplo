@@ -73,7 +73,7 @@ export const DOCS = {
   "databases.hostPort": "guides/data/databases#optional-host-port",
   "databases.connect": "guides/data/databases#connect-an-app-to-it",
   "databases.lifecycle":
-    "guides/data/databases#the-lifecycle-verbs-and-which-one-destroys-data",
+    "guides/data/databases#actions-and-which-ones-delete-data",
   "databases.settings": "guides/data/databases#settings",
   "databases.move": "guides/data/databases#move-a-database-to-another-server",
 
@@ -120,6 +120,7 @@ export const DOCS = {
   "team.registrationLink": "guides/team/members#get-the-link",
   "team.limitedAccess": "guides/team/members#roles-and-limited-access",
   "team.activity": "guides/team/activity",
+  "team.transfers": "guides/team/transfers",
   "team.security": "guides/team/account-security",
   "team.password": "guides/team/account-security#change-your-password",
   "team.twoFactor": "guides/team/account-security#two-factor-authentication",

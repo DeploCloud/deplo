@@ -161,7 +161,7 @@ export function TransferDatabaseDialog({
               <FieldLabel
                 htmlFor={selectId}
                 info="Only teams you belong to, and where you may move databases, can receive one."
-                docs="databases.lifecycle"
+                docs="team.transfers"
               >
                 Destination team
               </FieldLabel>
