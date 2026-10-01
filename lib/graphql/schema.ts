@@ -12,6 +12,7 @@ import "./types/cleanup";
 import "./types/console";
 import "./types/cron";
 import "./types/database";
+import "./types/database-transfer";
 import "./types/destination";
 import "./types/domain";
 import "./types/enums";

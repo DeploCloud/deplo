@@ -29,6 +29,7 @@ export type Capability =
   | "configure_databases"
   | "control_databases"
   | "delete_databases"
+  | "move_databases"
   | "open_database_console"
   | "manage_backups"
   | "restore_backups"
@@ -75,6 +76,7 @@ export const ALL_CAPABILITIES: Capability[] = [
   "configure_databases",
   "control_databases",
   "delete_databases",
+  "move_databases",
   "open_database_console",
   "manage_backups",
   "restore_backups",
