@@ -212,11 +212,11 @@ export function TransferDatabaseDialog({
                     <li>
                       {plural(
                         info.backupCount,
-                        "backup schedule is",
-                        "backup schedules are",
+                        "backup schedule is removed: it writes",
+                        "backup schedules are removed: they write",
                       )}{" "}
-                      removed: they write to this team&apos;s storage. Backups
-                      already taken stay here.
+                      to this team&apos;s storage. Backups already taken stay
+                      here.
                     </li>
                   )}
                   {info.cronCount > 0 && (

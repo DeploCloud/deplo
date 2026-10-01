@@ -128,7 +128,7 @@ export function TransferTeamDialog({
       title={`Transfer ${appName} to another team?`}
       description={
         <>
-          Everything it owns goes with it and it keeps running.{" "}
+          Everything it owns goes with it.{" "}
           <strong>Only the new team can hand it back.</strong>
         </>
       }
@@ -227,11 +227,11 @@ export function TransferTeamDialog({
                     <li>
                       {plural(
                         info.backupCount,
-                        "backup schedule",
-                        "backup schedules",
+                        "backup schedule is removed: it writes",
+                        "backup schedules are removed: they write",
                       )}{" "}
-                      are removed: they write to this team&apos;s storage.
-                      Backups already taken stay here.
+                      to this team&apos;s storage. Backups already taken stay
+                      here.
                     </li>
                   )}
                   {info.cronCount > 0 && (
