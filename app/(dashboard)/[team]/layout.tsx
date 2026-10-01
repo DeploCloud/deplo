@@ -4,12 +4,14 @@ import { getTeamIdentity, listMyTeams } from "@/lib/data/teams";
 import {
   reachableCapabilities,
   isInstanceAdmin,
+  PasswordChangeRequiredError,
   TwoFactorRequiredError,
 } from "@/lib/membership";
 import { getBreadcrumbGraph } from "@/lib/data/breadcrumb";
 import { takeoverBlocksDashboard } from "@/lib/data/takeover";
 import { userHasPasskey } from "@/lib/passkey-policy";
 import { AppShell } from "@/components/layout/app-shell";
+import { FinishSetupScreen } from "@/components/auth/finish-setup-screen";
 import { TwoFactorLockScreen } from "@/components/settings/security/two-factor-lock-screen";
 import { NoTeamAccessScreen } from "@/components/teams/no-team-access";
 
@@ -36,6 +38,8 @@ export default async function DashboardLayout(props: LayoutProps<"/[team]">) {
       getBreadcrumbGraph(),
     ]);
   } catch (e) {
+    if (e instanceof PasswordChangeRequiredError)
+      return <FinishSetupScreen email={user.email} />;
     if (e instanceof TwoFactorRequiredError)
       return (
         <TwoFactorLockScreen

@@ -17,7 +17,8 @@ import {
 } from "@/components/auth/wizard-steps";
 import { useStepSwap } from "@/components/apps/wizard/wizard-card";
 import { Collapse } from "@/components/ui/field-error";
-import { gql, GraphQLRequestError } from "@/lib/graphql-client";
+import { Button } from "@/components/ui/button";
+import { gql, gqlAction, GraphQLRequestError } from "@/lib/graphql-client";
 import { cn } from "@/lib/utils";
 
 const COMPLETE_SETUP = /* GraphQL */ `
@@ -48,6 +49,30 @@ const COMPLETE_SETUP = /* GraphQL */ `
   }
 `;
 
+const FINISH_SETUP = /* GraphQL */ `
+  mutation FinishSetup(
+    $username: String
+    $teamName: String!
+    $name: String!
+    $password: String!
+    $image: String
+    $teamImage: String
+  ) {
+    finishSetup(
+      username: $username
+      teamName: $teamName
+      name: $name
+      password: $password
+      image: $image
+      teamImage: $teamImage
+    ) {
+      viewer {
+        id
+      }
+    }
+  }
+`;
+
 const INTRO_SEEN = "deplo.onboarding-intro";
 
 const STEPS = [
@@ -61,28 +86,43 @@ function errorField(err: unknown): string | null {
   return typeof field === "string" ? field : null;
 }
 
-export function OnboardingWizard({ setupKey }: { setupKey: string | null }) {
+// `finishEmail` is the account the installer created; the wizard then replaces its temporary password.
+export function OnboardingWizard({
+  setupKey = null,
+  finishEmail,
+}: {
+  setupKey?: string | null;
+  finishEmail?: string;
+}) {
   const { phase, markSeen } = useLogoIntro(INTRO_SEEN);
   const { step, leaving, go } = useStepSwap<"account" | "team">("account");
   const [error, setError] = React.useState<string | null>(null);
   const [pending, startTransition] = React.useTransition();
-  const [account, setAccount] = React.useState(newAccountDraft);
+  const [account, setAccount] = React.useState(() => ({
+    ...newAccountDraft(),
+    email: finishEmail ?? "",
+  }));
   const [team, setTeam] = React.useState(EMPTY_TEAM);
 
   function submit() {
     setError(null);
     startTransition(async () => {
       try {
-        await gql(COMPLETE_SETUP, {
+        const fields = {
           username: account.handleEdited ? account.handle : null,
           teamName: team.name,
           name: account.name,
-          email: account.email,
           password: account.password,
           image: account.image,
           teamImage: team.image,
-          key: setupKey,
-        });
+        };
+        if (finishEmail) await gql(FINISH_SETUP, fields);
+        else
+          await gql(COMPLETE_SETUP, {
+            ...fields,
+            email: account.email,
+            key: setupKey,
+          });
         window.location.assign("/?welcome=1");
       } catch (err) {
         setError(err instanceof Error ? err.message : "Setup failed");
@@ -110,7 +150,12 @@ export function OnboardingWizard({ setupKey }: { setupKey: string | null }) {
               <AccountStep
                 draft={account}
                 onChange={setAccount}
-                description="Create the account that runs this instance."
+                description={
+                  finishEmail
+                    ? "Your host created this account. Make it yours."
+                    : "Create the account that runs this instance."
+                }
+                emailLocked={Boolean(finishEmail)}
                 note={
                   <p className="flex items-start gap-2 text-xs text-muted-foreground">
                     <ShieldCheck className="mt-px size-3.5 shrink-0" />
@@ -142,6 +187,19 @@ export function OnboardingWizard({ setupKey }: { setupKey: string | null }) {
             )}
           </div>
           <StepDots steps={STEPS} current={step} />
+          {finishEmail && (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="mt-4 w-full"
+              onClick={async () => {
+                await gqlAction(`mutation { logout }`, {});
+                window.location.assign("/login");
+              }}
+            >
+              Sign out
+            </Button>
+          )}
         </div>
       )}
     </>

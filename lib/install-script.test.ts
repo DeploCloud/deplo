@@ -32,12 +32,39 @@ test("the installer's only question is the takeover", async () => {
   );
 });
 
-test("--public-setup writes an empty key and prints a bare link", async () => {
+test("no flag leaves the setup open to whoever arrives first", async () => {
   const script = await readFile(join(process.cwd(), "install.sh"), "utf8");
-  assert.match(script, /--public-setup\) PUBLIC_SETUP=true/);
-  assert.match(script, /echo "DEPLO_SETUP_KEY="/);
-  assert.match(script, /--public-setup {3}no setup key/);
-  assert.match(script, /\[ -n "\$SETUP_KEY" \] \|\| \{ printf '%s\/setup'/);
+  assert.doesNotMatch(script, /public-setup|PUBLIC_SETUP/);
+  assert.doesNotMatch(script, /echo "DEPLO_SETUP_KEY="$/m);
+  // An empty key left by an older install is replaced, not kept.
+  assert.match(script, /grep -q '\^DEPLO_SETUP_KEY=\.'/);
+});
+
+test("--owner-email and --owner-password create the owner, the password kept off every record", async () => {
+  const script = await readFile(join(process.cwd(), "install.sh"), "utf8");
+  assert.match(script, /--owner-email\) +OWNER_EMAIL="\$\{2:-\}"; shift ;;/);
+  assert.match(
+    script,
+    /--owner-password\) OWNER_PASSWORD="\$\{2:-\}"; shift ;;/,
+  );
+  assert.match(script, /--owner-email and --owner-password go together/);
+  // The transcript logs the arguments; the value after --owner-password is hidden.
+  assert.match(
+    script,
+    /\[ "\$prev" = --owner-password \]; then LOG_ARGS\+=\("<hidden>"\)/,
+  );
+  assert.match(script, /^ui_init \$\{LOG_ARGS\[@\]/m);
+  // On stdin to the bundled tool, with the trace off around it.
+  assert.match(
+    script,
+    /trace_off\n\s+OWNER_OUT="\$\(printf '%s' "\$OWNER_PASSWORD" \|\n\s+\/usr\/local\/bin\/deplo recover bootstrap-owner "\$OWNER_EMAIL"/,
+  );
+  for (const line of script.split("\n"))
+    if (line.includes("$OWNER_PASSWORD") && !line.includes("printf '%s'"))
+      assert.match(
+        line,
+        /-n "\$OWNER_PASSWORD"|-z "\$OWNER_PASSWORD"|#OWNER_PASSWORD/,
+      );
 });
 
 test("install.sh runs with no domain given", async () => {
@@ -52,7 +79,7 @@ test("the setup link is never printed inside the summary card", async () => {
     "the card would cut the key off the link",
   );
   assert.ok(
-    script.includes("Open %b%s%b and create your account"),
+    script.includes(`Open %b%s%b and %s.\\n' "$C_ACC" "$(first_url)"`),
     "nothing prints it whole",
   );
 });

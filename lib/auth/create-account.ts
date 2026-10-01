@@ -1,6 +1,6 @@
 import "server-only";
 
-import { eq, inArray, isNull, or, sql } from "drizzle-orm";
+import { count, eq, inArray, isNull, or, sql } from "drizzle-orm";
 import { getDb, type DbTx } from "../db/client";
 import {
   memberships as membershipsTable,
@@ -40,7 +40,11 @@ async function insertUserCore(
     password: string;
     image?: string | null;
   },
-  opts: { isInstanceAdmin?: boolean; userRole?: string } = {},
+  opts: {
+    isInstanceAdmin?: boolean;
+    userRole?: string;
+    mustChangePassword?: boolean;
+  } = {},
 ): Promise<User> {
   const dup = await tx
     .select({ username: usersTable.username, email: usersTable.email })
@@ -78,6 +82,7 @@ async function insertUserCore(
     role: user.role,
     isInstanceAdmin: user.isInstanceAdmin ?? false,
     suspended: false,
+    mustChangePassword: opts.mustChangePassword ?? false,
     avatarColor: user.avatarColor,
     image: input.image ?? randomFaceValue(),
     createdAt: user.createdAt,
@@ -85,6 +90,56 @@ async function insertUserCore(
   });
   await insertCredentialAccount(tx, user.id, input.password);
   return user;
+}
+
+export function cleanOwnerFields(input: {
+  username?: string | null;
+  name: string;
+  teamName: string;
+  image?: string | null;
+  teamImage?: string | null;
+}) {
+  const username = input.username?.trim()
+    ? normalizeUsername(input.username)
+    : uniqueUsername(input.name, new Set());
+  const usernameError = validateUsername(username);
+  if (usernameError) throw new Error(usernameError);
+
+  const name = input.name.trim();
+  if (!name) throw new Error("Name is required");
+
+  const teamName = input.teamName.trim();
+  if (!teamName) throw new Error("Team name is required");
+  const image = input.image?.trim() || null;
+  if (image && !isValidUserAvatarValue(image))
+    throw new Error("Unsupported profile picture");
+  const teamImage = input.teamImage?.trim() || null;
+  if (teamImage && !isValidTeamAvatarValue(teamImage))
+    throw new Error("Unsupported team picture");
+  return { username, name, teamName, image, teamImage };
+}
+
+// Refuses a name another team holds and answers the slug to store; `own` is the team being renamed.
+export async function claimTeamName(
+  tx: DbTx,
+  teamName: string,
+  own?: string,
+): Promise<string> {
+  const others = (
+    await tx
+      .select({
+        id: teamsTable.id,
+        name: teamsTable.name,
+        slug: teamsTable.slug,
+      })
+      .from(teamsTable)
+  ).filter((t) => t.id !== own);
+  if (others.some((t) => t.name.toLowerCase() === teamName.toLowerCase()))
+    throw new Error("That team name is taken");
+  return pickTeamSlug(
+    teamName,
+    others.map((t) => t.slug),
+  );
 }
 
 export async function createAccountWithTeam(
@@ -101,31 +156,20 @@ export async function createAccountWithTeam(
     guard?: (tx: DbTx) => Promise<void>;
     isInstanceAdmin?: boolean;
     isInstanceOwner?: boolean;
+    temporaryPassword?: boolean;
   } = {},
 ): Promise<{ user: User; team: Team }> {
-  const username = input.username?.trim()
-    ? normalizeUsername(input.username)
-    : uniqueUsername(input.name, new Set());
-  const usernameError = validateUsername(username);
-  if (usernameError) throw new Error(usernameError);
-
-  const name = input.name.trim();
-  if (!name) throw new Error("Name is required");
+  const { username, name, teamName, image, teamImage } =
+    cleanOwnerFields(input);
 
   const email = input.email.toLowerCase().trim();
   if (!email.includes("@")) throw new Error("Enter a valid email address");
 
-  const teamName = input.teamName.trim();
-  if (!teamName) throw new Error("Team name is required");
-  const image = input.image?.trim() || null;
-  if (image && !isValidUserAvatarValue(image))
-    throw new Error("Unsupported profile picture");
-  const teamImage = input.teamImage?.trim() || null;
-  if (teamImage && !isValidTeamAvatarValue(teamImage))
-    throw new Error("Unsupported team picture");
-
-  assertPasswordPolicy(input.password);
-  await assertPasswordNotPwned(input.password);
+  // A temporary password is the host's, not a person's choice: it only has to be replaced.
+  if (!opts.temporaryPassword) {
+    assertPasswordPolicy(input.password);
+    await assertPasswordNotPwned(input.password);
+  }
 
   const now = new Date().toISOString();
 
@@ -135,7 +179,11 @@ export async function createAccountWithTeam(
     const user = await insertUserCore(
       tx,
       { username, name, email, password: input.password, image },
-      { isInstanceAdmin: opts.isInstanceAdmin, userRole: "owner" },
+      {
+        isInstanceAdmin: opts.isInstanceAdmin,
+        userRole: "owner",
+        mustChangePassword: opts.temporaryPassword,
+      },
     );
 
     if (opts.isInstanceOwner) {
@@ -153,18 +201,7 @@ export async function createAccountWithTeam(
         throw new Error("Setup has already been completed");
     }
 
-    const teamDup = await tx
-      .select({ id: teamsTable.id })
-      .from(teamsTable)
-      .where(eq(sql`lower(${teamsTable.name})`, teamName.toLowerCase()))
-      .limit(1);
-    if (teamDup[0]) throw new Error("That team name is taken");
-    const finalSlug = pickTeamSlug(
-      teamName,
-      (await tx.select({ slug: teamsTable.slug }).from(teamsTable)).map(
-        (r) => r.slug,
-      ),
-    );
+    const finalSlug = await claimTeamName(tx, teamName);
 
     const team: Team = {
       id: `team_${randomBytes(8).toString("hex")}`,
@@ -201,6 +238,28 @@ export async function createAccountWithTeam(
     return { user, team };
   });
   return result;
+}
+
+// A host's provisioning hands the customer this password; the wizard replaces it on the first sign-in.
+export async function createOwnerWithTemporaryPassword(
+  email: string,
+  password: string,
+): Promise<User> {
+  if (password.length < 8)
+    throw new Error("The temporary password needs at least 8 characters");
+  const { user } = await createAccountWithTeam(
+    { name: "Owner", email, password, teamName: "Workspace" },
+    {
+      isInstanceAdmin: true,
+      isInstanceOwner: true,
+      temporaryPassword: true,
+      guard: async (tx) => {
+        const n = (await tx.select({ n: count() }).from(usersTable))[0]!.n;
+        if (n > 0) throw new Error("This instance already has an account");
+      },
+    },
+  );
+  return user;
 }
 
 export async function createAccountWithTeams(

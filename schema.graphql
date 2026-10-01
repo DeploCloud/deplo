@@ -3164,6 +3164,11 @@ type Mutation {
   finishPasskeyRegistration(name: String!, response: JSON!): Passkey
 
   """
+  Finish an account the installer created with a temporary password: profile, new password, team. Signs in again.
+  """
+  finishSetup(image: String, name: String!, password: String!, teamImage: String, teamName: String!, username: String): AuthPayload
+
+  """
   Suggest a host port that is currently free on the target server, for the database 'Expose publicly' flow. Requires the publish-ports grant.
   """
   generateAvailableDbPort(serverId: ID): Int

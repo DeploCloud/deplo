@@ -4,6 +4,7 @@ import { getCurrentUser } from "@/lib/auth/current-user";
 import {
   getActiveTeamId,
   reachableCapabilities,
+  PasswordChangeRequiredError,
   TwoFactorRequiredError,
 } from "@/lib/membership";
 import { authenticateToken } from "@/lib/data/tokens/authenticate";
@@ -57,7 +58,11 @@ export async function buildContext(request: Request): Promise<GraphQLContext> {
     teamId = await getActiveTeamId();
     capabilities = await reachableCapabilities();
   } catch (e) {
-    if (!(e instanceof TwoFactorRequiredError)) throw e;
+    if (
+      !(e instanceof TwoFactorRequiredError) &&
+      !(e instanceof PasswordChangeRequiredError)
+    )
+      throw e;
     teamId = null;
     capabilities = [];
   }

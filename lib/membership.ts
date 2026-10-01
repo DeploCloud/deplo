@@ -103,6 +103,13 @@ export const teamsForUser = cache(async (userId: string): Promise<Team[]> => {
   }));
 });
 
+export class PasswordChangeRequiredError extends Error {
+  constructor() {
+    super("Finish setting up your account to continue.");
+    this.name = "PasswordChangeRequiredError";
+  }
+}
+
 export class TwoFactorRequiredError extends Error {
   constructor(
     readonly teamId: string,
@@ -115,13 +122,18 @@ export class TwoFactorRequiredError extends Error {
   }
 }
 
-const twoFactorMandate = cache(
+const memberGates = cache(
   async (
     userId: string,
     teamId: string,
-  ): Promise<{ satisfied: boolean; reason: string }> => {
+  ): Promise<{
+    satisfied: boolean;
+    reason: string;
+    mustChangePassword?: boolean;
+  }> => {
     const rows = await getDb()
       .select({
+        mustChangePassword: usersTable.mustChangePassword,
         enrolled: usersTable.twoFactorEnabled,
         hasPasskey: holdsAPasskey(usersTable.id),
         teamRequires: teamsTable.requireTwoFactor,
@@ -142,6 +154,8 @@ const twoFactorMandate = cache(
       .limit(1);
     const r = rows[0];
     if (!r) return { satisfied: true, reason: "" };
+    if (r.mustChangePassword)
+      return { satisfied: false, reason: "", mustChangePassword: true };
     if (r.enrolled) return { satisfied: true, reason: "" };
     if (r.hasPasskey && (await passkeyCountsForThisRequest()))
       return { satisfied: true, reason: "" };
@@ -152,8 +166,15 @@ const twoFactorMandate = cache(
   },
 );
 
-async function assertTwoFactor(userId: string, teamId: string): Promise<void> {
-  const { satisfied, reason } = await twoFactorMandate(userId, teamId);
+async function assertMemberGates(
+  userId: string,
+  teamId: string,
+): Promise<void> {
+  const { satisfied, reason, mustChangePassword } = await memberGates(
+    userId,
+    teamId,
+  );
+  if (mustChangePassword) throw new PasswordChangeRequiredError();
   if (!satisfied) throw new TwoFactorRequiredError(teamId, reason);
 }
 
@@ -182,7 +203,7 @@ export const membershipFor = cache(async function membershipFor(
   userId: string,
   teamId: string,
 ): Promise<Membership | null> {
-  await assertTwoFactor(userId, teamId);
+  await assertMemberGates(userId, teamId);
   const rows = await prepared("membership-row", (db) =>
     db
       .select({
@@ -263,7 +284,7 @@ export async function requireActiveTeamId(): Promise<string> {
   if (!teamId) throw new Error("No active team");
   const user = await getCurrentUser();
   // The twin of the guard in membershipFor, and both are needed: reads never go through membershipFor.
-  if (user) await assertTwoFactor(user.id, teamId);
+  if (user) await assertMemberGates(user.id, teamId);
   return teamId;
 }
 

@@ -2,8 +2,12 @@ import { redirect } from "next/navigation";
 
 import { requireUser } from "@/lib/auth/current-user";
 import { getTeamIdentity, listMyTeams } from "@/lib/data/teams";
-import { TwoFactorRequiredError } from "@/lib/membership";
+import {
+  PasswordChangeRequiredError,
+  TwoFactorRequiredError,
+} from "@/lib/membership";
 import { userHasPasskey } from "@/lib/passkey-policy";
+import { FinishSetupScreen } from "@/components/auth/finish-setup-screen";
 import { TwoFactorLockScreen } from "@/components/settings/security/two-factor-lock-screen";
 import { NoTeamAccessScreen } from "@/components/teams/no-team-access";
 import { NavigationHistoryTracker } from "@/components/layout/navigation-history";
@@ -23,6 +27,8 @@ export default async function FocusLayout(props: LayoutProps<"/[team]">) {
   try {
     await getTeamIdentity();
   } catch (e) {
+    if (e instanceof PasswordChangeRequiredError)
+      return <FinishSetupScreen email={user.email} />;
     if (e instanceof TwoFactorRequiredError)
       return (
         <TwoFactorLockScreen
