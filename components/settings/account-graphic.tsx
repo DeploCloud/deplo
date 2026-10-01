@@ -1,64 +1,97 @@
+import {
+  Box,
+  Decal,
+  FaceRect,
+  IsoArt,
+  UNIT,
+  fit,
+  floor,
+  tone,
+  type BoxShape,
+} from "@/components/iso/iso";
 import { cn } from "@/lib/utils";
 
+const FLOOR: BoxShape = { at: [-0.3, -0.3, 0], size: [3, 1.5, 0] };
+const BADGE: BoxShape = { at: [0, 0, 0], size: [2, 0.2, 2.6] };
+const CLIP: BoxShape = { at: [0.7, 0.03, 2.6], size: [0.6, 0.14, 0.22] };
+const LOCK: BoxShape = { at: [1.5, 0.4, 0], size: [0.9, 0.6, 0.75] };
+const SHACKLE = 0.7 * UNIT;
+
 export function AccountGraphic({ className }: { className?: string }) {
+  const [lx, ly, lz] = LOCK.at;
+  const w = LOCK.size[0] * UNIT;
   return (
-    <svg
-      viewBox="0 0 100 96"
-      fill="none"
-      role="img"
-      aria-label="An identity badge closed by a padlock"
+    <IsoArt
+      label="An identity badge closed by a padlock"
+      view={fit([FLOOR, BADGE, CLIP, LOCK], 8)}
       className={cn("size-24", className)}
     >
-      <rect x="30" y="5" width="16" height="8" rx="4" className="fill-border" />
-      <rect
-        x="6"
-        y="10"
-        width="64"
-        height="76"
-        rx="10"
-        className="fill-secondary stroke-ring"
-        strokeWidth="2.5"
-      />
+      <Box {...FLOOR} tone={floor} />
+      <Box {...CLIP} />
+      <Box {...BADGE}>
+        <Decal face="left" at={[0, 0.2, 2.6]} style={{ stroke: "none" }}>
+          <circle
+            cx={UNIT}
+            cy={0.8 * UNIT}
+            r={0.42 * UNIT}
+            fill="var(--chart-1)"
+          />
+          <circle
+            cx={UNIT}
+            cy={0.72 * UNIT}
+            r={0.13 * UNIT}
+            fill="var(--iso-left)"
+          />
+          <path
+            d={`M${0.73 * UNIT} ${1.08 * UNIT}a${0.27 * UNIT} ${0.24 * UNIT} 0 0 1 ${0.54 * UNIT} 0Z`}
+            fill="var(--iso-left)"
+          />
+        </Decal>
+        <FaceRect
+          box={BADGE}
+          face="left"
+          u={[0.2, 0.72]}
+          v={[0.44, 0.48]}
+          fill="var(--ring)"
+        />
+        <FaceRect
+          box={BADGE}
+          face="left"
+          u={[0.28, 0.6]}
+          v={[0.34, 0.38]}
+          fill="var(--ring)"
+        />
+      </Box>
 
-      <circle cx="38" cy="38" r="13" fill="var(--chart-1)" />
-      <circle cx="38" cy="34.5" r="4.5" className="fill-card" />
-      <path
-        d="M30 47 C30 41.5 34 39 38 39 C42 39 46 41.5 46 47 Z"
-        className="fill-card"
-      />
-
-      <g className="fill-border">
-        <rect x="20" y="60" width="36" height="5" rx="2.5" />
-        <rect x="26" y="70" width="24" height="5" rx="2.5" />
-      </g>
-
-      <path
-        d="M70 68 V58 A7 7 0 0 1 84 58 V68"
-        className="stroke-card"
-        strokeWidth="9"
-        strokeLinecap="round"
-      />
-      <path
-        d="M70 68 V58 A7 7 0 0 1 84 58 V68"
-        stroke="var(--success)"
-        strokeWidth="4.5"
-        strokeLinecap="round"
-      />
-      <rect
-        x="64"
-        y="64"
-        width="26"
-        height="22"
-        rx="6"
-        fill="var(--success)"
-        paintOrder="stroke"
-        className="stroke-card"
-        strokeWidth="5"
-      />
-      <g className="fill-card">
-        <circle cx="77" cy="72" r="3" />
-        <rect x="75.5" y="72" width="3" height="7" rx="1.5" />
-      </g>
-    </svg>
+      <Box {...LOCK} tone={tone("var(--success)")}>
+        <Decal
+          face="left"
+          at={[lx, ly + LOCK.size[1], lz + LOCK.size[2]]}
+          style={{ stroke: "none" }}
+        >
+          <circle
+            cx={w / 2}
+            cy={0.3 * UNIT}
+            r={0.08 * UNIT}
+            fill="var(--success)"
+          />
+          <rect
+            x={w / 2 - 0.035 * UNIT}
+            y={0.3 * UNIT}
+            width={0.07 * UNIT}
+            height={0.2 * UNIT}
+            fill="var(--success)"
+          />
+        </Decal>
+      </Box>
+      <Decal face="left" at={[lx, ly + LOCK.size[1] / 2, lz + LOCK.size[2]]}>
+        <path
+          d={`M${w * 0.22} 0V${-SHACKLE + w * 0.28}a${w * 0.28} ${w * 0.28} 0 0 1 ${w * 0.56} 0V0`}
+          stroke="var(--success)"
+          strokeWidth="4"
+          strokeLinecap="round"
+        />
+      </Decal>
+    </IsoArt>
   );
 }

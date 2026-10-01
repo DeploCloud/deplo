@@ -1,4 +1,19 @@
 import type * as React from "react";
+import {
+  Box,
+  Decal,
+  FaceRect,
+  IsoArt,
+  Path,
+  UNIT,
+  fit,
+  floor,
+  plain,
+  tone,
+  type BoxShape,
+  type P,
+} from "@/components/iso/iso";
+import { DEPLO, Mark } from "@/components/iso/parts";
 import { cn } from "@/lib/utils";
 import type { LogoAccent } from "@/lib/templates/logo-color";
 
@@ -44,6 +59,19 @@ const LABEL: Record<RobotState, string> = {
 
 export type RobotState = "idle" | "key" | "reaching" | "connected";
 
+const INK = "var(--deplo-robot-ink)";
+const LIVE = "var(--deplo-robot-live)";
+
+const FLOOR: BoxShape = { at: [-0.4, -0.3, 0], size: [4.5, 3.2, 0] };
+const DEPLO_BOX: BoxShape = { at: [2.5, 0, 0], size: [1.3, 1.3, 2] };
+const BODY: BoxShape = { at: [0, 1.6, 0], size: [1.2, 1, 1] };
+const HEAD: BoxShape = { at: [0, 1.6, 1.15], size: [1.2, 1, 0.85] };
+const ARM: BoxShape = { at: [1.2, 2, 0.45], size: [0.55, 0.22, 0.2] };
+// The cable leaves the hand along +x, then turns -y into the port on Deplo's front.
+const HAND: P = [1.75, 2.11, 0.55];
+const CORNER: P = [2.76, 2.11, 0.55];
+const PORT: P = [2.76, 1.3, 0.55];
+
 export function RobotGraphic({
   state = "idle",
   accent,
@@ -54,6 +82,7 @@ export function RobotGraphic({
   className?: string;
 }) {
   const live = state === "connected";
+  const cable = state === "reaching" || live;
   const ink =
     accent?.hue !== undefined
       ? ({
@@ -61,150 +90,128 @@ export function RobotGraphic({
           "--deplo-robot-live": "var(--deplo-robot-ink)",
         } as React.CSSProperties)
       : undefined;
+  const lit = live ? LIVE : INK;
+  const shell = { ...plain, stroke: INK };
+  const headW = HEAD.size[0] * UNIT;
+  const headH = HEAD.size[2] * UNIT;
+
   return (
-    <svg
-      viewBox="0 0 160 120"
-      fill="none"
-      role="img"
-      aria-label={LABEL[state]}
+    <IsoArt
+      label={LABEL[state]}
+      view={fit([FLOOR, DEPLO_BOX, { at: [0, 1.6, 0], size: [1.2, 1, 2.6] }])}
       style={ink}
       className={cn("h-32 w-auto", className)}
     >
-      <rect
-        x="118"
-        y="40"
-        width="32"
-        height="48"
-        rx="6"
-        className="stroke-ring"
-        strokeWidth="2.5"
-      />
-      <line
-        x1="125"
-        y1="51"
-        x2="143"
-        y2="51"
-        className="stroke-border"
-        strokeWidth="2.5"
-        strokeLinecap="round"
-      />
-      <line
-        x1="125"
-        y1="60"
-        x2="143"
-        y2="60"
-        className="stroke-border"
-        strokeWidth="2.5"
-        strokeLinecap="round"
-      />
+      <Box {...FLOOR} tone={floor} />
 
-      {live && (
-        <circle
-          cx="116"
-          cy="72"
-          r="10"
-          className="deplo-robot-halo"
-          fill="var(--deplo-robot-live)"
+      <Box {...DEPLO_BOX} tone={DEPLO}>
+        <Mark at={[2.8, 1.3, 1.82]} size={0.65} />
+        {[0.42, 0.52].map((v) => (
+          <FaceRect
+            key={v}
+            box={DEPLO_BOX}
+            face="left"
+            u={[0.45, 0.85]}
+            v={[v, v + 0.025]}
+            fill={DEPLO.right}
+          />
+        ))}
+        <FaceRect
+          box={DEPLO_BOX}
+          face="left"
+          u={[0.1, 0.3]}
+          v={[0.2, 0.35]}
+          fill={live ? LIVE : DEPLO.right}
+          stroke={live ? LIVE : DEPLO.stroke}
         />
-      )}
-      <rect
-        x="112"
-        y="67"
-        width="7"
-        height="10"
-        rx="2"
-        className={live ? undefined : "stroke-ring"}
-        fill={live ? "var(--deplo-robot-live)" : "none"}
-        strokeWidth="2.5"
-      />
+        {live && (
+          <FaceRect
+            box={DEPLO_BOX}
+            face="left"
+            u={[0.1, 0.3]}
+            v={[0.2, 0.35]}
+            fill="none"
+            stroke={LIVE}
+            className="iso-wave iso-robot-halo"
+          />
+        )}
+      </Box>
 
-      {(state === "reaching" || live) && (
-        <path
-          d="M74 74 C90 76, 96 72, 112 72"
-          className={cn(
-            !live && "deplo-robot-cable",
-            "stroke-[var(--deplo-robot-ink)]",
-          )}
-          strokeWidth="2.5"
-          strokeLinecap="round"
-        />
-      )}
-
-      {state === "key" && (
-        <g
-          className="deplo-robot-key stroke-[var(--deplo-robot-ink)]"
-          strokeWidth="2.5"
-        >
-          <circle cx="76" cy="72" r="4.5" />
-          <line x1="80" y1="72" x2="90" y2="72" strokeLinecap="round" />
-          <line x1="86" y1="72" x2="86" y2="77" strokeLinecap="round" />
+      {cable && (
+        <g stroke={INK} strokeWidth="2.5">
+          <Path
+            points={[HAND, CORNER]}
+            className={cn(!live && "iso-robot-cable-a")}
+          />
+          <Path
+            points={[CORNER, PORT]}
+            className={cn(!live && "iso-robot-cable-b")}
+          />
         </g>
       )}
 
-      <line
-        x1="44"
-        y1="26"
-        x2="44"
-        y2="17"
-        className="stroke-ring"
+      <Box {...BODY} tone={shell}>
+        <FaceRect
+          box={BODY}
+          face="left"
+          u={[0.25, 0.75]}
+          v={[0.35, 0.7]}
+          fill="var(--iso-floor)"
+        />
+        <FaceRect
+          box={BODY}
+          face="left"
+          u={[0.33, 0.45]}
+          v={[0.45, 0.6]}
+          fill={lit}
+          className={cn(state === "key" && "iso-blink")}
+        />
+      </Box>
+      <Box {...ARM} tone={shell} />
+      <Box at={[0.5, 2, 1]} size={[0.2, 0.2, 0.15]} tone={shell} />
+      <Box {...HEAD} tone={shell}>
+        <Decal face="left" at={[0, 2.6, 2]}>
+          <g
+            fill={lit}
+            stroke="none"
+            className={cn(state === "idle" && "iso-robot-eyes")}
+          >
+            <circle cx={headW * 0.3} cy={headH * 0.45} r={6} />
+            <circle cx={headW * 0.7} cy={headH * 0.45} r={6} />
+          </g>
+        </Decal>
+      </Box>
+      <Path
+        points={[
+          [0.6, 2.1, 2],
+          [0.6, 2.1, 2.35],
+        ]}
+        stroke="var(--ring)"
         strokeWidth="2.5"
-        strokeLinecap="round"
       />
-      <circle
-        cx="44"
-        cy="14"
-        r="3.5"
+      <Box
+        at={[0.5, 2, 2.35]}
+        size={[0.2, 0.2, 0.2]}
+        tone={tone(lit)}
         className={cn(
-          state === "idle" && "deplo-robot-antenna",
-          state === "key" && "deplo-robot-blip",
-          live
-            ? "fill-[var(--deplo-robot-live)]"
-            : "fill-[var(--deplo-robot-ink)]",
+          state === "idle" && "iso-robot-antenna",
+          state === "key" && "iso-robot-blip",
         )}
       />
-      <rect
-        x="24"
-        y="26"
-        width="40"
-        height="32"
-        rx="11"
-        className="stroke-[var(--deplo-robot-ink)]"
-        strokeWidth="2.5"
-      />
-      <g
-        className={cn(
-          state === "idle" && "deplo-robot-eyes",
-          live
-            ? "fill-[var(--deplo-robot-live)]"
-            : "fill-[var(--deplo-robot-ink)]",
-        )}
-      >
-        <circle cx="36" cy="42" r="3.5" />
-        <circle cx="52" cy="42" r="3.5" />
-      </g>
-      <line
-        x1="44"
-        y1="58"
-        x2="44"
-        y2="63"
-        className="stroke-[var(--deplo-robot-ink)]"
-        strokeWidth="2.5"
-      />
-      <rect
-        x="28"
-        y="63"
-        width="32"
-        height="29"
-        rx="8"
-        className="stroke-[var(--deplo-robot-ink)]"
-        strokeWidth="2.5"
-      />
-      <path
-        d="M60 71 L74 74"
-        className="stroke-[var(--deplo-robot-ink)]"
-        strokeWidth="2.5"
-        strokeLinecap="round"
-      />
-    </svg>
+
+      {state === "key" && (
+        <Decal face="left" at={[HAND[0], 2.22, HAND[2]]}>
+          <g
+            stroke={INK}
+            strokeWidth="2.5"
+            strokeLinecap="round"
+            className="iso-robot-key"
+          >
+            <circle cx={7} cy={0} r={7} />
+            <path d="M14 0h18M26 0v8" />
+          </g>
+        </Decal>
+      )}
+    </IsoArt>
   );
 }

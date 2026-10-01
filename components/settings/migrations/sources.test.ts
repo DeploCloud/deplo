@@ -42,7 +42,7 @@ test("the illustration offers both marks until it knows which panel it is", () =
   assert.ok(blank.includes(SOURCE_ART.dokploy.paths[0].d));
   assert.ok(blank.includes(SOURCE_ART.coolify.paths[0].d));
 
-  const swaps = blank.match(/deplo-migrate-swap/g) ?? [];
+  const swaps = blank.match(/iso-migration-swap/g) ?? [];
   assert.equal(swaps.length, 2);
   assert.match(blank, new RegExp(`animation-delay:\\s*-${SWAP_HALF_MS}ms`));
 
@@ -92,7 +92,7 @@ test("a Deplo is only shown once the address turns out to be one", () => {
   const blank = html({ state: "connect" });
   assert.equal(blank.includes(MARK_PATH), true, "Deplo's own machine, right");
   assert.equal(
-    (blank.match(/deplo-migrate-swap/g) ?? []).length,
+    (blank.match(/iso-migration-swap/g) ?? []).length,
     PICKABLE_KINDS.length,
     "the guessing swap stays Dokploy and Coolify",
   );

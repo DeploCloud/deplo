@@ -1,54 +1,90 @@
+import {
+  Box,
+  Decal,
+  IsoArt,
+  UNIT,
+  fit,
+  floor,
+  type BoxShape,
+} from "@/components/iso/iso";
 import { cn } from "@/lib/utils";
+
+const FLOOR: BoxShape = { at: [0, 0, 0], size: [1.5, 3.5, 0] };
+const NECK: BoxShape = { at: [0.5, 1.5, 0], size: [0.25, 0.5, 0.4] };
+// Facing right: on that face a rising trace climbs on screen too.
+const SCREEN: BoxShape = { at: [0.4, 0.25, 0.4], size: [0.35, 3, 2] };
+const W = 3 * UNIT;
+const H = 2 * UNIT;
+const PAD = 9;
+
+// The flat illustration's trace (x 22-92, y 28-60), stretched over the screen.
+const TRACE = [
+  [22, 60],
+  [31, 52],
+  [39, 56],
+  [48, 40],
+  [57, 46],
+  [66, 34],
+  [74, 38],
+  [83, 28],
+  [92, 32],
+].map(([x, y]) => [
+  W * (0.12 + ((x - 22) / 70) * 0.74),
+  H * (0.22 + ((y - 28) / 32) * 0.56),
+]);
+const [LX, LY] = TRACE[TRACE.length - 1];
 
 export function MonitoringGraphic({ className }: { className?: string }) {
   return (
-    <svg
-      viewBox="0 0 120 90"
-      fill="none"
-      role="img"
-      aria-label="A chart drawing a line across an empty panel, waiting for the first measurements"
+    <IsoArt
+      label="A chart drawing a line across an empty panel, waiting for the first measurements"
+      view={fit([FLOOR, SCREEN])}
       className={cn("size-32", className)}
     >
-      <rect
-        x="14"
-        y="14"
-        width="92"
-        height="58"
-        rx="4"
-        className="stroke-ring"
-        strokeWidth="2"
-      />
+      <Box {...FLOOR} tone={floor} />
+      <Box {...NECK} />
+      <Box {...SCREEN} />
 
-      <g className="stroke-border" strokeWidth="2" strokeLinecap="round">
-        <line x1="20" y1="33" x2="100" y2="33" />
-        <line x1="20" y1="52" x2="100" y2="52" />
-      </g>
-
-      <path
-        d="M22 60 L31 52 L39 56 L48 40 L57 46 L66 34 L74 38 L83 28 L92 32"
-        className="deplo-metrics-trace"
-        stroke="var(--chart-1)"
-        strokeWidth="2.5"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-
-      <circle
-        cx="92"
-        cy="32"
-        r="5"
-        className="deplo-metrics-halo"
-        stroke="var(--chart-1)"
-        strokeWidth="2"
-        vectorEffect="non-scaling-stroke"
-      />
-      <circle
-        cx="92"
-        cy="32"
-        r="3.5"
-        className="deplo-metrics-live"
-        fill="var(--chart-1)"
-      />
-    </svg>
+      <Decal face="right" at={[0.75, 3.25, 2.4]}>
+        <rect
+          x={PAD - 3}
+          y={PAD - 3}
+          width={W - 2 * PAD + 6}
+          height={H - 2 * PAD + 6}
+          fill="var(--iso-floor)"
+          stroke="var(--ring)"
+          strokeWidth="1.5"
+        />
+        <g stroke="var(--border)" strokeWidth="1.5">
+          <path d={`M${PAD + 4} ${H * 0.36}H${W - PAD - 4}`} />
+          <path d={`M${PAD + 4} ${H * 0.66}H${W - PAD - 4}`} />
+        </g>
+        <polyline
+          points={TRACE.map((p) => p.join(",")).join(" ")}
+          pathLength={1}
+          stroke="var(--chart-1)"
+          strokeWidth="4"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          style={{ vectorEffect: "none" }}
+          className="iso-metrics-trace"
+        />
+        <circle
+          cx={LX}
+          cy={LY}
+          r="6"
+          stroke="var(--chart-1)"
+          strokeWidth="1.5"
+          className="iso-metrics-halo"
+        />
+        <circle
+          cx={LX}
+          cy={LY}
+          r="4.5"
+          fill="var(--chart-1)"
+          className="iso-metrics-live"
+        />
+      </Decal>
+    </IsoArt>
   );
 }

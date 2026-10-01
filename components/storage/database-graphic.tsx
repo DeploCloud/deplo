@@ -1,55 +1,72 @@
+import {
+  Box,
+  Decal,
+  IsoArt,
+  UNIT,
+  fit,
+  floor,
+  pt,
+  type BoxShape,
+} from "@/components/iso/iso";
 import { cn } from "@/lib/utils";
 
-export function DatabaseGraphic({ className }: { className?: string }) {
+const FLOOR: BoxShape = { at: [0, 0, 0], size: [3.6, 2.8, 0] };
+const DRUM = { at: [1.9, 1.15] as const, r: 0.8, h: 1.5 };
+const RX = 48 * Math.SQRT2 * DRUM.r;
+const RY = (UNIT / Math.SQRT2) * DRUM.r;
+// The weed rolls along +x in front of the drum, edge to edge of the floor.
+const LANE = 2.45;
+const R = 0.3;
+
+/** The drum that is not there: a dashed outline, the back of its base hidden like a solid's. */
+function Ghost() {
+  const [cx, cy] = pt([...DRUM.at, 0]);
+  const top = cy - DRUM.h * UNIT;
+  const front = (y: number) =>
+    `M${cx - RX} ${y}A${RX} ${RY} 0 0 0 ${cx + RX} ${y}`;
   return (
-    <svg
-      viewBox="0 0 120 90"
-      fill="none"
-      role="img"
-      aria-label="The dashed outline of a database with a tumbleweed bouncing past it"
+    <g
+      className="stroke-muted-foreground"
+      strokeWidth="1.5"
+      strokeDasharray="4 4"
+    >
+      <ellipse cx={cx} cy={top} rx={RX} ry={RY} />
+      <path d={`M${cx - RX} ${top}V${cy}M${cx + RX} ${top}V${cy}`} />
+      <path d={front(cy)} />
+      <path d={front(cy - (DRUM.h * UNIT) / 2)} />
+    </g>
+  );
+}
+
+export function DatabaseGraphic({ className }: { className?: string }) {
+  const [cx, cy] = pt([0, LANE, R]);
+  return (
+    <IsoArt
+      label="The dashed outline of a database with a tumbleweed bouncing past it"
+      view={fit([FLOOR, { at: [1.1, 0.35, 0], size: [1.6, 1.6, 1.6] }])}
       className={cn("size-32", className)}
     >
-      <line
-        x1="8"
-        y1="70"
-        x2="112"
-        y2="70"
-        className="stroke-border"
-        strokeWidth="2.5"
-        strokeLinecap="round"
-      />
+      <Box {...FLOOR} tone={floor} />
+      <Ghost />
 
-      <g className="stroke-ring" strokeWidth="2" strokeDasharray="5 4">
-        <ellipse cx="60" cy="40" rx="16" ry="5.5" />
-        <path d="M44 40 L44 64.5" />
-        <path d="M76 40 L76 64.5" />
-        <path d="M44 64.5 A16 5.5 0 0 0 76 64.5" />
-        <path d="M44 52 A16 5.5 0 0 0 76 52" />
-      </g>
-
-      <g transform="translate(-24 61)">
-        <g className="deplo-db-roll">
-          <g className="deplo-db-hop">
-            <g
-              className="deplo-db-spin"
-              stroke="var(--chart-4)"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            >
-              <path
-                d="M10.5 0 L6 6 L0 10.5 L-6.7 6.7 L-10.5 0 L-5.5 -5.5 L0 -10.5 L7.1 -7.1 Z"
-                strokeWidth="1.75"
-              />
-              <g strokeWidth="1.5">
-                <path d="M-9 -3 L8 4" />
-                <path d="M-4 -9 L5 8" />
-                <path d="M-8 5 L9 -2" />
-                <path d="M2 -9 L-3 9" />
+      <g className="iso-db-roll">
+        <g className="iso-db-hop">
+          <g transform={`translate(${cx} ${cy})`}>
+            <circle r={R * UNIT} stroke="var(--chart-4)" strokeWidth="1.5" />
+            <Decal face="left" at={[0, 0, 0]}>
+              <g
+                className="iso-db-spin"
+                stroke="var(--chart-4)"
+                strokeWidth="1.5"
+                strokeLinecap="round"
+              >
+                <path d="M-12 -4 L11 5 M-5 -12 L7 11 M-11 6 L12 -2 M2 -12 L-4 12" />
+                <circle r="7.5" />
               </g>
-            </g>
+            </Decal>
           </g>
         </g>
       </g>
-    </svg>
+    </IsoArt>
   );
 }

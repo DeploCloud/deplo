@@ -1,68 +1,96 @@
+import {
+  Box,
+  Disc,
+  IsoArt,
+  fit,
+  floor,
+  ghost,
+  pt,
+  tone,
+  wire,
+  type P,
+} from "@/components/iso/iso";
 import { cn } from "@/lib/utils";
 
-export function NoResultsGraphic({ className }: { className?: string }) {
+const TEMPLATES = [
+  ...[1, 2, 3, 4, 5].map((n) => `var(--chart-${n})`),
+  "var(--violet)",
+];
+const SWEEP_S = 3.6;
+const LENS: P = [-0.5, 1, 1.4];
+const R = 0.95;
+
+// The lens as it fades in and out: the rest of its sweep overflows the frame.
+const lensAt = (x: number) => ({
+  at: [x - R, 0.05, LENS[2]] as P,
+  size: [2 * R, 2.85, 0] as P,
+});
+
+/** The lens's rim: a flat ring on the top plane, `r` steps out from `at`. */
+function Rim({ at, r, fill }: { at: P; r: number; fill: string }) {
+  const [cx, cy] = pt(at);
+  const ring = (k: number) => {
+    const rx = 48 * Math.SQRT2 * r * k;
+    const ry = ((32 * Math.sqrt(3)) / Math.SQRT2) * r * k;
+    return `M${cx - rx} ${cy}a${rx} ${ry} 0 1 0 ${2 * rx} 0a${rx} ${ry} 0 1 0 ${-2 * rx} 0Z`;
+  };
   return (
-    <svg
-      viewBox="0 0 120 120"
-      fill="none"
-      role="img"
-      aria-label="A magnifying glass sweeping across a row of templates, finding none"
+    <path
+      d={ring(1) + ring(0.74)}
+      fillRule="evenodd"
+      fill={fill}
+      stroke="var(--info)"
+      strokeWidth="1.5"
+    />
+  );
+}
+
+export function NoResultsGraphic({ className }: { className?: string }) {
+  const [x, y, z] = LENS;
+  return (
+    <IsoArt
+      label="A magnifying glass sweeping across a row of templates, finding none"
+      view={fit([
+        { at: [0, 0, 0], size: [3, 2, 0.6] },
+        lensAt(0.5),
+        lensAt(2.5),
+      ])}
       className={cn("size-32", className)}
     >
-      <line
-        x1="16"
-        y1="82"
-        x2="104"
-        y2="82"
-        className="stroke-border"
-        strokeWidth="2.5"
-        strokeLinecap="round"
-      />
+      <Box at={[0, 0, 0]} size={[3, 2, 0]} tone={floor} />
+      {TEMPLATES.map((color, i) => {
+        const at: P = [0.2 + (i % 3), 0.2 + Math.floor(i / 3), 0];
+        return (
+          <g key={color}>
+            <Box at={at} size={[0.6, 0.6, 0.6]} tone={ghost} className={wire} />
+            <Box
+              at={at}
+              size={[0.6, 0.6, 0.6]}
+              tone={tone(color)}
+              className="iso-noresults-item"
+              style={{
+                animationDelay: `${((i % 3) * SWEEP_S) / 4 - SWEEP_S}s`,
+              }}
+            />
+          </g>
+        );
+      })}
 
-      <g className="deplo-find-row">
-        {[
-          { x: 26, color: "var(--chart-1)" },
-          { x: 43, color: "var(--chart-2)" },
-          { x: 60, color: "var(--chart-3)" },
-          { x: 77, color: "var(--chart-4)" },
-          { x: 94, color: "var(--chart-5)" },
-        ].map((dot, i) => (
-          <circle
-            key={dot.x}
-            cx={dot.x}
-            cy="64"
-            r="7"
-            fill={dot.color}
-            className="deplo-find-dot"
-            style={{ animationDelay: `${i * 0.24}s` }}
-          />
-        ))}
-      </g>
-
-      <g className="deplo-find-lens">
-        <circle
-          cx="60"
-          cy="60"
-          r="21"
-          className="stroke-primary"
-          strokeWidth="3"
+      <g className="iso-noresults-lens">
+        <Disc
+          at={[x, y, z - 0.1]}
+          r={R}
+          fill="none"
+          stroke="var(--info)"
+          strokeWidth="1.5"
         />
-        <line
-          x1="75"
-          y1="75"
-          x2="88"
-          y2="88"
-          className="stroke-primary"
-          strokeWidth="4"
-          strokeLinecap="round"
-        />
-        <path
-          d="M50 52a12 12 0 0 1 8-6"
-          className="stroke-background"
-          strokeWidth="2.5"
-          strokeLinecap="round"
+        <Rim at={[x, y, z]} r={R} fill="var(--info)" />
+        <Box
+          at={[x - 0.1, y + R, z - 0.12]}
+          size={[0.2, 0.9, 0.14]}
+          tone={tone("var(--info)")}
         />
       </g>
-    </svg>
+    </IsoArt>
   );
 }

@@ -1,0 +1,430 @@
+/* The variables and storage illustrations. Shared moves live in motion.css. */
+
+/* The environment variables empty state, written on the list's face: the name
+   types in, the value arrives readable, churns on hard cuts, and settles as four
+   masked dots while the lock in front snaps shut. */
+@keyframes iso-env-key {
+  0% {
+    scale: 0 1;
+    opacity: 0;
+    animation-timing-function: steps(1, end);
+  }
+  3% {
+    scale: 0 1;
+    opacity: 1;
+  }
+  20%,
+  84% {
+    scale: 1 1;
+    opacity: 1;
+  }
+  90%,
+  100% {
+    scale: 1 1;
+    opacity: 0;
+  }
+}
+
+@keyframes iso-env-scramble {
+  0%,
+  22% {
+    translate: 0 0;
+    scale: 1 0.2;
+    opacity: 0;
+  }
+  28% {
+    scale: 1 1;
+    opacity: 1;
+    animation-timing-function: steps(1, end);
+  }
+  33% {
+    translate: 0 2px;
+    scale: 1 0.5;
+    animation-timing-function: steps(1, end);
+  }
+  36% {
+    translate: 0 -1.5px;
+    scale: 1 1.35;
+    animation-timing-function: steps(1, end);
+  }
+  39% {
+    translate: 0 -2px;
+    scale: 1 0.8;
+    animation-timing-function: steps(1, end);
+  }
+  42% {
+    translate: 0 1.5px;
+    scale: 1 1.15;
+    animation-timing-function: steps(1, end);
+  }
+  45% {
+    translate: 0 -2px;
+    scale: 1 0.45;
+    animation-timing-function: steps(1, end);
+  }
+  48% {
+    translate: 0 2px;
+    scale: 1 1.3;
+    animation-timing-function: steps(1, end);
+  }
+  51% {
+    translate: 0 -1.5px;
+    scale: 1 0.7;
+    animation-timing-function: steps(1, end);
+  }
+  54% {
+    translate: 0 0;
+    scale: 1 1.2;
+    opacity: 1;
+  }
+  60%,
+  100% {
+    scale: 1 0.1;
+    opacity: 0;
+  }
+}
+
+/* Encryption is one event: all four dots land on the same frame. */
+@keyframes iso-env-mask {
+  0%,
+  56% {
+    scale: 0;
+    opacity: 0;
+  }
+  62% {
+    scale: 1.3;
+    opacity: 1;
+  }
+  68%,
+  84% {
+    scale: 1;
+    opacity: 1;
+  }
+  90%,
+  100% {
+    scale: 1;
+    opacity: 0;
+  }
+}
+
+/* The lock arrives with the readable value - open, because the value still is. */
+@keyframes iso-env-lock {
+  0%,
+  22% {
+    opacity: 0;
+  }
+  30%,
+  84% {
+    opacity: 1;
+  }
+  90%,
+  100% {
+    opacity: 0;
+  }
+}
+
+@keyframes iso-env-shut {
+  0%,
+  56% {
+    rotate: -42deg;
+    animation-timing-function: ease-in;
+  }
+  63% {
+    rotate: 7deg;
+  }
+  70%,
+  100% {
+    rotate: 0deg;
+  }
+}
+
+.iso-env-key {
+  transform-box: fill-box;
+  transform-origin: left center;
+  animation: iso-env-key 6s ease-in-out infinite;
+}
+
+/* The readable value is exactly what must not be the still frame. */
+.iso-env-plain {
+  transform-box: fill-box;
+  transform-origin: center;
+  opacity: 0;
+  animation: iso-env-scramble 6s ease-out infinite;
+}
+
+.iso-env-dot {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: iso-env-mask 6s ease-out infinite;
+}
+
+.iso-env-lock {
+  animation: iso-env-lock 6s ease-out infinite;
+}
+
+/* The hinge leg, so it swings like a shackle instead of tumbling. */
+.iso-env-shackle {
+  transform-box: fill-box;
+  transform-origin: left bottom;
+  animation: iso-env-shut 6s infinite;
+}
+
+/* The All (per-app) variables empty state fills one card at a time: each
+   variable drops a step onto its app, they hold, and the frame clears. */
+@keyframes iso-avars-var {
+  0%,
+  8% {
+    translate: 0 -55.4px;
+    opacity: 0;
+  }
+  16%,
+  74% {
+    translate: 0 0;
+    opacity: 1;
+  }
+  80%,
+  100% {
+    translate: 0 0;
+    opacity: 0;
+  }
+}
+
+.iso-avars-var {
+  animation: iso-avars-var 6s ease-out infinite;
+}
+
+/* The Shared variables empty state: one value runs down every branch at once
+   and each app lights as its dash lands. Offset -32 is four dash periods. */
+@keyframes iso-svars-flow {
+  0%,
+  6% {
+    stroke-dashoffset: 0;
+    opacity: 0;
+  }
+  12%,
+  74% {
+    opacity: 1;
+  }
+  80%,
+  100% {
+    stroke-dashoffset: -32;
+    opacity: 0;
+  }
+}
+
+@keyframes iso-svars-dot {
+  0%,
+  26% {
+    scale: 0.4;
+    opacity: 0;
+  }
+  34%,
+  74% {
+    scale: 1;
+    opacity: 1;
+  }
+  80%,
+  100% {
+    scale: 1;
+    opacity: 0;
+  }
+}
+
+.iso-svars-flow {
+  animation: iso-svars-flow 6s linear infinite;
+}
+
+.iso-svars-dot {
+  transform-box: fill-box;
+  transform-origin: center bottom;
+  animation: iso-svars-dot 6s ease-out infinite;
+}
+
+/* The scheduled backups empty state closes a loop round the archive, then does
+   it again. pathLength="1", so a dash of 1 covers the arc exactly. */
+@keyframes iso-bk-loop {
+  0% {
+    stroke-dashoffset: 1;
+    opacity: 1;
+  }
+  55%,
+  84% {
+    stroke-dashoffset: 0;
+    opacity: 1;
+  }
+  100% {
+    stroke-dashoffset: 0;
+    opacity: 0;
+  }
+}
+
+@keyframes iso-bk-arrow {
+  0%,
+  50% {
+    scale: 0;
+    opacity: 0;
+  }
+  58% {
+    scale: 1.2;
+    opacity: 1;
+  }
+  64%,
+  84% {
+    scale: 1;
+    opacity: 1;
+  }
+  100% {
+    scale: 1;
+    opacity: 0;
+  }
+}
+
+.iso-bk-loop {
+  stroke-dasharray: 1 1;
+  animation: iso-bk-loop 5s ease-in-out infinite;
+}
+
+.iso-bk-arrow {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: iso-bk-arrow 5s ease-out infinite;
+}
+
+/* The Databases empty state: a tumbleweed rolls past the drum that is not there,
+   four skips, then nothing for a while - the pause is the joke. Travel and spin
+   share the linear 8%-55% window, or the weed skids. */
+@keyframes iso-db-roll {
+  0%,
+  8% {
+    translate: 0 0;
+    opacity: 0;
+  }
+  11%,
+  52% {
+    opacity: 1;
+  }
+  55%,
+  100% {
+    translate: 172.8px 99.7px;
+    opacity: 0;
+  }
+}
+
+/* 3.6 steps of travel (199.5px) on a 16.6px radius is 1.9 turns. */
+@keyframes iso-db-spin {
+  0%,
+  8% {
+    rotate: 0deg;
+  }
+  55%,
+  100% {
+    rotate: 688deg;
+  }
+}
+
+/* Gusts, not a metronome: four skips of falling height. */
+@keyframes iso-db-hop {
+  0%,
+  8% {
+    translate: 0 0;
+    animation-timing-function: ease-out;
+  }
+  14% {
+    translate: 0 -27px;
+    animation-timing-function: ease-in;
+  }
+  20% {
+    translate: 0 0;
+    animation-timing-function: ease-out;
+  }
+  26% {
+    translate: 0 -20px;
+    animation-timing-function: ease-in;
+  }
+  32% {
+    translate: 0 0;
+    animation-timing-function: ease-out;
+  }
+  38% {
+    translate: 0 -24px;
+    animation-timing-function: ease-in;
+  }
+  44% {
+    translate: 0 0;
+    animation-timing-function: ease-out;
+  }
+  49% {
+    translate: 0 -14px;
+    animation-timing-function: ease-in;
+  }
+  55%,
+  100% {
+    translate: 0 0;
+  }
+}
+
+/* At rest it is parked mid-roll beside the drum, not off the floor. */
+.iso-db-roll {
+  translate: 86.4px 49.9px;
+  animation: iso-db-roll 6s linear infinite;
+}
+
+.iso-db-hop {
+  animation: iso-db-hop 6s infinite;
+}
+
+.iso-db-spin {
+  transform-box: fill-box;
+  transform-origin: center;
+  rotate: 344deg;
+  animation: iso-db-spin 6s linear infinite;
+}
+
+/* The S3 destinations empty state throws a copy into the bucket: across in a
+   straight line, up and over under gravity, in behind the rim, gone. */
+@keyframes iso-s3-throw {
+  0% {
+    translate: 0 0;
+    opacity: 0;
+  }
+  8% {
+    translate: 0 0;
+    opacity: 1;
+  }
+  58% {
+    opacity: 1;
+  }
+  62%,
+  100% {
+    translate: 115.2px 66.5px;
+    opacity: 0;
+  }
+}
+
+/* Up fast and hanging, down under gravity; the apex sits just before halfway. */
+@keyframes iso-s3-arc {
+  0%,
+  8% {
+    translate: 0 0;
+    animation-timing-function: ease-out;
+  }
+  35% {
+    translate: 0 -130px;
+    animation-timing-function: ease-in;
+  }
+  62%,
+  100% {
+    translate: 0 -30px;
+  }
+}
+
+/* At rest it hangs at the apex: the end frame is an empty sky. */
+.iso-s3-throw {
+  translate: 57.6px 33.2px;
+  animation: iso-s3-throw 5s linear infinite;
+}
+
+.iso-s3-arc {
+  translate: 0 -130px;
+  animation: iso-s3-arc 5s infinite;
+}

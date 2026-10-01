@@ -1,80 +1,91 @@
-import { MARK_PATH, MARK_VIEWBOX } from "@/components/logo";
+import {
+  Box,
+  Disc,
+  FaceRect,
+  IsoArt,
+  Legs,
+  Path,
+  fit,
+  floor,
+  tone,
+  type BoxShape,
+} from "@/components/iso/iso";
+import { DeploCube } from "@/components/iso/parts";
 import { cn } from "@/lib/utils";
+
+const SLAB: BoxShape = { at: [0, 0, 0], size: [3, 2.6, 0] };
+const LATEST = tone("var(--success)");
+const HEIGHTS = [2.2, 1.6, 1];
 
 export function UpdateGraphic({ className }: { className?: string }) {
   return (
-    <svg
-      viewBox="0 0 240 220"
-      fill="none"
-      role="img"
-      aria-label="A timeline of Deplo releases, with the one this instance runs marked"
+    <IsoArt
+      label="A timeline of Deplo releases, with the one this instance runs marked"
+      view={fit(
+        [
+          SLAB,
+          { at: [0, 0, -0.6], size: [3, 2.6, 2.8] },
+          { at: [2.2, 0.7, 1.25], size: [0.6, 0.6, 0.9] },
+        ],
+        8,
+      )}
       className={cn("h-auto w-full", className)}
     >
-      <path
-        d="M30 22 V198"
-        className="stroke-border"
-        strokeWidth="2"
-        strokeLinecap="round"
+      <Legs at={SLAB.at} size={SLAB.size} drop={0.6} />
+      <Box {...SLAB} tone={floor} />
+      <Path
+        points={[
+          [0, 2.3, 0],
+          [3, 2.3, 0],
+        ]}
+        className="stroke-ring"
+        strokeWidth="1.5"
+        strokeDasharray="4 4"
       />
 
-      <circle cx="30" cy="39" r="6" fill="var(--success)" />
-      <Release y="16" accent />
-      <circle cx="30" cy="101" r="5" className="fill-ring" />
-      <Release y="78" />
-      <circle cx="30" cy="163" r="5" className="fill-ring" />
-      <rect
-        x="48"
-        y="140"
-        width="176"
-        height="46"
-        rx="10"
-        className="fill-secondary stroke-ring"
-        strokeWidth="2.5"
-      />
-      <svg
-        x="62"
-        y="152"
-        width="22"
-        height="22"
-        viewBox={MARK_VIEWBOX}
-        className="text-muted-foreground"
-      >
-        <path d={MARK_PATH} fill="currentColor" />
-      </svg>
-      <g className="fill-border">
-        <rect x="94" y="156" width="62" height="6" rx="3" />
-        <rect x="94" y="168" width="98" height="6" rx="3" />
-      </g>
-    </svg>
-  );
-}
+      {HEIGHTS.map((h, i) => {
+        const box: BoxShape = { at: [i, 0, 0], size: [1, 2, h] };
+        const latest = i === 0;
+        const top = (n: number) => 1 - n / h;
+        return (
+          <g key={h}>
+            <Disc
+              at={[i + 0.5, 2.3, 0]}
+              r={0.1}
+              fill={latest ? "var(--success)" : "var(--ring)"}
+              stroke="none"
+            />
+            <Box {...box} tone={latest ? LATEST : undefined}>
+              <FaceRect
+                box={box}
+                face="left"
+                u={[0.15, 0.55]}
+                v={[top(0.42), top(0.26)]}
+                fill={latest ? "var(--success)" : "var(--muted-foreground)"}
+                className={latest ? "iso-blink" : undefined}
+              />
+              <FaceRect
+                box={box}
+                face="left"
+                u={[0.15, 0.85]}
+                v={[top(0.6), top(0.54)]}
+                fill={latest ? "var(--success)" : "var(--ring)"}
+              />
+              <FaceRect
+                box={box}
+                face="right"
+                u={[0.12, 0.88]}
+                v={[top(0.42), top(0.36)]}
+                fill={latest ? "var(--success)" : "var(--ring)"}
+              />
+            </Box>
+          </g>
+        );
+      })}
 
-function Release({ y, accent }: { y: string; accent?: boolean }) {
-  const top = Number(y);
-  return (
-    <>
-      <rect
-        x="48"
-        y={y}
-        width="176"
-        height="46"
-        rx="10"
-        className="fill-secondary stroke-ring"
-        strokeWidth="2.5"
-      />
-      <rect
-        x="62"
-        y={top + 14}
-        width="34"
-        height="10"
-        rx="5"
-        fill={accent ? "var(--success)" : undefined}
-        className={accent ? undefined : "fill-border"}
-      />
-      <g className="fill-border">
-        <rect x="106" y={top + 16} width="72" height="6" rx="3" />
-        <rect x="62" y={top + 32} width="116" height="6" rx="3" />
+      <g className="iso-bob">
+        <DeploCube at={[2.2, 0.7, 1.25]} size={0.6} />
       </g>
-    </>
+    </IsoArt>
   );
 }

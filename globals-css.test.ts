@@ -4,7 +4,14 @@ import { readFileSync } from "node:fs";
 
 const KEEPS_ITS_FILL = new Set(["deplo-phase-in"]);
 
-const css = readFileSync(new URL("./app/globals.css", import.meta.url), "utf8");
+const css = [
+  "app/globals",
+  ...["motion", "apps", "data", "settings"].map(
+    (f) => `components/iso/styles/${f}`,
+  ),
+]
+  .map((f) => readFileSync(new URL(`./${f}.css`, import.meta.url), "utf8"))
+  .join("\n");
 
 test("entrance animations release their fill", () => {
   const offenders: string[] = [];

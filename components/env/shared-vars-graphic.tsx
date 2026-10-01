@@ -1,59 +1,125 @@
+import {
+  Box,
+  Cylinder,
+  Disc,
+  FaceRect,
+  IsoArt,
+  Path,
+  fit,
+  floor,
+  tone,
+  type BoxShape,
+  type P,
+} from "@/components/iso/iso";
 import { cn } from "@/lib/utils";
+
+const VIOLET = "var(--violet)";
+const FLOOR: BoxShape = { at: [0, 0, 0], size: [3, 3, 0] };
+const H = 0.8;
+const SOURCE: BoxShape = { at: [1.1, 1.1, 2.3], size: [0.8, 0.8, 0.25] };
+const JOIN = 1.8;
+// Each app's centre, left to right on screen, and its branch from the source.
+const APPS: { at: P; route: P[] }[] = [
+  {
+    at: [0.1, 2.1, 0],
+    route: [
+      [1.5, 1.5, JOIN],
+      [1.5, 2.5, JOIN],
+      [0.5, 2.5, JOIN],
+      [0.5, 2.5, H],
+    ],
+  },
+  {
+    at: [1.1, 1.1, 0],
+    route: [
+      [1.5, 1.5, JOIN],
+      [1.5, 1.5, H],
+    ],
+  },
+  {
+    at: [2.1, 0.1, 0],
+    route: [
+      [1.5, 1.5, JOIN],
+      [1.5, 0.5, JOIN],
+      [2.5, 0.5, JOIN],
+      [2.5, 0.5, H],
+    ],
+  },
+];
 
 export function SharedVarsGraphic({ className }: { className?: string }) {
   return (
-    <svg
-      viewBox="0 0 120 90"
-      fill="none"
-      role="img"
-      aria-label="One shared variable streaming down into three apps at once"
+    <IsoArt
+      label="One shared variable streaming down into three apps at once"
+      view={fit([FLOOR, { ...SOURCE, size: [0.8, 0.8, 0.3] }])}
       className={cn("size-32", className)}
     >
-      <rect
-        x="42"
-        y="6"
-        width="36"
-        height="20"
-        rx="5"
-        stroke="var(--violet)"
-        strokeWidth="2"
+      <Box {...FLOOR} tone={floor} />
+      {APPS.map(({ at }, i) => {
+        const app: BoxShape = { at, size: [0.8, 0.8, H] };
+        return (
+          <Box key={i} {...app}>
+            <FaceRect
+              box={app}
+              face="left"
+              u={[0.15, 0.6]}
+              v={[0.7, 0.78]}
+              fill="var(--border)"
+            />
+          </Box>
+        );
+      })}
+
+      <Path
+        points={[
+          [1.5, 1.5, 2.3],
+          [1.5, 1.5, JOIN],
+        ]}
+        stroke={VIOLET}
+        strokeWidth="1.5"
+        strokeDasharray="4 4"
+        className="iso-svars-flow"
       />
-      <line
-        x1="48"
-        y1="16"
-        x2="58"
-        y2="16"
-        stroke="var(--violet)"
-        strokeWidth="4"
-        strokeLinecap="round"
-      />
-      <g fill="var(--violet)" fillOpacity="0.65">
-        <circle cx="65" cy="16" r="2" />
-        <circle cx="71" cy="16" r="2" />
-      </g>
+      {APPS.map(({ route }, i) => (
+        <Path
+          key={i}
+          points={route}
+          stroke={VIOLET}
+          strokeWidth="1.5"
+          strokeDasharray="4 4"
+          className="iso-svars-flow"
+        />
+      ))}
 
-      <g
-        className="deplo-svars-flow"
-        stroke="var(--violet)"
-        strokeWidth="2"
-        strokeOpacity="0.6"
-      >
-        <path d="M60 28 C60 48 21 46 21 62" />
-        <path d="M60 28 V62" />
-        <path d="M60 28 C60 48 99 46 99 62" />
-      </g>
+      {APPS.map(({ at }, i) => (
+        <Cylinder
+          key={i}
+          at={[at[0] + 0.4, at[1] + 0.4, H]}
+          r={0.16}
+          h={0.08}
+          tone={tone(VIOLET)}
+          className="iso-svars-dot"
+          style={{ animationDelay: `${i === 1 ? 0 : 0.25 * i}s` }}
+        />
+      ))}
 
-      <g strokeWidth="2" className="stroke-ring">
-        <rect x="8" y="62" width="26" height="20" rx="4" />
-        <rect x="47" y="62" width="26" height="20" rx="4" />
-        <rect x="86" y="62" width="26" height="20" rx="4" />
-      </g>
-
-      <g fill="var(--violet)">
-        <circle className="deplo-svars-dot" cx="21" cy="72" r="3.5" />
-        <circle className="deplo-svars-dot" cx="60" cy="72" r="3.5" />
-        <circle className="deplo-svars-dot" cx="99" cy="72" r="3.5" />
-      </g>
-    </svg>
+      <Box {...SOURCE} tone={tone(VIOLET)}>
+        <FaceRect
+          box={SOURCE}
+          face="left"
+          u={[0.15, 0.55]}
+          v={[0.35, 0.65]}
+          fill="var(--iso-base)"
+        />
+      </Box>
+      {[0.68, 0.84].map((u) => (
+        <Disc
+          key={u}
+          at={[1.1 + u * 0.8, 1.5, 2.55]}
+          r={0.05}
+          fill="var(--iso-base)"
+        />
+      ))}
+    </IsoArt>
   );
 }

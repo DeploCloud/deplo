@@ -1,0 +1,562 @@
+/* The settings, account and migration illustrations. Shared moves live in motion.css. */
+
+/* The Git empty state clones a repository across: a copy comes off the host,
+   glides three nodes over and dissolves into the list, which writes itself in. */
+@keyframes iso-git-copy {
+  0%,
+  6% {
+    translate: 24px -13.85px;
+    opacity: 0;
+  }
+  13% {
+    translate: 0 0;
+    opacity: 1;
+  }
+  40% {
+    translate: 144px 83.1px;
+    opacity: 1;
+  }
+  46%,
+  100% {
+    translate: 144px 83.1px;
+    opacity: 0;
+  }
+}
+
+/* The rows start while the copy is still fading: it reads as dissolving INTO
+   the list. They write left to right, in the face's own plane. */
+@keyframes iso-git-row {
+  0%,
+  38% {
+    scale: 0 1;
+    opacity: 0;
+  }
+  42% {
+    opacity: 1;
+  }
+  50%,
+  78% {
+    scale: 1;
+    opacity: 1;
+  }
+  86%,
+  100% {
+    scale: 1;
+    opacity: 0;
+  }
+}
+
+.iso-git-copy {
+  opacity: 0;
+  animation: iso-git-copy 6s linear infinite;
+}
+
+.iso-git-row {
+  transform-box: fill-box;
+  transform-origin: left center;
+  animation: iso-git-row 6s ease-out infinite;
+}
+
+/* The Registries empty state floats: the whale bobs and breathes, nothing else
+   moves, because nothing is being pulled. The puff climbs a node and thins. */
+@keyframes iso-registry-puff {
+  0% {
+    translate: 0 0;
+    scale: 0.6;
+    opacity: 0;
+  }
+  12% {
+    opacity: 1;
+  }
+  55%,
+  100% {
+    translate: 0 -55.4px;
+    scale: 1.6;
+    opacity: 0;
+  }
+}
+
+.iso-registry-puff {
+  transform-box: fill-box;
+  transform-origin: center;
+  opacity: 0;
+  animation: iso-registry-puff var(--iso-dur, 2.6s) ease-out
+    var(--iso-delay, 0s) infinite;
+}
+
+/* The API tokens empty state cuts a key and turns it in a lock: the bow forms,
+   the shaft follows, the teeth stamp in, the key slides in a node and turns a
+   quarter about its own shaft, and the shackle springs. Then it fades and the
+   lock closes - no token exists, so nothing settles. */
+@keyframes iso-token-key {
+  0%,
+  4% {
+    opacity: 0;
+  }
+  9%,
+  88% {
+    opacity: 1;
+  }
+  96%,
+  100% {
+    opacity: 0;
+  }
+}
+
+@keyframes iso-token-bow {
+  0%,
+  6% {
+    scale: 0;
+  }
+  18%,
+  100% {
+    scale: 1;
+  }
+}
+
+@keyframes iso-token-shaft {
+  0%,
+  16% {
+    scale: 0 1;
+  }
+  30%,
+  100% {
+    scale: 1;
+  }
+}
+
+@keyframes iso-token-tooth {
+  0%,
+  32% {
+    scale: 1 0;
+  }
+  39% {
+    scale: 1 1.18;
+  }
+  44%,
+  100% {
+    scale: 1;
+  }
+}
+
+@keyframes iso-token-insert {
+  0%,
+  50% {
+    translate: 0 0;
+  }
+  60%,
+  100% {
+    translate: 55.4px 0;
+  }
+}
+
+/* A turn about the shaft, written as the plane's own shear at 0/30/60/90
+   degrees: the key stays true isometric through the whole quarter. */
+@keyframes iso-token-turn {
+  0%,
+  60% {
+    transform: matrix(1, 0, 0, 1, 0, 0);
+  }
+  62.7% {
+    transform: matrix(1, 0, 0.5, 1.366, 0, 0);
+  }
+  65.3% {
+    transform: matrix(1, 0, 0.866, 1.366, 0, 0);
+  }
+  68%,
+  100% {
+    transform: matrix(1, 0, 1, 1, 0, 0);
+  }
+}
+
+@keyframes iso-token-shackle {
+  0%,
+  66% {
+    translate: 0 0;
+  }
+  72% {
+    translate: 0 -18px;
+  }
+  77%,
+  90% {
+    translate: 0 -14px;
+  }
+  97%,
+  100% {
+    translate: 0 0;
+  }
+}
+
+.iso-token-key {
+  animation: iso-token-key 5s ease-in-out infinite;
+}
+
+.iso-token-bow {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: iso-token-bow 5s ease-out infinite;
+}
+
+.iso-token-shaft {
+  transform-box: fill-box;
+  transform-origin: left center;
+  animation: iso-token-shaft 5s ease-in-out infinite;
+}
+
+.iso-token-tooth {
+  transform-box: fill-box;
+  transform-origin: top;
+  animation: iso-token-tooth 5s ease-out infinite backwards;
+}
+
+/* Rest frame (reduced motion): inserted, turned, shackle out. */
+.iso-token-insert {
+  translate: 55.4px 0;
+  animation: iso-token-insert 5s ease-in-out infinite;
+}
+
+.iso-token-turn {
+  transform: matrix(1, 0, 1, 1, 0, 0);
+  animation: iso-token-turn 5s linear infinite;
+}
+
+.iso-token-shackle {
+  translate: 0 -14px;
+  animation: iso-token-shackle 5s ease-out infinite;
+}
+
+/* The MCP connect wizard's robot: one idea per pose. Idle looks around, the
+   key pose blips, reaching falls short of the port, connected glows. */
+@keyframes iso-robot-look {
+  0%,
+  100% {
+    translate: -4px 0;
+  }
+  50% {
+    translate: 4px 0;
+  }
+}
+
+/* The antenna drifts along the same axis as the eyes, on the same clock. */
+@keyframes iso-robot-antenna {
+  0%,
+  100% {
+    translate: -3.5px -2px;
+  }
+  50% {
+    translate: 3.5px 2px;
+  }
+}
+
+.iso-robot-eyes {
+  animation: iso-robot-look 3.2s ease-in-out infinite;
+}
+
+.iso-robot-antenna {
+  animation: iso-robot-antenna 3.2s ease-in-out infinite;
+}
+
+@keyframes iso-robot-blip {
+  0%,
+  70%,
+  100% {
+    scale: 1;
+  }
+  35% {
+    scale: 1.5;
+  }
+}
+
+.iso-robot-blip {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: iso-robot-blip 1.8s ease-in-out infinite;
+}
+
+/* The key tilts in the plane it is drawn on, pivoting at the hand. */
+@keyframes iso-robot-key {
+  0%,
+  100% {
+    rotate: -9deg;
+  }
+  50% {
+    rotate: 9deg;
+  }
+}
+
+.iso-robot-key {
+  transform-origin: 0 0;
+  animation: iso-robot-key 2.6s ease-in-out infinite;
+}
+
+/* Reaching: the cable runs to the corner, turns, stops short of the port and
+   pulls back. Stopping short is the message: Deplo has not heard from it yet. */
+@keyframes iso-robot-cable-a {
+  0% {
+    scale: 0;
+    opacity: 0;
+  }
+  2% {
+    opacity: 1;
+  }
+  30%,
+  76% {
+    scale: 1;
+  }
+  98% {
+    scale: 0;
+    opacity: 1;
+  }
+  100% {
+    scale: 0;
+    opacity: 0;
+  }
+}
+
+@keyframes iso-robot-cable-b {
+  0%,
+  30% {
+    scale: 0;
+    opacity: 0;
+  }
+  31% {
+    opacity: 1;
+  }
+  45%,
+  62% {
+    scale: 0.6;
+  }
+  75% {
+    scale: 0;
+    opacity: 1;
+  }
+  76%,
+  100% {
+    scale: 0;
+    opacity: 0;
+  }
+}
+
+.iso-robot-cable-a {
+  transform-box: fill-box;
+  transform-origin: 0 0;
+  animation: iso-robot-cable-a 2.8s ease-in-out infinite;
+}
+
+.iso-robot-cable-b {
+  transform-box: fill-box;
+  transform-origin: 0 100%;
+  animation: iso-robot-cable-b 2.8s ease-in-out infinite;
+}
+
+.iso-robot-halo {
+  opacity: 0;
+}
+
+/* The notification settings' phone: three alerts drop onto the screen on one
+   shared loop, a third of it apart and top first, so the stream never stops. */
+@keyframes iso-notif-card {
+  0% {
+    translate: 0 -27.7px;
+    opacity: 0;
+  }
+  6%,
+  88% {
+    translate: 0 0;
+    opacity: 1;
+  }
+  96%,
+  100% {
+    translate: 0 13.85px;
+    opacity: 0;
+  }
+}
+
+.iso-notif-card {
+  animation: iso-notif-card 7.8s ease-in-out infinite backwards;
+}
+
+/* The panel-address confirm: a packet leaves the old address, follows the wire
+   to the new one, and the new address answers with a ring on the arrival. */
+@keyframes iso-panel-packet {
+  0% {
+    translate: 0 0;
+    opacity: 0;
+  }
+  8% {
+    opacity: 1;
+  }
+  30% {
+    translate: 28.8px 16.6px;
+  }
+  55% {
+    translate: 129.6px -41.6px;
+    opacity: 1;
+  }
+  63%,
+  100% {
+    translate: 129.6px -41.6px;
+    opacity: 0;
+  }
+}
+
+@keyframes iso-panel-ring {
+  0%,
+  54% {
+    scale: 0.8;
+    opacity: 0;
+  }
+  60% {
+    opacity: 1;
+  }
+  90%,
+  100% {
+    scale: 1.3;
+    opacity: 0;
+  }
+}
+
+.iso-panel-packet {
+  opacity: 0;
+  animation: iso-panel-packet 3.2s ease-in-out infinite;
+}
+
+.iso-panel-ring {
+  transform-box: fill-box;
+  transform-origin: center;
+  opacity: 0;
+  animation: iso-panel-ring 3.2s ease-out infinite;
+}
+
+/* The takeover leftovers, once: the old platform's share of the disk fills
+   bottom slot first, then the stopped platform lands on it. */
+@keyframes iso-disk-drop {
+  from {
+    translate: 0 -40px;
+    opacity: 0;
+  }
+}
+
+.iso-disk-share {
+  animation: iso-disk-drop 0.45s cubic-bezier(0.22, 1, 0.36, 1) backwards;
+}
+
+.iso-disk-panel {
+  animation: iso-disk-drop 0.5s cubic-bezier(0.22, 1, 0.36, 1) 0.75s backwards;
+}
+
+/* The migration: the cable's length is a fact about the step, so it is
+   transitioned, not looped - moving on reads as the cable pushed further in. */
+.iso-migration-cable {
+  transition: stroke-dashoffset 700ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* Out of the source, two nodes along x, round the corner, two nodes to Deplo. */
+@keyframes iso-migration-packet {
+  0% {
+    translate: 0 0;
+    opacity: 0;
+  }
+  10% {
+    opacity: 1;
+  }
+  45% {
+    translate: 96px 55.4px;
+  }
+  80% {
+    translate: 192px 0;
+    opacity: 1;
+  }
+  90%,
+  100% {
+    translate: 192px 0;
+    opacity: 0;
+  }
+}
+
+.iso-migration-packet {
+  opacity: 0;
+  animation: iso-migration-packet 1.8s linear infinite;
+}
+
+/* The source's mark arriving once, when the scan works out which panel it is. */
+@keyframes iso-migration-mark {
+  from {
+    opacity: 0;
+    scale: 0.9;
+  }
+}
+
+.iso-migration-mark {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: iso-migration-mark 420ms ease-out;
+}
+
+/* Before the scan, the face shows what it COULD be: the two marks trade places,
+   the second half a period behind. At rest the face stays empty. */
+@keyframes iso-migration-swap {
+  0%,
+  40% {
+    opacity: 1;
+    scale: 1;
+  }
+  48%,
+  92% {
+    opacity: 0;
+    scale: 0.55;
+  }
+  100% {
+    opacity: 1;
+    scale: 1;
+  }
+}
+
+.iso-migration-swap {
+  transform-box: fill-box;
+  transform-origin: center;
+  opacity: 0;
+  animation: iso-migration-swap 5.2s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .iso-migration-cable {
+    transition: none;
+  }
+}
+
+/* The dead registration link: the chain comes apart ONCE and stays apart, so
+   every animation here is finite and lands on the drawn position. */
+@keyframes iso-unlink-a {
+  from {
+    translate: 14.4px 8.3px;
+  }
+}
+
+@keyframes iso-unlink-b {
+  from {
+    translate: -14.4px -8.3px;
+  }
+}
+
+@keyframes iso-unlink-fade {
+  from {
+    opacity: 0;
+  }
+}
+
+.iso-unlink-a {
+  animation: iso-unlink-a 0.75s cubic-bezier(0.22, 1, 0.36, 1) 0.15s both;
+}
+
+.iso-unlink-b {
+  animation: iso-unlink-b 0.75s cubic-bezier(0.22, 1, 0.36, 1) 0.15s both;
+}
+
+.iso-unlink-spark {
+  animation: iso-unlink-fade 0.4s ease-out 0.6s both;
+}
+
+.iso-unlink-track {
+  animation: iso-unlink-fade 0.5s ease-out 0.85s both;
+}

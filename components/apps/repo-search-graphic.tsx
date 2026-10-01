@@ -1,66 +1,56 @@
+import {
+  Box,
+  Cylinder,
+  Disc,
+  FaceRect,
+  IsoArt,
+  fit,
+  shade,
+  tone,
+  type BoxShape,
+} from "@/components/iso/iso";
 import { cn } from "@/lib/utils";
+
+const LIST: BoxShape = { at: [0, 0, 0], size: [2.6, 2, 0.18] };
+const LENS = "var(--info)";
 
 export function RepoSearchGraphic({ className }: { className?: string }) {
   return (
-    <svg
-      viewBox="0 0 120 120"
-      fill="none"
-      role="img"
-      aria-label="An empty list of repositories under a magnifying glass"
+    <IsoArt
+      label="An empty list of repositories under a magnifying glass"
+      view={fit([LIST, { at: [1, 0.6, 0.95], size: [1.9, 1.2, 0.2] }])}
       className={cn("size-24", className)}
     >
-      <rect
-        x="14"
-        y="20"
-        width="92"
-        height="64"
-        rx="9"
-        className="stroke-border"
-        strokeWidth="2.5"
-      />
-      <rect
-        x="27"
-        y="35"
-        width="30"
-        height="5"
-        rx="2.5"
-        className="fill-ring"
-      />
-      {[52, 66].map((y) => (
-        <line
-          key={y}
-          x1="27"
-          y1={y}
-          x2="93"
-          y2={y}
-          className="stroke-ring"
-          strokeWidth="2.5"
-          strokeLinecap="round"
+      <Box {...LIST}>
+        <FaceRect
+          box={LIST}
+          face="top"
+          u={[0.1, 0.42]}
+          v={[0.14, 0.24]}
+          fill="var(--muted-foreground)"
         />
-      ))}
+        {[0.5, 0.74].map((v) => (
+          <FaceRect
+            key={v}
+            box={LIST}
+            face="top"
+            u={[0.1, 0.9]}
+            v={[v, v + 0.04]}
+            fill="var(--ring)"
+          />
+        ))}
+      </Box>
+      <Disc at={[1.6, 1.15, 0.18]} r={0.55} className="fill-border" />
 
-      <circle
-        cx="74"
-        cy="70"
-        r="19"
-        className="stroke-muted-foreground"
-        strokeWidth="3"
-      />
-      <line
-        x1="88"
-        y1="84"
-        x2="99"
-        y2="95"
-        className="stroke-muted-foreground"
-        strokeWidth="4"
-        strokeLinecap="round"
-      />
-      <path
-        d="M65 63a11 11 0 0 1 7-5"
-        className="stroke-background"
-        strokeWidth="2.5"
-        strokeLinecap="round"
-      />
-    </svg>
+      <Box at={[1.98, 1.07, 0.95]} size={[0.9, 0.16, 0.1]} tone={tone(LENS)} />
+      <Cylinder at={[1.6, 1.15, 0.95]} r={0.55} h={0.1} tone={tone(LENS)}>
+        <Disc
+          at={[1.6, 1.15, 1.05]}
+          r={0.42}
+          fill={shade(LENS, "right")}
+          stroke={LENS}
+        />
+      </Cylinder>
+    </IsoArt>
   );
 }

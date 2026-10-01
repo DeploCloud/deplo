@@ -1,0 +1,718 @@
+/* The motion of the app pages' illustrations: deploys, logs, domains, crons,
+   monitoring, previews and templates. Shared moves live in motion.css. */
+
+/* The Deployments empty state delivers a build: the crate hops the belt one
+   node at a time into the server, the bays light bottom up, and it goes live. */
+@keyframes iso-deploy-crate {
+  0% {
+    translate: 0 -55.4px;
+    opacity: 0;
+  }
+  6%,
+  14% {
+    translate: 0 0;
+    opacity: 1;
+  }
+  22%,
+  30% {
+    translate: 48px 27.7px;
+  }
+  38%,
+  46% {
+    translate: 96px 55.4px;
+  }
+  54% {
+    translate: 144px 83.1px;
+    opacity: 1;
+  }
+  58%,
+  100% {
+    translate: 144px 83.1px;
+    opacity: 0;
+  }
+}
+
+@keyframes iso-deploy-bay {
+  0%,
+  50% {
+    fill: var(--ring);
+  }
+  54%,
+  86% {
+    fill: var(--success);
+  }
+  90%,
+  100% {
+    fill: var(--ring);
+  }
+}
+
+@keyframes iso-deploy-live {
+  0%,
+  66% {
+    scale: 1;
+    opacity: 0;
+  }
+  68% {
+    opacity: 1;
+  }
+  90%,
+  100% {
+    scale: 1.8;
+    opacity: 0;
+  }
+}
+
+.iso-deploy-crate {
+  animation: iso-deploy-crate 6s ease-in-out infinite;
+}
+
+.iso-deploy-bay {
+  animation: iso-deploy-bay 6s ease-out infinite;
+}
+
+.iso-deploy-live {
+  transform-box: fill-box;
+  transform-origin: center;
+  opacity: 0;
+  animation: iso-deploy-live 6s ease-out infinite;
+}
+
+/* The Overview empty state launches: the rocket rests on the pad, lights up,
+   climbs one step and fades, and is back on the pad before it shows again. */
+@keyframes iso-rocket-lift {
+  0%,
+  18% {
+    translate: 0 0;
+    opacity: 1;
+  }
+  62% {
+    translate: 0 -55.4px;
+    opacity: 1;
+  }
+  72%,
+  86% {
+    translate: 0 -77.6px;
+    opacity: 0;
+  }
+  87%,
+  92% {
+    translate: 0 0;
+    opacity: 0;
+  }
+  100% {
+    translate: 0 0;
+    opacity: 1;
+  }
+}
+
+@keyframes iso-rocket-burn {
+  0%,
+  16% {
+    opacity: 0;
+  }
+  20%,
+  60% {
+    opacity: 1;
+  }
+  66%,
+  100% {
+    opacity: 0;
+  }
+}
+
+/* A flame changes, it does not breathe: the long one cuts in and out. */
+@keyframes iso-rocket-flicker {
+  0%,
+  49% {
+    visibility: hidden;
+  }
+  50%,
+  100% {
+    visibility: visible;
+  }
+}
+
+@keyframes iso-rocket-smoke {
+  0%,
+  18% {
+    scale: 0.3;
+    opacity: 0;
+  }
+  24% {
+    opacity: 1;
+  }
+  55%,
+  100% {
+    scale: 2;
+    opacity: 0;
+  }
+}
+
+.iso-rocket {
+  animation: iso-rocket-lift 6s ease-in infinite;
+}
+
+.iso-rocket-flame {
+  opacity: 0;
+  animation: iso-rocket-burn 6s linear infinite;
+}
+
+.iso-rocket-flame-long {
+  animation:
+    iso-rocket-burn 6s linear infinite,
+    iso-rocket-flicker 0.28s steps(1, end) infinite;
+}
+
+.iso-rocket-smoke {
+  transform-box: fill-box;
+  transform-origin: center;
+  opacity: 0;
+  animation: iso-rocket-smoke 6s ease-out infinite;
+}
+
+.iso-rocket-smoke + .iso-rocket-smoke {
+  animation-delay: 0.35s;
+}
+
+/* The Backup artifacts empty state builds a stack: three copies drop onto the
+   shelf bottom to top, 0.3s apart, hold, then clear and go again. */
+@keyframes iso-backup-drop {
+  0%,
+  10% {
+    translate: 0 -83.1px;
+    opacity: 0;
+  }
+  16% {
+    opacity: 1;
+  }
+  26%,
+  82% {
+    translate: 0 0;
+    opacity: 1;
+  }
+  100% {
+    translate: 0 0;
+    opacity: 0;
+  }
+}
+
+.iso-backup-copy {
+  animation: iso-backup-drop 5s ease-in infinite;
+}
+
+/* The Logs empty state writes into an empty pane: three lines arrive from
+   below one after another, hold, the buffer clears and the caret waits. */
+@keyframes iso-logs-line {
+  0%,
+  8% {
+    translate: 0 4px;
+    opacity: 0;
+  }
+  14%,
+  72% {
+    translate: 0 0;
+    opacity: 1;
+  }
+  78%,
+  100% {
+    translate: 0 0;
+    opacity: 0;
+  }
+}
+
+/* On or off, never a fade: the cadence of every terminal caret. */
+@keyframes iso-logs-blink {
+  0%,
+  49% {
+    opacity: 1;
+  }
+  50%,
+  100% {
+    opacity: 0;
+  }
+}
+
+/* One row down per line that lands (18.6px a row), back up when it clears. */
+@keyframes iso-logs-row {
+  0%,
+  13% {
+    translate: 0 -55.9px;
+  }
+  14%,
+  20% {
+    translate: 0 -37.3px;
+  }
+  21%,
+  27% {
+    translate: 0 -18.6px;
+  }
+  28%,
+  84% {
+    translate: 0 0;
+  }
+  85%,
+  100% {
+    translate: 0 -55.9px;
+  }
+}
+
+.iso-logs-line {
+  animation: iso-logs-line 6s ease-out infinite;
+}
+
+.iso-logs-caret {
+  animation:
+    iso-logs-blink 1.1s steps(1, end) infinite,
+    iso-logs-row 6s linear infinite;
+}
+
+/* The "app is not running" empty state: the plug drifts along one grid axis,
+   and once a turn dips toward the socket, stalls just short, and backs off. */
+@keyframes iso-plug-sway {
+  0%,
+  100% {
+    translate: -3.8px -2.2px;
+  }
+  50% {
+    translate: 3.8px 2.2px;
+  }
+}
+
+@keyframes iso-plug-dip {
+  0%,
+  18% {
+    translate: 0 0;
+    animation-timing-function: ease-out;
+  }
+  34%,
+  46% {
+    translate: 0 10px;
+    animation-timing-function: ease-in;
+  }
+  64%,
+  100% {
+    translate: 0 0;
+  }
+}
+
+.iso-plug-sway {
+  animation: iso-plug-sway 6s ease-in-out infinite;
+}
+
+.iso-plug-dip {
+  animation: iso-plug-dip 6s infinite;
+}
+
+/* Cron: the hand sweeps the dial and, on the top mark, the job fires - the
+   mark lights, a ring goes out and a job block lifts off the clock. */
+@keyframes iso-cron-sweep {
+  to {
+    rotate: 360deg;
+  }
+}
+
+@keyframes iso-cron-fire {
+  0% {
+    scale: 0;
+    opacity: 0;
+  }
+  6% {
+    scale: 1.25;
+    opacity: 1;
+  }
+  12%,
+  62% {
+    scale: 1;
+    opacity: 1;
+  }
+  80%,
+  100% {
+    scale: 1;
+    opacity: 0;
+  }
+}
+
+@keyframes iso-cron-pulse {
+  0% {
+    scale: 0.6;
+    opacity: 0;
+  }
+  10% {
+    opacity: 1;
+  }
+  45%,
+  100% {
+    scale: 2.6;
+    opacity: 0;
+  }
+}
+
+@keyframes iso-cron-job {
+  0%,
+  2% {
+    translate: 0 0;
+    opacity: 0;
+  }
+  8% {
+    translate: 0 0;
+    opacity: 1;
+  }
+  40% {
+    translate: 0 -55.4px;
+    opacity: 1;
+  }
+  52%,
+  100% {
+    translate: 0 -55.4px;
+    opacity: 0;
+  }
+}
+
+.iso-cron-hand {
+  transform-box: view-box;
+  transform-origin: 0 0;
+  animation: iso-cron-sweep 6s linear infinite;
+}
+
+.iso-cron-fire,
+.iso-cron-pulse {
+  transform-box: fill-box;
+  transform-origin: center;
+}
+
+.iso-cron-fire {
+  animation: iso-cron-fire 6s ease-out infinite;
+}
+
+.iso-cron-pulse {
+  opacity: 0;
+  animation: iso-cron-pulse 6s ease-out infinite;
+}
+
+.iso-cron-job {
+  animation: iso-cron-job 6s ease-out infinite;
+}
+
+/* Domains: a pin drops onto the globe and plants, two rings go out, and the
+   planted frame holds for most of the loop before it clears. */
+@keyframes iso-domain-drop {
+  0%,
+  8% {
+    translate: 0 -110.8px;
+    opacity: 0;
+  }
+  12% {
+    opacity: 1;
+  }
+  18% {
+    translate: 0 3px;
+    opacity: 1;
+    animation-timing-function: ease-out;
+  }
+  22%,
+  76% {
+    translate: 0 0;
+    opacity: 1;
+  }
+  82%,
+  100% {
+    translate: 0 0;
+    opacity: 0;
+  }
+}
+
+@keyframes iso-domain-ping {
+  0%,
+  17% {
+    scale: 0.35;
+    opacity: 0;
+  }
+  22% {
+    opacity: 1;
+  }
+  44%,
+  100% {
+    scale: 2.8;
+    opacity: 0;
+  }
+}
+
+.iso-domain-pin {
+  animation: iso-domain-drop 6s ease-in infinite;
+}
+
+.iso-domain-ping {
+  transform-box: fill-box;
+  transform-origin: center;
+  opacity: 0;
+  animation: iso-domain-ping 6s ease-out infinite;
+}
+
+/* Monitoring: the trace arrives on the screen, its live edge lights and throws
+   a ring, then the panel clears and waits again. */
+@keyframes iso-metrics-trace {
+  0% {
+    stroke-dashoffset: 1;
+    opacity: 0;
+  }
+  6% {
+    opacity: 1;
+  }
+  50%,
+  78% {
+    stroke-dashoffset: 0;
+    opacity: 1;
+  }
+  88%,
+  100% {
+    stroke-dashoffset: 0;
+    opacity: 0;
+  }
+}
+
+@keyframes iso-metrics-live {
+  0%,
+  50% {
+    scale: 0;
+    opacity: 0;
+  }
+  56% {
+    scale: 1.25;
+    opacity: 1;
+  }
+  62%,
+  78% {
+    scale: 1;
+    opacity: 1;
+  }
+  88%,
+  100% {
+    scale: 1;
+    opacity: 0;
+  }
+}
+
+@keyframes iso-metrics-halo {
+  0%,
+  52% {
+    scale: 0.6;
+    opacity: 0;
+  }
+  58% {
+    opacity: 1;
+  }
+  80%,
+  100% {
+    scale: 2.6;
+    opacity: 0;
+  }
+}
+
+.iso-metrics-trace {
+  stroke-dasharray: 1 1;
+  animation: iso-metrics-trace 6s ease-in-out infinite;
+}
+
+.iso-metrics-live,
+.iso-metrics-halo {
+  transform-box: fill-box;
+  transform-origin: center;
+}
+
+.iso-metrics-live {
+  animation: iso-metrics-live 6s ease-out infinite;
+}
+
+.iso-metrics-halo {
+  opacity: 0;
+  animation: iso-metrics-halo 6s ease-out infinite;
+}
+
+/* Pull requests: the branch leaves the trunk, two commits land on it, the merge
+   lights, then it clears. "Off": the branch reaches out, stalls, retreats. */
+@keyframes iso-pr-draw {
+  0% {
+    stroke-dashoffset: 1;
+    opacity: 1;
+  }
+  36%,
+  84% {
+    stroke-dashoffset: 0;
+    opacity: 1;
+  }
+  100% {
+    stroke-dashoffset: 0;
+    opacity: 0;
+  }
+}
+
+@keyframes iso-pr-pop {
+  0%,
+  46% {
+    scale: 0;
+    opacity: 0;
+  }
+  56% {
+    scale: 1.25;
+    opacity: 1;
+  }
+  62%,
+  84% {
+    scale: 1;
+    opacity: 1;
+  }
+  100% {
+    scale: 1;
+    opacity: 0;
+  }
+}
+
+@keyframes iso-pr-stall {
+  0% {
+    stroke-dashoffset: 1;
+  }
+  40%,
+  58% {
+    stroke-dashoffset: 0.45;
+  }
+  95%,
+  100% {
+    stroke-dashoffset: 1;
+  }
+}
+
+.iso-pr-branch {
+  stroke-dasharray: 1 1;
+  animation: iso-pr-draw 5s ease-in-out infinite;
+}
+
+.iso-pr-pop {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: iso-pr-pop 5s ease-out infinite;
+}
+
+/* At rest the branch holds its furthest reach: visibly short of the merge. */
+.iso-pr-stall {
+  stroke-dasharray: 1 1;
+  stroke-dashoffset: 0.45;
+  animation: iso-pr-stall 4.5s ease-in-out infinite;
+}
+
+/* "No templates match": the lens sweeps the row and each template goes out
+   under it. Linear, so column i is under the lens at (1 + i) / 4 of the sweep. */
+@keyframes iso-noresults-lens {
+  0% {
+    translate: 0 0;
+    opacity: 0;
+  }
+  15%,
+  85% {
+    opacity: 1;
+  }
+  100% {
+    translate: 192px 110.9px;
+    opacity: 0;
+  }
+}
+
+@keyframes iso-noresults-item {
+  0%,
+  25% {
+    opacity: 1;
+  }
+  31%,
+  80% {
+    opacity: 0;
+  }
+  86%,
+  100% {
+    opacity: 1;
+  }
+}
+
+.iso-noresults-lens {
+  translate: 96px 55.4px;
+  animation: iso-noresults-lens 3.6s linear infinite;
+}
+
+/* At rest the row is empty under a lens that found nothing. */
+.iso-noresults-item {
+  opacity: 0;
+  animation: iso-noresults-item 3.6s ease-in-out infinite;
+}
+
+/* The template catalog unreachable: a request climbs the wire, the break pops
+   where it stops, the catalog dips, and the retry goes again. */
+@keyframes iso-offline-packet {
+  0% {
+    translate: 0 38px;
+    opacity: 0;
+  }
+  12% {
+    translate: 0 30px;
+    opacity: 1;
+  }
+  42%,
+  46% {
+    translate: 0 0;
+    opacity: 1;
+  }
+  58%,
+  100% {
+    translate: 0 16px;
+    opacity: 0;
+  }
+}
+
+@keyframes iso-offline-break {
+  0%,
+  42% {
+    opacity: 0;
+    scale: 0.5;
+  }
+  50% {
+    opacity: 1;
+    scale: 1.2;
+  }
+  56%,
+  84% {
+    opacity: 1;
+    scale: 1;
+  }
+  94%,
+  100% {
+    opacity: 0;
+    scale: 1;
+  }
+}
+
+/* Only a dip: the catalog is still out there. */
+@keyframes iso-offline-catalog {
+  0%,
+  42%,
+  72%,
+  100% {
+    opacity: 1;
+  }
+  50%,
+  60% {
+    opacity: 0.35;
+  }
+}
+
+.iso-offline-packet {
+  opacity: 0;
+  animation: iso-offline-packet 3.4s ease-out infinite;
+}
+
+.iso-offline-break {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: iso-offline-break 3.4s ease-out infinite;
+}
+
+.iso-offline-catalog {
+  animation: iso-offline-catalog 3.4s ease-in-out infinite;
+}

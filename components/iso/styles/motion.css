@@ -1,0 +1,64 @@
+/* ------------------------------------------------------------------ */
+/* Isometric illustrations (components/iso): one motion vocabulary.     */
+/* Each element's tempo rides --iso-dur / --iso-delay (see `beat`).     */
+/* ------------------------------------------------------------------ */
+.iso-art * {
+  vector-effect: non-scaling-stroke;
+}
+
+.iso-blink {
+  animation: iso-blink var(--iso-dur, 1s) ease-in-out var(--iso-delay, 0s)
+    infinite alternate;
+}
+
+.iso-march {
+  animation: iso-march var(--iso-dur, 1.2s) linear infinite;
+}
+
+.iso-bob {
+  animation: iso-bob var(--iso-dur, 2s) ease-in-out var(--iso-delay, 0s)
+    infinite alternate;
+}
+
+/* A ring that is born full and dies at zero: stagger three a third apart. */
+.iso-wave {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: iso-wave var(--iso-dur, 2.4s) ease-out var(--iso-delay, 0s)
+    infinite backwards;
+}
+
+@keyframes iso-blink {
+  to {
+    opacity: 0.25;
+  }
+}
+
+@keyframes iso-march {
+  to {
+    stroke-dashoffset: -16;
+  }
+}
+
+@keyframes iso-bob {
+  to {
+    translate: 0 -8px;
+  }
+}
+
+@keyframes iso-wave {
+  from {
+    scale: 1;
+    opacity: 1;
+  }
+  to {
+    scale: 2.2;
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .iso-art * {
+    animation: none !important;
+  }
+}

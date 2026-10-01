@@ -1,68 +1,94 @@
+import {
+  Box,
+  Decal,
+  FaceRect,
+  IsoArt,
+  fit,
+  floor,
+  ghost,
+  tone,
+  wire,
+  type BoxShape,
+} from "@/components/iso/iso";
 import { cn } from "@/lib/utils";
+
+const DISK: BoxShape = { at: [0, 0, 0], size: [6, 2, 0.6] };
+const PANEL: BoxShape = { at: [0.4, 0.5, 0.95], size: [1.6, 1, 1.1] };
+const SLOTS = 6;
+const TAKEN = 4;
+
+// Widened to the slot's old proportions, so the wizard keeps its height.
+function wide(view: string, ratio: number) {
+  const [x, y, w, h] = view.split(" ").map(Number);
+  const grow = Math.max(0, h * ratio - w) / 2;
+  return `${x - grow} ${y} ${w + 2 * grow} ${h}`;
+}
 
 export function LeftoverDiskGraphic({ className }: { className?: string }) {
   return (
-    <svg
-      viewBox="0 0 240 130"
-      fill="none"
-      role="img"
-      aria-label="A disk with the stopped platform still taking up part of it"
+    <IsoArt
+      label="A disk with the stopped platform still taking up part of it"
+      view={wide(fit([{ at: [-0.3, -0.3, 0], size: [6.6, 2.6, 2.05] }]), 1.85)}
       className={cn("h-auto w-full", className)}
     >
-      <path
-        d="M28 116 H212"
-        className="stroke-border"
-        strokeWidth="2.5"
-        strokeLinecap="round"
-      />
-
-      <rect
-        x="40"
-        y="34"
-        width="160"
-        height="72"
-        rx="12"
-        className="fill-secondary stroke-ring"
-        strokeWidth="2.5"
-      />
-
-      <g className="deplo-disk-tile">
-        <rect
-          x="56"
-          y="48"
-          width="28"
-          height="28"
-          rx="8"
-          className="fill-card stroke-ring"
-          strokeWidth="2.5"
+      <Box at={[-0.3, -0.3, 0]} size={[6.6, 2.6, 0]} tone={floor} />
+      <Box {...DISK}>
+        <FaceRect
+          box={DISK}
+          face="left"
+          u={[0.03, 0.06]}
+          v={[0.35, 0.65]}
+          fill="var(--success)"
         />
-        <g fill="var(--warning)">
-          <rect x="64" y="56" width="4" height="12" rx="2" />
-          <rect x="72" y="56" width="4" height="12" rx="2" />
-        </g>
-        <g className="fill-border">
-          <rect x="96" y="53" width="52" height="7" rx="3.5" />
-          <rect x="96" y="66" width="76" height="7" rx="3.5" />
-        </g>
-      </g>
+        <FaceRect
+          box={DISK}
+          face="left"
+          u={[0.7, 0.95]}
+          v={[0.42, 0.58]}
+          fill="var(--border)"
+        />
+      </Box>
 
-      <rect
-        x="56"
-        y="86"
-        width="128"
-        height="9"
-        rx="4.5"
-        className="fill-border"
-      />
-      <rect
-        x="56"
-        y="86"
-        width="80"
-        height="9"
-        rx="4.5"
-        fill="var(--warning)"
-        className="deplo-disk-fill"
-      />
-    </svg>
+      {Array.from({ length: SLOTS }, (_, i) => {
+        const slot: BoxShape = {
+          at: [i + 0.1, 0.3, 0.6],
+          size: [0.8, 1.4, 0.35],
+        };
+        return i < TAKEN ? (
+          <Box
+            key={i}
+            {...slot}
+            tone={tone("var(--warning)")}
+            className="iso-disk-share"
+            style={{ animationDelay: `${0.15 + i * 0.12}s` }}
+          />
+        ) : (
+          <Box key={i} {...slot} tone={ghost} className={wire} />
+        );
+      })}
+
+      <Box {...PANEL} className="iso-disk-panel">
+        <Decal face="left" at={[0.965, 1.5, 1.84]}>
+          <g fill="var(--warning)" stroke="none">
+            <rect x="0" y="0" width="9" height="38" rx="2" />
+            <rect x="17" y="0" width="9" height="38" rx="2" />
+          </g>
+        </Decal>
+        <FaceRect
+          box={PANEL}
+          face="left"
+          u={[0.08, 0.92]}
+          v={[0.14, 0.22]}
+          fill="var(--border)"
+        />
+        <FaceRect
+          box={PANEL}
+          face="right"
+          u={[0.2, 0.8]}
+          v={[0.6, 0.68]}
+          fill="var(--border)"
+        />
+      </Box>
+    </IsoArt>
   );
 }

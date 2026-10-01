@@ -1,72 +1,111 @@
+import {
+  Box,
+  Decal,
+  FaceRect,
+  IsoArt,
+  fit,
+  floor,
+  tone,
+  type BoxShape,
+} from "@/components/iso/iso";
 import { cn } from "@/lib/utils";
+
+const FLOOR: BoxShape = { at: [-0.3, -0.3, 0], size: [3.8, 1.9, 0] };
+const LIST: BoxShape = { at: [0, 0, 0], size: [3.2, 0.35, 1.9] };
+const LOCK: BoxShape = { at: [2.45, 0.95, 0], size: [0.5, 0.4, 0.45] };
+// Readable characters: x on the list's face, and how tall each one stands.
+const CHARS: [number, number][] = [
+  [84, 11],
+  [97, 7],
+  [110, 14],
+  [123, 8],
+];
 
 export function EnvGraphic({ className }: { className?: string }) {
   return (
-    <svg
-      viewBox="0 0 120 90"
-      fill="none"
-      role="img"
-      aria-label="A variable being written into a list, its value scrambled and locked away masked"
+    <IsoArt
+      label="A variable being written into a list, its value scrambled and locked away masked"
+      view={fit([FLOOR, LIST])}
       className={cn("size-32", className)}
     >
-      <rect
-        x="10"
-        y="17"
-        width="100"
-        height="56"
-        rx="10"
-        className="stroke-ring"
-        strokeWidth="2.5"
-      />
-
-      <g className="stroke-border" strokeWidth="2" strokeLinecap="round">
-        <line x1="48" y1="41" x2="55" y2="41" />
-        <line x1="48" y1="49" x2="55" y2="49" />
-      </g>
-
-      <line
-        x1="20"
-        y1="45"
-        x2="40"
-        y2="45"
-        className="deplo-env-key"
-        stroke="var(--info)"
-        strokeWidth="6"
-        strokeLinecap="round"
-      />
-
-      <g stroke="var(--info)" strokeWidth="4.5" strokeLinecap="round">
-        <line className="deplo-env-plain" x1="62" y1="41.5" x2="62" y2="48.5" />
-        <line className="deplo-env-plain" x1="71" y1="43" x2="71" y2="47" />
-        <line className="deplo-env-plain" x1="80" y1="40.5" x2="80" y2="49.5" />
-        <line className="deplo-env-plain" x1="89" y1="42.5" x2="89" y2="47.5" />
-      </g>
-
-      <g fill="var(--info)" fillOpacity="0.7">
-        <circle cx="62" cy="45" r="3" className="deplo-env-dot" />
-        <circle cx="71" cy="45" r="3" className="deplo-env-dot" />
-        <circle cx="80" cy="45" r="3" className="deplo-env-dot" />
-        <circle cx="89" cy="45" r="3" className="deplo-env-dot" />
-      </g>
-
-      <g className="deplo-env-lock">
-        <rect
-          x="95.5"
-          y="43.5"
-          width="9"
-          height="9"
-          rx="2"
-          fill="var(--info)"
-          fillOpacity="0.7"
+      <Box {...FLOOR} tone={floor} />
+      <Box {...LIST}>
+        <FaceRect
+          box={LIST}
+          face="left"
+          u={[0, 1]}
+          v={[0.78, 0.8]}
+          fill="var(--ring)"
         />
-        <path
-          d="M97.5 43.5 V40 A2.5 2.5 0 0 1 102.5 40 V43.5"
-          className="deplo-env-shackle"
-          stroke="var(--info)"
-          strokeWidth="2"
-          strokeLinecap="round"
+        <FaceRect
+          box={LIST}
+          face="left"
+          u={[0.06, 0.3]}
+          v={[0.86, 0.91]}
+          fill="var(--border)"
         />
+        <Decal face="left" at={[0, 0.35, 1.9]}>
+          <g stroke="none" transform="scale(1.3)">
+            <rect
+              x="14"
+              y="47"
+              width="36"
+              height="9"
+              rx="4.5"
+              fill="var(--info)"
+              className="iso-env-key"
+            />
+            <g fill="var(--ring)">
+              <rect x="58" y="46" width="12" height="3" rx="1.5" />
+              <rect x="58" y="54" width="12" height="3" rx="1.5" />
+            </g>
+            {CHARS.map(([x, h], i) => (
+              <rect
+                key={x}
+                x={x - 3}
+                y={51.5 - h / 2}
+                width="6"
+                height={h}
+                rx="3"
+                fill="var(--info)"
+                className="iso-env-plain"
+                style={{ animationDelay: `${i * 0.1}s` }}
+              />
+            ))}
+            {CHARS.map(([x]) => (
+              <circle
+                key={x}
+                cx={x}
+                cy="51.5"
+                r="4.5"
+                fill="var(--info)"
+                className="iso-env-dot"
+              />
+            ))}
+          </g>
+        </Decal>
+      </Box>
+
+      <g className="iso-env-lock">
+        <Box {...LOCK} tone={tone("var(--info)")}>
+          <FaceRect
+            box={LOCK}
+            face="left"
+            u={[0.44, 0.56]}
+            v={[0.3, 0.62]}
+            fill="var(--iso-base)"
+          />
+        </Box>
+        <Decal face="left" at={[2.45, 1.15, 0.45]}>
+          <path
+            d="M7 0 V-13 A6.85 6.85 0 0 1 20.7 -13 V0"
+            stroke="var(--info)"
+            strokeWidth="2"
+            strokeLinecap="round"
+            className="iso-env-shackle"
+          />
+        </Decal>
       </g>
-    </svg>
+    </IsoArt>
   );
 }

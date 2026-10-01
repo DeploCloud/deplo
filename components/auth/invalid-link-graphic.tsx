@@ -1,45 +1,120 @@
+import {
+  Box,
+  Decal,
+  IsoArt,
+  Path,
+  UNIT,
+  fit,
+  floor,
+  type BoxShape,
+  type Face,
+  type P,
+} from "@/components/iso/iso";
 import { cn } from "@/lib/utils";
 
+const FLOOR: BoxShape = { at: [0, 0, 0], size: [4.2, 1.6, 0] };
+const GAP: P = [2.07, 0.8, 0.42];
+const LONG = 1.5 * UNIT;
+const SHORT = 0.8 * UNIT;
+const BAR = 11;
+const DEPTH = 0.14;
+
+const stadium = (x: number, y: number, w: number, h: number) => {
+  const r = h / 2;
+  return `M${x + r} ${y}H${x + w - r}A${r} ${r} 0 0 1 ${x + w - r} ${y + h}H${x + r}A${r} ${r} 0 0 1 ${x + r} ${y}Z`;
+};
+// The break throws sparks along the axes: up, down, and across the chain.
+const RAYS: P[] = [
+  [0, 0, 1],
+  [0, 0, -1],
+  [0, 1, 0],
+  [0, -1, 0],
+];
+
+const RING =
+  stadium(0, 0, LONG, SHORT) +
+  stadium(BAR, BAR, LONG - 2 * BAR, SHORT - 2 * BAR);
+
+/** One link, a rounded ring with some thickness behind it (`back` is that offset). */
+function Link({ face, at, back }: { face: Face; at: P; back: P }) {
+  const ring = (fill: string) => (
+    <path
+      d={RING}
+      fillRule="evenodd"
+      fill={fill}
+      stroke="var(--muted-foreground)"
+      strokeWidth="1.5"
+      strokeLinejoin="round"
+    />
+  );
+  return (
+    <>
+      <Decal face={face} at={back}>
+        {ring("var(--iso-right)")}
+      </Decal>
+      <Decal face={face} at={at}>
+        {ring("var(--iso-top)")}
+      </Decal>
+    </>
+  );
+}
+
+// A chain alternates planes: the left link stands up, the right one lies flat.
 export function InvalidLinkGraphic({ className }: { className?: string }) {
   return (
-    <svg
-      viewBox="0 0 120 120"
-      fill="none"
-      role="img"
-      aria-label="A chain link that has come apart"
+    <IsoArt
+      label="A chain link that has come apart"
+      view={fit([FLOOR, { at: [0, 0, 0], size: [4.2, 1.6, 0.8] }])}
       className={cn("size-32", className)}
     >
-      <g
-        className="deplo-unlink-track stroke-border"
-        strokeWidth="2.5"
-        strokeLinecap="round"
-        strokeDasharray="2 8"
-      >
-        <line x1="10" y1="110" x2="28" y2="92" />
-        <line x1="92" y1="28" x2="110" y2="10" />
+      <Box {...FLOOR} tone={floor} />
+      <g className="iso-unlink-track">
+        <Path
+          points={[
+            [0.05, 0.8, 0],
+            [0.4, 0.8, 0],
+          ]}
+          stroke="var(--ring)"
+          strokeWidth="2"
+          strokeDasharray="2 6"
+        />
+        <Path
+          points={[
+            [3.8, 0.8, 0],
+            [4.15, 0.8, 0],
+          ]}
+          stroke="var(--ring)"
+          strokeWidth="2"
+          strokeDasharray="2 6"
+        />
+      </g>
+
+      <g className="iso-unlink-a">
+        <Link
+          face="left"
+          at={[0.4, 0.8 + DEPTH / 2, 0.8]}
+          back={[0.4, 0.8 - DEPTH / 2, 0.8]}
+        />
+      </g>
+      <g className="iso-unlink-b">
+        <Link face="top" at={[2.25, 0.4, DEPTH]} back={[2.25, 0.4, 0]} />
       </g>
 
       <g
-        transform="translate(12 12) scale(4)"
-        strokeWidth="0.625"
-        strokeLinecap="round"
-        strokeLinejoin="round"
+        className="iso-unlink-spark"
+        stroke="var(--destructive)"
+        strokeWidth="2"
       >
-        <path
-          className="deplo-unlink-a stroke-muted-foreground"
-          d="M18.84 12.25l1.72-1.71h-.02a5.004 5.004 0 0 0-.12-7.07 5.006 5.006 0 0 0-6.95 0l-1.72 1.71"
-        />
-        <path
-          className="deplo-unlink-b stroke-muted-foreground"
-          d="M5.17 11.75l-1.71 1.71a5.004 5.004 0 0 0 .12 7.07 5.006 5.006 0 0 0 6.95 0l1.71-1.71"
-        />
-        <g className="deplo-unlink-spark stroke-ring">
-          <path d="M8 2v3" />
-          <path d="M2 8h3" />
-          <path d="M16 22v-3" />
-          <path d="M22 16h-3" />
-        </g>
+        {RAYS.map(([dx, dy, dz], i) => (
+          <Path
+            key={i}
+            points={[
+              [GAP[0] + dx * 0.14, GAP[1] + dy * 0.14, GAP[2] + dz * 0.14],
+              [GAP[0] + dx * 0.34, GAP[1] + dy * 0.34, GAP[2] + dz * 0.34],
+            ]}
+          />
+        ))}
       </g>
-    </svg>
+    </IsoArt>
   );
 }

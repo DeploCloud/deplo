@@ -1,57 +1,76 @@
+import {
+  Box,
+  Decal,
+  FaceRect,
+  IsoArt,
+  UNIT,
+  fit,
+  floor,
+  type BoxShape,
+} from "@/components/iso/iso";
 import { cn } from "@/lib/utils";
+
+const FLOOR: BoxShape = { at: [0, 0, 0], size: [3.4, 1.6, 0] };
+const PANE: BoxShape = { at: [0.2, 0.5, 0], size: [3, 0.3, 2.1] };
+const SCREEN = { u: [0.04, 0.96], v: [0.05, 0.8] } as const;
+
+// Rows top to bottom; the caret rests on the fourth, under the written lines.
+const ROWS = [0.66, 0.5, 0.34, 0.18];
+const LENGTHS = [0.5, 0.68, 0.38];
 
 export function LogsGraphic({ className }: { className?: string }) {
   return (
-    <svg
-      viewBox="0 0 120 90"
-      fill="none"
-      role="img"
-      aria-label="An empty log pane filling with lines of output, one after another"
+    <IsoArt
+      label="An empty log pane filling with lines of output, one after another"
+      view={fit([FLOOR, PANE])}
       className={cn("size-32", className)}
     >
-      <rect
-        x="10"
-        y="14"
-        width="100"
-        height="62"
-        rx="5"
-        className="stroke-ring"
-        strokeWidth="2"
-      />
-      <line
-        x1="10"
-        y1="28"
-        x2="110"
-        y2="28"
-        className="stroke-ring"
-        strokeWidth="2"
-      />
-
-      <g className="fill-border">
-        <circle cx="18" cy="21" r="2" />
-        <circle cx="25" cy="21" r="2" />
-        <circle cx="32" cy="21" r="2" />
-      </g>
-
-      <g
-        className="stroke-muted-foreground"
-        strokeWidth="3"
-        strokeLinecap="round"
-      >
-        <line className="deplo-logs-line" x1="20" y1="38" x2="76" y2="38" />
-        <line className="deplo-logs-line" x1="20" y1="48" x2="94" y2="48" />
-        <line className="deplo-logs-line" x1="20" y1="58" x2="62" y2="58" />
-      </g>
-
-      <line
-        className="deplo-logs-caret stroke-muted-foreground"
-        x1="20"
-        y1="34"
-        x2="20"
-        y2="42"
-        strokeWidth="3"
-        strokeLinecap="round"
-      />
-    </svg>
+      <Box {...FLOOR} tone={floor} />
+      <Box {...PANE}>
+        <FaceRect box={PANE} face="left" {...SCREEN} fill="var(--terminal)" />
+        <Decal face="left" at={[0.2, 0.8, 2.1]}>
+          {[0.14, 0.24, 0.34].map((x) => (
+            <circle
+              key={x}
+              cx={x * UNIT}
+              cy={0.1 * 2.1 * UNIT}
+              r={0.035 * UNIT}
+              className="fill-ring"
+              stroke="none"
+            />
+          ))}
+        </Decal>
+        {LENGTHS.map((length, i) => (
+          <g
+            key={i}
+            className="iso-logs-line"
+            style={{ animationDelay: `${i * 0.4}s` }}
+          >
+            <FaceRect
+              box={PANE}
+              face="left"
+              u={[0.08, 0.11]}
+              v={[ROWS[i] - 0.03, ROWS[i] + 0.03]}
+              fill="var(--success)"
+            />
+            <FaceRect
+              box={PANE}
+              face="left"
+              u={[0.15, 0.15 + length]}
+              v={[ROWS[i] - 0.02, ROWS[i] + 0.02]}
+              fill="var(--muted-foreground)"
+            />
+          </g>
+        ))}
+        <FaceRect
+          box={PANE}
+          face="left"
+          u={[0.08, 0.11]}
+          v={[ROWS[3] - 0.04, ROWS[3] + 0.04]}
+          fill="var(--success)"
+          className="iso-logs-caret"
+        />
+      </Box>
+    </IsoArt>
   );
 }

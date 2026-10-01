@@ -1,6 +1,20 @@
-import * as React from "react";
+import type * as React from "react";
+import {
+  Box,
+  Decal,
+  FaceRect,
+  IsoArt,
+  Path,
+  Ring,
+  UNIT,
+  fit,
+  floor,
+  tone,
+  type BoxShape,
+  type P,
+} from "@/components/iso/iso";
+import { DEPLO, Mark } from "@/components/iso/parts";
 import { cn } from "@/lib/utils";
-import { MARK_PATH, MARK_VIEWBOX } from "@/components/logo";
 import {
   markPaths,
   SOURCE_ART,
@@ -40,8 +54,15 @@ const CABLE_LEFT: Record<MigrationState, number> = {
 };
 
 const PACKETS = 3;
-
-const BRAND_GRADIENT = "deplo-migration-brand";
+const SOURCE: BoxShape = { at: [0, 3, 0], size: [2, 2, 2] };
+const TARGET: BoxShape = { at: [3, 0, 0], size: [2, 2, 2] };
+// Out of the source's side, round the corner, into Deplo's front.
+const CABLE: P[] = [
+  [2, 4, 0],
+  [4, 4, 0],
+  [4, 2, 0],
+];
+const MARK = 0.8;
 
 export function MigrationGraphic({
   state = "connect",
@@ -54,108 +75,136 @@ export function MigrationGraphic({
 }) {
   const done = state === "done";
   const moving = state === "moving";
+  const cable = done ? "var(--success)" : "var(--info)";
   return (
-    <svg
-      viewBox="-10 18 180 84"
-      fill="none"
-      role="img"
-      aria-label={graphicLabel(state, kind)}
+    <IsoArt
+      label={graphicLabel(state, kind)}
+      view={fit([SOURCE, TARGET, { at: [0, 0, 0], size: [4.3, 4.3, 0] }])}
       className={cn("h-32 w-auto", className)}
     >
-      <defs>
-        <linearGradient
-          id={BRAND_GRADIENT}
-          gradientUnits="userSpaceOnUse"
-          x1="112"
-          y1="32"
-          x2="156"
-          y2="88"
-        >
-          <stop offset="0%" stopColor="var(--deplo-migrate-g1)" />
-          <stop offset="50%" stopColor="var(--deplo-migrate-g2)" />
-          <stop offset="100%" stopColor="var(--deplo-migrate-g3)" />
-        </linearGradient>
-      </defs>
+      <Box at={[-0.3, 2.7, 0]} size={[2.6, 2.6, 0]} tone={floor} />
+      <Box at={[2.7, -0.3, 0]} size={[2.6, 2.6, 0]} tone={floor} />
 
-      <Machine x={4} dim={done}>
-        {kind ? (
-          <SourceFace
-            key={kind}
-            kind={kind}
-            dim={done}
-            className={cn(
-              "deplo-migrate-mark",
-              done ? "text-border" : "text-foreground",
-            )}
-          />
-        ) : (
-          PICKABLE_KINDS.map((k, i) => (
+      <Machine box={SOURCE} lit={!done}>
+        <Decal face="left" at={[1 - MARK / 2, 5, 1.25 + MARK / 2]}>
+          {kind ? (
             <SourceFace
-              key={k}
-              kind={k}
-              className="deplo-migrate-swap text-foreground"
-              style={{ animationDelay: `${-i * SWAP_HALF_MS}ms` }}
+              key={kind}
+              kind={kind}
+              dim={done}
+              className={cn(
+                "iso-migration-mark",
+                done ? "text-border" : "text-foreground",
+              )}
             />
-          ))
-        )}
+          ) : (
+            PICKABLE_KINDS.map((k, i) => (
+              <SourceFace
+                key={k}
+                kind={k}
+                className="iso-migration-swap text-foreground"
+                style={{ animationDelay: `${-i * SWAP_HALF_MS}ms` }}
+              />
+            ))
+          )}
+        </Decal>
       </Machine>
 
-      <path
-        d="M52 60 H108"
-        className={cn("stroke-border", !done && "deplo-migrate-track")}
-        strokeWidth="2.5"
-        strokeDasharray="2 4"
-        strokeLinecap="round"
+      <Machine box={TARGET} tone={DEPLO} lit={done}>
+        <Mark at={[4 - MARK / 2, 2, 1.25 + MARK / 2]} size={MARK} />
+      </Machine>
+      {done && (
+        <Ring
+          at={[3, 0, 2]}
+          size={[2, 2, 0]}
+          color="var(--success)"
+          className="iso-wave"
+          style={{ "--iso-dur": "2.6s" } as React.CSSProperties}
+        />
+      )}
+
+      <Path
+        points={CABLE}
+        className={cn("stroke-ring", !done && "iso-march")}
+        strokeWidth="1.5"
+        strokeDasharray="2 6"
       />
-      <path
-        d="M52 60 H108"
-        pathLength="1"
+      <Path
+        points={CABLE}
+        pathLength={1}
         strokeDasharray="1 1"
         strokeDashoffset={CABLE_LEFT[state]}
-        className={cn(
-          "deplo-migrate-cable",
-          done ? "stroke-[var(--success)]" : "stroke-primary",
-        )}
-        strokeWidth="2.5"
-        strokeLinecap="round"
+        stroke={cable}
+        strokeWidth="2"
+        className="iso-migration-cable"
       />
       {moving &&
         Array.from({ length: PACKETS }, (_, i) => (
-          <circle
+          <g
             key={i}
-            cx="54"
-            cy="60"
-            r="2.5"
-            className="deplo-migrate-packet fill-primary"
-            style={{ "--i": i } as React.CSSProperties}
-          />
+            className="iso-migration-packet"
+            style={{ animationDelay: `${i * 0.6}s` }}
+          >
+            <Box
+              at={[1.85, 3.85, 0]}
+              size={[0.3, 0.3, 0.3]}
+              tone={tone("var(--warning)")}
+            />
+          </g>
         ))}
 
-      <Socket x={44} lit={done} />
-      <Socket x={108} brand />
+      <FaceRect
+        box={SOURCE}
+        face="right"
+        u={[0.4, 0.6]}
+        v={[0.03, 0.15]}
+        fill={done ? "var(--success)" : "var(--iso-left)"}
+        stroke="var(--ring)"
+      />
+      <FaceRect
+        box={TARGET}
+        face="left"
+        u={[0.4, 0.6]}
+        v={[0.03, 0.15]}
+        fill={cable}
+        stroke={DEPLO.stroke}
+      />
+    </IsoArt>
+  );
+}
 
-      {done && (
-        <circle
-          cx="134"
-          cy="60"
-          r="34"
-          className="deplo-migrate-halo"
-          fill={`url(#${BRAND_GRADIENT})`}
-        />
-      )}
-      <Machine x={112} brand>
-        <svg
-          x="125"
-          y="41"
-          width="18"
-          height="18"
-          viewBox={MARK_VIEWBOX}
-          className="text-foreground"
-        >
-          <path d={MARK_PATH} fill="currentColor" />
-        </svg>
-      </Machine>
-    </svg>
+/** A server: its face on top, a status light and a slot below it. */
+function Machine({
+  box,
+  tone: t,
+  lit,
+  children,
+}: {
+  box: BoxShape;
+  tone?: typeof DEPLO;
+  lit: boolean;
+  children: React.ReactNode;
+}) {
+  const brand = t === DEPLO;
+  return (
+    <Box {...box} tone={t}>
+      {children}
+      <FaceRect
+        box={box}
+        face="left"
+        u={[0.12, 0.2]}
+        v={[0.36, 0.44]}
+        fill={lit ? "var(--success)" : brand ? DEPLO.stroke : "var(--border)"}
+        className={lit && !brand ? "iso-blink" : undefined}
+      />
+      <FaceRect
+        box={box}
+        face="left"
+        u={[0.3, 0.88]}
+        v={[0.38, 0.42]}
+        fill={brand ? DEPLO.stroke : "var(--border)"}
+      />
+    </Box>
   );
 }
 
@@ -170,107 +219,12 @@ function SourceFace({
   className?: string;
   style?: React.CSSProperties;
 }) {
+  const side = MARK * UNIT;
   return (
-    <g className={className} style={style}>
-      <svg
-        x="16"
-        y="42"
-        width="18"
-        height="18"
-        viewBox={SOURCE_ART[kind].viewBox}
-      >
+    <g className={className} style={style} stroke="none">
+      <svg width={side} height={side} viewBox={SOURCE_ART[kind].viewBox}>
         {markPaths(SOURCE_ART[kind], dim)}
       </svg>
     </g>
-  );
-}
-
-function Machine({
-  x,
-  dim,
-  brand,
-  children,
-}: {
-  x: number;
-  dim?: boolean;
-  brand?: boolean;
-  children: React.ReactNode;
-}) {
-  const ink = brand ? `url(#${BRAND_GRADIENT})` : undefined;
-  const line = dim ? "stroke-border" : "stroke-ring";
-  return (
-    <>
-      <rect
-        x={x}
-        y="32"
-        width="44"
-        height="56"
-        rx="7"
-        stroke={ink}
-        className={
-          brand ? undefined : dim ? "stroke-border" : "stroke-muted-foreground"
-        }
-        strokeWidth="2.5"
-      />
-      {children}
-      {[70, 79].map((y, i) => (
-        <React.Fragment key={y}>
-          <line
-            x1={x + 9}
-            y1={y}
-            x2={x + 27}
-            y2={y}
-            stroke={ink}
-            className={brand ? "opacity-70" : line}
-            strokeWidth="2.5"
-            strokeLinecap="round"
-          />
-          <circle
-            cx={x + 34}
-            cy={y}
-            r="2"
-            fill={ink}
-            className={cn(
-              i === 0 && !dim && !brand && "deplo-migrate-blip",
-              brand
-                ? i === 0
-                  ? undefined
-                  : "opacity-50"
-                : dim
-                  ? "fill-border"
-                  : i === 0
-                    ? "fill-muted-foreground"
-                    : "fill-ring",
-            )}
-          />
-        </React.Fragment>
-      ))}
-    </>
-  );
-}
-
-function Socket({
-  x,
-  lit,
-  brand,
-}: {
-  x: number;
-  lit?: boolean;
-  brand?: boolean;
-}) {
-  return (
-    <rect
-      x={x}
-      y="56"
-      width="8"
-      height="8"
-      rx="2"
-      stroke={brand ? `url(#${BRAND_GRADIENT})` : undefined}
-      className={
-        brand ? undefined : lit ? "stroke-[var(--success)]" : "stroke-ring"
-      }
-      fill="var(--background)"
-      strokeWidth="2.5"
-    />
   );
 }
