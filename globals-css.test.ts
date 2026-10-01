@@ -6,6 +6,7 @@ const KEEPS_ITS_FILL = new Set(["deplo-phase-in"]);
 
 const css = [
   "app/globals",
+  "app/motion",
   ...["motion", "apps", "data", "settings"].map(
     (f) => `components/iso/styles/${f}`,
   ),

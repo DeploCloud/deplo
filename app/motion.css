@@ -1,0 +1,645 @@
+/* ------------------------------------------------------------------ */
+/* Page + element transitions  the "single-page app" feel.            */
+/* Page and skeleton entrances are intentionally NOT animated (no fade-in-up). */
+/* ------------------------------------------------------------------ */
+
+/* Plain opacity fade - used only by the auth pages (not a fade-in-up). */
+@keyframes deplo-fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.animate-fade-in {
+  animation: deplo-fade-in 0.2s ease-out backwards;
+}
+
+/* A deploy PHASE opening in the build phase bar. `min-width` is what gives a new
+ * column its width, and min-width beats max-width in the cascade, so that is the
+ * property to animate. The bar's first paint is not an entrance - see above. */
+@keyframes deplo-phase-in {
+  from {
+    min-width: 0;
+    opacity: 0;
+  }
+  to {
+    min-width: var(--phase-min);
+    opacity: 1;
+  }
+}
+
+/* The one entrance that keeps a forwards fill: it ends at a min-width the
+ * element does not otherwise have, so releasing it would collapse the row. */
+.animate-phase-in {
+  animation: deplo-phase-in 0.2s ease-out both;
+}
+
+/* Sidebar sub-menu transitions: the left navigation slides in horizontally when
+ * it swaps - entering a sub-menu (e.g. Settings) slides in from the right, going
+ * back slides in from the left. */
+@keyframes deplo-slide-in-right {
+  from {
+    opacity: 0;
+    transform: translateX(1.25rem);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes deplo-slide-in-left {
+  from {
+    opacity: 0;
+    transform: translateX(-1.25rem);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+.animate-slide-in-right {
+  animation: deplo-slide-in-right 0.24s cubic-bezier(0.22, 1, 0.36, 1) backwards;
+}
+
+.animate-slide-in-left {
+  animation: deplo-slide-in-left 0.24s cubic-bezier(0.22, 1, 0.36, 1) backwards;
+}
+
+/* The new-app wizard's step swap: the card leaves in the direction of travel and
+ * the next one arrives from the opposite edge, so Back reads as Back. Paired with
+ * `AnimatedHeight`, which eases the card's height over the same beat. */
+@keyframes deplo-step-in-up {
+  from {
+    opacity: 0;
+    transform: translateY(1.5rem);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes deplo-step-in-down {
+  from {
+    opacity: 0;
+    transform: translateY(-1.5rem);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes deplo-step-out-up {
+  to {
+    opacity: 0;
+    transform: translateY(-1.5rem);
+  }
+}
+
+@keyframes deplo-step-out-down {
+  to {
+    opacity: 0;
+    transform: translateY(1.5rem);
+  }
+}
+
+.animate-step-in-up {
+  animation: deplo-step-in-up 0.28s cubic-bezier(0.22, 1, 0.36, 1) backwards;
+}
+
+.animate-step-in-down {
+  animation: deplo-step-in-down 0.28s cubic-bezier(0.22, 1, 0.36, 1) backwards;
+}
+
+.animate-step-out-up {
+  animation: deplo-step-out-up 0.16s ease-in both;
+}
+
+.animate-step-out-down {
+  animation: deplo-step-out-down 0.16s ease-in both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-step-in-up,
+  .animate-step-in-down,
+  .animate-step-out-up,
+  .animate-step-out-down {
+    animation: none;
+  }
+}
+
+/* The first-run onboarding: the mark arrives out of a blur, and one step
+ * dissolves into the next instead of sliding - there is no card to slide. */
+@keyframes deplo-intro-in {
+  from {
+    opacity: 0;
+    filter: blur(16px);
+    transform: scale(0);
+  }
+  to {
+    opacity: 1;
+    filter: blur(0);
+    transform: scale(1);
+  }
+}
+
+@keyframes deplo-intro-out {
+  from {
+    opacity: 1;
+    filter: blur(0);
+    transform: scale(1);
+  }
+  to {
+    opacity: 0;
+    filter: blur(18px);
+    transform: scale(1.35);
+  }
+}
+
+@keyframes deplo-soft-in {
+  from {
+    opacity: 0;
+    filter: blur(8px);
+    transform: translateY(0.75rem);
+  }
+  to {
+    opacity: 1;
+    filter: blur(0);
+    transform: translateY(0);
+  }
+}
+
+@keyframes deplo-soft-out {
+  to {
+    opacity: 0;
+    filter: blur(6px);
+  }
+}
+
+/* The same arrival WITHOUT the travel: for what is pinned to the viewport (the
+ * theme toggle, the link row), where sliding reads as the corner drifting. */
+@keyframes deplo-blur-in {
+  from {
+    opacity: 0;
+    filter: blur(8px);
+  }
+}
+
+/* One curve for the whole intro: it decelerates the whole way, so the mark
+ * grows and then leaves without a pop at either end. */
+.animate-intro-in {
+  animation: deplo-intro-in 0.8s cubic-bezier(0.32, 0.72, 0, 1) backwards;
+}
+
+.animate-intro-out {
+  animation: deplo-intro-out 0.55s cubic-bezier(0.32, 0.72, 0, 1) both;
+}
+
+.animate-soft-in {
+  animation: deplo-soft-in 0.45s cubic-bezier(0.22, 1, 0.36, 1) backwards;
+}
+
+/* 0.16s is not a taste: it is `OUT_MS` in components/apps/wizard/wizard-card.tsx. */
+.animate-soft-out {
+  animation: deplo-soft-out 0.16s ease-in both;
+}
+
+.animate-blur-in {
+  animation: deplo-blur-in 0.45s cubic-bezier(0.22, 1, 0.36, 1) backwards;
+}
+
+/* A form's rows arrive one beat after another. 45ms is deliberately under the
+ * threshold where it reads as a list being drawn: it reads as depth.
+ * `backwards`, never `both`: a forwards fill keeps `filter: blur(0)` on the row
+ * for good, and a filtered layer re-rasterizes the input on every keystroke. */
+.deplo-stagger > * {
+  animation: deplo-soft-in 0.45s cubic-bezier(0.22, 1, 0.36, 1) backwards;
+}
+
+.deplo-stagger > :nth-child(2) {
+  animation-delay: 45ms;
+}
+
+.deplo-stagger > :nth-child(3) {
+  animation-delay: 90ms;
+}
+
+.deplo-stagger > :nth-child(4) {
+  animation-delay: 135ms;
+}
+
+.deplo-stagger > :nth-child(5) {
+  animation-delay: 180ms;
+}
+
+.deplo-stagger > :nth-child(6) {
+  animation-delay: 225ms;
+}
+
+.deplo-stagger > :nth-child(7) {
+  animation-delay: 270ms;
+}
+
+.deplo-stagger > :nth-child(8) {
+  animation-delay: 315ms;
+}
+
+.deplo-stagger > :nth-child(9) {
+  animation-delay: 360ms;
+}
+/* Past the ninth row the beat stops growing, or the last field of a long form
+ * arrives after the person has started typing in the first. */
+.deplo-stagger > :nth-child(n + 10) {
+  animation-delay: 360ms;
+}
+
+/* The intro's aurora: three blobs drifting under the mark, gone by the time
+ * the first step arrives. */
+@keyframes deplo-aurora-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes deplo-aurora-out {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
+}
+
+@keyframes deplo-blob-drift-a {
+  0%,
+  100% {
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+  50% {
+    transform: translate3d(12%, -8%, 0) scale(1.18);
+  }
+}
+
+@keyframes deplo-blob-drift-b {
+  0%,
+  100% {
+    transform: translate3d(0, 0, 0) scale(1.05);
+  }
+  50% {
+    transform: translate3d(-14%, -5%, 0) scale(0.9);
+  }
+}
+
+@keyframes deplo-blob-drift-c {
+  0%,
+  100% {
+    transform: translate3d(0, 0, 0) scale(0.95);
+  }
+  50% {
+    transform: translate3d(-10%, -11%, 0) scale(1.2);
+  }
+}
+
+.animate-aurora-in {
+  animation: deplo-aurora-in 0.9s ease-out backwards;
+}
+
+.animate-aurora-out {
+  animation: deplo-aurora-out 0.55s ease-in both;
+}
+
+/* Masked, or clipping the blobs draws a hard band across the screen. */
+.deplo-aurora {
+  -webkit-mask-image: linear-gradient(to top, #000 10%, transparent 95%);
+  mask-image: linear-gradient(to top, #000 10%, transparent 95%);
+}
+
+/* `--foreground`, not #fff: it is the near-white the dark theme wants and a
+ * soft haze on the light one, where a white glow would be invisible. */
+.deplo-blob {
+  position: absolute;
+  border-radius: 9999px;
+  background: var(--foreground);
+  opacity: 0.08;
+  filter: blur(90px);
+  will-change: transform;
+}
+
+.deplo-blob:nth-child(1) {
+  bottom: -58%;
+  left: -8%;
+  width: 46vw;
+  height: 46vw;
+  animation: deplo-blob-drift-a 16s ease-in-out infinite;
+}
+
+.deplo-blob:nth-child(2) {
+  bottom: -66%;
+  left: 26%;
+  width: 52vw;
+  height: 52vw;
+  animation: deplo-blob-drift-b 21s ease-in-out infinite;
+}
+
+.deplo-blob:nth-child(3) {
+  right: -10%;
+  bottom: -56%;
+  width: 44vw;
+  height: 44vw;
+  animation: deplo-blob-drift-c 18s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-intro-in,
+  .animate-intro-out,
+  .animate-soft-in,
+  .animate-soft-out,
+  .animate-aurora-in,
+  .animate-aurora-out,
+  .animate-blur-in,
+  .deplo-stagger > *,
+  .deplo-blob {
+    animation: none;
+  }
+}
+
+/* iOS-style "jiggle" for the project grid's reorder (edit) mode. Applied to an
+ * inner wrapper so it composes with, and never fights, the translate transform
+ * dnd-kit writes on the outer (sortable) element while dragging/reflowing. Cards
+ * are given a small per-card negative animation-delay so adjacent ones wiggle
+ * slightly out of phase, like the iOS home-screen edit mode. */
+@keyframes deplo-jiggle {
+  0%,
+  100% {
+    transform: rotate(-0.55deg) translateY(-0.25px);
+  }
+  50% {
+    transform: rotate(0.55deg) translateY(0.25px);
+  }
+}
+
+.animate-jiggle {
+  animation: deplo-jiggle 0.22s ease-in-out infinite;
+  transform-origin: center center;
+}
+
+/* Skeleton shimmer - a soft highlight streak sweeps left→right across a loading
+ * placeholder, a step up from the flat opacity blink of animate-pulse. A
+ * translating ::after overlay (the technique production skeleton libs use) keeps
+ * the streak on-screen for the whole cycle - a background-position sweep parks it
+ * off-screen for ~half of every loop. The streak is --foreground at the
+ * per-theme --skeleton-shimmer alpha over the bar's muted base, so it reads as
+ * the same subtle sweep in light and dark. Opt in via the Skeleton component's
+ * `shimmer` prop; stagger a group of bars into a cascading wave by setting the
+ * `--shimmer-delay` custom property per element. */
+@keyframes deplo-shimmer {
+  100% {
+    transform: translateX(100%);
+  }
+}
+
+.animate-shimmer {
+  position: relative;
+  overflow: hidden;
+}
+
+.animate-shimmer::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  transform: translateX(-100%);
+  background-image: linear-gradient(
+    90deg,
+    transparent 0%,
+    color-mix(in oklab, var(--foreground) var(--skeleton-shimmer), transparent)
+      50%,
+    transparent 100%
+  );
+  animation: deplo-shimmer 1.6s ease-in-out infinite;
+  animation-delay: var(--shimmer-delay, 0s);
+}
+
+/* A progress bar that is still working (`Progress className="deplo-progress-working"`).
+ * The skeleton shimmer is the wrong sweep here: it streaks in --foreground, and
+ * --primary IS near-foreground in both themes, so it disappears over exactly the
+ * part it has to cross - the fill. This one sweeps in --primary-foreground, the
+ * colour that is legible on the fill by definition. Root already carries
+ * `relative overflow-hidden`, and ::after paints over the indicator. */
+.deplo-progress-working::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  transform: translateX(-100%);
+  background-image: linear-gradient(
+    90deg,
+    transparent 0%,
+    color-mix(in oklab, var(--primary-foreground) 45%, transparent) 50%,
+    transparent 100%
+  );
+  animation: deplo-shimmer 1.6s ease-in-out infinite;
+}
+
+/* Left-to-right fill for the connection-guard's auto-reconnect button: the bar
+   IS the countdown to the next probe. Driven inline with the cycle's duration;
+   the element it animates carries `motion-reduce:hidden`, so no reduced-motion
+   override is needed here. */
+@keyframes reconnect-progress {
+  from {
+    transform: scaleX(0);
+  }
+  to {
+    transform: scaleX(1);
+  }
+}
+
+/* The top bar for a slow navigation. It is only mounted once the route has
+   already taken half a second, so it starts a quarter of the way in and eases
+   toward 90% without ever claiming to have arrived. */
+@keyframes deplo-nav-progress {
+  from {
+    transform: scaleX(0.25);
+  }
+  to {
+    transform: scaleX(0.9);
+  }
+}
+
+/* The page landed: complete the bar and get out of the way. */
+@keyframes deplo-nav-progress-done {
+  from {
+    transform: scaleX(0.9);
+    opacity: 1;
+  }
+  to {
+    transform: scaleX(1);
+    opacity: 0;
+  }
+}
+
+.deplo-nav-progress,
+.deplo-nav-progress-done {
+  box-shadow: 0 0 10px var(--foreground);
+}
+
+.deplo-nav-progress {
+  animation: deplo-nav-progress 12s cubic-bezier(0, 0.7, 0.2, 1) forwards;
+}
+
+.deplo-nav-progress-done {
+  animation: deplo-nav-progress-done 0.2s ease-out forwards;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  /* No crawl and no fade: the bar is simply there, then it is not. */
+  .deplo-nav-progress,
+  .deplo-nav-progress-done {
+    animation: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-fade-in,
+  .animate-phase-in,
+  .animate-slide-in-right,
+  .animate-slide-in-left,
+  .animate-jiggle,
+  .animate-shimmer::after,
+  .deplo-progress-working::after {
+    animation: none;
+  }
+  *,
+  *::before,
+  *::after {
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* The confetti burst (components/shared/confetti-burst.tsx), for a thing that
+   really happened. One keyframe for every piece: the delay and the rotation
+   come from `--i`, the hue from `nth-child`, and the angle and distance are set
+   per instance by the component - which is what lets the same burst be twelve
+   pieces beside a drawing or forty across the window. `--deplo-confetti-a` is
+   in TURNS. */
+@keyframes deplo-confetti-piece {
+  0% {
+    opacity: 0;
+    transform: translate(0, 0) scale(0.4) rotate(0deg);
+  }
+  12% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+    transform: translate(
+        calc(cos(var(--deplo-confetti-a)) * var(--deplo-confetti-d)),
+        calc(sin(var(--deplo-confetti-a)) * var(--deplo-confetti-d) + 26px)
+      )
+      scale(1) rotate(var(--deplo-confetti-r));
+  }
+}
+
+.deplo-confetti-piece {
+  --deplo-confetti-r: calc(var(--i) * 47deg + 180deg);
+  position: absolute;
+  display: block;
+  width: 6px;
+  height: 10px;
+  border-radius: 1px;
+  /* Three tokens in rotation: two brand-ish, one success. Confetti in one
+     colour reads as an error state, and hardcoded hex would be wrong in one of
+     the two themes. */
+  background: var(--primary);
+  opacity: 0;
+  animation: deplo-confetti-piece 1.1s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  animation-delay: calc(var(--i) * 22ms);
+}
+
+.deplo-confetti-piece:nth-child(3n + 2) {
+  background: var(--success);
+}
+
+.deplo-confetti-piece:nth-child(3n + 3) {
+  background: var(--warning);
+}
+
+/* The full-window variant (`ConfettiBurst rain`). Same pieces, same colours -
+   only the geometry changes: they start above the top edge, spread across the
+   whole width, and fall past the bottom with a little drift. A radial burst
+   centred on the screen reads as coming out of whatever illustration sits in
+   the middle of it, however far it throws; this reads as the room. */
+@keyframes deplo-confetti-fall {
+  0% {
+    opacity: 0;
+    transform: translate(0, -12vh) rotate(0deg);
+  }
+  8% {
+    opacity: 1;
+  }
+  85% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+    transform: translate(var(--deplo-confetti-drift), 104vh)
+      rotate(var(--deplo-confetti-r));
+  }
+}
+
+.deplo-confetti-rain .deplo-confetti-piece {
+  left: var(--deplo-confetti-x);
+  top: 0;
+  animation-name: deplo-confetti-fall;
+  animation-duration: var(--deplo-confetti-t);
+  /* Nearly linear: confetti falls, it does not ease out. */
+  animation-timing-function: cubic-bezier(0.35, 0.15, 0.6, 1);
+  animation-delay: calc(var(--i) * 40ms);
+}
+
+/* The two-cannon variant (`ConfettiBurst cannons`), fired when a deploy the user
+   just started is on its way: pieces launch from the bottom corners, arc toward
+   the middle and fall off-screen. The arc is two segments with their own easing -
+   out of the barrel it decelerates, past the apex it accelerates - because one
+   timing function over the whole flight reads as a balloon, not a shot. */
+@keyframes deplo-confetti-cannon {
+  0% {
+    opacity: 0;
+    transform: translate(0, 0) rotate(0deg);
+    animation-timing-function: cubic-bezier(0.12, 0.6, 0.35, 1);
+  }
+  8% {
+    opacity: 1;
+    animation-timing-function: cubic-bezier(0.12, 0.6, 0.35, 1);
+  }
+  45% {
+    opacity: 1;
+    transform: translate(
+        calc(var(--deplo-confetti-vx) * 0.6),
+        calc(var(--deplo-confetti-vy) * -1)
+      )
+      rotate(calc(var(--deplo-confetti-r) * 0.45));
+    animation-timing-function: cubic-bezier(0.5, 0, 0.9, 0.6);
+  }
+  100% {
+    opacity: 0;
+    transform: translate(var(--deplo-confetti-vx), 22vh)
+      rotate(var(--deplo-confetti-r));
+  }
+}
+
+.deplo-confetti-cannons .deplo-confetti-piece {
+  left: var(--deplo-confetti-x);
+  top: auto;
+  bottom: 0;
+  animation-name: deplo-confetti-cannon;
+  animation-duration: var(--deplo-confetti-t);
+  animation-delay: calc(var(--i) * 16ms);
+}
