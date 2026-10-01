@@ -262,7 +262,7 @@ export const TEAM_ADMIN: McpToolDef[] = [
     name: "transfer_app",
     title: "Move an app to another team",
     description:
-      "Transfer an app, with its data, to another team you belong to. Needs move_apps here and create_apps there.",
+      "Transfer an app, with its data, to another team you belong to. Needs move_apps and manage_env here, and move_apps there.",
     group: "Team",
     requires: "move_apps",
     input: z.object({
