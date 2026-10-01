@@ -3,7 +3,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
-import { PGlite, types } from "@electric-sql/pglite";
+import { PGlite, types, type PGliteOptions } from "@electric-sql/pglite";
 import { drizzle, type PgliteDatabase } from "drizzle-orm/pglite";
 import { migrate } from "drizzle-orm/pglite/migrator";
 
@@ -14,13 +14,20 @@ export type TestDb = PgliteDatabase<typeof schema>;
 
 const MIGRATIONS = path.join(process.cwd(), "lib", "db", "migrations");
 
-const PARSERS = {
+const PARSERS: Record<number, (x: string) => unknown> = {
   [types.TIMESTAMPTZ]: isoTimestampParser,
   [types.TIMESTAMP]: isoTimestampParser,
 };
 
+const PGLITE_VERSION: string = JSON.parse(
+  fs.readFileSync(
+    path.join(process.cwd(), "node_modules/@electric-sql/pglite/package.json"),
+    "utf8",
+  ),
+).version;
+
 function cachePath(): string {
-  const h = crypto.createHash("sha256");
+  const h = crypto.createHash("sha256").update(PGLITE_VERSION);
   for (const f of fs.readdirSync(MIGRATIONS).sort()) {
     const p = path.join(MIGRATIONS, f);
     if (fs.statSync(p).isFile()) h.update(fs.readFileSync(p));
@@ -30,32 +37,120 @@ function cachePath(): string {
 
 let cacheFile: string | undefined;
 
+// lib/test/batch.mjs runs many files in one process and names the current one
+// here; booting PGlite costs seconds, so each file gets the worker's one
+// database back, emptied, unless the last file changed its schema.
+const FILE_KEY = Symbol.for("deplo.test.file");
+const SHARED_KEY = Symbol.for("deplo.test.sharedDb");
+type Shared = { pg: PGlite; file: unknown; close: () => Promise<void> };
+const slots = globalThis as unknown as Record<symbol, unknown>;
+
 export async function makeTestDb(): Promise<{ db: TestDb; pg: PGlite }> {
-  cacheFile ??= cachePath();
-  if (fs.existsSync(cacheFile)) {
-    try {
-      const pg = new PGlite({
-        loadDataDir: new Blob([fs.readFileSync(cacheFile)]),
-        parsers: PARSERS,
-      });
-      await pg.query("select 1");
-      await withFastTruncate(pg);
-      return { db: drizzle(pg, { schema }), pg };
-    } catch {}
+  const file = slots[FILE_KEY];
+  if (file === undefined) return openTestDb();
+  const shared = slots[SHARED_KEY] as Shared | undefined;
+  if (shared?.file === file) return openTestDb();
+  if (shared && (await resetShared(shared.pg))) {
+    shared.file = file;
+    return { db: drizzle(shared.pg, { schema }), pg: shared.pg };
   }
+  await shared?.close().catch(() => {});
+  const { db, pg } = await openTestDb();
+  await pg.exec(DDL_WATCH);
+  const close = pg.close.bind(pg);
+  pg.close = async () => {};
+  slots[SHARED_KEY] = { pg, file, close } satisfies Shared;
+  return { db, pg };
+}
 
-  const pg = new PGlite({ parsers: PARSERS });
-  const db = drizzle(pg, { schema });
-  await migrate(db, { migrationsFolder: MIGRATIONS });
+const DDL_WATCH = `
+CREATE SEQUENCE deplo_test.ddl;
+CREATE FUNCTION deplo_test.mark_ddl() RETURNS event_trigger LANGUAGE plpgsql AS $$
+BEGIN
+  IF tg_tag <> 'ALTER SEQUENCE' THEN PERFORM nextval('deplo_test.ddl'); END IF;
+END $$;
+CREATE EVENT TRIGGER deplo_test_ddl ON ddl_command_end EXECUTE FUNCTION deplo_test.mark_ddl();`;
 
+async function resetShared(pg: PGlite): Promise<boolean> {
+  try {
+    await pg.exec("DISCARD ALL");
+    const ddl = await pg.query<{ is_called: boolean }>(
+      "select is_called from deplo_test.ddl",
+    );
+    if (ddl.rows[0].is_called) return false;
+    await truncateAll(pg);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function openTestDb(): Promise<{ db: TestDb; pg: PGlite }> {
+  cacheFile ??= cachePath();
+  let pg = await loadSnapshot(cacheFile, { parsers: PARSERS });
+  if (!pg) {
+    pg = await makeEmptyTestPg({ parsers: PARSERS });
+    await migrate(drizzle(pg, { schema }), { migrationsFolder: MIGRATIONS });
+    await saveSnapshot(pg, cacheFile);
+  }
+  await withFastTruncate(pg);
+  await slimParsers(pg);
+  return { db: drizzle(pg, { schema }), pg };
+}
+
+// A cluster as initdb leaves it, for a test that applies migrations by hand:
+// booting a saved copy skips initdb, which is most of what such a test waits on.
+export async function makeEmptyTestPg(
+  options: PGliteOptions = {},
+): Promise<PGlite> {
+  const file = path.join(os.tmpdir(), `deplo-pglite-empty-${PGLITE_VERSION}`);
+  const cached = await loadSnapshot(file, options);
+  if (cached) return cached;
+  const pg = new PGlite(options);
+  await pg.waitReady;
+  await saveSnapshot(pg, file);
+  return pg;
+}
+
+async function loadSnapshot(
+  file: string,
+  options: PGliteOptions,
+): Promise<PGlite | null> {
+  if (!fs.existsSync(file)) return null;
+  try {
+    const pg = new PGlite({
+      ...options,
+      loadDataDir: new Blob([fs.readFileSync(file)]),
+    });
+    await pg.query("select 1");
+    return pg;
+  } catch {
+    return null;
+  }
+}
+
+async function saveSnapshot(pg: PGlite, file: string): Promise<void> {
   try {
     const dump = await pg.dumpDataDir("none");
-    const tmp = `${cacheFile}.${process.pid}`;
+    const tmp = `${file}.${process.pid}`;
     fs.writeFileSync(tmp, Buffer.from(await dump.arrayBuffer()));
-    fs.renameSync(tmp, cacheFile);
+    fs.renameSync(tmp, file);
   } catch {}
-  await withFastTruncate(pg);
-  return { db, pg };
+}
+
+// PGlite copies its parser table into a new object on every query, and the table
+// holds one parser per array type: ~1ms a query. Those move to the shared defaults
+// it falls back to, so the copy is just the instance's own overrides.
+async function slimParsers(pg: PGlite): Promise<void> {
+  const shared = types.parsers;
+  const arrays = await pg.query<{ oid: number; typarray: number }>(
+    "select b.oid, b.typarray from pg_type a join pg_type b on b.oid = a.typelem where a.typcategory = 'A'",
+  );
+  for (const { oid, typarray } of arrays.rows) {
+    const element = PARSERS[oid] ?? shared[oid];
+    shared[typarray] ??= (x: string) => types.arrayParser(x, element, typarray);
+  }
+  pg.parsers = { ...PARSERS };
 }
 
 // A real TRUNCATE rewrites every table file in the cascade: ~650ms a reset in
