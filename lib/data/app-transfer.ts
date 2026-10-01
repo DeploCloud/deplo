@@ -1,13 +1,11 @@
 import "server-only";
 
 import { cache } from "@/lib/request-cache";
-import { and, asc, count, eq, inArray, ne, sql } from "drizzle-orm";
+import { and, count, eq, inArray, sql } from "drizzle-orm";
 
 import { getDb } from "../db/client";
 import { teamAvatarUrl } from "../avatar";
 import {
-  memberships as membershipsTable,
-  membershipCapabilities as membershipCapabilitiesTable,
   appGrants as appGrantsTable,
   teamRoleScopeApps,
 } from "../db/schema/control-plane/access-control";
@@ -35,14 +33,8 @@ import {
   folders as foldersTable,
   projects as projectsTable,
 } from "../db/schema/control-plane/projects";
-import {
-  servers as serversTable,
-  serverTeams as serverTeamsTable,
-} from "../db/schema/control-plane/servers";
 import { getCurrentUser } from "../auth/current-user";
 import { nowIso } from "../ids";
-import { holdsTeamWideCapability, membershipFor } from "../membership";
-import { currentIdentity } from "../auth/request-context";
 import { recordActivity } from "./activity";
 import { reapplyNetworkAfterMove } from "../deploy/build/reroute";
 import { assertNoNameClash, withNetworkLock } from "./name-clash";
@@ -51,6 +43,11 @@ import { stackName } from "../deploy/deploy-key";
 import { requireAppCapability } from "./node-access";
 import { assertServerAccessibleTx } from "./servers/team-access";
 import { withKeyedLock } from "./keyed-mutex";
+import {
+  requireTransferDestination,
+  serverAccess,
+  transferCandidates,
+} from "./team-transfer-targets";
 
 export interface AppTransferTarget {
   id: string;
@@ -109,47 +106,10 @@ export const appTransferInfo = cache(
     )[0];
     if (!app) throw new Error("App not found");
 
-    const candidates = await db
-      .select({
-        id: teamsTable.id,
-        name: teamsTable.name,
-        image: teamsTable.image,
-      })
-      .from(membershipsTable)
-      .innerJoin(teamsTable, eq(teamsTable.id, membershipsTable.teamId))
-      .innerJoin(
-        membershipCapabilitiesTable,
-        and(
-          eq(membershipCapabilitiesTable.membershipId, membershipsTable.id),
-          eq(membershipCapabilitiesTable.capability, "move_apps"),
-        ),
-      )
-      .where(
-        and(
-          eq(membershipsTable.userId, userId),
-          ne(membershipsTable.teamId, teamId),
-        ),
-      )
-      .orderBy(asc(teamsTable.name));
+    const candidates = await transferCandidates(userId, teamId, "move_apps");
     const candidateIds = candidates.map((c) => c.id);
-
-    const server = (
-      await db
-        .select({ name: serversTable.name, allTeams: serversTable.allTeams })
-        .from(serversTable)
-        .where(eq(serversTable.id, app.serverId))
-        .limit(1)
-    )[0];
-    const serverTeamIds = server?.allTeams
-      ? null
-      : new Set(
-          (
-            await db
-              .select({ teamId: serverTeamsTable.teamId })
-              .from(serverTeamsTable)
-              .where(eq(serverTeamsTable.serverId, app.serverId))
-          ).map((r) => r.teamId),
-        );
+    const server = await serverAccess(app.serverId);
+    const serverTeamIds = server.teamIds;
 
     const owner = repoOwner(app.repoRepo, app.repoUrl);
     const githubConnected = Boolean(app.repoInstallationId);
@@ -194,7 +154,7 @@ export const appTransferInfo = cache(
 
     return {
       appName: app.name,
-      serverName: server?.name ?? "its server",
+      serverName: server.name,
       homeLabel: await homeLabelFor(app),
       sharedVarCount: Number(sharedVars[0]?.n ?? 0),
       backupCount: Number(backups[0]?.n ?? 0),
@@ -267,25 +227,14 @@ export async function transferAppToTeam(
       .limit(1)
   )[0];
   if (!app) throw new Error("App not found");
-  if (destTeamId === teamId)
-    throw new Error("That app is already in this team");
-
-  const tokenScope = currentIdentity()?.token?.scope;
-  if (tokenScope && !tokenScope.wholeTeamIds.includes(destTeamId))
-    throw new Error("This API token can't move apps into that team.");
-
-  const dest = await membershipFor(userId, destTeamId);
-  if (!dest) throw new Error("You're not a member of that team");
-  if (!(await holdsTeamWideCapability(destTeamId, "move_apps")))
-    throw new Error("You don't have permission to manage apps in that team");
-  const destTeam = (
-    await db
-      .select({ name: teamsTable.name })
-      .from(teamsTable)
-      .where(eq(teamsTable.id, destTeamId))
-      .limit(1)
-  )[0];
-  if (!destTeam) throw new Error("Team not found");
+  const destTeam = await requireTransferDestination({
+    userId,
+    fromTeamId: teamId,
+    destTeamId,
+    cap: "move_apps",
+    noun: "app",
+    serverId: app.serverId,
+  });
   const [claimSource] = await db
     .select({ slug: appsTable.slug, compose: appsTable.compose })
     .from(appsTable)
@@ -298,33 +247,6 @@ export async function transferAppToTeam(
       .where(eq(teamsTable.id, teamId))
       .limit(1)
   )[0];
-
-  const server = (
-    await db
-      .select({ name: serversTable.name, allTeams: serversTable.allTeams })
-      .from(serversTable)
-      .where(eq(serversTable.id, app.serverId))
-      .limit(1)
-  )[0];
-  if (server && !server.allTeams) {
-    const granted = (
-      await db
-        .select({ teamId: serverTeamsTable.teamId })
-        .from(serverTeamsTable)
-        .where(
-          and(
-            eq(serverTeamsTable.serverId, app.serverId),
-            eq(serverTeamsTable.teamId, destTeamId),
-          ),
-        )
-        .limit(1)
-    )[0];
-    if (!granted)
-      throw new Error(
-        `${destTeam.name} can't use the server this app runs on (${server.name}). ` +
-          `An instance admin can give that team access in Settings → Servers.`,
-      );
-  }
 
   let installationId = app.repoInstallationId;
   if (installationId) {
