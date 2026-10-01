@@ -9,7 +9,10 @@ import { requireActiveTeamId } from "../../membership";
 import { connectAgent } from "../../infra/agent-client/connect";
 
 import { sourceClient } from "../../migration/source";
-import type { SourceCredential } from "../../migration/source";
+import type {
+  SourceCredential,
+  SourceDataExport,
+} from "../../migration/source";
 
 import { sourceAgentReachable } from "../agent-reach";
 import { listServersForTeam } from "../servers/roster";
@@ -17,6 +20,7 @@ import {
   migrationMachines,
   machinesHolding,
 } from "../migration-import/source-machines";
+import { servicesOf } from "../migration-import/source-tree";
 
 import { UNREACHABLE_SOURCE_HOST } from "./copy-notes";
 
@@ -62,6 +66,8 @@ export async function assertMigrationMachinesReady(
   c: SourceCredential,
   serviceIds: Iterable<string>,
 ): Promise<void> {
+  const panelData = sourceClient(c).dataExport;
+  if (panelData) return assertPanelServesData(c, panelData, serviceIds);
   const teamId = await requireActiveTeamId();
   const machines = await migrationMachines(
     c,
@@ -78,6 +84,26 @@ export async function assertMigrationMachinesReady(
   if (notReady.length > 0)
     throw new Error(
       `Nothing was started: ${notReady.join(", ")}. Deplo reads a service's data off the machine it runs on, so every machine has to answer first - and answering means Deplo dialing its agent on TCP 9443, INBOUND. Installing the agent is the other direction and works behind any firewall, so open that port on any of them that has one. The wizard's Connect step lists them and re-checks each one.`,
+    );
+}
+
+async function assertPanelServesData(
+  c: SourceCredential,
+  panelData: SourceDataExport,
+  serviceIds: Iterable<string>,
+): Promise<void> {
+  const wanted = new Set(serviceIds);
+  const silent: string[] = [];
+  for (const p of await sourceClient(c).listProjects())
+    for (const env of p.environments ?? [])
+      for (const svc of servicesOf(env)) {
+        if (!wanted.has(svc.id)) continue;
+        const answer = await panelData.check(svc, []).catch(() => null);
+        if (!answer?.reachable) silent.push(svc.name || svc.id);
+      }
+  if (silent.length > 0)
+    throw new Error(
+      `Nothing was started: ${sourceClient(c).displayName} could not reach the server ${silent.join(", ")} ${silent.length === 1 ? "runs" : "run"} on. Check those servers are online over there, then start again.`,
     );
 }
 

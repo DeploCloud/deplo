@@ -40,6 +40,7 @@ repository root.
 | [0031](0031-the-url-names-the-team.md)                                                    | The URL names the team, and it outranks the cookie                                                                          |
 | [0032](0032-an-api-token-is-personal.md)                                                  | An API token is personal, and a team governs it through the member                                                          |
 | [0033](0033-usage-reports-are-anonymous-opt-out-and-first-party.md)                       | Usage reports are anonymous, opt-out, and land on a service of our own                                                      |
+| [0034](0034-another-deplo-hands-its-team-over-itself.md)                                  | Another Deplo hands its team over itself                                                                                    |
 
 ## Amended or superseded
 

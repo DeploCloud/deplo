@@ -5,7 +5,7 @@ import * as React from "react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { StepShell } from "../step-shell";
-import type { SourceKind } from "../sources";
+import { copyFor, type SourceKind } from "../sources";
 import type { PlanServer } from "../types";
 import { MachineRow } from "./machine-row";
 import type { PendingMachine } from "./machine-state";
@@ -61,6 +61,24 @@ export function InstallStep({
     const t = setTimeout(onDone, SETTLE_MS);
     return () => clearTimeout(t);
   }, [settled, onDone]);
+
+  if (machines.length === 0)
+    return (
+      <StepShell
+        hero
+        title="Nothing to install"
+        lead={`${copyFor(kind).name} hands its data over itself.`}
+      >
+        <div className={cn("flex", onBack ? "justify-between" : "justify-end")}>
+          {onBack && (
+            <Button variant="outline" onClick={onBack}>
+              Back
+            </Button>
+          )}
+          <Button onClick={onDone}>Continue</Button>
+        </div>
+      </StepShell>
+    );
 
   return (
     <StepShell

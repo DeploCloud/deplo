@@ -79,7 +79,7 @@ export function mapDomains(
       entrypoint:
         d.https === false && certProvider === "none" ? "web" : "websecure",
       service,
-      generated: isThrowawayHost(host),
+      generated: d.generated === true || isThrowawayHost(host),
     });
   }
   return { value: out, notes };

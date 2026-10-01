@@ -67,7 +67,10 @@ export async function landAppExtras(
   notes: string[],
 ): Promise<void> {
   const { isCompose, secretKeys, serviceRenames } = shape;
-  const resources = mapResources(detail);
+  const native = (detail as SourceApplication).nativeResources;
+  const resources = native
+    ? { value: native, notes: [] }
+    : mapResources(detail);
   notes.push(...resources.notes);
   if (resources.value) {
     try {

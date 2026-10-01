@@ -20,6 +20,7 @@ import { migrationMachines } from "../migration-import/source-machines";
 import {
   UNREACHABLE_SOURCE_AGENT,
   UNREACHABLE_SOURCE_HOST,
+  UNREACHABLE_SOURCE_PANEL,
   sharedPathNote,
   unfilledStackBinds,
 } from "./copy-notes";
@@ -73,7 +74,8 @@ export async function planMigrationDataMove(
 
   const panel = sourceClient(c).displayName;
   const said = (text: string) => withPanel(text, panel);
-  const machines = await migrationMachines(c, teamId);
+  const panelData = sourceClient(c).dataExport;
+  const machines = panelData ? [] : await migrationMachines(c, teamId);
   const out: DataMoveService[] = [];
   const answered = new Map<string, Promise<boolean>>();
   const agentAnswers = (serverId: string) => {
@@ -130,7 +132,14 @@ export async function planMigrationDataMove(
           : sharedPathNote(clash, b.targetPath),
       );
     }
-    const reachable = sourceServer ? await agentAnswers(sourceServer) : false;
+    const reachable = panelData
+      ? await panelData
+          .check(svc, [])
+          .then((r) => r.reachable)
+          .catch(() => false)
+      : sourceServer
+        ? await agentAnswers(sourceServer)
+        : false;
 
     out.push({
       path: `${svc.projectName} / ${svc.environmentName} / ${svc.name}`,
@@ -167,7 +176,11 @@ export async function planMigrationDataMove(
         ...(reachable
           ? []
           : [
-              sourceServer ? UNREACHABLE_SOURCE_AGENT : UNREACHABLE_SOURCE_HOST,
+              panelData
+                ? UNREACHABLE_SOURCE_PANEL
+                : sourceServer
+                  ? UNREACHABLE_SOURCE_AGENT
+                  : UNREACHABLE_SOURCE_HOST,
             ]),
       ].map(said),
     });

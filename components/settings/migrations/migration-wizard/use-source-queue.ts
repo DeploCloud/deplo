@@ -7,7 +7,7 @@ import { gqlAction } from "@/lib/graphql-client";
 import type { PendingMachine } from "../install-step/machine-state";
 import { copyFor, type SourceKind } from "../sources";
 import { type ReviewGroup } from "../review-step";
-import { type StepId } from "../steps";
+import { stepAfterScan, type StepId } from "../steps";
 import {
   addTeam,
   retarget,
@@ -216,7 +216,7 @@ export function useSourceQueue({
     setPlacements(Object.assign({}, ...defaults.map((d) => d.placements)));
     setServerMap(Object.assign({}, ...defaults.map((d) => d.servers)));
     setAt(indexes[0]);
-    setStep("install");
+    setStep(stepAfterScan(Object.values(plans)));
   }
 
   async function landIn(

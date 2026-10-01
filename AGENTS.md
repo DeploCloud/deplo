@@ -13,7 +13,7 @@ on the deeper docs it links (this file points; it does not restate them).
   `fleet-rollout.md`.
 
 **Every count in this file is a snapshot of a moving tree** (44 Capabilities, 102 tables, 185 MCP
-tools, 33 ADRs, the pin list). The rule they carry is the durable part; re-derive the number
+tools, 34 ADRs, the pin list). The rule they carry is the durable part; re-derive the number
 before you rely on it, and fix the line here when it has moved:
 
 ```sh
@@ -327,11 +327,13 @@ scripts/gen-schema.ts`. Both halves of that prefix are load-bearing: the shim
     reads nothing - onboarding shows the picker before an account exists. Its styles and presets
     are a FIXED list (`lib/apps/avatar-shared.ts`): four packs plus `initials`, each preset one
     of DiceBear's own published option sets - never a free-form option, never a style off the list.
-  - **An API token** (`Authorization: Bearer deplo_<secret>`): the two below.
-    **The two API-token routes** re-enter the normal gates via `runWithIdentity` and
+  - **An API token** (`Authorization: Bearer deplo_<secret>`): the three below.
+    **The three API-token routes** re-enter the normal gates via `runWithIdentity` and
     never bypass them with a hand-rolled capability check:
   - `apps/[id]/deploy-hook/[token]` (the **deploy hook**): a webhook sender can't compose a
     GraphQL query, so it POSTs a URL and lets `redeploy` apply the gates.
+  - `migration/export` (ADR-0034): another Deplo streaming one of this team's volumes for a
+    migration - bytes, which GraphQL cannot carry. `lib/data/migration-export/` owns the gate.
   - `mcp` (the **MCP server**, ADR-0021): JSON-RPC, not GraphQL, because that is what AI agents
     speak. Every tool is a row in `lib/mcp/tools/` whose GraphQL document runs **in-process**
     against the same schema via `lib/mcp/execute.ts`, so the gates are literally the same code.

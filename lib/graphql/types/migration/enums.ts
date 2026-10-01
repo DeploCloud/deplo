@@ -9,7 +9,7 @@ export const MigrationPlanStatusEnum = builder.enumType("MigrationPlanStatus", {
 
 export const MigrationPlatformEnum = builder.enumType("MigrationPlatform", {
   description:
-    "Which product a migration reads. Deplo migrates from these two and refuses anything else by name.",
+    "Which product a migration reads: Dokploy, Coolify or another Deplo. Anything else is refused by name.",
   values: MIGRATION_PLATFORMS,
 });
 
