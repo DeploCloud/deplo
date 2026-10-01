@@ -57,17 +57,27 @@ const GEN_DIGIT = "23456789";
 const GEN_SYMBOL = "!*+-._~";
 const GEN_ALL = GEN_LOWER + GEN_UPPER + GEN_DIGIT + GEN_SYMBOL;
 
-function randomBelow(n: number): number {
-  const limit = 256 - (256 % n);
-  const b = new Uint8Array(1);
-  do crypto.getRandomValues(b);
-  while (b[0] >= limit);
-  return b[0] % n;
+// One getRandomValues call per password, refilled as it runs out, not one per byte.
+function randomSource(): (n: number) => number {
+  const bytes = new Uint8Array(64);
+  let at = bytes.length;
+  return (n) => {
+    const limit = 256 - (256 % n);
+    let b: number;
+    do {
+      if (at === bytes.length) {
+        crypto.getRandomValues(bytes);
+        at = 0;
+      }
+      b = bytes[at++];
+    } while (b >= limit);
+    return b % n;
+  };
 }
 
-const pick = (set: string): string => set[randomBelow(set.length)];
-
 export function generatePassword(length = 20): string {
+  const randomBelow = randomSource();
+  const pick = (set: string): string => set[randomBelow(set.length)];
   const out = [
     pick(GEN_LOWER),
     pick(GEN_UPPER),
