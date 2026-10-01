@@ -120,10 +120,8 @@ export function TransferTeamDialog({
       title={`Transfer ${appName} to another team?`}
       description={
         <>
-          The app moves with everything it owns - variables, domains, volumes,
-          deployment history, and keeps running throughout. Everyone in this
-          team loses access to it; from here the move is one-way, only a member
-          of the destination team can hand it back.
+          Everything it owns goes with it and it keeps running.{" "}
+          <strong>Only the new team can hand it back.</strong>
         </>
       }
       confirmLabel="Transfer app"
