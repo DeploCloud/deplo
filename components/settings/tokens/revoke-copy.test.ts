@@ -1,7 +1,8 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-import { joinNames, revokeDescription } from "./revoke-copy";
+import { joinNames } from "@/lib/utils";
+import { revokeDescription } from "./revoke-copy";
 
 const A = { id: "team_a", name: "Acme" };
 const B = { id: "team_b", name: "Beta" };

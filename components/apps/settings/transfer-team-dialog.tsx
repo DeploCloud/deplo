@@ -14,6 +14,7 @@ import { TeamAvatar } from "@/components/shared/user-avatar";
 import { FieldLabel } from "@/components/ui/info-tip";
 import { ConfirmAction } from "@/components/shared/confirm-action";
 import { gql, gqlAction } from "@/lib/graphql-client";
+import { plural } from "@/lib/utils";
 
 type TransferTarget = {
   id: string;
@@ -54,9 +55,6 @@ const INFO_QUERY = /* GraphQL */ `
     }
   }
 `;
-
-const plural = (n: number, one: string, many: string) =>
-  `${n} ${n === 1 ? one : many}`;
 
 export function TransferTeamDialog({
   trigger,
