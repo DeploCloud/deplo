@@ -143,7 +143,8 @@ export async function createDatabase(input: {
       : ((input.username ? sanitizeDbIdentifier(input.username) : null) ??
         defaultUserFor(input.type));
   const dbName =
-    (input.dbName ? sanitizeDbIdentifier(input.dbName) : null) ?? service;
+    (input.dbName ? sanitizeDbIdentifier(input.dbName) : null) ??
+    sanitizeDbIdentifier(service)!;
   const password =
     input.password && input.password.length > 0
       ? input.password
