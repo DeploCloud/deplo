@@ -79,7 +79,7 @@ export const ConnectInputRef = builder.inputType("MigrationSourceInput", {
     apiKey: t.string({
       required: true,
       description:
-        "The panel's API key or token. Dokploy: Settings -> Profile -> API/CLI. Coolify: Keys & Tokens -> API tokens, with `root` ticked - a narrower token cannot read values or stop a service, and Deplo refuses it at Connect. Use an owner's or admin's either way: a plain member's is refused. Never stored.",
+        "The panel's API key or token. Dokploy: Settings -> Profile -> API/CLI. Coolify: Keys & Tokens -> API tokens, with `root` ticked - a narrower token cannot read values or stop a service, and Deplo refuses it at Connect. Use an owner's or admin's either way: a plain member's is refused. Another Deplo: an API token there, limited to the one team, with Reveal secret values, Start & stop apps and Start & stop databases. Never stored.",
     }),
     kind: t.field({
       type: MigrationPlatformEnum,
