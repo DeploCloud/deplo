@@ -80,10 +80,10 @@ bun pm version 0.3.0-canary.1 --message "chore(release): Deplo %s"
 git push --follow-tags
 ```
 
-**The number is the next release plus `-canary.N`**: the base is the version the next stable would
-get by the table above (a minor once anything user-visible landed after the last tag), and `N`
-starts at 1 and counts up for each canary of that base. Never a canary of a version already out:
-`0.5.0-canary.1` sorts below `0.5.0`, so no instance would ever be offered it.
+**The number is the owner's, Payload-style: `v<next stable>-canary.N`.** The base is the version
+the owner names, the one not yet marked Latest on GitHub (Latest is `v0.4.0` while `v0.5.0` is
+still a pre-release, so the canaries are `0.5.0-canary.1`, `.2`, ...). `N` starts at 1 and counts
+up. Tag and release title are the same string. Never pick a different base on your own.
 
 Anything after a `-` makes it one. `docker-image.yml` then pushes only `:0.3.0-canary.1` (never
 `:latest`) and marks the GitHub Release a pre-release, so `releases/latest`, the installer and every
