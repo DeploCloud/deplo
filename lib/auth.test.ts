@@ -23,7 +23,12 @@ import {
   createAccountWithTeam,
   createAccountWithTeams,
 } from "./auth/create-account";
-import { checkSetupKey, completeSetup } from "./auth/setup";
+import {
+  checkSetupKey,
+  completeSetup,
+  logSetupLink,
+  setupKey,
+} from "./auth/setup";
 import { emailForIdentifier, login } from "./auth/sign-in";
 import { consumeRegistrationLink } from "./data/members/registration-redeem";
 import { changePassword } from "./data/account";
@@ -523,6 +528,7 @@ test("first-run setup: a picture that is not an image data-URI is refused", asyn
   const res = await completeSetup({
     ...WIZARD,
     image: "https://elsewhere.example/ada.png",
+    key: setupKey(),
   });
   assert.equal(res.ok, false);
   assert.match(res.error ?? "", /profile picture/);
@@ -555,21 +561,31 @@ async function setupRefusal(
   }
 }
 
-test("setup key: an instance without one is unchanged", async () => {
-  await withSetupKey(null, async () => {
-    assert.equal(checkSetupKey(null), "ok");
-    assert.equal(checkSetupKey("anything"), "ok");
-    assert.equal(await setupRefusal(WIZARD), null);
-    assert.equal((await db.select().from(usersTable)).length, 1);
+for (const unset of [null, ""])
+  test(`setup key: ${unset === null ? "none" : "an empty one"} still gates setup, with a derived key`, async () => {
+    await withSetupKey(unset, async () => {
+      assert.equal(checkSetupKey(null), "missing");
+      assert.equal(checkSetupKey("anything"), "wrong");
+      assert.match((await setupRefusal(WIZARD)) ?? "", /setup link/);
+      assert.equal((await db.select().from(usersTable)).length, 0);
+      assert.match(setupKey(), /^[0-9a-f]{32}$/);
+      assert.equal(await setupRefusal({ ...WIZARD, key: setupKey() }), null);
+      assert.equal((await db.select().from(usersTable)).length, 1);
+    });
   });
-});
 
-test("setup key: an empty one is no key at all", async () => {
-  await withSetupKey("", async () => {
-    assert.equal(checkSetupKey(null), "ok");
-    assert.equal(await setupRefusal(WIZARD), null);
-    assert.equal((await db.select().from(usersTable)).length, 1);
-  });
+test("setup key: the derived one is printed at boot, a configured one is not", async () => {
+  const lines: string[] = [];
+  const log = console.log;
+  console.log = (line: string) => void lines.push(line);
+  try {
+    await withSetupKey(null, logSetupLink);
+    await withSetupKey(SETUP_KEY, logSetupLink);
+  } finally {
+    console.log = log;
+  }
+  assert.equal(lines.length, 1);
+  assert.ok(lines[0]!.endsWith(`/setup?key=${setupKey()}`));
 });
 
 test("setup key: the installer's link creates the first account", async () => {

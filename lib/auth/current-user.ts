@@ -22,6 +22,7 @@ const PUBLIC_USER_COLS = {
   avatarColor: usersTable.avatarColor,
   image: usersTable.image,
   twoFactorEnabled: usersTable.twoFactorEnabled,
+  mustChangePassword: usersTable.mustChangePassword,
 } as const;
 
 async function toPublic(u: {
@@ -34,6 +35,7 @@ async function toPublic(u: {
   avatarColor: string;
   image: string | null;
   twoFactorEnabled: boolean | null;
+  mustChangePassword: boolean | null;
 }): Promise<PublicUser> {
   return {
     id: u.id,
@@ -41,7 +43,8 @@ async function toPublic(u: {
     username: u.username,
     name: u.name,
     role: u.role as PublicUser["role"],
-    isInstanceAdmin: u.isInstanceAdmin ?? false,
+    // A temporary password the host also knows must not reach instance-admin powers.
+    isInstanceAdmin: (u.isInstanceAdmin ?? false) && !u.mustChangePassword,
     avatarColor: u.avatarColor,
     avatarUrl: await avatarUrlFor(u),
     twoFactorEnabled: u.twoFactorEnabled ?? false,

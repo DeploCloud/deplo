@@ -8,7 +8,7 @@ import {
   createAccountWithTeam,
   createAccountWithTeams,
 } from "@/lib/auth/create-account";
-import { completeSetup } from "@/lib/auth/setup";
+import { completeSetup, finishSetup } from "@/lib/auth/setup";
 import {
   login,
   logout,
@@ -142,6 +142,8 @@ const setupSchema = z.object({
   key: z.string().max(200).nullish(),
 });
 
+const finishSetupSchema = setupSchema.omit({ email: true, key: true });
+
 const registerSchema = z.object({
   token: z.string().min(8).max(200),
   username: z.string().min(USERNAME_MIN).max(USERNAME_MAX),
@@ -272,6 +274,35 @@ builder.mutationFields((t) => ({
       ]);
       if (limited) throw new Error(limited);
       const res = await completeSetup(parsed.data);
+      if (!res.ok)
+        throw new GraphQLError(res.error ?? "Setup failed", {
+          extensions: res.field ? { field: res.field } : undefined,
+        });
+      return { viewer: await getCurrentUser() };
+    },
+  }),
+  finishSetup: t.field({
+    type: AuthPayloadRef,
+    authScopes: { loggedIn: true },
+    description:
+      "Finish an account the installer created with a temporary password: profile, new password, team. Signs in again.",
+    args: {
+      username: t.arg.string(),
+      teamName: t.arg.string({ required: true }),
+      name: t.arg.string({ required: true }),
+      password: t.arg.string({ required: true }),
+      image: t.arg.string(),
+      teamImage: t.arg.string(),
+    },
+    resolve: async (_r, args) => {
+      const parsed = finishSetupSchema.safeParse(args);
+      if (!parsed.success)
+        throw new Error(parsed.error.issues[0]?.message ?? "Invalid input");
+      const limited = await checkLimits([
+        { key: "setup:global", limit: 10, windowMs: 60_000 },
+      ]);
+      if (limited) throw new Error(limited);
+      const res = await finishSetup(parsed.data);
       if (!res.ok)
         throw new GraphQLError(res.error ?? "Setup failed", {
           extensions: res.field ? { field: res.field } : undefined,

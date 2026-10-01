@@ -319,7 +319,8 @@ usage() {
   printf '   --domain <d>     serve the dashboard on this domain over HTTPS\n'
   printf '   --email <e>      Let'"'"'s Encrypt contact address\n'
   printf '   --version <v>    install this Deplo version instead of latest\n'
-  printf '   --public-setup   no setup key: anyone with the link creates the first account\n'
+  printf '   --owner-email <e>     create the owner account with a temporary password\n'
+  printf '   --owner-password <p>  that password; the owner replaces it at first sign-in\n'
   printf '   --yes            take every default\n'
   printf '   --force          continue even if the preflight failed\n'
   printf '   --plain          ASCII output, no colour, no spinners\n'
@@ -339,7 +340,8 @@ CHECK_ONLY=false
 ASSUME_YES=false
 FORCE=false
 WANT_HELP=false
-PUBLIC_SETUP=false
+OWNER_EMAIL=""
+OWNER_PASSWORD=""
 # The background half of a takeover, run by deplo-takeover.service: same script,
 # same steps, and at the end it waits for the dashboard instead of a person.
 TAKEOVER_WORKER=false
@@ -350,7 +352,8 @@ while [ $# -gt 0 ]; do
     --check)     CHECK_ONLY=true ;;
     --yes|-y)    ASSUME_YES=true ;;
     --force)     FORCE=true ;;
-    --public-setup) PUBLIC_SETUP=true ;;
+    --owner-email)    OWNER_EMAIL="${2:-}"; shift ;;
+    --owner-password) OWNER_PASSWORD="${2:-}"; shift ;;
     --plain)     UI_FORCE_PLAIN=1 ;;
     --no-color)  UI_FORCE_NOCOLOR=1 ;;
     --quiet|-q)  UI_QUIET=1 ;;
@@ -369,7 +372,29 @@ while [ $# -gt 0 ]; do
   shift
 done
 
-ui_init ${ORIG_ARGS[@]+"${ORIG_ARGS[@]}"}
+# The transcript records the arguments, never the password among them.
+LOG_ARGS=(); prev=""
+for a in ${ORIG_ARGS[@]+"${ORIG_ARGS[@]}"}; do
+  if [ "$prev" = --owner-password ]; then LOG_ARGS+=("<hidden>"); else LOG_ARGS+=("$a"); fi
+  prev="$a"
+done
+ui_init ${LOG_ARGS[@]+"${LOG_ARGS[@]}"}
+
+# Checked before anything installs: a provider's typo must not leave a half-done box.
+trace_off
+OWNER_ERR=""
+if [ -n "$OWNER_EMAIL" ] || [ -n "$OWNER_PASSWORD" ]; then
+  if [ -z "$OWNER_EMAIL" ] || [ -z "$OWNER_PASSWORD" ]; then
+    OWNER_ERR="--owner-email and --owner-password go together."
+  elif [[ "$OWNER_EMAIL" != ?*@?* ]]; then
+    OWNER_ERR="--owner-email needs an email address."
+  elif [ "${#OWNER_PASSWORD}" -lt 8 ]; then
+    OWNER_ERR="--owner-password needs at least 8 characters."
+  fi
+fi
+trace_on
+if [ -n "$OWNER_ERR" ]; then err "$OWNER_ERR"; exit 1; fi
+
 trap 'ui_cleanup' EXIT
 trap 'spin_kill; printf "\n"; exit 130' INT
 trap 'on_err $LINENO' ERR
@@ -1271,20 +1296,14 @@ HOST_TOKEN="$(grep '^DEPLO_HOST_BOOTSTRAP_TOKEN=' "$ENV_FILE" | cut -d= -f2- || 
 trace_on
 
 # The key that gates the first-account wizard, so the panel is claimed by whoever
-# ran this script rather than by whoever reaches /setup first. Appended like the
-# token above, so a re-run gives one to an instance installed before it existed
-# and an update never rotates it. It stops mattering once an account exists.
-
-# `--public-setup` writes it EMPTY instead, which Deplo already reads as no key:
-# the link is then the bare panel address, for a host that hands it to a customer.
+# ran this script rather than by whoever reaches /setup first. Kept across re-runs
+# so an update never rotates it; an EMPTY one is replaced, so no install is ever
+# left open to whoever arrives first. It stops mattering once an account exists.
 trace_off
-if $PUBLIC_SETUP; then
+if ! grep -q '^DEPLO_SETUP_KEY=.' "$ENV_FILE"; then
   umask 077; SETUP_TMP="$(mktemp)"
-  { grep -v '^DEPLO_SETUP_KEY=' "$ENV_FILE" || true; echo "DEPLO_SETUP_KEY="; } >"$SETUP_TMP"
+  { grep -v '^DEPLO_SETUP_KEY=' "$ENV_FILE" || true; echo "DEPLO_SETUP_KEY=$(openssl rand -hex 16)"; } >"$SETUP_TMP"
   install -m 0600 "$SETUP_TMP" "$ENV_FILE"; rm -f "$SETUP_TMP"
-elif ! grep -q '^DEPLO_SETUP_KEY=' "$ENV_FILE"; then
-  umask 077
-  echo "DEPLO_SETUP_KEY=$(openssl rand -hex 16)" >> "$ENV_FILE"
 fi
 SETUP_KEY="$(grep '^DEPLO_SETUP_KEY=' "$ENV_FILE" | cut -d= -f2- || true)"
 trace_on
@@ -1361,6 +1380,11 @@ setup_url() {
   [ -n "$SETUP_KEY" ] || { printf '%s/setup' "$base"; return; }
   printf '%s/setup?key=%s' "$base" "$SETUP_KEY"
 }
+
+# Step 1 of "Next": the setup link, or the panel itself when --owner-email already
+# made the account.
+first_url() { if [ "${OWNER_CREATED:-false}" = true ]; then printf '%s' "${1:-$PUBLIC_URL}"; else setup_url "$@"; fi; }
+first_action() { if [ "${OWNER_CREATED:-false}" = true ]; then printf 'sign in as %s' "$OWNER_EMAIL"; else printf 'create your account'; fi; }
 
 # Is there still a first account to create? The link stops working the moment one
 # exists, so an update of a claimed instance must not print it. Unreadable
@@ -1793,6 +1817,29 @@ else
   [ -n "$DUMP_PATH" ] && note "Pre-update database dump: $DUMP_PATH"
   note "Transcript: $UI_LOG"
   exit 1
+fi
+
+# A host's provisioning names the owner, so the account exists before anyone opens
+# the panel. The password goes in on stdin: never on a command line, never on disk.
+OWNER_CREATED=false
+if [ -n "$OWNER_EMAIL" ]; then
+  if ! setup_pending; then
+    skip "An account already exists" "--owner-email left it as it is"
+  else
+    trace_off
+    OWNER_OUT="$(printf '%s' "$OWNER_PASSWORD" |
+      /usr/local/bin/deplo recover bootstrap-owner "$OWNER_EMAIL" 2>&1)" && OWNER_CREATED=true
+    trace_on
+    ui_log "$OWNER_OUT"
+    if [ "$OWNER_CREATED" = true ]; then
+      ok "Owner account created" "$OWNER_EMAIL"
+    else
+      err "Could not create the owner account for $OWNER_EMAIL."
+      printf '%s\n' "$OWNER_OUT" | while IFS= read -r l; do [ -n "$l" ] && note "$l"; done
+      note "Re-running this script with the same flags tries again."
+      exit 1
+    fi
+  fi
 fi
 
 # ==============================================================================
@@ -2599,12 +2646,12 @@ takeover_next() {
   printf ' %bNext%b\n' "$C_B" "$C_OFF"
   case "$door" in
     http://*)
-      printf '   1  Open %b%s%b and create your account.\n' "$C_ACC" "$(setup_url "$door")" "$C_OFF"
+      printf '   1  Open %b%s%b and %s.\n' "$C_ACC" "$(first_url "$door")" "$C_OFF" "$(first_action)"
       printf '      No SSH needed - it goes in through %s'"'"'s own proxy on port 80.\n' "$FOREIGN_LABEL"
       ;;
     *)
       printf '   1  From your own machine:  %bssh -L %s:localhost:%s root@%s%b\n' "$C_ACC" "$PANEL_PORT" "$PANEL_PORT" "$SERVER_IP" "$C_OFF"
-      printf '      Then open %b%s%b and create your account.\n' "$C_ACC" "$(setup_url "http://localhost:$PANEL_PORT")" "$C_OFF"
+      printf '      Then open %b%s%b and %s.\n' "$C_ACC" "$(first_url "http://localhost:$PANEL_PORT")" "$C_OFF" "$(first_action)"
       ;;
   esac
   printf '   2  Bring your projects over from %s, or start clean.\n' "$FOREIGN_LABEL"
@@ -2702,7 +2749,7 @@ fi
 
 printf ' %bNext%b\n' "$C_B" "$C_OFF"
 if [ "$MODE" != update ]; then
-  printf '   1  Open %b%s%b and create your account.\n' "$C_ACC" "$(setup_url)" "$C_OFF"
+  printf '   1  Open %b%s%b and %s.\n' "$C_ACC" "$(first_url)" "$C_OFF" "$(first_action)"
   printf '   2  Connect a repository from Settings > Git.\n'
   printf '   3  Deploy your first app.\n\n'
 else

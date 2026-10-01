@@ -10,6 +10,7 @@ import {
   session as sessionTable,
 } from "../lib/db/schema/auth";
 import { hashPassword } from "../lib/crypto";
+import { createOwnerWithTemporaryPassword } from "../lib/auth/create-account";
 import { panelRoute, withPanelRoute } from "../lib/deploy/traefik-stack";
 import {
   deploHostSelfAddresses,
@@ -47,6 +48,10 @@ Deplo recover - break-glass account recovery (run on the Deplo host)
       http:// or https://), on the server that runs Deplo. Pass "-" for the
       generated deplo-<hex>.deplo.site address, which also turns the backup address
       back on. The way back in when the panel's domain is what broke.
+
+  ${CMD} bootstrap-owner <email>
+      Create the first account with a temporary password read from stdin. The
+      owner replaces it on the first sign-in. What install.sh --owner-email runs.
 
   ${CMD} server-address <server> <address> [agentPort]
       Rewrite where Deplo dials a server's agent (<server> is its name or id).
@@ -242,6 +247,22 @@ async function cmdUnsuspend(handle: string) {
   console.log(`\n  @${user.username} can sign in again.\n`);
 }
 
+async function readStdin(): Promise<string> {
+  let data = "";
+  for await (const chunk of process.stdin) data += chunk;
+  return data.replace(/\r?\n$/, "");
+}
+
+async function cmdBootstrapOwner(email: string) {
+  const password = process.stdin.isTTY
+    ? await promptHidden(`  Temporary password for ${email}: `)
+    : await readStdin();
+  const user = await createOwnerWithTemporaryPassword(email, password);
+  console.log(
+    `\n  Created ${user.email}, the owner of this instance. They choose their own password on the first sign-in.\n`,
+  );
+}
+
 async function cmdServerAddress(
   handle: string,
   address?: string,
@@ -371,10 +392,11 @@ async function main() {
   }
   if (!handle)
     fail(
-      `\`${command}\` needs a ${command === "server-address" ? "server" : "username"}.\n\n${USAGE}`,
+      `\`${command}\` needs ${{ "server-address": "a server", "bootstrap-owner": "an email" }[command] ?? "a username"}.\n\n${USAGE}`,
     );
   if (command === "server-address")
     return cmdServerAddress(handle, extra, extra2);
+  if (command === "bootstrap-owner") return cmdBootstrapOwner(handle);
   if (command === "password") return cmdPassword(handle, extra);
   if (command === "owner") return cmdOwner(handle);
   if (command === "admin") return cmdAdmin(handle);

@@ -23,6 +23,12 @@ export async function register(): Promise<void> {
     );
   }
   try {
+    const { logSetupLink } = await import("./lib/auth/setup");
+    await logSetupLink();
+  } catch (e) {
+    console.error("[deplo] could not check for a first account:", e);
+  }
+  try {
     const { ensureDeploHostServer } =
       await import("./lib/data/servers/enrollment");
     await ensureDeploHostServer();

@@ -29,6 +29,10 @@ export const users = pgTable(
     // Dead since migration 0055: sessions are Better Auth rows, so revoking them is a DELETE, not a version bump.
     tokenVersion: integer("token_version").notNull().default(0),
     twoFactorEnabled: boolean("two_factor_enabled").notNull().default(false),
+    // Set when the installer created the account with a temporary password.
+    mustChangePassword: boolean("must_change_password")
+      .notNull()
+      .default(false),
     emailVerified: boolean("email_verified").notNull().default(true),
     image: text("image"),
     updatedAt: isoTimestamptz("updated_at")

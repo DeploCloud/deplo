@@ -55,7 +55,8 @@ before(async () => {
     f.startsWith("0064_") ||
     f.startsWith("0071_") ||
     f.startsWith("0085_") ||
-    f.startsWith("0098_");
+    f.startsWith("0098_") ||
+    f.startsWith("0167_");
   const pre27 = files.filter(preSeed);
   const from27 = files.filter((f) => !preSeed(f));
 

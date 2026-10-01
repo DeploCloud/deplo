@@ -160,6 +160,7 @@ export function AccountStep({
   note,
   submitLabel,
   pending = false,
+  emailLocked = false,
   onSubmit,
   children,
 }: {
@@ -169,6 +170,7 @@ export function AccountStep({
   note: React.ReactNode;
   submitLabel: string;
   pending?: boolean;
+  emailLocked?: boolean;
   onSubmit: () => void;
   children?: React.ReactNode;
 }) {
@@ -289,6 +291,7 @@ export function AccountStep({
           autoComplete="email"
           placeholder="you@example.com"
           required
+          disabled={emailLocked}
         />
       </div>
       <PasswordField
