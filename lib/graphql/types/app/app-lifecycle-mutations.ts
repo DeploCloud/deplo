@@ -73,10 +73,11 @@ builder.mutationFields((t) => ({
     type: "Boolean",
     authScopes: { capability: "move_apps" },
     description:
-      "Hand this app over to another team the viewer belongs to. The app keeps " +
-      "running: it leaves its folder/project, loses its shared-variable links " +
-      "and backup schedules, and keeps its GitHub connection only if the " +
-      "destination team has its own installation on that account. Returns true.",
+      "Hand this app over to another team the viewer belongs to. A live app " +
+      "restarts briefly on that team's network (nothing is rebuilt); it leaves " +
+      "its folder/project, loses its shared-variable links, backup schedules " +
+      "and cron jobs, and keeps its GitHub connection only if the destination " +
+      "team has its own installation on that account. Returns true.",
     args: {
       appId: t.arg.string({ required: true }),
       teamId: t.arg.string({ required: true }),
