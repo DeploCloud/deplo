@@ -169,6 +169,28 @@ const AppTransferInfoRef = builder
           "always dropped on transfer - a token is owned by the current team " +
           "and cannot be assumed to reach the repository from another one.",
       }),
+      cronCount: t.exposeInt("cronCount", {
+        description: "Cron jobs of this app - removed on transfer.",
+      }),
+      databasesLost: t.exposeStringList("databasesLost", {
+        description:
+          "Databases of the current team this app names by host. They stay " +
+          "behind, so the app stops reaching them once it moves.",
+      }),
+      peopleLosingAccess: t.exposeInt("peopleLosingAccess", {
+        description:
+          "People granted this app on its own (a per-app grant or a role " +
+          "scoped to it). Those grants are removed on transfer.",
+      }),
+      tokensLosingAccess: t.exposeInt("tokensLosingAccess", {
+        description:
+          "API tokens limited to this app. They lose it on transfer.",
+      }),
+      running: t.exposeBoolean("running", {
+        description:
+          "True when the app is live: it restarts briefly on the new team's " +
+          "network. Nothing is rebuilt.",
+      }),
       targets: t.field({
         type: [AppTransferTargetRef],
         resolve: (x) => x.targets,

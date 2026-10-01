@@ -86,6 +86,7 @@ export default async function StoragePage(props: PageProps<"/[team]/storage">) {
     canManageDatabases,
     canControlDatabases,
     canDeleteDatabases,
+    canMoveDatabases,
     canCreateDatabase,
     canManageDestinations,
     canManageBackups,
@@ -101,6 +102,7 @@ export default async function StoragePage(props: PageProps<"/[team]/storage">) {
     hasCapability("configure_databases"),
     hasCapability("control_databases"),
     hasCapability("delete_databases"),
+    hasCapability("move_databases"),
     hasCapability("create_databases"),
     hasCapability("manage_backup_destinations"),
     hasCapability("manage_backups"),
@@ -223,6 +225,7 @@ export default async function StoragePage(props: PageProps<"/[team]/storage">) {
                 serverNames={serverNames}
                 environments={dbEnvironments}
                 canConfigure={canManageDatabases}
+                canMove={canMoveDatabases}
                 canReorder={canManageDatabases}
                 canReveal={canManageDatabases}
                 canControl={canControlDatabases}

@@ -12,7 +12,7 @@ on the deeper docs it links (this file points; it does not restate them).
 - **`docs/agents/`**: `issue-tracker.md`, `triage-labels.md`, `domain.md`, `releasing.md`,
   `fleet-rollout.md`.
 
-**Every count in this file is a snapshot of a moving tree** (44 Capabilities, 102 tables, 185 MCP
+**Every count in this file is a snapshot of a moving tree** (45 Capabilities, 102 tables, 186 MCP
 tools, 34 ADRs, the pin list). The rule they carry is the durable part; re-derive the number
 before you rely on it, and fix the line here when it has moved:
 
@@ -340,7 +340,7 @@ scripts/gen-schema.ts`. Both halves of that prefix are load-bearing: the shim
     Adding a tool is adding a row; adding an authorization check there is a bug - it belongs in
     `lib/data/*`. Regenerate nothing, but keep `lib/mcp/tools.test.ts` green: it validates every
     document against `schema.graphql`, which is what stops a renamed field from silently
-    breaking all 185 of them (`MCP_TOOLS` in `lib/mcp/tools/catalog.ts`).
+    breaking all 186 of them (`MCP_TOOLS` in `lib/mcp/tools/catalog.ts`).
 
 ## Data & mutations (the security boundary)
 
@@ -362,7 +362,7 @@ scripts/gen-schema.ts`. Both halves of that prefix are load-bearing: the shim
   silently lossy: it retries the insert once, and an entry it still could not write becomes a
   visible "N activity entries could not be recorded" row on the next successful write. A gap in an
   audit trail has to be legible **in the trail**, not only in stderr.
-- **Capabilities are FINE-GRAINED (44)**: one action each, catalogued with labels,
+- **Capabilities are FINE-GRAINED (45)**: one action each, catalogued with labels,
   descriptions, search keywords and browse categories in **`lib/capabilities.ts`**
   (`create_apps`, `deploy_apps`, `delete_apps`, `open_app_console`, `rollback_apps` vs
   `control_apps`, `create_databases`, `restore_backups`, `manage_tokens`, `manage_mcp`,

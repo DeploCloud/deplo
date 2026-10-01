@@ -1,7 +1,8 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-import { dbVolumeHostName } from "./stack";
+import { dbVolumeHostName, rerouteRequest } from "./stack";
+import type { Database } from "../../types/database";
 import { generateDatabaseCompose } from "../../deploy/database-compose";
 import { composeStackVolumeHostNames } from "../project-backup-descriptor";
 
@@ -21,4 +22,17 @@ test("dbVolumeHostName matches the rendered DB compose volume (move copies the r
   });
   const derived = composeStackVolumeHostNames(slug, yaml);
   assert.deepEqual(derived, [dbVolumeHostName(slug)]);
+});
+
+test("a database reroute recreates the container, so a stopped one moves network too", () => {
+  const db = {
+    id: "db_1",
+    teamId: "team_b",
+    environmentId: null,
+    host: "db-shop",
+    mounts: [],
+  } as unknown as Database;
+  const req = rerouteRequest(db, "services: {}");
+  assert.equal(req.network, "deplo-team-team_b");
+  assert.deepEqual(req.composeUpArgs, ["--force-recreate"]);
 });

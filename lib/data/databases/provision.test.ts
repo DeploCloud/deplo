@@ -10,6 +10,7 @@ import { TEAM_B } from "../identity-test-helpers";
 import { seedServerRow } from "../infra-test-helpers";
 import { settleProvisioning } from "../backup-test-helpers";
 import { createDatabase } from "./provision";
+import { __setAgentConnectorForTest } from "../../infra/agent-client/connect";
 import { asUser1, seedBase } from "./databases-test-helpers";
 
 let db: TestDb;
@@ -100,4 +101,41 @@ test("a database name whose stack is still being torn down on that host is taken
       /still being removed/,
     ),
   );
+});
+
+test("the default database name is a plain identifier, not the hyphenated host", async () => {
+  await seedServerRow(db, {
+    id: "srv_ch",
+    name: "ch-1",
+    ip: "10.0.0.98",
+    host: "10.0.0.98",
+    agent: {
+      port: 9443,
+      certFingerprint: "sha256:ch",
+      certPem: "-----BEGIN CERTIFICATE-----",
+      version: "1.20.0",
+    },
+  });
+  __setAgentConnectorForTest(async () => {
+    throw new Error("no agent in this test");
+  });
+  try {
+    const created = await asUser1(() =>
+      createDatabase({
+        type: "clickhouse",
+        version: "25.8",
+        name: "shop-ch",
+        serverId: "srv_ch",
+      }),
+    );
+    await settleProvisioning(db);
+    assert.equal(created.host, "db-shop-ch");
+    assert.equal(
+      created.dbName,
+      "db_shop_ch",
+      "ClickHouse refuses `-` in an unquoted name",
+    );
+  } finally {
+    __setAgentConnectorForTest();
+  }
 });

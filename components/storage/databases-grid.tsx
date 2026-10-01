@@ -83,11 +83,13 @@ export function DatabasesGrid({
   createButton,
   environments = [],
   canConfigure = false,
+  canMove = false,
 }: {
   databases: DatabaseDTO[];
   serverNames: Record<string, string>;
   environments?: EnvironmentOption[];
   canConfigure?: boolean;
+  canMove?: boolean;
   canReorder: boolean;
   canReveal: boolean;
   canControl: boolean;
@@ -292,6 +294,7 @@ export function DatabasesGrid({
                       <DatabaseCard
                         environments={environments}
                         canConfigure={canConfigure}
+                        canMove={canMove}
                         db={d}
                         serverName={serverNames[d.serverId]}
                         view={view}
@@ -312,6 +315,7 @@ export function DatabasesGrid({
                   <DatabaseCard
                     environments={environments}
                     canConfigure={canConfigure}
+                    canMove={canMove}
                     db={activeDb}
                     serverName={serverNames[activeDb.serverId]}
                     view={view}
@@ -334,6 +338,7 @@ export function DatabasesGrid({
                 <DatabaseCard
                   environments={environments}
                   canConfigure={canConfigure}
+                  canMove={canMove}
                   db={d}
                   serverName={serverNames[d.serverId]}
                   view={view}

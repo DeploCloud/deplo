@@ -46,9 +46,8 @@ export function DangerSettings({
           <div className="min-w-56 flex-1 space-y-1">
             <p className="text-sm font-medium">Transfer to another team</p>
             <p className="text-sm text-muted-foreground">
-              Move this app (with its variables, domains, volumes and history)
-              to another team you belong to. It keeps running throughout; this
-              team loses access to it.
+              Hand this app to another team. It keeps running; this team loses
+              access.
             </p>
           </div>
           {canMove ? (

@@ -1,7 +1,6 @@
 "use client";
 
 import * as React from "react";
-import { useRouter } from "@/lib/nav";
 import {
   Select,
   SelectContent,
@@ -16,74 +15,64 @@ import { ConfirmAction } from "@/components/shared/confirm-action";
 import { gql, gqlAction } from "@/lib/graphql-client";
 import { joinNames, plural } from "@/lib/utils";
 
-type TransferTarget = {
+type Target = {
   id: string;
   name: string;
   avatarUrl: string | null;
   serverAvailable: boolean;
-  githubFollows: boolean;
+  nameTaken: boolean;
 };
 
-type TransferInfo = {
-  appName: string;
+type Info = {
+  databaseName: string;
   serverName: string;
-  homeLabel: string | null;
-  sharedVarCount: number;
+  environmentName: string | null;
   backupCount: number;
-  githubConnected: boolean;
-  gitConnectionLabel: string | null;
   cronCount: number;
-  databasesLost: string[];
-  peopleLosingAccess: number;
-  tokensLosingAccess: number;
+  usedBy: string[];
   running: boolean;
-  targets: TransferTarget[];
+  targets: Target[];
 };
 
 const INFO_QUERY = /* GraphQL */ `
-  query ($appId: String!) {
-    appTransferInfo(appId: $appId) {
-      appName
+  query ($id: String!) {
+    databaseTransferInfo(id: $id) {
+      databaseName
       serverName
-      homeLabel
-      sharedVarCount
+      environmentName
       backupCount
-      githubConnected
-      gitConnectionLabel
       cronCount
-      databasesLost
-      peopleLosingAccess
-      tokensLosingAccess
+      usedBy
       running
       targets {
         id
         name
         avatarUrl
         serverAvailable
-        githubFollows
+        nameTaken
       }
     }
   }
 `;
 
-export function TransferTeamDialog({
+export function TransferDatabaseDialog({
   trigger,
   open: controlledOpen,
   onOpenChange,
-  appId,
-  appName,
+  databaseId,
+  databaseName,
+  onTransferred,
 }: {
   trigger?: React.ReactNode;
   open?: boolean;
   onOpenChange?: (v: boolean) => void;
-  appId: string;
-  appName: string;
+  databaseId: string;
+  databaseName: string;
+  onTransferred: () => void;
 }) {
-  const router = useRouter();
   const [internalOpen, setInternalOpen] = React.useState(false);
   const open = controlledOpen ?? internalOpen;
-  const setOpen = setInternalOpen;
-  const [info, setInfo] = React.useState<TransferInfo | null>(null);
+  const [info, setInfo] = React.useState<Info | null>(null);
   const [failed, setFailed] = React.useState(false);
   const [teamId, setTeamId] = React.useState("");
   const selectId = React.useId();
@@ -94,19 +83,19 @@ export function TransferTeamDialog({
       setFailed(false);
       setTeamId("");
     }
-    setOpen(v);
+    setInternalOpen(v);
     onOpenChange?.(v);
   };
 
   React.useEffect(() => {
     if (!open) return;
     let cancelled = false;
-    gql<{ appTransferInfo: TransferInfo }>(INFO_QUERY, { appId })
+    gql<{ databaseTransferInfo: Info }>(INFO_QUERY, { id: databaseId })
       .then((d) => {
         if (cancelled) return;
-        setInfo(d.appTransferInfo);
-        if (d.appTransferInfo.targets.length === 1)
-          setTeamId(d.appTransferInfo.targets[0].id);
+        setInfo(d.databaseTransferInfo);
+        if (d.databaseTransferInfo.targets.length === 1)
+          setTeamId(d.databaseTransferInfo.targets[0].id);
       })
       .catch(() => {
         if (!cancelled) setFailed(true);
@@ -114,33 +103,36 @@ export function TransferTeamDialog({
     return () => {
       cancelled = true;
     };
-  }, [open, appId]);
+  }, [open, databaseId]);
 
   const target = info?.targets.find((t) => t.id === teamId) ?? null;
-  const blocked = Boolean(target && !target.serverAvailable);
+  const blocked = Boolean(
+    target && (!target.serverAvailable || target.nameTaken),
+  );
   const loading = open && !info && !failed;
+  const usedBy = info?.usedBy ?? [];
 
   return (
     <ConfirmAction
       trigger={trigger}
       open={open}
       onOpenChange={handleOpenChange}
-      title={`Transfer ${appName} to another team?`}
+      title={`Transfer ${databaseName} to another team?`}
       description={
         <>
-          Everything it owns goes with it.{" "}
+          Its data and connection string go with it.{" "}
           <strong>Only the new team can hand it back.</strong>
         </>
       }
       consequence={
-        info && info.databasesLost.length > 0
-          ? `It stops reaching ${joinNames(info.databasesLost)}, which ${info.databasesLost.length === 1 ? "stays" : "stay"} in this team.`
+        usedBy.length > 0
+          ? `${joinNames(usedBy)} in this team will stop reaching it.`
           : "This team loses access to it."
       }
-      confirmLabel="Transfer app"
-      confirmText={appName}
+      confirmLabel="Transfer database"
+      confirmText={databaseName}
       confirmDisabled={!target || blocked}
-      successMessage="App transferred"
+      successMessage="Database transferred"
       extra={
         <div className="grid gap-3">
           {loading && (
@@ -152,16 +144,15 @@ export function TransferTeamDialog({
 
           {failed && (
             <p className="text-sm text-muted-foreground">
-              Couldn&apos;t load the teams that can take this app. Close this
-              and try again.
+              Couldn&apos;t load the teams that can take this database. Close
+              this and try again.
             </p>
           )}
 
           {info && info.targets.length === 0 && (
             <p className="rounded-lg border border-border p-3 text-sm text-muted-foreground">
-              You don&apos;t belong to another team that could take this app. A
-              destination team needs you as a member with permission to deploy
-              in it.
+              You don&apos;t belong to another team that could take this
+              database. You need permission to move databases there too.
             </p>
           )}
 
@@ -169,7 +160,7 @@ export function TransferTeamDialog({
             <div className="space-y-2">
               <FieldLabel
                 htmlFor={selectId}
-                info="Only teams you belong to, and where you may deploy, can receive an app."
+                info="Only teams you belong to, and where you may move databases, can receive one."
                 docs="team.transfers"
               >
                 Destination team
@@ -198,29 +189,23 @@ export function TransferTeamDialog({
 
           {info && target && (
             <ul className="grid gap-1.5 rounded-lg border border-border p-3 text-xs text-muted-foreground">
-              {blocked ? (
+              {!target.serverAvailable ? (
                 <li className="text-destructive">
-                  {target.name} can&apos;t use the server this app runs on (
-                  {info.serverName}). An instance admin grants a team access to
+                  {target.name} can&apos;t use the server this database runs on
+                  ({info.serverName}). An instance admin grants a team access to
                   a server in Settings → Servers.
+                </li>
+              ) : target.nameTaken ? (
+                <li className="text-destructive">
+                  {target.name} already has a database named {info.databaseName}
+                  . Rename one of them first.
                 </li>
               ) : (
                 <>
-                  {info.homeLabel && (
+                  {info.environmentName && (
                     <li>
-                      Leaves its {info.homeLabel} and lands at the top level of{" "}
-                      {target.name}.
-                    </li>
-                  )}
-                  {info.sharedVarCount > 0 && (
-                    <li>
-                      {plural(
-                        info.sharedVarCount,
-                        "shared variable",
-                        "shared variables",
-                      )}{" "}
-                      stop being injected - they belong to this team. The change
-                      applies on the next deploy.
+                      Leaves the {info.environmentName} environment and lands at
+                      the top level of {target.name}.
                     </li>
                   )}
                   {info.backupCount > 0 && (
@@ -240,49 +225,10 @@ export function TransferTeamDialog({
                       removed.
                     </li>
                   )}
-                  {(info.peopleLosingAccess > 0 ||
-                    info.tokensLosingAccess > 0) && (
-                    <li>
-                      {joinNames(
-                        [
-                          info.peopleLosingAccess > 0 &&
-                            plural(info.peopleLosingAccess, "person", "people"),
-                          info.tokensLosingAccess > 0 &&
-                            plural(
-                              info.tokensLosingAccess,
-                              "API token",
-                              "API tokens",
-                            ),
-                        ].filter((x): x is string => Boolean(x)),
-                      )}{" "}
-                      with access to just this app lose it.
-                    </li>
-                  )}
-                  {info.githubConnected &&
-                    (target.githubFollows ? (
-                      <li>
-                        The repository stays connected through {target.name}
-                        &apos;s own GitHub App.
-                      </li>
-                    ) : (
-                      <li>
-                        The repository is disconnected - {target.name} has no
-                        GitHub App on that account. Auto-deploy turns off.
-                        Reconnect the repository from {target.name}.
-                      </li>
-                    ))}
-                  {info.gitConnectionLabel && (
-                    <li>
-                      The repository is disconnected - the{" "}
-                      {info.gitConnectionLabel} connection belongs to this team.
-                      Auto-deploy turns off. Reconnect the repository from{" "}
-                      {target.name}.
-                    </li>
-                  )}
                   <li>
                     {info.running
-                      ? `It restarts briefly on ${target.name}'s network, on ${info.serverName}. Nothing is rebuilt.`
-                      : `It stays stopped, on ${info.serverName}.`}
+                      ? `It restarts briefly on ${target.name}'s network; its data stays on ${info.serverName}.`
+                      : `It stays stopped, on ${info.serverName}, with its data.`}
                   </li>
                 </>
               )}
@@ -293,13 +239,13 @@ export function TransferTeamDialog({
       onConfirm={async () => {
         const res = await gqlAction(
           /* GraphQL */ `
-            mutation ($appId: String!, $teamId: String!) {
-              transferAppToTeam(appId: $appId, teamId: $teamId)
+            mutation ($id: String!, $teamId: String!) {
+              transferDatabaseToTeam(id: $id, teamId: $teamId)
             }
           `,
-          { appId, teamId },
+          { id: databaseId, teamId },
         );
-        if (res.ok) router.push("/");
+        if (res.ok) onTransferred();
         return res;
       }}
     />

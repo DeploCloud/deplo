@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { useRouter } from "@/lib/nav";
-import { Hammer, Trash2 } from "lucide-react";
+import { ArrowLeftRight, Hammer, Trash2 } from "lucide-react";
 import {
   Card,
   CardContent,
@@ -13,11 +13,20 @@ import {
 import { Button } from "@/components/ui/button";
 import { ConfirmAction } from "@/components/shared/confirm-action";
 import { DeleteDatabaseDialog } from "@/components/storage/delete-database-dialog";
+import { TransferDatabaseDialog } from "@/components/storage/transfer-database-dialog";
+import { SimpleTooltip } from "@/components/ui/tooltip";
+import { needsCapability } from "@/components/apps/app-capabilities";
 import { gqlAction } from "@/lib/graphql-client";
 import type { DatabaseDTO } from "@/lib/data/databases/rows";
 import { DocsLink } from "@/components/ui/docs-link";
 
-export function DatabaseDanger({ db }: { db: DatabaseDTO }) {
+export function DatabaseDanger({
+  db,
+  canMove,
+}: {
+  db: DatabaseDTO;
+  canMove: boolean;
+}) {
   const router = useRouter();
   const [deleteOpen, setDeleteOpen] = React.useState(false);
 
@@ -28,11 +37,43 @@ export function DatabaseDanger({ db }: { db: DatabaseDTO }) {
           Danger Zone
         </CardTitle>
         <CardDescription>
-          These actions erase data and cannot be undone. Each asks you to type
-          the database name first. <DocsLink topic="databases.lifecycle" />
+          Each action here asks you to type the database name first.{" "}
+          <DocsLink topic="databases.lifecycle" />
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-3">
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-destructive/30 p-4">
+          <div className="min-w-56 flex-1 space-y-1">
+            <p className="text-sm font-medium">Transfer to another team</p>
+            <p className="text-sm text-muted-foreground">
+              Hand this database to another team. It keeps its data; this team
+              loses access.
+            </p>
+          </div>
+          {canMove ? (
+            <TransferDatabaseDialog
+              databaseId={db.id}
+              databaseName={db.name}
+              onTransferred={() => router.push("/storage")}
+              trigger={
+                <Button variant="outline" size="sm">
+                  <ArrowLeftRight className="size-4" />
+                  Transfer
+                </Button>
+              }
+            />
+          ) : (
+            <SimpleTooltip content={needsCapability("move_databases")}>
+              <span className="inline-flex cursor-not-allowed">
+                <Button variant="outline" size="sm" disabled>
+                  <ArrowLeftRight className="size-4" />
+                  Transfer
+                </Button>
+              </span>
+            </SimpleTooltip>
+          )}
+        </div>
+
         <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-destructive/30 p-4">
           <div className="min-w-56 flex-1 space-y-1">
             <p className="text-sm font-medium">Rebuild database</p>

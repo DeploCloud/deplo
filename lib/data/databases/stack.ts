@@ -61,6 +61,7 @@ export function rerouteRequest(
   env: Record<string, string>;
   mounts: { path: string; content: string }[];
   network: string;
+  composeUpArgs: string[];
 } {
   return {
     slug: db.host,
@@ -68,6 +69,8 @@ export function rerouteRequest(
     env: {},
     mounts: mountFilesFor(db),
     network: appNetwork(db),
+    // A new network `name:` leaves compose's config hash alone, so a stopped container would restart where it was.
+    composeUpArgs: ["--force-recreate"],
   };
 }
 

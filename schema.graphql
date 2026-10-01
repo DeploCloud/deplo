@@ -463,6 +463,14 @@ type AppTransferInfo {
   """
   backupCount: Int
 
+  """Cron jobs of this app - removed on transfer."""
+  cronCount: Int
+
+  """
+  Databases of the current team this app names by host. They stay behind, so the app stops reaching them once it moves.
+  """
+  databasesLost: [String!]
+
   """
   The git connection authenticating this app's clone, or null. It is always dropped on transfer - a token is owned by the current team and cannot be assumed to reach the repository from another one.
   """
@@ -473,6 +481,16 @@ type AppTransferInfo {
   Where the app currently sits in its team ("folder Marketing"), or null at the top level. It leaves that home on transfer.
   """
   homeLabel: String
+
+  """
+  People granted this app on its own (a per-app grant or a role scoped to it). Those grants are removed on transfer.
+  """
+  peopleLosingAccess: Int
+
+  """
+  True when the app is live: it restarts briefly on the new team's network. Nothing is rebuilt.
+  """
+  running: Boolean
   serverName: String
 
   """
@@ -480,6 +498,9 @@ type AppTransferInfo {
   """
   sharedVarCount: Int
   targets: [AppTransferTarget!]
+
+  """API tokens limited to this app. They lose it on transfer."""
+  tokensLosingAccess: Int
 }
 
 """
@@ -750,7 +771,7 @@ enum Capability {
   manage_env
   manage_environments
   manage_git
-  manage_infra @deprecated(reason: "Split into finer permissions. Still accepted on input, where it means: create_databases, configure_databases, control_databases, delete_databases, open_database_console, manage_backups, restore_backups, delete_backups, manage_backup_destinations, manage_registries, manage_git, manage_tokens, manage_mcp, manage_notifications, manage_monitoring.")
+  manage_infra @deprecated(reason: "Split into finer permissions. Still accepted on input, where it means: create_databases, configure_databases, control_databases, delete_databases, move_databases, open_database_console, manage_backups, restore_backups, delete_backups, manage_backup_destinations, manage_registries, manage_git, manage_tokens, manage_mcp, manage_notifications, manage_monitoring.")
   manage_mcp
   manage_members
   manage_monitoring
@@ -762,6 +783,7 @@ enum Capability {
   manage_team
   manage_tokens
   move_apps
+  move_databases
   open_app_console
   open_database_console
   organize_folders
@@ -1365,6 +1387,52 @@ enum DatabaseStatus {
   provisioning
   running
   stopped
+}
+
+"""
+What a transfer of this database would cost, plus the teams that could take it.
+"""
+type DatabaseTransferInfo {
+  """
+  Backup schedules for this database - removed on transfer, because they write to the current team's storage. Backups already taken stay.
+  """
+  backupCount: Int
+
+  """Cron jobs for this database - removed on transfer."""
+  cronCount: Int
+  databaseName: String
+
+  """
+  The Environment it sits in, or null at the top level. It lands at the top level of the new team.
+  """
+  environmentName: String
+  running: Boolean
+  serverName: String
+  targets: [DatabaseTransferTarget!]
+
+  """
+  Apps of the current team whose variables or compose name this database's host. They stop reaching it once it leaves.
+  """
+  usedBy: [String!]
+}
+
+"""
+A team the viewer could hand this database to - one of their own other teams where they hold move_databases.
+"""
+type DatabaseTransferTarget {
+  avatarUrl: String
+  id: ID
+  name: String
+
+  """
+  True when that team already has a database with this name - the transfer is refused until one of them is renamed.
+  """
+  nameTaken: Boolean
+
+  """
+  False when the database's server is not shared with that team - the transfer is refused until an instance admin grants access.
+  """
+  serverAvailable: Boolean
 }
 
 enum DatabaseType {
@@ -3892,9 +3960,14 @@ type Mutation {
   toggleBackup(enabled: Boolean!, id: String!): Boolean
 
   """
-  Hand this app over to another team the viewer belongs to. The app keeps running: it leaves its folder/project, loses its shared-variable links and backup schedules, and keeps its GitHub connection only if the destination team has its own installation on that account. Returns true.
+  Hand this app over to another team the viewer belongs to. A live app restarts briefly on that team's network (nothing is rebuilt); it leaves its folder/project, loses its shared-variable links, backup schedules and cron jobs, and keeps its GitHub connection only if the destination team has its own installation on that account. Returns true.
   """
   transferAppToTeam(appId: String!, teamId: String!): Boolean
+
+  """
+  Hand this database, with its data, to another team the viewer belongs to. It lands at that team's top level and restarts on its network; backup schedules and cron jobs are removed. Returns true.
+  """
+  transferDatabaseToTeam(id: String!, teamId: String!): Boolean
 
   """
   Hand instance ownership to another instance admin. Owner-only; requires the caller's password, plus a two-factor code when their account has 2FA on. Returns true.
@@ -4377,6 +4450,11 @@ type Query {
   The database container's shell label - drives the console's "no shell" notice, like shellLabel does for apps.
   """
   databaseShellLabel(databaseId: String!): String
+
+  """
+  What transferring this database to another team would change, and which of the viewer's other teams could take it.
+  """
+  databaseTransferInfo(id: String!): DatabaseTransferInfo
 
   """All databases in the active team, newest first."""
   databases(

@@ -68,6 +68,15 @@ export function formatBuildDuration(ms: number | null): string {
   return `${Math.floor(s / 60)}m ${s % 60}s`;
 }
 
+export function plural(n: number, one: string, many: string): string {
+  return `${n} ${n === 1 ? one : many}`;
+}
+
+export function joinNames(names: string[]): string {
+  if (names.length <= 1) return names[0] ?? "";
+  return `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`;
+}
+
 export function titleCase(input: string): string {
   return input.replace(/[-_]/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
 }

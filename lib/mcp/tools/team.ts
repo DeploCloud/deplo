@@ -1,5 +1,5 @@
 import * as z from "zod";
-import { appId, tool, type McpToolDef } from "./tool-def";
+import { appId, databaseId, tool, type McpToolDef } from "./tool-def";
 
 export const TEAM: McpToolDef[] = [
   tool({
@@ -262,7 +262,7 @@ export const TEAM_ADMIN: McpToolDef[] = [
     name: "transfer_app",
     title: "Move an app to another team",
     description:
-      "Transfer an app, with its data, to another team you belong to. Needs move_apps here and create_apps there.",
+      "Transfer an app, with its data, to another team you belong to. Needs move_apps and manage_env here, and move_apps there.",
     group: "Team",
     requires: "move_apps",
     input: z.object({
@@ -272,6 +272,23 @@ export const TEAM_ADMIN: McpToolDef[] = [
     query: /* GraphQL */ `
       mutation McpTransferApp($appId: String!, $teamId: String!) {
         transferAppToTeam(appId: $appId, teamId: $teamId)
+      }
+    `,
+  }),
+  tool({
+    name: "transfer_database",
+    title: "Move a database to another team",
+    description:
+      "Transfer a database, with its data, to another team you belong to. Needs move_databases in both teams; its backup schedules and cron jobs are removed.",
+    group: "Team",
+    requires: "move_databases",
+    input: z.object({
+      id: databaseId,
+      teamId: z.string().describe("The destination team, from list_teams."),
+    }),
+    query: /* GraphQL */ `
+      mutation McpTransferDatabase($id: String!, $teamId: String!) {
+        transferDatabaseToTeam(id: $id, teamId: $teamId)
       }
     `,
   }),

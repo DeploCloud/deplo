@@ -1,14 +1,10 @@
 import type { TokenTeam } from "@/lib/data/tokens/reach";
+import { joinNames } from "@/lib/utils";
 
 interface RevokeCopyInput {
   teams: TokenTeam[];
   activeTeamId: string;
   scoped: boolean;
-}
-
-export function joinNames(names: string[]): string {
-  if (names.length <= 1) return names[0] ?? "";
-  return `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`;
 }
 
 function othersOf({ teams, activeTeamId, scoped }: RevokeCopyInput): string[] {

@@ -28,9 +28,10 @@ export default async function DatabaseAdvancedSettingsPage(
   const { id } = await props.params;
   const db = await getDatabase(id);
   if (!db) notFound();
-  const [canConsole, canCron] = await Promise.all([
+  const [canConsole, canCron, canMove] = await Promise.all([
     hasCapability("open_database_console"),
     hasCapability("manage_crons"),
+    hasCapability("move_databases"),
   ]);
   const cron = canConsole && canCron ? await listDatabaseCronJobs(db.id) : null;
 
@@ -92,7 +93,7 @@ export default async function DatabaseAdvancedSettingsPage(
 
       <DatabaseImageSettings db={db} />
       <DatabaseConfigFiles db={db} dataDir={DB_DATA_DIRS[db.type]} />
-      <DatabaseDanger db={db} />
+      <DatabaseDanger db={db} canMove={canMove} />
     </section>
   );
 }

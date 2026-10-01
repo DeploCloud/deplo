@@ -160,6 +160,12 @@ export const CAPABILITY_META: Record<Capability, CapabilityMeta> = {
     keywords: "remove destroy drop",
     sensitive: true,
   },
+  move_databases: {
+    label: "Move databases",
+    description: "Transfer a database, with its data, to another team.",
+    keywords: "transfer team hand over",
+    sensitive: true,
+  },
   open_database_console: {
     label: "Open a database console",
     description: "Run a database shell (psql, mysql, redis-cli) on the server.",
@@ -330,6 +336,7 @@ export const CAPABILITY_CATEGORIES: {
       "configure_databases",
       "control_databases",
       "delete_databases",
+      "move_databases",
       "open_database_console",
     ],
   },
@@ -398,6 +405,7 @@ export const LEGACY_CAPABILITY_EXPANSION: Record<string, Capability[]> = {
     "configure_databases",
     "control_databases",
     "delete_databases",
+    "move_databases",
     "open_database_console",
     "manage_backups",
     "restore_backups",
