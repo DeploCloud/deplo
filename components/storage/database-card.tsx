@@ -15,6 +15,7 @@ import {
   Globe,
   Lock,
   Pencil,
+  ArrowLeftRight,
 } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -31,6 +32,7 @@ import {
 import { MenuSubTooltip, SimpleTooltip } from "@/components/ui/tooltip";
 import { RenameDialog } from "@/components/shared/rename-dialog";
 import { DeleteDatabaseDialog } from "@/components/storage/delete-database-dialog";
+import { TransferDatabaseDialog } from "@/components/storage/transfer-database-dialog";
 import { DatabaseConnectionString } from "@/components/storage/database-connection-string";
 import { DatabaseLiveStatusProvider } from "@/components/storage/database-live-status";
 import {
@@ -54,11 +56,13 @@ export function DatabaseCard({
   canReveal = true,
   environments = [],
   canConfigure = false,
+  canMove = false,
 }: {
   db: DatabaseDTO;
   serverName?: string;
   environments?: EnvironmentOption[];
   canConfigure?: boolean;
+  canMove?: boolean;
   view?: "grid" | "list";
   dragHandle?: React.ReactNode;
   dragActive?: boolean;
@@ -126,6 +130,7 @@ export function DatabaseCard({
           canReveal={canReveal}
           environments={environments}
           canConfigure={canConfigure}
+          canMove={canMove}
         />
       ) : (
         <DatabaseCardGrid
@@ -137,6 +142,7 @@ export function DatabaseCard({
           canReveal={canReveal}
           environments={environments}
           canConfigure={canConfigure}
+          canMove={canMove}
         />
       )}
     </DatabaseLiveStatusProvider>
@@ -152,6 +158,7 @@ interface Inner {
   canReveal: boolean;
   environments: EnvironmentOption[];
   canConfigure: boolean;
+  canMove?: boolean;
 }
 
 function DatabaseCardGrid({
@@ -163,6 +170,7 @@ function DatabaseCardGrid({
   canReveal,
   environments,
   canConfigure,
+  canMove = false,
 }: Inner) {
   const href = `/storage/databases/${db.id}`;
   return (
@@ -183,6 +191,7 @@ function DatabaseCardGrid({
           <CardActions
             environments={environments}
             canConfigure={canConfigure}
+            canMove={canMove}
             db={db}
             dragHandle={dragHandle}
             pollMs={pollMs}
@@ -220,6 +229,7 @@ function DatabaseCardList({
   pollMs,
   environments,
   canConfigure,
+  canMove = false,
 }: Inner) {
   const href = `/storage/databases/${db.id}`;
   return (
@@ -254,6 +264,7 @@ function DatabaseCardList({
       <CardActions
         environments={environments}
         canConfigure={canConfigure}
+        canMove={canMove}
         db={db}
         dragHandle={dragHandle}
         pollMs={pollMs}
@@ -294,6 +305,7 @@ function CardActions({
   listView = false,
   environments,
   canConfigure,
+  canMove,
 }: {
   db: DatabaseDTO;
   dragHandle?: React.ReactNode;
@@ -301,10 +313,12 @@ function CardActions({
   listView?: boolean;
   environments: EnvironmentOption[];
   canConfigure: boolean;
+  canMove: boolean;
 }) {
   const router = useRouter();
   const [pending, startTransition] = React.useTransition();
   const [confirmOpen, setConfirmOpen] = React.useState(false);
+  const [transferOpen, setTransferOpen] = React.useState(false);
   const [renameOpen, setRenameOpen] = React.useState(false);
   const running = db.status === "running";
   const href = `/storage/databases/${db.id}`;
@@ -441,6 +455,13 @@ function CardActions({
             )}
             <DropdownMenuSeparator />
             <DropdownMenuItem
+              onSelect={() => setTransferOpen(true)}
+              disabled={!canMove}
+            >
+              <ArrowLeftRight className="size-4" />
+              Transfer to another team
+            </DropdownMenuItem>
+            <DropdownMenuItem
               variant="destructive"
               onSelect={() => setConfirmOpen(true)}
             >
@@ -462,6 +483,13 @@ function CardActions({
             { id: db.id, name: next },
           )
         }
+      />
+      <TransferDatabaseDialog
+        open={transferOpen}
+        onOpenChange={setTransferOpen}
+        databaseId={db.id}
+        databaseName={db.name}
+        onTransferred={() => router.refresh()}
       />
       <DeleteDatabaseDialog
         open={confirmOpen}
