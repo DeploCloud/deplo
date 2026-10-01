@@ -14,7 +14,7 @@ import { DEPLO_EXPORT_VERSION, type DeploExport } from "./export-shape";
 export const DEPLO_PANEL: PanelIdentity = { name: "Deplo", portHint: ":3000" };
 
 export const TOKEN_RECIPE =
-  "Mint one in that Deplo under Settings, API tokens, limited to the team you are moving, with Reveal secret values, Control apps and Control databases.";
+  "Mint one in that Deplo under Settings, API tokens, limited to the team you are moving, with Reveal secret values, Start & stop apps and Start & stop databases.";
 
 function headers(c: SourceCredential): Record<string, string> {
   return {

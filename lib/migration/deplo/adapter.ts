@@ -64,9 +64,9 @@ async function assertReadable(c: SourceCredential): Promise<void> {
   const x = await exportOf(c);
   if (x.instance === instanceFingerprint()) throw new Error(SELF_PANEL_REFUSAL);
   const missing = [
-    ...(x.apps.length > 0 && !x.canControl.apps ? ["Control apps"] : []),
+    ...(x.apps.length > 0 && !x.canControl.apps ? ["Start & stop apps"] : []),
     ...(x.databases.length > 0 && !x.canControl.databases
-      ? ["Control databases"]
+      ? ["Start & stop databases"]
       : []),
   ];
   if (missing.length > 0)

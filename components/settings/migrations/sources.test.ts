@@ -12,6 +12,7 @@ import {
   SOURCE_COPY,
   SOURCE_KINDS,
   SWAP_HALF_MS,
+  stepDocs,
 } from "./sources";
 
 const html = (props: Parameters<typeof MigrationGraphic>[0]) =>
@@ -101,4 +102,5 @@ test("a Deplo is only shown once the address turns out to be one", () => {
   assert.match(deplo, /from the old Deplo server toward Deplo/);
   assert.equal(copyFor("deplo").name, "Deplo");
   assert.match(SOURCE_COPY.deplo.tokenInfo, /Reveal secret values/);
+  assert.equal(stepDocs("deplo", "changes"), "migration.deplo.changes");
 });

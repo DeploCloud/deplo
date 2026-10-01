@@ -75,7 +75,7 @@ test("a token that cannot stop what it moves is refused at Connect", async (t) =
   serve(t, deploExport({ canControl: { apps: true, databases: false } }));
   await assert.rejects(
     deploClient(cred).assertReadable(),
-    /lacks Control databases/,
+    /lacks Start & stop databases/,
   );
 });
 

@@ -168,7 +168,7 @@ export const SOURCE_COPY: Record<SourceKind | "unknown", SourceCopy> = {
     privatePort: 3000,
     scanIdle: "Check this Deplo",
     scanBusy: "Reading that Deplo",
-    docs: "migration.run",
+    docs: "migration.deplo",
   },
 };
 
@@ -180,7 +180,7 @@ export function stepDocs(
   kind: SourceKind | null,
   step: "run" | "source" | "people" | "changes",
 ): DocsTopic {
-  return kind === "coolify"
-    ? (`migration.coolify.${step}` as const)
-    : (`migration.${step}` as const);
+  if (kind === "coolify") return `migration.coolify.${step}` as const;
+  if (kind === "deplo") return `migration.deplo.${step}` as const;
+  return `migration.${step}` as const;
 }

@@ -207,6 +207,14 @@ export const DOCS = {
   "migration.coolify.people": "migrations/move-from-coolify#run-the-migration",
   "migration.coolify.changes":
     "migrations/move-from-coolify#what-changes-on-the-way",
+  "migration.deplo": "migrations/move-from-another-deplo",
+  "migration.deplo.run": "migrations/move-from-another-deplo#run-the-migration",
+  "migration.deplo.source":
+    "migrations/move-from-another-deplo#before-you-start",
+  "migration.deplo.people":
+    "migrations/move-from-another-deplo#run-the-migration",
+  "migration.deplo.changes":
+    "migrations/move-from-another-deplo#what-changes-on-the-way",
 } as const;
 
 export type DocsTopic = keyof typeof DOCS;
