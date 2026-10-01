@@ -214,8 +214,8 @@ export async function resolveAppSource(
       );
     }
     const mappedBuild = mapBuildSettings(app);
-    notes.push(...mappedBuild.notes);
-    Object.assign(build, mappedBuild.value);
+    if (!app.nativeBuild) notes.push(...mappedBuild.notes);
+    Object.assign(build, mappedBuild.value, app.nativeBuild ?? {});
     const mappedPorts = mapPorts(app);
     ports = mappedPorts.value;
     notes.push(...mappedPorts.notes);

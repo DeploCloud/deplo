@@ -2591,10 +2591,11 @@ enum MigrationPlanStatus {
 }
 
 """
-Which product a migration reads. Deplo migrates from these two and refuses anything else by name.
+Which product a migration reads: Dokploy, Coolify or another Deplo. Anything else is refused by name.
 """
 enum MigrationPlatform {
   coolify
+  deplo
   dokploy
 }
 
@@ -4553,6 +4554,11 @@ type Query {
 
   """Members of the active team, oldest first."""
   members: [Member!]
+
+  """
+  The active team as another Deplo reads it to migrate it: projects, apps, databases, variables, domains, schedules and the volumes that hold their data - secret values DECRYPTED. Needs `reveal_secrets` over the whole team, and every read is recorded in Activity. Versioned (`version`); the shape is lib/migration/deplo/export-shape.ts.
+  """
+  migrationExport: JSON
 
   """One import with its full report."""
   migrationRun(id: String!): MigrationRun

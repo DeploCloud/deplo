@@ -4,6 +4,7 @@ import assert from "node:assert/strict";
 import {
   needsYou,
   reviewShows,
+  stepAfterScan,
   stepReachable,
   stepsFor,
   type StepId,
@@ -220,4 +221,9 @@ test("a single item needing a person is not plural", () => {
   assert.equal(needsYou(1), "1 needs you");
   assert.equal(needsYou(0), "0 need you");
   assert.equal(needsYou(3), "3 need you");
+});
+
+test("a source with no machines to install on goes straight to Review", () => {
+  assert.equal(stepAfterScan([{ servers: [] }, { servers: [] }]), "review");
+  assert.equal(stepAfterScan([{ servers: [] }, { servers: [{}] }]), "install");
 });

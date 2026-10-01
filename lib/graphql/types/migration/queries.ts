@@ -2,6 +2,7 @@ import { builder } from "../../builder";
 import { RecopySourceRef } from "./data-move";
 import { ImportRunRef } from "./run-types";
 import { recopySourceFor } from "@/lib/data/migration-data/recopy";
+import { exportTeamForMigration } from "@/lib/data/migration-export/export";
 import {
   getMigrationRun,
   listMigrationRuns,
@@ -49,5 +50,12 @@ builder.queryFields((t) => ({
       }),
     },
     resolve: (_r, { runId }) => migrationSessionRuns(runId),
+  }),
+  migrationExport: t.field({
+    type: "JSON",
+    authScopes: { capability: "reveal_secrets" },
+    description:
+      "The active team as another Deplo reads it to migrate it: projects, apps, databases, variables, domains, schedules and the volumes that hold their data - secret values DECRYPTED. Needs `reveal_secrets` over the whole team, and every read is recorded in Activity. Versioned (`version`); the shape is lib/migration/deplo/export-shape.ts.",
+    resolve: () => exportTeamForMigration(),
   }),
 }));

@@ -2,7 +2,6 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 
 import { detectMigrationSource } from "./detect";
-import { SELF_PANEL_REFUSAL } from "./self";
 import { __resetCoolifyRateLimitForTest } from "./coolify/client";
 import {
   __resetMigrationFetchForTest,
@@ -11,6 +10,7 @@ import {
 
 const DOKPLOY_KEY = "dok_1a2b3c4d5e6f7g8h";
 const COOLIFY_TOKEN = "3|abcdefghijklmnopqrstuvwxyz012345";
+const DEPLO_TOKEN = "deplo_abcdefghijklmnopqrstuvwxyz";
 const BASE = "https://panel.test";
 
 function reset(t: { after: (fn: () => void) => void }): void {
@@ -151,6 +151,58 @@ test("somebody's front page on /api/health decides nothing", async (t) => {
   );
 });
 
+test("a Deplo answers as a Deplo, and only its own API is asked", async (t) => {
+  reset(t);
+  const seen: string[] = [];
+  const auth: (string | null)[] = [];
+  __setMigrationFetchForTest(async (url, init) => {
+    seen.push(url);
+    auth.push(new Headers(init?.headers).get("authorization"));
+    return new Response(
+      JSON.stringify({ data: { viewerTeam: { id: "team_1", name: "Acme" } } }),
+      { status: 200, headers: { "content-type": "application/json" } },
+    );
+  });
+  assert.equal(await detectMigrationSource(BASE, DEPLO_TOKEN), "deplo");
+  assert.deepEqual(seen, [`${BASE}/api/graphql`]);
+  assert.deepEqual(auth, [`Bearer ${DEPLO_TOKEN}`]);
+});
+
+test("a Deplo that refuses its token says so, not that it is unknown", async (t) => {
+  reset(t);
+  __setMigrationFetchForTest(
+    async () =>
+      new Response(
+        JSON.stringify({
+          data: { viewerTeam: null },
+          errors: [{ message: "Not authorized" }],
+        }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      ),
+  );
+  await assert.rejects(detectMigrationSource(BASE, DEPLO_TOKEN), (e: Error) => {
+    assert.match(e.message, /^That Deplo refused the token/);
+    assert.match(e.message, /Reveal secret values/);
+    return true;
+  });
+});
+
+test("a Deplo token pasted against a Dokploy names the mix-up", async (t) => {
+  reset(t);
+  __setMigrationFetchForTest(async (url) => {
+    if (url.endsWith("/api/health"))
+      return new Response(JSON.stringify({ ok: true }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+    return new Response("<!doctype html><html></html>", { status: 404 });
+  });
+  await assert.rejects(
+    detectMigrationSource(BASE, DEPLO_TOKEN),
+    /That is a Dokploy panel, and the token is a Deplo one/,
+  );
+});
+
 test("Deplo's own address is named as Deplo, not as a Dokploy", async (t) => {
   reset(t);
   __setMigrationFetchForTest(async (url) => {
@@ -167,7 +219,7 @@ test("Deplo's own address is named as Deplo, not as a Dokploy", async (t) => {
     return new Response("<!doctype html><html></html>", { status: 404 });
   });
   await assert.rejects(detectMigrationSource(BASE, DOKPLOY_KEY), (e: Error) => {
-    assert.equal(e.message, SELF_PANEL_REFUSAL);
+    assert.match(e.message, /^That is a Deplo\. Paste one of its API tokens/);
     return true;
   });
 });

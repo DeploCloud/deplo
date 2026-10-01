@@ -2,9 +2,13 @@ import * as React from "react";
 
 import { cn } from "@/lib/utils";
 import type { DocsTopic } from "@/lib/docs";
+import { MARK_PATH, MARK_VIEWBOX } from "@/components/logo";
 
-export const SOURCE_KINDS = ["dokploy", "coolify"] as const;
+export const SOURCE_KINDS = ["dokploy", "coolify", "deplo"] as const;
 export type SourceKind = (typeof SOURCE_KINDS)[number];
+
+// A Deplo names itself by its token, so it is never guessed at or offered as a choice.
+export const PICKABLE_KINDS = ["dokploy", "coolify"] as const;
 
 export const SWAP_HALF_MS = 2600;
 
@@ -56,6 +60,7 @@ export const SOURCE_ART: Record<SourceKind, SourceArt> = {
       },
     ],
   },
+  deplo: { viewBox: MARK_VIEWBOX, paths: [{ d: MARK_PATH }] },
 };
 
 export function markPaths(art: SourceArt, dim = false): React.ReactNode {
@@ -149,6 +154,21 @@ export const SOURCE_COPY: Record<SourceKind | "unknown", SourceCopy> = {
     scanIdle: "Check this Coolify",
     scanBusy: "Reading Coolify",
     docs: "migration.coolify",
+  },
+  deplo: {
+    name: "Deplo",
+    connectTitle: "Connect to your other Deplo",
+    urlInfo:
+      "The address you open that Deplo on. Its data comes across through it, so nothing is installed over there.",
+    urlPlaceholder: "https://deplo.acme.com",
+    tokenLabel: "API token",
+    tokenInfo:
+      "In that Deplo: Settings, API tokens, limited to one team, with Reveal secret values. One token reads one team, so add one for each.",
+    teamLabel: "team",
+    privatePort: 3000,
+    scanIdle: "Check this Deplo",
+    scanBusy: "Reading that Deplo",
+    docs: "migration.run",
   },
 };
 

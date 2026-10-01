@@ -20,6 +20,7 @@ import {
 import { missingVolumeMessage, sharedPathNote } from "./copy-notes";
 import { copiedInRun, pathsOverlap, runTwinFor } from "./host-path-clashes";
 import type { Landed } from "./landed-targets";
+import type { DataSource } from "./source-data-host";
 import type { SourceService } from "./source-services";
 
 export interface CopyTally {
@@ -53,7 +54,7 @@ export interface CopyContext {
   landed: Landed;
   running: boolean;
   sourceServerId: string;
-  source: AgentConnection;
+  source: DataSource;
   dest: AgentConnection;
   signal: AbortSignal;
   onBytes?: OnBytes;

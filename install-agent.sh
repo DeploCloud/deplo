@@ -507,6 +507,26 @@ else
   step "Docker is not installed - the installer will add it"
 fi
 
+# An agent here that answers to ANOTHER panel would be taken over by this install, and
+# removed again when the migration finishes. Prints that panel's host, or nothing.
+foreign_agent_panel() {
+  local had="" mine
+  if [ -f "$AGENT_DATA/bootstrap.env" ]; then
+    had="$(sed -n 's/^DEPLO_BOOTSTRAP_URL=//p' "$AGENT_DATA/bootstrap.env" | tail -n1)"
+  fi
+  if [ -z "$had" ]; then
+    [ -e "$AGENT_DATA/ca.crt" ] && printf 'an earlier install'
+    return 0
+  fi
+  had="${had#*://}"; had="${had%%/*}"; had="${had%%:*}"
+  mine="${URL#*://}"; mine="${mine%%/*}"; mine="${mine%%:*}"
+  [ "$had" = "$mine" ] || printf '%s' "$had"
+}
+if [ "$IMPORT_ONLY" = "1" ]; then
+  FOREIGN_PANEL="$(foreign_agent_panel)"
+  [ -z "$FOREIGN_PANEL" ] || pf_fail "This machine already runs Deplo's agent for another Deplo ($FOREIGN_PANEL)." "Move it from that Deplo's own address with one of its API tokens instead - nothing needs installing here."
+fi
+
 # The port the panel dials ------------------------------------------------------
 # Outbound provisioning succeeds either way, so a blocked port reads as a server
 # that enrolls and then never comes online. Say it now, not at the end.

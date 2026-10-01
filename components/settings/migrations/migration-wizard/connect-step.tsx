@@ -24,8 +24,8 @@ import { TargetSelect } from "../target-select";
 import { TeamImagePicker } from "../team-image-picker";
 import {
   copyFor,
+  PICKABLE_KINDS,
   SOURCE_COPY,
-  SOURCE_KINDS,
   SourceMark,
   type SourceKind,
 } from "../sources";
@@ -131,6 +131,8 @@ export function ConnectStep({
             info={
               takeover ? (
                 `Where ${copy.name} answers on this machine. There is no other panel to point at from here.`
+              ) : kind === "deplo" ? (
+                copy.urlInfo
               ) : (
                 <>
                   {copy.urlInfo} On the same machine as Deplo, that is{" "}
@@ -249,7 +251,7 @@ export function ConnectStep({
           </div>
         )}
 
-        {!takeover && (
+        {!takeover && kind !== "deplo" && (
           <div className="flex items-center justify-between gap-4 rounded-lg border p-3">
             <div className="min-w-0">
               <div className="flex items-center gap-2 text-sm font-medium">
@@ -285,12 +287,16 @@ export function ConnectStep({
             </div>
             <div
               hidden={
-                takeover || queue.length > 0 || scanError === SELF_PANEL_REFUSAL
+                takeover ||
+                queue.length > 0 ||
+                scanError === SELF_PANEL_REFUSAL ||
+                /^That (is a )?Deplo\b/.test(scanError) ||
+                /^deplo_/.test(apiKey.trim())
               }
             >
               <p className="text-sm font-medium">Which one is this?</p>
               <div className="mt-2 grid gap-2 sm:grid-cols-2">
-                {SOURCE_KINDS.map((k) => (
+                {PICKABLE_KINDS.map((k) => (
                   <KindCard
                     key={k}
                     selected={forcedKind === k}

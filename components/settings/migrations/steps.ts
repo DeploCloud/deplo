@@ -78,6 +78,11 @@ export function reviewShows(at: {
   return at.plan ? "plan" : null;
 }
 
+// A source that hands its data over itself has no machines to install on, so Install has nothing to ask.
+export function stepAfterScan(plans: { servers: unknown[] }[]): StepId {
+  return plans.some((p) => p.servers.length > 0) ? "install" : "review";
+}
+
 export function needsYou(n: number): string {
   return `${n} need${n === 1 ? "s" : ""} you`;
 }

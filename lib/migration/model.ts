@@ -1,4 +1,5 @@
-import type { HealthCheck } from "../types/container";
+import type { BuildConfig } from "../types/build";
+import type { HealthCheck, ResourceLimits } from "../types/container";
 import type { SharedRef } from "./map/env";
 
 export type SourceBuildType =
@@ -25,6 +26,8 @@ export interface SourceDomain {
   domainType?: "application" | "compose" | "preview" | null;
   certificateType?: "letsencrypt" | "none" | "custom" | null;
   enabled?: boolean | null;
+  // A host the source platform minted for itself, which never comes across as a domain someone owns.
+  generated?: boolean | null;
 }
 
 export interface SourceMount {
@@ -66,6 +69,9 @@ export interface SourceApplication {
   secretEnvKeys?: string[] | null;
   platformNotes?: string[] | null;
   healthCheck?: HealthCheck | null;
+  // Settings already in Deplo's own shape, laid over what the platform-shaped fields map to.
+  nativeBuild?: Partial<BuildConfig> | null;
+  nativeResources?: Partial<ResourceLimits> | null;
   applicationId: string;
   name?: string | null;
   appName?: string | null;

@@ -135,7 +135,9 @@ export async function scanMigrationSource(
     sourceClient(c).listProjects(),
   ]);
 
-  if (!opts.newTeam)
+  // A panel that hands its data over itself has no machines to install on (ADR-0034).
+  const panelServesData = Boolean(sourceClient(c).dataExport);
+  if (!opts.newTeam && !panelServesData)
     await adoptMigrationSources(
       teamId,
       new Set(
@@ -387,10 +389,12 @@ export async function scanMigrationSource(
     orgName: sourceTeam.name,
     otherTeams,
     projects: planned,
-    servers: await planMachines(c, teamId, servers, {
-      probe: true,
-      only: used,
-    }),
+    servers: panelServesData
+      ? []
+      : await planMachines(c, teamId, servers, {
+          probe: true,
+          only: used,
+        }),
     members: await planMembers(c, teamId),
   };
 }

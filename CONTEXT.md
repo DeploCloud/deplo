@@ -721,9 +721,13 @@ and the History of every team's runs. A **migration run** is the stored row plus
 tab in the same dialog. The wizard's steps are `choose, connect, install, review, people, takeover, done`
 (`components/settings/migrations/steps.ts`), and `stepsFor()` shows a subset: People only when the
 admin can invite, Take over only on a takeover, and a "start clean" takeover skips straight to
-those last two. Install is where the **migration source** gets its agent.
-A token of either panel reads exactly ONE team over there (Coolify binds it to the team it
-was minted in, a Dokploy key carries one `organizationId`), so a panel with three teams is
+those last two. Install is where the **migration source** gets its agent; a migration from
+another Deplo has none to install, because that Deplo hands its data over itself
+([ADR-0034](docs/adr/0034-another-deplo-hands-its-team-over-itself.md)), so Connect goes
+straight to Review.
+A token of any panel reads exactly ONE team over there (Coolify binds it to the team it
+was minted in, a Dokploy key carries one `organizationId`, a Deplo token is limited to one
+team in its editor), so a panel with three teams is
 three tokens and **three runs**, one after another. Connect collects them as the **Teams to
 bring over** list, and each row names the Deplo team it **lands in** (`TeamTarget`): one
 that exists, where the admin holds `create_projects`, or a **new team** named after the
@@ -741,12 +745,14 @@ _Avoid_: transfer (that is **app transfer**, moving an App between teams), move 
 migration happens once and stops the source), import (the old wire word, now retired).
 
 **Platform** (of a migration):
-WHICH product a migration reads - `dokploy` or `coolify`, and nothing else. Worked out from the
+WHICH product a migration reads - `dokploy`, `coolify` or `deplo` (another Deplo instance), and
+nothing else. Worked out from the
 address and the token at Connect (`detectMigrationSource`), written once to
 `migration_runs.platform`, and never re-derived: a run resumes hours later from that row, and a
 detection that answered differently the second time would point the data cutover at the wrong
-API. The wizard asks only when the detection came back empty-handed, and refuses a third product
-by name.
+API. The wizard asks only when the detection came back empty-handed, and refuses any other product
+by name. A Deplo token names itself (`deplo_`), so a Deplo is never guessed at or offered in that
+question. Take over is narrower: only `dokploy` and `coolify` (`TAKEOVER_PLATFORMS`).
 Each platform is one adapter behind `MigrationSourceClient` (`lib/migration/<name>/`); above that
 seam nothing knows which panel it is reading, which is why a mapper's note writes `{panel}` and
 the report resolves it.

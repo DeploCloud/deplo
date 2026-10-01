@@ -14,7 +14,6 @@ import {
   reachesWholeTeam,
   requireCapability,
 } from "../../membership";
-import { connectAgent } from "../../infra/agent-client/connect";
 import { publishDatabaseChanged } from "../../graphql/pubsub";
 
 import { sourceClient, StopAcceptedError } from "../../migration/source";
@@ -28,13 +27,11 @@ import {
   pairVolumes,
 } from "../../migration/map/volume-pairing";
 
-import { sourceAgentReachable } from "../agent-reach";
 import { requireAppCapability } from "../node-access";
 import { stopStackOn, type OnBytes } from "../volume-migration";
 import { recordActivity } from "../activity";
 import { clearDataCopyError, markDataCopyFailed } from "../data-copy";
 import { runAsMigration } from "../migration-guard";
-import { getServerById } from "../servers/roster";
 import {
   assertImportGate,
   credentialFor,
@@ -46,7 +43,7 @@ import {
   refreshCounts,
 } from "../migration-import/run-report";
 
-import { UNREACHABLE_SOURCE_AGENT, unfilledStackBinds } from "./copy-notes";
+import { unfilledStackBinds } from "./copy-notes";
 import {
   copyBindMounts,
   copyPairedVolumes,
@@ -56,11 +53,8 @@ import {
 import { startAndVerifyDatabase, waitForProvision } from "./database-verify";
 import { hostPathOwners } from "./host-path-clashes";
 import { landedFor, runTargets, type Landed } from "./landed-targets";
-import {
-  recordSourceStopped,
-  resolveSourceServer,
-  volumesOnHost,
-} from "./source-cutover";
+import { recordSourceStopped } from "./source-cutover";
+import { sourceDataHost } from "./source-data-host";
 import { sourceServices, type SourceService } from "./source-services";
 
 export interface MoveInput extends ConnectInput {
@@ -195,7 +189,7 @@ async function runMoveMigrationServiceData(
     await requireCapability("restore_backups");
   }
 
-  const sourceServerId = await resolveSourceServer(c, teamId, svc.serverId);
+  const host = await sourceDataHost(c, teamId, svc);
 
   const state = await sourceClient(c).serviceRuntime(svc);
   const paired = pairVolumes(state.volumes, landed.volumes, {
@@ -228,11 +222,8 @@ async function runMoveMigrationServiceData(
         `${m.hostPath} is mounted at ${m.mountPath} on {panel}, but nothing of ${landed.targetName} mounts that path here - what is in it was not copied.`,
       );
   notes.push(...unfilledStackBinds(landed, binds));
-  const sourceHostsNothing = Boolean(
-    (await getServerById(sourceServerId))?.importOnly,
-  );
   const mayCopyHostPaths =
-    (binds.every((b) => b.stackRelative) && sourceHostsNothing) ||
+    (binds.every((b) => b.stackRelative) && host.hostsNothing) ||
     ((await isInstanceAdmin()) && (await canMountHostVolumes()));
 
   if (paired.value.length === 0 && binds.length === 0) {
@@ -257,18 +248,18 @@ async function runMoveMigrationServiceData(
   }
 
   // Asked BEFORE the stopService below, which cannot be taken back.
-  if (!(await sourceAgentReachable(sourceServerId))) {
+  if (!(await host.reachable())) {
     return refuse({
-      message: UNREACHABLE_SOURCE_AGENT,
+      message: host.unreachable,
       reason: `Deplo could not reach the machine ${svc.name}'s data is on, so it was never copied`,
-      note: UNREACHABLE_SOURCE_AGENT,
+      note: host.unreachable,
       sourceGone: true,
     });
   }
 
   if (state.running && (binds.length === 0 || !mayCopyHostPaths)) {
     const wanted = paired.value.map((p) => p.sourceVolume);
-    const present = await volumesOnHost(sourceServerId, wanted);
+    const present = await host.volumesPresent(wanted);
     if (present && wanted.length > 0 && !wanted.some((n) => present.has(n))) {
       const message = `${svc.name} is running on {panel}, but none of the volumes it names (${wanted.join(", ")}) are on the machine {panel} says it runs on - so its data is somewhere else. Nothing was stopped and nothing was copied. Correct that machine's address under the Connect step and run the copy again.`;
       return refuse({
@@ -341,11 +332,7 @@ async function runMoveMigrationServiceData(
   } catch {}
 
   const tally = newCopyTally();
-  const source = await connectAgent(sourceServerId);
-  const dest =
-    sourceServerId === landed.targetServerId
-      ? source
-      : await connectAgent(landed.targetServerId);
+  const { source, dest, close } = await host.connect(landed.targetServerId);
   const aborter = new AbortController();
   inFlightCopies.set(input.runId, aborter);
   const ctx: CopyContext = {
@@ -356,7 +343,7 @@ async function runMoveMigrationServiceData(
     svc,
     landed,
     running: state.running,
-    sourceServerId,
+    sourceServerId: host.serverId ?? "",
     source,
     dest,
     signal: aborter.signal,
@@ -369,8 +356,7 @@ async function runMoveMigrationServiceData(
     await copyBindMounts(ctx, binds, bindOwners, mayCopyHostPaths);
   } finally {
     inFlightCopies.delete(input.runId);
-    source.close();
-    if (dest !== source) dest.close();
+    close();
   }
 
   if (

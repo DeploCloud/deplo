@@ -235,14 +235,14 @@ async function relayedArchiveHeldEntries(head: Buffer[]): Promise<boolean> {
 }
 
 async function sourceHasData(
-  source: AgentConnection,
+  source: { exportVolume(name: string): AsyncIterable<Buffer> },
   volumeName: string,
 ): Promise<boolean> {
   return archiveHasEntries(source.exportVolume(volumeName));
 }
 
 export async function copyVolumeBetween(
-  source: AgentConnection,
+  source: { exportVolume(name: string): AsyncIterable<Buffer> },
   dest: AgentConnection,
   volumeName: string,
   targetName: string = volumeName,
@@ -325,7 +325,9 @@ export async function copyVolumeBetween(
 }
 
 export async function copyHostPathBetween(
-  source: AgentConnection,
+  source: {
+    exportHostPath(path: string, allowFile?: boolean): AsyncIterable<Buffer>;
+  },
   dest: AgentConnection,
   sourcePath: string,
   targetPath: string,
