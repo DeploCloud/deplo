@@ -463,6 +463,14 @@ type AppTransferInfo {
   """
   backupCount: Int
 
+  """Cron jobs of this app - removed on transfer."""
+  cronCount: Int
+
+  """
+  Databases of the current team this app names by host. They stay behind, so the app stops reaching them once it moves.
+  """
+  databasesLost: [String!]
+
   """
   The git connection authenticating this app's clone, or null. It is always dropped on transfer - a token is owned by the current team and cannot be assumed to reach the repository from another one.
   """
@@ -473,6 +481,16 @@ type AppTransferInfo {
   Where the app currently sits in its team ("folder Marketing"), or null at the top level. It leaves that home on transfer.
   """
   homeLabel: String
+
+  """
+  People granted this app on its own (a per-app grant or a role scoped to it). Those grants are removed on transfer.
+  """
+  peopleLosingAccess: Int
+
+  """
+  True when the app is live: it restarts briefly on the new team's network. Nothing is rebuilt.
+  """
+  running: Boolean
   serverName: String
 
   """
@@ -480,6 +498,9 @@ type AppTransferInfo {
   """
   sharedVarCount: Int
   targets: [AppTransferTarget!]
+
+  """API tokens limited to this app. They lose it on transfer."""
+  tokensLosingAccess: Int
 }
 
 """

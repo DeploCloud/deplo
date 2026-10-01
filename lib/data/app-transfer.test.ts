@@ -662,3 +662,83 @@ test("only the app's own team may transfer it", async () => {
     .where(and(eq(appsTable.id, APP), eq(appsTable.teamId, TEAM_B)));
   assert.equal(still.length, 1);
 });
+
+test("appTransferInfo names what the move costs beyond the app itself", async () => {
+  await joinTeam(USER_1, TEAM_B, ["view", "move_apps", "manage_env"]);
+  const { seedDatabase } = await import("./backup-test-helpers");
+  const { encryptSecret } = await import("../crypto");
+  const { envVars } = await import("../db/schema/control-plane/env-vars");
+  const { cronJobs } = await import("../db/schema/control-plane/crons");
+  const { appGrants, teamRoles, teamRoleScopeApps } =
+    await import("../db/schema/control-plane/access-control");
+  const { apiTokens, apiTokenApps } =
+    await import("../db/schema/control-plane/api-tokens");
+  await seedDatabase(db, { id: "db_shop", name: "shop" });
+  await seedDatabase(db, { id: "db_cache", name: "cache" });
+  await db.insert(envVars).values({
+    id: "env_1",
+    appId: APP,
+    key: "DATABASE_URL",
+    valueEnc: encryptSecret("postgres://app:pw@db-shop:5432/shop"),
+    type: "secret",
+    createdAt: T0,
+    updatedAt: T0,
+  });
+  await db.insert(cronJobs).values({
+    id: "cron_1",
+    teamId: TEAM_A,
+    targetKind: "app",
+    appId: APP,
+    name: "nightly",
+    schedule: "0 3 * * *",
+    command: "echo hi",
+    createdAt: T0,
+    updatedAt: T0,
+  });
+  await db
+    .insert(appGrants)
+    .values({ appId: APP, userId: "user_2", capability: "deploy_apps" });
+  await db.insert(teamRoles).values({
+    id: "role_one",
+    teamId: TEAM_A,
+    builtinKey: null,
+    name: "One app",
+    description: null,
+    requireTwoFactor: false,
+    scoped: true,
+    createdAt: T0,
+  });
+  await db.insert(teamRoleScopeApps).values({ roleId: "role_one", appId: APP });
+  await db
+    .update(membershipsTable)
+    .set({ roleId: "role_one" })
+    .where(
+      and(
+        eq(membershipsTable.userId, "user_2"),
+        eq(membershipsTable.teamId, TEAM_A),
+      ),
+    );
+  await db.insert(apiTokens).values({
+    id: "tok_1",
+    userId: USER_1,
+    name: "ci",
+    prefix: "deplo_cixxx",
+    tokenHash: "h",
+    instanceAdmin: false,
+    scoped: true,
+    expiresAt: null,
+    lastUsedAt: null,
+    createdAt: T0,
+  });
+  await db.insert(apiTokenApps).values({ tokenId: "tok_1", appId: APP });
+
+  const info = await asOwner(() => appTransferInfo(APP));
+  assert.deepEqual(info.databasesLost, ["shop"], "only the database it names");
+  assert.equal(info.cronCount, 1);
+  assert.equal(
+    info.peopleLosingAccess,
+    1,
+    "a grant and a scoped role, one person",
+  );
+  assert.equal(info.tokensLosingAccess, 1);
+});

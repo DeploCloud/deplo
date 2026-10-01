@@ -6,6 +6,7 @@ import { and, count, eq, inArray, sql } from "drizzle-orm";
 import { getDb } from "../db/client";
 import { teamAvatarUrl } from "../avatar";
 import {
+  memberships as membershipsTable,
   appGrants as appGrantsTable,
   teamRoleScopeApps,
 } from "../db/schema/control-plane/access-control";
@@ -36,6 +37,7 @@ import {
 import { getCurrentUser } from "../auth/current-user";
 import { nowIso } from "../ids";
 import { recordActivity } from "./activity";
+import { databaseUsesInTeam } from "./database-usage";
 import { reapplyNetworkAfterMove } from "../deploy/build/reroute";
 import { assertNoNameClash, withNetworkLock } from "./name-clash";
 import { composeNamesOnNetwork } from "../deploy/compose-stack/compose-read";
@@ -65,6 +67,11 @@ export interface AppTransferInfo {
   backupCount: number;
   githubConnected: boolean;
   gitConnectionLabel: string | null;
+  cronCount: number;
+  databasesLost: string[];
+  peopleLosingAccess: number;
+  tokensLosingAccess: number;
+  running: boolean;
   targets: AppTransferTarget[];
 }
 
@@ -91,6 +98,7 @@ const appColumns = {
   repoInstallationId: appsTable.repoInstallationId,
   repoConnectionId: appsTable.repoConnectionId,
   autoDeploy: appsTable.autoDeploy,
+  status: appsTable.status,
 };
 
 export const appTransferInfo = cache(
@@ -141,16 +149,47 @@ export const appTransferInfo = cache(
         )[0]?.label ?? null)
       : null;
 
-    const [sharedVars, backups] = await Promise.all([
-      db
-        .select({ n: count() })
-        .from(sharedEnvVarAppsTable)
-        .where(eq(sharedEnvVarAppsTable.appId, appId)),
-      db
-        .select({ n: count() })
-        .from(backupsTable)
-        .where(eq(backupsTable.appId, appId)),
-    ]);
+    const [sharedVars, backups, crons, uses, granted, scoped, tokens] =
+      await Promise.all([
+        db
+          .select({ n: count() })
+          .from(sharedEnvVarAppsTable)
+          .where(eq(sharedEnvVarAppsTable.appId, appId)),
+        db
+          .select({ n: count() })
+          .from(backupsTable)
+          .where(eq(backupsTable.appId, appId)),
+        db
+          .select({ n: count() })
+          .from(cronJobsTable)
+          .where(
+            and(
+              eq(cronJobsTable.appId, appId),
+              eq(cronJobsTable.teamId, teamId),
+            ),
+          ),
+        databaseUsesInTeam(teamId, { appIds: [appId] }),
+        db
+          .selectDistinct({ userId: appGrantsTable.userId })
+          .from(appGrantsTable)
+          .where(eq(appGrantsTable.appId, appId)),
+        db
+          .selectDistinct({ userId: membershipsTable.userId })
+          .from(teamRoleScopeApps)
+          .innerJoin(
+            membershipsTable,
+            and(
+              eq(membershipsTable.roleId, teamRoleScopeApps.roleId),
+              eq(membershipsTable.teamId, teamId),
+            ),
+          )
+          .where(eq(teamRoleScopeApps.appId, appId)),
+        db
+          .select({ n: count() })
+          .from(apiTokenAppsTable)
+          .where(eq(apiTokenAppsTable.appId, appId)),
+      ]);
+    const people = new Set([...granted, ...scoped].map((r) => r.userId));
 
     return {
       appName: app.name,
@@ -160,6 +199,11 @@ export const appTransferInfo = cache(
       backupCount: Number(backups[0]?.n ?? 0),
       githubConnected,
       gitConnectionLabel: connectionLabel,
+      cronCount: Number(crons[0]?.n ?? 0),
+      databasesLost: uses.map((u) => u.databaseName),
+      peopleLosingAccess: people.size,
+      tokensLosingAccess: Number(tokens[0]?.n ?? 0),
+      running: app.status === "active",
       targets: candidates.map((c) => ({
         id: c.id,
         name: c.name,

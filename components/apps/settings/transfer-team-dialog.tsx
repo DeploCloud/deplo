@@ -14,7 +14,7 @@ import { TeamAvatar } from "@/components/shared/user-avatar";
 import { FieldLabel } from "@/components/ui/info-tip";
 import { ConfirmAction } from "@/components/shared/confirm-action";
 import { gql, gqlAction } from "@/lib/graphql-client";
-import { plural } from "@/lib/utils";
+import { joinNames, plural } from "@/lib/utils";
 
 type TransferTarget = {
   id: string;
@@ -32,6 +32,11 @@ type TransferInfo = {
   backupCount: number;
   githubConnected: boolean;
   gitConnectionLabel: string | null;
+  cronCount: number;
+  databasesLost: string[];
+  peopleLosingAccess: number;
+  tokensLosingAccess: number;
+  running: boolean;
   targets: TransferTarget[];
 };
 
@@ -45,6 +50,11 @@ const INFO_QUERY = /* GraphQL */ `
       backupCount
       githubConnected
       gitConnectionLabel
+      cronCount
+      databasesLost
+      peopleLosingAccess
+      tokensLosingAccess
+      running
       targets {
         id
         name
@@ -121,6 +131,11 @@ export function TransferTeamDialog({
           Everything it owns goes with it and it keeps running.{" "}
           <strong>Only the new team can hand it back.</strong>
         </>
+      }
+      consequence={
+        info && info.databasesLost.length > 0
+          ? `It stops reaching ${joinNames(info.databasesLost)}, which ${info.databasesLost.length === 1 ? "stays" : "stay"} in this team.`
+          : "This team loses access to it."
       }
       confirmLabel="Transfer app"
       confirmText={appName}
@@ -219,6 +234,30 @@ export function TransferTeamDialog({
                       Backups already taken stay here.
                     </li>
                   )}
+                  {info.cronCount > 0 && (
+                    <li>
+                      {plural(info.cronCount, "cron job is", "cron jobs are")}{" "}
+                      removed.
+                    </li>
+                  )}
+                  {(info.peopleLosingAccess > 0 ||
+                    info.tokensLosingAccess > 0) && (
+                    <li>
+                      {joinNames(
+                        [
+                          info.peopleLosingAccess > 0 &&
+                            plural(info.peopleLosingAccess, "person", "people"),
+                          info.tokensLosingAccess > 0 &&
+                            plural(
+                              info.tokensLosingAccess,
+                              "API token",
+                              "API tokens",
+                            ),
+                        ].filter((x): x is string => Boolean(x)),
+                      )}{" "}
+                      with access to just this app lose it.
+                    </li>
+                  )}
                   {info.githubConnected &&
                     (target.githubFollows ? (
                       <li>
@@ -241,8 +280,9 @@ export function TransferTeamDialog({
                     </li>
                   )}
                   <li>
-                    The app keeps running on {info.serverName}, nothing is
-                    rebuilt or restarted.
+                    {info.running
+                      ? `It restarts briefly on ${target.name}'s network, on ${info.serverName}. Nothing is rebuilt.`
+                      : `It stays stopped, on ${info.serverName}.`}
                   </li>
                 </>
               )}
