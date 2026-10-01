@@ -3,7 +3,8 @@ import assert from "node:assert/strict";
 import { readFileSync, readdirSync } from "node:fs";
 import path from "node:path";
 
-import { PGlite } from "@electric-sql/pglite";
+import type { PGlite } from "@electric-sql/pglite";
+import { makeEmptyTestPg } from "./test-harness";
 
 const MIG_DIR = path.join(process.cwd(), "lib", "db", "migrations");
 const SPLIT = "0128_split_member_activity_type.sql";
@@ -89,7 +90,7 @@ async function applyFile(file: string): Promise<void> {
 }
 
 before(async () => {
-  pg = new PGlite();
+  pg = await makeEmptyTestPg();
   const files = readdirSync(MIG_DIR)
     .filter((f) => /^\d{4}_.*\.sql$/.test(f))
     .sort();

@@ -238,10 +238,16 @@ is remapped onto the control-plane `users` table. Deploy execution is the Go age
 - **Required env to boot:** `DEPLO_DATABASE_URL` (Postgres - the app **fail-fasts at module
   load** if unset), `DEPLO_SECRET` (≥16 chars; derives every crypto key), `DEPLO_PUBLIC_URL`
   (sets the cookie `secure` flag + Better Auth https). See `.env.example`.
-- **Tests:** `bun run test` - `node --test` + `tsx`, in-process against **pglite** (not
-  Jest/Vitest, not real Postgres). Seed via `makeTestDb` + `__setTestDb`/`__resetTestDb`, drive
+- **Tests:** `bun run test [file|dir ...]` - `node --test` + `tsx`, in-process against **pglite**
+  (not Jest/Vitest, not real Postgres). Seed via `makeTestDb` + `__setTestDb`/`__resetTestDb`, drive
   inside `runWithIdentity({userId, teamId})`, use `*-test-helpers.ts` seeders (named to dodge the
   `*.test.ts` glob). `server-only-shim.cjs` no-ops the `server-only` guard.
+  **A worker runs many files back to back** (`scripts/test.mjs`, one per core): each file is its
+  own `describe`, and `makeTestDb` hands it the worker's one database, emptied. Env vars, `fetch`
+  and scalar `Symbol.for` globals are put back after each file; anything else a test stubs or
+  starts it must undo, or the next file inherits it. `--test-concurrency=1` replays one order.
+  **Tests are offline** (`lib/test/offline.cjs`): anything but loopback is refused at once, so a
+  fixture's fake agent fails fast - stub the agent, registry or `fetch` rather than reaching out.
 - **DB (drizzle-kit, needs `DEPLO_DATABASE_URL`):** `bun run db:push` (dev, apply directly),
   `db:generate` (emit SQL + snapshot + `_journal.json` - commit all three; tests replay the
   journal), `db:migrate` (prod). Migrations **auto-apply at boot** via the `instrumentation.ts`

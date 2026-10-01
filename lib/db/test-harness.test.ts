@@ -1,4 +1,4 @@
-import { test, before, after } from "node:test";
+import { test, before, after, describe } from "node:test";
 import assert from "node:assert/strict";
 
 import type { PGlite } from "@electric-sql/pglite";
@@ -33,8 +33,8 @@ async function seed() {
   `);
 }
 
-async function count(table: string): Promise<number> {
-  const res = await pg.query<{ n: number }>(
+async function count(table: string, db = pg): Promise<number> {
+  const res = await db.query<{ n: number }>(
     `select count(*)::int as n from ${table}`,
   );
   return res.rows[0].n;
@@ -91,4 +91,77 @@ test("the write mark moves on a write and holds still on a read", async () => {
   assert.equal(await writeMark(pg), m0);
   await pg.exec("insert into zz_loner default values");
   assert.notEqual(await writeMark(pg), m0);
+});
+
+test("results parse as PGlite's own parsers would, from a table of two overrides", async () => {
+  const { rows } = await pg.query<Record<string, unknown>>(
+    `select array['a','b'] t, array[1,2] i, '{"k":1}'::jsonb j,
+       '2026-01-02 03:04:05+00'::timestamptz ts,
+       array['2026-01-02 03:04:05+00'::timestamptz] tsa`,
+  );
+  assert.deepEqual(rows[0], {
+    t: ["a", "b"],
+    i: [1, 2],
+    j: { k: 1 },
+    ts: "2026-01-02T03:04:05.000Z",
+    tsa: ["2026-01-02T03:04:05.000Z"],
+  });
+  assert.ok(
+    Object.keys(pg.parsers).length <= 2,
+    "every query copies this table",
+  );
+});
+
+describe("one database per worker", () => {
+  const FILE = Symbol.for("deplo.test.file");
+  const SHARED = Symbol.for("deplo.test.sharedDb");
+  const slots = globalThis as unknown as Record<symbol, unknown>;
+  let saved: unknown[];
+  const asFile = (name: string) => {
+    slots[FILE] = name;
+    return makeTestDb();
+  };
+
+  before(() => {
+    saved = [slots[FILE], slots[SHARED]];
+    slots[SHARED] = undefined;
+  });
+
+  after(async () => {
+    await (slots[SHARED] as { close(): Promise<void> } | undefined)?.close();
+    [slots[FILE], slots[SHARED]] = saved;
+  });
+
+  test("the next file gets the same database back, emptied and reset", async () => {
+    const a = await asFile("a.test.ts");
+    const work = async (db: PGlite) =>
+      (await db.query<{ work_mem: string }>("show work_mem")).rows[0].work_mem;
+    const before = await work(a.pg);
+    await a.pg.exec(
+      "insert into instance_settings (updated_at) values (now()); set work_mem = '77MB'",
+    );
+    await a.pg.close();
+    const b = await asFile("b.test.ts");
+    assert.equal(b.pg, a.pg);
+    assert.equal(await count("instance_settings", b.pg), 0);
+    assert.equal(await work(b.pg), before);
+  });
+
+  test("a second database inside one file is its own", async () => {
+    const a = await asFile("c.test.ts");
+    const b = await makeTestDb();
+    assert.notEqual(b.pg, a.pg);
+    await b.pg.close();
+  });
+
+  test("a file that changed the schema leaves a fresh database to the next", async () => {
+    const a = await asFile("d.test.ts");
+    await a.pg.exec("create table zz_drift (id int)");
+    const b = await asFile("e.test.ts");
+    assert.notEqual(b.pg, a.pg);
+    await assert.rejects(
+      b.pg.query("select 1 from zz_drift"),
+      /does not exist/,
+    );
+  });
 });

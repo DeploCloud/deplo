@@ -27,8 +27,8 @@ on:
 permissions:
   contents: read
 
-# A second push to the same branch cancels the first: the suite is ~12 minutes
-# and nobody reads the result of a superseded commit.
+# A second push to the same branch cancels the first: nobody reads the result of
+# a superseded commit.
 concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true

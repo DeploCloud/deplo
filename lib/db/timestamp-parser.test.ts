@@ -1,7 +1,8 @@
 import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
 
-import { PGlite } from "@electric-sql/pglite";
+import type { PGlite } from "@electric-sql/pglite";
+import { makeEmptyTestPg } from "./test-harness";
 import { types as pgTypes } from "pg";
 
 import {
@@ -47,7 +48,7 @@ test("pg.types: importing lib/db/pg.ts registers the shared parser for both OIDs
 let db: PGlite;
 
 before(async () => {
-  db = new PGlite({
+  db = await makeEmptyTestPg({
     parsers: {
       [TIMESTAMPTZ_OID]: isoTimestampParser,
       [TIMESTAMP_OID]: isoTimestampParser,

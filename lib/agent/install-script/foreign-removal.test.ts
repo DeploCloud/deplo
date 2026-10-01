@@ -171,7 +171,7 @@ export STUB_LOG=${log}
 unset HOME
 TAKEOVER=${c.platform}; FOREIGN_LABEL=${c.label}; exec 9>/dev/null
 blank() { :; }; phase() { :; }; step() { :; }; note() { :; }
-spin_start() { :; }; spin_ok() { :; }
+spin_start() { :; }; spin_ok() { :; }; sleep() { :; }
 state_set() { :; }; takeover_post() { :; }
 ${fns.replaceAll("${HOME:-/root}", dir)}
 platform_dir() { printf '%s' "${platform}"; }

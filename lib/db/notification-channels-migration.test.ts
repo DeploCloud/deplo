@@ -3,7 +3,8 @@ import assert from "node:assert/strict";
 import { readFileSync, readdirSync } from "node:fs";
 import path from "node:path";
 
-import { PGlite, types } from "@electric-sql/pglite";
+import { type PGlite, types } from "@electric-sql/pglite";
+import { makeEmptyTestPg } from "./test-harness";
 import { drizzle, type PgliteDatabase } from "drizzle-orm/pglite";
 
 import { isoTimestampParser } from "./timestamp-parser";
@@ -25,7 +26,7 @@ async function applyFile(file: string): Promise<void> {
 }
 
 before(async () => {
-  pg = new PGlite({
+  pg = await makeEmptyTestPg({
     parsers: {
       [types.TIMESTAMPTZ]: isoTimestampParser,
       [types.TIMESTAMP]: isoTimestampParser,
