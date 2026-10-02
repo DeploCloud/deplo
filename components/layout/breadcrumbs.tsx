@@ -29,6 +29,7 @@ import {
   type BreadcrumbSegment,
   type DropItem,
 } from "@/lib/breadcrumb-model";
+import { afterPaint } from "@/lib/after-paint";
 import { cn } from "@/lib/utils";
 
 const MAX_FOLDER_CRUMBS = 3;
@@ -167,18 +168,6 @@ function useCrumbPresence(display: BreadcrumbSegment[]) {
       leaving: true,
     });
   return { items, fresh: state.fresh };
-}
-
-// Calls fn once the current state has been painted, so a transition has a start to leave from.
-function afterPaint(fn: () => void): () => void {
-  let second = 0;
-  const first = requestAnimationFrame(() => {
-    second = requestAnimationFrame(fn);
-  });
-  return () => {
-    cancelAnimationFrame(first);
-    cancelAnimationFrame(second);
-  };
 }
 
 function CrumbSlot({

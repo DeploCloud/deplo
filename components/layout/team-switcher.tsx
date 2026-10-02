@@ -32,6 +32,7 @@ import { CreateTeamDialog } from "@/components/teams/create-team-dialog";
 import { gqlAction } from "@/lib/graphql-client";
 import { teamSwitchDestination } from "@/lib/team-switch";
 import { withTeam } from "@/lib/team-path";
+import { afterPaint } from "@/lib/after-paint";
 import { cn } from "@/lib/utils";
 import type { TeamIdentity, TeamSummary } from "@/lib/types/team";
 
@@ -99,7 +100,7 @@ export function TeamSwitcher({
             className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-sm hover:bg-accent"
           >
             <TeamAvatar name={team.name} avatarUrl={team.avatarUrl} size="md" />
-            <span className="max-w-40 truncate font-medium">{team.name}</span>
+            <TeamName name={team.name} />
             <ChevronDown className="size-3.5 text-muted-foreground" />
           </button>
         </DropdownMenuTrigger>
@@ -219,5 +220,57 @@ function TeamRow({
         </span>
       </span>
     </DropdownMenuItem>
+  );
+}
+
+const SLIDE_MS = 250;
+
+// A team switch mounts a new switcher (the [team] layout is a new subtree), so the width to slide from outlives it.
+let lastNameWidth: number | null = null;
+
+function TeamName({ name }: { name: string }) {
+  const inner = React.useRef<HTMLSpanElement>(null);
+  const shown = React.useRef<number | null>(lastNameWidth);
+  const [pinned, setPinned] = React.useState<number | null>(null);
+
+  React.useLayoutEffect(() => {
+    const to = inner.current?.offsetWidth ?? 0;
+    const from = shown.current;
+    shown.current = to;
+    lastNameWidth = to;
+    if (from === null || Math.abs(from - to) < 1) {
+      setPinned(null);
+      return;
+    }
+    setPinned(from);
+    let done = false;
+    let settle: ReturnType<typeof setTimeout> | undefined;
+    const cancel = afterPaint(() => {
+      setPinned(to);
+      settle = setTimeout(() => {
+        done = true;
+        setPinned(null);
+      }, SLIDE_MS);
+    });
+    return () => {
+      cancel();
+      clearTimeout(settle);
+      // An interrupted slide (or StrictMode's re-run) starts again from where it was.
+      if (!done) shown.current = from;
+    };
+  }, [name]);
+
+  return (
+    <span
+      className={cn(
+        "flex transition-[width] duration-250 ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none",
+        pinned !== null && "overflow-hidden",
+      )}
+      style={pinned === null ? undefined : { width: pinned }}
+    >
+      <span ref={inner} className="max-w-40 shrink-0 truncate font-medium">
+        {name}
+      </span>
+    </span>
   );
 }
