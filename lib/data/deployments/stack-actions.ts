@@ -2,6 +2,7 @@ import "server-only";
 
 import { getCurrentUser } from "../../auth/current-user";
 import { recordActivity } from "../activity";
+import { syncProductionUrl } from "../domains/primary-domain";
 import { startDeployment } from "../../deploy/build/deploy-start";
 import { rerouteApp } from "../../deploy/build/reroute";
 import { destroyStack } from "../../deploy/build/stack-lifecycle";
@@ -18,6 +19,7 @@ export async function reloadApp(
   if (!(await appInTeam(appId, membership.teamId)))
     throw new Error("App not found");
   const result = await rerouteApp(appId);
+  if (result !== "deferred") await syncProductionUrl(appId);
   if (result === "rerouted")
     await recordActivity("app", `Reloaded routing`, user.name, appId);
   return result;

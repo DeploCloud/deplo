@@ -44,6 +44,7 @@ import { renderDeployStack } from "./compose-render";
 import { deployComposeStackViaAgent } from "./compose-stack-deploy";
 import type { PreviewEnvContext } from "./deploy-env";
 import { previewRouteTarget, routableForDeploy } from "./deploy-routes";
+import { applyDomainEditsMadeDuringBuild } from "./domain-edits-during-build";
 import {
   commitOutcome,
   log,
@@ -519,6 +520,8 @@ async function runDeployment(depId: string): Promise<void> {
       { status: "error" },
     );
   } finally {
+    if (!preview && dep.environment === "production")
+      await applyDomainEditsMadeDuringBuild(depId, project.id, routeDomains);
     await finalizeDeploymentLogs(depId);
   }
 }
