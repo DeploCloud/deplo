@@ -652,7 +652,7 @@
 }
 
 .deplo-logo:hover .deplo-logo-cursor {
-  animation: deplo-cursor-blink 0.4s step-end infinite;
+  animation: deplo-cursor-blink 1.06s step-end infinite;
 }
 
 @media (prefers-reduced-motion: reduce) {
