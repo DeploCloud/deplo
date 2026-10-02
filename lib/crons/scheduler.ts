@@ -11,6 +11,7 @@ import {
 } from "../backups/lease";
 import { reapInFlightRuns } from "./runner/attempt";
 import { fireDueJobs } from "./runner/fire";
+import { instanceFrozen } from "../data/deplo-move/freeze";
 
 const TICK_MS = 5_000;
 
@@ -61,6 +62,7 @@ function replayWindow(now: Date): Date[] {
 export async function runCronSchedulerTick(
   now: Date = new Date(),
 ): Promise<void> {
+  if (await instanceFrozen()) return;
   if (state.ticking) return;
   state.ticking = true;
   const fire = shouldFire(now, state.lastFireAt);

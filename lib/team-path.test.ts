@@ -35,6 +35,7 @@ test("leaves a path that belongs to no team", () => {
     "/register/tok_1",
     "/welcome",
     "/takeover",
+    "/moving/dmv_abc",
     "/oauth/consent",
     "/api/graphql",
     "/api/apps/prj_1/logs",
@@ -79,6 +80,7 @@ test("reads the team out of a path", () => {
   assert.equal(teamSlugFromPath("/acme"), "acme");
   assert.equal(teamSlugFromPath("/apps/web"), null);
   assert.equal(teamSlugFromPath("/settings/members"), null);
+  assert.equal(teamSlugFromPath("/moving/dmv_abc"), null);
   assert.equal(teamSlugFromPath("/logo.svg"), null);
   assert.equal(teamSlugFromPath("/"), null);
 });

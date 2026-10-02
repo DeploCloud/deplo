@@ -196,6 +196,7 @@ export const DOCS = {
     "operations/panel-address-and-certificates#the-certificate-account-email",
   "upgrade.overview": "operations/upgrade",
   "upgrade.releases": "operations/upgrade#release-history",
+  "deplo.move": "operations/move-deplo",
 
   "migration.takeover": "migrations",
   "migration.dokploy": "migrations/move-from-dokploy",

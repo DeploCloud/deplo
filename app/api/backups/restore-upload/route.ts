@@ -4,11 +4,14 @@ import { getCurrentUser } from "@/lib/auth/current-user";
 import { isCrossSite, crossSiteRefused } from "@/lib/http/same-origin";
 import { prepareUploadRestore } from "@/lib/data/backups/upload-restore";
 import { statusForBackupError } from "@/lib/backups/http-status";
+import { refuseWhileFrozen } from "@/lib/data/deplo-move/freeze";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
 export async function POST(request: NextRequest) {
+  const paused = await refuseWhileFrozen();
+  if (paused) return paused;
   if (isCrossSite(request)) return crossSiteRefused();
   const user = await getCurrentUser();
   if (!user) return Response.json({ error: "Unauthorized" }, { status: 401 });

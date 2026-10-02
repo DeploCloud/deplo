@@ -23,6 +23,7 @@ export function AppShell({
   capabilities,
   isAdmin,
   hasPasskey = false,
+  banner,
   children,
 }: {
   user: PublicUser;
@@ -33,6 +34,8 @@ export function AppShell({
   isAdmin: boolean;
   // A passkey that works here already counts as a second factor (ADR-0024).
   hasPasskey?: boolean;
+  // Shown between the top bar and the page, e.g. while a Deplo move pauses changes.
+  banner?: React.ReactNode;
   children: React.ReactNode;
 }) {
   return (
@@ -46,6 +49,7 @@ export function AppShell({
           <UpdateProvider enabled={isAdmin}>
             <ShellFrame
               contentKey={team.id}
+              banner={banner}
               sidebar={
                 <>
                   <NavigationHistoryTracker />

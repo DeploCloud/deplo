@@ -1518,6 +1518,179 @@ type DeploChangelog {
   releases: [DeploRelease!]
 }
 
+"""What the old Deplo holds, and so what a move brings over."""
+type DeploMoveCounts {
+  apps: Int
+  databases: Int
+  servers: Int
+  teams: Int
+  users: Int
+}
+
+"""
+What a Deplo move would bring here, read from the old Deplo. Nothing has changed on either side yet.
+"""
+type DeploMovePreview {
+  canStart: Boolean
+  counts: DeploMoveCounts
+
+  """
+  The move's id. It is also the key to its public progress page, /moving/<id>.
+  """
+  id: String
+  peerUrl: String
+
+  """
+  Everything that blocks the move, each naming its server. startDeploMove refuses while any remains.
+  """
+  problems: [String!]
+  servers: [DeploMovePreviewServer!]
+
+  """The old Deplo's version."""
+  version: String
+
+  """Worth knowing, never blocking."""
+  warnings: [String!]
+}
+
+"""One of the old Deplo's servers, as a move would take it."""
+type DeploMovePreviewServer {
+  address: String
+  agentVersion: String
+  apps: Int
+  databases: Int
+
+  """
+  False for a server that never finished connecting: it is copied as it is, with nothing to hand over.
+  """
+  enrolled: Boolean
+  id: String
+
+  """
+  The machine the old Deplo itself runs on. It is handed over last and its apps keep running.
+  """
+  isPanelHost: Boolean
+  name: String
+  port: Int
+
+  """
+  What keeps this server from being handed over, in one sentence. The move cannot start while any server has one.
+  """
+  problem: String
+  role: DeploMoveServerRole
+}
+
+"""Whether this Deplo can receive a Deplo move right now."""
+type DeploMoveReadiness {
+  ready: Boolean
+
+  """
+  Why not, in one sentence: a move only goes into a fresh Deplo, one at a time.
+  """
+  reason: String
+}
+
+"""One server's handover."""
+type DeploMoveServer {
+  """
+  Why it failed; on a handed-over server, a note that this Deplo cannot reach it yet. Empty otherwise.
+  """
+  error: String
+  id: String
+  name: String
+  state: DeploMoveServerState
+}
+
+"""
+What the server is for on the old Deplo: workloads (runs and builds apps), storage (backups only), build (builds only) or import (a migration source).
+"""
+enum DeploMoveServerRole {
+  build
+  import
+  storage
+  workloads
+}
+
+enum DeploMoveServerState {
+  failed
+  handed_over
+  waiting
+}
+
+"""
+connected = the old Deplo answered and the preview is ready. copying = its data is being copied here. handing_over = its servers are switching to this Deplo. done = finished. failed = stopped, with `error` saying why; retry resumes. cancelled = abandoned before any server was handed over.
+"""
+enum DeploMoveState {
+  cancelled
+  connected
+  copying
+  done
+  failed
+  handing_over
+}
+
+"""
+A Deplo move into this Deplo, as its progress page shows it. Read by its id alone: the copy signs everyone out.
+"""
+type DeploMoveStatus {
+  """
+  Until the first server is handed over. After that a move only goes forward.
+  """
+  canCancel: Boolean
+
+  """
+  The copy landed and the move stopped, so it can finish without the old Deplo. finishDeploMoveWithoutSource still refuses while the old Deplo answers.
+  """
+  canFinishWithoutSource: Boolean
+  canRetry: Boolean
+  createdAt: String
+
+  """
+  Why the move stopped, or a note left by a cancel or by finishing without the old Deplo. Empty otherwise.
+  """
+  error: String
+  finishedAt: String
+  id: String
+
+  """The old Deplo's address."""
+  peerUrl: String
+  rowsCopied: Int
+  servers: [DeploMoveServer!]
+
+  """
+  After a cancel that left this Deplo without an account: the link that sets it up again.
+  """
+  setupPath: String
+  state: DeploMoveState
+  steps: [DeploMoveStep!]
+
+  """
+  Saved secrets the old Deplo could not open. They came across as they were and have to be entered again.
+  """
+  unreadable: Int
+}
+
+type DeploMoveStep {
+  key: DeploMoveStepKey
+  state: DeploMoveStepState
+}
+
+"""
+copy = every team, account, app and setting. servers = each server switches to this Deplo. finish = the old Deplo is told where everything went.
+"""
+enum DeploMoveStepKey {
+  copy
+  finish
+  servers
+}
+
+enum DeploMoveStepState {
+  done
+  failed
+  running
+  waiting
+}
+
 """One published release of Deplo, as the changelog renders it."""
 type DeploRelease {
   """Newer than the running version, so installing an update brings it in."""
@@ -2888,6 +3061,21 @@ enum MountPropagation {
   rslave
 }
 
+"""
+A fresh move code. This is the only time it is returned: Deplo keeps only its hash.
+"""
+type MoveCode {
+  """
+  The `dmove_…` code to paste on the new Deplo. It lets that Deplo read every secret and take every server over, so treat it like the keys to the whole instance.
+  """
+  code: String
+
+  """
+  When the code stops working if no new Deplo has used it. Once used, it lives until the move ends.
+  """
+  expiresAt: String
+}
+
 type Mutation {
   """
   Leaving the wizard behind: take Deplo's agent back off the machines it registered to read, exactly the way finishing does. No-op while a run is in flight (it owns those agents) and after one whose volume copy failed (the bytes are still over there). Returns how many sources it is removing.
@@ -2964,7 +3152,22 @@ type Mutation {
 
   """Stop a run that is in flight."""
   cancelCronRun(id: ID!): Boolean
+
+  """
+  Abandon a move before any server is handed over: the old Deplo resumes and anything copied here is removed. Public by the move's id.
+  """
+  cancelDeploMove(id: String!): DeploMoveStatus
   cancelDeployment(id: String!): Boolean
+
+  """
+  Withdraw the move code and resume changes here. Refused once a server answers to the new Deplo, unless `force` is set.
+  """
+  cancelMoveCode(
+    """
+    Resume even though servers already answer to the new Deplo, for when that one is gone. Those servers must be added here again. Refused once the move finished.
+    """
+    force: Boolean
+  ): Boolean
 
   """
   Back out. Starts again everything the migration stopped on the other platform, undoes what it created here, and tells the installer to uninstall Deplo. The panel's API token is wiped when a run ends, so one has to be handed over again.
@@ -3029,6 +3232,16 @@ type Mutation {
   confirmTwoFactorEnrolment(code: String!): Boolean
 
   """
+  Reach the old Deplo with its move code and preview the move. Changes nothing on either side; only a fresh Deplo can receive one.
+  """
+  connectDeploMove(
+    code: String!
+
+    """The old Deplo's https address."""
+    url: String!
+  ): DeploMovePreview
+
+  """
   Store credentials for a git host, after proving the token works against it.
   """
   connectGitProvider(input: ConnectGitProviderInput!): GitConnection
@@ -3054,6 +3267,11 @@ type Mutation {
   Create a folder in the active team; nest it by passing a parent folder id. Requires the create_folders capability; the creator becomes the folder's owner.
   """
   createFolder(color: String, name: String!, parentId: ID): Folder
+
+  """
+  Mint the code that lets a new Deplo move this one onto its machine. Replaces an unused code; refused once a move has paused this Deplo.
+  """
+  createMoveCode: MoveCode
 
   """
   Create a Project container in the active team. Requires `deploy`; the creator becomes its owner.
@@ -3221,6 +3439,11 @@ type Mutation {
   Run a command in the database's live container (docker exec). Gated on manage_infra - arbitrary code execution inside infrastructure.
   """
   execDatabaseConsole(input: ExecDatabaseConsoleInput!): ExecResult
+
+  """
+  Finish a stopped move when the old Deplo is gone for good: servers not handed over yet stay with it and have to be added here again. Refused while the old Deplo answers. Public by the move's id.
+  """
+  finishDeploMoveWithoutSource(id: String!): DeploMoveStatus
 
   """
   Close the run and settle its totals. Idempotent - a finished run is left alone.
@@ -3550,6 +3773,11 @@ type Mutation {
   Restore a backup run in place (overwrites the live target). Returns true.
   """
   restoreBackup(runId: String!): Boolean
+
+  """
+  Resume a failed move where it stopped. Public by the move's unguessable id, like its progress page.
+  """
+  retryDeploMove(id: String!): DeploMoveStatus
 
   """
   Run the network-isolation move again for every stack it could not reach the first time. Each app and database is brought up on the network its environment owns, one host at a time; one that still cannot be reached stays where it is and is reported in Activity. Safe to run more than once - a stack already on the right network is a no-op.
@@ -3883,6 +4111,11 @@ type Mutation {
   """
   setUserTeamAccess(input: SetUserTeamAccessInput!): [UserTeamAccess!]
   startApp(id: String!): App
+
+  """
+  Start a connected move: the old Deplo pauses, everything here is replaced by its data, then its servers are handed over.
+  """
+  startDeploMove(id: String!): DeploMoveStatus
 
   """
   Begin the GitHub App manifest flow; returns the form's POST target, manifest and signed state.
@@ -4478,6 +4711,12 @@ type Query {
   Deplo's published releases with their notes, newest first; canaries only while `updateInfo.canary` is on (or the one running). Cached for an hour and refreshed by checkForUpdates.
   """
   deploChangelog: DeploChangelog
+  deploMoveReadiness: DeploMoveReadiness
+
+  """
+  Public on purpose: the id is unguessable and the copy signs everyone out, so the progress page cannot lean on a session. Null for an unknown id.
+  """
+  deploMoveStatus(id: String!): DeploMoveStatus
   deployment(id: String!): Deployment
   deployments(appId: String, environment: DeploymentEnvironment, status: DeploymentStatus): [Deployment!]
 
@@ -4755,6 +4994,11 @@ type Query {
   shellLabel(input: ShellLabelInput!): String
 
   """
+  This Deplo's move to another machine, or null when there is none (an unused code that expired counts as none).
+  """
+  sourceMove: SourceMove
+
+  """
   The takeover in progress, or null. The screen that replaces the dashboard reads its own state server-side; this is the poll behind the buttons, and only an instance admin has any.
   """
   takeover: Takeover
@@ -4763,6 +5007,11 @@ type Query {
   Null when this panel's own machine is not a server Deplo knows about, which is the one case where none of it can be measured.
   """
   takeoverPreflight: TakeoverPreflight
+
+  """
+  The id of the move into this Deplo that is still open, or null. deploMoveStatus reads it.
+  """
+  targetMove: String
 
   """Every role of the active team - defaults first, then the team's own."""
   teamRoles: [TeamRole!]
@@ -5701,6 +5950,38 @@ type SharedVarTeam {
 input ShellLabelInput {
   appId: String!
   containerName: String
+}
+
+"""This Deplo's side of a Deplo move, as the old Deplo."""
+type SourceMove {
+  createdAt: String
+
+  """
+  Set only while the code is armed: a bound code lives until the move ends.
+  """
+  expiresAt: String
+
+  """Servers that already answer to the new Deplo."""
+  handedOver: Int
+  id: String
+
+  """The new Deplo's address, once one has connected with the code."""
+  peerUrl: String
+
+  """Servers that have to be handed over in all."""
+  servers: Int
+  startedBy: String
+  state: SourceMoveState
+}
+
+"""
+armed = a move code waits for the new Deplo. bound = a new Deplo connected with it; nothing is paused yet. frozen = changes are paused while the new Deplo copies and takes the servers over. moved = every server answers to the new Deplo, for good.
+"""
+enum SourceMoveState {
+  armed
+  bound
+  frozen
+  moved
 }
 
 type Subscription {

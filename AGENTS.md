@@ -12,8 +12,8 @@ on the deeper docs it links (this file points; it does not restate them).
 - **`docs/agents/`**: `issue-tracker.md`, `triage-labels.md`, `domain.md`, `releasing.md`,
   `fleet-rollout.md`.
 
-**Every count in this file is a snapshot of a moving tree** (45 Capabilities, 102 tables, 187 MCP
-tools, 34 ADRs, the pin list). The rule they carry is the durable part; re-derive the number
+**Every count in this file is a snapshot of a moving tree** (45 Capabilities, 104 tables, 187 MCP
+tools, 35 ADRs, the pin list). The rule they carry is the durable part; re-derive the number
 before you rely on it, and fix the line here when it has moved:
 
 ```sh
@@ -320,7 +320,8 @@ scripts/gen-schema.ts`. Both halves of that prefix are load-bearing: the shim
   - **A signature or a URL token, never a cookie**: `github/webhook` (HMAC over the body),
     `git/webhook/[token]` (the URL token names the provider - sniffing headers would let the
     caller pick the verification rule), `agent/bootstrap` (one-shot enrollment token),
-    `takeover` (Bearer `DEPLO_HOST_BOOTSTRAP_TOKEN`, dialed by the host's takeover unit).
+    `takeover` (Bearer `DEPLO_HOST_BOOTSTRAP_TOKEN`, dialed by the host's takeover unit),
+    `deplo-move/[step]` (Bearer move code, bound to the new Deplo that first used it - ADR-0035).
   - **Better Auth's own surface**: `auth/[...all]`, mounted whole and gated shut (see below).
   - **Unauthenticated on purpose**: `health` (liveness, reads nothing) and
     `avatar/[style]/[preset]/[seed]`, which renders a deterministic picture from the path and
@@ -472,12 +473,18 @@ scripts/gen-schema.ts`. Both halves of that prefix are load-bearing: the shim
   screen.
 - **id prefixes not to confuse:** `prc_` = Project _container_, `prj_` = **App** (the deployable
   app, legacy mint); `environ_` = Environment, `env_` = env-**var** row; `role_` = a team Role;
-  `deplo_` = raw bearer secret (sha256 at rest).
+  `deplo_` = raw bearer secret (sha256 at rest); `dmove_` = a **move code** (ADR-0035), never a token.
+
+- **A Deplo move freezes the instance** (ADR-0035). While one runs, `instanceFrozen()`
+  (`lib/data/deplo-move/freeze.ts`) refuses every mutation (wrapped once on the schema, so MCP is
+  covered), every REST write and every background tick - **a new background job or write route
+  checks it too**. And **a new table is a decision**: classify it in `lib/deplo-move/tables.ts`
+  (copied, re-keyed, skipped or local), or the guard test fails and the move would lose it.
 
 ## Persistence, secrets, auth
 
 - **Postgres is the only control-plane store** (`lib/db/pg.ts`, one bounded pool). There is **no
-  JSON/document store** - the old `deplo_state` JSONB was fully normalized into 102 tables (89
+  JSON/document store** - the old `deplo_state` JSONB was fully normalized into 104 tables (91
   under `schema/control-plane/`, plus 12 Better Auth and 1 scheduler); **never add a JSONB
   column** (nested → child table, list → ordered/junction table). The `jsonb` columns in
   `schema/auth.ts` are Better Auth's own and are not a precedent. `*_at` columns use

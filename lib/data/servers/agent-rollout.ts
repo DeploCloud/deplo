@@ -26,6 +26,7 @@ import { recordActivity } from "../activity";
 import { SETTINGS_ID } from "../instance-settings/settings-store";
 import { markServerSeen } from "./agent-handshake";
 import { listAllServers } from "./roster";
+import { instanceFrozen } from "../deplo-move/freeze";
 
 const RETRY_MS = 15 * 60_000;
 const FIRST_RUN_MS = 20_000;
@@ -175,6 +176,7 @@ export function runAgentRollout(): Promise<void> {
 }
 
 async function rolloutPass(): Promise<void> {
+  if (await instanceFrozen()) return;
   const { actor } = await rolloutState();
   if (!actor) return;
 

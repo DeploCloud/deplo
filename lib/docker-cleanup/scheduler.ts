@@ -18,6 +18,7 @@ import { serversWithDeploySweepInFlight } from "../data/docker-cleanup/deploy-sw
 import { loadCleanupPolicyForScheduler } from "../data/docker-cleanup/policy";
 import { listServersWithCleanupRunning } from "../data/docker-cleanup/run-history";
 import { runScheduledCleanup } from "../data/docker-cleanup/sweep";
+import { instanceFrozen } from "../data/deplo-move/freeze";
 
 const TICK_MS = 60_000;
 
@@ -62,6 +63,7 @@ async function listServersSweptSince(cutoff: Date): Promise<Set<string>> {
 export async function runCleanupSchedulerTick(
   now: Date = new Date(),
 ): Promise<void> {
+  if (await instanceFrozen()) return;
   if (state.ticking) return;
   state.ticking = true;
   try {

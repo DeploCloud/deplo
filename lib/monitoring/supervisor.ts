@@ -43,6 +43,7 @@ import {
   recordContainerInstances,
   recordContainerSample,
 } from "./container-history";
+import { instanceFrozen } from "../data/deplo-move/freeze";
 
 // Move it and GAP_MS must move too - chart-gaps.test.ts pins the relationship.
 export const RECONNECT_BACKOFF_CAP_MS = 10_000;
@@ -333,8 +334,15 @@ async function runPollLoop(
   }
 }
 
+function closeAllStreams(): void {
+  for (const entry of state.servers.values()) entry.abort.abort();
+  state.servers.clear();
+}
+
 export async function reconcileMetricsStreams(): Promise<void> {
   if (state.stopping) return;
+  // A move hands each agent to another Deplo: no stream may hold one open.
+  if (await instanceFrozen()) return closeAllStreams();
   let servers: Awaited<ReturnType<typeof listAllServers>>;
   try {
     servers = await listAllServers();

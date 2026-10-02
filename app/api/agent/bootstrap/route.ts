@@ -1,8 +1,11 @@
 import { completeBootstrap } from "@/lib/data/servers/agent-handshake";
 import { signResponse, BootstrapError } from "@/lib/agent/bootstrap";
 import { readTextCapped } from "@/lib/http/body-cap";
+import { refuseWhileFrozen } from "@/lib/data/deplo-move/freeze";
 
 export async function POST(request: Request) {
+  const paused = await refuseWhileFrozen();
+  if (paused) return paused;
   let body: {
     token?: unknown;
     csrPem?: unknown;

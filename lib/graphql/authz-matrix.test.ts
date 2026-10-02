@@ -291,6 +291,11 @@ const PUBLIC_FIELDS = new Set([
   "M.verifyTwoFactorLogin",
   "M.passkeyChallenge",
   "M.verifyPasskeyLogin",
+  // A Deplo move's progress page: keyed by an unguessable id, since the copy signs everyone out.
+  "Q.deploMoveStatus",
+  "M.retryDeploMove",
+  "M.cancelDeploMove",
+  "M.finishDeploMoveWithoutSource",
 ]);
 
 test("every field of the API declares a gate, and only the auth surface is public", () => {

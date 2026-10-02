@@ -1,6 +1,7 @@
 import "server-only";
 
 import { channelsForAlert } from "../data/notifications";
+import { instanceFrozen } from "../data/deplo-move/freeze";
 import { teamSlugById } from "../data/teams";
 import { withTeam } from "../team-path";
 import { publicBaseUrl } from "../public-url";
@@ -63,15 +64,24 @@ export function dispatchServerAlert(
   serverId: string,
   alert: Omit<Alert, "teamId">,
 ): void {
+  void dispatchServerAlertNow(serverId, alert).catch((e) =>
+    console.error("[deplo] server alert fan-out failed:", e),
+  );
+}
+
+export async function dispatchServerAlertNow(
+  serverId: string,
+  alert: Omit<Alert, "teamId">,
+): Promise<void> {
+  // Mid-move a server stops answering this Deplo by design (ADR-0035); before the dedupe, so a resume still alerts.
+  if (await instanceFrozen()) return;
   if (
     alert.dedupe &&
     !shouldFire(alert.key, alert.dedupe.id, alert.dedupe.state)
   )
     return;
-  void (async () => {
-    for (const teamId of await teamsForServerAlerts(serverId))
-      await dispatchAlertNow({ ...alert, teamId, dedupe: undefined });
-  })().catch((e) => console.error("[deplo] server alert fan-out failed:", e));
+  for (const teamId of await teamsForServerAlerts(serverId))
+    await dispatchAlertNow({ ...alert, teamId, dedupe: undefined });
 }
 
 export async function dispatchToTeams(

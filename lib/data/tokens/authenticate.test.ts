@@ -11,6 +11,8 @@ import { projects as projectsTable } from "../../db/schema/control-plane/project
 import { oauthClient } from "../../db/schema/auth";
 import { seedIdentity, TEAM_A, USER_1 } from "../leaf-test-helpers";
 import { authenticateToken } from "./authenticate";
+import { deploMoves } from "../../db/schema/control-plane/deplo-move";
+import { invalidateFrozen } from "../deplo-move/freeze";
 import { createToken } from "./mint";
 import { TRUNCATE, asUser1, seedProject } from "./tokens-test-helpers";
 
@@ -109,4 +111,36 @@ test("an MCP connection's token stops resolving in a team that turned MCP off", 
     createToken({ name: "ci", capabilities: ["view"] }),
   );
   assert.ok(await authenticateToken(plain.raw));
+});
+
+test("a Deplo that moved refuses every token, a paused one does not", async () => {
+  const raw = await asUser1(
+    async () =>
+      (await createToken({ name: "CI", capabilities: ["deploy_apps"] })).raw,
+  );
+  const move = (state: string) =>
+    db.insert(deploMoves).values({
+      id: `dmv_${state}`,
+      side: "source",
+      state,
+      peerUrl: "https://new.example",
+      startedBy: "Ada",
+      createdAt: "2026-01-01T00:00:00.000Z",
+      updatedAt: "2026-01-01T00:00:00.000Z",
+    });
+  try {
+    await move("frozen");
+    invalidateFrozen();
+    assert.ok(await authenticateToken(raw), "reads keep working mid-move");
+
+    await db.update(deploMoves).set({ state: "moved" });
+    invalidateFrozen();
+    await assert.rejects(authenticateToken(raw), {
+      message: "This Deplo moved to https://new.example. Use it there.",
+    });
+  } finally {
+    await db.delete(deploMoves);
+    invalidateFrozen();
+  }
+  assert.ok(await authenticateToken(raw));
 });

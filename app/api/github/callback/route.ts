@@ -7,8 +7,11 @@ import {
 } from "@/lib/github/manifest";
 import { createGithubApp } from "@/lib/data/github";
 import { resolvePublicBaseUrl } from "@/lib/public-url";
+import { refuseWhileFrozen } from "@/lib/data/deplo-move/freeze";
 
 export async function GET(request: NextRequest) {
+  const paused = await refuseWhileFrozen();
+  if (paused) return paused;
   const origin = resolvePublicBaseUrl(request.headers);
   const settings = new URL("/settings/git", origin);
 

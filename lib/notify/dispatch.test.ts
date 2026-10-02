@@ -23,7 +23,11 @@ import {
 } from "../db/schema/control-plane/access-control";
 import { captureFetch, type FetchCapture } from "./fetch-capture-test-helpers";
 import { __resetCooldowns } from "./cooldown";
-import { dispatchAlertNow } from "./dispatch";
+import { dispatchAlertNow, dispatchServerAlertNow } from "./dispatch";
+import { deploMoves } from "../db/schema/control-plane/deplo-move";
+import { serverTeams } from "../db/schema/control-plane/servers";
+import { seedServerRow } from "../data/infra-test-helpers";
+import { invalidateFrozen } from "../data/deplo-move/freeze";
 import type { AlertKey, NotificationChannel } from "../types/notification";
 
 let db: TestDb;
@@ -376,5 +380,43 @@ test("the link names the team the alert is about", async () => {
   assert.equal(
     (capture.calls[0].body as { url: string }).url,
     "https://deplo.acme.com/beta/apps/shop",
+  );
+});
+
+test("a Deplo paused for a move sends no server alert, and one that resumed does", async () => {
+  await seedChannels(["server_offline"]);
+  await seedServerRow(db, { id: "srv_moving", name: "eu-main-1" });
+  await db
+    .insert(serverTeams)
+    .values({ serverId: "srv_moving", teamId: TEAM_A });
+  const offline = {
+    key: "server_offline" as const,
+    title: "eu-main-1 is offline",
+    body: "It stopped answering.",
+    dedupe: { id: "server:srv_moving", state: "offline" },
+  };
+  await db.insert(deploMoves).values({
+    id: "dmv_frozen",
+    side: "source",
+    state: "frozen",
+    peerUrl: "https://new.example",
+    startedBy: "Ada",
+    createdAt: "2026-01-01T00:00:00.000Z",
+    updatedAt: "2026-01-01T00:00:00.000Z",
+  });
+  invalidateFrozen();
+  try {
+    capture = captureFetch();
+    await dispatchServerAlertNow("srv_moving", offline);
+    assert.equal(capture.calls.length, 0, "a handover is not an outage");
+  } finally {
+    await db.delete(deploMoves);
+    invalidateFrozen();
+  }
+  await dispatchServerAlertNow("srv_moving", offline);
+  assert.equal(
+    capture.calls.length,
+    9,
+    "the silence did not use up the dedupe",
   );
 });

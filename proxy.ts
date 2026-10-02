@@ -11,7 +11,7 @@ import {
 } from "@/lib/team-path";
 
 const SESSION_COOKIES = ["deplo.session_token", "__Secure-deplo.session_token"];
-const PUBLIC_PATHS = ["/login", "/setup", "/register"];
+const PUBLIC_PATHS = ["/login", "/setup", "/register", "/moving"];
 
 function requestIsHttps(request: NextRequest): boolean {
   const forwarded = request.headers

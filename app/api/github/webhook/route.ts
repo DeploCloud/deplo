@@ -9,8 +9,11 @@ import { parsePushEvent } from "@/lib/deploy/git-webhook";
 import { dispatchPushEvent } from "@/lib/deploy/git-webhook-dispatch";
 import { handlePullRequestDelivery } from "@/lib/github/webhook-pull-request";
 import { readTextCapped } from "@/lib/http/body-cap";
+import { refuseWhileFrozen } from "@/lib/data/deplo-move/freeze";
 
 export async function POST(request: Request) {
+  const paused = await refuseWhileFrozen();
+  if (paused) return paused;
   const raw = await readTextCapped(request);
   if (raw instanceof Response) return raw;
 

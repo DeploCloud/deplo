@@ -9,16 +9,22 @@ import {
 } from "@/lib/membership";
 import { getBreadcrumbGraph } from "@/lib/data/breadcrumb";
 import { takeoverBlocksDashboard } from "@/lib/data/takeover";
+import { instanceFrozen } from "@/lib/data/deplo-move/freeze";
+import { currentTargetMove } from "@/lib/data/deplo-move/target";
 import { userHasPasskey } from "@/lib/passkey-policy";
 import { AppShell } from "@/components/layout/app-shell";
 import { FinishSetupScreen } from "@/components/auth/finish-setup-screen";
 import { TwoFactorLockScreen } from "@/components/settings/security/two-factor-lock-screen";
 import { NoTeamAccessScreen } from "@/components/teams/no-team-access";
+import { FrozenBanner } from "@/components/deplo-move/frozen-banner";
+import { MovedScreen } from "@/components/deplo-move/moved-screen";
 
 export default async function DashboardLayout(props: LayoutProps<"/[team]">) {
   const { team: addressed } = await props.params;
   const children = props.children;
   const user = await requireUser();
+  const frozen = await instanceFrozen();
+  if (frozen?.moved) return <MovedScreen url={frozen.peerUrl} />;
   if (await takeoverBlocksDashboard()) redirect("/takeover");
 
   const teams = await listMyTeams();
@@ -58,6 +64,18 @@ export default async function DashboardLayout(props: LayoutProps<"/[team]">) {
     throw e;
   }
 
+  let banner: React.ReactNode = null;
+  if (frozen) {
+    const progressHref = !isAdmin
+      ? null
+      : frozen.side === "source"
+        ? "/settings/migrations?tab=move"
+        : await currentTargetMove().then((id) => (id ? `/moving/${id}` : null));
+    banner = (
+      <FrozenBanner message={frozen.message} progressHref={progressHref} />
+    );
+  }
+
   return (
     <AppShell
       user={user}
@@ -67,6 +85,7 @@ export default async function DashboardLayout(props: LayoutProps<"/[team]">) {
       capabilities={capabilities}
       isAdmin={isAdmin}
       hasPasskey={await userHasPasskey(user.id)}
+      banner={banner}
     >
       {children}
     </AppShell>

@@ -1,5 +1,6 @@
 import "server-only";
 
+import { gateMutationsWhileFrozen } from "../data/deplo-move/freeze";
 import { builder } from "./builder";
 
 // A type module reaches the schema only by being imported here; there is no other registration.
@@ -13,6 +14,7 @@ import "./types/console";
 import "./types/cron";
 import "./types/database";
 import "./types/database-transfer";
+import "./types/deplo-move";
 import "./types/destination";
 import "./types/domain";
 import "./types/enums";
@@ -69,4 +71,5 @@ import "./types/updates";
 import "./types/user-access";
 import "./types/viewer";
 
-export const schema = builder.toSchema();
+// ADR-0035: every mutation refuses while a Deplo move runs, except the few it allows.
+export const schema = gateMutationsWhileFrozen(builder.toSchema());

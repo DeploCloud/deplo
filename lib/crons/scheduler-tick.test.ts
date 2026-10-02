@@ -21,6 +21,8 @@ import {
   __stopCronScheduler,
 } from "./scheduler";
 import * as lease from "../backups/lease";
+import { deploMoves } from "../db/schema/control-plane/deplo-move";
+import { invalidateFrozen } from "../data/deplo-move/freeze";
 
 let db: TestDb;
 let pg: PGlite;
@@ -116,4 +118,27 @@ test("a run in flight does not starve the next minute under overlap=skip", async
   assert.equal(runs.length, 2);
   assert.equal(runs[1].status, "running", "the finished run blocks nothing");
   assert.equal(agent.started.length, 2);
+});
+
+test("a Deplo frozen by a move fires nothing until it thaws", async () => {
+  await seedCronJob(db, { id: "cron_1" });
+  await db.insert(deploMoves).values({
+    id: "dmv_1",
+    side: "source",
+    state: "frozen",
+    startedBy: "user_1",
+    createdAt: T0.toISOString(),
+    updatedAt: T0.toISOString(),
+  });
+  invalidateFrozen();
+  try {
+    await runCronSchedulerTick(T0);
+    assert.equal((await runsOf(db, "cron_1")).length, 0);
+    assert.equal(agent.started.length, 0);
+  } finally {
+    await db.delete(deploMoves);
+    invalidateFrozen();
+  }
+  await runCronSchedulerTick(T0);
+  assert.equal((await runsOf(db, "cron_1")).length, 1, "thawed, it fires");
 });

@@ -18,6 +18,7 @@ import {
   BACKUP_SCHEDULER_LEASE,
   LEASE_STALE_MS,
 } from "./lease";
+import { instanceFrozen } from "../data/deplo-move/freeze";
 
 const TICK_MS = 60_000;
 
@@ -50,6 +51,7 @@ const state: SchedulerState = (g[STATE_KEY] ??= {
 });
 
 export async function runSchedulerTick(now: Date = new Date()): Promise<void> {
+  if (await instanceFrozen()) return;
   if (state.ticking) return;
   state.ticking = true;
   try {

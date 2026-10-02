@@ -66,6 +66,7 @@ const IRREGULAR = [
   "rotateAppDeployHook",
   "destinationRecoveryKey",
   "createToken",
+  "createMoveCode",
   "updateToken",
   "mintRegistrationLink",
   "reissueServerBootstrap",

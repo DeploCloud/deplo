@@ -26,11 +26,13 @@ export function ShellFrame({
   sidebar,
   header,
   contentKey,
+  banner,
   children,
 }: {
   sidebar: React.ReactNode;
   header: React.ReactNode;
   contentKey: string;
+  banner?: React.ReactNode;
   children: React.ReactNode;
 }) {
   const pathname = useFlatPathname();
@@ -47,6 +49,7 @@ export function ShellFrame({
       {sidebar}
       <div className="flex min-w-0 flex-1 flex-col">
         {header}
+        {banner}
         <main
           data-selection-region=""
           className={cn(
