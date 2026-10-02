@@ -32,7 +32,7 @@ import {
 import { cn } from "@/lib/utils";
 
 const MAX_FOLDER_CRUMBS = 3;
-const SLIDE_MS = 300;
+const SLIDE_MS = 200;
 
 export function Breadcrumbs({
   pathname,
@@ -169,6 +169,18 @@ function useCrumbPresence(display: BreadcrumbSegment[]) {
   return { items, fresh: state.fresh };
 }
 
+// Calls fn once the current state has been painted, so a transition has a start to leave from.
+function afterPaint(fn: () => void): () => void {
+  let second = 0;
+  const first = requestAnimationFrame(() => {
+    second = requestAnimationFrame(fn);
+  });
+  return () => {
+    cancelAnimationFrame(first);
+    cancelAnimationFrame(second);
+  };
+}
+
 function CrumbSlot({
   leaving,
   animateIn,
@@ -178,43 +190,54 @@ function CrumbSlot({
   animateIn: boolean;
   children: React.ReactNode;
 }) {
+  const outer = React.useRef<HTMLSpanElement>(null);
   const inner = React.useRef<HTMLSpanElement>(null);
-  const [width, setWidth] = React.useState<number>();
-  const [shown, setShown] = React.useState(!animateIn);
+  // A number pins the width while it slides; null is the natural width, which truncates and keeps focus rings whole.
+  const [pinned, setPinned] = React.useState<number | null>(
+    animateIn ? 0 : null,
+  );
 
   React.useLayoutEffect(() => {
-    const el = inner.current;
-    if (!el) return;
-    const ro = new ResizeObserver(() => setWidth(el.offsetWidth));
-    ro.observe(el);
-    return () => ro.disconnect();
-  }, []);
-
-  React.useEffect(() => {
-    if (shown) return;
-    // Two frames: the collapsed state has to be painted before it can slide open.
-    let second = 0;
-    const first = requestAnimationFrame(() => {
-      second = requestAnimationFrame(() => setShown(true));
+    if (!animateIn) return;
+    const to = inner.current?.offsetWidth ?? 0;
+    let settle: ReturnType<typeof setTimeout> | undefined;
+    const cancel = afterPaint(() => {
+      setPinned(to);
+      settle = setTimeout(() => setPinned(null), SLIDE_MS);
     });
     return () => {
-      cancelAnimationFrame(first);
-      cancelAnimationFrame(second);
+      cancel();
+      clearTimeout(settle);
     };
-  }, [shown]);
+  }, [animateIn]);
 
-  const open = shown && !leaving;
+  React.useLayoutEffect(() => {
+    if (!leaving) return;
+    setPinned(outer.current?.offsetWidth ?? 0);
+    return afterPaint(() => setPinned(0));
+  }, [leaving]);
+
   return (
     <span
+      ref={outer}
       aria-hidden={leaving || undefined}
       className={cn(
-        "flex min-w-0 shrink overflow-hidden transition-[width,opacity,translate] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none",
-        open ? "translate-x-0 opacity-100" : "-translate-x-1.5 opacity-0",
+        "flex min-w-0 shrink transition-[width,opacity,translate] duration-200 ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none",
+        pinned === null ? "" : "overflow-hidden",
+        pinned === 0
+          ? "-translate-x-1.5 opacity-0"
+          : "translate-x-0 opacity-100",
         leaving && "pointer-events-none",
       )}
-      style={{ width: open ? width : 0 }}
+      style={pinned === null ? undefined : { width: pinned }}
     >
-      <span ref={inner} className="flex w-max items-center gap-1">
+      <span
+        ref={inner}
+        className={cn(
+          "flex items-center gap-1",
+          pinned === null ? "min-w-0" : "w-max",
+        )}
+      >
         {children}
       </span>
     </span>
