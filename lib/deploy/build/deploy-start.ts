@@ -15,6 +15,8 @@ import {
   appPreviews as appPreviewsTable,
 } from "../../db/schema/control-plane/deployments";
 import { publishAppChanged } from "../../graphql/pubsub";
+import { branchHead } from "../../github/app";
+import { githubFullName } from "../../github/repo-id";
 import { newId, nowIso } from "../../ids";
 import { userMayReachHost } from "../../membership";
 import type { Deployment, DeploymentEnvironment } from "../../types/deployment";
@@ -67,6 +69,12 @@ export async function startDeployment(
     throw new Error("A pull request preview cannot be rolled back");
   }
   const branch = opts.branch ?? project.repo?.branch ?? "main";
+  // Known up front, so a building deploy already shows its commit; the build re-stamps the SHA it cloned.
+  const fullName = githubFullName(project.repo);
+  const head =
+    rollback || preview || !project.repo?.installationId || !fullName
+      ? null
+      : await branchHead(fullName, branch, project.repo.installationId);
   const primaryRow = preview ? null : await primaryDomainRow(appId);
   const domain = preview ? preview.host : (primaryRow?.name ?? "");
   const scheme = preview
@@ -86,9 +94,13 @@ export async function startDeployment(
     deployKey,
     previewId: preview?.id ?? null,
     prNumber: preview?.prNumber ?? null,
-    commitSha: rollback?.commitSha ?? "",
-    commitMessage: rollback?.commitMessage || opts.commitMessage || "Deploy",
-    commitAuthor: rollback?.commitAuthor || opts.creator,
+    commitSha: rollback?.commitSha ?? head?.sha ?? "",
+    commitMessage:
+      rollback?.commitMessage ||
+      opts.commitMessage ||
+      head?.message ||
+      "Deploy",
+    commitAuthor: rollback?.commitAuthor || head?.author || opts.creator,
     branch,
     url,
     createdAt: nowIso(),

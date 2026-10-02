@@ -1,5 +1,6 @@
-import { test, before, after, beforeEach } from "node:test";
+import { test, before, after, beforeEach, afterEach } from "node:test";
 import assert from "node:assert/strict";
+import { generateKeyPairSync } from "node:crypto";
 import type { PGlite } from "@electric-sql/pglite";
 
 import { makeTestDb, type TestDb } from "../db/test-harness";
@@ -7,6 +8,8 @@ import { __setTestDb, __resetTestDb } from "../db/client";
 import { runWithIdentity } from "../auth/request-context";
 import { seedIdentity, TEAM_A, USER_1 } from "./identity-test-helpers";
 import { seedServer, seedApp } from "./app-graph-test-helpers";
+import { seedGithubApp, seedGithubInstallation } from "./infra-test-helpers";
+import { encryptSecret } from "../crypto";
 import { redeploy } from "./deployments/stack-actions";
 import { rebuildApp } from "./apps/lifecycle";
 import { deployments as deploymentsTable } from "../db/schema/control-plane/deployments";
@@ -27,7 +30,7 @@ after(async () => {
 
 beforeEach(async () => {
   await pg.query(`truncate table
-    activities, deployments, apps, servers,
+    activities, deployments, apps, servers, github_installation, github_apps,
     membership_capabilities, memberships, users, teams
     restart identity cascade;`);
   await seedIdentity(db, {
@@ -88,4 +91,66 @@ test("a rebuild names what it actually recreates", async () => {
     await rebuildMessageOf("prj_i"),
     "Pull and recreate the container",
   );
+});
+
+const realFetch = globalThis.fetch;
+afterEach(() => {
+  globalThis.fetch = realFetch;
+});
+
+async function seedInstalledRepo(branchStatus: number) {
+  const { privateKey } = generateKeyPairSync("rsa", { modulusLength: 2048 });
+  const pem = privateKey.export({ type: "pkcs8", format: "pem" }).toString();
+  await seedGithubApp(db, {
+    id: "gha_1",
+    teamId: TEAM_A,
+    privateKeyEnc: encryptSecret(pem),
+  });
+  await seedGithubInstallation(db, { id: "ghi_1", appId: "gha_1" });
+  await seedApp(db, {
+    id: "prj_gh",
+    source: "github",
+    repo: {
+      provider: "github",
+      url: "https://github.com/o/r",
+      repo: "o/r",
+      branch: "main",
+      installationId: "ghi_1",
+    },
+  });
+  globalThis.fetch = (async (input: RequestInfo | URL) => {
+    const url = String(input);
+    if (url.endsWith("/access_tokens"))
+      return Response.json({ token: "ghs_x", expires_at: "2999-01-01" });
+    if (url.endsWith("/repos/o/r/branches/main"))
+      return Response.json(
+        {
+          commit: {
+            sha: "367283e0c1",
+            commit: { message: "fix the header", author: { name: "Ada" } },
+          },
+        },
+        { status: branchStatus },
+      );
+    throw new Error(`unexpected fetch ${url}`);
+  }) as typeof fetch;
+}
+
+test("a redeploy shows the commit it builds before the build ends", async () => {
+  await seedInstalledRepo(200);
+  const dep = await runWithIdentity({ userId: USER_1, teamId: TEAM_A }, () =>
+    redeploy("prj_gh"),
+  );
+  assert.equal(dep.commitSha, "367283e0c1");
+  assert.equal(dep.commitMessage, "Redeploy of latest commit");
+  assert.equal(dep.commitAuthor, "Ada");
+});
+
+test("a failed commit lookup still starts the redeploy", async () => {
+  await seedInstalledRepo(500);
+  const dep = await runWithIdentity({ userId: USER_1, teamId: TEAM_A }, () =>
+    redeploy("prj_gh"),
+  );
+  assert.equal(dep.commitSha, "");
+  assert.equal(dep.commitMessage, "Redeploy of latest commit");
 });
