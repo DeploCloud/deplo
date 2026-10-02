@@ -46,15 +46,48 @@ export interface UpdateSourceInput {
   compose?: string | null;
 }
 
-export async function updateAppSource(
+export function updateAppSource(
   id: string,
   input: UpdateSourceInput,
+): Promise<void> {
+  return writeAppSource(id, input);
+}
+
+/** Moves an app to another server and redeploys it there, keeping its source. */
+export async function moveAppToServer(
+  id: string,
+  serverId: string,
+): Promise<void> {
+  const { membership } = await requireAppCapability(id, "configure_apps");
+  const app = await loadAppGraph(id);
+  if (!app || app.teamId !== membership.teamId)
+    throw new Error("App not found");
+  if (app.serverId === serverId) return;
+  await writeAppSource(
+    id,
+    {
+      source: app.source,
+      repo: app.repo,
+      dockerImage: app.dockerImage,
+      serverId,
+    },
+    { deploy: app.source !== "upload" || app.upload != null },
+  );
+}
+
+async function writeAppSource(
+  id: string,
+  input: UpdateSourceInput,
+  move?: { deploy: boolean },
 ): Promise<void> {
   const { membership } = await requireAppCapability(id, "configure_apps");
   assertImageRef(input.source, input.dockerImage);
   const editReach = await assertComposeSavable(input.compose);
   const user = (await getCurrentUser())!;
-  const repo = await scopeRepoCredentials(input.repo, membership.teamId);
+  // A move re-writes the stored repo, already scoped when it was saved.
+  const repo = move
+    ? input.repo
+    : await scopeRepoCredentials(input.repo, membership.teamId);
   const serversById = new Map(
     (await listServersForTeam(membership.teamId)).map(
       (s) => [s.id, s] as const,
@@ -221,7 +254,14 @@ export async function updateAppSource(
       });
     },
   );
-  await recordActivity("app", `Updated deploy source`, user.name, id);
+  await recordActivity(
+    "app",
+    move
+      ? `Moved ${current?.name ?? "app"} to ${serversById.get(input.serverId!)?.name ?? "another server"}`
+      : `Updated deploy source`,
+    user.name,
+    id,
+  );
 
   const movedOff =
     before.repo?.connectionId &&
@@ -240,7 +280,7 @@ export async function updateAppSource(
       reclaimVolumes: appOwnVolumeNames(after.stray),
     }).catch(() => {});
 
-  if (after.moved && input.source !== "upload") {
+  if (after.moved && (move ? move.deploy : input.source !== "upload")) {
     try {
       await startDeployment(id, {
         creator: user.name,

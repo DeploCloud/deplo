@@ -50,7 +50,7 @@ export function useDatabaseExposure(db: DatabaseDTO) {
     });
   }
 
-  function save(opts?: { serverId?: string | null; success?: string }) {
+  function save() {
     startTransition(async () => {
       const res = await gqlAction(
         `mutation($id: String!, $input: UpdateDatabaseInput!) {
@@ -61,12 +61,11 @@ export function useDatabaseExposure(db: DatabaseDTO) {
           input: {
             exposedPublicly: exposed,
             exposedPort: exposed ? parsedPort : null,
-            serverId: opts?.serverId ?? null,
           },
         },
       );
       if (res.ok) {
-        toast.success(opts?.success ?? "Database updated");
+        toast.success("Database updated");
         router.refresh();
       } else toast.error(res.error);
     });
@@ -126,13 +125,11 @@ export function ExposurePortRow({
   canExposePorts,
   canConfigure,
   serverId,
-  extraInfo,
 }: {
   exposure: DatabaseExposure;
   canExposePorts: boolean;
   canConfigure: boolean;
   serverId?: string;
-  extraInfo?: React.ReactNode;
 }) {
   const locked = !canConfigure || !canExposePorts;
   return (
@@ -143,7 +140,6 @@ export function ExposurePortRow({
           <>
             Port clients connect to. Use a free unprivileged port (
             {MIN_USER_PORT}-{MAX_PORT}), or click Generate.
-            {extraInfo}
           </>
         }
         docs="databases.hostPort"

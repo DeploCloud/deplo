@@ -14,6 +14,7 @@ import {
 } from "../db/schema/control-plane/deployments";
 import { domains as domainsTable } from "../db/schema/control-plane/domains";
 import { servers as serversTable } from "../db/schema/control-plane/servers";
+import { activities } from "../db/schema/control-plane/activity";
 import { runWithIdentity } from "../auth/request-context";
 import {
   seedIdentity,
@@ -31,7 +32,7 @@ import { __setAgentConnectorForTest } from "../infra/agent-client/connect";
 import type { AgentConnection } from "../infra/agent-client/connection";
 import { AgentUnreachableError } from "../infra/agent-client/errors";
 import { deleteApp } from "./apps/delete";
-import { updateAppSource } from "./apps/source";
+import { moveAppToServer, updateAppSource } from "./apps/source";
 import { completePendingAppMigration } from "./app-migration";
 import { acceptDataCopyLoss } from "./data-copy";
 import { startDeployment } from "../deploy/build/deploy-start";
@@ -657,4 +658,42 @@ test("deleting an app mid-move tears its stack down on the old host too", async 
   await asOwner(() => deleteApp(APP));
   assert.equal(A.stackYaml, null, `the old host's stack went too: ${A.calls}`);
   assert.equal(B.stackYaml, null);
+});
+
+test("moveAppToServer keeps the source, records the move and redeploys", async () => {
+  await seedMovable();
+  fleet({ [SRV_A]: host(), [SRV_B]: host() });
+  await asOwner(() => moveAppToServer(APP, SRV_B));
+  const r = await row();
+  assert.equal(r.serverId, SRV_B);
+  assert.equal(r.migrateFromServerId, SRV_A);
+  assert.equal(r.dockerImage, "nginx:1");
+  const deps = await db
+    .select({ serverId: deploymentsTable.serverId })
+    .from(deploymentsTable)
+    .where(eq(deploymentsTable.appId, APP));
+  assert.deepEqual(deps, [{ serverId: SRV_B }]);
+  const acts = await db
+    .select({ message: activities.message })
+    .from(activities);
+  assert.ok(
+    acts.some((a) => a.message === `Moved ${APP} to ${SRV_B}`),
+    JSON.stringify(acts),
+  );
+});
+
+test("moveAppToServer on an upload app with no archive moves without deploying", async () => {
+  await seedApp(db, { id: APP, slug: SLUG, source: "upload", serverId: SRV_A });
+  await db
+    .update(appsTable)
+    .set({ repoUrl: null, repoRepo: null })
+    .where(eq(appsTable.id, APP));
+  fleet({ [SRV_A]: host(), [SRV_B]: host() });
+  await asOwner(() => moveAppToServer(APP, SRV_B));
+  assert.equal((await row()).serverId, SRV_B);
+  const deps = await db
+    .select()
+    .from(deploymentsTable)
+    .where(eq(deploymentsTable.appId, APP));
+  assert.equal(deps.length, 0);
 });

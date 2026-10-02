@@ -3,8 +3,7 @@
 import * as React from "react";
 import { useRouter } from "@/lib/nav";
 import { toast } from "sonner";
-import { ArrowRightLeft, KeyRound, Eye } from "lucide-react";
-import { ServerRoleHint } from "@/components/shared/server-role-hint";
+import { KeyRound, Eye } from "lucide-react";
 import {
   Card,
   CardContent,
@@ -16,13 +15,6 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { FieldLabel } from "@/components/ui/info-tip";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { CopyButton } from "@/components/shared/copy-button";
 import {
   useDatabaseExposure,
@@ -35,12 +27,10 @@ import type { DatabaseDTO } from "@/lib/data/databases/rows";
 
 export function DatabaseConnectionSettings({
   db,
-  servers,
   canExposePorts,
   canConfigure,
 }: {
   db: DatabaseDTO;
-  servers: { id: string; name: string; isDeploHost: boolean }[];
   canExposePorts: boolean;
   canConfigure: boolean;
 }) {
@@ -48,7 +38,6 @@ export function DatabaseConnectionSettings({
     <div className="space-y-6">
       <ExposureCard
         db={db}
-        servers={servers}
         canExposePorts={canExposePorts}
         canConfigure={canConfigure}
       />
@@ -59,92 +48,26 @@ export function DatabaseConnectionSettings({
 
 function ExposureCard({
   db,
-  servers,
   canExposePorts,
   canConfigure,
 }: {
   db: DatabaseDTO;
-  servers: { id: string; name: string; isDeploHost: boolean }[];
   canExposePorts: boolean;
   canConfigure: boolean;
 }) {
   const exposure = useDatabaseExposure(db);
-  const [serverId, setServerId] = React.useState(db.serverId);
-
-  const movingServer = serverId !== db.serverId;
-  const canPickServer = servers.length > 1;
-  const currentServerName =
-    servers.find((s) => s.id === db.serverId)?.name ?? "its server";
-  const targetServerName =
-    servers.find((s) => s.id === serverId)?.name ?? "the selected server";
-
-  const dirty = movingServer || exposure.dirty;
-  const saveReady = exposure.ready && dirty;
-
-  function save() {
-    exposure.save({
-      serverId: movingServer ? serverId : null,
-      success: movingServer ? "Database moved" : "Database updated",
-    });
-  }
+  const saveReady = exposure.ready && exposure.dirty;
 
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="text-base">Network & location</CardTitle>
+        <CardTitle className="text-base">Network</CardTitle>
         <CardDescription>
-          Publish the database on a host port, or move it to another server. Any
-          save re-applies the database&apos;s current settings.
+          Publish the database on a host port. Any save re-applies the
+          database&apos;s current settings.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
-        {canPickServer && (
-          <div className="space-y-3 rounded-lg border border-border p-3">
-            <div className="space-y-2">
-              <FieldLabel
-                info="The host this database runs on."
-                docs="databases.move"
-              >
-                Server
-              </FieldLabel>
-              <Select value={serverId} onValueChange={setServerId}>
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {servers.map((s) => (
-                    <SelectItem key={s.id} value={s.id}>
-                      <span className="flex items-center gap-2">
-                        {s.name}
-                        <ServerRoleHint isDeploHost={s.isDeploHost} />
-                      </span>
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            {movingServer && (
-              <div className="rounded-md border border-border bg-surface p-3">
-                <div className="flex items-start gap-2">
-                  <ArrowRightLeft className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
-                  <div className="space-y-1 text-xs">
-                    <p className="font-medium">
-                      Move {db.name} to {targetServerName}
-                    </p>
-                    <p className="text-muted-foreground">
-                      The database and its data are copied from{" "}
-                      {currentServerName} to {targetServerName}. It will be
-                      briefly offline while the data volume copies. If the copy
-                      fails the move is rolled back and the database stays on{" "}
-                      {currentServerName}.
-                    </p>
-                  </div>
-                </div>
-              </div>
-            )}
-          </div>
-        )}
-
         <div className="space-y-3 rounded-lg border border-border p-3">
           <div className="flex items-center justify-between">
             <div>
@@ -165,28 +88,18 @@ function ExposureCard({
               exposure={exposure}
               canExposePorts={canExposePorts}
               canConfigure={canConfigure}
-              serverId={serverId}
-              extraInfo={
-                movingServer &&
-                " On a move it must be free on the new server too."
-              }
+              serverId={db.serverId}
             />
           )}
         </div>
       </CardContent>
       <CardFooter className="justify-between">
-        <DirtyHint dirty={dirty} />
+        <DirtyHint dirty={exposure.dirty} />
         <Button
-          onClick={save}
+          onClick={() => exposure.save()}
           disabled={exposure.pending || !saveReady || !canConfigure}
         >
-          {exposure.pending
-            ? movingServer
-              ? "Moving"
-              : "Saving"
-            : movingServer
-              ? "Move & save"
-              : "Save changes"}
+          {exposure.pending ? "Saving" : "Save changes"}
         </Button>
       </CardFooter>
     </Card>

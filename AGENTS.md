@@ -12,7 +12,7 @@ on the deeper docs it links (this file points; it does not restate them).
 - **`docs/agents/`**: `issue-tracker.md`, `triage-labels.md`, `domain.md`, `releasing.md`,
   `fleet-rollout.md`.
 
-**Every count in this file is a snapshot of a moving tree** (45 Capabilities, 102 tables, 186 MCP
+**Every count in this file is a snapshot of a moving tree** (45 Capabilities, 102 tables, 187 MCP
 tools, 34 ADRs, the pin list). The rule they carry is the durable part; re-derive the number
 before you rely on it, and fix the line here when it has moved:
 
@@ -340,7 +340,7 @@ scripts/gen-schema.ts`. Both halves of that prefix are load-bearing: the shim
     Adding a tool is adding a row; adding an authorization check there is a bug - it belongs in
     `lib/data/*`. Regenerate nothing, but keep `lib/mcp/tools.test.ts` green: it validates every
     document against `schema.graphql`, which is what stops a renamed field from silently
-    breaking all 186 of them (`MCP_TOOLS` in `lib/mcp/tools/catalog.ts`).
+    breaking all 187 of them (`MCP_TOOLS` in `lib/mcp/tools/catalog.ts`).
 
 ## Data & mutations (the security boundary)
 

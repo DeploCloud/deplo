@@ -6,7 +6,6 @@ import type { DeploySource } from "@/lib/types/app";
 
 export type SourceKeyInput = {
   source: DeploySource;
-  serverId: string;
   gitValue: GitSourceValue;
   dockerImage: string;
   ghSelection: GithubSelection | null;
@@ -26,7 +25,6 @@ export function computeSourceKey(s: SourceKeyInput): string {
   const usesRepo = s.source === "git" || s.source === "github";
   return JSON.stringify({
     source: s.source,
-    serverId: s.serverId,
     git:
       s.source === "git"
         ? {

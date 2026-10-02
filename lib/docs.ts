@@ -89,6 +89,8 @@ export const DOCS = {
   "ports.publishedRules": "advanced/published-ports#the-rules",
 
   "storage.overview": "guides/data/persistent-storage",
+  "storage.move":
+    "guides/data/persistent-storage#move-an-app-to-another-server",
   "storage.source": "guides/data/persistent-storage#fill-the-source",
   "storage.mountPath": "guides/data/persistent-storage#set-the-mount-path",
   "storage.container":

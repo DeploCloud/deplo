@@ -32,7 +32,7 @@ import {
   setAppComposeUpArgs,
   setAppRestartLoopGuard,
 } from "@/lib/data/apps/settings";
-import { updateAppSource } from "@/lib/data/apps/source";
+import { moveAppToServer, updateAppSource } from "@/lib/data/apps/source";
 import { setAppVolumes } from "@/lib/data/apps/volumes";
 import {
   revealDeployHook,
@@ -231,6 +231,20 @@ builder.mutationFields((t) => ({
         serverId: input.serverId ?? undefined,
         compose: input.compose ?? undefined,
       });
+      return reloadApp(id);
+    },
+  }),
+  moveAppToServer: t.field({
+    type: AppRef,
+    authScopes: { capability: "configure_apps" },
+    description:
+      "Move an app to another server and redeploy it there, copying its data. Its source is unchanged.",
+    args: {
+      id: t.arg.string({ required: true }),
+      serverId: t.arg.string({ required: true }),
+    },
+    resolve: async (_r, { id, serverId }) => {
+      await moveAppToServer(id, serverId);
       return reloadApp(id);
     },
   }),

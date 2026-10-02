@@ -226,7 +226,7 @@ export const APPS_CONFIG: McpToolDef[] = [
     name: "update_app_source",
     title: "Change where an app deploys from",
     description:
-      "Point the app at a different repo, branch, image or compose file, or move it to another server. Omitted fields keep their current value.",
+      "Point the app at a different repo, branch, image or compose file. Omitted fields keep their current value. To change servers, use move_app_to_server.",
     group: "Apps",
     requires: "configure_apps",
     idempotent: true,
@@ -243,6 +243,23 @@ export const APPS_CONFIG: McpToolDef[] = [
       if (error) throw new Error(error);
       return data;
     },
+  }),
+  tool({
+    name: "move_app_to_server",
+    title: "Move an app to another server",
+    description:
+      "Redeploy the app on another server and copy its data there. It is offline during the copy; if the copy fails it stays where it was.",
+    group: "Apps",
+    requires: "configure_apps",
+    idempotent: true,
+    destructive: true,
+    input: z.object({ appId, serverId: z.string() }),
+    query: /* GraphQL */ `
+      mutation McpMoveAppToServer($id: String!, $serverId: String!) {
+        moveAppToServer(id: $id, serverId: $serverId) { ${APP_FIELDS} }
+      }
+    `,
+    variables: (a) => ({ id: a.appId, serverId: a.serverId }),
   }),
   tool({
     name: "update_app_compose",

@@ -3311,6 +3311,11 @@ type Mutation {
   moveAppToProject(appId: ID!, projectId: ID): Boolean
 
   """
+  Move an app to another server and redeploy it there, copying its data. Its source is unchanged.
+  """
+  moveAppToServer(id: String!, serverId: String!): App
+
+  """
   Bulk-move several apps into a folder (or to the top level when folderId is omitted/null) in one write. Returns how many moved.
   """
   moveAppsToFolder(appIds: [ID!]!, folderId: ID): Int

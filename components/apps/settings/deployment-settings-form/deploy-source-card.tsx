@@ -40,8 +40,6 @@ export function DeploySourceCard({
   source: initialSource,
   repo: initialRepo,
   upload: initialUpload,
-  servers,
-  neighbours,
   installations,
   connections,
   providers,
@@ -245,11 +243,9 @@ export function DeploySourceCard({
             </div>
           )}
 
-          <AdditionalOptionsDrawer
-            settings={settings}
-            servers={servers}
-            neighbours={neighbours}
-          />
+          {settings.rootCardVisible && (
+            <AdditionalOptionsDrawer settings={settings} />
+          )}
         </AnimatedHeight>
       </CardContent>
       <CardFooter className="justify-between border-t border-border pt-4">

@@ -10,7 +10,6 @@ import {
 import type { GithubSelection } from "@/components/apps/github-repo-picker";
 import type { GitSourceValue } from "@/components/apps/git-source-picker";
 import type { CurrentUpload } from "@/components/apps/upload-input";
-import type { SettingsServer } from "@/components/apps/settings/settings-shared";
 import {
   hasBlockingErrors,
   type LintDiagnostic,
@@ -42,9 +41,6 @@ export type DeploymentSettingsProps = {
   dockerImage: string | null;
   upload: CurrentUpload | null;
   compose: string | null;
-  serverId: string;
-  servers: SettingsServer[];
-  neighbours: string[];
   installations: GithubInstallationDTO[];
   connections: GitConnectionDTO[];
   providers: GitProviderChoice[];
@@ -68,8 +64,6 @@ export function useDeploymentSettings({
   dockerImage: initialDockerImage,
   upload: initialUpload,
   compose: initialCompose,
-  serverId: initialServerId,
-  servers,
   installations,
   connections,
   frameworkOverride: initialFrameworkOverride,
@@ -95,7 +89,6 @@ export function useDeploymentSettings({
       ? "compose"
       : initialSource,
   );
-  const [serverId, setServerId] = React.useState(initialServerId);
   const [gitValue, setGitValue] = React.useState<GitSourceValue>({
     provider: initialRepo?.provider ?? "git",
     url: initialRepo?.url ?? "",
@@ -143,22 +136,13 @@ export function useDeploymentSettings({
 
   const rootCardVisible = buildCardVisible && repoConfigVisible;
 
-  const serverMoveWarned =
-    serverId !== initialServerId && !(usesGithubApp && !ghSelection);
-  const currentServerName =
-    servers.find((s) => s.id === initialServerId)?.name ?? "its current server";
-
-  const closedSummary = [
-    servers.find((s) => s.id === serverId)?.name,
+  const closedSummary =
     rootCardVisible &&
     build.rootDirectory &&
     build.rootDirectory !== "./" &&
     build.rootDirectory !== "."
       ? `Root: ${build.rootDirectory}`
-      : null,
-  ]
-    .filter(Boolean)
-    .join(" · ");
+      : "";
 
   const gitConnection =
     connections.find((c) => c.id === gitValue.connectionId) ?? null;
@@ -175,14 +159,13 @@ export function useDeploymentSettings({
     () =>
       computeSourceKey({
         source,
-        serverId,
         gitValue,
         dockerImage,
         ghSelection,
         compose,
         gitOptions,
       }),
-    [source, serverId, gitValue, dockerImage, ghSelection, compose, gitOptions],
+    [source, gitValue, dockerImage, ghSelection, compose, gitOptions],
   );
   const [savedSourceKey, setSavedSourceKey] = React.useState(currentSourceKey);
   const ghBaselinedRef = React.useRef(
@@ -312,7 +295,6 @@ export function useDeploymentSettings({
           id: appId,
           input: {
             source: deploySourceEnumName(source),
-            serverId,
             dockerImage: image,
             repo,
             compose: source === "compose" ? compose : undefined,
@@ -346,19 +328,6 @@ export function useDeploymentSettings({
       return;
     }
     startTransition(async () => {
-      if (serverId !== initialServerId) {
-        const moved = await gqlAction(
-          `mutation($id: String!, $input: UpdateSourceInput!) { updateAppSource(id: $id, input: $input) { id } }`,
-          {
-            id: appId,
-            input: { source: deploySourceEnumName("upload"), serverId },
-          },
-        );
-        if (!moved.ok) {
-          toast.error(moved.error);
-          return;
-        }
-      }
       const res = await gqlAction(
         `mutation($appId: String!) { redeploy(appId: $appId) { id } }`,
         { appId },
@@ -463,8 +432,6 @@ export function useDeploymentSettings({
     setComposeDiags,
     source,
     setSource,
-    serverId,
-    setServerId,
     gitValue,
     setGitValue,
     dockerImage,
@@ -478,8 +445,6 @@ export function useDeploymentSettings({
     buildCardVisible,
     repoConfigVisible,
     rootCardVisible,
-    serverMoveWarned,
-    currentServerName,
     closedSummary,
     autoDeployPossible,
     autoDeployBranch,
