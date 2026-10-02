@@ -214,7 +214,7 @@ export function BuildLogStream({
                   <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-[var(--warning)] opacity-60" />
                   <span className="relative inline-flex size-2 rounded-full bg-[var(--warning)]" />
                 </span>
-                Live
+                {status === "queued" ? "Queued" : "Live"}
               </span>
             )}
           </span>
@@ -287,20 +287,27 @@ export function BuildLogStream({
 function QueuedBanner({ position }: { position: number | null }) {
   const ahead = position == null ? 0 : position - 1;
   return (
-    <div className="flex items-start gap-3 rounded-xl border border-[var(--warning)]/30 bg-[var(--warning)]/10 px-4 py-3">
-      <Clock className="mt-0.5 size-4 shrink-0 text-[var(--warning)]" />
-      <div className="min-w-0 text-sm">
+    <div className="flex items-center gap-3 rounded-xl border border-warning/40 bg-warning-wash-strong px-4 py-3">
+      <span className="flex size-9 shrink-0 items-center justify-center rounded-full bg-warning-wash text-[var(--warning)]">
+        <Clock className="size-4" />
+      </span>
+      <div className="min-w-0 flex-1 text-sm">
         <p className="font-medium text-foreground">This deployment is queued</p>
         <p className="mt-1 text-muted-foreground">
           {position == null
-            ? "Waiting for a free build slot on the owning server."
+            ? "Waiting for a free build slot on its server."
             : ahead === 0
-              ? "It's next in line - the build starts as soon as a slot frees up on the owning server."
+              ? "Next in line. The build starts as soon as a slot frees up."
               : ahead === 1
-                ? "Position 2 in the build queue - it starts once the build ahead of it finishes on the owning server."
-                : `Position ${position} in the build queue - it starts once the ${ahead} builds ahead of it finish on the owning server.`}
+                ? "It starts once the build ahead of it finishes."
+                : `It starts once the ${ahead} builds ahead of it finish.`}
         </p>
       </div>
+      {position != null && (
+        <span className="shrink-0 rounded-md border border-warning/40 bg-warning-wash px-2.5 py-1 text-xs font-medium text-[var(--warning)] tabular-nums">
+          #{position} in queue
+        </span>
+      )}
     </div>
   );
 }

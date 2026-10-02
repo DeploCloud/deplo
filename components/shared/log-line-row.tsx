@@ -185,6 +185,16 @@ const SKELETON_WIDTHS = [
   "w-[70%]",
   "w-[33%]",
   "w-[50%]",
+  "w-[18%]",
+  "w-[66%]",
+  "w-[41%]",
+  "w-[58%]",
+  "w-[24%]",
+  "w-[47%]",
+  "w-[73%]",
+  "w-[36%]",
+  "w-[52%]",
+  "w-[29%]",
 ];
 
 export function LogLinesSkeleton() {
@@ -194,7 +204,7 @@ export function LogLinesSkeleton() {
         <div
           key={i}
           className="flex animate-pulse items-start gap-3 py-px pr-1.5 pl-3"
-          style={{ animationDelay: `${i * 120}ms` }}
+          style={{ animationDelay: `${i * 90}ms` }}
         >
           <span className="h-[var(--log-fs)] w-[calc(var(--log-fs)*4)] shrink-0 rounded bg-zinc-800" />
           <span className={cn(CHIP, "shrink-0 rounded bg-zinc-800")} />
