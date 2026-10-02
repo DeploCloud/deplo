@@ -5,11 +5,6 @@ import { veilProps } from "@/components/templates/veil";
 import { AGENTS, type AgentDef, type AgentId } from "../agents";
 import { StepShell } from "./step-shell";
 
-const GROUPS = [
-  { kind: "web", label: "Sign in with your account" },
-  { kind: "token", label: "Connect with a token" },
-] as const;
-
 export function AgentStep({
   agentId,
   canConnect,
@@ -22,30 +17,21 @@ export function AgentStep({
   return (
     <StepShell
       title="Which agent are you connecting?"
-      lead={
-        canConnect
-          ? "Each one wants its configuration in a different place, so Deplo writes the right one for you."
-          : "Needs the permission to connect AI agents to this team."
-      }
+      lead="Each one wants its configuration in a different place, so Deplo writes the right one for you."
     >
-      <div role="radiogroup" aria-label="Agent" className="w-full space-y-5">
-        {GROUPS.map((g) => (
-          <div key={g.kind}>
-            <h3 className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
-              {g.label}
-            </h3>
-            <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4">
-              {AGENTS.filter((a) => a.kind === g.kind).map((a) => (
-                <AgentCard
-                  key={a.id}
-                  agent={a}
-                  selected={agentId === a.id}
-                  disabled={!canConnect}
-                  onSelect={() => onPick(a.id)}
-                />
-              ))}
-            </div>
-          </div>
+      <div
+        role="radiogroup"
+        aria-label="Agent"
+        className="grid w-full gap-2 sm:grid-cols-2"
+      >
+        {AGENTS.map((a) => (
+          <AgentCard
+            key={a.id}
+            agent={a}
+            selected={agentId === a.id}
+            canConnect={canConnect}
+            onSelect={() => onPick(a.id)}
+          />
         ))}
       </div>
     </StepShell>
@@ -81,14 +67,16 @@ export function AgentMark({
 export function AgentCard({
   agent,
   selected,
-  disabled,
+  canConnect,
   onSelect,
 }: {
   agent: AgentDef;
   selected: boolean;
-  disabled: boolean;
+  canConnect: boolean;
   onSelect: () => void;
 }) {
+  const blocked = !canConnect;
+  const note = "Needs the permission to connect AI agents to this team.";
   const veil = veilProps(agent.veil, selected ? "on" : "hover");
 
   return (
@@ -96,11 +84,11 @@ export function AgentCard({
       type="button"
       role="radio"
       aria-checked={selected}
-      disabled={disabled}
+      disabled={blocked}
       onClick={onSelect}
       style={veil.style}
       className={cn(
-        "flex w-full items-center gap-3 rounded-lg border p-3 text-left transition-colors",
+        "flex w-full items-start gap-3 rounded-lg border p-3 text-left transition-colors",
         "focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-background focus-visible:outline-none",
         "disabled:cursor-not-allowed disabled:opacity-50",
         selected
@@ -110,8 +98,11 @@ export function AgentCard({
       )}
     >
       <AgentMark agent={agent} />
-      <span className="min-w-0 text-sm leading-snug font-medium">
-        {agent.label}
+      <span className="min-w-0 flex-1">
+        <span className="block text-sm font-medium">{agent.label}</span>
+        <span className="mt-0.5 line-clamp-2 min-h-[2lh] text-xs leading-snug text-muted-foreground">
+          {blocked ? note : agent.blurb}
+        </span>
       </span>
     </button>
   );

@@ -225,7 +225,69 @@
   animation: iso-token-shackle 5s ease-out infinite;
 }
 
-/* The MCP success step's robot: reaching falls short of the port, connected glows. */
+/* The MCP connect wizard's robot: one idea per pose. Idle looks around, the
+   key pose blips, reaching falls short of the port, connected glows. */
+@keyframes iso-robot-look {
+  0%,
+  100% {
+    translate: -4px 0;
+  }
+  50% {
+    translate: 4px 0;
+  }
+}
+
+/* The antenna drifts along the same axis as the eyes, on the same clock. */
+@keyframes iso-robot-antenna {
+  0%,
+  100% {
+    translate: -3.5px -2px;
+  }
+  50% {
+    translate: 3.5px 2px;
+  }
+}
+
+.iso-robot-eyes {
+  animation: iso-robot-look 3.2s ease-in-out infinite;
+}
+
+.iso-robot-antenna {
+  animation: iso-robot-antenna 3.2s ease-in-out infinite;
+}
+
+@keyframes iso-robot-blip {
+  0%,
+  70%,
+  100% {
+    scale: 1;
+  }
+  35% {
+    scale: 1.5;
+  }
+}
+
+.iso-robot-blip {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: iso-robot-blip 1.8s ease-in-out infinite;
+}
+
+/* The key tilts in the plane it is drawn on, pivoting at the hand. */
+@keyframes iso-robot-key {
+  0%,
+  100% {
+    rotate: -9deg;
+  }
+  50% {
+    rotate: 9deg;
+  }
+}
+
+.iso-robot-key {
+  transform-origin: 0 0;
+  animation: iso-robot-key 2.6s ease-in-out infinite;
+}
 
 /* Reaching: the cable runs to the corner, turns, stops short of the port and
    pulls back. Stopping short is the message: Deplo has not heard from it yet. */

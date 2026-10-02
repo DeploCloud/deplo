@@ -8,7 +8,6 @@ import { BetaChip } from "@/components/shared/beta-chip";
 import { OutsideYourAccess } from "@/components/shared/outside-your-access";
 import { ConnectWizard } from "@/components/settings/mcp/connect-wizard/wizard";
 import { McpSwitchMenu } from "@/components/settings/mcp/mcp-switch-menu";
-import { McpTabs } from "@/components/settings/mcp/mcp-tabs";
 import { MCP_TOOLS } from "@/lib/mcp/tools/catalog";
 
 export const metadata = { title: "Settings · MCP Server" };
@@ -43,7 +42,7 @@ export default async function McpSettingsPage() {
     ]);
 
   return (
-    <div className="space-y-3">
+    <div className="space-y-6">
       <PageHeader
         docs="mcp.overview"
         title={
@@ -53,7 +52,16 @@ export default async function McpSettingsPage() {
           </span>
         }
         description="Connect your AI agents to this team over MCP, with an API token only you control."
-        actions={
+      />
+      <ConnectWizard
+        mcpEnabled={settings.enabled}
+        canConnect={canConnect}
+        canManageTeam={canManageTeam}
+        publicUrl={publicUrl}
+        tree={tree}
+        tools={TOOL_SUMMARIES}
+        connectionCount={agentCount}
+        overlay={
           <McpSwitchMenu
             count={agentCount}
             enabled={settings.enabled}
@@ -61,17 +69,6 @@ export default async function McpSettingsPage() {
           />
         }
       />
-      <McpTabs tools={TOOL_SUMMARIES}>
-        <ConnectWizard
-          mcpEnabled={settings.enabled}
-          canConnect={canConnect}
-          canManageTeam={canManageTeam}
-          publicUrl={publicUrl}
-          tree={tree}
-          tools={TOOL_SUMMARIES}
-          connectionCount={agentCount}
-        />
-      </McpTabs>
     </div>
   );
 }
