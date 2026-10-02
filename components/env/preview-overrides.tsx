@@ -39,6 +39,8 @@ import {
   type EnvRow,
 } from "@/components/env/env-rows-editor";
 import { SecretRow } from "@/components/env/secret-row";
+import { clashingKeys } from "@/components/env/env-parse";
+import { ReplaceExistingConfirm } from "@/components/env/replace-existing-confirm";
 import { useOptimisticRemove } from "@/components/shared/use-optimistic-remove";
 import { TimeAgo } from "@/components/shared/time-ago";
 import { gqlAction } from "@/lib/graphql-client";
@@ -68,12 +70,22 @@ export function PreviewOverrides({
   const [addOpen, setAddOpen] = React.useState(false);
   const [rows, setRows] = React.useState<EnvRow[]>([{ key: "", value: "" }]);
   const [secret, setSecret] = React.useState(false);
+  const [clashes, setClashes] = React.useState<string[]>([]);
 
   const filled = filledRows(rows);
   const invalid = invalidRows(rows);
 
   function submit(e: React.FormEvent) {
     e.preventDefault();
+    const found = clashingKeys(
+      filled.map((r) => r.key),
+      overrides.filter((o) => o.type !== "secret").map((o) => o.key),
+    );
+    if (found.length > 0) setClashes(found);
+    else save();
+  }
+
+  function save() {
     const typed = { rows, secret };
     setAddOpen(false);
     setRows([{ key: "", value: "" }]);
@@ -283,6 +295,12 @@ export function PreviewOverrides({
               </Button>
             </DialogFooter>
           </form>
+          <ReplaceExistingConfirm
+            keys={clashes}
+            noun="override"
+            onClose={() => setClashes([])}
+            onConfirm={save}
+          />
         </DialogContent>
       </Dialog>
     </section>

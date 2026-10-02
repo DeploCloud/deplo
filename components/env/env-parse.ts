@@ -19,3 +19,8 @@ export function parseEnv(text: string): { key: string; value: string }[] {
   }
   return out;
 }
+
+export function clashingKeys(keys: string[], existing: string[]): string[] {
+  const have = new Set(existing);
+  return [...new Set(keys.map((k) => k.trim()))].filter((k) => have.has(k));
+}

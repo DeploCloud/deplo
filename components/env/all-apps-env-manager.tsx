@@ -426,6 +426,11 @@ export function AllAppsEnvManager({
           onOpenChange={(v) => !v && setDialog(null)}
           appId={dialog.appId}
           editing={dialog.editing}
+          existingKeys={(
+            groups.find((g) => g.app.id === dialog.appId)?.vars ?? []
+          )
+            .filter((v) => v.type === "plain")
+            .map((v) => v.key)}
           canCreateShared
           apps={apps}
           projects={projects}

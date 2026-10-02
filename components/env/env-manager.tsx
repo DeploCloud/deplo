@@ -312,6 +312,7 @@ export function EnvManager({
         onOpenChange={setAddOpen}
         appId={appId}
         editing={editing}
+        existingKeys={vars.filter((v) => v.type === "plain").map((v) => v.key)}
         sharedVars={sharedVars}
         canCreateShared={canCreateShared}
         apps={apps}

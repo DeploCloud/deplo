@@ -37,7 +37,8 @@ import { FieldLabel } from "@/components/ui/info-tip";
 import { gql, gqlAction } from "@/lib/graphql-client";
 import { cn } from "@/lib/utils";
 import { envNameLooksSensitive } from "@/lib/env-secret-name";
-import { KEY_RE } from "@/components/env/env-parse";
+import { clashingKeys, KEY_RE } from "@/components/env/env-parse";
+import { ReplaceExistingConfirm } from "@/components/env/replace-existing-confirm";
 import {
   EnvRowsEditor,
   filledRows,
@@ -66,6 +67,7 @@ export function EnvVarDialog({
   onOpenChange,
   appId,
   editing,
+  existingKeys = [],
   sharedVars,
   canCreateShared = false,
   apps = [],
@@ -77,6 +79,7 @@ export function EnvVarDialog({
   onOpenChange: (v: boolean) => void;
   appId: string;
   editing: EnvVarDTO | null;
+  existingKeys?: string[];
   sharedVars?: LinkableSharedVar[];
   canCreateShared?: boolean;
   apps?: AppRef[];
@@ -100,6 +103,7 @@ export function EnvVarDialog({
       open={open}
       onOpenChange={onOpenChange}
       appId={appId}
+      existingKeys={existingKeys}
       sharedVars={sharedVars}
       canCreateShared={canCreateShared}
       apps={apps}
@@ -258,6 +262,7 @@ function AddDialog({
   open,
   onOpenChange,
   appId,
+  existingKeys,
   sharedVars,
   canCreateShared,
   apps,
@@ -268,6 +273,7 @@ function AddDialog({
   open: boolean;
   onOpenChange: (v: boolean) => void;
   appId: string;
+  existingKeys: string[];
   sharedVars?: LinkableSharedVar[];
   canCreateShared: boolean;
   apps: AppRef[];
@@ -330,6 +336,7 @@ function AddDialog({
               p === "standalone" ? (
                 <StandaloneTab
                   appId={appId}
+                  existingKeys={existingKeys}
                   onDone={() => onOpenChange(false)}
                 />
               ) : p === "shared" ? (
@@ -365,12 +372,15 @@ function AddDialog({
 
 function StandaloneTab({
   appId,
+  existingKeys,
   onDone,
 }: {
   appId: string;
+  existingKeys: string[];
   onDone: () => void;
 }) {
   const [rows, setRows] = React.useState<EnvRow[]>([{ key: "", value: "" }]);
+  const [clashes, setClashes] = React.useState<string[]>([]);
   const [secret, setSecret] = React.useState(false);
   const router = useRouter();
 
@@ -383,7 +393,12 @@ function StandaloneTab({
 
   function onSubmit(e: React.FormEvent) {
     e.preventDefault();
-    save();
+    const found = clashingKeys(
+      filled.map((r) => r.key),
+      existingKeys,
+    );
+    if (found.length > 0) setClashes(found);
+    else save();
   }
 
   function save() {
@@ -430,52 +445,60 @@ function StandaloneTab({
   }
 
   return (
-    <form onSubmit={onSubmit}>
-      <div
-        className={cn("space-y-4 overflow-y-auto px-6 py-4", PANEL_BODY_MAX)}
-      >
-        <EnvRowsEditor rows={rows} onChange={setRows} />
+    <>
+      <form onSubmit={onSubmit}>
+        <div
+          className={cn("space-y-4 overflow-y-auto px-6 py-4", PANEL_BODY_MAX)}
+        >
+          <EnvRowsEditor rows={rows} onChange={setRows} />
 
-        {looksSecret && (
-          <p className="flex items-start gap-2 rounded-lg border border-border bg-surface px-3 py-2.5 text-xs text-muted-foreground">
-            <Info className="mt-px size-3.5 shrink-0" />
-            <span>
-              “{filled[0].key.trim()}” reads like a credential. Turn on Secret
-              below to store it write-only.
-            </span>
-          </p>
-        )}
+          {looksSecret && (
+            <p className="flex items-start gap-2 rounded-lg border border-border bg-surface px-3 py-2.5 text-xs text-muted-foreground">
+              <Info className="mt-px size-3.5 shrink-0" />
+              <span>
+                “{filled[0].key.trim()}” reads like a credential. Turn on Secret
+                below to store it write-only.
+              </span>
+            </p>
+          )}
 
-        {filled.length > 1 ? (
-          <p className="flex items-start gap-2 rounded-lg border border-border bg-surface px-3 py-2.5 text-xs text-muted-foreground">
-            <Info className="mt-px size-3.5 shrink-0" />
-            <span>
-              Pasted variables are added as plain - flip individual ones to
-              secret from the table.
-            </span>
-          </p>
-        ) : (
-          <SecretRow secret={secret} onChange={setSecret} />
-        )}
-      </div>
-
-      <DialogFooter className="items-center border-t border-border px-6 py-4 sm:justify-between">
-        <p className="text-xs text-muted-foreground">
-          or paste .env contents in the Key field
-        </p>
-        <div className="flex gap-2">
-          <Button variant="outline" onClick={onDone}>
-            Cancel
-          </Button>
-          <Button
-            type="submit"
-            disabled={filled.length === 0 || invalid.length > 0}
-          >
-            {filled.length > 1 ? `Add ${filled.length}` : "Add"}
-          </Button>
+          {filled.length > 1 ? (
+            <p className="flex items-start gap-2 rounded-lg border border-border bg-surface px-3 py-2.5 text-xs text-muted-foreground">
+              <Info className="mt-px size-3.5 shrink-0" />
+              <span>
+                Pasted variables are added as plain - flip individual ones to
+                secret from the table.
+              </span>
+            </p>
+          ) : (
+            <SecretRow secret={secret} onChange={setSecret} />
+          )}
         </div>
-      </DialogFooter>
-    </form>
+
+        <DialogFooter className="items-center border-t border-border px-6 py-4 sm:justify-between">
+          <p className="text-xs text-muted-foreground">
+            or paste .env contents in the Key field
+          </p>
+          <div className="flex gap-2">
+            <Button variant="outline" onClick={onDone}>
+              Cancel
+            </Button>
+            <Button
+              type="submit"
+              disabled={filled.length === 0 || invalid.length > 0}
+            >
+              {filled.length > 1 ? `Add ${filled.length}` : "Add"}
+            </Button>
+          </div>
+        </DialogFooter>
+      </form>
+      <ReplaceExistingConfirm
+        keys={clashes}
+        noun="variable"
+        onClose={() => setClashes([])}
+        onConfirm={save}
+      />
+    </>
   );
 }
 
