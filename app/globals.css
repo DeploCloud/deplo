@@ -3014,89 +3014,8 @@ html body[data-scroll-locked] {
   }
 }
 
-/* The MCP connect wizard's robot (components/settings/mcp/robot-graphic.tsx).
-   One drawing in four poses, and each pose animates exactly one idea so the
-   picture stays readable at 8rem: the antenna looks around, the antenna blips
-   while a credential is chosen, the cable reaches and falls short, the port
-   glows once it has landed. Everything is transform/opacity/stroke-dashoffset,
-   so it stays on the compositor and costs nothing while the tab sits open on a
-   step nobody is reading. */
-
-/* Idle: the head's antenna ball drifts, and the eyes track with it. Two
-   elements on ONE timeline on purpose - a robot whose eyes and antenna move
-   independently reads as broken rather than as looking around. */
-@keyframes deplo-robot-antenna {
-  0%,
-  100% {
-    transform: translateX(-1.5px);
-  }
-  50% {
-    transform: translateX(1.5px);
-  }
-}
-
-@keyframes deplo-robot-eyes {
-  0%,
-  100% {
-    transform: translateX(-1.2px);
-  }
-  50% {
-    transform: translateX(1.2px);
-  }
-}
-
-.deplo-robot-antenna {
-  /* Without `fill-box` an SVG transform pivots on the viewBox origin, which
-     sends the ball off the canvas instead of nudging it. */
-  transform-box: fill-box;
-  transform-origin: center;
-  animation: deplo-robot-antenna 3.2s ease-in-out infinite;
-}
-
-.deplo-robot-eyes {
-  transform-box: fill-box;
-  transform-origin: center;
-  animation: deplo-robot-eyes 3.2s ease-in-out infinite;
-}
-
-/* Permissions: the antenna blips like something is being decided. Scale only,
-   so it never moves and never competes with the form beside it. */
-@keyframes deplo-robot-blip {
-  0%,
-  70%,
-  100% {
-    transform: scale(1);
-    opacity: 1;
-  }
-  35% {
-    transform: scale(1.45);
-    opacity: 0.65;
-  }
-}
-
-.deplo-robot-blip {
-  transform-box: fill-box;
-  transform-origin: center;
-  animation: deplo-robot-blip 1.8s ease-in-out infinite;
-}
-
-/* The key the robot holds while permissions are being chosen: a slow tilt, so
-   it reads as held rather than pasted on. */
-@keyframes deplo-robot-key {
-  0%,
-  100% {
-    transform: rotate(-7deg);
-  }
-  50% {
-    transform: rotate(7deg);
-  }
-}
-
-.deplo-robot-key {
-  transform-box: fill-box;
-  transform-origin: 8% 50%;
-  animation: deplo-robot-key 2.6s ease-in-out infinite;
-}
+/* The MCP success step's robot (components/settings/mcp/robot-graphic.tsx):
+   the cable reaches and falls short, the port glows once it has landed. */
 
 /* Reaching: the cable draws most of the way to the port, stops short, and
    retreats. Stopping SHORT is the whole message - the config is copied and
@@ -3145,10 +3064,6 @@ html body[data-scroll-locked] {
   /* Every pose holds a frame that still carries its meaning. The cable rests
      FULLY drawn rather than at its short frame: without motion, a gap reads as
      a broken drawing instead of as a cable still trying. */
-  .deplo-robot-antenna,
-  .deplo-robot-eyes,
-  .deplo-robot-blip,
-  .deplo-robot-key,
   .deplo-robot-halo {
     animation: none;
     transform: none;

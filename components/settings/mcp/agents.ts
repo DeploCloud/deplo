@@ -25,7 +25,6 @@ export type AgentId =
 export interface AgentDef {
   id: AgentId;
   label: string;
-  blurb: string;
   icon: React.ComponentType<{ className?: string }>;
   brand?: { bg: string; fg: string };
   veil?: LogoAccent;
@@ -46,7 +45,6 @@ export const AGENTS: AgentDef[] = [
   {
     id: "claude-web",
     label: "Claude",
-    blurb: "The assistant at claude.ai. Sign in and approve it once.",
     icon: ClaudeIcon,
     brand: { bg: "#D97757", fg: "#FFFFFF" },
     veil: { hue: 39 },
@@ -60,7 +58,6 @@ export const AGENTS: AgentDef[] = [
   {
     id: "chatgpt",
     label: "ChatGPT",
-    blurb: "The assistant at chatgpt.com. Needs developer mode on.",
     icon: OpenAiIcon,
     brand: { bg: "#000000", fg: "#FFFFFF" },
     veil: { tone: "dark" },
@@ -74,7 +71,6 @@ export const AGENTS: AgentDef[] = [
   {
     id: "claude-desktop",
     label: "Claude Desktop",
-    blurb: "The Claude app for Mac and Windows. Same flow, no token.",
     icon: ClaudeIcon,
     brand: { bg: "#D97757", fg: "#FFFFFF" },
     veil: { hue: 39 },
@@ -88,7 +84,6 @@ export const AGENTS: AgentDef[] = [
   {
     id: "claude-code",
     label: "Claude Code",
-    blurb: "The terminal agent. One command in your shell and done.",
     icon: ClaudeIcon,
     brand: { bg: "#D97757", fg: "#FFFFFF" },
     veil: { hue: 39 },
@@ -102,7 +97,6 @@ export const AGENTS: AgentDef[] = [
   {
     id: "cursor",
     label: "Cursor",
-    blurb: "The AI editor. Its config file lives in your own repo.",
     icon: CursorIcon,
     brand: { bg: "#000000", fg: "#FFFFFF" },
     veil: { tone: "dark" },
@@ -129,7 +123,6 @@ export const AGENTS: AgentDef[] = [
   {
     id: "vscode",
     label: "VS Code",
-    blurb: "GitHub Copilot's agent mode. Configured once per repo.",
     icon: VsCodeIcon,
     brand: { bg: "#007ACC", fg: "#FFFFFF" },
     veil: { hue: 249 },
@@ -158,7 +151,6 @@ export const AGENTS: AgentDef[] = [
   {
     id: "windsurf",
     label: "Windsurf",
-    blurb: "Cascade's agent. Configured once for your whole machine.",
     icon: WindsurfIcon,
     brand: { bg: "#0B100F", fg: "#FFFFFF" },
     veil: { tone: "dark" },
@@ -185,7 +177,6 @@ export const AGENTS: AgentDef[] = [
   {
     id: "gemini-cli",
     label: "Gemini CLI",
-    blurb: "Google's terminal agent. One entry in its settings file.",
     icon: GeminiIcon,
     brand: { bg: "#8E75B2", fg: "#FFFFFF" },
     veil: { hue: 303 },
@@ -213,7 +204,6 @@ export const AGENTS: AgentDef[] = [
   {
     id: "codex-cli",
     label: "Codex CLI",
-    blurb: "OpenAI's terminal agent. Its config file is TOML, not JSON.",
     icon: OpenAiIcon,
     brand: { bg: "#000000", fg: "#FFFFFF" },
     veil: { tone: "dark" },
@@ -233,7 +223,6 @@ export const AGENTS: AgentDef[] = [
   {
     id: "other",
     label: "Something else",
-    blurb: "Any other client that speaks Streamable HTTP with a header.",
     icon: Bot,
     kind: "token",
     form: "file",

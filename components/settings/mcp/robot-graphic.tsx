@@ -36,20 +36,18 @@ export function RobotMark({ className }: { className?: string }) {
 }
 
 const LABEL: Record<RobotState, string> = {
-  idle: "A robot waiting to be connected to Deplo",
-  key: "A robot holding a key, ready to be given permissions",
   reaching: "A robot reaching a cable toward Deplo",
   connected: "A robot plugged into Deplo",
 };
 
-export type RobotState = "idle" | "key" | "reaching" | "connected";
+export type RobotState = "reaching" | "connected";
 
 export function RobotGraphic({
-  state = "idle",
+  state,
   accent,
   className,
 }: {
-  state?: RobotState;
+  state: RobotState;
   accent?: LogoAccent;
   className?: string;
 }) {
@@ -118,28 +116,15 @@ export function RobotGraphic({
         strokeWidth="2.5"
       />
 
-      {(state === "reaching" || live) && (
-        <path
-          d="M74 74 C90 76, 96 72, 112 72"
-          className={cn(
-            !live && "deplo-robot-cable",
-            "stroke-[var(--deplo-robot-ink)]",
-          )}
-          strokeWidth="2.5"
-          strokeLinecap="round"
-        />
-      )}
-
-      {state === "key" && (
-        <g
-          className="deplo-robot-key stroke-[var(--deplo-robot-ink)]"
-          strokeWidth="2.5"
-        >
-          <circle cx="76" cy="72" r="4.5" />
-          <line x1="80" y1="72" x2="90" y2="72" strokeLinecap="round" />
-          <line x1="86" y1="72" x2="86" y2="77" strokeLinecap="round" />
-        </g>
-      )}
+      <path
+        d="M74 74 C90 76, 96 72, 112 72"
+        className={cn(
+          !live && "deplo-robot-cable",
+          "stroke-[var(--deplo-robot-ink)]",
+        )}
+        strokeWidth="2.5"
+        strokeLinecap="round"
+      />
 
       <line
         x1="44"
@@ -154,13 +139,11 @@ export function RobotGraphic({
         cx="44"
         cy="14"
         r="3.5"
-        className={cn(
-          state === "idle" && "deplo-robot-antenna",
-          state === "key" && "deplo-robot-blip",
+        className={
           live
             ? "fill-[var(--deplo-robot-live)]"
-            : "fill-[var(--deplo-robot-ink)]",
-        )}
+            : "fill-[var(--deplo-robot-ink)]"
+        }
       />
       <rect
         x="24"
@@ -172,12 +155,11 @@ export function RobotGraphic({
         strokeWidth="2.5"
       />
       <g
-        className={cn(
-          state === "idle" && "deplo-robot-eyes",
+        className={
           live
             ? "fill-[var(--deplo-robot-live)]"
-            : "fill-[var(--deplo-robot-ink)]",
-        )}
+            : "fill-[var(--deplo-robot-ink)]"
+        }
       >
         <circle cx="36" cy="42" r="3.5" />
         <circle cx="52" cy="42" r="3.5" />
