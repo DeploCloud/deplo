@@ -1,8 +1,28 @@
 "use client";
 
+import * as React from "react";
 import { Check } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { SimpleTooltip } from "@/components/ui/tooltip";
+import {
+  SlidingBackground,
+  useSlidingRect,
+} from "@/components/ui/sliding-underline";
+
+const SLIDE =
+  "duration-500 ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none";
+
+function useActiveRect(
+  ref: React.RefObject<HTMLOListElement | null>,
+  key: string,
+) {
+  return useSlidingRect(
+    ref,
+    () =>
+      ref.current?.querySelector<HTMLElement>('[aria-current="step"]') ?? null,
+    [key],
+  );
+}
 
 export interface WizardStep<T extends string> {
   id: T;
@@ -23,6 +43,8 @@ export function WizardStepper<T extends string>({
   compact?: boolean;
 }) {
   const at = steps.findIndex((s) => s.id === current);
+  const ref = React.useRef<HTMLOListElement | null>(null);
+  const rect = useActiveRect(ref, `${at}/${steps.length}`);
   if (compact)
     return (
       <CompactStepper
@@ -33,7 +55,8 @@ export function WizardStepper<T extends string>({
       />
     );
   return (
-    <ol className="flex items-center gap-1">
+    <ol ref={ref} className="relative isolate flex items-center gap-1">
+      <SlidingBackground rect={rect} className={cn("bg-secondary", SLIDE)} />
       {steps.map((s, i) => {
         const done = i < at;
         const active = i === at;
@@ -41,7 +64,14 @@ export function WizardStepper<T extends string>({
         return (
           <li key={s.id} className="flex min-w-0 items-center gap-1">
             {i > 0 && (
-              <span aria-hidden className="w-3 border-t border-border" />
+              <span
+                aria-hidden
+                className={cn(
+                  "w-3 border-t transition-colors",
+                  SLIDE,
+                  done || active ? "border-primary/40" : "border-border",
+                )}
+              />
             )}
             <button
               type="button"
@@ -49,10 +79,11 @@ export function WizardStepper<T extends string>({
               disabled={!open}
               aria-current={active ? "step" : undefined}
               className={cn(
-                "flex items-center gap-1.5 rounded-md px-2 py-1 text-xs transition-colors",
+                "relative z-10 flex items-center gap-1.5 rounded-md px-2 py-1 text-xs transition-colors",
                 "focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none",
+                SLIDE,
                 active
-                  ? "bg-secondary font-medium text-foreground"
+                  ? "font-medium text-foreground"
                   : open
                     ? "text-muted-foreground hover:text-foreground"
                     : "text-muted-foreground/50",
@@ -60,7 +91,8 @@ export function WizardStepper<T extends string>({
             >
               <span
                 className={cn(
-                  "flex size-5 shrink-0 items-center justify-center rounded-full border text-[10px]",
+                  "flex size-5 shrink-0 items-center justify-center rounded-full border text-[10px] transition-colors",
+                  SLIDE,
                   active
                     ? "border-primary bg-primary-wash-strong text-primary"
                     : done
@@ -90,9 +122,15 @@ function CompactStepper<T extends string>({
   reachable: (s: T) => boolean;
   onSelect: (s: T) => void;
 }) {
+  const ref = React.useRef<HTMLOListElement | null>(null);
+  const rect = useActiveRect(ref, `${at}/${steps.length}`);
   return (
     <div className="flex flex-col items-center gap-2">
-      <ol className="flex items-center">
+      <ol ref={ref} className="relative isolate flex items-center">
+        <SlidingBackground
+          rect={rect}
+          className={cn("rounded-full bg-primary", SLIDE)}
+        />
         {steps.map((s, i) => {
           const done = i < at;
           const active = i === at;
@@ -104,6 +142,7 @@ function CompactStepper<T extends string>({
                   aria-hidden
                   className={cn(
                     "h-px w-6 transition-colors",
+                    SLIDE,
                     done || active ? "bg-primary" : "bg-border",
                   )}
                 />
@@ -115,10 +154,11 @@ function CompactStepper<T extends string>({
                   disabled={!open}
                   aria-current={active ? "step" : undefined}
                   className={cn(
-                    "flex size-4 items-center justify-center rounded-full border transition-colors",
+                    "relative z-10 flex size-4 items-center justify-center rounded-full border transition-colors",
                     "focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background focus-visible:outline-none",
+                    SLIDE,
                     active
-                      ? "border-primary bg-primary text-primary-foreground"
+                      ? "border-primary text-primary-foreground"
                       : done
                         ? "border-primary/40 text-primary"
                         : "border-transparent",

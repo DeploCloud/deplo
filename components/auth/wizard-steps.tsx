@@ -432,7 +432,7 @@ export function StepDots({
           key={s.id}
           aria-current={s.id === current ? "step" : undefined}
           className={cn(
-            "h-1 rounded-full transition-all duration-300",
+            "h-1 rounded-full transition-all duration-500 ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none",
             s.id === current ? "w-8 bg-foreground" : "w-4 bg-border",
           )}
         >
