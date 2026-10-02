@@ -643,3 +643,20 @@
   animation-duration: var(--deplo-confetti-t);
   animation-delay: calc(var(--i) * 16ms);
 }
+
+/* The wordmark's "_" blinks like a waiting terminal cursor while the logo is hovered. */
+@keyframes deplo-cursor-blink {
+  50% {
+    opacity: 0;
+  }
+}
+
+.deplo-logo:hover .deplo-logo-cursor {
+  animation: deplo-cursor-blink 0.4s step-end infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .deplo-logo:hover .deplo-logo-cursor {
+    animation: none;
+  }
+}
