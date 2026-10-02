@@ -1,6 +1,6 @@
 import "server-only";
 
-import { and, eq, inArray, ne, notInArray } from "drizzle-orm";
+import { and, eq, inArray, lte, ne, notInArray, sql } from "drizzle-orm";
 import { completePendingAppMigration } from "../../data/app-migration";
 import { appendLog, finalizeDeploymentLogs } from "../../data/deployment-logs";
 import { sweepSupersededAppImages } from "../../data/docker-cleanup/deploy-sweep";
@@ -176,6 +176,25 @@ export async function setDeployState(
   return true;
 }
 
+// Only changes made before the build started are in it; one made during the build still needs a deploy.
+export async function clearPendingChangesCoveredBy(
+  appId: string,
+  depId: string,
+): Promise<void> {
+  await getDb()
+    .update(appsTable)
+    .set({ pendingChangesAt: null })
+    .where(
+      and(
+        eq(appsTable.id, appId),
+        lte(
+          appsTable.pendingChangesAt,
+          sql`(select ${deploymentsTable.startedAt} from ${deploymentsTable} where ${deploymentsTable.id} = ${depId})`,
+        ),
+      ),
+    );
+}
+
 async function markStopped(depId: string, target: DeployTarget): Promise<void> {
   log(
     depId,
@@ -223,9 +242,11 @@ export async function commitOutcome(
   await setDeployState(
     target,
     ok && target.kind !== "preview"
-      ? { ...appPatch, pendingChangesAt: null, restartLoopStoppedAt: null }
+      ? { ...appPatch, restartLoopStoppedAt: null }
       : appPatch,
   );
+  if (ok && target.kind !== "preview")
+    await clearPendingChangesCoveredBy(target.appId, depId);
   const what =
     target.kind === "preview"
       ? `${target.name} #${target.prNumber}`

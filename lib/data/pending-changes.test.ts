@@ -15,8 +15,10 @@ import { seedIdentity, TEAM_A, TEAM_B, USER_1 } from "./identity-test-helpers";
 import {
   seedServer,
   seedApp,
+  seedDeployment,
   TRUNCATE_PROJECT_GRAPH,
 } from "./app-graph-test-helpers";
+import { clearPendingChangesCoveredBy } from "../deploy/build/deployment-state";
 import { apps as appsTable } from "../db/schema/control-plane/apps";
 import { envVars as envVarsTable } from "../db/schema/control-plane/env-vars";
 import { eq } from "drizzle-orm";
@@ -158,4 +160,43 @@ test("another team's app cannot be dismissed", async () => {
   await asUser1(async () => {
     await assert.rejects(() => dismissPendingChanges("prj_b"));
   });
+});
+
+async function stampAt(appId: string, at: string): Promise<void> {
+  await db
+    .update(appsTable)
+    .set({ pendingChangesAt: at })
+    .where(eq(appsTable.id, appId));
+}
+
+async function stampOf(appId: string): Promise<string | null> {
+  const [row] = await db
+    .select({ at: appsTable.pendingChangesAt })
+    .from(appsTable)
+    .where(eq(appsTable.id, appId));
+  return row?.at ?? null;
+}
+
+test("a deploy that started after the change clears the stamp", async () => {
+  await seedApp(db, { id: "prj_1" });
+  await stampAt("prj_1", "2026-10-02T10:00:00.000Z");
+  await seedDeployment(db, {
+    id: "dpl_1",
+    appId: "prj_1",
+    startedAt: "2026-10-02T10:01:00.000Z",
+  });
+  await clearPendingChangesCoveredBy("prj_1", "dpl_1");
+  assert.equal(await stampOf("prj_1"), null);
+});
+
+test("a change made during the build survives the deploy", async () => {
+  await seedApp(db, { id: "prj_1" });
+  await stampAt("prj_1", "2026-10-02T10:05:00.000Z");
+  await seedDeployment(db, {
+    id: "dpl_1",
+    appId: "prj_1",
+    startedAt: "2026-10-02T10:01:00.000Z",
+  });
+  await clearPendingChangesCoveredBy("prj_1", "dpl_1");
+  assert.equal(await stampOf("prj_1"), "2026-10-02T10:05:00.000Z");
 });

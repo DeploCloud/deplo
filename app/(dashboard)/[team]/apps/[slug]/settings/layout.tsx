@@ -1,6 +1,7 @@
 import { notFound } from "next/navigation";
 import { getAppBySlug } from "@/lib/data/apps/listing";
 import { PendingChangesNotice } from "@/components/apps/pending-changes-notice";
+import { visiblePendingChanges } from "@/lib/apps/pending-changes";
 
 export default async function AppSettingsLayout(
   props: LayoutProps<"/[team]/apps/[slug]/settings">,
@@ -14,7 +15,7 @@ export default async function AppSettingsLayout(
       <PendingChangesNotice
         appId={app.id}
         slug={app.slug}
-        pendingChangesAt={app.pendingChangesAt ?? null}
+        pendingChangesAt={visiblePendingChanges(app)}
         neverDeployed={app.latestDeploymentId == null}
       />
       {props.children}

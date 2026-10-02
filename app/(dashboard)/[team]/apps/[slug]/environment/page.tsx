@@ -13,6 +13,7 @@ import { hasCapability, reachesWholeTeam } from "@/lib/membership";
 import { listPreviewEnvVars } from "@/lib/data/previews";
 import { EnvManager } from "@/components/env/env-manager";
 import { PendingChangesNotice } from "@/components/apps/pending-changes-notice";
+import { visiblePendingChanges } from "@/lib/apps/pending-changes";
 import { PreviewOverrides } from "@/components/env/preview-overrides";
 import { EmptyState } from "@/components/shared/empty-state";
 
@@ -75,7 +76,7 @@ export default async function AppEnvPage(
       <PendingChangesNotice
         appId={project.id}
         slug={project.slug}
-        pendingChangesAt={project.pendingChangesAt ?? null}
+        pendingChangesAt={visiblePendingChanges(project)}
         neverDeployed={project.latestDeploymentId == null}
       />
       <EnvManager
