@@ -32,6 +32,7 @@ import {
 import { cn } from "@/lib/utils";
 
 const MAX_FOLDER_CRUMBS = 3;
+const SLIDE_MS = 300;
 
 export function Breadcrumbs({
   pathname,
@@ -84,24 +85,139 @@ export function Breadcrumbs({
     );
   }
 
-  const display = collapseFolders(segments);
+  return <CrumbTrail display={collapseFolders(segments)} />;
+}
 
+function CrumbTrail({ display }: { display: BreadcrumbSegment[] }) {
+  const { items, fresh } = useCrumbPresence(display);
   return (
     <nav
       aria-label="Breadcrumb"
-      className="hidden min-w-0 items-center gap-1 text-sm sm:flex"
+      className="hidden min-w-0 items-center text-sm sm:flex"
     >
-      {display.map((seg, i) => (
-        <React.Fragment key={seg.key}>
-          <span className="shrink-0 text-muted-foreground/40">/</span>
+      {items.map(({ seg, leaving }, i) => (
+        <CrumbSlot
+          key={seg.key}
+          leaving={leaving}
+          animateIn={fresh.has(seg.key)}
+        >
+          <span
+            className={cn("shrink-0 text-muted-foreground/40", i > 0 && "ml-1")}
+          >
+            /
+          </span>
           {seg.key === "__ellipsis__" ? (
             <EllipsisCrumb segment={seg} />
           ) : (
-            <Crumb segment={seg} isCurrent={i === display.length - 1} />
+            <Crumb
+              segment={seg}
+              isCurrent={!leaving && seg === display[display.length - 1]}
+            />
           )}
-        </React.Fragment>
+        </CrumbSlot>
       ))}
     </nav>
+  );
+}
+
+interface CrumbPresence {
+  sig: string;
+  segs: BreadcrumbSegment[];
+  gone: { seg: BreadcrumbSegment; at: number }[];
+  fresh: Set<string>;
+}
+
+// A crumb that leaves stays mounted for one slide, so it can collapse instead of vanishing.
+function useCrumbPresence(display: BreadcrumbSegment[]) {
+  const sig = display.map((s) => s.key).join("\u0000");
+  const [state, setState] = React.useState<CrumbPresence>(() => ({
+    sig,
+    segs: display,
+    gone: [],
+    fresh: new Set(),
+  }));
+  if (state.sig !== sig) {
+    const now = new Set(display.map((s) => s.key));
+    const before = new Set(state.segs.map((s) => s.key));
+    setState({
+      sig,
+      segs: display,
+      gone: [
+        ...state.gone.filter((g) => !now.has(g.seg.key)),
+        ...state.segs
+          .map((seg, at) => ({ seg, at }))
+          .filter((g) => !now.has(g.seg.key)),
+      ],
+      fresh: new Set([...now].filter((k) => !before.has(k))),
+    });
+  }
+  React.useEffect(() => {
+    if (state.gone.length === 0) return;
+    const timer = setTimeout(
+      () => setState((s) => ({ ...s, gone: [] })),
+      SLIDE_MS,
+    );
+    return () => clearTimeout(timer);
+  }, [state.gone]);
+
+  const items = display.map((seg) => ({ seg, leaving: false }));
+  for (const g of [...state.gone].sort((a, b) => a.at - b.at))
+    items.splice(Math.min(g.at, items.length), 0, {
+      seg: g.seg,
+      leaving: true,
+    });
+  return { items, fresh: state.fresh };
+}
+
+function CrumbSlot({
+  leaving,
+  animateIn,
+  children,
+}: {
+  leaving: boolean;
+  animateIn: boolean;
+  children: React.ReactNode;
+}) {
+  const inner = React.useRef<HTMLSpanElement>(null);
+  const [width, setWidth] = React.useState<number>();
+  const [shown, setShown] = React.useState(!animateIn);
+
+  React.useLayoutEffect(() => {
+    const el = inner.current;
+    if (!el) return;
+    const ro = new ResizeObserver(() => setWidth(el.offsetWidth));
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+
+  React.useEffect(() => {
+    if (shown) return;
+    // Two frames: the collapsed state has to be painted before it can slide open.
+    let second = 0;
+    const first = requestAnimationFrame(() => {
+      second = requestAnimationFrame(() => setShown(true));
+    });
+    return () => {
+      cancelAnimationFrame(first);
+      cancelAnimationFrame(second);
+    };
+  }, [shown]);
+
+  const open = shown && !leaving;
+  return (
+    <span
+      aria-hidden={leaving || undefined}
+      className={cn(
+        "flex min-w-0 shrink overflow-hidden transition-[width,opacity,translate] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none",
+        open ? "translate-x-0 opacity-100" : "-translate-x-1.5 opacity-0",
+        leaving && "pointer-events-none",
+      )}
+      style={{ width: open ? width : 0 }}
+    >
+      <span ref={inner} className="flex w-max items-center gap-1">
+        {children}
+      </span>
+    </span>
   );
 }
 
