@@ -26,12 +26,16 @@ export function EmptyState({
   return (
     <div
       className={cn(
-        "flex flex-col items-center justify-center rounded-xl border border-dashed border-border px-6 py-16 text-center",
+        "flex flex-col items-center justify-center rounded-xl border border-dashed border-border px-6 text-center",
+        graphic ? "py-20" : "py-16",
         className,
       )}
     >
       {graphic ? (
-        <div className="mb-5 flex items-center justify-center">{graphic}</div>
+        // zoom scales a drawing by one factor whatever size it declares itself
+        <div className="mb-6 flex items-center justify-center [&>svg]:[zoom:1.5]">
+          {graphic}
+        </div>
       ) : (
         Icon && (
           <div className="mb-4 flex size-12 items-center justify-center rounded-full border border-border bg-secondary">
@@ -41,9 +45,18 @@ export function EmptyState({
           </div>
         )
       )}
-      <h3 className="text-sm font-medium">{title}</h3>
+      <h3
+        className={graphic ? "text-base font-semibold" : "text-sm font-medium"}
+      >
+        {title}
+      </h3>
       {(description || docs) && (
-        <p className="mt-1 max-w-sm text-sm text-muted-foreground">
+        <p
+          className={cn(
+            "mt-1 text-sm text-muted-foreground",
+            graphic ? "max-w-md" : "max-w-sm",
+          )}
+        >
           {description}
           {docs && (
             <DocsLink
