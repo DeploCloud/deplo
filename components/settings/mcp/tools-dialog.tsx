@@ -1,7 +1,6 @@
 "use client";
 
 import * as React from "react";
-import { Search, ShieldAlert } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -10,21 +9,7 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
-import { Badge } from "@/components/ui/badge";
-import { SimpleTooltip } from "@/components/ui/tooltip";
-import { CAPABILITY_META } from "@/lib/capabilities";
-import { cn } from "@/lib/utils";
-import type { Capability } from "@/lib/types/identity";
-
-export interface McpToolSummary {
-  name: string;
-  title: string;
-  description: string;
-  group: string;
-  requires: string | null;
-  destructive: boolean;
-}
+import { ToolCatalog, ToolSearch, type McpToolSummary } from "./tool-catalog";
 
 export function ToolsDialog({
   tools,
@@ -36,33 +21,6 @@ export function ToolsDialog({
   trigger: React.ReactNode;
 }) {
   const [query, setQuery] = React.useState("");
-
-  const held = React.useMemo(
-    () => (highlight ? new Set(highlight) : null),
-    [highlight],
-  );
-
-  const groups = React.useMemo(() => {
-    const q = query.trim().toLowerCase();
-    const matched = q
-      ? tools.filter(
-          (t) =>
-            t.name.includes(q) ||
-            t.title.toLowerCase().includes(q) ||
-            t.description.toLowerCase().includes(q) ||
-            t.group.toLowerCase().includes(q),
-        )
-      : tools;
-    const byGroup = new Map<string, McpToolSummary[]>();
-    for (const t of matched) {
-      const list = byGroup.get(t.group);
-      if (list) list.push(t);
-      else byGroup.set(t.group, [t]);
-    }
-    return [...byGroup.entries()];
-  }, [tools, query]);
-
-  const shown = groups.reduce((n, [, list]) => n + list.length, 0);
 
   return (
     <Dialog>
@@ -79,87 +37,13 @@ export function ToolsDialog({
             An agent only sees the tools its token can use. Secrets are never
             readable through any of them.
           </DialogDescription>
-          <div className="relative mt-4">
-            <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
-            <Input
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              placeholder="Search"
-              aria-label="Search tools"
-              className="pl-9"
-            />
-          </div>
+          <ToolSearch value={query} onChange={setQuery} className="mt-4" />
         </DialogHeader>
 
         <div className="focus-safe-scroll min-h-0 overflow-y-auto p-6 pt-4">
-          {shown === 0 ? (
-            <p className="py-10 text-center text-sm text-muted-foreground">
-              No tool matches {`"${query}"`}.
-            </p>
-          ) : (
-            <div className="space-y-6">
-              {groups.map(([group, list]) => (
-                <div key={group}>
-                  <h3 className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
-                    {group}
-                  </h3>
-                  <div className="mt-2 divide-y divide-border rounded-lg border border-border">
-                    {list.map((t) => (
-                      <ToolRow key={t.name} tool={t} held={held} />
-                    ))}
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
+          <ToolCatalog tools={tools} query={query} highlight={highlight} />
         </div>
       </DialogContent>
     </Dialog>
-  );
-}
-
-function ToolRow({
-  tool,
-  held,
-}: {
-  tool: McpToolSummary;
-  held: Set<string> | null;
-}) {
-  const reached =
-    held === null ||
-    tool.requires === null ||
-    (tool.requires !== "instanceAdmin" && held.has(tool.requires));
-
-  return (
-    <div
-      className={cn(
-        "flex items-start justify-between gap-4 p-3",
-        !reached && "opacity-45",
-      )}
-    >
-      <div className="min-w-0">
-        <p className="flex items-center gap-1.5 font-mono text-xs">
-          {tool.name}
-          {tool.destructive && (
-            <SimpleTooltip content="Destructive. Your AI client asks before running it.">
-              <ShieldAlert className="size-3.5 shrink-0 text-[var(--warning)]" />
-            </SimpleTooltip>
-          )}
-        </p>
-        <p className="mt-1 text-sm text-muted-foreground">{tool.description}</p>
-      </div>
-      <div className="shrink-0 pt-0.5 text-right">
-        {tool.requires === null ? (
-          <span className="text-xs text-muted-foreground">Any token</span>
-        ) : tool.requires === "instanceAdmin" ? (
-          <Badge variant="outline">Instance admin</Badge>
-        ) : (
-          <span className="text-xs">
-            {CAPABILITY_META[tool.requires as Capability]?.label ??
-              tool.requires}
-          </span>
-        )}
-      </div>
-    </div>
   );
 }

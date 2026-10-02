@@ -51,13 +51,11 @@ export function RobotMark({ className }: { className?: string }) {
 }
 
 const LABEL: Record<RobotState, string> = {
-  idle: "A robot waiting to be connected to Deplo",
-  key: "A robot holding a key, ready to be given permissions",
   reaching: "A robot reaching a cable toward Deplo",
   connected: "A robot plugged into Deplo",
 };
 
-export type RobotState = "idle" | "key" | "reaching" | "connected";
+export type RobotState = "reaching" | "connected";
 
 const INK = "var(--deplo-robot-ink)";
 const LIVE = "var(--deplo-robot-live)";
@@ -73,16 +71,15 @@ const CORNER: P = [2.76, 2.11, 0.55];
 const PORT: P = [2.76, 1.3, 0.55];
 
 export function RobotGraphic({
-  state = "idle",
+  state,
   accent,
   className,
 }: {
-  state?: RobotState;
+  state: RobotState;
   accent?: LogoAccent;
   className?: string;
 }) {
   const live = state === "connected";
-  const cable = state === "reaching" || live;
   const ink =
     accent?.hue !== undefined
       ? ({
@@ -137,18 +134,16 @@ export function RobotGraphic({
         )}
       </Box>
 
-      {cable && (
-        <g stroke={INK} strokeWidth="2.5">
-          <Path
-            points={[HAND, CORNER]}
-            className={cn(!live && "iso-robot-cable-a")}
-          />
-          <Path
-            points={[CORNER, PORT]}
-            className={cn(!live && "iso-robot-cable-b")}
-          />
-        </g>
-      )}
+      <g stroke={INK} strokeWidth="2.5">
+        <Path
+          points={[HAND, CORNER]}
+          className={cn(!live && "iso-robot-cable-a")}
+        />
+        <Path
+          points={[CORNER, PORT]}
+          className={cn(!live && "iso-robot-cable-b")}
+        />
+      </g>
 
       <Box {...BODY} tone={shell}>
         <FaceRect
@@ -164,18 +159,13 @@ export function RobotGraphic({
           u={[0.33, 0.45]}
           v={[0.45, 0.6]}
           fill={lit}
-          className={cn(state === "key" && "iso-blink")}
         />
       </Box>
       <Box {...ARM} tone={shell} />
       <Box at={[0.5, 2, 1]} size={[0.2, 0.2, 0.15]} tone={shell} />
       <Box {...HEAD} tone={shell}>
         <Decal face="left" at={[0, 2.6, 2]}>
-          <g
-            fill={lit}
-            stroke="none"
-            className={cn(state === "idle" && "iso-robot-eyes")}
-          >
+          <g fill={lit} stroke="none">
             <circle cx={headW * 0.3} cy={headH * 0.45} r={6} />
             <circle cx={headW * 0.7} cy={headH * 0.45} r={6} />
           </g>
@@ -189,29 +179,7 @@ export function RobotGraphic({
         stroke="var(--ring)"
         strokeWidth="2.5"
       />
-      <Box
-        at={[0.5, 2, 2.35]}
-        size={[0.2, 0.2, 0.2]}
-        tone={tone(lit)}
-        className={cn(
-          state === "idle" && "iso-robot-antenna",
-          state === "key" && "iso-robot-blip",
-        )}
-      />
-
-      {state === "key" && (
-        <Decal face="left" at={[HAND[0], 2.22, HAND[2]]}>
-          <g
-            stroke={INK}
-            strokeWidth="2.5"
-            strokeLinecap="round"
-            className="iso-robot-key"
-          >
-            <circle cx={7} cy={0} r={7} />
-            <path d="M14 0h18M26 0v8" />
-          </g>
-        </Decal>
-      )}
+      <Box at={[0.5, 2, 2.35]} size={[0.2, 0.2, 0.2]} tone={tone(lit)} />
     </IsoArt>
   );
 }

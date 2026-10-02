@@ -10,10 +10,8 @@ import { TOKEN_PRESETS } from "@/lib/token-presets";
 import type { Capability } from "@/lib/types/identity";
 import type { ScopeTreeTeam } from "@/lib/data/tokens/scope-tree";
 import { AGENTS, type AgentId } from "../agents";
-import { RobotGraphic, type RobotState } from "../robot-graphic";
-import { ConfettiBurst } from "@/components/shared/confetti-burst";
 import { UnsavedChangesGuard } from "@/components/apps/unsaved-changes-guard";
-import { type McpToolSummary } from "../tools-dialog";
+import type { McpToolSummary } from "../tool-catalog";
 import { POLL_LIMIT, POLL_MS, probe } from "./connection-probe";
 import { AgentStep } from "./agent-picker";
 import { ConnectStep } from "./connect-step";
@@ -42,7 +40,6 @@ export function ConnectWizard({
   tree,
   tools,
   connectionCount,
-  overlay,
 }: {
   mcpEnabled: boolean;
   canConnect: boolean;
@@ -51,7 +48,6 @@ export function ConnectWizard({
   tree: ScopeTreeTeam[];
   tools: McpToolSummary[];
   connectionCount: number;
-  overlay?: React.ReactNode;
 }) {
   const router = useRouter();
   const host = publicUrl.replace(/\/+$/, "") || "https://your-deplo-host";
@@ -70,7 +66,6 @@ export function ConnectWizard({
       tree={tree}
       tools={tools}
       connectionCount={connectionCount}
-      overlay={overlay}
       onRestart={() => setRunId((n) => n + 1)}
       onRefresh={() => router.refresh()}
     />
@@ -86,7 +81,6 @@ function WizardRun({
   tree,
   tools,
   connectionCount,
-  overlay,
   onRestart,
   onRefresh,
 }: {
@@ -98,7 +92,6 @@ function WizardRun({
   tree: ScopeTreeTeam[];
   tools: McpToolSummary[];
   connectionCount: number;
-  overlay?: React.ReactNode;
   onRestart: () => void;
   onRefresh: () => void;
 }) {
@@ -253,36 +246,14 @@ function WizardRun({
     onRefresh();
   }
 
-  const robot: RobotState = connected
-    ? "connected"
-    : step === "done" || step === "connect"
-      ? "reaching"
-      : step === "permissions"
-        ? "key"
-        : "idle";
-
   if (step === "done" && agent)
     return (
       <DoneStep agent={agent} connected={connected} onRestart={onRestart} />
     );
 
   return (
-    <div className="grid gap-8 xl:grid-cols-[minmax(0,1fr)_clamp(24rem,30vw,36rem)] xl:gap-12">
-      <div className="relative order-first flex justify-center xl:sticky xl:top-24 xl:order-last xl:self-start">
-        <RobotGraphic
-          state={robot}
-          accent={agent?.veil}
-          className="h-auto w-52 xl:w-[92%]"
-        />
-        {connected && <ConfettiBurst className="top-28" />}
-        {overlay && (
-          <div className="absolute top-0 right-0 xl:top-2 xl:right-2">
-            {overlay}
-          </div>
-        )}
-      </div>
-
-      <div className="max-w-xl min-w-0 space-y-6">
+    <div className="max-w-3xl">
+      <div className="space-y-6">
         <WizardStepper
           steps={steps.map((id) => ({ id, label: STEP_LABEL[id] }))}
           current={step}

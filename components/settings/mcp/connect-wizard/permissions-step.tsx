@@ -18,7 +18,8 @@ import { presetIdFor, TOKEN_PRESETS } from "@/lib/token-presets";
 import type { Capability } from "@/lib/types/identity";
 import type { ScopeTreeTeam } from "@/lib/data/tokens/scope-tree";
 import type { AgentDef } from "../agents";
-import { ToolsDialog, type McpToolSummary } from "../tools-dialog";
+import { ToolsDialog } from "../tools-dialog";
+import type { McpToolSummary } from "../tool-catalog";
 import { StepShell } from "./step-shell";
 
 export function PermissionsStep({
