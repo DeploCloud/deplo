@@ -18,7 +18,7 @@ import type { DeploySource } from "@/lib/types/app";
 
 import { ComposeSummary } from "./compose-summary";
 import { detailsDescription, templateTitle } from "./source-hints";
-import { TemplateAlerts } from "./template-alerts";
+import { templateAlert, WizardAlerts, type WizardAlert } from "./wizard-alerts";
 import type { WizardTemplate } from "./types";
 
 export function DetailsStep({
@@ -68,6 +68,24 @@ export function DetailsStep({
   hasServers: boolean;
   advanced: React.ReactNode;
 }) {
+  const alerts: WizardAlert[] = [
+    ...(isTemplate ? template!.alerts.map(templateAlert) : []),
+    ...(useCompose && needsHostAccess(composeDiags)
+      ? [
+          {
+            type: "warning" as const,
+            icon: ShieldAlert,
+            content: (
+              <>
+                This stack reaches the server itself, so it needs the host
+                access permission. <DocsLink topic="hostAccess.gated" />
+              </>
+            ),
+          },
+        ]
+      : []),
+  ];
+
   return (
     <WizardCard
       title={
@@ -113,8 +131,6 @@ export function DetailsStep({
         </div>
       )}
 
-      {isTemplate && <TemplateAlerts alerts={template!.alerts} />}
-
       {useCompose && (!isTemplate || template!.imported) && (
         <ComposeSummary
           services={composeServices}
@@ -123,15 +139,7 @@ export function DetailsStep({
         />
       )}
 
-      {useCompose && needsHostAccess(composeDiags) && (
-        <div className="flex items-start gap-2 rounded-lg border border-warning/40 bg-warning-wash-strong px-3.5 py-2.5 text-sm text-warning">
-          <ShieldAlert className="mt-0.5 size-4 shrink-0" />
-          <p className="min-w-0">
-            This stack reaches the server itself, so it needs the host access
-            permission. <DocsLink topic="hostAccess.gated" />
-          </p>
-        </div>
-      )}
+      <WizardAlerts alerts={alerts} />
 
       {useCompose && routeCandidates.length > 1 && (
         <ComposeDomainPicker
