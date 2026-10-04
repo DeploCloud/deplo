@@ -1,65 +1,94 @@
 import "server-only";
 
-import { resolve4 } from "node:dns/promises";
 import { eq } from "drizzle-orm";
 
 import { getDb } from "../../db/client";
 import { apps as appsTable } from "../../db/schema/control-plane/apps";
 import { domains as domainsTable } from "../../db/schema/control-plane/domains";
 import { dispatchAlert } from "../../notify/dispatch";
-import { resolveServerIp } from "../../deploy/domains";
 import {
-  classifyDomainDns,
+  classifyDnsRecords,
   certProviderForDns,
   isRoutableDomain,
+  type DnsTargets,
   type DomainDnsClass,
+  type StrayRecord,
 } from "../../deploy/cloudflare";
 import { loadDomain, loadAppGraph } from "../app-graph-load";
-import { requireAppCapability } from "../node-access";
+import { hasAppCapability, requireAppCapability } from "../node-access";
 import { getServerById } from "../servers/roster";
+import { serverAddresses } from "../servers/addresses";
 import type { Domain } from "../../types/domain";
 import { syncProductionUrl } from "./primary-domain";
+import { resolveHostIpv4, resolveHostIpv6 } from "./dns-resolve";
 
-let dnsResolve4: (name: string) => Promise<string[]> = resolve4;
+export {
+  __resetDnsResolve4ForTest,
+  __setDnsResolve4ForTest,
+  __setDnsResolve6ForTest,
+  resolveHostIpv4,
+} from "./dns-resolve";
 
-export function __setDnsResolve4ForTest(
-  fn: (name: string) => Promise<string[]>,
-): void {
-  dnsResolve4 = fn;
-}
-
-export function __resetDnsResolve4ForTest(): void {
-  dnsResolve4 = resolve4;
-}
-
-export async function resolveHostIpv4(name: string): Promise<string[]> {
-  try {
-    return await dnsResolve4(name);
-  } catch {
-    return [];
-  }
-}
-
-export async function appServerIp(appId: string): Promise<string> {
+export async function appServerAddresses(appId: string): Promise<DnsTargets> {
   const project = await loadAppGraph(appId);
   const server = project?.serverId
     ? await getServerById(project.serverId)
     : null;
-  return resolveServerIp(server ?? undefined);
+  return serverAddresses(server);
+}
+
+export interface DomainDnsCheck {
+  status: "pending" | DomainDnsClass;
+  stray: StrayRecord | null;
+}
+
+export async function inspectDomainDns(
+  name: string,
+  targets: DnsTargets,
+): Promise<DomainDnsCheck> {
+  const [a, aaaa] = await Promise.all([
+    resolveHostIpv4(name),
+    resolveHostIpv6(name),
+  ]);
+  if (a.length === 0 && aaaa.length === 0)
+    return { status: "pending", stray: null };
+  return classifyDnsRecords({ a, aaaa }, targets);
 }
 
 export async function checkDomainDns(
   name: string,
-  target: string,
+  targets: DnsTargets,
 ): Promise<"pending" | DomainDnsClass> {
-  let ips: string[] = [];
-  try {
-    ips = await dnsResolve4(name);
-  } catch {
-    ips = [];
-  }
-  if (ips.length === 0) return "pending";
-  return classifyDomainDns(ips, target);
+  return (await inspectDomainDns(name, targets)).status;
+}
+
+export interface DomainDnsHints {
+  serverIpv6: string | null;
+  strays: Record<string, StrayRecord>;
+}
+
+// Read live for the rows that show a DNS problem: the IPv6 to point an AAAA at, and the record that is wrong.
+export async function domainDnsHints(
+  appId: string,
+  domains: Pick<Domain, "id" | "name" | "status" | "proxied">[],
+): Promise<DomainDnsHints> {
+  const open = domains.filter(
+    (d) =>
+      !d.proxied && (d.status === "misconfigured" || d.status === "pending"),
+  );
+  if (open.length === 0 || !(await hasAppCapability(appId, "view")))
+    return { serverIpv6: null, strays: {} };
+  const targets = await appServerAddresses(appId);
+  const strays: Record<string, StrayRecord> = {};
+  await Promise.all(
+    open
+      .filter((d) => d.status === "misconfigured")
+      .map(async (d) => {
+        const { stray } = await inspectDomainDns(d.name, targets);
+        if (stray) strays[d.id] = stray;
+      }),
+  );
+  return { serverIpv6: targets.v6[0] ?? null, strays };
 }
 
 export async function verifyDomain(
@@ -69,8 +98,10 @@ export async function verifyDomain(
   if (!dom) throw new Error("Not found");
   await requireAppCapability(dom.appId, "manage_domains");
 
-  const target = await appServerIp(dom.appId);
-  const status = await checkDomainDns(dom.name, target);
+  const status = await checkDomainDns(
+    dom.name,
+    await appServerAddresses(dom.appId),
+  );
   const ssl = isRoutableDomain({ status, proxied: dom.proxied });
   const certProvider = certProviderForDns(status, dom.certProvider);
   const providerChanged = certProvider !== dom.certProvider;
@@ -103,12 +134,15 @@ export async function sweepDomainDns(): Promise<void> {
     .innerJoin(appsTable, eq(appsTable.id, domainsTable.appId))
     .where(eq(domainsTable.status, "valid"));
 
+  const targets = new Map<string, Promise<DnsTargets>>();
   for (const row of rows) {
     if (row.proxied) continue;
     try {
-      const status = await checkDomainDns(
+      if (!targets.has(row.appId))
+        targets.set(row.appId, appServerAddresses(row.appId));
+      const { status, stray } = await inspectDomainDns(
         row.name,
-        await appServerIp(row.appId),
+        await targets.get(row.appId)!,
       );
       if (status === "valid") continue;
       await db
@@ -123,7 +157,9 @@ export async function sweepDomainDns(): Promise<void> {
         body:
           status === "pending"
             ? "It stopped resolving. Traffic and certificate renewals will fail."
-            : `Its DNS now answers with an address that is not ${row.appName}'s server.`,
+            : stray
+              ? `Its ${stray.type} record now points at ${stray.address}, not ${row.appName}'s server.`
+              : `Its DNS now answers with an address that is not ${row.appName}'s server.`,
         path: `/apps/${row.slug}`,
       });
     } catch (e) {

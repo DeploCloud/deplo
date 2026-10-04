@@ -98,13 +98,52 @@ export function isCloudflareIp(ip: string): boolean {
 
 export type DomainDnsClass = "valid" | "cloudflare" | "misconfigured";
 
-export function classifyDomainDns(
-  resolvedIps: string[],
-  target: string,
-): DomainDnsClass {
-  if (resolvedIps.includes(target)) return "valid";
-  if (resolvedIps.some(isCloudflareIp)) return "cloudflare";
-  return "misconfigured";
+export interface DnsAnswers {
+  a: string[];
+  aaaa: string[];
+}
+
+// v6Known: `v6` is every IPv6 the server has, so an AAAA outside it is somebody else's.
+export interface DnsTargets {
+  v4: string[];
+  v6: string[];
+  v6Known: boolean;
+}
+
+export interface StrayRecord {
+  type: "A" | "AAAA";
+  address: string;
+}
+
+export interface DnsVerdict {
+  status: DomainDnsClass;
+  stray: StrayRecord | null;
+}
+
+// Let's Encrypt checks over IPv6 whenever an AAAA exists, so a right A beside a wrong AAAA still fails.
+export function classifyDnsRecords(
+  answers: DnsAnswers,
+  targets: DnsTargets,
+): DnsVerdict {
+  const hit =
+    answers.a.some((ip) => targets.v4.includes(ip)) ||
+    answers.aaaa.some((ip) => targets.v6.includes(ip));
+  const strayAaaa = targets.v6Known
+    ? answers.aaaa.find((ip) => !targets.v6.includes(ip) && !isCloudflareIp(ip))
+    : undefined;
+  const strayA =
+    targets.v4.length > 0 && !answers.a.some((ip) => targets.v4.includes(ip))
+      ? answers.a.find((ip) => !isCloudflareIp(ip))
+      : undefined;
+  const stray: StrayRecord | null = strayAaaa
+    ? { type: "AAAA", address: strayAaaa }
+    : strayA
+      ? { type: "A", address: strayA }
+      : null;
+  if (hit && !stray) return { status: "valid", stray: null };
+  if (!hit && [...answers.a, ...answers.aaaa].some(isCloudflareIp))
+    return { status: "cloudflare", stray: null };
+  return { status: "misconfigured", stray };
 }
 
 export interface DomainReach {

@@ -47,6 +47,14 @@ test("agent server cert chains to the CA and carries its hosts as SANs", async (
   assert.match(leaf.subjectAltName ?? "", /127\.0\.0\.1/);
 });
 
+test("an IPv6 host is an IP name on the cert, in any spelling, never a DNS one", async () => {
+  const bundle = await issueAgentServerCert(["[2001:0db8::1]", "srv.example"]);
+  const leaf = new X509Certificate(bundle.certPem);
+  assert.equal(leaf.checkIP("2001:db8::1"), "2001:db8::1");
+  assert.doesNotMatch(leaf.subjectAltName ?? "", /DNS:\[?2001/i);
+  assert.match(leaf.subjectAltName ?? "", /DNS:srv\.example/);
+});
+
 test("control-plane client cert chains to the same CA", async () => {
   const bundle = await issueControlPlaneClientCert();
   const ca = new X509Certificate(bundle.caPem);

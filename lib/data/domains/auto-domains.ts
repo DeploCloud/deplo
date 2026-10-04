@@ -30,26 +30,27 @@ import {
   normalizePreferredHost,
   uniqueAutoDomainName,
 } from "./hostname-claim";
-import { checkDomainDns } from "./dns-check";
+import { appServerAddresses, checkDomainDns } from "./dns-check";
 import { composeServiceNames, normalizePath } from "./route-config";
 
 export async function ensureAutoDomain(
   appId: string,
   opts: {
     slug: string;
-    ip: string;
+    ip: string | null;
     preferred?: string;
     defaultPort: number;
     defaultApp?: string | null;
     certProvider?: CertProvider;
     preferredPath?: string;
   },
-): Promise<string> {
+): Promise<string | null> {
   const existing = await loadDomainsForApp(appId);
   const primary = existing.find((d) => d.primary) ?? existing[0];
   if (primary) {
     if (
       primary.source === "auto" &&
+      opts.ip &&
       isIpv4(opts.ip) &&
       !isLoopbackIp(opts.ip)
     ) {
@@ -87,14 +88,16 @@ export async function ensureAutoDomain(
     if (owner)
       await assertHostnameNotAnotherTeams(preferred!, owner.teamId, null);
     name = preferred!;
-  } else {
+  } else if (opts.ip) {
     name = await uniqueAutoDomainName(opts.slug, opts.ip);
+  } else {
+    return null;
   }
   const pathPrefix = name === preferred ? preferredPath : "";
   const status =
     wildcardEmbeddedIp(name) != null
       ? ("valid" as const)
-      : await checkDomainDns(name, opts.ip);
+      : await checkDomainDns(name, await appServerAddresses(appId));
   // An absent provider reads as letsencrypt at the deploy edge, so the born-without-a-cert default is written.
   const certProvider = certProviderForDns(status, opts.certProvider ?? "none");
   const domain: Domain = {
@@ -123,7 +126,7 @@ export async function ensureExtraDomain(
     port: number;
     service?: string | null;
     slug: string;
-    ip: string;
+    ip: string | null;
     certProvider?: CertProvider;
     pathPrefix?: string;
   },
@@ -155,15 +158,17 @@ export async function ensureExtraDomain(
     )
   )
     return;
-  const name =
+  const usable =
     wanted &&
     !isPanelHost(wanted) &&
-    !(await domainNameExists(wanted, pathPrefix))
-      ? wanted
-      : await uniqueAutoDomainName(
-          route.service ? `${route.slug}-${route.service}` : route.slug,
-          route.ip,
-        );
+    !(await domainNameExists(wanted, pathPrefix));
+  if (!usable && !route.ip) return;
+  const name = usable
+    ? wanted
+    : await uniqueAutoDomainName(
+        route.service ? `${route.slug}-${route.service}` : route.slug,
+        route.ip!,
+      );
   const certProvider = route.certProvider ?? "none";
   const domain: Domain = {
     id: newId("dom"),

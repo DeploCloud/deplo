@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 import { getAppBySlug } from "@/lib/data/apps/listing";
 import { serverIpForApp } from "@/lib/data/servers/roster";
 import { listDomains } from "@/lib/data/domains/crud";
+import { domainDnsHints } from "@/lib/data/domains/dns-check";
 import { productionDomain } from "@/lib/deploy/domains";
 import { isRoutableDomain } from "@/lib/deploy/cloudflare";
 import { composeServiceNames } from "@/lib/deploy/compose-stack/compose-read";
@@ -38,7 +39,10 @@ export default async function AppDomainsPage(
     listDomains(project.id),
     serverIpForApp(project.id),
   ]);
-  const suggestedDomain = productionDomain(project.slug, serverIp);
+  const hints = await domainDnsHints(project.id, domains);
+  const suggestedDomain = serverIp
+    ? productionDomain(project.slug, serverIp)
+    : undefined;
   const isComposeStack = usesComposeStack(project);
   const containerCount = isComposeStack
     ? composeServiceNames(project.compose).length
@@ -66,6 +70,12 @@ export default async function AppDomainsPage(
             <p className="mt-1 text-sm text-muted-foreground">
               Custom domains routed to this app with automatic TLS.
             </p>
+            {!serverIp && (
+              <p className="mt-1 text-sm text-muted-foreground">
+                No generated address here: Deplo doesn’t know this server’s IPv4
+                address.
+              </p>
+            )}
           </div>
           <AddDomain
             project={{
@@ -81,7 +91,11 @@ export default async function AppDomainsPage(
         <ImportedDomainsNotice appId={project.id} domains={importedDomains} />
 
         {unsettledDomains.length > 0 && (
-          <DomainDnsAutoCheck domains={unsettledDomains} serverIp={serverIp} />
+          <DomainDnsAutoCheck
+            domains={unsettledDomains}
+            serverIp={serverIp}
+            serverIpv6={hints.serverIpv6}
+          />
         )}
 
         <PendingList
@@ -114,6 +128,8 @@ export default async function AppDomainsPage(
                   isCompose={isComposeStack}
                   showContainer={showContainer}
                   serverIp={serverIp}
+                  serverIpv6={hints.serverIpv6}
+                  strays={hints.strays}
                 />
                 <PendingRows columns={showContainer ? 4 : 3} />
               </TableBody>

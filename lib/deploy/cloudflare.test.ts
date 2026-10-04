@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 
 import {
   isCloudflareIp,
-  classifyDomainDns,
+  classifyDnsRecords,
   certProviderForDns,
   isProxiedDomain,
   isRoutableDomain,
@@ -85,28 +85,65 @@ test("isCloudflareIp: false for non-Cloudflare IPv6", () => {
   }
 });
 
-test("classifyDomainDns: a direct A record to the server is valid", () => {
-  assert.equal(classifyDomainDns(["5.6.7.8"], "5.6.7.8"), "valid");
+const SERVER = { v4: ["5.6.7.8"], v6: ["2001:db8::1"], v6Known: true };
+const V6_UNKNOWN = { v4: ["5.6.7.8"], v6: [], v6Known: false };
+const status = (a: string[], aaaa: string[] = [], t = SERVER) =>
+  classifyDnsRecords({ a, aaaa }, t).status;
+
+test("classifyDnsRecords: a direct A record to the server is valid", () => {
+  assert.equal(status(["5.6.7.8"]), "valid");
 });
 
-test("classifyDomainDns: Cloudflare edge IPs (origin masked) are cloudflare, not misconfigured", () => {
-  assert.equal(classifyDomainDns(["104.16.5.5"], "5.6.7.8"), "cloudflare");
-  assert.equal(
-    classifyDomainDns(["104.16.5.5", "172.64.1.1"], "5.6.7.8"),
-    "cloudflare",
+test("classifyDnsRecords: Cloudflare edge IPs (origin masked) are cloudflare, not misconfigured", () => {
+  assert.equal(status(["104.16.5.5"]), "cloudflare");
+  assert.equal(status(["104.16.5.5", "172.64.1.1"]), "cloudflare");
+  assert.equal(status(["104.16.5.5"], ["2606:4700::6810:1"]), "cloudflare");
+});
+
+test("classifyDnsRecords: a direct hit wins even alongside a Cloudflare IP", () => {
+  assert.equal(status(["5.6.7.8", "104.16.5.5"]), "valid");
+});
+
+test("classifyDnsRecords: an unrelated IP or no record is misconfigured, and names the record", () => {
+  assert.deepEqual(classifyDnsRecords({ a: ["9.9.9.9"], aaaa: [] }, SERVER), {
+    status: "misconfigured",
+    stray: { type: "A", address: "9.9.9.9" },
+  });
+  assert.equal(status([]), "misconfigured");
+});
+
+test("classifyDnsRecords: an AAAA here with no A is valid", () => {
+  assert.equal(status([], ["2001:db8::1"]), "valid");
+});
+
+test("classifyDnsRecords: a right A beside an AAAA elsewhere is misconfigured, naming the AAAA", () => {
+  assert.deepEqual(
+    classifyDnsRecords({ a: ["5.6.7.8"], aaaa: ["2001:db8::99"] }, SERVER),
+    {
+      status: "misconfigured",
+      stray: { type: "AAAA", address: "2001:db8::99" },
+    },
   );
 });
 
-test("classifyDomainDns: a direct hit wins even alongside a Cloudflare IP", () => {
-  assert.equal(
-    classifyDomainDns(["5.6.7.8", "104.16.5.5"], "5.6.7.8"),
-    "valid",
+test("classifyDnsRecords: an AAAA is not judged while the server's IPv6 is unknown", () => {
+  assert.equal(status(["5.6.7.8"], ["2001:db8::99"], V6_UNKNOWN), "valid");
+});
+
+test("classifyDnsRecords: an AAAA here beside an A elsewhere is misconfigured, naming the A", () => {
+  assert.deepEqual(
+    classifyDnsRecords({ a: ["9.9.9.9"], aaaa: ["2001:db8::1"] }, SERVER).stray,
+    { type: "A", address: "9.9.9.9" },
   );
 });
 
-test("classifyDomainDns: an unrelated IP or no record is misconfigured", () => {
-  assert.equal(classifyDomainDns(["9.9.9.9"], "5.6.7.8"), "misconfigured");
-  assert.equal(classifyDomainDns([], "5.6.7.8"), "misconfigured");
+test("classifyDnsRecords: with no known IPv4, an A record is not judged either way", () => {
+  const v6Only = { v4: [], v6: ["2001:db8::1"], v6Known: true };
+  assert.equal(status(["9.9.9.9"], ["2001:db8::1"], v6Only), "valid");
+  assert.deepEqual(classifyDnsRecords({ a: ["9.9.9.9"], aaaa: [] }, v6Only), {
+    status: "misconfigured",
+    stray: null,
+  });
 });
 
 test("certProviderForDns: a proxied, cert-less domain moves onto cloudflare", () => {

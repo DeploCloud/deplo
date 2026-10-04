@@ -25,6 +25,7 @@ import {
 import { DB_NAMES, ENGINE_CREDS } from "@/components/storage/db-engines";
 import { timeAgoShort } from "@/lib/utils";
 import type { DatabaseDTO } from "@/lib/data/databases/rows";
+import { formatHostPort } from "@/lib/host-address";
 import {
   EnvironmentCombobox,
   NO_ENVIRONMENT,
@@ -55,7 +56,7 @@ export function DatabaseConnectionCard({
   const internal = `${db.host}:${db.port}`;
   const published =
     db.exposedPublicly && db.exposedPort && serverHost
-      ? `${serverHost}:${db.exposedPort}`
+      ? formatHostPort(serverHost, db.exposedPort)
       : null;
 
   return (

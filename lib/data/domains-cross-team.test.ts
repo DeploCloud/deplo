@@ -156,7 +156,7 @@ test("the SAME path on the same hostname is not handed out twice", async () => {
     }),
   );
   assert.notEqual(name, HOST);
-  assert.match(name, /\.deplo\.site$/);
+  assert.match(name!, /\.deplo\.site$/);
 });
 
 test("a hostname another team serves is still not claimed by an import", async () => {

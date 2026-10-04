@@ -11,6 +11,7 @@ import {
 import { hash6 } from "./routing";
 import type { CertProvider, DomainEntrypoint } from "../types/domain";
 import { publicBaseUrl } from "../public-url";
+import { canonicalHost } from "../host-address";
 
 const IPV4_RE = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/;
 
@@ -41,6 +42,16 @@ function allNicIpv4(): string[] {
       }
     }
   }
+  return addrs;
+}
+
+// Global IPv6 only: a link-local fe80:: is on every machine and says nothing about which one this is.
+function allNicIpv6(): string[] {
+  const addrs: string[] = [];
+  for (const list of Object.values(networkInterfaces()))
+    for (const a of list ?? [])
+      if (!a.internal && "scopeid" in a && a.scopeid === 0)
+        addrs.push(a.address);
   return addrs;
 }
 
@@ -132,7 +143,7 @@ let selfAddresses: { at: number; key: string; value: Set<string> } | null =
 function computeSelfAddresses(): Set<string> {
   const addrs = new Set<string>();
   const add = (v?: string | null) => {
-    const s = v?.trim().toLowerCase();
+    const s = canonicalHost(v);
     if (s) addrs.add(s);
   };
   add(process.env.DEPLO_SERVER_IP);
@@ -143,6 +154,7 @@ function computeSelfAddresses(): Set<string> {
     } catch {}
   }
   for (const nic of allNicIpv4()) add(nic);
+  for (const nic of allNicIpv6()) add(nic);
   const gateway = sameMachineHost();
   if (gateway !== "127.0.0.1") add(gateway);
   return addrs;
@@ -153,8 +165,8 @@ export function isDeploHostServer(
   self: ReadonlySet<string> = deploHostSelfAddresses(),
 ): boolean {
   if (self.size === 0) return false;
-  const ip = server.ip?.trim().toLowerCase();
-  const host = server.host?.trim().toLowerCase();
+  const ip = canonicalHost(server.ip);
+  const host = canonicalHost(server.host);
   return (!!ip && self.has(ip)) || (!!host && self.has(host));
 }
 
@@ -234,13 +246,6 @@ export function blueprintWantsTls(
   });
 }
 
-export function resolveServerIp(server?: { ip?: string }): string {
-  if (server?.ip && isIpv4(server.ip) && !isLoopbackIp(server.ip)) {
-    return server.ip;
-  }
-  return instanceHost();
-}
-
 export function ipToHex(ip: string): string {
   return ip
     .trim()
@@ -316,11 +321,22 @@ export interface BlueprintHosts {
 export function rehostBlueprintHosts<T extends BlueprintHosts>(
   input: T,
   fromIp: string,
-  toIp: string,
+  toIp: string | null,
 ): T {
   if (fromIp === toIp) return input;
+  const minted = (host: string) => wildcardEmbeddedIp(host) === fromIp;
+  // A target with no known IPv4 cannot have a generated name; keeping this one would route to the wrong machine.
+  if (toIp === null)
+    return {
+      ...input,
+      autoDomain:
+        input.autoDomain && minted(input.autoDomain) ? null : input.autoDomain,
+      extraDomains: input.extraDomains
+        ? input.extraDomains.filter((e) => !minted(e.host))
+        : input.extraDomains,
+    };
   const rehostHost = (host: string): string =>
-    wildcardEmbeddedIp(host) === fromIp ? rehostWildcard(host, toIp) : host;
+    minted(host) ? rehostWildcard(host, toIp) : host;
   return {
     ...input,
     autoDomain: input.autoDomain

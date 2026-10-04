@@ -559,7 +559,7 @@ test("ensureAutoDomain regenerates when its `preferred` host belongs to another 
     }),
   );
   assert.notEqual(yName, preferred, "Y regenerated rather than colliding");
-  assert.equal(wildcardEmbeddedIp(yName), IP);
+  assert.equal(wildcardEmbeddedIp(yName!), IP);
 });
 
 test("a path row on an already-verified hostname inherits its DNS status (and routes)", async () => {
@@ -570,7 +570,7 @@ test("a path row on an already-verified hostname inherits its DNS status (and ro
       ip: "1.2.3.4",
       defaultPort: 80,
     });
-    const api = await addDomain("prj_1", auto, {
+    const api = await addDomain("prj_1", auto!, {
       port: 8080,
       pathPrefix: "/api",
       stripPrefix: true,

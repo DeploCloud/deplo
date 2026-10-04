@@ -27,6 +27,7 @@ import { TakeoverPreflight } from "@/components/takeover/takeover-preflight";
 import { SOURCE_COPY } from "@/components/settings/migrations/sources";
 import { DeploLogo } from "@/components/logo";
 import { AuthChrome } from "@/components/auth/auth-chrome";
+import { formatHostPort } from "@/lib/host-address";
 
 export const metadata = { title: "Take over this machine" };
 
@@ -121,7 +122,7 @@ function Screen({
 
 function takeoverSourceUrl(platform: "dokploy" | "coolify"): string {
   const ip = process.env.DEPLO_SERVER_IP?.trim() || "127.0.0.1";
-  return `http://${ip}:${platform === "coolify" ? 8000 : 3000}`;
+  return `http://${formatHostPort(ip, platform === "coolify" ? 8000 : 3000)}`;
 }
 
 function finalPanelUrl(): string {

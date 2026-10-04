@@ -18,10 +18,16 @@ export interface UnsettledDomain {
 export function DomainDnsAutoCheck({
   domains,
   serverIp,
+  serverIpv6,
 }: {
   domains: UnsettledDomain[];
-  serverIp?: string;
+  serverIp?: string | null;
+  serverIpv6?: string | null;
 }) {
+  const records = [
+    serverIp ? { type: "A", ip: serverIp } : null,
+    serverIpv6 ? { type: "AAAA", ip: serverIpv6 } : null,
+  ].filter((r) => r !== null);
   const router = useRouter();
   const canVerify = useAppCan("manage_domains");
   const [checking, setChecking] = React.useState(false);
@@ -113,13 +119,19 @@ export function DomainDnsAutoCheck({
         </p>
         <p className="text-muted-foreground">
           A domain starts routing once its DNS points at this server
-          {serverIp ? (
+          {records.length > 0 ? (
             <>
               {" "}
-              (A record →{" "}
-              <code className="rounded bg-muted px-1 py-0.5 font-mono text-foreground">
-                {serverIp}
-              </code>
+              (
+              {records.map((r, i) => (
+                <React.Fragment key={r.type}>
+                  {i > 0 ? ", " : null}
+                  {r.type} record →{" "}
+                  <code className="rounded bg-muted px-1 py-0.5 font-mono text-foreground">
+                    {r.ip}
+                  </code>
+                </React.Fragment>
+              ))}
               )
             </>
           ) : null}

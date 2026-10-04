@@ -32,6 +32,7 @@ import {
 } from "@/lib/username";
 import { MAX_AVATAR_STRING_LEN } from "@/lib/apps/avatar-shared";
 import { rateLimit } from "@/lib/security";
+import { clientKeyAddress } from "@/lib/host-address";
 import { noteFailedLogin } from "@/lib/notify/security";
 import { sha256Hex } from "@/lib/crypto";
 import { eq } from "drizzle-orm";
@@ -45,7 +46,7 @@ async function clientKey(scope: string): Promise<string> {
     h.get("x-forwarded-for")?.split(",")[0]?.trim() ||
     h.get("x-real-ip") ||
     "local";
-  return `${scope}:${ip}`;
+  return `${scope}:${clientKeyAddress(ip)}`;
 }
 
 async function pendingLoginKey(): Promise<
@@ -334,7 +335,11 @@ builder.mutationFields((t) => ({
         h.get("x-real-ip") ||
         "local";
       const limited = await checkLimits([
-        { key: `register:ip:${ip}`, limit: 10, windowMs: 60_000 },
+        {
+          key: `register:ip:${clientKeyAddress(ip)}`,
+          limit: 10,
+          windowMs: 60_000,
+        },
         {
           key: `register:token:${parsed.data.token.slice(0, 12)}`,
           limit: 8,

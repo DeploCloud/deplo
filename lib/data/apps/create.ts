@@ -53,8 +53,8 @@ import {
   instanceHost,
   productionDomain,
   rehostBlueprintHosts,
-  resolveServerIp,
 } from "../../deploy/domains";
+import { serverIpv4 } from "../servers/addresses";
 import { isValidLogoValue } from "../../apps/logo-shared";
 import { logoToneFromDataUri } from "../../apps/logo-tone";
 import { getTemplateBlueprint } from "../../templates-blueprint";
@@ -297,7 +297,7 @@ export async function createApp(input: CreateAppInput): Promise<AppSummary> {
     if (problem) throw new Error(problem);
   }
 
-  const serverIp = resolveServerIp(server);
+  const serverIp = await serverIpv4(server);
   const hosts = rehostBlueprintHosts(
     {
       autoDomain: input.autoDomain,
@@ -487,7 +487,7 @@ export async function createApp(input: CreateAppInput): Promise<AppSummary> {
     await recordActivity("app", note, user.name, project.id);
   await syncAppWebhook(project.repo).catch(() => {});
 
-  const ip = resolveServerIp(server);
+  const ip = serverIp;
   const namedPort =
     input.composeService && input.compose
       ? composeServicePort(input.compose, input.composeService)

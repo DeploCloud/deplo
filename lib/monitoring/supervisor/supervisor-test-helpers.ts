@@ -125,6 +125,7 @@ export function hello(over: Partial<HelloResponse> = {}): HelloResponse {
     capabilities: ["metrics-stream", "container-stats"],
     traefikRunning: true,
     hostArch: "amd64",
+    publicAddresses: [],
     ...over,
   };
 }

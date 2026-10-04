@@ -8,6 +8,7 @@ import { getMcpSettings } from "@/lib/data/mcp-settings";
 import { listMcpTeams } from "@/lib/data/mcp-clients";
 import type { GraphQLContext } from "@/lib/graphql/context";
 import { rateLimit } from "@/lib/security";
+import { clientKeyAddress } from "@/lib/host-address";
 import {
   OAUTH_CORS_HEADERS,
   resourceMetadataUrl,
@@ -22,11 +23,11 @@ const RATE = { limit: 120, windowMs: 60_000 };
 const FAILED_AUTH_RATE = { limit: 60, windowMs: 60_000 };
 
 function callerAddress(request: Request): string {
-  return (
+  return clientKeyAddress(
     request.headers.get("cf-connecting-ip") ??
-    request.headers.get("x-real-ip") ??
-    request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ??
-    "unknown"
+      request.headers.get("x-real-ip") ??
+      request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ??
+      "unknown",
   );
 }
 

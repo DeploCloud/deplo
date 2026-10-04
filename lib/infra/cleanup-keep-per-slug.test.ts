@@ -16,6 +16,7 @@ const hello = (caps: string[]): HelloResponse => ({
   capabilities: caps,
   traefikRunning: true,
   hostArch: "amd64",
+  publicAddresses: [],
 });
 
 const req = (

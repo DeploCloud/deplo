@@ -20,7 +20,7 @@ export function CloudflareNote({ serverIp }: { serverIp?: string | null }) {
           ) : (
             "this server"
           )}
-          . Keep the A record pointed there with the proxy on.
+          . Keep its records pointed there with the proxy on.
         </p>
       </div>
     </div>

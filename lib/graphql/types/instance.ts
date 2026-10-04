@@ -227,6 +227,11 @@ const PanelDnsRef = builder.objectRef<PanelDns>("PanelDns").implement({
     status: t.exposeString("status"),
     host: t.exposeString("host"),
     resolved: t.exposeStringList("resolved"),
+    ipv6: t.exposeString("ipv6", {
+      nullable: true,
+      description:
+        "This host's public IPv6, when its server agent reports one: what an AAAA record should point at.",
+    }),
   }),
 });
 
@@ -243,7 +248,7 @@ builder.mutationFields((t) => ({
     type: PanelDnsRef,
     authScopes: { instanceAdmin: true },
     description:
-      "Resolve the panel's own hostname and classify it the way a custom domain is classified: `valid` when its A records include this host's public IPv4, `cloudflare` when they are Cloudflare's anycast addresses and the origin cannot be read from DNS, `misconfigured` when it answers with something else, `pending` when it does not resolve, and `unknown` when there is nothing to check (a bare IP, or no host address on record). A mutation despite writing nothing, for the same reason panelHttps is one: it leaves the process.",
+      "Resolve the panel's own hostname and classify it the way a custom domain is classified: `valid` when its A or AAAA records point at this host and none points elsewhere, `cloudflare` when they are Cloudflare's anycast addresses and the origin cannot be read from DNS, `misconfigured` when it answers with something else, `pending` when it does not resolve, and `unknown` when there is nothing to check (a bare IP, or no host address on record). A mutation despite writing nothing, for the same reason panelHttps is one: it leaves the process.",
     resolve: () => checkPanelDns(),
   }),
   panelHttps: t.field({

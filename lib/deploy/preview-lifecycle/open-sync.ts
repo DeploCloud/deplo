@@ -10,7 +10,8 @@ import { appPreviews as appPreviewsTable } from "../../db/schema/control-plane/d
 import { newId, nowIso } from "../../ids";
 import { publishAppChanged } from "../../graphql/pubsub";
 import { previewDeployKey } from "../deploy-key";
-import { previewHost, resolveServerIp } from "../domains";
+import { previewHost } from "../domains";
+import { serverIpv4 } from "../../data/servers/addresses";
 import { deployPreviewRow } from "./deploy";
 import { forkRefusal, type PreviewRefusal } from "./fork-guard";
 import { forkPolicyOf, previewSettings } from "./settings";
@@ -120,15 +121,19 @@ export async function openOrSyncPreview(
         await stopPreview(existing, "blocked");
       }
     } else {
-      const server =
-        (await getServerById(settings.serverId ?? app.serverId)) ?? undefined;
+      const server = await getServerById(settings.serverId ?? app.serverId);
+      const ip = settings.baseDomain?.trim() ? null : await serverIpv4(server);
+      if (!settings.baseDomain?.trim() && !ip)
+        throw new Error(
+          `Deplo doesn't know ${server?.name ?? "this server"}'s IPv4 address, so its previews need a preview domain. Set one in the app's preview settings.`,
+        );
       const { host, certProvider } = previewHost({
         appId,
         slug: app.slug,
         prNumber: pr.number,
         baseDomain: settings.baseDomain,
         https: settings.https,
-        ip: resolveServerIp(server),
+        ip: ip ?? undefined,
       });
       previewId = newId("prv");
       await getDb()

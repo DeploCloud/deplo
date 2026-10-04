@@ -2,7 +2,7 @@ import "server-only";
 
 import { headers } from "next/headers";
 
-const HOST_RE = /^[a-z0-9.-]+(:\d{1,5})?$/i;
+const HOST_RE = /^([a-z0-9.-]+|\[[0-9a-f:.]+\])(:\d{1,5})?$/i;
 export const PUBLIC_URL_PLACEHOLDER = "https://your-deplo-host";
 
 const BASE_URL_KEY = Symbol.for("deplo.public-url.stored");

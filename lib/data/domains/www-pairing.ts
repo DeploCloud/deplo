@@ -14,7 +14,7 @@ import {
 } from "../../www-redirect";
 import type { Domain } from "../../types/domain";
 import { domainNameExists } from "./hostname-claim";
-import { appServerIp, checkDomainDns } from "./dns-check";
+import { appServerAddresses, checkDomainDns } from "./dns-check";
 import { assertTeamLetsencryptQuota } from "./letsencrypt-quota";
 
 export async function applyWwwRedirect(
@@ -125,7 +125,7 @@ export async function repointRedirects(
     }
     const status = await checkDomainDns(
       nextCounterpart!,
-      await appServerIp(appId),
+      await appServerAddresses(appId),
     );
     await getDb()
       .update(domainsTable)
@@ -168,7 +168,10 @@ async function insertPairedDomain(
     throw new Error(
       `${name} is already routed by another app - remove it there first.`,
     );
-  const status = await checkDomainDns(name, await appServerIp(from.appId));
+  const status = await checkDomainDns(
+    name,
+    await appServerAddresses(from.appId),
+  );
   const certProvider = certProviderForDns(status, from.certProvider ?? "none");
   await assertTeamLetsencryptQuota(opts.teamId, certProvider);
   await insertDomain(getDb(), {
