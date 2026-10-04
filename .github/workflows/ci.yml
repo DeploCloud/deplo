@@ -86,7 +86,8 @@ jobs:
         # build-time-only tooling (postcss, esbuild, the eslint dependency tree)
         # would otherwise make this job permanently red, and a check that is
         # always red is a check nobody reads.
-        run: bun audit --audit-level=high
+        # braces (eslint-only) has no patched release yet; drop the ignore once 3.0.4 ships.
+        run: bun audit --audit-level=high --ignore GHSA-vfj7-8cjw-p6xm
 
   typecheck:
     name: Types
