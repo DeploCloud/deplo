@@ -103,6 +103,12 @@ test("publishing 53 on every address is warned about, an explicit address is not
       `${entry} claims 127.0.0.53 and every container stops resolving`,
     );
   }
+  for (const entry of ['"[::]:53:53/udp"', '":::53:53"']) {
+    assert.ok(
+      rulesFor(entry).includes("dns-port-unbound"),
+      `${entry} is every address too, spelled in IPv6`,
+    );
+  }
   for (const entry of ['"203.0.113.10:53:53/udp"', '"8080:80"', '"53"']) {
     assert.ok(
       !rulesFor(entry).includes("dns-port-unbound"),
@@ -131,4 +137,33 @@ test("publishing 53 on every address is warned about, an explicit address is not
     !long("203.0.113.10").some((d) => d.rule === "dns-port-unbound"),
     "an explicit address in the long syntax is fine too",
   );
+});
+
+test("IPv6, empty-host-port and sctp mappings are valid, not flagged", () => {
+  const rulesFor = (entry: string) =>
+    lintCompose(
+      [
+        "services:",
+        "  app:",
+        "    image: nginx",
+        "    ports:",
+        `      - ${entry}`,
+      ].join("\n"),
+    ).map((d) => d.rule);
+  for (const entry of [
+    '"[::1]:8080:80"',
+    '"::1:8080:80"',
+    '"[2001:db8::1]:443:443/tcp"',
+    '"127.0.0.1::80"',
+    '"8080:80/sctp"',
+    '"8000-8005:8000-8005"',
+  ])
+    assert.ok(!rulesFor(entry).includes("port-mapping"), entry);
+  for (const entry of [
+    '"8080:80/http"',
+    '"web:80"',
+    '"1.2.3.4:80"',
+    '"[::]:80"',
+  ])
+    assert.ok(rulesFor(entry).includes("port-mapping"), entry);
 });

@@ -90,3 +90,31 @@ test("composePublishesPorts: tolerant of malformed / empty input", () => {
   assert.equal(composePublishesPorts("::: not yaml ["), false);
   assert.equal(composePublishesPorts("services: {}"), false);
 });
+
+const withPorts = (ports: string) =>
+  `services:\n  app:\n    image: nginx\n    ports:${ports}`;
+
+// Docker reads the last two fields as ports and everything before them as the address.
+test("composePublishesPorts: every spelling Docker publishes asks for the grant", () => {
+  for (const entry of [
+    '"[::]:8080:80"',
+    '"[::1]:8080:80"',
+    '":::8080:80"',
+    '"0.0.0.0::80"',
+    '"8080:80/sctp"',
+    '"${HOST_PORT}:80"',
+  ])
+    assert.equal(
+      composePublishesPorts(withPorts(`\n      - ${entry}`)),
+      true,
+      entry,
+    );
+});
+
+test("composePublishesPorts: an entry the lint cannot read still counts", () => {
+  assert.equal(
+    composePublishesPorts(withPorts('\n      - "not-a-port"')),
+    true,
+  );
+  assert.equal(composePublishesPorts(withPorts(' "8080:80"')), true);
+});

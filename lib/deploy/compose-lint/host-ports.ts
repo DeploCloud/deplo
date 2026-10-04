@@ -1,12 +1,25 @@
 import { interpolates, loadComposeDoc, type ComposeDocShape } from "./document";
 
+const PORT_FIELD = /^[\d-]+$/;
+const HOST_IP = /^(\d{1,3}(\.\d{1,3}){3}|\[?[0-9a-f.]*:[0-9a-f:.]*\]?)$/i;
+
 export function isValidPortMapping(p: unknown): boolean {
   if (typeof p === "number") return p > 0 && p < 65536;
   if (typeof p === "string") {
-    // `- "${PORT}:80"` binds a host port once the env-file is read, so it counts and the grant is asked.
+    // `- "${PORT}:80"` is only readable once the env-file is, so the lint does not judge it.
     if (interpolates(p)) return true;
-    return /^(\d{1,3}(\.\d{1,3}){3}:)?[\d-]+(:[\d-]+){0,2}(\/(tcp|udp))?$/.test(
-      p.trim(),
+    // Read the way Docker does: the last two fields are ports, everything before them the address.
+    const [spec, proto, ...rest] = p.trim().split("/");
+    if (rest.length > 0) return false;
+    if (proto !== undefined && !/^(tcp|udp|sctp)$/.test(proto)) return false;
+    const fields = spec.split(":");
+    const container = fields.pop() ?? "";
+    const host = fields.pop() ?? "";
+    const ip = fields.join(":");
+    return (
+      PORT_FIELD.test(container) &&
+      (host === "" || PORT_FIELD.test(host)) &&
+      (ip === "" || HOST_IP.test(ip))
     );
   }
   if (p && typeof p === "object") {
@@ -40,13 +53,19 @@ function isEveryAddress(ip: unknown): boolean {
 }
 
 // `expose:` binds nothing and is not counted: gating it charged the grant for two thirds of the fleet.
+// Every `ports:` entry counts, well-formed or not - Docker reads spellings no pattern here keeps up with.
 export function composePublishesPorts(composeYaml: string): boolean {
   const doc = loadComposeDoc<ComposeDocShape>(composeYaml);
   const services = doc?.services;
   if (!services || typeof services !== "object") return false;
   for (const svc of Object.values(services)) {
-    const ports = svc?.ports;
-    if (Array.isArray(ports) && ports.some(isValidPortMapping)) return true;
+    const ports: unknown = svc?.ports;
+    if (
+      Array.isArray(ports)
+        ? ports.some((p) => p != null && p !== "")
+        : ports != null
+    )
+      return true;
   }
   return false;
 }
