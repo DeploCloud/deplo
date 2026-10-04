@@ -4,6 +4,7 @@ import assert from "node:assert/strict";
 import {
   __resetDnsLookupForTest,
   __setDnsLookupForTest,
+  assertSafeOutboundHost,
   assertSafeOutboundUrl,
 } from "./outbound-url";
 
@@ -50,4 +51,20 @@ test("public addresses in every spelling stay allowed", async () => {
   await allowed("https://[64:ff9b::808:808]/");
   await allowed("https://[::ffff:8.8.8.8]/");
   await allowed("https://example.com/hook");
+});
+
+// The DNS check fails open, so a name it cannot resolve must not be what waves a host through.
+test("a host no resolver can read is refused, not waved through", async () => {
+  for (const host of ["[", "[fd00", "a b", ""])
+    await assert.rejects(
+      () => assertSafeOutboundHost(host, "SMTP host"),
+      /SMTP host must be a valid host name/,
+      JSON.stringify(host),
+    );
+  await assert.rejects(
+    () => assertSafeOutboundHost("0x7f.1", "SMTP host"),
+    /private or internal/,
+  );
+  await assertSafeOutboundHost("[2606:4700::1111]", "SMTP host");
+  await assertSafeOutboundHost("smtp.例え.jp", "SMTP host");
 });

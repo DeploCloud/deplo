@@ -91,3 +91,21 @@ test("a bare repository address is an outbound address, and never carries a toke
   await assertCloneTargetSafe("https://8.8.8.8/o/r.git");
   await assertCloneTargetSafe("git@8.8.8.8:o/r.git");
 });
+
+test("a bracketed scp address is judged by what git dials, the inside of the brackets", async () => {
+  for (const url of [
+    "git@[::1]:o/r.git",
+    "git@[fd00::1]:o/r.git",
+    "git@[::ffff:10.0.0.1]:o/r.git",
+  ])
+    await assert.rejects(
+      () => assertCloneTargetSafe(url),
+      /private or internal/,
+      url,
+    );
+  await assert.rejects(
+    () => assertCloneTargetSafe("git@[myhost:2222]:o/r.git"),
+    /The repository address/,
+  );
+  await assertCloneTargetSafe("git@[2606:4700::1111]:o/r.git");
+});

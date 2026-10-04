@@ -2,6 +2,7 @@ import "server-only";
 
 import { lookup } from "node:dns/promises";
 import { isIP } from "node:net";
+import { domainToASCII } from "node:url";
 
 let dnsLookup: (host: string) => Promise<{ address: string }[]> = (host) =>
   lookup(host, { all: true });
@@ -44,7 +45,7 @@ export async function assertSafeOutboundHost(
   const host = raw
     .trim()
     .toLowerCase()
-    .replace(/^\[|\]$/g, "");
+    .replace(/^\[(.*)\]$/, "$1");
   const refuseError = () =>
     new Error(`${label} must not point at a private or internal address`);
   const refuse = (): never => {
@@ -66,9 +67,16 @@ export async function assertSafeOutboundHost(
     return;
   }
   if (isIP(host) === 4) return;
+  // The lookup below fails open, so a name no resolver can read is refused here instead.
+  const ascii = domainToASCII(host);
+  if (!ascii) throw new Error(`${label} must be a valid host name`);
+  if (isIP(ascii) === 4) {
+    if (isInternalHost(ascii)) refuse();
+    return;
+  }
   let addresses: { address: string }[];
   try {
-    addresses = await dnsLookup(host);
+    addresses = await dnsLookup(ascii);
   } catch {
     return;
   }

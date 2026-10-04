@@ -14,7 +14,8 @@ export async function assertCloneTargetSafe(
   if (/^[a-z][a-z0-9+.-]*:\/\/[^/?#]*:[^/?#]*@/i.test(raw))
     throw new Error("Put the token in a git connection, not in the address");
   if (opts.allowPrivate) return;
-  const scp = /^[\w.-]+@([^:/]+):/.exec(raw);
+  // `git@[::1]:o/r.git` is scp syntax too: the address is the whole bracketed part.
+  const scp = /^[\w.-]+@(\[[^\]]*\]|[^:/[\]]+):/.exec(raw);
   if (scp) {
     await assertSafeOutboundHost(scp[1], "The repository address");
     return;
