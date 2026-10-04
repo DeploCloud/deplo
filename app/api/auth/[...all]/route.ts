@@ -2,6 +2,7 @@ import { toNextJsHandler } from "better-auth/next-js";
 import { getAuth } from "@/lib/auth/better-auth";
 import { rateLimit } from "@/lib/security";
 import { capRequestBody } from "@/lib/http/body-cap";
+import { clientKeyAddress } from "@/lib/host-address";
 
 function notConfigured() {
   return new Response("Auth provider not configured", { status: 501 });
@@ -19,7 +20,7 @@ async function registrationAllowed(request: Request): Promise<Response | null> {
     request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ??
     "unknown";
   const [perIp, overall] = await Promise.all([
-    rateLimit(`oauth-register:${ip}`, REGISTER_LIMIT),
+    rateLimit(`oauth-register:${clientKeyAddress(ip)}`, REGISTER_LIMIT),
     rateLimit("oauth-register:all", REGISTER_CEILING),
   ]);
   const limited = perIp.ok ? overall : perIp;

@@ -53,6 +53,7 @@ import { gqlAction } from "@/lib/graphql-client";
 import { useAppCan } from "@/components/apps/app-capabilities";
 import { deriveWwwRedirect } from "@/lib/www-redirect";
 import type { Domain } from "@/lib/types/domain";
+import type { StrayRecord } from "@/lib/deploy/cloudflare";
 import { DocsLink } from "@/components/ui/docs-link";
 
 type Row = Domain & { serviceName: string; appSlug: string };
@@ -74,17 +75,35 @@ function composeServices(compose?: string | null): string[] {
 // Keyed here, not in the page: keys don't survive the RSC boundary, so a row could never hide.
 export function DomainRows({
   domains,
+  strays = {},
   ...rest
-}: { domains: Row[] } & Omit<
+}: { domains: Row[]; strays?: Record<string, StrayRecord> } & Omit<
   React.ComponentProps<typeof DomainRow>,
-  "domain" | "siblings"
+  "domain" | "siblings" | "stray"
 >) {
   return (
     <OptimisticList>
       {domains.map((d) => (
-        <DomainRow key={d.id} domain={d} siblings={domains} {...rest} />
+        <DomainRow
+          key={d.id}
+          domain={d}
+          siblings={domains}
+          stray={strays[d.id] ?? null}
+          {...rest}
+        />
       ))}
     </OptimisticList>
+  );
+}
+
+function AddressChip({ value }: { value: string }) {
+  return (
+    <>
+      <code className="rounded bg-muted px-1.5 py-0.5 font-mono text-foreground">
+        {value}
+      </code>
+      <CopyButton value={value} className="size-6" />
+    </>
   );
 }
 
@@ -94,6 +113,8 @@ export function DomainRow({
   isCompose,
   showContainer,
   serverIp,
+  serverIpv6,
+  stray,
   siblings = [],
 }: {
   domain: Row;
@@ -101,8 +122,16 @@ export function DomainRow({
   compose?: string | null;
   isCompose: boolean;
   showContainer: boolean;
-  serverIp?: string;
+  serverIp?: string | null;
+  serverIpv6?: string | null;
+  stray?: StrayRecord | null;
 }) {
+  const records = [
+    serverIp ? { type: "A", ip: serverIp } : null,
+    serverIpv6 ? { type: "AAAA", ip: serverIpv6 } : null,
+  ].filter((r) => r !== null);
+  const strayTarget =
+    (stray && (stray.type === "A" ? serverIp : serverIpv6)) || null;
   const router = useRouter();
   const canManage = useAppCan("manage_domains");
   const [pending, startTransition] = React.useTransition();
@@ -373,7 +402,30 @@ export function DomainRow({
             <div className="mt-1.5 flex flex-wrap items-center gap-x-1.5 gap-y-1 text-xs text-muted-foreground">
               <TriangleAlert className="size-3.5 shrink-0 text-[var(--warning,#d97706)]" />
               <DocsLink topic="domains.dnsStates" className="order-last" />
-              {serverIp ? (
+              {stray ? (
+                <>
+                  <span>
+                    Its{" "}
+                    <span className="font-medium text-foreground">
+                      {stray.type} record
+                    </span>{" "}
+                    points at{" "}
+                    <span className="font-mono text-foreground">
+                      {stray.address}
+                    </span>
+                    , not this server.{" "}
+                    {strayTarget
+                      ? "Point it at"
+                      : "Remove it, or point it at this server."}
+                  </span>
+                  {strayTarget && (
+                    <>
+                      <AddressChip value={strayTarget} />
+                      <span>or remove it.</span>
+                    </>
+                  )}
+                </>
+              ) : records.length > 0 ? (
                 <>
                   <span>
                     {domain.status === "pending"
@@ -381,7 +433,7 @@ export function DomainRow({
                       : "This domain’s DNS doesn’t point here."}{" "}
                     Add an{" "}
                     <span className="font-medium text-foreground">
-                      A record
+                      {records[0].type} record
                     </span>{" "}
                     for{" "}
                     <span className="font-mono text-foreground">
@@ -389,13 +441,22 @@ export function DomainRow({
                     </span>{" "}
                     →
                   </span>
-                  <code className="rounded bg-muted px-1.5 py-0.5 font-mono text-foreground">
-                    {serverIp}
-                  </code>
-                  <CopyButton value={serverIp} className="size-6" />
+                  <AddressChip value={records[0].ip} />
+                  {records[1] && (
+                    <>
+                      <span>
+                        and an{" "}
+                        <span className="font-medium text-foreground">
+                          {records[1].type} record
+                        </span>{" "}
+                        →
+                      </span>
+                      <AddressChip value={records[1].ip} />
+                    </>
+                  )}
                   <span>
-                    - the IP of the server this app runs on (unique to this
-                    server). It’s re-checked automatically.
+                    - the server this app runs on. It’s re-checked
+                    automatically.
                   </span>
                 </>
               ) : (
@@ -405,8 +466,8 @@ export function DomainRow({
                     : "This domain’s DNS doesn’t point here."}{" "}
                   Point its{" "}
                   <span className="font-medium text-foreground">A record</span>{" "}
-                  at the IP of the server this app is deployed on (unique to
-                  that server). It’s re-checked automatically.
+                  (and AAAA for IPv6) at the server this app is deployed on.
+                  It’s re-checked automatically.
                 </span>
               )}
               {domain.status === "misconfigured" && (
@@ -570,7 +631,7 @@ export function DomainRow({
                 <div className="space-y-2">
                   <FieldLabel
                     htmlFor={`edit-name-${domain.id}`}
-                    info="Fully-qualified hostname, e.g. app.example.com. Its DNS A record must point at this server to verify."
+                    info="Fully-qualified hostname, e.g. app.example.com. Its A record (or AAAA for IPv6) must point at this server to verify."
                     docs="domains.dnsRecord"
                   >
                     Domain

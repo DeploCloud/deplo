@@ -62,7 +62,7 @@ export function PanelAddressCard({ settings }: { settings: InstanceSettings }) {
   const [dns, setDns] = React.useState<PanelDns | null>(null);
   const checkDns = React.useCallback(async () => {
     const res = await gqlAction<{ panelDns: PanelDns }, PanelDns | null>(
-      `mutation PanelDns { panelDns { status host resolved } }`,
+      `mutation PanelDns { panelDns { status host resolved ipv6 } }`,
       undefined,
       (d) => d.panelDns,
     );
@@ -191,9 +191,14 @@ function PanelDnsBlock({
       </p>
     );
 
-  if (dns.status === "unknown") return serverIp ? null : <AddServerHint />;
+  if (dns.status === "unknown")
+    return serverIp || dns.ipv6 ? null : <AddServerHint />;
 
   const off = dns.status === "misconfigured";
+  const records = [
+    serverIp ? { type: "A", value: serverIp } : null,
+    dns.ipv6 ? { type: "AAAA", value: dns.ipv6 } : null,
+  ].filter((r) => r !== null);
   return (
     <div>
       <p className="flex flex-wrap items-center gap-1.5 text-sm font-medium">
@@ -206,21 +211,26 @@ function PanelDnsBlock({
           <span className="font-mono">{dns.resolved.join(", ")}</span>
         </p>
       )}
-      {serverIp ? (
+      {records.length > 0 ? (
         <div className="mt-1 overflow-x-auto rounded-lg border border-border">
           <div className="grid min-w-[22rem] grid-cols-[3.5rem_1fr_auto] gap-x-4 border-b border-border px-3 py-1.5 text-xs text-muted-foreground">
             <span>Type</span>
             <span>Name</span>
             <span>Value</span>
           </div>
-          <div className="grid min-w-[22rem] grid-cols-[3.5rem_1fr_auto] items-center gap-x-4 px-3 py-1.5 font-mono text-sm">
-            <span>A</span>
-            <span className="truncate">{dns.host}</span>
-            <span className="flex items-center gap-1">
-              {serverIp}
-              <CopyButton value={serverIp} className="size-6" />
-            </span>
-          </div>
+          {records.map((r) => (
+            <div
+              key={r.type}
+              className="grid min-w-[22rem] grid-cols-[3.5rem_1fr_auto] items-center gap-x-4 px-3 py-1.5 font-mono text-sm"
+            >
+              <span>{r.type}</span>
+              <span className="truncate">{dns.host}</span>
+              <span className="flex items-center gap-1">
+                {r.value}
+                <CopyButton value={r.value} className="size-6" />
+              </span>
+            </div>
+          ))}
         </div>
       ) : (
         <AddServerHint className="mt-1" />

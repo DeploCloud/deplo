@@ -184,6 +184,23 @@ test("rehostBlueprintHosts moves the whole garage-with-ui blueprint to the remot
   ]);
 });
 
+test("rehostBlueprintHosts drops the minted hosts when the target's IPv4 is unknown, rather than leave them on this machine", () => {
+  const baked = {
+    autoDomain: `app-warm-finch-${MASTER_HEX}.nip.io`,
+    extraDomains: [
+      { service: "ui", port: 80, host: `ui-bold-lynx-${MASTER_HEX}.nip.io` },
+      { service: "api", port: 81, host: "api.example.com" },
+    ],
+    env: [{ key: "URL", value: `https://app-warm-finch-${MASTER_HEX}.nip.io` }],
+  };
+  const moved = rehostBlueprintHosts(baked, MASTER, null);
+  assert.equal(moved.autoDomain, null);
+  assert.deepEqual(moved.extraDomains, [
+    { service: "api", port: 81, host: "api.example.com" },
+  ]);
+  assert.deepEqual(moved.env, baked.env);
+});
+
 test("rehostBlueprintHosts is a no-op when the project targets the master (same IP)", () => {
   const baked = {
     autoDomain: `app-warm-finch-${MASTER_HEX}.nip.io`,

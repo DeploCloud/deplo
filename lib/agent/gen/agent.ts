@@ -494,6 +494,11 @@ export interface HelloResponse {
    * the release publishes binaries for).
    */
   hostArch: string;
+  /**
+   * The host's public IPv4 and IPv6 addresses, read from its own interfaces. Trusted only
+   * with the "host.addresses" capability: an older agent leaves it empty.
+   */
+  publicAddresses: string[];
 }
 
 export interface MetricsRequest {
@@ -2771,6 +2776,7 @@ function createBaseHelloResponse(): HelloResponse {
     capabilities: [],
     traefikRunning: false,
     hostArch: "",
+    publicAddresses: [],
   };
 }
 
@@ -2796,6 +2802,9 @@ export const HelloResponse: MessageFns<HelloResponse> = {
     }
     if (message.hostArch !== "") {
       writer.uint32(58).string(message.hostArch);
+    }
+    for (const v of message.publicAddresses) {
+      writer.uint32(66).string(v!);
     }
     return writer;
   },
@@ -2869,6 +2878,14 @@ export const HelloResponse: MessageFns<HelloResponse> = {
             message.hostArch = reader.string();
             continue;
           }
+          case 8: {
+            if (tag !== 66) {
+              break;
+            }
+
+            message.publicAddresses.push(reader.string());
+            continue;
+          }
         }
         if ((tag & 7) === 4 || tag === 0) {
           break;
@@ -2916,6 +2933,11 @@ export const HelloResponse: MessageFns<HelloResponse> = {
         : isSet(object.host_arch)
         ? globalThis.String(object.host_arch)
         : "",
+      publicAddresses: globalThis.Array.isArray(object?.publicAddresses)
+        ? object.publicAddresses.map((e: any) => globalThis.String(e))
+        : globalThis.Array.isArray(object?.public_addresses)
+        ? object.public_addresses.map((e: any) => globalThis.String(e))
+        : [],
     };
   },
 
@@ -2942,6 +2964,9 @@ export const HelloResponse: MessageFns<HelloResponse> = {
     if (message.hostArch !== "") {
       obj.hostArch = message.hostArch;
     }
+    if (message.publicAddresses?.length) {
+      obj.publicAddresses = message.publicAddresses;
+    }
     return obj;
   },
 
@@ -2957,6 +2982,7 @@ export const HelloResponse: MessageFns<HelloResponse> = {
     message.capabilities = object.capabilities?.map((e) => e) || [];
     message.traefikRunning = object.traefikRunning ?? false;
     message.hostArch = object.hostArch ?? "";
+    message.publicAddresses = object.publicAddresses?.map((e) => e) || [];
     return message;
   },
 };

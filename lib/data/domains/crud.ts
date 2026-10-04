@@ -37,7 +37,7 @@ import {
   assertHostnameNotAnotherTeams,
   assertNotPanelHost,
 } from "./hostname-claim";
-import { appServerIp, checkDomainDns } from "./dns-check";
+import { appServerAddresses, checkDomainDns } from "./dns-check";
 import { assertTeamLetsencryptQuota } from "./letsencrypt-quota";
 import {
   normalizeMiddlewares,
@@ -164,7 +164,8 @@ async function addDomainUnlocked(
   const sibling = existing.find((d) => d.name === clean && isRoutableDomain(d));
   const proxied = config.proxied === true;
   const status =
-    sibling?.status ?? (await checkDomainDns(clean, await appServerIp(appId)));
+    sibling?.status ??
+    (await checkDomainDns(clean, await appServerAddresses(appId)));
   const certProvider = certProviderForDns(
     status,
     config.certProvider ?? "none",
@@ -301,7 +302,7 @@ async function updateDomainUnlocked(
   if (renamed) {
     next.status = await checkDomainDns(
       nextName,
-      await appServerIp(current.appId),
+      await appServerAddresses(current.appId),
     );
     next.ssl = isRoutableDomain(next);
     const chosen =

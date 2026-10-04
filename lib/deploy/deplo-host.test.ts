@@ -41,6 +41,24 @@ test("DEPLO_SERVER_IP identifies the Deplo host by its ip", () => {
   );
 });
 
+test("an IPv6 Deplo host is recognised in any spelling, bracketed or not", () => {
+  withEnv(
+    {
+      DEPLO_SERVER_IP: "2001:DB8:0::10",
+      DEPLO_PUBLIC_URL: "http://[2001:db8::10]:3000",
+    },
+    () => {
+      const self = deploHostSelfAddresses();
+      for (const ip of ["2001:db8::10", "[2001:0db8::10]"])
+        assert.equal(isDeploHostServer({ ip, host: ip }, self), true, ip);
+      assert.equal(
+        isDeploHostServer({ ip: "2001:db8::11", host: "2001:db8::11" }, self),
+        false,
+      );
+    },
+  );
+});
+
 test("matches the server row's host when only the host (not ip) carries the address", () => {
   withEnv(
     { DEPLO_SERVER_IP: "203.0.113.10", DEPLO_PUBLIC_URL: undefined },

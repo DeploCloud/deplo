@@ -15,11 +15,8 @@ import { hostPortClaimed } from "../host-ports";
 import { assertNoNameClash, withNetworkLock } from "../name-clash";
 import { composeNamesOnNetwork } from "../../deploy/compose-stack/compose-read";
 import { stackName } from "../../deploy/deploy-key";
-import {
-  wildcardEmbeddedIp,
-  rehostWildcard,
-  resolveServerIp,
-} from "../../deploy/domains";
+import { wildcardEmbeddedIp, rehostWildcard } from "../../deploy/domains";
+import { serverIpv4 } from "../servers/addresses";
 import { stopPreviewsForServerChange } from "../../deploy/preview-lifecycle/close";
 import { startDeployment } from "../../deploy/build/deploy-start";
 import { appOwnVolumeNames } from "../project-backup-descriptor";
@@ -140,6 +137,11 @@ async function writeAppSource(
   } = { moved: false, stray: null, strayServerId: null };
   const before: { repo: GitRepo | null } = { repo: null };
 
+  // Read before the transaction: the lookup may ask DNS or the agent, and must not hold a connection open.
+  const ipOf = new Map<string, string | null>();
+  for (const sid of new Set([current?.serverId, input.serverId]))
+    if (sid) ipOf.set(sid, await serverIpv4(serversById.get(sid)));
+
   // Service names live inside a compose file with no unique constraint under them, so check and write share one lock.
   await withNetworkLock(
     {
@@ -167,7 +169,7 @@ async function writeAppSource(
         if (!p || p.teamId !== membership.teamId)
           throw new Error("App not found");
         before.repo = p.repo;
-        const oldIp = resolveServerIp(serversById.get(p.serverId));
+        const oldIp = ipOf.get(p.serverId) ?? null;
         const oldServerId = p.serverId;
         let serverId = p.serverId;
         if (input.serverId) {
@@ -198,10 +200,10 @@ async function writeAppSource(
         }
         after.moved = isMove;
 
-        const newIp = resolveServerIp(serversById.get(serverId));
+        const newIp = ipOf.get(serverId) ?? null;
 
         // Auto generated hosts encode the old IP, so a move re-hosts them or Traefik keeps pointing at the old machine.
-        if (newIp !== oldIp) {
+        if (newIp && newIp !== oldIp) {
           const appDomains = await loadDomainsForApp(p.id, tx);
           for (const dom of appDomains) {
             if (

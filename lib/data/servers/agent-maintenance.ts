@@ -7,6 +7,12 @@ import { recordActivity } from "../activity";
 import { DEFAULT_AGENT_PORT } from "../../agent/bootstrap";
 import { agentChannel } from "../../agent/release";
 import { assertNotMigrationSource, requireAdminServer } from "./roster";
+import { assertAddressFree } from "./enrollment";
+import {
+  formatHostPort,
+  HOST_ADDRESS_ERROR,
+  parseHostAddress,
+} from "../../host-address";
 
 export interface UpdateServerAddressInput {
   id: string;
@@ -21,8 +27,10 @@ export async function updateServerAddress(
 ): Promise<{ warning: string | null }> {
   const { teamId, user, server } = await requireAdminServer(input.id);
 
-  const address = input.address.trim();
-  if (!address) throw new Error("Address is required");
+  if (!input.address.trim()) throw new Error("Address is required");
+  const parsed = parseHostAddress(input.address);
+  if (!parsed) throw new Error(HOST_ADDRESS_ERROR);
+  const address = parsed.host;
   if (
     input.agentPort != null &&
     (!Number.isInteger(input.agentPort) ||
@@ -37,6 +45,7 @@ export async function updateServerAddress(
     port === (server.agent?.port ?? port)
   )
     return { warning: null };
+  await assertAddressFree(address, server.id);
 
   let warning: string | null = null;
   if (server.agent?.certFingerprint) {
@@ -95,7 +104,7 @@ export async function updateServerAddress(
   if (updated.length === 0) throw new Error("Server not found");
   await recordActivity(
     "server",
-    `Changed server ${server.name} address to ${address}:${port}`,
+    `Changed server ${server.name} address to ${formatHostPort(address, port)}`,
     user.name,
     null,
     teamId,

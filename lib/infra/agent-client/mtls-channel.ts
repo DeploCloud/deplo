@@ -23,6 +23,7 @@ import {
   toAgentError,
 } from "./errors";
 import { NETWORK_CAPABILITY } from "./hello-capabilities";
+import { formatHostPort, isIpLiteral } from "../../host-address";
 
 export interface DialTarget {
   address: string;
@@ -45,15 +46,15 @@ export async function resolveTarget(serverId: string): Promise<DialTarget> {
 }
 
 export async function remoteTarget(server: Server): Promise<DialTarget> {
-  const { issueControlPlaneClientCert, caCertPem, IPV4_RE } =
+  const { issueControlPlaneClientCert, caCertPem } =
     await import("../../agent/pki");
   const client = await issueControlPlaneClientCert();
   const agent = server.agent!;
   const host = server.ip || server.host;
   return {
-    address: `${host}:${agent.port}`,
+    address: formatHostPort(host, agent.port),
     // SNI forbids an IP servername: an IP host verifies against the localhost DNS SAN signAgentCsr always adds.
-    serverName: IPV4_RE.test(host) ? "localhost" : host,
+    serverName: isIpLiteral(host) ? "localhost" : host,
     clientCreds: {
       certPem: client.certPem,
       keyPem: client.keyPem,
@@ -81,7 +82,7 @@ export function openChannel(target: DialTarget): AgentChannel {
     Buffer.from(keyPem),
     Buffer.from(certPem),
     {
-      // Runs after the standard CA-chain and hostname checks, never instead of them - the pin only adds a refusal.
+      // Replaces the hostname check, never the CA chain: the pinned fingerprint is what names the agent.
       checkServerIdentity: (_host, cert) => {
         const got = peerFingerprint(cert);
         if (got !== target.pinnedFingerprint) {

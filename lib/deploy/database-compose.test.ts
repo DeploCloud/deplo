@@ -137,9 +137,10 @@ test("generateDatabaseCompose: publishes hostPort:enginePort bound to 0.0.0.0 wh
     yaml.includes("ports:"),
     `an exposed DB must publish a port; got:\n${yaml}`,
   );
+  // No host address: `0.0.0.0` publishes on IPv4 only, and IPv6 clients get nothing.
   assert.ok(
-    yaml.includes(`- "0.0.0.0:25432:5432"`),
-    `expected host:container mapping 0.0.0.0:25432:5432, got:\n${yaml}`,
+    yaml.includes(`- "25432:5432"`) && !yaml.includes("0.0.0.0"),
+    `expected 25432:5432 on every address, got:\n${yaml}`,
   );
 });
 
@@ -156,7 +157,7 @@ test("generateDatabaseCompose: hostPort maps to the engine's own port (redis 637
     hostPort: 26379,
   });
   assert.ok(
-    yaml.includes(`- "0.0.0.0:26379:6379"`),
+    yaml.includes(`- "26379:6379"`),
     `redis engine port 6379 must be the container side; got:\n${yaml}`,
   );
 });
@@ -239,6 +240,20 @@ test("buildConnectionString: per-engine scheme + path", () => {
     }),
     "redis://default:pw@db-x:5432",
   );
+});
+
+test("buildConnectionString: an IPv6 server address is bracketed, as a URL requires", () => {
+  const conn = buildConnectionString({
+    type: "postgres",
+    username: "app",
+    password: "pw",
+    host: "2001:db8::1",
+    port: 25432,
+    dbName: "shop",
+  });
+  assert.equal(conn, "postgres://app:pw@[2001:db8::1]:25432/shop");
+  assert.equal(new URL(conn).hostname, "[2001:db8::1]");
+  assert.equal(new URL(conn).port, "25432");
 });
 
 test("buildConnectionString: the credential survives every URL delimiter", () => {

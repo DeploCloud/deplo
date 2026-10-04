@@ -54,6 +54,21 @@ test("the request's own origin is read off the headers, proxy first", () => {
   assert.equal(requestOrigin(new Headers()), null);
 });
 
+test("a panel reached by an IPv6 literal has an origin; anything else in brackets does not", () => {
+  assert.equal(
+    requestOrigin(
+      new Headers({ host: "[2001:db8::1]:3000", "x-forwarded-proto": "http" }),
+    ),
+    "http://[2001:db8::1]:3000",
+  );
+  assert.equal(
+    requestOrigin(new Headers({ host: "[::1]:3000" })),
+    "http://[::1]:3000",
+  );
+  for (const host of ["[evil.com]", "[2001:db8::1];rm", "[a b]:3000"])
+    assert.equal(requestOrigin(new Headers({ host })), null, host);
+});
+
 test("a trailing slash never changes the answer", () => {
   setStoredPublicBaseUrl("https://moved.example.com/");
   assert.equal(publicBaseUrl(), "https://moved.example.com");

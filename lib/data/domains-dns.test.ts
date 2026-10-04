@@ -21,10 +21,18 @@ import {
 import { ensureAutoDomain } from "./domains/auto-domains";
 import { addDomain, updateDomain } from "./domains/crud";
 import {
+  domainDnsHints,
+  sweepDomainDns,
   verifyDomain,
   __setDnsResolve4ForTest,
+  __setDnsResolve6ForTest,
   __resetDnsResolve4ForTest,
 } from "./domains/dns-check";
+import {
+  __resetAgentAddressesForTest,
+  __setAgentAddressesForTest,
+} from "./servers/addresses";
+import { eq } from "drizzle-orm";
 import { setPrimaryDomain } from "./domains/primary-domain";
 import { routableRoutes } from "./domains/routes";
 
@@ -43,6 +51,7 @@ before(async () => {
 after(async () => {
   __resetTestDb();
   __resetDnsResolve4ForTest();
+  __resetAgentAddressesForTest();
   await pg.close();
 });
 
@@ -331,4 +340,59 @@ test("proxied: a declared host can be the primary, a plain misconfigured one can
     () => asUser1(() => setPrimaryDomain(plain.id)),
     /misconfigured/,
   );
+});
+
+const SERVER_V6 = "2001:db8::1";
+const STRAY_V6 = "2001:db8::99";
+
+// An agent that lists its addresses is what makes the server's IPv6 known.
+async function agentReportsV6(): Promise<void> {
+  await pg.exec(
+    `update servers set agent_port = 9443, agent_cert_fingerprint = 'fp-v6'`,
+  );
+  __setAgentAddressesForTest(async () => [SERVER_IP, SERVER_V6]);
+}
+
+test("ipv6: a domain whose only record is an AAAA at the server is valid", async () => {
+  await agentReportsV6();
+  __setDnsResolve4ForTest(async () => []);
+  __setDnsResolve6ForTest(async () => [SERVER_V6]);
+  const d = await asUser1(() => addDomain("prj_1", "v6.example.io", {}));
+  assert.equal(d.status, "valid");
+});
+
+test("ipv6: a right A beside an AAAA elsewhere is misconfigured once the server's IPv6 is known", async () => {
+  await agentReportsV6();
+  __setDnsResolve4ForTest(async () => [SERVER_IP]);
+  __setDnsResolve6ForTest(async () => [STRAY_V6]);
+  const d = await asUser1(() => addDomain("prj_1", "stray.example.io", {}));
+  assert.equal(d.status, "misconfigured");
+});
+
+test("ipv6: without an agent to list the server's IPv6, an AAAA is not judged", async () => {
+  __setDnsResolve4ForTest(async () => [SERVER_IP]);
+  __setDnsResolve6ForTest(async () => [STRAY_V6]);
+  const d = await asUser1(() => addDomain("prj_1", "old.example.io", {}));
+  assert.equal(d.status, "valid");
+});
+
+test("ipv6: the drift check flips a valid domain when a stray AAAA appears, and the row names it", async () => {
+  await agentReportsV6();
+  __setDnsResolve4ForTest(async () => [SERVER_IP]);
+  const d = await asUser1(() => addDomain("prj_1", "drift.example.io", {}));
+  assert.equal(d.status, "valid");
+
+  __setDnsResolve6ForTest(async () => [STRAY_V6]);
+  await sweepDomainDns();
+  const [row] = await db
+    .select()
+    .from(domainsTable)
+    .where(eq(domainsTable.id, d.id));
+  assert.equal(row.status, "misconfigured");
+
+  const hints = await asUser1(() =>
+    domainDnsHints("prj_1", [{ ...d, status: "misconfigured" }]),
+  );
+  assert.equal(hints.serverIpv6, SERVER_V6);
+  assert.deepEqual(hints.strays[d.id], { type: "AAAA", address: STRAY_V6 });
 });

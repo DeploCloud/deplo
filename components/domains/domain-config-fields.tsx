@@ -203,7 +203,7 @@ export function DomainConfigFields({
   idPrefix: string;
   services?: string[];
   proxied?: boolean;
-  serverIp?: string;
+  serverIp?: string | null;
   hostname?: string;
 }) {
   const set = <K extends keyof DomainConfigState>(

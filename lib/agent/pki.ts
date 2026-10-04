@@ -9,6 +9,7 @@ import {
   type KeyObject,
 } from "node:crypto";
 import { agentCaSeed } from "../crypto";
+import { parseHostAddress } from "../host-address";
 
 const crypto = webcrypto;
 x509.cryptoProvider.set(crypto as unknown as Crypto);
@@ -96,7 +97,8 @@ export interface CertBundle {
   caPem: string;
 }
 
-type SanEntry = { type: "dns"; value: string } | { type: "ip"; value: string };
+export type SanEntry =
+  { type: "dns"; value: string } | { type: "ip"; value: string };
 
 const LEAF_LIFETIME_MS = 365 * 24 * 3600_000;
 
@@ -191,15 +193,16 @@ export async function certFingerprint(certPem: string): Promise<string> {
   return Buffer.from(digest).toString("hex");
 }
 
-export const IPV4_RE = /^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/;
-
-function hostsToSans(hosts: string[]): SanEntry[] {
+export function hostsToSans(hosts: string[]): SanEntry[] {
   const entries = hosts
     .map((h) => h.trim())
     .filter(Boolean)
-    .map((h): SanEntry =>
-      IPV4_RE.test(h) ? { type: "ip", value: h } : { type: "dns", value: h },
-    );
+    .map((h): SanEntry => {
+      const parsed = parseHostAddress(h);
+      return parsed && parsed.kind !== "hostname"
+        ? { type: "ip", value: parsed.host }
+        : { type: "dns", value: h };
+    });
   if (!entries.some((e) => e.type === "dns" && e.value === "localhost"))
     entries.push({ type: "dns", value: "localhost" });
   if (!entries.some((e) => e.type === "ip" && e.value === "127.0.0.1"))

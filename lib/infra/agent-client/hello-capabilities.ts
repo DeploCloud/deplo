@@ -53,3 +53,6 @@ export const CONTROL_PLANE_UPDATE_CANARY_CAPABILITY =
 
 // Without it StopStack can only stop a WHOLE stack, so the restart-loop guard leaves a multi-service stack alone.
 export const STOP_SERVICES_CAPABILITY = "stack.stop-services";
+
+// Without it Hello's public_addresses is empty for want of the field, not for want of an address.
+export const HOST_ADDRESSES_CAPABILITY = "host.addresses";

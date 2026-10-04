@@ -26,6 +26,11 @@ import {
 } from "../../agent/bootstrap";
 import { listAllServers, getServerById, requireAdminServer } from "./roster";
 import { cleanServerName, SERVER_NAME_MAX } from "./settings";
+import {
+  canonicalHost,
+  HOST_ADDRESS_ERROR,
+  parseHostAddress,
+} from "../../host-address";
 import type { Server } from "../../types/server";
 
 export interface AddServerInput {
@@ -58,7 +63,9 @@ export async function addServer(
   await requireInstanceAdmin();
   const teamId = await requireActiveTeamId();
   const user = (await getCurrentUser())!;
-  const host = input.host.trim();
+  const parsed = parseHostAddress(input.host);
+  if (!parsed) throw new Error(HOST_ADDRESS_ERROR);
+  const host = parsed.host;
 
   const { rawToken, stored } = mintBootstrap();
   const baseUrl = await bootstrapBaseUrl({ ip: host, host });
@@ -76,6 +83,8 @@ export async function addServer(
         : reissueBootstrap(reached.id);
     }
   }
+
+  if (!importOnly) await assertAddressFree(host);
 
   const allTeams = importOnly ? false : (input.allTeams ?? true);
   const teamIds = importOnly
@@ -147,13 +156,24 @@ async function existingImportSource(host: string): Promise<Server | null> {
       "That address is the machine Deplo itself runs on. A migration source is " +
         "the other platform's host, and the agent here is already installed.",
     );
-  const a = host.trim().toLowerCase();
-  return (
-    (await listAllServers()).find(
-      (s) =>
-        s.ip?.trim().toLowerCase() === a || s.host?.trim().toLowerCase() === a,
-    ) ?? null
+  return (await listAllServers()).find((s) => serverAt(s, host)) ?? null;
+}
+
+function serverAt(s: Server, host: string): boolean {
+  const a = canonicalHost(host);
+  return canonicalHost(s.ip) === a || canonicalHost(s.host) === a;
+}
+
+// One machine, one row: a second enrollment would re-key the agent the first row has pinned.
+export async function assertAddressFree(
+  host: string,
+  exceptId?: string,
+): Promise<void> {
+  const taken = (await listAllServers()).find(
+    (s) => s.id !== exceptId && !s.uninstallPending && serverAt(s, host),
   );
+  if (taken)
+    throw new Error(`${taken.name} is already connected at that address.`);
 }
 
 async function claimImportSource(
@@ -206,8 +226,9 @@ async function claimImportSource(
 export async function ensureDeploHostServer(): Promise<void> {
   const rawToken = process.env.DEPLO_HOST_BOOTSTRAP_TOKEN?.trim();
   if (!rawToken) return;
-  const ip = process.env.DEPLO_SERVER_IP?.trim();
-  if (!ip) return;
+  const raw = process.env.DEPLO_SERVER_IP?.trim();
+  if (!raw) return;
+  const ip = parseHostAddress(raw)?.host ?? raw;
 
   const self = deploHostSelfAddresses();
   const existing = (await listAllServers()).find((s) =>

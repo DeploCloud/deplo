@@ -9,6 +9,7 @@ import { runWithIdentity } from "../auth/request-context";
 import { seedIdentity, TEAM_A, USER_1 } from "./identity-test-helpers";
 import { TRUNCATE_INFRA, seedServerRow } from "./infra-test-helpers";
 import { updateServerAddress } from "./servers/agent-maintenance";
+import { addServer } from "./servers/enrollment";
 import { getServerById } from "./servers/roster";
 
 process.env.DEPLO_SECRET = "test-secret-for-server-address-aaaaaaaa";
@@ -148,4 +149,43 @@ test("an unchanged address is a no-op - no probe, no error, even on a dead host"
     updateServerAddress({ id: PROVISIONED, address: DEAD_LOCAL, agentPort: 1 }),
   );
   assert.equal(warning, null);
+});
+
+test("every spelling of an IPv6 address is stored one way, on add and on change", async () => {
+  const { server } = await asAdmin(() =>
+    addServer({ name: "v6", host: "[2001:0db8:0:0::1]" }),
+  );
+  assert.equal(server.host, "2001:db8::1");
+  assert.equal(server.ip, "2001:db8::1");
+  await asAdmin(() =>
+    updateServerAddress({ id: BARE, address: "2001:DB8::5" }),
+  );
+  assert.equal((await asAdmin(() => getServerById(BARE)))?.ip, "2001:db8::5");
+});
+
+test("an address that is no IP and no host name is refused, on add and on change", async () => {
+  for (const host of ["not an address!", "2001:db8::1::2"]) {
+    await assert.rejects(
+      () => asAdmin(() => addServer({ name: "x", host })),
+      /Enter an IP address or a host name/,
+      host,
+    );
+    await assert.rejects(
+      () => asAdmin(() => updateServerAddress({ id: BARE, address: host })),
+      /Enter an IP address or a host name/,
+      host,
+    );
+  }
+});
+
+test("a second server at an address already connected is refused, in any spelling", async () => {
+  await asAdmin(() => addServer({ name: "first", host: "2001:db8::1" }));
+  await assert.rejects(
+    () => asAdmin(() => addServer({ name: "again", host: "[2001:db8:0::1]" })),
+    /first is already connected at that address/,
+  );
+  await assert.rejects(
+    () => asAdmin(() => updateServerAddress({ id: BARE, address: DEAD_LOCAL })),
+    /provisioned is already connected at that address/,
+  );
 });

@@ -4,6 +4,7 @@ import { renderResourceLimitsYaml } from "./resources";
 import type { ResourceLimits } from "../types/container";
 import type { DatabaseType } from "../types/database";
 import { isOfficialEngineImage } from "../databases/images";
+import { formatHostPort } from "../host-address";
 
 export const DB_IMAGES: Record<DatabaseType, (v: string) => string> = {
   postgres: (v) => `postgres:${v}-alpine`,
@@ -137,9 +138,7 @@ export function generateDatabaseCompose(input: {
       envLines.map((l) => `      - ${escapeComposeDollars(l)}`).join("\n") +
       "\n"
     : "";
-  const ports = hostPort
-    ? `    ports:\n      - "0.0.0.0:${hostPort}:${port}"\n`
-    : "";
+  const ports = hostPort ? `    ports:\n      - "${hostPort}:${port}"\n` : "";
   const labels = deploLabels(databaseId, name)
     .map((l) => `      - ${l}`)
     .join("\n");
@@ -195,7 +194,7 @@ export function buildConnectionString(a: {
   dbName: string;
 }): string {
   const { type, username, password, host, port, dbName } = a;
-  const auth = `${encodeURIComponent(username)}:${encodeURIComponent(password)}@${host}:${port}`;
+  const auth = `${encodeURIComponent(username)}:${encodeURIComponent(password)}@${formatHostPort(host, port)}`;
   switch (type) {
     case "redis":
       return `redis://${auth}`;

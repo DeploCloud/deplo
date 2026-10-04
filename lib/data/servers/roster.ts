@@ -13,8 +13,8 @@ import {
   deploHostSelfAddresses,
   isBuildFallbackServer,
   isDeploHostServer,
-  resolveServerIp,
 } from "../../deploy/domains";
+import { serverIpv4 } from "./addresses";
 import { getCurrentUser } from "../../auth/current-user";
 import {
   reachesWholeTeam,
@@ -148,16 +148,17 @@ export async function listBuildServerChoices(): Promise<
     }));
 }
 
-export async function serverIpForApp(appId: string): Promise<string> {
+// The IPv4 this app's generated names embed, or null when its server's is unknown.
+export async function serverIpForApp(appId: string): Promise<string | null> {
   const reach = await appCapabilities(appId);
-  if (reach.length === 0) return resolveServerIp(undefined);
-  const rows = await getDb()
-    .select({ ip: serversTable.ip, host: serversTable.host })
+  if (reach.length === 0) return serverIpv4(null);
+  const [row] = await getDb()
+    .select({ server: serversTable })
     .from(appsTable)
     .innerJoin(serversTable, eq(serversTable.id, appsTable.serverId))
     .where(eq(appsTable.id, appId))
     .limit(1);
-  return resolveServerIp({ ip: rows[0]?.ip ?? undefined });
+  return serverIpv4(row ? assembleServer(row.server) : null);
 }
 
 export type ServerRole = "everything" | "build" | "storage" | "import";
