@@ -1,6 +1,6 @@
 {
   "name": "deplo",
-  "version": "0.5.0-canary.4",
+  "version": "0.5.0-canary.5",
   "license": "AGPL-3.0-only",
   "private": true,
   "scripts": {
