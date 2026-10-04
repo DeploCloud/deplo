@@ -631,6 +631,11 @@ export interface GitSource {
    * clone root inside the agent (anti-escape, like the Dockerfile paths).
    */
   subdir: string;
+  /**
+   * A full commit SHA to build instead of the branch tip (a rollback whose image
+   * was pruned). Advertised as `git.commit` in Hello; an older agent ignores it.
+   */
+  commit: string;
 }
 
 export interface DockerfileBuild {
@@ -3796,7 +3801,7 @@ export const BuildSpec: MessageFns<BuildSpec> = {
 };
 
 function createBaseGitSource(): GitSource {
-  return { url: "", branch: "", token: "", subdir: "" };
+  return { url: "", branch: "", token: "", subdir: "", commit: "" };
 }
 
 export const GitSource: MessageFns<GitSource> = {
@@ -3812,6 +3817,9 @@ export const GitSource: MessageFns<GitSource> = {
     }
     if (message.subdir !== "") {
       writer.uint32(34).string(message.subdir);
+    }
+    if (message.commit !== "") {
+      writer.uint32(42).string(message.commit);
     }
     return writer;
   },
@@ -3861,6 +3869,14 @@ export const GitSource: MessageFns<GitSource> = {
             message.subdir = reader.string();
             continue;
           }
+          case 5: {
+            if (tag !== 42) {
+              break;
+            }
+
+            message.commit = reader.string();
+            continue;
+          }
         }
         if ((tag & 7) === 4 || tag === 0) {
           break;
@@ -3879,6 +3895,7 @@ export const GitSource: MessageFns<GitSource> = {
       branch: isSet(object.branch) ? globalThis.String(object.branch) : "",
       token: isSet(object.token) ? globalThis.String(object.token) : "",
       subdir: isSet(object.subdir) ? globalThis.String(object.subdir) : "",
+      commit: isSet(object.commit) ? globalThis.String(object.commit) : "",
     };
   },
 
@@ -3896,6 +3913,9 @@ export const GitSource: MessageFns<GitSource> = {
     if (message.subdir !== "") {
       obj.subdir = message.subdir;
     }
+    if (message.commit !== "") {
+      obj.commit = message.commit;
+    }
     return obj;
   },
 
@@ -3908,6 +3928,7 @@ export const GitSource: MessageFns<GitSource> = {
     message.branch = object.branch ?? "";
     message.token = object.token ?? "";
     message.subdir = object.subdir ?? "";
+    message.commit = object.commit ?? "";
     return message;
   },
 };

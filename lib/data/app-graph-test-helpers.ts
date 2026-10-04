@@ -166,6 +166,7 @@ export async function seedDeployment(
     prNumber?: number | null;
     imageRef?: string | null;
     rollbackOf?: string | null;
+    commitSha?: string;
     buildServerId?: string | null;
     creatorUserId?: string | null;
     creatorProvider?: string | null;
@@ -185,7 +186,7 @@ export async function seedDeployment(
     deployKey: opts.deployKey ?? (await appSlug(db, opts.appId)),
     previewId: opts.previewId ?? null,
     prNumber: opts.prNumber ?? null,
-    commitSha: "",
+    commitSha: opts.commitSha ?? "",
     commitMessage: "deploy",
     commitAuthor: "Owner",
     branch: "main",

@@ -45,7 +45,8 @@ export async function startDeployment(
     } | null;
     rollback?: {
       deploymentId: string;
-      imageRef: string;
+      // Null rebuilds the commit, because the host no longer keeps that image.
+      imageRef: string | null;
       commitSha: string;
       commitMessage: string;
       commitAuthor: string;
@@ -121,7 +122,7 @@ export async function startDeployment(
   };
 
   const deployServerId = preview?.serverId || project.serverId;
-  const buildServerId = rollback
+  const buildServerId = rollback?.imageRef
     ? null
     : await resolveBuildServerFor(project, deployServerId, depId);
   await getDb()

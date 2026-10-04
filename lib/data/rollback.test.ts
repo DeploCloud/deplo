@@ -109,7 +109,7 @@ test("the window is rollback_keep deep, and nothing older is offered", async () 
   assert.deepEqual(await rollbackable(), ["dpl_1", "dpl_2"]);
 });
 
-test("rollback_keep 0 turns the feature off for that app", async () => {
+test("rollback_keep 0 keeps no build to re-run", async () => {
   await seedBuilds(4, 0);
   assert.deepEqual(await rollbackable(), []);
 });
@@ -411,4 +411,154 @@ test("the alert for a rollback does not announce a new version", async () => {
   assert.match(src, /rolled back/);
   assert.match(src, /An earlier version is live again\./);
   assert.match(src, /\{ rollback: Boolean\(dep\.rollbackOf\) \}/);
+});
+
+const sha = (n: number) => String(n).repeat(40).slice(0, 40);
+
+async function seedCommits(
+  count: number,
+  rollbackKeep: number,
+  source: "github" | "upload" = "github",
+) {
+  await seedApp(db, {
+    id: "prj_1",
+    teamId: TEAM_A,
+    slug: "web",
+    rollbackKeep,
+    source,
+    ...(source === "upload" ? { repo: null } : {}),
+  });
+  for (let i = 0; i < count; i++) {
+    await seedDeployment(db, {
+      id: `dpl_${i}`,
+      appId: "prj_1",
+      createdAt: at(i),
+      serverId: SERVER_1,
+      imageRef: `deplo/web:dpl_${i}`,
+      commitSha: source === "upload" ? "" : sha(i),
+    });
+  }
+}
+
+const modes = async () =>
+  Object.fromEntries(
+    (await asUser1(() => listDeployments({ appId: "prj_1" })))
+      .filter((d) => d.canRollback)
+      .map((d) => [d.id, d.rollbackRebuilds ? "rebuild" : "instant"]),
+  );
+
+test("past the kept window, a build from a repository is rebuilt from its commit", async () => {
+  await seedCommits(4, 1);
+  assert.deepEqual(await modes(), {
+    dpl_1: "instant",
+    dpl_2: "rebuild",
+    dpl_3: "rebuild",
+  });
+});
+
+test("the deployment page and the header agree with the list about a rebuild", async () => {
+  await seedCommits(3, 0);
+  assert.equal(
+    (await asUser1(() => getDeployment("dpl_2")))?.rollbackRebuilds,
+    true,
+  );
+  assert.deepEqual(await asUser1(() => rollbackTarget("prj_1")), {
+    id: "dpl_1",
+    commitSha: sha(1),
+    commitMessage: "deploy",
+    rebuild: true,
+  });
+});
+
+test("rolling back to a pruned build queues its commit with no image to re-run", async () => {
+  await seedCommits(4, 1);
+  const dep = await asUser1(() => rollbackDeployment("dpl_3"));
+  assert.equal(dep.rollbackOf, "dpl_3");
+  assert.equal(dep.imageRef, null);
+  assert.equal(dep.commitSha, sha(3));
+  assert.equal(dep.status, "queued");
+});
+
+test("an uploaded archive has no commit, so nothing past the window is offered", async () => {
+  await seedCommits(4, 1, "upload");
+  assert.deepEqual(await modes(), { dpl_1: "instant" });
+  await assert.rejects(
+    () => asUser1(() => rollbackDeployment("dpl_3")),
+    /no longer kept on the server/i,
+  );
+});
+
+test("a build from ANOTHER server is rebuilt from its commit", async () => {
+  await seedCommits(1, 3);
+  await seedDeployment(db, {
+    id: "dpl_old_host",
+    appId: "prj_1",
+    createdAt: at(1),
+    serverId: "srv_elsewhere",
+    imageRef: "deplo/web:dpl_old_host",
+    commitSha: sha(7),
+  });
+  assert.deepEqual(await modes(), { dpl_old_host: "rebuild" });
+});
+
+test("a rebuilt rollback made an image of its own, so it is kept and re-run later", async () => {
+  await seedApp(db, {
+    id: "prj_1",
+    teamId: TEAM_A,
+    slug: "web",
+    rollbackKeep: 1,
+  });
+  for (const [id, ago, commit, rollbackOf] of [
+    ["dpl_new", 0, 9, null],
+    ["dpl_rebuilt", 1, 1, "dpl_old"],
+    ["dpl_old", 2, 1, null],
+  ] as const)
+    await seedDeployment(db, {
+      id,
+      appId: "prj_1",
+      createdAt: at(ago),
+      serverId: SERVER_1,
+      imageRef: `deplo/web:${id}`,
+      commitSha: sha(commit),
+      rollbackOf,
+    });
+  assert.deepEqual(await modes(), {
+    dpl_rebuilt: "instant",
+    dpl_old: "rebuild",
+  });
+});
+
+test("an instant rollback re-ran another image, so it is never rebuilt either", async () => {
+  await seedCommits(3, 3);
+  await seedDeployment(db, {
+    id: "dpl_back",
+    appId: "prj_1",
+    createdAt: at(0.5),
+    serverId: SERVER_1,
+    imageRef: "deplo/web:dpl_2",
+    commitSha: sha(2),
+    rollbackOf: "dpl_2",
+  });
+  assert.equal((await modes()).dpl_back, undefined);
+  await assert.rejects(
+    () => asUser1(() => rollbackDeployment("dpl_back")),
+    /itself a rollback/i,
+  );
+});
+
+test("the commit the app already runs is not rebuilt again", async () => {
+  await seedCommits(3, 0);
+  await seedDeployment(db, {
+    id: "dpl_same",
+    appId: "prj_1",
+    createdAt: at(5),
+    serverId: SERVER_1,
+    imageRef: "deplo/web:dpl_same",
+    commitSha: sha(0),
+  });
+  assert.equal((await modes()).dpl_same, undefined);
+  await assert.rejects(
+    () => asUser1(() => rollbackDeployment("dpl_same")),
+    /already running this commit/i,
+  );
 });

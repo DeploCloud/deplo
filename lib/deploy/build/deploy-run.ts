@@ -21,7 +21,7 @@ import { publishAppChanged } from "../../graphql/pubsub";
 import { nowIso } from "../../ids";
 import type { CertProvider } from "../../types/domain";
 import { usesComposeStack } from "../../utils";
-import { deployImageRef, stackName } from "../deploy-key";
+import { deployImageRef, isOwnImage, stackName } from "../deploy-key";
 import { planDeploySource, resolveBuildDir, type SourcePlan } from "../source";
 import { extractArchive } from "../upload";
 import {
@@ -228,10 +228,17 @@ async function runDeployment(depId: string): Promise<void> {
       composeUpArgs: project.composeUpArgs,
     };
 
+    // A rollback that carries another deployment's image re-runs it; one with none rebuilds its commit.
+    const instantRollback = Boolean(
+      dep.rollbackOf && dep.imageRef && !isOwnImage(dep.imageRef, dep.id),
+    );
+    const rebuildCommit =
+      dep.rollbackOf && !instantRollback ? dep.commitSha : "";
+
     const buildServerOpts = await resolveBuildServerOpts(
       project,
       serverId,
-      Boolean(dep.rollbackOf),
+      instantRollback,
     );
 
     if (
@@ -239,7 +246,7 @@ async function runDeployment(depId: string): Promise<void> {
         depId,
         target,
         build: project.build,
-        rollback: Boolean(dep.rollbackOf),
+        rollback: instantRollback,
         onBuildServer: Boolean(dep.buildServerId),
         builders: buildServerOpts.builders,
         serverId,
@@ -300,9 +307,17 @@ async function runDeployment(depId: string): Promise<void> {
     if (!canRecognizeFramework(project)) void setFramework(project.id, null);
 
     const plan: SourcePlan | { kind: "rollback"; image: string; of: string } =
-      dep.rollbackOf && dep.imageRef
+      instantRollback && dep.imageRef && dep.rollbackOf
         ? { kind: "rollback", image: dep.imageRef, of: dep.rollbackOf }
         : planDeploySource(project);
+    if (
+      dep.rollbackOf &&
+      !instantRollback &&
+      (plan.kind !== "git" || !rebuildCommit)
+    )
+      throw new Error(
+        "This app no longer deploys from a repository, so the commit of that deployment can't be rebuilt.",
+      );
     if (noCache && (plan.kind === "git" || plan.kind === "upload")) {
       log(depId, "info", noCacheReason);
       if (project.build.buildCacheClearPending)
@@ -387,7 +402,9 @@ async function runDeployment(depId: string): Promise<void> {
         log(
           depId,
           "command",
-          `git clone ${forkUrl ?? repo.url} (${dep.branch}) [on agent]`,
+          rebuildCommit
+            ? `git fetch ${repo.url} (${rebuildCommit.slice(0, 7)}) [on agent]`
+            : `git clone ${forkUrl ?? repo.url} (${dep.branch}) [on agent]`,
         );
         const attempt = await tryAgent({
           depId,
@@ -401,6 +418,7 @@ async function runDeployment(depId: string): Promise<void> {
             kind: "git",
             url: cloneUrl,
             branch: dep.branch,
+            commit: rebuildCommit || undefined,
             subdir: project.build.rootDirectory ?? "",
             build: normalizeBuildConfig(project.build),
           },

@@ -18,6 +18,7 @@ export function RollbackDialog({
   appSlug,
   commitSha,
   commitMessage,
+  rebuild = false,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -25,8 +26,15 @@ export function RollbackDialog({
   appSlug: string;
   commitSha?: string;
   commitMessage?: string;
+  rebuild?: boolean;
 }) {
   const router = useRouter();
+  const commit = commitSha ? (
+    <>
+      <span className="font-mono">{commitSha.slice(0, 7)}</span>
+      {commitMessage ? ` ${commitMessage}` : ""}
+    </>
+  ) : null;
 
   async function rollback() {
     const res = await gqlAction<
@@ -51,19 +59,26 @@ export function RollbackDialog({
       onOpenChange={onOpenChange}
       title="Roll back to this deployment?"
       description={
-        <>
-          The app goes back to the image this deployment built
-          {commitSha ? (
-            <>
-              {" ("}
-              <span className="font-mono">{commitSha.slice(0, 7)}</span>
-              {commitMessage ? ` ${commitMessage}` : ""}
-              {")"}
-            </>
-          ) : null}
-          . <strong>Only the code goes back</strong>, and nothing is rebuilt.{" "}
-          <DocsLink topic="releases.rollbacks" />
-        </>
+        rebuild ? (
+          <>
+            This build is no longer kept on the server, so commit {commit} is{" "}
+            <strong>rebuilt first - this takes a few minutes</strong>. Only the
+            code goes back. <DocsLink topic="releases.rollbacks" />
+          </>
+        ) : (
+          <>
+            The app goes back to the image this deployment built
+            {commit && (
+              <>
+                {" ("}
+                {commit}
+                {")"}
+              </>
+            )}
+            . <strong>Only the code goes back</strong>, and nothing is rebuilt.{" "}
+            <DocsLink topic="releases.rollbacks" />
+          </>
+        )
       }
       confirmLabel="Rollback"
       successMessage="Rollback started"
@@ -78,6 +93,7 @@ export function RollbackButton({
   commitSha,
   commitMessage,
   can,
+  rebuild = false,
   size = "sm",
 }: {
   id: string;
@@ -85,6 +101,7 @@ export function RollbackButton({
   commitSha?: string;
   commitMessage?: string;
   can: boolean;
+  rebuild?: boolean;
   size?: "sm" | "default";
 }) {
   const [open, setOpen] = React.useState(false);
@@ -113,6 +130,7 @@ export function RollbackButton({
         appSlug={appSlug}
         commitSha={commitSha}
         commitMessage={commitMessage}
+        rebuild={rebuild}
       />
     </>
   );
@@ -123,7 +141,12 @@ export function AppRollbackButton({
   target,
 }: {
   slug: string;
-  target: { id: string; commitSha: string; commitMessage: string } | null;
+  target: {
+    id: string;
+    commitSha: string;
+    commitMessage: string;
+    rebuild: boolean;
+  } | null;
 }) {
   const canRollback = useAppCan("rollback_apps");
   const canBackups = useAppCan("manage_backups");
@@ -135,6 +158,7 @@ export function AppRollbackButton({
         appSlug={slug}
         commitSha={target.commitSha}
         commitMessage={target.commitMessage}
+        rebuild={target.rebuild}
         can={canRollback}
       />
     );

@@ -35,7 +35,7 @@ export const APPS_OPS: McpToolDef[] = [
     name: "rollback_deployment",
     title: "Roll back to a deployment",
     description:
-      "Put the app back on a previous deployment's image. No rebuild - it re-runs what already shipped.",
+      "Put the app back on a previous deployment. It re-runs the image that shipped, or rebuilds its commit when the server no longer keeps it (rollbackRebuilds).",
     group: "Apps",
     requires: "rollback_apps",
     destructive: true,

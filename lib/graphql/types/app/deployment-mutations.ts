@@ -56,13 +56,14 @@ builder.mutationFields((t) => ({
     authScopes: { capability: "rollback_apps" },
     description:
       "Put an app back on a previous deployment by re-running the image that " +
-      "build left on the server - no clone, no rebuild, no pull. Only a " +
-      "successful production deployment of an app Deplo builds (a repository or " +
-      "an uploaded archive), still inside the app's rollback retention and on " +
-      "the app's current server, can be rolled back to; ask for `canRollback` " +
-      "on the deployment to know. The code goes back and NOTHING ELSE does: the " +
-      "stack is rendered from the app's current variables, domains, volumes and " +
-      "resource limits. Returns the new deployment.",
+      "build left on the server - no clone, no rebuild, no pull. When that image " +
+      "is no longer kept, an app deployed from a repository rebuilds the " +
+      "deployment's commit instead, which takes minutes. Only a successful " +
+      "production deployment of an app Deplo builds can be rolled back to; ask " +
+      "for `canRollback` and `rollbackRebuilds` on the deployment to know. The " +
+      "code goes back and NOTHING ELSE does: the stack is rendered from the " +
+      "app's current variables, domains, volumes, build settings and resource " +
+      "limits. Returns the new deployment.",
     args: { deploymentId: t.arg.string({ required: true }) },
     resolve: (_r, { deploymentId }) => rollbackDeployment(deploymentId),
   }),

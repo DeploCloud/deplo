@@ -9,6 +9,7 @@ import { deployments as deploymentsTable } from "../../db/schema/control-plane/d
 import { getCurrentUser } from "../../auth/current-user";
 import { requireActiveTeamId, requireMembership } from "../../membership";
 import { appBuildsItsOwnImage } from "../../utils";
+import { isOwnImage } from "../../deploy/deploy-key";
 import { startDeployment } from "../../deploy/build/deploy-start";
 import {
   loadDeployment,
@@ -20,99 +21,40 @@ import type { Deployment } from "../../types/deployment";
 
 const ROLLBACK_SCAN_LIMIT = 200;
 
-// Rollback re-runs an image a past build left ON THE HOST, Deplo pushes to no registry, so it must match retention.
-export async function canRollbackTo(dep: Deployment): Promise<boolean> {
-  if (!dep.imageRef || dep.rollbackOf || dep.status !== "ready") return false;
-  const [app] = await getDb()
-    .select({
-      serverId: appsTable.serverId,
-      rollbackKeep: appsTable.rollbackKeep,
-      source: appsTable.source,
-      compose: appsTable.compose,
-      repoUrl: appsTable.repoUrl,
-      dockerImage: appsTable.dockerImage,
-    })
-    .from(appsTable)
-    .where(eq(appsTable.id, dep.appId))
-    .limit(1);
-  if (!app) return false;
-  const history = await getDb()
-    .select({
-      id: deploymentsTable.id,
-      status: deploymentsTable.status,
-      environment: deploymentsTable.environment,
-      imageRef: deploymentsTable.imageRef,
-      rollbackOf: deploymentsTable.rollbackOf,
-      serverId: deploymentsTable.serverId,
-    })
-    .from(deploymentsTable)
-    .where(
-      and(
-        eq(deploymentsTable.appId, dep.appId),
-        eq(deploymentsTable.environment, "production"),
-        eq(deploymentsTable.status, "ready"),
-      ),
-    )
-    .orderBy(desc(deploymentsTable.createdAt), desc(deploymentsTable.seq))
-    .limit(ROLLBACK_SCAN_LIMIT);
-  return rollbackTargetIds(
-    app,
-    history as Parameters<typeof rollbackTargetIds>[1],
-  ).has(dep.id);
-}
+// "instant" re-runs an image still on the host; "rebuild" builds the commit again once that image was pruned.
+export type RollbackMode = "instant" | "rebuild";
 
-// ponytail: ranks SUCCESSFUL builds while the host ranks IMAGES, so a target at
-export function rollbackTargetIds(
-  app: {
-    serverId: string | null;
-    rollbackKeep: number;
-    source: string;
-    compose: string | null;
-    repoUrl: string | null;
-    dockerImage: string | null;
-  },
-  deps: Pick<
-    Deployment,
-    "id" | "status" | "environment" | "imageRef" | "rollbackOf" | "serverId"
-  >[],
-): Set<string> {
-  if (!appBuildsItsOwnImage({ ...app, repo: app.repoUrl })) return new Set();
-  const production = deps.filter(
-    (d) => d.environment === "production" && d.status === "ready",
-  );
-  const liveImage = production[0]?.imageRef ?? null;
-  const builds = production.filter((d) => !d.rollbackOf && d.imageRef);
-  return new Set(
-    builds
-      .slice(0, Math.max(0, app.rollbackKeep) + 1)
-      .filter((d) => d.imageRef !== liveImage && d.serverId === app.serverId)
-      .map((d) => d.id),
-  );
-}
+type RollbackApp = {
+  serverId: string | null;
+  rollbackKeep: number;
+  source: string;
+  compose: string | null;
+  repoUrl: string | null;
+  dockerImage: string | null;
+};
 
-// The build the app goes back to from the header: the newest one still on the host.
-export const rollbackTarget = cache(async function rollbackTarget(
-  appId: string,
-): Promise<{
-  id: string;
-  commitSha: string;
-  commitMessage: string;
-} | null> {
-  const teamId = await requireActiveTeamId();
-  const [app] = await getDb()
-    .select({
-      serverId: appsTable.serverId,
-      rollbackKeep: appsTable.rollbackKeep,
-      source: appsTable.source,
-      compose: appsTable.compose,
-      repoUrl: appsTable.repoUrl,
-      dockerImage: appsTable.dockerImage,
-    })
-    .from(appsTable)
-    .where(and(eq(appsTable.id, appId), eq(appsTable.teamId, teamId)))
-    .limit(1);
-  if (!app) return null;
-  const history = await getDb()
+type RollbackHistoryRow = Pick<
+  Deployment,
+  | "id"
+  | "status"
+  | "environment"
+  | "imageRef"
+  | "rollbackOf"
+  | "serverId"
+  | "commitSha"
+>;
+
+const APP_COLUMNS = {
+  serverId: appsTable.serverId,
+  rollbackKeep: appsTable.rollbackKeep,
+  source: appsTable.source,
+  compose: appsTable.compose,
+  repoUrl: appsTable.repoUrl,
+  dockerImage: appsTable.dockerImage,
+};
+
+function productionHistory(appId: string) {
+  return getDb()
     .select({
       id: deploymentsTable.id,
       status: deploymentsTable.status,
@@ -133,16 +75,86 @@ export const rollbackTarget = cache(async function rollbackTarget(
     )
     .orderBy(desc(deploymentsTable.createdAt), desc(deploymentsTable.seq))
     .limit(ROLLBACK_SCAN_LIMIT);
-  const targets = rollbackTargetIds(
-    app,
-    history as Parameters<typeof rollbackTargetIds>[1],
+}
+
+// Rollback re-runs an image a past build left ON THE HOST, Deplo pushes to no registry, so it must match retention.
+export async function rollbackModeFor(
+  dep: Deployment,
+): Promise<RollbackMode | null> {
+  if (dep.status !== "ready" || dep.environment !== "production") return null;
+  const [app] = await getDb()
+    .select(APP_COLUMNS)
+    .from(appsTable)
+    .where(eq(appsTable.id, dep.appId))
+    .limit(1);
+  if (!app) return null;
+  const history = await productionHistory(dep.appId);
+  return (
+    rollbackTargets(app, history as RollbackHistoryRow[]).get(dep.id) ?? null
   );
+}
+
+// ponytail: ranks SUCCESSFUL builds while the host ranks IMAGES, so a target at
+export function rollbackTargets(
+  app: RollbackApp,
+  deps: RollbackHistoryRow[],
+): Map<string, RollbackMode> {
+  const out = new Map<string, RollbackMode>();
+  if (!appBuildsItsOwnImage({ ...app, repo: app.repoUrl })) return out;
+  const production = deps.filter(
+    (d) => d.environment === "production" && d.status === "ready",
+  );
+  const live = production[0];
+  if (!live) return out;
+  // A rollback that rebuilt its commit made an image of its own; one that re-ran another's did not.
+  const builds = production.filter(
+    (d) => !d.rollbackOf || (d.imageRef && isOwnImage(d.imageRef, d.id)),
+  );
+  for (const d of builds
+    .filter((d) => d.imageRef)
+    .slice(0, Math.max(0, app.rollbackKeep) + 1)) {
+    if (d.imageRef !== live.imageRef && d.serverId === app.serverId)
+      out.set(d.id, "instant");
+  }
+  if (!app.repoUrl || (app.source !== "github" && app.source !== "git"))
+    return out;
+  for (const d of builds) {
+    if (
+      !out.has(d.id) &&
+      d.id !== live.id &&
+      d.commitSha &&
+      d.commitSha !== live.commitSha
+    )
+      out.set(d.id, "rebuild");
+  }
+  return out;
+}
+
+// The deployment the app goes back to from the header: the newest one before the live one.
+export const rollbackTarget = cache(async function rollbackTarget(
+  appId: string,
+): Promise<{
+  id: string;
+  commitSha: string;
+  commitMessage: string;
+  rebuild: boolean;
+} | null> {
+  const teamId = await requireActiveTeamId();
+  const [app] = await getDb()
+    .select(APP_COLUMNS)
+    .from(appsTable)
+    .where(and(eq(appsTable.id, appId), eq(appsTable.teamId, teamId)))
+    .limit(1);
+  if (!app) return null;
+  const history = await productionHistory(appId);
+  const targets = rollbackTargets(app, history as RollbackHistoryRow[]);
   const target = history.find((d) => targets.has(d.id));
   return target
     ? {
         id: target.id,
         commitSha: target.commitSha,
         commitMessage: target.commitMessage,
+        rebuild: targets.get(target.id) === "rebuild",
       }
     : null;
 });
@@ -159,15 +171,7 @@ export async function rollbackDeployment(
     throw new Error("Deployment not found");
 
   const [app] = await getDb()
-    .select({
-      serverId: appsTable.serverId,
-      rollbackKeep: appsTable.rollbackKeep,
-      name: appsTable.name,
-      source: appsTable.source,
-      compose: appsTable.compose,
-      repoUrl: appsTable.repoUrl,
-      dockerImage: appsTable.dockerImage,
-    })
+    .select({ ...APP_COLUMNS, name: appsTable.name })
     .from(appsTable)
     .where(
       and(eq(appsTable.id, dep.appId), eq(appsTable.teamId, membership.teamId)),
@@ -189,39 +193,44 @@ export async function rollbackDeployment(
     throw new Error(
       `Only a deployment that finished successfully can be rolled back to (this one is ${dep.status}).`,
     );
-  if (!dep.imageRef)
-    throw new Error(
-      "This deployment left no image to go back to. Only an app Deplo builds - from a repository or an uploaded archive - can be rolled back.",
-    );
-  if (dep.rollbackOf)
+  if (dep.rollbackOf && !(dep.imageRef && isOwnImage(dep.imageRef, dep.id)))
     throw new Error(
       "This deployment is itself a rollback. Roll back to the deployment that built the image instead.",
     );
-  if (dep.serverId !== app.serverId)
-    throw new Error(
-      "This deployment ran on another server, and its image stayed there. Only builds from this app's current server can be rolled back to.",
-    );
 
   const history = await loadDeploymentsForApp(dep.appId);
-  const targets = rollbackTargetIds(app, history);
-  if (!targets.has(dep.id)) {
-    const live =
-      history.find(
-        (d) => d.environment === "production" && d.status === "ready",
-      )?.imageRef ?? null;
+  const mode = rollbackTargets(app, history).get(dep.id);
+  if (!mode) {
+    const live = history.find(
+      (d) => d.environment === "production" && d.status === "ready",
+    );
+    if (
+      live &&
+      (live.id === dep.id || (dep.imageRef && live.imageRef === dep.imageRef))
+    )
+      throw new Error("This is the deployment the app is already running.");
+    if (live && dep.commitSha && live.commitSha === dep.commitSha)
+      throw new Error("The app is already running this commit.");
+    if (!dep.imageRef)
+      throw new Error(
+        "This deployment left no image to go back to. Only an app Deplo builds - from a repository or an uploaded archive - can be rolled back.",
+      );
+    if (dep.serverId !== app.serverId)
+      throw new Error(
+        "This deployment ran on another server, and its image stayed there. Only builds from this app's current server can be rolled back to.",
+      );
     throw new Error(
-      live && live === dep.imageRef
-        ? "This is the deployment the app is already running."
-        : `This deployment's image is no longer kept on the server. ${app.name} keeps ${app.rollbackKeep} ${app.rollbackKeep === 1 ? "rollback" : "rollbacks"} - raise that in Settings → Deployments to keep more of them.`,
+      `This deployment's image is no longer kept on the server. ${app.name} keeps ${app.rollbackKeep} ${app.rollbackKeep === 1 ? "rollback" : "rollbacks"} - raise that in Settings → Deployments to keep more of them.`,
     );
   }
 
   const depId = await startDeployment(dep.appId, {
     environment: "production",
     creator: user.name,
+    branch: dep.branch,
     rollback: {
       deploymentId: dep.id,
-      imageRef: dep.imageRef,
+      imageRef: mode === "instant" ? dep.imageRef : null,
       commitSha: dep.commitSha,
       commitMessage: dep.commitMessage,
       commitAuthor: dep.commitAuthor,

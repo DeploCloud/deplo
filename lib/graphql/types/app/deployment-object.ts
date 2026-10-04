@@ -5,7 +5,7 @@ import {
   getLogs,
   getQueuePosition,
 } from "@/lib/data/deployments/build-progress";
-import { canRollbackTo } from "@/lib/data/deployments/rollback";
+import { rollbackModeFor } from "@/lib/data/deployments/rollback";
 import type { Deployment, LogLine } from "@/lib/types/deployment";
 
 const LogLineRef = builder.objectRef<LogLine>("LogLine").implement({
@@ -17,7 +17,9 @@ const LogLineRef = builder.objectRef<LogLine>("LogLine").implement({
 });
 
 export const DeploymentRef = builder
-  .objectRef<Deployment & { canRollback?: boolean }>("Deployment")
+  .objectRef<
+    Deployment & { canRollback?: boolean; rollbackRebuilds?: boolean }
+  >("Deployment")
   .implement({
     description: "A single build + release of an app.",
     fields: (t) => ({
@@ -75,17 +77,29 @@ export const DeploymentRef = builder
       rollbackOf: t.exposeID("rollbackOf", {
         nullable: true,
         description:
-          "Set when this deploy was a rollback: the deployment whose image it " +
-          "re-ran. Null when it built its own.",
+          "Set when this deploy was a rollback: the deployment it went back to, " +
+          "whose image it re-ran or whose commit it rebuilt. Null otherwise.",
       }),
       canRollback: t.field({
         type: "Boolean",
         description:
-          "This app can be put back on this deployment: it succeeded, it built " +
-          "an image, that image is still on the app's current server, and it is " +
-          "not the one already running.",
-        resolve: (d) =>
-          d.canRollback !== undefined ? d.canRollback : canRollbackTo(d),
+          "This app can be put back on this deployment: it succeeded, it is not " +
+          "the one already running, and either its image is still on the app's " +
+          "current server or its commit can be rebuilt (see `rollbackRebuilds`).",
+        resolve: async (d) =>
+          d.canRollback !== undefined
+            ? d.canRollback
+            : (await rollbackModeFor(d)) !== null,
+      }),
+      rollbackRebuilds: t.field({
+        type: "Boolean",
+        description:
+          "Rolling back to this deployment rebuilds its commit, because its image " +
+          "is no longer kept on the server. Takes minutes instead of seconds.",
+        resolve: async (d) =>
+          d.rollbackRebuilds !== undefined
+            ? d.rollbackRebuilds
+            : (await rollbackModeFor(d)) === "rebuild",
       }),
       logs: t.field({
         type: [LogLineRef],

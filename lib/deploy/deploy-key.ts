@@ -23,6 +23,11 @@ export function deployImageRef(
   return `deplo/${deployKey}:${deploymentId.slice(0, 12)}`;
 }
 
+// A rollback that re-ran another deployment's image carries that one's tag, not its own.
+export function isOwnImage(imageRef: string, deploymentId: string): boolean {
+  return imageRef.endsWith(`:${deploymentId.slice(0, 12)}`);
+}
+
 export function appSlugFromDeployKey(deployKey: string): string {
   const at = deployKey.indexOf(SEP);
   return at === -1 ? deployKey : deployKey.slice(0, at);

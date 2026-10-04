@@ -20,7 +20,11 @@ import {
   appCapabilitiesForTeam,
   nodeCapabilitiesFor,
 } from "../node-access";
-import { canRollbackTo, rollbackTargetIds } from "./rollback";
+import {
+  rollbackModeFor,
+  rollbackTargets,
+  type RollbackMode,
+} from "./rollback";
 import { IN_PROGRESS } from "./cancel-and-delete";
 import type { Deployment, DeploymentEnvironment } from "../../types/deployment";
 
@@ -41,6 +45,7 @@ export async function listDeployments(filter?: {
     serverName: string | null;
     buildServerName: string | null;
     canRollback: boolean;
+    rollbackRebuilds: boolean;
     appMigrating: boolean;
   })[]
 > {
@@ -119,10 +124,10 @@ export async function listDeployments(filter?: {
     if (list) list.push(dep);
     else byApp.set(dep.appId, [dep]);
   }
-  const rollbackable = new Set<string>();
+  const rollbackable = new Map<string, RollbackMode>();
   for (const p of teamApps) {
-    for (const id of rollbackTargetIds(p, byApp.get(p.id) ?? [])) {
-      rollbackable.add(id);
+    for (const [id, mode] of rollbackTargets(p, byApp.get(p.id) ?? [])) {
+      rollbackable.set(id, mode);
     }
   }
 
@@ -142,6 +147,7 @@ export async function listDeployments(filter?: {
         ...dep,
         creatorUser: authorOf(dep.creatorUserId, creators),
         canRollback: rollbackable.has(dep.id),
+        rollbackRebuilds: rollbackable.get(dep.id) === "rebuild",
         appMigrating: Boolean(p?.migrationRunId),
         serviceName: p?.name ?? "",
         appSlug: p?.slug ?? "",
@@ -167,7 +173,9 @@ export async function listDeployments(filter?: {
 
 export async function getDeployment(
   id: string,
-): Promise<(Deployment & { canRollback: boolean }) | null> {
+): Promise<
+  (Deployment & { canRollback: boolean; rollbackRebuilds: boolean }) | null
+> {
   const teamId = await requireActiveTeamId();
   const dep = await loadDeployment(id);
   if (!dep) return null;
@@ -175,10 +183,12 @@ export async function getDeployment(
   // Same answer for "no such deployment" and "not yours", so the two cannot be told apart.
   if ((await appCapabilities(dep.appId)).length === 0) return null;
   const creators = await loadUserIdentities([dep.creatorUserId]);
+  const mode = await rollbackModeFor(dep);
   return {
     ...dep,
     creatorUser: authorOf(dep.creatorUserId, creators),
-    canRollback: await canRollbackTo(dep),
+    canRollback: mode !== null,
+    rollbackRebuilds: mode === "rebuild",
   };
 }
 

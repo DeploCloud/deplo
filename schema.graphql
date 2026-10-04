@@ -1727,7 +1727,7 @@ type Deployment {
   buildDurationMs: Int
 
   """
-  This app can be put back on this deployment: it succeeded, it built an image, that image is still on the app's current server, and it is not the one already running.
+  This app can be put back on this deployment: it succeeded, it is not the one already running, and either its image is still on the app's current server or its commit can be rebuilt (see `rollbackRebuilds`).
   """
   canRollback: Boolean
   commitAuthor: String
@@ -1771,9 +1771,14 @@ type Deployment {
   readyAt: String
 
   """
-  Set when this deploy was a rollback: the deployment whose image it re-ran. Null when it built its own.
+  Set when this deploy was a rollback: the deployment it went back to, whose image it re-ran or whose commit it rebuilt. Null otherwise.
   """
   rollbackOf: ID
+
+  """
+  Rolling back to this deployment rebuilds its commit, because its image is no longer kept on the server. Takes minutes instead of seconds.
+  """
+  rollbackRebuilds: Boolean
 
   """
   When the build was claimed off the queue and started running - the origin `buildDurationMs` is measured from, and what a live build timer counts up from. Null while still queued.
@@ -3845,7 +3850,7 @@ type Mutation {
   revokeToken(id: String!): Boolean
 
   """
-  Put an app back on a previous deployment by re-running the image that build left on the server - no clone, no rebuild, no pull. Only a successful production deployment of an app Deplo builds (a repository or an uploaded archive), still inside the app's rollback retention and on the app's current server, can be rolled back to; ask for `canRollback` on the deployment to know. The code goes back and NOTHING ELSE does: the stack is rendered from the app's current variables, domains, volumes and resource limits. Returns the new deployment.
+  Put an app back on a previous deployment by re-running the image that build left on the server - no clone, no rebuild, no pull. When that image is no longer kept, an app deployed from a repository rebuilds the deployment's commit instead, which takes minutes. Only a successful production deployment of an app Deplo builds can be rolled back to; ask for `canRollback` and `rollbackRebuilds` on the deployment to know. The code goes back and NOTHING ELSE does: the stack is rendered from the app's current variables, domains, volumes, build settings and resource limits. Returns the new deployment.
   """
   rollbackDeployment(deploymentId: String!): Deployment
 

@@ -54,6 +54,7 @@ export interface DeploymentRow {
   creatorUrl?: string | null;
   url: string;
   canRollback?: boolean;
+  rollbackRebuilds?: boolean;
   rollbackOf?: string | null;
   appMigrating?: boolean;
 }
@@ -246,6 +247,7 @@ export function DeploymentTableRow({
           canDeploy={canManage && !d.appMigrating}
           canRollback={d.canRollback && !d.appMigrating}
           canRollbackApps={canRollbackApps}
+          rollbackRebuilds={d.rollbackRebuilds}
           commitSha={d.commitSha}
           commitMessage={d.commitMessage}
           onRemoved={onRemoved}

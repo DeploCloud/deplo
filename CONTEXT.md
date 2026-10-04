@@ -525,10 +525,14 @@ real Deployment of its own (`rollback_of` names the one it returned to), with it
 logs and Activity entry; only the CODE goes back, because the stack is re-rendered from
 the App's current variables, domains, volumes and resource limits.
 Only a source Deplo builds accrues rollbacks: a **compose** stack has no single image, and
-a `docker-image` source is a mutable registry tag with nothing pinned behind it. How far
-back an App can go is `apps.rollback_keep` (default 3, `0` = none) - a RETENTION number,
-enforced on the host by the per-slug map **Docker cleanup** sends, because Deplo pushes to
-no registry and an image it prunes is gone. Gated by its own Capability `rollback_apps`;
+a `docker-image` source is a mutable registry tag with nothing pinned behind it. How many
+are INSTANT is `apps.rollback_keep` (default 3, `0` = none) - a RETENTION number, enforced
+on the host by the per-slug map **Docker cleanup** sends, because Deplo pushes to no
+registry and an image it prunes is gone. Past that window, or from another server, an App
+deployed from a repository still rolls back by REBUILDING the deployment's commit (minutes,
+and the agent's `git.commit` capability); that rebuilt image is a rollback target of its
+own, while an instant rollback's re-run image is not. An uploaded archive has no commit,
+so it has only the instant window. Gated by its own Capability `rollback_apps`;
 the retention number is `configure_apps`, like every other App setting.
 _Avoid_: promote (that was the deleted preview action, and it only moved metadata), revert
 (that is a git commit), restore (that is a **backup**), "redeploy" (that rebuilds HEAD).

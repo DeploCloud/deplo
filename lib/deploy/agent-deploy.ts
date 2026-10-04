@@ -49,6 +49,8 @@ export type AgentBuildPlan =
       kind: "git";
       url: string;
       branch: string;
+      // A full SHA to build instead of the branch tip (a rollback that rebuilds).
+      commit?: string;
       subdir: string;
       build: BuildConfig;
     }
@@ -241,6 +243,17 @@ export async function runAgentDeploy(opts: {
     throw new AgentUnavailableError(
       "this build server's agent is too old to build without deploying - update it " +
         "from Settings → Servers, or build this app on its own server",
+    );
+  }
+  // A HARD gate: an older agent ignores `commit` and would ship the branch tip as the rollback.
+  if (
+    opts.plan.kind === "git" &&
+    opts.plan.commit &&
+    !hello.capabilities.includes("git.commit")
+  ) {
+    throw new AgentUnavailableError(
+      "this server's agent is too old to rebuild an earlier commit - update it " +
+        "from Settings → Servers",
     );
   }
   if (opts.noCache && !hello.capabilities.includes("deploy.nocache")) {
@@ -537,6 +550,7 @@ export async function buildDeployRequest(opts: {
       git: {
         url: opts.plan.url,
         branch: opts.plan.branch,
+        commit: opts.plan.commit ?? "",
         subdir: opts.plan.subdir,
         token: "",
       },

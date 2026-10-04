@@ -39,6 +39,7 @@ export function DeploymentActions({
   canDeploy = false,
   canRollback = false,
   canRollbackApps = false,
+  rollbackRebuilds = false,
   commitSha = "",
   commitMessage = "",
   onRemoved,
@@ -54,6 +55,7 @@ export function DeploymentActions({
   canDeploy?: boolean;
   canRollback?: boolean;
   canRollbackApps?: boolean;
+  rollbackRebuilds?: boolean;
   commitSha?: string;
   commitMessage?: string;
   onRemoved?: () => void;
@@ -216,6 +218,7 @@ export function DeploymentActions({
         appSlug={appSlug}
         commitSha={commitSha}
         commitMessage={commitMessage}
+        rebuild={rollbackRebuilds}
       />
       <ConfirmAction
         open={deleteOpen}

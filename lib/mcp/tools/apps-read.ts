@@ -28,6 +28,7 @@ export const DEPLOYMENT_FIELDS = /* GraphQL */ `
   readyAt
   buildDurationMs
   canRollback
+  rollbackRebuilds
   url
 `;
 

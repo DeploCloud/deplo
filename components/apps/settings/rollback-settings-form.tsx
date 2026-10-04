@@ -53,7 +53,7 @@ export function RollbackSettingsForm({
         router.refresh();
         toast.success(
           parsed === 0
-            ? "Rollbacks turned off for this app"
+            ? "No builds kept on the server"
             : `Keeping ${parsed} ${parsed === 1 ? "rollback" : "rollbacks"}`,
         );
       } else toast.error(res.error);
@@ -78,7 +78,7 @@ export function RollbackSettingsForm({
           <SettingRow
             label="Keep"
             htmlFor="rollback-keep"
-            info="Each one is a copy of the app kept on its server, so more rollbacks means more disk. Older ones are removed after each deploy. 0 keeps none."
+            info="Kept rollbacks are instant. Older ones from a repository are rebuilt from their commit, which takes a few minutes."
             docs="releases.rollbackRetention"
           >
             <div className="relative w-full">

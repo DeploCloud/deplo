@@ -143,6 +143,7 @@ export default async function DeploymentDetailPage(
                 appSlug={slug}
                 commitSha={deployment.commitSha}
                 commitMessage={deployment.commitMessage}
+                rebuild={deployment.rollbackRebuilds}
                 can={canRollbackApps}
               />
             )}

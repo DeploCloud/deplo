@@ -98,6 +98,7 @@ export default async function AppDeploymentsPage(
             creatorUrl: d.creatorUrl,
             url: d.url,
             canRollback: d.canRollback,
+            rollbackRebuilds: d.rollbackRebuilds,
             rollbackOf: d.rollbackOf,
           }))}
         />
