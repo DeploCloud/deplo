@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import { gqlSubscribe } from "@/lib/graphql-client";
+import { useRouter } from "@/lib/nav";
 import type { AppStatus } from "@/lib/types/app";
 import type { DeploymentStatus } from "@/lib/types/deployment";
 
@@ -53,6 +54,11 @@ export function AppLiveStatusProvider({
 }) {
   // Keyed by slug in the layout, so it remounts and re-seeds from `initial`; no re-seed effect.
   const [live, setLive] = React.useState<LiveApp>(initial);
+  const router = useRouter();
+  // The pages under it are server-rendered: re-read them when the latest deploy moves on.
+  const seenDeploy = React.useRef(
+    `${initial.latestDeploymentId}:${initial.latestDeploymentStatus}`,
+  );
 
   React.useEffect(() => {
     const unsubscribe = gqlSubscribe<SubResult>(
@@ -70,10 +76,15 @@ export function AppLiveStatusProvider({
           latestDeploymentId: p.latestDeployment?.id ?? null,
           latestDeploymentStatus: p.latestDeployment?.status ?? null,
         });
+        const deploy = `${p.latestDeployment?.id ?? null}:${p.latestDeployment?.status ?? null}`;
+        if (deploy !== seenDeploy.current) {
+          seenDeploy.current = deploy;
+          router.refresh();
+        }
       },
     );
     return unsubscribe;
-  }, [initial.slug]);
+  }, [initial.slug, router]);
 
   return (
     <LiveAppContext.Provider value={live}>{children}</LiveAppContext.Provider>
