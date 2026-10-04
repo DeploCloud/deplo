@@ -155,42 +155,44 @@ export function ServerAppsTab({
         }
       />
 
-      <Table>
-        <TableHeader>
-          <TableRow>
-            <TableHead className="w-8" />
-            <TableHead>Name</TableHead>
-            <TableHead className="hidden sm:table-cell">Type</TableHead>
-            <TableHead className="hidden sm:table-cell">Team</TableHead>
-            <TableHead className={WIDE}>Project</TableHead>
-            <TableHead>Status</TableHead>
-            <TableHead className={cn(WIDE, "text-right")}>CPU</TableHead>
-            <TableHead className={cn(WIDE, "text-right")}>Memory</TableHead>
-            <TableHead className={cn(WIDE, "text-right")}>Restarts</TableHead>
-            <TableHead className={WIDE}>Domain</TableHead>
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {shown.length === 0 && (
+      <div className="overflow-x-auto rounded-xl border border-border">
+        <Table>
+          <TableHeader>
             <TableRow>
-              <TableCell
-                colSpan={10}
-                className="py-8 text-center text-muted-foreground"
-              >
-                Nothing matches these filters.
-              </TableCell>
+              <TableHead className="w-8" />
+              <TableHead>Name</TableHead>
+              <TableHead className="hidden sm:table-cell">Type</TableHead>
+              <TableHead className="hidden sm:table-cell">Team</TableHead>
+              <TableHead className={WIDE}>Project</TableHead>
+              <TableHead>Status</TableHead>
+              <TableHead className={cn(WIDE, "text-right")}>CPU</TableHead>
+              <TableHead className={cn(WIDE, "text-right")}>Memory</TableHead>
+              <TableHead className={cn(WIDE, "text-right")}>Restarts</TableHead>
+              <TableHead className={WIDE}>Domain</TableHead>
             </TableRow>
-          )}
-          {shown.map((w) => (
-            <WorkloadRows
-              key={w.id}
-              workload={w}
-              open={open.has(w.id)}
-              onToggle={() => toggle(w.id)}
-            />
-          ))}
-        </TableBody>
-      </Table>
+          </TableHeader>
+          <TableBody>
+            {shown.length === 0 && (
+              <TableRow>
+                <TableCell
+                  colSpan={10}
+                  className="py-8 text-center text-muted-foreground"
+                >
+                  Nothing matches these filters.
+                </TableCell>
+              </TableRow>
+            )}
+            {shown.map((w) => (
+              <WorkloadRows
+                key={w.id}
+                workload={w}
+                open={open.has(w.id)}
+                onToggle={() => toggle(w.id)}
+              />
+            ))}
+          </TableBody>
+        </Table>
+      </div>
     </div>
   );
 }
