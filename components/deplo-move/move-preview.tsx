@@ -36,11 +36,13 @@ export function MovePreview({
   checking,
   onCheckAgain,
   onStart,
+  onBack,
 }: {
   preview: TargetMovePreview;
   checking: boolean;
   onCheckAgain: () => void;
   onStart: () => Promise<ActionResult<unknown>>;
+  onBack?: () => void;
 }) {
   // Server problems show on their row; anything else blocking is listed on its own.
   const otherProblems = preview.problems.filter(
@@ -115,7 +117,17 @@ export function MovePreview({
       )}
 
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <Button variant="outline" onClick={onCheckAgain} disabled={checking}>
+        {onBack && (
+          <Button variant="outline" onClick={onBack}>
+            Back
+          </Button>
+        )}
+        <Button
+          variant="outline"
+          onClick={onCheckAgain}
+          disabled={checking}
+          className={onBack ? "ml-auto" : undefined}
+        >
           {checking && <Loader2 className="size-4 animate-spin" />}
           Check again
         </Button>

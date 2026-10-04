@@ -65,7 +65,7 @@ export default async function SettingsMigrationsPage() {
             <BetaChip />
           </span>
         }
-        description="Bring another panel's teams over, each into a team here."
+        description="Bring another Deplo, Dokploy or Coolify here."
       />
       <MigrationsTabs
         teamId={team.id}

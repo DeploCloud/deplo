@@ -16,13 +16,20 @@ import { ReviewStep } from "../review-step";
 import { PeopleStep } from "../people-step";
 import { MigrationConsole } from "../migration-console";
 import { ChooseStep } from "../choose-step";
+import { SourceStep, type MoveContext, type SourcePick } from "../source-step";
 import {
   reviewShows,
   stepReachable,
   stepsFor,
+  type MigrationPath,
   type StepId,
   type TakeoverMode,
 } from "../steps";
+import { useMoveIn } from "@/components/deplo-move/use-move-in";
+import {
+  MoveConnectStep,
+  MoveReviewStep,
+} from "@/components/deplo-move/move-in-steps";
 import {
   TakeoverStep,
   type TakeoverState,
@@ -58,6 +65,7 @@ export function MigrationWizard({
   takeover = null,
   preflight = null,
   startOnTakeover = false,
+  move = null,
 }: {
   teamId: string;
   targetTeams: TargetTeam[];
@@ -78,6 +86,7 @@ export function MigrationWizard({
   } | null;
   preflight?: React.ReactNode;
   startOnTakeover?: boolean;
+  move?: MoveContext | null;
 }) {
   const router = useRouter();
   const isTakeover = takeover != null;
@@ -90,8 +99,16 @@ export function MigrationWizard({
   const [step, setStep] = React.useState<StepId>(
     () =>
       stepForHandover(takeover?.state) ??
-      (mode == null ? "choose" : startOnTakeover ? "takeover" : "connect"),
+      (mode == null
+        ? "choose"
+        : startOnTakeover
+          ? "takeover"
+          : isTakeover
+            ? "connect"
+            : "source"),
   );
+  const [path, setPath] = React.useState<MigrationPath>("import");
+  const moveIn = useMoveIn();
   /* eslint-disable react-hooks/refs -- deliberate render-phase adjustment; the rule
      only bailed before because the pre-split component was too large to analyse. */
   const seenHandover = React.useRef(takeover?.state);
@@ -190,9 +207,20 @@ export function MigrationWizard({
       : teamsAfter(queue, at);
 
   const STEPS = React.useMemo(
-    () => stepsFor(isInstanceAdmin, isTakeover, mode),
-    [isInstanceAdmin, isTakeover, mode],
+    () => stepsFor(isInstanceAdmin, isTakeover, mode, path),
+    [isInstanceAdmin, isTakeover, mode, path],
   );
+
+  function pickSource(pick: SourcePick) {
+    setPath(pick === "deplo-move" ? "move" : "import");
+    const current: SourcePick =
+      forcedKind === "deplo" ? "deplo-teams" : "panel";
+    if (pick !== "deplo-move" && pick !== current) {
+      resetToStart();
+      setForcedKind(pick === "deplo-teams" ? "deplo" : null);
+    }
+    setStep("connect");
+  }
 
   const goToReview = React.useCallback(() => setStep("review"), []);
 
@@ -241,6 +269,8 @@ export function MigrationWizard({
   const reach = React.useCallback(
     (s: StepId) =>
       stepReachable(s, {
+        path,
+        movePreview: moveIn.preview != null,
         mode,
         isTakeover,
         plan: plan != null,
@@ -252,6 +282,8 @@ export function MigrationWizard({
         takeoverDone: takeover?.state === "removed",
       }),
     [
+      path,
+      moveIn.preview,
       mode,
       isTakeover,
       plan,
@@ -334,6 +366,7 @@ export function MigrationWizard({
                   void closeReport().then(() => {
                     forgetQueue();
                     resetToStart();
+                    setStep("source");
                   });
                 }
           }
@@ -350,7 +383,7 @@ export function MigrationWizard({
           ) : (
             <MigrationGraphic
               state={pose}
-              kind={kind}
+              kind={path === "move" ? "deplo" : kind}
               className={cn(
                 "h-auto w-full",
                 isTakeover ? "max-w-xl" : "max-w-md",
@@ -383,6 +416,25 @@ export function MigrationWizard({
               {mode !== "clean" && preflight}
 
               <div>
+                {!takenOver && step === "source" && move && (
+                  <SourceStep move={move} onPick={pickSource} />
+                )}
+
+                {path === "move" && step === "connect" && (
+                  <MoveConnectStep
+                    move={moveIn}
+                    onBack={() => setStep("source")}
+                    onConnected={() => setStep("review")}
+                  />
+                )}
+
+                {path === "move" && step === "review" && (
+                  <MoveReviewStep
+                    move={moveIn}
+                    onBack={() => setStep("connect")}
+                  />
+                )}
+
                 {!takenOver && step === "choose" && (
                   <ChooseStep
                     kind={kind}
@@ -418,7 +470,7 @@ export function MigrationWizard({
                   />
                 )}
 
-                {!takenOver && step === "connect" && (
+                {!takenOver && path === "import" && step === "connect" && (
                   <ConnectStep
                     url={url}
                     setUrl={setUrl}
@@ -442,7 +494,11 @@ export function MigrationWizard({
                     }
                     onSubmit={submitConnect}
                     onBack={
-                      reach("choose") ? () => setStep("choose") : undefined
+                      reach("choose")
+                        ? () => setStep("choose")
+                        : reach("source")
+                          ? () => setStep("source")
+                          : undefined
                     }
                   />
                 )}
@@ -480,6 +536,7 @@ export function MigrationWizard({
                   )}
 
                 {!takenOver &&
+                  path === "import" &&
                   step === "review" &&
                   showing !== "report" &&
                   (moving ? (

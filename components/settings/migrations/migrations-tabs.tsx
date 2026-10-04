@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { useSearchParams } from "next/navigation";
-import { Cable, History, Truck } from "lucide-react";
+import { Cable, History } from "lucide-react";
 
 import {
   Tabs,
@@ -10,14 +10,12 @@ import {
   UnderlineTabsList,
   UnderlineTabsTrigger,
 } from "@/components/ui/tabs";
-import { MoveInCard } from "@/components/deplo-move/move-in-card";
-import { MoveOutCard } from "@/components/deplo-move/move-out-card";
 import type { SourceMoveStatus } from "@/lib/data/deplo-move/source";
 import { MigrationWizard } from "./migration-wizard/wizard";
 import { MigrationsHistory } from "./migrations-history";
 import type { ImportRun, ServerChoice, TargetTeam } from "./types";
 
-const TABS = ["migrate", "history", "move"] as const;
+const TABS = ["migrate", "history"] as const;
 type TabId = (typeof TABS)[number];
 
 export function MigrationsTabs({
@@ -48,6 +46,8 @@ export function MigrationsTabs({
 }) {
   const params = useSearchParams();
   const requested = params.get("tab");
+  // "move" was its own tab once; old links land on Move this Deplo.
+  const [openOutbound] = React.useState(requested === "move");
   const active: TabId = (TABS as readonly string[]).includes(requested ?? "")
     ? (requested as TabId)
     : "migrate";
@@ -76,10 +76,6 @@ export function MigrationsTabs({
             <History />
             History
           </UnderlineTabsTrigger>
-          <UnderlineTabsTrigger value="move">
-            <Truck />
-            Move Deplo
-          </UnderlineTabsTrigger>
         </UnderlineTabsList>
       </div>
 
@@ -97,24 +93,12 @@ export function MigrationsTabs({
           canExposePorts={canExposePorts}
           resumable={resumable}
           sameMachineHost={sameMachineHost}
+          move={{ ...move, openOutbound }}
         />
       </TabsContent>
 
       <TabsContent value="history">
         <MigrationsHistory runs={runs} />
-      </TabsContent>
-
-      {/* Mounted while hidden, so a move code shown once survives a look at another tab. */}
-      <TabsContent
-        value="move"
-        forceMount
-        className="space-y-4 data-[state=inactive]:hidden"
-      >
-        <MoveOutCard
-          initial={move.source}
-          incoming={move.activeTargetId !== null}
-        />
-        <MoveInCard activeId={move.activeTargetId} readiness={move.readiness} />
       </TabsContent>
     </Tabs>
   );

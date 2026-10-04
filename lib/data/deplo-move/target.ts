@@ -343,7 +343,7 @@ export async function connectMove(input: {
   const code = input.code.trim();
   if (!code.startsWith(MOVE_CODE_PREFIX))
     throw new Error(
-      "That is not a move code: create one on the old Deplo under Settings, Migrations, Move Deplo.",
+      "That is not a move code: create one on the old Deplo under Settings, Migrations, Move this Deplo.",
     );
   if (!publicBaseUrl()) throw new Error(NO_PANEL_ADDRESS);
   const open = await openTargetMove();

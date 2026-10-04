@@ -18,8 +18,9 @@ const ids = (
   mode: TakeoverMode | null = "migrate",
 ) => stepsFor(canInvite, canTakeOver, mode).map((s) => s.id);
 
-test("the plain migration ends on the report", () => {
+test("the plain migration starts on its source and ends on the report", () => {
   assert.deepEqual(ids(true, false), [
+    "source",
     "connect",
     "install",
     "review",
@@ -29,7 +30,24 @@ test("the plain migration ends on the report", () => {
 });
 
 test("People is an instance admin's step", () => {
-  assert.deepEqual(ids(false, false), ["connect", "install", "review", "done"]);
+  assert.deepEqual(ids(false, false), [
+    "source",
+    "connect",
+    "install",
+    "review",
+    "done",
+  ]);
+});
+
+test("a whole Deplo moving here is a source, a code and its preview", () => {
+  assert.deepEqual(
+    stepsFor(true, false, "migrate", "move").map((s) => s.id),
+    ["source", "connect", "review"],
+  );
+});
+
+test("a takeover never asks for a source", () => {
+  assert.ok(!ids(true, true).includes("source"));
 });
 
 test("Choose is the question before the rail, and Take over is last", () => {
@@ -63,6 +81,8 @@ test("every step is labelled", () => {
 });
 
 const NOTHING: StepProgress = {
+  path: "import",
+  movePreview: false,
   mode: null,
   isTakeover: true,
   plan: false,
@@ -179,6 +199,19 @@ test("People opens on a reload with no plan", () => {
       reportDone: true,
     }),
   );
+});
+
+test("the source stays open until a run exists", () => {
+  const at = { ...NOTHING, isTakeover: false, mode: "migrate" as const };
+  assert.ok(stepReachable("source", at));
+  assert.equal(stepReachable("source", { ...at, runId: "dimp_1" }), false);
+  assert.equal(stepReachable("source", NOTHING), false);
+});
+
+test("a move's Review waits for its preview, not a plan", () => {
+  const at = { ...NOTHING, isTakeover: false, path: "move" as const };
+  assert.equal(stepReachable("review", { ...at, plan: true }), false);
+  assert.ok(stepReachable("review", { ...at, movePreview: true }));
 });
 
 test("the choice is gone once a run exists", () => {

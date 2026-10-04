@@ -1,11 +1,22 @@
 import type { WizardStep } from "@/components/shared/wizard-stepper";
 
 export type StepId =
-  "choose" | "connect" | "install" | "review" | "people" | "takeover" | "done";
+  | "source"
+  | "choose"
+  | "connect"
+  | "install"
+  | "review"
+  | "people"
+  | "takeover"
+  | "done";
 
 export type TakeoverMode = "migrate" | "clean";
 
+// Teams come over from a panel, or a whole Deplo moves here.
+export type MigrationPath = "import" | "move";
+
 const STEP_LABEL: Record<StepId, string> = {
+  source: "Source",
   choose: "Choose",
   connect: "Connect",
   install: "Install",
@@ -19,6 +30,7 @@ export function stepsFor(
   canInvite: boolean,
   canTakeOver: boolean,
   mode: TakeoverMode | null = "migrate",
+  path: MigrationPath = "import",
 ): WizardStep<StepId>[] {
   const middle: StepId[] = [
     "connect",
@@ -27,7 +39,9 @@ export function stepsFor(
     ...(canInvite ? (["people"] as StepId[]) : []),
   ];
   const ids: StepId[] = !canTakeOver
-    ? [...middle, "done"]
+    ? path === "move"
+      ? ["source", "connect", "review"]
+      : ["source", ...middle, "done"]
     : mode === "clean"
       ? ["takeover", "done"]
       : [...middle, "takeover", "done"];
@@ -35,6 +49,8 @@ export function stepsFor(
 }
 
 export interface StepProgress {
+  path: MigrationPath;
+  movePreview: boolean;
   mode: TakeoverMode | null;
   isTakeover: boolean;
   plan: boolean;
@@ -49,6 +65,8 @@ export interface StepProgress {
 export function stepReachable(s: StepId, at: StepProgress): boolean {
   if (at.inFlight) return s === "review";
   switch (s) {
+    case "source":
+      return !at.isTakeover && at.runId == null;
     case "choose":
       return at.isTakeover && at.runId == null;
     case "connect":
@@ -56,6 +74,7 @@ export function stepReachable(s: StepId, at: StepProgress): boolean {
     case "install":
       return at.plan;
     case "review":
+      if (at.path === "move") return at.movePreview;
       return at.plan && at.machinesReady && (at.isTakeover || !at.reportDone);
     case "people":
       return at.reportDone;
