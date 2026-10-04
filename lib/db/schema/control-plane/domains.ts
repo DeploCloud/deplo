@@ -33,6 +33,7 @@ export const domains = pgTable(
     stripPrefix: boolean("strip_prefix"),
     service: text("service"),
     proxied: boolean("proxied"),
+    securityHeaders: boolean("security_headers").notNull().default(true),
     importedFrom: text("imported_from"),
     createdAt: isoTimestamptz("created_at").notNull(),
   },
@@ -56,6 +57,18 @@ export const domainMiddlewares = pgTable(
       .references(() => domains.id, { onDelete: "cascade" }),
     position: integer("position").notNull(),
     name: text("name").notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.domainId, t.position] })],
+);
+
+export const domainCorsOrigins = pgTable(
+  "domain_cors_origins",
+  {
+    domainId: text("domain_id")
+      .notNull()
+      .references(() => domains.id, { onDelete: "cascade" }),
+    position: integer("position").notNull(),
+    origin: text("origin").notNull(),
   },
   (t) => [primaryKey({ columns: [t.domainId, t.position] })],
 );

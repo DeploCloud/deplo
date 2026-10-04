@@ -75,6 +75,8 @@ export async function addImportedDomains(
       ...(pathPrefix ? { pathPrefix } : {}),
       ...(pathPrefix && route.stripPrefix ? { stripPrefix: true } : {}),
       importedFrom: route.sourceHost,
+      // The app answered without them where it came from; a move must not change that.
+      securityHeaders: false,
       createdAt: nowIso(),
     };
     await insertDomain(getDb(), domain);

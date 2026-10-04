@@ -1191,6 +1191,13 @@
       "when": 1791000000000,
       "tag": "0169_deplo_move",
       "breakpoints": true
+    },
+    {
+      "idx": 170,
+      "version": "7",
+      "when": 1791100000000,
+      "tag": "0170_domain_security_headers",
+      "breakpoints": true
     }
   ]
 }

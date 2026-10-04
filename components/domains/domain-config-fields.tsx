@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { Lock, Route, Signpost, Waypoints } from "lucide-react";
+import { Lock, Route, ShieldCheck, Signpost, Waypoints } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { CloudflareNote } from "@/components/domains/cloudflare-note";
 import { FieldLabel } from "@/components/ui/info-tip";
@@ -42,6 +42,8 @@ export interface DomainConfigState {
   entrypoint: DomainEntrypoint;
   certProvider: CertProvider;
   middlewares: string;
+  securityHeaders: boolean;
+  corsOrigins: string;
   path: string;
   stripPath: boolean;
   service: string;
@@ -55,6 +57,8 @@ export function initialDomainConfig(
     entrypoint?: DomainEntrypoint;
     certProvider?: CertProvider;
     middlewares?: string[];
+    securityHeaders?: boolean;
+    corsOrigins?: string[];
     pathPrefix?: string;
     stripPrefix?: boolean;
     service?: string;
@@ -74,6 +78,8 @@ export function initialDomainConfig(
     entrypoint: domain?.entrypoint ?? "websecure",
     certProvider: domain ? (domain.certProvider ?? "letsencrypt") : "none",
     middlewares: (domain?.middlewares ?? []).join(", "),
+    securityHeaders: domain ? domain.securityHeaders === true : true,
+    corsOrigins: (domain?.corsOrigins ?? []).join(", "),
     path: domain?.pathPrefix ?? "",
     stripPath: Boolean(domain?.stripPrefix),
     service: domain?.service ?? "",
@@ -100,6 +106,8 @@ export function resolveDomainConfig(
       entrypoint: DomainEntrypoint | null;
       certProvider: CertProvider;
       middlewares: string[];
+      securityHeaders: boolean;
+      corsOrigins: string[];
       pathPrefix: string;
       stripPrefix: boolean;
       service: string;
@@ -133,6 +141,8 @@ export function resolveDomainConfig(
     entrypoint: manual ? state.entrypoint : null,
     certProvider: state.certProvider,
     middlewares: parseMiddlewares(state.middlewares),
+    securityHeaders: state.securityHeaders,
+    corsOrigins: parseMiddlewares(state.corsOrigins),
     pathPrefix: path,
     stripPrefix: path ? state.stripPath : false,
     service,
@@ -162,6 +172,12 @@ export function advancedSummary(
     );
   }
   if (state.proxied) parts.push("behind a proxy");
+  if (!state.securityHeaders) parts.push("security headers off");
+  const origins = parseMiddlewares(state.corsOrigins).length;
+  if (origins)
+    parts.push(
+      origins === 1 ? "1 allowed origin" : `${origins} allowed origins`,
+    );
   const path = state.path.trim();
   if (path) parts.push(state.stripPath ? `${path} (stripped)` : path);
   const count = parseMiddlewares(state.middlewares).length;
@@ -401,6 +417,51 @@ export function DomainConfigFields({
                   id={`${idPrefix}-proxied`}
                   checked={state.proxied}
                   onCheckedChange={(c) => set("proxied", c)}
+                />
+              </div>
+            </FieldGroup>
+
+            <FieldGroup icon={ShieldCheck} title="Security">
+              <div className="flex items-center justify-between gap-3 rounded-md border border-border px-3 py-2">
+                <FieldLabel
+                  htmlFor={`${idPrefix}-security-headers`}
+                  className="cursor-pointer font-normal"
+                  info="Stops browsers guessing file types, framing this site elsewhere and leaking full URLs. Turn off if another site embeds it."
+                  docs="domains.security"
+                >
+                  Security headers
+                </FieldLabel>
+                <Switch
+                  id={`${idPrefix}-security-headers`}
+                  checked={state.securityHeaders}
+                  onCheckedChange={(c) => set("securityHeaders", c)}
+                />
+              </div>
+              <div className="space-y-2">
+                <FieldLabel
+                  htmlFor={`${idPrefix}-cors`}
+                  info={
+                    <>
+                      Sites whose pages may call this domain from the browser
+                      (CORS). Comma-separated;{" "}
+                      <code className="font-mono">*</code> allows any.
+                    </>
+                  }
+                  docs="domains.security"
+                >
+                  Allowed origins{" "}
+                  <span className="text-xs font-normal text-muted-foreground">
+                    (optional)
+                  </span>
+                </FieldLabel>
+                <Input
+                  id={`${idPrefix}-cors`}
+                  value={state.corsOrigins}
+                  onChange={(e) => set("corsOrigins", e.target.value)}
+                  placeholder="https://app.acme.com"
+                  autoComplete="off"
+                  spellCheck={false}
+                  className="font-mono text-sm"
                 />
               </div>
             </FieldGroup>

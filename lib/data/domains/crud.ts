@@ -7,6 +7,7 @@ import { apps as appsTable } from "../../db/schema/control-plane/apps";
 import {
   domains as domainsTable,
   domainMiddlewares as domainMiddlewaresTable,
+  domainCorsOrigins as domainCorsOriginsTable,
 } from "../../db/schema/control-plane/domains";
 import { getCurrentUser } from "../../auth/current-user";
 import { newId, nowIso } from "../../ids";
@@ -23,7 +24,11 @@ import {
   loadAppGraph,
   appScopeWhere,
 } from "../app-graph-load";
-import { domainToRow, domainMiddlewaresToRows } from "../app-graph-rows/domain";
+import {
+  domainToRow,
+  domainMiddlewaresToRows,
+  domainCorsOriginsToRows,
+} from "../app-graph-rows/domain";
 import { appCapabilitiesForTeam, requireAppCapability } from "../node-access";
 import { withKeyedLock } from "../keyed-mutex";
 import type { WwwRedirect } from "../../www-redirect";
@@ -40,6 +45,7 @@ import {
 import { appServerAddresses, checkDomainDns } from "./dns-check";
 import { assertTeamLetsencryptQuota } from "./letsencrypt-quota";
 import {
+  normalizeCorsOrigins,
   normalizeMiddlewares,
   normalizePath,
   resolveApp,
@@ -95,6 +101,8 @@ export interface DomainConfig {
   entrypoint?: DomainEntrypoint;
   certProvider?: CertProvider;
   middlewares?: string[];
+  securityHeaders?: boolean;
+  corsOrigins?: string[];
   pathPrefix?: string;
   stripPrefix?: boolean;
   service?: string;
@@ -158,6 +166,7 @@ async function addDomainUnlocked(
   if (isCompose && config.port == null)
     throw new Error("Application port is required");
   const middlewares = normalizeMiddlewares(config.middlewares);
+  const corsOrigins = normalizeCorsOrigins(config.corsOrigins);
   const stripPrefix = Boolean(pathPrefix && config.stripPrefix);
   const existing = await loadDomainsForApp(appId);
   const isFirst = existing.length === 0;
@@ -182,6 +191,8 @@ async function addDomainUnlocked(
     ...(config.entrypoint ? { entrypoint: config.entrypoint } : {}),
     certProvider,
     ...(middlewares.length ? { middlewares } : {}),
+    securityHeaders: config.securityHeaders ?? true,
+    ...(corsOrigins.length ? { corsOrigins } : {}),
     ...(pathPrefix ? { pathPrefix } : {}),
     ...(stripPrefix ? { stripPrefix } : {}),
     ...(service ? { service } : {}),
@@ -201,6 +212,8 @@ export interface DomainPatch {
   port?: number | null;
   certProvider?: CertProvider;
   middlewares?: string[];
+  securityHeaders?: boolean;
+  corsOrigins?: string[];
   pathPrefix?: string;
   stripPrefix?: boolean;
   service?: string;
@@ -286,6 +299,12 @@ async function updateDomainUnlocked(
     const mws = normalizeMiddlewares(patch.middlewares);
     next.middlewares = mws.length ? mws : undefined;
   }
+  if (patch.securityHeaders !== undefined)
+    next.securityHeaders = patch.securityHeaders;
+  if (patch.corsOrigins !== undefined) {
+    const origins = normalizeCorsOrigins(patch.corsOrigins);
+    next.corsOrigins = origins.length ? origins : undefined;
+  }
   if (patch.pathPrefix !== undefined) next.pathPrefix = nextPath || undefined;
   if (patch.stripPrefix !== undefined || patch.pathPrefix !== undefined) {
     const effPath =
@@ -323,6 +342,12 @@ async function updateDomainUnlocked(
     const mwRows = domainMiddlewaresToRows(next);
     if (mwRows.length > 0)
       await tx.insert(domainMiddlewaresTable).values(mwRows);
+    await tx
+      .delete(domainCorsOriginsTable)
+      .where(eq(domainCorsOriginsTable.domainId, id));
+    const corsRows = domainCorsOriginsToRows(next);
+    if (corsRows.length > 0)
+      await tx.insert(domainCorsOriginsTable).values(corsRows);
   });
   const dom = next;
   if (renamed) await repointRedirects(dom.appId, current.name, dom.name);

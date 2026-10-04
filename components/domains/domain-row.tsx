@@ -224,6 +224,8 @@ export function DomainRow({
             entrypoint: resolved.entrypoint,
             certProvider: resolved.certProvider,
             middlewares: resolved.middlewares,
+            securityHeaders: resolved.securityHeaders,
+            corsOrigins: resolved.corsOrigins,
             pathPrefix: resolved.pathPrefix,
             stripPrefix: resolved.stripPrefix,
             service: resolved.service,

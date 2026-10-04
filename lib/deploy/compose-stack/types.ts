@@ -10,6 +10,8 @@ export interface ComposeDomainRoute {
   tls?: boolean;
   certResolver?: string;
   middlewares?: string[];
+  securityHeaders?: boolean;
+  corsOrigins?: string[];
   pathPrefix: string;
   stripPrefix: boolean;
   redirectTo?: string;

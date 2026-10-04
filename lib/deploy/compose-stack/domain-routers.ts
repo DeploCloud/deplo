@@ -17,6 +17,8 @@ function traefikLabels(opts: {
   tls?: boolean;
   certResolver?: string;
   middlewares?: string[];
+  securityHeaders?: boolean;
+  corsOrigins?: string[];
   pathPrefix?: string;
   stripPrefix?: boolean;
   redirectTo?: string;
@@ -42,6 +44,8 @@ function traefikLabels(opts: {
         ? {}
         : { certResolver: opts.certResolver }),
       middlewares: opts.middlewares,
+      securityHeaders: opts.securityHeaders,
+      corsOrigins: opts.corsOrigins,
       pathPrefix,
       stripPrefix,
       redirectTo,
@@ -106,6 +110,8 @@ export function wireDomainRoutes(opts: {
           ...(opts.ownMiddlewares?.get(service) ?? []),
           ...(route.middlewares ?? []),
         ],
+        securityHeaders: route.securityHeaders,
+        corsOrigins: route.corsOrigins,
         pathPrefix: route.pathPrefix,
         stripPrefix: route.stripPrefix,
         redirectTo: route.redirectTo,

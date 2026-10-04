@@ -4,21 +4,28 @@ import type { Domain } from "../../types/domain";
 import type {
   domains,
   domainMiddlewares,
+  domainCorsOrigins,
 } from "../../db/schema/control-plane/domains";
 
 export type DomainRow = typeof domains.$inferSelect;
 export type DomainMiddlewareRow = typeof domainMiddlewares.$inferSelect;
+export type DomainCorsOriginRow = typeof domainCorsOrigins.$inferSelect;
 
 type DomainInsert = typeof domains.$inferInsert;
 type DomainMiddlewareInsert = typeof domainMiddlewares.$inferInsert;
+type DomainCorsOriginInsert = typeof domainCorsOrigins.$inferInsert;
 
 export function assembleDomain(
   row: DomainRow,
   middlewares: DomainMiddlewareRow[],
+  corsOrigins: DomainCorsOriginRow[],
 ): Domain {
   const mw = [...middlewares]
     .sort((a, b) => a.position - b.position)
     .map((m) => m.name);
+  const cors = [...corsOrigins]
+    .sort((a, b) => a.position - b.position)
+    .map((o) => o.origin);
   return {
     id: row.id,
     appId: row.appId,
@@ -37,6 +44,8 @@ export function assembleDomain(
       ? { certProvider: row.certProvider as Domain["certProvider"] }
       : {}),
     ...(mw.length ? { middlewares: mw } : {}),
+    securityHeaders: row.securityHeaders,
+    ...(cors.length ? { corsOrigins: cors } : {}),
     ...(row.pathPrefix != null ? { pathPrefix: row.pathPrefix } : {}),
     ...(row.stripPrefix != null ? { stripPrefix: row.stripPrefix } : {}),
     ...(row.service != null ? { service: row.service } : {}),
@@ -63,6 +72,8 @@ export function domainToRow(d: Domain): DomainInsert {
     stripPrefix: d.stripPrefix ?? null,
     service: d.service ?? null,
     proxied: d.proxied ?? null,
+    // Left out on a new row, so the column default (on) decides.
+    securityHeaders: d.securityHeaders,
     importedFrom: d.importedFrom ?? null,
     createdAt: d.createdAt,
   };
@@ -73,5 +84,13 @@ export function domainMiddlewaresToRows(d: Domain): DomainMiddlewareInsert[] {
     domainId: d.id,
     position,
     name,
+  }));
+}
+
+export function domainCorsOriginsToRows(d: Domain): DomainCorsOriginInsert[] {
+  return (d.corsOrigins ?? []).map((origin, position) => ({
+    domainId: d.id,
+    position,
+    origin,
   }));
 }

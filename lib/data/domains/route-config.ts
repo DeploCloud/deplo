@@ -71,3 +71,21 @@ export function normalizeMiddlewares(input?: string[] | null): string[] {
   }
   return out;
 }
+
+const MAX_CORS_ORIGINS = 20;
+
+export function normalizeCorsOrigins(input?: string[] | null): string[] {
+  const out: string[] = [];
+  for (const raw of input ?? []) {
+    const origin = raw.trim().replace(/\/+$/, "").toLowerCase();
+    if (!origin || out.includes(origin)) continue;
+    if (origin !== "*" && !/^https?:\/\/[a-z0-9.-]+(:\d{1,5})?$/.test(origin))
+      throw new Error(
+        `"${raw.trim()}" is not an origin - write it as https://app.acme.com, with no path.`,
+      );
+    out.push(origin);
+  }
+  if (out.length > MAX_CORS_ORIGINS)
+    throw new Error(`At most ${MAX_CORS_ORIGINS} allowed origins per domain.`);
+  return out;
+}

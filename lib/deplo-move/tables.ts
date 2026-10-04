@@ -75,6 +75,7 @@ export const MOVE_TABLES: Readonly<Record<string, TablePolicy>> = {
   docker_cleanup_policy_scopes: COPY,
   docker_cleanup_run_items: COPY,
   docker_cleanup_runs: COPY,
+  domain_cors_origins: COPY,
   domain_middlewares: COPY,
   domains: COPY,
   env_var_targets: COPY,

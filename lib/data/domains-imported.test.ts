@@ -97,6 +97,11 @@ test("each source host is re-hosted once, keeping its whole route", async () => 
       "a generated host resolves here by construction",
     );
     assert.equal(d.isPrimary, false);
+    assert.equal(
+      d.securityHeaders,
+      false,
+      "an imported app answers as it did where it came from",
+    );
   }
   const api = all.find((d) => d.importedFrom === "api-abc.sslip.io")!;
   assert.match(api.name, /^web-api-/);

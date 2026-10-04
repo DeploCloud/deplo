@@ -108,6 +108,8 @@ export function AddDomain({ project, suggestedDomain }: AddDomainProps) {
               entrypoint: resolved.entrypoint ?? undefined,
               certProvider: resolved.certProvider,
               middlewares: resolved.middlewares,
+              securityHeaders: resolved.securityHeaders,
+              corsOrigins: resolved.corsOrigins,
               pathPrefix: resolved.pathPrefix,
               stripPrefix: resolved.stripPrefix,
               service: resolved.service,

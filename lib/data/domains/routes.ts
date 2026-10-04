@@ -16,6 +16,8 @@ export interface RoutableDomain {
   tls: boolean;
   certResolver: string;
   middlewares: string[];
+  securityHeaders: boolean;
+  corsOrigins: string[];
   pathPrefix: string;
   stripPrefix: boolean;
   service: string | null;
@@ -33,6 +35,8 @@ export function defaultRoute(
     port,
     ...domainTlsConfig(tls),
     middlewares: [],
+    securityHeaders: false,
+    corsOrigins: [],
     pathPrefix: "",
     stripPrefix: false,
     service,
@@ -57,6 +61,8 @@ export function toRoutableDomain(
     port: d.port ?? null,
     ...domainTlsConfig(d),
     middlewares: d.middlewares ?? [],
+    securityHeaders: d.securityHeaders === true,
+    corsOrigins: d.corsOrigins ?? [],
     pathPrefix: d.pathPrefix ?? "",
     stripPrefix: Boolean(d.stripPrefix),
     service: d.service ?? null,

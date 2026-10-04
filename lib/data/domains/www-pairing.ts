@@ -190,6 +190,8 @@ async function insertPairedDomain(
     certProvider,
     ...(from.service ? { service: from.service } : {}),
     ...(from.proxied ? { proxied: true } : {}),
+    securityHeaders: from.securityHeaders,
+    ...(from.corsOrigins?.length ? { corsOrigins: from.corsOrigins } : {}),
     createdAt: nowIso(),
   });
 }

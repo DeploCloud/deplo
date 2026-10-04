@@ -112,6 +112,8 @@ const route: RoutableDomain = {
   tls: true,
   certResolver: "letsencrypt",
   middlewares: [],
+  securityHeaders: false,
+  corsOrigins: [],
   pathPrefix: "",
   stripPrefix: false,
   service: null,

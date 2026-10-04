@@ -21,6 +21,8 @@ export interface Domain {
   certProvider?: CertProvider;
   importedFrom?: string | null;
   middlewares?: string[];
+  securityHeaders?: boolean;
+  corsOrigins?: string[];
   pathPrefix?: string;
   stripPrefix?: boolean;
   service?: string;

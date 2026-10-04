@@ -14,7 +14,11 @@ import {
   appVolumes,
 } from "../db/schema/control-plane/apps";
 import { deployments } from "../db/schema/control-plane/deployments";
-import { domains, domainMiddlewares } from "../db/schema/control-plane/domains";
+import {
+  domains,
+  domainCorsOrigins,
+  domainMiddlewares,
+} from "../db/schema/control-plane/domains";
 import { envVars, envVarTargets } from "../db/schema/control-plane/env-vars";
 import type { App, DeploySource } from "../types/app";
 import type { Deployment } from "../types/deployment";
@@ -30,6 +34,8 @@ import {
   assembleDomain,
   domainToRow,
   domainMiddlewaresToRows,
+  domainCorsOriginsToRows,
+  type DomainCorsOriginRow,
   type DomainMiddlewareRow,
   type DomainRow,
 } from "./app-graph-rows/domain";
@@ -213,13 +219,22 @@ async function assembleDomains(
     .from(domainMiddlewares)
     .where(inArray(domainMiddlewares.domainId, ids))
     .orderBy(asc(domainMiddlewares.domainId), asc(domainMiddlewares.position));
+  const corsRows = await db
+    .select()
+    .from(domainCorsOrigins)
+    .where(inArray(domainCorsOrigins.domainId, ids));
   const byDomain = new Map<string, DomainMiddlewareRow[]>();
   for (const r of mwRows) {
     const list = byDomain.get(r.domainId) ?? [];
     list.push(r);
     byDomain.set(r.domainId, list);
   }
-  return rows.map((r) => assembleDomain(r, byDomain.get(r.id) ?? []));
+  const corsByDomain = new Map<string, DomainCorsOriginRow[]>();
+  for (const r of corsRows)
+    corsByDomain.set(r.domainId, [...(corsByDomain.get(r.domainId) ?? []), r]);
+  return rows.map((r) =>
+    assembleDomain(r, byDomain.get(r.id) ?? [], corsByDomain.get(r.id) ?? []),
+  );
 }
 
 export async function loadDomainsForApp(
@@ -250,6 +265,8 @@ export async function insertDomain(
   await db.insert(domains).values(domainToRow(domain));
   const mw = domainMiddlewaresToRows(domain);
   if (mw.length > 0) await db.insert(domainMiddlewares).values(mw);
+  const cors = domainCorsOriginsToRows(domain);
+  if (cors.length > 0) await db.insert(domainCorsOrigins).values(cors);
 }
 
 export async function loadDomainsForApps(

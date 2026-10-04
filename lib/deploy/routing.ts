@@ -8,6 +8,8 @@ export interface RouterRoute {
   pathPrefix?: string;
   stripPrefix?: boolean;
   redirectTo?: string;
+  securityHeaders?: boolean;
+  corsOrigins?: string[];
 }
 
 export interface RouterLabelOptions {
@@ -70,6 +72,8 @@ export function traefikRouterLabels(opts: RouterLabelOptions): string[] {
     pathPrefix: "",
     stripPrefix: false,
     redirectTo: "",
+    securityHeaders: false,
+    corsOrigins: [],
   });
   const ordered = [...groups.entries()].sort(([a, ga], [b, gb]) => {
     if (a === defaultId) return -1;
@@ -97,6 +101,8 @@ interface RouterSig {
   pathPrefix: string;
   stripPrefix: boolean;
   redirectTo: string;
+  securityHeaders: boolean;
+  corsOrigins: string[];
 }
 
 function resolveTls(route: RouterRoute, opts: RouterLabelOptions): RouterSig {
@@ -108,6 +114,8 @@ function resolveTls(route: RouterRoute, opts: RouterLabelOptions): RouterSig {
   const pathPrefix = normalizeRulePath(route.pathPrefix);
   const stripPrefix = pathPrefix !== "" && (route.stripPrefix ?? false);
   const redirectTo = normalizeRedirectTarget(route.redirectTo);
+  const securityHeaders = route.securityHeaders === true;
+  const corsOrigins = route.corsOrigins ?? [];
   if (!tls) {
     return {
       port,
@@ -118,6 +126,8 @@ function resolveTls(route: RouterRoute, opts: RouterLabelOptions): RouterSig {
       pathPrefix,
       stripPrefix,
       redirectTo,
+      securityHeaders,
+      corsOrigins,
     };
   }
   return {
@@ -129,6 +139,8 @@ function resolveTls(route: RouterRoute, opts: RouterLabelOptions): RouterSig {
     pathPrefix,
     stripPrefix,
     redirectTo,
+    securityHeaders,
+    corsOrigins,
   };
 }
 
@@ -148,7 +160,13 @@ function normalizeRulePath(input?: string): string {
 }
 
 function sigId(sig: RouterSig): string {
-  return `${sig.port}|${sig.entrypoint}|${sig.tls ? 1 : 0}|${sig.certResolver}|${sig.middlewares.join(",")}|${sig.pathPrefix}|${sig.stripPrefix ? 1 : 0}|${sig.redirectTo}`;
+  return `${sig.port}|${sig.entrypoint}|${sig.tls ? 1 : 0}|${sig.certResolver}|${sig.middlewares.join(",")}|${sig.pathPrefix}|${sig.stripPrefix ? 1 : 0}|${sig.redirectTo}|${headersId(sig)}`;
+}
+
+function headersId(sig: RouterSig): string {
+  return sig.securityHeaders || sig.corsOrigins.length
+    ? `${sig.securityHeaders ? 1 : 0}|${sig.corsOrigins.join(",")}`
+    : "";
 }
 
 function sigSuffix(sig: RouterSig, defaultResolver: string): string {
@@ -170,6 +188,7 @@ function sigSuffix(sig: RouterSig, defaultResolver: string): string {
   }
   if (sig.middlewares.length) parts.push("mw", ...sig.middlewares.map(safe));
   if (sig.redirectTo) parts.push("redirect", hash6(sig.redirectTo));
+  if (headersId(sig)) parts.push("hdr", hash6(headersId(sig)));
   return parts.join("-");
 }
 
@@ -201,9 +220,11 @@ function routerBlock(
     : hostRule;
   const stripName = sig.stripPrefix ? `${key}-stripprefix` : null;
   const redirectName = sig.redirectTo ? `${key}-redirect` : null;
+  const headersName = headersId(sig) ? `${key}-headers` : null;
   const middlewares = [
     ...(redirectName ? [redirectName] : []),
     ...(stripName ? [stripName] : []),
+    ...(headersName ? [headersName] : []),
     ...sig.middlewares,
   ];
   return [
@@ -241,10 +262,34 @@ function routerBlock(
           `traefik.http.middlewares.${stripName}.stripprefix.prefixes=${sig.pathPrefix}`,
         ]
       : []),
+    ...(headersName ? headerLabels(headersName, sig) : []),
     ...(middlewares.length
       ? [`traefik.http.routers.${key}.middlewares=${middlewares.join(",")}`]
       : []),
     ...(withApp ? [`traefik.http.routers.${key}.service=${key}`] : []),
     `traefik.http.services.${key}.loadbalancer.server.port=${sig.port}`,
+  ];
+}
+
+// see https://deplo.build/docs/guides/networking/domains-and-https#security-headers-and-cors
+function headerLabels(name: string, sig: RouterSig): string[] {
+  const at = `traefik.http.middlewares.${name}.headers`;
+  return [
+    ...(sig.securityHeaders
+      ? [
+          `${at}.contenttypenosniff=true`,
+          `${at}.customframeoptionsvalue=SAMEORIGIN`,
+          `${at}.referrerpolicy=strict-origin-when-cross-origin`,
+        ]
+      : []),
+    ...(sig.corsOrigins.length
+      ? [
+          `${at}.accesscontrolalloworiginlist=${sig.corsOrigins.join(",")}`,
+          `${at}.accesscontrolallowmethods=GET,POST,PUT,PATCH,DELETE,OPTIONS`,
+          `${at}.accesscontrolallowheaders=*`,
+          `${at}.accesscontrolmaxage=600`,
+          `${at}.addvaryheader=true`,
+        ]
+      : []),
   ];
 }

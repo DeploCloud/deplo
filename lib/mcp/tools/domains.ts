@@ -14,6 +14,8 @@ const DOMAIN_FIELDS = /* GraphQL */ `
   pathPrefix
   entrypoint
   proxied
+  securityHeaders
+  corsOrigins
 `;
 
 export const DOMAINS: McpToolDef[] = [
@@ -67,6 +69,18 @@ export const DOMAINS: McpToolDef[] = [
         .describe(
           "Remove the path prefix before the container sees the request.",
         ),
+      securityHeaders: z
+        .boolean()
+        .optional()
+        .describe(
+          "Send nosniff, same-origin framing and a strict referrer policy. On when omitted.",
+        ),
+      corsOrigins: z
+        .array(z.string())
+        .optional()
+        .describe(
+          'Browser origins allowed to call this hostname, e.g. ["https://app.acme.com"]. "*" allows any.',
+        ),
     }),
     query: /* GraphQL */ `
       mutation McpAddDomain($appId: String!, $name: String!, $config: DomainConfigInput) {
@@ -82,6 +96,8 @@ export const DOMAINS: McpToolDef[] = [
         certProvider: a.certProvider,
         pathPrefix: a.pathPrefix,
         stripPrefix: a.stripPrefix,
+        securityHeaders: a.securityHeaders,
+        corsOrigins: a.corsOrigins,
       },
     }),
   }),
@@ -104,6 +120,18 @@ export const DOMAINS: McpToolDef[] = [
         ),
       port: z.number().int().optional().describe("Container port to route to."),
       certProvider: z.enum(["none", "letsencrypt", "custom"]).optional(),
+      securityHeaders: z
+        .boolean()
+        .optional()
+        .describe(
+          "Turn the security headers on or off. Off when another site embeds this one in a frame.",
+        ),
+      corsOrigins: z
+        .array(z.string())
+        .optional()
+        .describe(
+          "Replace the allowed browser origins (CORS). An empty list turns CORS off.",
+        ),
     }),
     query: /* GraphQL */ `
       mutation McpUpdateDomain($id: String!, $patch: DomainPatchInput!) {
@@ -117,6 +145,8 @@ export const DOMAINS: McpToolDef[] = [
         service: a.service,
         port: a.port,
         certProvider: a.certProvider,
+        securityHeaders: a.securityHeaders,
+        corsOrigins: a.corsOrigins,
       },
     }),
   }),

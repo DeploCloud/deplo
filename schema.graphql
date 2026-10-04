@@ -1932,6 +1932,11 @@ type Domain {
   How this domain's TLS certificate is issued. Set to `cloudflare` automatically when a DNS check finds the host proxied and it still had no certificate - Cloudflare already serves it over HTTPS. `custom` serves it over HTTPS from a certificate installed on the owning server (see `addServerCertificate`) and asks no ACME provider for one. Null on rows written before the field existed (they route as `letsencrypt`).
   """
   certProvider: CertProvider
+
+  """
+  Browser origins allowed to call this domain (CORS). Empty means CORS is off; `*` allows any.
+  """
+  corsOrigins: [String!]
   createdAt: String
   entrypoint: DomainEntrypoint
   id: ID
@@ -1955,6 +1960,11 @@ type Domain {
   Hostname this domain answers a permanent 301 to (the canonical half of its www / non-www pair), or null when it serves the app itself.
   """
   redirectTo: String
+
+  """
+  Adds nosniff, same-origin framing and a strict referrer policy to every response. On for a domain added since the setting existed.
+  """
+  securityHeaders: Boolean
   service: String
   serviceName: String
   source: String
@@ -1972,11 +1982,15 @@ Per-domain routing config; an omitted certProvider means no certificate (plain H
 """
 input DomainConfigInput {
   certProvider: CertProvider
+  corsOrigins: [String!]
   entrypoint: DomainEntrypoint
   middlewares: [String!]
   pathPrefix: String
   port: Int
   proxied: Boolean
+
+  """Omitted means on."""
+  securityHeaders: Boolean
   service: String
   stripPrefix: Boolean
   www: DomainWwwRedirect
@@ -1992,12 +2006,14 @@ Partial domain edit; only the provided fields are changed. Null clears an overri
 """
 input DomainPatchInput {
   certProvider: CertProvider
+  corsOrigins: [String!]
   entrypoint: DomainEntrypoint
   middlewares: [String!]
   name: String
   pathPrefix: String
   port: Int
   proxied: Boolean
+  securityHeaders: Boolean
   service: String
   stripPrefix: Boolean
   www: DomainWwwRedirect

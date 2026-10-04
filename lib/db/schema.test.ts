@@ -91,6 +91,7 @@ const CONTROL_PLANE = [
   "env_vars",
   "env_var_targets",
   "domains",
+  "domain_cors_origins",
   "domain_middlewares",
   "app_basic_auth_users",
   "databases",
