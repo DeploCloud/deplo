@@ -4977,6 +4977,11 @@ type Query {
   """
   serverMetricsHistory(serverId: String!): [ServerMetrics!]
 
+  """
+  Every team's apps and databases on one server, with live status and usage. Instance admins only.
+  """
+  serverWorkloads(id: String!): [ServerWorkload!]
+
   """All servers, by creation order."""
   servers: [Server!]
 
@@ -5854,6 +5859,36 @@ type ServerUninstall {
   warning: String
 }
 
+"""An app or database placed on a server, with its live status and usage."""
+type ServerWorkload {
+  containers: [WorkloadContainer!]
+  cpu: Float
+  domain: String
+
+  """A database's engine ("postgres"); null for an app."""
+  engine: String
+  environment: String
+
+  """Its page, or null when the viewer is not in the owning team."""
+  href: String
+  id: ID
+
+  """"app" or "database"."""
+  kind: String
+  logo: String
+  logoTone: String
+  memUsed: Float
+  name: String
+  project: String
+  restarts: Int
+
+  """
+  The live status shown on its badge: active, restarting, unhealthy, down, idle, error, ...
+  """
+  status: String
+  teamName: String
+}
+
 """
 Deliberately carries no teamId: the active team is the caller's, and an id here would be a way to write another team's memberships.
 """
@@ -6501,4 +6536,23 @@ enum VolumeKind {
   host
   named
   service
+}
+
+"""One container of an app or database, from the live stream."""
+type WorkloadContainer {
+  """Percent, like docker stats."""
+  cpu: Float
+
+  """
+  "healthy", "unhealthy" or "starting"; empty when the image has no healthcheck.
+  """
+  health: String
+
+  """Bytes."""
+  memUsed: Float
+  name: String
+  restartCount: Int
+
+  """Docker's state: "running", "restarting", "exited", ..."""
+  state: String
 }

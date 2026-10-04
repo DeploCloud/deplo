@@ -49,7 +49,7 @@ import {
 import { ServerReadinessDialog } from "@/components/servers/server-readiness-dialog";
 import type { CleanupPolicy } from "@/lib/data/docker-cleanup/policy";
 import type { CleanupRunDTO } from "@/lib/data/docker-cleanup/run-history";
-import type { ServerRunningApp } from "@/lib/data/servers/running-apps";
+import type { ServerWorkload } from "@/lib/data/servers/workloads";
 import { AgentVersionBadge } from "../agent-version-badge";
 import { ServerMaintenanceTab } from "./maintenance-tab";
 import { ServerCleanupTab } from "./cleanup-tab";
@@ -97,13 +97,13 @@ export function ServerDetailTabs({
   teams,
   accessTeamIds,
   cleanup,
-  runningApps,
+  workloads,
 }: {
   server: ServerSummary;
   teams: TeamOption[];
   accessTeamIds: string[];
   cleanup: { policy: CleanupPolicy; runs: CleanupRunDTO[] };
-  runningApps: ServerRunningApp[];
+  workloads: ServerWorkload[];
 }) {
   const params = useSearchParams();
   const requested = params.get("tab");
@@ -160,7 +160,7 @@ export function ServerDetailTabs({
         <OverviewTab server={server} />
       </TabsContent>
       <TabsContent value="apps" className="space-y-4 pt-4">
-        <ServerAppsTab apps={runningApps} />
+        <ServerAppsTab serverId={server.id} initial={workloads} />
       </TabsContent>
       <TabsContent value="access" className="space-y-4 pt-4">
         <AccessTab
@@ -216,6 +216,9 @@ function OverviewTab({ server }: { server: ServerSummary }) {
   const [readinessOpen, setReadinessOpen] = React.useState(false);
   const [confirmUpdate, setConfirmUpdate] = React.useState(false);
   const [name, setName] = React.useState(server.name);
+  const [concurrency, setConcurrency] = React.useState(
+    String(server.deployConcurrency),
+  );
 
   const ramGb = server.memoryMb ? Math.round(server.memoryMb / 1024) : 0;
   const num = (n: number) => (n > 0 ? String(n) : "—");
@@ -236,6 +239,35 @@ function OverviewTab({ server }: { server: ServerSummary }) {
       }
       setName(next);
       toast.success(`Server renamed to ${next}`);
+      router.refresh();
+    });
+  }
+
+  function saveConcurrency(e: React.FormEvent) {
+    e.preventDefault();
+    const n = Number(concurrency);
+    if (!Number.isInteger(n) || n < 1 || n > 50) {
+      toast.error("Enter a whole number between 1 and 50");
+      return;
+    }
+    startTransition(async () => {
+      const res = await gqlAction<{
+        setServerDeployConcurrency: { id: string };
+      }>(
+        `mutation SetServerDeployConcurrency($id: String!, $concurrency: Int!) {
+          setServerDeployConcurrency(id: $id, concurrency: $concurrency) { id }
+        }`,
+        { id: server.id, concurrency: n },
+      );
+      if (!res.ok) {
+        toast.error(res.error);
+        return;
+      }
+      toast.success(
+        n === 1
+          ? `${server.name} runs one deploy at a time`
+          : `${server.name} runs up to ${n} deploys at once`,
+      );
       router.refresh();
     });
   }
@@ -311,6 +343,50 @@ function OverviewTab({ server }: { server: ServerSummary }) {
             <Button
               type="submit"
               disabled={pending || !name.trim() || name.trim() === server.name}
+            >
+              {pending ? "Saving" : "Save"}
+            </Button>
+          </form>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2 text-base">
+            <Gauge className="size-4" />
+            Build concurrency
+          </CardTitle>
+          <p className="mt-1 text-sm text-muted-foreground">
+            How many deployments this server runs at the same time. Extra
+            deploys wait in a queue; other servers are unaffected.
+          </p>
+        </CardHeader>
+        <CardContent>
+          <form className="space-y-4" onSubmit={saveConcurrency}>
+            <div className="space-y-2">
+              <FieldLabel
+                htmlFor="deploy-concurrency"
+                info="1 means one deploy at a time on this server (the safe default). Two deploys of the same app never run at once regardless of this value."
+                docs="deploy.queue"
+              >
+                Concurrent deployments
+              </FieldLabel>
+              <Input
+                id="deploy-concurrency"
+                type="number"
+                min={1}
+                max={50}
+                value={concurrency}
+                onChange={(e) => setConcurrency(e.target.value)}
+                disabled={pending}
+                className="w-28"
+              />
+            </div>
+            <Button
+              type="submit"
+              disabled={
+                pending || concurrency === String(server.deployConcurrency)
+              }
             >
               {pending ? "Saving" : "Save"}
             </Button>
@@ -410,9 +486,6 @@ function AccessTab({
     allTeams: server.allTeams,
     teamIds: accessTeamIds,
   });
-  const [concurrency, setConcurrency] = React.useState(
-    String(server.deployConcurrency),
-  );
 
   function saveAccess(e: React.FormEvent) {
     e.preventDefault();
@@ -437,35 +510,6 @@ function AccessTab({
         access.allTeams
           ? `${server.name} is now available to all teams`
           : `${server.name} team access updated`,
-      );
-      router.refresh();
-    });
-  }
-
-  function saveConcurrency(e: React.FormEvent) {
-    e.preventDefault();
-    const n = Number(concurrency);
-    if (!Number.isInteger(n) || n < 1 || n > 50) {
-      toast.error("Enter a whole number between 1 and 50");
-      return;
-    }
-    startTransition(async () => {
-      const res = await gqlAction<{
-        setServerDeployConcurrency: { id: string };
-      }>(
-        `mutation SetServerDeployConcurrency($id: String!, $concurrency: Int!) {
-          setServerDeployConcurrency(id: $id, concurrency: $concurrency) { id }
-        }`,
-        { id: server.id, concurrency: n },
-      );
-      if (!res.ok) {
-        toast.error(res.error);
-        return;
-      }
-      toast.success(
-        n === 1
-          ? `${server.name} runs one deploy at a time`
-          : `${server.name} runs up to ${n} deploys at once`,
       );
       router.refresh();
     });
@@ -501,50 +545,6 @@ function AccessTab({
               disabled={pending || !accessDirty || !accessIsComplete(access)}
             >
               Save access
-            </Button>
-          </form>
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2 text-base">
-            <Gauge className="size-4" />
-            Build concurrency
-          </CardTitle>
-          <p className="mt-1 text-sm text-muted-foreground">
-            How many deployments this server runs at the same time. Extra
-            deploys wait in a queue; other servers are unaffected.
-          </p>
-        </CardHeader>
-        <CardContent>
-          <form className="space-y-4" onSubmit={saveConcurrency}>
-            <div className="space-y-2">
-              <FieldLabel
-                htmlFor="deploy-concurrency"
-                info="1 means one deploy at a time on this server (the safe default). Two deploys of the same app never run at once regardless of this value."
-                docs="deploy.queue"
-              >
-                Concurrent deployments
-              </FieldLabel>
-              <Input
-                id="deploy-concurrency"
-                type="number"
-                min={1}
-                max={50}
-                value={concurrency}
-                onChange={(e) => setConcurrency(e.target.value)}
-                disabled={pending}
-                className="w-28"
-              />
-            </div>
-            <Button
-              type="submit"
-              disabled={
-                pending || concurrency === String(server.deployConcurrency)
-              }
-            >
-              {pending ? "Saving" : "Save"}
             </Button>
           </form>
         </CardContent>

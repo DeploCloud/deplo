@@ -66,7 +66,10 @@ const fallback: FallbackState = (globalFallback[FALLBACK_KEY] ??= {
 
 const PROBE_CONCURRENCY = 4;
 
-function fromTelemetry(appId: string, now: number): OverviewRuntime | null {
+export function fromTelemetry(
+  appId: string,
+  now: number,
+): OverviewRuntime | null {
   const sample = latestContainerSample(appId);
   if (!sample || now - sample.ts > GAP_MS) return null;
 

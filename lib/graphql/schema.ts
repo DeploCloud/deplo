@@ -60,6 +60,7 @@ import "./types/server/host-ops";
 import "./types/server/roster-queries";
 import "./types/server/server-ref";
 import "./types/server/settings";
+import "./types/server/workloads";
 import "./types/session";
 import "./types/shared-env";
 import "./types/takeover";
