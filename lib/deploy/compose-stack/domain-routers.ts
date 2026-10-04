@@ -16,6 +16,7 @@ function traefikLabels(opts: {
   entrypoint?: string;
   tls?: boolean;
   certResolver?: string;
+  middlewares?: string[];
   pathPrefix?: string;
   stripPrefix?: boolean;
   redirectTo?: string;
@@ -40,6 +41,7 @@ function traefikLabels(opts: {
       ...(opts.certResolver === undefined
         ? {}
         : { certResolver: opts.certResolver }),
+      middlewares: opts.middlewares,
       pathPrefix,
       stripPrefix,
       redirectTo,
@@ -99,6 +101,7 @@ export function wireDomainRoutes(opts: {
         tls: route.tls,
         // Carried per route: a compose app on a plain generated host answered only at an unprinted address.
         certResolver: route.certResolver,
+        middlewares: route.middlewares,
         pathPrefix: route.pathPrefix,
         stripPrefix: route.stripPrefix,
         redirectTo: route.redirectTo,

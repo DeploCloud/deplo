@@ -9,6 +9,7 @@ export interface ComposeDomainRoute {
   entrypoint?: string;
   tls?: boolean;
   certResolver?: string;
+  middlewares?: string[];
   pathPrefix: string;
   stripPrefix: boolean;
   redirectTo?: string;

@@ -160,6 +160,23 @@ test("a path-scoped route emits a PathPrefix rule + stripprefix middleware", () 
   assert.ok(api.some((l) => l.includes(".stripprefix.prefixes=/api")));
 });
 
+test("a domain's middlewares reach its router on a compose app", () => {
+  const doc = buildDoc(WEB_API_COMPOSE, {
+    domainRoutes: [
+      {
+        ...route("app.1.2.3.4.deplo.site", "web", 80),
+        middlewares: ["secure-headers@file", "compress"],
+      },
+    ],
+  });
+  assert.ok(
+    labelsOf(doc.services.web).some((l) =>
+      /\.middlewares=secure-headers@file,compress$/.test(l),
+    ),
+    labelsOf(doc.services.web).join("\n"),
+  );
+});
+
 test("a route with no port of its own uses the port the service exposes", () => {
   const doc = buildDoc(
     `
