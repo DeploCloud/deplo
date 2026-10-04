@@ -209,7 +209,7 @@ function WorkloadRows({
   const engine = w.engine as DatabaseType | null;
   const logo = w.logo ?? (engine ? DB_LOGOS[engine] : null);
   const name = (
-    <span className="flex max-w-28 min-w-0 items-center gap-2.5 sm:max-w-36">
+    <span className="flex max-w-24 min-w-0 items-center gap-2.5 sm:max-w-36">
       <AppLogo logo={logo ?? null} tone={w.logoTone} size={24} />
       <span className="truncate font-medium">{w.name}</span>
     </span>
@@ -251,7 +251,7 @@ function WorkloadRows({
           <Clip className="max-w-24">{w.teamName}</Clip>
         </TableCell>
         <TableCell className={cn(WIDE, "text-muted-foreground")}>
-          <Clip className="max-w-28">
+          <Clip className="max-w-24">
             {[w.project, w.environment].filter(Boolean).join(" / ") || "-"}
           </Clip>
         </TableCell>
@@ -293,7 +293,7 @@ function ContainerRow({ c }: { c: WorkloadContainer }) {
     <TableRow className="bg-surface hover:bg-surface">
       <TableCell />
       <TableCell className="pl-11 font-mono text-xs">
-        <Clip className="max-w-36">{c.name}</Clip>
+        <Clip className="max-w-24 sm:max-w-36">{c.name}</Clip>
       </TableCell>
       <TableCell className="hidden sm:table-cell" />
       <TableCell className="hidden sm:table-cell" />
