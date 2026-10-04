@@ -18,8 +18,9 @@ import {
   mergeBuildLabels,
   mergeEnvironment,
   mergeLabels,
-  stripTraefikLabels,
+  takeTraefikLabels,
 } from "./service-stamp";
+import { ignoredTraefikMessage } from "../compose-lint/traefik-labels";
 import type { App, ComposeDoc, ComposeStackInput } from "./types";
 
 function readComposeKeepingEnvText(compose: string): string {
@@ -63,6 +64,7 @@ export function buildComposeStack(input: ComposeStackInput): string {
   ];
   // Off by default: an image's own `traefik.*` labels ride in, and Traefik reads the container.
   const containerLabels = [...tracking, "traefik.enable=false"];
+  const ownMiddlewares = new Map<string, string[]>();
   for (const [serviceName, svc] of Object.entries(services)) {
     if (svc && typeof svc === "object") {
       assertNetworkModeIsNotANetwork(serviceName, (svc as App).network_mode);
@@ -71,7 +73,10 @@ export function buildComposeStack(input: ComposeStackInput): string {
       if (input.stripPublishedPorts) delete (svc as App).ports;
       if (input.filesDir) rewriteAppVolumes(svc as App, input.filesDir);
       // The `domains` table is the only routing source: a hand-written router could claim another host.
-      stripTraefikLabels(svc as App);
+      const traefik = takeTraefikLabels(svc as App, trackingId);
+      ownMiddlewares.set(serviceName, traefik.middlewares);
+      if (traefik.ignored.length > 0)
+        input.onWarn?.(ignoredTraefikMessage(serviceName, traefik.ignored));
       mergeLabels(svc as App, containerLabels);
       mergeBuildLabels(svc as App, serviceName, tracking);
       mergeEnvironment(svc as App, envKeys);
@@ -80,7 +85,7 @@ export function buildComposeStack(input: ComposeStackInput): string {
   }
 
   const wireApp = createAppWiring(services);
-  wireDomainRoutes({ services, input, basicAuth, wireApp });
+  wireDomainRoutes({ services, input, basicAuth, wireApp, ownMiddlewares });
   joinEveryService({ doc, services, input, wireApp });
   collapseOntoStackNetwork(doc, services, input.network);
 

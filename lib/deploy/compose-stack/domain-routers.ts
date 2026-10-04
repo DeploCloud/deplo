@@ -59,6 +59,7 @@ export function wireDomainRoutes(opts: {
   input: ComposeStackInput;
   basicAuth?: { name: string; users: string };
   wireApp: WireApp;
+  ownMiddlewares?: Map<string, string[]>;
 }): void {
   const { services, input, basicAuth, wireApp } = opts;
   const name = input.name;
@@ -101,7 +102,10 @@ export function wireDomainRoutes(opts: {
         tls: route.tls,
         // Carried per route: a compose app on a plain generated host answered only at an unprinted address.
         certResolver: route.certResolver,
-        middlewares: route.middlewares,
+        middlewares: [
+          ...(opts.ownMiddlewares?.get(service) ?? []),
+          ...(route.middlewares ?? []),
+        ],
         pathPrefix: route.pathPrefix,
         stripPrefix: route.stripPrefix,
         redirectTo: route.redirectTo,

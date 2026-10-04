@@ -265,3 +265,87 @@ services:
   assert.ok(worker.includes("traefik.enable=false"), worker.join(" "));
   assert.ok(!worker.some((l) => l.includes("victim.com")), worker.join(" "));
 });
+
+test("a supported middleware in the compose is renamed into the stack's own space and put on its service's routes", () => {
+  const warnings: string[] = [];
+  const doc = buildDoc(
+    `
+services:
+  web:
+    image: nginx
+    labels:
+      - traefik.http.middlewares.sec.headers.customresponseheaders.X-Foo=bar
+      - traefik.http.middlewares.gz.compress=true
+      - traefik.http.routers.web.middlewares=sec
+  api:
+    image: api
+    labels:
+      traefik.http.middlewares.rl.ratelimit.average: 50
+`,
+    {
+      trackingId: "prj_a1",
+      onWarn: (m) => warnings.push(m),
+      domainRoutes: [
+        {
+          ...route("web.1.2.3.4.deplo.site", "web", 80),
+          middlewares: ["secure-headers@file"],
+        },
+        route("api.1.2.3.4.deplo.site", "api", 8080),
+      ],
+    },
+  );
+  const web = labelsOf(doc.services.web);
+  const api = labelsOf(doc.services.api);
+  assert.ok(
+    web.includes(
+      "traefik.http.middlewares.prj_a1-sec.headers.customresponseheaders.X-Foo=bar",
+    ),
+    web.join("\n"),
+  );
+  assert.ok(web.includes("traefik.http.middlewares.prj_a1-gz.compress=true"));
+  assert.ok(
+    web.some((l) =>
+      /\.middlewares=prj_a1-sec,prj_a1-gz,secure-headers@file$/.test(l),
+    ),
+    "own middlewares first, in the order written, then the domain's",
+  );
+  assert.ok(!web.some((l) => l.includes("routers.web.")));
+  assert.ok(
+    api.includes("traefik.http.middlewares.prj_a1-rl.ratelimit.average=50"),
+  );
+  assert.ok(api.some((l) => /\.middlewares=prj_a1-rl$/.test(l)));
+  assert.ok(
+    !api.some((l) => /routers\..*\.middlewares=.*sec/.test(l)),
+    "a middleware stays on the service that declares it",
+  );
+  assert.equal(warnings.length, 1, warnings.join("\n"));
+  assert.match(warnings[0], /`web`.*traefik\.http\.routers\.web\.middlewares/);
+});
+
+test("a middleware that reaches past the app's own traffic is dropped with a warning", () => {
+  const warnings: string[] = [];
+  const doc = buildDoc(
+    `
+services:
+  web:
+    image: nginx
+    labels:
+      - traefik.enable=true
+      - traefik.http.middlewares.fa.forwardauth.address=http://deplo:3000
+      - traefik.http.middlewares.err.errors.service=other-team-web
+      - traefik.http.middlewares.auth.basicauth.usersfile=/etc/shadow
+      - traefik.http.middlewares.ch.chain.middlewares=victim-basicauth@docker
+`,
+    { onWarn: (m) => warnings.push(m) },
+  );
+  const web = labelsOf(doc.services.web);
+  for (const bad of ["forwardauth", "errors", "usersfile", "chain"])
+    assert.ok(
+      !web.some((l) => l.includes(bad)),
+      `${bad} leaked: ${web.join("\n")}`,
+    );
+  assert.ok(!web.some((l) => /routers\..*\.middlewares=/.test(l)));
+  assert.equal(warnings.length, 1);
+  assert.match(warnings[0], /forwardauth/);
+  assert.doesNotMatch(warnings[0], /traefik\.enable/);
+});

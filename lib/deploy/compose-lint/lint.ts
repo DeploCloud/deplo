@@ -9,6 +9,7 @@ import {
   hostPrivilegeKeys,
 } from "./host-privileges";
 import { composeJoinsForeignNetwork, serviceReservedClaim } from "./networks";
+import { ignoredTraefikKeys, ignoredTraefikMessage } from "./traefik-labels";
 import {
   fileSourcedKeys,
   foreignVolumeKeys,
@@ -296,6 +297,15 @@ export function lintCompose(source: string): LintDiagnostic[] {
     checkList(svc, "volumes", name, svcLine, lines, diags);
     checkListOrMap(svc, "networks", name, svcLine, lines, diags);
     checkListOrMap(svc, "labels", name, svcLine, lines, diags);
+    const ignoredTraefik = ignoredTraefikKeys(svc.labels);
+    if (ignoredTraefik.length > 0) {
+      diags.push({
+        severity: "warning",
+        rule: "traefik-label-ignored",
+        message: ignoredTraefikMessage(name, ignoredTraefik),
+        line: lineOfServiceField(lines, svcLine, "labels"),
+      });
+    }
 
     if ("depends_on" in svc && svc.depends_on != null) {
       const dep = svc.depends_on;
