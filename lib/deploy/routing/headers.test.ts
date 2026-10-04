@@ -53,6 +53,12 @@ test("allowed origins add the CORS headers, with or without the security set", (
     labels.join("\n"),
   );
   assert.ok(labels.some((l) => l.endsWith(".headers.addvaryheader=true")));
+  assert.ok(
+    labels.some((l) =>
+      l.endsWith(".headers.accesscontrolallowheaders=*,Authorization"),
+    ),
+    "a browser never lets the * wildcard cover Authorization",
+  );
   assert.ok(!labels.some((l) => l.includes("contenttypenosniff")));
 });
 

@@ -286,7 +286,7 @@ function headerLabels(name: string, sig: RouterSig): string[] {
       ? [
           `${at}.accesscontrolalloworiginlist=${sig.corsOrigins.join(",")}`,
           `${at}.accesscontrolallowmethods=GET,POST,PUT,PATCH,DELETE,OPTIONS`,
-          `${at}.accesscontrolallowheaders=*`,
+          `${at}.accesscontrolallowheaders=*,Authorization`,
           `${at}.accesscontrolmaxage=600`,
           `${at}.addvaryheader=true`,
         ]
