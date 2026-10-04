@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { getServerById, serverRole } from "@/lib/data/servers/roster";
 import { getServerTeamIds } from "@/lib/data/servers/team-access";
+import { listRunningAppsOnServer } from "@/lib/data/servers/running-apps";
 import { listAllTeamsForAdmin } from "@/lib/data/teams";
 import { getCleanupPolicy } from "@/lib/data/docker-cleanup/policy";
 import { listCleanupRuns } from "@/lib/data/docker-cleanup/run-history";
@@ -48,13 +49,14 @@ export default async function ServerDetailPage(
   if (!server) notFound();
   if (server.importOnly) notFound();
 
-  const [expectedAgentVersion, teamIds, teamsRaw, policy, runs] =
+  const [expectedAgentVersion, teamIds, teamsRaw, policy, runs, runningApps] =
     await Promise.all([
       expectedAgentVersionFor(server),
       getServerTeamIds(id),
       listAllTeamsForAdmin(),
       getCleanupPolicy(),
       listCleanupRuns({ serverId: id }),
+      listRunningAppsOnServer(id),
     ]);
 
   const [hydrated] = await hydrateServerSpecs([server]);
@@ -155,6 +157,7 @@ export default async function ServerDetailPage(
             policy,
             runs,
           }}
+          runningApps={runningApps}
         />
       </div>
     </ServerHealthProvider>

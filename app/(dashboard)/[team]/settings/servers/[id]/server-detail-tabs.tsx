@@ -4,6 +4,7 @@ import * as React from "react";
 import { useRouter, useSearchParams } from "@/lib/nav";
 import { toast } from "sonner";
 import {
+  AppWindow,
   Boxes,
   Brush,
   CircleFadingArrowUp,
@@ -48,11 +49,13 @@ import {
 import { ServerReadinessDialog } from "@/components/servers/server-readiness-dialog";
 import type { CleanupPolicy } from "@/lib/data/docker-cleanup/policy";
 import type { CleanupRunDTO } from "@/lib/data/docker-cleanup/run-history";
+import type { ServerRunningApp } from "@/lib/data/servers/running-apps";
 import { AgentVersionBadge } from "../agent-version-badge";
 import { ServerMaintenanceTab } from "./maintenance-tab";
 import { ServerCleanupTab } from "./cleanup-tab";
 import { ServerAdvancedTab } from "./advanced-tab/server-advanced-tab";
 import { ServerCertificatesTab } from "./certificates-tab";
+import { ServerAppsTab } from "./apps-tab";
 import { DocsLink } from "@/components/ui/docs-link";
 
 export type ServerSummary = {
@@ -80,6 +83,7 @@ export type ServerSummary = {
 
 const TABS = [
   "overview",
+  "apps",
   "access",
   "certificates",
   "maintenance",
@@ -93,11 +97,13 @@ export function ServerDetailTabs({
   teams,
   accessTeamIds,
   cleanup,
+  runningApps,
 }: {
   server: ServerSummary;
   teams: TeamOption[];
   accessTeamIds: string[];
   cleanup: { policy: CleanupPolicy; runs: CleanupRunDTO[] };
+  runningApps: ServerRunningApp[];
 }) {
   const params = useSearchParams();
   const requested = params.get("tab");
@@ -124,6 +130,10 @@ export function ServerDetailTabs({
           <LayoutDashboard className="size-4" />
           Overview
         </UnderlineTabsTrigger>
+        <UnderlineTabsTrigger value="apps">
+          <AppWindow className="size-4" />
+          Apps
+        </UnderlineTabsTrigger>
         <UnderlineTabsTrigger value="access">
           <Users className="size-4" />
           Access
@@ -148,6 +158,9 @@ export function ServerDetailTabs({
 
       <TabsContent value="overview" className="space-y-4 pt-4">
         <OverviewTab server={server} />
+      </TabsContent>
+      <TabsContent value="apps" className="space-y-4 pt-4">
+        <ServerAppsTab apps={runningApps} />
       </TabsContent>
       <TabsContent value="access" className="space-y-4 pt-4">
         <AccessTab
