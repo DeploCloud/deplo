@@ -76,7 +76,6 @@ export type ServerSummary = {
   isDeploHost: boolean;
   provisioning: boolean;
   agentVersion: string | null;
-  agentCanary: boolean;
   expectedAgentVersion: string;
   agentUpdateAvailable: boolean;
 };

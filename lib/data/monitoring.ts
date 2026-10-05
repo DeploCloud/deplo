@@ -7,7 +7,7 @@ import { markServerSeen, observedTraefik } from "./servers/agent-handshake";
 import { recordServerHealth } from "./server-health";
 import { classifyServerHealth } from "../infra/server-health";
 import { reportedAgentVersion } from "../version";
-import { expectedAgentVersionFor } from "../agent/release";
+import { expectedAgentVersion } from "./release-channel";
 import { nowIso } from "../ids";
 import { getMetricsHistory, recordMetricsSample } from "../monitoring/history";
 import { downsample } from "../monitoring/chart-geometry";
@@ -155,7 +155,7 @@ export async function getServerMetrics(
   await requireCapability("view_metrics");
   const server = await getServer(serverId);
   if (!server) throw new Error("Server not found");
-  const m = await metricsFor(server, await expectedAgentVersionFor(server));
+  const m = await metricsFor(server, await expectedAgentVersion());
   if (await isMetricsSavingEnabled()) recordMetricsSample(m);
   return m;
 }
@@ -237,7 +237,7 @@ export async function hydrateServerSpecs(servers: Server[]): Promise<Server[]> {
     servers.map(async (s) => {
       if (!measurable(s)) return s;
       try {
-        const expected = await expectedAgentVersionFor(s);
+        const expected = await expectedAgentVersion();
         const m = await withSpecTimeout(measureRemote(s, expected));
         if (m.cpuCores <= 0) return s;
         return {

@@ -10,7 +10,6 @@ import { ServerClock } from "./server-clock";
 import { InstallCommand } from "./install-command";
 import { DangerZone } from "./danger-zone";
 import { ServerRolePanel } from "./server-role-panel";
-import { AgentCanaryPanel } from "./agent-canary-panel";
 
 export function ServerAdvancedTab({ server }: { server: ServerSummary }) {
   const [reading, setReading] = React.useState<Reading | null>(null);
@@ -52,7 +51,6 @@ export function ServerAdvancedTab({ server }: { server: ServerSummary }) {
         error={error}
         onChanged={setReading}
       />
-      <AgentCanaryPanel server={server} />
       <InstallCommand server={server} />
       <DangerZone server={server} />
     </>

@@ -7,7 +7,6 @@ import {
   resolveLatestAgentRelease,
   refreshAgentRelease,
   resolveExpectedAgentVersion,
-  expectedAgentVersionFor,
   __resetReleaseCacheForTests,
 } from "./release";
 
@@ -360,14 +359,6 @@ test("the canary channel takes the newest release, drafts aside; stable ignores 
     assert.equal(
       await resolveExpectedAgentVersion("canary"),
       "0.3.0-canary.10",
-    );
-    assert.equal(
-      await expectedAgentVersionFor({ agentCanary: true }),
-      "0.3.0-canary.10",
-    );
-    assert.equal(
-      await expectedAgentVersionFor({ agentCanary: false }),
-      "0.2.0",
     );
     const rel = await resolveLatestAgentRelease("canary");
     assert.equal(rel!.binaries.amd64!.url, "https://x/v0.3.0-canary.10/amd64");

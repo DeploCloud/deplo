@@ -21,11 +21,7 @@ import {
   listBuildServerChoices,
   canHostWorkloads,
 } from "./servers/roster";
-import {
-  setServerAgentCanary,
-  setServerRole,
-  setServerBuildFallback,
-} from "./servers/settings";
+import { setServerRole, setServerBuildFallback } from "./servers/settings";
 
 let db: TestDb;
 let pg: PGlite;
@@ -268,17 +264,5 @@ test("a backups-only host cannot be marked as a build fallback", async () => {
     );
     await setServerBuildFallback(SERVER_1, false);
     assert.equal((await getServerById(SERVER_1))!.buildFallback, false);
-  });
-});
-
-test("canary agent releases are a per-server switch, off by default", async () => {
-  await asOwner(async () => {
-    const before = (await getServerById(SERVER_1))!;
-    assert.equal(before.agentCanary, false);
-    const on = await setServerAgentCanary(SERVER_1, true);
-    assert.equal(on.agentCanary, true);
-    assert.equal(on.agent?.version, before.agent?.version, "nothing installs");
-    const off = await setServerAgentCanary(SERVER_1, false);
-    assert.equal(off.agentCanary, false);
   });
 });

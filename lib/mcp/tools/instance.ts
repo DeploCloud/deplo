@@ -62,7 +62,7 @@ export const INSTANCE: McpToolDef[] = [
     name: "set_canary_releases",
     title: "Turn canary releases on or off",
     description:
-      "Offer pre-release versions of Deplo as updates. Nothing is installed; off never downgrades.",
+      "Offer pre-release versions of Deplo and of every server's agent as updates. Nothing is installed; off never downgrades.",
     group: "Instance",
     requires: "instanceAdmin",
     idempotent: true,

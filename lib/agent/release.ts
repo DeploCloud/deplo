@@ -45,12 +45,8 @@ function parseChecksums(text: string): Map<string, string> {
   return out;
 }
 
-/** Which releases a server's agent is offered: stable only, or canaries too. */
+/** Which agent releases the fleet is offered: stable only, or canaries too (the instance's one switch). */
 export type AgentChannel = "stable" | "canary";
-
-export function agentChannel(server: { agentCanary?: boolean }): AgentChannel {
-  return server.agentCanary ? "canary" : "stable";
-}
 
 type ReleaseCacheCell = {
   value: { at: number; release: AgentRelease | null } | null;
@@ -237,11 +233,4 @@ export async function resolveExpectedAgentVersion(
 ): Promise<string> {
   const release = await resolveLatestAgentRelease(channel);
   return release?.version || FALLBACK_AGENT_VERSION;
-}
-
-/** The version a server should run: the newest canary when it opted in, the stable one otherwise. */
-export function expectedAgentVersionFor(server: {
-  agentCanary?: boolean;
-}): Promise<string> {
-  return resolveExpectedAgentVersion(agentChannel(server));
 }

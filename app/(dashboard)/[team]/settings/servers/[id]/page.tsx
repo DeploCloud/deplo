@@ -20,7 +20,7 @@ import {
 } from "@/lib/deploy/domains";
 import { serverLabel } from "@/lib/utils";
 import { reportedAgentVersion, agentUpdateAvailable } from "@/lib/version";
-import { expectedAgentVersionFor } from "@/lib/agent/release";
+import { expectedAgentVersion as fleetAgentVersion } from "@/lib/data/release-channel";
 import type { TeamOption } from "@/components/servers/server-team-access";
 import {
   ServerHealthProvider,
@@ -51,7 +51,7 @@ export default async function ServerDetailPage(
 
   const [expectedAgentVersion, teamIds, teamsRaw, policy, runs, workloads] =
     await Promise.all([
-      expectedAgentVersionFor(server),
+      fleetAgentVersion(),
       getServerTeamIds(id),
       listAllTeamsForAdmin(),
       getCleanupPolicy(),
@@ -144,7 +144,6 @@ export default async function ServerDetailPage(
             isDeploHost,
             provisioning: hydrated.status === "provisioning",
             agentVersion,
-            agentCanary: hydrated.agentCanary,
             expectedAgentVersion,
             agentUpdateAvailable: agentUpdateAvailable(
               agentVersion,

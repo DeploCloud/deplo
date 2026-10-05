@@ -139,7 +139,7 @@ builder.mutationFields((t) => ({
     type: UpdateInfoRef,
     authScopes: { instanceAdmin: true },
     description:
-      "Offer canary (pre-release) versions of Deplo as updates, or go back to stable ones. Installs nothing: a newer version shows up as an update, and turning it off never downgrades a panel already on a canary.",
+      "Offer canary (pre-release) versions of Deplo and of every server's agent as updates, or go back to stable ones. One switch for the whole fleet. Installs nothing: a newer version shows up as an update, and turning it off never downgrades anything already on a canary.",
     args: { enabled: t.arg.boolean({ required: true }) },
     resolve: (_r, { enabled }) => setCanaryReleases(enabled),
   }),

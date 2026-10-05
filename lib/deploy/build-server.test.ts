@@ -32,7 +32,6 @@ function srv(over: Partial<Server> & { id: string }): Server {
     uninstallError: "",
     hostArch: over.hostArch ?? "amd64",
     deployConcurrency: 1,
-    agentCanary: false,
     createdAt: over.createdAt ?? "2026-01-01T00:00:00.000Z",
   };
 }

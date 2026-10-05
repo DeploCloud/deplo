@@ -10,7 +10,9 @@ import { getDb } from "../db/client";
 import { instanceSettings } from "../db/schema/control-plane/instance";
 import { nowIso } from "../ids";
 import { DEPLO_VERSION, DEPLO_REPO, isNewer, newestVersion } from "../version";
-import { resolveExpectedAgentVersion } from "../agent/release";
+import { canaryReleasesEnabled, expectedAgentVersion } from "./release-channel";
+
+export { canaryReleasesEnabled };
 import { requireActiveTeamId, requireInstanceAdmin } from "../membership";
 import { getCurrentUser } from "../auth/current-user";
 import {
@@ -83,16 +85,6 @@ function describeFailure(res: Response): string {
     return `GitHub's hourly limit for this instance is used up.${wait}`;
   }
   return `GitHub API returned ${res.status}`;
-}
-
-/** Whether this instance is offered canary (pre-release) versions of Deplo. */
-export async function canaryReleasesEnabled(): Promise<boolean> {
-  const rows = await getDb()
-    .select({ canary: instanceSettings.canaryReleases })
-    .from(instanceSettings)
-    .where(eq(instanceSettings.id, SETTINGS_ID))
-    .limit(1);
-  return rows[0]?.canary ?? false;
 }
 
 function listUrl(): string {
@@ -173,7 +165,7 @@ export async function refreshUpdateInfo(): Promise<UpdateInfo> {
   return fetchUpdateInfo({ cache: "no-store" });
 }
 
-/** Offer canary versions as updates, or go back to stable ones. Installs nothing by itself. */
+/** Offer canary versions of Deplo and every agent as updates, or go back to stable ones. Installs nothing by itself. */
 export async function setCanaryReleases(enabled: boolean): Promise<UpdateInfo> {
   await requireInstanceAdmin();
   const teamId = await requireActiveTeamId();
@@ -190,8 +182,8 @@ export async function setCanaryReleases(enabled: boolean): Promise<UpdateInfo> {
     await recordActivity(
       "server",
       enabled
-        ? "Switched Deplo to canary releases"
-        : "Switched Deplo back to stable releases",
+        ? "Switched Deplo and its agents to canary releases"
+        : "Switched Deplo and its agents back to stable releases",
       user.name,
       null,
       teamId,
@@ -257,7 +249,7 @@ export async function refreshAgentVersion(): Promise<string> {
   await requireInstanceAdmin();
   const { refreshAgentRelease } = await import("../agent/release");
   await refreshAgentRelease();
-  return resolveExpectedAgentVersion();
+  return expectedAgentVersion();
 }
 
 export interface DeploUpdateStarted {

@@ -2,7 +2,7 @@ import "server-only";
 
 import { count, eq, inArray, sql } from "drizzle-orm";
 
-import { resolveExpectedAgentVersion } from "../../agent/release";
+import { expectedAgentVersion, releaseChannel } from "../release-channel";
 import { getDb } from "../../db/client";
 import { apps as appsTable } from "../../db/schema/control-plane/apps";
 import { deployments as deploymentsTable } from "../../db/schema/control-plane/deployments";
@@ -81,7 +81,7 @@ export async function markAgentRolloutPending(actor: string): Promise<void> {
 export async function fleetAgentStatus(): Promise<FleetAgentStatus> {
   await requireInstanceAdmin();
   const [expected, servers, state] = await Promise.all([
-    resolveExpectedAgentVersion(),
+    expectedAgentVersion(),
     listAllServers(),
     rolloutState(),
   ]);
@@ -180,7 +180,10 @@ async function rolloutPass(): Promise<void> {
   const { actor } = await rolloutState();
   if (!actor) return;
 
-  const expected = await resolveExpectedAgentVersion();
+  const [expected, channel] = await Promise.all([
+    expectedAgentVersion(),
+    releaseChannel(),
+  ]);
   const [servers, load, busy] = await Promise.all([
     listAllServers(),
     appsPerServer(),
@@ -199,7 +202,7 @@ async function rolloutPass(): Promise<void> {
     }
 
     try {
-      await selfUpdateServerAgent(server.id);
+      await selfUpdateServerAgent(server.id, channel);
     } catch (e) {
       // An agent too old to update itself needs its installer re-run: permanent, so it must not block the fleet.
       if (e instanceof AgentUpdateUnsupportedError) continue;

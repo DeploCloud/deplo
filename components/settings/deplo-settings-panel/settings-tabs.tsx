@@ -123,10 +123,12 @@ export function DeploSettingsPanel({
         />
       </TabsContent>
       <TabsContent value="advanced" className="space-y-8">
+        <SettingGroup icon={CircleFadingArrowUp} title="Updates">
+          <CanaryReleasesCard enabled={canary} onChange={setCanary} />
+        </SettingGroup>
         <SettingGroup icon={SlidersHorizontal} title="Instance">
           <LogsRetentionCard logMaxDays={settings.logMaxDays} />
           <GravatarCard enabled={settings.gravatarEnabled} />
-          <CanaryReleasesCard enabled={canary} onChange={setCanary} />
         </SettingGroup>
         <SettingGroup icon={Globe} title="Panel access">
           <PanelBackupAddressCard settings={settings} />

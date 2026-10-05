@@ -48,12 +48,12 @@ export function CanaryReleasesCard({
       icon={FlaskConical}
       title="Canary releases"
       htmlFor="canary-releases"
-      info="New versions before they are marked stable. They can have bugs, and nothing installs until you click Update."
+      info="New versions of Deplo and of every server's agent before they are marked stable. They can have bugs, and nothing installs until you click Update."
       docs="upgrade.releases"
       description={
         enabled
-          ? "Every new version shows up as an update."
-          : "Only stable versions show up as updates."
+          ? "Every new version of Deplo and its agents shows up as an update."
+          : "Only stable versions of Deplo and its agents show up as updates."
       }
       control={
         <Switch
@@ -71,11 +71,11 @@ export function CanaryReleasesCard({
         description={
           <>
             From now on,{" "}
-            <strong>every new version shows up as an update</strong>, before it
-            is marked stable.
+            <strong>every new version of Deplo and its agents</strong> shows up
+            as an update, before it is marked stable.
           </>
         }
-        consequence="Canary versions can be unstable and break the panel. Not recommended for production."
+        consequence="Canary versions can be unstable and break the panel or a server's agent. Not recommended for production."
         confirmLabel="Turn on canary releases"
         successMessage="Canary releases turned on"
         onConfirm={() => save(true)}

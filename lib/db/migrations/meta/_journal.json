@@ -1205,6 +1205,13 @@
       "when": 1791200000000,
       "tag": "0171_api_token_mcp_agent",
       "breakpoints": true
+    },
+    {
+      "idx": 172,
+      "version": "7",
+      "when": 1791300000000,
+      "tag": "0172_drop_server_agent_canary",
+      "breakpoints": true
     }
   ]
 }

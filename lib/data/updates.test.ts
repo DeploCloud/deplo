@@ -19,6 +19,7 @@ import {
   listDeploReleases,
   setCanaryReleases,
 } from "./updates";
+import { releaseChannel } from "./release-channel";
 
 let db: TestDb;
 let pg: PGlite;
@@ -240,6 +241,19 @@ test("switching channel installs nothing; switching back finds the latest stable
       capture.calls.every((c) => c.method === "GET"),
       "the switch only reads the release list",
     );
+  } finally {
+    capture.restore();
+  }
+});
+
+test("the one canary switch moves every server's agent with the panel", async () => {
+  const capture = captureFetch(releaseFeed);
+  try {
+    assert.equal(await releaseChannel(), "stable");
+    await asUser(ADMIN, () => setCanaryReleases(true));
+    assert.equal(await releaseChannel(), "canary");
+    await asUser(ADMIN, () => setCanaryReleases(false));
+    assert.equal(await releaseChannel(), "stable");
   } finally {
     capture.restore();
   }

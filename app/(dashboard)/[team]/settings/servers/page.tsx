@@ -40,7 +40,7 @@ import { isInstanceAdmin } from "@/lib/membership";
 import { hydrateServerSpecs } from "@/lib/data/monitoring";
 import { serverLabel } from "@/lib/utils";
 import { reportedAgentVersion } from "@/lib/version";
-import { resolveExpectedAgentVersion } from "@/lib/agent/release";
+import { expectedAgentVersion } from "@/lib/data/release-channel";
 import type { Server } from "@/lib/types/server";
 import type { TeamOption } from "@/components/servers/server-team-access";
 import { AgentVersionBadge } from "./agent-version-badge";
@@ -317,13 +317,8 @@ export default async function ServersPage(
     listAllServers().then((all) => all.filter((s) => !s.importOnly)),
     listAllServerTeamIds(),
     listAllTeamsForAdmin(),
-    resolveExpectedAgentVersion(),
+    expectedAgentVersion(),
   ]);
-  const canaryExpected = serversRaw.some((s) => s.agentCanary)
-    ? await resolveExpectedAgentVersion("canary")
-    : expected;
-  const expectedFor = (server: Server) =>
-    server.agentCanary ? canaryExpected : expected;
   const measured = hydrateServerSpecs(serversRaw)
     .catch(() => serversRaw)
     .then((list) => new Map(list.map((s) => [s.id, s])));
@@ -366,7 +361,7 @@ export default async function ServersPage(
         specs={specsFor(server)}
         accessTeamIds={serverTeamIds.get(server.id) ?? []}
         isDeploHost={isDeploHostServer(server, selfAddrs)}
-        expected={expectedFor(server)}
+        expected={expected}
       />
     ),
     row: (
@@ -374,7 +369,7 @@ export default async function ServersPage(
         server={server}
         accessTeamIds={serverTeamIds.get(server.id) ?? []}
         isDeploHost={isDeploHostServer(server, selfAddrs)}
-        expected={expectedFor(server)}
+        expected={expected}
       />
     ),
   }));
