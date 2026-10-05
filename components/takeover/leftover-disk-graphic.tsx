@@ -3,6 +3,7 @@ import {
   Decal,
   FaceRect,
   IsoArt,
+  IsoGrid,
   fit,
   floor,
   ghost,
@@ -24,14 +25,25 @@ function wide(view: string, ratio: number) {
   return `${x - grow} ${y} ${w + 2 * grow} ${h}`;
 }
 
-export function LeftoverDiskGraphic({ className }: { className?: string }) {
+export function LeftoverDiskGraphic({
+  grid = false,
+  className,
+}: {
+  grid?: boolean;
+  className?: string;
+}) {
   return (
     <IsoArt
       label="A disk with the stopped platform still taking up part of it"
       view={wide(fit([{ at: [-0.3, -0.3, 0], size: [6.6, 2.6, 2.05] }]), 1.85)}
       className={cn("h-auto w-full", className)}
     >
-      <Box at={[-0.3, -0.3, 0]} size={[6.6, 2.6, 0]} tone={floor} />
+      {grid ? (
+        // The grid is the floor here: the disk stands on its whole steps.
+        <IsoGrid at={[3, 1, 0]} radius={520} />
+      ) : (
+        <Box at={[-0.3, -0.3, 0]} size={[6.6, 2.6, 0]} tone={floor} />
+      )}
       <Box {...DISK}>
         <FaceRect
           box={DISK}

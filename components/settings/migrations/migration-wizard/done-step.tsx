@@ -50,6 +50,7 @@ export function DoneStep({
       <MigrationGraphic
         state="done"
         kind={kind}
+        grid
         className="h-auto w-full max-w-md"
       />
 
