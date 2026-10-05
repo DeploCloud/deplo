@@ -6,6 +6,7 @@ import {
   isNewer,
   isPrerelease,
   newestVersion,
+  rankedCurrent,
 } from "./version";
 
 test("isNewer: strict semver greater-than across each component", () => {
@@ -73,4 +74,18 @@ test("a git-describe dev build reads as its tag, never as a canary of it", () =>
   assert.equal(isPrerelease("0.2.0-8-gb39f8a7"), false);
   assert.equal(agentUpdateAvailable("0.2.0-8-gb39f8a7", "0.2.0"), false);
   assert.equal(agentUpdateAvailable("0.2.0-8-gb39f8a7", "0.2.1"), true);
+});
+
+test("a withdrawn stable ranks below its own canaries, and its re-release is an update", () => {
+  const feed = ["v0.5.0-canary.10", "v0.4.0", "v0.3.0"];
+  const current = rankedCurrent("0.5.0", feed);
+  assert.equal(isNewer("v0.5.0-canary.10", current), true);
+  assert.equal(isNewer("v0.5.0", current), true);
+  assert.equal(isNewer("v0.4.0", current), false);
+});
+
+test("a listed stable and any canary compare as themselves", () => {
+  assert.equal(rankedCurrent("0.4.0", ["v0.5.0-canary.10", "v0.4.0"]), "0.4.0");
+  assert.equal(rankedCurrent("0.5.0-canary.9", ["v0.4.0"]), "0.5.0-canary.9");
+  assert.equal(rankedCurrent("dev", ["v0.4.0"]), "dev");
 });

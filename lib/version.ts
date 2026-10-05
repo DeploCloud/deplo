@@ -49,6 +49,18 @@ export function isNewer(latest: string, current: string): boolean {
   return comparePre(a.pre, b.pre) > 0;
 }
 
+/** What updates compare against: a stable GitHub no longer lists was withdrawn, so it ranks below its own canaries. */
+export function rankedCurrent(current: string, listed: string[]): string {
+  const v = parseSemver(current);
+  if (!v || v.pre.length > 0) return current;
+  const core = v.core.join(".");
+  const isListed = listed.some((tag) => {
+    const t = parseSemver(tag);
+    return t !== null && t.pre.length === 0 && t.core.join(".") === core;
+  });
+  return isListed ? current : `${core}-0`;
+}
+
 /** A canary (pre-release) version: anything after a `-`, e.g. 0.3.0-canary.1. */
 export function isPrerelease(v: string): boolean {
   return (parseSemver(v)?.pre.length ?? 0) > 0;

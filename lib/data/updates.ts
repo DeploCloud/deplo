@@ -9,7 +9,13 @@ import { eq } from "drizzle-orm";
 import { getDb } from "../db/client";
 import { instanceSettings } from "../db/schema/control-plane/instance";
 import { nowIso } from "../ids";
-import { DEPLO_VERSION, DEPLO_REPO, isNewer, newestVersion } from "../version";
+import {
+  DEPLO_VERSION,
+  DEPLO_REPO,
+  isNewer,
+  newestVersion,
+  rankedCurrent,
+} from "../version";
 import { canaryReleasesEnabled, expectedAgentVersion } from "./release-channel";
 
 export { canaryReleasesEnabled };
@@ -95,7 +101,9 @@ function listUrl(): string {
 async function fetchNewestRelease(
   init: RequestInit,
   canary: boolean,
-): Promise<GitHubRelease | null | { error: string }> {
+): Promise<
+  { release: GitHubRelease; current: string } | null | { error: string }
+> {
   const res = await fetch(
     canary
       ? listUrl()
@@ -105,14 +113,16 @@ async function fetchNewestRelease(
   if (res.status === 404) return null;
   if (!res.ok) return { error: describeFailure(res) };
   const json = (await res.json()) as unknown;
-  if (!canary) return json as GitHubRelease;
+  if (!canary)
+    return { release: json as GitHubRelease, current: DEPLO_VERSION };
   if (!Array.isArray(json)) return null;
-  return newestVersion(
-    (json as GitHubRelease[]).filter(
-      (r) => r && !r.draft && typeof r.tag_name === "string",
-    ),
-    (r) => r.tag_name!,
+  const listed = (json as GitHubRelease[]).filter(
+    (r) => r && !r.draft && typeof r.tag_name === "string",
   );
+  const release = newestVersion(listed, (r) => r.tag_name!);
+  if (!release) return null;
+  const tags = listed.map((r) => r.tag_name!);
+  return { release, current: rankedCurrent(DEPLO_VERSION, tags) };
 }
 
 async function fetchUpdateInfo(init: RequestInit): Promise<UpdateInfo> {
@@ -129,16 +139,17 @@ async function fetchUpdateInfo(init: RequestInit): Promise<UpdateInfo> {
   };
 
   try {
-    const json = await fetchNewestRelease(init, canary);
-    if (!json) return base;
-    if ("error" in json) return { ...base, error: json.error };
+    const found = await fetchNewestRelease(init, canary);
+    if (!found) return base;
+    if ("error" in found) return { ...base, error: found.error };
+    const json = found.release;
     const tag = typeof json.tag_name === "string" ? json.tag_name : null;
     if (!tag) return base;
 
     return {
       ...base,
       latest: tag,
-      updateAvailable: isNewer(tag, DEPLO_VERSION),
+      updateAvailable: isNewer(tag, found.current),
       url:
         typeof json.html_url === "string"
           ? json.html_url
@@ -211,8 +222,14 @@ export async function listDeploReleases(): Promise<{
     const json = (await res.json()) as GitHubRelease[];
     if (!Array.isArray(json)) return { releases: [] };
 
-    const releases = json
-      .filter((r): r is GitHubRelease => !!r && !r.draft)
+    const listed = json.filter((r): r is GitHubRelease => !!r && !r.draft);
+    const current = rankedCurrent(
+      DEPLO_VERSION,
+      listed.flatMap((r) =>
+        typeof r.tag_name === "string" ? [r.tag_name] : [],
+      ),
+    );
+    const releases = listed
       .map((r) => {
         const tag = typeof r.tag_name === "string" ? r.tag_name.trim() : "";
         if (!tag) return null;
@@ -229,7 +246,7 @@ export async function listDeploReleases(): Promise<{
           body: typeof r.body === "string" ? r.body.trim() : "",
           prerelease: r.prerelease === true,
           current: normalizeTag(tag) === DEPLO_VERSION,
-          available: isNewer(tag, DEPLO_VERSION),
+          available: isNewer(tag, current),
         };
       })
       .filter((r): r is DeploRelease => r !== null)
