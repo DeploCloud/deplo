@@ -19,8 +19,9 @@ import {
 } from "@/components/iso/iso";
 import { cn } from "@/lib/utils";
 
-const PLATFORM: BoxShape = { at: [-2, -2, 0], size: [4, 4, 0] };
-const SHEET: BoxShape = { at: [-2, -2, 0], size: [2, 4, 0.15] };
+// Whole grid steps throughout, so the backdrop's lines run along every edge.
+const PLATFORM: BoxShape = { at: [-2, -2, 0], size: [4, 5, 0] };
+const SHEET: BoxShape = { at: [-2, -2, 0], size: [2, 5, 0.15] };
 // A compose file's rows, top to bottom: [start, end, colour]; a coloured row is a service.
 const ROWS: [number, number, string | null][] = [
   [0.08, 0.42, null],
@@ -34,8 +35,8 @@ const ROWS: [number, number, string | null][] = [
 ];
 const SERVICES = [
   { y: -2, color: "var(--success)" },
-  { y: -0.5, color: "var(--info)" },
-  { y: 1, color: "var(--warning)" },
+  { y: 0, color: "var(--info)" },
+  { y: 2, color: "var(--warning)" },
 ];
 
 function Container({ at, color }: { at: P; color: string }) {
@@ -70,10 +71,10 @@ export function TemplatesGraphic({ className }: { className?: string }) {
   return (
     <IsoArt
       label="A compose file turning into three running services"
-      view={fit([{ at: [-2, -2, -1], size: [4, 4, 2.2] }])}
+      view={fit([{ at: [-2, -2, -1], size: [4, 5, 2.2] }])}
       className={cn("h-32 w-auto", className)}
     >
-      <IsoGrid radius={560} />
+      <IsoGrid at={[0, 0.5, 0]} radius={560} />
       <Legs at={PLATFORM.at} size={PLATFORM.size} />
       <Box {...PLATFORM} tone={floor} />
 
@@ -140,8 +141,8 @@ export function TemplatesGraphic({ className }: { className?: string }) {
       ))}
 
       <Tick at={[-2, -2, 3]} />
-      <Tick at={[2, 2, 0]} />
-      <Tick at={[-2, 2, -1]} />
+      <Tick at={[2, 3, 0]} />
+      <Tick at={[-2, 3, -1]} />
     </IsoArt>
   );
 }

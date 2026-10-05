@@ -28,22 +28,38 @@ const LABEL: Record<ConnectState, string> = {
 };
 
 const LIVE = "var(--success)";
-const CUBE: BoxShape = { at: [0, 0, 0], size: [1.3, 1.3, 1.7] };
-const CENTRE: P = [0.65, 0.65, 0];
-const TILE = 0.8;
+// Every footprint sits on whole grid steps, so the backdrop's lines run along its edges.
+const CUBE: BoxShape = { at: [0, 0, 0], size: [2, 2, 2] };
+const CENTRE: P = [1, 1, 0];
+const TILE = 1;
 const SLAB = 0.2;
 const LIFT = 0.35;
 // Four agents around Deplo; the one being connected always takes the slot facing its port.
 const SLOTS: P[] = [
-  [3.05, 0.25, 0],
-  [-2.05, 0.25, 0],
-  [0.25, -2.05, 0],
-  [0.25, 2.55, 0],
+  [4, 1, 0],
+  [-3, 1, 0],
+  [1, -3, 0],
+  [1, 4, 0],
+];
+// Each waiting agent's dashed link, straight along the grid to the face it looks at.
+const LINKS: [P, P][] = [
+  [
+    [-2, 1.5, 0],
+    [0, 1.5, 0],
+  ],
+  [
+    [1.5, -2, 0],
+    [1.5, 0, 0],
+  ],
+  [
+    [1.5, 4, 0],
+    [1.5, 2, 0],
+  ],
 ];
 const SEEN: AgentId[] = ["claude-web", "cursor", "vscode", "chatgpt"];
-const CABLE_Z = 0.47;
-const CABLE_FROM: P = [SLOTS[0][0], CENTRE[1], CABLE_Z];
-const CABLE_TO: P = [CUBE.size[0], CENTRE[1], CABLE_Z];
+const CABLE_Z = 0.45;
+const CABLE_FROM: P = [SLOTS[0][0], 1.5, CABLE_Z];
+const CABLE_TO: P = [CUBE.size[0], 1.5, CABLE_Z];
 // One packet's run along the cable, on screen.
 const RUN = ((a, b) => [b[0] - a[0], b[1] - a[1]])(
   pt(CABLE_FROM),
@@ -51,18 +67,14 @@ const RUN = ((a, b) => [b[0] - a[0], b[1] - a[1]])(
 );
 const MARK = TILE * UNIT * 0.5;
 
-const middle = ([x, y]: P): P => [x + TILE / 2, y + TILE / 2, 0];
-
 function AgentTile({
   agent,
   at,
   active,
-  index,
 }: {
   agent: AgentDef;
   at: P;
   active: boolean;
-  index: number;
 }) {
   const brand = active ? agent.brand : undefined;
   const Icon = agent.icon;
@@ -71,28 +83,23 @@ function AgentTile({
       className="iso-mcp-lift"
       style={{ translate: `0 ${active ? -LIFT * UNIT : 0}px` }}
     >
-      <g
-        className="iso-mcp-hover"
-        style={{ "--iso-delay": `${index * -0.7}s` } as React.CSSProperties}
-      >
-        <Box
-          at={at}
-          size={[TILE, TILE, SLAB]}
-          tone={brand ? tone(brand.bg) : plain}
-        />
-        <Decal face="top" at={[at[0], at[1], SLAB]}>
-          <svg
-            x={MARK / 2}
-            y={MARK / 2}
-            width={MARK}
-            height={MARK}
-            viewBox="0 0 24 24"
-            style={{ color: brand ? brand.fg : "var(--ring)" }}
-          >
-            <Icon />
-          </svg>
-        </Decal>
-      </g>
+      <Box
+        at={at}
+        size={[TILE, TILE, SLAB]}
+        tone={brand ? tone(brand.bg) : plain}
+      />
+      <Decal face="top" at={[at[0], at[1], SLAB]}>
+        <svg
+          x={MARK / 2}
+          y={MARK / 2}
+          width={MARK}
+          height={MARK}
+          viewBox="0 0 24 24"
+          style={{ color: brand ? brand.fg : "var(--ring)" }}
+        >
+          <Icon />
+        </svg>
+      </Decal>
     </g>
   );
 }
@@ -126,25 +133,19 @@ export function ConnectGraphic({
       ])}
       className={cn("h-32 w-auto", className)}
     >
-      <IsoGrid at={CENTRE} radius={360} />
+      <IsoGrid at={CENTRE} radius={440} />
 
-      {SLOTS.slice(1).map((at, i) => (
+      {LINKS.map((points, i) => (
         <Path
           key={i}
-          points={[middle(at), CENTRE]}
+          points={points}
           stroke="var(--ring)"
           strokeDasharray="4 4"
         />
       ))}
 
       {back.map((a, i) => (
-        <AgentTile
-          key={a.id}
-          agent={a}
-          at={SLOTS[i + 1]}
-          active={false}
-          index={i + 1}
-        />
+        <AgentTile key={a.id} agent={a} at={SLOTS[i + 1]} active={false} />
       ))}
 
       <Path
@@ -158,12 +159,12 @@ export function ConnectGraphic({
       />
 
       <Box {...CUBE} tone={DEPLO}>
-        <Mark at={[0.3, 1.3, 1.55]} size={0.62} />
+        <Mark at={[0.6, 2, 1.65]} size={0.8} />
         <FaceRect
           box={CUBE}
           face="right"
-          u={[0.4, 0.6]}
-          v={[0.2, 0.35]}
+          u={[0.15, 0.35]}
+          v={[0.15, 0.3]}
           fill={live ? LIVE : DEPLO.right}
           stroke={live ? LIVE : DEPLO.stroke}
         />
@@ -171,8 +172,8 @@ export function ConnectGraphic({
           <FaceRect
             box={CUBE}
             face="right"
-            u={[0.4, 0.6]}
-            v={[0.2, 0.35]}
+            u={[0.15, 0.35]}
+            v={[0.15, 0.3]}
             fill="none"
             stroke={LIVE}
             className="iso-wave"
@@ -193,7 +194,7 @@ export function ConnectGraphic({
             }
           >
             <Box
-              at={[CABLE_FROM[0] - 0.08, CENTRE[1] - 0.08, CABLE_Z - 0.06]}
+              at={[CABLE_FROM[0] - 0.08, CABLE_FROM[1] - 0.08, CABLE_Z - 0.06]}
               size={[0.16, 0.16, 0.12]}
               tone={tone(LIVE)}
             />
@@ -206,7 +207,6 @@ export function ConnectGraphic({
         agent={front}
         at={SLOTS[0]}
         active={picked !== null}
-        index={0}
       />
     </IsoArt>
   );

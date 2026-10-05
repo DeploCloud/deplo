@@ -85,9 +85,15 @@ export function MigrationGraphic({
       view={fit([SOURCE, TARGET, { at: [0, 0, 0], size: [4.3, 4.3, 0] }])}
       className={cn("h-32 w-auto", className)}
     >
-      {grid && <IsoGrid at={[2.5, 2.5, 0]} radius={380} />}
-      <Box at={[-0.3, 2.7, 0]} size={[2.6, 2.6, 0]} tone={floor} />
-      <Box at={[2.7, -0.3, 0]} size={[2.6, 2.6, 0]} tone={floor} />
+      {grid ? (
+        // The grid is the floor here: the machines stand on its whole steps.
+        <IsoGrid at={[2.5, 2.5, 0]} radius={420} />
+      ) : (
+        <>
+          <Box at={[-0.3, 2.7, 0]} size={[2.6, 2.6, 0]} tone={floor} />
+          <Box at={[2.7, -0.3, 0]} size={[2.6, 2.6, 0]} tone={floor} />
+        </>
+      )}
 
       <Machine box={SOURCE} lit={!done}>
         <Decal face="left" at={[1 - MARK / 2, 5, 1.25 + MARK / 2]}>
