@@ -23,6 +23,11 @@ export function ComposeLaunch({
   const [open, setOpen] = React.useState(false);
   const [url, setUrl] = React.useState("");
   const [bad, setBad] = React.useState(false);
+  const input = React.useRef<HTMLInputElement>(null);
+
+  React.useEffect(() => {
+    if (open) input.current?.focus({ preventScroll: true });
+  }, [open]);
 
   function onSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -32,7 +37,7 @@ export function ComposeLaunch({
   }
 
   return (
-    <div className={cn("space-y-3", className)}>
+    <div className={className}>
       <div className="flex flex-wrap items-center gap-2">
         {canDeploy && (
           <Button
@@ -57,32 +62,45 @@ export function ComposeLaunch({
           </a>
         </Button>
       </div>
-      {open && (
-        <form noValidate onSubmit={onSubmit} className="flex max-w-md gap-2">
-          <div className="min-w-0 flex-1 space-y-1">
-            <Input
-              autoFocus
-              type="url"
-              value={url}
-              onChange={(e) => {
-                setUrl(e.target.value);
-                setBad(false);
-              }}
-              placeholder="https://acme.com/docker-compose.yml"
-              aria-label="Compose file link"
-              aria-invalid={bad}
-            />
-            {bad && (
-              <p role="alert" className="text-xs text-destructive">
-                That is not an https link to a compose file.
-              </p>
-            )}
-          </div>
-          <Button type="submit" disabled={!url.trim()}>
-            Deploy
-          </Button>
-        </form>
-      )}
+      {/* Always mounted, so the height eases shut as well as open. */}
+      <div
+        inert={!open}
+        className={cn(
+          "grid transition-[grid-template-rows,opacity] duration-300 ease-out",
+          open ? "grid-rows-[1fr] opacity-100" : "grid-rows-[0fr] opacity-0",
+        )}
+      >
+        <div className="overflow-hidden">
+          <form
+            noValidate
+            onSubmit={onSubmit}
+            className="flex max-w-md gap-2 pt-3 pb-1"
+          >
+            <div className="min-w-0 flex-1 space-y-1">
+              <Input
+                ref={input}
+                type="url"
+                value={url}
+                onChange={(e) => {
+                  setUrl(e.target.value);
+                  setBad(false);
+                }}
+                placeholder="https://acme.com/docker-compose.yml"
+                aria-label="Compose file link"
+                aria-invalid={bad}
+              />
+              {bad && (
+                <p role="alert" className="text-xs text-destructive">
+                  That is not an https link to a compose file.
+                </p>
+              )}
+            </div>
+            <Button type="submit" disabled={!url.trim()}>
+              Deploy
+            </Button>
+          </form>
+        </div>
+      </div>
     </div>
   );
 }

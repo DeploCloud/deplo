@@ -21,6 +21,8 @@ export interface ChipCategory {
 const GAP = 8;
 const DESKTOP = 640;
 const MORE_FALLBACK = 96;
+// Six chips at most: All, four categories, and More for the rest.
+const MAX_SHOWN = 4;
 
 export function CategoryChips({
   categories,
@@ -91,8 +93,10 @@ export function CategoryChips({
     };
   }, [measure]);
 
-  let shown = fits === null ? categories : categories.slice(0, fits);
-  let hidden = fits === null ? [] : categories.slice(fits);
+  const cap = categories.length > MAX_SHOWN + 1 ? MAX_SHOWN : categories.length;
+  const room = Math.min(fits ?? categories.length, cap);
+  let shown = categories.slice(0, room);
+  let hidden = categories.slice(room);
 
   const activeHidden = active && hidden.some((c) => c.slug === active);
   if (activeHidden) {
@@ -105,7 +109,7 @@ export function CategoryChips({
     <div
       ref={rowRef}
       className={cn(
-        "flex items-center gap-2",
+        "relative z-10 flex items-center gap-2",
         fits === null
           ? "-mx-1 scrollbar-none overflow-x-auto px-1 pb-1"
           : "min-w-0",
@@ -135,7 +139,7 @@ export function CategoryChips({
             <button
               ref={moreRef}
               type="button"
-              className="flex h-8 shrink-0 cursor-pointer items-center gap-1.5 rounded-full border border-border px-3 text-xs text-muted-foreground transition-colors hover:text-foreground"
+              className="flex h-8 shrink-0 cursor-pointer items-center gap-1.5 rounded-full border border-border bg-background px-3 text-xs text-muted-foreground transition-colors hover:text-foreground"
             >
               More
               <ChevronDown className="size-3.5 shrink-0 opacity-70" />
@@ -182,7 +186,7 @@ function Chip({
         "flex h-8 shrink-0 cursor-pointer items-center gap-1.5 rounded-full border px-3 text-xs transition-colors",
         active
           ? "border-primary/60 bg-primary-wash text-foreground"
-          : "border-border text-muted-foreground hover:text-foreground",
+          : "border-border bg-background text-muted-foreground hover:text-foreground",
       )}
       {...props}
     >
