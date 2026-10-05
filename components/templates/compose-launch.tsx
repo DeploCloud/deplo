@@ -70,7 +70,8 @@ export function ComposeLaunch({
           open ? "grid-rows-[1fr] opacity-100" : "grid-rows-[0fr] opacity-0",
         )}
       >
-        <div className="overflow-hidden">
+        {/* The gutter keeps the focus rings inside the clip. */}
+        <div className="-mx-1 overflow-hidden px-1">
           <form
             noValidate
             onSubmit={onSubmit}
