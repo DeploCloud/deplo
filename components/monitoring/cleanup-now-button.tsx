@@ -4,7 +4,6 @@ import * as React from "react";
 import { Brush, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 
-import { Button } from "@/components/ui/button";
 import { SimpleTooltip } from "@/components/ui/tooltip";
 import { gqlAction } from "@/lib/graphql-client";
 import { useRouter } from "@/lib/nav";
@@ -48,14 +47,19 @@ export function CleanupNowButton({
 
   return (
     <SimpleTooltip content="Deplo already does this on a schedule. Run it now to free space right away.">
-      <Button variant="outline" size="sm" onClick={run} disabled={pending}>
+      <button
+        type="button"
+        onClick={run}
+        disabled={pending}
+        className="inline-flex shrink-0 cursor-pointer items-center gap-1 text-xs leading-none text-muted-foreground transition-colors hover:text-foreground disabled:pointer-events-none disabled:opacity-50"
+      >
         {pending ? (
-          <Loader2 className="size-3.5 animate-spin" />
+          <Loader2 className="size-3 animate-spin" />
         ) : (
-          <Brush className="size-3.5" />
+          <Brush className="size-3" />
         )}
         Clean up
-      </Button>
+      </button>
     </SimpleTooltip>
   );
 }

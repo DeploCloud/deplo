@@ -91,15 +91,15 @@ export function GaugeTile({
           color={color}
           ariaLabel={`${label}: ${display}`}
         />
-        <div className="min-w-0 space-y-1">
+        <div className="min-w-0 flex-1 space-y-1">
           <div className="flex items-center gap-1.5 text-muted-foreground">
             <Icon className="size-4" />
             <span className="text-xs">{label}</span>
             {info && <InfoTip content={info} side="top" />}
+            {action && <span className="ml-auto">{action}</span>}
           </div>
           <p className="text-2xl font-semibold tracking-tight">{display}</p>
           <p className="truncate text-xs text-muted-foreground">{caption}</p>
-          {action && <div className="pt-1.5">{action}</div>}
         </div>
       </CardContent>
     </Card>
