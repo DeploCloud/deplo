@@ -77,23 +77,29 @@ export function StatTile({
 export function ChartCard({
   title,
   caption,
+  action,
   className,
   children,
 }: {
   title: string;
   caption?: string;
+  action?: React.ReactNode;
   className?: string;
   children: React.ReactNode;
 }) {
   return (
     <Card className={className}>
-      <CardHeader className="pb-3">
-        <CardTitle className="text-sm lg:text-sm">{title}</CardTitle>
-        {caption && (
-          <p className="text-xs text-muted-foreground tabular-nums">
-            {caption}
-          </p>
-        )}
+      <CardHeader className="flex flex-row items-start justify-between gap-3 space-y-0 pb-3">
+        <div className="min-w-0">
+          <CardTitle className="text-sm lg:text-sm">{title}</CardTitle>
+          {caption && (
+            <p className="text-xs text-muted-foreground tabular-nums">
+              {caption}
+            </p>
+          )}
+        </div>
+        {/* An h-8 button pulled into the 14px title line, so the chart starts level with its neighbours. */}
+        {action && <div className="-my-[9px] shrink-0">{action}</div>}
       </CardHeader>
       <CardContent>{children}</CardContent>
     </Card>

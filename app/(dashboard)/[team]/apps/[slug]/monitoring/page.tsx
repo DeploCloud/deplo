@@ -11,6 +11,7 @@ import { PageHeader } from "@/components/shared/page-header";
 import { SettingsShortcut } from "@/components/shared/settings-shortcut";
 import { ContainerMonitoringDashboard } from "@/components/monitoring/container-monitoring-dashboard";
 import { HostChip } from "@/components/monitoring/host-chip";
+import { CleanupNowButton } from "@/components/monitoring/cleanup-now-button";
 
 export const metadata = { title: "Monitoring" };
 
@@ -67,6 +68,15 @@ export default async function AppMonitoringPage(
         id={project.id}
         initialHistory={initialHistory}
         resources={project.resources}
+        diskAction={
+          canManageServers &&
+          host && (
+            <CleanupNowButton
+              serverId={host.id}
+              serverName={serverLabel(host)}
+            />
+          )
+        }
       />
     </div>
   );

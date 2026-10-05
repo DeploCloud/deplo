@@ -108,11 +108,13 @@ export function ContainerMonitoringDashboard({
   id,
   initialHistory,
   resources,
+  diskAction,
 }: {
   kind: "app" | "database";
   id: string;
   initialHistory: ContainerSample[];
   resources: ResourceLimits | null;
+  diskAction?: React.ReactNode;
 }) {
   const noun = kind === "app" ? "app" : "database";
   const metricsField = kind === "app" ? "appMetrics" : "databaseMetrics";
@@ -499,7 +501,7 @@ export function ContainerMonitoringDashboard({
             />
           </ChartCard>
 
-          <ChartCard title="Disk I/O">
+          <ChartCard title="Disk I/O" action={diskAction}>
             <TimeSeriesChart
               unit="bytesPerSec"
               windowMs={windowMs}

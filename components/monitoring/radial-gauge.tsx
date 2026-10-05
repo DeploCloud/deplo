@@ -70,6 +70,7 @@ export function GaugeTile({
   caption,
   info,
   color,
+  action,
 }: {
   icon: LucideIcon;
   label: string;
@@ -79,6 +80,7 @@ export function GaugeTile({
   caption: React.ReactNode;
   info?: React.ReactNode;
   color?: string;
+  action?: React.ReactNode;
 }) {
   return (
     <Card>
@@ -97,6 +99,7 @@ export function GaugeTile({
           </div>
           <p className="text-2xl font-semibold tracking-tight">{display}</p>
           <p className="truncate text-xs text-muted-foreground">{caption}</p>
+          {action && <div className="pt-1.5">{action}</div>}
         </div>
       </CardContent>
     </Card>

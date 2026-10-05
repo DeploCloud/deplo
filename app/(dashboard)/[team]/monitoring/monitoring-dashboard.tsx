@@ -19,6 +19,7 @@ import { GaugeTile } from "@/components/monitoring/radial-gauge";
 import { MonitoringGraphic } from "@/components/monitoring/monitoring-graphic";
 import { EmptyState } from "@/components/shared/empty-state";
 import { FleetList, type FleetRow } from "@/components/monitoring/fleet-list";
+import { CleanupNowButton } from "@/components/monitoring/cleanup-now-button";
 import { ManageServerButton } from "@/components/monitoring/host-chip";
 import { ServerPicker } from "@/components/monitoring/server-picker";
 import {
@@ -270,6 +271,14 @@ export function MonitoringDashboard({
               full={100}
               display={`${cur.diskPct.toFixed(1)}%`}
               caption={`${formatBytes(cur.diskUsed)} of ${formatBytes(cur.diskTotal)}`}
+              action={
+                canManageServers && (
+                  <CleanupNowButton
+                    serverId={selected.id}
+                    serverName={serverLabel(selected)}
+                  />
+                )
+              }
             />
             <Card>
               <CardContent className="space-y-1.5 p-4">
