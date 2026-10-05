@@ -86,7 +86,7 @@ export function SourceStep({
               icon={Truck}
               arrow
               title="Everything"
-              blurb="Every team, person, app and server. Only into a fresh Deplo."
+              blurb="Every team, person, app and server. Only into an empty Deplo."
               disabled={!move.readiness.ready}
               disabledNote={move.readiness.reason ?? undefined}
               onSelect={() => onPick("deplo-move")}
@@ -95,7 +95,7 @@ export function SourceStep({
               icon={Users}
               arrow
               title="Only some teams"
-              blurb="Each team you pick comes into a team here."
+              blurb="Copies the teams you pick onto this Deplo's servers. The rest of the other Deplo stays as it is."
               onSelect={() => onPick("deplo-teams")}
             />
           </div>

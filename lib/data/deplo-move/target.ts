@@ -197,12 +197,12 @@ async function emptinessProblem(): Promise<string | null> {
       .from(serversTable),
   ]);
   if (apps > 0 || databases > 0)
-    return "This Deplo already has apps or databases, and a move only goes into a fresh one.";
+    return "Needs an empty Deplo, and this one already has apps or databases. Bring only some teams instead.";
   if (teams > 1 || users > 1)
-    return "This Deplo already has more than one team or account, and a move only goes into a fresh one.";
+    return "Needs an empty Deplo, and this one already has other teams or people. Bring only some teams instead.";
   const self = deploHostSelfAddresses();
   if (servers.some((s) => !isDeploHostServer(s, self)))
-    return "This Deplo already has servers of its own, and a move only goes into a fresh one.";
+    return "Needs an empty Deplo, and this one already has servers of its own. Bring only some teams instead.";
   return null;
 }
 

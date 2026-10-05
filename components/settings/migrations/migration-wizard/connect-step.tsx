@@ -143,7 +143,7 @@ export function ConnectStep({
             }
             docs={copy.docs}
           >
-            Panel address
+            {copy.urlLabel}
           </FieldLabel>
           <Input
             id="source-url"

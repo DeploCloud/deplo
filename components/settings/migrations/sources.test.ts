@@ -101,6 +101,7 @@ test("a Deplo is only shown once the address turns out to be one", () => {
   assert.equal(deplo.split(MARK_PATH).length - 1, 2, "both machines are Deplo");
   assert.match(deplo, /from the old Deplo server toward Deplo/);
   assert.equal(copyFor("deplo").name, "Deplo");
+  assert.equal(copyFor("deplo").mention, "the other Deplo");
   assert.match(SOURCE_COPY.deplo.tokenInfo, /Reveal secret values/);
   assert.equal(stepDocs("deplo", "changes"), "migration.deplo.changes");
 });

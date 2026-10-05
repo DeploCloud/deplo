@@ -56,7 +56,7 @@ export function PeopleStep({
   const [query, setQuery] = React.useState("");
   const [team, setTeam] = React.useState(ALL_TEAMS);
 
-  const panel = copyFor(kind).name;
+  const panel = copyFor(kind).mention;
   const people = React.useMemo(() => mergePeople(groups), [groups]);
   const teams = teamsOf(people);
   const shown = filterPeople(people, query, team);
@@ -74,7 +74,7 @@ export function PeopleStep({
         <EmptyState
           icon={UserPlus}
           title="Nobody else to bring over"
-          description={`${panel} listed no other members${single ? " for this team" : ""}.`}
+          description={`Nobody else is listed on ${panel}${single ? " for this team" : ""}.`}
         />
       ) : (
         <>
@@ -153,7 +153,7 @@ export function PeopleStep({
             </div>
           )}
 
-          {!single && <ExtraLinks groups={groups} />}
+          {!single && <ExtraLinks groups={groups} panel={panel} />}
         </>
       )}
 
@@ -273,12 +273,16 @@ function TeamChip({
   );
 }
 
-function ExtraLinks({ groups }: { groups: PeopleGroup[] }) {
+function ExtraLinks({
+  groups,
+  panel,
+}: {
+  groups: PeopleGroup[];
+  panel: string;
+}) {
   return (
     <section className="space-y-3 rounded-lg border border-border bg-background p-3">
-      <p className="text-sm font-medium">
-        Somebody who wasn&apos;t on the panel
-      </p>
+      <p className="text-sm font-medium">Somebody who wasn&apos;t on {panel}</p>
       {groups.map((g) => (
         <div
           key={g.key}

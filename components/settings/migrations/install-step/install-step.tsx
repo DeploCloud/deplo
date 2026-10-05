@@ -67,7 +67,7 @@ export function InstallStep({
       <StepShell
         hero
         title="Nothing to install"
-        lead={`${copyFor(kind).name} hands its data over itself.`}
+        lead={`The data comes straight from ${copyFor(kind).mention}.`}
       >
         <div className={cn("flex", onBack ? "justify-between" : "justify-end")}>
           {onBack && (

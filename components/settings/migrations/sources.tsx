@@ -97,7 +97,10 @@ export function SourceMark({
 
 interface SourceCopy {
   name: string;
+  // The source inside a sentence: "on the other Deplo", never an ambiguous "on Deplo".
+  mention: string;
   connectTitle: string;
+  urlLabel: string;
   urlInfo: string;
   urlPlaceholder: string;
   tokenLabel: string;
@@ -112,7 +115,9 @@ interface SourceCopy {
 export const SOURCE_COPY: Record<SourceKind | "unknown", SourceCopy> = {
   unknown: {
     name: "the panel",
+    mention: "the panel",
     connectTitle: "Connect to Dokploy or Coolify",
+    urlLabel: "Panel address",
     urlInfo:
       "The address you open Dokploy or Coolify on. Not the machine's address - the next step asks for that.",
     urlPlaceholder: "https://panel.acme.com",
@@ -127,7 +132,9 @@ export const SOURCE_COPY: Record<SourceKind | "unknown", SourceCopy> = {
   },
   dokploy: {
     name: "Dokploy",
+    mention: "Dokploy",
     connectTitle: "Connect to Dokploy",
+    urlLabel: "Panel address",
     urlInfo:
       "The address you open Dokploy on. Deplo adds /api. Not the machine's address - the next step asks for that.",
     urlPlaceholder: "https://dokploy.acme.com",
@@ -142,7 +149,9 @@ export const SOURCE_COPY: Record<SourceKind | "unknown", SourceCopy> = {
   },
   coolify: {
     name: "Coolify",
+    mention: "Coolify",
     connectTitle: "Connect to Coolify",
+    urlLabel: "Panel address",
     urlInfo:
       "The address you open Coolify on. Deplo adds /api/v1. Not the machine's address - the next step asks for that.",
     urlPlaceholder: "https://coolify.acme.com",
@@ -157,7 +166,9 @@ export const SOURCE_COPY: Record<SourceKind | "unknown", SourceCopy> = {
   },
   deplo: {
     name: "Deplo",
+    mention: "the other Deplo",
     connectTitle: "Connect to your other Deplo",
+    urlLabel: "Deplo address",
     urlInfo:
       "The address you open that Deplo on. Its data comes across through it, so nothing is installed over there.",
     urlPlaceholder: "https://deplo.acme.com",

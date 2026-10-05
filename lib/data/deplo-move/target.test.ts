@@ -157,11 +157,11 @@ test("a Deplo that is not empty cannot receive a move", async () => {
     teams: [{ id: "team_two", slug: "two" }],
     users: [{ id: "user_two", teamId: "team_two", role: "owner" }],
   });
-  await assert.rejects(() => connect(), /a move only goes into a fresh one/);
+  await assert.rejects(() => connect(), /Needs an empty Deplo/);
   assert.deepEqual(old.calls, []);
   const ready = await asAdmin(() => targetMoveReadiness());
   assert.equal(ready.ready, false);
-  assert.match(ready.reason ?? "", /fresh one/);
+  assert.match(ready.reason ?? "", /Bring only some teams instead/);
 });
 
 test("a fresh Deplo is ready to receive a move", async () => {

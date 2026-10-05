@@ -310,7 +310,7 @@ export function ReviewStep({
   const chosenNames = pickable
     .filter((s) => chosen.has(s.sourceId))
     .map((s) => s.name);
-  const panel = copyFor(kind).name;
+  const panel = copyFor(kind).mention;
   const picked = (g: ReviewGroup) =>
     g.plan.projects
       .flatMap((p) => importableOf(p))
@@ -350,7 +350,7 @@ export function ReviewStep({
         <EmptyState
           icon={Layers}
           title="Nothing to bring over"
-          description={`That ${panel} has no projects, or the token cannot see them.`}
+          description={`There are no projects on ${panel}, or the token cannot see them.`}
         />
       ) : (
         <fieldset disabled={starting} className="contents">
