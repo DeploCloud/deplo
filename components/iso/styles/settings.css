@@ -225,31 +225,89 @@
   animation: iso-token-shackle 5s ease-out infinite;
 }
 
-/* The MCP connect wizard's robot: one idea per pose. Idle looks around, the
-   key pose blips, reaching falls short of the port, connected glows. */
-@keyframes iso-robot-look {
+/* The MCP connect wizard's robot: it floats and looks around while it waits,
+   glances at the key it holds, frowns at the cable, and beams once connected. */
+@keyframes iso-robot-float {
   0%,
   100% {
-    translate: -4px 0;
+    translate: 0 0;
   }
+  50% {
+    translate: 0 -7px;
+  }
+}
+
+@keyframes iso-robot-shadow {
+  0%,
+  100% {
+    scale: 1;
+  }
+  50% {
+    scale: 0.82;
+  }
+}
+
+.iso-robot-float {
+  animation: iso-robot-float 3.2s ease-in-out infinite;
+}
+
+.iso-robot-shadow {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: iso-robot-shadow 3.2s ease-in-out infinite;
+}
+
+@keyframes iso-robot-look {
+  0%,
+  20%,
+  100% {
+    translate: 0 0;
+  }
+  30%,
   50% {
     translate: 4px 0;
   }
+  60%,
+  80% {
+    translate: -4px 0;
+  }
 }
 
-/* The antenna drifts along the same axis as the eyes, on the same clock. */
+.iso-robot-look {
+  animation: iso-robot-look 6.4s ease-in-out infinite;
+}
+
+/* Holding the key it looks at it, down toward the hand. */
+.iso-robot-glance {
+  translate: 4px 2px;
+}
+
+@keyframes iso-robot-blink {
+  0%,
+  90%,
+  100% {
+    scale: 1 1;
+  }
+  94% {
+    scale: 1 0.1;
+  }
+}
+
+.iso-robot-blink {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: iso-robot-blink 3.6s ease-in-out infinite;
+}
+
+/* The antenna lags the float a little, so the ball reads as on a stalk. */
 @keyframes iso-robot-antenna {
   0%,
   100% {
-    translate: -3.5px -2px;
+    translate: 0 0;
   }
-  50% {
-    translate: 3.5px 2px;
+  60% {
+    translate: 0 -3px;
   }
-}
-
-.iso-robot-eyes {
-  animation: iso-robot-look 3.2s ease-in-out infinite;
 }
 
 .iso-robot-antenna {
@@ -271,6 +329,47 @@
   transform-box: fill-box;
   transform-origin: center;
   animation: iso-robot-blip 1.8s ease-in-out infinite;
+}
+
+/* A hello: the free hand waves twice, then rests for the rest of the loop. */
+@keyframes iso-robot-wave {
+  0%,
+  40%,
+  100% {
+    translate: 0 0;
+  }
+  8%,
+  24% {
+    translate: 3px -12px;
+  }
+  16%,
+  32% {
+    translate: -2px -6px;
+  }
+}
+
+.iso-robot-wave {
+  animation: iso-robot-wave 6.4s ease-in-out infinite;
+}
+
+@keyframes iso-robot-beat {
+  0%,
+  40%,
+  100% {
+    scale: 1;
+  }
+  15% {
+    scale: 1.3;
+  }
+  25% {
+    scale: 1.05;
+  }
+}
+
+.iso-robot-beat {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: iso-robot-beat 1.4s ease-in-out infinite;
 }
 
 /* The key tilts in the plane it is drawn on, pivoting at the hand. */
