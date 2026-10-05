@@ -4,6 +4,7 @@ import {
   Decal,
   FaceRect,
   IsoArt,
+  IsoGrid,
   Path,
   Ring,
   UNIT,
@@ -67,10 +68,12 @@ const MARK = 0.8;
 export function MigrationGraphic({
   state = "connect",
   kind = null,
+  grid = false,
   className,
 }: {
   state?: MigrationState;
   kind?: SourceKind | null;
+  grid?: boolean;
   className?: string;
 }) {
   const done = state === "done";
@@ -82,6 +85,7 @@ export function MigrationGraphic({
       view={fit([SOURCE, TARGET, { at: [0, 0, 0], size: [4.3, 4.3, 0] }])}
       className={cn("h-32 w-auto", className)}
     >
+      {grid && <IsoGrid at={[2.5, 2.5, 0]} radius={380} />}
       <Box at={[-0.3, 2.7, 0]} size={[2.6, 2.6, 0]} tone={floor} />
       <Box at={[2.7, -0.3, 0]} size={[2.6, 2.6, 0]} tone={floor} />
 

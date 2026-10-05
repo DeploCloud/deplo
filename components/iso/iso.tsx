@@ -1,4 +1,4 @@
-import type * as React from "react";
+import * as React from "react";
 import { cn } from "@/lib/utils";
 
 /** One grid step: every edge of a cube is UNIT long on screen, true isometric. */
@@ -322,6 +322,99 @@ export function Disc({
 }: { at: P; r: number } & React.SVGProps<SVGEllipseElement>) {
   const [cx, cy] = pt(at);
   return <ellipse cx={cx} cy={cy} rx={RX * r} ry={RY * r} {...rest} />;
+}
+
+const S = Math.sqrt(3) / 2;
+const r1 = (n: number) => Math.round(n * 10) / 10;
+
+/** One family of grid lines inside a screen rectangle, each clipped to its edges. */
+function gridFamily(
+  [left, top, right, bottom]: [number, number, number, number],
+  normal: [number, number],
+  dir: [number, number],
+) {
+  const corners = [left, right].flatMap((x) =>
+    [top, bottom].map((y) => normal[0] * x + normal[1] * y),
+  );
+  let d = "";
+  for (
+    let k = Math.floor(Math.min(...corners) / RUN);
+    k <= Math.ceil(Math.max(...corners) / RUN);
+    k++
+  ) {
+    const cx = normal[0] * RUN * k;
+    const cy = normal[1] * RUN * k;
+    const [x0, x1] = [(left - cx) / dir[0], (right - cx) / dir[0]].sort(
+      (a, b) => a - b,
+    );
+    const [y0, y1] = [(top - cy) / dir[1], (bottom - cy) / dir[1]].sort(
+      (a, b) => a - b,
+    );
+    const from = Math.max(x0, y0);
+    const to = Math.min(x1, y1);
+    if (from < to)
+      d += `M${r1(cx + dir[0] * from)} ${r1(cy + dir[1] * from)}L${r1(cx + dir[0] * to)} ${r1(cy + dir[1] * to)}`;
+  }
+  return d;
+}
+
+/**
+ * The brand's floor grid around `at`, fading out at `radius` px. Drawn in the
+ * illustration's own svg, so its lines run through the same nodes as `pt`.
+ */
+export function IsoGrid({
+  at = [0, 0, 0],
+  radius = 420,
+  color = "var(--border)",
+}: {
+  at?: P;
+  radius?: number;
+  color?: string;
+}) {
+  const id = React.useId();
+  const [cx, cy] = pt(at);
+  const area: [number, number, number, number] = [
+    cx - radius,
+    cy - radius,
+    cx + radius,
+    cy + radius,
+  ];
+  return (
+    <g aria-hidden>
+      <defs>
+        <radialGradient
+          id={`${id}f`}
+          gradientUnits="userSpaceOnUse"
+          cx={cx}
+          cy={cy}
+          r={radius}
+        >
+          <stop offset="0.35" stopColor="#fff" />
+          <stop offset="1" stopColor="#000" />
+        </radialGradient>
+        <mask
+          id={`${id}m`}
+          maskUnits="userSpaceOnUse"
+          x={area[0]}
+          y={area[1]}
+          width={radius * 2}
+          height={radius * 2}
+        >
+          <rect
+            x={area[0]}
+            y={area[1]}
+            width={radius * 2}
+            height={radius * 2}
+            fill={`url(#${id}f)`}
+          />
+        </mask>
+      </defs>
+      <g stroke={color} strokeWidth="1" fill="none" mask={`url(#${id}m)`}>
+        <path d={gridFamily(area, [-0.5, S], [S, 0.5])} />
+        <path d={gridFamily(area, [0.5, S], [S, -0.5])} />
+      </g>
+    </g>
+  );
 }
 
 /** The viewBox that holds every corner of `boxes`, plus `pad` px all round. */

@@ -376,7 +376,7 @@ export function MigrationWizard({
           }}
         />
       ) : (
-        <div className="mx-auto flex w-full flex-col items-center gap-8">
+        <div className="mx-auto flex w-full flex-col items-center gap-8 pt-8">
           {step === "takeover" &&
           (takeover?.state === "pending" || takeover?.state === "failed") ? (
             <LeftoverDiskGraphic className="w-full max-w-xl" />
@@ -384,6 +384,7 @@ export function MigrationWizard({
             <MigrationGraphic
               state={pose}
               kind={path === "move" ? "deplo" : kind}
+              grid={step === "source" || step === "choose"}
               className={cn(
                 "h-auto w-full",
                 isTakeover ? "max-w-xl" : "max-w-md",
