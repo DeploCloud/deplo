@@ -12,8 +12,8 @@ import type { ScopeTreeTeam } from "@/lib/data/tokens/scope-tree";
 import { AGENTS, type AgentId } from "../agents";
 import { RobotGraphic, type RobotState } from "../robot-graphic";
 import { ConfettiBurst } from "@/components/shared/confetti-burst";
+import { ConfirmAction } from "@/components/shared/confirm-action";
 import { UnsavedChangesGuard } from "@/components/apps/unsaved-changes-guard";
-import { type McpToolSummary } from "../tools-dialog";
 import { POLL_LIMIT, POLL_MS, probe } from "./connection-probe";
 import { AgentStep } from "./agent-picker";
 import { ConnectStep } from "./connect-step";
@@ -40,18 +40,14 @@ export function ConnectWizard({
   canManageTeam,
   publicUrl,
   tree,
-  tools,
   connectionCount,
-  overlay,
 }: {
   mcpEnabled: boolean;
   canConnect: boolean;
   canManageTeam: boolean;
   publicUrl: string;
   tree: ScopeTreeTeam[];
-  tools: McpToolSummary[];
   connectionCount: number;
-  overlay?: React.ReactNode;
 }) {
   const router = useRouter();
   const host = publicUrl.replace(/\/+$/, "") || "https://your-deplo-host";
@@ -68,9 +64,7 @@ export function ConnectWizard({
       url={url}
       https={https}
       tree={tree}
-      tools={tools}
       connectionCount={connectionCount}
-      overlay={overlay}
       onRestart={() => setRunId((n) => n + 1)}
       onRefresh={() => router.refresh()}
     />
@@ -84,9 +78,7 @@ function WizardRun({
   url,
   https,
   tree,
-  tools,
   connectionCount,
-  overlay,
   onRestart,
   onRefresh,
 }: {
@@ -96,9 +88,7 @@ function WizardRun({
   url: string;
   https: boolean;
   tree: ScopeTreeTeam[];
-  tools: McpToolSummary[];
   connectionCount: number;
-  overlay?: React.ReactNode;
   onRestart: () => void;
   onRefresh: () => void;
 }) {
@@ -155,6 +145,7 @@ function WizardRun({
   }, [agent, tokenId, baseline, connected, attempt, round, step, onRefresh]);
 
   const gaveUp = !connected && attempt >= POLL_LIMIT;
+  const [discarding, setDiscarding] = React.useState(false);
   function checkAgain() {
     setAttempt(0);
     setRound((n) => n + 1);
@@ -174,6 +165,31 @@ function WizardRun({
     connect: web || minted,
     done: false,
   };
+  function back() {
+    if (step === "connect" && minted) setDiscarding(true);
+    else setStep(steps[steps.indexOf(step) - 1]);
+  }
+
+  // Going back past a minted token deletes it, so no unused credential is left behind.
+  async function discardToken() {
+    const res = await gqlAction(
+      /* GraphQL */ `
+        mutation DiscardMcpToken($id: String!) {
+          revokeToken(id: $id)
+        }
+      `,
+      { id: tokenId },
+    );
+    if (res.ok) {
+      setSecret(null);
+      setTokenId(null);
+      setAttempt(0);
+      setStep("permissions");
+      onRefresh();
+    }
+    return res;
+  }
+
   function pick(id: AgentId) {
     const next = AGENTS.find((a) => a.id === id)!;
     setAgentId(id);
@@ -231,6 +247,7 @@ function WizardRun({
           projectIds: scope.projectIds,
           folderIds: scope.folderIds,
           appIds: scope.appIds,
+          mcpAgent: agentId,
           expiresAt:
             expiry === "never"
               ? null
@@ -268,18 +285,13 @@ function WizardRun({
 
   return (
     <div className="grid gap-8 xl:grid-cols-[minmax(0,1fr)_clamp(24rem,30vw,36rem)] xl:gap-12">
-      <div className="relative order-first flex justify-center xl:sticky xl:top-24 xl:order-last xl:self-start">
+      <div className="relative order-first flex justify-center pt-2 xl:sticky xl:top-24 xl:order-last xl:self-start xl:pt-16">
         <RobotGraphic
           state={robot}
           accent={agent?.veil}
           className="h-auto w-52 xl:w-[92%]"
         />
         {connected && <ConfettiBurst className="top-28" />}
-        {overlay && (
-          <div className="absolute top-0 right-0 xl:top-2 xl:right-2">
-            {overlay}
-          </div>
-        )}
       </div>
 
       <div className="max-w-xl min-w-0 space-y-6">
@@ -316,7 +328,6 @@ function WizardRun({
           {step === "permissions" && agent && (
             <PermissionsStep
               agent={agent}
-              tools={tools}
               tree={tree}
               name={name}
               caps={caps}
@@ -328,6 +339,7 @@ function WizardRun({
               onExpiry={setExpiry}
               onEdit={setEditing}
               onCreate={createToken}
+              onBack={back}
             />
           )}
 
@@ -341,10 +353,27 @@ function WizardRun({
               gaveUp={gaveUp}
               onCheckAgain={checkAgain}
               onDone={() => setStep("done")}
+              onBack={back}
             />
           )}
         </div>
       </div>
+
+      <ConfirmAction
+        open={discarding}
+        onOpenChange={setDiscarding}
+        title="Go back and delete this token?"
+        description={
+          <>
+            The token is shown only once, so going back{" "}
+            <strong>deletes it</strong>.
+          </>
+        }
+        consequence="An agent you already gave it to stops working. Create token makes a new one."
+        confirmLabel="Delete and go back"
+        successMessage="Token deleted"
+        onConfirm={discardToken}
+      />
 
       <UnsavedChangesGuard
         when={minted && !connected}

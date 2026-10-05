@@ -16,6 +16,7 @@ export function ConnectStep({
   gaveUp,
   onCheckAgain,
   onDone,
+  onBack,
 }: {
   agent: AgentDef;
   web: boolean;
@@ -25,6 +26,7 @@ export function ConnectStep({
   gaveUp: boolean;
   onCheckAgain: () => void;
   onDone: () => void;
+  onBack: () => void;
 }) {
   return (
     <StepShell
@@ -41,16 +43,15 @@ export function ConnectStep({
       }
       action={
         <>
+          <Button variant="outline" className="mr-auto" onClick={onBack}>
+            Back
+          </Button>
           {gaveUp ? (
-            <Button
-              variant="outline"
-              className="mr-auto"
-              onClick={onCheckAgain}
-            >
+            <Button variant="outline" onClick={onCheckAgain}>
               Check again
             </Button>
           ) : (
-            <span className="mr-auto flex items-center gap-2 text-sm text-muted-foreground">
+            <span className="flex items-center gap-2 text-sm text-muted-foreground">
               <Loader2 className="size-4 animate-spin" />
               Waiting for {agent.label} to call Deplo
             </span>

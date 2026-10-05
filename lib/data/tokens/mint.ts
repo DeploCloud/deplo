@@ -33,6 +33,7 @@ import {
   requireOwnOrSession,
 } from "./acting-token";
 import { trail } from "./activity-trail";
+import { isMcpAgentId } from "../../mcp/agent-ids";
 
 const MAX_NAME = 40;
 
@@ -79,10 +80,13 @@ export async function createToken(
     capabilities?: Capability[];
     instanceAdmin?: boolean;
     expiresAt?: string | null;
+    mcpAgent?: string;
   } & TokenScopeInput,
 ): Promise<{ raw: string; token: ApiTokenDTO }> {
   const { id: userId } = await assertUser();
   const name = cleanTokenName(input.name);
+  if (input.mcpAgent !== undefined && !isMcpAgentId(input.mcpAgent))
+    throw new Error("That is not an agent Deplo knows.");
   const { scoped, instanceAdmin } = await validateScope(input);
   const expiresAt =
     input.expiresAt === undefined
@@ -107,6 +111,7 @@ export async function createToken(
       instanceAdmin,
       scoped,
       expiresAt,
+      mcpAgent: input.mcpAgent ?? null,
       lastUsedAt: null,
       createdAt,
     });

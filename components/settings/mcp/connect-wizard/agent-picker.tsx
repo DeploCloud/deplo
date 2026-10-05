@@ -17,7 +17,7 @@ export function AgentStep({
   return (
     <StepShell
       title="Which agent are you connecting?"
-      lead="Each one wants its configuration in a different place, so Deplo writes the right one for you."
+      lead="Deplo writes the setup for the one you pick."
     >
       <div
         role="radiogroup"
@@ -31,6 +31,7 @@ export function AgentStep({
             selected={agentId === a.id}
             canConnect={canConnect}
             onSelect={() => onPick(a.id)}
+            manual={a.id === "other"}
           />
         ))}
       </div>
@@ -69,11 +70,14 @@ export function AgentCard({
   selected,
   canConnect,
   onSelect,
+  manual = false,
 }: {
   agent: AgentDef;
   selected: boolean;
   canConnect: boolean;
   onSelect: () => void;
+  // The hand-configured fallback: dashed, so it does not read as one more product.
+  manual?: boolean;
 }) {
   const blocked = !canConnect;
   const note = "Needs the permission to connect AI agents to this team.";
@@ -89,6 +93,7 @@ export function AgentCard({
       style={veil.style}
       className={cn(
         "flex w-full items-start gap-3 rounded-lg border p-3 text-left transition-colors",
+        manual && "border-dashed",
         "focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-background focus-visible:outline-none",
         "disabled:cursor-not-allowed disabled:opacity-50",
         selected
@@ -100,7 +105,7 @@ export function AgentCard({
       <AgentMark agent={agent} />
       <span className="min-w-0 flex-1">
         <span className="block text-sm font-medium">{agent.label}</span>
-        <span className="mt-0.5 line-clamp-2 min-h-[2lh] text-xs leading-snug text-muted-foreground">
+        <span className="mt-0.5 line-clamp-2 text-xs leading-snug text-muted-foreground">
           {blocked ? note : agent.blurb}
         </span>
       </span>

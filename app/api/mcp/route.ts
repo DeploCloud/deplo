@@ -14,6 +14,7 @@ import {
   resourceMetadataUrl,
 } from "@/lib/auth/oauth-metadata";
 import { buildMcpServer, type McpPrincipal } from "@/lib/mcp/server";
+import { agentFromClientName, type McpAgentId } from "@/lib/mcp/agent-ids";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -68,6 +69,20 @@ async function refuse(request: Request, message: string): Promise<Response> {
       },
     );
   return unauthorized(message);
+}
+
+// The agent's own name from `initialize`, so a token made outside the wizard still gets its mark.
+async function clientAgent(request: Request): Promise<McpAgentId | null> {
+  try {
+    const body: unknown = await request.clone().json();
+    const init = (Array.isArray(body) ? body : [body]).find(
+      (m) => m?.method === "initialize",
+    );
+    const name = init?.params?.clientInfo?.name;
+    return typeof name === "string" ? agentFromClientName(name) : null;
+  } catch {
+    return null;
+  }
 }
 
 type GrantedTeam = { id: string; slug: string; name: string };
@@ -211,7 +226,7 @@ export async function POST(request: Request) {
       },
     );
 
-  stampMcpUse(identity.token!.id);
+  void stampMcpUse(identity.token!.id, await clientAgent(request));
 
   return handler.fetch(request, {
     authInfo: {

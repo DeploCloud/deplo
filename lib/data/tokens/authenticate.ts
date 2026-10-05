@@ -21,6 +21,7 @@ import { InstanceFrozenError, instanceFrozen } from "../deplo-move/freeze";
 import { inCatalogOrder } from "./listing";
 import { loadScope } from "./scope";
 import { tokenReach } from "./reach";
+import type { McpAgentId } from "../../mcp/agent-ids";
 
 interface TokenRow {
   id: string;
@@ -170,10 +171,20 @@ async function identityForTokenRow(
   };
 }
 
-export function stampMcpUse(tokenId: string): void {
-  void getDb()
+// `agent` only fills a blank: what the wizard recorded is exact, a client's own name is a guess.
+export function stampMcpUse(
+  tokenId: string,
+  agent?: McpAgentId | null,
+): Promise<void> {
+  return getDb()
     .update(apiTokens)
-    .set({ mcpLastUsedAt: nowIso() })
+    .set({
+      mcpLastUsedAt: nowIso(),
+      ...(agent && {
+        mcpAgent: sql`coalesce(${apiTokens.mcpAgent}, ${agent})`,
+      }),
+    })
     .where(eq(apiTokens.id, tokenId))
+    .then(() => {})
     .catch(() => {});
 }

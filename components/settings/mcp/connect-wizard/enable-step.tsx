@@ -16,7 +16,7 @@ export function EnableStep({
   return (
     <StepShell
       title="The MCP Server is off for this team"
-      lead="Turning it on lets members connect their own agents here. What an agent may actually do is its token's permissions, and nothing else."
+      lead="Members can then connect their own agents. Each one does only what its token allows."
       action={
         canManageTeam ? (
           <Button onClick={onTurnOn} disabled={pending}>

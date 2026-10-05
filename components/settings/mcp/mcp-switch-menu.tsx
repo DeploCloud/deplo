@@ -12,16 +12,17 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { useOptimisticValue } from "@/components/shared/use-optimistic-value";
 import { gqlAction } from "@/lib/graphql-client";
-import { RobotMark } from "./robot-graphic";
+import type { MyMcpAgentDTO } from "@/lib/data/mcp-clients";
+import { MyAgents } from "./my-agents";
 import { cn } from "@/lib/utils";
 
 export function McpSwitchMenu({
-  count,
+  agents,
   enabled: initialEnabled,
   canManage,
   className,
 }: {
-  count: number;
+  agents: MyMcpAgentDTO[];
   enabled: boolean;
   canManage: boolean;
   className?: string;
@@ -58,10 +59,7 @@ export function McpSwitchMenu({
         className,
       )}
     >
-      <span className="inline-flex items-center gap-1.5">
-        <RobotMark />
-        {count} {count === 1 ? "agent" : "agents"} connected
-      </span>
+      <MyAgents agents={agents} />
       {canManage && (
         <DropdownMenu>
           <DropdownMenuTrigger asChild>

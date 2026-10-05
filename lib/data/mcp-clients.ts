@@ -1,6 +1,6 @@
 import "server-only";
 
-import { and, eq, inArray } from "drizzle-orm";
+import { and, desc, eq, inArray } from "drizzle-orm";
 import { getDb } from "../db/client";
 import { memberships as membershipsTable } from "../db/schema/control-plane/access-control";
 import { apiTokens } from "../db/schema/control-plane/api-tokens";
@@ -25,6 +25,11 @@ import type { TokenScopeInput } from "./tokens/scope";
 import { recordActivity } from "./activity";
 import { listMyTeams } from "./teams";
 import { requirePersonalSession } from "../auth/request-context";
+import {
+  agentFromRedirect,
+  isMcpAgentId,
+  type McpAgentId,
+} from "../mcp/agent-ids";
 
 export interface ConsentClientDTO {
   clientId: string;
@@ -230,7 +235,10 @@ export async function mintMcpConnection(
 
   await getDb()
     .update(apiTokens)
-    .set({ oauthClientId: input.clientId })
+    .set({
+      oauthClientId: input.clientId,
+      mcpAgent: agentFromRedirect(client.redirectOrigin),
+    })
     .where(eq(apiTokens.id, token.id));
 
   const actor = (await assertUser()).name;
@@ -280,9 +288,48 @@ export async function listMcpTeams(): Promise<McpTeamDTO[]> {
   }));
 }
 
-export async function countMcpAgents(): Promise<number> {
+export interface MyMcpAgentDTO {
+  id: string;
+  name: string;
+  agent: McpAgentId | null;
+  lastUsedAt: string | null;
+  expiresAt: string | null;
+  viaSignIn: boolean;
+}
+
+// The caller's own agents that reach the active team: tokens are personal, so never anyone else's.
+export async function listMyMcpAgents(): Promise<MyMcpAgentDTO[]> {
   const teamId = await requireActiveTeamId();
-  return (await tokensReaching(teamId)).filter((t) => t.mcp).length;
+  const { id: userId } = await assertUser();
+  const ids = (await tokensReaching(teamId))
+    .filter((t) => t.mcp && t.userId === userId)
+    .map((t) => t.id);
+  if (ids.length === 0) return [];
+  const rows = await getDb()
+    .select({
+      id: apiTokens.id,
+      name: apiTokens.name,
+      agent: apiTokens.mcpAgent,
+      lastUsedAt: apiTokens.lastUsedAt,
+      mcpLastUsedAt: apiTokens.mcpLastUsedAt,
+      expiresAt: apiTokens.expiresAt,
+      oauthClientId: apiTokens.oauthClientId,
+    })
+    .from(apiTokens)
+    .where(and(inArray(apiTokens.id, ids), eq(apiTokens.userId, userId)))
+    .orderBy(desc(apiTokens.createdAt));
+  return rows.map((r) => ({
+    id: r.id,
+    name: r.name,
+    agent: isMcpAgentId(r.agent) ? r.agent : null,
+    lastUsedAt: r.mcpLastUsedAt ?? r.lastUsedAt,
+    expiresAt: r.expiresAt,
+    viaSignIn: r.oauthClientId !== null,
+  }));
+}
+
+export async function countMcpAgents(): Promise<number> {
+  return (await listMyMcpAgents()).length;
 }
 
 export async function mcpTokenConnected(tokenId: string): Promise<boolean> {

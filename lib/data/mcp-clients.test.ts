@@ -10,6 +10,7 @@ import { oauthConsent } from "../db/schema/auth";
 import { runWithIdentity } from "../auth/request-context";
 import {
   countMcpAgents,
+  listMyMcpAgents,
   listConnectableTeamIds,
   listMcpTeams,
   mcpTokenConnected,
@@ -18,6 +19,7 @@ import {
 import { listTokens } from "./tokens/listing";
 import { createToken } from "./tokens/mint";
 import { revokeToken } from "./tokens/revoke";
+import { stampMcpUse } from "./tokens/authenticate";
 import { listActivity } from "./activity";
 import type { Capability } from "../types/identity";
 
@@ -67,11 +69,15 @@ beforeEach(async () => {
   await consentRow(CLIENT, MEMBER);
 });
 
-async function registerClientRow(clientId: string, name: string) {
+async function registerClientRow(
+  clientId: string,
+  name: string,
+  redirect = "https://client.test/callback",
+) {
   await pg.query(
     `insert into oauth_client (id, client_id, name, redirect_uris, created_at)
-     values ($1, $2, $3, ARRAY['https://client.test/callback'], now())`,
-    [`oc_${clientId}`, clientId, name],
+     values ($1, $2, $3, ARRAY[$4], now())`,
+    [`oc_${clientId}`, clientId, name, redirect],
   );
 }
 
@@ -451,7 +457,7 @@ test("a connection is listed to its owner with the permissions it holds NOW", as
   ]);
 });
 
-test("another person neither sees nor revokes the connection, but the team counts it", async () => {
+test("another person neither sees, counts nor revokes the connection", async () => {
   const { tokenId } = await as(OWNER, () =>
     mintMcpConnection({ clientId: CLIENT, capabilities: ["view"] }),
   );
@@ -460,7 +466,9 @@ test("another person neither sees nor revokes the connection, but the team count
     as(MEMBER, () => revokeToken(tokenId)),
     /not found/i,
   );
-  assert.equal(await as(MEMBER, () => countMcpAgents()), 1);
+  assert.equal(await as(MEMBER, () => countMcpAgents()), 0);
+  assert.deepEqual(await as(MEMBER, () => listMyMcpAgents()), []);
+  assert.equal(await as(OWNER, () => countMcpAgents()), 1);
 });
 
 test("your own connection follows you into your other teams", async () => {
@@ -657,6 +665,78 @@ test("a bearer token that has spoken MCP counts as an agent, and is marked", asy
   assert.equal(token.mcp, true);
 });
 
+test("your connected agents list names each one and how it connected", async () => {
+  const id = await bearer("Claude Code");
+  await markSpokeMcp(id);
+  await as(OWNER, () =>
+    mintMcpConnection({ clientId: CLIENT, capabilities: ["view"] }),
+  );
+  const agents = await as(OWNER, () => listMyMcpAgents());
+  assert.deepEqual(
+    agents
+      .map((a) => [a.name, a.viaSignIn])
+      .sort((a, b) => String(a[0]).localeCompare(String(b[0]))),
+    [
+      ["Claude", true],
+      ["Claude Code", false],
+    ],
+  );
+  assert.ok(agents.find((a) => a.id === id)?.lastUsedAt);
+});
+
+test("each agent keeps the mark it connected with", async () => {
+  const { token } = await as(OWNER, () =>
+    createToken({
+      name: "My laptop",
+      capabilities: ["view"],
+      mcpAgent: "claude-code",
+    }),
+  );
+  await markSpokeMcp(token.id);
+  await registerClientRow(
+    "client_claude",
+    "Claude",
+    "https://claude.ai/api/mcp/auth_callback",
+  );
+  await consentRow("client_claude", OWNER);
+  await as(OWNER, () =>
+    mintMcpConnection({ clientId: "client_claude", capabilities: ["view"] }),
+  );
+  const agents = await as(OWNER, () => listMyMcpAgents());
+  assert.deepEqual(
+    agents
+      .map((a) => [a.name, a.agent])
+      .sort((a, b) => String(a[0]).localeCompare(String(b[0]))),
+    [
+      ["Claude", "claude-web"],
+      ["My laptop", "claude-code"],
+    ],
+  );
+  await assert.rejects(
+    as(OWNER, () => createToken({ name: "Robot", mcpAgent: "skynet" })),
+    /not an agent/,
+  );
+});
+
+test("a client's own name fills a blank agent, never a recorded one", async () => {
+  const blank = await bearer("Blank");
+  const { token } = await as(OWNER, () =>
+    createToken({ name: "Set", capabilities: ["view"], mcpAgent: "cursor" }),
+  );
+  await stampMcpUse(blank, "claude-code");
+  await stampMcpUse(token.id, "claude-code");
+  const agents = await as(OWNER, () => listMyMcpAgents());
+  assert.deepEqual(
+    agents
+      .map((a) => [a.name, a.agent])
+      .sort((a, b) => String(a[0]).localeCompare(String(b[0]))),
+    [
+      ["Blank", "claude-code"],
+      ["Set", "cursor"],
+    ],
+  );
+});
+
 test("a token that has never spoken MCP is not an agent", async () => {
   await bearer("Nightly CI");
   assert.equal(await as(OWNER, () => countMcpAgents()), 0);
@@ -670,13 +750,14 @@ test("an OAuth connector counts from the moment it is approved", async () => {
   assert.equal(await as(OWNER, () => countMcpAgents()), 1);
 });
 
-test("both kinds count, across every member", async () => {
+test("both kinds count, each person only their own", async () => {
   const id = await bearer("Cursor", MEMBER);
   await markSpokeMcp(id);
   await as(OWNER, () =>
     mintMcpConnection({ clientId: CLIENT, capabilities: ["view"] }),
   );
-  assert.equal(await as(OWNER, () => countMcpAgents()), 2);
+  assert.equal(await as(OWNER, () => countMcpAgents()), 1);
+  assert.equal(await as(MEMBER, () => countMcpAgents()), 1);
 });
 
 test("an expired token is not counted, but its owner still sees why it stopped", async () => {

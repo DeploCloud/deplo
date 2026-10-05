@@ -59,9 +59,8 @@ builder.queryFields((t) => ({
   mcpAgentCount: t.int({
     authScopes: { loggedIn: true },
     description:
-      "How many AI agents can act in this team over MCP, every member's " +
-      "counted. A number only: tokens are personal and never listed to " +
-      "anyone but their owner.",
+      "How many of the caller's own AI agents can act in this team over " +
+      "MCP. Tokens are personal, so nobody else's are counted.",
     resolve: () => countMcpAgents(),
   }),
   mcpConnected: t.boolean({

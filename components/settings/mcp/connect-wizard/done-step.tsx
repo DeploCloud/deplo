@@ -32,7 +32,7 @@ export function DoneStep({
         </h2>
         <p className="mt-1 text-sm text-balance text-muted-foreground">
           {connected
-            ? "It made its first call to Deplo. Change or revoke its access at any time under Settings → API tokens."
+            ? "It made its first call to Deplo. Change or remove it any time from this page."
             : `Deplo has not heard from ${agent.label} yet. It appears here as soon as it makes its first call.`}
         </p>
       </div>

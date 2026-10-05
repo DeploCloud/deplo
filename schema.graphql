@@ -1106,6 +1106,11 @@ input CreateTokenInput {
   expiresAt: String
   folderIds: [String!]
   instanceAdmin: Boolean
+
+  """
+  The agent this token is for, as the connect wizard names it ("claude-code", "cursor", ...).
+  """
+  mcpAgent: String
   name: String!
   projectIds: [String!]
   teamIds: [String!]
@@ -4878,7 +4883,7 @@ type Query {
   logsInfo(appId: String!): LogsInfo
 
   """
-  How many AI agents can act in this team over MCP, every member's counted. A number only: tokens are personal and never listed to anyone but their owner.
+  How many of the caller's own AI agents can act in this team over MCP. Tokens are personal, so nobody else's are counted.
   """
   mcpAgentCount: Int
 

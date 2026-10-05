@@ -18,12 +18,10 @@ import { presetIdFor, TOKEN_PRESETS } from "@/lib/token-presets";
 import type { Capability } from "@/lib/types/identity";
 import type { ScopeTreeTeam } from "@/lib/data/tokens/scope-tree";
 import type { AgentDef } from "../agents";
-import { ToolsDialog, type McpToolSummary } from "../tools-dialog";
 import { StepShell } from "./step-shell";
 
 export function PermissionsStep({
   agent,
-  tools,
   tree,
   name,
   caps,
@@ -35,9 +33,9 @@ export function PermissionsStep({
   onExpiry,
   onEdit,
   onCreate,
+  onBack,
 }: {
   agent: AgentDef;
-  tools: McpToolSummary[];
   tree: ScopeTreeTeam[];
   name: string;
   caps: Capability[];
@@ -49,22 +47,17 @@ export function PermissionsStep({
   onExpiry: (value: string) => void;
   onEdit: (which: "permissions" | "access") => void;
   onCreate: () => void;
+  onBack: () => void;
 }) {
   return (
     <StepShell
       title={`What may ${agent.label} do?`}
-      lead="Deplo mints an API token here. You can change or revoke it later without touching the agent."
+      lead="It gets its own token. Change or remove it any time."
       action={
         <>
-          <ToolsDialog
-            tools={tools}
-            highlight={caps}
-            trigger={
-              <Button variant="outline" className="mr-auto">
-                See tools
-              </Button>
-            }
-          />
+          <Button variant="outline" className="mr-auto" onClick={onBack}>
+            Back
+          </Button>
           <Button
             onClick={onCreate}
             disabled={pending || !name.trim() || !canConnect}

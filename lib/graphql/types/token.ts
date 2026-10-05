@@ -110,6 +110,11 @@ const CreateTokenInputType = builder.inputType("CreateTokenInput", {
     appIds: t.stringList({ required: false }),
     instanceAdmin: t.boolean({ required: false }),
     expiresAt: t.string({ required: false }),
+    mcpAgent: t.string({
+      required: false,
+      description:
+        'The agent this token is for, as the connect wizard names it ("claude-code", "cursor", ...).',
+    }),
   }),
 });
 
@@ -158,6 +163,7 @@ builder.mutationFields((t) => ({
         appIds: input.appIds ?? undefined,
         instanceAdmin: input.instanceAdmin ?? undefined,
         expiresAt: input.expiresAt,
+        mcpAgent: input.mcpAgent ?? undefined,
       }),
   }),
   updateToken: t.field({

@@ -1,6 +1,7 @@
 import type * as React from "react";
 import type { LogoAccent } from "@/lib/templates/logo-color";
 import { Bot } from "lucide-react";
+import type { McpAgentId } from "@/lib/mcp/agent-ids";
 import {
   ClaudeIcon,
   CursorIcon,
@@ -10,17 +11,7 @@ import {
   WindsurfIcon,
 } from "@/components/shared/brand-icons";
 
-export type AgentId =
-  | "claude-web"
-  | "chatgpt"
-  | "claude-desktop"
-  | "claude-code"
-  | "cursor"
-  | "vscode"
-  | "windsurf"
-  | "gemini-cli"
-  | "codex-cli"
-  | "other";
+export type AgentId = McpAgentId;
 
 export interface AgentDef {
   id: AgentId;
@@ -46,7 +37,7 @@ export const AGENTS: AgentDef[] = [
   {
     id: "claude-web",
     label: "Claude",
-    blurb: "The assistant at claude.ai. Sign in and approve it once.",
+    blurb: "claude.ai. Sign in and approve once.",
     icon: ClaudeIcon,
     brand: { bg: "#D97757", fg: "#FFFFFF" },
     veil: { hue: 39 },
@@ -60,7 +51,7 @@ export const AGENTS: AgentDef[] = [
   {
     id: "chatgpt",
     label: "ChatGPT",
-    blurb: "The assistant at chatgpt.com. Needs developer mode on.",
+    blurb: "chatgpt.com, in developer mode.",
     icon: OpenAiIcon,
     brand: { bg: "#000000", fg: "#FFFFFF" },
     veil: { tone: "dark" },
@@ -74,7 +65,7 @@ export const AGENTS: AgentDef[] = [
   {
     id: "claude-desktop",
     label: "Claude Desktop",
-    blurb: "The Claude app for Mac and Windows. Same flow, no token.",
+    blurb: "The app for Mac and Windows.",
     icon: ClaudeIcon,
     brand: { bg: "#D97757", fg: "#FFFFFF" },
     veil: { hue: 39 },
@@ -88,7 +79,7 @@ export const AGENTS: AgentDef[] = [
   {
     id: "claude-code",
     label: "Claude Code",
-    blurb: "The terminal agent. One command in your shell and done.",
+    blurb: "One command in your terminal.",
     icon: ClaudeIcon,
     brand: { bg: "#D97757", fg: "#FFFFFF" },
     veil: { hue: 39 },
@@ -102,7 +93,7 @@ export const AGENTS: AgentDef[] = [
   {
     id: "cursor",
     label: "Cursor",
-    blurb: "The AI editor. Its config file lives in your own repo.",
+    blurb: "A config file in your repo.",
     icon: CursorIcon,
     brand: { bg: "#000000", fg: "#FFFFFF" },
     veil: { tone: "dark" },
@@ -129,7 +120,7 @@ export const AGENTS: AgentDef[] = [
   {
     id: "vscode",
     label: "VS Code",
-    blurb: "GitHub Copilot's agent mode. Configured once per repo.",
+    blurb: "Copilot agent mode, once per repo.",
     icon: VsCodeIcon,
     brand: { bg: "#007ACC", fg: "#FFFFFF" },
     veil: { hue: 249 },
@@ -158,7 +149,7 @@ export const AGENTS: AgentDef[] = [
   {
     id: "windsurf",
     label: "Windsurf",
-    blurb: "Cascade's agent. Configured once for your whole machine.",
+    blurb: "Set up once for your whole machine.",
     icon: WindsurfIcon,
     brand: { bg: "#0B100F", fg: "#FFFFFF" },
     veil: { tone: "dark" },
@@ -185,7 +176,7 @@ export const AGENTS: AgentDef[] = [
   {
     id: "gemini-cli",
     label: "Gemini CLI",
-    blurb: "Google's terminal agent. One entry in its settings file.",
+    blurb: "One entry in its settings file.",
     icon: GeminiIcon,
     brand: { bg: "#8E75B2", fg: "#FFFFFF" },
     veil: { hue: 303 },
@@ -213,7 +204,7 @@ export const AGENTS: AgentDef[] = [
   {
     id: "codex-cli",
     label: "Codex CLI",
-    blurb: "OpenAI's terminal agent. Its config file is TOML, not JSON.",
+    blurb: "One entry in its config file.",
     icon: OpenAiIcon,
     brand: { bg: "#000000", fg: "#FFFFFF" },
     veil: { tone: "dark" },
@@ -233,7 +224,7 @@ export const AGENTS: AgentDef[] = [
   {
     id: "other",
     label: "Something else",
-    blurb: "Any other client that speaks Streamable HTTP with a header.",
+    blurb: "Any other MCP client, set up by hand.",
     icon: Bot,
     kind: "token",
     form: "file",

@@ -1198,6 +1198,13 @@
       "when": 1791100000000,
       "tag": "0170_domain_security_headers",
       "breakpoints": true
+    },
+    {
+      "idx": 171,
+      "version": "7",
+      "when": 1791200000000,
+      "tag": "0171_api_token_mcp_agent",
+      "breakpoints": true
     }
   ]
 }
