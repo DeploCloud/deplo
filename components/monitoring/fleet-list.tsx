@@ -77,9 +77,17 @@ export function FleetList({
     [servers, rows],
   );
 
+  const listRef = React.useRef<HTMLUListElement>(null);
   const selectedRef = React.useRef<HTMLLIElement>(null);
   React.useEffect(() => {
-    selectedRef.current?.scrollIntoView({ block: "nearest" });
+    // Only the list scrolls: scrollIntoView would drag the whole page down to the row.
+    const list = listRef.current;
+    const row = selectedRef.current;
+    if (!list || !row) return;
+    const l = list.getBoundingClientRect();
+    const r = row.getBoundingClientRect();
+    if (r.top < l.top) list.scrollTop -= l.top - r.top;
+    else if (r.bottom > l.bottom) list.scrollTop += r.bottom - l.bottom;
   }, [selectedId]);
 
   return (
@@ -96,6 +104,7 @@ export function FleetList({
           {canManageServers && <span className="w-[5.25rem]" aria-hidden />}
         </div>
         <ul
+          ref={listRef}
           className={cn(
             "divide-y divide-border",
             servers.length > MAX_ROWS && "max-h-[21.5rem] overflow-y-auto",
