@@ -9,6 +9,7 @@ test("a client's own name maps to the most specific agent", () => {
   assert.equal(agentFromClientName("cursor-vscode"), "cursor");
   assert.equal(agentFromClientName("Visual Studio Code"), "vscode");
   assert.equal(agentFromClientName("gemini-cli-mcp-client"), "gemini-cli");
+  assert.equal(agentFromClientName("antigravity"), "antigravity");
   assert.equal(agentFromClientName("codex-mcp-client"), "codex-cli");
   assert.equal(agentFromClientName("openai-mcp"), "chatgpt");
   assert.equal(agentFromClientName("my-own-script"), null);

@@ -161,7 +161,8 @@ function WizardRun({
   const valid: Record<StepId, boolean> = {
     enable: enabled,
     agent: agent !== null,
-    permissions: name.trim().length > 0,
+    // Done only once the token exists: Connect has nothing to show before it.
+    permissions: minted,
     connect: web || minted,
     done: false,
   };

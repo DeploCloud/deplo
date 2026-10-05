@@ -3,6 +3,8 @@ import type { LogoAccent } from "@/lib/templates/logo-color";
 import { Bot } from "lucide-react";
 import type { McpAgentId } from "@/lib/mcp/agent-ids";
 import {
+  AntigravityIcon,
+  ClaudeCodeIcon,
   ClaudeIcon,
   CursorIcon,
   GeminiIcon,
@@ -37,7 +39,7 @@ export const AGENTS: AgentDef[] = [
   {
     id: "claude-web",
     label: "Claude",
-    blurb: "claude.ai. Sign in and approve once.",
+    blurb: "claude.ai or the desktop app.",
     icon: ClaudeIcon,
     brand: { bg: "#D97757", fg: "#FFFFFF" },
     veil: { hue: 39 },
@@ -63,24 +65,10 @@ export const AGENTS: AgentDef[] = [
     snippet: webSnippet,
   },
   {
-    id: "claude-desktop",
-    label: "Claude Desktop",
-    blurb: "The app for Mac and Windows.",
-    icon: ClaudeIcon,
-    brand: { bg: "#D97757", fg: "#FFFFFF" },
-    veil: { hue: 39 },
-    kind: "web",
-    form: "file",
-    hint: "In Claude, open Customize → Connectors, press + and choose Add custom connector.",
-    docsUrl:
-      "https://support.claude.com/en/articles/11175166-about-custom-connectors-via-remote-mcp-servers",
-    snippet: webSnippet,
-  },
-  {
     id: "claude-code",
     label: "Claude Code",
     blurb: "One command in your terminal.",
-    icon: ClaudeIcon,
+    icon: ClaudeCodeIcon,
     brand: { bg: "#D97757", fg: "#FFFFFF" },
     veil: { hue: 39 },
     kind: "token",
@@ -159,6 +147,33 @@ export const AGENTS: AgentDef[] = [
     language: "json",
     hint: "Save it, then open the MCPs icon in Cascade's top-right menu.",
     docsUrl: "https://docs.windsurf.com/windsurf/cascade/mcp",
+    snippet: ({ url, token }) =>
+      JSON.stringify(
+        {
+          mcpServers: {
+            deplo: {
+              serverUrl: url,
+              headers: { Authorization: `Bearer ${token}` },
+            },
+          },
+        },
+        null,
+        2,
+      ),
+  },
+  {
+    id: "antigravity",
+    label: "Antigravity",
+    blurb: "Google's agent editor, once per machine.",
+    icon: AntigravityIcon,
+    brand: { bg: "#3186FF", fg: "#FFFFFF" },
+    veil: { hue: 262 },
+    kind: "token",
+    file: "~/.gemini/config/mcp_config.json",
+    form: "file",
+    language: "json",
+    hint: "From the agent panel's menu open MCP Servers → Manage MCP Servers → View raw config, and paste it there.",
+    docsUrl: "https://antigravity.google/docs/mcp",
     snippet: ({ url, token }) =>
       JSON.stringify(
         {
