@@ -368,6 +368,8 @@ export async function runAgentDeploy(opts: {
       continue;
     }
     try {
+      // An agent that never connects would hold the stream (and the app's deploy slot) for its 30-minute deadline.
+      await conn.hello();
       opts.sink.log(
         "info",
         `Reattaching to deploy ${opts.deployId} (from #${cursor.seq})…`,
