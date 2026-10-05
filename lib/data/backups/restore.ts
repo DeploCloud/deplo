@@ -16,6 +16,7 @@ import { getDestinationWithSecretsForTeam } from "../destinations/credentials";
 import { restoreFromDestination } from "../backup-transport";
 import { requireBackupCapability } from "./target-access";
 import { resolveTarget } from "./target-descriptor";
+import { assertNotPausedForMove } from "../deplo-move/source-guard";
 
 export async function restoreBackup(runId: string): Promise<void> {
   const { membership } = await requireMembership();
@@ -36,6 +37,10 @@ export async function restoreBackup(runId: string): Promise<void> {
       "This backup did not complete successfully and cannot be restored",
     );
   await requireBackupCapability(run, "restore_backups");
+  if (run.targetKind === "app" && run.appId)
+    await assertNotPausedForMove("app", run.appId);
+  if (run.targetKind === "database" && run.databaseId)
+    await assertNotPausedForMove("database", run.databaseId);
 
   const creds = await getDestinationWithSecretsForTeam(
     teamId,

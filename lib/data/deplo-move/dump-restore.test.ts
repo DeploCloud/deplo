@@ -12,10 +12,18 @@ import {
   sha256Hex,
   tryDecryptSecret,
 } from "../../crypto";
-import type { DumpFrame } from "../../deplo-move/protocol";
+import { MOVE_PROTOCOL, type DumpFrame } from "../../deplo-move/protocol";
 import { schemaTag } from "../../deplo-move/schema-tag";
-import { MOVE_TABLES, copyOrder, copyPolicy } from "../../deplo-move/tables";
-import { seedIdentity, USER_1, TEAM_A } from "../identity-test-helpers";
+import {
+  MOVE_TABLES,
+  copyOrder,
+  copyPolicy,
+  serverColumns,
+  tableShapes,
+} from "../../deplo-move/tables";
+import { ipToHex } from "../../deploy/domains";
+import { WILDCARD_DOMAIN } from "../../wildcard-dns";
+import { seedIdentity, USER_1, TEAM_A, TEAM_B } from "../identity-test-helpers";
 import { seedServerRow } from "../infra-test-helpers";
 import {
   seedApp,
@@ -30,7 +38,7 @@ import {
 } from "../backup-test-helpers";
 import { dumpInstance } from "./dump";
 import { isSealed, openValue } from "./rekey";
-import { restoreInstance } from "./restore";
+import { restoreInstance, type RestoreOptions } from "./restore";
 
 type Row = Record<string, unknown>;
 
@@ -40,6 +48,18 @@ const LOST_KEY = "a-secret-nobody-has-anymore-0000";
 const OLD_KEY = "old-deplo-secret-1111111111111111";
 const NEW_KEY = "new-deplo-secret-2222222222222222";
 const SELF_IP = "192.0.2.200";
+const HOST_IP = "198.51.100.10";
+const WORKER_IP = "198.51.100.11";
+const PEER = "https://old.deplo.test";
+const generated = (word: string, ip: string) =>
+  `${word}-${ipToHex(ip)}.${WILDCARD_DOMAIN}`;
+// Both old workload servers land on the new machine; the build server is left out.
+const MAP = new Map<string, string | null>([
+  ["srv_old_host", "srv_new_host"],
+  ["srv_worker", "srv_new_host"],
+  ["srv_builder", null],
+]);
+const OPTS: RestoreOptions = { serverMap: MAP, peerUrl: PEER };
 const ENV = ["DEPLO_SECRET", "DEPLO_SERVER_IP", "DEPLO_PUBLIC_URL"] as const;
 
 let db: TestDb;
@@ -81,14 +101,17 @@ async function seedOldDeplo(): Promise<void> {
     ],
   });
   for (const [id, name, ip] of [
-    ["srv_old_host", "old-host", "198.51.100.10"],
-    ["srv_worker", "worker", "198.51.100.11"],
+    ["srv_old_host", "old-host", HOST_IP],
+    ["srv_worker", "worker", WORKER_IP],
+    ["srv_builder", "builder", "198.51.100.12"],
   ])
     await seedServerRow(db, {
       id,
       name,
       ip,
       host: ip,
+      allTeams: false,
+      buildOnly: id === "srv_builder",
       agent: {
         port: 9443,
         certFingerprint: `sha256:${name}`,
@@ -97,7 +120,15 @@ async function seedOldDeplo(): Promise<void> {
       },
     });
   await q(
-    `insert into server_teams (server_id, team_id) values ('srv_worker', 'team_a')`,
+    `insert into server_teams (server_id, team_id) values ('srv_worker', 'team_a'), ('srv_old_host', 'team_b'), ('srv_builder', 'team_a')`,
+  );
+  await q(
+    `insert into docker_cleanup_excluded_servers (server_id) values ('srv_old_host'), ('srv_worker'), ('srv_builder')`,
+  );
+  await q(
+    `insert into pending_teardowns (id, server_id, deploy_key, project_label, label, next_attempt_at, created_at)
+     values ('ptd_old', 'srv_old_host', 'gone', 'prj_gone', 'gone', $1, $1)`,
+    [T0],
   );
   await q(
     `insert into team_roles (id, team_id, name, created_at) values ('role_dev', 'team_a', 'Developer', $1)`,
@@ -130,14 +161,26 @@ async function seedOldDeplo(): Promise<void> {
   await seedApp(db, {
     id: "prj_web",
     serverId: "srv_worker",
+    buildServerId: "srv_builder",
     folderId: "fld_child",
     projectId: "prc_1",
     environmentId: "environ_1",
     createdByUserId: USER_1,
   });
-  await q(`update apps set deploy_hook_token_enc = $1 where id = 'prj_web'`, [
-    encryptSecret("hook-token"),
-  ]);
+  await q(
+    `update apps set deploy_hook_token_enc = $1, production_url = $2 where id = 'prj_web'`,
+    [encryptSecret("hook-token"), `https://${generated("web", WORKER_IP)}`],
+  );
+  for (const [id, name, source] of [
+    ["dom_auto", generated("web", WORKER_IP), "auto"],
+    ["dom_other_ip", generated("api", HOST_IP), "auto"],
+    ["dom_custom", "shop.example.com", null],
+  ])
+    await q(
+      `insert into domains (id, app_id, name, status, is_primary, ssl, source, created_at)
+       values ($1, 'prj_web', $2, 'valid', $3, true, $4, $5)`,
+      [id, name, id === "dom_auto", source, T0],
+    );
   await seedDeployment(db, {
     id: "dep_1",
     appId: "prj_web",
@@ -302,21 +345,31 @@ async function becomeNewDeplo(
     teams: [{ id: "team_new", slug: "new" }],
     users: [{ id: "user_new", teamId: "team_new", role: "owner" }],
   });
-  await seedServerRow(db, {
-    id: hostId,
-    name: "new-host",
-    ip: SELF_IP,
-    host: SELF_IP,
-    agent: {
-      port: 9443,
-      certFingerprint: fingerprint,
-      certPem: "-----BEGIN CERTIFICATE-----",
-      version: "1.0.0",
-    },
-  });
+  for (const [id, name, ip, print] of [
+    [hostId, "new-host", SELF_IP, fingerprint],
+    ["srv_new_spare", "new-spare", "192.0.2.201", "sha256:new-spare"],
+  ])
+    await seedServerRow(db, {
+      id,
+      name,
+      ip,
+      host: ip,
+      allTeams: false,
+      agent: {
+        port: 9443,
+        certFingerprint: print,
+        certPem: "-----BEGIN CERTIFICATE-----",
+        version: "1.0.0",
+      },
+    });
   await q(
-    `insert into server_teams (server_id, team_id) values ($1, 'team_new')`,
+    `insert into server_teams (server_id, team_id) values ($1, 'team_new'), ('srv_new_spare', 'team_new')`,
     [hostId],
+  );
+  await q(
+    `insert into pending_teardowns (id, server_id, deploy_key, project_label, label, next_attempt_at, created_at)
+     values ('ptd_new', $1, 'left', 'prj_left', 'left', $2, $2)`,
+    [hostId, T1],
   );
   await q(
     `insert into session (id, user_id, token, expires_at) values ('ses_new', 'user_new', 'new-session', '2030-01-01 00:00:00')`,
@@ -391,15 +444,32 @@ async function* replay(lines: string[], pulled = { count: 0 }) {
   }
 }
 
+// What a copied row looks like once its servers are placed: dropped, nulled or rewritten through MAP.
+function placed(table: string, rows: Row[]): Row[] {
+  const notNull = tableShapes().get(table)!.notNull;
+  const out = new Map<string, Row>();
+  for (const r of rows) {
+    const row = { ...r };
+    let keep = true;
+    for (const c of serverColumns(table)) {
+      if (typeof row[c] !== "string") continue;
+      row[c] = MAP.get(row[c] as string) ?? null;
+      if (row[c] === null && notNull.has(c)) keep = false;
+    }
+    if (keep) out.set(JSON.stringify(row), row);
+  }
+  return [...out.values()];
+}
+
 describe("Deplo move: dump and restore", () => {
-  test("copies every table to the new Deplo, sealed under its own key", async () => {
+  test("copies every table to the new Deplo, placed on its servers and sealed under its key", async () => {
     await seedOldDeplo();
     const old = await snapshotAll();
     const lines = await collect(dumpInstance());
     const frames = lines.map((l) => JSON.parse(l) as DumpFrame);
     assert.deepEqual(frames[0], {
       kind: "begin",
-      protocol: 1,
+      protocol: MOVE_PROTOCOL,
       schema: schemaTag(),
       tables: copyOrder(),
     });
@@ -408,11 +478,16 @@ describe("Deplo move: dump and restore", () => {
       "sessions are never sent",
     );
     assert.ok(lines.some((l) => l.includes("postgres://app:pw@db/app")));
+    assert.ok(
+      !frames.some((f) => f.kind === "rows" && f.table === "app_previews"),
+      "previews are never sent",
+    );
 
     await becomeNewDeplo();
     const mine = await snapshotAll();
     const progress: number[] = [];
     const res = await restoreInstance(replay(lines), {
+      ...OPTS,
       onRows: (n) => progress.push(n),
     });
     const now = await snapshotAll();
@@ -426,13 +501,26 @@ describe("Deplo move: dump and restore", () => {
       unreadable: 1,
     });
 
+    const rehosted: Record<string, (r: Row) => Row> = {
+      apps: (r) => ({
+        ...r,
+        production_url: `https://${generated("web", SELF_IP)}`,
+      }),
+      domains: (r) =>
+        r.id === "dom_auto" ? { ...r, name: generated("web", SELF_IP) } : r,
+      backup_runs: (r) => ({ ...r, copied_from: PEER }),
+    };
     for (const table of copyOrder()) {
       const policy = copyPolicy(table);
-      let want = old.get(table)!.map((r) => {
-        const row = { ...r };
-        for (const c of policy.nullOnCopy ?? []) row[c] = null;
-        return row;
-      });
+      if (policy.mapped) continue;
+      let want = placed(
+        table,
+        old.get(table)!.map((r) => {
+          const row = { ...r };
+          for (const c of policy.nullOnCopy ?? []) row[c] = null;
+          return row;
+        }),
+      );
       if (policy.keepTarget) {
         const kept = mine.get(table)![0];
         want = want.map((r) => {
@@ -441,11 +529,7 @@ describe("Deplo move: dump and restore", () => {
           return row;
         });
       }
-      if (table === "servers")
-        want = [
-          ...want,
-          ...mine.get(table)!.filter((s) => s.id === "srv_new_host"),
-        ];
+      if (rehosted[table]) want = want.map(rehosted[table]);
       assert.deepEqual(now.get(table), sortRows(want), table);
     }
     for (const [table, policy] of Object.entries(MOVE_TABLES)) {
@@ -455,12 +539,64 @@ describe("Deplo move: dump and restore", () => {
       assert.deepEqual(now.get(table), want, table);
     }
 
+    // The old machines never come across; this Deplo keeps its own, with the access of those they replace.
+    assert.deepEqual(
+      now.get("servers"),
+      sortRows(
+        mine.get("servers")!.map((s) => ({
+          ...s,
+          all_teams: s.id !== "srv_new_host",
+        })),
+      ),
+    );
+    assert.deepEqual(now.get("server_teams"), [
+      { server_id: "srv_new_host", team_id: TEAM_A },
+      { server_id: "srv_new_host", team_id: TEAM_B },
+    ]);
+    assert.deepEqual(
+      now.get("docker_cleanup_excluded_servers"),
+      [{ server_id: "srv_new_host" }],
+      "the build server's row went with it, the two others merged",
+    );
+    const web = now.get("apps")![0];
+    assert.equal(web.server_id, "srv_new_host");
+    assert.equal(web.build_server_id, null, "the build server stayed behind");
+    assert.deepEqual(
+      now
+        .get("domains")!
+        .map((d) => d.name)
+        .sort(),
+      [
+        generated("api", HOST_IP),
+        generated("web", SELF_IP),
+        "shop.example.com",
+      ].sort(),
+      "only a name generated for the app's own old server moves",
+    );
+    assert.ok(
+      now.get("deployments")!.every((d) => d.preview_id === null),
+      "previews stay with the old Deplo",
+    );
+    assert.deepEqual(
+      now.get("deployments")!.map((d) => d.server_id),
+      ["srv_new_host", "srv_new_host", null],
+    );
+    assert.equal(
+      now.get("backup_destination")!.find((r) => r.id === "dst_disk")!
+        .server_id,
+      "srv_new_host",
+    );
+    assert.deepEqual(
+      now.get("pending_teardowns")!.map((r) => r.id),
+      ["ptd_new"],
+    );
+
     const settings = now.get("instance_settings")![0];
     assert.equal(settings.panel_url, "https://new.deplo.test");
     assert.equal(settings.usage_instance_id, "new-usage");
     assert.equal(settings.booted_version, "0.5.0", "this install's version");
-    assert.equal(settings.network_sweep_failed, 2, "the fleet's, from the old");
-    assert.equal(settings.agent_rollout_by, USER_1);
+    assert.equal(settings.network_sweep_failed, 0, "its own fleet's");
+    assert.equal(settings.agent_rollout_by, "user_new");
     assert.equal(settings.owner_user_id, USER_1);
     assert.equal(settings.log_max_days, 30);
     assert.equal(settings.vapid_private_key_enc, "vapid-private");
@@ -497,11 +633,44 @@ describe("Deplo move: dump and restore", () => {
     );
   });
 
+  test("a server here takes every team when any old server it replaces had them", async () => {
+    await seedOldDeplo();
+    await q(`update servers set all_teams = true where id = 'srv_worker'`);
+    const lines = await collect(dumpInstance());
+    await becomeNewDeplo();
+    await restoreInstance(replay(lines), OPTS);
+    const res = await q(`select id, all_teams from servers order by id`);
+    assert.deepEqual(res.rows, [
+      { id: "srv_new_host", all_teams: true },
+      { id: "srv_new_spare", all_teams: true },
+    ]);
+  });
+
+  test("a workload whose server the map leaves out refuses the copy, and nothing changes", async () => {
+    await seedOldDeplo();
+    const lines = await collect(dumpInstance());
+    await becomeNewDeplo();
+    const mine = await snapshotAll();
+    const serverMap = new Map(MAP).set("srv_worker", null);
+    await assert.rejects(
+      restoreInstance(replay(lines), { ...OPTS, serverMap }),
+      /is on the old server "worker", which this copy leaves out/,
+    );
+    await assert.rejects(
+      restoreInstance(replay(lines), {
+        ...OPTS,
+        serverMap: new Map(MAP).set("srv_worker", "srv_gone"),
+      }),
+      /no longer on this Deplo/,
+    );
+    assert.deepEqual(await snapshotAll(), mine);
+  });
+
   test("identity columns carry on after the highest value copied", async () => {
     await seedOldDeplo();
     const lines = await collect(dumpInstance());
     await becomeNewDeplo();
-    await restoreInstance(replay(lines));
+    await restoreInstance(replay(lines), OPTS);
     const act = await q(
       `insert into activities (id, team_id, type, message, actor, created_at)
        values ('act_after', 'team_a', 'deploy', 'after', 'user_1', $1) returning seq`,
@@ -527,11 +696,11 @@ describe("Deplo move: dump and restore", () => {
     await becomeNewDeplo();
     const mine = await snapshotAll();
     await assert.rejects(
-      restoreInstance(replay(lines.slice(0, -1))),
+      restoreInstance(replay(lines.slice(0, -1)), OPTS),
       /stopped before it finished\. Nothing was changed here/,
     );
     await assert.rejects(
-      restoreInstance(replay([...lines.slice(0, 3), '{"kind":"ro'])),
+      restoreInstance(replay([...lines.slice(0, 3), '{"kind":"ro']), OPTS),
       /arrived damaged/,
     );
     assert.deepEqual(await snapshotAll(), mine);
@@ -550,7 +719,7 @@ describe("Deplo move: dump and restore", () => {
     ];
     const pulled = { count: 0 };
     await assert.rejects(
-      restoreInstance(replay(older, pulled)),
+      restoreInstance(replay(older, pulled), OPTS),
       /Update the old Deplo first/,
     );
     assert.equal(pulled.count, 1);
@@ -560,13 +729,13 @@ describe("Deplo move: dump and restore", () => {
       ...lines.slice(1),
     ];
     await assert.rejects(
-      restoreInstance(replay(reordered)),
+      restoreInstance(replay(reordered), OPTS),
       /different versions/,
     );
     assert.deepEqual(await snapshotAll(), mine);
   });
 
-  test("refuses an old Deplo that already has this machine as a server", async () => {
+  test("refuses an old Deplo that already has one of this Deplo's servers", async () => {
     await seedOldDeplo();
     const lines = await collect(dumpInstance());
     for (const [id, fingerprint] of [
@@ -575,9 +744,13 @@ describe("Deplo move: dump and restore", () => {
     ]) {
       await becomeNewDeplo(id, fingerprint);
       const mine = await snapshotAll();
+      const serverMap = new Map([
+        ["srv_old_host", id],
+        ["srv_worker", id],
+      ]);
       await assert.rejects(
-        restoreInstance(replay(lines)),
-        /The old Deplo has this machine as its server "worker"/,
+        restoreInstance(replay(lines), { ...OPTS, serverMap }),
+        /This Deplo's server "new-host" is also the old Deplo's server "worker"/,
       );
       assert.deepEqual(await snapshotAll(), mine);
     }

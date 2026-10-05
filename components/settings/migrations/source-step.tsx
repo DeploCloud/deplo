@@ -63,7 +63,7 @@ export function SourceStep({
       <StepShell
         hero
         title="Move to another machine"
-        lead="Apps keep running while a fresh Deplo on another machine takes over."
+        lead="Copies everything to a fresh Deplo on another machine. This one keeps running as it is."
         docs="deplo.move"
       >
         <div className="grid gap-4">
@@ -86,7 +86,7 @@ export function SourceStep({
               icon={Truck}
               arrow
               title="Everything"
-              blurb="Every team, person, app and server. Only into an empty Deplo."
+              blurb="Every team, person, app and database, data included. Only into an empty Deplo."
               disabled={!move.readiness.ready}
               disabledNote={move.readiness.reason ?? undefined}
               onSelect={() => onPick("deplo-move")}

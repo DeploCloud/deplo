@@ -176,7 +176,7 @@ const ARCHIVE_ROOTS: ReadonlySet<string> = new Set([".", "./"]);
 const FILES_ROOTS: ReadonlySet<string> = new Set(["files", "files/"]);
 
 export async function filesDirHasContent(
-  source: AgentConnection,
+  source: { exportFiles(slug: string): AsyncIterable<Buffer> },
   slug: string,
 ): Promise<boolean> {
   return archiveHasEntries(source.exportFiles(slug), FILES_ROOTS);
@@ -423,7 +423,7 @@ export async function copyHostPathBetween(
 }
 
 export async function copyFilesBetween(
-  source: AgentConnection,
+  source: { exportFiles(slug: string): AsyncIterable<Buffer> },
   dest: AgentConnection,
   slug: string,
 ): Promise<{ empty: boolean }> {

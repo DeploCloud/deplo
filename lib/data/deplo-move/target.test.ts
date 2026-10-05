@@ -2,14 +2,17 @@ import { test, before, after, beforeEach } from "node:test";
 import assert from "node:assert/strict";
 
 import type { PGlite } from "@electric-sql/pglite";
+import { eq } from "drizzle-orm";
 
 import { runWithIdentity } from "../../auth/request-context";
 import { __resetTestDb, __setTestDb } from "../../db/client";
 import journal from "../../db/migrations/meta/_journal.json";
 import { makeTestDb, type TestDb } from "../../db/test-harness";
-import { deploMoves } from "../../db/schema/control-plane/deplo-move";
+import {
+  deploMoves,
+  deploMoveServers,
+} from "../../db/schema/control-plane/deplo-move";
 import { MOVE_PROTOCOL } from "../../deplo-move/protocol";
-import { __setAgentConnectorForTest } from "../../infra/agent-client/connect";
 import { instanceFingerprint } from "../../migration/deplo/instance";
 import {
   __resetMigrationFetchForTest,
@@ -18,8 +21,9 @@ import {
 import { seedIdentity, TEAM_A, USER_1 } from "../identity-test-helpers";
 import { seedServerRow } from "../infra-test-helpers";
 import { invalidateFrozen } from "./freeze";
+import { __setRestorerForTest, __waitForMoveForTest } from "./runner";
 import {
-  __setPortProbeForTest,
+  DOMAINS_WARNING,
   cancelMove,
   connectMove,
   currentTargetMove,
@@ -34,7 +38,6 @@ import {
   NEW,
   OLD,
   SELF_IP,
-  fakeAgents,
   fakeOldDeplo,
   helloOf,
   stepsCalled,
@@ -45,8 +48,6 @@ import {
 let db: TestDb;
 let pg: PGlite;
 let old: FakeOldDeplo;
-let probed: string[] = [];
-let blocked = new Set<string>();
 
 before(async () => {
   ({ db, pg } = await makeTestDb());
@@ -57,17 +58,17 @@ before(async () => {
 
 after(async () => {
   __resetMigrationFetchForTest();
-  __setAgentConnectorForTest();
-  __setPortProbeForTest();
+  __setRestorerForTest();
   invalidateFrozen();
   __resetTestDb();
   await pg.close();
 });
 
 beforeEach(async () => {
-  await pg.exec(`truncate table deplo_moves, deplo_move_servers, servers, apps,
-    databases, activities, registration_links, membership_capabilities,
-    memberships, users, teams, instance_settings restart identity cascade;`);
+  await pg.exec(`truncate table deplo_moves, deplo_move_servers,
+    deplo_move_workloads, servers, apps, databases, activities,
+    registration_links, membership_capabilities, memberships, users, teams,
+    instance_settings restart identity cascade;`);
   await seedIdentity(db, {
     teams: [{ id: TEAM_A, slug: "alpha" }],
     users: [{ id: USER_1, teamId: TEAM_A, role: "owner" }],
@@ -78,20 +79,12 @@ beforeEach(async () => {
     ip: SELF_IP,
     host: SELF_IP,
   });
-  const agents = fakeAgents();
-  __setAgentConnectorForTest(agents.connector);
-  old = fakeOldDeplo(agents, {
+  old = fakeOldDeplo({
     hello: helloOf({
-      servers: [summary({ id: "srv_web", name: "web" })],
+      servers: [summary({ id: "srv_web", name: "web", apps: 1 })],
     }),
   });
   __setMigrationFetchForTest(old.fetch);
-  probed = [];
-  blocked = new Set();
-  __setPortProbeForTest(async (host, port) => {
-    probed.push(`${host}:${port}`);
-    return !blocked.has(host);
-  });
   invalidateFrozen();
 });
 
@@ -101,16 +94,28 @@ const asAdmin = <T>(fn: () => Promise<T>): Promise<T> =>
 const connect = (url = OLD, code = MOVE_CODE) =>
   asAdmin(() => connectMove({ url, code }));
 
-test("connecting previews the old Deplo and records one move, however often it is repeated", async () => {
+test("connecting previews the old Deplo, maps its servers onto this machine, and records one move", async () => {
   const first = await connect();
   assert.equal(first.canStart, true);
   assert.equal(first.peerUrl, OLD);
   assert.deepEqual(first.problems, []);
   assert.deepEqual(
-    first.servers.map((s) => [s.id, s.problem]),
-    [["srv_web", null]],
+    first.servers.map((s) => [s.id, s.target, s.choices, s.problem]),
+    [["srv_web", "srv_self", ["srv_self"], null]],
   );
-  assert.deepEqual(probed, ["198.51.100.10:9443"]);
+  assert.deepEqual(first.targets, [
+    {
+      id: "srv_self",
+      name: "this-machine",
+      address: SELF_IP,
+      isThisMachine: true,
+      canHostWorkloads: true,
+    },
+  ]);
+  assert.deepEqual(first.warnings, [
+    DOMAINS_WARNING,
+    "Passkeys and webhook addresses only keep working if old.deplo.test points at this Deplo after the move.",
+  ]);
 
   const again = await connect(`${OLD}/`);
   assert.equal(again.id, first.id);
@@ -152,7 +157,17 @@ test("connecting this Deplo to itself is refused", async () => {
   await assert.rejects(() => connect(), /That address is this Deplo/);
 });
 
-test("a Deplo that is not empty cannot receive a move", async () => {
+test("a Deplo with a second account cannot receive a move, but servers of its own are fine", async () => {
+  await seedServerRow(db, {
+    id: "srv_spare",
+    name: "spare",
+    ip: "203.0.113.9",
+    host: "203.0.113.9",
+  });
+  assert.deepEqual(await asAdmin(() => targetMoveReadiness()), {
+    ready: true,
+    reason: null,
+  });
   await seedIdentity(db, {
     teams: [{ id: "team_two", slug: "two" }],
     users: [{ id: "user_two", teamId: "team_two", role: "owner" }],
@@ -162,13 +177,6 @@ test("a Deplo that is not empty cannot receive a move", async () => {
   const ready = await asAdmin(() => targetMoveReadiness());
   assert.equal(ready.ready, false);
   assert.match(ready.reason ?? "", /Bring only some teams instead/);
-});
-
-test("a fresh Deplo is ready to receive a move", async () => {
-  assert.deepEqual(await asAdmin(() => targetMoveReadiness()), {
-    ready: true,
-    reason: null,
-  });
 });
 
 test("a schema mismatch names the Deplo to update", async () => {
@@ -197,60 +205,200 @@ test("the old Deplo's refusal is shown as it said it", async () => {
   );
 });
 
-test("every server that cannot be handed over is listed, and the move cannot start", async () => {
+test("each old server is offered the servers here its role allows", async () => {
+  await seedServerRow(db, {
+    id: "srv_big",
+    name: "big",
+    ip: "203.0.113.1",
+    host: "203.0.113.1",
+  });
+  await seedServerRow(db, {
+    id: "srv_vault",
+    name: "vault",
+    ip: "203.0.113.2",
+    host: "203.0.113.2",
+    storageOnly: true,
+  });
+  // Also one of the old Deplo's own servers: never a place to land.
+  await seedServerRow(db, {
+    id: "srv_shared",
+    name: "shared",
+    ip: "198.51.100.40",
+    host: "198.51.100.40",
+  });
   old.hello = helloOf({
     servers: [
-      summary({ id: "srv_ok", name: "ok", address: "198.51.100.1" }),
+      summary({ id: "srv_web", name: "web", apps: 2, databases: 1 }),
       summary({
-        id: "srv_down",
-        name: "down",
-        address: "198.51.100.2",
-        reachable: false,
+        id: "srv_bak",
+        name: "bak",
+        address: "198.51.100.30",
+        role: "storage",
       }),
       summary({
-        id: "srv_old",
-        name: "dusty",
-        address: "198.51.100.3",
-        canHandOver: false,
+        id: "srv_builder",
+        name: "builder",
+        address: "198.51.100.31",
+        role: "build",
       }),
-      summary({ id: "srv_fw", name: "walled", address: "198.51.100.4" }),
-      summary({ id: "srv_here", name: "here", address: SELF_IP }),
       summary({
-        id: "srv_spare",
-        name: "spare",
-        address: "198.51.100.5",
-        enrolled: false,
-        port: null,
+        id: "srv_other",
+        name: "other",
+        address: "198.51.100.40",
+        role: "import",
       }),
     ],
   });
-  blocked.add("198.51.100.4");
+  const preview = await connect();
+  const by = Object.fromEntries(preview.servers.map((s) => [s.id, s]));
+  assert.deepEqual(by.srv_web.choices.sort(), ["srv_big", "srv_self"]);
+  assert.equal(by.srv_web.target, "srv_self");
+  assert.deepEqual(by.srv_bak.choices.sort(), [
+    "srv_big",
+    "srv_self",
+    "srv_vault",
+  ]);
+  assert.equal(by.srv_builder.target, "srv_self");
+  assert.deepEqual(by.srv_builder.choices.sort(), ["srv_big", "srv_self"]);
+  assert.deepEqual([by.srv_other.target, by.srv_other.choices], [null, []]);
+  assert.deepEqual(preview.targets.map((t) => t.id).sort(), [
+    "srv_big",
+    "srv_self",
+    "srv_vault",
+  ]);
+  assert.equal(preview.canStart, true);
+});
 
+test("an old server on this very machine, or with nowhere to go, blocks the move", async () => {
+  await pg.exec(`update servers set storage_only = true where id = 'srv_self'`);
+  old.hello = helloOf({
+    servers: [
+      summary({ id: "srv_web", name: "web", apps: 1 }),
+      summary({ id: "srv_here", name: "here", address: SELF_IP }),
+    ],
+  });
   const preview = await connect();
   assert.equal(preview.canStart, false);
   const problem = Object.fromEntries(
     preview.servers.map((s) => [s.id, s.problem]),
   );
-  assert.equal(problem.srv_ok, null);
-  assert.equal(problem.srv_spare, null);
-  assert.match(problem.srv_down ?? "", /cannot reach down/);
-  assert.match(problem.srv_old ?? "", /dusty runs an older server agent/);
   assert.match(
-    problem.srv_fw ?? "",
-    /This machine cannot reach walled at 198\.51\.100\.4:9443/,
+    problem.srv_web ?? "",
+    /No server here can run apps in place of web: add one under Servers/,
   );
   assert.match(problem.srv_here ?? "", /here is this machine/);
-  assert.equal(preview.problems.length, 4);
-  assert.deepEqual(preview.warnings, [
-    "Passkeys and webhook addresses only keep working if old.deplo.test points at this Deplo after the move.",
-    "spare never finished connecting, so it is copied as it is.",
-  ]);
-
   await assert.rejects(
     () => asAdmin(() => startMove(preview.id)),
     (e: Error) => e.message === preview.problems[0],
   );
-  assert.equal(stepsCalled(old).includes("freeze"), false);
+  assert.equal(stepsCalled(old).includes("dump"), false);
+});
+
+test("an old server its Deplo cannot reach is a warning, not a block", async () => {
+  old.hello = helloOf({
+    servers: [
+      summary({ id: "srv_web", name: "web", apps: 1, reachable: false }),
+    ],
+  });
+  const preview = await connect();
+  assert.equal(preview.canStart, true);
+  assert.ok(
+    preview.warnings.includes(
+      "The old Deplo cannot reach web right now, so its data cannot be copied until it is back.",
+    ),
+  );
+});
+
+test("starting stores the server map, and refuses a map the roles do not allow", async () => {
+  await seedServerRow(db, {
+    id: "srv_vault",
+    name: "vault",
+    ip: "203.0.113.2",
+    host: "203.0.113.2",
+    storageOnly: true,
+  });
+  await seedServerRow(db, {
+    id: "srv_big",
+    name: "big",
+    ip: "203.0.113.1",
+    host: "203.0.113.1",
+  });
+  old.hello = helloOf({
+    servers: [
+      summary({ id: "srv_web", name: "web", apps: 1 }),
+      summary({
+        id: "srv_bak",
+        name: "bak",
+        address: "198.51.100.30",
+        role: "storage",
+      }),
+      summary({
+        id: "srv_builder",
+        name: "builder",
+        address: "198.51.100.31",
+        role: "build",
+      }),
+    ],
+  });
+  const preview = await connect();
+  await assert.rejects(
+    () =>
+      asAdmin(() =>
+        startMove(preview.id, [{ from: "srv_web", to: "srv_vault" }]),
+      ),
+    /web holds apps or databases, so it needs a server here that runs apps/,
+  );
+  await assert.rejects(
+    () =>
+      asAdmin(() => startMove(preview.id, [{ from: "srv_nope", to: null }])),
+    /names a server the old Deplo does not have/,
+  );
+  await assert.rejects(
+    () =>
+      asAdmin(() =>
+        startMove(preview.id, [{ from: "srv_builder", to: "srv_vault" }]),
+      ),
+    /builder needs a server here that can build apps/,
+  );
+  await assert.rejects(
+    () => asAdmin(() => startMove(preview.id, [{ from: "srv_bak", to: null }])),
+    /bak needs a server here that can keep backups/,
+  );
+  assert.equal(await db.$count(deploMoveServers), 0);
+
+  // The copy itself is not under test here: it stops at once.
+  __setRestorerForTest(async () => {
+    throw new Error("Stopped for the test.");
+  });
+  const status = await asAdmin(() =>
+    startMove(preview.id, [
+      { from: "srv_web", to: "srv_big" },
+      { from: "srv_bak", to: "srv_vault" },
+      { from: "srv_builder", to: "srv_big" },
+    ]),
+  );
+  await __waitForMoveForTest();
+  assert.deepEqual(
+    status.servers.map((s) => [s.id, s.targetId, s.targetName]),
+    [
+      ["srv_web", "srv_big", "big"],
+      ["srv_bak", "srv_vault", "vault"],
+      ["srv_builder", "srv_big", "big"],
+    ],
+  );
+  const stored = await db
+    .select()
+    .from(deploMoveServers)
+    .where(eq(deploMoveServers.moveId, preview.id))
+    .orderBy(deploMoveServers.position);
+  assert.deepEqual(
+    stored.map((s) => [s.serverId, s.targetServerId]),
+    [
+      ["srv_web", "srv_big"],
+      ["srv_bak", "srv_vault"],
+      ["srv_builder", "srv_big"],
+    ],
+  );
 });
 
 test("a move's status is read by its id alone, and an unknown id has none", async () => {
@@ -261,9 +409,14 @@ test("a move's status is read by its id alone, and an unknown id has none", asyn
   assert.equal(status?.canCancel, true);
   assert.equal(status?.canRetry, false);
   assert.equal(status?.canFinishWithoutSource, false);
+  assert.deepEqual(status?.workloads, []);
   assert.deepEqual(
-    status?.steps.map((s) => s.state),
-    ["waiting", "waiting", "waiting"],
+    status?.steps.map((s) => [s.key, s.state]),
+    [
+      ["copy", "waiting"],
+      ["deploy", "waiting"],
+      ["finish", "waiting"],
+    ],
   );
 
   assert.equal(await moveStatus("dmv_nope"), null);
@@ -275,4 +428,66 @@ test("a move's status is read by its id alone, and an unknown id has none", asyn
     /stopped after the copy/,
   );
   assert.deepEqual(stepsCalled(old), ["hello"], "refused before asking");
+});
+
+test("two databases that would answer at one address on one server here block the move until the map separates them", async () => {
+  await seedServerRow(db, {
+    id: "srv_big",
+    name: "big",
+    ip: "203.0.113.1",
+    host: "203.0.113.1",
+  });
+  old.hello = helloOf({
+    servers: [
+      summary({
+        id: "srv_web",
+        name: "web",
+        databases: 1,
+        databaseHosts: [{ id: "db_one", name: "main", host: "db-main" }],
+      }),
+      summary({
+        id: "srv_two",
+        name: "two",
+        address: "198.51.100.20",
+        databases: 2,
+        databaseHosts: [
+          { id: "db_two", name: "main", host: "db-main" },
+          { id: "db_cache", name: "cache", host: "db-cache" },
+        ],
+      }),
+    ],
+  });
+  const clash =
+    "The databases main (on web) and main (on two) both answer at db-main, so they cannot share this-machine: choose another server here for web or two.";
+  const preview = await connect();
+  assert.equal(preview.canStart, false);
+  assert.deepEqual(preview.problems, [clash]);
+  assert.deepEqual(
+    preview.servers.map((s) => [s.problem, s.databaseHosts.map((d) => d.host)]),
+    [
+      [null, ["db-main"]],
+      [null, ["db-main", "db-cache"]],
+    ],
+  );
+  await assert.rejects(
+    () => asAdmin(() => startMove(preview.id)),
+    (e: Error) => e.message === clash,
+  );
+  assert.equal(await db.$count(deploMoveServers), 0);
+  assert.equal(stepsCalled(old).includes("dump"), false);
+
+  __setRestorerForTest(async () => {
+    throw new Error("Stopped for the test.");
+  });
+  const status = await asAdmin(() =>
+    startMove(preview.id, [{ from: "srv_two", to: "srv_big" }]),
+  );
+  await __waitForMoveForTest();
+  assert.deepEqual(
+    status.servers.map((s) => [s.id, s.targetId]),
+    [
+      ["srv_web", "srv_self"],
+      ["srv_two", "srv_big"],
+    ],
+  );
 });

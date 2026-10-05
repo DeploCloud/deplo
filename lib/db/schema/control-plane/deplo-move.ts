@@ -1,4 +1,11 @@
-import { pgTable, text, integer, primaryKey, index } from "drizzle-orm/pg-core";
+import {
+  pgTable,
+  text,
+  integer,
+  boolean,
+  primaryKey,
+  index,
+} from "drizzle-orm/pg-core";
 
 import { isoTimestamptz } from "../columns";
 
@@ -19,6 +26,8 @@ export const deploMoves = pgTable(
     error: text("error").notNull().default(""),
     rowsCopied: integer("rows_copied").notNull().default(0),
     unreadable: integer("unreadable").notNull().default(0),
+    // New side: crons and backups wait until an admin turns them on, so nothing runs twice.
+    schedulesPaused: boolean("schedules_paused").notNull().default(false),
     createdAt: isoTimestamptz("created_at").notNull(),
     updatedAt: isoTimestamptz("updated_at").notNull(),
     finishedAt: isoTimestamptz("finished_at"),
@@ -26,6 +35,7 @@ export const deploMoves = pgTable(
   (t) => [index("deplo_moves_side_state_idx").on(t.side, t.state)],
 );
 
+// New side: where each of the old Deplo's servers lands here. A null target drops it.
 export const deploMoveServers = pgTable(
   "deplo_move_servers",
   {
@@ -33,6 +43,7 @@ export const deploMoveServers = pgTable(
       .notNull()
       .references(() => deploMoves.id, { onDelete: "cascade" }),
     serverId: text("server_id").notNull(),
+    targetServerId: text("target_server_id"),
     name: text("name").notNull(),
     position: integer("position").notNull(),
     state: text("state").notNull().default("waiting"),
@@ -40,4 +51,39 @@ export const deploMoveServers = pgTable(
     updatedAt: isoTimestamptz("updated_at").notNull(),
   },
   (t) => [primaryKey({ columns: [t.moveId, t.serverId] })],
+);
+
+// New side: one row per app or database to deploy here and fill with its data.
+export const deploMoveWorkloads = pgTable(
+  "deplo_move_workloads",
+  {
+    moveId: text("move_id")
+      .notNull()
+      .references(() => deploMoves.id, { onDelete: "cascade" }),
+    kind: text("kind").notNull(),
+    workloadId: text("workload_id").notNull(),
+    name: text("name").notNull(),
+    position: integer("position").notNull(),
+    state: text("state").notNull().default("waiting"),
+    error: text("error").notNull().default(""),
+    updatedAt: isoTimestamptz("updated_at").notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.moveId, t.kind, t.workloadId] })],
+);
+
+// Old side: a workload stopped for its copy, started again on `resume` or when the lease lapses.
+export const deploMovePauses = pgTable(
+  "deplo_move_pauses",
+  {
+    moveId: text("move_id")
+      .notNull()
+      .references(() => deploMoves.id, { onDelete: "cascade" }),
+    kind: text("kind").notNull(),
+    workloadId: text("workload_id").notNull(),
+    serverId: text("server_id").notNull(),
+    stack: text("stack").notNull(),
+    wasRunning: boolean("was_running").notNull(),
+    leaseUntil: isoTimestamptz("lease_until").notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.moveId, t.kind, t.workloadId] })],
 );

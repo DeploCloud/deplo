@@ -12,6 +12,7 @@ import { connectAgent } from "../../infra/agent-client/connect";
 import { withKeyedLock } from "../keyed-mutex";
 import { enqueueTeardowns } from "../teardown-queue";
 import { assertDataCopyIntact, clearDataCopyError } from "../data-copy";
+import { assertNotPausedForMove } from "../deplo-move/source-guard";
 import { publishDatabaseChanged } from "../../graphql/pubsub";
 import { assertNotProvisioning, databaseExists, requireDatabase } from "./rows";
 import {
@@ -33,6 +34,7 @@ export async function setDatabaseRunning(
   await withKeyedLock(id, async () => {
     const cur = await requireDatabase(id, teamId);
     assertNotProvisioning(cur, "starting or stopping it");
+    await assertNotPausedForMove("database", id);
     // Reroute before starting: compose start returns the container to the network it was CREATED on.
     if (running && (await rerouteDatabase(id)) === "rerouted") {
       await getDb()
@@ -75,6 +77,7 @@ export async function restartDatabase(id: string): Promise<void> {
     name = cur.name;
     assertNotProvisioning(cur, "restarting it");
     assertDataCopyIntact(cur.name, cur.dataCopyError);
+    await assertNotPausedForMove("database", id);
     const conn = await connectAgent(cur.serverId);
     try {
       const stop = await conn.stopStack(cur.host);
@@ -112,6 +115,7 @@ export async function redeployDatabase(id: string): Promise<void> {
     name = cur.name;
     assertNotProvisioning(cur, "redeploying it");
     assertDataCopyIntact(cur.name, cur.dataCopyError);
+    await assertNotPausedForMove("database", id);
     // Redis auth rides a --requirepass flag re-applied on every boot, so an empty password disables it.
     const password = databasePassword(cur);
     const yaml = renderDatabaseStackYaml(cur, password);
@@ -148,6 +152,7 @@ export async function rebuildDatabase(id: string): Promise<void> {
     const cur = await requireDatabase(id, teamId);
     name = cur.name;
     assertNotProvisioning(cur, "rebuilding it");
+    await assertNotPausedForMove("database", id);
     const password = databasePassword(cur);
     const yaml = renderDatabaseStackYaml(cur, password);
     const conn = await connectAgent(cur.serverId);

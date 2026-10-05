@@ -83,6 +83,34 @@ export async function storeUpload(opts: {
   };
 }
 
+const SAFE_ID = /^[A-Za-z0-9_-]+$/;
+
+// A Deplo move (ADR-0035) puts an app's current archive back under the id its copied row already names.
+export async function restoreUpload(opts: {
+  appId: string;
+  uploadId: string;
+  ext: string;
+  body: AsyncIterable<Uint8Array>;
+}): Promise<{ path: string; size: number }> {
+  if (!SAFE_ID.test(opts.appId) || !SAFE_ID.test(opts.uploadId))
+    throw new Error("That archive is named in a way Deplo never writes.");
+  const dir = join(appUploadDir(opts.appId), opts.uploadId);
+  await rm(dir, { recursive: true, force: true });
+  await mkdir(dir, { recursive: true });
+  const path = join(dir, `archive${opts.ext}`);
+  try {
+    await streamPipeline(
+      Readable.from(opts.body),
+      capBytes(MAX_UPLOAD_BYTES),
+      createWriteStream(path),
+    );
+  } catch (err) {
+    await rm(dir, { recursive: true, force: true }).catch(() => {});
+    throw err;
+  }
+  return { path, size: (await stat(path)).size };
+}
+
 export async function pruneUploads(
   appId: string,
   keepId: string,

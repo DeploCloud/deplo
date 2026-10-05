@@ -58,7 +58,8 @@ export async function runGraphql(
   return { data: value.data ?? null, error };
 }
 
-// Hand-listed because they hand back a credential or run code without a reveal* name (ADR-0021 rule 4).
+// Hand-listed because they hand back a credential or run code without a reveal* name (ADR-0021 rule 4),
+// or drive a Deplo move by its id, which can wipe this whole Deplo (ADR-0035).
 const IRREGULAR = [
   "execConsole",
   "execDatabaseConsole",
@@ -67,6 +68,10 @@ const IRREGULAR = [
   "destinationRecoveryKey",
   "createToken",
   "createMoveCode",
+  "retryDeploMove",
+  "cancelDeploMove",
+  "finishDeploMoveWithoutSource",
+  "skipDeploMoveWorkload",
   "updateToken",
   "mintRegistrationLink",
   "reissueServerBootstrap",

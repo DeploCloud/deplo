@@ -749,27 +749,24 @@ _Avoid_: transfer (that is **app transfer**, moving an App between teams), move 
 migration happens once and stops the source), import (the old wire word, now retired).
 
 **Deplo move**:
-Moving a WHOLE Deplo - every team, account, App, variable, token, backup and setting - onto a
-fresh install on another machine, and handing every **server** over to it
-([ADR-0035](docs/adr/0035-a-whole-deplo-moves-by-handing-its-servers-over.md)). The rows are
-copied 1:1 with their ids and re-sealed under the new Deplo's own secret; the servers are not
-copied but handed over, each agent switching the authority it trusts, so workloads never stop and
-no data is copied off a machine. Run from `Settings → System → Migrations → Move Deplo`: the
-**old Deplo** (the one being left) mints a **move code**, the **new Deplo** (empty) connects with it
-and drives the rest. From the moment it starts the old Deplo is **frozen** (no change, no
-background job), and once the last server is handed over it is **moved** for good and only says
-where it went. If one side dies mid-move, the new Deplo can **finish without the old one** and the
-old one can **resume**; servers caught on the wrong side are added again.
-_Avoid_: migration (that brings teams in from another platform, or one team from another Deplo,
-onto THIS Deplo's servers), transfer (an **app transfer**), server move (one workload between
-hosts), backup/restore (nothing is restored from an artifact), clone (the old one does not keep
-running).
+Copying a WHOLE Deplo - every team, account, App, variable, token, backup and setting - onto a
+fresh install on another machine, while the **old Deplo** keeps running exactly as it was
+([ADR-0035](docs/adr/0035-a-whole-deplo-copies-onto-a-new-machine.md)). The rows are copied 1:1 with
+their ids and re-sealed under the **new Deplo**'s own secret; each old server is mapped onto a
+server of the new Deplo, and every App and database is deployed there and filled with its data.
+Nothing is handed over: the old Deplo keeps every server, and each workload with data pauses
+there only while its own data copies. Run from `Settings → System → Migrations → Move Deplo`: the
+old Deplo mints a **move code**, the new Deplo (empty) connects with it and drives the rest. The
+new Deplo starts with its crons and backup schedules paused, so nothing runs twice.
+_Avoid_: migration (that brings teams in from another platform, or one team from another Deplo),
+transfer (an **app transfer**), server move (one workload between hosts), backup/restore (nothing
+is restored from an artifact), handover (servers are never handed over).
 
 **Move code**:
 The one-time credential a **Deplo move** runs on: `dmove_…`, minted by an instance admin on the old
 Deplo, shown once, stored hashed, valid for an hour until a new Deplo first uses it and bound to
-that Deplo from then on. It authorises reading every secret and re-pointing every server, so it
-is never an API token and never reaches GraphQL.
+that Deplo from then on. It authorises reading every secret and every workload's data, so it is
+never an API token and never reaches GraphQL.
 _Avoid_: token (that is an **API token**), key, password.
 
 **Platform** (of a migration):

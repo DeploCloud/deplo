@@ -12,11 +12,14 @@ import {
 } from "../migration/transport";
 import { publicBaseUrl } from "../public-url";
 import {
+  MOVE_FILENAME_HEADER,
   MOVE_PEER_HEADER,
   MOVE_PEER_URL_HEADER,
-  type MoveCsrResponse,
   type MoveHello,
+  type MovePauseResponse,
   type MoveStep,
+  type MoveWorkloadInfo,
+  type WorkloadRef,
 } from "./protocol";
 
 // The new Deplo's side of the wire (ADR-0035): one call per step, POST /api/deplo-move/<step>.
@@ -25,12 +28,12 @@ export interface MoveCredential {
   code: string;
 }
 
-// The old Deplo answered and said no; `handedOver` is its "that server already answers to you".
+// The old Deplo answered and said no. A data step's `code` 5 is "not on that server", like an agent's NOT_FOUND.
 export class MoveRefusedError extends Error {
+  code?: number;
   constructor(
     message: string,
     readonly status: number,
-    readonly handedOver = false,
   ) {
     super(message);
     this.name = "MoveRefusedError";
@@ -39,9 +42,9 @@ export class MoveRefusedError extends Error {
 
 const PANEL: PanelIdentity = { name: "Deplo", portHint: ":3000" };
 
-// The old Deplo dials every server agent to answer hello, so it gets longer than a plain request.
+// The old Deplo dials its server agents to answer these, so they get longer than a plain request.
 const HELLO_TIMEOUT_MS = 60_000;
-const AGENT_STEP_TIMEOUT_MS = 30_000;
+const AGENT_STEP_TIMEOUT_MS = 2 * 60_000;
 
 const NOT_A_MOVE_SOURCE =
   "Nothing at that address can be moved: check it is the old Deplo, and update it if it is older than this one.";
@@ -76,13 +79,17 @@ function httpsOnly(e: unknown): unknown {
 async function refusal(res: Response): Promise<MoveRefusedError> {
   const text = await res.text().catch(() => "");
   let said = "";
-  let handedOver = false;
+  let code: number | undefined;
   try {
-    const body = JSON.parse(text) as { error?: unknown; handedOver?: unknown };
+    const body = JSON.parse(text) as { error?: unknown; code?: unknown };
     if (typeof body.error === "string") said = body.error.trim();
-    handedOver = body.handedOver === true;
+    if (typeof body.code === "number") code = body.code;
   } catch {}
-  if (said) return new MoveRefusedError(said, res.status, handedOver);
+  if (said) {
+    const e = new MoveRefusedError(said, res.status);
+    e.code = code ?? (res.status === 404 ? 5 : undefined);
+    return e;
+  }
   if (res.status === 404)
     return new MoveRefusedError(NOT_A_MOVE_SOURCE, res.status);
   const raw = panelSaid(text);
@@ -96,12 +103,19 @@ function stepUrl(c: MoveCredential, step: MoveStep): string {
   return `${c.baseUrl}/api/deplo-move/${step}`;
 }
 
+function deadline(timeoutMs: number, signal?: AbortSignal): AbortSignal {
+  const timeout = AbortSignal.timeout(timeoutMs);
+  return signal ? AbortSignal.any([timeout, signal]) : timeout;
+}
+
 async function call<T>(
   c: MoveCredential,
   step: MoveStep,
   body: unknown,
   timeoutMs = REQUEST_TIMEOUT_MS,
+  signal?: AbortSignal,
 ): Promise<T> {
+  signal?.throwIfAborted();
   let res: Response;
   try {
     res = await sendRequest(
@@ -112,11 +126,12 @@ async function call<T>(
         headers: headers(c),
         body: JSON.stringify(body ?? {}),
         redirect: "manual",
-        signal: AbortSignal.timeout(timeoutMs),
+        signal: deadline(timeoutMs, signal),
       },
       PANEL,
     );
   } catch (e) {
+    signal?.throwIfAborted();
     throw httpsOnly(e);
   }
   refuseRedirect(res, PANEL);
@@ -130,8 +145,11 @@ async function call<T>(
   }
 }
 
-export async function hello(c: MoveCredential): Promise<MoveHello> {
-  const h = await call<MoveHello>(c, "hello", {}, HELLO_TIMEOUT_MS);
+export async function hello(
+  c: MoveCredential,
+  signal?: AbortSignal,
+): Promise<MoveHello> {
+  const h = await call<MoveHello>(c, "hello", {}, HELLO_TIMEOUT_MS, signal);
   if (
     !h ||
     typeof h.protocol !== "number" ||
@@ -143,43 +161,203 @@ export async function hello(c: MoveCredential): Promise<MoveHello> {
   return h;
 }
 
-export async function freeze(c: MoveCredential): Promise<void> {
-  await call(c, "freeze", {});
+const ref = (w: WorkloadRef): WorkloadRef => ({ kind: w.kind, id: w.id });
+
+export async function workload(
+  c: MoveCredential,
+  w: WorkloadRef,
+  signal?: AbortSignal,
+): Promise<MoveWorkloadInfo> {
+  const info = await call<MoveWorkloadInfo>(
+    c,
+    "workload",
+    ref(w),
+    AGENT_STEP_TIMEOUT_MS,
+    signal,
+  );
+  if (
+    info?.id !== w.id ||
+    !Array.isArray(info.volumes) ||
+    !Array.isArray(info.hostPaths)
+  )
+    throw new Error(NOT_A_DEPLO);
+  return info;
 }
 
-export async function csr(
+export async function pause(
   c: MoveCredential,
-  serverId: string,
-): Promise<string> {
-  const r = await call<MoveCsrResponse>(
+  w: WorkloadRef,
+  signal?: AbortSignal,
+): Promise<MovePauseResponse> {
+  const r = await call<MovePauseResponse>(
     c,
-    "csr",
-    { serverId },
+    "pause",
+    ref(w),
+    AGENT_STEP_TIMEOUT_MS,
+    signal,
+  );
+  if (typeof r.wasRunning !== "boolean") throw new Error(NOT_A_DEPLO);
+  return r;
+}
+
+// False: the lease had lapsed and the old Deplo already started it again, so a copy read since may be torn.
+export async function resume(
+  c: MoveCredential,
+  w: WorkloadRef,
+): Promise<boolean> {
+  const r = await call<{ resumed?: unknown }>(
+    c,
+    "resume",
+    ref(w),
     AGENT_STEP_TIMEOUT_MS,
   );
-  if (typeof r.csrPem !== "string" || !r.csrPem) throw new Error(NOT_A_DEPLO);
-  return r.csrPem;
+  return r.resumed !== false;
 }
 
-export async function install(
+export async function finish(c: MoveCredential): Promise<void> {
+  await call(c, "finish", {});
+}
+
+export async function cancel(c: MoveCredential): Promise<void> {
+  await call(c, "cancel", {}, AGENT_STEP_TIMEOUT_MS);
+}
+
+interface OpenedStream {
+  res: Response;
+  close: () => void;
+}
+
+// One attempt and no deadline: a copy may run for hours, and a retry would start it over.
+async function openData(
   c: MoveCredential,
-  serverId: string,
-  certPem: string,
-  caPem: string,
-): Promise<void> {
-  await call(c, "install", { serverId, certPem, caPem }, AGENT_STEP_TIMEOUT_MS);
+  step: MoveStep,
+  body: unknown,
+  signal?: AbortSignal,
+): Promise<OpenedStream> {
+  signal?.throwIfAborted();
+  const aborter = new AbortController();
+  const onAbort = () => aborter.abort();
+  signal?.addEventListener("abort", onAbort, { once: true });
+  const close = () => {
+    signal?.removeEventListener("abort", onAbort);
+    aborter.abort();
+  };
+  try {
+    let res: Response;
+    try {
+      res = await openStream(
+        c.baseUrl,
+        stepUrl(c, step),
+        {
+          method: "POST",
+          headers: { ...headers(c), Accept: "application/octet-stream" },
+          body: JSON.stringify(body),
+          redirect: "manual",
+          signal: aborter.signal,
+        },
+        PANEL,
+      );
+    } catch (e) {
+      signal?.throwIfAborted();
+      throw httpsOnly(e);
+    }
+    refuseRedirect(res, PANEL);
+    if (!res.ok) throw await refusal(res);
+    return { res, close };
+  } catch (e) {
+    close();
+    throw e;
+  }
 }
 
-export async function finish(
+async function* chunksOf(opened: OpenedStream): AsyncGenerator<Buffer> {
+  try {
+    // 204: the old Deplo has nothing to send, like an agent's empty export.
+    if (opened.res.status === 204 || !opened.res.body) return;
+    try {
+      for await (const chunk of opened.res
+        .body as unknown as AsyncIterable<Uint8Array>)
+        yield Buffer.from(chunk);
+    } catch (e) {
+      throw new Error(CUT_OFF, { cause: e });
+    }
+  } finally {
+    opened.close();
+  }
+}
+
+function dataStream(
   c: MoveCredential,
-  movedTo: string,
-  handedOver: string[],
-): Promise<void> {
-  await call(c, "finish", { movedTo, handedOver });
+  step: MoveStep,
+  body: unknown,
+  signal?: AbortSignal,
+): AsyncIterable<Buffer> {
+  return (async function* () {
+    yield* chunksOf(await openData(c, step, body, signal));
+  })();
 }
 
-export async function thaw(c: MoveCredential): Promise<void> {
-  await call(c, "thaw", {});
+export function volume(
+  c: MoveCredential,
+  w: WorkloadRef,
+  name: string,
+  signal?: AbortSignal,
+): AsyncIterable<Buffer> {
+  return dataStream(c, "volume", { ...ref(w), volume: name }, signal);
+}
+
+export function hostPath(
+  c: MoveCredential,
+  w: WorkloadRef,
+  path: string,
+  allowFile: boolean,
+  signal?: AbortSignal,
+): AsyncIterable<Buffer> {
+  return dataStream(c, "hostpath", { ...ref(w), path, allowFile }, signal);
+}
+
+export function files(
+  c: MoveCredential,
+  w: WorkloadRef,
+  signal?: AbortSignal,
+): AsyncIterable<Buffer> {
+  return dataStream(c, "files", ref(w), signal);
+}
+
+export function image(
+  c: MoveCredential,
+  w: WorkloadRef,
+  imageRef: string,
+  signal?: AbortSignal,
+): AsyncIterable<Buffer> {
+  return dataStream(c, "image", { ...ref(w), imageRef }, signal);
+}
+
+function headerFilename(res: Response): string {
+  const raw = res.headers.get(MOVE_FILENAME_HEADER) ?? "";
+  try {
+    return decodeURIComponent(raw);
+  } catch {
+    return raw;
+  }
+}
+
+// The archive an upload-sourced app builds from. `close` must run whether or not `chunks` was read.
+export async function upload(
+  c: MoveCredential,
+  w: WorkloadRef,
+  signal?: AbortSignal,
+): Promise<{
+  filename: string;
+  chunks: AsyncIterable<Buffer>;
+  close: () => void;
+}> {
+  const opened = await openData(c, "upload", ref(w), signal);
+  return {
+    filename: headerFilename(opened.res),
+    chunks: chunksOf(opened),
+    close: opened.close,
+  };
 }
 
 function isEndFrame(line: string): boolean {
@@ -194,15 +372,21 @@ function isEndFrame(line: string): boolean {
 const DUMP_HEADERS_TIMEOUT_MS = 5 * 60_000;
 
 // NDJSON, one frame a line. A stream that stops before its `end` frame throws, so a cut copy never commits.
-export function dump(c: MoveCredential): AsyncIterable<string> {
+export function dump(
+  c: MoveCredential,
+  signal?: AbortSignal,
+): AsyncIterable<string> {
   return (async function* () {
     const aborter = new AbortController();
+    const onAbort = () => aborter.abort();
+    signal?.addEventListener("abort", onAbort, { once: true });
     let late = false;
-    const deadline = setTimeout(() => {
+    const timer = setTimeout(() => {
       late = true;
       aborter.abort();
     }, DUMP_HEADERS_TIMEOUT_MS);
     try {
+      signal?.throwIfAborted();
       let res: Response;
       try {
         res = await openStream(
@@ -218,13 +402,14 @@ export function dump(c: MoveCredential): AsyncIterable<string> {
           PANEL,
         );
       } catch (e) {
+        signal?.throwIfAborted();
         if (late)
           throw new Error(
             "The old Deplo did not start the copy within 5 minutes. Retry the move.",
           );
         throw httpsOnly(e);
       } finally {
-        clearTimeout(deadline);
+        clearTimeout(timer);
       }
       refuseRedirect(res, PANEL);
       if (!res.ok) throw await refusal(res);
@@ -254,6 +439,8 @@ export function dump(c: MoveCredential): AsyncIterable<string> {
       if (!isEndFrame(last)) throw new Error(CUT_OFF);
       if (rest.trim()) yield rest;
     } finally {
+      clearTimeout(timer);
+      signal?.removeEventListener("abort", onAbort);
       aborter.abort();
     }
   })();

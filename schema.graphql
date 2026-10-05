@@ -1533,6 +1533,18 @@ type DeploMoveCounts {
 }
 
 """
+A database on one of the old Deplo's servers, by the address it answers at there.
+"""
+type DeploMoveDatabaseHost {
+  """
+  Unique per server only: two databases with the same one cannot land on one server here.
+  """
+  host: String
+  id: String
+  name: String
+}
+
+"""
 What a Deplo move would bring here, read from the old Deplo. Nothing has changed on either side yet.
 """
 type DeploMovePreview {
@@ -1546,10 +1558,15 @@ type DeploMovePreview {
   peerUrl: String
 
   """
-  Everything that blocks the move, each naming its server. startDeploMove refuses while any remains.
+  Everything that blocks the move with each server's `target`, each naming its server. startDeploMove refuses while any remains; a database clash goes with a map that separates them.
   """
   problems: [String!]
   servers: [DeploMovePreviewServer!]
+
+  """
+  This Deplo's servers an old server can land on. One the old Deplo also uses is never offered.
+  """
+  targets: [DeploMoveTargetServer!]
 
   """The old Deplo's version."""
   version: String
@@ -1558,31 +1575,49 @@ type DeploMovePreview {
   warnings: [String!]
 }
 
-"""One of the old Deplo's servers, as a move would take it."""
+"""
+One of the old Deplo's servers, as a move would take it. It stays with the old Deplo: only what it holds is copied.
+"""
 type DeploMovePreviewServer {
   address: String
   agentVersion: String
   apps: Int
-  databases: Int
 
   """
-  False for a server that never finished connecting: it is copied as it is, with nothing to hand over.
+  The servers here it may land on: one that runs apps for a workload server, one that builds for a build server, any for a storage one. Empty for a migration source.
   """
+  choices: [String!]
+
+  """
+  Its databases. A map that lands two with the same `host` on one server here is refused.
+  """
+  databaseHosts: [DeploMoveDatabaseHost!]
+  databases: Int
+
+  """False for a server that never finished connecting."""
   enrolled: Boolean
   id: String
 
-  """
-  The machine the old Deplo itself runs on. It is handed over last and its apps keep running.
-  """
+  """The machine the old Deplo itself runs on."""
   isPanelHost: Boolean
   name: String
   port: Int
 
   """
-  What keeps this server from being handed over, in one sentence. The move cannot start while any server has one.
+  What keeps the move from starting because of this server, in one sentence.
   """
   problem: String
+
+  """
+  The old Deplo reached it just now. Its apps' data can only be copied while it does.
+  """
+  reachable: Boolean
   role: DeploMoveServerRole
+
+  """
+  The server here it lands on unless startDeploMove's map says otherwise. Null for a migration source, which is never copied.
+  """
+  target: String
 }
 
 """Whether this Deplo can receive a Deplo move right now."""
@@ -1595,15 +1630,28 @@ type DeploMoveReadiness {
   reason: String
 }
 
-"""One server's handover."""
+"""Where one of the old Deplo's servers landed here."""
 type DeploMoveServer {
-  """
-  Why it failed; on a handed-over server, a note that this Deplo cannot reach it yet. Empty otherwise.
-  """
-  error: String
+  """The old Deplo's server id."""
   id: String
   name: String
-  state: DeploMoveServerState
+
+  """The server here that takes its place. Null: not copied."""
+  targetId: String
+  targetName: String
+}
+
+"""
+Where one of the old Deplo's servers lands here. A server left out of the map takes its preview `target`.
+"""
+input DeploMoveServerMapInput {
+  """The old Deplo's server id."""
+  from: String!
+
+  """
+  A server id here, from the preview's `choices`. Ignored for a migration source.
+  """
+  to: String
 }
 
 """
@@ -1616,22 +1664,16 @@ enum DeploMoveServerRole {
   workloads
 }
 
-enum DeploMoveServerState {
-  failed
-  handed_over
-  waiting
-}
-
 """
-connected = the old Deplo answered and the preview is ready. copying = its data is being copied here. handing_over = its servers are switching to this Deplo. done = finished. failed = stopped, with `error` saying why; retry resumes. cancelled = abandoned before any server was handed over.
+connected = the old Deplo answered and the preview is ready. copying = its database is being copied here; changes are paused. deploying = each app and database is deployed here and filled with its data. done = finished. failed = stopped, with `error` saying why; retry resumes. cancelled = abandoned; anything copied here was removed.
 """
 enum DeploMoveState {
   cancelled
   connected
   copying
+  deploying
   done
   failed
-  handing_over
 }
 
 """
@@ -1639,15 +1681,20 @@ A Deplo move into this Deplo, as its progress page shows it. Read by its id alon
 """
 type DeploMoveStatus {
   """
-  Until the first server is handed over. After that a move only goes forward.
+  Until the move is done, even while it runs: the old Deplo starts what it paused, and this Deplo goes back to setup. Once the copy landed, only for an instance admin.
   """
   canCancel: Boolean
 
   """
-  The copy landed and the move stopped, so it can finish without the old Deplo. finishDeploMoveWithoutSource still refuses while the old Deplo answers.
+  The copy landed and the move stopped, and the viewer is an instance admin, so it can finish without the old Deplo. finishDeploMoveWithoutSource still refuses while the old Deplo answers.
   """
   canFinishWithoutSource: Boolean
   canRetry: Boolean
+
+  """
+  An app or database failed and the viewer is an instance admin: skipDeploMoveWorkload leaves it out so the rest finishes.
+  """
+  canSkip: Boolean
   createdAt: String
 
   """
@@ -1657,9 +1704,16 @@ type DeploMoveStatus {
   finishedAt: String
   id: String
 
+  """
+  The copy landed, so cancelling, finishing or skipping needs an instance admin signed in here, and the viewer is not one.
+  """
+  needsAdminSignIn: Boolean
+
   """The old Deplo's address."""
   peerUrl: String
   rowsCopied: Int
+
+  """The server map the move was started with."""
   servers: [DeploMoveServer!]
 
   """
@@ -1673,6 +1727,9 @@ type DeploMoveStatus {
   Saved secrets the old Deplo could not open. They came across as they were and have to be entered again.
   """
   unreadable: Int
+
+  """Listed once the database copy lands."""
+  workloads: [DeploMoveWorkload!]
 }
 
 type DeploMoveStep {
@@ -1681,18 +1738,63 @@ type DeploMoveStep {
 }
 
 """
-copy = every team, account, app and setting. servers = each server switches to this Deplo. finish = the old Deplo is told where everything went.
+copy = every team, account, app and setting. deploy = each app and database is deployed here and its data copied in. finish = the old Deplo is told the copy is done.
 """
 enum DeploMoveStepKey {
   copy
+  deploy
   finish
-  servers
 }
 
 enum DeploMoveStepState {
   done
   failed
   running
+  waiting
+}
+
+"""One of this Deplo's own servers, as a place an old server can land."""
+type DeploMoveTargetServer {
+  address: String
+
+  """
+  It runs apps and databases: not a storage, build or migration-source server.
+  """
+  canHostWorkloads: Boolean
+  id: String
+
+  """The machine this Deplo itself runs on."""
+  isThisMachine: Boolean
+  name: String
+}
+
+"""
+One app or database the move deploys here and fills with its data, databases first.
+"""
+type DeploMoveWorkload {
+  """
+  Why it failed or was left out, or for a copied one what was not copied. Empty otherwise.
+  """
+  error: String
+  id: String
+  kind: DeploMoveWorkloadKind
+  name: String
+  state: DeploMoveWorkloadState
+}
+
+enum DeploMoveWorkloadKind {
+  app
+  database
+}
+
+"""
+skipped = left out: an instance admin skipped it after it failed, or the move finished without the old Deplo before its data came across.
+"""
+enum DeploMoveWorkloadState {
+  copying
+  done
+  failed
+  skipped
   waiting
 }
 
@@ -3092,12 +3194,12 @@ A fresh move code. This is the only time it is returned: Deplo keeps only its ha
 """
 type MoveCode {
   """
-  The `dmove_…` code to paste on the new Deplo. It lets that Deplo read every secret and take every server over, so treat it like the keys to the whole instance.
+  The `dmove_…` code to paste on the new Deplo. It lets that Deplo read every secret and every app's data, so treat it like the keys to the whole instance.
   """
   code: String
 
   """
-  When the code stops working if no new Deplo has used it. Once used, it lives until the move ends.
+  When the code stops working if no new Deplo has used it. Once used, it lives until the copy finishes or is cancelled.
   """
   expiresAt: String
 }
@@ -3180,20 +3282,15 @@ type Mutation {
   cancelCronRun(id: ID!): Boolean
 
   """
-  Abandon a move before any server is handed over: the old Deplo resumes and anything copied here is removed. Public by the move's id.
+  Abandon a move any time before it is done, even while it runs: the old Deplo starts what it paused, what the move deployed here is removed and this Deplo goes back to setup. Public by the move's id until the copy lands; after that, for an instance admin only.
   """
   cancelDeploMove(id: String!): DeploMoveStatus
   cancelDeployment(id: String!): Boolean
 
   """
-  Withdraw the move code and resume changes here. Refused once a server answers to the new Deplo, unless `force` is set.
+  Withdraw the move code, or stop a copy in progress: every app paused for it starts again here. A finished copy has nothing to cancel.
   """
-  cancelMoveCode(
-    """
-    Resume even though servers already answer to the new Deplo, for when that one is gone. Those servers must be added here again. Refused once the move finished.
-    """
-    force: Boolean
-  ): Boolean
+  cancelMoveCode: Boolean
 
   """
   Back out. Starts again everything the migration stopped on the other platform, undoes what it created here, and tells the installer to uninstall Deplo. The panel's API token is wiped when a run ends, so one has to be handed over again.
@@ -3295,7 +3392,7 @@ type Mutation {
   createFolder(color: String, name: String!, parentId: ID): Folder
 
   """
-  Mint the code that lets a new Deplo move this one onto its machine. Replaces an unused code; refused once a move has paused this Deplo.
+  Mint the code that lets a new Deplo copy this one onto its machine. Replaces an unused or finished code; refused while a copy runs.
   """
   createMoveCode: MoveCode
 
@@ -3472,7 +3569,7 @@ type Mutation {
   execDatabaseConsole(input: ExecDatabaseConsoleInput!): ExecResult
 
   """
-  Finish a stopped move when the old Deplo is gone for good: servers not handed over yet stay with it and have to be added here again. Refused while the old Deplo answers. Public by the move's id.
+  Finish a stopped move when the old Deplo is gone for good: every app or database whose data never came across is left out, not deployed. Refused while the old Deplo answers. For an instance admin only: it runs after the copy landed.
   """
   finishDeploMoveWithoutSource(id: String!): DeploMoveStatus
 
@@ -3806,7 +3903,12 @@ type Mutation {
   restoreBackup(runId: String!): Boolean
 
   """
-  Resume a failed move where it stopped. Public by the move's unguessable id, like its progress page.
+  Turn on the cron jobs and backup schedules a Deplo move left paused here, so they never run on both Deplos at once.
+  """
+  resumeMoveSchedules: Boolean
+
+  """
+  Resume a failed move: the copy again if it never landed, else every app or database not copied yet. Public by the move's unguessable id, like its progress page.
   """
   retryDeploMove(id: String!): DeploMoveStatus
 
@@ -4136,12 +4238,24 @@ type Mutation {
   Set one person's role and per-node overrides in one team. Whole-set replace: node grants not sent are removed.
   """
   setUserTeamAccess(input: SetUserTeamAccessInput!): [UserTeamAccess!]
+
+  """
+  Leave out an app or database that failed to copy, so the move can finish without it. It stays in this Deplo, stopped and without its data; once nothing else is left, the move finishes.
+  """
+  skipDeploMoveWorkload(id: String!, kind: DeploMoveWorkloadKind!, workloadId: String!): DeploMoveStatus
   startApp(id: String!): App
 
   """
-  Start a connected move: the old Deplo pauses, everything here is replaced by its data, then its servers are handed over.
+  Start a connected move: everything here is replaced by a copy of the old Deplo, then each app and database is deployed on its mapped server and filled with its data. The old Deplo keeps running.
   """
-  startDeploMove(id: String!): DeploMoveStatus
+  startDeploMove(
+    id: String!
+
+    """
+    Where each old server lands here. Every one but a migration source needs a server here, and one holding apps or databases needs one that runs apps.
+    """
+    map: [DeploMoveServerMapInput!]
+  ): DeploMoveStatus
 
   """
   Begin the GitHub App manifest flow; returns the form's POST target, manifest and signed state.
@@ -6020,31 +6134,28 @@ type SourceMove {
   createdAt: String
 
   """
-  Set only while the code is armed: a bound code lives until the move ends.
+  Set only while the code is armed: a bound code lives until the copy finishes or is cancelled.
   """
   expiresAt: String
 
-  """Servers that already answer to the new Deplo."""
-  handedOver: Int
+  """When the copy finished, once it is done."""
+  finishedAt: String
   id: String
 
   """The new Deplo's address, once one has connected with the code."""
   peerUrl: String
-
-  """Servers that have to be handed over in all."""
-  servers: Int
   startedBy: String
   state: SourceMoveState
 }
 
 """
-armed = a move code waits for the new Deplo. bound = a new Deplo connected with it; nothing is paused yet. frozen = changes are paused while the new Deplo copies and takes the servers over. moved = every server answers to the new Deplo, for good.
+armed = a move code waits for the new Deplo. bound = a new Deplo connected with it. copying = the new Deplo is copying this one; each app with data pauses here only while its own data copies. done = the copy finished; this Deplo keeps running as it was.
 """
 enum SourceMoveState {
   armed
   bound
-  frozen
-  moved
+  copying
+  done
 }
 
 type Subscription {

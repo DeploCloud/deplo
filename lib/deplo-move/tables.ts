@@ -17,6 +17,10 @@ export type TablePolicy =
       nullOnCopy?: readonly string[];
       // Inserted NULL and set once every table is in: they close a foreign-key cycle.
       deferred?: readonly string[];
+      // Read for the server map, never inserted: this Deplo keeps its own servers.
+      mapped?: true;
+      // Must land on a server here: the copy refuses a row whose server the map leaves out.
+      needsServer?: readonly string[];
     }
   // Never copied; `clear` empties it on the new Deplo when the copy lands.
   | { kind: "skip"; clear?: boolean }
@@ -44,12 +48,16 @@ export const MOVE_TABLES: Readonly<Record<string, TablePolicy>> = {
   app_mounts: COPY,
   app_ports: COPY,
   app_preview_env_vars: { kind: "copy", rekey: { value_enc: SECRET } },
-  app_previews: { kind: "copy", deferred: ["latest_deployment_id"] },
+  // Run by the old Deplo on its own servers; the deployments they built stay as history.
+  app_previews: { kind: "skip" },
   app_volumes: COPY,
   apps: {
     kind: "copy",
     rekey: { deploy_hook_token_enc: SECRET },
     deferred: ["latest_deployment_id"],
+    // A server move in flight is between the old servers; the copy fills the app here itself.
+    nullOnCopy: ["migrate_from_server_id"],
+    needsServer: ["server_id"],
   },
   backup_destination: {
     kind: "copy",
@@ -58,6 +66,7 @@ export const MOVE_TABLES: Readonly<Record<string, TablePolicy>> = {
       secret_key_enc: SECRET,
       age_identity_enc: SECRET,
     },
+    needsServer: ["server_id"],
   },
   backup_runs: COPY,
   backups: COPY,
@@ -65,11 +74,17 @@ export const MOVE_TABLES: Readonly<Record<string, TablePolicy>> = {
   cron_jobs: COPY,
   cron_runs: COPY,
   database_mounts: COPY,
-  databases: { kind: "copy", rekey: { connection_string_enc: SECRET } },
+  databases: {
+    kind: "copy",
+    rekey: { connection_string_enc: SECRET },
+    needsServer: ["server_id"],
+  },
+  deplo_move_pauses: { kind: "local" },
   deplo_move_servers: { kind: "local" },
+  deplo_move_workloads: { kind: "local" },
   deplo_moves: { kind: "local" },
   deployment_logs: COPY,
-  deployments: COPY,
+  deployments: { kind: "copy", nullOnCopy: ["preview_id"] },
   docker_cleanup_excluded_servers: COPY,
   docker_cleanup_policy: COPY,
   docker_cleanup_policy_scopes: COPY,
@@ -101,11 +116,14 @@ export const MOVE_TABLES: Readonly<Record<string, TablePolicy>> = {
   instance_settings: {
     kind: "copy",
     rekey: { vapid_private_key_enc: SECRET },
-    // What describes this machine and this install; the network sweep and agent rollout describe the fleet, which moves.
+    // What describes this machine, this install and its own servers: the old fleet stays with the old Deplo.
     keepTarget: [
       "panel_url",
       "panel_fallback_disabled",
       "booted_version",
+      "agent_rollout_by",
+      "network_sweep_at",
+      "network_sweep_failed",
       "takeover_platform",
       "takeover_state",
       "takeover_error",
@@ -148,7 +166,8 @@ export const MOVE_TABLES: Readonly<Record<string, TablePolicy>> = {
   },
   oauth_resource: COPY,
   passkey: COPY,
-  pending_teardowns: COPY,
+  // The old Deplo's clean-up of its own servers; this Deplo's queue stays.
+  pending_teardowns: { kind: "skip" },
   project_grants: COPY,
   projects: COPY,
   push_subscriptions: COPY,
@@ -158,8 +177,9 @@ export const MOVE_TABLES: Readonly<Record<string, TablePolicy>> = {
   registration_links: { kind: "copy", rekey: { token_enc: SECRET } },
   registries: { kind: "copy", rekey: { password_enc: SECRET } },
   scheduler_lease: { kind: "skip" },
-  server_teams: COPY,
-  servers: COPY,
+  // The old Deplo's machines: read for the server map and team access, never inserted.
+  server_teams: { kind: "copy", mapped: true },
+  servers: { kind: "copy", mapped: true },
   // Signed with the old Deplo's key, so everyone signs in again on the new one.
   session: { kind: "skip", clear: true },
   shared_env_var_apps: COPY,
@@ -306,6 +326,47 @@ export function copyOrder(): string[] {
   }
   order = out;
   return out;
+}
+
+// Server ids kept without a constraint, so history outlives its server: remapped like the rest.
+export const UNCONSTRAINED_SERVER_COLUMNS: Readonly<
+  Record<string, readonly string[]>
+> = {
+  deployments: ["server_id", "build_server_id"],
+  migration_run_servers: ["to_id"],
+  migration_run_targets: ["server_id", "build_server_id"],
+};
+
+const serverCols = new Map<string, string[]>();
+
+// Every column of a table that names a server: rewritten through the server map on the way in.
+export function serverColumns(table: string): string[] {
+  let cols = serverCols.get(table);
+  if (!cols) {
+    const constrained = foreignKeys()
+      .filter((fk) => fk.table === table && fk.foreignTable === "servers")
+      .flatMap((fk) => fk.columns);
+    cols = [
+      ...new Set([
+        ...constrained,
+        ...(UNCONSTRAINED_SERVER_COLUMNS[table] ?? []),
+      ]),
+    ];
+    serverCols.set(table, cols);
+  }
+  return cols;
+}
+
+// The copied tables that lose a row whose server the map leaves out (any other table nulls it, or refuses).
+export function serverDroppedTables(): string[] {
+  return copyOrder().filter((table) => {
+    const p = copyPolicy(table);
+    if (p.mapped) return false;
+    const notNull = tableShapes().get(table)!.notNull;
+    return serverColumns(table).some(
+      (c) => notNull.has(c) && !p.needsServer?.includes(c),
+    );
+  });
 }
 
 // The foreign-key columns of a merged table that point into copied tables: NULL while the copy runs.

@@ -1,26 +1,24 @@
 import "server-only";
 
-import { X509Certificate } from "node:crypto";
+import { createReadStream } from "node:fs";
+import { stat } from "node:fs/promises";
+import { join, posix, resolve, sep } from "node:path";
 
-import { and, eq, sql } from "drizzle-orm";
+import { and, desc, eq, sql } from "drizzle-orm";
 
-import { getDb, type DbTx, type DrizzleClient } from "../../db/client";
+import { getDb } from "../../db/client";
 import { apps as appsTable } from "../../db/schema/control-plane/apps";
-import { backupRuns } from "../../db/schema/control-plane/backups";
 import { databases as databasesTable } from "../../db/schema/control-plane/databases";
-import {
-  deploMoves,
-  deploMoveServers,
-} from "../../db/schema/control-plane/deplo-move";
+import { deploMoves } from "../../db/schema/control-plane/deplo-move";
 import { deployments as deploymentsTable } from "../../db/schema/control-plane/deployments";
-import { migrationRuns } from "../../db/schema/control-plane/migration";
 import {
   teams as teamsTable,
   users as usersTable,
 } from "../../db/schema/control-plane/identity";
 import { servers as serversTable } from "../../db/schema/control-plane/servers";
-import { CERT_RENEWAL_CAPABILITY } from "../../agent/cert-renewal";
 import { sha256Hex } from "../../crypto";
+import { composeTruthy } from "../../deploy/compose-lint/document";
+import { stackFilesDir } from "../../deploy/deploy-key";
 import {
   deploHostSelfAddresses,
   isDeploHostServer,
@@ -28,33 +26,61 @@ import {
 import {
   MOVE_CODE_PREFIX,
   MOVE_PROTOCOL,
-  type MoveCsrResponse,
-  type MoveFinishRequest,
   type MoveHello,
-  type MoveInstallRequest,
+  type MoveHostPathRequest,
+  type MoveImageRequest,
+  type MovePauseResponse,
   type MoveServerSummary,
+  type MoveVolumeRequest,
+  type MoveWorkloadInfo,
   type SourceMoveState,
+  type WorkloadRef,
 } from "../../deplo-move/protocol";
 import { schemaTag } from "../../deplo-move/schema-tag";
 import { connectAgent } from "../../infra/agent-client/connect";
 import type { AgentConnection } from "../../infra/agent-client/connection";
 import { HEALTH_HELLO_TIMEOUT_MS } from "../../infra/agent-client/deadlines";
+import {
+  AgentUnreachableError,
+  toAgentError,
+} from "../../infra/agent-client/errors";
+import { VOLUME_USAGE_CAPABILITY } from "../../infra/agent-client/hello-capabilities";
 import { unreachableMessage } from "../../infra/server-health";
 import { nowIso } from "../../ids";
 import { instanceFingerprint } from "../../migration/deplo/instance";
+import {
+  composeHostMounts,
+  isDataHostPath,
+  isUnderPath,
+  normalizePath,
+} from "../../migration/map/volume-discovery";
 import { publicBaseUrl } from "../../public-url";
+import type { App } from "../../types/app";
 import type { Server } from "../../types/server";
+import { appBuildsItsOwnImage } from "../../utils";
 import { DEPLO_VERSION } from "../../version";
+import yaml from "../../yaml";
+import { loadAppGraph } from "../app-graph-load";
+import { dbVolumeHostName } from "../databases/stack";
+import {
+  appHasFilesDir,
+  appMoveVolumeNames,
+  appOwnVolumeNames,
+  assertSafeVolumeNames,
+} from "../project-backup-descriptor";
 import { listAllServers } from "../servers/roster";
-import { FROZEN_CACHE_MS, instanceFrozen, invalidateFrozen } from "./freeze";
+import { cancelSourceMove } from "./source";
+import {
+  holdingLease,
+  pauseWorkload,
+  renewLease,
+  resumeAllPauses,
+  resumeWorkload,
+} from "./source-pauses";
 import {
   MoveRefusedError,
-  RESUMED,
-  enrolledServers,
-  installsInFlight,
-  probeAgent,
+  peerOf,
   recordForEveryTeam,
-  thawSourceMove,
   type SourceMoveRow,
 } from "./source-row";
 
@@ -78,6 +104,8 @@ function originOf(raw: string): string | null {
 
 const INVALID_CODE =
   "This move code is not valid. Create a new one on the old Deplo.";
+const FINISHED =
+  "This copy already finished. Copying this Deplo again needs a new move code.";
 
 // The ONLY gate of every step: never a session, never an API token (ADR-0035).
 export async function authenticateMoveCode(
@@ -140,11 +168,6 @@ export async function authenticateMoveCode(
       "This move code is already in use by another Deplo.",
       403,
     );
-  if (row.state === RESUMED)
-    throw new MoveRefusedError(
-      "The old Deplo was resumed without finishing this move. Start again with a new move code.",
-      409,
-    );
   return row;
 }
 
@@ -152,25 +175,64 @@ function auth(caller: MoveCaller): Promise<SourceMoveRow> {
   return authenticateMoveCode(caller.code, caller.peerInstance, caller.peerUrl);
 }
 
-function requireFrozen(row: SourceMoveRow): void {
-  if (row.state === "moved")
+function requireLive(row: SourceMoveRow): void {
+  if (row.state === "done") throw new MoveRefusedError(FINISHED, 409);
+}
+
+function requireCopying(row: SourceMoveRow): void {
+  requireLive(row);
+  if (row.state !== "copying")
     throw new MoveRefusedError(
-      `This Deplo already moved to ${row.peerUrl ?? "another machine"}.`,
-      409,
-    );
-  if (row.state !== "frozen")
-    throw new MoveRefusedError(
-      "Changes on the old Deplo are not paused yet.",
+      "The copy has not started: the old Deplo has not sent its data yet.",
       409,
     );
 }
 
-function peerOf(row: SourceMoveRow): string {
-  return row.peerUrl ?? "another machine";
+// Never 502-504: the new Deplo reads those as this panel being down. 424 says a server agent did not answer.
+function toRefusal(e: unknown, who?: string): unknown {
+  if (e instanceof MoveRefusedError) return e;
+  const code = (e as { code?: unknown } | null)?.code;
+  // A database or file-system error stays internal: the route masks it.
+  if (typeof code === "string" || (e as Error)?.name === "DrizzleQueryError")
+    return e;
+  const err = toAgentError(e);
+  const prefix = who ? `${who}: ` : "";
+  if (err instanceof AgentUnreachableError)
+    return new MoveRefusedError(
+      prefix + (unreachableMessage(err) ?? err.message),
+      424,
+    );
+  const agentCode = typeof code === "number" ? code : undefined;
+  return new MoveRefusedError(
+    prefix + err.message,
+    agentCode === 5 ? 404 : 409,
+    agentCode,
+  );
+}
+
+// For the route: what a data stream that failed before its first byte answers.
+export function dataRefusal(e: unknown): unknown {
+  return toRefusal(e);
+}
+
+async function probeAgent(
+  serverId: string,
+): Promise<{ version: string } | null> {
+  let conn: AgentConnection | null = null;
+  try {
+    conn = await connectAgent(serverId);
+    const hello = await conn.hello(HEALTH_HELLO_TIMEOUT_MS);
+    return { version: hello.agentVersion };
+  } catch {
+    return null;
+  } finally {
+    conn?.close();
+  }
 }
 
 export async function moveHello(caller: MoveCaller): Promise<MoveHello> {
   const row = await auth(caller);
+  requireLive(row);
   const db = getDb();
   const [teams, users, apps, databases, servers] = await Promise.all([
     db.$count(teamsTable),
@@ -208,11 +270,30 @@ function roleOf(s: Server): MoveServerSummary["role"] {
   return "workloads";
 }
 
+async function databaseHostsByServer(): Promise<
+  Map<string, NonNullable<MoveServerSummary["databaseHosts"]>>
+> {
+  const rows = await getDb()
+    .select({
+      id: databasesTable.id,
+      name: databasesTable.name,
+      host: databasesTable.host,
+      serverId: databasesTable.serverId,
+    })
+    .from(databasesTable)
+    .orderBy(databasesTable.id);
+  const out = new Map<string, { id: string; name: string; host: string }[]>();
+  for (const { serverId, ...db } of rows)
+    out.set(serverId, [...(out.get(serverId) ?? []), db]);
+  return out;
+}
+
 async function serverSummaries(): Promise<MoveServerSummary[]> {
-  const [all, apps, databases] = await Promise.all([
+  const [all, apps, databases, hosts] = await Promise.all([
     listAllServers(),
     countByServer(appsTable),
     countByServer(databasesTable),
+    databaseHostsByServer(),
   ]);
   const self = deploHostSelfAddresses();
   return Promise.all(
@@ -228,82 +309,19 @@ async function serverSummaries(): Promise<MoveServerSummary[]> {
         isPanelHost: isDeploHostServer(s, self),
         enrolled,
         reachable: probe !== null,
-        canHandOver: !!probe?.capabilities.includes(CERT_RENEWAL_CAPABILITY),
         agentVersion: probe?.version || s.agent?.version || null,
         apps: apps.get(s.id) ?? 0,
         databases: databases.get(s.id) ?? 0,
+        databaseHosts: hosts.get(s.id) ?? [],
       };
     }),
   );
-}
-
-// "queued" is not live: the migration runner does not promote anything while frozen.
-const migrationRunning = () => eq(migrationRuns.status, "running");
-
-export async function moveFreeze(
-  caller: MoveCaller,
-): Promise<{ state: SourceMoveState }> {
-  const row = await auth(caller);
-  if (row.state === "frozen" || row.state === "moved")
-    return { state: row.state };
-  const frozen = await instanceFrozen();
-  if (frozen) throw new MoveRefusedError(frozen.message, 409);
-  // A migration writes for minutes past the freeze; the settle wait below is for what starts in the gap.
-  if ((await getDb().$count(migrationRuns, migrationRunning())) > 0)
-    throw new MoveRefusedError(
-      "A migration is running on this Deplo. Finish or stop it, then start the move again.",
-      409,
-    );
-  const [paused] = await getDb()
-    .update(deploMoves)
-    .set({ state: "frozen", updatedAt: nowIso() })
-    .where(and(eq(deploMoves.id, row.id), eq(deploMoves.state, "bound")))
-    .returning({ id: deploMoves.id });
-  invalidateFrozen();
-  if (paused)
-    await recordForEveryTeam(
-      `Paused changes to move this Deplo to ${peerOf(row)}`,
-      row.startedBy,
-    );
-  return { state: "frozen" };
-}
-
-// The settle wait stays under the 5-minute header deadline of the new Deplo's fetch.
-const TIMING = {
-  settleMs: 4 * 60_000,
-  pollMs: 2_000,
-  graceMs: FROZEN_CACHE_MS + 1_000,
-};
-let timing = { ...TIMING };
-
-export function __setMoveTimingForTest(t: Partial<typeof TIMING> = {}): void {
-  timing = { ...TIMING, ...t };
 }
 
 let dumper: (() => AsyncIterable<string>) | null = null;
 
 export function __setDumperForTest(fn?: () => AsyncIterable<string>): void {
   dumper = fn ?? null;
-}
-
-async function inFlight(): Promise<number> {
-  const db = getDb();
-  const counts = await Promise.all([
-    db.$count(deploymentsTable, eq(deploymentsTable.status, "building")),
-    db.$count(backupRuns, eq(backupRuns.status, "running")),
-    db.$count(migrationRuns, migrationRunning()),
-  ]);
-  return counts.reduce((a, b) => a + b, 0);
-}
-
-// A mutation that passed the gate a moment before the freeze, or a build still running, lands before the snapshot.
-async function settle(frozenAt: string): Promise<void> {
-  const graceUntil = Date.parse(frozenAt) + timing.graceMs;
-  const deadline = Date.now() + timing.settleMs;
-  while (Date.now() < deadline) {
-    if (Date.now() >= graceUntil && (await inFlight()) === 0) return;
-    await new Promise((r) => setTimeout(r, timing.pollMs));
-  }
 }
 
 async function* dumpLines(): AsyncIterable<string> {
@@ -315,304 +333,475 @@ async function* dumpLines(): AsyncIterable<string> {
   yield* dumpInstance();
 }
 
+// One repeatable-read snapshot of a Deplo that keeps running: nothing here pauses for it.
 export async function moveDump(
   caller: MoveCaller,
 ): Promise<AsyncIterable<string>> {
   const row = await auth(caller);
-  requireFrozen(row);
-  await settle(row.updatedAt);
+  requireLive(row);
+  const [started] = await getDb()
+    .update(deploMoves)
+    .set({ state: "copying", updatedAt: nowIso() })
+    .where(and(eq(deploMoves.id, row.id), eq(deploMoves.state, "bound")))
+    .returning({ id: deploMoves.id });
+  if (started)
+    await recordForEveryTeam(
+      `Copying this Deplo to ${peerOf(row)}`,
+      row.startedBy,
+    );
   return dumpLines();
 }
 
-async function serverToHandOver(
-  moveId: string,
-  serverId: string,
-): Promise<{ id: string; name: string }> {
-  const [server] = await getDb()
-    .select({
-      id: serversTable.id,
-      name: serversTable.name,
-      fingerprint: serversTable.agentCertFingerprint,
-    })
-    .from(serversTable)
-    .where(eq(serversTable.id, serverId))
-    .limit(1);
-  if (!server)
-    throw new MoveRefusedError(
-      `There is no server ${serverId} on the old Deplo.`,
-      404,
-    );
-  if (!server.fingerprint)
-    throw new MoveRefusedError(
-      `${server.name} has no server agent to hand over.`,
-      409,
-    );
-  const [done] = await getDb()
-    .select({ state: deploMoveServers.state })
-    .from(deploMoveServers)
-    .where(
-      and(
-        eq(deploMoveServers.moveId, moveId),
-        eq(deploMoveServers.serverId, serverId),
-        eq(deploMoveServers.state, "handed_over"),
-      ),
-    )
-    .limit(1);
-  if (done)
-    throw new MoveRefusedError(
-      `${server.name} already answers to the new Deplo.`,
-      409,
-      true,
-    );
-  return { id: server.id, name: server.name };
+interface Workload {
+  ref: WorkloadRef;
+  name: string;
+  // The stack's name on its server: an app's slug, a database's host.
+  slug: string;
+  serverId: string;
+  app: App | null;
 }
 
-async function withAgent<T>(
-  server: { id: string; name: string },
+function refOf(raw: Partial<WorkloadRef>): WorkloadRef {
+  const id = String(raw.id ?? "").trim();
+  if ((raw.kind !== "app" && raw.kind !== "database") || !id)
+    throw new MoveRefusedError("Name an app or a database: kind and id.", 400);
+  return { kind: raw.kind, id };
+}
+
+async function workloadOf(raw: Partial<WorkloadRef>): Promise<Workload> {
+  const ref = refOf(raw);
+  if (ref.kind === "app") {
+    const app = await loadAppGraph(ref.id);
+    if (!app)
+      throw new MoveRefusedError(
+        `There is no app ${ref.id} on the old Deplo.`,
+        404,
+      );
+    return {
+      ref,
+      name: app.name,
+      slug: app.slug,
+      serverId: app.serverId,
+      app,
+    };
+  }
+  const [db] = await getDb()
+    .select({
+      name: databasesTable.name,
+      host: databasesTable.host,
+      serverId: databasesTable.serverId,
+    })
+    .from(databasesTable)
+    .where(eq(databasesTable.id, ref.id))
+    .limit(1);
+  if (!db)
+    throw new MoveRefusedError(
+      `There is no database ${ref.id} on the old Deplo.`,
+      404,
+    );
+  return {
+    ref,
+    name: db.name,
+    slug: db.host,
+    serverId: db.serverId,
+    app: null,
+  };
+}
+
+async function onServer<T>(
+  w: Workload,
   fn: (conn: AgentConnection) => Promise<T>,
 ): Promise<T> {
   let conn: AgentConnection | null = null;
   try {
-    conn = await connectAgent(server.id);
-    const hello = await conn.hello(HEALTH_HELLO_TIMEOUT_MS);
-    if (!hello.capabilities?.includes(CERT_RENEWAL_CAPABILITY))
-      throw new MoveRefusedError(
-        `The server agent on ${server.name} is too old to be handed over. Update it first.`,
-        409,
-      );
+    conn = await connectAgent(w.serverId);
     return await fn(conn);
   } catch (e) {
-    if (e instanceof MoveRefusedError) throw e;
-    const why = unreachableMessage(e) ?? (e as Error).message;
-    // Never 502-504: the new Deplo reads those as this panel being down.
-    throw new MoveRefusedError(`${server.name}: ${why}`, 409);
+    throw toRefusal(e, w.name);
   } finally {
     conn?.close();
   }
 }
 
-export async function moveCsr(
-  caller: MoveCaller,
-  serverId: string,
-): Promise<MoveCsrResponse> {
-  const row = await auth(caller);
-  requireFrozen(row);
-  const server = await serverToHandOver(row.id, serverId);
-  return withAgent(server, async (conn) => {
-    const { csrPem } = await conn.renewalCsr();
-    return { csrPem };
-  });
+async function isRunning(conn: AgentConnection, w: Workload): Promise<boolean> {
+  const instances = await conn.listInstances(w.ref.id, w.slug, "");
+  return instances.some((i) => i.running);
 }
 
-function parseCert(pem: string, what: string): X509Certificate {
-  const refused = new MoveRefusedError(
-    `The ${what} is not a certificate.`,
-    400,
+// The same names a server move copies: the live stack's volumes, or the app's own when it has no stack.
+async function volumesOf(
+  conn: AgentConnection,
+  w: Workload,
+): Promise<string[]> {
+  if (!w.app) return [dbVolumeHostName(w.slug)];
+  const stack = await conn.readStack(w.slug);
+  const names = stack.exists
+    ? appMoveVolumeNames(w.app, stack.yaml)
+    : appOwnVolumeNames(w.app);
+  assertSafeVolumeNames(w.slug, names);
+  return [...new Set(names)];
+}
+
+async function presentOnly(
+  conn: AgentConnection,
+  names: string[],
+): Promise<string[]> {
+  if (names.length === 0) return names;
+  const hello = await conn.hello(HEALTH_HELLO_TIMEOUT_MS);
+  if (!hello.capabilities?.includes(VOLUME_USAGE_CAPABILITY)) return names;
+  const usage = await conn.volumeUsage(names);
+  return names.filter((n) => usage.has(n));
+}
+
+// The new side WIPES a host path before filling it, so anything the server itself runs on is never one.
+const SERVER_OWNED = [
+  "/var/lib/docker",
+  "/var/lib/containerd",
+  "/var/run",
+  "/run",
+  "/var/lib/deplo-agent",
+  "/opt/deplo",
+  "/data",
+  "/etc",
+  "/proc",
+  "/sys",
+  "/dev",
+  "/boot",
+  "/usr",
+  "/bin",
+  "/sbin",
+];
+
+// Inside, equal to, or a parent of a server path (`/var` holds `/var/lib/docker`).
+function isServerOwned(path: string): boolean {
+  if (path === "/" || !isDataHostPath(path) || /^\/lib[^/]*(\/|$)/.test(path))
+    return true;
+  return SERVER_OWNED.some(
+    (p) => p === path || isUnderPath(path, p) || isUnderPath(p, path),
   );
-  if (!pem.includes("-----BEGIN CERTIFICATE-----")) throw refused;
+}
+
+const canonicalPath = (p: string) => normalizePath(posix.normalize(p.trim()));
+
+// Host path -> written by some mount. A path only ever bound read-only is configuration the app reads, not data.
+function composeBindModes(compose: string): Map<string, boolean> {
+  const out = new Map<string, boolean>();
+  let doc: { services?: Record<string, { volumes?: unknown }> } | null;
   try {
-    return new X509Certificate(pem);
+    doc = yaml.load(compose) as typeof doc;
   } catch {
-    throw refused;
+    return out;
   }
+  for (const svc of Object.values(doc?.services ?? {})) {
+    if (!Array.isArray(svc?.volumes)) continue;
+    for (const raw of svc.volumes) {
+      let src: string | undefined;
+      let writable = true;
+      if (typeof raw === "string") {
+        const [from, , mode] = raw.split(":");
+        src = from?.trim();
+        writable = !(mode ?? "").split(",").includes("ro");
+      } else if (raw && typeof raw === "object") {
+        const m = raw as { source?: unknown; read_only?: unknown };
+        src = typeof m.source === "string" ? m.source.trim() : undefined;
+        writable = !composeTruthy(m.read_only);
+      }
+      if (!src?.startsWith("/")) continue;
+      const path = canonicalPath(src);
+      out.set(path, (out.get(path) ?? false) || writable);
+    }
+  }
+  return out;
 }
 
-function assertCertPair(certPem: string, caPem: string): void {
-  const cert = parseCert(certPem, "server certificate");
-  const ca = parseCert(caPem, "certificate authority");
-  if (!ca.ca)
-    throw new MoveRefusedError(
-      "The certificate authority is not a certificate authority.",
-      400,
-    );
-  if (!cert.checkIssued(ca) || !cert.verify(ca.publicKey))
-    throw new MoveRefusedError(
-      "The server certificate was not signed by the certificate authority sent with it.",
-      400,
-    );
+function hostPathsOf(app: App): {
+  copied: { path: string; allowFile: boolean }[];
+  skipped: string[];
+} {
+  const writable = new Map<string, boolean>();
+  const add = (path: string, w: boolean) =>
+    writable.set(path, (writable.get(path) ?? false) || w);
+  for (const v of app.volumes ?? [])
+    if (v.type === "host" && v.hostPath?.trim())
+      add(canonicalPath(v.hostPath), !v.readOnly);
+  const modes = composeBindModes(app.compose ?? "");
+  for (const m of composeHostMounts(app.compose ?? "", stackFilesDir(app.slug)))
+    if (!m.stackRelative) {
+      const path = canonicalPath(m.hostPath);
+      add(path, modes.get(path) ?? true);
+    }
+  const copied: { path: string; allowFile: boolean }[] = [];
+  const skipped: string[] = [];
+  for (const [path, w] of writable)
+    if (w && !isServerOwned(path)) copied.push({ path, allowFile: true });
+    else skipped.push(path);
+  return { copied, skipped };
 }
 
-type ServerState = "waiting" | "handed_over" | "failed";
-
-async function serverState(
-  moveId: string,
-  serverId: string,
-): Promise<ServerState | null> {
-  const [r] = await getDb()
-    .select({ state: deploMoveServers.state })
-    .from(deploMoveServers)
+async function liveImage(
+  app: App,
+): Promise<{ ref: string; deploymentId: string } | null> {
+  if (!appBuildsItsOwnImage(app)) return null;
+  const [dep] = await getDb()
+    .select({
+      id: deploymentsTable.id,
+      imageRef: deploymentsTable.imageRef,
+      rollbackOf: deploymentsTable.rollbackOf,
+      serverId: deploymentsTable.serverId,
+    })
+    .from(deploymentsTable)
     .where(
       and(
-        eq(deploMoveServers.moveId, moveId),
-        eq(deploMoveServers.serverId, serverId),
+        eq(deploymentsTable.appId, app.id),
+        eq(deploymentsTable.environment, "production"),
+        eq(deploymentsTable.status, "ready"),
       ),
     )
+    .orderBy(desc(deploymentsTable.createdAt), desc(deploymentsTable.seq))
     .limit(1);
-  return (r?.state as ServerState | undefined) ?? null;
+  if (!dep?.imageRef) return null;
+  // The image stays on the server that built it.
+  if (dep.serverId && dep.serverId !== app.serverId) return null;
+  return { ref: dep.imageRef, deploymentId: dep.rollbackOf ?? dep.id };
 }
 
-async function markServer(
-  moveId: string,
-  server: { id: string; name: string },
-  state: ServerState,
-  error = "",
-  db: DrizzleClient | DbTx = getDb(),
-): Promise<void> {
-  const position = await db.$count(
-    deploMoveServers,
-    eq(deploMoveServers.moveId, moveId),
+// lib/deploy/upload.ts: /data/uploads/<appId>/<id>/archive.<ext>.
+async function uploadOf(
+  app: App,
+): Promise<{ path: string; filename: string } | null> {
+  if (app.source !== "upload" || !app.upload?.path) return null;
+  const root = resolve(
+    join(process.env.DEPLO_DATA_DIR || "/data", "uploads", app.id),
   );
-  await db
-    .insert(deploMoveServers)
-    .values({
-      moveId,
-      serverId: server.id,
-      name: server.name,
-      position,
-      state,
-      error,
-      updatedAt: nowIso(),
-    })
-    .onConflictDoUpdate({
-      target: [deploMoveServers.moveId, deploMoveServers.serverId],
-      set: { state, error, updatedAt: nowIso() },
-    });
+  const path = resolve(app.upload.path);
+  if (!path.startsWith(root + sep)) return null;
+  try {
+    if (!(await stat(path)).isFile()) return null;
+  } catch {
+    return null;
+  }
+  return { path, filename: app.upload.filename };
 }
 
-// Marks the server `waiting` under the move row's lock, as a thaw or a resume takes it: each sees the other.
-async function beginInstall(
-  moveId: string,
-  server: { id: string; name: string },
-): Promise<void> {
-  const live = await getDb().transaction(async (tx) => {
-    const [frozen] = await tx
-      .select({ id: deploMoves.id })
-      .from(deploMoves)
-      .where(and(eq(deploMoves.id, moveId), eq(deploMoves.state, "frozen")))
-      .for("update");
-    if (frozen) await markServer(moveId, server, "waiting", "", tx);
-    return Boolean(frozen);
-  });
-  if (!live)
-    throw new MoveRefusedError(
-      "This move is no longer running on the old Deplo.",
-      409,
-    );
-}
-
-export async function moveInstall(
+export async function moveWorkload(
   caller: MoveCaller,
-  req: MoveInstallRequest,
-): Promise<{ ok: true }> {
+  raw: Partial<WorkloadRef>,
+): Promise<MoveWorkloadInfo> {
   const row = await auth(caller);
-  requireFrozen(row);
-  const certPem = String(req.certPem ?? "");
-  const caPem = String(req.caPem ?? "");
-  assertCertPair(certPem, caPem);
-  const server = await serverToHandOver(row.id, String(req.serverId ?? ""));
+  requireCopying(row);
+  const w = await workloadOf(raw);
+  const live = await onServer(w, async (conn) => ({
+    running: await isRunning(conn, w),
+    volumes: await presentOnly(conn, await volumesOf(conn, w)),
+  }));
+  const app = w.app;
+  const host = app ? hostPathsOf(app) : { copied: [], skipped: [] };
+  return {
+    ...w.ref,
+    name: w.name,
+    slug: w.slug,
+    serverId: w.serverId,
+    running: live.running,
+    volumes: live.volumes,
+    files: app ? appHasFilesDir(app) : false,
+    hostPaths: host.copied,
+    skippedHostPaths: host.skipped,
+    image: app ? await liveImage(app) : null,
+    upload: app
+      ? await uploadOf(app).then((u) => (u ? { filename: u.filename } : null))
+      : null,
+  };
+}
 
-  // While in this set, a cancel never reads the server's `waiting` as an install that did not happen.
-  const installing = installsInFlight();
-  if (installing.has(server.id))
-    throw new MoveRefusedError(
-      `${server.name} is being handed over already.`,
-      409,
-    );
-  installing.add(server.id);
+export async function movePause(
+  caller: MoveCaller,
+  raw: Partial<WorkloadRef>,
+): Promise<MovePauseResponse> {
+  const row = await auth(caller);
+  requireCopying(row);
+  const w = await workloadOf(raw);
   try {
-    return await install(row, server, certPem, caPem);
-  } finally {
-    installing.delete(server.id);
+    return await pauseWorkload(
+      row.id,
+      { ref: w.ref, name: w.name, serverId: w.serverId, stack: w.slug },
+      () => onServer(w, (conn) => isRunning(conn, w)),
+    );
+  } catch (e) {
+    throw toRefusal(e, w.name);
   }
 }
 
-async function install(
-  row: SourceMoveRow,
-  server: { id: string; name: string },
-  certPem: string,
-  caPem: string,
-): Promise<{ ok: true }> {
-  // "waiting" blocks a cancel: once the request leaves, the agent may answer to the new Deplo only.
-  const before = await serverState(row.id, server.id);
-  await beginInstall(row.id, server);
-  let inDoubt = false;
+// `resumed: false`: there was no lease to give back - it lapsed, so the workload already started again.
+export async function moveResume(
+  caller: MoveCaller,
+  raw: Partial<WorkloadRef>,
+): Promise<{ resumed: boolean }> {
+  const row = await auth(caller);
+  requireLive(row);
+  const ref = refOf(raw);
   try {
-    await withAgent(server, async (conn) => {
-      inDoubt = true;
-      const res = await conn.installRenewedCert({ certPem, caPem });
-      inDoubt = false;
-      if (!res.ok)
-        throw new MoveRefusedError(
-          `${server.name} refused the new certificate: ${res.error}`,
-          409,
-        );
-    });
+    return { resumed: await resumeWorkload(row.id, ref) };
   } catch (e) {
-    const state = inDoubt || before === "waiting" ? "waiting" : "failed";
-    await markServer(row.id, server, state, (e as Error).message);
-    throw e;
+    throw toRefusal(e);
   }
-  await markServer(row.id, server, "handed_over");
-  await recordForEveryTeam(
-    `Handed server ${server.name} over to the Deplo at ${peerOf(row)}`,
-    row.startedBy,
+}
+
+export interface MoveDataStream {
+  chunks: AsyncIterable<Buffer>;
+  close: () => void;
+  // The `upload` step only: the archive's own name, for MOVE_FILENAME_HEADER.
+  filename?: string;
+}
+
+async function dataWorkload(
+  caller: MoveCaller,
+  raw: Partial<WorkloadRef>,
+): Promise<{ row: SourceMoveRow; w: Workload }> {
+  const row = await auth(caller);
+  requireCopying(row);
+  const w = await workloadOf(raw);
+  await renewLease(row.id, w.ref);
+  return { row, w };
+}
+
+// The stream is lazy: an agent that refuses it does so on the first chunk, which the route reads before answering.
+async function openOn(
+  row: SourceMoveRow,
+  w: Workload,
+  serverId: string,
+  open: (conn: AgentConnection) => Promise<AsyncIterable<Buffer>>,
+): Promise<MoveDataStream> {
+  let conn: AgentConnection | null = null;
+  try {
+    conn = await connectAgent(serverId);
+    const chunks = await open(conn);
+    const opened = conn;
+    return {
+      chunks: holdingLease(row.id, w.ref, chunks),
+      close: () => opened.close(),
+    };
+  } catch (e) {
+    conn?.close();
+    throw toRefusal(e, w.name);
+  }
+}
+
+// 409, never 404: the new Deplo reads a 404 as data that is simply not there, and copies nothing in its place.
+const notOwned = (message: string) => new MoveRefusedError(message, 409);
+
+export async function moveVolume(
+  caller: MoveCaller,
+  req: Partial<MoveVolumeRequest>,
+): Promise<MoveDataStream> {
+  const { row, w } = await dataWorkload(caller, req);
+  const volume = String(req.volume ?? "");
+  return openOn(row, w, w.serverId, async (conn) => {
+    const owned = new Set(await volumesOf(conn, w));
+    if (w.app) for (const v of appOwnVolumeNames(w.app)) owned.add(v);
+    if (!owned.has(volume))
+      throw notOwned(`${w.name} has no volume ${volume || "by that name"}.`);
+    return conn.exportVolume(volume);
+  });
+}
+
+export async function moveHostPath(
+  caller: MoveCaller,
+  req: Partial<MoveHostPathRequest>,
+): Promise<MoveDataStream> {
+  const { row, w } = await dataWorkload(caller, req);
+  const asked = String(req.path ?? "").trim();
+  const paths = w.app ? hostPathsOf(w.app) : { copied: [], skipped: [] };
+  const path = asked ? canonicalPath(asked) : "";
+  if (paths.skipped.includes(path))
+    throw notOwned(
+      isServerOwned(path)
+        ? `${path} belongs to the server itself, so it is not copied.`
+        : `${path} is only mounted read-only, so it is not copied.`,
+    );
+  const mount = path ? paths.copied.find((m) => m.path === path) : undefined;
+  if (!mount) throw notOwned(`${w.name} does not mount ${asked || "it"}.`);
+  return openOn(row, w, w.serverId, async (conn) =>
+    conn.exportHostPath(mount.path, req.allowFile === true && mount.allowFile),
   );
-  return { ok: true };
+}
+
+export async function moveFiles(
+  caller: MoveCaller,
+  raw: Partial<WorkloadRef>,
+): Promise<MoveDataStream> {
+  const { row, w } = await dataWorkload(caller, raw);
+  if (!w.app || !appHasFilesDir(w.app))
+    throw notOwned(`${w.name} has no files of its own.`);
+  return openOn(row, w, w.serverId, async (conn) => conn.exportFiles(w.slug));
+}
+
+export async function moveImage(
+  caller: MoveCaller,
+  req: Partial<MoveImageRequest>,
+): Promise<MoveDataStream> {
+  const { row, w } = await dataWorkload(caller, req);
+  const imageRef = String(req.imageRef ?? "").trim();
+  const [dep] =
+    w.app && imageRef
+      ? await getDb()
+          .select({ serverId: deploymentsTable.serverId })
+          .from(deploymentsTable)
+          .where(
+            and(
+              eq(deploymentsTable.appId, w.ref.id),
+              eq(deploymentsTable.imageRef, imageRef),
+              eq(deploymentsTable.status, "ready"),
+            ),
+          )
+          .limit(1)
+      : [];
+  if (!dep) throw notOwned(`${w.name} has no image ${imageRef || "to copy"}.`);
+  // Never removed after the export: the old Deplo keeps running it.
+  return openOn(row, w, dep.serverId ?? w.serverId, async (conn) =>
+    conn.exportImage(imageRef, false),
+  );
+}
+
+export async function moveUpload(
+  caller: MoveCaller,
+  raw: Partial<WorkloadRef>,
+): Promise<MoveDataStream & { filename: string }> {
+  const { row, w } = await dataWorkload(caller, raw);
+  const archive = w.app ? await uploadOf(w.app) : null;
+  if (!archive) throw notOwned(`${w.name} has no uploaded archive.`);
+  const file = createReadStream(archive.path);
+  return {
+    chunks: holdingLease(row.id, w.ref, file as AsyncIterable<Buffer>),
+    close: () => file.destroy(),
+    filename: archive.filename,
+  };
 }
 
 export async function moveFinish(
   caller: MoveCaller,
-  req: MoveFinishRequest,
 ): Promise<{ state: SourceMoveState }> {
   const row = await auth(caller);
-  if (row.state === "moved") return { state: "moved" };
-  requireFrozen(row);
-
-  const handed = await getDb()
-    .select({ serverId: deploMoveServers.serverId })
-    .from(deploMoveServers)
-    .where(
-      and(
-        eq(deploMoveServers.moveId, row.id),
-        eq(deploMoveServers.state, "handed_over"),
-      ),
-    );
-  const done = new Set(handed.map((h) => h.serverId));
-  // An install whose answer was lost: this Deplo can no longer dial that agent, the new one confirmed it.
-  const confirmed = new Set((req.handedOver ?? []).map(String));
-  const enrolled = await enrolledServers();
-  for (const s of enrolled) {
-    if (done.has(s.id) || !confirmed.has(s.id)) continue;
-    await markServer(row.id, s, "handed_over");
-    done.add(s.id);
+  // Idempotent: a finish whose answer was lost is asked again.
+  if (row.state === "done") return { state: "done" };
+  requireCopying(row);
+  await resumeAllPauses(row.id);
+  const now = nowIso();
+  const [done] = await getDb()
+    .update(deploMoves)
+    .set({ state: "done", finishedAt: now, updatedAt: now })
+    .where(and(eq(deploMoves.id, row.id), eq(deploMoves.state, "copying")))
+    .returning({ id: deploMoves.id });
+  if (done)
     await recordForEveryTeam(
-      `Handed server ${s.name} over to the Deplo at ${peerOf(row)}`,
+      `Copied this Deplo to ${peerOf(row)}`,
       row.startedBy,
     );
-  }
-  const left = enrolled.filter((s) => !done.has(s.id));
-  if (left.length > 0)
-    throw new MoveRefusedError(
-      `Not every server answers to the new Deplo yet: ${left.map((s) => s.name).join(", ")}.`,
-      409,
-    );
-
-  const peerUrl = originOf(req.movedTo) ?? row.peerUrl;
-  const now = nowIso();
-  await getDb()
-    .update(deploMoves)
-    .set({ state: "moved", peerUrl, finishedAt: now, updatedAt: now })
-    .where(and(eq(deploMoves.id, row.id), eq(deploMoves.state, "frozen")));
-  invalidateFrozen();
-  await recordForEveryTeam(
-    `Moved this Deplo to ${peerUrl ?? "another machine"}`,
-    row.startedBy,
-  );
-  return { state: "moved" };
+  return { state: "done" };
 }
 
-export async function moveThaw(caller: MoveCaller): Promise<{ ok: true }> {
+export async function moveCancel(caller: MoveCaller): Promise<{ ok: true }> {
   const row = await auth(caller);
-  await thawSourceMove(row, row.startedBy);
+  requireLive(row);
+  await cancelSourceMove(row, row.startedBy);
   return { ok: true };
 }

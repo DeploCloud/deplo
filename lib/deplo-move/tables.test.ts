@@ -6,10 +6,13 @@ import type { PGlite } from "@electric-sql/pglite";
 import { makeTestDb } from "../db/test-harness";
 import {
   MOVE_TABLES,
+  UNCONSTRAINED_SERVER_COLUMNS,
   copyOrder,
   foreignKeys,
   mergeForeignColumns,
   orderingEdge,
+  serverColumns,
+  serverDroppedTables,
   tableShapes,
   type ForeignKey,
 } from "./tables";
@@ -137,6 +140,52 @@ describe("Deplo move table policy", () => {
     }
   });
 
+  test("every column that names a server is remapped, and the old servers are never inserted", () => {
+    const named = (c: string) => /(^|_)server_id$/.test(c);
+    for (const p of copyPolicies()) {
+      const cols = serverColumns(p.table);
+      for (const c of shape(p.table).columns.filter(named))
+        assert.ok(
+          cols.includes(c),
+          `${p.table}.${c}: add it to UNCONSTRAINED_SERVER_COLUMNS`,
+        );
+      for (const c of p.needsServer ?? [])
+        assert.ok(cols.includes(c), `${p.table}.${c} names no server`);
+    }
+    for (const [table, cols] of Object.entries(UNCONSTRAINED_SERVER_COLUMNS))
+      for (const c of cols)
+        assert.ok(shape(table).columns.includes(c), `${table}.${c}`);
+    const mapped = copyPolicies()
+      .filter((p) => p.mapped)
+      .map((p) => p.table);
+    assert.deepEqual(mapped.sort(), ["server_teams", "servers"]);
+  });
+
+  test("only a table nothing points at loses rows to a server the map leaves out", () => {
+    const dropped = serverDroppedTables();
+    assert.deepEqual(
+      [...dropped].sort(),
+      ["docker_cleanup_excluded_servers", "migration_run_servers"],
+      "a new table here is a decision: refuse it with needsServer, or drop it",
+    );
+    for (const table of dropped) {
+      const children = foreignKeys().filter(
+        (fk) =>
+          fk.foreignTable === table &&
+          fk.table !== table &&
+          MOVE_TABLES[fk.table]?.kind === "copy",
+      );
+      assert.deepEqual(children.map(fkName), [], `${table} is not a leaf`);
+    }
+  });
+
+  test("previews and queued teardowns stay with the old Deplo's servers", () => {
+    for (const t of ["app_previews", "pending_teardowns"])
+      assert.equal(MOVE_TABLES[t]?.kind, "skip", t);
+    for (const t of ["deplo_move_workloads", "deplo_move_pauses"])
+      assert.equal(MOVE_TABLES[t]?.kind, "local", t);
+  });
+
   test("every foreign key in the migrated database is one the order knows", async () => {
     ({ pg } = await makeTestDb());
     const res = await pg.query<{
@@ -170,5 +219,28 @@ describe("Deplo move table policy", () => {
       "select conname from pg_constraint where condeferrable",
     );
     assert.deepEqual(deferrable.rows, []);
+
+    // Two old servers placed on one server here merge a primary key; any other unique key would fail the copy.
+    const unique = await pg.query<{ t: string; pk: boolean; cols: string[] }>(`
+      select i.indrelid::regclass::text as t, i.indisprimary as pk,
+        array(select a.attname::text from unnest(i.indkey) k join pg_attribute a
+          on a.attrelid = i.indrelid and a.attnum = k) as cols
+      from pg_index i join pg_class c on c.oid = i.indrelid
+      where i.indisunique and c.relnamespace = 'public'::regnamespace`);
+    const clash = unique.rows.flatMap((r) => {
+      const t = r.t.replace(/"/g, "");
+      const p = MOVE_TABLES[t];
+      if (p?.kind !== "copy" || p.mapped || r.pk) return [];
+      return r.cols.some((c) => serverColumns(t).includes(c))
+        ? [`${t}(${r.cols})`]
+        : [];
+    });
+    assert.deepEqual(clash, []);
+    assert.ok(
+      unique.rows.some(
+        (r) => r.pk && r.cols.join() === "server_id" && r.t.includes("docker"),
+      ),
+      "the query reads the keys at all",
+    );
   });
 });

@@ -1,72 +1,75 @@
 import "server-only";
 
-import { and, asc, desc, eq, gt, inArray, isNotNull, ne } from "drizzle-orm";
+import { and, asc, desc, eq, gt, inArray, isNotNull } from "drizzle-orm";
 
-import { caCertPem, signAgentCsr } from "../../agent/pki";
 import { decryptSecretOrThrow } from "../../crypto";
-import { getDb, type DbTx } from "../../db/client";
+import { getDb } from "../../db/client";
+import { apps as appsTable } from "../../db/schema/control-plane/apps";
+import { databases as databasesTable } from "../../db/schema/control-plane/databases";
+import { deployments as deploymentsTable } from "../../db/schema/control-plane/deployments";
+import { migrationRuns } from "../../db/schema/control-plane/migration";
+import {
+  environments as environmentsTable,
+  projects as projectsTable,
+} from "../../db/schema/control-plane/projects";
 import {
   deploMoves,
   deploMoveServers,
+  deploMoveWorkloads,
 } from "../../db/schema/control-plane/deplo-move";
-import {
-  serverTeams,
-  servers as serversTable,
-} from "../../db/schema/control-plane/servers";
 import * as moveClient from "../../deplo-move/client";
 import type {
-  MoveHello,
-  MoveServerState,
+  MoveWorkloadState,
   TargetMoveState,
+  WorkloadKind,
 } from "../../deplo-move/protocol";
-import {
-  deploHostSelfAddresses,
-  isDeploHostServer,
-} from "../../deploy/domains";
 import { nowIso } from "../../ids";
-import { publicBaseUrl } from "../../public-url";
-import { sourceAgentReachable } from "../agent-reach";
-import { listAllServers } from "../servers/roster";
 import { invalidateFrozen } from "./freeze";
-import { restoreInstance } from "./restore";
+import { restoreInstance, type RestoreOptions } from "./restore";
+import { invalidateSchedulesPaused } from "./schedules";
 import { recordForEveryTeam } from "./source-row";
+import { MoveClaims } from "./workload-claims";
+import { copyWorkload } from "./workload-copy";
 
-// The new Deplo's half of a Deplo move (ADR-0035): copy, hand every server over, finish. Resumable from its row.
+// The new Deplo's half of a Deplo move (ADR-0035): copy the database, then deploy and fill every workload here.
 export type TargetMoveRow = typeof deploMoves.$inferSelect;
 export type TargetMoveServerRow = typeof deploMoveServers.$inferSelect;
+export type TargetMoveWorkloadRow = typeof deploMoveWorkloads.$inferSelect;
 
 export const NO_PANEL_ADDRESS =
   "This Deplo has no address yet: set it under Settings, so the old Deplo can send people here.";
-export const UNREACHABLE_NOTE =
-  "This server answers to this Deplo now, but this machine cannot reach it yet.";
-export const LEFT_BEHIND_NOTE =
-  "Still answers to the old Deplo. Add it again under Settings → Servers.";
 
 // What the public status says instead of an error it must not repeat.
 export const COPY_FAILED =
   "The copy failed on this Deplo. Nothing was changed here.";
-export const HANDOVER_FAILED =
-  "This server could not be handed over because of an error on this Deplo.";
+export const WORKLOAD_FAILED =
+  "This could not be copied because of an error on this Deplo.";
+export const SKIPPED_NOTE =
+  "Its data never came across: restore it from a backup.";
+export const MIGRATION_STOPPED_NOTE =
+  "Stopped by the Deplo move: the old Deplo still runs it.";
 const STOPPED_HERE = "The move stopped because of an error on this Deplo.";
+const STOPPED = "The move was stopped.";
 
 type Restorer = (
   lines: AsyncIterable<string>,
+  opts: RestoreOptions,
 ) => Promise<{ rows: number; unreadable: number }>;
-let restorer: Restorer = (lines) => restoreInstance(lines);
+let restorer: Restorer = restoreInstance;
 
 export function __setRestorerForTest(fn?: Restorer): void {
-  restorer = fn ?? ((lines) => restoreInstance(lines));
+  restorer = fn ?? restoreInstance;
 }
 
-let afterMove: () => Promise<void> = runSkippedBootJobs;
+let afterCopy: () => Promise<void> = runSkippedBootJobs;
 
 export function __setAfterMoveForTest(fn?: () => Promise<void>): void {
-  afterMove = fn ?? runSkippedBootJobs;
+  afterCopy = fn ?? runSkippedBootJobs;
 }
 
 // One move per process. On globalThis: instrumentation and route handlers are separate bundles.
 const RUN_KEY = Symbol.for("deplo.move.run");
-type Run = { id: string; done: Promise<void> };
+type Run = { id: string; done: Promise<void>; aborter: AbortController };
 const slot = globalThis as unknown as { [RUN_KEY]?: Run };
 
 export function activeMoveRun(): string | null {
@@ -76,11 +79,20 @@ export function activeMoveRun(): string | null {
 export function launchMove(id: string): boolean {
   const current = slot[RUN_KEY];
   if (current) return current.id === id;
-  const done: Promise<void> = run(id).finally(() => {
+  const aborter = new AbortController();
+  const done: Promise<void> = run(id, aborter.signal).finally(() => {
     if (slot[RUN_KEY]?.done === done) delete slot[RUN_KEY];
   });
-  slot[RUN_KEY] = { id, done };
+  slot[RUN_KEY] = { id, done, aborter };
   return true;
+}
+
+// Stops the run between steps and cuts any stream in flight; resolves once it has let go.
+export async function stopMoveRun(id: string): Promise<void> {
+  const current = slot[RUN_KEY];
+  if (!current || current.id !== id) return;
+  current.aborter.abort();
+  await current.done;
 }
 
 export function __waitForMoveForTest(): Promise<void> {
@@ -94,7 +106,7 @@ export async function resumeDeploMoves(): Promise<void> {
     .where(
       and(
         eq(deploMoves.side, "target"),
-        inArray(deploMoves.state, ["copying", "handing_over"]),
+        inArray(deploMoves.state, ["copying", "deploying"]),
       ),
     )
     .orderBy(desc(deploMoves.updatedAt))
@@ -132,6 +144,16 @@ export async function moveServerRows(
     .orderBy(asc(deploMoveServers.position));
 }
 
+export async function moveWorkloadRows(
+  moveId: string,
+): Promise<TargetMoveWorkloadRow[]> {
+  return getDb()
+    .select()
+    .from(deploMoveWorkloads)
+    .where(eq(deploMoveWorkloads.moveId, moveId))
+    .orderBy(asc(deploMoveWorkloads.position));
+}
+
 export async function setMoveState(
   id: string,
   state: TargetMoveState,
@@ -142,6 +164,24 @@ export async function setMoveState(
     .set({ ...extra, state, updatedAt: nowIso() })
     .where(and(eq(deploMoves.id, id), eq(deploMoves.side, "target")));
   invalidateFrozen();
+}
+
+export async function markWorkload(
+  moveId: string,
+  w: Pick<TargetMoveWorkloadRow, "kind" | "workloadId">,
+  state: MoveWorkloadState,
+  error = "",
+): Promise<void> {
+  await getDb()
+    .update(deploMoveWorkloads)
+    .set({ state, error, updatedAt: nowIso() })
+    .where(
+      and(
+        eq(deploMoveWorkloads.moveId, moveId),
+        eq(deploMoveWorkloads.kind, w.kind),
+        eq(deploMoveWorkloads.workloadId, w.workloadId),
+      ),
+    );
 }
 
 type ErrorLink = Record<string, unknown>;
@@ -169,7 +209,7 @@ function fromTheDatabase(o: ErrorLink): boolean {
 }
 
 // Only sentences this code wrote reach the row; a database error is logged by its code and names alone.
-function sentenceOf(e: unknown, fallback: string): string {
+export function sentenceOf(e: unknown, fallback: string): string {
   const chain = causeChain(e);
   if (chain.some(fromTheDatabase)) {
     const pg = chain.find((o) => typeof o.code === "string") ?? {};
@@ -185,18 +225,19 @@ function sentenceOf(e: unknown, fallback: string): string {
   return e.message.trim() || "The move stopped without saying why.";
 }
 
-async function run(id: string): Promise<void> {
+async function run(id: string, signal: AbortSignal): Promise<void> {
   let fallback = COPY_FAILED;
   try {
     for (;;) {
+      signal.throwIfAborted();
       const row = await targetMoveRow(id);
-      fallback = row?.state === "handing_over" ? STOPPED_HERE : COPY_FAILED;
-      if (row?.state === "copying") await copyEverything(row);
-      else if (row?.state === "handing_over") return await handOverAll(row);
+      fallback = row?.state === "deploying" ? STOPPED_HERE : COPY_FAILED;
+      if (row?.state === "copying") await copyEverything(row, signal);
+      else if (row?.state === "deploying") return await deployAll(row, signal);
       else return;
     }
   } catch (e) {
-    const why = sentenceOf(e, fallback);
+    const why = signal.aborted ? STOPPED : sentenceOf(e, fallback);
     console.error(`[deplo-move] the move ${id} stopped: ${why}`);
     await setMoveState(id, "failed", { error: why }).catch((err) =>
       console.error(
@@ -206,167 +247,169 @@ async function run(id: string): Promise<void> {
   }
 }
 
-async function copyEverything(row: TargetMoveRow): Promise<void> {
+// Frozen from here until the copy commits: the only phase where this Deplo pauses changes.
+async function copyEverything(
+  row: TargetMoveRow,
+  signal: AbortSignal,
+): Promise<void> {
   const c = credentialOf(row);
-  await moveClient.freeze(c);
-  const hello = await moveClient.hello(c);
-  const copied = await restorer(moveClient.dump(c));
-  await recordForEveryTeam(
-    `Moved this Deplo here from ${row.peerUrl}`,
-    row.startedBy,
+  const servers = await moveServerRows(row.id);
+  const serverMap = new Map(
+    servers.map((s) => [s.serverId, s.targetServerId] as const),
   );
-  const order = await handOverOrder(hello);
-  const self = await ownServerIds(hello);
+  const hello = await moveClient.hello(c, signal);
+  if (row.peerInstance && hello.instance !== row.peerInstance)
+    throw new Error(
+      "Another Deplo answers at the old address now: cancel this move and start a new one.",
+    );
+  const copied = await restorer(moveClient.dump(c, signal), {
+    serverMap,
+    peerUrl: row.peerUrl ?? "",
+  });
+  const workloads = await workloadsToCopy();
   const now = nowIso();
   await getDb().transaction(async (tx) => {
-    await mirrorOldPanelHost(tx, hello, self);
     await tx
-      .delete(deploMoveServers)
-      .where(eq(deploMoveServers.moveId, row.id));
-    if (order.length)
-      await tx.insert(deploMoveServers).values(
-        order.map((s, position) => ({
+      .delete(deploMoveWorkloads)
+      .where(eq(deploMoveWorkloads.moveId, row.id));
+    if (workloads.length)
+      await tx.insert(deploMoveWorkloads).values(
+        workloads.map((w, position) => ({
           moveId: row.id,
-          serverId: s.id,
-          name: s.name,
+          kind: w.kind,
+          workloadId: w.id,
+          name: w.name,
           position,
-          state: "waiting" satisfies MoveServerState,
+          state: "waiting" satisfies MoveWorkloadState,
           error: "",
           updatedAt: now,
         })),
       );
+    // A deploy the old Deplo had in flight belongs to its servers; the move deploys each app here itself.
+    await tx
+      .update(deploymentsTable)
+      .set({ status: "canceled" })
+      .where(inArray(deploymentsTable.status, ["queued", "building"]));
+    // Its migrations too: driven from here as well, every import would run twice.
+    await tx
+      .update(migrationRuns)
+      .set({
+        status: "stopped",
+        error: MIGRATION_STOPPED_NOTE,
+        finishedAt: now,
+        phase: "done",
+        apiKeyEnc: null,
+        runnerOwner: null,
+      })
+      .where(inArray(migrationRuns.status, ["queued", "running"]));
+    for (const table of [
+      appsTable,
+      databasesTable,
+      projectsTable,
+      environmentsTable,
+    ])
+      await tx
+        .update(table)
+        .set({ migrationRunId: null })
+        .where(isNotNull(table.migrationRunId));
     await tx
       .update(deploMoves)
       .set({
-        state: "handing_over" satisfies TargetMoveState,
+        state: "deploying" satisfies TargetMoveState,
         rowsCopied: copied.rows,
         unreadable: copied.unreadable,
+        schedulesPaused: true,
         error: "",
         updatedAt: now,
       })
       .where(eq(deploMoves.id, row.id));
   });
   invalidateFrozen();
-}
-
-function oldPanelHostId(hello: MoveHello): string | null {
-  return hello.servers.find((s) => s.isPanelHost)?.id ?? null;
-}
-
-async function ownServerIds(hello: MoveHello): Promise<string[]> {
-  const self = deploHostSelfAddresses();
-  const oldHost = oldPanelHostId(hello);
-  return (await listAllServers())
-    .filter((s) => s.id !== oldHost && isDeploHostServer(s, self))
-    .map((s) => s.id);
-}
-
-// This machine takes the old panel machine's place, so it gets the same team access, never wider.
-async function mirrorOldPanelHost(
-  tx: DbTx,
-  hello: MoveHello,
-  ownIds: string[],
-): Promise<void> {
-  const oldHost = oldPanelHostId(hello);
-  if (!oldHost || ownIds.length === 0) return;
-  const [policy] = await tx
-    .select({ allTeams: serversTable.allTeams })
-    .from(serversTable)
-    .where(eq(serversTable.id, oldHost))
-    .limit(1);
-  if (!policy) return;
-  const grants = await tx
-    .select({ teamId: serverTeams.teamId })
-    .from(serverTeams)
-    .where(eq(serverTeams.serverId, oldHost));
-  await tx
-    .update(serversTable)
-    .set({ allTeams: policy.allTeams })
-    .where(inArray(serversTable.id, ownIds));
-  await tx.delete(serverTeams).where(inArray(serverTeams.serverId, ownIds));
-  if (grants.length)
-    await tx
-      .insert(serverTeams)
-      .values(
-        ownIds.flatMap((serverId) =>
-          grants.map((g) => ({ serverId, teamId: g.teamId })),
-        ),
-      );
-}
-
-// Every enrolled server the old Deplo listed, in its order, with the old panel's own machine last.
-async function handOverOrder(
-  hello: MoveHello,
-): Promise<{ id: string; name: string }[]> {
-  const enrolled = await getDb()
-    .select({ id: serversTable.id, name: serversTable.name })
-    .from(serversTable)
-    .where(
-      and(
-        isNotNull(serversTable.agentCertFingerprint),
-        ne(serversTable.agentCertFingerprint, ""),
-      ),
-    );
-  const byId = new Map(enrolled.map((s) => [s.id, s]));
-  const listed = hello.servers.filter((s) => byId.has(s.id));
-  return [
-    ...listed.filter((s) => !s.isPanelHost),
-    ...listed.filter((s) => s.isPanelHost),
-  ].map((s) => byId.get(s.id)!);
-}
-
-export async function markServer(
-  moveId: string,
-  serverId: string,
-  state: MoveServerState,
-  error: string,
-): Promise<void> {
-  await getDb()
-    .update(deploMoveServers)
-    .set({ state, error, updatedAt: nowIso() })
-    .where(
-      and(
-        eq(deploMoveServers.moveId, moveId),
-        eq(deploMoveServers.serverId, serverId),
-      ),
-    );
-}
-
-async function handOverAll(row: TargetMoveRow): Promise<void> {
-  const c = credentialOf(row);
-  for (const s of await moveServerRows(row.id)) {
-    if (s.state === "handed_over") continue;
-    let note: string;
-    try {
-      note = await handOver(c, s);
-    } catch (e) {
-      const why = sentenceOf(e, HANDOVER_FAILED);
-      await markServer(row.id, s.serverId, "failed", why);
-      throw new Error(`${s.name} was not handed over: ${why}`);
-    }
-    await markServer(row.id, s.serverId, "handed_over", note);
-  }
-  const movedTo = publicBaseUrl();
-  if (!movedTo) throw new Error(NO_PANEL_ADDRESS);
-  const handedOver = (await moveServerRows(row.id)).map((s) => s.serverId);
-  await moveClient.finish(c, movedTo, handedOver);
-  await setMoveState(row.id, "done", { error: "", finishedAt: nowIso() });
-  startAfterMove();
-}
-
-function startAfterMove(): void {
-  void afterMove().catch((e) =>
-    console.error("[deplo-move] the jobs after the move failed:", e),
+  invalidateSchedulesPaused();
+  await recordForEveryTeam(
+    `Copied this Deplo here from ${row.peerUrl}`,
+    row.startedBy,
+  ).catch((e) =>
+    console.error(
+      `[deplo-move] could not record the copy: ${sentenceOf(e, STOPPED_HERE)}`,
+    ),
+  );
+  await afterCopy().catch((e) =>
+    console.error("[deplo-move] the jobs after the copy failed:", e),
   );
 }
 
-export function leftBehindSentence(left: number): string {
-  if (left === 0)
-    return "Finished without the old Deplo: every server was handed over.";
-  return `Finished without the old Deplo: ${left === 1 ? "1 server was" : `${left} servers were`} left behind.`;
+// Databases first, so an app that starts here finds its database already filled.
+async function workloadsToCopy(): Promise<
+  { kind: WorkloadKind; id: string; name: string }[]
+> {
+  const db = getDb();
+  const [dbs, apps] = await Promise.all([
+    db
+      .select({ id: databasesTable.id, name: databasesTable.name })
+      .from(databasesTable)
+      .orderBy(asc(databasesTable.createdAt), asc(databasesTable.id)),
+    db
+      .select({ id: appsTable.id, name: appsTable.name })
+      .from(appsTable)
+      .orderBy(asc(appsTable.createdAt), asc(appsTable.id)),
+  ]);
+  return [
+    ...dbs.map((d) => ({ kind: "database" as const, ...d })),
+    ...apps.map((a) => ({ kind: "app" as const, ...a })),
+  ];
 }
 
-// The old Deplo is gone: what was handed over stays here, every other server is named as left with it.
+const OPEN_WORKLOADS: MoveWorkloadState[] = ["waiting", "copying", "failed"];
+
+// One workload at a time; a failure is recorded on its row and the rest still go.
+async function deployAll(
+  row: TargetMoveRow,
+  signal: AbortSignal,
+): Promise<void> {
+  const c = credentialOf(row);
+  const claims = new MoveClaims(row.id, c, signal);
+  for (const w of await moveWorkloadRows(row.id)) {
+    if (!OPEN_WORKLOADS.includes(w.state as MoveWorkloadState)) continue;
+    signal.throwIfAborted();
+    await markWorkload(row.id, w, "copying");
+    let note: string;
+    try {
+      note = await copyWorkload(
+        c,
+        { kind: w.kind as WorkloadKind, id: w.workloadId },
+        { creator: row.startedBy, signal, claims },
+      );
+    } catch (e) {
+      signal.throwIfAborted();
+      const why = sentenceOf(e, WORKLOAD_FAILED);
+      console.error(`[deplo-move] ${w.name} was not copied: ${why}`);
+      await markWorkload(row.id, w, "failed", why);
+      continue;
+    }
+    await markWorkload(row.id, w, "done", note);
+  }
+  // Read back, not counted: an admin may have left a failed one out meanwhile.
+  const failed = (await moveWorkloadRows(row.id)).filter(
+    (w) => w.state === "failed",
+  ).length;
+  if (failed > 0)
+    throw new Error(
+      failed === 1
+        ? "1 app or database could not be copied: see why below, then try again."
+        : `${failed} apps or databases could not be copied: see why below, then try again.`,
+    );
+  await moveClient.finish(c);
+  await setMoveState(row.id, "done", { error: "", finishedAt: nowIso() });
+}
+
+export function skippedSentence(left: number): string {
+  if (left === 0)
+    return "Finished without the old Deplo: everything came across.";
+  return `Finished without the old Deplo: ${left === 1 ? "1 app or database was" : `${left} apps or databases were`} left out.`;
+}
+
+// The old Deplo is gone: whatever did not come across is left out here, never deployed empty.
 export async function finishWithoutOldDeplo(
   id: string,
   actor: string,
@@ -391,79 +434,39 @@ export async function finishWithoutOldDeplo(
       .returning({ peerUrl: deploMoves.peerUrl });
     if (!claimed) return null;
     const rows = await tx
-      .update(deploMoveServers)
+      .update(deploMoveWorkloads)
       .set({
-        state: "failed" satisfies MoveServerState,
-        error: LEFT_BEHIND_NOTE,
+        state: "skipped" satisfies MoveWorkloadState,
+        error: SKIPPED_NOTE,
         updatedAt: now,
       })
       .where(
         and(
-          eq(deploMoveServers.moveId, id),
-          ne(deploMoveServers.state, "handed_over"),
+          eq(deploMoveWorkloads.moveId, id),
+          inArray(deploMoveWorkloads.state, OPEN_WORKLOADS),
         ),
       )
-      .returning({ serverId: deploMoveServers.serverId });
+      .returning({ id: deploMoveWorkloads.workloadId });
     await tx
       .update(deploMoves)
-      .set({ error: leftBehindSentence(rows.length) })
+      .set({ error: skippedSentence(rows.length) })
       .where(eq(deploMoves.id, id));
     return { count: rows.length, peerUrl: claimed.peerUrl };
   });
   invalidateFrozen();
   if (!left) return false;
-  const stay =
-    left.count === 0
-      ? "no server stays"
-      : left.count === 1
-        ? "1 server stays"
-        : `${left.count} servers stay`;
   await recordForEveryTeam(
-    `Finished moving this Deplo here without the old one at ${left.peerUrl ?? "its old address"}: ${stay} with it`,
+    `Finished copying this Deplo here without the old one at ${left.peerUrl ?? "its old address"}: ${
+      left.count === 1
+        ? "1 app or database was left out"
+        : `${left.count} apps or databases were left out`
+    }`,
     actor,
   );
-  startAfterMove();
   return true;
 }
 
-// Signed with THIS Deplo's CA and installed with it: from the next handshake only this Deplo can dial the agent.
-async function handOver(
-  c: moveClient.MoveCredential,
-  s: TargetMoveServerRow,
-): Promise<string> {
-  // A retry after an install whose answer was lost: the agent may already be ours.
-  if (s.state === "failed" && (await sourceAgentReachable(s.serverId)))
-    return "";
-  const [server] = await getDb()
-    .select({ ip: serversTable.ip, host: serversTable.host })
-    .from(serversTable)
-    .where(eq(serversTable.id, s.serverId))
-    .limit(1);
-  if (!server) throw new Error("This server is missing from the copy.");
-  let csrPem: string;
-  try {
-    csrPem = await moveClient.csr(c, s.serverId);
-  } catch (e) {
-    if (e instanceof moveClient.MoveRefusedError && e.handedOver)
-      return (await sourceAgentReachable(s.serverId)) ? "" : UNREACHABLE_NOTE;
-    throw e;
-  }
-  const signed = await signAgentCsr(
-    csrPem,
-    [server.ip, server.host].filter(Boolean),
-  );
-  await getDb()
-    .update(serversTable)
-    .set({
-      agentCertPem: signed.certPem,
-      agentCertFingerprint: signed.fingerprint,
-    })
-    .where(eq(serversTable.id, s.serverId));
-  await moveClient.install(c, s.serverId, signed.certPem, await caCertPem());
-  return (await sourceAgentReachable(s.serverId)) ? "" : UNREACHABLE_NOTE;
-}
-
-// The boot one-shots a frozen Deplo skipped: they find the copied deployments, backups and deletes in flight.
+// The boot one-shots a frozen Deplo skipped: they find the copied backups, cleanups and deletes in flight.
 async function runSkippedBootJobs(): Promise<void> {
   const jobs: [string, () => Promise<unknown>][] = [
     [
@@ -493,13 +496,6 @@ async function runSkippedBootJobs(): Promise<void> {
       async () => (await import("../apps/delete")).resumeAppDeletes(),
     ],
     [
-      "network isolation sweep",
-      async () =>
-        (
-          await import("../../deploy/network-migration")
-        ).runNetworkIsolationSweep(),
-    ],
-    [
       "OAuth resources",
       async () =>
         (await import("../../auth/oauth-resources")).reconcileOAuthResources(),
@@ -507,6 +503,6 @@ async function runSkippedBootJobs(): Promise<void> {
   ];
   for (const [name, job] of jobs)
     await job().catch((e) =>
-      console.error(`[deplo-move] ${name} after the move failed:`, e),
+      console.error(`[deplo-move] ${name} after the copy failed:`, e),
     );
 }

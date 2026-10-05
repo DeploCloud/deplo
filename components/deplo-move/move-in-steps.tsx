@@ -95,14 +95,16 @@ export function MoveReviewStep({
       title="Review the move"
       lead={
         <>
-          <strong>Everything here is replaced</strong> by the old Deplo&rsquo;s
-          teams, apps and servers.
+          <strong>Everything here is replaced</strong> by a copy of the old
+          Deplo, which keeps running as it is.
         </>
       }
       docs="deplo.move"
     >
       <MovePreview
         preview={move.preview}
+        map={move.map}
+        onTarget={move.setTarget}
         checking={move.connecting}
         onCheckAgain={() => void move.connect()}
         onStart={move.start}

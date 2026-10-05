@@ -18,6 +18,7 @@ import {
   rerouteRequest,
 } from "./stack";
 import type { DatabaseMount, DatabaseType } from "../../types/database";
+import { assertNotPausedForMove } from "../deplo-move/source-guard";
 
 const MAX_MOUNT_BYTES = 1024 * 1024;
 
@@ -79,6 +80,7 @@ export async function setDatabaseMounts(
   mounts: DatabaseMount[],
 ): Promise<void> {
   const { teamId } = await requireCapability("configure_databases");
+  await assertNotPausedForMove("database", id);
   const user = (await getCurrentUser())!;
   let name = "";
   await withKeyedLock(id, async () => {

@@ -113,34 +113,28 @@ test("an MCP connection's token stops resolving in a team that turned MCP off", 
   assert.ok(await authenticateToken(plain.raw));
 });
 
-test("a Deplo that moved refuses every token, a paused one does not", async () => {
+test("a Deplo copied to another machine keeps accepting its own tokens", async () => {
   const raw = await asUser1(
     async () =>
       (await createToken({ name: "CI", capabilities: ["deploy_apps"] })).raw,
   );
-  const move = (state: string) =>
-    db.insert(deploMoves).values({
-      id: `dmv_${state}`,
-      side: "source",
-      state,
-      peerUrl: "https://new.example",
-      startedBy: "Ada",
-      createdAt: "2026-01-01T00:00:00.000Z",
-      updatedAt: "2026-01-01T00:00:00.000Z",
-    });
   try {
-    await move("frozen");
-    invalidateFrozen();
-    assert.ok(await authenticateToken(raw), "reads keep working mid-move");
-
-    await db.update(deploMoves).set({ state: "moved" });
-    invalidateFrozen();
-    await assert.rejects(authenticateToken(raw), {
-      message: "This Deplo moved to https://new.example. Use it there.",
-    });
+    for (const state of ["copying", "done"]) {
+      await db.delete(deploMoves);
+      await db.insert(deploMoves).values({
+        id: `dmv_${state}`,
+        side: "source",
+        state,
+        peerUrl: "https://new.example",
+        startedBy: "Ada",
+        createdAt: "2026-01-01T00:00:00.000Z",
+        updatedAt: "2026-01-01T00:00:00.000Z",
+      });
+      invalidateFrozen();
+      assert.ok(await authenticateToken(raw), state);
+    }
   } finally {
     await db.delete(deploMoves);
     invalidateFrozen();
   }
-  assert.ok(await authenticateToken(raw));
 });

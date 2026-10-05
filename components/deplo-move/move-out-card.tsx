@@ -21,10 +21,9 @@ const SOURCE_MOVE = /* GraphQL */ `
       state
       peerUrl
       expiresAt
-      handedOver
-      servers
       startedBy
       createdAt
+      finishedAt
     }
   }
 `;
@@ -39,8 +38,8 @@ const CREATE_MOVE_CODE = /* GraphQL */ `
 `;
 
 const CANCEL_MOVE_CODE = /* GraphQL */ `
-  mutation CancelMoveCode($force: Boolean) {
-    cancelMoveCode(force: $force)
+  mutation CancelMoveCode {
+    cancelMoveCode
   }
 `;
 
@@ -57,8 +56,6 @@ export function MoveOutCard({
   const router = useRouter();
   const [status, setStatus] = React.useState(initial);
   const [code, setCode] = React.useState<string | null>(null);
-  // A plain cancel was refused: a server may already answer to the new Deplo.
-  const [forwardOnly, setForwardOnly] = React.useState(false);
   const [creating, startCreating] = React.useTransition();
   const state = status?.state ?? null;
 
@@ -66,25 +63,15 @@ export function MoveOutCard({
     const res = await gqlAction<{ sourceMove: SourceMoveStatus | null }>(
       SOURCE_MOVE,
     );
-    if (!res.ok) return null;
-    const next = res.data?.sourceMove ?? null;
-    setStatus(next);
-    return next;
+    if (res.ok) setStatus(res.data?.sourceMove ?? null);
   }, []);
 
+  // Nothing here pauses for a copy, so only this card follows it.
   React.useEffect(() => {
-    if (!state || state === "moved") return;
-    const timer = setInterval(async () => {
-      const next = (await refetch())?.state ?? null;
-      // The dashboard itself changes when this Deplo pauses, resumes or has moved.
-      if (
-        next !== state &&
-        [state, next].some((s) => s === "frozen" || s === "moved")
-      )
-        router.refresh();
-    }, POLL_MS);
+    if (!state || state === "done") return;
+    const timer = setInterval(refetch, POLL_MS);
     return () => clearInterval(timer);
-  }, [state, refetch, router]);
+  }, [state, refetch]);
 
   function create() {
     startCreating(async () => {
@@ -100,34 +87,30 @@ export function MoveOutCard({
     });
   }
 
-  async function cancel(force = false) {
-    const res = await gqlAction(CANCEL_MOVE_CODE, { force });
+  async function cancel() {
+    const res = await gqlAction(CANCEL_MOVE_CODE);
     if (res.ok) {
       setCode(null);
       setStatus(null);
-      setForwardOnly(false);
       router.refresh();
-    } else if (state === "frozen") setForwardOnly(true);
+    }
     return res;
   }
 
   // The code is no use once a new Deplo has bound it.
   const shownCode = state === "armed" ? code : null;
   const cancellable =
-    state === "armed" ||
-    state === "bound" ||
-    (state === "frozen" && status?.handedOver === 0 && !forwardOnly);
-  const resumable = state === "frozen" && !cancellable;
-
+    state === "armed" || state === "bound" || state === "copying";
   const canCreate =
-    !incoming && (state === null || (state === "armed" && !shownCode));
+    !incoming &&
+    (state === null || state === "done" || (state === "armed" && !shownCode));
 
   return (
     <Card>
       <SettingItem
         icon={ArrowUpFromLine}
         title="Move this Deplo"
-        info="Copies every team, app and setting to a fresh Deplo on another machine, then hands every server over to it. Apps keep running."
+        info="Copies every team, app and setting to a fresh Deplo on another machine. This Deplo keeps running as it is."
         docs="deplo.move"
         description={
           <OutStatus
@@ -137,50 +120,45 @@ export function MoveOutCard({
           />
         }
         control={
-          (canCreate || cancellable || resumable) && (
+          (canCreate || cancellable) && (
             <>
               {canCreate && (
                 <Button size="sm" onClick={create} disabled={creating}>
                   {creating && <Loader2 className="size-4 animate-spin" />}
-                  Create move code
+                  {state === "done"
+                    ? "Create move code again"
+                    : "Create move code"}
                 </Button>
               )}
               {cancellable && (
                 <ConfirmAction
                   trigger={
                     <Button size="sm" variant="outline">
-                      Cancel move
+                      Cancel
                     </Button>
                   }
-                  title="Cancel the move?"
+                  title={
+                    state === "armed"
+                      ? "Cancel the move code?"
+                      : "Cancel the copy?"
+                  }
                   description={
                     state === "armed"
                       ? "The move code stops working at once."
-                      : "The new Deplo is cut off, and changes resume here."
+                      : "The new Deplo is cut off, and anything paused for the copy starts again here."
                   }
-                  confirmLabel="Cancel move"
-                  successMessage="Move cancelled"
-                  onConfirm={() => cancel()}
-                />
-              )}
-              {resumable && (
-                <ConfirmAction
-                  trigger={
-                    <Button size="sm" variant="outline">
-                      Resume this Deplo
-                    </Button>
+                  consequence={
+                    state === "armed"
+                      ? undefined
+                      : "The copy stops where it is and has to start over with a new code."
                   }
-                  title="Resume this Deplo?"
-                  description={
-                    <>
-                      The move stops and changes resume here. Only do this if{" "}
-                      <strong>the new Deplo is gone</strong>.
-                    </>
+                  confirmLabel={
+                    state === "armed" ? "Cancel move code" : "Cancel copy"
                   }
-                  consequence="Servers already handed over keep answering to the new Deplo and must be added here again."
-                  confirmLabel="Resume this Deplo"
-                  successMessage="This Deplo resumed"
-                  onConfirm={() => cancel(true)}
+                  successMessage={
+                    state === "armed" ? "Move code cancelled" : "Copy cancelled"
+                  }
+                  onConfirm={cancel}
                 />
               )}
             </>
@@ -215,7 +193,11 @@ function OutStatus({
     ) : (
       <>Create a move code, then paste it on the new Deplo.</>
     );
-  const peer = status.peerUrl ? <PeerLink url={status.peerUrl} /> : null;
+  const peer = status.peerUrl ? (
+    <PeerLink url={status.peerUrl} />
+  ) : (
+    "another machine"
+  );
   switch (status.state) {
     case "armed":
       return (
@@ -227,16 +209,16 @@ function OutStatus({
         </>
       );
     case "bound":
-      return <>Connected from {peer}. Start the move there.</>;
-    case "frozen":
+      return <>Connected from {peer}. Start the copy there.</>;
+    case "copying":
       return (
         <>
-          Moving to {peer} - {status.handedOver} of {status.servers}{" "}
-          {status.servers === 1 ? "server" : "servers"} handed over.
+          Copying to {peer}. Apps with data pause briefly while theirs is
+          copied.
         </>
       );
-    case "moved":
-      return <>Moved to {peer}.</>;
+    case "done":
+      return <>Copied to {peer}.</>;
   }
 }
 

@@ -1,6 +1,6 @@
 import "server-only";
 
-import { and, desc, eq, gt, inArray, or, sql } from "drizzle-orm";
+import { and, desc, eq } from "drizzle-orm";
 import {
   defaultFieldResolver,
   type GraphQLFieldResolver,
@@ -9,19 +9,12 @@ import {
 
 import { getDb } from "../../db/client";
 import { deploMoves } from "../../db/schema/control-plane/deplo-move";
-import type {
-  SourceMoveState,
-  TargetMoveState,
-} from "../../deplo-move/protocol";
 
-// ADR-0035: while a Deplo move runs, nothing on either side changes except the move itself.
+// ADR-0035: only the NEW Deplo ever freezes, and only while the old one's database copy lands in it.
 export interface FrozenState {
-  side: "source" | "target";
-  state: SourceMoveState | TargetMoveState;
-  // The other Deplo: where this one is moving to (source), or where it is coming from (target).
+  state: "copying";
+  // The old Deplo it is copied from.
   peerUrl: string | null;
-  // True once the source has moved for good; every other freeze ends.
-  moved: boolean;
   message: string;
 }
 
@@ -53,15 +46,8 @@ export class InstanceFrozenError extends Error {
   }
 }
 
-export function frozenMessage(
-  f: Pick<FrozenState, "side" | "peerUrl" | "moved">,
-): string {
-  const there = f.peerUrl ?? "another machine";
-  if (f.side === "target")
-    return `A Deplo is moving here from ${there}. Changes are paused until it finishes.`;
-  return f.moved
-    ? `This Deplo moved to ${there}.`
-    : `This Deplo is moving to ${there}. Changes are paused until it finishes.`;
+export function frozenMessage(f: Pick<FrozenState, "peerUrl">): string {
+  return `A Deplo is being copied here from ${f.peerUrl ?? "another machine"}. Changes are paused until its data is in.`;
 }
 
 export const FROZEN_CACHE_MS = 2_000;
@@ -99,43 +85,16 @@ async function readFrozen(
   db: ReturnType<typeof getDb>,
 ): Promise<FrozenState | null> {
   const [row] = await db
-    .select({
-      side: deploMoves.side,
-      state: deploMoves.state,
-      peerUrl: deploMoves.peerUrl,
-    })
+    .select({ peerUrl: deploMoves.peerUrl })
     .from(deploMoves)
-    .where(
-      or(
-        and(
-          eq(deploMoves.side, "source"),
-          inArray(deploMoves.state, ["frozen", "moved"]),
-        ),
-        and(
-          eq(deploMoves.side, "target"),
-          inArray(deploMoves.state, ["copying", "handing_over"]),
-        ),
-        // A failed move that already copied rows holds live data and servers half handed over.
-        and(
-          eq(deploMoves.side, "target"),
-          eq(deploMoves.state, "failed"),
-          gt(deploMoves.rowsCopied, 0),
-        ),
-      ),
-    )
-    .orderBy(
-      sql`(${deploMoves.state} = 'moved') desc`,
-      desc(deploMoves.updatedAt),
-    )
+    .where(and(eq(deploMoves.side, "target"), eq(deploMoves.state, "copying")))
+    .orderBy(desc(deploMoves.updatedAt))
     .limit(1);
   if (!row) return null;
-  const side = row.side === "target" ? "target" : "source";
-  const moved = side === "source" && row.state === "moved";
-  const base = { side, peerUrl: row.peerUrl, moved } as const;
   return {
-    ...base,
-    state: row.state as FrozenState["state"],
-    message: frozenMessage(base),
+    state: "copying",
+    peerUrl: row.peerUrl,
+    message: frozenMessage(row),
   };
 }
 

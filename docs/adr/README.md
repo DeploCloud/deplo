@@ -41,7 +41,7 @@ repository root.
 | [0032](0032-an-api-token-is-personal.md)                                                  | An API token is personal, and a team governs it through the member                                                          |
 | [0033](0033-usage-reports-are-anonymous-opt-out-and-first-party.md)                       | Usage reports are anonymous, opt-out, and land on a service of our own                                                      |
 | [0034](0034-another-deplo-hands-its-team-over-itself.md)                                  | Another Deplo hands its team over itself                                                                                    |
-| [0035](0035-a-whole-deplo-moves-by-handing-its-servers-over.md)                           | A whole Deplo moves by copying its database and handing its servers over                                                    |
+| [0035](0035-a-whole-deplo-copies-onto-a-new-machine.md)                                   | A whole Deplo copies onto a new machine, and the old one keeps running                                                      |
 
 ## Amended or superseded
 

@@ -18,7 +18,10 @@ import {
 import { seedIdentity, TEAM_A, USER_1 } from "../data/identity-test-helpers";
 import { seedServerRow } from "../data/infra-test-helpers";
 import { invalidateFrozen } from "../data/deplo-move/freeze";
-import { __setPortProbeForTest } from "../data/deplo-move/target";
+import {
+  invalidateSchedulesPaused,
+  schedulesPaused,
+} from "../data/deplo-move/schedules";
 import {
   MOVE_CODE,
   NEW,
@@ -48,8 +51,8 @@ before(async () => {
 after(async () => {
   __resetMigrationFetchForTest();
   __setAgentConnectorForTest();
-  __setPortProbeForTest();
   invalidateFrozen();
+  invalidateSchedulesPaused();
   __resetTestDb();
   await pg.close();
 });
@@ -71,14 +74,15 @@ beforeEach(async () => {
     ip: SELF_IP,
     host: SELF_IP,
   });
-  const agents = fakeAgents();
-  __setAgentConnectorForTest(agents.connector);
-  const old = fakeOldDeplo(agents, {
-    hello: helloOf({ servers: [summary({ id: "srv_web", name: "web" })] }),
+  __setAgentConnectorForTest(fakeAgents().connector);
+  const old = fakeOldDeplo({
+    hello: helloOf({
+      servers: [summary({ id: "srv_web", name: "web", apps: 1 })],
+    }),
   });
   __setMigrationFetchForTest(old.fetch);
-  __setPortProbeForTest(async () => true);
   invalidateFrozen();
+  invalidateSchedulesPaused();
 });
 
 type Principal = { identity: RequestIdentity | null; ctx: GraphQLContext };
@@ -135,6 +139,8 @@ const ADMIN_ONLY = [
   "mutation { cancelMoveCode }",
   `mutation { connectDeploMove(url: "${OLD}", code: "${MOVE_CODE}") { id } }`,
   'mutation { startDeploMove(id: "dmv_any") { id } }',
+  `mutation { startDeploMove(id: "dmv_any", map: [{ from: "srv_web", to: "srv_self" }]) { id } }`,
+  "mutation { resumeMoveSchedules }",
 ];
 
 test("every admin field refuses anyone who is not an instance admin", async () => {
@@ -165,12 +171,12 @@ test("an instance admin mints a code shown once, sees it armed, and withdraws it
 
   const status = await run(
     admin,
-    "query { sourceMove { state expiresAt handedOver peerUrl } }",
+    "query { sourceMove { state expiresAt finishedAt peerUrl } }",
   );
   assert.deepEqual(status.data?.sourceMove, {
     state: "armed",
     expiresAt,
-    handedOver: 0,
+    finishedAt: null,
     peerUrl: null,
   });
 
@@ -210,7 +216,8 @@ test("an instance admin connects and reads the preview through the API", async (
       connectDeploMove(url: $url, code: $code) {
         id peerUrl canStart problems
         counts { teams users }
-        servers { name role isPanelHost problem }
+        servers { name role isPanelHost target choices problem }
+        targets { id isThisMachine canHostWorkloads }
       }
     }`,
     { url: OLD, code: MOVE_CODE },
@@ -225,7 +232,14 @@ test("an instance admin connects and reads the preview through the API", async (
   assert.equal(preview.peerUrl, OLD);
   assert.equal(preview.canStart, true);
   assert.deepEqual(preview.servers, [
-    { name: "web", role: "workloads", isPanelHost: false, problem: null },
+    {
+      name: "web",
+      role: "workloads",
+      isPanelHost: false,
+      target: "srv_self",
+      choices: ["srv_self"],
+      problem: null,
+    },
   ]);
   const open = await run(admin, "query { targetMove }");
   assert.equal(open.data?.targetMove, preview.id);
@@ -251,6 +265,7 @@ test("a move's status is public by its id, and an unknown id is null", async () 
     ANONYMOUS,
     `query { deploMoveStatus(id: "dmv_public") {
       state peerUrl canCancel canRetry canFinishWithoutSource steps { key state }
+      servers { id targetId } workloads { id state }
     } }`,
   );
   assert.deepEqual(known.errors, []);
@@ -262,9 +277,11 @@ test("a move's status is public by its id, and an unknown id is null", async () 
     canFinishWithoutSource: false,
     steps: [
       { key: "copy", state: "waiting" },
-      { key: "servers", state: "waiting" },
+      { key: "deploy", state: "waiting" },
       { key: "finish", state: "waiting" },
     ],
+    servers: [],
+    workloads: [],
   });
 });
 
@@ -301,4 +318,61 @@ test("retry, cancel and finish answer by id with no session, and say plainly whe
   );
   assert.deepEqual(cancelled.errors, []);
   assert.deepEqual(cancelled.data?.cancelDeploMove, { state: "cancelled" });
+});
+
+test("a server map the roles do not allow is refused through the API, before anything starts", async () => {
+  const admin = await signedIn(USER_1);
+  await pg.exec(`delete from memberships where user_id = '${MEMBER}';
+    delete from users where id = '${MEMBER}';`);
+  const connected = await run(
+    admin,
+    `mutation C($url: String!, $code: String!) {
+      connectDeploMove(url: $url, code: $code) { id }
+    }`,
+    { url: OLD, code: MOVE_CODE },
+  );
+  const { id } = connected.data?.connectDeploMove as { id: string };
+  const res = await run(
+    admin,
+    `mutation S($id: String!, $map: [DeploMoveServerMapInput!]) {
+      startDeploMove(id: $id, map: $map) { state }
+    }`,
+    { id, map: [{ from: "srv_nope", to: "srv_self" }] },
+  );
+  assert.match(res.errors.join(" "), /a server the old Deplo does not have/);
+  const [row] = await db.select().from(deploMoves);
+  assert.equal(row.state, "connected");
+});
+
+test("only an instance admin turns the paused schedules back on", async () => {
+  await db.insert(deploMoves).values({
+    id: "dmv_done",
+    side: "target",
+    state: "done",
+    peerUrl: OLD,
+    startedBy: "Ada",
+    schedulesPaused: true,
+    createdAt: T0,
+    updatedAt: T0,
+  });
+  invalidateSchedulesPaused();
+  assert.equal(await schedulesPaused(), true);
+
+  const refused = await run(
+    await signedIn(MEMBER),
+    "mutation { resumeMoveSchedules }",
+  );
+  assert.ok(refused.errors.length > 0);
+  invalidateSchedulesPaused();
+  assert.equal(await schedulesPaused(), true);
+
+  const turnedOn = await run(
+    await signedIn(USER_1),
+    "mutation { resumeMoveSchedules }",
+  );
+  assert.deepEqual(turnedOn, {
+    data: { resumeMoveSchedules: true },
+    errors: [],
+  });
+  assert.equal(await schedulesPaused(), false);
 });

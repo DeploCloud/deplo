@@ -1,19 +1,28 @@
 import {
+  MOVE_FILENAME_HEADER,
   MOVE_PEER_HEADER,
   MOVE_PEER_URL_HEADER,
   isMoveStep,
   type MoveStep,
+  type WorkloadRef,
 } from "@/lib/deplo-move/protocol";
 import {
   MoveRefusedError,
-  moveCsr,
+  dataRefusal,
+  moveCancel,
   moveDump,
+  moveFiles,
   moveFinish,
-  moveFreeze,
   moveHello,
-  moveInstall,
-  moveThaw,
+  moveHostPath,
+  moveImage,
+  movePause,
+  moveResume,
+  moveUpload,
+  moveVolume,
+  moveWorkload,
   type MoveCaller,
+  type MoveDataStream,
 } from "@/lib/data/deplo-move/source-api";
 import { userFacingMessage } from "@/lib/graphql/mask-error";
 import { readTextCapped } from "@/lib/http/body-cap";
@@ -21,39 +30,54 @@ import { readTextCapped } from "@/lib/http/body-cap";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-function refused(message: string, status: number, handedOver = false) {
+function refused(message: string, status: number, agentCode?: number) {
   return Response.json(
-    handedOver ? { error: message, handedOver } : { error: message },
+    agentCode === undefined
+      ? { error: message }
+      : { error: message, code: agentCode },
     { status },
   );
 }
 
-function ndjson(
-  first: string,
-  rest: AsyncIterator<string>,
+function failed(e: unknown): Response {
+  if (e instanceof MoveRefusedError)
+    return refused(e.message, e.status, e.agentCode);
+  const message = userFacingMessage(e);
+  if (message == null) console.error("[deplo-move] a step failed:", e);
+  // Never 502-504: the new Deplo reads those as this panel being down.
+  return refused(message ?? "Something went wrong on the old Deplo.", 500);
+}
+
+function streamOf<T>(
+  first: T,
+  rest: AsyncIterator<T>,
+  encode: (v: T) => Uint8Array,
+  close: () => void = () => {},
 ): ReadableStream<Uint8Array> {
-  const enc = new TextEncoder();
-  const line = (s: string) => enc.encode(s.endsWith("\n") ? s : `${s}\n`);
   let sentFirst = false;
   return new ReadableStream<Uint8Array>({
     async pull(controller) {
       if (!sentFirst) {
         sentFirst = true;
-        controller.enqueue(line(first));
+        controller.enqueue(encode(first));
         return;
       }
       try {
         const next = await rest.next();
-        if (next.done) controller.close();
-        else controller.enqueue(line(next.value));
+        if (next.done) {
+          close();
+          controller.close();
+        } else controller.enqueue(encode(next.value));
       } catch (e) {
-        // The dump ends with an `end` frame, so the new Deplo reads a cut stream as a failure.
+        // A cut stream is a failure on the new Deplo: a dump ends with an `end` frame, an archive with its trailer.
         console.error("[deplo-move] the copy stopped mid-stream:", e);
+        close();
         controller.error(e);
       }
     },
     async cancel() {
       await rest.return?.();
+      close();
     },
   });
 }
@@ -62,12 +86,41 @@ async function dumpResponse(caller: MoveCaller): Promise<Response> {
   const it = (await moveDump(caller))[Symbol.asyncIterator]();
   const first = await it.next();
   if (first.done) return refused("The old Deplo sent nothing to copy.", 500);
-  return new Response(ndjson(first.value, it), {
+  const enc = new TextEncoder();
+  const line = (s: string) => enc.encode(s.endsWith("\n") ? s : `${s}\n`);
+  return new Response(streamOf(first.value, it, line), {
     headers: {
       "Content-Type": "application/x-ndjson",
       "Cache-Control": "no-store",
     },
   });
+}
+
+// Raw bytes. The first chunk is read before answering, so an agent's refusal is still a JSON error.
+async function dataResponse(open: Promise<MoveDataStream>): Promise<Response> {
+  const data = await open;
+  const headers: Record<string, string> = {
+    "Content-Type": "application/octet-stream",
+    "Cache-Control": "no-store",
+  };
+  if (data.filename !== undefined)
+    headers[MOVE_FILENAME_HEADER] = encodeURIComponent(data.filename);
+  const it = data.chunks[Symbol.asyncIterator]();
+  let first: IteratorResult<Buffer>;
+  try {
+    first = await it.next();
+  } catch (e) {
+    data.close();
+    return failed(dataRefusal(e));
+  }
+  if (first.done) {
+    data.close();
+    return new Response(null, { status: 204, headers });
+  }
+  return new Response(
+    streamOf(first.value, it, (b) => new Uint8Array(b), data.close),
+    { headers },
+  );
 }
 
 async function run(
@@ -76,34 +129,42 @@ async function run(
   body: Record<string, unknown>,
 ): Promise<Response> {
   const field = (k: string) => String(body[k] ?? "");
+  const ref = { kind: body.kind, id: field("id") } as Partial<WorkloadRef>;
   switch (step) {
     case "hello":
       return Response.json(await moveHello(caller));
-    case "freeze":
-      return Response.json(await moveFreeze(caller));
     case "dump":
       return dumpResponse(caller);
-    case "csr":
-      return Response.json(await moveCsr(caller, field("serverId")));
-    case "install":
-      return Response.json(
-        await moveInstall(caller, {
-          serverId: field("serverId"),
-          certPem: field("certPem"),
-          caPem: field("caPem"),
+    case "workload":
+      return Response.json(await moveWorkload(caller, ref));
+    case "pause":
+      return Response.json(await movePause(caller, ref));
+    case "resume":
+      return Response.json(await moveResume(caller, ref));
+    case "volume":
+      return dataResponse(
+        moveVolume(caller, { ...ref, volume: field("volume") }),
+      );
+    case "hostpath":
+      return dataResponse(
+        moveHostPath(caller, {
+          ...ref,
+          path: field("path"),
+          allowFile: body.allowFile === true,
         }),
       );
+    case "files":
+      return dataResponse(moveFiles(caller, ref));
+    case "image":
+      return dataResponse(
+        moveImage(caller, { ...ref, imageRef: field("imageRef") }),
+      );
+    case "upload":
+      return dataResponse(moveUpload(caller, ref));
     case "finish":
-      return Response.json(
-        await moveFinish(caller, {
-          movedTo: field("movedTo"),
-          handedOver: Array.isArray(body.handedOver)
-            ? body.handedOver.map(String)
-            : [],
-        }),
-      );
-    case "thaw":
-      return Response.json(await moveThaw(caller));
+      return Response.json(await moveFinish(caller));
+    case "cancel":
+      return Response.json(await moveCancel(caller));
   }
 }
 
@@ -135,10 +196,6 @@ export async function POST(
   try {
     return await run(step, caller, body);
   } catch (e) {
-    if (e instanceof MoveRefusedError)
-      return refused(e.message, e.status, e.handedOver);
-    const message = userFacingMessage(e);
-    if (message == null) console.error("[deplo-move] a step failed:", e);
-    return refused(message ?? "Something went wrong on the old Deplo.", 500);
+    return failed(e);
   }
 }

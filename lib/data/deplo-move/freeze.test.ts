@@ -78,56 +78,43 @@ async function tokenContext() {
 
 const createFolder = MCP_TOOLS.find((t) => t.name === "create_folder")!;
 
-test("only a frozen or moved source, or a target mid-copy, freezes", async () => {
+test("only a new Deplo mid-copy freezes, never the old one", async () => {
   for (const [side, state] of [
     ["source", "armed"],
     ["source", "bound"],
+    ["source", "copying"],
+    ["source", "done"],
+    ["source", "cancelled"],
     ["target", "connected"],
+    ["target", "deploying"],
     ["target", "done"],
     ["target", "cancelled"],
     ["target", "failed"],
   ] as const)
     await move(side, state);
-  assert.equal(
-    await instanceFrozen(),
-    null,
-    "a failed move that copied nothing",
-  );
-
   await db.update(deploMoves).set({ rowsCopied: 12 });
   invalidateFrozen();
   assert.equal(
-    (await instanceFrozen())?.state,
-    "failed",
-    "a failed move holding copied data stays frozen until retry or cancel",
+    await instanceFrozen(),
+    null,
+    "a failed copy that already landed rows no longer holds changes",
   );
+
   await db.delete(deploMoves);
   await move("target", "copying");
-  assert.match((await instanceFrozen())!.message, /moving here from/);
-});
-
-test("the sentence says where the Deplo is going, then where it went", async () => {
-  await move("source", "frozen");
-  const frozen = await instanceFrozen();
-  assert.equal(frozen?.moved, false);
-  assert.equal(
-    frozen?.message,
-    `This Deplo is moving to ${NEW}. Changes are paused until it finishes.`,
-  );
-
-  await db.update(deploMoves).set({ state: "moved" });
-  invalidateFrozen();
-  const moved = await instanceFrozen();
-  assert.equal(moved?.moved, true);
-  assert.equal(moved?.message, `This Deplo moved to ${NEW}.`);
+  assert.deepEqual(await instanceFrozen(), {
+    state: "copying",
+    peerUrl: NEW,
+    message: `A Deplo is being copied here from ${NEW}. Changes are paused until its data is in.`,
+  });
 });
 
 test("the answer is cached until invalidated", async () => {
   assert.equal(await instanceFrozen(), null);
   await db.insert(deploMoves).values({
     id: "dmv_quiet",
-    side: "source",
-    state: "frozen",
+    side: "target",
+    state: "copying",
     peerUrl: NEW,
     startedBy: "user_1",
     createdAt: T0,
@@ -143,11 +130,11 @@ test("a mutation is refused while frozen, on the schema MCP runs too", async () 
   const ok = await runGraphql(createFolder.query, { name: "Before" }, ctx);
   assert.equal(ok.error, undefined, ok.error ?? "");
 
-  await move("source", "frozen");
+  await move("target", "copying");
   const res = await runGraphql(createFolder.query, { name: "During" }, ctx);
   assert.match(
     res.error ?? "",
-    /This Deplo is moving to https:\/\/new\.example/,
+    /A Deplo is being copied here from https:\/\/new\.example/,
   );
   const names = (await db.select({ name: folders.name }).from(folders)).map(
     (f) => f.name,
@@ -166,14 +153,14 @@ test("an allowlisted mutation is never refused by the freeze", async () => {
     if (!moveOwn.test(name)) assert.ok(fields[name], `no mutation ${name}`);
 
   const ctx = await tokenContext();
-  await move("source", "frozen");
+  await move("target", "copying");
   const res = await runGraphql("mutation { logout }", {}, ctx);
-  assert.doesNotMatch(res.error ?? "", /moving to/);
+  assert.doesNotMatch(res.error ?? "", /being copied/);
 });
 
 test("a REST write answers 503 with the sentence", async () => {
   assert.equal(await refuseWhileFrozen(), null);
-  await move("source", "moved");
+  await move("target", "copying");
   const res = await bootstrap(
     new Request("http://deplo.test/api/agent/bootstrap", {
       method: "POST",
@@ -182,6 +169,6 @@ test("a REST write answers 503 with the sentence", async () => {
   );
   assert.equal(res.status, 503);
   assert.deepEqual(await res.json(), {
-    error: `This Deplo moved to ${NEW}.`,
+    error: `A Deplo is being copied here from ${NEW}. Changes are paused until its data is in.`,
   });
 });

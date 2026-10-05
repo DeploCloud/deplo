@@ -23,6 +23,7 @@ import { requireDatabase } from "./rows";
 import { renderDatabaseStackYaml, rerouteRequest } from "./stack";
 import { resolveTeamServer } from "./server-ports";
 import type { Database } from "../../types/database";
+import { assertNotPausedForMove } from "../deplo-move/source-guard";
 
 // postgres/mysql/mariadb/mongodb keep users INSIDE the data volume; redis/clickhouse rotate on re-render.
 export function rotationExecCommand(
@@ -82,6 +83,7 @@ export async function rotateDatabasePassword(
   input: { password?: string } = {},
 ): Promise<string> {
   const teamId = (await requireCapability("configure_databases")).teamId;
+  await assertNotPausedForMove("database", id);
   const user = (await getCurrentUser())!;
 
   const newPassword = input.password?.trim() || randomToken(24);

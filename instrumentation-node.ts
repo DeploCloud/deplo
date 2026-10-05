@@ -154,6 +154,14 @@ export async function register(): Promise<void> {
   } catch (e) {
     console.error("[deplo] metrics stream supervisor startup failed:", e);
   }
+  // Never frozen-gated: a workload lent to a Deplo move starts again here once its lease lapses.
+  try {
+    const { startPauseSweep } =
+      await import("./lib/data/deplo-move/source-pauses");
+    startPauseSweep();
+  } catch (e) {
+    console.error("[deplo] Deplo move pause sweep startup failed:", e);
+  }
   {
     const g = globalThis as { __deploCertSweep?: boolean };
     if (!g.__deploCertSweep) {

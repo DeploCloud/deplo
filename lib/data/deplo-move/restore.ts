@@ -1,12 +1,12 @@
 import "server-only";
 
-import { sql } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 
 import { getDb, type DbTx } from "../../db/client";
 import {
-  deploHostSelfAddresses,
-  isDeploHostServer,
-} from "../../deploy/domains";
+  serverTeams,
+  servers as serversTable,
+} from "../../db/schema/control-plane/servers";
 import { MOVE_PROTOCOL, type DumpFrame } from "../../deplo-move/protocol";
 import { schemaTag } from "../../deplo-move/schema-tag";
 import {
@@ -15,8 +15,17 @@ import {
   copyPolicy,
   mergeForeignColumns,
   quoteIdent,
+  serverColumns,
   tableShapes,
 } from "../../deplo-move/tables";
+import {
+  isLoopbackIp,
+  rehostWildcard,
+  wildcardEmbeddedIp,
+} from "../../deploy/domains";
+import { parseHostAddress } from "../../host-address";
+import { serverIpv4 } from "../servers/addresses";
+import { listAllServers } from "../servers/roster";
 import { isSealed, resultRows, sealValue } from "./rekey";
 
 export { schemaTag };
@@ -27,11 +36,15 @@ export interface RestoreResult {
 }
 
 export interface RestoreOptions {
+  // Each of the old Deplo's servers -> the server here that takes its place. Null or missing leaves it out.
+  serverMap: ReadonlyMap<string, string | null>;
+  // The old Deplo's address: every copied backup run is marked as its.
+  peerUrl: string;
   // Runs inside the open transaction: never await a write to this database from it.
   onRows?: (rows: number) => void;
 }
 
-// This machine's own server row: it survives the wipe, and the old Deplo's rows must not collide with it.
+// One of this Deplo's servers: every one survives the wipe.
 export interface KeptServer {
   id: string;
   name: string;
@@ -41,6 +54,23 @@ export interface KeptServer {
 type Row = Record<string, unknown>;
 type RowsFrame = Extract<DumpFrame, { kind: "rows" }>;
 
+interface OldServer {
+  name: string;
+  ipv4: string | null;
+  allTeams: boolean;
+}
+
+// What the copy learns on the way in and settles once every table is in.
+interface Copy {
+  opts: RestoreOptions;
+  kept: KeptServer[];
+  targetIps: Map<string, string | null>;
+  oldServers: Map<string, OldServer>;
+  oldGrants: { serverId: string; teamId: string }[];
+  appServers: Map<string, { from: string; to: string; url: string | null }>;
+  later: Map<string, Row[]>;
+}
+
 const BATCH = 500;
 const CUT =
   "The copy from the old Deplo stopped before it finished. Nothing was changed here; try again.";
@@ -48,12 +78,14 @@ const DAMAGED =
   "The copy from the old Deplo arrived damaged. Nothing was changed here; try again.";
 const MISMATCH =
   "The two Deplos are on different versions. Update both to the same version, then try again.";
+const NO_PEER = "This move lost its connection to the old Deplo.";
+const TARGET_GONE =
+  "A server chosen for the copy is no longer on this Deplo. Choose again, then try again.";
 
-// Empties every copied table except this machine's own server row; merged tables keep their rows.
+// Empties every copied table but `servers`: each of this Deplo's servers stays, open to every team again.
 export async function wipeForMove(
   tx: DbTx,
 ): Promise<{ keptServers: KeptServer[] }> {
-  const keptServers = await ownServers(tx);
   for (const [table, policy] of Object.entries(MOVE_TABLES))
     if (policy.kind === "skip" && policy.clear)
       await tx.execute(sql.raw(`delete from ${quoteIdent(table)}`));
@@ -65,55 +97,49 @@ export async function wipeForMove(
       );
       if (set.length)
         await tx.execute(sql.raw(`update ${t} set ${set.join(", ")}`));
-    } else if (table === "servers" && keptServers.length > 0) {
-      const ids = keptServers.map((s) => s.id);
-      await tx.execute(sql`delete from servers where id not in ${ids}`);
+    } else if (table === "servers") {
+      await tx.update(serversTable).set({ allTeams: true });
     } else {
       await tx.execute(sql.raw(`delete from ${t}`));
     }
   }
-  return { keptServers };
-}
-
-async function ownServers(tx: DbTx): Promise<KeptServer[]> {
-  const self = deploHostSelfAddresses();
-  const rows = resultRows<{
-    id: string;
-    name: string;
-    ip: string | null;
-    host: string | null;
-    agent_cert_fingerprint: string | null;
-  }>(
-    await tx.execute(
-      sql`select id, name, ip, host, agent_cert_fingerprint from servers`,
-    ),
-  );
-  return rows
-    .filter((s) =>
-      isDeploHostServer(
-        { ip: s.ip ?? undefined, host: s.host ?? undefined },
-        self,
-      ),
-    )
-    .map((s) => ({
-      id: s.id,
-      name: s.name,
-      fingerprint: s.agent_cert_fingerprint || null,
-    }));
+  const keptServers = await tx
+    .select({
+      id: serversTable.id,
+      name: serversTable.name,
+      fingerprint: serversTable.agentCertFingerprint,
+    })
+    .from(serversTable);
+  return {
+    keptServers: keptServers.map((s) => ({
+      ...s,
+      fingerprint: s.fingerprint || null,
+    })),
+  };
 }
 
 // Replaces this Deplo's data with the old one's, in one transaction: a cut stream changes nothing.
 export async function restoreInstance(
   lines: AsyncIterable<string>,
-  opts: RestoreOptions = {},
+  opts: RestoreOptions,
 ): Promise<RestoreResult> {
   const frames = readFrames(lines);
   try {
     const first = await frames.next();
     const order = checkBegin(first.done ? undefined : first.value);
+    if (!opts.peerUrl.trim()) throw new Error(NO_PEER);
+    const targetIps = await placeTargets(opts.serverMap);
     return await getDb().transaction(async (tx) => {
       const { keptServers } = await wipeForMove(tx);
-      const later = new Map<string, Row[]>();
+      const copy: Copy = {
+        opts,
+        kept: keptServers,
+        targetIps,
+        oldServers: new Map(),
+        oldGrants: [],
+        appServers: new Map(),
+        later: new Map(),
+      };
       let at = 0;
       let rows = 0;
       let unreadable = 0;
@@ -132,17 +158,14 @@ export async function restoreInstance(
         if (index < at) throw new Error(DAMAGED);
         at = index;
         const lost = frame.unreadable ?? [];
-        await insertFrame(
-          tx,
-          { ...frame, unreadable: lost },
-          keptServers,
-          later,
-        );
         rows += frame.rows.length;
         unreadable += lost.length;
+        await insertFrame(tx, { ...frame, unreadable: lost }, copy);
         opts.onRows?.(rows);
       }
-      await applyDeferred(tx, later);
+      await applyDeferred(tx, copy.later);
+      await applyServerAccess(tx, copy);
+      await rehostGeneratedNames(tx, copy);
       await restartSequences(tx, order);
       return { rows, unreadable };
     });
@@ -185,34 +208,61 @@ function checkBegin(frame: DumpFrame | undefined): string[] {
   return order;
 }
 
+// Every server the map names exists here; each one's IPv4, for the generated names that move onto it.
+async function placeTargets(
+  serverMap: ReadonlyMap<string, string | null>,
+): Promise<Map<string, string | null>> {
+  const here = new Map((await listAllServers()).map((s) => [s.id, s]));
+  const ips = new Map<string, string | null>();
+  for (const id of serverMap.values()) {
+    if (!id || ips.has(id)) continue;
+    const server = here.get(id);
+    if (!server) throw new Error(TARGET_GONE);
+    ips.set(id, await serverIpv4(server).catch(() => null));
+  }
+  return ips;
+}
+
+function literalIpv4(row: Row): string | null {
+  for (const raw of [row.ip, row.host]) {
+    const a = parseHostAddress(typeof raw === "string" ? raw : null);
+    if (a?.kind === "ipv4" && !isLoopbackIp(a.host)) return a.host;
+  }
+  return null;
+}
+
 async function insertFrame(
   tx: DbTx,
   frame: RowsFrame,
-  keptServers: KeptServer[],
-  later: Map<string, Row[]>,
+  copy: Copy,
 ): Promise<void> {
-  const { table, rows } = frame;
+  const { table } = frame;
   const policy = copyPolicy(table);
   const shape = tableShapes().get(table)!;
   const lost = new Set(frame.unreadable.map(([i, c]) => `${i}:${c}`));
   const rekey = Object.entries(policy.rekey ?? {});
-  const deferred = policy.deferred ?? [];
-  for (const [i, row] of rows.entries()) {
+  for (const [i, row] of frame.rows.entries()) {
     for (const c of policy.nullOnCopy ?? []) row[c] = null;
     for (const [c, key] of rekey) {
       const value = row[c];
       if (isSealed(value) && !lost.has(`${i}:${c}`))
         row[c] = await sealValue(key, value);
     }
+  }
+  if (policy.mapped) return readMapped(table, frame.rows, copy);
+  const rows = frame.rows.filter((row) => placeRow(table, row, copy));
+  const deferred = policy.deferred ?? [];
+  for (const row of rows) {
+    if (table === "backup_runs") row.copied_from ??= copy.opts.peerUrl;
     if (deferred.some((c) => row[c] != null)) {
       const keep: Row = {};
       for (const c of [...shape.primaryKey, ...deferred]) keep[c] = row[c];
-      if (!later.has(table)) later.set(table, []);
-      later.get(table)!.push(keep);
+      if (!copy.later.has(table)) copy.later.set(table, []);
+      copy.later.get(table)!.push(keep);
       for (const c of deferred) row[c] = null;
     }
   }
-  if (table === "servers") refuseThisMachine(rows, keptServers);
+  if (rows.length === 0) return;
   const t = sql.raw(quoteIdent(table));
   let merge = sql.raw("");
   if (policy.keepTarget) {
@@ -222,23 +272,77 @@ async function insertFrame(
       .map((c) => `${quoteIdent(c)} = excluded.${quoteIdent(c)}`);
     const key = shape.primaryKey.map(quoteIdent).join(", ");
     merge = sql.raw(` on conflict (${key}) do update set ${set.join(", ")}`);
+  } else if (serverColumns(table).some((c) => shape.primaryKey.includes(c))) {
+    // Two old servers placed on one server here make their rows one.
+    merge = sql.raw(" on conflict do nothing");
   }
   await tx.execute(
     sql`insert into ${t} overriding system value select * from json_populate_recordset(null::${t}, ${JSON.stringify(rows)}::json)${merge}`,
   );
 }
 
-function refuseThisMachine(rows: Row[], keptServers: KeptServer[]): void {
+function readMapped(table: string, rows: Row[], copy: Copy): void {
+  if (table === "server_teams") {
+    for (const r of rows)
+      copy.oldGrants.push({
+        serverId: String(r.server_id),
+        teamId: String(r.team_id),
+      });
+    return;
+  }
+  refuseOurServers(rows, copy.kept);
+  for (const r of rows)
+    copy.oldServers.set(String(r.id), {
+      name: String(r.name),
+      ipv4: literalIpv4(r),
+      allTeams: r.all_teams !== false,
+    });
+}
+
+// Rewrites every server the row names through the map; false drops a row that cannot do without its server.
+function placeRow(table: string, row: Row, copy: Copy): boolean {
+  const policy = copyPolicy(table);
+  const notNull = tableShapes().get(table)!.notNull;
+  for (const c of serverColumns(table)) {
+    const from = row[c];
+    if (typeof from !== "string") continue;
+    const to = copy.opts.serverMap.get(from) ?? null;
+    if (to) {
+      row[c] = to;
+      if (table === "apps" && c === "server_id")
+        copy.appServers.set(String(row.id), {
+          from,
+          to,
+          url:
+            typeof row.production_url === "string" ? row.production_url : null,
+        });
+      continue;
+    }
+    if (policy.needsServer?.includes(c))
+      throw new Error(leftOut(row, copy.oldServers.get(from)?.name ?? from));
+    if (notNull.has(c)) return false;
+    row[c] = null;
+  }
+  return true;
+}
+
+function leftOut(row: Row, server: string): string {
+  const what =
+    typeof row.name === "string" && row.name ? `"${row.name}"` : "Something";
+  return `${what} is on the old server "${server}", which this copy leaves out. Choose a server here for it, then try again.`;
+}
+
+function refuseOurServers(rows: Row[], kept: KeptServer[]): void {
   for (const row of rows) {
     const fingerprint = row.agent_cert_fingerprint;
-    const clash = keptServers.some(
+    const ours = kept.find(
       (k) =>
         k.id === row.id ||
         (k.fingerprint !== null && k.fingerprint === fingerprint),
     );
-    if (clash)
+    if (ours)
       throw new Error(
-        `The old Deplo has this machine as its server "${String(row.name)}". Move to a machine that is not one of its servers.`,
+        `This Deplo's server "${ours.name}" is also the old Deplo's server "${String(row.name)}". Copy onto a machine the old Deplo does not use.`,
       );
   }
 }
@@ -266,6 +370,70 @@ async function applyDeferred(
         sql`update ${t} as t set ${set} from json_populate_recordset(null::${t}, ${batch}::json) as v where ${match}`,
       );
     }
+  }
+}
+
+// A server here gets the team access of the old servers it replaces together: every team if one had it.
+async function applyServerAccess(tx: DbTx, copy: Copy): Promise<void> {
+  const replaced = new Map<string, string[]>();
+  for (const [from, to] of copy.opts.serverMap)
+    if (to && copy.oldServers.has(from))
+      replaced.set(to, [...(replaced.get(to) ?? []), from]);
+  for (const [to, olds] of replaced) {
+    const allTeams = olds.some((o) => copy.oldServers.get(o)!.allTeams);
+    await tx
+      .update(serversTable)
+      .set({ allTeams })
+      .where(eq(serversTable.id, to));
+    const teams = new Set(
+      copy.oldGrants
+        .filter((g) => olds.includes(g.serverId))
+        .map((g) => g.teamId),
+    );
+    if (teams.size)
+      await tx
+        .insert(serverTeams)
+        .values([...teams].map((teamId) => ({ serverId: to, teamId })))
+        .onConflictDoNothing();
+  }
+}
+
+// A generated name embeds its server's IPv4, so one minted for the old server would answer from there.
+async function rehostGeneratedNames(tx: DbTx, copy: Copy): Promise<void> {
+  const moved = new Map<string, { from: string; to: string }>();
+  for (const [appId, s] of copy.appServers) {
+    const from = copy.oldServers.get(s.from)?.ipv4;
+    const to = copy.targetIps.get(s.to);
+    if (from && to && from !== to) moved.set(appId, { from, to });
+  }
+  if (moved.size === 0) return;
+  const rehost = (host: string, ip: { from: string; to: string }) =>
+    wildcardEmbeddedIp(host) === ip.from ? rehostWildcard(host, ip.to) : host;
+  const domains = resultRows<{ id: string; app_id: string; name: string }>(
+    await tx.execute(
+      sql`select id, app_id, name from domains where source = 'auto' and app_id in ${[...moved.keys()]}`,
+    ),
+  );
+  for (const d of domains) {
+    const name = rehost(d.name, moved.get(d.app_id)!);
+    if (name === d.name) continue;
+    // A name already taken here stays as it was rather than failing the whole copy.
+    await tx.execute(sql`
+      update domains as t set name = ${name} where t.id = ${d.id} and not exists (
+        select 1 from domains o where o.name = ${name}
+          and coalesce(o.path_prefix, '') = coalesce(t.path_prefix, ''))`);
+  }
+  for (const [appId, ip] of moved) {
+    const url = copy.appServers.get(appId)!.url;
+    if (!url) continue;
+    const next = url.replace(
+      /^(https?:\/\/)([^/]+)/,
+      (_m, scheme: string, host: string) => scheme + rehost(host, ip),
+    );
+    if (next !== url)
+      await tx.execute(
+        sql`update apps set production_url = ${next} where id = ${appId}`,
+      );
   }
 }
 

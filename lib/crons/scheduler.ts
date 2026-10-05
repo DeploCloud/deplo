@@ -12,6 +12,7 @@ import {
 import { reapInFlightRuns } from "./runner/attempt";
 import { fireDueJobs } from "./runner/fire";
 import { instanceFrozen } from "../data/deplo-move/freeze";
+import { schedulesPaused } from "../data/deplo-move/schedules";
 
 const TICK_MS = 5_000;
 
@@ -70,7 +71,9 @@ export async function runCronSchedulerTick(
     if (!(await acquireLease(CRON_SCHEDULER_LEASE, state.owner, now))) return;
     const heartbeat = () => acquireLease(CRON_SCHEDULER_LEASE, state.owner);
     await reapInFlightRuns(now, heartbeat);
-    if (fire) await fireDueJobs(replayWindow(now), heartbeat);
+    // Paused after a Deplo move: the minutes pass unfired, so turning it on never replays them.
+    if (fire && !(await schedulesPaused()))
+      await fireDueJobs(replayWindow(now), heartbeat);
   } catch (e) {
     console.error(
       `[crons] scheduler tick failed: ${e instanceof Error ? e.message : String(e)}`,

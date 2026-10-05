@@ -6,6 +6,7 @@ import { loadAppGraph } from "../../data/app-graph-load";
 import { deploymentToRow } from "../../data/app-graph-rows/deployment";
 import { assertDataCopyIntact } from "../../data/data-copy";
 import { clearDeploymentLogs } from "../../data/deployment-logs";
+import { assertNotPausedForMove } from "../../data/deplo-move/source-guard";
 import { primaryDomainRow } from "../../data/domains/primary-domain";
 import { assertNotMigrating } from "../../data/migration-guard";
 import { getDb } from "../../db/client";
@@ -60,6 +61,8 @@ export async function startDeployment(
   if (!preview && !project.migrateFromServerId)
     assertDataCopyIntact(project.name, project.dataCopyError);
   assertNotMigrating("app", project.name, project.migrationRunId);
+  // A preview is its own stack; the app's is the one a copy is reading.
+  if (!preview) await assertNotPausedForMove("app", appId);
   await assertHostReachStillGranted(appId, project.name);
   const rollback = opts.rollback ?? null;
   const environment = opts.environment ?? (preview ? "preview" : "production");

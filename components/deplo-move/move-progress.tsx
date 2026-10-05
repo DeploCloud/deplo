@@ -2,11 +2,12 @@
 
 import * as React from "react";
 import {
+  Box,
   CircleCheck,
   CircleDashed,
   CircleX,
+  Database,
   Loader2,
-  Server as ServerIcon,
   TriangleAlert,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -16,12 +17,13 @@ import { Button } from "@/components/ui/button";
 import { DocsLink } from "@/components/ui/docs-link";
 import { ConfirmAction } from "@/components/shared/confirm-action";
 import { gqlAction } from "@/lib/graphql-client";
+import type { ActionResult } from "@/lib/result";
 import type {
   MoveStatus,
   MoveStatusStepKey,
   MoveStatusStepState,
 } from "@/lib/data/deplo-move/target";
-import type { MoveServerState } from "@/lib/deplo-move/protocol";
+import type { MoveWorkloadState } from "@/lib/deplo-move/protocol";
 import { cn } from "@/lib/utils";
 import { PeerLink } from "./peer-link";
 
@@ -41,11 +43,20 @@ const STATUS_FIELDS = `
   canRetry
   canCancel
   canFinishWithoutSource
+  canSkip
+  needsAdminSignIn
   steps {
     key
     state
   }
   servers {
+    id
+    name
+    targetId
+    targetName
+  }
+  workloads {
+    kind
     id
     name
     state
@@ -85,12 +96,24 @@ const FINISH_WITHOUT_SOURCE = /* GraphQL */ `
   }
 `;
 
+const SKIP_WORKLOAD = /* GraphQL */ `
+  mutation SkipDeploMoveWorkload(
+    $id: String!
+    $kind: DeploMoveWorkloadKind!
+    $workloadId: String!
+  ) {
+    skipDeploMoveWorkload(id: $id, kind: $kind, workloadId: $workloadId) {
+      ${STATUS_FIELDS}
+    }
+  }
+`;
+
 const POLL_MS = 2_000;
 
 const TITLE: Record<MoveView["state"], string> = {
   connected: "Ready to move",
   copying: "Moving Deplo",
-  handing_over: "Moving Deplo",
+  deploying: "Moving Deplo",
   failed: "The move stopped",
   done: "Moved",
   cancelled: "Move cancelled",
@@ -98,14 +121,16 @@ const TITLE: Record<MoveView["state"], string> = {
 
 const STEP_LABEL: Record<MoveStatusStepKey, string> = {
   copy: "Copy everything",
-  servers: "Hand over servers",
+  deploy: "Deploy and copy data",
   finish: "Finish",
 };
 
-const SERVER_LABEL: Record<MoveServerState, string> = {
+const WORKLOAD_LABEL: Record<MoveWorkloadState, string> = {
   waiting: "Waiting",
-  handed_over: "Handed over",
+  copying: "Copying",
+  done: "Copied",
   failed: "Failed",
+  skipped: "Left out",
 };
 
 export function MoveProgress({ initial }: { initial: MoveView }) {
@@ -147,6 +172,15 @@ export function MoveProgress({ initial }: { initial: MoveView }) {
     return res;
   }
 
+  async function skip(w: MoveView["workloads"][number]) {
+    const res = await gqlAction<{ skipDeploMoveWorkload: MoveView }>(
+      SKIP_WORKLOAD,
+      { id, kind: w.kind, workloadId: w.id },
+    );
+    if (res.ok && res.data) setStatus(res.data.skipDeploMoveWorkload);
+    return res;
+  }
+
   async function finishWithoutSource() {
     const res = await gqlAction<{ finishDeploMoveWithoutSource: MoveView }>(
       FINISH_WITHOUT_SOURCE,
@@ -166,13 +200,18 @@ export function MoveProgress({ initial }: { initial: MoveView }) {
         </h1>
         <p className="mt-1 text-sm text-balance text-muted-foreground">
           {state === "done" ? (
-            <>This Deplo now runs everything from {peer}.</>
+            <>
+              Everything from {peer} runs here now. The old Deplo keeps running
+              too, until you retire it.
+            </>
           ) : state === "cancelled" ? (
-            <>Nothing was moved from {peer}.</>
+            <>Nothing was moved from {peer}, and it kept running.</>
           ) : state === "failed" ? (
             <>From {peer}. Nothing is lost: fix what it says, then try again.</>
           ) : state === "connected" ? (
             <>From {peer}. It has not started yet.</>
+          ) : state === "deploying" ? (
+            <>From {peer}. Apps here may restart while their data copies.</>
           ) : (
             <>From {peer}. You can close this page: the move keeps going.</>
           )}{" "}
@@ -180,7 +219,9 @@ export function MoveProgress({ initial }: { initial: MoveView }) {
         </p>
       </div>
 
-      {state !== "cancelled" && <Steps status={status} />}
+      {state !== "cancelled" && (
+        <Steps status={status} onSkip={status.canSkip ? skip : undefined} />
+      )}
 
       {status.error && state === "failed" && (
         <Note tone="destructive">{status.error}</Note>
@@ -227,11 +268,11 @@ export function MoveProgress({ initial }: { initial: MoveView }) {
             <ConfirmAction
               trigger={<Button variant="outline">Cancel move</Button>}
               title="Cancel the move?"
-              description="The old Deplo takes changes again, and no server is handed over."
+              description="The old Deplo starts anything it paused and carries on as before."
               consequence={
                 state === "connected"
                   ? undefined
-                  : "Anything already copied here is deleted, and this Deplo has to be set up again."
+                  : "Everything copied or deployed here is deleted, and this Deplo has to be set up again."
               }
               confirmLabel="Cancel move"
               onConfirm={cancel}
@@ -249,7 +290,7 @@ export function MoveProgress({ initial }: { initial: MoveView }) {
                   Deplo keeps everything copied so far.
                 </>
               }
-              consequence="Servers not handed over yet stay with the old Deplo and must be added here again."
+              consequence="Apps and databases whose data never came across are left out, not deployed."
               confirmLabel="Finish move"
               onConfirm={finishWithoutSource}
             />
@@ -262,18 +303,30 @@ export function MoveProgress({ initial }: { initial: MoveView }) {
           )}
         </div>
       )}
+
+      {status.needsAdminSignIn && (
+        <p className="text-center text-sm text-muted-foreground">
+          <Link href="/login" className="font-medium text-foreground underline">
+            Sign in
+          </Link>{" "}
+          as an instance admin of <PeerLink url={status.peerUrl} /> to cancel,
+          skip or finish.
+        </p>
+      )}
     </div>
   );
 }
 
-function Steps({ status }: { status: MoveView }) {
-  const finished = status.state === "done";
-  const handed = status.servers.filter((s) => s.state === "handed_over");
-  // The first server still waiting is the one being handed over right now.
-  const current =
-    status.state === "handing_over"
-      ? status.servers.find((s) => s.state === "waiting")?.id
-      : undefined;
+type Workload = MoveView["workloads"][number];
+
+function Steps({
+  status,
+  onSkip,
+}: {
+  status: MoveView;
+  onSkip?: (w: Workload) => Promise<ActionResult<unknown>>;
+}) {
+  const copied = status.workloads.filter((w) => w.state === "done");
   return (
     <ol className="divide-y divide-border rounded-xl border border-border bg-card">
       {status.steps.map((step) => (
@@ -288,56 +341,83 @@ function Steps({ status }: { status: MoveView }) {
             >
               {STEP_LABEL[step.key]}
             </span>
-            {step.key === "servers" && status.servers.length > 0 && (
+            {step.key === "deploy" && status.workloads.length > 0 && (
               <span className="ml-auto text-xs text-muted-foreground tabular-nums">
-                {handed.length} of {status.servers.length}
+                {copied.length} of {status.workloads.length}
               </span>
             )}
           </div>
-          {step.key === "servers" && status.servers.length > 0 && (
+          {step.key === "deploy" && status.workloads.length > 0 && (
             <ul className="mt-2 ml-7 space-y-1.5">
-              {status.servers.map((s) => (
-                <li key={s.id} className="text-sm">
-                  <div className="flex items-center gap-2">
-                    <ServerIcon className="size-3.5 shrink-0 text-muted-foreground" />
-                    <span className="min-w-0 truncate">{s.name}</span>
-                    <span
-                      className={cn(
-                        "ml-auto flex shrink-0 items-center gap-1 text-xs",
-                        s.state === "handed_over" && "text-success",
-                        s.state === "failed" && "text-destructive",
-                        s.state === "waiting" && "text-muted-foreground",
-                      )}
-                    >
-                      {s.id === current && (
-                        <Loader2 className="size-3 animate-spin" />
-                      )}
-                      {s.id === current
-                        ? "Handing over"
-                        : finished && s.state === "failed"
-                          ? "Left behind"
-                          : SERVER_LABEL[s.state]}
-                    </span>
-                  </div>
-                  {s.error && (
-                    <p
-                      className={cn(
-                        "mt-0.5 ml-5.5 text-xs",
-                        s.state === "failed"
-                          ? "text-destructive"
-                          : "text-muted-foreground",
-                      )}
-                    >
-                      {s.error}
-                    </p>
-                  )}
-                </li>
+              {status.workloads.map((w) => (
+                <WorkloadRow
+                  key={`${w.kind}:${w.id}`}
+                  workload={w}
+                  onSkip={
+                    onSkip && w.state === "failed" ? () => onSkip(w) : undefined
+                  }
+                />
               ))}
             </ul>
           )}
         </li>
       ))}
     </ol>
+  );
+}
+
+function WorkloadRow({
+  workload: w,
+  onSkip,
+}: {
+  workload: Workload;
+  onSkip?: () => Promise<ActionResult<unknown>>;
+}) {
+  const Icon = w.kind === "database" ? Database : Box;
+  return (
+    <li className="text-sm">
+      <div className="flex items-center gap-2">
+        <Icon className="size-3.5 shrink-0 text-muted-foreground" />
+        <span className="min-w-0 truncate">{w.name}</span>
+        <span
+          className={cn(
+            "ml-auto flex shrink-0 items-center gap-1 text-xs",
+            w.state === "done" && "text-success",
+            w.state === "failed" && "text-destructive",
+            w.state === "skipped" && "text-warning",
+            (w.state === "waiting" || w.state === "copying") &&
+              "text-muted-foreground",
+          )}
+        >
+          {w.state === "copying" && <Loader2 className="size-3 animate-spin" />}
+          {WORKLOAD_LABEL[w.state]}
+        </span>
+        {onSkip && (
+          <ConfirmAction
+            trigger={
+              <Button variant="link" size="sm" className="h-auto p-0 text-xs">
+                Skip
+              </Button>
+            }
+            title={`Skip ${w.name}?`}
+            description="The move goes on without it."
+            consequence="It is left out of this Deplo: add it again by hand."
+            confirmLabel="Skip"
+            onConfirm={onSkip}
+          />
+        )}
+      </div>
+      {w.error && (
+        <p
+          className={cn(
+            "mt-0.5 ml-5.5 text-xs",
+            w.state === "failed" ? "text-destructive" : "text-muted-foreground",
+          )}
+        >
+          {w.error}
+        </p>
+      )}
+    </li>
   );
 }
 

@@ -29,6 +29,7 @@ import {
   runTargetWhere,
 } from "./target-lookup";
 import { backupTargetInScope, requireBackupCapability } from "./target-access";
+import { ownsArtifact } from "./copied-runs";
 import { formatBytes } from "./format-bytes";
 import type { BackupTargetKind } from "../../types/backup";
 
@@ -51,7 +52,7 @@ export async function deleteBackupRun(runId: string): Promise<void> {
     throw new Error("This backup is still running - wait for it to finish");
 
   const target = await downloadTargetFor(run, teamId);
-  if (run.objectKey && run.status === "success") {
+  if (ownsArtifact({ ...run, copiedFrom: runRows[0].copiedFrom })) {
     const creds = await getDestinationWithSecretsForTeam(
       teamId,
       run.destinationId,
@@ -106,6 +107,7 @@ export async function deleteBackupArtifacts(input: {
       id: backupRunsTable.id,
       objectKey: backupRunsTable.objectKey,
       status: backupRunsTable.status,
+      copiedFrom: backupRunsTable.copiedFrom,
     })
     .from(backupRunsTable)
     .where(
@@ -115,9 +117,7 @@ export async function deleteBackupArtifacts(input: {
         runTargetWhere(input.kind, input.targetId),
       ),
     );
-  const withArtifacts = runs.filter(
-    (r) => r.status === "success" && r.objectKey,
-  );
+  const withArtifacts = runs.filter(ownsArtifact);
 
   // By exact key, never by prefix: two server destinations on one host share the same managed folder.
   const results = await deleteManyFromDestination(

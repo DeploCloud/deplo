@@ -12,6 +12,7 @@ import { requireActiveTeamId, requireInstanceAdmin } from "../membership";
 import { getCurrentUser } from "../auth/current-user";
 import { isDeploHostServer } from "../deploy/domains";
 import { recordActivity } from "./activity";
+import { isPausedForMove } from "./deplo-move/source-guard";
 import { assertNotMigrationSource, getServerById } from "./servers/roster";
 import { stopStackOn, startStackOn } from "./volume-migration";
 
@@ -118,6 +119,7 @@ export async function restartServerWorkloads(
   const [appRows, dbRows] = await Promise.all([
     db
       .select({
+        id: appsTable.id,
         slug: appsTable.slug,
         name: appsTable.name,
         status: appsTable.status,
@@ -126,6 +128,7 @@ export async function restartServerWorkloads(
       .where(eq(appsTable.serverId, id)),
     db
       .select({
+        id: databasesTable.id,
         host: databasesTable.host,
         name: databasesTable.name,
         status: databasesTable.status,
@@ -136,18 +139,21 @@ export async function restartServerWorkloads(
 
   const targets: Array<{
     kind: "app" | "database";
+    id: string;
     slug: string;
     name: string;
     restart: boolean;
   }> = [
     ...appRows.map((a) => ({
       kind: "app" as const,
+      id: a.id,
       slug: a.slug,
       name: a.name,
       restart: !LEAVE_ALONE_APP_STATUSES.has(a.status),
     })),
     ...dbRows.map((d) => ({
       kind: "database" as const,
+      id: d.id,
       slug: d.host,
       name: d.name,
       restart: !LEAVE_ALONE_DB_STATUSES.has(d.status),
@@ -160,7 +166,8 @@ export async function restartServerWorkloads(
   let restarted = 0;
   let skipped = 0;
   for (const target of targets) {
-    if (!target.restart) {
+    // One lent to a copy of this Deplo starts again when the copy gives it back.
+    if (!target.restart || (await isPausedForMove(target.kind, target.id))) {
       skipped++;
       continue;
     }

@@ -130,6 +130,17 @@ test("the passthrough refuses every field that hands back a credential", () => {
   }
 });
 
+test("a Deplo move is never driven over MCP: its mutations act by id and can wipe the instance", () => {
+  for (const name of [
+    "createMoveCode",
+    "retryDeploMove",
+    "cancelDeploMove",
+    "finishDeploMoveWithoutSource",
+    "skipDeploMoveWorkload",
+  ])
+    assert.ok(deniedRootFields().has(name), `${name} is not denied`);
+});
+
 test("every reveal* root field is denied without being listed by hand", () => {
   const reveals = [
     ...Object.keys(schema.getQueryType()!.getFields()),

@@ -18,6 +18,7 @@ import { stackFilesDir } from "../../deploy/deploy-key";
 import { appNetwork, explainNetworkError } from "../../deploy/network";
 import { loadDatabase, mountsFor } from "./rows";
 import type { Database } from "../../types/database";
+import { isPausedForMove } from "../deplo-move/source-guard";
 
 export function dbVolumeHostName(slug: string): string {
   return `deplo-${slug}_${slug}-data`;
@@ -118,6 +119,7 @@ export async function getDatabaseVolumeBytes(
 export async function rerouteDatabase(
   id: string,
 ): Promise<"rerouted" | "unchanged" | "deferred"> {
+  if (await isPausedForMove("database", id)) return "deferred";
   const rows = await getDb()
     .select()
     .from(databasesTable)

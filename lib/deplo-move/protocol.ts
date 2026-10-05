@@ -1,5 +1,5 @@
 // The wire between two Deplos during a Deplo move (ADR-0035). Both sides run this file; a change bumps MOVE_PROTOCOL.
-export const MOVE_PROTOCOL = 1;
+export const MOVE_PROTOCOL = 2;
 
 // A move code names itself, so it is never mistaken for an API token (`deplo_`).
 export const MOVE_CODE_PREFIX = "dmove_";
@@ -7,18 +7,28 @@ export const MOVE_CODE_PREFIX = "dmove_";
 // How long a fresh code waits for the new Deplo to connect. Once bound it lives until the move ends.
 export const MOVE_CODE_TTL_MS = 60 * 60_000;
 
+// A workload paused for its copy starts again on its own once this lapses without a renewal.
+export const PAUSE_LEASE_MS = 2 * 60_000;
+
 // Sent by the new Deplo on every call, so the old one binds the code to the first instance that uses it.
 export const MOVE_PEER_HEADER = "x-deplo-move-peer";
 export const MOVE_PEER_URL_HEADER = "x-deplo-move-peer-url";
+// The filename of an uploaded archive, on the `upload` step's response.
+export const MOVE_FILENAME_HEADER = "x-deplo-move-filename";
 
 export const MOVE_STEPS = [
   "hello",
-  "freeze",
   "dump",
-  "csr",
-  "install",
+  "workload",
+  "pause",
+  "resume",
+  "volume",
+  "hostpath",
+  "files",
+  "image",
+  "upload",
   "finish",
-  "thaw",
+  "cancel",
 ] as const;
 export type MoveStep = (typeof MOVE_STEPS)[number];
 
@@ -26,20 +36,34 @@ export function isMoveStep(s: string): s is MoveStep {
   return (MOVE_STEPS as readonly string[]).includes(s);
 }
 
+// The old Deplo is never paused as a whole: it keeps running, and only lends each workload for its copy.
 export type SourceMoveState =
   // A code exists and nothing has connected with it yet.
   | "armed"
-  // The new Deplo connected (code bound to it); nothing is paused yet.
+  // The new Deplo connected (code bound to it).
   | "bound"
-  // Changes are paused; the copy and the server handover run from here.
-  | "frozen"
-  // Every server answers to the new Deplo. Permanent.
-  | "moved";
+  // The new Deplo is copying: the snapshot was taken, workloads are copied one by one.
+  | "copying"
+  // The new Deplo finished. The code no longer works.
+  | "done";
 
 export type TargetMoveState =
-  "connected" | "copying" | "handing_over" | "done" | "failed" | "cancelled";
+  | "connected"
+  // The database copy: this Deplo is frozen until it commits.
+  | "copying"
+  // Every workload is deployed here and its data copied in, one at a time.
+  | "deploying"
+  | "done"
+  | "failed"
+  | "cancelled";
 
-export type MoveServerState = "waiting" | "handed_over" | "failed";
+export type MoveWorkloadState =
+  | "waiting"
+  | "copying"
+  | "done"
+  | "failed"
+  // Left out: finished without the old Deplo before its data came across.
+  | "skipped";
 
 export interface MoveServerSummary {
   id: string;
@@ -50,15 +74,15 @@ export interface MoveServerSummary {
   role: "workloads" | "storage" | "build" | "import";
   // True when the server holds the old panel itself.
   isPanelHost: boolean;
-  // An agent has enrolled. A row that never got one has nothing to hand over and comes across as is.
+  // An agent has enrolled.
   enrolled: boolean;
   // The old Deplo reached its agent just now.
   reachable: boolean;
-  // Its agent can take a new certificate authority (Hello capability `cert-renewal`).
-  canHandOver: boolean;
   agentVersion: string | null;
   apps: number;
   databases: number;
+  // Each database's container name here: unique per server only, so two can collide on one new server.
+  databaseHosts?: { id: string; name: string; host: string }[];
 }
 
 export interface MoveHello {
@@ -79,26 +103,48 @@ export interface MoveHello {
   servers: MoveServerSummary[];
 }
 
-// POST /api/deplo-move/csr  {serverId}
-export interface MoveCsrRequest {
-  serverId: string;
-}
-export interface MoveCsrResponse {
-  csrPem: string;
+export type WorkloadKind = "app" | "database";
+
+export interface WorkloadRef {
+  kind: WorkloadKind;
+  id: string;
 }
 
-// POST /api/deplo-move/install  {serverId, certPem, caPem}
-export interface MoveInstallRequest {
+// POST /api/deplo-move/workload  WorkloadRef -> what a copy of it needs, read live from its server.
+export interface MoveWorkloadInfo extends WorkloadRef {
+  name: string;
+  slug: string;
   serverId: string;
-  certPem: string;
-  caPem: string;
+  running: boolean;
+  volumes: string[];
+  // The app's own files directory (an app only).
+  files: boolean;
+  hostPaths: { path: string; allowFile: boolean }[];
+  // Mounted, but the server's own (system paths, sockets, read-only binds): never copied, and `hostpath` refuses them.
+  skippedHostPaths?: string[];
+  // The image the app runs right now, with the deployment that built it (an app only).
+  image: { ref: string; deploymentId: string } | null;
+  // The archive an upload-sourced app builds from (an app only).
+  upload: { filename: string } | null;
 }
 
-// POST /api/deplo-move/finish  {movedTo}
-export interface MoveFinishRequest {
-  movedTo: string;
-  // Servers the new Deplo confirmed answer to it: an install whose answer was lost is recorded here.
-  handedOver?: string[];
+// POST pause/resume  WorkloadRef. A pause is a lease (PAUSE_LEASE_MS) every data step renews.
+export interface MovePauseResponse {
+  leaseUntil: string;
+  wasRunning: boolean;
+}
+
+// POST volume {kind,id,volume} | hostpath {kind,id,path,allowFile} | files {kind:"app",id}
+// | image {kind:"app",id,imageRef} | upload {kind:"app",id}: each answers with the raw stream.
+export interface MoveVolumeRequest extends WorkloadRef {
+  volume: string;
+}
+export interface MoveHostPathRequest extends WorkloadRef {
+  path: string;
+  allowFile: boolean;
+}
+export interface MoveImageRequest extends WorkloadRef {
+  imageRef: string;
 }
 
 // The dump is NDJSON, one frame per line, tables in copy order.

@@ -383,7 +383,7 @@ test("the link names the team the alert is about", async () => {
   );
 });
 
-test("a Deplo paused for a move sends no server alert, and one that resumed does", async () => {
+test("a Deplo frozen while a copy lands in it sends no server alert, and one that thawed does", async () => {
   await seedChannels(["server_offline"]);
   await seedServerRow(db, { id: "srv_moving", name: "eu-main-1" });
   await db
@@ -397,9 +397,9 @@ test("a Deplo paused for a move sends no server alert, and one that resumed does
   };
   await db.insert(deploMoves).values({
     id: "dmv_frozen",
-    side: "source",
-    state: "frozen",
-    peerUrl: "https://new.example",
+    side: "target",
+    state: "copying",
+    peerUrl: "https://old.example",
     startedBy: "Ada",
     createdAt: "2026-01-01T00:00:00.000Z",
     updatedAt: "2026-01-01T00:00:00.000Z",
@@ -408,7 +408,11 @@ test("a Deplo paused for a move sends no server alert, and one that resumed does
   try {
     capture = captureFetch();
     await dispatchServerAlertNow("srv_moving", offline);
-    assert.equal(capture.calls.length, 0, "a handover is not an outage");
+    assert.equal(
+      capture.calls.length,
+      0,
+      "a copy landing here is not an outage",
+    );
   } finally {
     await db.delete(deploMoves);
     invalidateFrozen();

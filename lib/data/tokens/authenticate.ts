@@ -17,7 +17,6 @@ import { sha256Hex } from "../../crypto";
 import { sweepStale } from "../../stale-sweep";
 import type { Capability } from "../../types/identity";
 import { type RequestIdentity } from "../../auth/request-context";
-import { InstanceFrozenError, instanceFrozen } from "../deplo-move/freeze";
 import { inCatalogOrder } from "./listing";
 import { loadScope } from "./scope";
 import { tokenReach } from "./reach";
@@ -97,13 +96,6 @@ async function identityForTokenRow(
   match: TokenRow,
   teamHint?: string | null,
 ): Promise<RequestIdentity | null> {
-  // A moved Deplo holds a stale copy: a token revoked on the new one must not still work here (ADR-0035).
-  const frozen = await instanceFrozen();
-  if (frozen?.moved)
-    throw new InstanceFrozenError({
-      ...frozen,
-      message: `${frozen.message} Use it there.`,
-    });
   // Expiry before the team is picked, before the membership read, before the usage stamp: that order is the guarantee.
   if (match.expiresAt && Date.parse(match.expiresAt) <= Date.now()) return null;
   const scope = match.scoped ? await loadScope(match.id) : null;
