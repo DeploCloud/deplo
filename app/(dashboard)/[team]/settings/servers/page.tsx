@@ -344,10 +344,19 @@ export default async function ServersPage(
       Number(isDeploHostServer(a, selfAddrs)),
   );
 
+  const teamRefs = new Map(
+    teamsRaw.map((t) => [t.id, { slug: t.slug, name: t.name }]),
+  );
   const items: ServerListItem[] = servers.map((server) => ({
     id: server.id,
     search: [server.name, server.host, server.ip].join(" ").toLowerCase(),
     use: serverUse(server),
+    teams: server.allTeams
+      ? [...teamRefs.values()]
+      : (serverTeamIds.get(server.id) ?? []).flatMap((id) => {
+          const t = teamRefs.get(id);
+          return t ? [t] : [];
+        }),
     card: (
       <ServerCard
         server={server}

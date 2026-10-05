@@ -14,15 +14,19 @@ import {
   MoreHorizontal,
   ChevronRight,
   Trash2,
+  Users,
+  CircleDot,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { FilterFacet, useUrlFacets } from "@/components/shared/filter-facet";
+import { countBy, teamFacetOptions } from "@/components/shared/facet-filtering";
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+  ACCESS_OPTIONS,
+  USER_STATUS_OPTIONS,
+  accessOf,
+  filterUsers,
+  statusOf,
+} from "@/components/settings/users-filter";
 import { ListToolbar, type ListView } from "@/components/shared/list-toolbar";
 import {
   Table,
@@ -57,6 +61,8 @@ import { cn, timeAgo } from "@/lib/utils";
 import type { GlobalUserDTO } from "@/lib/data/members/instance-users";
 import type { RegistrationLinkDTO } from "@/lib/data/members/registration-links";
 
+const FACETS = ["team", "access", "status"] as const;
+
 export function UsersPanel({
   users,
   links,
@@ -69,10 +75,7 @@ export function UsersPanel({
   const router = useRouter();
   const [registerOpen, setRegisterOpen] = React.useState(false);
   const [query, setQuery] = React.useState("");
-  const [access, setAccess] = React.useState<"all" | "admin" | "member">("all");
-  const [status, setStatus] = React.useState<"all" | "active" | "suspended">(
-    "all",
-  );
+  const [picked, setPicked] = useUrlFacets(FACETS);
   const [view, setView] = React.useState<ListView>("grid");
   const {
     visible: liveLinks,
@@ -82,15 +85,13 @@ export function UsersPanel({
   const pendingLinks = liveLinks.filter((l) => l.status === "pending");
   const focusUserId = useSearchParams().get("user");
 
-  const q = query.trim().toLowerCase();
-  const shown = users.filter(
-    (u) =>
-      (access === "all" || u.isInstanceAdmin === (access === "admin")) &&
-      (status === "all" || u.suspended === (status === "suspended")) &&
-      (!q ||
-        u.username.toLowerCase().includes(q) ||
-        u.name.toLowerCase().includes(q)),
-  );
+  const shown = filterUsers(users, {
+    query,
+    teams: picked.team,
+    access: picked.access,
+    statuses: picked.status,
+  });
+  const teams = teamFacetOptions(users.map((u) => u.teams));
   return (
     <div className="space-y-6">
       <PageHeader
@@ -128,32 +129,36 @@ export function UsersPanel({
           listLabel="Table view"
           filters={
             <>
-              <Select
-                value={access}
-                onValueChange={(v) => setAccess(v as typeof access)}
-              >
-                <SelectTrigger className="w-full sm:w-40">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All access</SelectItem>
-                  <SelectItem value="admin">Instance admins</SelectItem>
-                  <SelectItem value="member">Members</SelectItem>
-                </SelectContent>
-              </Select>
-              <Select
-                value={status}
-                onValueChange={(v) => setStatus(v as typeof status)}
-              >
-                <SelectTrigger className="w-full sm:w-40">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">Any status</SelectItem>
-                  <SelectItem value="active">Active</SelectItem>
-                  <SelectItem value="suspended">Suspended</SelectItem>
-                </SelectContent>
-              </Select>
+              <FilterFacet
+                id="team"
+                label="Team"
+                allLabel="Any team"
+                icon={Users}
+                options={teams.options}
+                counts={teams.counts}
+                values={picked.team}
+                onChange={(v) => setPicked("team", v)}
+              />
+              <FilterFacet
+                id="access"
+                label="Access"
+                allLabel="Any access"
+                icon={ShieldCheck}
+                options={ACCESS_OPTIONS}
+                counts={countBy(users, accessOf)}
+                values={picked.access}
+                onChange={(v) => setPicked("access", v)}
+              />
+              <FilterFacet
+                id="status"
+                label="Status"
+                allLabel="Any status"
+                icon={CircleDot}
+                options={USER_STATUS_OPTIONS}
+                counts={countBy(users, statusOf)}
+                values={picked.status}
+                onChange={(v) => setPicked("status", v)}
+              />
             </>
           }
         />

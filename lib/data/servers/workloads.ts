@@ -39,6 +39,7 @@ export type ServerWorkload = {
   // A database's engine ("postgres"); null for an app.
   engine: string | null;
   teamName: string;
+  teamSlug: string;
   // Null when the viewer is not in the owning team, so there is no page to open.
   href: string | null;
   project: string | null;
@@ -161,6 +162,7 @@ export async function listServerWorkloads(
       logoTone: tone(a.logoTone),
       engine: null,
       teamName: a.teamName,
+      teamSlug: a.teamSlug,
       href: page(a.teamId, a.teamSlug, `/apps/${a.slug}`),
       project: a.project,
       environment: a.environment,
@@ -178,6 +180,7 @@ export async function listServerWorkloads(
       logoTone: null,
       engine: d.engine,
       teamName: d.teamName,
+      teamSlug: d.teamSlug,
       href: page(d.teamId, d.teamSlug, `/storage/databases/${d.id}`),
       project: d.project,
       environment: d.environment,

@@ -1,6 +1,6 @@
 import "server-only";
 
-import { count, eq, or } from "drizzle-orm";
+import { eq, or } from "drizzle-orm";
 import { getDb } from "../../db/client";
 import { memberships as membershipsTable } from "../../db/schema/control-plane/access-control";
 import {
@@ -28,6 +28,7 @@ export interface GlobalUserDTO {
   avatarColor: string;
   avatarUrl: string | null;
   teamCount: number;
+  teams: { slug: string; name: string }[];
   isInstanceAdmin: boolean;
   isInstanceOwner: boolean;
   suspended: boolean;
@@ -78,14 +79,20 @@ export async function listAllUsers(): Promise<GlobalUserDTO[]> {
     })
     .from(usersTable)
     .orderBy(usersTable.createdAt);
-  const counts = await db
+  const memberOf = await db
     .select({
       userId: membershipsTable.userId,
-      n: count(),
+      slug: teamsTable.slug,
+      name: teamsTable.name,
     })
     .from(membershipsTable)
-    .groupBy(membershipsTable.userId);
-  const countByUser = new Map(counts.map((c) => [c.userId, Number(c.n)]));
+    .innerJoin(teamsTable, eq(teamsTable.id, membershipsTable.teamId));
+  const teamsByUser = new Map<string, { slug: string; name: string }[]>();
+  for (const m of memberOf)
+    teamsByUser.set(m.userId, [
+      ...(teamsByUser.get(m.userId) ?? []),
+      { slug: m.slug, name: m.name },
+    ]);
   const ownerUserId = await instanceOwnerUserId();
   const avatarUrl = await avatarResolver();
   return users.map((u) => ({
@@ -94,7 +101,8 @@ export async function listAllUsers(): Promise<GlobalUserDTO[]> {
     name: u.name,
     avatarColor: u.avatarColor,
     avatarUrl: avatarUrl(u),
-    teamCount: countByUser.get(u.id) ?? 0,
+    teamCount: teamsByUser.get(u.id)?.length ?? 0,
+    teams: teamsByUser.get(u.id) ?? [],
     isInstanceAdmin: u.isInstanceAdmin ?? false,
     isInstanceOwner: u.id === ownerUserId,
     suspended: u.suspended ?? false,

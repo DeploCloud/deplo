@@ -1,7 +1,13 @@
 "use client";
 
 import * as React from "react";
-import { AppWindow, ChevronRight } from "lucide-react";
+import {
+  AppWindow,
+  ChevronRight,
+  CircleDot,
+  Shapes,
+  Users,
+} from "lucide-react";
 
 import Link from "@/components/ui/link";
 import { EmptyState } from "@/components/shared/empty-state";
@@ -9,13 +15,8 @@ import { ListToolbar } from "@/components/shared/list-toolbar";
 import { AppLogo } from "@/components/shared/project-logo";
 import { StatusIndicator } from "@/components/apps/app-status-dot/status-renderer";
 import { DB_LOGOS, DB_NAMES } from "@/components/storage/db-engines";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+import { FilterFacet, useUrlFacets } from "@/components/shared/filter-facet";
+import { countBy, teamFacetOptions } from "@/components/shared/facet-filtering";
 import {
   Table,
   TableBody,
@@ -27,8 +28,9 @@ import {
 import { gqlAction } from "@/lib/graphql-client";
 import {
   filterWorkloads,
-  type KindFilter,
-  type StatusFilter,
+  KIND_OPTIONS,
+  STATUS_OPTIONS,
+  statusGroup,
 } from "@/components/servers/workload-filter";
 import { cn, formatBytes } from "@/lib/utils";
 import type { DatabaseType } from "@/lib/types/database";
@@ -47,6 +49,7 @@ const WORKLOADS = /* GraphQL */ `
       logoTone
       engine
       teamName
+      teamSlug
       href
       project
       environment
@@ -67,6 +70,7 @@ const WORKLOADS = /* GraphQL */ `
 `;
 
 const POLL_MS = 5_000;
+const FACETS = ["team", "status", "type"] as const;
 
 // Hidden below md so a phone keeps name, status and team.
 const WIDE = "hidden md:table-cell";
@@ -80,8 +84,7 @@ export function ServerAppsTab({
 }) {
   const [rows, setRows] = React.useState(initial);
   const [query, setQuery] = React.useState("");
-  const [status, setStatus] = React.useState<StatusFilter>("all");
-  const [kind, setKind] = React.useState<KindFilter>("all");
+  const [picked, setPicked] = useUrlFacets(FACETS);
   const [open, setOpen] = React.useState<Set<string>>(() => new Set());
 
   React.useEffect(() => {
@@ -105,7 +108,15 @@ export function ServerAppsTab({
       />
     );
 
-  const shown = filterWorkloads(rows, { query, status, kind });
+  const shown = filterWorkloads(rows, {
+    query,
+    statuses: picked.status,
+    kinds: picked.type,
+    teams: picked.team,
+  });
+  const teams = teamFacetOptions(
+    rows.map((w) => [{ slug: w.teamSlug, name: w.teamName }]),
+  );
 
   function toggle(id: string) {
     setOpen((prev) => {
@@ -123,33 +134,36 @@ export function ServerAppsTab({
         placeholder="Search apps or teams"
         filters={
           <>
-            <Select
-              value={status}
-              onValueChange={(v) => setStatus(v as StatusFilter)}
-            >
-              <SelectTrigger className="w-full sm:w-36">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">Any status</SelectItem>
-                <SelectItem value="running">Running</SelectItem>
-                <SelectItem value="stopped">Stopped</SelectItem>
-                <SelectItem value="failing">Failing</SelectItem>
-              </SelectContent>
-            </Select>
-            <Select
-              value={kind}
-              onValueChange={(v) => setKind(v as KindFilter)}
-            >
-              <SelectTrigger className="w-full sm:w-36">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">Any type</SelectItem>
-                <SelectItem value="app">Apps</SelectItem>
-                <SelectItem value="database">Databases</SelectItem>
-              </SelectContent>
-            </Select>
+            <FilterFacet
+              id="team"
+              label="Team"
+              allLabel="Any team"
+              icon={Users}
+              options={teams.options}
+              counts={teams.counts}
+              values={picked.team}
+              onChange={(v) => setPicked("team", v)}
+            />
+            <FilterFacet
+              id="status"
+              label="Status"
+              allLabel="Any status"
+              icon={CircleDot}
+              options={STATUS_OPTIONS}
+              counts={countBy(rows, (w) => statusGroup(w) ?? "")}
+              values={picked.status}
+              onChange={(v) => setPicked("status", v)}
+            />
+            <FilterFacet
+              id="type"
+              label="Type"
+              allLabel="Any type"
+              icon={Shapes}
+              options={KIND_OPTIONS}
+              counts={countBy(rows, (w) => w.kind)}
+              values={picked.type}
+              onChange={(v) => setPicked("type", v)}
+            />
           </>
         }
       />

@@ -2,7 +2,6 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import {
-  ALL_TEAMS,
   filterPeople,
   linkGroups,
   linksCsv,
@@ -71,15 +70,16 @@ test("the team filter keeps whoever landed on it, the search reads both fields",
     group("Labs", [person()]),
   ]);
   assert.deepEqual(
-    filterPeople(merged, "", "Labs").map((p) => p.email),
+    filterPeople(merged, "", ["Labs"]).map((p) => p.email),
     ["ada@acme.test"],
   );
-  assert.equal(filterPeople(merged, "", ALL_TEAMS).length, 2);
+  assert.equal(filterPeople(merged, "", []).length, 2);
+  assert.equal(filterPeople(merged, "", ["Labs", "Acme"]).length, 2);
   assert.deepEqual(
-    filterPeople(merged, "LOVELACE", ALL_TEAMS).map((p) => p.email),
+    filterPeople(merged, "LOVELACE", []).map((p) => p.email),
     ["ada@acme.test"],
   );
-  assert.equal(filterPeople(merged, "bob", "Labs").length, 0);
+  assert.equal(filterPeople(merged, "bob", ["Labs"]).length, 0);
 });
 
 test("a second link for one address stays a second block", () => {

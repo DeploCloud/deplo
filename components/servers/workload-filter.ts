@@ -1,9 +1,21 @@
 import { matchesQuery } from "@/lib/match-query";
 import type { DisplayStatus } from "@/lib/apps/display-status";
 import type { ServerWorkload } from "@/lib/data/servers/workloads";
+import { inAny } from "@/components/shared/facet-filtering";
 
-export type StatusFilter = "all" | "running" | "stopped" | "failing";
-export type KindFilter = "all" | "app" | "database";
+export type StatusFilter = "running" | "stopped" | "failing";
+
+export const STATUS_OPTIONS: { value: StatusFilter; label: string }[] = [
+  { value: "running", label: "Running" },
+  { value: "stopped", label: "Stopped" },
+  { value: "failing", label: "Failing" },
+];
+
+export const KIND_OPTIONS: { value: ServerWorkload["kind"]; label: string }[] =
+  [
+    { value: "app", label: "Apps" },
+    { value: "database", label: "Databases" },
+  ];
 
 const GROUP: Partial<Record<DisplayStatus, StatusFilter>> = {
   active: "running",
@@ -16,18 +28,25 @@ const GROUP: Partial<Record<DisplayStatus, StatusFilter>> = {
   down: "failing",
 };
 
+export function statusGroup(w: ServerWorkload): StatusFilter | null {
+  return GROUP[w.status] ?? null;
+}
+
+// Each list is OR within itself, AND across lists; an empty list filters nothing.
 export function filterWorkloads(
   rows: ServerWorkload[],
   {
     query,
-    status,
-    kind,
-  }: { query: string; status: StatusFilter; kind: KindFilter },
+    statuses,
+    kinds,
+    teams,
+  }: { query: string; statuses: string[]; kinds: string[]; teams: string[] },
 ): ServerWorkload[] {
   return rows.filter(
     (w) =>
-      (kind === "all" || w.kind === kind) &&
-      (status === "all" || GROUP[w.status] === status) &&
+      inAny(kinds, [w.kind]) &&
+      inAny(statuses, [statusGroup(w) ?? ""]) &&
+      inAny(teams, [w.teamSlug]) &&
       // matchesQuery answers false to an empty query.
       (!query.trim() ||
         matchesQuery(

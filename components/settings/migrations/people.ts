@@ -62,17 +62,16 @@ export function teamsOf(people: MergedPerson[]): string[] {
   return [...new Set(people.flatMap((p) => p.landings.map((l) => l.team)))];
 }
 
-export const ALL_TEAMS = "all";
-
+// No team picked keeps everyone; several keep whoever landed on any of them.
 export function filterPeople(
   people: MergedPerson[],
   query: string,
-  team: string,
+  teams: string[],
 ): MergedPerson[] {
   const q = query.trim().toLowerCase();
   return people.filter(
     (p) =>
-      (team === ALL_TEAMS || p.landings.some((l) => l.team === team)) &&
+      (teams.length === 0 || p.landings.some((l) => teams.includes(l.team))) &&
       (!q ||
         p.email.toLowerCase().includes(q) ||
         p.name.toLowerCase().includes(q)),

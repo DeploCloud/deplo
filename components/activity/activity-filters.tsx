@@ -6,7 +6,8 @@ import { Boxes, UserRound, Zap } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { FacetCombobox } from "@/components/env/env-filters/facet-combobox";
-import type { EnvFacet, FacetOption } from "@/components/env/env-filters/types";
+import type { FacetOption } from "@/components/env/env-filters/types";
+import { listFacet as facet } from "@/components/shared/filter-facet";
 import { AppLogo } from "@/components/shared/project-logo";
 import { DatabaseLogo } from "@/components/storage/database-logo";
 import { ACTIVITY_TYPES } from "@/lib/activity-types";
@@ -19,27 +20,6 @@ import { cn } from "@/lib/utils";
 import type { ActivityType } from "@/lib/types/activity";
 import type { DatabaseType } from "@/lib/types/database";
 import { DateRangeFilter } from "./date-range-filter";
-
-const MATCH_ALL = () => true;
-
-function facet(
-  id: string,
-  label: string,
-  allLabel: string,
-  icon: EnvFacet<never>["icon"],
-  options: FacetOption[],
-): EnvFacet<never> {
-  return {
-    id,
-    label,
-    allLabel,
-    icon,
-    options,
-    match: MATCH_ALL,
-    persistent: true,
-    searchable: true,
-  };
-}
 
 const EVENT_OPTIONS: FacetOption[] = ACTIVITY_TYPES.map((t) => ({
   value: t.value,

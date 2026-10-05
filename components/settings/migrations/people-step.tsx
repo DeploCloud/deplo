@@ -1,19 +1,14 @@
 "use client";
 
 import * as React from "react";
-import { Link2, Loader2, UserPlus } from "lucide-react";
+import { Link2, Loader2, UserPlus, Users } from "lucide-react";
 
 import { TeamAvatar, UserAvatar } from "@/components/shared/user-avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+import { FilterFacet } from "@/components/shared/filter-facet";
+import { toggleValue } from "@/components/env/env-filters/facet-options";
 import { CopyButton } from "@/components/shared/copy-button";
 import { DownloadButton } from "@/components/shared/download-button";
 import { EmptyState } from "@/components/shared/empty-state";
@@ -21,7 +16,6 @@ import { ListToolbar } from "@/components/shared/list-toolbar";
 import { StepShell } from "./step-shell";
 import { copyFor, type SourceKind, stepDocs } from "./sources";
 import {
-  ALL_TEAMS,
   filterPeople,
   hasLink,
   linkGroups,
@@ -54,12 +48,19 @@ export function PeopleStep({
   onContinue: () => void;
 }) {
   const [query, setQuery] = React.useState("");
-  const [team, setTeam] = React.useState(ALL_TEAMS);
+  const [picked, setPicked] = React.useState<string[]>([]);
 
   const panel = copyFor(kind).mention;
   const people = React.useMemo(() => mergePeople(groups), [groups]);
   const teams = teamsOf(people);
-  const shown = filterPeople(people, query, team);
+  const shown = filterPeople(people, query, picked);
+  const teamOptions = teams.map((t) => ({ value: t, label: t }));
+  const teamCounts = Object.fromEntries(
+    teams.map((t) => [
+      t,
+      people.filter((p) => p.landings.some((l) => l.team === t)).length,
+    ]),
+  );
   const anyLink = people.some(hasLink);
   const single = groups.length === 1;
 
@@ -85,19 +86,17 @@ export function PeopleStep({
               placeholder="Search people"
               filters={
                 teams.length > 1 && (
-                  <Select value={team} onValueChange={setTeam}>
-                    <SelectTrigger className="w-full sm:w-44">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value={ALL_TEAMS}>All teams</SelectItem>
-                      {teams.map((t) => (
-                        <SelectItem key={t} value={t}>
-                          {t}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                  <FilterFacet
+                    id="team"
+                    label="Team"
+                    allLabel="Any team"
+                    icon={Users}
+                    options={teamOptions}
+                    counts={teamCounts}
+                    values={picked}
+                    onChange={setPicked}
+                    className="sm:w-44"
+                  />
                 )
               }
               action={
@@ -146,8 +145,12 @@ export function PeopleStep({
                   key={p.email}
                   person={p}
                   panel={panel}
-                  activeTeam={team}
-                  onPickTeam={teams.length > 1 ? setTeam : null}
+                  activeTeams={picked}
+                  onPickTeam={
+                    teams.length > 1
+                      ? (t) => setPicked((v) => toggleValue(v, t))
+                      : null
+                  }
                 />
               ))}
             </div>
@@ -168,12 +171,12 @@ export function PeopleStep({
 function PersonCard({
   person,
   panel,
-  activeTeam,
+  activeTeams,
   onPickTeam,
 }: {
   person: MergedPerson;
   panel: string;
-  activeTeam: string;
+  activeTeams: string[];
   onPickTeam: ((team: string) => void) | null;
 }) {
   const links = linkGroups(person);
@@ -213,7 +216,7 @@ function PersonCard({
             <TeamChip
               key={l.team}
               landing={l}
-              active={activeTeam === l.team}
+              active={activeTeams.includes(l.team)}
               onPick={onPickTeam}
             />
           ))}
@@ -259,7 +262,7 @@ function TeamChip({
     <Badge asChild variant={variant} className="gap-1.5 font-normal">
       <button
         type="button"
-        onClick={() => onPick(active ? ALL_TEAMS : landing.team)}
+        onClick={() => onPick(landing.team)}
         className="cursor-pointer"
       >
         <TeamAvatar

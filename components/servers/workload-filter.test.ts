@@ -13,6 +13,7 @@ function w(over: Partial<ServerWorkload>): ServerWorkload {
     logoTone: null,
     engine: null,
     teamName: "Acme",
+    teamSlug: "acme",
     href: null,
     project: null,
     environment: null,
@@ -26,14 +27,14 @@ function w(over: Partial<ServerWorkload>): ServerWorkload {
 }
 
 const ROWS = [
-  w({ id: "web", name: "web", teamName: "Shop" }),
+  w({ id: "web", name: "web", teamName: "Shop", teamSlug: "shop" }),
   w({ id: "loop", name: "worker", status: "restarting" }),
   w({ id: "off", name: "blog", status: "idle" }),
   w({ id: "db", name: "main", kind: "database", engine: "postgres" }),
 ];
 const ids = (q: Parameters<typeof filterWorkloads>[1]) =>
   filterWorkloads(ROWS, q).map((r) => r.id);
-const ALL = { query: "", status: "all", kind: "all" } as const;
+const ALL = { query: "", statuses: [], kinds: [], teams: [] };
 
 test("no search and no filter shows everything", () => {
   assert.deepEqual(ids(ALL), ["web", "loop", "off", "db"]);
@@ -45,7 +46,23 @@ test("search reaches the team and the engine", () => {
 });
 
 test("a restarting app is failing, an idle one stopped", () => {
-  assert.deepEqual(ids({ ...ALL, status: "failing" }), ["loop"]);
-  assert.deepEqual(ids({ ...ALL, status: "stopped" }), ["off"]);
-  assert.deepEqual(ids({ ...ALL, kind: "database" }), ["db"]);
+  assert.deepEqual(ids({ ...ALL, statuses: ["failing"] }), ["loop"]);
+  assert.deepEqual(ids({ ...ALL, statuses: ["stopped"] }), ["off"]);
+  assert.deepEqual(ids({ ...ALL, kinds: ["database"] }), ["db"]);
+});
+
+test("several picks in one filter widen it, two filters narrow each other", () => {
+  assert.deepEqual(ids({ ...ALL, statuses: ["failing", "stopped"] }), [
+    "loop",
+    "off",
+  ]);
+  assert.deepEqual(ids({ ...ALL, teams: ["shop", "acme"] }), [
+    "web",
+    "loop",
+    "off",
+    "db",
+  ]);
+  assert.deepEqual(ids({ ...ALL, teams: ["acme"], kinds: ["database"] }), [
+    "db",
+  ]);
 });

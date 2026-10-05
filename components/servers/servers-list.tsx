@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { Server as ServerIcon } from "lucide-react";
+import { Server as ServerIcon, Users } from "lucide-react";
 
 import { EmptyState } from "@/components/shared/empty-state";
 import { ListToolbar, type ListView } from "@/components/shared/list-toolbar";
@@ -12,13 +12,13 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { FilterFacet, useUrlFacets } from "@/components/shared/filter-facet";
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+  countBy,
+  inAny,
+  teamFacetOptions,
+  type TeamRef,
+} from "@/components/shared/facet-filtering";
 import {
   SERVER_USES,
   SERVER_USE_IDS,
@@ -29,19 +29,46 @@ export type ServerListItem = {
   id: string;
   search: string;
   use: ServerUse;
+  // Every team that can deploy here: all of them for a server open to all teams.
+  teams: TeamRef[];
   card: React.ReactNode;
   row: React.ReactNode;
 };
 
+const FACETS = ["team", "use"] as const;
+
+const USE_OPTIONS = SERVER_USE_IDS.filter((id) => id !== "import").map((id) => {
+  const { label, icon: Icon } = SERVER_USES[id];
+  return { value: id, label, leading: <Icon className="size-4" /> };
+});
+
+export function filterServers(
+  items: ServerListItem[],
+  { query, teams, uses }: { query: string; teams: string[]; uses: string[] },
+): ServerListItem[] {
+  const q = query.trim().toLowerCase();
+  return items.filter(
+    (i) =>
+      inAny(uses, [i.use]) &&
+      inAny(
+        teams,
+        i.teams.map((t) => t.slug),
+      ) &&
+      (!q || i.search.includes(q)),
+  );
+}
+
 export function ServersList({ items }: { items: ServerListItem[] }) {
   const [query, setQuery] = React.useState("");
-  const [use, setUse] = React.useState<ServerUse | "all">("all");
+  const [picked, setPicked] = useUrlFacets(FACETS);
   const [view, setView] = React.useState<ListView>("grid");
 
-  const q = query.trim().toLowerCase();
-  const shown = items.filter(
-    (i) => (use === "all" || i.use === use) && (!q || i.search.includes(q)),
-  );
+  const shown = filterServers(items, {
+    query,
+    teams: picked.team,
+    uses: picked.use,
+  });
+  const teams = teamFacetOptions(items.map((i) => i.teams));
 
   return (
     <div className="space-y-4">
@@ -54,33 +81,28 @@ export function ServersList({ items }: { items: ServerListItem[] }) {
           onView={setView}
           listLabel="Table view"
           filters={
-            <Select
-              value={use}
-              onValueChange={(v) => setUse(v as ServerUse | "all")}
-            >
-              <SelectTrigger className="w-full sm:w-44">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">
-                  <span className="flex items-center gap-2">
-                    <ServerIcon className="size-4" />
-                    All servers
-                  </span>
-                </SelectItem>
-                {SERVER_USE_IDS.filter((id) => id !== "import").map((id) => {
-                  const { label, icon: Icon } = SERVER_USES[id];
-                  return (
-                    <SelectItem key={id} value={id}>
-                      <span className="flex items-center gap-2">
-                        <Icon className="size-4" />
-                        {label}
-                      </span>
-                    </SelectItem>
-                  );
-                })}
-              </SelectContent>
-            </Select>
+            <>
+              <FilterFacet
+                id="team"
+                label="Team"
+                allLabel="Any team"
+                icon={Users}
+                options={teams.options}
+                counts={teams.counts}
+                values={picked.team}
+                onChange={(v) => setPicked("team", v)}
+              />
+              <FilterFacet
+                id="use"
+                label="Used for"
+                allLabel="Any use"
+                icon={ServerIcon}
+                options={USE_OPTIONS}
+                counts={countBy(items, (i) => i.use)}
+                values={picked.use}
+                onChange={(v) => setPicked("use", v)}
+              />
+            </>
           }
         />
       )}

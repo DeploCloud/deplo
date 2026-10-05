@@ -40,6 +40,7 @@ const ServerWorkloadRef = builder
         description: 'A database\'s engine ("postgres"); null for an app.',
       }),
       teamName: t.exposeString("teamName"),
+      teamSlug: t.exposeString("teamSlug"),
       href: t.exposeString("href", {
         nullable: true,
         description:
