@@ -16,6 +16,8 @@ import { NoResultsGraphic } from "@/components/templates/no-results-graphic";
 import { StoreRailsSkeleton } from "@/components/templates/store-skeleton";
 import { TemplateSearchField } from "@/components/templates/template-search";
 import { TrademarkNote } from "@/components/templates/trademark-note";
+import { TemplatesGraphic } from "@/components/templates/templates-graphic";
+import { ComposeLaunch } from "@/components/templates/compose-launch";
 import {
   TemplateCard,
   type StoreTemplate,
@@ -114,24 +116,33 @@ export function TemplateStore({
 
   return (
     <div className="space-y-8">
-      <div className="mx-auto max-w-2xl pt-8 text-center sm:pt-12">
-        <h1 className="text-3xl font-semibold tracking-tight">Templates</h1>
-        <p className="mt-1 text-sm text-muted-foreground">
-          {templates.length} apps, databases and services, ready to run on your
-          own servers. <DocsLink topic="deploy.fromTemplate" />
-        </p>
-        <div className="mx-auto mt-5 flex max-w-md items-center gap-2">
-          <TemplateSearchField
-            value={q}
-            onChange={(next) => {
-              typed.current = true;
-              setQ(next);
-            }}
-            className="min-w-0 flex-1"
-          />
-          <TemplateRefreshButton />
+      <section className="relative grid items-center gap-8 pt-8 sm:pt-12 lg:grid-cols-[minmax(0,1fr)_20rem]">
+        <div
+          aria-hidden
+          className="pointer-events-none hidden lg:order-last lg:block"
+        >
+          <TemplatesGraphic className="h-auto w-full" />
         </div>
-      </div>
+        <div className="relative min-w-0">
+          <h1 className="text-3xl font-semibold tracking-tight">Templates</h1>
+          <p className="mt-1 text-sm text-muted-foreground">
+            {templates.length} apps, databases and services, ready to run on
+            your own servers. <DocsLink topic="deploy.fromTemplate" />
+          </p>
+          <div className="mt-5 flex max-w-md items-center gap-2">
+            <TemplateSearchField
+              value={q}
+              onChange={(next) => {
+                typed.current = true;
+                setQ(next);
+              }}
+              className="min-w-0 flex-1"
+            />
+            <TemplateRefreshButton />
+          </div>
+          <ComposeLaunch canDeploy={canDeploy} className="mt-3" />
+        </div>
+      </section>
 
       <CategoryChips
         categories={categories}
