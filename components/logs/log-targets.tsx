@@ -140,12 +140,18 @@ export function LogChooser({ rows }: { rows: LogTreeRow[] }) {
   const hasTargets = rows.some((r) => r.target);
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col items-center justify-center overflow-y-auto p-6 pb-24">
+    <div
+      className={cn(
+        "flex min-h-0 flex-1 flex-col items-center overflow-y-auto p-6 pb-24",
+        // From the top, so the picker's list has room to open downward under the art.
+        hasTargets ? "justify-start pt-10 sm:pt-14" : "justify-center",
+      )}
+    >
       {hasTargets ? (
         <div className="w-full max-w-md">
           <div className="flex flex-col items-center text-center">
-            <LogsGraphic />
-            <h1 className={cn("mt-5", titleClass.page)}>
+            <LogsGraphic grid className="size-auto w-72" />
+            <h1 className={cn("mt-8", titleClass.page)}>
               Which logs do you want to see?
             </h1>
             <p className="mt-1 text-sm text-muted-foreground">
