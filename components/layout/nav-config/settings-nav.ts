@@ -97,13 +97,6 @@ export const SETTINGS_NAV: NavSection[] = [
     title: "System",
     items: [
       {
-        label: "Deplo",
-        href: "/settings/deplo",
-        icon: DeploMark,
-        tooltip: "This instance: its address, certificates and version",
-        requiresAdmin: true,
-      },
-      {
         label: "Migrations",
         href: "/settings/migrations",
         icon: Cable,
@@ -122,6 +115,13 @@ export const SETTINGS_NAV: NavSection[] = [
         href: "/settings/users",
         icon: Users,
         tooltip: "Instance-wide user administration",
+        requiresAdmin: true,
+      },
+      {
+        label: "Deplo",
+        href: "/settings/deplo",
+        icon: DeploMark,
+        tooltip: "This instance: its address, certificates and version",
         requiresAdmin: true,
       },
     ],

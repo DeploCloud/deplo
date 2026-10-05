@@ -176,13 +176,19 @@ test("the sidebar swaps to a sub-menu only where there is one", () => {
   assert.equal(sidebarMenuFor("/").appSlug, null);
 });
 
-test("System opens on Deplo, wearing the mark", () => {
+test("System closes on Deplo, wearing the mark", () => {
   const system = SETTINGS_NAV.find((s) => s.title === "System");
   assert.ok(system, "the System group disappeared");
-  assert.equal(system.items[0]?.href, "/settings/deplo");
-  assert.equal(system.items[0]?.icon, DeploMark);
-  assert.equal(system.items[1]?.href, "/settings/migrations");
-  assert.equal(system.items[2]?.href, "/settings/servers");
+  assert.deepEqual(
+    system.items.map((i) => i.href),
+    [
+      "/settings/migrations",
+      "/settings/servers",
+      "/settings/users",
+      "/settings/deplo",
+    ],
+  );
+  assert.equal(system.items.at(-1)?.icon, DeploMark);
 });
 
 test("Migrations is an instance page", () => {
