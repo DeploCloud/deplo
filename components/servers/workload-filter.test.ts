@@ -14,6 +14,7 @@ function w(over: Partial<ServerWorkload>): ServerWorkload {
     engine: null,
     teamName: "Acme",
     teamSlug: "acme",
+    teamAvatarUrl: null,
     href: null,
     project: null,
     environment: null,

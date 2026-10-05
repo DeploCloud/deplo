@@ -13,6 +13,7 @@ import Link from "@/components/ui/link";
 import { EmptyState } from "@/components/shared/empty-state";
 import { ListToolbar } from "@/components/shared/list-toolbar";
 import { AppLogo } from "@/components/shared/project-logo";
+import { TeamAvatar } from "@/components/shared/user-avatar";
 import { StatusIndicator } from "@/components/apps/app-status-dot/status-renderer";
 import { DB_LOGOS, DB_NAMES } from "@/components/storage/db-engines";
 import { FilterFacet, useUrlFacets } from "@/components/shared/filter-facet";
@@ -50,6 +51,7 @@ const WORKLOADS = /* GraphQL */ `
       engine
       teamName
       teamSlug
+      teamAvatarUrl
       href
       project
       environment
@@ -115,7 +117,9 @@ export function ServerAppsTab({
     teams: picked.team,
   });
   const teams = teamFacetOptions(
-    rows.map((w) => [{ slug: w.teamSlug, name: w.teamName }]),
+    rows.map((w) => [
+      { slug: w.teamSlug, name: w.teamName, avatarUrl: w.teamAvatarUrl },
+    ]),
   );
 
   function toggle(id: string) {
@@ -260,7 +264,14 @@ function WorkloadRows({
           {engine ? (DB_NAMES[engine] ?? engine) : "App"}
         </TableCell>
         <TableCell className="hidden sm:table-cell">
-          <Clip className="max-w-24">{w.teamName}</Clip>
+          <span className="flex items-center gap-2">
+            <TeamAvatar
+              name={w.teamName}
+              avatarUrl={w.teamAvatarUrl}
+              size="xs"
+            />
+            <Clip className="max-w-24">{w.teamName}</Clip>
+          </span>
         </TableCell>
         <TableCell className={cn(WIDE, "text-muted-foreground")}>
           <Clip className="max-w-24">

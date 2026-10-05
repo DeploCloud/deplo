@@ -1,8 +1,10 @@
 import type { FacetOption } from "@/components/env/env-filters/types";
+import { TeamAvatar } from "@/components/shared/user-avatar";
 
 export interface TeamRef {
   slug: string;
   name: string;
+  avatarUrl?: string | null;
 }
 
 // One option per team that holds at least one row, counted by rows.
@@ -10,16 +12,20 @@ export function teamFacetOptions(rows: TeamRef[][]): {
   options: FacetOption[];
   counts: Record<string, number>;
 } {
-  const names = new Map<string, string>();
+  const seen = new Map<string, TeamRef>();
   const counts: Record<string, number> = {};
   for (const teams of rows)
     for (const t of new Map(teams.map((x) => [x.slug, x])).values()) {
-      names.set(t.slug, t.name);
+      seen.set(t.slug, t);
       counts[t.slug] = (counts[t.slug] ?? 0) + 1;
     }
-  const options = [...names]
-    .map(([value, label]) => ({ value, label }))
-    .sort((a, b) => a.label.localeCompare(b.label));
+  const options = [...seen.values()]
+    .sort((a, b) => a.name.localeCompare(b.name))
+    .map((t) => ({
+      value: t.slug,
+      label: t.name,
+      leading: <TeamAvatar name={t.name} avatarUrl={t.avatarUrl} size="xs" />,
+    }));
   return { options, counts };
 }
 

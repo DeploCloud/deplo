@@ -13,10 +13,17 @@ test("a team is offered once, sorted by name, counted by rows", () => {
     [acme, acme],
     [],
   ]);
-  assert.deepEqual(options, [
-    { value: "acme", label: "Acme" },
-    { value: "labs", label: "Labs" },
-  ]);
+  assert.deepEqual(
+    options.map(({ value, label }) => ({ value, label })),
+    [
+      { value: "acme", label: "Acme" },
+      { value: "labs", label: "Labs" },
+    ],
+  );
+  assert.ok(
+    options.every((o) => o.leading),
+    "every team shows its avatar",
+  );
   assert.deepEqual(counts, { acme: 2, labs: 2 });
 });
 

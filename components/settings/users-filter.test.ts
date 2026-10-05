@@ -26,8 +26,12 @@ function u(over: Partial<GlobalUserDTO>): GlobalUserDTO {
 }
 
 const USERS = [
-  u({ userId: "a", teams: [{ slug: "acme", name: "Acme" }] }),
-  u({ userId: "b", teams: [{ slug: "labs", name: "Labs" }], suspended: true }),
+  u({ userId: "a", teams: [{ slug: "acme", name: "Acme", avatarUrl: null }] }),
+  u({
+    userId: "b",
+    teams: [{ slug: "labs", name: "Labs", avatarUrl: null }],
+    suspended: true,
+  }),
   u({ userId: "c", isInstanceAdmin: true }),
 ];
 const ALL: Filters = { query: "", teams: [], access: [], statuses: [] };

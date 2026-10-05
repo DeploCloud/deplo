@@ -28,7 +28,7 @@ export interface GlobalUserDTO {
   avatarColor: string;
   avatarUrl: string | null;
   teamCount: number;
-  teams: { slug: string; name: string }[];
+  teams: { slug: string; name: string; avatarUrl: string | null }[];
   isInstanceAdmin: boolean;
   isInstanceOwner: boolean;
   suspended: boolean;
@@ -84,14 +84,15 @@ export async function listAllUsers(): Promise<GlobalUserDTO[]> {
       userId: membershipsTable.userId,
       slug: teamsTable.slug,
       name: teamsTable.name,
+      image: teamsTable.image,
     })
     .from(membershipsTable)
     .innerJoin(teamsTable, eq(teamsTable.id, membershipsTable.teamId));
-  const teamsByUser = new Map<string, { slug: string; name: string }[]>();
+  const teamsByUser = new Map<string, GlobalUserDTO["teams"]>();
   for (const m of memberOf)
     teamsByUser.set(m.userId, [
       ...(teamsByUser.get(m.userId) ?? []),
-      { slug: m.slug, name: m.name },
+      { slug: m.slug, name: m.name, avatarUrl: teamAvatarUrl(m.image) },
     ]);
   const ownerUserId = await instanceOwnerUserId();
   const avatarUrl = await avatarResolver();

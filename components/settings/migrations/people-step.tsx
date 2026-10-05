@@ -54,7 +54,12 @@ export function PeopleStep({
   const people = React.useMemo(() => mergePeople(groups), [groups]);
   const teams = teamsOf(people);
   const shown = filterPeople(people, query, picked);
-  const teamOptions = teams.map((t) => ({ value: t, label: t }));
+  const avatars = new Map(groups.map((g) => [g.team.name, g.team.avatarUrl]));
+  const teamOptions = teams.map((t) => ({
+    value: t,
+    label: t,
+    leading: <TeamAvatar name={t} avatarUrl={avatars.get(t)} size="xs" />,
+  }));
   const teamCounts = Object.fromEntries(
     teams.map((t) => [
       t,

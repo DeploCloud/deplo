@@ -20,6 +20,7 @@ import {
 import { fromTelemetry } from "../console/overview-app-states";
 import type { AppStatus } from "../../types/app";
 import type { DatabaseStatus } from "../../types/database";
+import { teamAvatarUrl } from "../../avatar";
 
 export type WorkloadContainer = {
   name: string;
@@ -40,6 +41,7 @@ export type ServerWorkload = {
   engine: string | null;
   teamName: string;
   teamSlug: string;
+  teamAvatarUrl: string | null;
   // Null when the viewer is not in the owning team, so there is no page to open.
   href: string | null;
   project: string | null;
@@ -110,6 +112,7 @@ export async function listServerWorkloads(
         teamId: teamsTable.id,
         teamName: teamsTable.name,
         teamSlug: teamsTable.slug,
+        teamImage: teamsTable.image,
         project: projectsTable.name,
         environment: environmentsTable.name,
       })
@@ -133,6 +136,7 @@ export async function listServerWorkloads(
         teamId: teamsTable.id,
         teamName: teamsTable.name,
         teamSlug: teamsTable.slug,
+        teamImage: teamsTable.image,
         project: projectsTable.name,
         environment: environmentsTable.name,
       })
@@ -163,6 +167,7 @@ export async function listServerWorkloads(
       engine: null,
       teamName: a.teamName,
       teamSlug: a.teamSlug,
+      teamAvatarUrl: teamAvatarUrl(a.teamImage),
       href: page(a.teamId, a.teamSlug, `/apps/${a.slug}`),
       project: a.project,
       environment: a.environment,
@@ -181,6 +186,7 @@ export async function listServerWorkloads(
       engine: d.engine,
       teamName: d.teamName,
       teamSlug: d.teamSlug,
+      teamAvatarUrl: teamAvatarUrl(d.teamImage),
       href: page(d.teamId, d.teamSlug, `/storage/databases/${d.id}`),
       project: d.project,
       environment: d.environment,

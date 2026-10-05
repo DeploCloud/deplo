@@ -41,6 +41,7 @@ const ServerWorkloadRef = builder
       }),
       teamName: t.exposeString("teamName"),
       teamSlug: t.exposeString("teamSlug"),
+      teamAvatarUrl: t.exposeString("teamAvatarUrl", { nullable: true }),
       href: t.exposeString("href", {
         nullable: true,
         description:

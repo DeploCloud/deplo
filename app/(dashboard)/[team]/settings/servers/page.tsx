@@ -345,7 +345,10 @@ export default async function ServersPage(
   );
 
   const teamRefs = new Map(
-    teamsRaw.map((t) => [t.id, { slug: t.slug, name: t.name }]),
+    teamsRaw.map((t) => [
+      t.id,
+      { slug: t.slug, name: t.name, avatarUrl: t.avatarUrl },
+    ]),
   );
   const items: ServerListItem[] = servers.map((server) => ({
     id: server.id,

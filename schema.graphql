@@ -5916,6 +5916,7 @@ type ServerWorkload {
   The live status shown on its badge: active, restarting, unhealthy, down, idle, error, ...
   """
   status: String
+  teamAvatarUrl: String
   teamName: String
   teamSlug: String
 }
