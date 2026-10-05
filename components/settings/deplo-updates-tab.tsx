@@ -279,7 +279,7 @@ export function DeploUpdatesTab({
   return (
     <div className="grid gap-8 xl:grid-cols-[minmax(0,1fr)_clamp(24rem,30vw,36rem)] xl:gap-12">
       <div className="relative order-first flex justify-center xl:sticky xl:top-24 xl:order-last xl:self-start">
-        <UpdateGraphic className="w-48 xl:w-[72%]" />
+        <UpdateGraphic grid className="w-48 xl:w-[72%]" />
       </div>
 
       <div className="min-w-0 space-y-6">
