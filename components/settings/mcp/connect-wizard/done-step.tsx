@@ -4,7 +4,7 @@ import Link from "@/components/ui/link";
 import { Check, KeyRound } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ConfettiBurst } from "@/components/shared/confetti-burst";
-import { RobotGraphic } from "../robot-graphic";
+import { ConnectGraphic } from "../connect-graphic";
 import type { AgentDef } from "../agents";
 
 export function DoneStep({
@@ -20,9 +20,9 @@ export function DoneStep({
     <div className="mx-auto flex max-w-xl flex-col items-center gap-6 text-center">
       {connected && <ConfettiBurst rain className="z-50" count={60} />}
 
-      <RobotGraphic
+      <ConnectGraphic
         state={connected ? "connected" : "reaching"}
-        accent={agent.veil}
+        agent={agent}
         className="h-64 w-auto sm:h-80"
       />
 

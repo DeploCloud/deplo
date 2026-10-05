@@ -10,7 +10,7 @@ import { TOKEN_PRESETS } from "@/lib/token-presets";
 import type { Capability } from "@/lib/types/identity";
 import type { ScopeTreeTeam } from "@/lib/data/tokens/scope-tree";
 import { AGENTS, type AgentId } from "../agents";
-import { RobotGraphic, type RobotState } from "../robot-graphic";
+import { ConnectGraphic, type ConnectState } from "../connect-graphic";
 import { ConfettiBurst } from "@/components/shared/confetti-burst";
 import { ConfirmAction } from "@/components/shared/confirm-action";
 import { UnsavedChangesGuard } from "@/components/apps/unsaved-changes-guard";
@@ -271,12 +271,12 @@ function WizardRun({
     onRefresh();
   }
 
-  const robot: RobotState = connected
+  const scene: ConnectState = connected
     ? "connected"
     : step === "done" || step === "connect"
       ? "reaching"
-      : step === "permissions"
-        ? "key"
+      : agent
+        ? "picked"
         : "idle";
 
   if (step === "done" && agent)
@@ -287,10 +287,10 @@ function WizardRun({
   return (
     <div className="grid gap-8 xl:grid-cols-[minmax(0,1fr)_clamp(24rem,30vw,36rem)] xl:gap-12">
       <div className="relative order-first flex justify-center pt-2 xl:sticky xl:top-24 xl:order-last xl:self-start xl:pt-16">
-        <RobotGraphic
-          state={robot}
-          accent={agent?.veil}
-          className="h-auto w-52 xl:w-[92%]"
+        <ConnectGraphic
+          state={scene}
+          agent={agent}
+          className="h-auto w-64 xl:w-full"
         />
         {connected && <ConfettiBurst className="top-28" />}
       </div>

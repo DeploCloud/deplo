@@ -225,231 +225,55 @@
   animation: iso-token-shackle 5s ease-out infinite;
 }
 
-/* The MCP connect wizard's robot: it floats and looks around while it waits,
-   glances at the key it holds, frowns at the cable, and beams once connected. */
-@keyframes iso-robot-float {
+/* The MCP connect scene: agents hover around Deplo; the one being connected
+   lifts into its colours, its cable draws on, and data runs once it answers. */
+@keyframes iso-mcp-hover {
   0%,
   100% {
     translate: 0 0;
   }
   50% {
-    translate: 0 -7px;
-  }
-}
-
-@keyframes iso-robot-shadow {
-  0%,
-  100% {
-    scale: 1;
-  }
-  50% {
-    scale: 0.82;
-  }
-}
-
-.iso-robot-float {
-  animation: iso-robot-float 3.2s ease-in-out infinite;
-}
-
-.iso-robot-shadow {
-  transform-box: fill-box;
-  transform-origin: center;
-  animation: iso-robot-shadow 3.2s ease-in-out infinite;
-}
-
-@keyframes iso-robot-look {
-  0%,
-  20%,
-  100% {
-    translate: 0 0;
-  }
-  30%,
-  50% {
-    translate: 4px 0;
-  }
-  60%,
-  80% {
-    translate: -4px 0;
-  }
-}
-
-.iso-robot-look {
-  animation: iso-robot-look 6.4s ease-in-out infinite;
-}
-
-/* Holding the key it looks at it, down toward the hand. */
-.iso-robot-glance {
-  translate: 4px 2px;
-}
-
-@keyframes iso-robot-blink {
-  0%,
-  90%,
-  100% {
-    scale: 1 1;
-  }
-  94% {
-    scale: 1 0.1;
-  }
-}
-
-.iso-robot-blink {
-  transform-box: fill-box;
-  transform-origin: center;
-  animation: iso-robot-blink 3.6s ease-in-out infinite;
-}
-
-/* The antenna lags the float a little, so the ball reads as on a stalk. */
-@keyframes iso-robot-antenna {
-  0%,
-  100% {
-    translate: 0 0;
-  }
-  60% {
     translate: 0 -3px;
   }
 }
 
-.iso-robot-antenna {
-  animation: iso-robot-antenna 3.2s ease-in-out infinite;
+.iso-mcp-hover {
+  animation: iso-mcp-hover 3.6s ease-in-out var(--iso-delay, 0s) infinite;
 }
 
-@keyframes iso-robot-blip {
-  0%,
-  70%,
-  100% {
-    scale: 1;
-  }
-  35% {
-    scale: 1.5;
-  }
+.iso-mcp-lift {
+  transition: translate 0.6s cubic-bezier(0.2, 0.8, 0.2, 1);
 }
 
-.iso-robot-blip {
-  transform-box: fill-box;
-  transform-origin: center;
-  animation: iso-robot-blip 1.8s ease-in-out infinite;
-}
-
-/* A hello: the free hand waves twice, then rests for the rest of the loop. */
-@keyframes iso-robot-wave {
-  0%,
-  40%,
-  100% {
-    translate: 0 0;
-  }
-  8%,
-  24% {
-    translate: 3px -12px;
-  }
-  16%,
-  32% {
-    translate: -2px -6px;
+@keyframes iso-mcp-cable {
+  from {
+    stroke-dashoffset: 1;
   }
 }
 
-.iso-robot-wave {
-  animation: iso-robot-wave 6.4s ease-in-out infinite;
+.iso-mcp-cable {
+  stroke-dashoffset: 0;
+  animation: iso-mcp-cable 0.9s ease-out backwards;
 }
 
-@keyframes iso-robot-beat {
-  0%,
-  40%,
-  100% {
-    scale: 1;
-  }
-  15% {
-    scale: 1.3;
-  }
-  25% {
-    scale: 1.05;
-  }
-}
-
-.iso-robot-beat {
-  transform-box: fill-box;
-  transform-origin: center;
-  animation: iso-robot-beat 1.4s ease-in-out infinite;
-}
-
-/* The key tilts in the plane it is drawn on, pivoting at the hand. */
-@keyframes iso-robot-key {
-  0%,
-  100% {
-    rotate: -9deg;
-  }
-  50% {
-    rotate: 9deg;
-  }
-}
-
-.iso-robot-key {
-  transform-origin: 0 0;
-  animation: iso-robot-key 2.6s ease-in-out infinite;
-}
-
-/* Reaching: the cable runs to the corner, turns, stops short of the port and
-   pulls back. Stopping short is the message: Deplo has not heard from it yet. */
-@keyframes iso-robot-cable-a {
+@keyframes iso-mcp-packet {
   0% {
-    scale: 0;
+    translate: 0 0;
     opacity: 0;
   }
-  2% {
-    opacity: 1;
-  }
-  30%,
-  76% {
-    scale: 1;
-  }
-  98% {
-    scale: 0;
+  15%,
+  85% {
     opacity: 1;
   }
   100% {
-    scale: 0;
+    translate: var(--iso-mcp-run);
     opacity: 0;
   }
 }
 
-@keyframes iso-robot-cable-b {
-  0%,
-  30% {
-    scale: 0;
-    opacity: 0;
-  }
-  31% {
-    opacity: 1;
-  }
-  45%,
-  62% {
-    scale: 0.6;
-  }
-  75% {
-    scale: 0;
-    opacity: 1;
-  }
-  76%,
-  100% {
-    scale: 0;
-    opacity: 0;
-  }
-}
-
-.iso-robot-cable-a {
-  transform-box: fill-box;
-  transform-origin: 0 0;
-  animation: iso-robot-cable-a 2.8s ease-in-out infinite;
-}
-
-.iso-robot-cable-b {
-  transform-box: fill-box;
-  transform-origin: 0 100%;
-  animation: iso-robot-cable-b 2.8s ease-in-out infinite;
-}
-
-.iso-robot-halo {
+.iso-mcp-packet {
   opacity: 0;
+  animation: iso-mcp-packet 1.8s linear infinite;
 }
 
 /* The notification settings' phone: three alerts drop onto the screen on one

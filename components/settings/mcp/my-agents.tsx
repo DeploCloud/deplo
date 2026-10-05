@@ -21,7 +21,7 @@ import { timeAgo } from "@/lib/utils";
 import type { MyMcpAgentDTO } from "@/lib/data/mcp-clients";
 import { AGENTS } from "./agents";
 import { AgentMark } from "./connect-wizard/agent-picker";
-import { RobotMark } from "./robot-graphic";
+import { RobotMark } from "./robot-mark";
 
 const OTHER = AGENTS.find((a) => a.id === "other")!;
 
