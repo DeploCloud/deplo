@@ -47,7 +47,6 @@ const ServerWorkloadRef = builder
       }),
       project: t.exposeString("project", { nullable: true }),
       environment: t.exposeString("environment", { nullable: true }),
-      domain: t.exposeString("domain", { nullable: true }),
       status: t.exposeString("status", {
         description:
           "The live status shown on its badge: active, restarting, unhealthy, down, idle, error, ...",

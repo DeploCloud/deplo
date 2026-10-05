@@ -5889,7 +5889,6 @@ type ServerUninstall {
 type ServerWorkload {
   containers: [WorkloadContainer!]
   cpu: Float
-  domain: String
 
   """A database's engine ("postgres"); null for an app."""
   engine: String

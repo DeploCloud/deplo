@@ -16,7 +16,6 @@ function w(over: Partial<ServerWorkload>): ServerWorkload {
     href: null,
     project: null,
     environment: null,
-    domain: null,
     status: "active",
     cpu: null,
     memUsed: null,
@@ -27,7 +26,7 @@ function w(over: Partial<ServerWorkload>): ServerWorkload {
 }
 
 const ROWS = [
-  w({ id: "web", name: "web", domain: "https://shop.acme.com" }),
+  w({ id: "web", name: "web", teamName: "Shop" }),
   w({ id: "loop", name: "worker", status: "restarting" }),
   w({ id: "off", name: "blog", status: "idle" }),
   w({ id: "db", name: "main", kind: "database", engine: "postgres" }),
@@ -40,7 +39,7 @@ test("no search and no filter shows everything", () => {
   assert.deepEqual(ids(ALL), ["web", "loop", "off", "db"]);
 });
 
-test("search reaches the domain and the engine", () => {
+test("search reaches the team and the engine", () => {
   assert.deepEqual(ids({ ...ALL, query: "shop" }), ["web"]);
   assert.deepEqual(ids({ ...ALL, query: "postgres" }), ["db"]);
 });

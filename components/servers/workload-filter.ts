@@ -34,7 +34,6 @@ export function filterWorkloads(
           query,
           w.name,
           w.teamName,
-          w.domain ?? "",
           w.project ?? "",
           w.environment ?? "",
           w.engine ?? "",

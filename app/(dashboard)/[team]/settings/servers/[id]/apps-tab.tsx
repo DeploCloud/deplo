@@ -50,7 +50,6 @@ const WORKLOADS = /* GraphQL */ `
       href
       project
       environment
-      domain
       status
       cpu
       memUsed
@@ -121,7 +120,7 @@ export function ServerAppsTab({
       <ListToolbar
         query={query}
         onQuery={setQuery}
-        placeholder="Search apps, teams or domains"
+        placeholder="Search apps or teams"
         filters={
           <>
             <Select
@@ -168,14 +167,13 @@ export function ServerAppsTab({
               <TableHead className={cn(WIDE, "text-right")}>CPU</TableHead>
               <TableHead className={cn(WIDE, "text-right")}>Memory</TableHead>
               <TableHead className={cn(WIDE, "text-right")}>Restarts</TableHead>
-              <TableHead className={WIDE}>Domain</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {shown.length === 0 && (
               <TableRow>
                 <TableCell
-                  colSpan={10}
+                  colSpan={9}
                   className="py-8 text-center text-muted-foreground"
                 >
                   Nothing matches these filters.
@@ -268,20 +266,6 @@ function WorkloadRows({
         >
           {w.restarts}
         </TableCell>
-        <TableCell className={WIDE}>
-          {w.domain ? (
-            <a
-              href={w.domain}
-              target="_blank"
-              rel="noreferrer"
-              className="block max-w-28 truncate text-muted-foreground hover:text-foreground hover:underline"
-            >
-              {w.domain.replace(/^https?:\/\//, "")}
-            </a>
-          ) : (
-            <span className="text-muted-foreground">-</span>
-          )}
-        </TableCell>
       </TableRow>
       {open && w.containers.map((c) => <ContainerRow key={c.name} c={c} />)}
     </>
@@ -315,7 +299,6 @@ function ContainerRow({ c }: { c: WorkloadContainer }) {
       >
         {c.restartCount}
       </TableCell>
-      <TableCell className={WIDE} />
     </TableRow>
   );
 }

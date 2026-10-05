@@ -43,7 +43,6 @@ export type ServerWorkload = {
   href: string | null;
   project: string | null;
   environment: string | null;
-  domain: string | null;
   status: DisplayStatus;
   cpu: number | null;
   memUsed: number | null;
@@ -107,7 +106,6 @@ export async function listServerWorkloads(
         logoTone: appsTable.logoTone,
         status: appsTable.status,
         latestDeploymentId: appsTable.latestDeploymentId,
-        productionUrl: appsTable.productionUrl,
         teamId: teamsTable.id,
         teamName: teamsTable.name,
         teamSlug: teamsTable.slug,
@@ -166,7 +164,6 @@ export async function listServerWorkloads(
       href: page(a.teamId, a.teamSlug, `/apps/${a.slug}`),
       project: a.project,
       environment: a.environment,
-      domain: a.productionUrl,
       ...live(
         a.id,
         a.status as AppStatus,
@@ -184,7 +181,6 @@ export async function listServerWorkloads(
       href: page(d.teamId, d.teamSlug, `/storage/databases/${d.id}`),
       project: d.project,
       environment: d.environment,
-      domain: null,
       ...live(
         d.id,
         DATABASE_STATUS[d.status as DatabaseStatus] ?? "error",
