@@ -111,7 +111,7 @@ export function CategoryChips({
       className={cn(
         "relative z-10 flex items-center gap-2",
         fits === null
-          ? "-mx-1 scrollbar-none overflow-x-auto px-1 pb-1"
+          ? "-mx-1 -mt-1 scrollbar-none overflow-x-auto p-1"
           : "min-w-0",
       )}
     >

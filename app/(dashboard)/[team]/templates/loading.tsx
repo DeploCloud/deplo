@@ -2,7 +2,9 @@ import { Skeleton } from "@/components/ui/skeleton";
 import {
   StoreChipsSkeleton,
   StoreRailsSkeleton,
+  TextLine,
 } from "@/components/templates/store-skeleton";
+import { TemplatesGraphic } from "@/components/templates/templates-graphic";
 
 export default function Loading() {
   return (
@@ -12,11 +14,27 @@ export default function Loading() {
       aria-busy
       aria-label="Loading templates"
     >
-      <div className="mx-auto flex max-w-2xl flex-col items-center pt-8 sm:pt-12">
-        <Skeleton className="h-9 w-44" shimmer />
-        <Skeleton className="mt-2 h-4 w-72" shimmer />
-        <Skeleton className="mt-5 h-10 w-full max-w-md" shimmer />
-      </div>
+      <section className="grid items-center gap-8 pt-8 sm:pt-12 lg:grid-cols-[minmax(0,1fr)_20rem]">
+        <div aria-hidden className="hidden lg:order-last lg:block">
+          <TemplatesGraphic className="h-auto w-full" />
+        </div>
+        <div className="@container min-w-0">
+          <TextLine type="text-3xl" className="w-36" />
+          {/* A <p>'s 1.6 line-height (globals.css); ~33.5rem of text, wraps below. */}
+          <div className="mt-1 text-sm leading-[1.6]">
+            <TextLine className="w-[33.5rem] max-w-full" />
+            <TextLine type="hidden @max-[33.5rem]:flex" className="w-36" />
+          </div>
+          <div className="mt-5 flex max-w-md items-center gap-2">
+            <Skeleton className="h-10 min-w-0 flex-1" shimmer />
+            <Skeleton className="size-10 shrink-0" shimmer />
+          </div>
+          <div className="mt-3 flex flex-wrap gap-2">
+            <Skeleton className="h-9 w-59" shimmer />
+            <Skeleton className="h-9 w-45" shimmer />
+          </div>
+        </div>
+      </section>
 
       <StoreChipsSkeleton />
       <StoreRailsSkeleton />

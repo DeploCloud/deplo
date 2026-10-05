@@ -87,7 +87,7 @@ export function TemplateRail({
         ref={ref}
         onScroll={measure}
         style={{ maskImage: mask, WebkitMaskImage: mask }}
-        className="-mx-1 scrollbar-none flex snap-x snap-mandatory gap-3 overflow-x-auto px-1 py-1"
+        className="-mx-1 scrollbar-none flex snap-x snap-mandatory scroll-px-1 gap-3 overflow-x-auto px-1 py-1"
       >
         {children}
       </div>
