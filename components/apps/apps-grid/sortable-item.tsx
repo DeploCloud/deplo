@@ -5,6 +5,10 @@ import { GripVertical } from "lucide-react";
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { scopeListenersToSubtree } from "@/lib/portal-event-scope";
+import {
+  SELECTABLE_CARD,
+  SELECTED_RING,
+} from "@/components/shared/card-selection";
 import { cn } from "@/lib/utils";
 
 export function SortableItem({
@@ -121,9 +125,10 @@ export function SortableItem({
       data-card-kind={dataKind}
       onClickCapture={onClickCapture}
       className={cn(
-        "touch-manipulation rounded-xl select-none [-webkit-touch-callout:none]",
+        "touch-manipulation select-none [-webkit-touch-callout:none]",
+        SELECTABLE_CARD,
         "focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background focus-visible:outline-none",
-        selected && "ring-2 ring-primary ring-offset-2 ring-offset-background",
+        selected && SELECTED_RING,
         isDragging && "relative z-10",
       )}
       {...wrapperAttributes}

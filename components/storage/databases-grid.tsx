@@ -46,6 +46,7 @@ import {
   SelectableCard,
   SelectionBar,
   SelectionCanvas,
+  SELECTABLE_CARD,
   SELECTED_RING,
   useSelectionShortcuts,
 } from "@/components/shared/card-selection";
@@ -552,7 +553,8 @@ function SortableCard({
       data-card-id={id}
       onClickCapture={onClickCapture}
       className={cn(
-        "touch-manipulation rounded-xl select-none [-webkit-touch-callout:none]",
+        "touch-manipulation select-none [-webkit-touch-callout:none]",
+        SELECTABLE_CARD,
         selected && SELECTED_RING,
         (isDragging || groupDragging) &&
           "opacity-40 transition-opacity duration-150",

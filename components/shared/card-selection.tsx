@@ -9,8 +9,18 @@ import type { CardSelection } from "@/components/shared/use-card-selection";
 export const MARQUEE_BOX =
   "pointer-events-none absolute z-10 hidden rounded-xl border-2 border-primary";
 
-export const SELECTED_RING =
-  "ring-2 ring-primary ring-offset-2 ring-offset-background";
+// A selected card grows its ring instead of snapping one on: the zero-spread
+// base is what lets the box-shadow interpolate, and it paints nothing until
+// something is picked.
+export const SELECTABLE_CARD = cn(
+  "rounded-xl shadow-[0_0_0_0_var(--background),0_0_0_0_var(--primary)] transition-shadow duration-200",
+  "[&_[data-slot=card]]:transition-colors [&_[data-slot=card]]:duration-200",
+);
+
+export const SELECTED_RING = cn(
+  "shadow-[0_0_0_2px_var(--background),0_0_0_4px_var(--primary)]",
+  "[&_[data-slot=card]]:bg-primary-wash",
+);
 
 export function SelectionCanvas({
   canvasRef,
@@ -69,7 +79,8 @@ export function SelectableCard({
     <div
       {...selectableProps(id, onSelect)}
       className={cn(
-        "touch-manipulation rounded-xl select-none",
+        "touch-manipulation select-none",
+        SELECTABLE_CARD,
         selected && SELECTED_RING,
       )}
     >
