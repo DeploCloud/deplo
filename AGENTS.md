@@ -328,7 +328,10 @@ scripts/gen-schema.ts`. Both halves of that prefix are load-bearing: the shim
     `takeover` (Bearer `DEPLO_HOST_BOOTSTRAP_TOKEN`, dialed by the host's takeover unit),
     `deplo-move/[step]` (Bearer move code, bound to the new Deplo that first used it - ADR-0035).
   - **Better Auth's own surface**: `auth/[...all]`, mounted whole and gated shut (see below).
-  - **Unauthenticated on purpose**: `health` (liveness, reads nothing) and
+  - **Unauthenticated on purpose**: `health` (liveness, reads nothing), `offline` (the
+    page Traefik's last-resort router serves when no app's own router is up: it answers
+    503 for a hostname this Deplo holds and 404 for one it does not, and reflects
+    nothing from the request) and
     `avatar/[style]/[preset]/[seed]`, which renders a deterministic picture from the path and
     reads nothing - onboarding shows the picker before an account exists. Its styles and presets
     are a FIXED list (`lib/apps/avatar-shared.ts`): four packs plus `initials`, each preset one

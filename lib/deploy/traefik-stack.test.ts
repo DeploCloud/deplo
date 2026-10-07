@@ -420,6 +420,19 @@ configs:
             priority: 2
             tls:
               certResolver: letsencrypt
+          deplo-offline:
+            rule: HostRegexp(\`^.+$\`)
+            entryPoints:
+              - websecure
+            service: deplo-panel
+            priority: 1
+            middlewares:
+              - deplo-offline
+            tls: {}
+        middlewares:
+          deplo-offline:
+            replacePath:
+              path: /api/offline
         services:
           deplo-panel:
             loadBalancer:
@@ -625,6 +638,38 @@ test("the installer's two-router file survives a panel edit byte for byte", () =
     panelRoute(INSTALLED_WITH_PANEL)!,
   );
   assert.equal(config(out), config(INSTALLED_WITH_PANEL));
+});
+
+test("a stopped app's address falls through to a route that says so", () => {
+  const router =
+    panelFileOf(INSTALLED_WITH_PANEL).http.routers["deplo-offline"];
+  assert.equal(router.rule, "HostRegexp(`^.+$`)");
+  assert.deepEqual(router.entryPoints, ["websecure"]);
+  assert.equal(
+    router.priority,
+    1,
+    "under every real route, or it would swallow the apps",
+  );
+  assert.deepEqual(
+    (
+      panelFileOf(INSTALLED_WITH_PANEL).http.middlewares as Record<
+        string,
+        unknown
+      >
+    )["deplo-offline"],
+    { replacePath: { path: "/api/offline" } },
+  );
+});
+
+test("a proxy installed before the fallback existed gets it on the next edit", () => {
+  const old = INSTALLED_WITH_PANEL.replace(
+    /\n {10}deplo-offline:\n(?: {12}.*\n| {14}.*\n)*? {8}middlewares:\n {10}deplo-offline:\n {12}replacePath:\n {14}path: \/api\/offline\n/,
+    "\n",
+  );
+  assert.equal(panelFileOf(old).http.routers["deplo-offline"], undefined);
+  const healed = panelFileOf(withPanelRoute(old, PANEL_ROUTE));
+  assert.equal(healed.http.routers["deplo-offline"].service, "deplo-panel");
+  assert.ok(healed.http.middlewares);
 });
 
 test("the generated host keeps answering when the domain moves", () => {

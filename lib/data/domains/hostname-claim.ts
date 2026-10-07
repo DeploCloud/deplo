@@ -1,6 +1,6 @@
 import "server-only";
 
-import { and, eq, isNotNull, ne } from "drizzle-orm";
+import { and, eq, isNotNull, ne, sql } from "drizzle-orm";
 
 import { getDb } from "../../db/client";
 import { apps as appsTable } from "../../db/schema/control-plane/apps";
@@ -132,4 +132,26 @@ export async function uniqueAutoDomainName(
     if (!(await domainNameExists(candidate))) return candidate;
   }
   return wildcardDomain(label, `${randomWord()}-${newId("").slice(1, 5)}`, ip);
+}
+
+/** Does any app here answer for this hostname? Unscoped on purpose: the caller is the public page a stopped app is served with. */
+export async function hostnameIsServedHere(raw: string): Promise<boolean> {
+  const host = normalizePreferredHost(raw).replace(/:\d+$/, "");
+  if (!host) return false;
+  if (isPanelHost(host)) return true;
+  const claimed = await getDb()
+    .select({ id: domainsTable.id })
+    .from(domainsTable)
+    .where(sql`lower(${domainsTable.name}) = ${host}`)
+    .limit(1);
+  if (claimed.length > 0) return true;
+  // A preview host never enters `domains`: it is built straight into a router under the app's base.
+  const bases = await getDb()
+    .select({ base: appsTable.previewBaseDomain })
+    .from(appsTable)
+    .where(isNotNull(appsTable.previewBaseDomain));
+  return bases.some(({ base }) => {
+    const b = (base ?? "").trim().toLowerCase();
+    return b !== "" && (host === b || host.endsWith(`.${b}`));
+  });
 }

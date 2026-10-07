@@ -1404,6 +1404,16 @@ setup_pending() {
   [ -z "$n" ] || [ "$n" = 0 ]
 }
 
+# The route every address falls back to. An app that is stopped, crashed or still
+# building takes its own router with it, and Traefik has 404 as its only answer for
+# a host nothing claims - which reads as "this site does not exist". `priority: 1`
+# puts it under every real route (a Host rule's own priority is its length), and
+# websecure only: :80 redirects there already, at that same priority.
+offline_router() {
+  printf '          deplo-offline:\n            rule: HostRegexp(`^.+$`)\n            entryPoints:\n              - websecure\n            service: deplo-panel\n            priority: 1\n            middlewares:\n              - deplo-offline\n            tls: {}\n'
+  printf '        middlewares:\n          deplo-offline:\n            replacePath:\n              path: /api/offline\n'
+}
+
 # One router per host, both onto the one service. Unquoted scalars on purpose:
 # this is byte-for-byte what `withPanelRoute` re-renders, so the first edit from
 # the panel produces no spurious diff in the file an operator may be reading on
@@ -1451,6 +1461,7 @@ render_traefik_panel_config() {
     printf 'configs:\n  deplo-panel:\n    content: |\n      http:\n        routers:\n'
     panel_router deplo-panel "$PANEL_HOST"
     [ "$PANEL_HOST" = "$FALLBACK_HOST" ] || panel_router deplo-panel-fallback "$FALLBACK_HOST"
+    offline_router
     printf '        services:\n          deplo-panel:\n            loadBalancer:\n              servers:\n                - url: http://deplo:3000\n              passHostHeader: true\n'
     [ -z "$TRAEFIK_CUSTOM_CERTS" ] || printf '%s\n' "$TRAEFIK_CUSTOM_CERTS"
     printf '%s' "$TRAEFIK_DEFAULT_CERT_CONFIG"

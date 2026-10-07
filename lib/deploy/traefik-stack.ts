@@ -276,6 +276,12 @@ const PANEL_PRIORITY = 2;
 
 const REDIRECT_PRIORITY = 1;
 
+// A stopped app takes its own router down with it, and Traefik answers 404 for an
+// address it no longer knows. This one is left under every route to say so instead.
+const OFFLINE_ROUTER = "deplo-offline";
+const OFFLINE_PATH = "/api/offline";
+const OFFLINE_PRIORITY = 1;
+
 export const DEFAULT_PANEL_TARGET = "http://deplo:3000";
 
 export function panelRoute(currentYaml: string): PanelRoute | null {
@@ -398,6 +404,23 @@ function panelFile(current: unknown, route: PanelRoute): string {
     } else {
       doc.deleteIn(["http", "routers", PANEL_FALLBACK_ROUTER]);
     }
+    // Only on websecure: :80 already redirects everything there, and a second router
+    // at the redirect's own priority would be a coin flip between the two.
+    doc.setIn(
+      ["http", "routers", OFFLINE_ROUTER],
+      doc.createNode({
+        rule: "HostRegexp(`^.+$`)",
+        entryPoints: ["websecure"],
+        service: PANEL_ROUTER,
+        priority: OFFLINE_PRIORITY,
+        middlewares: [OFFLINE_ROUTER],
+        tls: {},
+      }),
+    );
+    doc.setIn(
+      ["http", "middlewares", OFFLINE_ROUTER],
+      doc.createNode({ replacePath: { path: OFFLINE_PATH } }),
+    );
     doc.setIn(
       ["http", "services", PANEL_ROUTER],
       doc.createNode({
