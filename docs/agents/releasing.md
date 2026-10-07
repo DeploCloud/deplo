@@ -103,6 +103,42 @@ stable `0.3.0` is offered to canary instances as an update too.
    `releases/latest`, the dashboard banner offers the update, and `deplo_update_available` fires
    once per version.
 
+## The release notes
+
+The workflow publishes GitHub's **generated** notes, which are a dump of every merged PR title.
+**Replace them**, so every release page reads the same way, and the one command that writes the
+body is:
+
+```bash
+node --import tsx scripts/release-notes.mts v0.5.0 > /tmp/notes.md
+gh release edit v0.5.0 --title v0.5.0 --notes-file /tmp/notes.md
+```
+
+The title is the bare tag, never a sentence. The body is a linked heading, an optional note, then
+the sections **in this order**, each one skipped when it is empty:
+
+| Section         | From                       |
+| --------------- | -------------------------- |
+| 🚀 Features     | `feat:`                    |
+| 💅 Interface    | `ui:`                      |
+| 🐛 Bug Fixes    | `fix:`                     |
+| ⚡ Performance  | `perf:`                    |
+| 🤝 Contributors | the handles credited above |
+
+**Everything else stays out** - `chore`, `docs`, `test`, `ci`, `build`, `refactor`, `revert`,
+`style`. Whoever opens a release page is asking what changed for them, and a release whose notes
+are mostly internal is one they stop reading. The generator prints what it left out on stderr:
+**read that list**, because a commit whose subject is not conventional is invisible to it and may
+be the best thing in the release (`v0.1.4` shipped arm64 images that way).
+
+**Credit goes inline only when the commit came through a pull request** (`, by @handle in [#57]`);
+every other author still lands in Contributors, and the owner and the bots never do.
+
+**The note on top is for an upgrade step or a bad bug**, in one short paragraph: what broke or what
+the operator has to do, and the way out. `v0.1.3` (an install that died without a domain) and
+`v0.4.0` (`--public-setup` removed) are the shape. It is not a feature tour, and a release that
+needs nothing from the reader gets no note at all.
+
 ## Three things that are not this
 
 - **The server agent** (`DeploCloud/deplo-agent`) versions on its own clock, in its own repo. It is
