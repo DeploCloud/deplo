@@ -275,9 +275,7 @@ export default async function OverviewPage(props: PageProps<"/[team]">) {
           }
         />
 
-        {isAdmin && (
-          <NetworkSweepNotice failed={networkSweepFailed} canRetry={isAdmin} />
-        )}
+        {isAdmin && <NetworkSweepNotice failed={networkSweepFailed} />}
 
         <AppSearch
           initialQuery={query}

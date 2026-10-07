@@ -164,6 +164,8 @@ export const DOCS = {
   "compose.overview": "advanced/compose-apps",
   "network.isolation": "advanced/network-isolation",
   "network.isolationClash": "advanced/network-isolation#two-stacks-one-name",
+  "network.isolationSweep":
+    "advanced/network-isolation#migrate-existing-instances",
   "compose.differences":
     "advanced/compose-apps#what-is-different-about-a-compose-app",
   "compose.flags": "advanced/compose-apps#extra-flags",

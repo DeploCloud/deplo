@@ -198,3 +198,13 @@ export async function retryNetworkIsolationSweep(): Promise<void> {
     .where(eq(instanceSettings.id, "default"));
   await runNetworkIsolationSweep();
 }
+
+// The count is what the Overview notice reads, and nothing else: zeroing it IS the dismissal.
+// Try again re-runs the sweep and brings it back if a stack still cannot be reached.
+export async function dismissNetworkIsolationNotice(): Promise<void> {
+  await requireInstanceAdmin();
+  await getDb()
+    .update(instanceSettings)
+    .set({ networkSweepFailed: 0, updatedAt: nowIso() })
+    .where(eq(instanceSettings.id, "default"));
+}

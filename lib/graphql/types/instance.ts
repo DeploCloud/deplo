@@ -1,5 +1,8 @@
 import { builder } from "../builder";
-import { retryNetworkIsolationSweep } from "@/lib/deploy/network-migration";
+import {
+  dismissNetworkIsolationNotice,
+  retryNetworkIsolationSweep,
+} from "@/lib/deploy/network-migration";
 import {
   listCertificateAccounts,
   setCertificateEmail,
@@ -319,6 +322,16 @@ builder.mutationFields((t) => ({
     description:
       "Mark the first-run welcome as shown, so it opens exactly once in an instance's life. Stamped on the singleton settings row rather than in the browser, because the wizard's `?welcome=1` is lost on a reload and a second browser would otherwise replay the celebration. Only the instance owner writes it; anybody else is a no-op, and so is a second call.",
     resolve: () => markWelcomeSeen(),
+  }),
+  dismissNetworkIsolationNotice: t.field({
+    type: "Boolean",
+    authScopes: { instanceAdmin: true },
+    description:
+      "Put the Overview's network-isolation notice away for good. It reports how many stacks the one-time move could not reach; the stacks themselves are untouched and each one still moves on its next deploy. `retryNetworkIsolation` brings the notice back if a stack still cannot be reached.",
+    resolve: async () => {
+      await dismissNetworkIsolationNotice();
+      return true;
+    },
   }),
   retryNetworkIsolation: t.field({
     type: "Boolean",

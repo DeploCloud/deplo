@@ -3452,6 +3452,11 @@ type Mutation {
   dismissMigrationReport(runId: String!): Boolean
 
   """
+  Put the Overview's network-isolation notice away for good. It reports how many stacks the one-time move could not reach; the stacks themselves are untouched and each one still moves on its next deploy. `retryNetworkIsolation` brings the notice back if a stack still cannot be reached.
+  """
+  dismissNetworkIsolationNotice: Boolean
+
+  """
   Clear this app's "changes not deployed yet" notice without deploying - the change was undone, or it was never one a deploy has to carry. The next config change stamps it again.
   """
   dismissPendingChanges(appId: String!): Boolean

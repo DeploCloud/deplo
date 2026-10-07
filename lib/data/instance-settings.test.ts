@@ -25,6 +25,10 @@ import {
 } from "./instance-settings/panel-address";
 import { getPanelAddressImpact } from "./instance-settings/panel-address-impact";
 import {
+  dismissNetworkIsolationNotice,
+  networkSweepFailures,
+} from "../deploy/network-migration";
+import {
   getPanelHttps,
   moveWithRollback,
   withRoutedScheme,
@@ -119,6 +123,20 @@ test("anything that could escape a shell, or carry credentials, is refused", () 
       `must refuse ${bad}`,
     );
   }
+});
+
+test("dismissing the network notice zeroes the count, and only an admin can", async () => {
+  await db.insert(instanceSettings).values({
+    id: "default",
+    networkSweepFailed: 5,
+    updatedAt: new Date().toISOString(),
+  });
+
+  await assert.rejects(asUser(MEMBER, () => dismissNetworkIsolationNotice()));
+  assert.equal(await networkSweepFailures(), 5);
+
+  await asUser(ADMIN, () => dismissNetworkIsolationNotice());
+  assert.equal(await networkSweepFailures(), 0);
 });
 
 test("the settings name the instance owner, and null when nobody holds it", async () => {
