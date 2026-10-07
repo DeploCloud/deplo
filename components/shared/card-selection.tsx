@@ -12,15 +12,11 @@ export const MARQUEE_BOX =
 // A selected card grows its ring instead of snapping one on: the zero-spread
 // base is what lets the box-shadow interpolate, and it paints nothing until
 // something is picked.
-export const SELECTABLE_CARD = cn(
-  "rounded-xl shadow-[0_0_0_0_var(--background),0_0_0_0_var(--primary)] transition-shadow duration-200",
-  "[&_[data-slot=card]]:transition-colors [&_[data-slot=card]]:duration-200",
-);
+export const SELECTABLE_CARD =
+  "rounded-xl shadow-[0_0_0_0_var(--background),0_0_0_0_var(--primary)] transition-shadow duration-200";
 
-export const SELECTED_RING = cn(
-  "shadow-[0_0_0_2px_var(--background),0_0_0_4px_var(--primary)]",
-  "[&_[data-slot=card]]:bg-primary-wash",
-);
+export const SELECTED_RING =
+  "shadow-[0_0_0_2px_var(--background),0_0_0_4px_var(--primary)]";
 
 export function SelectionCanvas({
   canvasRef,
