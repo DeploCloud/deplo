@@ -1,0 +1,5 @@
+# Scorecard's Vulnerabilities check reads this. braces reaches the tree only through eslint's
+# tooling and 3.0.3 is still the newest release; `bun audit` in ci.yml ignores the same id.
+[[IgnoredVulns]]
+id = "GHSA-vfj7-8cjw-p6xm"
+reason = "eslint-only dev dependency, no patched release exists yet"
