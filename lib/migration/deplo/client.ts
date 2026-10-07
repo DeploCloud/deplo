@@ -1,5 +1,6 @@
-import { createHash } from "node:crypto";
+import { createHmac } from "node:crypto";
 
+import { deriveKey } from "../../crypto";
 import type { SourceCredential } from "../source";
 import {
   REQUEST_TIMEOUT_MS,
@@ -84,8 +85,11 @@ export async function viewerTeam(
 const EXPORT_TTL_MS = 60_000;
 const cached = new Map<string, { at: number; value: Promise<DeploExport> }>();
 
+// Keyed, not a bare digest: the entry outlives the request, so the key must not be the token.
 const keyOf = (c: SourceCredential) =>
-  createHash("sha256").update(`${c.baseUrl}|${c.apiKey}`).digest("hex");
+  createHmac("sha256", deriveKey("migration-cache"))
+    .update(`${c.baseUrl}|${c.apiKey}`)
+    .digest("hex");
 
 async function fetchExport(c: SourceCredential): Promise<DeploExport> {
   const d = await graphql<{ migrationExport: DeploExport | null }>(
