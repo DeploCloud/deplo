@@ -6,7 +6,10 @@ import { eq } from "drizzle-orm";
 import { makeTestDb, type TestDb } from "../../db/test-harness";
 import { __setTestDb, __resetTestDb } from "../../db/client";
 import { apiTokens } from "../../db/schema/control-plane/api-tokens";
-import { teams as teamsTable } from "../../db/schema/control-plane/identity";
+import {
+  teams as teamsTable,
+  users as usersTable,
+} from "../../db/schema/control-plane/identity";
 import { projects as projectsTable } from "../../db/schema/control-plane/projects";
 import { oauthClient } from "../../db/schema/auth";
 import { seedIdentity, TEAM_A, USER_1 } from "../leaf-test-helpers";
@@ -85,6 +88,19 @@ test("a scope whose every node was deleted stops resolving, it does not widen", 
 test("authenticateToken returns null for an unknown or non-deplo token", async () => {
   assert.equal(await authenticateToken("not-a-deplo-token"), null);
   assert.equal(await authenticateToken("deplo_doesnotexist"), null);
+});
+
+test("a suspended user's token stops resolving", async () => {
+  const raw = await asUser1(
+    async () =>
+      (await createToken({ name: "CI", capabilities: ["deploy_apps"] })).raw,
+  );
+  assert.ok(await authenticateToken(raw));
+  await db
+    .update(usersTable)
+    .set({ suspended: true })
+    .where(eq(usersTable.id, USER_1));
+  assert.equal(await authenticateToken(raw), null);
 });
 
 test("an MCP connection's token stops resolving in a team that turned MCP off", async () => {

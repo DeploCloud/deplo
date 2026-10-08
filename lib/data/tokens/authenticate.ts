@@ -8,7 +8,10 @@ import {
   apiTokens,
   apiTokenCapabilities,
 } from "../../db/schema/control-plane/api-tokens";
-import { teams as teamsTable } from "../../db/schema/control-plane/identity";
+import {
+  teams as teamsTable,
+  users as usersTable,
+} from "../../db/schema/control-plane/identity";
 import { oauthAccessToken, oauthClient } from "../../db/schema/auth";
 import { OAUTH_ACCESS_TOKEN_PREFIX } from "../../auth/oauth-metadata";
 import { nowIso } from "../../ids";
@@ -29,6 +32,7 @@ interface TokenRow {
   scoped: boolean;
   expiresAt: string | null;
   oauthClientId: string | null;
+  suspended: boolean;
 }
 
 const TOKEN_ROW_COLUMNS = {
@@ -38,6 +42,7 @@ const TOKEN_ROW_COLUMNS = {
   scoped: apiTokens.scoped,
   expiresAt: apiTokens.expiresAt,
   oauthClientId: apiTokens.oauthClientId,
+  suspended: usersTable.suspended,
 } as const;
 
 export async function authenticateToken(
@@ -49,6 +54,7 @@ export async function authenticateToken(
       db
         .select(TOKEN_ROW_COLUMNS)
         .from(apiTokens)
+        .innerJoin(usersTable, eq(usersTable.id, apiTokens.userId))
         .where(eq(apiTokens.tokenHash, sql.placeholder("hash")))
         .limit(1),
     ).execute({ hash: sha256Hex(raw) });
@@ -74,6 +80,7 @@ async function oauthTokenRow(raw: string): Promise<TokenRow | null> {
       ),
     )
     .innerJoin(oauthClient, eq(oauthClient.clientId, oauthAccessToken.clientId))
+    .innerJoin(usersTable, eq(usersTable.id, apiTokens.userId))
     .where(
       and(
         eq(oauthAccessToken.token, hash),
@@ -98,6 +105,8 @@ async function identityForTokenRow(
 ): Promise<RequestIdentity | null> {
   // Expiry before the team is picked, before the membership read, before the usage stamp: that order is the guarantee.
   if (match.expiresAt && Date.parse(match.expiresAt) <= Date.now()) return null;
+  // Suspending revokes sessions only, so a suspended owner's token must stop here.
+  if (match.suspended) return null;
   const scope = match.scoped ? await loadScope(match.id) : null;
 
   // Fail closed: the token acts only in teams where its owner is still a member holding manage_tokens.
