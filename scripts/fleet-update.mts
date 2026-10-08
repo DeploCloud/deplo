@@ -1,6 +1,7 @@
 import { count, inArray, sql } from "drizzle-orm";
 
 import { markServerSeen } from "../lib/data/servers/agent-handshake";
+import { releaseChannel } from "../lib/data/release-channel";
 import { listAllServers } from "../lib/data/servers/roster";
 import { getDb } from "../lib/db/client";
 import { apps } from "../lib/db/schema/control-plane/apps";
@@ -41,6 +42,9 @@ async function appsPerServer(): Promise<Map<string, number>> {
   return new Map(rows.map((r) => [r.serverId ?? "", Number(r.n)]));
 }
 
+// One channel for the whole fleet, the instance's own: the default is stable, and
+// on a canary fleet that resolves a version older than the agents already run.
+const channel = await releaseChannel();
 const all = await listAllServers();
 const provisioned = all.filter(
   (s) => Boolean(s.agent?.certFingerprint) && !s.importOnly,
@@ -60,6 +64,7 @@ if (!order.length) {
 const busy = await busyServerIds();
 console.log(
   `Fleet: ${provisioned.length} provisioned (${remotes.length} remote, ${agentZero.length} local)` +
+    `  channel=${channel}` +
     `${dryRun ? "  [DRY RUN - no agent is touched]" : ""}`,
 );
 
@@ -100,7 +105,7 @@ for (const [i, s] of order.entries()) {
 
   let target = "";
   try {
-    const res = await selfUpdateServerAgent(s.id);
+    const res = await selfUpdateServerAgent(s.id, channel);
     target = res.version;
     console.log(
       `  ... ${label}: ${before} -> ${res.version} (restarting=${res.restarting})`,
