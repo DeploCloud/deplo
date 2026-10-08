@@ -164,7 +164,7 @@ export const AGENTS: AgentDef[] = [
   {
     id: "antigravity",
     label: "Antigravity",
-    blurb: "Google's agent editor, once per machine.",
+    blurb: "Google's agent editor.",
     icon: AntigravityIcon,
     brand: { bg: "#3186FF", fg: "#FFFFFF" },
     veil: { hue: 262 },
