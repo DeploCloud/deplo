@@ -8,7 +8,8 @@ export type SourceBuildType =
   | "paketo_buildpacks"
   | "nixpacks"
   | "static"
-  | "railpack";
+  | "railpack"
+  | "deplopack";
 
 export type SourceOrigin =
   "docker" | "git" | "github" | "gitlab" | "bitbucket" | "gitea" | "drop";

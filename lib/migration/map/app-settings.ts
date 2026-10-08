@@ -23,6 +23,7 @@ const BUILD_METHOD: Record<string, BuildMethod> = {
   dockerfile: "dockerfile",
   nixpacks: "nixpacks",
   railpack: "railpack",
+  deplopack: "deplopack",
   static: "static",
   heroku_buildpacks: "nixpacks",
   paketo_buildpacks: "nixpacks",
