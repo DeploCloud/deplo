@@ -12,11 +12,9 @@ import { newId, nowIso } from "../ids";
 import { spawnStream } from "../infra/exec";
 import { MAX_UPLOAD_BYTES, archiveExt } from "./upload-shared";
 import type { UploadArchive } from "../types/app";
+import { dataDir } from "../data-dir";
 
 export { MAX_UPLOAD_BYTES, archiveExt };
-
-const DATA_DIR = process.env.DEPLO_DATA_DIR || "/data";
-const UPLOAD_DIR = join(DATA_DIR, "uploads");
 
 export const ARCHIVE_TOO_LARGE = "ARCHIVE_TOO_LARGE";
 
@@ -25,7 +23,7 @@ const MAX_EXTRACTED_BYTES = 4 * 1024 * 1024 * 1024;
 const EXTRACTED_TOO_LARGE = "archive exceeds the 4 GiB extraction limit";
 
 function appUploadDir(appId: string): string {
-  return join(UPLOAD_DIR, appId);
+  return join(dataDir(), "uploads", appId);
 }
 
 function capBytes(

@@ -68,6 +68,7 @@ import {
   appOwnVolumeNames,
   assertSafeVolumeNames,
 } from "../project-backup-descriptor";
+import { dataDir } from "../../data-dir";
 import { listAllServers } from "../servers/roster";
 import { cancelSourceMove } from "./source";
 import {
@@ -570,9 +571,7 @@ async function uploadOf(
   app: App,
 ): Promise<{ path: string; filename: string } | null> {
   if (app.source !== "upload" || !app.upload?.path) return null;
-  const root = resolve(
-    join(process.env.DEPLO_DATA_DIR || "/data", "uploads", app.id),
-  );
+  const root = resolve(join(dataDir(), "uploads", app.id));
   const path = resolve(app.upload.path);
   if (!path.startsWith(root + sep)) return null;
   try {

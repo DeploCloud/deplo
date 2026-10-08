@@ -4,9 +4,7 @@ import { join } from "node:path";
 import yaml from "../../yaml";
 import { parseMountPropagation } from "../../apps/volume-model";
 import type { MountPropagation } from "../../types/container";
-
-const DATA_DIR = process.env.DEPLO_DATA_DIR || "/data";
-const STACK_DIR = join(DATA_DIR, "stacks");
+import { dataDir } from "../../data-dir";
 
 export function readStackImageFromYaml(
   stackYaml: string,
@@ -108,7 +106,7 @@ export function parseStackVolumes(
   } | null;
   const list = doc?.services?.[service]?.volumes;
   if (!Array.isArray(list)) return [];
-  const filesRoot = join(STACK_DIR, "files") + "/";
+  const filesRoot = join(dataDir(), "stacks", "files") + "/";
   return list.flatMap((e) => {
     if (typeof e !== "string") return [];
     const [source, mountPath, flag] = e.split(":");

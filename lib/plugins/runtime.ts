@@ -3,9 +3,7 @@ import "server-only";
 import { join } from "node:path";
 import { rm, stat } from "node:fs/promises";
 import { docker } from "../infra/docker";
-
-const DATA_DIR = process.env.DEPLO_DATA_DIR || "/data";
-const APPS_DIR = join(DATA_DIR, "apps");
+import { dataDir } from "../data-dir";
 
 export function pluginSlug(catalogId: string, teamSlug: string): string {
   return `${catalogId}__${teamSlug}`;
@@ -16,7 +14,7 @@ function pluginContainerName(slug: string): string {
 }
 
 function pluginStackFile(slug: string): string {
-  return join(APPS_DIR, `${slug}.yml`);
+  return join(dataDir(), "apps", `${slug}.yml`);
 }
 
 export async function destroyPluginContainer(slug: string): Promise<void> {

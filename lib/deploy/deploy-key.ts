@@ -1,3 +1,5 @@
+import { dataDir } from "../data-dir";
+
 // A slug can never contain `__`, which is the whole collision proof.
 const SEP = "__";
 
@@ -12,8 +14,7 @@ export function stackName(deployKey: string): string {
 }
 
 export function stackFilesDir(deployKey: string): string {
-  const dataDir = process.env.DEPLO_DATA_DIR || "/data";
-  return `${dataDir}/stacks/files/${deployKey}`;
+  return `${dataDir()}/stacks/files/${deployKey}`;
 }
 
 export function deployImageRef(
