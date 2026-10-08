@@ -73,6 +73,8 @@ const child = spawn(
     "--require",
     "./lib/test/offline.cjs",
     "--require",
+    "./lib/test/temp-sweep.cjs",
+    "--require",
     "./lib/test/scrypt-memo.cjs",
     "--import",
     "tsx",
