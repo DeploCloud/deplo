@@ -1,5 +1,6 @@
+"use client";
+
 import type { DeplopackOverride } from "@/lib/apps/deplopack-types";
-("use client");
 
 import { toast } from "sonner";
 
