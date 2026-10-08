@@ -45,7 +45,11 @@ import {
   pruneCleanupRunHistory,
   reconcileInFlightCleanupRuns,
 } from "./docker-cleanup/run-history";
-import { CLEANUP_SCOPES, deploySweepScopes } from "./docker-cleanup/scopes";
+import {
+  CLEANUP_SCOPES,
+  deploySweepScopes,
+  effectiveScopes,
+} from "./docker-cleanup/scopes";
 import { __settleCleanupSweeps, runCleanupNow } from "./docker-cleanup/sweep";
 
 let db: TestDb;
@@ -178,6 +182,17 @@ test("updateCleanupPolicy replaces the scopes junction whole-set", async () => {
   assert.deepEqual(
     (await scopeRows()).map((r) => r.scope),
     ["unused_app_images"],
+  );
+});
+
+// A retired scope has to read as absent: orphan_buildkit_cache outlived the rename to orphan_volumes by a month, and migration 0174 could only drop it safely because a read already ignored it.
+test("effectiveScopes ignores a stored scope the code has retired", () => {
+  assert.deepEqual(
+    effectiveScopes(
+      ["build_cache", "orphan_buildkit_cache"],
+      "2026-10-01T00:00:00.000Z",
+    ),
+    ["build_cache"],
   );
 });
 
