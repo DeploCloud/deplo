@@ -1506,6 +1506,10 @@ $TRAEFIK_FILE_PROVIDER
       # A host with no route of its own still redirects, which is the job.
       - --entrypoints.web.http.redirections.entrypoint.priority=1
       - --entrypoints.websecure.address=:443
+      # No ceiling on a request body: Traefik's 60s read timeout cut off every
+      # upload slower than that, whatever its size (a backup restore, an archive).
+      - --entrypoints.web.transport.respondingtimeouts.readtimeout=0
+      - --entrypoints.websecure.transport.respondingtimeouts.readtimeout=0
       - --certificatesresolvers.letsencrypt.acme.httpchallenge=true
       - --certificatesresolvers.letsencrypt.acme.httpchallenge.entrypoint=web
       # The RESOLVED address, not \${ACME_EMAIL}: the panel reads this file back to
