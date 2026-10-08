@@ -264,21 +264,19 @@ is remapped onto the control-plane `users` table. Deploy execution is the Go age
   `typegen` emits them without a build and needs no environment. Run it before `tsc` in a clean
   tree too.
   `docker-image.yml` is separate and still fires only on a `v*` tag.
-- **`overrides` in `package.json` are pins with a reason, never preferences.** Seven, in two
+- **`overrides` in `package.json` are pins with a reason, never preferences.** Five, in two
   kinds (the file is the list; this is why each one is there):
   - **Security**: `esbuild` - a transitive that still pulls an older, flagged copy into the tree
-    when the entry goes (`drizzle-kit` and `tsx` both do). `sharp` and `source-map-js` are the
-    same shape, back since 7 Oct 2026: `next` and `postcss` nest their own copy, their ranges
-    already accept the patched release and the lockfile simply never moved, so bumping the direct
-    dependency left the flagged copy in the tree. `@graphql-tools/utils` (prototype pollution in
+    when the entry goes (`drizzle-kit` and `tsx` both do). `@graphql-tools/utils` (prototype pollution in
     `mergeDeep`, patched in 12) brings `schema` and `merge` with it - those two versions are what
     accept 12, while `graphql-yoga@5.24` still names `^11` itself.
   - **Functional**: `graphql` (`^17.0.2`). It used to hold 16 because `graphql-yoga@5` refused 17;
     yoga 5.23 peers `^15 || ^16 || ^17`, so the pin now holds the tree **on** 17 instead. Two
     copies of `graphql` and Pothos and yoga stop recognising each other's types.
   - **Dedupe is now a TEST, not a pin.** The three `@codemirror/*` overrides went in September
-    2026 once the tree deduped on its own; `lockfile-single-copy.test.ts` fails if a second copy
-    comes back, which a stale override would never have told anyone.
+    2026 once the tree deduped on its own, and `sharp` + `source-map-js` followed on 8 Oct 2026
+    with the bump to `next@16.3.8`; `lockfile-single-copy.test.ts` fails if a second copy comes
+    back, which a stale override would never have told anyone.
     **Re-check every pin when you bump anything** - the rule is empirical, not historical: drop the
     override, `bun install`, and read `bun audit` (bare, not `--audit-level=high`, or a moderate
     hides). If nothing appears and no lower copy reappears, delete the entry rather than leaving a
