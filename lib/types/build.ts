@@ -1,3 +1,4 @@
+import type { DeplopackOverride } from "../apps/deplopack-types";
 import type { GitProviderId } from "./git";
 
 export type GitTriggerType = "push" | "tag";
@@ -14,9 +15,13 @@ export interface GitRepo {
   submodules?: boolean;
 }
 
-export type BuildMethod = "dockerfile" | "railpack" | "nixpacks" | "static";
+export type BuildMethod =
+  "dockerfile" | "railpack" | "nixpacks" | "static" | "deplopack";
 
 export interface BuildMethodSettings {
+  deplopackVersion?: string;
+  deplopackProvider?: string;
+  deplopackPath?: string | null;
   dockerfilePath?: string;
   dockerContextPath?: string;
   dockerBuildStage?: string;
@@ -26,6 +31,7 @@ export interface BuildMethodSettings {
 }
 
 export interface BuildConfig {
+  deplopackInputs?: DeplopackOverride[];
   buildMethod: BuildMethod;
   methodSettings: BuildMethodSettings;
   rootDirectory: string;

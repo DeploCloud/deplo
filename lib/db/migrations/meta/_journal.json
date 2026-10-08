@@ -1226,6 +1226,13 @@
       "when": 1791500000000,
       "tag": "0174_drop_retired_cleanup_scopes",
       "breakpoints": true
+    },
+    {
+      "idx": 175,
+      "version": "7",
+      "when": 1791500000001,
+      "tag": "0175_deplopack_inputs",
+      "breakpoints": true
     }
   ]
 }

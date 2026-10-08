@@ -33,11 +33,35 @@ export async function updateAppBuild(
     if (!existing || existing.teamId !== membership.teamId)
       throw new Error("App not found");
     portBefore = existing.build.port ?? null;
+    if (existing.build.buildMethod === "deplopack") {
+      if (build.buildMethod && build.buildMethod !== "deplopack")
+        throw new Error("This app builds with DeploPack");
+      for (const key of [
+        "deplopackVersion",
+        "deplopackProvider",
+        "deplopackPath",
+      ] as const) {
+        if (
+          build.methodSettings?.[key] !== undefined &&
+          build.methodSettings[key] !== existing.build.methodSettings[key]
+        )
+          throw new Error(
+            "Analyze the repository again before changing the DeploPack selection",
+          );
+      }
+    } else if (build.buildMethod === "deplopack") {
+      throw new Error(
+        "Existing apps will be migrated to DeploPack in a later update",
+      );
+    }
 
     const merged: BuildConfig = {
       ...existing.build,
       ...build,
-      methodSettings: build.methodSettings ?? existing.build.methodSettings,
+      methodSettings:
+        existing.build.buildMethod === "deplopack"
+          ? { ...existing.build.methodSettings, ...build.methodSettings }
+          : (build.methodSettings ?? existing.build.methodSettings),
       buildCacheClearPending: existing.build.buildCacheClearPending,
     };
     await tx

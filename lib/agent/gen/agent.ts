@@ -24,6 +24,7 @@ import {
   type ServiceError,
   type UntypedServiceImplementation,
 } from "@grpc/grpc-js";
+import { Struct } from "./google/protobuf/struct";
 
 export const protobufPackage = "deplo.agent.v1";
 
@@ -162,6 +163,7 @@ export enum BuildKind {
   BUILD_KIND_NIXPACKS = 4,
   /** BUILD_KIND_BUILDPACKS - Cloud Native Buildpacks via `pack` (heroku|paketo) */
   BUILD_KIND_BUILDPACKS = 5,
+  BUILD_KIND_DEPLOPACK = 7,
   /** BUILD_KIND_RAILPACK - railpack plan + buildkitd/buildctl */
   BUILD_KIND_RAILPACK = 6,
   UNRECOGNIZED = -1,
@@ -187,6 +189,9 @@ export function buildKindFromJSON(object: any): BuildKind {
     case 5:
     case "BUILD_KIND_BUILDPACKS":
       return BuildKind.BUILD_KIND_BUILDPACKS;
+    case 7:
+    case "BUILD_KIND_DEPLOPACK":
+      return BuildKind.BUILD_KIND_DEPLOPACK;
     case 6:
     case "BUILD_KIND_RAILPACK":
       return BuildKind.BUILD_KIND_RAILPACK;
@@ -211,6 +216,8 @@ export function buildKindToJSON(object: BuildKind): string {
       return "BUILD_KIND_NIXPACKS";
     case BuildKind.BUILD_KIND_BUILDPACKS:
       return "BUILD_KIND_BUILDPACKS";
+    case BuildKind.BUILD_KIND_DEPLOPACK:
+      return "BUILD_KIND_DEPLOPACK";
     case BuildKind.BUILD_KIND_RAILPACK:
       return "BUILD_KIND_RAILPACK";
     case BuildKind.UNRECOGNIZED:
@@ -607,6 +614,15 @@ export interface BuildSpec {
    */
   skipInstall: boolean;
   skipBuild: boolean;
+  deplopackVersion: string;
+  deplopackProvider: string;
+  deplopackPath: string;
+  deplopackEnvironment: { [key: string]: string };
+}
+
+export interface BuildSpec_DeplopackEnvironmentEntry {
+  key: string;
+  value: string;
 }
 
 /**
@@ -2461,6 +2477,23 @@ export interface UpdateControlPlaneResponse {
   logPath: string;
 }
 
+export interface AnalyzeRepoRequest {
+  source?: GitSource | undefined;
+  environment: { [key: string]: string };
+}
+
+export interface AnalyzeRepoRequest_EnvironmentEntry {
+  key: string;
+  value: string;
+}
+
+export interface AnalyzeRepoResponse {
+  commitSha: string;
+  rootDirectory: string;
+  detectorVersion: string;
+  result?: { [key: string]: any } | undefined;
+}
+
 function createBaseRenewalCSRRequest(): RenewalCSRRequest {
   return {};
 }
@@ -3476,6 +3509,10 @@ function createBaseBuildSpec(): BuildSpec {
     staticSinglePageApp: false,
     skipInstall: false,
     skipBuild: false,
+    deplopackVersion: "",
+    deplopackProvider: "",
+    deplopackPath: "",
+    deplopackEnvironment: {},
   };
 }
 
@@ -3523,6 +3560,18 @@ export const BuildSpec: MessageFns<BuildSpec> = {
     if (message.skipBuild !== false) {
       writer.uint32(112).bool(message.skipBuild);
     }
+    if (message.deplopackVersion !== "") {
+      writer.uint32(122).string(message.deplopackVersion);
+    }
+    if (message.deplopackProvider !== "") {
+      writer.uint32(130).string(message.deplopackProvider);
+    }
+    if (message.deplopackPath !== "") {
+      writer.uint32(138).string(message.deplopackPath);
+    }
+    globalThis.Object.entries(message.deplopackEnvironment).forEach(([key, value]: [string, string]) => {
+      BuildSpec_DeplopackEnvironmentEntry.encode({ key: key as any, value }, writer.uint32(146).fork()).join();
+    });
     return writer;
   },
 
@@ -3651,6 +3700,41 @@ export const BuildSpec: MessageFns<BuildSpec> = {
             message.skipBuild = reader.bool();
             continue;
           }
+          case 15: {
+            if (tag !== 122) {
+              break;
+            }
+
+            message.deplopackVersion = reader.string();
+            continue;
+          }
+          case 16: {
+            if (tag !== 130) {
+              break;
+            }
+
+            message.deplopackProvider = reader.string();
+            continue;
+          }
+          case 17: {
+            if (tag !== 138) {
+              break;
+            }
+
+            message.deplopackPath = reader.string();
+            continue;
+          }
+          case 18: {
+            if (tag !== 146) {
+              break;
+            }
+
+            const entry18 = BuildSpec_DeplopackEnvironmentEntry.decode(reader, reader.uint32());
+            if (entry18.value !== undefined) {
+              message.deplopackEnvironment[entry18.key] = entry18.value;
+            }
+            continue;
+          }
         }
         if ((tag & 7) === 4 || tag === 0) {
           break;
@@ -3727,6 +3811,48 @@ export const BuildSpec: MessageFns<BuildSpec> = {
         : isSet(object.skip_build)
         ? globalThis.Boolean(object.skip_build)
         : false,
+      deplopackVersion: isSet(object.deplopackVersion)
+        ? globalThis.String(object.deplopackVersion)
+        : isSet(object.deplopack_version)
+        ? globalThis.String(object.deplopack_version)
+        : "",
+      deplopackProvider: isSet(object.deplopackProvider)
+        ? globalThis.String(object.deplopackProvider)
+        : isSet(object.deplopack_provider)
+        ? globalThis.String(object.deplopack_provider)
+        : "",
+      deplopackPath: isSet(object.deplopackPath)
+        ? globalThis.String(object.deplopackPath)
+        : isSet(object.deplopack_path)
+        ? globalThis.String(object.deplopack_path)
+        : "",
+      deplopackEnvironment: isObject(object.deplopackEnvironment)
+        ? (globalThis.Object.entries(object.deplopackEnvironment) as [string, any][]).reduce(
+          (acc: { [key: string]: string }, [key, value]: [string, any]) => {
+            globalThis.Object.defineProperty(acc, key, {
+              value: globalThis.String(value),
+              enumerable: true,
+              configurable: true,
+              writable: true,
+            });
+            return acc;
+          },
+          {},
+        )
+        : isObject(object.deplopack_environment)
+        ? (globalThis.Object.entries(object.deplopack_environment) as [string, any][]).reduce(
+          (acc: { [key: string]: string }, [key, value]: [string, any]) => {
+            globalThis.Object.defineProperty(acc, key, {
+              value: globalThis.String(value),
+              enumerable: true,
+              configurable: true,
+              writable: true,
+            });
+            return acc;
+          },
+          {},
+        )
+        : {},
     };
   },
 
@@ -3774,6 +3900,24 @@ export const BuildSpec: MessageFns<BuildSpec> = {
     if (message.skipBuild !== false) {
       obj.skipBuild = message.skipBuild;
     }
+    if (message.deplopackVersion !== "") {
+      obj.deplopackVersion = message.deplopackVersion;
+    }
+    if (message.deplopackProvider !== "") {
+      obj.deplopackProvider = message.deplopackProvider;
+    }
+    if (message.deplopackPath !== "") {
+      obj.deplopackPath = message.deplopackPath;
+    }
+    if (message.deplopackEnvironment) {
+      const entries = globalThis.Object.entries(message.deplopackEnvironment) as [string, string][];
+      if (entries.length > 0) {
+        obj.deplopackEnvironment = {};
+        entries.forEach(([k, v]) => {
+          obj.deplopackEnvironment[k] = v;
+        });
+      }
+    }
     return obj;
   },
 
@@ -3796,6 +3940,105 @@ export const BuildSpec: MessageFns<BuildSpec> = {
     message.staticSinglePageApp = object.staticSinglePageApp ?? false;
     message.skipInstall = object.skipInstall ?? false;
     message.skipBuild = object.skipBuild ?? false;
+    message.deplopackVersion = object.deplopackVersion ?? "";
+    message.deplopackProvider = object.deplopackProvider ?? "";
+    message.deplopackPath = object.deplopackPath ?? "";
+    message.deplopackEnvironment = (globalThis.Object.entries(object.deplopackEnvironment ?? {}) as [string, string][])
+      .reduce((acc: { [key: string]: string }, [key, value]: [string, string]) => {
+        if (value !== undefined) {
+          acc[key] = globalThis.String(value);
+        }
+        return acc;
+      }, {});
+    return message;
+  },
+};
+
+function createBaseBuildSpec_DeplopackEnvironmentEntry(): BuildSpec_DeplopackEnvironmentEntry {
+  return { key: "", value: "" };
+}
+
+export const BuildSpec_DeplopackEnvironmentEntry: MessageFns<BuildSpec_DeplopackEnvironmentEntry> = {
+  encode(message: BuildSpec_DeplopackEnvironmentEntry, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.key !== "") {
+      writer.uint32(10).string(message.key);
+    }
+    if (message.value !== "") {
+      writer.uint32(18).string(message.value);
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): BuildSpec_DeplopackEnvironmentEntry {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const previousRecursionDepth = (reader as any).__tsProtoDecodeDepth ?? 0;
+    if (previousRecursionDepth >= 100) {
+      throw new globalThis.Error("protobuf decode recursion limit exceeded");
+    }
+    (reader as any).__tsProtoDecodeDepth = previousRecursionDepth + 1;
+    try {
+      const end = length === undefined ? reader.len : reader.pos + length;
+      const message = createBaseBuildSpec_DeplopackEnvironmentEntry();
+      while (reader.pos < end) {
+        const tag = reader.uint32();
+        switch (tag >>> 3) {
+          case 1: {
+            if (tag !== 10) {
+              break;
+            }
+
+            message.key = reader.string();
+            continue;
+          }
+          case 2: {
+            if (tag !== 18) {
+              break;
+            }
+
+            message.value = reader.string();
+            continue;
+          }
+        }
+        if ((tag & 7) === 4 || tag === 0) {
+          break;
+        }
+        reader.skip(tag & 7);
+      }
+      return message;
+    } finally {
+      (reader as any).__tsProtoDecodeDepth = previousRecursionDepth;
+    }
+  },
+
+  fromJSON(object: any): BuildSpec_DeplopackEnvironmentEntry {
+    return {
+      key: isSet(object.key) ? globalThis.String(object.key) : "",
+      value: isSet(object.value) ? globalThis.String(object.value) : "",
+    };
+  },
+
+  toJSON(message: BuildSpec_DeplopackEnvironmentEntry): unknown {
+    const obj: any = {};
+    if (message.key !== "") {
+      obj.key = message.key;
+    }
+    if (message.value !== "") {
+      obj.value = message.value;
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<BuildSpec_DeplopackEnvironmentEntry>, I>>(
+    base?: I,
+  ): BuildSpec_DeplopackEnvironmentEntry {
+    return BuildSpec_DeplopackEnvironmentEntry.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<BuildSpec_DeplopackEnvironmentEntry>, I>>(
+    object: I,
+  ): BuildSpec_DeplopackEnvironmentEntry {
+    const message = createBaseBuildSpec_DeplopackEnvironmentEntry();
+    message.key = object.key ?? "";
+    message.value = object.value ?? "";
     return message;
   },
 };
@@ -18495,8 +18738,353 @@ export const UpdateControlPlaneResponse: MessageFns<UpdateControlPlaneResponse> 
   },
 };
 
+function createBaseAnalyzeRepoRequest(): AnalyzeRepoRequest {
+  return { source: undefined, environment: {} };
+}
+
+export const AnalyzeRepoRequest: MessageFns<AnalyzeRepoRequest> = {
+  encode(message: AnalyzeRepoRequest, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.source !== undefined) {
+      GitSource.encode(message.source, writer.uint32(10).fork()).join();
+    }
+    globalThis.Object.entries(message.environment).forEach(([key, value]: [string, string]) => {
+      AnalyzeRepoRequest_EnvironmentEntry.encode({ key: key as any, value }, writer.uint32(18).fork()).join();
+    });
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): AnalyzeRepoRequest {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const previousRecursionDepth = (reader as any).__tsProtoDecodeDepth ?? 0;
+    if (previousRecursionDepth >= 100) {
+      throw new globalThis.Error("protobuf decode recursion limit exceeded");
+    }
+    (reader as any).__tsProtoDecodeDepth = previousRecursionDepth + 1;
+    try {
+      const end = length === undefined ? reader.len : reader.pos + length;
+      const message = createBaseAnalyzeRepoRequest();
+      while (reader.pos < end) {
+        const tag = reader.uint32();
+        switch (tag >>> 3) {
+          case 1: {
+            if (tag !== 10) {
+              break;
+            }
+
+            message.source = GitSource.decode(reader, reader.uint32());
+            continue;
+          }
+          case 2: {
+            if (tag !== 18) {
+              break;
+            }
+
+            const entry2 = AnalyzeRepoRequest_EnvironmentEntry.decode(reader, reader.uint32());
+            if (entry2.value !== undefined) {
+              message.environment[entry2.key] = entry2.value;
+            }
+            continue;
+          }
+        }
+        if ((tag & 7) === 4 || tag === 0) {
+          break;
+        }
+        reader.skip(tag & 7);
+      }
+      return message;
+    } finally {
+      (reader as any).__tsProtoDecodeDepth = previousRecursionDepth;
+    }
+  },
+
+  fromJSON(object: any): AnalyzeRepoRequest {
+    return {
+      source: isSet(object.source) ? GitSource.fromJSON(object.source) : undefined,
+      environment: isObject(object.environment)
+        ? (globalThis.Object.entries(object.environment) as [string, any][]).reduce(
+          (acc: { [key: string]: string }, [key, value]: [string, any]) => {
+            globalThis.Object.defineProperty(acc, key, {
+              value: globalThis.String(value),
+              enumerable: true,
+              configurable: true,
+              writable: true,
+            });
+            return acc;
+          },
+          {},
+        )
+        : {},
+    };
+  },
+
+  toJSON(message: AnalyzeRepoRequest): unknown {
+    const obj: any = {};
+    if (message.source !== undefined) {
+      obj.source = GitSource.toJSON(message.source);
+    }
+    if (message.environment) {
+      const entries = globalThis.Object.entries(message.environment) as [string, string][];
+      if (entries.length > 0) {
+        obj.environment = {};
+        entries.forEach(([k, v]) => {
+          obj.environment[k] = v;
+        });
+      }
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<AnalyzeRepoRequest>, I>>(base?: I): AnalyzeRepoRequest {
+    return AnalyzeRepoRequest.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<AnalyzeRepoRequest>, I>>(object: I): AnalyzeRepoRequest {
+    const message = createBaseAnalyzeRepoRequest();
+    message.source = (object.source !== undefined && object.source !== null)
+      ? GitSource.fromPartial(object.source)
+      : undefined;
+    message.environment = (globalThis.Object.entries(object.environment ?? {}) as [string, string][]).reduce(
+      (acc: { [key: string]: string }, [key, value]: [string, string]) => {
+        if (value !== undefined) {
+          acc[key] = globalThis.String(value);
+        }
+        return acc;
+      },
+      {},
+    );
+    return message;
+  },
+};
+
+function createBaseAnalyzeRepoRequest_EnvironmentEntry(): AnalyzeRepoRequest_EnvironmentEntry {
+  return { key: "", value: "" };
+}
+
+export const AnalyzeRepoRequest_EnvironmentEntry: MessageFns<AnalyzeRepoRequest_EnvironmentEntry> = {
+  encode(message: AnalyzeRepoRequest_EnvironmentEntry, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.key !== "") {
+      writer.uint32(10).string(message.key);
+    }
+    if (message.value !== "") {
+      writer.uint32(18).string(message.value);
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): AnalyzeRepoRequest_EnvironmentEntry {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const previousRecursionDepth = (reader as any).__tsProtoDecodeDepth ?? 0;
+    if (previousRecursionDepth >= 100) {
+      throw new globalThis.Error("protobuf decode recursion limit exceeded");
+    }
+    (reader as any).__tsProtoDecodeDepth = previousRecursionDepth + 1;
+    try {
+      const end = length === undefined ? reader.len : reader.pos + length;
+      const message = createBaseAnalyzeRepoRequest_EnvironmentEntry();
+      while (reader.pos < end) {
+        const tag = reader.uint32();
+        switch (tag >>> 3) {
+          case 1: {
+            if (tag !== 10) {
+              break;
+            }
+
+            message.key = reader.string();
+            continue;
+          }
+          case 2: {
+            if (tag !== 18) {
+              break;
+            }
+
+            message.value = reader.string();
+            continue;
+          }
+        }
+        if ((tag & 7) === 4 || tag === 0) {
+          break;
+        }
+        reader.skip(tag & 7);
+      }
+      return message;
+    } finally {
+      (reader as any).__tsProtoDecodeDepth = previousRecursionDepth;
+    }
+  },
+
+  fromJSON(object: any): AnalyzeRepoRequest_EnvironmentEntry {
+    return {
+      key: isSet(object.key) ? globalThis.String(object.key) : "",
+      value: isSet(object.value) ? globalThis.String(object.value) : "",
+    };
+  },
+
+  toJSON(message: AnalyzeRepoRequest_EnvironmentEntry): unknown {
+    const obj: any = {};
+    if (message.key !== "") {
+      obj.key = message.key;
+    }
+    if (message.value !== "") {
+      obj.value = message.value;
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<AnalyzeRepoRequest_EnvironmentEntry>, I>>(
+    base?: I,
+  ): AnalyzeRepoRequest_EnvironmentEntry {
+    return AnalyzeRepoRequest_EnvironmentEntry.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<AnalyzeRepoRequest_EnvironmentEntry>, I>>(
+    object: I,
+  ): AnalyzeRepoRequest_EnvironmentEntry {
+    const message = createBaseAnalyzeRepoRequest_EnvironmentEntry();
+    message.key = object.key ?? "";
+    message.value = object.value ?? "";
+    return message;
+  },
+};
+
+function createBaseAnalyzeRepoResponse(): AnalyzeRepoResponse {
+  return { commitSha: "", rootDirectory: "", detectorVersion: "", result: undefined };
+}
+
+export const AnalyzeRepoResponse: MessageFns<AnalyzeRepoResponse> = {
+  encode(message: AnalyzeRepoResponse, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.commitSha !== "") {
+      writer.uint32(10).string(message.commitSha);
+    }
+    if (message.rootDirectory !== "") {
+      writer.uint32(18).string(message.rootDirectory);
+    }
+    if (message.detectorVersion !== "") {
+      writer.uint32(26).string(message.detectorVersion);
+    }
+    if (message.result !== undefined) {
+      Struct.encode(Struct.wrap(message.result), writer.uint32(34).fork()).join();
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): AnalyzeRepoResponse {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const previousRecursionDepth = (reader as any).__tsProtoDecodeDepth ?? 0;
+    if (previousRecursionDepth >= 100) {
+      throw new globalThis.Error("protobuf decode recursion limit exceeded");
+    }
+    (reader as any).__tsProtoDecodeDepth = previousRecursionDepth + 1;
+    try {
+      const end = length === undefined ? reader.len : reader.pos + length;
+      const message = createBaseAnalyzeRepoResponse();
+      while (reader.pos < end) {
+        const tag = reader.uint32();
+        switch (tag >>> 3) {
+          case 1: {
+            if (tag !== 10) {
+              break;
+            }
+
+            message.commitSha = reader.string();
+            continue;
+          }
+          case 2: {
+            if (tag !== 18) {
+              break;
+            }
+
+            message.rootDirectory = reader.string();
+            continue;
+          }
+          case 3: {
+            if (tag !== 26) {
+              break;
+            }
+
+            message.detectorVersion = reader.string();
+            continue;
+          }
+          case 4: {
+            if (tag !== 34) {
+              break;
+            }
+
+            message.result = Struct.unwrap(Struct.decode(reader, reader.uint32()));
+            continue;
+          }
+        }
+        if ((tag & 7) === 4 || tag === 0) {
+          break;
+        }
+        reader.skip(tag & 7);
+      }
+      return message;
+    } finally {
+      (reader as any).__tsProtoDecodeDepth = previousRecursionDepth;
+    }
+  },
+
+  fromJSON(object: any): AnalyzeRepoResponse {
+    return {
+      commitSha: isSet(object.commitSha)
+        ? globalThis.String(object.commitSha)
+        : isSet(object.commit_sha)
+        ? globalThis.String(object.commit_sha)
+        : "",
+      rootDirectory: isSet(object.rootDirectory)
+        ? globalThis.String(object.rootDirectory)
+        : isSet(object.root_directory)
+        ? globalThis.String(object.root_directory)
+        : "",
+      detectorVersion: isSet(object.detectorVersion)
+        ? globalThis.String(object.detectorVersion)
+        : isSet(object.detector_version)
+        ? globalThis.String(object.detector_version)
+        : "",
+      result: isObject(object.result) ? object.result : undefined,
+    };
+  },
+
+  toJSON(message: AnalyzeRepoResponse): unknown {
+    const obj: any = {};
+    if (message.commitSha !== "") {
+      obj.commitSha = message.commitSha;
+    }
+    if (message.rootDirectory !== "") {
+      obj.rootDirectory = message.rootDirectory;
+    }
+    if (message.detectorVersion !== "") {
+      obj.detectorVersion = message.detectorVersion;
+    }
+    if (message.result !== undefined) {
+      obj.result = message.result;
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<AnalyzeRepoResponse>, I>>(base?: I): AnalyzeRepoResponse {
+    return AnalyzeRepoResponse.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<AnalyzeRepoResponse>, I>>(object: I): AnalyzeRepoResponse {
+    const message = createBaseAnalyzeRepoResponse();
+    message.commitSha = object.commitSha ?? "";
+    message.rootDirectory = object.rootDirectory ?? "";
+    message.detectorVersion = object.detectorVersion ?? "";
+    message.result = object.result ?? undefined;
+    return message;
+  },
+};
+
 export type AgentService = typeof AgentService;
 export const AgentService = {
+  /** Analyze a temporary Git checkout without building or deploying. */
+  analyzeRepo: {
+    path: "/deplo.agent.v1.Agent/AnalyzeRepo" as const,
+    requestStream: false as const,
+    responseStream: false as const,
+    requestSerialize: (value: AnalyzeRepoRequest): Buffer => Buffer.from(AnalyzeRepoRequest.encode(value).finish()),
+    requestDeserialize: (value: Buffer): AnalyzeRepoRequest => AnalyzeRepoRequest.decode(value),
+    responseSerialize: (value: AnalyzeRepoResponse): Buffer => Buffer.from(AnalyzeRepoResponse.encode(value).finish()),
+    responseDeserialize: (value: Buffer): AnalyzeRepoResponse => AnalyzeRepoResponse.decode(value),
+  },
   /**
    * Health + identity handshake. The control plane calls this as a mandatory
    * pre-flight before every deploy (PLAN P5): if the agent does not answer, the
@@ -19337,6 +19925,8 @@ export const AgentService = {
 } as const;
 
 export interface AgentServer extends UntypedServiceImplementation {
+  /** Analyze a temporary Git checkout without building or deploying. */
+  analyzeRepo: handleUnaryCall<AnalyzeRepoRequest, AnalyzeRepoResponse>;
   /**
    * Health + identity handshake. The control plane calls this as a mandatory
    * pre-flight before every deploy (PLAN P5): if the agent does not answer, the
@@ -19627,6 +20217,22 @@ export interface AgentServer extends UntypedServiceImplementation {
 }
 
 export interface AgentClient extends Client {
+  /** Analyze a temporary Git checkout without building or deploying. */
+  analyzeRepo(
+    request: AnalyzeRepoRequest,
+    callback: (error: ServiceError | null, response: AnalyzeRepoResponse) => void,
+  ): ClientUnaryCall;
+  analyzeRepo(
+    request: AnalyzeRepoRequest,
+    metadata: Metadata,
+    callback: (error: ServiceError | null, response: AnalyzeRepoResponse) => void,
+  ): ClientUnaryCall;
+  analyzeRepo(
+    request: AnalyzeRepoRequest,
+    metadata: Metadata,
+    options: Partial<CallOptions>,
+    callback: (error: ServiceError | null, response: AnalyzeRepoResponse) => void,
+  ): ClientUnaryCall;
   /**
    * Health + identity handshake. The control plane calls this as a mandatory
    * pre-flight before every deploy (PLAN P5): if the agent does not answer, the

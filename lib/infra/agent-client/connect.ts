@@ -13,6 +13,7 @@ import { filesRpc } from "./files-rpc";
 import { hostRpc } from "./host-rpc";
 import { metricsRpc } from "./metrics-rpc";
 import {
+  unary,
   openChannel,
   remoteTarget,
   resolveTarget,
@@ -23,6 +24,13 @@ import { stackRpc } from "./stack-rpc";
 export function dial(target: DialTarget): AgentConnection {
   const channel = openChannel(target);
   return {
+    analyzeRepo(request) {
+      return unary(
+        channel.client.analyzeRepo.bind(channel.client),
+        request,
+        310_000,
+      );
+    },
     hello(timeoutMs = HELLO_TIMEOUT_MS) {
       return channel.hello(timeoutMs);
     },

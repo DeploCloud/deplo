@@ -1,3 +1,4 @@
+import type { DeplopackOverride } from "../../apps/deplopack-types";
 import "server-only";
 
 import { isFrameworkId } from "../../apps/framework-catalog";
@@ -30,6 +31,7 @@ type AppPortInsert = typeof appPorts.$inferInsert;
 type AppMountInsert = typeof appMounts.$inferInsert;
 
 export interface AppChildRows {
+  deplopackInputs?: DeplopackOverride[];
   build: AppBuildRow | null;
   methodSettings: AppBuildMethodSettingsRow | null;
   volumes: AppVolumeRow[];
@@ -85,7 +87,10 @@ export function assembleApp(row: AppRow, children: AppChildRows): App {
     mounts: mounts.length ? mounts : null,
     volumes: volumes.length ? volumes : null,
     ports: ports.length ? ports : null,
-    build: assembleBuild(children.build, children.methodSettings),
+    build: {
+      ...assembleBuild(children.build, children.methodSettings),
+      deplopackInputs: children.deplopackInputs ?? [],
+    },
     productionUrl: row.productionUrl,
     status: row.status as App["status"],
     autoDeploy: row.autoDeploy,

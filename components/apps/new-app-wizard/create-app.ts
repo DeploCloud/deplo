@@ -1,4 +1,5 @@
-"use client";
+import type { DeplopackOverride } from "@/lib/apps/deplopack-types";
+("use client");
 
 import { toast } from "sonner";
 
@@ -31,6 +32,9 @@ import type {
 import { parseRepo } from "./source-hints";
 
 export function buildCreateAppInput({
+  analysisReceipt,
+  deplopackCandidate,
+  deplopackInputs,
   name,
   serverId,
   buildServerId,
@@ -59,6 +63,9 @@ export function buildCreateAppInput({
   extraRouted,
   placement,
 }: {
+  analysisReceipt?: string;
+  deplopackCandidate?: string;
+  deplopackInputs?: DeplopackOverride[];
   name: string;
   serverId: string;
   buildServerId: string | null;
@@ -171,6 +178,9 @@ export function buildCreateAppInput({
   const filledEnv = envRows.filter((e) => e.key.trim());
 
   return {
+    analysisReceipt,
+    deplopackCandidate,
+    deplopackInputs,
     name: name.trim(),
     source: deploySourceEnumName(useCompose ? "compose" : source!),
     serverId,

@@ -1,5 +1,8 @@
 "use client";
 
+import { DeplopackFields } from "./deplopack-fields";
+import type { RepoAnalysisState } from "./use-repo-analysis";
+
 import { Server as ServerIcon, Variable } from "lucide-react";
 
 import { BuildConfigFields } from "@/components/apps/build-config-fields";
@@ -36,6 +39,7 @@ import type { WizardBuildServer, WizardServer } from "./types";
 const AUTO_BUILD_SERVER = "__auto__";
 
 export function WizardAdvanced({
+  deplopack,
   servers,
   serverId,
   setServerId,
@@ -61,6 +65,7 @@ export function WizardAdvanced({
   setComposeUpArgs,
   composeArgsProblem,
 }: {
+  deplopack: RepoAnalysisState;
   servers: WizardServer[];
   serverId: string;
   setServerId: (value: string) => void;
@@ -151,11 +156,38 @@ export function WizardAdvanced({
 
       {buildsImage && (
         <>
-          <BuildConfigFields
-            build={build}
-            onBuildChange={onBuildChange}
-            commands={!usesGit}
-          />
+          {deplopack.enabled ? (
+            <DeplopackFields state={deplopack} />
+          ) : (
+            <BuildConfigFields
+              build={build}
+              onBuildChange={onBuildChange}
+              commands={!usesGit}
+            />
+          )}
+          {deplopack.enabled && (
+            <AdvancedGroup title="Port">
+              <FieldLabel
+                htmlFor="deplopack-port"
+                info="The port your app listens on inside the container (Traefik routes here)."
+                docs="build.port"
+              >
+                Container port
+              </FieldLabel>
+              <Input
+                id="deplopack-port"
+                type="number"
+                min={1}
+                max={65535}
+                value={String(build.port)}
+                onChange={(event) => {
+                  const value = Number(event.target.value);
+                  if (Number.isInteger(value) && value > 0 && value <= 65535)
+                    onBuildChange({ ...build, port: value });
+                }}
+              />
+            </AdvancedGroup>
+          )}
           <AdvancedGroup title="Build path">
             <RootDirectoryFields build={build} onBuildChange={onBuildChange} />
           </AdvancedGroup>

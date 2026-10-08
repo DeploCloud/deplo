@@ -1,3 +1,5 @@
+import { validateRepoAnalysis } from "../../apps/deplopack";
+import { saveDeplopackInputs } from "./deplopack-settings";
 import "server-only";
 
 import { eq } from "drizzle-orm";
@@ -125,6 +127,9 @@ function cleanMountPath(raw: string): string {
 }
 
 export interface CreateAppInput {
+  analysisReceipt?: string;
+  deplopackCandidate?: string;
+  deplopackInputs?: unknown;
   name: string;
   source: DeploySource;
   repo: GitRepo | null;
@@ -297,6 +302,38 @@ export async function createApp(input: CreateAppInput): Promise<AppSummary> {
     if (problem) throw new Error(problem);
   }
 
+  let analyzedCommit: string | undefined;
+  if (
+    (input.source === "github" || input.source === "git") &&
+    input.repo?.provider === "github"
+  ) {
+    const validated = validateRepoAnalysis(
+      input.analysisReceipt,
+      input.deplopackCandidate,
+      input.deplopackInputs ?? [],
+      {
+        repo: input.repo.repo,
+        branch: input.repo.branch,
+        installationId: input.repo.installationId,
+        connectionId: input.repo.connectionId,
+        serverId: server.id,
+        buildServerId,
+        rootDirectory: input.build?.rootDirectory,
+      },
+      membership.teamId,
+      userId,
+    );
+    input.build = { ...input.build, ...validated.build };
+    input.repo = {
+      ...input.repo,
+      url: `https://github.com/${input.repo.repo}`,
+    };
+    analyzedCommit = validated.commitSha;
+  } else if (input.build?.buildMethod === "deplopack") {
+    throw new Error(
+      "DeploPack repository analysis is required for this source",
+    );
+  }
   const serverIp = await serverIpv4(server);
   const hosts = rehostBlueprintHosts(
     {
@@ -461,6 +498,11 @@ export async function createApp(input: CreateAppInput): Promise<AppSummary> {
               .values(
                 methodSettingsToRow(project.id, project.build.methodSettings),
               );
+            await saveDeplopackInputs(
+              tx,
+              project.id,
+              project.build.deplopackInputs ?? [],
+            );
             const mountRows = mountsToRows(project.id, project.mounts);
             if (mountRows.length > 0)
               await tx.insert(appMountsTable).values(mountRows);
@@ -557,6 +599,7 @@ export async function createApp(input: CreateAppInput): Promise<AppSummary> {
       environment: "production",
       creator: user.name,
       commitMessage: "Initial deployment",
+      commitSha: analyzedCommit,
     });
   } else if (!isUpload) {
     await getDb()

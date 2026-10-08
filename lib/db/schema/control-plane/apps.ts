@@ -5,6 +5,7 @@ import {
   bigint,
   boolean,
   primaryKey,
+  foreignKey,
   uniqueIndex,
   index,
   type AnyPgColumn,
@@ -201,6 +202,9 @@ export const appBuildMethodSettings = pgTable("app_build_method_settings", {
   dockerContextPath: text("docker_context_path"),
   dockerBuildStage: text("docker_build_stage"),
   railpackVersion: text("railpack_version"),
+  deplopackVersion: text("deplopack_version"),
+  deplopackProvider: text("deplopack_provider"),
+  deplopackPath: text("deplopack_path"),
   nixpacksPublishDirectory: text("nixpacks_publish_directory"),
   staticSinglePageApp: boolean("static_single_page_app"),
 });
@@ -251,4 +255,33 @@ export const appMounts = pgTable(
     content: text("content").notNull(),
   },
   (t) => [primaryKey({ columns: [t.appId, t.position] })],
+);
+
+export const appDeplopackInputs = pgTable(
+  "app_deplopack_inputs",
+  {
+    appId: text("app_id")
+      .notNull()
+      .references(() => apps.id, { onDelete: "cascade" }),
+    env: text("env").notNull(),
+    type: text("type").notNull(),
+  },
+  (table) => [primaryKey({ columns: [table.appId, table.env] })],
+);
+
+export const appDeplopackInputValues = pgTable(
+  "app_deplopack_input_values",
+  {
+    appId: text("app_id").notNull(),
+    env: text("env").notNull(),
+    position: integer("position").notNull(),
+    value: text("value").notNull(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.appId, table.env, table.position] }),
+    foreignKey({
+      columns: [table.appId, table.env],
+      foreignColumns: [appDeplopackInputs.appId, appDeplopackInputs.env],
+    }).onDelete("cascade"),
+  ],
 );

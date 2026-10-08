@@ -1,3 +1,4 @@
+import { deplopackEnvironment } from "../apps/deplopack-types";
 import "server-only";
 
 import { access } from "node:fs/promises";
@@ -69,6 +70,10 @@ const HEAVY_METHOD: Record<
   string,
   { kind: BuildKind; capability: string } | undefined
 > = {
+  deplopack: {
+    kind: BuildKind.BUILD_KIND_DEPLOPACK,
+    capability: "deploy.deplopack",
+  },
   static: { kind: BuildKind.BUILD_KIND_STATIC, capability: "deploy.static" },
   nixpacks: {
     kind: BuildKind.BUILD_KIND_NIXPACKS,
@@ -99,6 +104,10 @@ export function buildSpecFor(build: BuildConfig): BuildSpec {
   const runtimeVersion =
     pinned || (usesDefaultNodeMajor(b.buildMethod) ? DEFAULT_NODE_MAJOR : "");
   return {
+    deplopackVersion: b.methodSettings.deplopackVersion ?? "",
+    deplopackProvider: b.methodSettings.deplopackProvider ?? "",
+    deplopackPath: b.methodSettings.deplopackPath ?? "",
+    deplopackEnvironment: deplopackEnvironment(b.deplopackInputs ?? []),
     method: b.buildMethod,
     port: b.port ?? 0,
     installCommand: b.installCommand ?? "",

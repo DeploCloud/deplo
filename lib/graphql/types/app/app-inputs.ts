@@ -152,6 +152,9 @@ export const PublishedPortInput = builder.inputType("PublishedPortInput", {
 
 export const CreateAppInputType = builder.inputType("CreateAppInput", {
   fields: (t) => ({
+    analysisReceipt: t.string(),
+    deplopackCandidate: t.string(),
+    deplopackInputs: t.field({ type: "JSON", required: false }),
     name: t.string({ required: true }),
     source: t.field({ type: DeploySourceEnum, required: true }),
     repo: t.field({ type: GitRepoInput, required: false }),

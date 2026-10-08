@@ -40,6 +40,12 @@ interface MethodMeta {
 
 export const BUILD_METHODS: MethodMeta[] = [
   {
+    id: "deplopack",
+    name: "DeploPack",
+    icon: Layers,
+    blurb: "Build using the selected repository detection.",
+  },
+  {
     id: "railpack",
     name: "Railpack",
     icon: Layers,
@@ -82,6 +88,15 @@ export function BuildMethodFields({
   detectedFramework?: string | null;
   onFrameworkChange?: (id: string | null) => void;
 }) {
+  if (method === "deplopack")
+    return (
+      <div className="rounded-lg border border-border p-3">
+        <p className="text-sm font-medium">DeploPack</p>
+        <p className="text-xs text-muted-foreground">
+          {settings.deplopackProvider}
+        </p>
+      </div>
+    );
   return (
     <div className="space-y-4">
       <div
@@ -89,7 +104,7 @@ export function BuildMethodFields({
         aria-label="Build method"
         className="grid gap-2 sm:grid-cols-2"
       >
-        {BUILD_METHODS.map((m) => (
+        {BUILD_METHODS.filter((m) => m.id !== "deplopack").map((m) => (
           <MethodCard
             key={m.id}
             meta={m}

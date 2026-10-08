@@ -1,6 +1,8 @@
 import "server-only";
 
 import type {
+  AnalyzeRepoRequest,
+  AnalyzeRepoResponse,
   HelloResponse,
   HostMetrics,
   ContainerStat,
@@ -125,6 +127,7 @@ export interface FollowLogsOptions {
 }
 
 export interface AgentConnection {
+  analyzeRepo(request: AnalyzeRepoRequest): Promise<AnalyzeRepoResponse>;
   hello(timeoutMs?: number): Promise<HelloResponse>;
   metrics(dataDir?: string): Promise<HostMetrics>;
   containerStats(

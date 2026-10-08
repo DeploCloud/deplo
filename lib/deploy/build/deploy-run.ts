@@ -233,7 +233,10 @@ async function runDeployment(depId: string): Promise<void> {
       dep.rollbackOf && dep.imageRef && !isOwnImage(dep.imageRef, dep.id),
     );
     const rebuildCommit =
-      dep.rollbackOf && !instantRollback ? dep.commitSha : "";
+      (dep.rollbackOf && !instantRollback) ||
+      project.build.buildMethod === "deplopack"
+        ? dep.commitSha
+        : "";
 
     const buildServerOpts = await resolveBuildServerOpts(
       project,

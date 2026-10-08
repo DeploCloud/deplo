@@ -1,5 +1,7 @@
 "use client";
 
+import { detectionKey } from "@/lib/apps/deplopack-types";
+
 import * as React from "react";
 import Link from "@/components/ui/link";
 import { useRouter } from "@/lib/nav";
@@ -178,7 +180,16 @@ export function NewAppWizard({
     prefilledBuild,
     prefilledStart,
     setImagePort,
-  } = useBuildConfig({ source, buildsImage, ghSelection, gitValue });
+    deplopack,
+  } = useBuildConfig({
+    source,
+    buildsImage,
+    ghSelection,
+    gitValue,
+    serverId,
+    buildServerId,
+    placement,
+  });
 
   function suggestName(suggested: string) {
     if (!nameTouched && suggested) setName(suggested);
@@ -223,7 +234,7 @@ export function NewAppWizard({
   const nextDisabled =
     step === "details"
       ? !sourceReady() || (!usesGit && !name.trim())
-      : !name.trim();
+      : !name.trim() || (deplopack.enabled && !deplopack.ready);
 
   function onBack() {
     if (isTemplate) {
@@ -243,6 +254,11 @@ export function NewAppWizard({
 
   function deploy(startDeployment = true) {
     const input = buildCreateAppInput({
+      analysisReceipt: deplopack.analysis?.receipt,
+      deplopackCandidate: deplopack.selected
+        ? detectionKey(deplopack.selected)
+        : undefined,
+      deplopackInputs: deplopack.overrides,
       name,
       serverId,
       buildServerId,
@@ -297,6 +313,7 @@ export function NewAppWizard({
 
   const advanced = (
     <WizardAdvanced
+      deplopack={deplopack}
       servers={servers}
       serverId={serverId}
       setServerId={setServerId}
@@ -431,6 +448,7 @@ export function NewAppWizard({
           />
         ) : (
           <ConfigureStep
+            deplopack={deplopack}
             meta={meta}
             onBack={onBack}
             onNext={onNext}

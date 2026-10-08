@@ -1,3 +1,4 @@
+import { analyzeRepo } from "@/lib/apps/deplopack";
 import { builder } from "../../builder";
 import { DeploymentStatusEnum, DeploymentEnvironmentEnum } from "../enums";
 import { AppRef } from "./app-object";
@@ -248,6 +249,23 @@ builder.queryFields((t) => ({
     authScopes: { loggedIn: true },
     args: { slug: t.arg.string({ required: true }) },
     resolve: (_r, { slug }) => getAppBySlug(slug),
+  }),
+  analyzeRepo: t.field({
+    type: "JSON",
+    authScopes: { loggedIn: true },
+    args: {
+      repo: t.arg.string({ required: true }),
+      branch: t.arg.string(),
+      installationId: t.arg.string(),
+      connectionId: t.arg.string(),
+      serverId: t.arg.string({ required: true }),
+      buildServerId: t.arg.string(),
+      rootDirectory: t.arg.string(),
+      folderId: t.arg.string(),
+      projectId: t.arg.string(),
+      environmentId: t.arg.string(),
+    },
+    resolve: (_root, args) => analyzeRepo(args),
   }),
   detectRepoFramework: t.field({
     type: RecognizedFrameworkRef,
