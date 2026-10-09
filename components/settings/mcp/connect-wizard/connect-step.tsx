@@ -93,13 +93,6 @@ export function ConnectStep({
             </span>
           </p>
         )}
-        {!web && agent.form === "file" && (
-          <p className="text-xs text-muted-foreground">
-            Committing this file? Put the token in an environment variable and
-            reference it instead.
-          </p>
-        )}
-
         <a
           href={agent.docsUrl}
           target="_blank"

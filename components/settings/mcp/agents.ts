@@ -73,23 +73,23 @@ export const AGENTS: AgentDef[] = [
     veil: { hue: 39 },
     kind: "token",
     form: "command",
-    hint: "Paste it into your terminal and run it once.",
+    hint: "Run it once, from any folder. Replacing an older token? Run claude mcp remove Deplo -s user first.",
     docsUrl: "https://code.claude.com/docs/en/mcp",
     snippet: ({ url, token }) =>
-      `claude mcp add --transport http Deplo ${url} --header "Authorization: Bearer ${token}"`,
+      `claude mcp add --scope user --transport http Deplo ${url} --header "Authorization: Bearer ${token}"`,
   },
   {
     id: "cursor",
     label: "Cursor",
-    blurb: "A config file in your repo.",
+    blurb: "Set up once for every project.",
     icon: CursorIcon,
     brand: { bg: "#000000", fg: "#FFFFFF" },
     veil: { tone: "dark" },
     kind: "token",
-    file: ".cursor/mcp.json",
+    file: "~/.cursor/mcp.json",
     form: "file",
     language: "json",
-    hint: "Save it in your repo, or in ~/.cursor/mcp.json to use it everywhere.",
+    hint: "Merge it into the file, and every project you open in Cursor can use Deplo.",
     docsUrl: "https://cursor.com/docs/mcp",
     snippet: ({ url, token }) =>
       JSON.stringify(
@@ -108,15 +108,15 @@ export const AGENTS: AgentDef[] = [
   {
     id: "vscode",
     label: "VS Code",
-    blurb: "Copilot agent mode, once per repo.",
+    blurb: "Copilot agent mode, in every workspace.",
     icon: VsCodeIcon,
     brand: { bg: "#007ACC", fg: "#FFFFFF" },
     veil: { hue: 249 },
     kind: "token",
-    file: ".vscode/mcp.json",
+    file: "mcp.json",
     form: "file",
     language: "json",
-    hint: "Save it in your repo, then run MCP: List Servers from the Command Palette to start it.",
+    hint: "Run MCP: Open User Configuration from the Command Palette, merge it in, then start it from MCP: List Servers.",
     docsUrl:
       "https://code.visualstudio.com/docs/copilot/customization/mcp-servers",
     snippet: ({ url, token }) =>
