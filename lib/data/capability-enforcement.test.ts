@@ -707,15 +707,7 @@ test("a suspended member's token stops working everywhere", async () => {
   );
   await pg.exec(`update users set suspended = true where id = '${OWNER}';`);
 
-  const principal = await authenticateToken(ci.raw, TEAM_A);
-  assert.ok(
-    principal,
-    "the row still resolves - the account check is downstream",
-  );
-  await runWithIdentity(principal!, async () => {
-    assert.equal(await outcome(() => redeploy(APP)), "refused");
-    await assert.rejects(() => listActivity());
-  });
+  assert.equal(await authenticateToken(ci.raw, TEAM_A), null);
 });
 
 test("an unmet two-factor policy refuses a token, with a reason", async () => {
