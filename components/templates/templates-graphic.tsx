@@ -17,6 +17,7 @@ import {
   type BoxShape,
   type P,
 } from "@/components/iso/iso";
+import { KeepTime } from "@/components/iso/keep-time";
 import { cn } from "@/lib/utils";
 
 // Whole grid steps throughout, so the backdrop's lines run along every edge.
@@ -69,80 +70,82 @@ function Container({ at, color }: { at: P; color: string }) {
 /** The template catalog's hero: one compose file fanning out into running services. */
 export function TemplatesGraphic({ className }: { className?: string }) {
   return (
-    <IsoArt
-      label="A compose file turning into three running services"
-      view={fit([{ at: [-2, -2, -1], size: [4, 5, 2.2] }])}
-      className={cn("h-32 w-auto", className)}
-    >
-      <IsoGrid at={[0, 0.5, 0]} radius={560} />
-      <Legs at={PLATFORM.at} size={PLATFORM.size} />
-      <Box {...PLATFORM} tone={floor} />
+    <KeepTime>
+      <IsoArt
+        label="A compose file turning into three running services"
+        view={fit([{ at: [-2, -2, -1], size: [4, 5, 2.2] }])}
+        className={cn("h-32 w-auto", className)}
+      >
+        <IsoGrid at={[0, 0.5, 0]} radius={560} />
+        <Legs at={PLATFORM.at} size={PLATFORM.size} />
+        <Box {...PLATFORM} tone={floor} />
 
-      <Box {...SHEET} tone={plain}>
-        {ROWS.map(([from, to, color], i) => {
-          const v = 0.08 + i * 0.11;
-          return (
-            <FaceRect
-              key={i}
-              box={SHEET}
-              face="top"
-              u={[v, v + 0.035]}
-              v={[from, to]}
-              fill={color ?? "var(--ring)"}
-              className={cn(color && "iso-blink")}
-              style={color ? beat(i) : undefined}
+        <Box {...SHEET} tone={plain}>
+          {ROWS.map(([from, to, color], i) => {
+            const v = 0.08 + i * 0.11;
+            return (
+              <FaceRect
+                key={i}
+                box={SHEET}
+                face="top"
+                u={[v, v + 0.035]}
+                v={[from, to]}
+                fill={color ?? "var(--ring)"}
+                className={cn(color && "iso-blink")}
+                style={color ? beat(i) : undefined}
+              />
+            );
+          })}
+        </Box>
+
+        {SERVICES.map(({ y }) => (
+          <Path
+            key={y}
+            points={[
+              [0, y + 0.5, 0],
+              [1, y + 0.5, 0],
+            ]}
+            stroke="var(--ring)"
+            strokeWidth="1.5"
+            strokeDasharray="6 2"
+            className="iso-march"
+          />
+        ))}
+
+        {SERVICES.map(({ y, color }, i) => (
+          <g key={y}>
+            <Box
+              at={[1, y, 0]}
+              size={[1, 1, 0]}
+              tone={{
+                top: shade(color),
+                left: shade(color, "right"),
+                right: shade(color, "right"),
+                stroke: color,
+              }}
             />
-          );
-        })}
-      </Box>
-
-      {SERVICES.map(({ y }) => (
-        <Path
-          key={y}
-          points={[
-            [0, y + 0.5, 0],
-            [1, y + 0.5, 0],
-          ]}
-          stroke="var(--ring)"
-          strokeWidth="1.5"
-          strokeDasharray="6 2"
-          className="iso-march"
-        />
-      ))}
-
-      {SERVICES.map(({ y, color }, i) => (
-        <g key={y}>
-          <Box
-            at={[1, y, 0]}
-            size={[1, 1, 0]}
-            tone={{
-              top: shade(color),
-              left: shade(color, "right"),
-              right: shade(color, "right"),
-              stroke: color,
-            }}
-          />
-          <Ring
-            at={[1, y, 0]}
-            size={[1, 1, 0]}
-            color={color}
-            className="iso-wave"
-            style={beat(i, [2.4, 2.4], [0.6 + i * 0.5, 0.6 + i * 0.5])}
-          />
-          <g
-            className="iso-tpl-drop"
-            style={
-              { animationDelay: `${0.2 + i * 0.25}s` } as React.CSSProperties
-            }
-          >
-            <Container at={[1, y, 0]} color={color} />
+            <Ring
+              at={[1, y, 0]}
+              size={[1, 1, 0]}
+              color={color}
+              className="iso-wave"
+              style={beat(i, [2.4, 2.4], [0.6 + i * 0.5, 0.6 + i * 0.5])}
+            />
+            <g
+              className="iso-tpl-drop"
+              style={
+                { animationDelay: `${0.2 + i * 0.25}s` } as React.CSSProperties
+              }
+            >
+              <Container at={[1, y, 0]} color={color} />
+            </g>
           </g>
-        </g>
-      ))}
+        ))}
 
-      <Tick at={[-2, -2, 3]} />
-      <Tick at={[2, 3, 0]} />
-      <Tick at={[-2, 3, -1]} />
-    </IsoArt>
+        <Tick at={[-2, -2, 3]} />
+        <Tick at={[2, 3, 0]} />
+        <Tick at={[-2, 3, -1]} />
+      </IsoArt>
+    </KeepTime>
   );
 }
