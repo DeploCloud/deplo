@@ -926,6 +926,9 @@ services:
       # it has no certificate for. A host with no route of its own still redirects.
       - --entrypoints.web.http.redirections.entrypoint.priority=1
       - --entrypoints.websecure.address=:443
+      # No ceiling on a request body - see the identical block in install.sh.
+      - --entrypoints.web.transport.respondingtimeouts.readtimeout=0
+      - --entrypoints.websecure.transport.respondingtimeouts.readtimeout=0
       - --certificatesresolvers.letsencrypt.acme.httpchallenge=true
       - --certificatesresolvers.letsencrypt.acme.httpchallenge.entrypoint=web
       - --certificatesresolvers.letsencrypt.acme.email=${ACME_EMAIL:-admin@acme.com}
