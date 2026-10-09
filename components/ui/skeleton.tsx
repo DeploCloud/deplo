@@ -20,4 +20,21 @@ function Skeleton({
   );
 }
 
-export { Skeleton };
+/** One line box of the text it stands for: same type classes, same height. */
+function TextLine({
+  type,
+  className,
+  shimmer,
+}: {
+  type?: string;
+  className?: string;
+  shimmer?: boolean;
+}) {
+  return (
+    <div className={cn("flex h-lh items-center", type)}>
+      <Skeleton className={cn("h-[1em]", className)} shimmer={shimmer} />
+    </div>
+  );
+}
+
+export { Skeleton, TextLine };

@@ -1,8 +1,7 @@
-import { Skeleton } from "@/components/ui/skeleton";
+import { Skeleton, TextLine } from "@/components/ui/skeleton";
 import {
   StoreChipsSkeleton,
   StoreRailsSkeleton,
-  TextLine,
 } from "@/components/templates/store-skeleton";
 import { TemplatesGraphic } from "@/components/templates/templates-graphic";
 
@@ -19,11 +18,15 @@ export default function Loading() {
           <TemplatesGraphic className="h-auto w-full" />
         </div>
         <div className="@container min-w-0">
-          <TextLine type="text-3xl" className="w-36" />
+          <TextLine shimmer type="text-3xl" className="w-36" />
           {/* A <p>'s 1.6 line-height (globals.css); ~33.5rem of text, wraps below. */}
           <div className="mt-1 text-sm leading-[1.6]">
-            <TextLine className="w-[33.5rem] max-w-full" />
-            <TextLine type="hidden @max-[33.5rem]:flex" className="w-36" />
+            <TextLine shimmer className="w-[33.5rem] max-w-full" />
+            <TextLine
+              shimmer
+              type="hidden @max-[33.5rem]:flex"
+              className="w-36"
+            />
           </div>
           <div className="mt-5 flex max-w-md items-center gap-2">
             <Skeleton className="h-10 min-w-0 flex-1" shimmer />

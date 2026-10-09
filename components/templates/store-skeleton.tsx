@@ -1,27 +1,12 @@
 import type { CSSProperties } from "react";
 
-import { Skeleton } from "@/components/ui/skeleton";
+import { Skeleton, TextLine } from "@/components/ui/skeleton";
 import { titleClass } from "@/components/shared/page-header";
 import { COLLECTIONS, FEATURED } from "@/components/templates/collections";
 import { cn } from "@/lib/utils";
 
 const delay = (ms: number) =>
   ({ "--shimmer-delay": `${ms}ms` }) as CSSProperties;
-
-/** One line box of the text it stands for: same type classes, same height. */
-export function TextLine({
-  type,
-  className,
-}: {
-  type?: string;
-  className?: string;
-}) {
-  return (
-    <div className={cn("flex h-lh items-center", type)}>
-      <Skeleton className={cn("h-[1em]", className)} shimmer />
-    </div>
-  );
-}
 
 // All, four categories and More, measured; pb-1 is CategoryChips' focus gutter.
 const CHIP_WIDTHS = ["w-15", "w-29", "w-14", "w-30", "w-20", "w-19"];
@@ -45,7 +30,7 @@ export function StoreRailsSkeleton() {
   return (
     <div className="space-y-10">
       <section className="space-y-3">
-        <TextLine type={titleClass.section} className="w-24" />
+        <TextLine shimmer type={titleClass.section} className="w-24" />
         <div className="grid gap-3 xl:grid-cols-3">
           <HeroCardSkeleton />
           <div className="grid gap-3 sm:grid-cols-2 xl:col-span-2">
@@ -59,8 +44,9 @@ export function StoreRailsSkeleton() {
       {COLLECTIONS.slice(0, 2).map((collection) => (
         <section key={collection.title} className="space-y-3">
           <div>
-            <TextLine type={titleClass.section} className="w-44" />
+            <TextLine shimmer type={titleClass.section} className="w-44" />
             <TextLine
+              shimmer
               type="mt-1 text-sm leading-[1.6]"
               className="w-80 max-w-full"
             />
@@ -87,7 +73,7 @@ function HeroCardSkeleton() {
         <Skeleton className="size-20 rounded-2xl" shimmer />
         {/* The featured description fits one line from ~31rem. */}
         <div className="@container">
-          <TextLine type="text-xl" className="w-40" />
+          <TextLine shimmer type="text-xl" className="w-40" />
           <Description type="text-sm" last="@min-[31rem]:hidden" />
         </div>
       </div>
@@ -107,7 +93,7 @@ function SidekickSkeleton({ style }: { style: CSSProperties }) {
     >
       <Skeleton className="size-12 rounded-xl" shimmer />
       <div className="min-w-0 flex-1">
-        <TextLine type="text-sm" className="w-28" />
+        <TextLine shimmer type="text-sm" className="w-28" />
         <Description type="text-xs" />
       </div>
     </div>
@@ -131,7 +117,7 @@ function CardSkeleton({
     >
       <Skeleton className="size-14 rounded-xl" shimmer />
       <div>
-        <TextLine type="text-sm" className="w-24" />
+        <TextLine shimmer type="text-sm" className="w-24" />
         <Description type="text-xs" />
       </div>
     </div>
@@ -142,8 +128,8 @@ function CardSkeleton({
 function Description({ type, last }: { type: string; last?: string }) {
   return (
     <div className={`mt-1 leading-relaxed ${type}`}>
-      <TextLine className="w-full" />
-      <TextLine type={last} className="w-2/3" />
+      <TextLine shimmer className="w-full" />
+      <TextLine shimmer type={last} className="w-2/3" />
     </div>
   );
 }
