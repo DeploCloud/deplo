@@ -18,7 +18,7 @@ import { listDatabases } from "@/lib/data/databases/rows";
 import { listFolders } from "@/lib/data/folders";
 import { listProjects } from "@/lib/data/projects/read";
 import { ScopedActivity } from "@/components/activity/scoped-activity";
-import { ActivitySkeleton } from "@/components/activity/activity-skeleton";
+import { ScopedActivitySkeleton } from "@/components/activity/scoped-activity-skeleton";
 import {
   toAppLinks,
   toDatabaseLinks,
@@ -71,7 +71,7 @@ export default async function MemberPage(
       </Link>
       <MemberDetailTabs
         activity={
-          <Suspense fallback={<ActivitySkeleton />}>
+          <Suspense fallback={<ScopedActivitySkeleton />}>
             <MemberActivity
               userId={id}
               username={member.username}
