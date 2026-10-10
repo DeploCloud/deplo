@@ -1,6 +1,8 @@
 "use client";
 
 import { Plus, X, Package } from "lucide-react";
+import { FrameworkIcon } from "@/components/shared/framework-icons";
+import { frameworkById } from "@/lib/apps/framework-catalog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { FieldLabel } from "@/components/ui/info-tip";
@@ -58,8 +60,29 @@ export function DeplopackDetections({ state }: { state: RepoAnalysisState }) {
           const selected =
             state.selected &&
             detectionKey(candidate) === detectionKey(state.selected);
-          const name =
+          const runtime = candidate.metadata?.nodeRuntime;
+          const framework =
             candidate.type === "node"
+              ? (frameworkById(runtime === "next" ? "nextjs" : runtime) ??
+                frameworkById("node"))
+              : null;
+          const manager = candidate.metadata?.nodePackageManager;
+          const subtitle =
+            candidate.type === "node"
+              ? [
+                  manager === "bun"
+                    ? "Bun"
+                    : manager?.startsWith("yarn")
+                      ? "Yarn"
+                      : manager,
+                  candidate.metadata?.nodeIsSPA === "true" ? "SPA" : null,
+                ]
+                  .filter(Boolean)
+                  .join(" · ")
+              : candidate.path || candidate.rootDir;
+          const name =
+            framework?.name ??
+            (candidate.type === "node"
               ? "Node.js"
               : candidate.type === "golang"
                 ? "Go"
@@ -69,7 +92,7 @@ export function DeplopackDetections({ state }: { state: RepoAnalysisState }) {
                     ? "Dockerfile"
                     : candidate.type === "compose"
                       ? "Docker Compose"
-                      : candidate.type;
+                      : candidate.type);
           return (
             <Button
               key={detectionKey(candidate)}
@@ -78,18 +101,20 @@ export function DeplopackDetections({ state }: { state: RepoAnalysisState }) {
               role="radio"
               aria-checked={Boolean(selected)}
               onClick={() => state.select(detectionKey(candidate))}
-              className={`h-auto justify-start p-3 text-left ${selected ? "border-primary" : ""}`}
+              className={`h-auto justify-start gap-3 rounded-lg p-3 text-left ${selected ? "border-primary" : ""}`}
             >
-              <Package className="size-5 shrink-0" />
-              <span>
+              <span className="flex size-8 shrink-0 items-center justify-center rounded-md border border-border bg-surface-strong">
+                {framework ? (
+                  <FrameworkIcon id={framework.id} className="size-4" />
+                ) : (
+                  <Package className="size-4" />
+                )}
+              </span>
+              <span className="min-w-0">
                 <span className="block font-medium">{name}</span>
-                {(candidate.path ||
-                  candidate.rootDir ||
-                  candidate.metadata?.nodeRuntime) && (
-                  <span className="block text-xs text-muted-foreground">
-                    {candidate.path ||
-                      candidate.rootDir ||
-                      candidate.metadata?.nodeRuntime}
+                {subtitle && (
+                  <span className="mt-0.5 block text-xs leading-snug text-muted-foreground">
+                    {subtitle}
                   </span>
                 )}
               </span>
