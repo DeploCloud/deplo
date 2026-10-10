@@ -291,3 +291,18 @@ test("legacy info rows are classified on read without rewriting their level", as
     .where(eq(deploymentLogs.deploymentId, "dpl_1"));
   assert.equal(rows[0]?.level, "info");
 });
+
+test("cached vertex headings remain informational, including old classified commands", async () => {
+  appendLog("dpl_1", line("#13 bun install --frozen-lockfile"));
+  appendLog("dpl_1", line("#13 CACHED"));
+  await db.insert(deploymentLogs).values({
+    deploymentId: "dpl_1",
+    ts: "2026-01-01T00:00:00.000Z",
+    level: "command",
+    text: "#5 mise install-into caddy@2.11.4 /railpack/caddy",
+  });
+  const logs = await loadDeploymentLogs("dpl_1");
+  assert.equal(logs.find((l) => l.text.startsWith("#13 bun"))?.level, "info");
+  assert.equal(logs.find((l) => l.text === "#13 CACHED")?.level, "success");
+  assert.equal(logs.find((l) => l.text.startsWith("#5 mise"))?.level, "info");
+});

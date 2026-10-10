@@ -215,13 +215,17 @@ test("DeploPack summaries and BuildKit prefixes retain the meaning of each line"
     "#10 CACHED": "success",
     "#9 DONE 0.1s": "success",
     "#8 CANCELED": "info",
-    "#16 bun install --frozen-lockfile": "command",
-    "#10 cargo build --release": "command",
-    "#10 RUN echo 'ERROR: test message'": "command",
+    "#16 bun install --frozen-lockfile": "info",
+    "#10 cargo build --release": "info",
+    "#10 RUN echo 'ERROR: test message'": "info",
     "#10 0.1 copied error.json": "info",
     "  $ bun run build": "info",
     "  $ echo 'ERROR: example'": "info",
     "#2 docker-image://ghcr.io/railwayapp/railpack-builder:tag": "info",
     "#2 0.1 no errors found": "info",
+    "#15 12.22 $ tsc -b && vite build": "command",
+    "#15 39.42 (!) Some chunks are larger than 500 kB after minification. Consider:":
+      "warn",
+    "Successfully built image in 59.88s": "success",
   });
 });

@@ -149,6 +149,7 @@ const KNOWN_ERROR_SHAPES: RegExp[] = [
 ];
 
 const SUCCESS_SHAPES: RegExp[] = [
+  /^Successfully built image in \d+(?:\.\d+)?s$/,
   /\[\s*(?:ok|success|succeeded|done|pass(?:ed)?)\s*\]/i,
   /[✓✔√✅]/,
   /\bcompiled successfully\b/i,
@@ -157,6 +158,7 @@ const SUCCESS_SHAPES: RegExp[] = [
 ];
 
 const WARN_SHAPES: RegExp[] = [
+  /^\s*\(!\)\s/,
   /\bdeprecat(?:ed|ion|ing)\b/i,
   /[‼⚠]/,
   /\b[1-9]\d*\s+warnings?\s+found\b/i,
@@ -183,13 +185,11 @@ export function detectLogLevel(message: string): LogLevel {
     if (!step[1]) {
       if (/^(?:DONE(?:\s|$)|CACHED$)/.test(message)) return "success";
       if (message === "CANCELED") return "info";
-      if (
-        /^(?:RUN\s|(?:npm|pnpm|yarn|bun|cargo|mise|caddy|mkdir|cp|rm|sh)\s)/.test(
-          message,
-        )
-      )
-        return "command";
+      if (/^ERROR(?::|\s|$)/.test(message)) return "error";
+      // A vertex heading is also emitted for cached steps; it is not execution.
+      return "info";
     }
+    if (/^\s*\$\s/.test(message)) return "command";
   }
   if (/^\s*\$\s/.test(message)) return "info";
   if (/^\s*[✖✗❌]/.test(message)) return "error";
