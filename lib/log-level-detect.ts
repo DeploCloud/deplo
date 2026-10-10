@@ -130,6 +130,7 @@ function firstLevelWord(m: string, re: RegExp): LogLevel | null {
 }
 
 const KNOWN_ERROR_SHAPES: RegExp[] = [
+  /^(?:failed to solve:|unrecognized image format$)/i,
   /^\s*at\s+[\w.$<>[\]]{1,200}\s{0,8}\(?[^\n]{0,256}:\d+(?::\d+)?\)?/,
   /^\s*File\s+"[^"\n]{0,256}",\s+line\s+\d+/,
   /^\s*Caused by:\s/,
@@ -176,6 +177,22 @@ function levelFromStatus(m: string): LogLevel | null {
 }
 
 export function detectLogLevel(message: string): LogLevel {
+  const step = /^#\d+\s+(?:(\d+(?:\.\d+)?)\s+)?(.*)$/.exec(message);
+  if (step) {
+    message = step[2];
+    if (!step[1]) {
+      if (/^(?:DONE(?:\s|$)|CACHED$)/.test(message)) return "success";
+      if (message === "CANCELED") return "info";
+      if (
+        /^(?:RUN\s|(?:npm|pnpm|yarn|bun|cargo|mise|caddy|mkdir|cp|rm|sh)\s)/.test(
+          message,
+        )
+      )
+        return "command";
+    }
+  }
+  if (/^\s*\$\s/.test(message)) return "info";
+  if (/^\s*[✖✗❌]/.test(message)) return "error";
   const declared = declaredLevel(message);
   if (declared) return declared;
 

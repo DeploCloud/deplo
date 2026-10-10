@@ -56,6 +56,7 @@ function bufferFor(depId: string): DeploymentBuffer {
 }
 
 export function appendLog(depId: string, line: LogLine): void {
+  line = classifyUnstated(line);
   const b = bufferFor(depId);
   const s = state();
   if (s.enqueued.size > MAX_TRACKED_BUDGETS && !s.enqueued.has(depId)) {

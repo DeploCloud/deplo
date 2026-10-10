@@ -246,7 +246,7 @@ test("the per-line and per-deployment log caps hold, and a read can't reset the 
   }
 });
 
-test("an unstated build line is classified on read; an authored level is not", async () => {
+test("an unstated build line is classified before persistence; an authored level is not", async () => {
   appendLog(
     "dpl_1",
     line('#14 4.914 error: script "build" exited with code 1'),
@@ -266,12 +266,28 @@ test("an unstated build line is classified on read; an authored level is not", a
   const logs = await loadDeploymentLogs("dpl_1");
   assert.deepEqual(
     logs.map((l) => l.level),
-    ["error", "info", "command", "info"],
+    ["error", "success", "command", "info"],
   );
   const rows = await db
     .select()
     .from(deploymentLogs)
     .where(eq(deploymentLogs.deploymentId, "dpl_1"))
     .orderBy(asc(deploymentLogs.id));
-  assert.equal(rows[0]!.level, "info");
+  assert.equal(rows[0]!.level, "error");
+  assert.equal(rows[1]!.level, "success");
+});
+
+test("legacy info rows are classified on read without rewriting their level", async () => {
+  await db.insert(deploymentLogs).values({
+    deploymentId: "dpl_1",
+    ts: "2026-01-01T00:00:00.000Z",
+    level: "info",
+    text: "✖ build planning failed",
+  });
+  assert.equal((await loadDeploymentLogs("dpl_1"))[0]?.level, "error");
+  const rows = await db
+    .select()
+    .from(deploymentLogs)
+    .where(eq(deploymentLogs.deploymentId, "dpl_1"));
+  assert.equal(rows[0]?.level, "info");
 });

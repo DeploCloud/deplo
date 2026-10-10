@@ -158,3 +158,59 @@ test("a boundary replayed out of order is clamped, keeping the total exact", () 
     DURATION,
   );
 });
+
+for (const historical of [false, true]) {
+  test(`DeploPack ${historical ? "historical" : "command markers"} separates fetch, preparation, build and deploy`, () => {
+    const at = (seconds: number) =>
+      new Date(Date.parse(STARTED) + seconds * 1000).toISOString();
+    const logs = [
+      cmd(at(1), "git fetch https://github.com/o/r (sha) [on agent]"),
+      cmd(at(1), "git fetch https://github.com/o/r (sha)"),
+      historical
+        ? info(at(3), "Building with DeploPack 0.1.0 (rust)")
+        : cmd(at(3), "deplopack prepare"),
+      info(at(4), "  $ cargo build --release"),
+      ...(historical ? [] : [cmd(at(5), "deplopack build")]),
+      info(at(5), "  Starting Docker Build..."),
+      info(at(6), "#3 resolve image"),
+      cmd(at(8), "docker build (relabel image)"),
+      cmd(at(9), "docker compose up -d"),
+    ];
+    const phases = buildPhases({
+      logs,
+      startedAt: STARTED,
+      buildDurationMs: 11000,
+      nowMs: 0,
+    });
+    assert.deepEqual(
+      phases.map((p) => [p.key, p.ms]),
+      [
+        ["initialize", 1000],
+        ["clone", 2000],
+        ["prepare", 2000],
+        ["build", 4000],
+        ["deploy", 2000],
+      ],
+    );
+    for (const duration of [7000, 8000]) {
+      const stopped = buildPhases({
+        logs: logs.slice(0, historical ? 6 : 7),
+        startedAt: STARTED,
+        buildDurationMs: duration,
+        nowMs: 0,
+      });
+      assert.equal(stopped.at(-1)?.key, "build");
+      assert.equal(
+        stopped.reduce((sum, p) => sum + p.ms, 0),
+        duration,
+      );
+    }
+    const live = buildPhases({
+      logs: logs.slice(0, historical ? 6 : 7),
+      startedAt: STARTED,
+      buildDurationMs: null,
+      nowMs: Date.parse(at(7)),
+    });
+    assert.equal(live.at(-1)?.ms, 2000);
+  });
+}
