@@ -30,6 +30,7 @@ import {
   assertExpiryWithinActingToken,
   assertScopeWithinActingToken,
   ownerCeiling,
+  refuseConnectedClient,
   requireOwnOrSession,
 } from "./acting-token";
 import { trail } from "./activity-trail";
@@ -84,6 +85,7 @@ export async function createToken(
   } & TokenScopeInput,
 ): Promise<{ raw: string; token: ApiTokenDTO }> {
   const { id: userId } = await assertUser();
+  await refuseConnectedClient();
   const name = cleanTokenName(input.name);
   if (input.mcpAgent !== undefined && !isMcpAgentId(input.mcpAgent))
     throw new Error("That is not an agent Deplo knows.");
@@ -157,6 +159,7 @@ export async function updateToken(
 ): Promise<void> {
   const { id: userId } = await assertUser();
   requireOwnOrSession(input.id);
+  await refuseConnectedClient();
   const name = cleanTokenName(input.name);
   const { scoped, instanceAdmin } = await validateScope(input);
   const expiresAt =

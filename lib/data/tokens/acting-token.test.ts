@@ -251,3 +251,31 @@ test("a bearer token edits and revokes only ITSELF", async () => {
   const names = (await asUser1(() => listTokens())).map((t) => t.name).sort();
   assert.deepEqual(names, ["b", "me"]);
 });
+
+test("a connected AI client's token can neither mint nor re-author a token", async () => {
+  const { raw, token } = await asUser1(() =>
+    createToken({ name: "Claude", capabilities: ["view", "manage_tokens"] }),
+  );
+  await pg.query(
+    `insert into oauth_client (id, client_id, name, redirect_uris, created_at)
+     values ('oc_x', 'client_x', 'Claude', ARRAY['https://client.test/cb'], now())`,
+  );
+  await pg.query(
+    `update api_tokens set oauth_client_id = 'client_x' where id = $1`,
+    [token.id],
+  );
+  const acting = (await authenticateToken(raw))!;
+
+  await runWithIdentity(acting, async () => {
+    await assert.rejects(
+      () => createToken({ name: "backup", capabilities: ["view"] }),
+      /connected AI client can't create or change API tokens/,
+    );
+    await assert.rejects(
+      () => updateToken({ id: token.id, name: "renamed" }),
+      /connected AI client can't create or change API tokens/,
+    );
+  });
+  const names = (await asUser1(() => listTokens())).map((t) => t.name);
+  assert.deepEqual(names, ["Claude"], "nothing was minted or renamed");
+});

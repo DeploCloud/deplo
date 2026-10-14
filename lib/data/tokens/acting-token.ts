@@ -57,6 +57,23 @@ export function requireOwnOrSession(tokenId: string): void {
   if (acting && acting.id !== tokenId) throw new Error("Token not found");
 }
 
+// A connected client dies with its revoke and the team MCP switch; a token it minted would outlive both.
+export async function refuseConnectedClient(): Promise<void> {
+  const acting = currentIdentity()?.token;
+  if (!acting) return;
+  const row = (
+    await getDb()
+      .select({ oauthClientId: apiTokens.oauthClientId })
+      .from(apiTokens)
+      .where(eq(apiTokens.id, acting.id))
+      .limit(1)
+  )[0];
+  if (row?.oauthClientId)
+    throw new Error(
+      "A connected AI client can't create or change API tokens. Sign in to the dashboard to do that.",
+    );
+}
+
 export async function assertExpiryWithinActingToken(
   expiresAt: string | null | undefined,
 ): Promise<void> {
