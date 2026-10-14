@@ -277,3 +277,11 @@ export function projectInScope(
     scope.appProjectIds.includes(projectId)
   );
 }
+
+// A write to the whole project needs the project itself; appProjectIds only makes it browsable.
+export function projectFullyInScope(
+  scope: { projectIds: string[] } | null,
+  projectId: string,
+): boolean {
+  return !scope || scope.projectIds.includes(projectId);
+}

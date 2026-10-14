@@ -6,8 +6,13 @@ import {
   membershipCapabilities as membershipCapabilitiesTable,
   memberships as membershipsTable,
   teamRoles as teamRolesTable,
+  teamRoleScopeApps,
+  teamRoleScopeEnvironments,
 } from "../../db/schema/control-plane/access-control";
-import { projects as projectsTable } from "../../db/schema/control-plane/projects";
+import {
+  environments as environmentsTable,
+  projects as projectsTable,
+} from "../../db/schema/control-plane/projects";
 import { seedApp } from "../app-graph-test-helpers";
 import {
   deleteProject,
@@ -180,4 +185,96 @@ test("a project outside a limited member's reach is NOT FOUND to rename, recolou
     [PRC_IN]: "Renamed",
     [PRC_OUT]: "Out",
   });
+});
+
+test("a node inside a project does not hand over the project or its other environments", async () => {
+  const envs = await import("../environments");
+  const env = (id: string, isDefault: boolean, position: number) => ({
+    id,
+    projectId: PRC_IN,
+    name: id,
+    slug: id,
+    kind: "custom",
+    gitBranch: "",
+    isDefault,
+    position,
+    createdAt: T0,
+    updatedAt: T0,
+  });
+  await h.db
+    .insert(environmentsTable)
+    .values([env("environ_prod", true, 0), env("environ_stg", false, 1)]);
+  await seedApp(h.db, {
+    id: "prj_theirs",
+    slug: "theirs",
+    projectId: PRC_IN,
+    environmentId: "environ_prod",
+  });
+  const m = (
+    await h.db
+      .select({ id: membershipsTable.id })
+      .from(membershipsTable)
+      .where(eq(membershipsTable.userId, DEV))
+  )[0];
+  await h.db
+    .insert(membershipCapabilitiesTable)
+    .values(
+      (
+        [
+          "organize_projects",
+          "delete_projects",
+          "manage_environments",
+        ] as Capability[]
+      ).map((capability) => ({ membershipId: m.id, capability })),
+    );
+  const PARTIAL = /only reaches part of this project/;
+
+  await scopeTo(h, { apps: [APP_IN_PRC] });
+  for (const attempt of [
+    () => renameProject(PRC_IN, "Hijacked"),
+    () => envs.createEnvironment(PRC_IN, "Mine").then(() => {}),
+    () => setProjectColor(PRC_IN, "#ff0000"),
+    () => deleteProject(PRC_IN),
+    () => envs.renameEnvironment("environ_stg", "Mine"),
+    () => envs.setEnvironmentBranch("environ_stg", "evil"),
+    () => envs.setDefaultEnvironment("environ_stg"),
+    () => envs.deleteEnvironment("environ_prod"),
+  ])
+    await assert.rejects(() => as(DEV, attempt), PARTIAL);
+
+  await h.db
+    .delete(teamRoleScopeApps)
+    .where(eq(teamRoleScopeApps.roleId, ROLE));
+  await h.db
+    .insert(teamRoleScopeEnvironments)
+    .values({ roleId: ROLE, environmentId: "environ_stg" });
+  await as(DEV, () => envs.renameEnvironment("environ_stg", "QA"));
+  for (const attempt of [
+    () => envs.renameEnvironment("environ_prod", "Mine"),
+    () => envs.setDefaultEnvironment("environ_stg"),
+    () => envs.deleteEnvironment("environ_stg"),
+  ])
+    await assert.rejects(() => as(DEV, attempt), PARTIAL);
+
+  const projects = await h.db
+    .select({ id: projectsTable.id, name: projectsTable.name })
+    .from(projectsTable);
+  assert.deepEqual(Object.fromEntries(projects.map((p) => [p.id, p.name])), {
+    [PRC_IN]: "In",
+    [PRC_OUT]: "Out",
+  });
+  const left = await h.db
+    .select({
+      id: environmentsTable.id,
+      name: environmentsTable.name,
+      isDefault: environmentsTable.isDefault,
+    })
+    .from(environmentsTable);
+  assert.deepEqual(
+    left.sort((a, b) => a.id.localeCompare(b.id)),
+    [
+      { id: "environ_prod", name: "environ_prod", isDefault: true },
+      { id: "environ_stg", name: "QA", isDefault: false },
+    ],
+  );
 });

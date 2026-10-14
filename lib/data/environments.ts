@@ -23,6 +23,7 @@ import {
 import { inProjectScope } from "../auth/request-context";
 import { projectInScope } from "./node-scope";
 import { assertContainerNotMigrating } from "./migration-guard";
+import { requireReachableProject } from "./projects/rows";
 import type { Environment, EnvironmentKind } from "../types/team";
 
 const MAX_NAME = 40;
@@ -93,19 +94,12 @@ function cleanName(name: string): string {
   return trimmed;
 }
 
-async function requireOwnedProject(projectId: string): Promise<string> {
+async function requireOwnedProject(
+  projectId: string,
+  environmentId: string | null = null,
+): Promise<string> {
   const teamId = await requireActiveTeamId();
-  const rows = await getDb()
-    .select({ teamId: projectsTable.teamId })
-    .from(projectsTable)
-    .where(eq(projectsTable.id, projectId))
-    .limit(1);
-  if (
-    rows[0]?.teamId !== teamId ||
-    !inProjectScope(projectId) ||
-    !projectInScope(await currentMemberScope(), projectId)
-  )
-    throw new Error("Project not found");
+  await requireReachableProject(projectId, teamId, environmentId);
   return teamId;
 }
 
@@ -269,7 +263,7 @@ export async function renameEnvironment(
       .limit(1)
   )[0];
   if (!env) throw new Error("Environment not found");
-  await requireOwnedProject(env.projectId);
+  await requireOwnedProject(env.projectId, env.id);
   await getDb()
     .update(environmentsTable)
     .set({ name: clean, updatedAt: nowIso() })
@@ -290,7 +284,7 @@ export async function setEnvironmentBranch(
       .limit(1)
   )[0];
   if (!env) throw new Error("Environment not found");
-  await requireOwnedProject(env.projectId);
+  await requireOwnedProject(env.projectId, env.id);
   await getDb()
     .update(environmentsTable)
     .set({ gitBranch: branch.trim(), updatedAt: nowIso() })

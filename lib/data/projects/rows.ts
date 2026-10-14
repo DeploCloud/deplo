@@ -11,8 +11,12 @@ import {
 } from "../../db/schema/control-plane/projects";
 import { newId } from "../../ids";
 import { currentMemberScope } from "../../membership";
-import { inProjectScope } from "../../auth/request-context";
-import { projectInScope } from "../node-scope";
+import { inProjectScope, narrowedScope } from "../../auth/request-context";
+import {
+  environmentInScope,
+  projectFullyInScope,
+  projectInScope,
+} from "../node-scope";
 import { appScopeWhere } from "../app-graph-load";
 import type { Project } from "../../types/team";
 
@@ -148,13 +152,20 @@ export async function projectInTeam(
   return rows[0]?.teamId === teamId && inProjectScope(id);
 }
 
+// A write gate: an environmentId lets a member scoped to just that environment through.
 export async function requireReachableProject(
   id: string,
   teamId: string,
+  environmentId: string | null = null,
 ): Promise<void> {
-  if (
-    !(await projectInTeam(id, teamId)) ||
-    !projectInScope(await currentMemberScope(), id)
-  )
+  const scope = await currentMemberScope();
+  if (!(await projectInTeam(id, teamId)) || !projectInScope(scope, id))
     throw new Error("Project not found");
+  const covered =
+    projectFullyInScope(scope, id) ||
+    (environmentId != null && environmentInScope(scope, environmentId));
+  if (!projectFullyInScope(narrowedScope(), id) || !covered)
+    throw new Error(
+      "Your access only reaches part of this project, so it can't make this change.",
+    );
 }
