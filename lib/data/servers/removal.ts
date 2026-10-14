@@ -26,8 +26,8 @@ async function publicBaseUrl(): Promise<string> {
 
 async function hostUninstallCommand(): Promise<string> {
   const baseUrl = await publicBaseUrl();
-  const { insecure } = await controlPlaneCert(baseUrl);
-  return uninstallCommand({ baseUrl, insecure });
+  const { insecure, pin } = await controlPlaneCert(baseUrl);
+  return uninstallCommand({ baseUrl, insecure, pin });
 }
 
 export async function agentUninstallCommand(): Promise<string> {

@@ -12,7 +12,9 @@ import {
   verifyResponse,
   assertPinnableFingerprint,
   BootstrapError,
+  publicKeyPin,
 } from "./bootstrap";
+import { X509Certificate } from "node:crypto";
 import { sha256Hex } from "../crypto";
 import type { Server } from "../types/server";
 
@@ -73,16 +75,29 @@ test("installCommand embeds the token + url, and the fingerprint only over HTTPS
   assert.match(noFp, /'http:\/\/10\.0\.0\.5:3000'/);
 });
 
+test("the token reaches the installer on stdin, never on a command line", () => {
+  const cmd = installCommand({
+    baseUrl: "https://deplo.example.com",
+    rawToken: "tok123",
+    fingerprint: "abcd",
+    importOnly: true,
+  });
+  const [before, after] = cmd.split(" | sudo ");
+  assert.match(before, / && echo 'tok123'$/);
+  assert.doesNotMatch(after, /tok123/, "sudo's argv is world-readable");
+  assert.match(after, /deplo-agent-install\.sh - 'https:/);
+});
+
 test("the one-liners download first and run second, so a failed download fails", () => {
   const cmd = installCommand({
     baseUrl: "https://deplo.example.com",
     rawToken: "t",
     fingerprint: "f",
   });
-  assert.doesNotMatch(cmd, /\| *sudo/);
+  assert.doesNotMatch(cmd, /curl[^&]*\|/, "the download is never piped");
   assert.match(
     cmd,
-    /--output \/tmp\/deplo-agent-install\.sh && sudo bash \/tmp\/deplo-agent-install\.sh 't' 'https:\/\/deplo\.example\.com' 'f'$/,
+    /--output \/tmp\/deplo-agent-install\.sh && echo 't' \| sudo bash \/tmp\/deplo-agent-install\.sh - 'https:\/\/deplo\.example\.com' 'f'$/,
   );
   assert.match(
     installCommand({
@@ -91,7 +106,7 @@ test("the one-liners download first and run second, so a failed download fails",
       fingerprint: "",
       importOnly: true,
     }),
-    /&& sudo DEPLO_IMPORT_ONLY=1 bash \/tmp\/deplo-agent-install\.sh 't' 'http:\/\/10\.0\.0\.5:3000'$/,
+    /\| sudo DEPLO_IMPORT_ONLY=1 bash \/tmp\/deplo-agent-install\.sh - 'http:\/\/10\.0\.0\.5:3000'$/,
   );
   const un = uninstallCommand({ baseUrl: "https://deplo.example.com" });
   assert.doesNotMatch(un, /\| *sudo/);
@@ -112,7 +127,7 @@ test("the one-liners do not trip uBlock Origin's ClickFix filter", () => {
   };
   assert.doesNotMatch(installCommand(base), UBO_CLICKFIX);
   assert.doesNotMatch(
-    installCommand({ ...base, insecure: true, importOnly: true }),
+    installCommand({ ...base, insecure: true, importOnly: true, pin: "k=" }),
     UBO_CLICKFIX,
   );
   assert.doesNotMatch(uninstallCommand(base), UBO_CLICKFIX);
@@ -135,6 +150,46 @@ test("curl skips verification only when the panel's own certificate does not", (
     /curl -fsSLk '/,
   );
   assert.match(uninstallCommand({ baseUrl: base.baseUrl }), /curl -fsSL '/);
+});
+
+test("an unverified panel is still pinned to its own key", () => {
+  const base = {
+    baseUrl: "https://deplo.example.com",
+    rawToken: "t",
+    fingerprint: "f",
+    insecure: true,
+    pin: "GCWw5Liokcs90teMKyhiUcgu1IPua9uiJODt79FJBtM=",
+  };
+  const pinned =
+    /^curl -fsSLk --pinnedpubkey 'sha256\/\/GCWw5Liokcs90teMKyhiUcgu1IPua9uiJODt79FJBtM=' '/;
+  assert.match(installCommand(base), pinned);
+  assert.match(uninstallCommand(base), pinned);
+  assert.doesNotMatch(
+    installCommand({ ...base, insecure: false }),
+    /pinnedpubkey/,
+    "a CA-verified panel keeps renewing its certificate freely",
+  );
+});
+
+// Generated with openssl; the pin is curl's own recipe (pkey -pubin -outform der | dgst -sha256 | base64).
+const EC_CERT = `-----BEGIN CERTIFICATE-----
+MIIBiTCCAS+gAwIBAgIUDDklr/F3rQl+8SS87U5IKdOJ4gswCgYIKoZIzj0EAwIw
+GTEXMBUGA1UEAwwOZGVwbG8tcGluLXRlc3QwIBcNMjYxMDE0MjIxMjQ0WhgPMjEy
+NjA5MjAyMjEyNDRaMBkxFzAVBgNVBAMMDmRlcGxvLXBpbi10ZXN0MFkwEwYHKoZI
+zj0CAQYIKoZIzj0DAQcDQgAEBgLlAYMMHnPoG3j4jI+ijYyhnKbxbV8cJMmpOmmL
+ZiUuTqfgyht4I+5ZPuP/o8lGFAQr2cwkFKU/rECp0XuHbKNTMFEwHQYDVR0OBBYE
+FDib0cm+XDvTtNeq3qR+ZqBqxJlPMB8GA1UdIwQYMBaAFDib0cm+XDvTtNeq3qR+
+ZqBqxJlPMA8GA1UdEwEB/wQFMAMBAf8wCgYIKoZIzj0EAwIDSAAwRQIgbyrFLRxw
+eWNggr2AKO5iv09xP29KMH3spXot/p+CbYYCIQCKRdxojjbBpLA5Pl7dYwx9qmqM
+9nKAhdKyD0wgdVIkLA==
+-----END CERTIFICATE-----`;
+
+test("publicKeyPin is the hash curl compares, for an EC key too", () => {
+  assert.equal(
+    publicKeyPin(new X509Certificate(EC_CERT).raw),
+    "GCWw5Liokcs90teMKyhiUcgu1IPua9uiJODt79FJBtM=",
+  );
+  assert.equal(publicKeyPin(Buffer.from("not a certificate")), "");
 });
 
 test("a certificate that could not be read at all does not print -k", async () => {

@@ -69,7 +69,7 @@ export async function addServer(
 
   const { rawToken, stored } = mintBootstrap();
   const baseUrl = await bootstrapBaseUrl({ ip: host, host });
-  const { fingerprint, insecure } = await controlPlaneCert(baseUrl);
+  const { fingerprint, insecure, pin } = await controlPlaneCert(baseUrl);
 
   const importOnly = input.importOnly ?? false;
   if (importOnly) {
@@ -141,6 +141,7 @@ export async function addServer(
       rawToken,
       fingerprint,
       insecure,
+      pin,
       storageOnly: server.storageOnly,
       buildOnly: server.buildOnly,
       importOnly: server.importOnly,
@@ -280,7 +281,7 @@ export async function reissueBootstrap(id: string): Promise<AddServerResult> {
 
   const { rawToken, stored } = mintBootstrap();
   const baseUrl = await bootstrapBaseUrl(server);
-  const { fingerprint, insecure } = await controlPlaneCert(baseUrl);
+  const { fingerprint, insecure, pin } = await controlPlaneCert(baseUrl);
   await getDb()
     .update(serversTable)
     .set({
@@ -305,6 +306,7 @@ export async function reissueBootstrap(id: string): Promise<AddServerResult> {
       rawToken,
       fingerprint,
       insecure,
+      pin,
       storageOnly: fresh.storageOnly,
       buildOnly: fresh.buildOnly,
       importOnly: fresh.importOnly,

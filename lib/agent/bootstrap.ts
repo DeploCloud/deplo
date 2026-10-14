@@ -1,7 +1,12 @@
 import "server-only";
 
 import { connect as tlsConnect } from "node:tls";
-import { createHmac, timingSafeEqual } from "node:crypto";
+import {
+  createHash,
+  createHmac,
+  timingSafeEqual,
+  X509Certificate,
+} from "node:crypto";
 import { randomToken, sha256Hex } from "../crypto";
 import { signAgentCsr, type SignedAgentCert } from "./pki";
 import type { Server } from "../types/server";
@@ -37,6 +42,7 @@ export function installCommand(opts: {
   rawToken: string;
   fingerprint: string;
   insecure?: boolean;
+  pin?: string;
   storageOnly?: boolean;
   buildOnly?: boolean;
   importOnly?: boolean;
@@ -46,6 +52,7 @@ export function installCommand(opts: {
     rawToken,
     fingerprint,
     insecure,
+    pin,
     storageOnly,
     buildOnly,
     importOnly,
@@ -60,24 +67,28 @@ export function installCommand(opts: {
         ? "DEPLO_BUILD_ONLY=1 "
         : "";
   // Download then run, never curl | bash (a failed fetch exits 0 silently); --output, not -o, which ad blockers strip.
-  return `curl -${curlFlags(insecure)} '${baseUrl}/install-agent.sh' --output /tmp/deplo-agent-install.sh && sudo ${env}bash /tmp/deplo-agent-install.sh '${rawToken}' '${baseUrl}'${fp}`;
+  // The token goes in on stdin (`-`): sudo's argv is readable by every local user for the whole install.
+  return `curl ${curlFlags(insecure, pin)} '${baseUrl}/install-agent.sh' --output /tmp/deplo-agent-install.sh && echo '${rawToken}' | sudo ${env}bash /tmp/deplo-agent-install.sh - '${baseUrl}'${fp}`;
 }
 
 export function uninstallCommand(opts: {
   baseUrl: string;
   insecure?: boolean;
+  pin?: string;
 }): string {
-  return `curl -${curlFlags(opts.insecure)} '${opts.baseUrl}/uninstall.sh' --output /tmp/deplo-uninstall.sh && sudo bash /tmp/deplo-uninstall.sh --yes --agent-only`;
+  return `curl ${curlFlags(opts.insecure, opts.pin)} '${opts.baseUrl}/uninstall.sh' --output /tmp/deplo-uninstall.sh && sudo bash /tmp/deplo-uninstall.sh --yes --agent-only`;
 }
 
-function curlFlags(insecure?: boolean): string {
-  return insecure ? "fsSLk" : "fsSL";
+// -k skips only the CA check: curl still refuses any key but the one Deplo read off its own address.
+function curlFlags(insecure?: boolean, pin?: string): string {
+  if (!insecure) return "-fsSL";
+  return pin ? `-fsSLk --pinnedpubkey 'sha256//${pin}'` : "-fsSLk";
 }
 
 export async function controlPlaneCert(
   baseUrl: string,
 ): Promise<ControlPlaneCert> {
-  const none = { fingerprint: "", insecure: false };
+  const none = { fingerprint: "", insecure: false, pin: "" };
   let url: URL;
   try {
     url = new URL(baseUrl);
@@ -102,7 +113,21 @@ export function assertPinnableFingerprint(url: URL, fingerprint: string): void {
 export type ControlPlaneCert = {
   fingerprint: string;
   insecure: boolean;
+  // curl's --pinnedpubkey form: base64 sha256 of the certificate's public key.
+  pin: string;
 };
+
+export function publicKeyPin(rawCert: Buffer): string {
+  try {
+    const spki = new X509Certificate(rawCert).publicKey.export({
+      type: "spki",
+      format: "der",
+    });
+    return createHash("sha256").update(spki).digest("base64");
+  } catch {
+    return "";
+  }
+}
 
 function readCert(url: URL): Promise<ControlPlaneCert> {
   const port = url.port ? Number(url.port) : 443;
@@ -122,10 +147,11 @@ function readCert(url: URL): Promise<ControlPlaneCert> {
         const fingerprint = cert?.fingerprint256
           ? cert.fingerprint256.replace(/:/g, "").toLowerCase()
           : "";
-        resolve({ fingerprint, insecure: !!fingerprint && !authorized });
+        const pin = cert?.raw ? publicKeyPin(cert.raw) : "";
+        resolve({ fingerprint, insecure: !!fingerprint && !authorized, pin });
       },
     );
-    const nothing = { fingerprint: "", insecure: false };
+    const nothing = { fingerprint: "", insecure: false, pin: "" };
     sock.on("error", () => resolve(nothing));
     sock.on("timeout", () => {
       sock.destroy();

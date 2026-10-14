@@ -1888,6 +1888,15 @@ agent_is_ours() {
   return 1
 }
 
+# The token on stdin keeps it out of `ps`; an older panel's installer only takes it as an argument.
+run_agent_installer() {
+  if grep -q token-stdin "$1"; then
+    printf '%s\n' "$HOST_TOKEN" | bash "$1" - "$AGENT_BOOTSTRAP_URL" --quiet
+  else
+    bash "$1" "$HOST_TOKEN" "$AGENT_BOOTSTRAP_URL" --quiet
+  fi
+}
+
 enroll_this_host() {
   if [ -x /usr/local/bin/deplo-agent ]; then
     # Only an UPDATE keeps an agent that is here: a fresh install minted a new
@@ -1912,8 +1921,7 @@ enroll_this_host() {
   trace_off                      # $HOST_TOKEN is on this command line
   code="$(curl -sSL -o "$script" -w '%{http_code}' \
             "$AGENT_BOOTSTRAP_URL/install-agent.sh" </dev/null 2>&9 || true)"
-  if [ "$code" = 200 ] &&
-     bash "$script" "$HOST_TOKEN" "$AGENT_BOOTSTRAP_URL" --quiet >&9 2>&9; then
+  if [ "$code" = 200 ] && run_agent_installer "$script" >&9 2>&9; then
     trace_on
     rm -f "$script"
     spin_ok "Server agent installed" "this host is now a Deplo server"
@@ -1961,9 +1969,13 @@ fi
 
 TAKEOVER_API="$AGENT_BOOTSTRAP_URL/api/takeover"
 
+# The header goes to curl on stdin (-H @-): its argv is readable by every local user.
+# Always in a pipeline, so the set +x stays in that subshell and the token out of the trace.
+bearer_header() { set +x; printf 'Authorization: Bearer %s\n' "$HOST_TOKEN"; }
+
 # The panel's own answer, or empty when it cannot be asked.
 takeover_get() {
-  curl -fsS --max-time 6 -H "Authorization: Bearer $HOST_TOKEN" "$TAKEOVER_API" </dev/null 2>&9 || true
+  bearer_header | curl -fsS --max-time 6 -H @- "$TAKEOVER_API" 2>&9 || true
 }
 
 takeover_field() {
@@ -1976,7 +1988,7 @@ takeover_post() { # $1 state, $2 the reason (failed only)
   # Retried for two minutes: the panel restarts under the removal, and a report
   # that never arrived left the wizard a step behind the machine for good.
   while :; do
-    code="$(curl -sS -o /dev/null -w '%{http_code}' --max-time 20 -X POST -H "Authorization: Bearer $HOST_TOKEN" \
+    code="$(bearer_header | curl -sS -o /dev/null -w '%{http_code}' --max-time 20 -X POST -H @- \
       -H 'Content-Type: application/json' -d "{\"state\":\"$1\",\"error\":\"$why\"}" "$TAKEOVER_API" 2>&9 || true)"
     case "$code" in 2* | 4*) return 0 ;; esac
     i=$((i + 1))

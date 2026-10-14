@@ -10,10 +10,12 @@
 # You do not run this by hand from memory - the dashboard's "Add remote server"
 # gives you the exact command, already filled in:
 #
-#   curl -fsSL https://<deplo>/install-agent.sh | sudo bash -s -- <TOKEN> <URL> [FINGERPRINT]
+#   curl -fsSL https://<deplo>/install-agent.sh --output /tmp/deplo-agent-install.sh &&
+#     echo <TOKEN> | sudo bash /tmp/deplo-agent-install.sh - <URL> [FINGERPRINT]
 #
-# Args (positional, passed after `--`):
-#   $1  TOKEN        one-time bootstrap token (single-use, ~1h expiry)
+# Args (positional):
+#   $1  TOKEN        one-time bootstrap token (single-use, ~1h expiry), or `-`
+#                    to read it from stdin (token-stdin), off every command line
 #   $2  URL          the control plane's public base URL (http(s)://host[:port])
 #   $3  FINGERPRINT  (optional) sha256 of the control plane's TLS cert to pin;
 #                    present over HTTPS, absent over plain HTTP (the token then
@@ -334,9 +336,8 @@ on_err() {
 # ==== end Deplo terminal UI ==================================================
 
 # --- args ---------------------------------------------------------------------
-# Flags are filtered out so the three positionals keep their places: the panel
-# hands out `bash -s -- <token> <url> [fingerprint]` and that command must never
-# have to change shape.
+# Flags are filtered out so the three positionals keep their places: commands
+# handed out with the token itself in place of `-` must keep working.
 CHECK_ONLY=false
 FORCE=false
 ARGS=()
@@ -350,7 +351,7 @@ for a in "$@"; do
     --help|-h)
       ui_init
       ui_title "Deplo Agent Installer"
-      printf '   curl -fsSL https://<deplo>/install-agent.sh | sudo bash -s -- <TOKEN> <URL>\n\n'
+      printf '   echo <TOKEN> | sudo bash install-agent.sh - <URL> [FINGERPRINT]\n\n'
       printf '   Copy the exact command from the dashboard: Settings > Servers > Add server.\n\n'
       exit 0
       ;;
@@ -363,8 +364,14 @@ trap 'ui_cleanup' EXIT
 trap 'spin_kill; printf "\n"; exit 130' INT
 trap 'on_err $LINENO' ERR
 
+# `-` reads the token from stdin: argv is world-readable in `ps` for the whole install.
+read_token() {
+  TOKEN="${1:-}"
+  [ "$TOKEN" != - ] || IFS= read -r TOKEN || true
+}
+
 trace_off                        # the one-time bootstrap token
-TOKEN="${ARGS[0]:-}"
+read_token "${ARGS[0]:-}"
 URL="${ARGS[1]:-}"
 FINGERPRINT="${ARGS[2]:-}"
 trace_on
@@ -391,7 +398,7 @@ esac
 ui_title "$AGENT_TITLE" "$ROLE_LINE"
 
 if [ -z "$TOKEN" ] || [ -z "$URL" ]; then
-  err "Usage: install-agent.sh -- <token> <control-plane-url> [fingerprint]"
+  err "Usage: echo <token> | install-agent.sh - <control-plane-url> [fingerprint]"
   note "Copy the exact command from the dashboard's Add remote server dialog."
   exit 1
 fi
