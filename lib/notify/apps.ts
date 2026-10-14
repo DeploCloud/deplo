@@ -61,6 +61,7 @@ export async function reportAppHealth(
         title: `${app.name} keeps restarting`,
         body: "Its container starts, exits and starts again. The logs have why.",
         path: `/apps/${app.slug}`,
+        appId: app.id,
       });
     }
     for (const id of recovered) {
@@ -72,6 +73,7 @@ export async function reportAppHealth(
         title: `${app.name} is running again`,
         body: "It stopped restarting and is up.",
         path: `/apps/${app.slug}`,
+        appId: app.id,
       });
     }
   } catch (e) {
@@ -98,6 +100,7 @@ export async function reportOutOfMemory(
       title: `${app.name} ran out of memory`,
       body: "It used all the memory it may use and was killed. Give it more under Resources, or look for a leak in the logs.",
       path: `/apps/${app.slug}`,
+      appId: app.id,
     });
 }
 

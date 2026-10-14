@@ -17,6 +17,8 @@ export interface Alert {
   title: string;
   body: string;
   path?: string;
+  // The app it is about, so push can still reach a member whose role covers only part of the team.
+  appId?: string;
   dedupe?: { id: string; state: string };
 }
 
@@ -46,6 +48,7 @@ export async function dispatchAlertNow(alert: Alert): Promise<void> {
       body: alert.body,
       url: alert.path && base ? `${base}${withTeam(alert.path, slug)}` : null,
       ts: new Date().toISOString(),
+      appId: alert.appId,
     };
     const results = await Promise.allSettled(
       channels.map((c) =>

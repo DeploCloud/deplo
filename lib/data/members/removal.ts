@@ -11,6 +11,7 @@ import {
   handOverFolders,
   recordFoldersHanded,
 } from "../node-grants";
+import { deleteMemberPushSubscriptions } from "../../notify/web-push";
 import { actorName } from "./activity-actor";
 import { assertAdminCoverage } from "./assignment";
 import { teamFounderUserId } from "./roster";
@@ -55,6 +56,7 @@ export async function removeMember(userId: string): Promise<void> {
     username = u[0]?.username ?? "";
     // A grant hangs off the node it names and a folder off its owner, so neither leaves with the membership row.
     await clearNodeGrants(tx, userId, teamId);
+    await deleteMemberPushSubscriptions(tx, teamId, userId);
     handed = await handOverFolders(
       tx,
       userId,

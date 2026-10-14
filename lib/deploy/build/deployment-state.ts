@@ -264,6 +264,7 @@ export async function commitOutcome(
       target.kind === "preview"
         ? `/apps/${target.slug}/pull-requests`
         : `/apps/${target.slug}`,
+    appId: target.appId,
   });
   if (target.kind === "preview" && depPatch.status) {
     const kind =

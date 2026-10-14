@@ -4,10 +4,12 @@ import { and, eq, inArray, isNull } from "drizzle-orm";
 
 import { decryptSecret, encryptSecret } from "../crypto";
 import { assertSafeOutboundUrl } from "../outbound-url";
-import { getDb } from "../db/client";
+import { getDb, type DbTx } from "../db/client";
 import { instanceSettings } from "../db/schema/control-plane/instance";
 import { pushSubscriptions } from "../db/schema/control-plane/notifications";
 import { nowIso } from "../ids";
+import { memberHoldsTeamWide, membershipFor } from "../membership";
+import { memberHoldsAppCapability } from "../data/node-access";
 import type { AlertMessage } from "./channels";
 
 const SETTINGS_ID = "default";
@@ -100,13 +102,56 @@ export async function deletePushSubscription(
     );
 }
 
+// Leaving a team takes its alerts with it: called inside the removal's own transaction.
+export async function deleteMemberPushSubscriptions(
+  tx: DbTx,
+  teamId: string,
+  userId: string,
+): Promise<void> {
+  await tx
+    .delete(pushSubscriptions)
+    .where(
+      and(
+        eq(pushSubscriptions.teamId, teamId),
+        eq(pushSubscriptions.userId, userId),
+      ),
+    );
+}
+
+// A team alert reaches current members, and one whose role covers part of the team only for an app they reach.
+async function receivesTeamAlert(
+  userId: string,
+  teamId: string,
+  appId?: string,
+): Promise<boolean> {
+  if (await memberHoldsTeamWide(userId, teamId, "view")) return true;
+  if (!appId || !(await membershipFor(userId, teamId).catch(() => null)))
+    return false;
+  return memberHoldsAppCapability(userId, teamId, appId, "view").catch(
+    () => false,
+  );
+}
+
+async function teamRecipients<T extends { userId: string }>(
+  rows: T[],
+  teamId: string,
+  appId?: string,
+): Promise<T[]> {
+  const users = [...new Set(rows.map((r) => r.userId))];
+  const ok = await Promise.all(
+    users.map((u) => receivesTeamAlert(u, teamId, appId)),
+  );
+  const allowed = new Set(users.filter((_, i) => ok[i]));
+  return rows.filter((r) => allowed.has(r.userId));
+}
+
 export async function sendWebPushTo(
   teamId: string,
   userId: string | null,
   msg: AlertMessage,
 ): Promise<void> {
   const db = getDb();
-  const subs = await db
+  const rows = await db
     .select()
     .from(pushSubscriptions)
     .where(
@@ -117,6 +162,7 @@ export async function sendWebPushTo(
           )
         : eq(pushSubscriptions.teamId, teamId),
     );
+  const subs = userId ? rows : await teamRecipients(rows, teamId, msg.appId);
   if (subs.length === 0) {
     if (userId)
       throw new Error(

@@ -42,6 +42,7 @@ import {
   handOverFolders,
   recordFoldersHanded,
 } from "./node-grants";
+import { deleteMemberPushSubscriptions } from "../notify/web-push";
 import type { Capability, Membership } from "../types/identity";
 import type { AlertKey } from "../types/notification";
 
@@ -427,6 +428,7 @@ export async function removeUserFromTeam(input: {
     );
     await assertAdminCoverage(tx, input.teamId, input.userId, null);
     await clearNodeGrants(tx, input.userId, input.teamId);
+    await deleteMemberPushSubscriptions(tx, input.teamId, input.userId);
     handed = await handOverFolders(
       tx,
       input.userId,
