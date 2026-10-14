@@ -1,6 +1,7 @@
 import { test, before, after, beforeEach } from "node:test";
 import assert from "node:assert/strict";
 
+import { randomBytes } from "node:crypto";
 import type { PGlite } from "@electric-sql/pglite";
 
 import { makeTestDb, type TestDb } from "./db/test-harness";
@@ -104,4 +105,18 @@ test("the sweep removes closed windows and leaves open ones", async () => {
 test("a limit of zero refuses the very first attempt", async () => {
   const r = await rateLimit("test:zero", { limit: 0, windowMs: 60_000 });
   assert.equal(r.ok, false);
+});
+
+test("a key no row can hold still counts instead of failing open", async () => {
+  const keys = [
+    `test:${randomBytes(4500).toString("base64")}`,
+    "test:nul\0byte",
+  ];
+  for (const key of keys) {
+    await rateLimit(key, { limit: 1, windowMs: 60_000 });
+    const second = await rateLimit(key, { limit: 1, windowMs: 60_000 });
+    assert.equal(second.ok, false, `refused at ${key.length} chars`);
+  }
+  const rows = await pg.query<{ key: string }>(`select "key" from rate_limits`);
+  assert.ok(rows.rows.every((r) => r.key.length <= 200));
 });

@@ -3,6 +3,7 @@ import "server-only";
 import { sql } from "drizzle-orm";
 
 import { getDb } from "./db/client";
+import { sha256Hex } from "./crypto";
 
 export interface RateLimitResult {
   ok: boolean;
@@ -10,10 +11,21 @@ export interface RateLimitResult {
   retryAfterSec: number;
 }
 
+// Keys carry caller-written text: a long one breaks the index and a NUL breaks the text type,
+// and either throw would reach the fail-open below. Hashed, both still count.
+const MAX_KEY_LENGTH = 200;
+
+function storedKey(key: string): string {
+  return key.length > MAX_KEY_LENGTH || key.includes("\0")
+    ? `sha256:${sha256Hex(key)}`
+    : key;
+}
+
 export async function rateLimit(
-  key: string,
+  rawKey: string,
   opts: { limit: number; windowMs: number },
 ): Promise<RateLimitResult> {
+  const key = storedKey(rawKey);
   const windowSec = Math.max(1, Math.ceil(opts.windowMs / 1000));
   try {
     const result: unknown = await getDb().execute(sql`
