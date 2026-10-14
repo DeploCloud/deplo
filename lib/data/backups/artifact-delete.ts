@@ -197,6 +197,14 @@ export async function deleteAllBackupArtifacts(input: {
 
   const destinations = await backupDestinationsForTarget(input);
   if (destinations.length === 0) return { deleted: 0, failedDestinations: [] };
+  // Deleting a target's backups is deleting backups, one or all.
+  await requireBackupCapability(
+    {
+      targetKind: input.kind,
+      appId: input.kind === "app" ? input.targetId : null,
+    },
+    "delete_backups",
+  );
   if (!serverId) {
     await getDb()
       .delete(backupRunsTable)

@@ -8,6 +8,8 @@ import { seedDatabase, seedS3, TRUNCATE_BACKUPS } from "../backup-test-helpers";
 
 export const USER_SCHEDULER = "user_scheduler";
 export const USER_RESTORER = "user_restorer";
+// Can delete apps and databases, but not their backups.
+export const USER_DELETER = "user_deleter";
 
 export const asUser1 = <T>(fn: () => Promise<T>): Promise<T> =>
   runWithIdentity({ userId: USER_1, teamId: TEAM_A }, fn);
@@ -30,6 +32,12 @@ export async function seedBase(db: TestDb, pg: PGlite): Promise<void> {
         teamId: TEAM_A,
         role: "member",
         capabilities: ["view", "restore_backups"],
+      },
+      {
+        id: USER_DELETER,
+        teamId: TEAM_A,
+        role: "member",
+        capabilities: ["view", "delete_apps", "delete_databases"],
       },
     ],
   });

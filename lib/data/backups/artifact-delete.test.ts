@@ -16,7 +16,12 @@ import {
 } from "../identity-test-helpers";
 import { seedServer } from "../app-graph-test-helpers";
 import { seedDatabase, seedRun, seedS3 } from "../backup-test-helpers";
-import { asUser1, seedBase, USER_SCHEDULER } from "./backups-test-helpers";
+import {
+  asUser1,
+  seedBase,
+  USER_DELETER,
+  USER_SCHEDULER,
+} from "./backups-test-helpers";
 import {
   backupDestinationsForTarget,
   countBackupArtifacts,
@@ -148,6 +153,45 @@ test("deleteAllBackupArtifacts (database) needs delete_databases, not manage_bac
     .from(backupRunsTable)
     .where(eq(backupRunsTable.id, "r_1"));
   assert.equal(rows.length, 1);
+});
+
+test("deleteAllBackupArtifacts needs delete_backups once there is a backup to delete", async () => {
+  const asDeleter = <T>(fn: () => Promise<T>) =>
+    runWithIdentity({ userId: USER_DELETER, teamId: TEAM_A }, fn);
+  // Nothing to delete: deleting the app or database itself stays open to them.
+  await asDeleter(async () => {
+    assert.deepEqual(
+      await deleteAllBackupArtifacts({ kind: "app", targetId: "prj_1" }),
+      { deleted: 0, failedDestinations: [] },
+    );
+  });
+
+  await seedRun(db, {
+    id: "r_app",
+    destinationId: "s3_1",
+    targetKind: "app",
+    appId: "prj_1",
+    status: "failed",
+    objectKey: "",
+  });
+  await seedRun(db, {
+    id: "r_db",
+    destinationId: "s3_1",
+    databaseId: "db_1",
+    status: "failed",
+    objectKey: "",
+  });
+  await asDeleter(async () => {
+    await assert.rejects(
+      () => deleteAllBackupArtifacts({ kind: "app", targetId: "prj_1" }),
+      /permission to delete backups/i,
+    );
+    await assert.rejects(
+      () => deleteAllBackupArtifacts({ kind: "database", targetId: "db_1" }),
+      /permission to delete backups/i,
+    );
+  });
+  assert.equal((await db.select().from(backupRunsTable)).length, 2);
 });
 
 test("a failed run leaves no file, so its record goes on its own", async () => {
