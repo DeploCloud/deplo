@@ -5,20 +5,15 @@ import { and, eq } from "drizzle-orm";
 import { getDb } from "../db/client";
 import { apps as appsTable } from "../db/schema/control-plane/apps";
 import { databases as databasesTable } from "../db/schema/control-plane/databases";
-import {
-  currentMemberScope,
-  reachesWholeTeam,
-  requireActiveTeamId,
-} from "../membership";
+import { reachesWholeTeam, requireActiveTeamId } from "../membership";
 import { listFolders } from "./folders";
 import { appScopeWhere } from "./app-graph-load";
-import { appInScope } from "./node-scope";
+import { appCapabilitiesForTeam } from "./node-access";
 import { listProjects } from "./projects/read";
 import type { BreadcrumbGraph } from "../breadcrumb-model";
 
 export async function getBreadcrumbGraph(): Promise<BreadcrumbGraph> {
   const teamId = await requireActiveTeamId();
-  const roleScope = await currentMemberScope();
   const [folders, projects, appRows, teamWide] = await Promise.all([
     listFolders(),
     listProjects(),
@@ -41,6 +36,16 @@ export async function getBreadcrumbGraph(): Promise<BreadcrumbGraph> {
     reachesWholeTeam(),
   ]);
 
+  // The same reach listApps applies: role scope AND folder privacy.
+  const reach = await appCapabilitiesForTeam(
+    teamId,
+    appRows.map((s) => ({
+      id: s.id,
+      folderId: s.folderId ?? null,
+      projectId: s.projectId ?? null,
+      environmentId: s.environmentId ?? null,
+    })),
+  );
   const databaseRows = teamWide
     ? await getDb()
         .select({
@@ -59,14 +64,7 @@ export async function getBreadcrumbGraph(): Promise<BreadcrumbGraph> {
       parentId: f.parentId ?? null,
     })),
     apps: appRows
-      .filter((s) =>
-        appInScope(roleScope, {
-          id: s.id,
-          folderId: s.folderId ?? null,
-          projectId: s.projectId ?? null,
-          environmentId: s.environmentId ?? null,
-        }),
-      )
+      .filter((s) => (reach.get(s.id)?.length ?? 0) > 0)
       .map((s) => ({
         id: s.id,
         slug: s.slug,

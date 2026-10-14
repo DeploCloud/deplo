@@ -28,6 +28,7 @@ import {
 } from "./folder-access";
 import type { Capability } from "../types/identity";
 import { listFolders } from "./folders";
+import { getBreadcrumbGraph } from "./breadcrumb";
 
 let db: TestDb;
 let pg: PGlite;
@@ -151,6 +152,11 @@ test("an app in a folder they can't see is INVISIBLE, not merely unwritable", as
       "and its page refuses to load",
     );
     assert.ok(await getAppBySlug(PRJ_TOP), "the top-level app still opens");
+    assert.deepEqual(
+      (await getBreadcrumbGraph()).apps.map((a) => a.id),
+      [PRJ_TOP],
+      "the breadcrumb sent to every page lists it neither",
+    );
   });
 
   await as(OWNER, async () => {
@@ -166,6 +172,10 @@ test("an app in a folder they can't see is INVISIBLE, not merely unwritable", as
       PRJ_TOP,
     ]);
     assert.ok(await getAppBySlug(PRJ_IN), "the granted folder's app opens");
+    assert.deepEqual(
+      (await getBreadcrumbGraph()).apps.map((a) => a.id).sort(),
+      [PRJ_IN, PRJ_TOP],
+    );
   });
 });
 
