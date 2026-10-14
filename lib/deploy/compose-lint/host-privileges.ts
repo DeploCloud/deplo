@@ -37,6 +37,8 @@ const HOST_PRIVILEGE_KEYS = [
   "gpus",
   "runtime",
   "extra_hosts",
+  "use_api_socket",
+  "provider",
 ] as const;
 
 // An ALLOWLIST: every other value is a docker NETWORK NAME, joined with DNS while `networks:` is empty.
@@ -50,7 +52,11 @@ export function hostPrivilegeKeys(svc: Record<string, unknown>): string[] {
   for (const key of HOST_PRIVILEGE_KEYS) {
     const v = svc[key];
     if (v == null) continue;
-    if (key === "privileged" || key === "oom_kill_disable") {
+    if (
+      key === "privileged" ||
+      key === "oom_kill_disable" ||
+      key === "use_api_socket"
+    ) {
       if (composeTruthy(v) || isInterpolated(v)) out.push(key);
       continue;
     }
@@ -208,7 +214,7 @@ export function composeHostReach(composeYaml: string): string[] {
   if (composeMountsForeignStorage(composeYaml))
     out.push("a volume it did not declare");
   if (composeBuildReachesHost(composeYaml))
-    out.push("a build that reads a path on the server");
+    out.push("a build that reaches the server");
   if (composeJoinsForeignNetwork(composeYaml))
     out.push("a network outside this app");
   return out;
@@ -246,6 +252,14 @@ export function composeBuildReachesHost(composeYaml: string): boolean {
     if (rec.ssh != null && (Array.isArray(rec.ssh) ? rec.ssh.length > 0 : true))
       return true;
     if (composeTruthy(rec.privileged) || isInterpolated(rec.privileged))
+      return true;
+    const ent = rec.entitlements;
+    if (ent != null && (Array.isArray(ent) ? ent.length > 0 : true))
+      return true;
+    if (
+      typeof rec.network === "string" &&
+      !SAFE_NETWORK_MODE.test(rec.network.trim())
+    )
       return true;
   }
   return false;

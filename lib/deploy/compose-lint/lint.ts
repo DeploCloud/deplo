@@ -482,7 +482,7 @@ export function lintCompose(source: string): LintDiagnostic[] {
       severity: "warning",
       rule: "build-host-context",
       message:
-        "A `build:` here reaches a path on the server (an absolute or `..` context/dockerfile, an SSH key, or a privileged build). This needs the host-volume permission.",
+        "A `build:` here reaches a path on the server (an absolute or `..` context/dockerfile, an SSH key, host networking, or a privileged build). This needs the host-volume permission.",
       line: 1,
     });
   }

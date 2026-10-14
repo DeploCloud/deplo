@@ -257,3 +257,43 @@ test("composeUsesExternalMerge: extends-file, include, label_file are refused; s
   );
   assert.equal(composeUsesExternalMerge(`services:\n  a:\n    image: x`), null);
 });
+
+test("use_api_socket and a provider service reach the server; false and absent do not", () => {
+  const svc = (body: string) =>
+    composeHostReach(`services:\n  a:\n    image: x\n${body}\n`);
+  assert.deepEqual(svc("    use_api_socket: true"), ["`use_api_socket`"]);
+  assert.deepEqual(svc('    use_api_socket: "${SOCK}"'), ["`use_api_socket`"]);
+  assert.deepEqual(svc("    use_api_socket: false"), []);
+  assert.deepEqual(
+    composeHostReach(
+      `services:\n  a:\n    provider:\n      type: ./evil\n      options:\n        x: y\n`,
+    ),
+    ["`provider`"],
+  );
+});
+
+test("composeBuildReachesHost: build entitlements and host networking need the grant", () => {
+  for (const b of [
+    `build:\n      context: ./app\n      entitlements:\n        - network.host`,
+    `build:\n      context: ./app\n      entitlements: [security.insecure]`,
+    `build:\n      context: ./app\n      network: host`,
+    `build:\n      context: ./app\n      network: "\${NET}"`,
+  ]) {
+    assert.equal(
+      composeBuildReachesHost(`services:\n  a:\n    ${b}`),
+      true,
+      `should flag: ${b}`,
+    );
+  }
+  for (const b of [
+    `build:\n      context: ./app\n      network: none`,
+    `build:\n      context: ./app\n      network: default`,
+    `build:\n      context: ./app\n      entitlements: []`,
+  ]) {
+    assert.equal(
+      composeBuildReachesHost(`services:\n  a:\n    ${b}`),
+      false,
+      `should not flag: ${b}`,
+    );
+  }
+});
