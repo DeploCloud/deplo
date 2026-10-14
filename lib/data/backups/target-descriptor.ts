@@ -43,6 +43,8 @@ export function databaseDescriptor(db: Database): DatabaseDescriptor {
     password: parseConnectionPassword(
       decryptSecretOrThrow(db.connectionStringEnc, "The database password"),
     ),
+    // The database stack labels its container deplo.project=<db id>; the agent checks it before exec.
+    projectId: db.id,
   };
 }
 
