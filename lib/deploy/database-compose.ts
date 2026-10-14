@@ -146,7 +146,7 @@ export function generateDatabaseCompose(input: {
   const configMounts = (input.mounts ?? [])
     .map((m) => {
       const source = `${(input.filesDir ?? "").replace(/\/+$/, "")}/${m.filePath}`;
-      return `\n      - ${JSON.stringify(`${source}:${m.mountPath}`)}`;
+      return `\n      - ${escapeComposeDollars(JSON.stringify(`${source}:${m.mountPath}`))}`;
     })
     .join("");
 

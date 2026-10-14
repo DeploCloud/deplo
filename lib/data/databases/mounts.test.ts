@@ -78,7 +78,15 @@ test("a config file's two paths are each refused when they cannot work", () => {
   assert.throws(() => one({ filePath: "/etc/pg.conf" }), /must be relative/);
   assert.throws(() => one({ filePath: "../pg.conf" }), /\.\./);
   assert.throws(() => one({ mountPath: "etc/pg.conf" }), /must be absolute/);
-  assert.throws(() => one({ mountPath: "/etc/pg.conf:ro" }), /spaces or/);
+  assert.throws(() => one({ mountPath: "/etc/pg.conf:ro" }), /spaces, ":"/);
+  // An unset `${X-..}` is `..` once compose reads it, so a name may not carry a `$` at all.
+  assert.throws(
+    () => one({ filePath: "${X-..}/${X-..}/pg.conf" }),
+    /cannot contain spaces, ":" or "\$"/,
+  );
+  assert.throws(() => one({ filePath: "pg$HOME.conf" }), /"\$"/);
+  assert.throws(() => one({ mountPath: "/etc/${X}/pg.conf" }), /"\$"/);
+  assert.equal(one({ filePath: "conf.d/pg.conf" }).length, 1);
   assert.throws(
     () =>
       validateDatabaseMounts("postgres", [

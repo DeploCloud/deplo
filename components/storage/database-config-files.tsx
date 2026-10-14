@@ -62,12 +62,12 @@ function problemFor(row: Row, dataDir: string): string | null {
   if (!filePath) return "Give the file a name.";
   if (filePath.startsWith("/") || filePath.split("/").includes(".."))
     return 'The file name is relative, for example "postgresql.conf".';
-  if (/[\s:]/.test(filePath))
-    return 'A file name cannot contain spaces or ":".';
+  if (/[\s:$]/.test(filePath))
+    return 'A file name cannot contain spaces, ":" or "$".';
   if (!mountPath.startsWith("/") || mountPath.length < 2)
     return "The path in the container must be absolute, like /etc/postgresql.conf.";
-  if (/[\s:]/.test(mountPath.slice(1)))
-    return 'The path in the container cannot contain spaces or ":".';
+  if (/[\s:$]/.test(mountPath.slice(1)))
+    return 'The path in the container cannot contain spaces, ":" or "$".';
   if (mountPath === dataDir || mountPath.startsWith(dataDir + "/"))
     return `${dataDir} holds the data itself. A file there is backed up with it and can stop the engine from starting.`;
   return null;

@@ -470,6 +470,22 @@ test("generateDatabaseCompose: a config file is bound under the data volume", ()
   );
 });
 
+test("generateDatabaseCompose: a stored config file name cannot interpolate", () => {
+  const yaml = generateDatabaseCompose({
+    name: "mydb",
+    type: "postgres",
+    version: "16",
+    password: "pw",
+    ...DEFAULTS,
+    filesDir: "/data/stacks/files/db-mydb",
+    mounts: [{ filePath: "${X-..}/pg.conf", mountPath: "/etc/${Y}" }],
+  });
+  assert.ok(
+    yaml.includes('- "/data/stacks/files/db-mydb/$${X-..}/pg.conf:/etc/$${Y}"'),
+    yaml,
+  );
+});
+
 test("generateDatabaseCompose: no config files renders exactly what it always did", () => {
   const base = {
     name: "mydb",

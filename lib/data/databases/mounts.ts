@@ -39,17 +39,18 @@ export function validateDatabaseMounts(
       throw new Error(
         `The file name must be relative, for example "postgresql.conf": "${m.filePath}"`,
       );
-    if (/[\s:]/.test(filePath))
+    // Compose reads `$` as a variable, and `${X-..}` would climb out of the files folder.
+    if (/[\s:$]/.test(filePath))
       throw new Error(
-        `A file name cannot contain spaces or ":": "${m.filePath}"`,
+        `A file name cannot contain spaces, ":" or "$": "${m.filePath}"`,
       );
     if (filePath.split("/").includes(".."))
       throw new Error(`A file name cannot contain "..": "${m.filePath}"`);
 
     const mountPath = (m.mountPath ?? "").trim().replace(/\/+$/, "");
-    if (!/^\/[^\s:]*$/.test(mountPath) || mountPath.length < 2)
+    if (!/^\/[^\s:$]*$/.test(mountPath) || mountPath.length < 2)
       throw new Error(
-        `The path in the container must be absolute, with no spaces or ":": "${m.mountPath}"`,
+        `The path in the container must be absolute, with no spaces, ":" or "$": "${m.mountPath}"`,
       );
     if (mountPath.split("/").includes(".."))
       throw new Error(
