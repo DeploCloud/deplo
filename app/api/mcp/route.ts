@@ -1,4 +1,8 @@
-import { createMcpHandler } from "@modelcontextprotocol/server";
+import {
+  createMcpHandler,
+  DEFAULT_MAX_REQUEST_BODY_SIZE,
+} from "@modelcontextprotocol/server";
+import { capRequestBody } from "@/lib/http/body-cap";
 import { TEAM_HEADER } from "@/lib/team-path";
 import { authenticateToken, stampMcpUse } from "@/lib/data/tokens/authenticate";
 import { runWithIdentity } from "@/lib/auth/request-context";
@@ -226,9 +230,13 @@ export async function POST(request: Request) {
       },
     );
 
-  void stampMcpUse(identity.token!.id, await clientAgent(request));
+  // clientAgent buffers the body ahead of the SDK's own cap, so the same cap goes first.
+  const body = await capRequestBody(request, DEFAULT_MAX_REQUEST_BODY_SIZE);
+  if (body instanceof Response) return body;
 
-  return handler.fetch(request, {
+  void stampMcpUse(identity.token!.id, await clientAgent(body));
+
+  return handler.fetch(body, {
     authInfo: {
       token: raw,
       clientId: identity.token!.id,

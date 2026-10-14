@@ -45,6 +45,8 @@ export async function capRequestBody(
     method: request.method,
     headers: request.headers,
     body: raw,
+    // A stream handler tears down when the caller hangs up, and that arrives on the ORIGINAL signal.
+    signal: request.signal,
   });
 }
 

@@ -30,3 +30,16 @@ test("the capped request still parses, and carries no piped body", async () => {
   assert.notEqual(capped, original);
   assert.deepEqual(await capped.json(), { token: "t" });
 });
+
+test("the capped request still hears the caller hang up", async () => {
+  const hangUp = new AbortController();
+  const original = new Request("http://x/mcp", {
+    method: "POST",
+    body: "{}",
+    signal: hangUp.signal,
+  });
+  const capped = await capRequestBody(original, 1024);
+  assert.ok(capped instanceof Request);
+  hangUp.abort();
+  assert.equal(capped.signal.aborted, true);
+});

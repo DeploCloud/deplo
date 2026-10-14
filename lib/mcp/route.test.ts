@@ -311,6 +311,33 @@ test("a deplo_ token still reaches its tools and resolves as its creator", async
   );
 });
 
+test("a body over the SDK's own cap is cut off, not read whole", async () => {
+  const { raw } = await mintToken(["view"]);
+  const chunk = new Uint8Array(64 * 1024).fill(32);
+  let sent = 0;
+  const body = new ReadableStream<Uint8Array>({
+    pull(c) {
+      if (sent >= 16 * 1024 * 1024) return c.close();
+      sent += chunk.byteLength;
+      c.enqueue(chunk);
+    },
+  });
+  const res = await POST(
+    new Request(RESOURCE, {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${raw}`,
+        "content-type": "application/json",
+        accept: "application/json, text/event-stream",
+      },
+      body,
+      duplex: "half",
+    } as RequestInit),
+  );
+  assert.equal(res.status, 413);
+  assert.ok(sent < 5 * 1024 * 1024, `read ${sent} bytes of a 16 MiB body`);
+});
+
 test("a deplo_ token without the capability cannot reach the tool", async () => {
   const { raw } = await mintToken(["view"]);
   const res = await mcp(raw, { tool: "delete_app" });
