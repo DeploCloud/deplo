@@ -7,12 +7,15 @@ import { eq } from "drizzle-orm";
 import { makeTestDb, type TestDb } from "../../db/test-harness";
 import { __setTestDb, __resetTestDb } from "../../db/client";
 import { backupDestination as destTable } from "../../db/schema/control-plane/backups";
+import { runWithIdentity } from "../../auth/request-context";
 import { SERVER_1 } from "../app-graph-test-helpers";
+import { TEAM_A } from "../identity-test-helpers";
 import { seedDestination } from "../backup-test-helpers";
 import { createDestination } from "./create";
 import { revealRecoveryKey } from "./recovery-key";
 import {
   TRUNCATE,
+  USER_STORAGE,
   asUser1,
   seedDestinationFixtures,
 } from "./destinations-test-helpers";
@@ -89,4 +92,20 @@ test("a server destination's key file says which host and which folder", async (
     const probed = await revealRecoveryKey("dst_where");
     assert.match(probed.where, /\/data\/backups/);
   });
+});
+
+test("the recovery key is a reveal: managing destinations alone is refused", async () => {
+  await seedDestination(db, { id: "dst_key", kind: "server" });
+  await assert.rejects(
+    () =>
+      runWithIdentity({ userId: USER_STORAGE, teamId: TEAM_A }, () =>
+        revealRecoveryKey("dst_key"),
+      ),
+    /reveal secret values/i,
+  );
+  const [row] = await db
+    .select({ savedAt: destTable.recoveryKeySavedAt })
+    .from(destTable)
+    .where(eq(destTable.id, "dst_key"));
+  assert.equal(row?.savedAt, null);
 });

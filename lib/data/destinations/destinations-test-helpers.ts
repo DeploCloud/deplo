@@ -7,6 +7,9 @@ import { TRUNCATE_BACKUPS } from "../backup-test-helpers";
 export const TRUNCATE = `${TRUNCATE_BACKUPS}
     truncate table users, teams restart identity cascade;`;
 
+// Manages destinations but cannot reveal secrets.
+export const USER_STORAGE = "user_storage";
+
 export const asUser1 = <T>(fn: () => Promise<T>): Promise<T> =>
   runWithIdentity({ userId: USER_1, teamId: TEAM_A }, fn);
 
@@ -15,6 +18,12 @@ export async function seedDestinationFixtures(db: TestDb): Promise<void> {
     users: [
       { id: USER_1, teamId: TEAM_A, role: "owner" },
       { id: "user_2", teamId: TEAM_B, role: "owner" },
+      {
+        id: USER_STORAGE,
+        teamId: TEAM_A,
+        role: "member",
+        capabilities: ["view", "manage_backup_destinations"],
+      },
     ],
   });
   await seedServer(db);

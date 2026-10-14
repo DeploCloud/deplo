@@ -20,6 +20,8 @@ export async function revealRecoveryKey(id: string): Promise<{
   where: string;
 }> {
   const { teamId } = await requireCapability("manage_backup_destinations");
+  // The key opens every app archive here, and those carry the apps' variables decrypted.
+  await requireCapability("reveal_secrets");
   const d = await loadDestination(id, teamId);
   if (!d) throw new Error("Not found");
   if (!d.ageIdentityEnc || !d.ageRecipient)
