@@ -25,14 +25,20 @@ export async function gateApp(appId: string) {
   return { app, teamId };
 }
 
+// The runtime reads any number as a uid, so `00` and `+0` are root as much as `0` is.
+function isRootId(id: string): boolean {
+  const t = id.trim().toLowerCase();
+  return t === "root" || (t !== "" && Number(t) === 0);
+}
+
 // Running as root on an app whose compose reaches the server is the host grant by another door.
 export async function assertRunAsAllowed(
   app: { id: string } | null,
   user: string | null | undefined,
 ): Promise<void> {
   if (!app || !user) return;
-  const name = user.split(":")[0].toLowerCase();
-  if (name !== "root" && name !== "0") return;
+  const [name, group = ""] = user.split(":");
+  if (!isRootId(name) && !isRootId(group)) return;
   const row = (
     await getDb()
       .select({ hostReachBy: appsTable.hostReachBy })

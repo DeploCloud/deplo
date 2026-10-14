@@ -546,6 +546,45 @@ test("running as root on an app that reaches the server takes the host grant", a
   await asOwner(() => crons.updateCronJob(job.id, { user: "root" }));
 });
 
+test("every spelling of uid 0 or the root group is root", async () => {
+  const asMember = <T>(fn: () => Promise<T>): Promise<T> =>
+    runWithIdentity({ userId: "user_3", teamId: TEAM_A }, fn);
+  await db
+    .update(appsTable)
+    .set({ hostReachBy: USER_1 })
+    .where(eq(appsTable.id, "prj_1"));
+  for (const user of [
+    "00",
+    "000",
+    "0.0",
+    "00:0",
+    " 0 ",
+    "app:0",
+    "app:root",
+    "app:00",
+  ])
+    await assert.rejects(
+      () =>
+        asMember(() =>
+          crons.createCronJob("app", "prj_1", {
+            ...validJob,
+            name: `as ${user}`,
+            user,
+          }),
+        ),
+      /Bind server folders/,
+      user,
+    );
+  for (const user of ["app", "1000", "1000:1000", "10"])
+    await asMember(() =>
+      crons.createCronJob("app", "prj_1", {
+        ...validJob,
+        name: `as ${user}`,
+        user,
+      }),
+    );
+});
+
 test("an app holds at most 20 cron jobs", async () => {
   await asOwner(async () => {
     for (let i = 0; i < 20; i++)
