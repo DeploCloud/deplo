@@ -6,6 +6,7 @@ import {
   headerMigrationForTeam,
   type ImportRunDTO,
 } from "@/lib/data/migration-import/run-queries";
+import { membershipFor } from "@/lib/membership";
 
 builder.subscriptionFields((t) => ({
   activeMigration: t.field({
@@ -14,21 +15,28 @@ builder.subscriptionFields((t) => ({
     description:
       'Emits the migration this team currently has in flight - or, once it is done, the finished run until somebody closes its report - or null. Fires once immediately, then whenever a run starts, moves on or ends - it is what the header chip and the wizard\'s panel read. Deliberately NOT gated on `create_projects`: "somebody is moving a platform into this team right now" is a warning every member needs.',
     authScopes: { loggedIn: true },
-    subscribe: (_root, _args, ctx) => activeMigrationStream(ctx.teamId),
+    subscribe: (_root, _args, ctx) =>
+      activeMigrationStream(ctx.teamId, ctx.viewer?.id ?? null),
     resolve: (run) => run,
   }),
 }));
 
-export function activeMigrationStream(teamId: string | null) {
+export function activeMigrationStream(
+  teamId: string | null,
+  userId: string | null,
+) {
   return liveStream(
     async function* (track): AsyncGenerator<ImportRunDTO | null> {
-      if (!teamId) throw new Error("Not signed in");
+      if (!teamId || !userId) throw new Error("Not signed in");
+      const isMember = async () =>
+        Boolean(await membershipFor(userId, teamId).catch(() => null));
       let last = await headerMigrationForTeam(teamId);
       yield last;
       for await (const ping of track(
         pubSub.subscribe("migrationActivity", MIGRATION_ACTIVITY_TOPIC),
       )) {
         void ping;
+        if (!(await isMember())) return;
         const next = await headerMigrationForTeam(teamId);
         if (sameRun(last, next)) continue;
         last = next;

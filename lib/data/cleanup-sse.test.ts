@@ -44,7 +44,7 @@ test("cleanupRunsStream yields the initial snapshot + multiple change pings (coo
     startedAt: "2026-01-01T00:00:00.000Z",
   });
 
-  const gen = cleanupRunsStream();
+  const gen = cleanupRunsStream(USER_1);
 
   const first = await gen.next();
   assert.equal(first.done, false);
@@ -91,7 +91,7 @@ test("a detached sweep's outcome is in the stream, with no caller left to catch 
 
   await __settleCleanupSweeps();
 
-  const gen = cleanupRunsStream();
+  const gen = cleanupRunsStream(USER_1);
   const snapshot = await gen.next();
   await gen.return(undefined as never);
 
@@ -100,4 +100,15 @@ test("a detached sweep's outcome is in the stream, with no caller left to catch 
   assert.equal(run.id, started.id);
   assert.equal(run.status, "failed");
   assert.match(run.error ?? "", /not provisioned yet/);
+});
+
+test("cleanupRunsStream ends once its subscriber is no longer an instance admin", async () => {
+  const gen = cleanupRunsStream(USER_1);
+  await gen.next();
+  const p = gen.next();
+  await pg.exec(
+    `update users set is_instance_admin = false where id = '${USER_1}';`,
+  );
+  publishCleanupRunsChanged();
+  assert.equal((await p).done, true, "a demoted admin sees no more history");
 });

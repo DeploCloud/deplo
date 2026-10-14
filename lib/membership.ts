@@ -446,7 +446,8 @@ export async function memberHoldsTeamWide(
 ): Promise<boolean> {
   try {
     const m = await membershipFor(userId, teamId);
-    if (!m?.capabilities.includes(cap)) return false;
+    // `view` is the floor every member holds, stored or not.
+    if (!m || (cap !== "view" && !m.capabilities.includes(cap))) return false;
     return (await memberScopeFor(userId, teamId)) == null;
   } catch {
     return false;

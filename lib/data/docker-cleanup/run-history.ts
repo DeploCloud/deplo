@@ -11,6 +11,7 @@ import { servers as serversTable } from "../../db/schema/control-plane/servers";
 import { publishCleanupRunsChanged } from "../../graphql/pubsub";
 import { nowIso } from "../../ids";
 import { requireInstanceAdmin } from "../../membership";
+import { storedInstanceAdmin } from "../node-access";
 import { clampInt } from "./policy";
 import {
   orderItems,
@@ -63,7 +64,11 @@ export async function listCleanupRuns(
   return loadRuns(filter);
 }
 
-export async function listCleanupRunsForSubscriber(): Promise<CleanupRunDTO[]> {
+// Null once the subscriber is no longer an instance admin; read from the row, as a stream has no cookie.
+export async function listCleanupRunsForSubscriber(
+  userId: string,
+): Promise<CleanupRunDTO[] | null> {
+  if (!(await storedInstanceAdmin(userId))) return null;
   return loadRuns({});
 }
 

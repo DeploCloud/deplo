@@ -92,3 +92,13 @@ test("databaseStatusStream ends when the database is deleted mid-stream", async 
   const next = await p;
   assert.equal(next.done, true, "generator ends when the database vanishes");
 });
+
+test("databaseStatusStream ends for a member removed mid-stream", async () => {
+  await seedDatabase(db, { id: "db_1", name: "main" });
+  const gen = databaseStatusStream("db_1", TEAM_A, USER_1);
+  await gen.next();
+  const p = gen.next();
+  await pg.exec(`delete from memberships where user_id = '${USER_1}';`);
+  publishDatabaseChanged("db_1");
+  assert.equal((await p).done, true, "no update reaches a former member");
+});

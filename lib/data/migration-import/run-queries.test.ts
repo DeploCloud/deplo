@@ -21,6 +21,7 @@ import {
   asMember,
   importProject,
   inBothTeams,
+  USER_3,
   openMigrationHarness,
   closeMigrationHarness,
   resetMigrationHarness,
@@ -104,7 +105,7 @@ test("undoing a migration is being done with it", async () => {
 });
 
 test("the live stream follows a run from start to finish, team-scoped", async () => {
-  const gen = activeMigrationStream(TEAM_A);
+  const gen = activeMigrationStream(TEAM_A, USER_1);
   assert.equal(
     (await gen.next()).value,
     null,
@@ -124,7 +125,10 @@ test("the live stream follows a run from start to finish, team-scoped", async ()
     "a run no runner has claimed must not look like one in flight",
   );
 
-  assert.equal((await activeMigrationStream(TEAM_B).next()).value, null);
+  assert.equal(
+    (await activeMigrationStream(TEAM_B, USER_1).next()).value,
+    null,
+  );
 
   const ending = gen.next();
   await asOwner(() => stopMigration(runId));
@@ -134,7 +138,7 @@ test("the live stream follows a run from start to finish, team-scoped", async ()
 });
 
 test("a finished run stays on the feed until its report is closed", async () => {
-  const gen = activeMigrationStream(TEAM_A);
+  const gen = activeMigrationStream(TEAM_A, USER_1);
   await gen.next();
   const pending = gen.next();
   const runId = await asOwner(() => beginMigration({ url: URL_BASE }));
@@ -151,6 +155,15 @@ test("a finished run stays on the feed until its report is closed", async () => 
   assert.equal((await closing).value, null, "closing the report clears it");
 
   await gen.return(undefined as never);
+});
+
+test("the live stream ends for a member removed from the team", async () => {
+  const gen = activeMigrationStream(TEAM_A, USER_3);
+  await gen.next();
+  const pending = gen.next();
+  await db.execute(`delete from memberships where user_id = '${USER_3}';`);
+  await asOwner(() => beginMigration({ url: URL_BASE }));
+  assert.equal((await pending).done, true, "a former member sees no new run");
 });
 
 test("the instance's history lists every team's runs, with the team each landed in", async () => {

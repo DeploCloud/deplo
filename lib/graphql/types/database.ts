@@ -3,7 +3,6 @@ import { DatabaseTypeEnum } from "./enums";
 import { ResourceLimitsRef, ResourceLimitsInputType } from "./resource-limits";
 import { pubSub } from "../pubsub";
 import { liveStream } from "../live-stream";
-import { memberScopeFor } from "@/lib/data/node-scope";
 import { acceptDataCopyLoss } from "@/lib/data/data-copy";
 import { moveDatabaseToEnvironment } from "@/lib/data/databases/environment-move";
 import {
@@ -37,7 +36,7 @@ import {
   setDatabaseRestartLoopGuard,
 } from "@/lib/data/databases/settings";
 import type { ResourceLimitsInput } from "@/lib/data/apps/resources";
-import { hasCapability } from "@/lib/membership";
+import { hasCapability, memberHoldsTeamWide } from "@/lib/membership";
 
 export const DatabaseStatusEnum = builder.enumType("DatabaseStatus", {
   values: ["running", "stopped", "provisioning", "error"] as const,
@@ -596,8 +595,8 @@ export function databaseStatusStream(
 ) {
   return liveStream(async function* (track): AsyncGenerator<DatabaseDTO> {
     if (!teamId || !userId) throw new Error("Database not found");
-    if (await memberScopeFor(userId, teamId))
-      throw new Error("Database not found");
+    const reaches = () => memberHoldsTeamWide(userId, teamId, "view");
+    if (!(await reaches())) throw new Error("Database not found");
     const first = await getDatabaseForTeam(id, teamId);
     if (!first) throw new Error("Database not found");
 
@@ -606,6 +605,7 @@ export function databaseStatusStream(
     for await (const changedId of track(
       pubSub.subscribe("databaseChanged", id),
     )) {
+      if (!(await reaches())) return;
       const next = await getDatabaseForTeam(changedId, teamId);
       if (!next) return;
       yield next;

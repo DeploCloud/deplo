@@ -227,18 +227,24 @@ builder.subscriptionFields((t) => ({
     authScopes: { instanceAdmin: true },
     description:
       "Emits the whole cleanup history whenever it changes - a sweep started, finished, or was pruned. Fires once immediately with the current snapshot. Instance-wide: there is no per-server stream, because there is one policy and one shared fleet.",
-    subscribe: () => cleanupRunsStream(),
+    subscribe: (_root, _args, ctx) => cleanupRunsStream(ctx.viewer?.id ?? null),
     resolve: (runs) => runs,
   }),
 }));
 
-export function cleanupRunsStream() {
+export function cleanupRunsStream(userId: string | null) {
   return liveStream(async function* (track): AsyncGenerator<CleanupRunDTO[]> {
-    yield await listCleanupRunsForSubscriber();
+    const refused = new Error("Only an instance admin can do that");
+    if (!userId) throw refused;
+    const first = await listCleanupRunsForSubscriber(userId);
+    if (!first) throw refused;
+    yield first;
     for await (const _ping of track(
       pubSub.subscribe("cleanupRunsChanged", CLEANUP_RUNS_TOPIC),
     )) {
-      yield await listCleanupRunsForSubscriber();
+      const next = await listCleanupRunsForSubscriber(userId);
+      if (!next) return;
+      yield next;
     }
   });
 }

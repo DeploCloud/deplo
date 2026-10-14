@@ -441,7 +441,7 @@ function resolveFrom(
   return clamp(index.base);
 }
 
-async function storedInstanceAdmin(userId: string): Promise<boolean> {
+export async function storedInstanceAdmin(userId: string): Promise<boolean> {
   const rows = await getDb()
     .select({ isInstanceAdmin: usersTable.isInstanceAdmin })
     .from(usersTable)
