@@ -156,6 +156,7 @@ function originOf(url: string | null | undefined): string | null {
 
 export async function getOAuthClientForConsent(
   clientId: string,
+  redirectUri?: string | null,
 ): Promise<ConsentClientDTO | null> {
   await assertUser();
   const row = (
@@ -176,7 +177,10 @@ export async function getOAuthClientForConsent(
   return {
     clientId: row.clientId,
     name: (row.name ?? "This app").slice(0, 80),
-    redirectOrigin: originOf(row.redirectUris?.[0]),
+    // A client may register several origins: name the one THIS request returns to (the signed query binds it).
+    redirectOrigin: originOf(
+      redirectUri === undefined ? row.redirectUris?.[0] : redirectUri,
+    ),
     uri: row.uri ?? null,
     icon: row.icon ?? null,
   };

@@ -33,7 +33,10 @@ export default async function OAuthConsentPage(props: {
 
   const publicOrigin = publicBaseUrl();
 
-  const client = await getOAuthClientForConsent(clientId);
+  const client = await getOAuthClientForConsent(
+    clientId,
+    typeof params.redirect_uri === "string" ? params.redirect_uri : null,
+  );
   if (!client)
     return (
       <ConsentRefusal

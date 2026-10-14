@@ -10,6 +10,7 @@ import { oauthConsent } from "../db/schema/auth";
 import { runWithIdentity } from "../auth/request-context";
 import {
   countMcpAgents,
+  getOAuthClientForConsent,
   listMyMcpAgents,
   listConnectableTeamIds,
   listMcpTeams,
@@ -425,6 +426,19 @@ test("an unknown client mints nothing and confirms nothing", async () => {
     /not registered/i,
   );
   assert.equal((await pg.query(`select id from api_tokens`)).rows.length, 0);
+});
+
+test("the consent screen names where THIS request returns, not the first address registered", async () => {
+  await pg.query(
+    `insert into oauth_client (id, client_id, name, redirect_uris, created_at)
+     values ('oc_two', 'two', 'Trusted Tool', ARRAY['https://trusted.test/cb', 'https://attacker.test/cb'], now())`,
+  );
+  const shown = await as(OWNER, () =>
+    getOAuthClientForConsent("two", "https://attacker.test/cb"),
+  );
+  assert.equal(shown?.redirectOrigin, "https://attacker.test");
+  const none = await as(OWNER, () => getOAuthClientForConsent("two", null));
+  assert.equal(none?.redirectOrigin, null, "no single address, no claim");
 });
 
 test("a disabled client cannot be approved", async () => {
