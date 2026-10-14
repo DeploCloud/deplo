@@ -97,7 +97,7 @@ export async function rehostAppDomains(
       );
     const row = landed[0];
     if (row && row.name.toLowerCase() !== primary.host) {
-      await applyImportedRoute(row.id, importedRoute(primary));
+      await applyImportedRoute(row.id, importedRoute(primary), notes);
       rehosted.set(primary.host, row.name);
       rehostNotes.push(
         primary.generated
@@ -138,7 +138,7 @@ export async function rehostAppDomains(
       const landed = await addImportedDomains(
         created.id,
         toRehost.map(importedRoute),
-        { slug: created.slug, ip, seed: rehosted },
+        { slug: created.slug, ip, seed: rehosted, notes },
       );
       const wasThrowaway = new Set(
         rest.filter((d) => d.generated).map((d) => d.host),

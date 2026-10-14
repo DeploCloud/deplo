@@ -10,13 +10,15 @@ import {
   loadDomainsForApp,
   loadAppGraph,
 } from "../app-graph-load";
+import { LETSENCRYPT_DOMAINS_PER_TEAM_CAP } from "../../deploy/domains";
 import { requireAppCapability } from "../node-access";
 import type {
   CertProvider,
   Domain,
   DomainEntrypoint,
 } from "../../types/domain";
-import { uniqueAutoDomainName } from "./hostname-claim";
+import { appTeamId, uniqueAutoDomainName } from "./hostname-claim";
+import { certProviderWithinQuota } from "./letsencrypt-quota";
 import { normalizePath } from "./route-config";
 
 export interface ImportedRoute {
@@ -36,10 +38,12 @@ export async function addImportedDomains(
     slug: string;
     ip: string;
     seed?: Map<string, string>;
+    notes?: string[];
   },
 ): Promise<Map<string, string>> {
   const landed = new Map<string, string>(opts.seed);
   if (routes.length === 0) return landed;
+  const teamId = await appTeamId(appId);
   const existing = await loadDomainsForApp(appId);
   const taken = new Set(
     existing.map((d) => `${d.name}\u0000${d.pathPrefix ?? ""}`),
@@ -58,6 +62,11 @@ export async function addImportedDomains(
     const key = `${name}\u0000${pathPrefix}`;
     if (taken.has(key)) continue;
     taken.add(key);
+    const certProvider = await certProviderWithinQuota(
+      teamId,
+      route.certProvider,
+    );
+    if (certProvider !== route.certProvider) opts.notes?.push(capNote(name));
 
     const domain: Domain = {
       id: newId("dom"),
@@ -66,11 +75,11 @@ export async function addImportedDomains(
       status: "valid",
       primary: false,
       redirectTo: null,
-      ssl: route.certProvider !== "none",
+      ssl: certProvider !== "none",
       source: "auto",
       port: route.port,
       ...(route.service ? { service: route.service } : {}),
-      certProvider: route.certProvider,
+      certProvider,
       entrypoint: route.entrypoint,
       ...(pathPrefix ? { pathPrefix } : {}),
       ...(pathPrefix && route.stripPrefix ? { stripPrefix: true } : {}),
@@ -87,22 +96,43 @@ export async function addImportedDomains(
 export async function applyImportedRoute(
   domainId: string,
   route: ImportedRoute,
+  notes?: string[],
 ): Promise<void> {
   const pathPrefix = normalizePath(route.pathPrefix);
+  const [row] = await getDb()
+    .select({
+      appId: domainsTable.appId,
+      name: domainsTable.name,
+      certProvider: domainsTable.certProvider,
+    })
+    .from(domainsTable)
+    .where(eq(domainsTable.id, domainId));
+  if (!row) return;
+  const certProvider =
+    row.certProvider === route.certProvider
+      ? route.certProvider
+      : await certProviderWithinQuota(
+          await appTeamId(row.appId),
+          route.certProvider,
+        );
+  if (certProvider !== route.certProvider) notes?.push(capNote(row.name));
   await getDb()
     .update(domainsTable)
     .set({
       port: route.port,
       service: route.service,
-      certProvider: route.certProvider,
+      certProvider,
       entrypoint: route.entrypoint,
       pathPrefix: pathPrefix || null,
       stripPrefix: (pathPrefix && route.stripPrefix) || null,
-      ssl: route.certProvider !== "none",
+      ssl: certProvider !== "none",
       importedFrom: route.sourceHost,
     })
     .where(eq(domainsTable.id, domainId));
 }
+
+const capNote = (name: string) =>
+  `${name} comes across with no certificate: this team has reached its limit of ${LETSENCRYPT_DOMAINS_PER_TEAM_CAP} Let's Encrypt domains.`;
 
 export async function dismissImportedDomains(appId: string): Promise<void> {
   const { membership } = await requireAppCapability(appId, "manage_domains");

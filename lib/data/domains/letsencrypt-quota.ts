@@ -43,3 +43,14 @@ export async function assertTeamLetsencryptQuota(
     provider,
   );
 }
+
+// For a writer with nobody to ask (a template, an import): past the cap the domain lands with no certificate.
+export async function certProviderWithinQuota(
+  teamId: string,
+  provider: CertProvider,
+): Promise<CertProvider> {
+  return assertTeamLetsencryptQuota(teamId, provider).then(
+    () => provider,
+    () => "none",
+  );
+}

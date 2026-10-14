@@ -30,6 +30,7 @@ import {
   uniqueAutoDomainName,
 } from "./hostname-claim";
 import { appServerAddresses, checkDomainDns } from "./dns-check";
+import { certProviderWithinQuota } from "./letsencrypt-quota";
 import { composeServiceNames, normalizePath } from "./route-config";
 
 export async function ensureAutoDomain(
@@ -90,7 +91,10 @@ export async function ensureAutoDomain(
       ? ("valid" as const)
       : await checkDomainDns(name, await appServerAddresses(appId));
   // An absent provider reads as letsencrypt at the deploy edge, so the born-without-a-cert default is written.
-  const certProvider = certProviderForDns(status, opts.certProvider ?? "none");
+  const certProvider = certProviderForDns(
+    status,
+    await certProviderWithinQuota(teamId, opts.certProvider ?? "none"),
+  );
   const domain: Domain = {
     id: newId("dom"),
     appId,
@@ -161,7 +165,10 @@ export async function ensureExtraDomain(
         route.service ? `${route.slug}-${route.service}` : route.slug,
         route.ip!,
       );
-  const certProvider = route.certProvider ?? "none";
+  const certProvider = await certProviderWithinQuota(
+    teamId,
+    route.certProvider ?? "none",
+  );
   const domain: Domain = {
     id: newId("dom"),
     appId,

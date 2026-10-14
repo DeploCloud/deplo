@@ -324,6 +324,12 @@ async function updateDomainUnlocked(
     if (!chosen)
       next.certProvider = certProviderForDns(next.status, next.certProvider);
   }
+  // An absent provider already reads as letsencrypt, so only a real switch counts against the cap.
+  if (
+    next.certProvider === "letsencrypt" &&
+    (current.certProvider ?? "letsencrypt") !== "letsencrypt"
+  )
+    await assertTeamLetsencryptQuota(membership.teamId, "letsencrypt");
 
   await getDb().transaction(async (tx) => {
     await tx
