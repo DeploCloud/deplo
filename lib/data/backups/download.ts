@@ -8,7 +8,6 @@ import { assembleBackupRun } from "../backup-rows";
 import { getCurrentUser } from "../../auth/current-user";
 import { requireMembership } from "../../membership";
 import { recordActivity } from "../activity";
-import { requireAppCapability } from "../node-access";
 import {
   destinationServerId,
   getDestinationWithSecretsForTeam,
@@ -43,9 +42,10 @@ export async function downloadBackupArtifact(runId: string): Promise<{
       "This backup did not complete successfully and cannot be downloaded",
     );
   await requireBackupCapability(run, "restore_backups");
-  // An app archive carries the app's variables decrypted, so handing the bytes over is a reveal.
-  if (run.targetKind === "app" && run.appId)
-    await requireAppCapability(run.appId, "reveal_secrets");
+  // An app archive carries the app's variables decrypted, so handing the bytes over is a reveal -
+  // also once the app is deleted (appId NULL), where only a team-wide grant can answer.
+  if (run.targetKind === "app")
+    await requireBackupCapability(run, "reveal_secrets");
 
   const creds = await getDestinationWithSecretsForTeam(
     teamId,

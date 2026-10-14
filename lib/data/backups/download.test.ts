@@ -80,6 +80,23 @@ test("an artifact whose app was deleted says WHICH server it lacks", async () =>
   });
 });
 
+test("a deleted app's archive is still a reveal: restore_backups alone is refused", async () => {
+  await seedRun(db, {
+    id: "brun_orphan_reveal",
+    destinationId: "s3_1",
+    targetKind: "app",
+    appId: null,
+    targetId: "prj_gone",
+  });
+  await assert.rejects(
+    () =>
+      runWithIdentity({ userId: USER_RESTORER, teamId: TEAM_A }, () =>
+        downloadBackupArtifact("brun_orphan_reveal"),
+      ),
+    /reveal secret values/i,
+  );
+});
+
 test("downloading an APP archive is a reveal: restore_backups alone is refused", async () => {
   await asUser1(() =>
     seedRun(db, {

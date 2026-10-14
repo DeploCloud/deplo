@@ -63,7 +63,8 @@ export async function backupTargetInScope(
 
 export async function requireBackupCapability(
   target: { targetKind: BackupTargetKind; appId: string | null },
-  cap: "manage_backups" | "restore_backups" | "delete_backups",
+  cap:
+    "manage_backups" | "restore_backups" | "delete_backups" | "reveal_secrets",
 ): Promise<void> {
   if (target.targetKind === "app" && target.appId) {
     await requireAppCapability(target.appId, cap);
