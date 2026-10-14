@@ -78,6 +78,7 @@ const MoveCodeRef = builder
       "A fresh move code. This is the only time it is returned: Deplo keeps only its hash.",
     fields: (t) => ({
       code: t.exposeString("code", {
+        extensions: { credential: true },
         description:
           "The `dmove_…` code to paste on the new Deplo. It lets that Deplo read every secret and every app's data, so treat it like the keys to the whole instance.",
       }),
@@ -345,6 +346,7 @@ const StatusRef = builder.objectRef<MoveStatus>("DeploMoveStatus").implement({
       description: "The old Deplo's address.",
     }),
     setupPath: t.exposeString("setupPath", {
+      extensions: { credential: true },
       nullable: true,
       description:
         "After a cancel that left this Deplo without an account: the link that sets it up again.",

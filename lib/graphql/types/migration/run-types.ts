@@ -40,6 +40,7 @@ export const InviteRef = builder
       email: t.exposeString("email"),
       name: t.exposeString("name"),
       link: t.exposeString("link", {
+        extensions: { credential: true },
         nullable: true,
         description:
           "The single-use registration link to send them, or null when they were added directly.",

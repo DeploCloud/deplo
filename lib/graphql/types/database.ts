@@ -508,6 +508,7 @@ builder.mutationFields((t) => ({
   }),
   rotateDatabasePassword: t.field({
     type: "String",
+    extensions: { credential: true },
     authScopes: { capability: "configure_databases" },
     description:
       "Rotate the database's engine password (auto-generated when none is " +

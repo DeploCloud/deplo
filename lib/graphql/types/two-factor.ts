@@ -13,9 +13,11 @@ const TwoFactorEnrolmentRef = builder
       "A pending enrolment: the secret to scan and the codes to save. Two-factor is not on until `confirmTwoFactorEnrolment` succeeds.",
     fields: (t) => ({
       totpUri: t.exposeString("totpUri", {
+        extensions: { credential: true },
         description: "The otpauth:// URI an authenticator app scans.",
       }),
       recoveryCodes: t.exposeStringList("recoveryCodes", {
+        extensions: { credential: true },
         description: "Single-use codes, shown this once and never again.",
       }),
     }),
@@ -57,6 +59,7 @@ builder.mutationFields((t) => ({
   }),
   regenerateRecoveryCodes: t.field({
     type: ["String"],
+    extensions: { credential: true },
     authScopes: { loggedIn: true },
     description:
       "Replace every recovery code with a fresh set, returned once. Requires the password AND a current code.",

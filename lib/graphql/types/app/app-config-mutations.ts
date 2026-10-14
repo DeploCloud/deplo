@@ -371,6 +371,7 @@ builder.mutationFields((t) => ({
   }),
   rotateAppDeployHook: t.field({
     type: "String",
+    extensions: { credential: true },
     authScopes: { capability: "configure_apps" },
     description:
       "Mint a new deploy hook URL for the app and return it. Every copy of the " +

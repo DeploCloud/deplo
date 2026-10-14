@@ -26,6 +26,7 @@ const AddServerPayloadRef = builder
     fields: (t) => ({
       server: t.field({ type: ServerRef, resolve: (p) => p.server }),
       installCommand: t.exposeString("installCommand", {
+        extensions: { credential: true },
         description:
           "Paste-on-the-server command to provision the agent. Shown once; embeds a single-use token.",
       }),

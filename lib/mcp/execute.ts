@@ -2,6 +2,9 @@ import "server-only";
 
 import {
   execute,
+  getNamedType,
+  isAbstractType,
+  isObjectType,
   Kind,
   parse,
   specifiedRules,
@@ -10,6 +13,7 @@ import {
   visit,
   visitWithTypeInfo,
   type DocumentNode,
+  type GraphQLField,
 } from "graphql";
 import { maxDepthRule } from "@escape.tech/graphql-armor-max-depth";
 import { maxAliasesRule } from "@escape.tech/graphql-armor-max-aliases";
@@ -58,31 +62,49 @@ export async function runGraphql(
   return { data: value.data ?? null, error };
 }
 
-// Hand-listed because they hand back a credential or run code without a reveal* name (ADR-0021 rule 4),
-// or drive a Deplo move by its id, which can wipe this whole Deplo (ADR-0035).
+// Hand-listed: they run a command, sign someone in, manage tokens or drive a Deplo move by its id
+// (ADR-0035) - nothing a return type shows. A credential is refused by its type, below.
 const IRREGULAR = [
   "execConsole",
   "execDatabaseConsole",
-  "rotateDatabasePassword",
-  "rotateAppDeployHook",
-  "destinationRecoveryKey",
-  "createToken",
-  "createMoveCode",
+  "updateToken",
+  "startDeploMove",
   "retryDeploMove",
   "cancelDeploMove",
   "finishDeploMoveWithoutSource",
   "skipDeploMoveWorkload",
-  "updateToken",
-  "mintRegistrationLink",
-  "reissueServerBootstrap",
-  "regenerateRecoveryCodes",
-  "startTwoFactorEnrolment",
   "startPasskeyRegistration",
   "passkeyChallenge",
   "login",
   "verifyPasskeyLogin",
   "verifyTwoFactorLogin",
 ];
+
+// A root is refused for what it can RETURN: any type that reaches a field marked `credential`.
+function credentialRoots(): string[] {
+  const carriers = new Set<string>();
+  const reaches = (f: GraphQLField<unknown, unknown>) =>
+    f.extensions.credential === true || carriers.has(getNamedType(f.type).name);
+  const types = Object.values(schema.getTypeMap());
+  for (let grew = true; grew;) {
+    grew = false;
+    for (const t of types) {
+      if (carriers.has(t.name)) continue;
+      const carries = isAbstractType(t)
+        ? schema.getPossibleTypes(t).some((p) => carriers.has(p.name))
+        : isObjectType(t) && Object.values(t.getFields()).some(reaches);
+      if (carries) {
+        carriers.add(t.name);
+        grew = true;
+      }
+    }
+  }
+  return [schema.getQueryType()!, schema.getMutationType()!].flatMap((root) =>
+    Object.values(root.getFields())
+      .filter(reaches)
+      .map((f) => f.name),
+  );
+}
 
 let denied: Set<string> | undefined;
 
@@ -93,7 +115,7 @@ export function deniedRootFields(): Set<string> {
       ...Object.keys(schema.getMutationType()!.getFields()),
     ]
       .filter((name) => /^reveal[A-Z]/.test(name))
-      .concat(IRREGULAR),
+      .concat(IRREGULAR, credentialRoots()),
   );
   return denied;
 }

@@ -157,7 +157,9 @@ const RecoveryKeyRef = builder
     fields: (t) => ({
       name: t.exposeString("name"),
       recipient: t.exposeString("recipient"),
-      identity: t.exposeString("identity"),
+      identity: t.exposeString("identity", {
+        extensions: { credential: true },
+      }),
       where: t.exposeString("where", {
         description:
           "Where the artifacts this key opens are stored, in one line. It goes " +

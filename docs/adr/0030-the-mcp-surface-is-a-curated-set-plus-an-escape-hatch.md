@@ -47,8 +47,10 @@ table held families that differed only in which id they took (`app_metrics` / `d
 4. **The passthrough refuses a root field that returns a credential or runs a command, derived from
    the schema and read off the AST.** ADR-0021 rule 4 was enforced by a regex over the tool table;
    a document the caller writes walks straight past it. The `reveal*` family is derived (`/^reveal[A-Z]/`
-   over the root types) so a new one is refused the day it lands, plus a short list of irregulars -
-   `execConsole`, `createToken`, `reissueServerBootstrap` and the rest. It is judged on the PARENT
+   over the root types) so a new one is refused the day it lands, and so is every root whose return
+   type reaches a field marked `extensions: { credential: true }` (an install command, a token's
+   `raw`, a registration link), plus a short list of irregulars - `execConsole`, the Deplo move
+   mutations and the rest. It is judged on the PARENT
    TYPE, so a field named `login` on some object stays readable. `deleteTeam` and `deleteApp` pass:
    those are the token's Capabilities, and the client asks.
 

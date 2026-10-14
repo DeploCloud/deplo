@@ -94,6 +94,7 @@ const CreateTokenPayloadRef = builder
       "only here, once - store it now, it cannot be recovered later.",
     fields: (t) => ({
       raw: t.exposeString("raw", {
+        extensions: { credential: true },
         description: "The full token secret. Shown once and never again.",
       }),
       token: t.field({ type: ApiTokenRef, resolve: (p) => p.token }),

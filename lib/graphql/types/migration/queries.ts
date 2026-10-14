@@ -53,6 +53,7 @@ builder.queryFields((t) => ({
   }),
   migrationExport: t.field({
     type: "JSON",
+    extensions: { credential: true },
     authScopes: { capability: "reveal_secrets" },
     description:
       "The active team as another Deplo reads it to migrate it: projects, apps, databases, variables, domains, schedules and the volumes that hold their data - secret values DECRYPTED. Needs `reveal_secrets` over the whole team, and every read is recorded in Activity. Versioned (`version`); the shape is lib/migration/deplo/export-shape.ts.",

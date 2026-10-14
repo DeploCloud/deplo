@@ -439,6 +439,7 @@ builder.mutationFields((t) => ({
   }),
   mintRegistrationLink: t.field({
     type: "String",
+    extensions: { credential: true },
     authScopes: { instanceAdmin: true },
     description:
       "Mint a single-use registration link. Returns the absolute /register URL.",
