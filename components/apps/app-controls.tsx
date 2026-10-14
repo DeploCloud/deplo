@@ -258,8 +258,6 @@ export function AppControls({
       <DeleteWithArtifacts
         open={deleteOpen}
         onOpenChange={setDeleteOpen}
-        targetKind="app"
-        targetId={appId}
         targetName={name}
         title="Delete app?"
         description={

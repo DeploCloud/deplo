@@ -207,7 +207,7 @@ const CASES: { name: string; doc: string; cap: Capability | null }[] = [
   {
     name: "deleteBackupArtifacts (app target)",
     doc: `mutation { deleteBackupArtifacts(targetKind: app, targetId: "${APP_ROOT}") }`,
-    cap: "delete_apps",
+    cap: "delete_backups",
   },
   {
     name: "deleteTeam",

@@ -17,6 +17,7 @@ import { removeUploads } from "../../deploy/upload";
 import { appOwnVolumeNames } from "../project-backup-descriptor";
 import { teardownOrQueue } from "../teardown-queue";
 import { recordActivity } from "../activity";
+import { deleteBackupsWithTarget } from "../backups/artifact-delete";
 import { mapLimit } from "../../utils";
 import { errMsg } from "./lifecycle";
 import type { App } from "../../types/app";
@@ -38,6 +39,8 @@ async function beginAppDelete(
   const project = await loadAppGraph(id);
   if (!project || project.teamId !== membership.teamId)
     throw new Error("App not found");
+  // Before the point of no return: a backup that cannot be deleted keeps the app.
+  await deleteBackupsWithTarget({ kind: "app", targetId: id });
   await markAppsDeleting([id]);
   return { project, actor: user.name };
 }

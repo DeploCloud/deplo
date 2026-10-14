@@ -8,6 +8,7 @@ import { databases as databasesTable } from "../../db/schema/control-plane/datab
 import { getCurrentUser } from "../../auth/current-user";
 import { requireCapability } from "../../membership";
 import { recordActivity } from "../activity";
+import { deleteBackupsWithTarget } from "../backups/artifact-delete";
 import { connectAgent } from "../../infra/agent-client/connect";
 import { withKeyedLock } from "../keyed-mutex";
 import { enqueueTeardowns } from "../teardown-queue";
@@ -199,6 +200,12 @@ export async function deleteDatabase(
   const { membership } = await requireCapability("delete_databases");
   const user = (await getCurrentUser())!;
   const db = await requireDatabase(id, membership.teamId);
+  // A backup that cannot be deleted keeps the database; forced, the orphan sweep reclaims it later.
+  await deleteBackupsWithTarget({ kind: "database", targetId: id }).catch(
+    (e) => {
+      if (!opts.force) throw e;
+    },
+  );
   const server = await getServerById(db.serverId);
   const where = server ? server.name : "its server";
   await withKeyedLock(id, async () => {

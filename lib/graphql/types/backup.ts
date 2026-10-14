@@ -316,11 +316,10 @@ builder.mutationFields((t) => ({
     type: "Int",
     authScopes: { loggedIn: true },
     description:
-      "Delete ALL of a target's backup artifacts (across every destination it " +
-      "ran to) plus their run records. The 'also delete backups' branch of " +
-      "deleting a database or an app. Returns the number removed. Throws if any " +
-      "destination's sweep failed, so the caller can abort the target deletion " +
-      "rather than orphan the files.",
+      "Delete ALL of a live target's backup artifacts (across every destination " +
+      "it ran to) plus their run records; needs delete_backups. deleteApp and " +
+      "deleteDatabase already take a target's backups with it. Returns the " +
+      "number removed. Throws if any destination's sweep failed.",
     args: {
       targetKind: t.arg({ type: BackupTargetKindEnum, required: true }),
       targetId: t.arg.string({ required: true }),
@@ -334,8 +333,8 @@ builder.mutationFields((t) => ({
         throw new Error(
           `Could not delete every backup artifact (failed for ` +
             `${failedDestinations.length} destination` +
-            `${failedDestinations.length === 1 ? "" : "s"}). The ${targetKind} ` +
-            `was not deleted - check the destination is reachable and retry.`,
+            `${failedDestinations.length === 1 ? "" : "s"}) - check the ` +
+            `destination is reachable and retry.`,
         );
       }
       return deleted;

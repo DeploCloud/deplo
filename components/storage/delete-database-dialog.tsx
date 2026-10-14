@@ -21,8 +21,6 @@ export function DeleteDatabaseDialog({
     <DeleteWithArtifacts
       open={open}
       onOpenChange={onOpenChange}
-      targetKind="database"
-      targetId={databaseId}
       targetName={databaseName}
       title="Delete database?"
       description={`${databaseName} is stopped, and its container, all its data and every backup it has stored are permanently destroyed.`}

@@ -87,8 +87,6 @@ export function DangerSettings({
                   Delete App
                 </Button>
               }
-              targetKind="app"
-              targetId={appId}
               targetName={name}
               title="Delete app?"
               description={

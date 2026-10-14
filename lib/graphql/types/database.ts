@@ -528,8 +528,10 @@ builder.mutationFields((t) => ({
     type: "Boolean",
     authScopes: { capability: "delete_databases" },
     description:
-      "Stop and destroy the database's container + data volume on its server, " +
-      "then delete it (dependent backup schedules cascade). The teardown must " +
+      "Delete its stored backups, then stop and destroy the database's " +
+      "container + data volume on its server, then delete it (dependent backup " +
+      "schedules cascade). A backup that cannot be deleted stops it all " +
+      "unless `force`, which leaves it to the orphan sweep. The teardown must " +
       "verifiably succeed: if the server can't be reached, or something of the " +
       "stack survives it, nothing is deleted and the mutation errors, so a live " +
       "database is never silently forgotten. `force` deletes the record anyway " +

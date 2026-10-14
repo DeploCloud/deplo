@@ -3,15 +3,12 @@
 import * as React from "react";
 import { Checkbox } from "@/components/ui/checkbox";
 import { ConfirmAction } from "@/components/shared/confirm-action";
-import { gqlAction } from "@/lib/graphql-client";
 import type { ActionResult } from "@/lib/result";
 
 export function DeleteWithArtifacts({
   trigger,
   open,
   onOpenChange,
-  targetKind,
-  targetId,
   targetName,
   title,
   description,
@@ -25,8 +22,6 @@ export function DeleteWithArtifacts({
   trigger?: React.ReactNode;
   open?: boolean;
   onOpenChange?: (v: boolean) => void;
-  targetKind: "database" | "app";
-  targetId: string;
   targetName: string;
   title: string;
   description: React.ReactNode;
@@ -86,13 +81,7 @@ export function DeleteWithArtifacts({
         ) : undefined
       }
       onConfirm={async () => {
-        const sweep = await gqlAction(
-          `mutation($targetKind: BackupTargetKind!, $targetId: String!) {
-            deleteBackupArtifacts(targetKind: $targetKind, targetId: $targetId)
-          }`,
-          { targetKind, targetId },
-        );
-        if (!sweep.ok) return sweep;
+        // The delete takes the target's backups with it, server side.
         const res = await deleteMutation({ force });
         if (!res.ok && !force) setRefused(true);
         if (res.ok) onDeleted();

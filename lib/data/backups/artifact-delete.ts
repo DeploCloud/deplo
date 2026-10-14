@@ -88,15 +88,15 @@ export async function deleteBackupRun(runId: string): Promise<void> {
   );
 }
 
-export async function deleteBackupArtifacts(input: {
-  kind: BackupTargetKind;
-  targetId: string;
-  destinationId: string;
-  serverId: string;
-}): Promise<number> {
-  const teamId = await requireActiveTeamId();
-  if (!(await backupTargetInScope(input.kind, input.targetId)))
-    throw new Error("Not found");
+async function deleteDestinationArtifacts(
+  teamId: string,
+  input: {
+    kind: BackupTargetKind;
+    targetId: string;
+    destinationId: string;
+    serverId: string;
+  },
+): Promise<number> {
   const creds = await getDestinationWithSecretsForTeam(
     teamId,
     input.destinationId,
@@ -167,6 +167,13 @@ export async function backupDestinationsForTarget(input: {
 }): Promise<string[]> {
   const teamId = await requireActiveTeamId();
   if (!(await backupTargetInScope(input.kind, input.targetId))) return [];
+  return destinationsOf(teamId, input);
+}
+
+async function destinationsOf(
+  teamId: string,
+  input: { kind: BackupTargetKind; targetId: string },
+): Promise<string[]> {
   const rows = await getDb()
     .selectDistinct({ destinationId: backupRunsTable.destinationId })
     .from(backupRunsTable)
@@ -179,25 +186,11 @@ export async function backupDestinationsForTarget(input: {
   return rows.map((r) => r.destinationId);
 }
 
+// Wiping a LIVE target's backups is deleting backups, one or all.
 export async function deleteAllBackupArtifacts(input: {
   kind: BackupTargetKind;
   targetId: string;
 }): Promise<{ deleted: number; failedDestinations: string[] }> {
-  const { teamId } =
-    input.kind === "app"
-      ? await requireAppCapability(input.targetId, "delete_apps")
-      : await requireCapability("delete_databases");
-  // The capability alone cannot see a project clamp, so a narrowed token is refused by this scope check.
-  if (!(await backupTargetInScope(input.kind, input.targetId)))
-    throw new Error("Not found");
-  const serverId =
-    input.kind === "database"
-      ? ((await databaseServerId(input.targetId, teamId)) ?? null)
-      : ((await loadTeamApp(input.targetId, teamId))?.serverId ?? null);
-
-  const destinations = await backupDestinationsForTarget(input);
-  if (destinations.length === 0) return { deleted: 0, failedDestinations: [] };
-  // Deleting a target's backups is deleting backups, one or all.
   await requireBackupCapability(
     {
       targetKind: input.kind,
@@ -205,6 +198,41 @@ export async function deleteAllBackupArtifacts(input: {
     },
     "delete_backups",
   );
+  // The capability alone cannot see a project clamp, so a narrowed token is refused by this scope check.
+  if (!(await backupTargetInScope(input.kind, input.targetId)))
+    throw new Error("Not found");
+  return sweepTargetBackups(await requireActiveTeamId(), input);
+}
+
+// Only for a target being deleted: its backups go with it, under the target's own delete capability.
+export async function deleteBackupsWithTarget(input: {
+  kind: BackupTargetKind;
+  targetId: string;
+}): Promise<void> {
+  const { teamId } =
+    input.kind === "app"
+      ? await requireAppCapability(input.targetId, "delete_apps")
+      : await requireCapability("delete_databases");
+  const failed = (await sweepTargetBackups(teamId, input)).failedDestinations;
+  if (failed.length > 0)
+    throw new Error(
+      `Could not delete every backup (failed for ${failed.length} ` +
+        `destination${failed.length === 1 ? "" : "s"}). The ${input.kind} ` +
+        `was not deleted - check the destination is reachable and retry.`,
+    );
+}
+
+async function sweepTargetBackups(
+  teamId: string,
+  input: { kind: BackupTargetKind; targetId: string },
+): Promise<{ deleted: number; failedDestinations: string[] }> {
+  const serverId =
+    input.kind === "database"
+      ? ((await databaseServerId(input.targetId, teamId)) ?? null)
+      : ((await loadTeamApp(input.targetId, teamId))?.serverId ?? null);
+
+  const destinations = await destinationsOf(teamId, input);
+  if (destinations.length === 0) return { deleted: 0, failedDestinations: [] };
   if (!serverId) {
     await getDb()
       .delete(backupRunsTable)
@@ -221,7 +249,7 @@ export async function deleteAllBackupArtifacts(input: {
   const failedDestinations: string[] = [];
   for (const destinationId of destinations) {
     try {
-      deleted += await deleteBackupArtifacts({
+      deleted += await deleteDestinationArtifacts(teamId, {
         kind: input.kind,
         targetId: input.targetId,
         destinationId,

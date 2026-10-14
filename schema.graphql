@@ -3418,7 +3418,7 @@ type Mutation {
   deleteAllDeployments(appId: ID, environment: String, serverId: ID, status: String): Int
 
   """
-  Delete the app. Returns as soon as the deletion is RECORDED - from that moment the app is refused by every gate and gone from the product, and the stack teardown finishes on the host behind the response.
+  Delete the app. Returns as soon as the deletion is RECORDED - from that moment the app is refused by every gate and gone from the product, and the stack teardown finishes on the host behind the response. Its stored backups are deleted first; if one cannot be, nothing is deleted.
   """
   deleteApp(id: String!): Boolean
 
@@ -3431,7 +3431,7 @@ type Mutation {
   deleteBackup(id: String!): Boolean
 
   """
-  Delete ALL of a target's backup artifacts (across every destination it ran to) plus their run records. The 'also delete backups' branch of deleting a database or an app. Returns the number removed. Throws if any destination's sweep failed, so the caller can abort the target deletion rather than orphan the files.
+  Delete ALL of a live target's backup artifacts (across every destination it ran to) plus their run records; needs delete_backups. deleteApp and deleteDatabase already take a target's backups with it. Returns the number removed. Throws if any destination's sweep failed.
   """
   deleteBackupArtifacts(targetId: String!, targetKind: BackupTargetKind!): Int
 
@@ -3444,7 +3444,7 @@ type Mutation {
   deleteCronJob(id: ID!): Boolean
 
   """
-  Stop and destroy the database's container + data volume on its server, then delete it (dependent backup schedules cascade). The teardown must verifiably succeed: if the server can't be reached, or something of the stack survives it, nothing is deleted and the mutation errors, so a live database is never silently forgotten. `force` deletes the record anyway (for a host that is never coming back) and queues the teardown, which Deplo retries until the host confirms it. Returns true.
+  Delete its stored backups, then stop and destroy the database's container + data volume on its server, then delete it (dependent backup schedules cascade). A backup that cannot be deleted stops it all unless `force`, which leaves it to the orphan sweep. The teardown must verifiably succeed: if the server can't be reached, or something of the stack survives it, nothing is deleted and the mutation errors, so a live database is never silently forgotten. `force` deletes the record anyway (for a host that is never coming back) and queues the teardown, which Deplo retries until the host confirms it. Returns true.
   """
   deleteDatabase(force: Boolean, id: String!): Boolean
 

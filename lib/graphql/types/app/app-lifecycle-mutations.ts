@@ -93,7 +93,8 @@ builder.mutationFields((t) => ({
     description:
       "Delete the app. Returns as soon as the deletion is RECORDED - from that " +
       "moment the app is refused by every gate and gone from the product, and " +
-      "the stack teardown finishes on the host behind the response.",
+      "the stack teardown finishes on the host behind the response. Its stored " +
+      "backups are deleted first; if one cannot be, nothing is deleted.",
     args: { id: t.arg.string({ required: true }) },
     resolve: async (_r, { id }) => {
       await startAppDelete(id);
