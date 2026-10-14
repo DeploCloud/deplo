@@ -12,6 +12,7 @@ import { makeTestDb, type TestDb } from "../db/test-harness";
 import { __setTestDb, __resetTestDb } from "../db/client";
 import { runWithIdentity } from "../auth/request-context";
 import { appVolumes as appVolumesTable } from "../db/schema/control-plane/apps";
+import { pendingTeardowns as pendingTeardownsTable } from "../db/schema/control-plane/deployments";
 import { __setAgentConnectorForTest } from "../infra/agent-client/connect";
 import { seedIdentity, TEAM_A, TEAM_B, USER_1 } from "./identity-test-helpers";
 import {
@@ -24,11 +25,14 @@ import { seedDatabase, settleProvisioning } from "./backup-test-helpers";
 import { createApp } from "./apps/create";
 import { setAppVolumes } from "./apps/volumes";
 import { createDatabase } from "./databases/provision";
+import { updateDatabase } from "./databases/server-move";
 import type { VolumeMount } from "../types/container";
 
 let db: TestDb;
 let pg: PGlite;
 let agentDialed: string[] = [];
+
+const T0 = "2026-01-01T00:00:00.000Z";
 
 const asA = <T>(fn: () => Promise<T>) =>
   runWithIdentity({ userId: USER_1, teamId: TEAM_A }, fn);
@@ -173,4 +177,37 @@ test("a new database never takes an app's name or sits under its volumes", async
       ),
     );
   assert.deepEqual(agentDialed, []);
+});
+
+test("a database move refuses a server where its stack name is taken", async () => {
+  await seedDatabase(db, {
+    id: "db_b",
+    teamId: TEAM_B,
+    name: "main",
+    serverId: "srv_2",
+  });
+  await seedDatabase(db, { id: "db_a", name: "main", serverId: SERVER_1 });
+  await seedDatabase(db, { id: "db_o", name: "other", serverId: SERVER_1 });
+  await db.insert(pendingTeardownsTable).values({
+    id: "ptd_other",
+    serverId: "srv_2",
+    deployKey: "db-other",
+    projectLabel: "db_gone",
+    label: "other",
+    teamId: TEAM_B,
+    nextAttemptAt: T0,
+    createdAt: T0,
+  });
+
+  await asA(async () => {
+    await assert.rejects(
+      updateDatabase("db_a", { exposedPublicly: false, serverId: "srv_2" }),
+      /cannot move to srv_2: a database stack named "db-main" already exists/,
+    );
+    await assert.rejects(
+      updateDatabase("db_o", { exposedPublicly: false, serverId: "srv_2" }),
+      /"db-other" is still being removed/,
+    );
+  });
+  assert.deepEqual(agentDialed, [], "refused before any server is touched");
 });

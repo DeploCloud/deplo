@@ -17,6 +17,7 @@ import {
   destroyStackOn,
 } from "../volume-migration";
 import { withKeyedLock } from "../keyed-mutex";
+import { databaseHostClash, hostNameClaims } from "../host-name-claims";
 import { publishDatabaseChanged } from "../../graphql/pubsub";
 import {
   MIN_USER_PORT,
@@ -54,6 +55,17 @@ export async function updateDatabase(
     input.serverId ?? db.serverId,
   );
   const movingFrom = targetServer.id !== db.serverId ? db.serverId : null;
+  if (movingFrom) {
+    const clash = databaseHostClash(
+      db.host,
+      targetServer,
+      await hostNameClaims(),
+    );
+    if (clash)
+      throw new Error(
+        `${db.name} cannot move to ${targetServer.name}: ${clash}.`,
+      );
+  }
 
   let newExposedPort: number | null = null;
   if (exposed) {
