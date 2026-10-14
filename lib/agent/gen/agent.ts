@@ -790,6 +790,11 @@ export interface DeployRequest {
    * connects Traefik to it. Empty is REJECTED - there is no shared default any more.
    */
   network: string;
+  /**
+   * Every mount source under <stack_dir>/files/<slug>/, relative to it. The agent refuses
+   * to bring the stack up when one resolves (through links) outside that directory.
+   */
+  filesBindSources: string[];
 }
 
 export interface DeployRequest_EnvEntry {
@@ -1093,6 +1098,8 @@ export interface RerouteRequest {
    * the network must exist and Traefik must be on it.
    */
   network: string;
+  /** Same contract as DeployRequest.files_bind_sources. */
+  filesBindSources: string[];
 }
 
 export interface RerouteRequest_EnvEntry {
@@ -1335,6 +1342,11 @@ export interface DatabaseDescriptor {
   user: string;
   /** The engine password, decrypted by the control plane. */
   password: string;
+  /**
+   * The container's deplo.project label. When set, the agent refuses a container that
+   * does not carry it, before any exec.
+   */
+  projectId: string;
 }
 
 /**
@@ -1840,9 +1852,8 @@ export interface StartJobRequest {
   /** docker exec -u */
   user: string;
   /**
-   * Injected with `docker exec -e KEY` + the value in the docker CLIENT's own
-   * environment, so a secret never rides argv where every user on the host can
-   * read it out of `ps`. Same discipline as the REDISCLI_AUTH path in backup.go.
+   * Reaches the container through a 0600 `--env-file`, never argv or the docker client's
+   * environment. A name must be an identifier, and a value must hold no line break.
    */
   env: CronEnvVar[];
 }
@@ -4292,6 +4303,7 @@ function createBaseDeployRequest(): DeployRequest {
     buildOnly: false,
     registryAuth: [],
     network: "",
+    filesBindSources: [],
   };
 }
 
@@ -4362,6 +4374,9 @@ export const DeployRequest: MessageFns<DeployRequest> = {
     }
     if (message.network !== "") {
       writer.uint32(178).string(message.network);
+    }
+    for (const v of message.filesBindSources) {
+      writer.uint32(186).string(v!);
     }
     return writer;
   },
@@ -4558,6 +4573,14 @@ export const DeployRequest: MessageFns<DeployRequest> = {
             message.network = reader.string();
             continue;
           }
+          case 23: {
+            if (tag !== 186) {
+              break;
+            }
+
+            message.filesBindSources.push(reader.string());
+            continue;
+          }
         }
         if ((tag & 7) === 4 || tag === 0) {
           break;
@@ -4673,6 +4696,11 @@ export const DeployRequest: MessageFns<DeployRequest> = {
         ? object.registry_auth.map((e: any) => RegistryAuth.fromJSON(e))
         : [],
       network: isSet(object.network) ? globalThis.String(object.network) : "",
+      filesBindSources: globalThis.Array.isArray(object?.filesBindSources)
+        ? object.filesBindSources.map((e: any) => globalThis.String(e))
+        : globalThis.Array.isArray(object?.files_bind_sources)
+        ? object.files_bind_sources.map((e: any) => globalThis.String(e))
+        : [],
     };
   },
 
@@ -4750,6 +4778,9 @@ export const DeployRequest: MessageFns<DeployRequest> = {
     if (message.network !== "") {
       obj.network = message.network;
     }
+    if (message.filesBindSources?.length) {
+      obj.filesBindSources = message.filesBindSources;
+    }
     return obj;
   },
 
@@ -4792,6 +4823,7 @@ export const DeployRequest: MessageFns<DeployRequest> = {
     message.buildOnly = object.buildOnly ?? false;
     message.registryAuth = object.registryAuth?.map((e) => RegistryAuth.fromPartial(e)) || [];
     message.network = object.network ?? "";
+    message.filesBindSources = object.filesBindSources?.map((e) => e) || [];
     return message;
   },
 };
@@ -7011,7 +7043,7 @@ export const ImageChunk_Header: MessageFns<ImageChunk_Header> = {
 };
 
 function createBaseRerouteRequest(): RerouteRequest {
-  return { slug: "", composeYaml: "", env: {}, mounts: [], composeUpArgs: [], network: "" };
+  return { slug: "", composeYaml: "", env: {}, mounts: [], composeUpArgs: [], network: "", filesBindSources: [] };
 }
 
 export const RerouteRequest: MessageFns<RerouteRequest> = {
@@ -7033,6 +7065,9 @@ export const RerouteRequest: MessageFns<RerouteRequest> = {
     }
     if (message.network !== "") {
       writer.uint32(50).string(message.network);
+    }
+    for (const v of message.filesBindSources) {
+      writer.uint32(58).string(v!);
     }
     return writer;
   },
@@ -7101,6 +7136,14 @@ export const RerouteRequest: MessageFns<RerouteRequest> = {
             message.network = reader.string();
             continue;
           }
+          case 7: {
+            if (tag !== 58) {
+              break;
+            }
+
+            message.filesBindSources.push(reader.string());
+            continue;
+          }
         }
         if ((tag & 7) === 4 || tag === 0) {
           break;
@@ -7142,6 +7185,11 @@ export const RerouteRequest: MessageFns<RerouteRequest> = {
         ? object.compose_up_args.map((e: any) => globalThis.String(e))
         : [],
       network: isSet(object.network) ? globalThis.String(object.network) : "",
+      filesBindSources: globalThis.Array.isArray(object?.filesBindSources)
+        ? object.filesBindSources.map((e: any) => globalThis.String(e))
+        : globalThis.Array.isArray(object?.files_bind_sources)
+        ? object.files_bind_sources.map((e: any) => globalThis.String(e))
+        : [],
     };
   },
 
@@ -7171,6 +7219,9 @@ export const RerouteRequest: MessageFns<RerouteRequest> = {
     if (message.network !== "") {
       obj.network = message.network;
     }
+    if (message.filesBindSources?.length) {
+      obj.filesBindSources = message.filesBindSources;
+    }
     return obj;
   },
 
@@ -7193,6 +7244,7 @@ export const RerouteRequest: MessageFns<RerouteRequest> = {
     message.mounts = object.mounts?.map((e) => MountFile.fromPartial(e)) || [];
     message.composeUpArgs = object.composeUpArgs?.map((e) => e) || [];
     message.network = object.network ?? "";
+    message.filesBindSources = object.filesBindSources?.map((e) => e) || [];
     return message;
   },
 };
@@ -8829,7 +8881,7 @@ export const StoreTarget: MessageFns<StoreTarget> = {
 };
 
 function createBaseDatabaseDescriptor(): DatabaseDescriptor {
-  return { container: "", dbType: "", dbName: "", user: "", password: "" };
+  return { container: "", dbType: "", dbName: "", user: "", password: "", projectId: "" };
 }
 
 export const DatabaseDescriptor: MessageFns<DatabaseDescriptor> = {
@@ -8848,6 +8900,9 @@ export const DatabaseDescriptor: MessageFns<DatabaseDescriptor> = {
     }
     if (message.password !== "") {
       writer.uint32(42).string(message.password);
+    }
+    if (message.projectId !== "") {
+      writer.uint32(50).string(message.projectId);
     }
     return writer;
   },
@@ -8905,6 +8960,14 @@ export const DatabaseDescriptor: MessageFns<DatabaseDescriptor> = {
             message.password = reader.string();
             continue;
           }
+          case 6: {
+            if (tag !== 50) {
+              break;
+            }
+
+            message.projectId = reader.string();
+            continue;
+          }
         }
         if ((tag & 7) === 4 || tag === 0) {
           break;
@@ -8932,6 +8995,11 @@ export const DatabaseDescriptor: MessageFns<DatabaseDescriptor> = {
         : "",
       user: isSet(object.user) ? globalThis.String(object.user) : "",
       password: isSet(object.password) ? globalThis.String(object.password) : "",
+      projectId: isSet(object.projectId)
+        ? globalThis.String(object.projectId)
+        : isSet(object.project_id)
+        ? globalThis.String(object.project_id)
+        : "",
     };
   },
 
@@ -8952,6 +9020,9 @@ export const DatabaseDescriptor: MessageFns<DatabaseDescriptor> = {
     if (message.password !== "") {
       obj.password = message.password;
     }
+    if (message.projectId !== "") {
+      obj.projectId = message.projectId;
+    }
     return obj;
   },
 
@@ -8965,6 +9036,7 @@ export const DatabaseDescriptor: MessageFns<DatabaseDescriptor> = {
     message.dbName = object.dbName ?? "";
     message.user = object.user ?? "";
     message.password = object.password ?? "";
+    message.projectId = object.projectId ?? "";
     return message;
   },
 };

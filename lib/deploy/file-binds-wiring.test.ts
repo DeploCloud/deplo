@@ -16,6 +16,7 @@ import {
 } from "../data/app-graph-test-helpers";
 import { __setAgentConnectorForTest } from "../infra/agent-client/connect";
 import type { AgentConnection } from "../infra/agent-client/connection";
+import type { DeployRequest } from "../agent/gen/agent";
 import { runAgentDeploy } from "./agent-deploy";
 import { rerouteApp } from "./build/reroute";
 import { stackFilesDir } from "./deploy-key";
@@ -24,6 +25,8 @@ let db: TestDb;
 let pg: PGlite;
 let calls: string[] = [];
 let disk: Record<string, "file" | "folder"> = {};
+let extraCapabilities: string[] = [];
+let sent: DeployRequest | undefined;
 
 function grpc(code: number, message: string) {
   return Object.assign(new Error(message), { code });
@@ -49,10 +52,12 @@ function fakeAgent(): AgentConnection {
           "deploy.build-only",
           "deploy.compose.multi",
           "deploy.network",
+          ...extraCapabilities,
         ],
       };
     },
-    deploy: async function* () {
+    deploy: async function* (req: DeployRequest) {
+      sent = req;
       calls.push("deploy");
       yield { result: { ready: true, error: "", commitSha: "" }, seq: 1 };
     },
@@ -101,6 +106,8 @@ after(async () => {
 beforeEach(async () => {
   calls = [];
   disk = {};
+  extraCapabilities = [];
+  sent = undefined;
   await pg.exec(`${TRUNCATE_PROJECT_GRAPH}
     truncate table users, teams restart identity cascade;`);
   await seedIdentity(db, {
@@ -165,6 +172,27 @@ test("runAgentDeploy: a Storage File row is created even with a name that looks 
     "write myconfig",
     "deploy",
   ]);
+});
+
+test("runAgentDeploy: the agent gets every mount out of the app's files to check", async () => {
+  const logs: string[] = [];
+  extraCapabilities = ["deploy.files-bind-check"];
+  await runAgentDeploy(
+    deployOpts({ sink: { log: (_level, text) => logs.push(text) } }),
+  );
+  assert.deepEqual(sent?.filesBindSources.sort(), ["config.yml", "html"]);
+  assert.ok(!logs.some((l) => l.includes("too old to check")), logs.join("\n"));
+});
+
+test("runAgentDeploy: an agent that cannot check the mounts is named in the log", async () => {
+  const logs: string[] = [];
+  await runAgentDeploy(
+    deployOpts({ sink: { log: (_level, text) => logs.push(text) } }),
+  );
+  assert.ok(
+    logs.some((l) => l.includes("too old to check this app's Files")),
+    logs.join("\n"),
+  );
 });
 
 test("runAgentDeploy: a build server gets no file pre-flight at all", async () => {

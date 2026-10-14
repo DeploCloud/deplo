@@ -6,6 +6,8 @@ import type {
   DeployUpload,
   ReattachRequest,
 } from "../../agent/gen/agent";
+import { stackFilesDir } from "../../deploy/deploy-key";
+import { filesBindSources } from "../../deploy/file-binds";
 import { pumpClientStream, streamEvents } from "../stream-events";
 import type { AgentConnection } from "./connection";
 import { DEPLOY_DEADLINE_MS, STACK_DEADLINE_MS } from "./deadlines";
@@ -138,6 +140,10 @@ export function stackRpc(
                 mounts: req.mounts,
                 network: req.network,
                 composeUpArgs: req.composeUpArgs ?? [],
+                filesBindSources: filesBindSources(
+                  req.composeYaml,
+                  stackFilesDir(req.slug),
+                ),
               },
               new Metadata(),
               { deadline: new Date(Date.now() + STACK_DEADLINE_MS) },

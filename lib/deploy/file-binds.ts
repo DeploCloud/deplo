@@ -1,5 +1,9 @@
 import yaml from "../yaml";
-import { volumeSource, volumeTarget } from "./compose-lint/volumes";
+import {
+  isFilesConventionSource,
+  volumeSource,
+  volumeTarget,
+} from "./compose-lint/volumes";
 
 const FILE_EXTENSIONS = new Set([
   "yml",
@@ -122,5 +126,42 @@ export function fileBindsUnderFilesDir(
         out.add(rel);
     }
   }
+  return [...out];
+}
+
+// Every source the stack mounts from the app's files, relative to them: the agent refuses one that links outside.
+export function filesBindSources(
+  stackYaml: string,
+  filesDir: string,
+): string[] {
+  let doc: {
+    services?: Record<string, { volumes?: unknown }>;
+    secrets?: Record<string, { file?: unknown }>;
+    configs?: Record<string, { file?: unknown }>;
+  } | null;
+  try {
+    doc = yaml.load(stackYaml) as typeof doc;
+  } catch {
+    return [];
+  }
+  const root = filesDir.replace(/\/+$/, "");
+  const out = new Set<string>();
+  const add = (src: unknown) => {
+    if (typeof src !== "string") return;
+    const s = src.trim();
+    const rel =
+      s === root || s.startsWith(`${root}/`)
+        ? s.slice(root.length)
+        : isFilesConventionSource(s)
+          ? s.slice(1)
+          : null;
+    const clean = normalizeRel(rel ?? "");
+    if (clean && !clean.split("/").includes("..")) out.add(clean);
+  };
+  for (const svc of Object.values(doc?.services ?? {}))
+    if (Array.isArray(svc?.volumes))
+      for (const v of svc.volumes) add(volumeSource(v));
+  for (const block of [doc?.secrets, doc?.configs])
+    for (const entry of Object.values(block ?? {})) add(entry?.file);
   return [...out];
 }

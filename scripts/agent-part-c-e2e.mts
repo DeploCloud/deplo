@@ -104,6 +104,7 @@ networks:
         composeUpArgs: [],
         buildOnly: false,
         registryAuth: [],
+        filesBindSources: [],
       })) {
         if (ev.result && !ev.result.ready)
           throw new Error("deploy failed: " + ev.result.error);

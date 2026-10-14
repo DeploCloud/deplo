@@ -56,3 +56,6 @@ export const STOP_SERVICES_CAPABILITY = "stack.stop-services";
 
 // Without it Hello's public_addresses is empty for want of the field, not for want of an address.
 export const HOST_ADDRESSES_CAPABILITY = "host.addresses";
+
+// Without it the agent ignores files_bind_sources and mounts a link out of the app's files as-is.
+export const FILES_BIND_CHECK_CAPABILITY = "deploy.files-bind-check";

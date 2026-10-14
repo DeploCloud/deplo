@@ -16,8 +16,9 @@ import { status as GrpcStatus } from "@grpc/grpc-js";
 import { connectAgent } from "../infra/agent-client/connect";
 import type { AgentConnection } from "../infra/agent-client/connection";
 import { agentPreflight } from "../infra/agent-client/preflight";
+import { FILES_BIND_CHECK_CAPABILITY } from "../infra/agent-client/hello-capabilities";
 import { stackFilesDir } from "./deploy-key";
-import { fileBindsUnderFilesDir } from "./file-binds";
+import { fileBindsUnderFilesDir, filesBindSources } from "./file-binds";
 import { composeDeployArgs } from "./compose-args";
 import { loadRegistryAuthsForApp } from "../data/registries";
 import { cleanToolVersion } from "../data/app-graph-rows/build";
@@ -307,6 +308,16 @@ export async function runAgentDeploy(opts: {
         "command from the server's actions menu).",
     );
   }
+  if (
+    req.filesBindSources.length &&
+    !hello.capabilities.includes(FILES_BIND_CHECK_CAPABILITY)
+  ) {
+    opts.sink.log(
+      "warn",
+      "This server's agent is too old to check this app's Files for links that lead outside them. " +
+        "Update the agent (reissue the install command from the server's actions menu).",
+    );
+  }
 
   // A reattach replays everything AFTER this seq, so a reconnect never double-logs and misses nothing.
   const cursor = { seq: 0 };
@@ -520,6 +531,10 @@ export async function buildDeployRequest(opts: {
     composeUpArgs: opts.composeUpArgs ?? [],
     buildOnly: opts.buildOnly ?? false,
     registryAuth: opts.registryAuth ?? [],
+    filesBindSources: filesBindSources(
+      opts.composeYaml,
+      stackFilesDir(opts.slug),
+    ),
   };
 
   if (opts.plan.kind === "compose") {

@@ -4,6 +4,7 @@ import { status as GrpcStatus } from "@grpc/grpc-js";
 
 import {
   fileBindsUnderFilesDir,
+  filesBindSources,
   looksLikeFile,
   looksLikeFileMount,
 } from "./file-binds";
@@ -410,4 +411,67 @@ test("a rendered single-image stack: a File row lands in the files dir and is fo
     ["app.toml", "conf/settings"],
   );
   assert.deepEqual(fileBindsUnderFilesDir(rendered, dir), ["app.toml"]);
+});
+
+test("filesBindSources: every mount out of the app's files, folders and secrets included", () => {
+  const rendered = buildComposeStack({
+    network: "deplo-team-team_test",
+    compose: `services:
+  web:
+    image: nginx
+    volumes:
+      - ./html:/usr/share/nginx/html
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+      - type: bind
+        source: ./data/
+        target: /data
+      - appdata:/var/lib/app
+      - /srv/media:/media
+secrets:
+  token:
+    file: ./secrets/token.txt
+configs:
+  site:
+    file: /srv/stacks/files/demo/site.conf
+volumes:
+  appdata: {}
+`,
+    name: "deplo-demo",
+    deployKey: "demo",
+    appId: "p1",
+    domainRoutes: [],
+    filesDir: "/srv/stacks/files/demo",
+  });
+  assert.deepEqual(
+    filesBindSources(rendered, "/srv/stacks/files/demo").sort(),
+    ["data", "html", "nginx.conf", "secrets/token.txt", "site.conf"],
+  );
+});
+
+test("filesBindSources: the whole dir, a neighbour, a climb and bad yaml give nothing", () => {
+  const yaml = `services:
+  web:
+    volumes:
+      - /srv/stacks/files/demo:/app
+      - /srv/stacks/files/demo-2/x:/x
+      - /srv/stacks/files/demo/../other:/o
+      - ../up:/up
+`;
+  assert.deepEqual(filesBindSources(yaml, "/srv/stacks/files/demo/"), []);
+  assert.deepEqual(
+    filesBindSources("services: [", "/srv/stacks/files/demo"),
+    [],
+  );
+});
+
+test("filesBindSources: a database stack's config files are listed too", () => {
+  const yaml = `services:
+  db-x:
+    volumes:
+      - db-x-data:/var/lib/postgresql/data
+      - "/data/stacks/files/db-x/postgresql.conf:/etc/postgresql.conf"
+`;
+  assert.deepEqual(filesBindSources(yaml, "/data/stacks/files/db-x"), [
+    "postgresql.conf",
+  ]);
 });
