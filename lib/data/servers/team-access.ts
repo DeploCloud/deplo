@@ -11,6 +11,7 @@ import {
   servers as serversTable,
 } from "../../db/schema/control-plane/servers";
 import { recordActivity } from "../activity";
+import { isInstanceAdmin, requireActiveTeamId } from "../../membership";
 import { teamAvatarUrl } from "../../avatar";
 import { getServerById, requireAdminServer } from "./roster";
 import type { Server } from "../../types/server";
@@ -24,7 +25,9 @@ export async function getServerTeamIds(serverId: string): Promise<string[]> {
   return rows.map((r) => r.teamId);
 }
 
+// Only an instance admin sees the whole grant list; anyone else sees their own team at most.
 export async function getServerTeams(serverId: string): Promise<Team[]> {
+  const own = (await isInstanceAdmin()) ? null : await requireActiveTeamId();
   const rows = await getDb()
     .select({
       id: teamsTable.id,
@@ -36,7 +39,12 @@ export async function getServerTeams(serverId: string): Promise<Team[]> {
     })
     .from(serverTeamsTable)
     .innerJoin(teamsTable, eq(teamsTable.id, serverTeamsTable.teamId))
-    .where(eq(serverTeamsTable.serverId, serverId))
+    .where(
+      and(
+        eq(serverTeamsTable.serverId, serverId),
+        own ? eq(serverTeamsTable.teamId, own) : undefined,
+      ),
+    )
     .orderBy(asc(teamsTable.name));
   return rows.map((r) => ({
     id: r.id,

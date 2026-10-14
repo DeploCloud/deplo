@@ -15,7 +15,11 @@ import {
 } from "./app-graph-test-helpers";
 import { seedDatabase, seedDestination } from "./backup-test-helpers";
 import { listServersForTeam, getServerById } from "./servers/roster";
-import { setServerTeams, getServerTeamIds } from "./servers/team-access";
+import {
+  setServerTeams,
+  getServerTeamIds,
+  getServerTeams,
+} from "./servers/team-access";
 
 let db: TestDb;
 let pg: PGlite;
@@ -151,5 +155,25 @@ test("a team with a backup destination on the server cannot lose its access to i
   );
   await asUser1(() =>
     setServerTeams(SERVER_1, { allTeams: false, teamIds: [TEAM_A, TEAM_B] }),
+  );
+});
+
+test("only an instance admin sees which other teams share a server", async () => {
+  await asUser1(() =>
+    setServerTeams(SERVER_1, { allTeams: false, teamIds: [TEAM_A, TEAM_B] }),
+  );
+  const ids = (teams: { id: string }[]) => teams.map((t) => t.id).sort();
+  assert.deepEqual(
+    ids(await asUser1(() => getServerTeams(SERVER_1))),
+    [TEAM_A, TEAM_B].sort(),
+  );
+  assert.deepEqual(
+    ids(
+      await runWithIdentity({ userId: "user_member", teamId: TEAM_A }, () =>
+        getServerTeams(SERVER_1),
+      ),
+    ),
+    [TEAM_A],
+    "a team's own member never reads the other tenant",
   );
 });

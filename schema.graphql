@@ -5696,7 +5696,7 @@ type Server {
   statusMessage: String
 
   """
-  Teams explicitly granted access when `allTeams` is false (empty otherwise - every team has access). Requires manage_infra.
+  Teams explicitly granted access when `allTeams` is false (empty otherwise - every team has access). Only an instance admin sees every team; anyone else sees the active team at most.
   """
   teams: [Team!]
   traefikEnabled: Boolean

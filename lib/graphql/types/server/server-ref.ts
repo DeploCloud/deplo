@@ -68,7 +68,7 @@ export const ServerRef = builder.objectRef<Server>("Server").implement({
       type: [TeamRef],
       authScopes: { capability: "manage_team" },
       description:
-        "Teams explicitly granted access when `allTeams` is false (empty otherwise - every team has access). Requires manage_infra.",
+        "Teams explicitly granted access when `allTeams` is false (empty otherwise - every team has access). Only an instance admin sees every team; anyone else sees the active team at most.",
       resolve: (s) => getServerTeams(s.id),
     }),
     provisioned: t.boolean({
