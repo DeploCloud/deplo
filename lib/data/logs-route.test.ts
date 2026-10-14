@@ -5,7 +5,11 @@ import { NextRequest } from "next/server";
 
 import { makeTestDb, type TestDb } from "../db/test-harness";
 import { __setTestDb, __resetTestDb } from "../db/client";
-import { runWithIdentity } from "../auth/request-context";
+import { eq } from "drizzle-orm";
+import { runWithIdentity, type RequestIdentity } from "../auth/request-context";
+import { session } from "../db/schema/auth";
+import { users } from "../db/schema/control-plane/identity";
+import { apiTokens } from "../db/schema/control-plane/api-tokens";
 import { seedIdentity, TEAM_A } from "./identity-test-helpers";
 import {
   seedApp,
@@ -116,7 +120,11 @@ test("a session id from another app is not this app's to close", async () => {
   logs.destroy(session.id);
 });
 
-test("a removed member's open log stream ends on the next access check", async () => {
+// Opens a real log stream as `identity` against a fake agent, then lets `revoke` take access away.
+async function streamOutlives(
+  identity: RequestIdentity,
+  revoke: () => Promise<unknown>,
+) {
   let push: (chunk: Buffer) => void = () => {};
   const instance = {
     name: "deplo-logged-1",
@@ -148,7 +156,7 @@ test("a removed member's open log stream ends on the next access check", async (
       }) as unknown as AgentConnection,
   );
 
-  const res = await runWithIdentity({ userId: OTHER, teamId: TEAM_A }, () =>
+  const res = await runWithIdentity(identity, () =>
     GET(new NextRequest(`https://deplo.test/api/apps/${APP}/logs`), {
       params: Promise.resolve({ id: APP }),
     }),
@@ -161,17 +169,84 @@ test("a removed member's open log stream ends on the next access check", async (
 
   await logs.recheckAccess();
   push(Buffer.from("before\n"));
-  assert.match(await next(), /before/, "a member in good standing still reads");
+  assert.match(await next(), /before/, "a viewer in good standing still reads");
 
-  await runWithIdentity({ userId: OWNER, teamId: TEAM_A }, () =>
-    removeMember(OTHER),
-  );
+  await revoke();
   await logs.recheckAccess();
-  push(Buffer.from("SECRET-after-removal\n"));
+  push(Buffer.from("SECRET-after-revoke\n"));
 
   let rest = "";
+  const stuck = setTimeout(() => void reader.cancel(), 2_000);
   for (let r = await reader.read(); !r.done; r = await reader.read())
     rest += text.decode(r.value);
+  clearTimeout(stuck);
   assert.match(rest, /event: failure\ndata: "forbidden"/);
-  assert.doesNotMatch(rest, /SECRET-after-removal/);
+  assert.doesNotMatch(rest, /SECRET-after-revoke/);
+}
+
+const asOther = { userId: OTHER, teamId: TEAM_A };
+
+test("a removed member's open log stream ends on the next access check", () =>
+  streamOutlives(asOther, () =>
+    runWithIdentity({ userId: OWNER, teamId: TEAM_A }, () =>
+      removeMember(OTHER),
+    ),
+  ));
+
+test("a suspended user's open log stream ends on the next access check", () =>
+  streamOutlives(asOther, () =>
+    db.update(users).set({ suspended: true }).where(eq(users.id, OTHER)),
+  ));
+
+test("a signed-out or expired session ends the stream it opened", async () => {
+  const seed = (id: string) =>
+    db.insert(session).values({
+      id,
+      userId: OTHER,
+      token: `t_${id}`,
+      expiresAt: new Date(Date.now() + 3_600_000),
+    });
+  await seed("ses_out");
+  await streamOutlives({ ...asOther, sessionId: "ses_out" }, () =>
+    db.delete(session).where(eq(session.id, "ses_out")),
+  );
+  await seed("ses_old");
+  await streamOutlives({ ...asOther, sessionId: "ses_old" }, () =>
+    db
+      .update(session)
+      .set({ expiresAt: new Date(Date.now() - 1000) })
+      .where(eq(session.id, "ses_old")),
+  );
+});
+
+test("a revoked or expired API token ends the stream it opened", async () => {
+  const seed = (id: string) =>
+    db.insert(apiTokens).values({
+      id,
+      userId: OTHER,
+      name: id,
+      prefix: "deplo_x",
+      tokenHash: `h_${id}`,
+      createdAt: new Date().toISOString(),
+    });
+  const asToken = (id: string): RequestIdentity => ({
+    ...asOther,
+    token: {
+      id,
+      capabilities: ["view", "view_logs"],
+      scope: null,
+      instanceAdmin: false,
+    },
+  });
+  await seed("tok_gone");
+  await streamOutlives(asToken("tok_gone"), () =>
+    db.delete(apiTokens).where(eq(apiTokens.id, "tok_gone")),
+  );
+  await seed("tok_old");
+  await streamOutlives(asToken("tok_old"), () =>
+    db
+      .update(apiTokens)
+      .set({ expiresAt: new Date(Date.now() - 1000).toISOString() })
+      .where(eq(apiTokens.id, "tok_old")),
+  );
 });

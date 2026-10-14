@@ -1,6 +1,6 @@
 import { type NextRequest } from "next/server";
 import { StringDecoder } from "node:string_decoder";
-import { getCurrentUser } from "@/lib/auth/current-user";
+import { getCurrentUser, whileSignedIn } from "@/lib/auth/current-user";
 import { resolveLogsTarget } from "@/lib/data/console";
 import { memberHoldsAppCapability } from "@/lib/data/node-access";
 import { requireActiveTeamId } from "@/lib/membership";
@@ -71,18 +71,15 @@ export async function GET(
   }
 
   const teamId = await requireActiveTeamId();
+  const authorize = await whileSignedIn(user.id, () =>
+    memberHoldsAppCapability(user.id, teamId, appId, "view_logs"),
+  );
   let session;
   try {
     const conn = await connectAgent(resolved.server!.id);
     const handle = conn.followLogs(appId, resolved.instance.name, tail, window);
     session = logs.open(
-      {
-        appId,
-        teamId,
-        userId: user.id,
-        authorize: () =>
-          memberHoldsAppCapability(user.id, teamId, appId, "view_logs"),
-      },
+      { appId, teamId, userId: user.id, authorize },
       resolved.instance.name,
       handle,
       () => conn.close(),

@@ -1,6 +1,6 @@
 import { type NextRequest } from "next/server";
 import { StringDecoder } from "node:string_decoder";
-import { getCurrentUser } from "@/lib/auth/current-user";
+import { getCurrentUser, whileSignedIn } from "@/lib/auth/current-user";
 import { isCrossSite, crossSiteRefused } from "@/lib/http/same-origin";
 import { memberHoldsTeamWide, requireActiveTeamId } from "@/lib/membership";
 import { resolveDatabaseAttachTarget } from "@/lib/data/database-console";
@@ -39,6 +39,9 @@ export async function GET(
   }
 
   const teamId = await requireActiveTeamId();
+  const authorize = await whileSignedIn(user.id, () =>
+    memberHoldsTeamWide(user.id, teamId, "open_database_console"),
+  );
 
   const tty = resolved.instance.tty;
   let session;
@@ -57,8 +60,7 @@ export async function GET(
         appId: databaseId,
         teamId,
         userId: user.id,
-        authorize: () =>
-          memberHoldsTeamWide(user.id, teamId, "open_database_console"),
+        authorize,
       },
       resolved.instance.name,
       handle,

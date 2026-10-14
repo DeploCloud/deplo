@@ -1,6 +1,6 @@
 import { type NextRequest } from "next/server";
 import { StringDecoder } from "node:string_decoder";
-import { getCurrentUser } from "@/lib/auth/current-user";
+import { getCurrentUser, whileSignedIn } from "@/lib/auth/current-user";
 import { requireActiveTeamId } from "@/lib/membership";
 import { resolveAttachTarget } from "@/lib/data/console";
 import {
@@ -64,6 +64,9 @@ export async function GET(
 
   // Bind the session to the caller and active team; POST/DELETE re-check both, so the id alone never keeps a demoted caller writing to PID 1.
   const teamId = await requireActiveTeamId();
+  const authorize = await whileSignedIn(user.id, () =>
+    memberHoldsAppCapability(user.id, teamId, appId, "open_app_console"),
+  );
 
   const tty = resolved.instance.tty;
   let session;
@@ -71,14 +74,7 @@ export async function GET(
     const conn = await connectAgent(resolved.server!.id);
     const handle = conn.attach(appId, resolved.instance.name, tty, cols, rows);
     session = attach.open(
-      {
-        kind: "app",
-        appId,
-        teamId,
-        userId: user.id,
-        authorize: () =>
-          memberHoldsAppCapability(user.id, teamId, appId, "open_app_console"),
-      },
+      { kind: "app", appId, teamId, userId: user.id, authorize },
       resolved.instance.name,
       handle,
       () => conn.close(),

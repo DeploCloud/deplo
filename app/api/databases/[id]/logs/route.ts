@@ -1,6 +1,6 @@
 import { type NextRequest } from "next/server";
 import { StringDecoder } from "node:string_decoder";
-import { getCurrentUser } from "@/lib/auth/current-user";
+import { getCurrentUser, whileSignedIn } from "@/lib/auth/current-user";
 import { isCrossSite, crossSiteRefused } from "@/lib/http/same-origin";
 import { resolveDatabaseLogsTarget } from "@/lib/data/database-console";
 import { memberHoldsTeamWide, requireActiveTeamId } from "@/lib/membership";
@@ -49,6 +49,9 @@ export async function GET(
   }
 
   const teamId = await requireActiveTeamId();
+  const authorize = await whileSignedIn(user.id, () =>
+    memberHoldsTeamWide(user.id, teamId, "view_logs"),
+  );
   let session;
   try {
     const conn = await connectAgent(resolved.serverId);
@@ -59,12 +62,7 @@ export async function GET(
       window,
     );
     session = logs.open(
-      {
-        appId: databaseId,
-        teamId,
-        userId: user.id,
-        authorize: () => memberHoldsTeamWide(user.id, teamId, "view_logs"),
-      },
+      { appId: databaseId, teamId, userId: user.id, authorize },
       resolved.instance.name,
       handle,
       () => conn.close(),

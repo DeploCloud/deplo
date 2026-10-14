@@ -6,6 +6,7 @@ import { eq } from "drizzle-orm";
 import { getDb } from "../db/client";
 import { users as usersTable } from "../db/schema/control-plane/identity";
 import { session as sessionTable } from "../db/schema/auth";
+import { apiTokens } from "../db/schema/control-plane/api-tokens";
 import { avatarUrlFor } from "../avatar";
 import type { PublicUser } from "../types/identity";
 import { currentIdentity } from "./request-context";
@@ -90,6 +91,59 @@ export const currentSessionId = cache(async (): Promise<string | null> => {
     null
   );
 });
+
+// Wraps a stream's access check with the sign-in it was opened under, re-read from the rows, never the cookie.
+export async function whileSignedIn(
+  userId: string,
+  check: () => Promise<boolean>,
+): Promise<() => Promise<boolean>> {
+  const sessionId = await currentSessionId();
+  const tokenId = currentIdentity()?.token?.id ?? null;
+  return async () =>
+    (await signInIsLive(userId, sessionId, tokenId)) && (await check());
+}
+
+async function signInIsLive(
+  userId: string,
+  sessionId: string | null,
+  tokenId: string | null,
+): Promise<boolean> {
+  const db = getDb();
+  const now = Date.now();
+  const [user] = await db
+    .select({ suspended: usersTable.suspended })
+    .from(usersTable)
+    .where(eq(usersTable.id, userId))
+    .limit(1);
+  if (!user || user.suspended) return false;
+  if (sessionId) {
+    const [s] = await db
+      .select({
+        userId: sessionTable.userId,
+        expiresAt: sessionTable.expiresAt,
+        createdAt: sessionTable.createdAt,
+      })
+      .from(sessionTable)
+      .where(eq(sessionTable.id, sessionId))
+      .limit(1);
+    if (
+      !s ||
+      s.userId !== userId ||
+      s.expiresAt.getTime() <= now ||
+      now - s.createdAt.getTime() > SESSION_MAX_AGE_MS
+    )
+      return false;
+  }
+  if (tokenId) {
+    const [t] = await db
+      .select({ expiresAt: apiTokens.expiresAt })
+      .from(apiTokens)
+      .where(eq(apiTokens.id, tokenId))
+      .limit(1);
+    if (!t || (t.expiresAt && Date.parse(t.expiresAt) <= now)) return false;
+  }
+  return true;
+}
 
 export const currentSessionAuthMethod = cache(
   async (): Promise<string | null> => {
