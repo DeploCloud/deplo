@@ -386,6 +386,11 @@ async function runDeployment(depId: string): Promise<void> {
           if (refusal) throw new Error(refusal);
         }
         const cloneUrl = forkUrl ?? (await resolveCloneUrl(repo));
+        // A fork builds the commit that was approved, never whatever its branch holds when the agent clones.
+        const forkSha = forkUrl ? preview?.approvedSha : null;
+        if (forkUrl && !forkSha)
+          throw new Error("Approve this fork pull request before building it");
+        const pin = forkSha || rebuildCommit;
         if (forkUrl && preview?.approvedSha) {
           const tip = await publicBranchHead(
             forkFullName(preview.headCloneUrl),
@@ -402,8 +407,8 @@ async function runDeployment(depId: string): Promise<void> {
         log(
           depId,
           "command",
-          rebuildCommit
-            ? `git fetch ${repo.url} (${rebuildCommit.slice(0, 7)}) [on agent]`
+          pin
+            ? `git fetch ${forkUrl ?? repo.url} (${pin.slice(0, 7)}) [on agent]`
             : `git clone ${forkUrl ?? repo.url} (${dep.branch}) [on agent]`,
         );
         const attempt = await tryAgent({
@@ -418,7 +423,7 @@ async function runDeployment(depId: string): Promise<void> {
             kind: "git",
             url: cloneUrl,
             branch: dep.branch,
-            commit: rebuildCommit || undefined,
+            commit: pin || undefined,
             subdir: project.build.rootDirectory ?? "",
             build: normalizeBuildConfig(project.build),
           },

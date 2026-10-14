@@ -73,7 +73,10 @@ describe("a rollback that rebuilds a commit", () => {
 
   test("an agent without git.commit is refused before it can build the branch tip", async () => {
     capabilities = ["deploy.dockerfile"];
-    await assert.rejects(() => deploy(SHA), /too old to rebuild an earlier/);
+    await assert.rejects(
+      () => deploy(SHA),
+      /too old to build a specific commit/,
+    );
     assert.equal(sent.length, 0);
   });
 

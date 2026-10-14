@@ -246,14 +246,14 @@ export async function runAgentDeploy(opts: {
         "from Settings → Servers, or build this app on its own server",
     );
   }
-  // A HARD gate: an older agent ignores `commit` and would ship the branch tip as the rollback.
+  // A HARD gate: an older agent ignores `commit` and would ship the branch tip (a rollback, an approved fork commit).
   if (
     opts.plan.kind === "git" &&
     opts.plan.commit &&
     !hello.capabilities.includes("git.commit")
   ) {
     throw new AgentUnavailableError(
-      "this server's agent is too old to rebuild an earlier commit - update it " +
+      "this server's agent is too old to build a specific commit - update it " +
         "from Settings → Servers",
     );
   }
