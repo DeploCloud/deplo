@@ -1,116 +1,31 @@
-import { test, before, after, beforeEach } from "node:test";
+import { test } from "node:test";
 import assert from "node:assert/strict";
 
-import type { PGlite } from "@electric-sql/pglite";
-
-import { makeTestDb, type TestDb } from "../db/test-harness";
-import { __setTestDb, __resetTestDb } from "../db/client";
-import { seedIdentity, TEAM_A, TEAM_B, USER_1 } from "./identity-test-helpers";
-import { oauthConsent } from "../db/schema/auth";
-import { runWithIdentity } from "../auth/request-context";
+import { TEAM_A, TEAM_B, USER_1 } from "./identity-test-helpers";
 import {
   countMcpAgents,
   getOAuthClientForConsent,
   listMyMcpAgents,
   listConnectableTeamIds,
   listMcpTeams,
-  mcpTokenConnected,
   mintMcpConnection,
 } from "./mcp-clients";
 import { listTokens } from "./tokens/listing";
-import { createToken } from "./tokens/mint";
 import { revokeToken } from "./tokens/revoke";
-import { stampMcpUse } from "./tokens/authenticate";
 import { listActivity } from "./activity";
-import type { Capability } from "../types/identity";
+import {
+  pg,
+  OWNER,
+  MEMBER,
+  CLIENT,
+  registerClientRow,
+  consentRow,
+  grantOwnerIn,
+  as,
+  setupMcpClientsDb,
+} from "./mcp-clients-test-helpers";
 
-let db: TestDb;
-let pg: PGlite;
-
-const OWNER = USER_1;
-const MEMBER = "user_2";
-const CLIENT = "client_abc";
-
-const TRUNCATE = `truncate table
-  oauth_access_token, oauth_refresh_token, oauth_consent, oauth_client,
-  api_tokens, activities, membership_capabilities, memberships, users, teams
-  restart identity cascade;`;
-
-before(async () => {
-  ({ db, pg } = await makeTestDb());
-  __setTestDb(db);
-});
-
-after(async () => {
-  __resetTestDb();
-  await pg.close();
-});
-
-const CONNECTOR: Capability[] = [
-  "view",
-  "manage_mcp",
-  "manage_tokens",
-  "deploy_apps",
-];
-
-beforeEach(async () => {
-  await pg.exec(TRUNCATE);
-  await seedIdentity(db, {
-    teams: [
-      { id: TEAM_A, slug: "alpha" },
-      { id: TEAM_B, slug: "beta" },
-    ],
-    users: [
-      { id: OWNER, teamId: TEAM_A, role: "owner" },
-      { id: MEMBER, teamId: TEAM_A, role: "member", capabilities: CONNECTOR },
-    ],
-  });
-  await registerClientRow(CLIENT, "Claude");
-  await consentRow(CLIENT, OWNER);
-  await consentRow(CLIENT, MEMBER);
-});
-
-async function registerClientRow(
-  clientId: string,
-  name: string,
-  redirect = "https://client.test/callback",
-) {
-  await pg.query(
-    `insert into oauth_client (id, client_id, name, redirect_uris, created_at)
-     values ($1, $2, $3, ARRAY[$4], now())`,
-    [`oc_${clientId}`, clientId, name, redirect],
-  );
-}
-
-async function consentRow(clientId: string, userId: string, ageMs = 0) {
-  await db.insert(oauthConsent).values({
-    id: `ocs_${clientId}_${userId}`,
-    clientId,
-    userId,
-    scopes: ["openid"],
-    createdAt: new Date(Date.now() - ageMs),
-    updatedAt: new Date(Date.now() - ageMs),
-  });
-}
-
-async function grantOwnerIn(teamId: string) {
-  await pg.query(
-    `insert into memberships (id, user_id, team_id, role, created_at)
-     values ('mem_owner_b2', $1, $2, 'owner', '2025-01-01T00:00:00.000Z')`,
-    [OWNER, teamId],
-  );
-  await pg.query(
-    `insert into membership_capabilities (membership_id, capability)
-     select 'mem_owner_b2', capability from membership_capabilities
-     where membership_id = $1`,
-    [`mem_${OWNER}`],
-  );
-}
-
-function as<T>(userId: string, fn: () => Promise<T>, teamId = TEAM_A) {
-  return runWithIdentity({ userId, teamId }, fn);
-}
-
+setupMcpClientsDb();
 test("a connection cannot be granted a capability its approver does not hold", async () => {
   await assert.rejects(
     as(MEMBER, () =>
@@ -653,151 +568,4 @@ test("the connection appears in the API tokens list, marked", async () => {
   assert.equal(tokens.length, 1);
   assert.equal(tokens[0].oauthClientName, "Claude");
   assert.equal(tokens[0].mcp, true, "the robot mark did not reach the list");
-});
-
-async function bearer(name: string, userId = OWNER) {
-  const { token } = await as(userId, () =>
-    createToken({ name, capabilities: ["view", "deploy_apps"] }),
-  );
-  return token.id;
-}
-
-async function markSpokeMcp(tokenId: string) {
-  await pg.query(
-    `update api_tokens set mcp_last_used_at = now() where id = $1`,
-    [tokenId],
-  );
-}
-
-test("a bearer token that has spoken MCP counts as an agent, and is marked", async () => {
-  const id = await bearer("Claude Code");
-  await markSpokeMcp(id);
-  assert.equal(await as(OWNER, () => countMcpAgents()), 1);
-  const [token] = await as(OWNER, () => listTokens());
-  assert.equal(token.id, id);
-  assert.equal(token.oauthClientName, null);
-  assert.equal(token.mcp, true);
-});
-
-test("your connected agents list names each one and how it connected", async () => {
-  const id = await bearer("Claude Code");
-  await markSpokeMcp(id);
-  await as(OWNER, () =>
-    mintMcpConnection({ clientId: CLIENT, capabilities: ["view"] }),
-  );
-  const agents = await as(OWNER, () => listMyMcpAgents());
-  assert.deepEqual(
-    agents
-      .map((a) => [a.name, a.viaSignIn])
-      .sort((a, b) => String(a[0]).localeCompare(String(b[0]))),
-    [
-      ["Claude", true],
-      ["Claude Code", false],
-    ],
-  );
-  assert.ok(agents.find((a) => a.id === id)?.lastUsedAt);
-});
-
-test("each agent keeps the mark it connected with", async () => {
-  const { token } = await as(OWNER, () =>
-    createToken({
-      name: "My laptop",
-      capabilities: ["view"],
-      mcpAgent: "claude-code",
-    }),
-  );
-  await markSpokeMcp(token.id);
-  await registerClientRow(
-    "client_claude",
-    "Claude",
-    "https://claude.ai/api/mcp/auth_callback",
-  );
-  await consentRow("client_claude", OWNER);
-  await as(OWNER, () =>
-    mintMcpConnection({ clientId: "client_claude", capabilities: ["view"] }),
-  );
-  const agents = await as(OWNER, () => listMyMcpAgents());
-  assert.deepEqual(
-    agents
-      .map((a) => [a.name, a.agent])
-      .sort((a, b) => String(a[0]).localeCompare(String(b[0]))),
-    [
-      ["Claude", "claude-web"],
-      ["My laptop", "claude-code"],
-    ],
-  );
-  await assert.rejects(
-    as(OWNER, () => createToken({ name: "Robot", mcpAgent: "skynet" })),
-    /not an agent/,
-  );
-});
-
-test("a client's own name fills a blank agent, never a recorded one", async () => {
-  const blank = await bearer("Blank");
-  const { token } = await as(OWNER, () =>
-    createToken({ name: "Set", capabilities: ["view"], mcpAgent: "cursor" }),
-  );
-  await stampMcpUse(blank, "claude-code");
-  await stampMcpUse(token.id, "claude-code");
-  const agents = await as(OWNER, () => listMyMcpAgents());
-  assert.deepEqual(
-    agents
-      .map((a) => [a.name, a.agent])
-      .sort((a, b) => String(a[0]).localeCompare(String(b[0]))),
-    [
-      ["Blank", "claude-code"],
-      ["Set", "cursor"],
-    ],
-  );
-});
-
-test("a token that has never spoken MCP is not an agent", async () => {
-  await bearer("Nightly CI");
-  assert.equal(await as(OWNER, () => countMcpAgents()), 0);
-  assert.equal((await as(OWNER, () => listTokens()))[0].mcp, false);
-});
-
-test("an OAuth connector counts from the moment it is approved", async () => {
-  await as(OWNER, () =>
-    mintMcpConnection({ clientId: CLIENT, capabilities: ["view"] }),
-  );
-  assert.equal(await as(OWNER, () => countMcpAgents()), 1);
-});
-
-test("both kinds count, each person only their own", async () => {
-  const id = await bearer("Cursor", MEMBER);
-  await markSpokeMcp(id);
-  await as(OWNER, () =>
-    mintMcpConnection({ clientId: CLIENT, capabilities: ["view"] }),
-  );
-  assert.equal(await as(OWNER, () => countMcpAgents()), 1);
-  assert.equal(await as(MEMBER, () => countMcpAgents()), 1);
-});
-
-test("an expired token is not counted, but its owner still sees why it stopped", async () => {
-  const id = await bearer("Old laptop");
-  await markSpokeMcp(id);
-  await pg.query(
-    `update api_tokens set expires_at = now() - interval '1 day' where id = $1`,
-    [id],
-  );
-  assert.equal(await as(OWNER, () => countMcpAgents()), 0);
-  const [token] = await as(OWNER, () => listTokens());
-  assert.equal(token.expired, true);
-});
-
-test("mcpTokenConnected answers only for your own token", async () => {
-  const id = await bearer("Claude Code");
-  assert.equal(
-    await as(OWNER, () => mcpTokenConnected(id)),
-    false,
-    "a token that has not called yet is not connected",
-  );
-  await markSpokeMcp(id);
-  assert.equal(await as(OWNER, () => mcpTokenConnected(id)), true);
-
-  const theirs = await bearer("Their Cursor", MEMBER);
-  await markSpokeMcp(theirs);
-  assert.equal(await as(OWNER, () => mcpTokenConnected(theirs)), false);
-  assert.equal(await as(MEMBER, () => mcpTokenConnected(theirs)), true);
 });
