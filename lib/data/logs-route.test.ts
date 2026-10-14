@@ -14,8 +14,11 @@ import {
 } from "./app-graph-test-helpers";
 import * as logs from "../logs/session";
 import type { AttachHandle } from "../infra/docker";
+import type { AgentConnection } from "../infra/agent-client/connection";
+import { __setAgentConnectorForTest } from "../infra/agent-client/connect";
+import { removeMember } from "./members/removal";
 
-import { DELETE } from "@/app/api/apps/[id]/logs/route";
+import { DELETE, GET } from "@/app/api/apps/[id]/logs/route";
 
 let db: TestDb;
 let pg: PGlite;
@@ -32,11 +35,19 @@ function inertHandle(): AttachHandle {
   };
 }
 
+const openAs = (appId: string, userId: string) =>
+  logs.open(
+    { appId, teamId: TEAM_A, userId, authorize: async () => true },
+    `deplo-${appId}-1`,
+    inertHandle(),
+  );
+
 before(async () => {
   ({ db, pg } = await makeTestDb());
   __setTestDb(db);
 });
 after(async () => {
+  __setAgentConnectorForTest();
   __resetTestDb();
   await pg.close();
 });
@@ -48,7 +59,13 @@ beforeEach(async () => {
   await seedIdentity(db, {
     users: [
       { id: OWNER, teamId: TEAM_A, role: "owner" },
-      { id: OTHER, teamId: TEAM_A, role: "member", isInstanceAdmin: false },
+      {
+        id: OTHER,
+        teamId: TEAM_A,
+        role: "member",
+        capabilities: ["view", "view_logs"],
+        isInstanceAdmin: false,
+      },
     ],
   });
   await seedServer(db);
@@ -67,7 +84,7 @@ const del = (userId: string, sessionId: string) =>
   );
 
 test("only the member who opened a log stream can close it", async () => {
-  const session = logs.open(APP, OWNER, "deplo-logged-1", inertHandle());
+  const session = openAs(APP, OWNER);
 
   const res = await del(OTHER, session.id);
   assert.equal(
@@ -90,16 +107,71 @@ test("only the member who opened a log stream can close it", async () => {
 
 test("a session id from another app is not this app's to close", async () => {
   await seedApp(db, { id: "prj_second", slug: "second", teamId: TEAM_A });
-  const session = logs.open(
-    "prj_second",
-    OWNER,
-    "deplo-second-1",
-    inertHandle(),
-  );
+  const session = openAs("prj_second", OWNER);
   await del(OWNER, session.id);
   assert.ok(
     logs.get(session.id, "prj_second"),
     "the route scopes the lookup to the app in its own URL",
   );
   logs.destroy(session.id);
+});
+
+test("a removed member's open log stream ends on the next access check", async () => {
+  let push: (chunk: Buffer) => void = () => {};
+  const instance = {
+    name: "deplo-logged-1",
+    service: "logged",
+    image: "img",
+    running: true,
+    exposed: true,
+    user: "",
+    workdir: "",
+    openStdin: false,
+    tty: false,
+    state: "running",
+    health: "",
+    restartCount: 0,
+    startedAtUnix: 0,
+  };
+  __setAgentConnectorForTest(
+    async () =>
+      ({
+        listInstances: async () => [instance],
+        followLogs: () => ({
+          ...inertHandle(),
+          onData: (cb: (chunk: Buffer) => void) => {
+            push = cb;
+            return () => {};
+          },
+        }),
+        close: () => {},
+      }) as unknown as AgentConnection,
+  );
+
+  const res = await runWithIdentity({ userId: OTHER, teamId: TEAM_A }, () =>
+    GET(new NextRequest(`https://deplo.test/api/apps/${APP}/logs`), {
+      params: Promise.resolve({ id: APP }),
+    }),
+  );
+  assert.equal(res.status, 200);
+  const reader = res.body!.getReader();
+  const text = new TextDecoder();
+  const next = async () => text.decode((await reader.read()).value);
+  assert.match(await next(), /event: session/);
+
+  await logs.recheckAccess();
+  push(Buffer.from("before\n"));
+  assert.match(await next(), /before/, "a member in good standing still reads");
+
+  await runWithIdentity({ userId: OWNER, teamId: TEAM_A }, () =>
+    removeMember(OTHER),
+  );
+  await logs.recheckAccess();
+  push(Buffer.from("SECRET-after-removal\n"));
+
+  let rest = "";
+  for (let r = await reader.read(); !r.done; r = await reader.read())
+    rest += text.decode(r.value);
+  assert.match(rest, /event: failure\ndata: "forbidden"/);
+  assert.doesNotMatch(rest, /SECRET-after-removal/);
 });

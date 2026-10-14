@@ -3,8 +3,12 @@ import { StringDecoder } from "node:string_decoder";
 import { getCurrentUser } from "@/lib/auth/current-user";
 import { requireActiveTeamId } from "@/lib/membership";
 import { resolveAttachTarget } from "@/lib/data/console";
-import { requireAppCapability } from "@/lib/data/node-access";
+import {
+  memberHoldsAppCapability,
+  requireAppCapability,
+} from "@/lib/data/node-access";
 import * as attach from "@/lib/attach/session";
+import { SessionLimitError } from "@/lib/live-session-guard";
 import { connectAgent } from "@/lib/infra/agent-client/connect";
 
 export const dynamic = "force-dynamic";
@@ -67,14 +71,21 @@ export async function GET(
     const conn = await connectAgent(resolved.server!.id);
     const handle = conn.attach(appId, resolved.instance.name, tty, cols, rows);
     session = attach.open(
-      appId,
-      teamId,
-      user.id,
+      {
+        kind: "app",
+        appId,
+        teamId,
+        userId: user.id,
+        authorize: () =>
+          memberHoldsAppCapability(user.id, teamId, appId, "open_app_console"),
+      },
       resolved.instance.name,
       handle,
       () => conn.close(),
     );
-  } catch {
+  } catch (e) {
+    if (e instanceof SessionLimitError)
+      return Response.json({ error: e.message }, { status: 429 });
     return Response.json({ error: "unreachable" }, { status: 503 });
   }
   const encoder = new TextEncoder();
@@ -154,7 +165,7 @@ export async function POST(
   if (!sessionId)
     return Response.json({ error: "Missing sessionId" }, { status: 400 });
 
-  const session = attach.get(sessionId, appId);
+  const session = attach.get(sessionId, appId, "app");
   if (!session)
     return Response.json({ error: "No such session" }, { status: 404 });
 
@@ -213,7 +224,7 @@ export async function DELETE(
 
   const { id: appId } = await ctx.params;
   const sessionId = request.nextUrl.searchParams.get("sessionId") ?? "";
-  const session = sessionId ? attach.get(sessionId, appId) : undefined;
+  const session = sessionId ? attach.get(sessionId, appId, "app") : undefined;
   if (session) {
     // Detach is a mutation on a live session: gate it exactly like a write.
     if (!(await stillAuthorized(appId, session, user.id)))

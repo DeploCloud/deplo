@@ -2,9 +2,10 @@ import { type NextRequest } from "next/server";
 import { StringDecoder } from "node:string_decoder";
 import { getCurrentUser } from "@/lib/auth/current-user";
 import { isCrossSite, crossSiteRefused } from "@/lib/http/same-origin";
-import { requireActiveTeamId, requireCapability } from "@/lib/membership";
+import { memberHoldsTeamWide, requireActiveTeamId } from "@/lib/membership";
 import { resolveDatabaseAttachTarget } from "@/lib/data/database-console";
 import * as attach from "@/lib/attach/session";
+import { SessionLimitError } from "@/lib/live-session-guard";
 import { connectAgent } from "@/lib/infra/agent-client/connect";
 
 export const dynamic = "force-dynamic";
@@ -51,14 +52,21 @@ export async function GET(
       rows,
     );
     session = attach.open(
-      databaseId,
-      teamId,
-      user.id,
+      {
+        kind: "database",
+        appId: databaseId,
+        teamId,
+        userId: user.id,
+        authorize: () =>
+          memberHoldsTeamWide(user.id, teamId, "open_database_console"),
+      },
       resolved.instance.name,
       handle,
       () => conn.close(),
     );
-  } catch {
+  } catch (e) {
+    if (e instanceof SessionLimitError)
+      return Response.json({ error: e.message }, { status: 429 });
     return Response.json({ error: "unreachable" }, { status: 503 });
   }
   const encoder = new TextEncoder();
@@ -139,7 +147,7 @@ export async function POST(
   if (!sessionId)
     return Response.json({ error: "Missing sessionId" }, { status: 400 });
 
-  const session = attach.get(sessionId, databaseId);
+  const session = attach.get(sessionId, databaseId, "database");
   if (!session)
     return Response.json({ error: "No such session" }, { status: 404 });
 
@@ -160,13 +168,7 @@ async function stillAuthorized(
   session: attach.AttachSession,
   userId: string,
 ): Promise<boolean> {
-  if (session.userId !== userId) return false;
-  try {
-    const { teamId } = await requireCapability("open_database_console");
-    return teamId === session.teamId;
-  } catch {
-    return false;
-  }
+  return session.userId === userId && (await session.authorize());
 }
 
 function clampDim(raw: string | null, fallback: number, max: number): number {
@@ -197,7 +199,9 @@ export async function DELETE(
 
   const { id: databaseId } = await ctx.params;
   const sessionId = request.nextUrl.searchParams.get("sessionId") ?? "";
-  const session = sessionId ? attach.get(sessionId, databaseId) : undefined;
+  const session = sessionId
+    ? attach.get(sessionId, databaseId, "database")
+    : undefined;
   if (session) {
     if (!(await stillAuthorized(session, user.id)))
       return Response.json({ error: "Forbidden" }, { status: 403 });

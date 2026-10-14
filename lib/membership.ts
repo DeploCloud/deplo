@@ -438,6 +438,21 @@ export async function holdsTeamWideCapability(
   }
 }
 
+// The cookie-free twin, for a live stream re-checking the member who opened it long after the request.
+export async function memberHoldsTeamWide(
+  userId: string,
+  teamId: string,
+  cap: Capability,
+): Promise<boolean> {
+  try {
+    const m = await membershipFor(userId, teamId);
+    if (!m?.capabilities.includes(cap)) return false;
+    return (await memberScopeFor(userId, teamId)) == null;
+  } catch {
+    return false;
+  }
+}
+
 export async function currentMemberScope(): Promise<NodeScope | null> {
   const user = await getCurrentUser();
   if (!user) return null;

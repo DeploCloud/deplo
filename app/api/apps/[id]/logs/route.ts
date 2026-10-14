@@ -2,7 +2,10 @@ import { type NextRequest } from "next/server";
 import { StringDecoder } from "node:string_decoder";
 import { getCurrentUser } from "@/lib/auth/current-user";
 import { resolveLogsTarget } from "@/lib/data/console";
+import { memberHoldsAppCapability } from "@/lib/data/node-access";
+import { requireActiveTeamId } from "@/lib/membership";
 import * as logs from "@/lib/logs/session";
+import { SessionLimitError } from "@/lib/live-session-guard";
 import { connectAgent } from "@/lib/infra/agent-client/connect";
 import { parseLogWindow } from "@/lib/logs/window";
 import { logMaxDays } from "@/lib/data/instance-settings/settings-store";
@@ -67,14 +70,26 @@ export async function GET(
     return Response.json({ error: resolved.reason }, { status });
   }
 
+  const teamId = await requireActiveTeamId();
   let session;
   try {
     const conn = await connectAgent(resolved.server!.id);
     const handle = conn.followLogs(appId, resolved.instance.name, tail, window);
-    session = logs.open(appId, user.id, resolved.instance.name, handle, () =>
-      conn.close(),
+    session = logs.open(
+      {
+        appId,
+        teamId,
+        userId: user.id,
+        authorize: () =>
+          memberHoldsAppCapability(user.id, teamId, appId, "view_logs"),
+      },
+      resolved.instance.name,
+      handle,
+      () => conn.close(),
     );
-  } catch {
+  } catch (e) {
+    if (e instanceof SessionLimitError)
+      return Response.json({ error: e.message }, { status: 429 });
     return Response.json({ error: "unreachable" }, { status: 503 });
   }
   const encoder = new TextEncoder();

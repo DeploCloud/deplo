@@ -2,12 +2,19 @@ import "server-only";
 
 import { randomBytes } from "node:crypto";
 import { type AttachHandle } from "../infra/docker";
+import {
+  accessSweep,
+  makeRoom,
+  type LiveSessionOwner,
+} from "../live-session-guard";
 
-export interface AttachSession {
+export interface AttachOwner extends LiveSessionOwner {
+  // App and database consoles share this store; each route resolves only its own kind.
+  kind: "app" | "database";
+}
+
+export interface AttachSession extends AttachOwner {
   id: string;
-  appId: string;
-  teamId: string;
-  userId: string;
   containerName: string;
   handle: AttachHandle;
   readonly subscribers: Set<(chunk: Buffer) => void>;
@@ -27,39 +34,21 @@ function armIdleReaper(s: AttachSession) {
   }, IDLE_MS);
 }
 
-const MAX_SESSIONS = 64;
-const MAX_SESSIONS_PER_APP = 8;
-const MAX_SESSIONS_PER_USER = 16;
-
 function evict(s: AttachSession) {
   s.onExit?.();
   destroy(s.id);
 }
 
-function enforceSessionCaps(appId: string, userId: string) {
-  const mine = [...sessions.values()].filter((s) => s.userId === userId);
-  const forApp = mine.filter((s) => s.appId === appId);
-  if (forApp.length >= MAX_SESSIONS_PER_APP) evict(forApp[0]);
-  else if (mine.length >= MAX_SESSIONS_PER_USER) evict(mine[0]);
-  if (sessions.size >= MAX_SESSIONS) {
-    if (mine[0]) evict(mine[0]);
-    else
-      throw new Error(
-        "Too many live sessions on this Deplo right now. Try again in a moment.",
-      );
-  }
-}
+export const recheckAccess = accessSweep(sessions, evict);
 
 export function open(
-  appId: string,
-  teamId: string,
-  userId: string,
+  owner: AttachOwner,
   containerName: string,
   handle: AttachHandle,
   cleanup?: () => void,
 ): AttachSession {
   try {
-    enforceSessionCaps(appId, userId);
+    makeRoom(sessions, owner, evict);
   } catch (e) {
     // A refused session still owns the stream and the agent connection it was handed.
     handle.close();
@@ -68,10 +57,8 @@ export function open(
   }
   const id = `att_${randomBytes(12).toString("hex")}`;
   const session: AttachSession = {
+    ...owner,
     id,
-    appId,
-    teamId,
-    userId,
     containerName,
     handle,
     subscribers: new Set(),
@@ -96,9 +83,13 @@ export function open(
   return session;
 }
 
-export function get(id: string, appId: string): AttachSession | undefined {
+export function get(
+  id: string,
+  appId: string,
+  kind: AttachOwner["kind"],
+): AttachSession | undefined {
   const s = sessions.get(id);
-  return s && s.appId === appId ? s : undefined;
+  return s && s.appId === appId && s.kind === kind ? s : undefined;
 }
 
 export function subscribe(

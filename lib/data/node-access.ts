@@ -497,6 +497,19 @@ export async function nodeCapabilitiesFor(
   return resolveOne(userId, node, await storedInstanceAdmin(userId), teamId);
 }
 
+export async function memberHoldsAppCapability(
+  userId: string,
+  teamId: string,
+  appId: string,
+  cap: Capability,
+): Promise<boolean> {
+  const caps = await nodeCapabilitiesFor(userId, teamId, {
+    kind: "app",
+    id: appId,
+  });
+  return caps.includes(cap);
+}
+
 export async function appCapabilitiesForTeam(
   teamId: string,
   apps: AppPlacement[],

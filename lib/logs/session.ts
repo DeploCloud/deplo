@@ -2,11 +2,14 @@ import "server-only";
 
 import { randomBytes } from "node:crypto";
 import { type AttachHandle } from "../infra/docker";
+import {
+  accessSweep,
+  makeRoom,
+  type LiveSessionOwner,
+} from "../live-session-guard";
 
-export interface LogsSession {
+export interface LogsSession extends LiveSessionOwner {
   id: string;
-  appId: string;
-  userId: string;
   containerName: string;
   handle: AttachHandle;
   readonly subscribers: Set<(chunk: Buffer) => void>;
@@ -30,38 +33,23 @@ function armIdleReaper(s: LogsSession) {
   }, IDLE_MS);
 }
 
-const MAX_SESSIONS = 64;
-const MAX_SESSIONS_PER_APP = 8;
-const MAX_SESSIONS_PER_USER = 16;
-
-function evict(s: LogsSession) {
-  s.onExit?.();
+function evict(s: LogsSession, error?: string) {
+  s.onExit?.(error);
   destroy(s.id);
 }
 
-function enforceSessionCaps(appId: string, userId: string) {
-  const mine = [...sessions.values()].filter((s) => s.userId === userId);
-  const forApp = mine.filter((s) => s.appId === appId);
-  if (forApp.length >= MAX_SESSIONS_PER_APP) evict(forApp[0]);
-  else if (mine.length >= MAX_SESSIONS_PER_USER) evict(mine[0]);
-  if (sessions.size >= MAX_SESSIONS) {
-    if (mine[0]) evict(mine[0]);
-    else
-      throw new Error(
-        "Too many live sessions on this Deplo right now. Try again in a moment.",
-      );
-  }
-}
+export const recheckAccess = accessSweep(sessions, (s) =>
+  evict(s, "forbidden"),
+);
 
 export function open(
-  appId: string,
-  userId: string,
+  owner: LiveSessionOwner,
   containerName: string,
   handle: AttachHandle,
   cleanup?: () => void,
 ): LogsSession {
   try {
-    enforceSessionCaps(appId, userId);
+    makeRoom(sessions, owner, (s) => evict(s));
   } catch (e) {
     // A refused session still owns the stream and the agent connection it was handed.
     handle.close();
@@ -70,9 +58,8 @@ export function open(
   }
   const id = `log_${randomBytes(12).toString("hex")}`;
   const session: LogsSession = {
+    ...owner,
     id,
-    appId,
-    userId,
     containerName,
     handle,
     subscribers: new Set(),

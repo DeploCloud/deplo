@@ -59,6 +59,7 @@ const FAILURE_TEXT: Record<string, string> = {
   unreachable: "The server agent is unreachable - the host may be down.",
   "not-found": "That container no longer exists on the host.",
   denied: "That container does not belong to this app.",
+  forbidden: "You no longer have access to these logs.",
   failed: "The log stream failed.",
 };
 
