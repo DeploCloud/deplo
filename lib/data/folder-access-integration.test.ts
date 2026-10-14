@@ -20,9 +20,13 @@ import { runAppBackup } from "./backups/run-now";
 import { createBackup, deleteBackup } from "./backups/schedules";
 import {
   folderCapabilities,
+  folderShareCandidates,
+  grantableFolderCapabilities,
+  removeFolderGrant,
   setFolderGrant,
   listFolderGrants,
 } from "./folder-access";
+import type { Capability } from "../types/identity";
 import { listFolders } from "./folders";
 
 let db: TestDb;
@@ -392,4 +396,66 @@ test("only the owner/super-user can administer grants; a grantee can't re-share"
     .from(folderGrantsTable)
     .where(eq(folderGrantsTable.userId, MEMBER));
   assert.equal(memberGrants.length, 0);
+});
+
+test("an owner's token shares only inside its scope, and only with organize_folders", async () => {
+  const FLD_OUT = "fld_out";
+  await db.insert(foldersTable).values({
+    id: FLD_OUT,
+    teamId: TEAM_A,
+    name: "Out",
+    parentId: null,
+    color: null,
+    ownerUserId: OWNER,
+    createdAt: T0,
+    updatedAt: T0,
+  });
+  await as(OWNER, () => setFolderGrant(FLD_OUT, GRANTEE, ["deploy_apps"]));
+  const asToken = <T>(
+    caps: Capability[],
+    folderIds: string[] | null,
+    fn: () => Promise<T>,
+  ) =>
+    runWithIdentity(
+      {
+        userId: OWNER,
+        teamId: TEAM_A,
+        token: {
+          id: "tok_ci",
+          capabilities: caps,
+          instanceAdmin: false,
+          scope: folderIds && {
+            teamIds: [TEAM_A],
+            wholeTeamIds: [],
+            projectIds: [],
+            folderIds,
+            appIds: [],
+            appProjectIds: [],
+          },
+        },
+      },
+      fn,
+    );
+
+  await asToken(["view", "organize_folders"], [FLD], async () => {
+    for (const call of [
+      () => listFolderGrants(FLD_OUT),
+      () => grantableFolderCapabilities(FLD_OUT),
+      () => folderShareCandidates(FLD_OUT),
+      () => removeFolderGrant(FLD_OUT, GRANTEE),
+    ])
+      await assert.rejects(call, /Folder not found/);
+  });
+  await asToken(["view"], null, () =>
+    assert.rejects(() => removeFolderGrant(FLD_OUT, GRANTEE), /permission/),
+  );
+  await asToken(["view", "organize_folders", "deploy_apps"], null, () =>
+    setFolderGrant(FLD, GRANTEE, ["deploy_apps"]),
+  );
+
+  const left = await db
+    .select({ folderId: folderGrantsTable.folderId })
+    .from(folderGrantsTable)
+    .where(eq(folderGrantsTable.userId, GRANTEE));
+  assert.deepEqual(left.map((r) => r.folderId).sort(), [FLD, FLD_OUT].sort());
 });

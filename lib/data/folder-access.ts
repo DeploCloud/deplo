@@ -21,7 +21,11 @@ import { holdsManageTeam, nodeCapabilities, withView } from "./node-access";
 import { memberScopeFor } from "./node-scope";
 import { avatarResolver, avatarUrlFor } from "../avatar";
 import type { Capability } from "../types/identity";
-import { inAppScope } from "../auth/request-context";
+import {
+  currentIdentity,
+  inAppScope,
+  inFolderScope,
+} from "../auth/request-context";
 
 export interface FolderGrant {
   folderId: string;
@@ -192,7 +196,10 @@ export async function visibleFolderIds(
 }
 
 // A grantee, even one holding every folder capability, may never re-share.
-async function requireFolderOwnerOrAdmin(folderId: string): Promise<{
+async function requireFolderOwnerOrAdmin(
+  folderId: string,
+  write = false,
+): Promise<{
   teamId: string;
   ownerUserId: string | null;
   actingUserId: string;
@@ -200,6 +207,11 @@ async function requireFolderOwnerOrAdmin(folderId: string): Promise<{
   const user = await assertUser();
   const f = await folderRow(folderId);
   if (!f) throw new Error("Folder not found");
+  // A token stands in for its owner only inside its own scope, and shares only with organize_folders.
+  if (currentIdentity()?.token) {
+    if (!inFolderScope(folderId)) throw new Error("Folder not found");
+    if (write) await requireFolderCapability(folderId, "organize_folders");
+  }
   const admin = await isInstanceAdmin();
   const isOwner =
     f.ownerUserId === user.id &&
@@ -307,7 +319,10 @@ export async function setFolderGrant(
   userId: string,
   caps: Capability[],
 ): Promise<FolderGrant[]> {
-  const { teamId, ownerUserId } = await requireFolderOwnerOrAdmin(folderId);
+  const { teamId, ownerUserId } = await requireFolderOwnerOrAdmin(
+    folderId,
+    true,
+  );
   if (userId === ownerUserId)
     throw new Error("The folder owner already has full access");
 
@@ -344,7 +359,7 @@ export async function removeFolderGrant(
   folderId: string,
   userId: string,
 ): Promise<FolderGrant[]> {
-  const { ownerUserId } = await requireFolderOwnerOrAdmin(folderId);
+  const { ownerUserId } = await requireFolderOwnerOrAdmin(folderId, true);
   if (userId !== ownerUserId) {
     await getDb()
       .delete(folderGrantsTable)
