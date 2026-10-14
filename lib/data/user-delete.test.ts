@@ -10,6 +10,7 @@ import {
   memberships as membershipsTable,
   membershipCapabilities as membershipCapabilitiesTable,
 } from "../db/schema/control-plane/access-control";
+import { activities as activitiesTable } from "../db/schema/control-plane/activity";
 import { apps as appsTable } from "../db/schema/control-plane/apps";
 import {
   teams as teamsTable,
@@ -444,4 +445,45 @@ test("a team left with no member manager is healed, and says so first", async ()
     held.includes("manage_roles"),
     "and the roles - every write to a member re-asserts all three",
   );
+});
+
+test("the Activity it leaves lands only in the teams it concerns, naming no other", async () => {
+  await seedIdentity(db, {
+    teams: [
+      { id: TEAM_A, slug: "alpha" },
+      { id: TEAM_B, slug: "secret-beta" },
+    ],
+    users: [
+      { id: USER_1, teamId: TEAM_A, role: "owner" },
+      { id: USER_2, teamId: TEAM_B, role: "owner", isInstanceAdmin: false },
+      { id: USER_3, teamId: TEAM_B, role: "viewer", isInstanceAdmin: false },
+    ],
+  });
+  await db
+    .update(teamsTable)
+    .set({ createdAt: "2026-02-01T00:00:00.000Z" })
+    .where(eq(teamsTable.id, TEAM_B));
+  await seedFolder("fld_x", TEAM_B, USER_2);
+
+  await runWithIdentity({ userId: USER_1, teamId: TEAM_A }, () =>
+    deleteUser(USER_2, ALL_OFF),
+  );
+
+  const rows = await db
+    .select({
+      teamId: activitiesTable.teamId,
+      message: activitiesTable.message,
+    })
+    .from(activitiesTable);
+  assert.deepEqual(
+    rows.filter((r) => r.teamId === TEAM_A),
+    [],
+    "the oldest team hears nothing about a team it is not in",
+  );
+  assert.deepEqual(rows.map((r) => r.message).sort(), [
+    "1 folder @user_2 owned now belongs to the primary owner",
+    "Deleted the account @user_2",
+    "Passed member/team management to the longest-standing member - @user_2 was the last one who could",
+  ]);
+  assert.ok(rows.every((r) => r.teamId === TEAM_B));
 });

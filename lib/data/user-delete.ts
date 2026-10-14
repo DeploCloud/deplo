@@ -367,7 +367,7 @@ export async function deleteUser(
   const { userId: actingUserId } = await requireInstanceAdmin();
   const actor = (await getCurrentUser())!;
 
-  const { result, plan, healedTeams, handed } = await getDb().transaction(
+  const { result, plan, healed, handed, kept } = await getDb().transaction(
     async (tx) => {
       const target = (
         await tx
@@ -482,14 +482,14 @@ export async function deleteUser(
         await tx
           .delete(projectsTable)
           .where(inArray(projectsTable.id, ownedProjects));
-      const handed: string[] = [];
+      const handed = new Map<string, number>();
       for (const t of teams) {
         if (deletedTeamIds.includes(t.teamId)) continue;
         const heir = t.isFounder
           ? actingUserId
           : ((await teamFounderOf(tx, t.teamId)) ?? actingUserId);
         const n = await handOverFolders(tx, userId, t.teamId, heir);
-        if (n > 0) handed.push(`${n} in ${t.name}`);
+        if (n > 0) handed.set(t.teamId, n);
       }
       if (deletedTeamIds.length > 0)
         await tx
@@ -501,9 +501,8 @@ export async function deleteUser(
 
       return {
         handed,
-        healedTeams: healed.map(
-          (id) => teams.find((t) => t.teamId === id)?.name ?? id,
-        ),
+        healed,
+        kept: survivingTeamIds,
         result: {
           username: target.username,
           teamsDeleted: deletedTeamIds.length,
@@ -527,30 +526,22 @@ export async function deleteUser(
   if (plan.services.length || plan.databases.length || plan.appSlugs.length)
     teardownTeamResources(plan, "user-delete");
 
-  await recordActivity(
-    "member",
-    `Deleted the account @${result.username}` +
-      (result.teamsDeleted
-        ? ` and ${result.teamsDeleted} team${result.teamsDeleted === 1 ? "" : "s"}`
-        : ""),
-    actor.username,
-    null,
-  );
-  if (handed.length > 0)
-    await recordActivity(
-      "member",
-      `Folders @${result.username} owned now belong to the primary owner: ${handed.join(", ")}`,
-      actor.username,
-      null,
-    );
-  if (healedTeams.length > 0)
-    await recordActivity(
-      "member",
-      `Passed member/team management to the longest-standing member of ` +
-        `${healedTeams.join(", ")} - @${result.username} was the last one who could`,
-      actor.username,
-      null,
-    );
+  // One entry per team it concerns, naming nothing from another team.
+  const who = `@${result.username}`;
+  for (const teamId of kept) {
+    const note = (message: string) =>
+      recordActivity("member", message, actor.username, null, teamId);
+    await note(`Deleted the account ${who}`);
+    const n = handed.get(teamId);
+    if (n)
+      await note(
+        `${n === 1 ? "1 folder" : `${n} folders`} ${who} owned now belong${n === 1 ? "s" : ""} to the primary owner`,
+      );
+    if (healed.includes(teamId))
+      await note(
+        `Passed member/team management to the longest-standing member - ${who} was the last one who could`,
+      );
+  }
   return result;
 }
 
