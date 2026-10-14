@@ -15,6 +15,7 @@ import { runWithIdentity } from "../auth/request-context";
 import { DEFAULT_ALERTS } from "../alerts";
 import { ALL_ALERTS } from "../types/notification";
 import type { NotificationChannelInput } from "../types/notification";
+import { ALL_CAPABILITIES } from "../types/identity";
 import { seedIdentity, TEAM_A, TEAM_B, USER_1 } from "./leaf-test-helpers";
 
 const USER_2 = "user_2";
@@ -287,6 +288,44 @@ test("the DTO carries no credential in any shape", async () => {
     assert.equal(json.includes("po-user"), false);
     assert.equal(/Enc"|"secret"|"secret2"|password/.test(json), false);
   });
+});
+
+test("a token reads a webhook URL masked, and saving the mask back keeps it", async () => {
+  const hook = "https://hooks.slack.test/services/T000/B000/xyz";
+  const saved = await asUser1(() =>
+    saveNotificationChannel(null, draft({ kind: "slack", url: hook })),
+  );
+  assert.equal(saved.url, hook, "the dashboard still reads what it edits");
+
+  await runWithIdentity(
+    {
+      userId: USER_1,
+      teamId: TEAM_A,
+      token: {
+        id: "tok_agent",
+        capabilities: [...ALL_CAPABILITIES],
+        scope: null,
+        instanceAdmin: false,
+      },
+    },
+    async () => {
+      const [got] = await listNotificationChannels();
+      assert.equal(
+        got.url.includes("xyz"),
+        false,
+        "the path posts as the team",
+      );
+      assert.match(got.url, /^https:\/\/hooks\.slack\.test\//);
+      const again = await saveNotificationChannel(got.id, {
+        ...got,
+        name: "Renamed",
+      });
+      assert.equal(again.url.includes("xyz"), false);
+    },
+  );
+  const [row] = await db.select().from(notificationChannels);
+  assert.equal(row.url, hook);
+  assert.equal(row.name, "Renamed");
 });
 
 test("a URL aimed inside the network is refused before it is stored", async () => {

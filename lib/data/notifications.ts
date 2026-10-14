@@ -39,7 +39,10 @@ import type {
   NotificationChannelInput,
   NotificationChannelInstance,
 } from "../types/notification";
-import { requirePersonalSession } from "../auth/request-context";
+import {
+  currentIdentity,
+  requirePersonalSession,
+} from "../auth/request-context";
 
 type ChannelRow = InferSelectModel<typeof notificationChannels>;
 
@@ -86,16 +89,38 @@ async function alertsForChannels(
   return out;
 }
 
+// These kinds post with nothing but the URL, so the URL is the room's credential.
+const URL_IS_CREDENTIAL = new Set<string>([
+  "discord",
+  "slack",
+  "webhook",
+  "lark",
+  "msteams",
+  "mattermost",
+]);
+
+function maskUrl(url: string): string {
+  const mask = "•".repeat(12);
+  try {
+    return `${new URL(url).origin}/${mask}`;
+  } catch {
+    return mask;
+  }
+}
+
 function rowToInstance(
   row: ChannelRow,
   alerts: AlertKey[],
 ): NotificationChannelInstance {
+  // A bearer token (an AI agent above all) sees which service, never the path that posts into the room.
+  const masked =
+    Boolean(currentIdentity()?.token) && URL_IS_CREDENTIAL.has(row.kind);
   return {
     id: row.id,
     kind: row.kind as NotificationChannel,
     name: row.name,
     enabled: row.enabled,
-    url: row.url,
+    url: masked && row.url ? maskUrl(row.url) : row.url,
     target: row.target,
     emailFrom: row.emailFrom,
     emailProvider: (row.emailProvider === "smtp"
@@ -178,14 +203,16 @@ export async function saveNotificationChannel(
 ): Promise<NotificationChannelInstance> {
   const teamId = (await requireCapability("manage_notifications")).teamId;
   const next = parseChannelInput(raw);
+  const prev = id ? await channelRow(teamId, id) : null;
+  if (id && !prev) throw new Error("Channel not found");
+  // A token read the URL masked; sending the mask back unchanged keeps the stored one.
+  if (prev?.url && next.url === maskUrl(prev.url)) next.url = prev.url;
 
   const label = URL_LABEL[next.kind];
   if (label && next.url) await assertSafeOutboundUrl(next.url, label);
   if (next.kind === "email" && next.emailProvider === "smtp" && next.smtpHost)
     await assertSafeOutboundHost(next.smtpHost, "SMTP host");
 
-  const prev = id ? await channelRow(teamId, id) : null;
-  if (id && !prev) throw new Error("Channel not found");
   if (!prev) await assertRoomForOneMore(teamId);
 
   if (
