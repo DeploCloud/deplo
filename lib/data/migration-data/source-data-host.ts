@@ -6,6 +6,7 @@ import { sourceClient } from "../../migration/source";
 import type { SourceCredential } from "../../migration/source";
 import { sourceAgentReachable } from "../agent-reach";
 import { getServerById } from "../servers/roster";
+import { isDeploVolumeName } from "../../migration/map/volume-discovery";
 import {
   UNREACHABLE_SOURCE_AGENT,
   UNREACHABLE_SOURCE_PANEL,
@@ -65,24 +66,36 @@ export async function sourceDataHost(
     };
 
   const serverId = await resolveSourceServer(c, teamId, svc.serverId);
+  // The panel names the volumes, and one in Deplo's own namespace belongs to a workload here.
+  const panelOwns = (name: string) => !isDeploVolumeName(name);
   return {
     serverId,
     hostsNothing: Boolean((await getServerById(serverId))?.importOnly),
     unreachable: UNREACHABLE_SOURCE_AGENT,
     reachable: () => sourceAgentReachable(serverId),
-    volumesPresent: (names) => volumesOnHost(serverId, names),
+    volumesPresent: (names) => volumesOnHost(serverId, names.filter(panelOwns)),
     connect: async (targetServerId) => {
-      const source = await connectAgent(serverId);
+      const agent = await connectAgent(serverId);
       const dest =
         serverId === targetServerId
-          ? source
+          ? agent
           : await connectAgent(targetServerId);
       return {
-        source,
+        source: {
+          async *exportVolume(name) {
+            if (!panelOwns(name))
+              throw new Error(
+                "it is storage Deplo manages, not this service's, so it was not copied",
+              );
+            yield* agent.exportVolume(name);
+          },
+          exportHostPath: (path, allowFile) =>
+            agent.exportHostPath(path, allowFile),
+        },
         dest,
         close: () => {
-          source.close();
-          if (dest !== source) dest.close();
+          agent.close();
+          if (dest !== agent) dest.close();
         },
       };
     },

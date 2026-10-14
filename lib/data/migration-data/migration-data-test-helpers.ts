@@ -182,6 +182,7 @@ export const state = {
   startRefusesNoContainer: false,
   stopRefusal: "",
   extraWebMounts: [] as unknown[],
+  webMounts: null as unknown[] | null,
 };
 
 function fakeSource() {
@@ -219,7 +220,7 @@ function fakeSource() {
               ...row,
               State: { Running: state.sourceRunning },
               Mounts: [
-                ...(row.Mounts ?? []),
+                ...((id === "ct-web" && state.webMounts) || row.Mounts || []),
                 ...(id === "ct-web" ? state.extraWebMounts : []),
               ],
             }
@@ -475,6 +476,7 @@ export async function resetHarness(): Promise<void> {
   };
   state.hostFiles = {};
   state.extraWebMounts = [];
+  state.webMounts = null;
   state.agentCapabilities = ["host-path-copy.file"];
   state.volumes = {
     srv_migration_host: {
