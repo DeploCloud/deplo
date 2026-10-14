@@ -274,6 +274,7 @@ const NEEDS_INSTANCE_GRANT = new Map<string, RegExp>([
   ["M.createCronJob", /database.*console/i],
   ["M.setCronEnabled", /database.*console/i],
   ["M.createApp", /permission to manage environment variables/i],
+  ["M.destinationRecoveryKey", /permission to reveal secret values/i],
 ]);
 
 function refusedByGrant(e: Endpoint, messages: string[]): boolean {
