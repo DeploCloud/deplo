@@ -2,6 +2,7 @@ import { test, before, after, beforeEach } from "node:test";
 import assert from "node:assert/strict";
 
 import type { PGlite } from "@electric-sql/pglite";
+import { eq } from "drizzle-orm";
 
 import { makeTestDb, type TestDb } from "../db/test-harness";
 import { __setTestDb, __resetTestDb } from "../db/client";
@@ -14,6 +15,7 @@ import {
   TRUNCATE_PROJECT_GRAPH,
 } from "./app-graph-test-helpers";
 import { seedDatabase, seedDestination } from "./backup-test-helpers";
+import { apps as appsTable } from "../db/schema/control-plane/apps";
 import { listServersForTeam, getServerById } from "./servers/roster";
 import {
   setServerTeams,
@@ -97,6 +99,27 @@ test("setServerTeams dedupes team ids", async () => {
 
 test("restricting is BLOCKED when an excluded team has a PROJECT on the server", async () => {
   await seedApp(db, { id: "prj_b", teamId: TEAM_B, serverId: SERVER_1 });
+
+  await assert.rejects(
+    asUser1(() =>
+      setServerTeams(SERVER_1, { allTeams: false, teamIds: [TEAM_A] }),
+    ),
+    /apps, databases or backup destinations/,
+  );
+  assert.equal((await getServerById(SERVER_1))!.allTeams, true);
+});
+
+test("restricting is BLOCKED when an excluded team runs PREVIEWS on the server", async () => {
+  await seedServer(db, "srv_2");
+  await seedApp(db, {
+    id: "prj_b",
+    teamId: TEAM_B,
+    serverId: "srv_2",
+  });
+  await db
+    .update(appsTable)
+    .set({ previewServerId: SERVER_1 })
+    .where(eq(appsTable.id, "prj_b"));
 
   await assert.rejects(
     asUser1(() =>

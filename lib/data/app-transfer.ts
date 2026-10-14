@@ -21,6 +21,7 @@ import {
   backupRuns as backupRunsTable,
 } from "../db/schema/control-plane/backups";
 import { cronJobs as cronJobsTable } from "../db/schema/control-plane/crons";
+import { domains as domainsTable } from "../db/schema/control-plane/domains";
 import { teamAppOrder } from "../db/schema/control-plane/display-order";
 import { sharedEnvVarApps as sharedEnvVarAppsTable } from "../db/schema/control-plane/env-vars";
 import { teams as teamsTable } from "../db/schema/control-plane/identity";
@@ -44,6 +45,10 @@ import { composeNamesOnNetwork } from "../deploy/compose-stack/compose-read";
 import { stackName } from "../deploy/deploy-key";
 import { requireAppCapability } from "./node-access";
 import { assertServerAccessibleTx } from "./servers/team-access";
+import {
+  assertHostnameNotAnotherTeams,
+  assertPreviewBaseNotAnotherTeams,
+} from "./domains/hostname-claim";
 import { withKeyedLock } from "./keyed-mutex";
 import {
   requireTransferDestination,
@@ -99,6 +104,8 @@ const appColumns = {
   repoConnectionId: appsTable.repoConnectionId,
   autoDeploy: appsTable.autoDeploy,
   status: appsTable.status,
+  previewServerId: appsTable.previewServerId,
+  previewBaseDomain: appsTable.previewBaseDomain,
 };
 
 export const appTransferInfo = cache(
@@ -279,6 +286,26 @@ export async function transferAppToTeam(
     noun: "app",
     serverId: app.serverId,
   });
+  if (app.previewServerId) {
+    const preview = await serverAccess(app.previewServerId);
+    if (preview.teamIds && !preview.teamIds.has(destTeamId))
+      throw new Error(
+        `${destTeam.name} can't use the server this app's previews run on (${preview.name}). Set previews to run on the app's own server first.`,
+      );
+  }
+  // Its hostnames and preview zone move with it, so no other app here may keep a share of them.
+  const hostnames = await db
+    .selectDistinct({ name: domainsTable.name })
+    .from(domainsTable)
+    .where(eq(domainsTable.appId, appId));
+  for (const { name } of hostnames)
+    await assertHostnameNotAnotherTeams(name, destTeamId, null, appId);
+  if (app.previewBaseDomain)
+    await assertPreviewBaseNotAnotherTeams(
+      app.previewBaseDomain,
+      destTeamId,
+      appId,
+    );
   const [claimSource] = await db
     .select({ slug: appsTable.slug, compose: appsTable.compose })
     .from(appsTable)
@@ -333,6 +360,8 @@ export async function transferAppToTeam(
       await withKeyedLock(`app-lifecycle:${appId}`, async () => {
         await db.transaction(async (tx) => {
           await assertServerAccessibleTx(tx, app.serverId, destTeamId);
+          if (app.previewServerId)
+            await assertServerAccessibleTx(tx, app.previewServerId, destTeamId);
           await tx
             .update(appsTable)
             .set({

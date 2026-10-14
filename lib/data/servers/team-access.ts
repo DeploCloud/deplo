@@ -1,6 +1,6 @@
 import "server-only";
 
-import { and, asc, eq, inArray } from "drizzle-orm";
+import { and, asc, eq, inArray, or } from "drizzle-orm";
 import { getDb, type DrizzleClient, type DbTx } from "../../db/client";
 import { apps as appsTable } from "../../db/schema/control-plane/apps";
 import { backupDestination as destinationTable } from "../../db/schema/control-plane/backups";
@@ -80,7 +80,12 @@ async function teamsWithWorkloadsOnServer(
     db
       .selectDistinct({ teamId: appsTable.teamId })
       .from(appsTable)
-      .where(eq(appsTable.serverId, serverId)),
+      .where(
+        or(
+          eq(appsTable.serverId, serverId),
+          eq(appsTable.previewServerId, serverId),
+        ),
+      ),
     db
       .selectDistinct({ teamId: databasesTable.teamId })
       .from(databasesTable)

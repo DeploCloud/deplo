@@ -32,34 +32,54 @@ export function isHostnameClaim(raw: string | null | undefined): boolean {
   );
 }
 
+// exceptAppId: an app about to move into teamId, whose own rows go with it.
 export async function assertHostnameNotAnotherTeams(
   name: string,
   teamId: string,
   exceptDomainId: string | null,
+  exceptAppId: string | null = null,
 ): Promise<void> {
   const rows = await getDb()
-    .select({ id: domainsTable.id, teamId: appsTable.teamId })
+    .select({
+      id: domainsTable.id,
+      appId: domainsTable.appId,
+      teamId: appsTable.teamId,
+    })
     .from(domainsTable)
     .innerJoin(appsTable, eq(appsTable.id, domainsTable.appId))
     .where(eq(domainsTable.name, name));
-  if (rows.some((r) => r.id !== exceptDomainId && r.teamId !== teamId))
+  if (
+    rows.some(
+      (r) =>
+        r.id !== exceptDomainId &&
+        r.appId !== exceptAppId &&
+        r.teamId !== teamId,
+    )
+  )
     throw new Error(
       `${name} is already routed by another team on this Deplo. A hostname belongs to one team.`,
     );
   // A preview host never enters domains, so another team's claim on that zone lives on its preview base.
-  for (const base of await foreignPreviewBases(teamId))
+  for (const base of await foreignPreviewBases(teamId, exceptAppId))
     if (name === base || name.endsWith(`.${base}`))
       throw new Error(
         `${name} is under another team's preview domain on this Deplo. A hostname belongs to one team.`,
       );
 }
 
-async function foreignPreviewBases(teamId: string): Promise<string[]> {
+async function foreignPreviewBases(
+  teamId: string,
+  exceptAppId: string | null = null,
+): Promise<string[]> {
   const rows = await getDb()
     .select({ base: appsTable.previewBaseDomain })
     .from(appsTable)
     .where(
-      and(ne(appsTable.teamId, teamId), isNotNull(appsTable.previewBaseDomain)),
+      and(
+        ne(appsTable.teamId, teamId),
+        isNotNull(appsTable.previewBaseDomain),
+        exceptAppId ? ne(appsTable.id, exceptAppId) : undefined,
+      ),
     );
   return [
     ...new Set(
@@ -118,19 +138,30 @@ export async function appTeamId(appId: string): Promise<string> {
 export async function assertPreviewBaseNotAnotherTeams(
   base: string,
   teamId: string,
+  exceptAppId: string | null = null,
 ): Promise<void> {
   const clean = base.trim().toLowerCase();
   if (!clean) return;
   const rows = await getDb()
-    .select({ name: domainsTable.name, teamId: appsTable.teamId })
+    .select({
+      name: domainsTable.name,
+      appId: domainsTable.appId,
+      teamId: appsTable.teamId,
+    })
     .from(domainsTable)
     .innerJoin(appsTable, eq(appsTable.id, domainsTable.appId));
   const sameZone = (a: string, b: string) =>
     a === b || a.endsWith(`.${b}`) || b.endsWith(`.${a}`);
   const taken =
     rows.some(
-      (r) => r.teamId !== teamId && sameZone(r.name.toLowerCase(), clean),
-    ) || (await foreignPreviewBases(teamId)).some((b) => sameZone(b, clean));
+      (r) =>
+        r.teamId !== teamId &&
+        r.appId !== exceptAppId &&
+        sameZone(r.name.toLowerCase(), clean),
+    ) ||
+    (await foreignPreviewBases(teamId, exceptAppId)).some((b) =>
+      sameZone(b, clean),
+    );
   if (taken)
     throw new Error(
       `${clean} is served by another team on this Deplo, so previews can't be published under it. A preview domain belongs to one team.`,
