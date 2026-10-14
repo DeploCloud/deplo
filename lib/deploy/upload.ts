@@ -4,7 +4,7 @@ import { mkdir, rm, readdir, stat } from "node:fs/promises";
 import { createReadStream, createWriteStream } from "node:fs";
 import { spawn } from "node:child_process";
 import { createGunzip } from "node:zlib";
-import { Readable, Transform } from "node:stream";
+import { Readable, Transform, Writable } from "node:stream";
 import type { ReadableStream as NodeReadableStream } from "node:stream/web";
 import { pipeline as streamPipeline } from "node:stream/promises";
 import { join, basename, relative } from "node:path";
@@ -18,9 +18,18 @@ export { MAX_UPLOAD_BYTES, archiveExt };
 
 export const ARCHIVE_TOO_LARGE = "ARCHIVE_TOO_LARGE";
 
-const MAX_EXTRACTED_BYTES = 4 * 1024 * 1024 * 1024;
+const limits = { bytes: 4 * 1024 * 1024 * 1024, entries: 500_000 };
+
+export function __setExtractLimitsForTest(
+  next: Partial<typeof limits>,
+): typeof limits {
+  const prev = { ...limits };
+  Object.assign(limits, next);
+  return prev;
+}
 
 const EXTRACTED_TOO_LARGE = "archive exceeds the 4 GiB extraction limit";
+const TOO_MANY_FILES = "archive holds more than 500,000 files";
 
 function appUploadDir(appId: string): string {
   return join(dataDir(), "uploads", appId);
@@ -29,11 +38,12 @@ function appUploadDir(appId: string): string {
 function capBytes(
   maxBytes: number,
   errMsg: string = ARCHIVE_TOO_LARGE,
+  measure: (chunk: Buffer) => number = (chunk) => chunk.length,
 ): Transform {
   let seen = 0;
   return new Transform({
     transform(chunk: Buffer, _enc, cb) {
-      seen += chunk.length;
+      seen += measure(chunk);
       if (seen > maxBytes) {
         cb(new Error(errMsg));
         return;
@@ -146,10 +156,17 @@ export async function extractArchive(
 
   try {
     if (isZip) {
-      const declared = await zipDeclaredBytes(archive.path);
-      if (declared != null && declared > MAX_EXTRACTED_BYTES) {
-        throw new Error(`${EXTRACTED_TOO_LARGE} (declares ${declared} bytes)`);
-      }
+      // The sizes in a zip's headers are the uploader's word: count what unzip really inflates first.
+      await drainCapped(
+        "unzip",
+        ["-p", archive.path],
+        capBytes(limits.bytes, EXTRACTED_TOO_LARGE),
+      );
+      await drainCapped(
+        "unzip",
+        ["-Z1", archive.path],
+        capBytes(limits.entries, TOO_MANY_FILES, newlines),
+      );
       log(`unzip ${archive.filename}`);
       const code = await spawnStream(
         "unzip",
@@ -178,9 +195,20 @@ async function extractTarBounded(
   isGzip: boolean,
   log: (line: string) => void,
 ): Promise<void> {
-  const child = spawn("tar", ["-x", "-C", destDir], { windowsHide: true });
+  const child = spawn("tar", ["-x", "-v", "-C", destDir], {
+    windowsHide: true,
+  });
   child.stdin?.on("error", () => {});
-  child.stdout?.resume();
+  // -v names one member per line, so stdout counts the files as they land.
+  let tooMany: unknown = null;
+  streamPipeline(
+    child.stdout!,
+    capBytes(limits.entries, TOO_MANY_FILES, newlines),
+    devNull(),
+  ).catch((err) => {
+    tooMany = err;
+    child.kill("SIGKILL");
+  });
   let stderr = "";
   child.stderr?.on("data", (c: Buffer) => {
     stderr += c.toString();
@@ -201,7 +229,7 @@ async function extractTarBounded(
     child.on("close", (code) => resolve(code));
   });
 
-  const cap = capBytes(MAX_EXTRACTED_BYTES, EXTRACTED_TOO_LARGE);
+  const cap = capBytes(limits.bytes, EXTRACTED_TOO_LARGE);
   const source = createReadStream(archive.path);
   try {
     if (isGzip) {
@@ -214,39 +242,61 @@ async function extractTarBounded(
     await exit;
     clearTimeout(timer);
     if (timedOut) throw new Error("tar timed out after 300000ms");
-    throw err;
+    throw tooMany ?? err;
   }
 
   const code = await exit;
   clearTimeout(timer);
   if (timedOut) throw new Error("tar timed out after 300000ms");
+  if (tooMany) throw tooMany;
   if (code !== 0) {
     const detail = stderr.trim().split("\n").pop();
     throw new Error(`tar failed (exit ${code})${detail ? `: ${detail}` : ""}`);
   }
 }
 
-async function zipDeclaredBytes(archivePath: string): Promise<number | null> {
-  const lines: string[] = [];
-  let code: number;
+const newlines = (chunk: Buffer): number => {
+  let n = 0;
+  for (let i = chunk.indexOf(10); i !== -1; i = chunk.indexOf(10, i + 1)) n++;
+  return n;
+};
+
+const devNull = () =>
+  new Writable({
+    write(_chunk, _enc, cb) {
+      cb();
+    },
+  });
+
+// Reads a command's output through `cap` without writing it anywhere, killing the command when it trips.
+async function drainCapped(
+  bin: string,
+  args: string[],
+  cap: Transform,
+): Promise<void> {
+  const child = spawn(bin, args, {
+    stdio: ["ignore", "pipe", "ignore"],
+    windowsHide: true,
+  });
+  const exit = new Promise<void>((resolve) => {
+    child.on("error", () => resolve());
+    child.on("close", () => resolve());
+  });
+  let timedOut = false;
+  const timer = setTimeout(() => {
+    timedOut = true;
+    child.kill("SIGKILL");
+  }, 300_000);
   try {
-    code = await spawnStream(
-      "unzip",
-      ["-l", archivePath],
-      (l) => lines.push(l),
-      {
-        timeout: 60_000,
-      },
-    );
-  } catch {
-    return null;
+    await streamPipeline(child.stdout!, cap, devNull());
+  } catch (err) {
+    child.kill("SIGKILL");
+    throw err;
+  } finally {
+    clearTimeout(timer);
+    await exit;
   }
-  if (code !== 0) return null;
-  for (let i = lines.length - 1; i >= 0; i--) {
-    const m = lines[i].match(/^\s*(\d+)\s+\d+ files?\s*$/);
-    if (m) return Number(m[1]);
-  }
-  return null;
+  if (timedOut) throw new Error(`${bin} timed out after 300000ms`);
 }
 
 async function assertTreeWithinBudget(dir: string): Promise<void> {
@@ -261,7 +311,7 @@ async function assertTreeWithinBudget(dir: string): Promise<void> {
         stack.push(p);
       } else if (e.isFile()) {
         total += (await stat(p)).size;
-        if (total > MAX_EXTRACTED_BYTES) {
+        if (total > limits.bytes) {
           throw new Error(`${EXTRACTED_TOO_LARGE} (extracted ${total}+ bytes)`);
         }
       }
