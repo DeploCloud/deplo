@@ -48,6 +48,29 @@ test("the flags that choose the stack are refused", () => {
   }
 });
 
+test("only compose up's own flags pass, so a glued -pNAME or -f/path cannot", () => {
+  for (const bad of [
+    "-pdeplo-victim",
+    "-f/data/stacks/other.yml",
+    "--wait -pother",
+    "-dp other",
+    "-t60",
+    "--host=tcp://x",
+    "-H tcp://x",
+    "--context other",
+    "-- -p other",
+  ]) {
+    const problem = validateComposeUpArgs(bad);
+    assert.ok(problem, `${bad} must be refused`);
+  }
+  for (const ok of [
+    "-d -V -t 30",
+    "--profile tools --wait-timeout=120",
+    "--pull=missing --no-deps web",
+  ])
+    assert.equal(validateComposeUpArgs(ok), null, ok);
+});
+
 test("a whole command, pasted in, is refused with a reason", () => {
   const problem = validateComposeUpArgs("compose -p app -f app.yml up -d");
   assert.ok(problem);

@@ -10,6 +10,46 @@ const DENIED = new Set([
   "--project-directory",
 ]);
 
+// An allowlist of `compose up`'s own flags: a glued `-pNAME` or `-f/path` is no denied token.
+const ALLOWED = new Set([
+  "--abort-on-container-exit",
+  "--abort-on-container-failure",
+  "--always-recreate-deps",
+  "--attach",
+  "--attach-dependencies",
+  "--build",
+  "-d",
+  "--detach",
+  "--dry-run",
+  "--exit-code-from",
+  "--force-recreate",
+  "--menu",
+  "--no-attach",
+  "--no-build",
+  "--no-color",
+  "--no-deps",
+  "--no-log-prefix",
+  "--no-recreate",
+  "--no-start",
+  "--profile",
+  "--pull",
+  "--quiet-build",
+  "--quiet-pull",
+  "--remove-orphans",
+  "-V",
+  "--renew-anon-volumes",
+  "--scale",
+  "-t",
+  "--timeout",
+  "--timestamps",
+  "--wait",
+  "--wait-timeout",
+  "-w",
+  "--watch",
+  "-y",
+  "--yes",
+]);
+
 const TOKEN_RE = /^[A-Za-z0-9._:/=,+@-]+$/;
 
 export function parseComposeUpArgs(raw: string | null | undefined): string[] {
@@ -32,7 +72,9 @@ export function validateComposeUpArgs(raw: string): string | null {
       ? token.slice(0, token.indexOf("="))
       : token;
     if (DENIED.has(name))
-      return `"${name}" is Deplo's to set - it decides which stack comes up. Everything else is yours.`;
+      return `"${name}" is Deplo's to set - it decides which stack comes up.`;
+    if (token.startsWith("-") && !ALLOWED.has(name))
+      return `"${name}" isn't a flag of compose up. Write each flag in full, like --wait or --timeout=60.`;
   }
   return null;
 }
