@@ -195,10 +195,10 @@ export const CAPABILITY_META: Record<Capability, CapabilityMeta> = {
   manage_backup_destinations: {
     label: "Manage backup destinations",
     description:
-      "Connect, test and remove the places backups are stored, and download the key that decrypts them.",
+      "Connect, test and remove the places backups are stored, and with Reveal secret values download the key that decrypts them.",
     keywords:
       "bucket s3 server disk storage remote credentials minio garage path recovery key",
-    // It hands over the recovery key, which decrypts EVERY artifact at a destination.
+    // With reveal_secrets it hands over the recovery key, which decrypts EVERY artifact at a destination.
     sensitive: true,
   },
 
