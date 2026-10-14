@@ -14,7 +14,7 @@ import {
 } from "./app-graph-test-helpers";
 import {
   connectGitProvider,
-  gitConnectionInTeam,
+  gitConnectionHostInTeam,
   listGitConnections,
   readGitCredential,
   removeGitConnection,
@@ -26,6 +26,8 @@ import { loadAppGraph } from "./app-graph-load";
 import { gitConnections as gitConnectionsTable } from "../db/schema/control-plane/integrations";
 import { encryptSecret } from "../crypto";
 import { nowIso } from "../ids";
+import { seedGithubApp, seedGithubInstallation } from "./infra-test-helpers";
+import type { GitRepo } from "../types/build";
 import {
   __setDnsLookupForTest,
   __resetDnsLookupForTest,
@@ -110,8 +112,11 @@ test("the stored token is encrypted at rest and readable only internally", async
 test("a connection is invisible to another team", async () => {
   const created = await asTeamA(() => connect());
   assert.deepEqual(await asTeamB(() => listGitConnections()), []);
-  assert.equal(await gitConnectionInTeam(created.id, TEAM_B), false);
-  assert.equal(await gitConnectionInTeam(created.id, TEAM_A), true);
+  assert.equal(await gitConnectionHostInTeam(created.id, TEAM_B), null);
+  assert.equal(
+    await gitConnectionHostInTeam(created.id, TEAM_A),
+    "git.acme.com",
+  );
 });
 
 test("another team can neither edit nor delete it", async () => {
@@ -350,6 +355,43 @@ test("an instance admin can point a connection at their own network, and it says
 
   const listed = await asTeamA(() => listGitConnections());
   assert.equal(listed[0].allowPrivateEndpoint, true);
+});
+
+const asMember = <T>(fn: () => Promise<T>): Promise<T> =>
+  runWithIdentity({ userId: "user_3", teamId: TEAM_A }, fn);
+const setRepo = (url: string, cred: Partial<GitRepo>) =>
+  updateAppSource("prj_1", {
+    source: "git",
+    dockerImage: null,
+    repo: { provider: "git", url, repo: "o/r", branch: "main", ...cred },
+  });
+
+test("attaching a team credential does not let the repo address go anywhere", async () => {
+  const conn = await asTeamA(() => connect());
+  await seedGithubApp(db, { id: "gha_1", teamId: TEAM_A });
+  await seedGithubInstallation(db, { id: "ghi_1", appId: "gha_1" });
+  await seedApp(db, { id: "prj_1", teamId: TEAM_A });
+  for (const cred of [{ connectionId: conn.id }, { installationId: "ghi_1" }])
+    for (const url of [
+      "http://10.0.0.5/o/r.git",
+      "http://169.254.169.254/x.git",
+      "file:///srv/repo",
+      "/srv/repo",
+    ])
+      await assert.rejects(
+        () => asMember(() => setRepo(url, cred)),
+        /private or internal|http\(s\) or ssh|valid URL/,
+        `${url} with ${JSON.stringify(cred)} must be refused`,
+      );
+});
+
+test("an admin-approved private connection still clones from its own host", async () => {
+  const conn = await asTeamA(() => connectTo("https://10.0.0.5", true));
+  await seedApp(db, { id: "prj_1", teamId: TEAM_A });
+  await asMember(() =>
+    setRepo("https://10.0.0.5/acme/site.git", { connectionId: conn.id }),
+  );
+  assert.equal((await loadAppGraph("prj_1"))?.repo?.connectionId, conn.id);
 });
 
 test("an ordinary public address still connects, and is not flagged", async () => {

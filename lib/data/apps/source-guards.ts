@@ -20,7 +20,7 @@ import {
 } from "../../membership";
 import { assertCloneTargetSafe } from "../../git/clone-url";
 import { listGithubInstallations } from "../github";
-import { gitConnectionInTeam } from "../git-connections";
+import { gitConnectionHostInTeam, urlHost } from "../git-connections";
 import type { DeploySource } from "../../types/app";
 import type { GitRepo } from "../../types/build";
 
@@ -77,13 +77,12 @@ export async function scopeRepoCredentials(
     if (!mine.some((i) => i.id === out.installationId))
       out.installationId = null;
   }
-  if (
-    out.connectionId &&
-    !(await gitConnectionInTeam(out.connectionId, teamId))
-  ) {
-    out.connectionId = null;
-  }
-  if (!out.installationId && !out.connectionId)
+  const connHost = out.connectionId
+    ? await gitConnectionHostInTeam(out.connectionId, teamId)
+    : null;
+  if (!connHost) out.connectionId = null;
+  // Only the connection's own host was vetted (private only by an admin); any other address is checked.
+  if (!connHost || urlHost(out.url) !== connHost)
     await assertCloneTargetSafe(out.url, {
       allowPrivate: await isInstanceAdmin(),
     });

@@ -107,12 +107,13 @@ export async function readGitCredential(
   };
 }
 
-export async function gitConnectionInTeam(
+// The connection's host, or null when the connection is not this team's.
+export async function gitConnectionHostInTeam(
   connectionId: string,
   teamId: string,
-): Promise<boolean> {
+): Promise<string | null> {
   const rows = await getDb()
-    .select({ id: gitConnectionsTable.id })
+    .select({ baseUrl: gitConnectionsTable.baseUrl })
     .from(gitConnectionsTable)
     .where(
       and(
@@ -121,7 +122,15 @@ export async function gitConnectionInTeam(
       ),
     )
     .limit(1);
-  return rows.length > 0;
+  return rows.length > 0 ? urlHost(rows[0].baseUrl) : null;
+}
+
+export function urlHost(url: string): string | null {
+  try {
+    return new URL(url).host.toLowerCase();
+  } catch {
+    return null;
+  }
 }
 
 async function requireOwnCredential(
