@@ -12,7 +12,7 @@ import { getMcpSettings } from "@/lib/data/mcp-settings";
 import { listMcpTeams } from "@/lib/data/mcp-clients";
 import type { GraphQLContext } from "@/lib/graphql/context";
 import { rateLimit } from "@/lib/security";
-import { clientKeyAddress } from "@/lib/host-address";
+import { clientAddressKey } from "@/lib/http/client-address";
 import {
   OAUTH_CORS_HEADERS,
   resourceMetadataUrl,
@@ -26,15 +26,6 @@ export const dynamic = "force-dynamic";
 const RATE = { limit: 120, windowMs: 60_000 };
 
 const FAILED_AUTH_RATE = { limit: 60, windowMs: 60_000 };
-
-function callerAddress(request: Request): string {
-  return clientKeyAddress(
-    request.headers.get("cf-connecting-ip") ??
-      request.headers.get("x-real-ip") ??
-      request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ??
-      "unknown",
-  );
-}
 
 const handler = createMcpHandler((ctx) =>
   buildMcpServer(ctx.authInfo!.extra!.principal as McpPrincipal),
@@ -58,7 +49,7 @@ function unauthorized(message: string) {
 
 async function refuse(request: Request, message: string): Promise<Response> {
   const limited = await rateLimit(
-    `mcp-auth:${callerAddress(request)}`,
+    `mcp-auth:${clientAddressKey(request.headers)}`,
     FAILED_AUTH_RATE,
   );
   if (!limited.ok)

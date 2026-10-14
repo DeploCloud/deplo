@@ -1,9 +1,4 @@
-export const SESSION_METADATA_HEADERS = [
-  "user-agent",
-  "cf-connecting-ip",
-  "x-forwarded-for",
-  "x-real-ip",
-] as const;
+import { clientAddress } from "../http/client-address";
 
 export function authRequestHeaders(
   request: Headers | null | undefined,
@@ -14,11 +9,11 @@ export function authRequestHeaders(
   } = {},
 ): Headers {
   const out = new Headers();
-  if (request)
-    for (const name of SESSION_METADATA_HEADERS) {
-      const value = request.get(name);
-      if (value) out.set(name, value);
-    }
+  // The session's device and address: Better Auth reads the address from x-real-ip alone.
+  const agent = request?.get("user-agent");
+  if (agent) out.set("user-agent", agent);
+  const ip = request && clientAddress(request);
+  if (ip) out.set("x-real-ip", ip);
   if (cookie)
     out.set(
       "cookie",

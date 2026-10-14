@@ -32,7 +32,7 @@ import {
 } from "@/lib/username";
 import { MAX_AVATAR_STRING_LEN } from "@/lib/apps/avatar-shared";
 import { rateLimit } from "@/lib/security";
-import { clientKeyAddress } from "@/lib/host-address";
+import { clientAddressKey } from "@/lib/http/client-address";
 import { noteFailedLogin } from "@/lib/notify/security";
 import { sha256Hex } from "@/lib/crypto";
 import { eq } from "drizzle-orm";
@@ -41,12 +41,7 @@ import { verification } from "@/lib/db/schema/auth";
 import { users } from "@/lib/db/schema/control-plane/identity";
 
 async function clientKey(scope: string): Promise<string> {
-  const h = await headers();
-  const ip =
-    h.get("x-forwarded-for")?.split(",")[0]?.trim() ||
-    h.get("x-real-ip") ||
-    "local";
-  return `${scope}:${clientKeyAddress(ip)}`;
+  return `${scope}:${clientAddressKey(await headers())}`;
 }
 
 async function pendingLoginKey(): Promise<
@@ -329,14 +324,9 @@ builder.mutationFields((t) => ({
       const parsed = registerSchema.safeParse(args);
       if (!parsed.success)
         throw new Error(parsed.error.issues[0]?.message ?? "Invalid");
-      const h = await headers();
-      const ip =
-        h.get("x-forwarded-for")?.split(",")[0]?.trim() ||
-        h.get("x-real-ip") ||
-        "local";
       const limited = await checkLimits([
         {
-          key: `register:ip:${clientKeyAddress(ip)}`,
+          key: await clientKey("register:ip"),
           limit: 10,
           windowMs: 60_000,
         },

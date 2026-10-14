@@ -235,16 +235,18 @@ test("the client address survives a Cloudflare-in-front-of-Traefik chain", async
   assert.equal(row.ipAddress, "198.51.100.4", "the client, not the edge");
 });
 
-test("a multi-hop chain with no single-valued header degrades to no address", async () => {
+test("a forged address never reaches the session row", async () => {
   const row = await signInWith(
     authRequestHeaders(
       new Headers({
         "user-agent": CHROME_MAC,
-        "x-forwarded-for": "198.51.100.4, 172.68.0.9",
+        "cf-connecting-ip": "6.6.6.6",
+        "x-real-ip": "6.6.6.6",
+        "x-forwarded-for": "6.6.6.6, 203.0.113.9",
       }),
       "",
     ),
   );
   assert.equal(row.label, "Chrome on macOS");
-  assert.equal(row.ipAddress, null);
+  assert.equal(row.ipAddress, "203.0.113.9", "the hop the proxy saw");
 });

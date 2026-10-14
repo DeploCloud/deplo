@@ -2,7 +2,7 @@ import { toNextJsHandler } from "better-auth/next-js";
 import { getAuth } from "@/lib/auth/better-auth";
 import { rateLimit } from "@/lib/security";
 import { capRequestBody } from "@/lib/http/body-cap";
-import { clientKeyAddress } from "@/lib/host-address";
+import { clientAddress, clientAddressKey } from "@/lib/http/client-address";
 
 function notConfigured() {
   return new Response("Auth provider not configured", { status: 501 });
@@ -14,13 +14,11 @@ const REGISTER_CEILING = { limit: 60, windowMs: 60_000 };
 
 async function registrationAllowed(request: Request): Promise<Response | null> {
   if (!new URL(request.url).pathname.endsWith("/oauth2/register")) return null;
-  const ip =
-    request.headers.get("cf-connecting-ip") ??
-    request.headers.get("x-real-ip") ??
-    request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ??
-    "unknown";
   const [perIp, overall] = await Promise.all([
-    rateLimit(`oauth-register:${clientKeyAddress(ip)}`, REGISTER_LIMIT),
+    rateLimit(
+      `oauth-register:${clientAddressKey(request.headers)}`,
+      REGISTER_LIMIT,
+    ),
     rateLimit("oauth-register:all", REGISTER_CEILING),
   ]);
   const limited = perIp.ok ? overall : perIp;
@@ -34,10 +32,19 @@ async function registrationAllowed(request: Request): Promise<Response | null> {
   );
 }
 
+// Better Auth reads only x-real-ip, so its limiter and session rows see the address ours do.
+function withClientAddress(request: Request): Request {
+  const headers = new Headers(request.headers);
+  const ip = clientAddress(request.headers);
+  if (ip) headers.set("x-real-ip", ip);
+  else headers.delete("x-real-ip");
+  return new Request(request, { headers });
+}
+
 export async function GET(request: Request) {
   const auth = getAuth();
   if (!auth) return notConfigured();
-  return toNextJsHandler(auth).GET(request);
+  return toNextJsHandler(auth).GET(withClientAddress(request));
 }
 
 export async function POST(request: Request) {
@@ -47,5 +54,5 @@ export async function POST(request: Request) {
   if (capped instanceof Response) return capped;
   const refused = await registrationAllowed(capped);
   if (refused) return refused;
-  return toNextJsHandler(auth).POST(capped);
+  return toNextJsHandler(auth).POST(withClientAddress(capped));
 }

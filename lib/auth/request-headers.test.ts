@@ -20,8 +20,11 @@ test("the session metadata Better Auth stamps onto a new session is forwarded", 
     out.get("user-agent"),
     "Mozilla/5.0 (Macintosh) Chrome/120.0.0.0",
   );
-  assert.equal(out.get("x-forwarded-for"), "203.0.113.7, 10.0.0.1");
-  assert.equal(out.get("cf-connecting-ip"), "203.0.113.7");
+  assert.equal(
+    out.get("x-real-ip"),
+    "10.0.0.1",
+    "the hop the proxy saw, not a header the caller wrote",
+  );
 });
 
 test("origin, referer and host are NOT forwarded", () => {
@@ -39,7 +42,7 @@ test("nothing else rides along either", () => {
   );
   assert.deepEqual(
     [...out.keys()].sort(),
-    ["cf-connecting-ip", "user-agent", "x-forwarded-for"],
+    ["user-agent", "x-real-ip"],
     "the forwarded set is exactly the documented one",
   );
 });

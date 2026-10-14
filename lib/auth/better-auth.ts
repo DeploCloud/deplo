@@ -218,8 +218,8 @@ function createAuth(db: DrizzleClient) {
         validateSchema: false,
       },
       ipAddress: {
-        // Better Auth's x-forwarded-for default returns NO address for a chain over one hop without trustedProxies.
-        ipAddressHeaders: ["cf-connecting-ip", "x-real-ip", "x-forwarded-for"],
+        // Deplo writes it from clientAddress() on every way in: the auth route and authRequestHeaders.
+        ipAddressHeaders: ["x-real-ip"],
       },
     },
     hooks: { before: authorizeGates },

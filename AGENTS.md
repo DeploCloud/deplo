@@ -551,7 +551,10 @@ scripts/gen-schema.ts`. Both halves of that prefix are load-bearing: the shim
 - **The rate limiter (`lib/security.ts`) is Postgres-backed and `async`.** One UPSERT per attempt,
   so it survives a restart and works across instances; it **fails open** when the database is
   unreachable (a limiter that locks everyone out on a DB blip is worse than one that stops
-  counting). `sweepRateLimits` runs in the maintenance sweep.
+  counting). `sweepRateLimits` runs in the maintenance sweep. A per-ADDRESS key comes from
+  `clientAddress()` (`lib/http/client-address.ts`) and nowhere else: the last `x-forwarded-for` hop
+  (the one Traefik appended), and `cf-connecting-ip` only when that hop is Cloudflare. Every other
+  forwarded header is the caller's to write.
 - **Better Auth is the live auth path** (ADR-0014, migration 0055): session cookie
   `deplo.session_token` (a real `session` row, `__Secure-` prefixed over https), configured in
   `lib/auth/better-auth.ts`. `deplo_team` still remembers the last team visited (ADR-0031) and
@@ -570,7 +573,7 @@ scripts/gen-schema.ts`. Both halves of that prefix are load-bearing: the shim
   `ctx.request`, which exists only for a real HTTP call, so `auth.api.*({ body, headers })` from
   `lib/auth/` and `lib/data/*` is untouched. The reason is always the same: Deplo's own sign-in is
   the ONLY path that limits per ACCOUNT, raises `failed_logins` and refuses a suspended account -
-  the plugin's endpoint has an in-memory limiter keyed on a caller-writable IP header and nothing
+  the plugin's endpoint has an in-memory limiter keyed on the client address and nothing
   else. **Adding a Better Auth endpoint means deciding which side of that list it is on.**
 - **2FA is a POLICY, not a ninth capability.** `teams.require_two_factor` /
   `team_roles.require_two_factor`, both default false. Unmet ⇒ the member resolves NOTHING in that
