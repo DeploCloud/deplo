@@ -6,7 +6,7 @@ import {
   type Document,
 } from "yaml";
 
-export { isMap, isScalar, isSeq, visit, Scalar } from "yaml";
+export { isAlias, isMap, isScalar, isSeq, visit, Scalar } from "yaml";
 export type { Document, YAMLMap, YAMLSeq } from "yaml";
 
 const READ = { merge: true, logLevel: "error" } as const;
