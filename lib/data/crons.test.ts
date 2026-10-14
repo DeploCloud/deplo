@@ -271,6 +271,31 @@ test("a variable name must be a variable name", async () => {
   );
 });
 
+test("a job cannot set the server's own tool variables or a multi-line value", async () => {
+  const make = (key: string, value: string) =>
+    asOwner(() =>
+      crons.createCronJob("app", "prj_1", {
+        ...validJob,
+        name: `env ${key}`,
+        env: [{ key, value }],
+      }),
+    );
+  for (const key of [
+    "LD_PRELOAD",
+    "ld_library_path",
+    "DOCKER_HOST",
+    "DOCKER_CONFIG",
+    "BUILDKIT_HOST",
+    "COMPOSE_FILE",
+    "DEPLO_JOB_ID",
+  ])
+    await assert.rejects(() => make(key, "x"), /is reserved/, key);
+  await assert.rejects(() => make("TOKEN", "a\nB=c"), /single line/);
+  await assert.rejects(() => make("TOKEN", "a\rb"), /single line/);
+  await make("PATH", "/usr/local/bin:/usr/bin");
+  await make("HOME", "/app");
+});
+
 test("editing the environment replaces it wholesale", async () => {
   const job = await asOwner(() =>
     crons.createCronJob("app", "prj_1", {

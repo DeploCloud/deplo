@@ -25,6 +25,14 @@ export function validateEnv(env: EnvEntry[]): EnvEntry[] {
         `"${key}" is not a valid variable name - use letters, digits and underscores`,
       );
     }
+    // These steer the server's own tools (and the job marker), not the container.
+    if (
+      key === "DEPLO_JOB_ID" ||
+      /^(LD_|DOCKER_|BUILDKIT_|COMPOSE_)/i.test(key)
+    )
+      throw new Error(`"${key}" is reserved - give the variable another name`);
+    if (e.value != null && /[\r\n]/.test(e.value))
+      throw new Error(`"${key}" must be a single line`);
     if (seen.has(key)) throw new Error(`"${key}" is listed twice`);
     seen.add(key);
     out.push({ key, value: e.value });
