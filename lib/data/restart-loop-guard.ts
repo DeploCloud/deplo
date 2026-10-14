@@ -55,6 +55,7 @@ export async function stopLoopingWorkloads(
       containers: byId.get(app.id) ?? [],
       isComposeStack: app.source === "compose",
       path: `/apps/${app.slug}`,
+      appId: app.id,
       markStopped: () =>
         getDb()
           .update(appsTable)
@@ -105,6 +106,7 @@ interface StopTarget {
   containers: string[];
   isComposeStack: boolean;
   path: string;
+  appId?: string;
   markStopped: () => Promise<unknown>;
   activity: (message: string) => Promise<void>;
 }
@@ -129,6 +131,7 @@ async function stopOne(serverId: string, t: StopTarget): Promise<void> {
       title: `${t.name} was stopped`,
       body: STOPPED_BODY,
       path: t.path,
+      appId: t.appId,
     });
   } catch (e) {
     console.error(`[deplo] restart-loop guard could not stop ${t.name}:`, e);

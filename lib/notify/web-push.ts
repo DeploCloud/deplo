@@ -122,7 +122,7 @@ export async function deleteMemberPushSubscriptions(
 async function receivesTeamAlert(
   userId: string,
   teamId: string,
-  appId?: string,
+  appId?: string | null,
 ): Promise<boolean> {
   if (await memberHoldsTeamWide(userId, teamId, "view")) return true;
   if (!appId || !(await membershipFor(userId, teamId).catch(() => null)))
@@ -135,7 +135,7 @@ async function receivesTeamAlert(
 async function teamRecipients<T extends { userId: string }>(
   rows: T[],
   teamId: string,
-  appId?: string,
+  appId?: string | null,
 ): Promise<T[]> {
   const users = [...new Set(rows.map((r) => r.userId))];
   const ok = await Promise.all(

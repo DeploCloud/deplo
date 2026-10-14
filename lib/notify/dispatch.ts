@@ -18,7 +18,7 @@ export interface Alert {
   body: string;
   path?: string;
   // The app it is about, so push can still reach a member whose role covers only part of the team.
-  appId?: string;
+  appId?: string | null;
   dedupe?: { id: string; state: string };
 }
 

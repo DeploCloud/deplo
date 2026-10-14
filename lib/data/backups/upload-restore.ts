@@ -104,6 +104,7 @@ export async function prepareUploadRestore(input: {
         : `Restored ${resolved.label}`,
       body: problem ?? "The data is back in place.",
       path: "/storage",
+      appId: resolved.appId,
     });
     agent.close();
     uploadRestoresInFlight.delete(lockKey);

@@ -113,6 +113,7 @@ export async function restoreBackup(runId: string): Promise<void> {
       : `Restored ${target.label}`,
     body: failure ?? "The data is back in place.",
     path: "/storage",
+    appId: target.appId,
   });
   if (failure) throw new Error(failure);
 }

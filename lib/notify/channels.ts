@@ -28,7 +28,7 @@ export interface AlertMessage {
   body: string;
   url: string | null;
   ts: string;
-  appId?: string;
+  appId?: string | null;
 }
 
 export async function sendToChannel(

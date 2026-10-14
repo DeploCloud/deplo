@@ -88,6 +88,7 @@ function raiseAlert(
       title: `Cron job "${r.job.name}" finished`,
       body: `The command completed successfully${tried}.`,
       path: r.target.path,
+      appId: r.job.appId,
       dedupe: { id: dedupeId, state: "ok" },
     });
     return;
@@ -107,6 +108,7 @@ function raiseAlert(
         : `Cron job "${r.job.name}" failed`,
     body,
     path: r.target.path,
+    appId: r.job.appId,
     dedupe: { id: dedupeId, state: status },
   });
 }

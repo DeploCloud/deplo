@@ -161,6 +161,7 @@ export async function sweepDomainDns(): Promise<void> {
               ? `Its ${stray.type} record now points at ${stray.address}, not ${row.appName}'s server.`
               : `Its DNS now answers with an address that is not ${row.appName}'s server.`,
         path: `/apps/${row.slug}`,
+        appId: row.appId,
       });
     } catch (e) {
       console.warn(`[deplo] dns sweep failed for ${row.name}:`, e);

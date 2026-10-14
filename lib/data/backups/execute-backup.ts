@@ -263,6 +263,7 @@ export async function executeBackup(
     title: failure ? `Backup of ${label} failed` : `Backed up ${label}`,
     body: failure ?? `${formatBytes(finished.sizeBytes)} uploaded.`,
     path: "/storage",
+    appId: activityAppId,
   });
 
   if (failure) throw new Error(failure);
