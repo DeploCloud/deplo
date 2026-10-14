@@ -1,6 +1,6 @@
 import "server-only";
 
-import { BACKUP_RUN_MAX_MS } from "../../infra/agent-client/deadlines";
+import { RESTORE_RUN_MAX_MS } from "../../infra/agent-client/deadlines";
 import { preloadSummaries, type SummaryPreload } from "../app-graph-load";
 import type { App, AppStatus } from "../../types/app";
 import type { Deployment } from "../../types/deployment";
@@ -8,7 +8,7 @@ import type { Capability } from "../../types/identity";
 
 const STOPPING_STALE_MS = 90_000;
 
-const RESTORING_STALE_MS = BACKUP_RUN_MAX_MS;
+const RESTORING_STALE_MS = RESTORE_RUN_MAX_MS;
 
 export interface AppSummary extends App {
   latestDeployment: Deployment | null;

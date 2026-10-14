@@ -20,6 +20,7 @@ import { pumpClientStream, streamEvents } from "../stream-events";
 import type { AgentConnection } from "./connection";
 import {
   BACKUP_DEADLINE_MS,
+  RESTORE_DEADLINE_MS,
   S3_OP_DEADLINE_MS,
   STREAM_BYTES_PAUSE_ABOVE,
 } from "./deadlines";
@@ -47,6 +48,9 @@ export function backupRpc(
   const s3Deadline = () => ({
     deadline: new Date(Date.now() + S3_OP_DEADLINE_MS),
   });
+  const restoreDeadline = () => ({
+    deadline: new Date(Date.now() + RESTORE_DEADLINE_MS),
+  });
   return {
     backup(req: BackupRequest) {
       return streamEvents(client.backup(req, backupDeadline()), {
@@ -55,7 +59,7 @@ export function backupRpc(
       });
     },
     restore(req: RestoreRequest) {
-      return streamEvents(client.restore(req, backupDeadline()), {
+      return streamEvents(client.restore(req, restoreDeadline()), {
         normalise: toAgentError,
       });
     },
@@ -175,7 +179,7 @@ export function backupRpc(
       });
     },
     restoreFrom(header: RestoreChunk_Header, chunks: AsyncIterable<Buffer>) {
-      const call = client.restoreFrom(backupDeadline());
+      const call = client.restoreFrom(restoreDeadline());
       pumpClientStream<RestoreChunk>(
         call,
         { header },

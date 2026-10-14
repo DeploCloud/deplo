@@ -13,6 +13,9 @@ export const METRICS_STREAM_DEADLINE_MS = 55 * 60_000;
 export const METRICS_STREAM_MAX_QUEUED = 4;
 export const BACKUP_DEADLINE_MS = 60 * 60_000;
 export const BACKUP_RUN_MAX_MS = BACKUP_DEADLINE_MS + 30 * 60_000;
+// A restore downloads and checks the artifact BEFORE applying it, so the two no longer overlap.
+export const RESTORE_DEADLINE_MS = 2 * BACKUP_DEADLINE_MS;
+export const RESTORE_RUN_MAX_MS = RESTORE_DEADLINE_MS + 30 * 60_000;
 export const S3_OP_DEADLINE_MS = 60_000;
 export const SELF_UPDATE_TIMEOUT_MS = 2 * 60_000;
 export const SELF_UNINSTALL_TIMEOUT_MS = 60_000;

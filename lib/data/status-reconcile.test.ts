@@ -2,7 +2,10 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 
 import { reconcileStatus } from "./apps/summary";
-import { BACKUP_RUN_MAX_MS } from "../infra/agent-client/deadlines";
+import {
+  BACKUP_RUN_MAX_MS,
+  RESTORE_RUN_MAX_MS,
+} from "../infra/agent-client/deadlines";
 
 const NOW = Date.UTC(2026, 0, 1, 12, 0, 0);
 const at = (msAgo: number) => new Date(NOW - msAgo).toISOString();
@@ -29,9 +32,17 @@ test("reconcileStatus: a fresh 'restoring' stays 'restoring'", () => {
   assert.equal(reconcileStatus("restoring", at(60 * 60_000), NOW), "restoring");
 });
 
-test("reconcileStatus: a stale 'restoring' self-heals to 'error'", () => {
+// A restore checks the artifact before applying it, so it may outlive a backup's cap.
+test("reconcileStatus: a restore past the backup cap is still 'restoring'", () => {
   assert.equal(
     reconcileStatus("restoring", at(BACKUP_RUN_MAX_MS + 60_000), NOW),
+    "restoring",
+  );
+});
+
+test("reconcileStatus: a stale 'restoring' self-heals to 'error'", () => {
+  assert.equal(
+    reconcileStatus("restoring", at(RESTORE_RUN_MAX_MS + 60_000), NOW),
     "error",
   );
 });
