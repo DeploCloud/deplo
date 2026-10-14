@@ -36,8 +36,9 @@ export function isEscapingSource(src: string | null | undefined): boolean {
 export function isHostBindSource(src: string | null | undefined): boolean {
   if (!src) return false;
   if (interpolates(src)) return true;
+  // Compose expands a leading `~` to the home folder of whoever runs it on the server.
   return (
-    (src.startsWith("/") || isEscapingSource(src)) &&
+    (src.startsWith("/") || src.startsWith("~") || isEscapingSource(src)) &&
     !isFilesConventionSource(src)
   );
 }

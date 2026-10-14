@@ -102,6 +102,17 @@ test("composeHasHostBindMount: true for a .. sandbox escape (now gated)", () => 
   assert.equal(composeHasHostBindMount(yaml), true);
 });
 
+test("composeHasHostBindMount: a ~ source is the server's home folder", () => {
+  for (const vol of [
+    "- ~/.ssh:/r",
+    "- ~:/h",
+    "- type: bind\n        source: '~'\n        target: /h",
+  ]) {
+    const yaml = `services:\n  app:\n    image: nginx\n    volumes:\n      ${vol}`;
+    assert.equal(composeHasHostBindMount(yaml), true, vol);
+  }
+});
+
 test("composeHasHostBindMount: tolerant of malformed / empty input", () => {
   assert.equal(composeHasHostBindMount(""), false);
   assert.equal(composeHasHostBindMount("::: not yaml ["), false);
