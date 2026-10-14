@@ -537,6 +537,24 @@ test("a template's displaced domain gets an address of its own, not silence", as
   assert.equal(extra.port, 3900);
 });
 
+test("a template or import naming a service the stack lacks never routes to it", async () => {
+  const main = wildcardDomain("proto", "bold-otter", "10.0.0.1");
+  const app = await asUser1(() =>
+    createApp({
+      name: "Proto",
+      source: "compose",
+      repo: null,
+      compose: "services:\n  web:\n    image: nginx\n",
+      composeService: "__proto__",
+      composePort: 80,
+      autoDomain: main,
+      deploy: false,
+    }),
+  );
+  const [primary] = await loadDomainsForApp(app.id);
+  assert.equal(primary.service ?? null, null);
+});
+
 test("ensureAutoDomain regenerates when its `preferred` host belongs to another project", async () => {
   await seedApp(db, { id: "prj_x", slug: "xeno" });
   await seedApp(db, { id: "prj_y", slug: "yeti" });

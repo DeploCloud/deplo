@@ -134,7 +134,12 @@ test("an import at the cap brings its domains across with no certificate", async
     .select({ id: domainsTable.id })
     .from(domainsTable)
     .where(eq(domainsTable.appId, "prj_new"));
-  await applyImportedRoute(row!.id, route({ sourceHost: "b.sslip.io" }), notes);
+  await applyImportedRoute(
+    "prj_new",
+    row!.id,
+    route({ sourceHost: "b.sslip.io" }),
+    notes,
+  );
   assert.deepEqual(await providerOf("prj_new"), ["none:false"]);
   assert.equal(notes.length, 2);
 });

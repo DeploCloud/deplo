@@ -97,7 +97,12 @@ export async function rehostAppDomains(
       );
     const row = landed[0];
     if (row && row.name.toLowerCase() !== primary.host) {
-      await applyImportedRoute(row.id, importedRoute(primary), notes);
+      await applyImportedRoute(
+        created.id,
+        row.id,
+        importedRoute(primary),
+        notes,
+      );
       rehosted.set(primary.host, row.name);
       rehostNotes.push(
         primary.generated

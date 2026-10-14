@@ -349,3 +349,25 @@ services:
   assert.match(warnings[0], /forwardauth/);
   assert.doesNotMatch(warnings[0], /traefik\.enable/);
 });
+
+test("a route naming `__proto__` or `constructor` writes nothing onto Object.prototype", () => {
+  const doc = buildDoc(WEB_API_COMPOSE, {
+    domainRoutes: [
+      route("a.example.test", "__proto__", 80),
+      route("b.example.test", "constructor", 80),
+      route("web.example.test", "web", 80),
+    ],
+  });
+  const probe: Record<string, unknown> = {};
+  try {
+    assert.equal(probe.labels, undefined);
+    assert.equal(probe.networks, undefined);
+    assert.equal(Object.hasOwn(Object, "labels"), false);
+  } finally {
+    delete (Object.prototype as Record<string, unknown>).labels;
+    delete (Object.prototype as Record<string, unknown>).networks;
+    delete (Object as unknown as Record<string, unknown>).labels;
+    delete (Object as unknown as Record<string, unknown>).networks;
+  }
+  assert.ok(labelsOf(doc.services.web).some((l) => l.includes("web.example")));
+});

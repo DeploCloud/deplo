@@ -1,6 +1,6 @@
 import "server-only";
 
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 
 import { getDb } from "../../db/client";
 import { domains as domainsTable } from "../../db/schema/control-plane/domains";
@@ -19,7 +19,7 @@ import type {
 } from "../../types/domain";
 import { appTeamId, uniqueAutoDomainName } from "./hostname-claim";
 import { certProviderWithinQuota } from "./letsencrypt-quota";
-import { normalizePath } from "./route-config";
+import { isRoutableService, normalizePath } from "./route-config";
 
 export interface ImportedRoute {
   sourceHost: string;
@@ -29,6 +29,15 @@ export interface ImportedRoute {
   certProvider: CertProvider;
   entrypoint: DomainEntrypoint;
   service: string | null;
+}
+
+// The service comes from another panel: kept only when this stack declares it, like every other domain.
+async function routableServiceOf(
+  appId: string,
+): Promise<(service: string | null) => string | null> {
+  const compose = (await loadAppGraph(appId))?.compose ?? null;
+  return (service) =>
+    service && isRoutableService(compose, service) ? service : null;
 }
 
 export async function addImportedDomains(
@@ -45,16 +54,18 @@ export async function addImportedDomains(
   if (routes.length === 0) return landed;
   const teamId = await appTeamId(appId);
   const existing = await loadDomainsForApp(appId);
+  const routable = await routableServiceOf(appId);
   const taken = new Set(
     existing.map((d) => `${d.name}\u0000${d.pathPrefix ?? ""}`),
   );
 
   for (const route of routes) {
     const pathPrefix = normalizePath(route.pathPrefix);
+    const service = routable(route.service);
     let name = landed.get(route.sourceHost);
     if (!name) {
       name = await uniqueAutoDomainName(
-        route.service ? `${opts.slug}-${route.service}` : opts.slug,
+        service ? `${opts.slug}-${service}` : opts.slug,
         opts.ip,
       );
       landed.set(route.sourceHost, name);
@@ -78,7 +89,7 @@ export async function addImportedDomains(
       ssl: certProvider !== "none",
       source: "auto",
       port: route.port,
-      ...(route.service ? { service: route.service } : {}),
+      ...(service ? { service } : {}),
       certProvider,
       entrypoint: route.entrypoint,
       ...(pathPrefix ? { pathPrefix } : {}),
@@ -94,6 +105,7 @@ export async function addImportedDomains(
 }
 
 export async function applyImportedRoute(
+  appId: string,
   domainId: string,
   route: ImportedRoute,
   notes?: string[],
@@ -106,7 +118,7 @@ export async function applyImportedRoute(
       certProvider: domainsTable.certProvider,
     })
     .from(domainsTable)
-    .where(eq(domainsTable.id, domainId));
+    .where(and(eq(domainsTable.id, domainId), eq(domainsTable.appId, appId)));
   if (!row) return;
   const certProvider =
     row.certProvider === route.certProvider
@@ -116,11 +128,12 @@ export async function applyImportedRoute(
           route.certProvider,
         );
   if (certProvider !== route.certProvider) notes?.push(capNote(row.name));
+  const routable = await routableServiceOf(appId);
   await getDb()
     .update(domainsTable)
     .set({
       port: route.port,
-      service: route.service,
+      service: routable(route.service),
       certProvider,
       entrypoint: route.entrypoint,
       pathPrefix: pathPrefix || null,
@@ -128,7 +141,7 @@ export async function applyImportedRoute(
       ssl: certProvider !== "none",
       importedFrom: route.sourceHost,
     })
-    .where(eq(domainsTable.id, domainId));
+    .where(and(eq(domainsTable.id, domainId), eq(domainsTable.appId, appId)));
 }
 
 const capNote = (name: string) =>

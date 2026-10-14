@@ -48,6 +48,7 @@ import type { EnvTarget, EnvVar } from "../../types/env";
 import { startDeployment } from "../../deploy/build/deploy-start";
 import { ensureAutoDomain, ensureExtraDomain } from "../domains/auto-domains";
 import { isHostnameClaim } from "../domains/hostname-claim";
+import { isRoutableService } from "../domains/route-config";
 import {
   blueprintWantsTls,
   instanceHost,
@@ -480,14 +481,19 @@ export async function createApp(input: CreateAppInput): Promise<AppSummary> {
   await syncAppWebhook(project.repo).catch(() => {});
 
   const ip = serverIp;
-  const namedPort =
-    input.composeService && input.compose
-      ? composeServicePort(input.compose, input.composeService)
+  // Named by a template or another panel, so held to the rule every domain is.
+  const composeService =
+    input.composeService &&
+    isRoutableService(input.compose, input.composeService)
+      ? input.composeService
       : null;
+  const namedPort = composeService
+    ? composeServicePort(input.compose ?? null, composeService)
+    : null;
   const detected =
-    input.composeService && (input.composePort ?? namedPort)
+    composeService && (input.composePort ?? namedPort)
       ? {
-          service: input.composeService,
+          service: composeService,
           port: (input.composePort ?? namedPort)!,
         }
       : input.compose

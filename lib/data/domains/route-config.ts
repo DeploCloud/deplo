@@ -38,6 +38,17 @@ export function composeServiceNames(compose?: string | null): string[] {
   }
 }
 
+// What every domain path holds a service to: declared by this stack, and not a name Deplo reserves.
+export function isRoutableService(
+  compose: string | null | undefined,
+  service: string,
+): boolean {
+  return (
+    composeServiceNames(compose).includes(service) &&
+    !composeServiceReservedClaim(compose, service)
+  );
+}
+
 export function resolveApp(
   raw: string | undefined,
   project: { compose: string | null },

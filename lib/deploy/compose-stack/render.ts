@@ -55,7 +55,12 @@ export function buildComposeStack(input: ComposeStackInput): string {
 
   delete doc.version;
 
-  const services = doc.services;
+  // No prototype: a stored service name like `__proto__` must never resolve to Object.prototype.
+  const services: Record<string, App> = Object.assign(
+    Object.create(null),
+    doc.services,
+  );
+  doc.services = services;
 
   // Stamped on EVERY service, or sidecars are invisible to the container count, console and teardown.
   const tracking = [

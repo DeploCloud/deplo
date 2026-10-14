@@ -21,6 +21,7 @@ import {
 } from "./app-graph-test-helpers";
 import {
   addImportedDomains,
+  applyImportedRoute,
   dismissImportedDomains,
   type ImportedRoute,
 } from "./domains/imported-routes";
@@ -47,7 +48,12 @@ beforeEach(async () => {
     users: [{ id: USER_1, teamId: TEAM_A, role: "owner" }],
   });
   await seedServer(db);
-  await seedApp(db, { id: "prj_web", slug: "web" });
+  await seedApp(db, {
+    id: "prj_web",
+    slug: "web",
+    source: "compose",
+    compose: "services:\n  web:\n    image: nginx\n  api:\n    image: api\n",
+  });
 });
 
 const route = (over: Partial<ImportedRoute> = {}): ImportedRoute => ({
@@ -210,4 +216,33 @@ test("an imported path is stored canonical, backtick and all", async () => {
   );
   const [row] = await rows();
   assert.equal(row.pathPrefix, "/api) || Host(victim.example.com");
+});
+
+test("a service the stack does not declare is dropped, never stored", async () => {
+  await addImportedDomains(
+    "prj_web",
+    [
+      route({ sourceHost: "a.sslip.io", service: "__proto__" }),
+      route({ sourceHost: "b.sslip.io", service: "constructor" }),
+      route({ sourceHost: "c.sslip.io", service: "worker" }),
+    ],
+    { slug: "web", ip: IP },
+  );
+  const all = await rows();
+  assert.equal(all.length, 3);
+  assert.deepEqual(
+    all.map((d) => d.service),
+    [null, null, null],
+  );
+
+  await applyImportedRoute(
+    "prj_web",
+    all[0].id,
+    route({ sourceHost: "a.sslip.io", service: "__proto__" }),
+  );
+  const [row] = await db
+    .select()
+    .from(domainsTable)
+    .where(eq(domainsTable.id, all[0].id));
+  assert.equal(row.service, null);
 });
