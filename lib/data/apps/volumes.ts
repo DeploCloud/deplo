@@ -2,7 +2,7 @@ import "server-only";
 
 import { eq } from "drizzle-orm";
 
-import { getDb } from "../../db/client";
+import { getDb, type DbTx } from "../../db/client";
 import {
   apps as appsTable,
   appVolumes as appVolumesTable,
@@ -23,6 +23,7 @@ import { loadAppGraph } from "../app-graph-load";
 import { volumesToRows } from "../app-graph-rows/app";
 import { requireAppCapability } from "../node-access";
 import { recordActivity } from "../activity";
+import { hostNameClaims, volumeNameClash } from "../host-name-claims";
 import { usesComposeStack } from "../../utils";
 import type { VolumeMount } from "../../types/container";
 
@@ -175,6 +176,25 @@ export function validateVolumes(
   return out.length ? out : null;
 }
 
+// Only names this save adds are checked, so an app already holding one keeps saving.
+async function assertVolumeNamesFree(
+  app: { id: string; slug: string; volumes?: VolumeMount[] | null },
+  next: VolumeMount[],
+  tx: DbTx,
+): Promise<void> {
+  const named = (vs: VolumeMount[]) =>
+    vs.filter((v) => kindOf(v) === "named").map((v) => v.name ?? "");
+  const had = new Set(named(app.volumes ?? []));
+  const added = named(next).filter((n) => n && !had.has(n));
+  if (added.length === 0) return;
+  const claims = await hostNameClaims(tx);
+  const taken = added.find((n) => volumeNameClash(app, n, claims));
+  if (taken)
+    throw new Error(
+      `The volume name "${taken}" clashes with another app's storage. Pick a different name.`,
+    );
+}
+
 export async function setAppVolumes(
   id: string,
   volumes: VolumeMount[],
@@ -196,6 +216,7 @@ export async function setAppVolumes(
       ? composeServiceNames(p.compose)
       : null;
     const validated = validateVolumes(volumes, p.mounts, composeServices, opts);
+    await assertVolumeNamesFree(p, validated ?? [], tx);
     await tx.delete(appVolumesTable).where(eq(appVolumesTable.appId, id));
     const rows = volumesToRows(id, validated);
     if (rows.length > 0) await tx.insert(appVolumesTable).values(rows);

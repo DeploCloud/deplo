@@ -9,7 +9,6 @@ import {
   appBuildMethodSettings as appBuildMethodSettingsTable,
   appMounts as appMountsTable,
 } from "../../db/schema/control-plane/apps";
-import { pendingTeardowns as pendingTeardownsTable } from "../../db/schema/control-plane/deployments";
 import { getCurrentUser } from "../../auth/current-user";
 import { newId, nowIso } from "../../ids";
 import { requireCapability, requireMembership } from "../../membership";
@@ -24,7 +23,8 @@ import {
 } from "../name-clash";
 import { renameClashingServices } from "../../migration/map/compose-rename";
 import { renameHostTokens } from "../../migration/map/env";
-import { appSlugFromDeployKey, stackName } from "../../deploy/deploy-key";
+import { stackName } from "../../deploy/deploy-key";
+import { appSlugTaken, hostNameClaims } from "../host-name-claims";
 import {
   composeNamesOnNetwork,
   composeServicePort,
@@ -241,21 +241,13 @@ export async function createApp(input: CreateAppInput): Promise<AppSummary> {
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "");
 
-  const existing = new Set(
-    (await getDb().select({ slug: appsTable.slug }).from(appsTable)).map(
-      (r) => r.slug,
-    ),
-  );
-
-  // A slug still awaiting teardown stays taken, or the new app adopts the old one's volumes and files.
-  for (const p of await getDb()
-    .select({ deployKey: pendingTeardownsTable.deployKey })
-    .from(pendingTeardownsTable))
-    existing.add(appSlugFromDeployKey(p.deployKey));
+  // A pending teardown, a database's stack or another app's volume under the slug keeps it taken,
+  // or the new app adopts their data on the host.
+  const claims = await hostNameClaims();
   const slugRoot = slugBase || `project-${newId("").slice(1, 6)}`;
 
   const taken = (s: string): boolean =>
-    existing.has(s) || isReservedSharedName(stackName(s));
+    appSlugTaken(s, claims) || isReservedSharedName(stackName(s));
   let i = 1;
   let slug = slugRoot;
   while (taken(slug)) slug = `${slugRoot}-${i++}`;

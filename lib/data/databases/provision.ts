@@ -5,7 +5,6 @@ import { and, eq } from "drizzle-orm";
 import { assertServerAccessibleTx } from "../servers/team-access";
 import { getDb } from "../../db/client";
 import { databases as databasesTable } from "../../db/schema/control-plane/databases";
-import { pendingTeardowns as pendingTeardownsTable } from "../../db/schema/control-plane/deployments";
 import { databaseToRow } from "../backup-rows";
 import { getCurrentUser } from "../../auth/current-user";
 import { newId, nowIso } from "../../ids";
@@ -16,6 +15,7 @@ import { encryptSecret, randomToken } from "../../crypto";
 import { connectAgent } from "../../infra/agent-client/connect";
 import { buildConnectionString } from "../../deploy/database-compose";
 import { assertNoNameClash, withNetworkLock } from "../name-clash";
+import { databaseHostClash, hostNameClaims } from "../host-name-claims";
 import { environmentInTeam } from "../environments";
 import {
   MIN_USER_PORT,
@@ -90,34 +90,11 @@ export async function createDatabase(input: {
   if (nameTaken.length > 0)
     throw new Error(`A database named "${name}" already exists in this team.`);
 
-  const slugCollision = await getDb()
-    .select({ id: databasesTable.id })
-    .from(databasesTable)
-    .where(
-      and(
-        eq(databasesTable.serverId, server.id),
-        eq(databasesTable.host, `db-${slug}`),
-      ),
-    )
-    .limit(1);
-  if (slugCollision.length > 0)
+  // db-<slug> is a stack on its server, and app slugs and volume names share that namespace.
+  const clash = databaseHostClash(`db-${slug}`, server, await hostNameClaims());
+  if (clash)
     throw new Error(
-      `A database stack named "db-${slug}" already exists on ${server.name}. Database stacks share a per-host namespace - pick a different name.`,
-    );
-  // A deleted database the host has not confirmed still owns this name and its data volume there.
-  const pending = await getDb()
-    .select({ id: pendingTeardownsTable.id })
-    .from(pendingTeardownsTable)
-    .where(
-      and(
-        eq(pendingTeardownsTable.serverId, server.id),
-        eq(pendingTeardownsTable.deployKey, `db-${slug}`),
-      ),
-    )
-    .limit(1);
-  if (pending.length > 0)
-    throw new Error(
-      `A database stack named "db-${slug}" is still being removed from ${server.name}. Pick a different name, or wait for that removal to finish.`,
+      `${clash[0].toUpperCase()}${clash.slice(1)}. Pick a different name.`,
     );
 
   let exposedPort: number | null = null;
