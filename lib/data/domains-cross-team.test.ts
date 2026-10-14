@@ -7,6 +7,7 @@ import { makeTestDb, type TestDb } from "../db/test-harness";
 import { __setTestDb, __resetTestDb } from "../db/client";
 import { eq } from "drizzle-orm";
 import { apps as appsTable } from "../db/schema/control-plane/apps";
+import { domains as domainsTable } from "../db/schema/control-plane/domains";
 import { runWithIdentity } from "../auth/request-context";
 import { seedIdentity, TEAM_A, TEAM_B } from "./identity-test-helpers";
 import {
@@ -14,7 +15,7 @@ import {
   seedServer,
   TRUNCATE_PROJECT_GRAPH,
 } from "./app-graph-test-helpers";
-import { ensureAutoDomain } from "./domains/auto-domains";
+import { ensureAutoDomain, ensureExtraDomain } from "./domains/auto-domains";
 import { addDomain, updateDomain } from "./domains/crud";
 import {
   __setDnsResolve4ForTest,
@@ -291,3 +292,64 @@ test("an auto domain a template prefers is refused under another team's preview 
     /another team's preview domain/,
   );
 });
+
+test("a create's extra domain under another team's preview zone lands on a generated host", async () => {
+  await db
+    .update(appsTable)
+    .set({ previewBaseDomain: "preview.victim.example" })
+    .where(eq(appsTable.id, "prj_victim"));
+  await asAttacker(() =>
+    ensureExtraDomain("prj_attacker", "blog-pr-7.preview.victim.example", {
+      port: 3000,
+      pathPrefix: "/login",
+      slug: "attacker",
+      ip: HOST_IP,
+    }),
+  );
+  const rows = await db
+    .select({ name: domainsTable.name })
+    .from(domainsTable)
+    .where(eq(domainsTable.appId, "prj_attacker"));
+  assert.equal(rows.length, 1);
+  assert.match(rows[0]!.name, /\.deplo\.site$/);
+});
+
+const withPanelAt = async (url: string, fn: () => Promise<void>) => {
+  const prev = process.env.DEPLO_PUBLIC_URL;
+  process.env.DEPLO_PUBLIC_URL = url;
+  try {
+    await fn();
+  } finally {
+    process.env.DEPLO_PUBLIC_URL = prev;
+  }
+};
+const allNames = async () =>
+  (await db.select({ name: domainsTable.name }).from(domainsTable)).map(
+    (r) => r.name,
+  );
+
+test("a www pairing can't add the panel's own address", () =>
+  withPanelAt("https://www.example.com", async () => {
+    await assert.rejects(
+      asAttacker(() =>
+        addDomain("prj_attacker", "example.com", { www: "toThis" }),
+      ),
+      /this Deplo's own address/,
+    );
+    assert.ok(!(await allNames()).includes("www.example.com"));
+  }));
+
+test("nor can a rename or a www edit reach it through the pair", () =>
+  withPanelAt("https://www.example.com", async () => {
+    const own = await asAttacker(() =>
+      addDomain("prj_attacker", "other.com", { www: "toThis" }),
+    );
+    await asAttacker(() => updateDomain(own.id, { name: "example.com" }));
+    assert.ok((await allNames()).includes("www.other.com"), "the pair stays");
+    await asAttacker(() => updateDomain(own.id, { www: "none" }));
+    await assert.rejects(
+      asAttacker(() => updateDomain(own.id, { www: "toCounterpart" })),
+      /this Deplo's own address/,
+    );
+    assert.ok(!(await allNames()).includes("www.example.com"));
+  }));

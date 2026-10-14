@@ -84,6 +84,37 @@ export function assertNotPanelHost(name: string): void {
     );
 }
 
+/** The gate every writer of `domains.name` passes: not the panel's address, not another team's hostname or preview zone. */
+export async function assertHostnameClaimable(
+  name: string,
+  teamId: string,
+  exceptDomainId: string | null = null,
+): Promise<void> {
+  assertNotPanelHost(name);
+  await assertHostnameNotAnotherTeams(name, teamId, exceptDomainId);
+}
+
+export async function hostnameClaimable(
+  name: string,
+  teamId: string,
+): Promise<boolean> {
+  return assertHostnameClaimable(name, teamId).then(
+    () => true,
+    () => false,
+  );
+}
+
+// For the writers that run inside a create or an import: the claim is the app's team, not the caller's.
+export async function appTeamId(appId: string): Promise<string> {
+  const [row] = await getDb()
+    .select({ teamId: appsTable.teamId })
+    .from(appsTable)
+    .where(eq(appsTable.id, appId))
+    .limit(1);
+  if (!row) throw new Error("App not found");
+  return row.teamId;
+}
+
 export async function assertPreviewBaseNotAnotherTeams(
   base: string,
   teamId: string,

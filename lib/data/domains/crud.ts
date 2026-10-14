@@ -37,11 +37,7 @@ import type {
   Domain,
   DomainEntrypoint,
 } from "../../types/domain";
-import {
-  DOMAIN_RE,
-  assertHostnameNotAnotherTeams,
-  assertNotPanelHost,
-} from "./hostname-claim";
+import { DOMAIN_RE, assertHostnameClaimable } from "./hostname-claim";
 import { appServerAddresses, checkDomainDns } from "./dns-check";
 import { assertTeamLetsencryptQuota } from "./letsencrypt-quota";
 import {
@@ -134,7 +130,6 @@ async function addDomainUnlocked(
     .replace(/^https?:\/\//, "")
     .replace(/\/$/, "");
   if (!DOMAIN_RE.test(clean)) throw new Error("Enter a valid domain name");
-  assertNotPanelHost(clean);
   const project = await loadAppGraph(appId);
   if (!project || project.teamId !== membership.teamId)
     throw new Error("App not found");
@@ -155,7 +150,7 @@ async function addDomainUnlocked(
     throw new Error(
       pathPrefix ? "Domain + path already added" : "Domain already added",
     );
-  await assertHostnameNotAnotherTeams(clean, membership.teamId, null);
+  await assertHostnameClaimable(clean, membership.teamId);
 
   await assertTeamLetsencryptQuota(
     membership.teamId,
@@ -259,7 +254,6 @@ async function updateDomainUnlocked(
     if (!DOMAIN_RE.test(nextName)) throw new Error("Enter a valid domain name");
   }
   const renamed = nextName !== current.name;
-  if (renamed) assertNotPanelHost(nextName);
   const nextPath =
     patch.pathPrefix !== undefined
       ? normalizePath(patch.pathPrefix)
@@ -288,7 +282,7 @@ async function updateDomainUnlocked(
       nextPath ? "Domain + path already added" : "Domain already added",
     );
   // A rename is the other way onto another team's hostname, so it gets the same refusal addDomain makes.
-  await assertHostnameNotAnotherTeams(nextName, membership.teamId, id);
+  await assertHostnameClaimable(nextName, membership.teamId, id);
 
   const next: Domain = { ...current, name: nextName };
   if (patch.port !== undefined) next.port = patch.port ?? undefined;
@@ -350,7 +344,13 @@ async function updateDomainUnlocked(
       await tx.insert(domainCorsOriginsTable).values(corsRows);
   });
   const dom = next;
-  if (renamed) await repointRedirects(dom.appId, current.name, dom.name);
+  if (renamed)
+    await repointRedirects(
+      dom.appId,
+      current.name,
+      dom.name,
+      membership.teamId,
+    );
   if (patch.www !== undefined)
     await applyWwwRedirect(dom, patch.www, membership.teamId);
   await syncProductionUrl(dom.appId);

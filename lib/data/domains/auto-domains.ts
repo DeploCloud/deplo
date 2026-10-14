@@ -3,7 +3,6 @@ import "server-only";
 import { eq } from "drizzle-orm";
 
 import { getDb } from "../../db/client";
-import { apps as appsTable } from "../../db/schema/control-plane/apps";
 import { domains as domainsTable } from "../../db/schema/control-plane/domains";
 import { newId, nowIso } from "../../ids";
 import {
@@ -23,10 +22,10 @@ import {
 import type { CertProvider, Domain } from "../../types/domain";
 import {
   DOMAIN_RE,
-  assertHostnameNotAnotherTeams,
-  assertNotPanelHost,
+  appTeamId,
+  assertHostnameClaimable,
   domainNameExists,
-  isPanelHost,
+  hostnameClaimable,
   normalizePreferredHost,
   uniqueAutoDomainName,
 } from "./hostname-claim";
@@ -69,6 +68,7 @@ export async function ensureAutoDomain(
     return primary.name;
   }
 
+  const teamId = await appTeamId(appId);
   const preferred = normalizePreferredHost(opts.preferred) || undefined;
   const preferredOk =
     !!preferred &&
@@ -77,16 +77,7 @@ export async function ensureAutoDomain(
   let name: string;
   if (preferredOk && !(await domainNameExists(preferred!, preferredPath))) {
     // A preferred host gets what a typed one gets: not the panel's address, not a name another team routes.
-    assertNotPanelHost(preferred!);
-    const owner = (
-      await getDb()
-        .select({ teamId: appsTable.teamId })
-        .from(appsTable)
-        .where(eq(appsTable.id, appId))
-        .limit(1)
-    )[0];
-    if (owner)
-      await assertHostnameNotAnotherTeams(preferred!, owner.teamId, null);
+    await assertHostnameClaimable(preferred!, teamId);
     name = preferred!;
   } else if (opts.ip) {
     name = await uniqueAutoDomainName(opts.slug, opts.ip);
@@ -158,9 +149,10 @@ export async function ensureExtraDomain(
     )
   )
     return;
+  const teamId = await appTeamId(appId);
   const usable =
     wanted &&
-    !isPanelHost(wanted) &&
+    (await hostnameClaimable(wanted, teamId)) &&
     !(await domainNameExists(wanted, pathPrefix));
   if (!usable && !route.ip) return;
   const name = usable

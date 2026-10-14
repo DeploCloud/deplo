@@ -13,7 +13,11 @@ import {
   type WwwRedirect,
 } from "../../www-redirect";
 import type { Domain } from "../../types/domain";
-import { domainNameExists } from "./hostname-claim";
+import {
+  assertHostnameClaimable,
+  domainNameExists,
+  hostnameClaimable,
+} from "./hostname-claim";
 import { appServerAddresses, checkDomainDns } from "./dns-check";
 import { assertTeamLetsencryptQuota } from "./letsencrypt-quota";
 
@@ -106,6 +110,7 @@ export async function repointRedirects(
   appId: string,
   oldName: string,
   newName: string,
+  teamId: string,
 ): Promise<void> {
   const dependents = (await loadDomainsForApp(appId)).filter(
     (d) => d.redirectTo === oldName,
@@ -118,7 +123,8 @@ export async function repointRedirects(
       dep.name === wwwCounterpart(oldName) &&
       nextCounterpart != null &&
       nextCounterpart !== dep.name &&
-      !(await domainNameExists(nextCounterpart));
+      !(await domainNameExists(nextCounterpart)) &&
+      (await hostnameClaimable(nextCounterpart, teamId));
     if (!rename) {
       await writeRedirectTo(dep.id, newName);
       continue;
@@ -168,6 +174,7 @@ async function insertPairedDomain(
     throw new Error(
       `${name} is already routed by another app - remove it there first.`,
     );
+  await assertHostnameClaimable(name, opts.teamId);
   const status = await checkDomainDns(
     name,
     await appServerAddresses(from.appId),
