@@ -72,7 +72,7 @@ export const ImportRunRef = builder
   >("MigrationRun")
   .implement({
     description:
-      "One import, kept after the tab that started it is gone. The API key is never stored.",
+      "One import, kept after the tab that started it is gone. The API key is stored encrypted only for as long as the run needs it, then wiped.",
     fields: (t) => ({
       id: t.exposeString("id"),
       platform: t.field({
