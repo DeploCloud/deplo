@@ -216,3 +216,24 @@ test("per-route mode applies PathPrefix + stripprefix too (compose path)", () =>
   );
   assert.ok(1_000_000 + 4 > "Host(`app.com`)".length);
 });
+
+test("a $ in a path reaches Traefik literally, never as a compose variable", () => {
+  const labels = traefikRouterLabels({
+    baseKey: "deplo-app",
+    routes: [
+      {
+        name: "app.com",
+        port: null,
+        pathPrefix: "/${SECRET}",
+        stripPrefix: true,
+      },
+    ],
+    defaultPort: 3000,
+    certResolver: CR,
+  });
+  assert.ok(labels.some((l) => l.endsWith("PathPrefix(`/$${SECRET}`)")));
+  assert.ok(
+    labels.some((l) => l.endsWith(".stripprefix.prefixes=/$${SECRET}")),
+  );
+  assert.ok(labels.some((l) => l.endsWith(`.priority=${1_000_000 + 10}`)));
+});

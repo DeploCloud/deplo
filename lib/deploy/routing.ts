@@ -25,6 +25,9 @@ export interface RouterLabelOptions {
 
 const PATH_PRIORITY_BASE = 1_000_000;
 
+// Every label lands in compose YAML, and compose reads a `$` as a variable from the app's env-file.
+const composeLiteral = (s: string): string => s.replace(/\$/g, "$$$$");
+
 export function traefikRouterLabels(opts: RouterLabelOptions): string[] {
   if (opts.routes.length === 0) return ["traefik.enable=false"];
 
@@ -37,7 +40,7 @@ export function traefikRouterLabels(opts: RouterLabelOptions): string[] {
   if (opts.basicAuth && opts.basicAuth.users) {
     const { name, users } = opts.basicAuth;
     labels.push(
-      `traefik.http.middlewares.${name}.basicauth.users=${users.replace(/\$/g, "$$$$")}`,
+      `traefik.http.middlewares.${name}.basicauth.users=${composeLiteral(users)}`,
     );
     routes = opts.routes.map((r) => ({
       ...r,
@@ -216,7 +219,7 @@ function routerBlock(
 ): string[] {
   const hostRule = hosts.map((d) => `Host(\`${d}\`)`).join(" || ");
   const rule = sig.pathPrefix
-    ? `(${hostRule}) && PathPrefix(\`${sig.pathPrefix}\`)`
+    ? `(${hostRule}) && PathPrefix(\`${composeLiteral(sig.pathPrefix)}\`)`
     : hostRule;
   const stripName = sig.stripPrefix ? `${key}-stripprefix` : null;
   const redirectName = sig.redirectTo ? `${key}-redirect` : null;
@@ -250,16 +253,13 @@ function routerBlock(
     ...(redirectName
       ? [
           `traefik.http.middlewares.${redirectName}.redirectregex.regex=^https?://[^/]+(.*)`,
-          `traefik.http.middlewares.${redirectName}.redirectregex.replacement=${`${sig.redirectTo}\${1}`.replace(
-            /\$/g,
-            "$$$$",
-          )}`,
+          `traefik.http.middlewares.${redirectName}.redirectregex.replacement=${composeLiteral(`${sig.redirectTo}\${1}`)}`,
           `traefik.http.middlewares.${redirectName}.redirectregex.permanent=true`,
         ]
       : []),
     ...(stripName
       ? [
-          `traefik.http.middlewares.${stripName}.stripprefix.prefixes=${sig.pathPrefix}`,
+          `traefik.http.middlewares.${stripName}.stripprefix.prefixes=${composeLiteral(sig.pathPrefix)}`,
         ]
       : []),
     ...(headersName ? headerLabels(headersName, sig) : []),
