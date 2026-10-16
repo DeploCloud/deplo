@@ -22,6 +22,8 @@ import { FleetList, type FleetRow } from "@/components/monitoring/fleet-list";
 import { CleanupNowButton } from "@/components/monitoring/cleanup-now-button";
 import { ManageServerButton } from "@/components/monitoring/host-chip";
 import { ServerPicker } from "@/components/monitoring/server-picker";
+import { ServerWorkloads } from "@/components/servers/server-workloads";
+import { PageHeader } from "@/components/shared/page-header";
 import {
   ChartCard,
   InfoItem,
@@ -367,6 +369,17 @@ export function MonitoringDashboard({
             </ChartCard>
           </div>
         </>
+      )}
+
+      {canManageServers && (
+        <section className="space-y-3">
+          <PageHeader
+            level="section"
+            title="Apps"
+            description={serverLabel(selected)}
+          />
+          <ServerWorkloads key={selected.id} serverId={selected.id} />
+        </section>
       )}
 
       {showFleet && (

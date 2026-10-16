@@ -77,29 +77,60 @@ const FACETS = ["team", "status", "type"] as const;
 // Hidden below md so a phone keeps name, status and team.
 const WIDE = "hidden md:table-cell";
 
-export function ServerAppsTab({
+export function ServerWorkloads({
   serverId,
   initial,
 }: {
   serverId: string;
-  initial: ServerWorkload[];
+  initial?: ServerWorkload[];
 }) {
-  const [rows, setRows] = React.useState(initial);
+  const [rows, setRows] = React.useState(initial ?? null);
+  const [error, setError] = React.useState<string | null>(null);
   const [query, setQuery] = React.useState("");
   const [picked, setPicked] = useUrlFacets(FACETS);
   const [open, setOpen] = React.useState<Set<string>>(() => new Set());
 
   React.useEffect(() => {
-    const timer = setInterval(async () => {
-      if (document.visibilityState !== "visible") return;
+    let active = true;
+    let busy = false;
+    const controller = new AbortController();
+    async function refresh() {
+      if (document.visibilityState !== "visible" || busy) return;
+      busy = true;
       const res = await gqlAction<{ serverWorkloads: ServerWorkload[] }>(
         WORKLOADS,
         { id: serverId },
+        undefined,
+        { signal: controller.signal },
       );
-      if (res.ok && res.data) setRows(res.data.serverWorkloads);
-    }, POLL_MS);
-    return () => clearInterval(timer);
+      busy = false;
+      if (!active) return;
+      if (res.ok && res.data) {
+        setRows(res.data.serverWorkloads);
+        setError(null);
+      } else if (!res.ok) {
+        setError(res.error);
+      }
+    }
+    void refresh();
+    const timer = setInterval(refresh, POLL_MS);
+    return () => {
+      active = false;
+      controller.abort();
+      clearInterval(timer);
+    };
   }, [serverId]);
+
+  if (rows === null)
+    return (
+      <div role={error ? "alert" : "status"}>
+        <EmptyState
+          icon={AppWindow}
+          title={error ? "Could not load apps" : "Loading apps"}
+          description={error ?? "Reading apps and databases on this server."}
+        />
+      </div>
+    );
 
   if (rows.length === 0)
     return (
@@ -132,6 +163,11 @@ export function ServerAppsTab({
 
   return (
     <div className="space-y-3">
+      {error && (
+        <p role="alert" className="text-sm text-destructive">
+          {error}
+        </p>
+      )}
       <ListToolbar
         query={query}
         onQuery={setQuery}
@@ -173,7 +209,7 @@ export function ServerAppsTab({
       />
 
       <div className="overflow-x-auto rounded-xl border border-border">
-        <Table>
+        <Table className="whitespace-nowrap">
           <TableHeader>
             <TableRow>
               <TableHead className="w-8" />
@@ -225,9 +261,9 @@ function WorkloadRows({
   const engine = w.engine as DatabaseType | null;
   const logo = w.logo ?? (engine ? DB_LOGOS[engine] : null);
   const name = (
-    <span className="flex max-w-24 min-w-0 items-center gap-2.5 sm:max-w-36">
+    <span className="flex items-center gap-2.5">
       <AppLogo logo={logo ?? null} tone={w.logoTone} size={24} />
-      <span className="truncate font-medium">{w.name}</span>
+      <span className="font-medium">{w.name}</span>
     </span>
   );
   return (
@@ -270,13 +306,11 @@ function WorkloadRows({
               avatarUrl={w.teamAvatarUrl}
               size="xs"
             />
-            <Clip className="max-w-24">{w.teamName}</Clip>
+            {w.teamName}
           </span>
         </TableCell>
         <TableCell className={cn(WIDE, "text-muted-foreground")}>
-          <Clip className="max-w-24">
-            {[w.project, w.environment].filter(Boolean).join(" / ") || "-"}
-          </Clip>
+          {[w.project, w.environment].filter(Boolean).join(" / ") || "-"}
         </TableCell>
         <TableCell>
           <StatusIndicator status={w.status} detail={null} badge />
@@ -301,9 +335,7 @@ function ContainerRow({ c }: { c: WorkloadContainer }) {
   return (
     <TableRow className="bg-surface hover:bg-surface">
       <TableCell />
-      <TableCell className="pl-11 font-mono text-xs">
-        <Clip className="max-w-24 sm:max-w-36">{c.name}</Clip>
-      </TableCell>
+      <TableCell className="pl-11 font-mono text-xs">{c.name}</TableCell>
       <TableCell className="hidden sm:table-cell" />
       <TableCell className="hidden sm:table-cell" />
       <TableCell className={WIDE} />
@@ -349,15 +381,4 @@ function Usage({
       </TableCell>
     </>
   );
-}
-
-// A td ignores max-width in an auto-layout table, so the cap lives on a block inside it.
-function Clip({
-  className,
-  children,
-}: {
-  className: string;
-  children: React.ReactNode;
-}) {
-  return <span className={cn("block truncate", className)}>{children}</span>;
 }

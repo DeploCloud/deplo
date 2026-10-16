@@ -55,7 +55,7 @@ import { ServerMaintenanceTab } from "./maintenance-tab";
 import { ServerCleanupTab } from "./cleanup-tab";
 import { ServerAdvancedTab } from "./advanced-tab/server-advanced-tab";
 import { ServerCertificatesTab } from "./certificates-tab";
-import { ServerAppsTab } from "./apps-tab";
+import { ServerWorkloads } from "@/components/servers/server-workloads";
 import { DocsLink } from "@/components/ui/docs-link";
 
 export type ServerSummary = {
@@ -159,7 +159,7 @@ export function ServerDetailTabs({
         <OverviewTab server={server} />
       </TabsContent>
       <TabsContent value="apps" className="space-y-4 pt-4">
-        <ServerAppsTab serverId={server.id} initial={workloads} />
+        <ServerWorkloads serverId={server.id} initial={workloads} />
       </TabsContent>
       <TabsContent value="access" className="space-y-4 pt-4">
         <AccessTab
