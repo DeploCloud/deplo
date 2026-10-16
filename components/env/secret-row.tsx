@@ -17,7 +17,7 @@ export function SecretRow({
         <KeyRound className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
         <div>
           <p className="text-sm leading-none font-medium">Secret</p>
-          <p className="mt-1.5 text-xs text-muted-foreground">
+          <p className="mt-1.5 text-xs text-balance text-muted-foreground">
             Hides the value in the UI after saving so it can never be read back
             or edited again.
           </p>
