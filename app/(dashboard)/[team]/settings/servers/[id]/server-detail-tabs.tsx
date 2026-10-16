@@ -27,7 +27,11 @@ import {
   UnderlineTabsList,
   UnderlineTabsTrigger,
 } from "@/components/ui/tabs";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
+import {
+  SettingGroup,
+  SettingItem,
+} from "@/components/settings/deplo-settings-panel/setting-item";
 import {
   Dialog,
   DialogContent,
@@ -38,7 +42,6 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { FieldLabel } from "@/components/ui/info-tip";
 import { gqlAction } from "@/lib/graphql-client";
 import {
   ServerTeamAccess,
@@ -83,7 +86,6 @@ export type ServerSummary = {
 const TABS = [
   "overview",
   "apps",
-  "access",
   "certificates",
   "maintenance",
   "cleanup",
@@ -133,10 +135,6 @@ export function ServerDetailTabs({
           <AppWindow className="size-4" />
           Apps
         </UnderlineTabsTrigger>
-        <UnderlineTabsTrigger value="access">
-          <Users className="size-4" />
-          Access
-        </UnderlineTabsTrigger>
         <UnderlineTabsTrigger value="certificates">
           <ShieldCheck className="size-4" />
           Certificates
@@ -156,17 +154,14 @@ export function ServerDetailTabs({
       </UnderlineTabsList>
 
       <TabsContent value="overview" className="space-y-4 pt-4">
-        <OverviewTab server={server} />
-      </TabsContent>
-      <TabsContent value="apps" className="space-y-4 pt-4">
-        <ServerWorkloads serverId={server.id} initial={workloads} />
-      </TabsContent>
-      <TabsContent value="access" className="space-y-4 pt-4">
-        <AccessTab
+        <OverviewTab
           server={server}
           teams={teams}
           accessTeamIds={accessTeamIds}
         />
+      </TabsContent>
+      <TabsContent value="apps" className="space-y-4 pt-4">
+        <ServerWorkloads serverId={server.id} initial={workloads} />
       </TabsContent>
       <TabsContent value="certificates" className="space-y-4 pt-4">
         <ServerCertificatesTab server={server} />
@@ -196,20 +191,35 @@ function Spec({
   unit: string;
 }) {
   return (
-    <div className="rounded-lg border border-border bg-surface p-3">
-      <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-        <Icon className="size-3.5" />
-        {label}
-      </div>
-      <div className="mt-1 flex items-baseline gap-1">
-        <span className="text-lg font-semibold tabular-nums">{value}</span>
-        <span className="text-xs text-muted-foreground">{unit}</span>
-      </div>
-    </div>
+    <Card>
+      <CardContent className="p-4">
+        <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+          <Icon className="size-3.5" />
+          {label}
+        </div>
+        <div className="mt-1 flex items-baseline gap-1">
+          <span
+            className="min-w-0 truncate text-2xl font-semibold tabular-nums"
+            title={value}
+          >
+            {value}
+          </span>
+          <span className="text-xs text-muted-foreground">{unit}</span>
+        </div>
+      </CardContent>
+    </Card>
   );
 }
 
-function OverviewTab({ server }: { server: ServerSummary }) {
+function OverviewTab({
+  server,
+  teams,
+  accessTeamIds,
+}: {
+  server: ServerSummary;
+  teams: TeamOption[];
+  accessTeamIds: string[];
+}) {
   const router = useRouter();
   const [pending, startTransition] = React.useTransition();
   const [readinessOpen, setReadinessOpen] = React.useState(false);
@@ -220,7 +230,7 @@ function OverviewTab({ server }: { server: ServerSummary }) {
   );
 
   const ramGb = server.memoryMb ? Math.round(server.memoryMb / 1024) : 0;
-  const num = (n: number) => (n > 0 ? String(n) : "—");
+  const num = (n: number) => (n > 0 ? String(n) : "-");
 
   function saveName(e: React.FormEvent) {
     e.preventDefault();
@@ -289,8 +299,8 @@ function OverviewTab({ server }: { server: ServerSummary }) {
   }
 
   return (
-    <>
-      <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+    <div className="space-y-6">
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         <Spec
           icon={Cpu}
           label="CPU"
@@ -312,122 +322,118 @@ function OverviewTab({ server }: { server: ServerSummary }) {
         <Spec
           icon={Boxes}
           label="Docker"
-          value={server.dockerVersion || "—"}
+          value={server.dockerVersion || "-"}
           unit="engine"
         />
       </div>
 
       <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2 text-base">
-            <Tag className="size-4" />
-            Display name
-          </CardTitle>
-          <p className="mt-1 text-sm text-muted-foreground">
-            What this server is called in Deplo. Nothing on the host changes.
-          </p>
-        </CardHeader>
-        <CardContent>
-          <form
-            className="flex flex-wrap items-center gap-2"
-            onSubmit={saveName}
-          >
-            <Input
-              aria-label="Display name"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              disabled={pending}
-              className="max-w-xs"
-            />
-            <Button
-              type="submit"
-              disabled={pending || !name.trim() || name.trim() === server.name}
-            >
-              {pending ? "Saving" : "Save"}
-            </Button>
-          </form>
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2 text-base">
-            <Gauge className="size-4" />
-            Build concurrency
-          </CardTitle>
-          <p className="mt-1 text-sm text-muted-foreground">
-            How many deployments this server runs at the same time. Extra
-            deploys wait in a queue; other servers are unaffected.
-          </p>
-        </CardHeader>
-        <CardContent>
-          <form className="space-y-4" onSubmit={saveConcurrency}>
-            <div className="space-y-2">
-              <FieldLabel
-                htmlFor="deploy-concurrency"
-                info="1 means one deploy at a time on this server (the safe default). Two deploys of the same app never run at once regardless of this value."
-                docs="deploy.queue"
-              >
-                Concurrent deployments
-              </FieldLabel>
-              <Input
-                id="deploy-concurrency"
-                type="number"
-                min={1}
-                max={50}
-                value={concurrency}
-                onChange={(e) => setConcurrency(e.target.value)}
-                disabled={pending}
-                className="w-28"
-              />
+        <CardContent className="flex flex-col gap-4 p-5 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex min-w-0 items-start gap-3">
+            <span className="flex size-10 shrink-0 items-center justify-center rounded-lg border border-border bg-surface">
+              <ShieldCheck className="size-5 text-muted-foreground" />
+            </span>
+            <div className="min-w-0">
+              <div className="flex flex-wrap items-center gap-2">
+                <h2 className="text-sm font-medium">Server agent</h2>
+                <AgentVersionBadge
+                  version={server.agentVersion}
+                  expected={server.expectedAgentVersion}
+                />
+              </div>
+              <p className="mt-1 text-sm text-muted-foreground">
+                Keeps this server ready to build and run your apps.
+              </p>
             </div>
+          </div>
+          <div className="flex shrink-0 flex-wrap items-center gap-2">
             <Button
-              type="submit"
-              disabled={
-                pending || concurrency === String(server.deployConcurrency)
-              }
+              variant="outline"
+              onClick={() => setReadinessOpen(true)}
+              disabled={pending}
             >
-              {pending ? "Saving" : "Save"}
+              <ListChecks className="size-4" />
+              Check readiness
             </Button>
-          </form>
+            {server.agentUpdateAvailable && (
+              <Button onClick={() => setConfirmUpdate(true)} disabled={pending}>
+                <CircleFadingArrowUp className="size-4" />
+                Update to v{server.expectedAgentVersion}
+              </Button>
+            )}
+          </div>
         </CardContent>
       </Card>
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">Agent</CardTitle>
-          <p className="mt-1 text-sm text-muted-foreground">
-            The Deplo agent runs your deployments on this host over an encrypted
-            connection. Deplo never needs SSH access.
-          </p>
-        </CardHeader>
-        <CardContent className="flex flex-wrap items-center gap-3">
-          <AgentVersionBadge
-            version={server.agentVersion}
-            expected={server.expectedAgentVersion}
+      <div className="grid items-start gap-6 lg:grid-cols-2">
+        <SettingGroup icon={SlidersHorizontal} title="Settings">
+          <SettingItem
+            icon={Tag}
+            title="Display name"
+            htmlFor="server-display-name"
+            info="The name shown in Deplo. Changing it does not rename the machine."
+            control={
+              <form className="flex items-center gap-2" onSubmit={saveName}>
+                <Input
+                  id="server-display-name"
+                  aria-label="Display name"
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  disabled={pending}
+                  className="w-36"
+                />
+                <Button
+                  type="submit"
+                  disabled={
+                    pending || !name.trim() || name.trim() === server.name
+                  }
+                >
+                  {pending ? "Saving" : "Save"}
+                </Button>
+              </form>
+            }
           />
-          {server.agentUpdateAvailable ? (
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={() => setConfirmUpdate(true)}
-              disabled={pending}
-            >
-              <CircleFadingArrowUp className="size-4" />
-              Update to v{server.expectedAgentVersion}
-            </Button>
-          ) : null}
-          <Button
-            size="sm"
-            variant="outline"
-            onClick={() => setReadinessOpen(true)}
-            disabled={pending}
-          >
-            <ListChecks className="size-4" />
-            Check readiness
-          </Button>
-        </CardContent>
-      </Card>
+          <SettingItem
+            icon={Gauge}
+            title="Concurrent deployments"
+            htmlFor="deploy-concurrency"
+            info="1 means one deploy at a time. Extra deploys wait in a queue; other servers are unaffected."
+            docs="deploy.queue"
+            control={
+              <form
+                className="flex items-center gap-2"
+                onSubmit={saveConcurrency}
+              >
+                <Input
+                  id="deploy-concurrency"
+                  aria-label="Concurrent deployments"
+                  type="number"
+                  min={1}
+                  max={50}
+                  value={concurrency}
+                  onChange={(e) => setConcurrency(e.target.value)}
+                  disabled={pending}
+                  className="w-20"
+                />
+                <Button
+                  type="submit"
+                  disabled={
+                    pending || concurrency === String(server.deployConcurrency)
+                  }
+                >
+                  {pending ? "Saving" : "Save"}
+                </Button>
+              </form>
+            }
+          />
+        </SettingGroup>
+
+        <AccessCard
+          server={server}
+          teams={teams}
+          accessTeamIds={accessTeamIds}
+        />
+      </div>
 
       <ServerReadinessDialog
         serverId={server.id}
@@ -466,11 +472,11 @@ function OverviewTab({ server }: { server: ServerSummary }) {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </>
+    </div>
   );
 }
 
-function AccessTab({
+function AccessCard({
   server,
   teams,
   accessTeamIds,
@@ -520,34 +526,26 @@ function AccessTab({
       [...access.teamIds].sort().join() !== [...accessTeamIds].sort().join());
 
   return (
-    <>
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2 text-base">
-            <Users className="size-4" />
-            Team access
-          </CardTitle>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Which teams can deploy apps and databases to this server.
-          </p>
-        </CardHeader>
-        <CardContent>
-          <form className="space-y-4" onSubmit={saveAccess}>
-            <ServerTeamAccess
-              value={access}
-              teams={teams}
-              onChange={setAccess}
-              disabled={pending}
-            />
+    <SettingGroup icon={Users} title="Team access">
+      <div className="p-4 sm:p-5">
+        <form className="space-y-4" onSubmit={saveAccess}>
+          <ServerTeamAccess
+            label={null}
+            value={access}
+            teams={teams}
+            onChange={setAccess}
+            disabled={pending}
+          />
+          <div className="flex justify-end">
             <Button
               type="submit"
               disabled={pending || !accessDirty || !accessIsComplete(access)}
             >
               Save access
             </Button>
-          </form>
-        </CardContent>
-      </Card>
-    </>
+          </div>
+        </form>
+      </div>
+    </SettingGroup>
   );
 }

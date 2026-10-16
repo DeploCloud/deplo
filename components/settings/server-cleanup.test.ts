@@ -1,28 +1,11 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createElement } from "react";
-import { renderToStaticMarkup } from "react-dom/server";
-import {
-  AppRouterContext,
-  type AppRouterInstance,
-} from "next/dist/shared/lib/app-router-context.shared-runtime";
-import { PathnameContext } from "next/dist/shared/lib/hooks-client-context.shared-runtime";
-
-import { TooltipProvider } from "@/components/ui/tooltip";
+import { renderServerView } from "@/components/servers/server-test-helpers";
 import { ServerCleanupTab } from "@/app/(dashboard)/[team]/settings/servers/[id]/cleanup-tab";
 import { CLEANUP_SCOPES } from "@/lib/data/docker-cleanup/scopes";
 import type { CleanupPolicy } from "@/lib/data/docker-cleanup/policy";
 import type { CleanupRunDTO } from "@/lib/data/docker-cleanup/run-history";
-
-const router: AppRouterInstance = {
-  back() {},
-  forward() {},
-  refresh() {},
-  push() {},
-  replace() {},
-  prefetch() {},
-  bfcacheId: "cleanup-test",
-};
 
 const policy: CleanupPolicy = {
   enabled: true,
@@ -35,23 +18,11 @@ const policy: CleanupPolicy = {
 };
 
 function render(over: Partial<CleanupPolicy> = {}, runs: CleanupRunDTO[] = []) {
-  return renderToStaticMarkup(
-    createElement(
-      AppRouterContext.Provider,
-      { value: router },
-      createElement(
-        PathnameContext.Provider,
-        { value: "/customer/settings/servers/srv_one" },
-        createElement(
-          TooltipProvider,
-          null,
-          createElement(ServerCleanupTab, {
-            server: { id: "srv_one", name: "Main" },
-            cleanup: { policy: { ...policy, ...over }, runs },
-          }),
-        ),
-      ),
-    ),
+  return renderServerView(
+    createElement(ServerCleanupTab, {
+      server: { id: "srv_one", name: "Main" },
+      cleanup: { policy: { ...policy, ...over }, runs },
+    }),
   );
 }
 
