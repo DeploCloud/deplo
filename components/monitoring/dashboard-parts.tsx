@@ -142,9 +142,9 @@ export function WindowSelector({
           onClick={() => onChange(w.ms)}
           aria-pressed={windowMs === w.ms}
           className={cn(
-            "rounded-md px-2.5 py-1 text-xs",
+            "rounded-md px-2.5 py-1 text-xs font-medium",
             windowMs === w.ms
-              ? "font-medium"
+              ? "text-foreground"
               : "text-muted-foreground hover:text-foreground",
           )}
         >

@@ -48,7 +48,7 @@ export function Calendar({
           "aria-selected:bg-primary aria-selected:text-primary-foreground",
           "data-[range-middle]:bg-transparent data-[range-middle]:text-accent-foreground",
         ),
-        today: "font-medium text-primary",
+        today: "text-primary",
         outside: "text-muted-foreground/60",
         disabled: "cursor-not-allowed text-muted-foreground/40",
         hidden: "invisible",

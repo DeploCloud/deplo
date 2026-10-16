@@ -1,5 +1,12 @@
 # UI design
 
+- **An element keeps the same font weight in every interaction state.** Inactive, active,
+  selected, checked, open, hover, focus, disabled, loading and error never change it.
+  Bold stays bold, normal stays normal. Put weight classes in the base style, never in
+  conditional branches or state variants, and never animate font weight. Show state with
+  colour, background, border, an indicator or an icon. Preserve the typography hierarchy
+  between distinct elements and static layout variants.
+
 - **Default is RSC**; `"use client"` is leaf-ish (state/effects/forms). RSC pages `await`
   `lib/data`/`lib/auth`/`lib/membership` and pass plain props down.
 - **Mutations go through GraphQL, not server actions.** Use `lib/graphql-client.ts` (`gql`,

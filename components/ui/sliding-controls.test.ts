@@ -23,6 +23,16 @@ test("every chart window remains selectable with exactly one pressed option", ()
         onChange() {},
       }),
     );
+    const weights = [...html.matchAll(/<button[^>]*class="([^"]*)"/g)].map(
+      ([, classes]) =>
+        classes.match(/\bfont-(?:normal|medium|semibold|bold)\b/g)?.join(" ") ??
+        "inherited",
+    );
+    assert.equal(
+      new Set(weights).size,
+      1,
+      "Selected and inactive options keep the same weight",
+    );
     assert.equal((html.match(/aria-pressed="true"/g) ?? []).length, 1);
     assert.match(
       html,

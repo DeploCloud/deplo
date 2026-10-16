@@ -141,8 +141,8 @@ function Block({
                 prefetch={false}
                 aria-current={on ? "true" : undefined}
                 className={cn(
-                  "flex items-center gap-2 rounded-md px-2 py-1 text-sm hover:bg-accent",
-                  on && "bg-accent font-medium text-foreground",
+                  "flex items-center gap-2 rounded-md px-2 py-1 text-sm font-medium hover:bg-accent",
+                  on && "bg-accent text-foreground",
                 )}
               >
                 {mark(row)}

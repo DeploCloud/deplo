@@ -148,9 +148,8 @@ export function FacetClearRow({
       onMouseEnter={onActivate}
       onClick={onSelect}
       className={cn(
-        "flex w-full cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-sm",
+        "flex w-full cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-sm font-medium",
         active ? "bg-accent" : "hover:bg-accent",
-        !on && "font-medium",
       )}
     >
       <span className="flex size-4 shrink-0 items-center justify-center">

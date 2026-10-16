@@ -584,6 +584,8 @@ scripts/gen-schema.ts`. Both halves of that prefix are load-bearing: the shim
 
 ## UI conventions
 
+**Font weight never changes with interaction state: bold stays bold, normal stays normal.**
+
 **Read and follow [the UI design rules](docs/agents/ui-design.md) before every UI change.**
 They cover shared controls, copy, spacing, dialogs, themes and illustrations.
 

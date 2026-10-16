@@ -182,10 +182,10 @@ function ModeButton({
       aria-checked={selected}
       onClick={onSelect}
       className={cn(
-        "rounded-md border px-2.5 py-1 text-xs transition-colors",
+        "rounded-md border px-2.5 py-1 text-xs font-medium transition-colors",
         "focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none",
         selected
-          ? "border-primary bg-primary-wash-strong font-medium text-foreground"
+          ? "border-primary bg-primary-wash-strong text-foreground"
           : "border-border text-muted-foreground hover:text-foreground",
       )}
     >

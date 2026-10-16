@@ -72,13 +72,7 @@ export function DateRangeFilter({
               key={r.value}
               type="button"
               onClick={() => onChange({ range: r.value, from: "", to: "" })}
-              className={cn(
-                "flex w-full cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-sm hover:bg-accent",
-                params.range === r.value &&
-                  !params.from &&
-                  !params.to &&
-                  "font-medium",
-              )}
+              className="flex w-full cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-sm font-medium hover:bg-accent"
             >
               <span className="flex size-4 shrink-0 items-center justify-center">
                 {params.range === r.value && !params.from && !params.to && (

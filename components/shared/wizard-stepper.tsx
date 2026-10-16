@@ -79,11 +79,11 @@ export function WizardStepper<T extends string>({
               disabled={!open}
               aria-current={active ? "step" : undefined}
               className={cn(
-                "relative z-10 flex items-center gap-1.5 rounded-md px-2 py-1 text-xs transition-colors",
+                "relative z-10 flex items-center gap-1.5 rounded-md px-2 py-1 text-xs font-medium transition-colors",
                 "focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none",
                 SLIDE,
                 active
-                  ? "font-medium text-foreground"
+                  ? "text-foreground"
                   : open
                     ? "text-muted-foreground hover:text-foreground"
                     : "text-muted-foreground/50",

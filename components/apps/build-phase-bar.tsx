@@ -68,10 +68,8 @@ export function BuildPhaseBar({
             >
               <span
                 className={cn(
-                  "truncate text-[11px]",
-                  last && running
-                    ? "font-medium text-foreground"
-                    : "text-muted-foreground",
+                  "truncate text-[11px] font-medium",
+                  last && running ? "text-foreground" : "text-muted-foreground",
                 )}
               >
                 {phase.label}

@@ -274,8 +274,8 @@ function Crumb({
         aria-label={home ? segment.name : undefined}
         aria-current={isCurrent ? "page" : undefined}
         className={cn(
-          "flex min-w-0 items-center gap-1.5 rounded px-1 py-0.5 transition-colors hover:bg-surface-strong hover:text-foreground",
-          isCurrent ? "font-medium text-foreground" : "text-muted-foreground",
+          "flex min-w-0 items-center gap-1.5 rounded px-1 py-0.5 font-medium transition-colors hover:bg-surface-strong hover:text-foreground",
+          isCurrent ? "text-foreground" : "text-muted-foreground",
         )}
       >
         {home ? (
