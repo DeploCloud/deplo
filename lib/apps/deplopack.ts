@@ -267,22 +267,28 @@ export function validateRepoAnalysis(
     if (raw.values.length)
       accepted.push({ env: field.env, type: field.type, values: raw.values });
   }
+  const isDockerfile = detection.type === "dockerfile";
   return {
     commitSha: analysis.commitSha,
     build: {
-      buildMethod: "deplopack",
+      buildMethod: isDockerfile ? "dockerfile" : "deplopack",
       includeFilesOutsideRoot: false,
       installCommand: null,
       buildCommand: null,
       startCommand: null,
       outputDirectory: null,
       runtimeVersion: "",
-      methodSettings: {
-        deplopackVersion: analysis.version,
-        deplopackProvider: detection.type,
-        deplopackPath: detection.path ?? null,
-      },
-      deplopackInputs: accepted,
+      methodSettings: isDockerfile
+        ? {
+            dockerfilePath: detection.path ?? "Dockerfile",
+            dockerContextPath: ".",
+          }
+        : {
+            deplopackVersion: analysis.version,
+            deplopackProvider: detection.type,
+            deplopackPath: detection.path ?? null,
+          },
+      deplopackInputs: isDockerfile ? [] : accepted,
     },
   };
 }
