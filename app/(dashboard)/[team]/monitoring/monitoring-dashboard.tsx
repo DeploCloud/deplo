@@ -371,27 +371,6 @@ export function MonitoringDashboard({
         </>
       )}
 
-      {canManageServers && (
-        <section className="space-y-3">
-          <PageHeader
-            level="section"
-            title="Apps"
-            description={serverLabel(selected)}
-          />
-          <ServerWorkloads key={selected.id} serverId={selected.id} />
-        </section>
-      )}
-
-      {showFleet && (
-        <FleetList
-          servers={servers}
-          rows={fleet}
-          selectedId={selected.id}
-          onSelect={setSelectedId}
-          canManageServers={canManageServers}
-        />
-      )}
-
       {online && cur && (
         <Card>
           <CardContent className="grid grid-cols-2 gap-4 py-4 sm:grid-cols-4">
@@ -417,6 +396,27 @@ export function MonitoringDashboard({
             />
           </CardContent>
         </Card>
+      )}
+
+      {canManageServers && (
+        <section className="space-y-3">
+          <PageHeader
+            level="section"
+            title="Apps"
+            description={serverLabel(selected)}
+          />
+          <ServerWorkloads key={selected.id} serverId={selected.id} />
+        </section>
+      )}
+
+      {showFleet && (
+        <FleetList
+          servers={servers}
+          rows={fleet}
+          selectedId={selected.id}
+          onSelect={setSelectedId}
+          canManageServers={canManageServers}
+        />
       )}
     </div>
   );
