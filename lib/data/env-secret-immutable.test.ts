@@ -10,6 +10,7 @@ import { runWithIdentity } from "../auth/request-context";
 import { decryptSecret } from "../crypto";
 import {
   envVars as envVarsTable,
+  sharedEnvVars as sharedVarsTable,
   appPreviewEnvVars as previewEnvVarsTable,
 } from "../db/schema/control-plane/env-vars";
 import {
@@ -23,8 +24,15 @@ import {
   TRUNCATE_IDENTITY,
   USER_1,
 } from "./identity-test-helpers";
-import { importEnv, listEnv, renameEnv, setAppEnv, upsertEnv } from "./env";
-import { saveSharedVar } from "./shared-vars/authoring";
+import {
+  importEnv,
+  listEnv,
+  renameEnv,
+  setAppEnv,
+  upsertEnv,
+  makeEnvSecret,
+} from "./env";
+import { saveSharedVar, makeSharedVarSecret } from "./shared-vars/authoring";
 import { listSharedVars } from "./shared-vars/team-view";
 import { listPreviewEnvVars, setPreviewEnvVar } from "./previews";
 
@@ -259,4 +267,74 @@ test("setPreviewEnvVar refuses to overwrite a secret override", async () => {
     .from(previewEnvVarsTable)
     .where(eq(previewEnvVarsTable.appId, APP));
   assert.equal(decryptSecret(row!.valueEnc), "p");
+});
+
+test("makeEnvSecret preserves the latest stored value and targets, and is idempotent", async () => {
+  await as1(() =>
+    upsertEnv({
+      appId: APP,
+      key: "TOKEN",
+      value: "latest",
+      type: "plain",
+      targets: ["preview"],
+    }),
+  );
+  const [row] = await as1(() => listEnv(APP));
+  const [before] = await db
+    .select()
+    .from(envVarsTable)
+    .where(eq(envVarsTable.id, row.id));
+  await as1(() => makeEnvSecret(row.id));
+  await as1(() => makeEnvSecret(row.id));
+  const [after] = await db
+    .select()
+    .from(envVarsTable)
+    .where(eq(envVarsTable.id, row.id));
+  assert.equal(after.valueEnc, before.valueEnc);
+  const [converted] = await as1(() => listEnv(APP));
+  assert.equal(converted.type, "secret");
+  assert.equal(converted.masked, true);
+  assert.deepEqual(converted.targets, ["preview"]);
+  assert.equal(await storedValue("TOKEN"), "latest");
+});
+
+test("makeSharedVarSecret preserves value, targets and all reach without re-sharing", async () => {
+  const id = await as1(() =>
+    saveSharedVar({
+      key: "SHARED",
+      value: "latest",
+      type: "plain",
+      teamIds: [TEAM_A],
+      environmentIds: [],
+      projectIds: [],
+      appIds: [APP],
+      targets: ["preview"],
+    }),
+  );
+  const [before] = await as1(() => listSharedVars());
+  const [stored] = await db
+    .select()
+    .from(sharedVarsTable)
+    .where(eq(sharedVarsTable.id, id));
+  await as1(() => makeSharedVarSecret(id));
+  await as1(() => makeSharedVarSecret(id));
+  const [after] = await as1(() => listSharedVars());
+  const [converted] = await db
+    .select()
+    .from(sharedVarsTable)
+    .where(eq(sharedVarsTable.id, id));
+  assert.equal(converted.valueEnc, stored.valueEnc);
+  assert.equal(after.type, "secret");
+  assert.equal(after.masked, true);
+  for (const field of [
+    "key",
+    "teamIds",
+    "environmentIds",
+    "projectIds",
+    "appIds",
+    "targets",
+    "autoInject",
+  ] as const) {
+    assert.deepEqual(after[field], before[field], field);
+  }
 });

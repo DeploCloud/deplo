@@ -3641,6 +3641,12 @@ type Mutation {
   """Clear the session + active-team cookies."""
   logout: Boolean
 
+  """Make a variable Secret without changing its stored value or scope."""
+  makeEnvSecret(id: String!): Boolean
+
+  """Make a variable Secret without changing its stored value or scope."""
+  makeSharedVarSecret(id: String!): Boolean
+
   """
   Mint a single-use registration link. Returns the absolute /register URL.
   """

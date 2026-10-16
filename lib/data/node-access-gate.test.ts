@@ -9,8 +9,12 @@ import { folders as foldersTable } from "../db/schema/control-plane/projects";
 import { runWithIdentity } from "../auth/request-context";
 import { seedIdentity, TEAM_A } from "./identity-test-helpers";
 import { seedApp, seedServer } from "./app-graph-test-helpers";
-import { listAllAppEnv, listEnv, upsertEnv } from "./env";
-import { deleteSharedVar, saveSharedVar } from "./shared-vars/authoring";
+import { listAllAppEnv, listEnv, upsertEnv, makeEnvSecret } from "./env";
+import {
+  deleteSharedVar,
+  saveSharedVar,
+  makeSharedVarSecret,
+} from "./shared-vars/authoring";
 import { listSharedVars } from "./shared-vars/team-view";
 import type { Capability } from "../types/identity";
 
@@ -141,4 +145,47 @@ test("the aggregate Variables tab shows the granted app and no other", async () 
     [APP_IN_PROD],
     "a top-level app is no longer waved through for a folder-only holder",
   );
+});
+
+test("making variables Secret respects folder and team-wide grants", async () => {
+  await as(ADMIN, async () => {
+    await upsertEnv({
+      appId: APP_IN_PROD,
+      key: "ALLOWED",
+      value: "v",
+      type: "plain",
+    });
+    await upsertEnv({
+      appId: APP_ELSEWHERE,
+      key: "DENIED",
+      value: "v",
+      type: "plain",
+    });
+  });
+  const [allowed] = await as(ADMIN, () => listEnv(APP_IN_PROD));
+  const [denied] = await as(ADMIN, () => listEnv(APP_ELSEWHERE));
+  await as(DEV, () => makeEnvSecret(allowed.id));
+  await assert.rejects(
+    () => as(DEV, () => makeEnvSecret(denied.id)),
+    /not found|permission/i,
+  );
+  const shared = await as(ADMIN, () =>
+    saveSharedVar({
+      key: "SHARED",
+      value: "v",
+      type: "plain",
+      teamIds: [TEAM_A],
+      environmentIds: [],
+      projectIds: [],
+    }),
+  );
+  await assert.rejects(
+    () => as(DEV, () => makeSharedVarSecret(shared)),
+    /permission/i,
+  );
+  assert.equal(
+    (await as(ADMIN, () => listEnv(APP_ELSEWHERE)))[0].type,
+    "plain",
+  );
+  assert.equal((await as(ADMIN, () => listSharedVars()))[0].type, "plain");
 });

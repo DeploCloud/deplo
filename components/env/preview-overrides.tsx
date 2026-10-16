@@ -31,6 +31,11 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import {
+  EnvBulkSelection,
+  EnvSelectionCell,
+  EnvSelectionHead,
+} from "@/components/env/env-bulk-selection";
 import { EnvValueCell } from "@/components/env/env-value-cell";
 import {
   EnvRowsEditor,
@@ -194,60 +199,78 @@ export function PreviewOverrides({
           </div>
         ) : (
           <div className="space-y-3">
-            <div className="rounded-xl border border-border">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead className="whitespace-nowrap">Key</TableHead>
-                    <TableHead className="w-full">Value</TableHead>
-                    <TableHead className="whitespace-nowrap">
-                      Last modified
-                    </TableHead>
-                    <TableHead className="text-right whitespace-nowrap">
-                      Actions
-                    </TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {visibleOverrides.map((o) => (
-                    <TableRow key={o.key}>
-                      <TableCell className="font-mono text-xs font-medium">
-                        <div className="flex items-center gap-2">
-                          {o.key}
-                          <Badge
-                            variant="muted"
-                            className="gap-1 text-[10px] font-normal whitespace-nowrap"
-                          >
-                            <GitPullRequest className="size-3" />
-                            Preview
-                          </Badge>
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <EnvValueCell value="" masked />
-                      </TableCell>
-                      <TableCell className="text-xs whitespace-nowrap text-muted-foreground">
-                        <TimeAgo at={o.updatedAt} />
-                      </TableCell>
-                      <TableCell className="text-right">
-                        <div className="flex justify-end gap-1">
-                          <Button
-                            variant="ghost"
-                            size="icon-sm"
-                            className="text-muted-foreground hover:text-destructive"
-                            disabled={pending}
-                            onClick={() => remove(o.key)}
-                            aria-label={`Delete the preview override ${o.key}`}
-                          >
-                            <Trash2 className="size-4" />
-                          </Button>
-                        </div>
-                      </TableCell>
+            <EnvBulkSelection
+              items={visibleOverrides.map((row) => ({
+                ...row,
+                id: row.key,
+                remove: () =>
+                  gqlAction(
+                    `mutation($appId: ID!, $key: String!) {
+                    deletePreviewEnvVar(appId: $appId, key: $key)
+                  }`,
+                    { appId, key: row.key },
+                  ),
+              }))}
+              onRemoved={(ids) => ids.forEach(hideOverride)}
+              removeConsequence="Future previews fall back to the app or shared values. Production is unchanged."
+            >
+              <div className="rounded-xl border border-border">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <EnvSelectionHead />
+                      <TableHead className="whitespace-nowrap">Key</TableHead>
+                      <TableHead className="w-full">Value</TableHead>
+                      <TableHead className="whitespace-nowrap">
+                        Last modified
+                      </TableHead>
+                      <TableHead className="text-right whitespace-nowrap">
+                        Actions
+                      </TableHead>
                     </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </div>
+                  </TableHeader>
+                  <TableBody>
+                    {visibleOverrides.map((o) => (
+                      <TableRow key={o.key}>
+                        <EnvSelectionCell id={o.key} />
+                        <TableCell className="font-mono text-xs font-medium">
+                          <div className="flex items-center gap-2">
+                            {o.key}
+                            <Badge
+                              variant="muted"
+                              className="gap-1 text-[10px] font-normal whitespace-nowrap"
+                            >
+                              <GitPullRequest className="size-3" />
+                              Preview
+                            </Badge>
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          <EnvValueCell value="" masked />
+                        </TableCell>
+                        <TableCell className="text-xs whitespace-nowrap text-muted-foreground">
+                          <TimeAgo at={o.updatedAt} />
+                        </TableCell>
+                        <TableCell className="text-right">
+                          <div className="flex justify-end gap-1">
+                            <Button
+                              variant="ghost"
+                              size="icon-sm"
+                              className="text-muted-foreground hover:text-destructive"
+                              disabled={pending}
+                              onClick={() => remove(o.key)}
+                              aria-label={`Delete the preview override ${o.key}`}
+                            >
+                              <Trash2 className="size-4" />
+                            </Button>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+            </EnvBulkSelection>
             <div className="flex justify-end">{addButton}</div>
           </div>
         ))}

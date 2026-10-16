@@ -26,6 +26,12 @@ import { SimpleTooltip } from "@/components/ui/tooltip";
 import { EmptyState } from "@/components/shared/empty-state";
 import { ConfirmAction } from "@/components/shared/confirm-action";
 import { useOptimisticRemove } from "@/components/shared/use-optimistic-remove";
+import {
+  EnvBulkSelection,
+  EnvSelectionCell,
+  EnvSelectionHead,
+} from "@/components/env/env-bulk-selection";
+import { sharedBulkItem } from "@/components/env/env-bulk-items";
 import { SharedVarsGraphic } from "@/components/env/shared-vars-graphic";
 import { EnvValueCell } from "@/components/env/env-value-cell";
 import { TimeAgo } from "@/components/shared/time-ago";
@@ -214,120 +220,132 @@ export function SharedVarsManager({
         />
       )}
 
-      {rows.length === 0 ? (
-        <EmptyState
-          graphic={<SharedVarsGraphic />}
-          title="No shared variables yet"
-          docs="env.shared"
-          description="Create a shared variable to reuse it across projects, apps, or the whole team."
-        />
-      ) : shown.length === 0 ? (
-        <EmptyState
-          icon={SearchX}
-          title="No matching variables"
-          description="No shared variable matches the current search and filters."
-        />
-      ) : (
-        <div className="rounded-xl border border-border">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead className="whitespace-nowrap">Key</TableHead>
-                <TableHead className="w-full">Value</TableHead>
-                <TableHead className="whitespace-nowrap">Shared with</TableHead>
-                <TableHead className="whitespace-nowrap">
-                  Last modified
-                </TableHead>
-                <TableHead className="whitespace-nowrap">Modified by</TableHead>
-                <TableHead className="text-right whitespace-nowrap">
-                  Actions
-                </TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {shown.map((v) => (
-                <TableRow key={v.id}>
-                  <TableCell className="font-mono text-xs font-medium">
-                    {v.key}
-                  </TableCell>
-                  <TableCell>
-                    <EnvValueCell value={v.value} masked={v.masked} />
-                  </TableCell>
-                  <TableCell>
-                    <div className="flex flex-wrap items-center gap-1">
-                      {!v.editable && (
-                        <Badge
-                          variant="outline"
-                          className="gap-1 text-[10px] font-normal"
-                        >
-                          {v.ownerTeam ? (
-                            <TeamAvatar
-                              name={v.ownerTeam.name}
-                              avatarUrl={v.ownerTeam.avatarUrl}
-                              size="xs"
-                            />
-                          ) : (
-                            <Users className="size-3" />
-                          )}
-                          {v.ownerTeam?.name ?? "Every team"}
-                        </Badge>
-                      )}
-                      <SharedWithChips v={v} />
-                    </div>
-                  </TableCell>
-                  <TableCell className="text-xs whitespace-nowrap text-muted-foreground">
-                    <TimeAgo at={v.updatedAt} />
-                  </TableCell>
-                  <TableCell>
-                    <EnvAuthorCell
-                      author={v.updatedBy ?? v.createdBy ?? null}
-                    />
-                  </TableCell>
-                  <TableCell className="text-right">
-                    {v.editable ? (
-                      <div className="flex justify-end gap-1">
-                        <EnvEditButton
-                          secret={v.type === "secret"}
-                          label="Edit value"
-                          tooltip="Edit value"
-                          onClick={() => setEditing(v)}
-                        />
-                        <SimpleTooltip content="Change sharing">
+      <EnvBulkSelection
+        items={shown.map((row) => sharedBulkItem(row))}
+        onRemoved={(ids) => ids.forEach(remove)}
+        removeConsequence="These shared variables are deleted from every app that receives them, starting with its next deployment."
+      >
+        {rows.length === 0 ? (
+          <EmptyState
+            graphic={<SharedVarsGraphic />}
+            title="No shared variables yet"
+            docs="env.shared"
+            description="Create a shared variable to reuse it across projects, apps, or the whole team."
+          />
+        ) : shown.length === 0 ? (
+          <EmptyState
+            icon={SearchX}
+            title="No matching variables"
+            description="No shared variable matches the current search and filters."
+          />
+        ) : (
+          <div className="rounded-xl border border-border">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <EnvSelectionHead />
+                  <TableHead className="whitespace-nowrap">Key</TableHead>
+                  <TableHead className="w-full">Value</TableHead>
+                  <TableHead className="whitespace-nowrap">
+                    Shared with
+                  </TableHead>
+                  <TableHead className="whitespace-nowrap">
+                    Last modified
+                  </TableHead>
+                  <TableHead className="whitespace-nowrap">
+                    Modified by
+                  </TableHead>
+                  <TableHead className="text-right whitespace-nowrap">
+                    Actions
+                  </TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {shown.map((v) => (
+                  <TableRow key={v.id}>
+                    <EnvSelectionCell id={v.id} />
+                    <TableCell className="font-mono text-xs font-medium">
+                      {v.key}
+                    </TableCell>
+                    <TableCell>
+                      <EnvValueCell value={v.value} masked={v.masked} />
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex flex-wrap items-center gap-1">
+                        {!v.editable && (
+                          <Badge
+                            variant="outline"
+                            className="gap-1 text-[10px] font-normal"
+                          >
+                            {v.ownerTeam ? (
+                              <TeamAvatar
+                                name={v.ownerTeam.name}
+                                avatarUrl={v.ownerTeam.avatarUrl}
+                                size="xs"
+                              />
+                            ) : (
+                              <Users className="size-3" />
+                            )}
+                            {v.ownerTeam?.name ?? "Every team"}
+                          </Badge>
+                        )}
+                        <SharedWithChips v={v} />
+                      </div>
+                    </TableCell>
+                    <TableCell className="text-xs whitespace-nowrap text-muted-foreground">
+                      <TimeAgo at={v.updatedAt} />
+                    </TableCell>
+                    <TableCell>
+                      <EnvAuthorCell
+                        author={v.updatedBy ?? v.createdBy ?? null}
+                      />
+                    </TableCell>
+                    <TableCell className="text-right">
+                      {v.editable ? (
+                        <div className="flex justify-end gap-1">
+                          <EnvEditButton
+                            secret={v.type === "secret"}
+                            label="Edit value"
+                            tooltip="Edit value"
+                            onClick={() => setEditing(v)}
+                          />
+                          <SimpleTooltip content="Change sharing">
+                            <Button
+                              variant="ghost"
+                              size="icon-sm"
+                              onClick={() => setWizard({ editing: v })}
+                              aria-label="Change sharing"
+                            >
+                              <Share2 className="size-4" />
+                            </Button>
+                          </SimpleTooltip>
                           <Button
                             variant="ghost"
                             size="icon-sm"
-                            onClick={() => setWizard({ editing: v })}
-                            aria-label="Change sharing"
+                            className="text-muted-foreground hover:text-destructive"
+                            onClick={() => setDeleteId(v.id)}
+                            aria-label="Delete"
                           >
-                            <Share2 className="size-4" />
+                            <Trash2 className="size-4" />
                           </Button>
-                        </SimpleTooltip>
-                        <Button
-                          variant="ghost"
-                          size="icon-sm"
-                          className="text-muted-foreground hover:text-destructive"
-                          onClick={() => setDeleteId(v.id)}
-                          aria-label="Delete"
+                        </div>
+                      ) : (
+                        <SimpleTooltip
+                          content={`Owned by ${v.ownerTeam?.name ?? "an instance admin"}. Only they can change it.`}
                         >
-                          <Trash2 className="size-4" />
-                        </Button>
-                      </div>
-                    ) : (
-                      <SimpleTooltip
-                        content={`Owned by ${v.ownerTeam?.name ?? "an instance admin"}. Only they can change it.`}
-                      >
-                        <span className="text-xs text-muted-foreground">
-                          Read-only
-                        </span>
-                      </SimpleTooltip>
-                    )}
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </div>
-      )}
+                          <span className="text-xs text-muted-foreground">
+                            Read-only
+                          </span>
+                        </SimpleTooltip>
+                      )}
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+        )}
+      </EnvBulkSelection>
 
       {editing && (
         <SharedVarEditDialog

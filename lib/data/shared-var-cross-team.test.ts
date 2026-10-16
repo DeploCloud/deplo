@@ -20,7 +20,11 @@ import { seedIdentity, TEAM_A, TEAM_B } from "./identity-test-helpers";
 import { seedServer, seedApp } from "./app-graph-test-helpers";
 import { setSharedVarAppLink } from "./shared-vars/app-links";
 import { listSharedVarsForApp } from "./shared-vars/app-view";
-import { deleteSharedVar, saveSharedVar } from "./shared-vars/authoring";
+import {
+  deleteSharedVar,
+  saveSharedVar,
+  makeSharedVarSecret,
+} from "./shared-vars/authoring";
 import {
   loadAutoInjectedVarsForApp,
   loadSharedVarsForApp,
@@ -445,4 +449,28 @@ test("beta is told who owns the variable, not which other teams run on it", asyn
     [TEAM_B],
   );
   assert.equal(seen!.teamWide, true);
+});
+
+test("a receiving team cannot make another team's shared variable Secret", async () => {
+  const id = await inA(() =>
+    saveSharedVar({
+      key: "FOREIGN",
+      value: "v",
+      type: "plain",
+      teamIds: [TEAM_A, TEAM_B],
+      environmentIds: [],
+      projectIds: [],
+    }),
+  );
+  await assert.rejects(
+    () =>
+      runWithIdentity({ userId: BOTH, teamId: TEAM_B }, () =>
+        makeSharedVarSecret(id),
+      ),
+    /not found/i,
+  );
+  assert.equal(
+    (await inA(() => listSharedVars())).find((row) => row.id === id)!.type,
+    "plain",
+  );
 });

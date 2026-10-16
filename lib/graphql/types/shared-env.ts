@@ -9,6 +9,7 @@ import {
 import {
   saveSharedVar,
   deleteSharedVar,
+  makeSharedVarSecret,
 } from "@/lib/data/shared-vars/authoring";
 import {
   listSharedVars,
@@ -212,6 +213,17 @@ builder.queryFields((t) => ({
 }));
 
 builder.mutationFields((t) => ({
+  makeSharedVarSecret: t.field({
+    type: "Boolean",
+    authScopes: { capability: "manage_env" },
+    description:
+      "Make a variable Secret without changing its stored value or scope.",
+    args: { id: t.arg.string({ required: true }) },
+    resolve: async (_r, { id }) => {
+      await makeSharedVarSecret(id);
+      return true;
+    },
+  }),
   saveSharedVar: t.field({
     type: SharedVarRef,
     authScopes: { capability: "manage_env" },

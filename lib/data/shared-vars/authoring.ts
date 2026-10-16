@@ -243,6 +243,39 @@ export async function saveSharedVar(input: {
   return savedId;
 }
 
+export async function makeSharedVarSecret(id: string): Promise<void> {
+  await requireTeamWide("shared variables");
+  const { teamId, userId } = await requireCapability("manage_env");
+  const owned = ownedBy(teamId, await isInstanceAdmin());
+  const [existing] = await getDb()
+    .select({ id: varsTable.id })
+    .from(varsTable)
+    .where(and(eq(varsTable.id, id), owned))
+    .limit(1);
+  if (!existing) throw new Error("Not found");
+  const changed = await getDb()
+    .update(varsTable)
+    .set({ type: "secret", updatedByUserId: userId, updatedAt: nowIso() })
+    .where(and(eq(varsTable.id, id), owned, eq(varsTable.type, "plain")))
+    .returning({ key: varsTable.key });
+  if (!changed.length) return;
+  await markPendingChangesForSharedVar(id);
+  const reached = await getDb()
+    .select({ teamId: teamJunction.teamId })
+    .from(teamJunction)
+    .where(eq(teamJunction.varId, id));
+  const user = (await getCurrentUser())!;
+  for (const target of new Set([teamId, ...reached.map((row) => row.teamId)])) {
+    await recordActivity(
+      "env",
+      `Made shared variable ${changed[0].key} secret`,
+      user.name,
+      null,
+      target,
+    );
+  }
+}
+
 export async function deleteSharedVar(id: string): Promise<void> {
   await requireTeamWide("shared variables");
   const { teamId } = await requireCapability("manage_env");

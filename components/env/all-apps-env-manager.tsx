@@ -38,6 +38,16 @@ import { SimpleTooltip } from "@/components/ui/tooltip";
 import { EmptyState } from "@/components/shared/empty-state";
 import { ConfirmAction } from "@/components/shared/confirm-action";
 import { useOptimisticRemove } from "@/components/shared/use-optimistic-remove";
+import {
+  EnvBulkSelection,
+  EnvSelectionCell,
+  EnvSelectionHead,
+} from "@/components/env/env-bulk-selection";
+import {
+  standaloneBulkItem,
+  sharedBulkItem,
+  unlinkBulkItem,
+} from "@/components/env/env-bulk-items";
 import { AppsGraphic } from "@/components/apps/apps-graphic";
 import { AppVarsGraphic } from "@/components/env/app-vars-graphic";
 import { EnvValueCell } from "@/components/env/env-value-cell";
@@ -291,6 +301,25 @@ export function AllAppsEnvManager({
     [shown, projects, filters.sort],
   );
 
+  const bulkItems = shown
+    .filter(
+      (row) =>
+        !projectCollapse.collapsed.has(row.app.projectId ?? TOP_LEVEL) &&
+        !appCollapse.collapsed.has(row.app.id),
+    )
+    .map((row) => {
+      const id = rowKey(row);
+      if (row.kind === "standalone") {
+        return standaloneBulkItem(row, id, row.app.name);
+      }
+      const full = sharedById.get(row.id);
+      return {
+        ...unlinkBulkItem(row, row.app.id, id, row.app.name),
+        secretId: row.id,
+        makeSecret: full ? sharedBulkItem(full).makeSecret : undefined,
+      };
+    });
+
   const openSections = sections.filter(
     (s) => !projectCollapse.collapsed.has(s.id),
   ).length;
@@ -365,59 +394,65 @@ export function AllAppsEnvManager({
         }
       />
 
-      {sections.length === 0 && (
-        <EmptyState
-          icon={SearchX}
-          title="No matching variables"
-          description="No variable on this page matches the current search and filters."
-          action={
-            <Button variant="outline" size="sm" onClick={clear}>
-              Clear filters
-            </Button>
-          }
-        />
-      )}
+      <EnvBulkSelection
+        items={bulkItems}
+        onRemoved={(ids) => ids.forEach(remove)}
+        removeConsequence="App variables are deleted. Shared variables are only unlinked from the selected apps."
+      >
+        {sections.length === 0 && (
+          <EmptyState
+            icon={SearchX}
+            title="No matching variables"
+            description="No variable on this page matches the current search and filters."
+            action={
+              <Button variant="outline" size="sm" onClick={clear}>
+                Clear filters
+              </Button>
+            }
+          />
+        )}
 
-      {sections.map((section) => {
-        const open = !projectCollapse.collapsed.has(section.id);
-        return (
-          <section key={section.id} className="group space-y-3">
-            <ProjectSectionHeader
-              section={section}
-              open={open}
-              onToggle={() => projectCollapse.toggle(section.id)}
-            />
-            {open && (
-              <div
-                id={`vars-project-${section.id}`}
-                className="space-y-4 sm:pl-4"
-              >
-                {section.apps.map((card) => (
-                  <AppVarsCard
-                    key={card.app.id}
-                    card={card}
-                    open={!appCollapse.collapsed.has(card.app.id)}
-                    onToggle={() => appCollapse.toggle(card.app.id)}
-                    environmentName={environmentName}
-                    onAdd={() =>
-                      setDialog({ appId: card.app.id, editing: null })
-                    }
-                    onEdit={(row) =>
-                      setDialog({ appId: card.app.id, editing: row })
-                    }
-                    onDelete={setDeleteId}
-                    onEditShared={(id) => {
-                      const full = sharedById.get(id);
-                      if (full) setSharedEditing(full);
-                    }}
-                    editableSharedIds={editableSharedIds}
-                  />
-                ))}
-              </div>
-            )}
-          </section>
-        );
-      })}
+        {sections.map((section) => {
+          const open = !projectCollapse.collapsed.has(section.id);
+          return (
+            <section key={section.id} className="group space-y-3">
+              <ProjectSectionHeader
+                section={section}
+                open={open}
+                onToggle={() => projectCollapse.toggle(section.id)}
+              />
+              {open && (
+                <div
+                  id={`vars-project-${section.id}`}
+                  className="space-y-4 sm:pl-4"
+                >
+                  {section.apps.map((card) => (
+                    <AppVarsCard
+                      key={card.app.id}
+                      card={card}
+                      open={!appCollapse.collapsed.has(card.app.id)}
+                      onToggle={() => appCollapse.toggle(card.app.id)}
+                      environmentName={environmentName}
+                      onAdd={() =>
+                        setDialog({ appId: card.app.id, editing: null })
+                      }
+                      onEdit={(row) =>
+                        setDialog({ appId: card.app.id, editing: row })
+                      }
+                      onDelete={setDeleteId}
+                      onEditShared={(id) => {
+                        const full = sharedById.get(id);
+                        if (full) setSharedEditing(full);
+                      }}
+                      editableSharedIds={editableSharedIds}
+                    />
+                  ))}
+                </div>
+              )}
+            </section>
+          );
+        })}
+      </EnvBulkSelection>
 
       {dialog && (
         <EnvVarDialog
@@ -630,6 +665,7 @@ function AppVarsCard({
             <Table>
               <TableHeader>
                 <TableRow>
+                  <EnvSelectionHead ids={rows.map(rowKey)} />
                   <TableHead className="whitespace-nowrap">Key</TableHead>
                   <TableHead className="w-full">Value</TableHead>
                   <TableHead className="whitespace-nowrap">
@@ -647,6 +683,7 @@ function AppVarsCard({
                 {rows.map((row) =>
                   row.kind === "standalone" ? (
                     <TableRow key={`${app.id}:standalone:${row.id}`}>
+                      <EnvSelectionCell id={rowKey(row)} />
                       <TableCell className="font-mono text-xs font-medium">
                         {row.key}
                       </TableCell>
@@ -681,6 +718,7 @@ function AppVarsCard({
                     </TableRow>
                   ) : (
                     <TableRow key={`${app.id}:shared:${row.id}`}>
+                      <EnvSelectionCell id={rowKey(row)} />
                       <TableCell className="font-mono text-xs font-medium">
                         <div className="flex items-center gap-2">
                           {row.key}

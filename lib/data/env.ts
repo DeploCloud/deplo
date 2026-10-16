@@ -362,3 +362,23 @@ export async function deleteEnv(id: string): Promise<void> {
   await markPendingChanges([e.appId]);
   await recordActivity("env", `Deleted env var ${e.key}`, user.name, e.appId);
 }
+
+export async function makeEnvSecret(id: string): Promise<void> {
+  const existing = await loadEnvVar(id);
+  if (!existing) throw new Error("Not found");
+  const { userId } = await requireAppCapability(existing.appId, "manage_env");
+  const changed = await getDb()
+    .update(envVarsTable)
+    .set({ type: "secret", updatedByUserId: userId, updatedAt: nowIso() })
+    .where(and(eq(envVarsTable.id, id), eq(envVarsTable.type, "plain")))
+    .returning({ key: envVarsTable.key });
+  if (!changed.length) return;
+  await markPendingChanges([existing.appId]);
+  const user = (await getCurrentUser())!;
+  await recordActivity(
+    "env",
+    `Made env var ${changed[0].key} secret`,
+    user.name,
+    existing.appId,
+  );
+}

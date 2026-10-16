@@ -20,6 +20,16 @@ import { SimpleTooltip } from "@/components/ui/tooltip";
 import { EmptyState } from "@/components/shared/empty-state";
 import { ConfirmAction } from "@/components/shared/confirm-action";
 import { useOptimisticRemove } from "@/components/shared/use-optimistic-remove";
+import {
+  EnvBulkSelection,
+  EnvSelectionCell,
+  EnvSelectionHead,
+} from "@/components/env/env-bulk-selection";
+import {
+  standaloneBulkItem,
+  sharedBulkItem,
+  unlinkBulkItem,
+} from "@/components/env/env-bulk-items";
 import { EnvGraphic } from "@/components/env/env-graphic";
 import { EnvValueCell } from "@/components/env/env-value-cell";
 import { TimeAgo } from "@/components/shared/time-ago";
@@ -121,6 +131,23 @@ export function EnvManager({
     counts,
   } = useEnvFilters(rows, facets);
 
+  const bulkItems = shownRows.map((row) => {
+    const id = rowKey(row);
+    if (row.kind === "standalone") return standaloneBulkItem(row, id);
+    const item = row.linked
+      ? unlinkBulkItem(row, appId, id)
+      : { ...row, id, scope: undefined };
+    const full = detailsById.get(row.id);
+    return {
+      ...item,
+      secretId: row.id,
+      makeSecret:
+        row.linked && canCreateShared && full
+          ? sharedBulkItem(full).makeSecret
+          : undefined,
+    };
+  });
+
   const hasVars = rows.length > 0;
   const hasMatches = shownRows.length > 0;
 
@@ -160,151 +187,168 @@ export function EnvManager({
         />
       )}
 
-      {!hasVars ? (
-        <EmptyState
-          graphic={<EnvGraphic />}
-          title="No environment variables"
-          docs="env.overview"
-          description="Add variables to configure your app - available during builds and at runtime."
-        />
-      ) : !hasMatches ? (
-        <EmptyState
-          icon={SearchX}
-          title="No matching variables"
-          description="No variable matches the current search and filters."
-        />
-      ) : (
-        <div className="rounded-xl border border-border">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead className="whitespace-nowrap">Key</TableHead>
-                <TableHead className="w-full">Value</TableHead>
-                <TableHead className="whitespace-nowrap">
-                  Last modified
-                </TableHead>
-                <TableHead className="whitespace-nowrap">Modified by</TableHead>
-                <TableHead className="text-right whitespace-nowrap">
-                  Actions
-                </TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {shownRows.map((row) =>
-                row.kind === "standalone" ? (
-                  <TableRow key={rowKey(row)}>
-                    <TableCell className="font-mono text-xs font-medium">
-                      <div className="flex items-center gap-2">
-                        {row.key}
-                        {row.type === "plain" &&
-                          envNameLooksSensitive(row.key) && (
-                            <LooksLikeSecretBadge />
-                          )}
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <EnvValueCell value={row.value} masked={row.masked} />
-                    </TableCell>
-                    <TableCell className="text-xs whitespace-nowrap text-muted-foreground">
-                      <TimeAgo at={row.updatedAt} />
-                    </TableCell>
-                    <TableCell>
-                      <EnvAuthorCell
-                        author={row.updatedBy ?? row.createdBy ?? null}
-                      />
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <div className="flex justify-end gap-1">
-                        <EnvEditButton
-                          secret={row.type === "secret"}
-                          onClick={() => {
-                            setEditing(row);
-                            setAddOpen(true);
-                          }}
+      <EnvBulkSelection
+        items={bulkItems}
+        onRemoved={(ids) => {
+          for (const id of ids) {
+            const row = shownRows.find((row) => rowKey(row) === id);
+            if (row?.kind === "standalone" || (row && !row.autoInject))
+              remove(id);
+          }
+        }}
+        removeConsequence="App variables are deleted. Shared variables are only unlinked here; automatically shared values still arrive."
+      >
+        {!hasVars ? (
+          <EmptyState
+            graphic={<EnvGraphic />}
+            title="No environment variables"
+            docs="env.overview"
+            description="Add variables to configure your app - available during builds and at runtime."
+          />
+        ) : !hasMatches ? (
+          <EmptyState
+            icon={SearchX}
+            title="No matching variables"
+            description="No variable matches the current search and filters."
+          />
+        ) : (
+          <div className="rounded-xl border border-border">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <EnvSelectionHead />
+                  <TableHead className="whitespace-nowrap">Key</TableHead>
+                  <TableHead className="w-full">Value</TableHead>
+                  <TableHead className="whitespace-nowrap">
+                    Last modified
+                  </TableHead>
+                  <TableHead className="whitespace-nowrap">
+                    Modified by
+                  </TableHead>
+                  <TableHead className="text-right whitespace-nowrap">
+                    Actions
+                  </TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {shownRows.map((row) =>
+                  row.kind === "standalone" ? (
+                    <TableRow key={rowKey(row)}>
+                      <EnvSelectionCell id={rowKey(row)} />
+                      <TableCell className="font-mono text-xs font-medium">
+                        <div className="flex items-center gap-2">
+                          {row.key}
+                          {row.type === "plain" &&
+                            envNameLooksSensitive(row.key) && (
+                              <LooksLikeSecretBadge />
+                            )}
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <EnvValueCell value={row.value} masked={row.masked} />
+                      </TableCell>
+                      <TableCell className="text-xs whitespace-nowrap text-muted-foreground">
+                        <TimeAgo at={row.updatedAt} />
+                      </TableCell>
+                      <TableCell>
+                        <EnvAuthorCell
+                          author={row.updatedBy ?? row.createdBy ?? null}
                         />
-                        <Button
-                          variant="ghost"
-                          size="icon-sm"
-                          className="text-muted-foreground hover:text-destructive"
-                          onClick={() => setDeleteId(row.id)}
-                          aria-label="Delete"
-                        >
-                          <Trash2 className="size-4" />
-                        </Button>
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                ) : (
-                  <TableRow key={rowKey(row)}>
-                    <TableCell className="font-mono text-xs font-medium">
-                      <div className="flex items-center gap-2">
-                        {row.key}
-                        <Badge
-                          variant="muted"
-                          className="gap-1 text-[10px] font-normal whitespace-nowrap"
-                        >
-                          <Share2 className="size-3" />
-                          {row.linked &&
-                          detailsById.get(row.id)?.editable !== false
-                            ? "Shared"
-                            : (row.ownerTeamName ?? "Every team")}
-                        </Badge>
-                        {composeKeys.includes(row.key) && (
-                          <SimpleTooltip content="This app's compose file sets this variable itself, so the compose value is what the container gets.">
-                            <Badge
-                              variant="outline"
-                              className="text-[10px] font-normal whitespace-nowrap"
-                            >
-                              Set in the compose file
-                            </Badge>
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <div className="flex justify-end gap-1">
+                          <EnvEditButton
+                            secret={row.type === "secret"}
+                            onClick={() => {
+                              setEditing(row);
+                              setAddOpen(true);
+                            }}
+                          />
+                          <Button
+                            variant="ghost"
+                            size="icon-sm"
+                            className="text-muted-foreground hover:text-destructive"
+                            onClick={() => setDeleteId(row.id)}
+                            aria-label="Delete"
+                          >
+                            <Trash2 className="size-4" />
+                          </Button>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ) : (
+                    <TableRow key={rowKey(row)}>
+                      <EnvSelectionCell id={rowKey(row)} />
+                      <TableCell className="font-mono text-xs font-medium">
+                        <div className="flex items-center gap-2">
+                          {row.key}
+                          <Badge
+                            variant="muted"
+                            className="gap-1 text-[10px] font-normal whitespace-nowrap"
+                          >
+                            <Share2 className="size-3" />
+                            {row.linked &&
+                            detailsById.get(row.id)?.editable !== false
+                              ? "Shared"
+                              : (row.ownerTeamName ?? "Every team")}
+                          </Badge>
+                          {composeKeys.includes(row.key) && (
+                            <SimpleTooltip content="This app's compose file sets this variable itself, so the compose value is what the container gets.">
+                              <Badge
+                                variant="outline"
+                                className="text-[10px] font-normal whitespace-nowrap"
+                              >
+                                Set in the compose file
+                              </Badge>
+                            </SimpleTooltip>
+                          )}
+                          {row.type === "plain" &&
+                            row.linked &&
+                            detailsById.get(row.id)?.editable !== false &&
+                            envNameLooksSensitive(row.key) && (
+                              <LooksLikeSecretBadge />
+                            )}
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <EnvValueCell value={row.value} masked={row.masked} />
+                      </TableCell>
+                      <TableCell className="text-xs whitespace-nowrap text-muted-foreground">
+                        <TimeAgo at={row.updatedAt} />
+                      </TableCell>
+                      <TableCell>
+                        <EnvAuthorCell author={row.updatedBy ?? null} />
+                      </TableCell>
+                      <TableCell className="text-right">
+                        {row.linked ? (
+                          <SharedRowActions
+                            row={row}
+                            appId={appId}
+                            manageable={
+                              canCreateShared &&
+                              detailsById.get(row.id)?.editable !== false
+                            }
+                            onRemoved={() => remove(rowKey(row))}
+                            onRestored={() => restore(rowKey(row))}
+                          />
+                        ) : (
+                          <SimpleTooltip
+                            content={`Shared by ${row.ownerTeamName ?? "an instance admin"}. Only they can change it.`}
+                          >
+                            <span className="text-xs text-muted-foreground">
+                              Read-only
+                            </span>
                           </SimpleTooltip>
                         )}
-                        {row.type === "plain" &&
-                          row.linked &&
-                          detailsById.get(row.id)?.editable !== false &&
-                          envNameLooksSensitive(row.key) && (
-                            <LooksLikeSecretBadge />
-                          )}
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <EnvValueCell value={row.value} masked={row.masked} />
-                    </TableCell>
-                    <TableCell className="text-xs whitespace-nowrap text-muted-foreground">
-                      <TimeAgo at={row.updatedAt} />
-                    </TableCell>
-                    <TableCell>
-                      <EnvAuthorCell author={row.updatedBy ?? null} />
-                    </TableCell>
-                    <TableCell className="text-right">
-                      {row.linked ? (
-                        <SharedRowActions
-                          row={row}
-                          appId={appId}
-                          manageable={
-                            canCreateShared &&
-                            detailsById.get(row.id)?.editable !== false
-                          }
-                          onRemoved={() => remove(rowKey(row))}
-                          onRestored={() => restore(rowKey(row))}
-                        />
-                      ) : (
-                        <SimpleTooltip
-                          content={`Shared by ${row.ownerTeamName ?? "an instance admin"}. Only they can change it.`}
-                        >
-                          <span className="text-xs text-muted-foreground">
-                            Read-only
-                          </span>
-                        </SimpleTooltip>
-                      )}
-                    </TableCell>
-                  </TableRow>
-                ),
-              )}
-            </TableBody>
-          </Table>
-        </div>
-      )}
+                      </TableCell>
+                    </TableRow>
+                  ),
+                )}
+              </TableBody>
+            </Table>
+          </div>
+        )}
+      </EnvBulkSelection>
 
       <EnvVarDialog
         key={editing?.id ?? "new"}

@@ -8,6 +8,7 @@ import {
   importEnv,
   setAppEnv,
   deleteEnv,
+  makeEnvSecret,
   type AppEnvGroup,
 } from "@/lib/data/env";
 import { dismissPendingChanges } from "@/lib/data/pending-changes";
@@ -140,6 +141,17 @@ builder.queryFields((t) => ({
 }));
 
 builder.mutationFields((t) => ({
+  makeEnvSecret: t.field({
+    type: "Boolean",
+    authScopes: { capability: "manage_env" },
+    description:
+      "Make a variable Secret without changing its stored value or scope.",
+    args: { id: t.arg.string({ required: true }) },
+    resolve: async (_r, { id }) => {
+      await makeEnvSecret(id);
+      return true;
+    },
+  }),
   upsertEnv: t.field({
     type: EnvVarRef,
     authScopes: { capability: "manage_env" },

@@ -131,16 +131,27 @@ export function EnvRowsEditor({
         })}
 
         {!singleRow && (
-          <div className="p-1">
+          <div className="flex items-center gap-1 p-1">
             <Button
               variant="ghost"
               size="sm"
               onClick={() => onChange([...rows, { key: "", value: "" }])}
-              className="h-8 w-full justify-start px-2 text-muted-foreground hover:text-foreground"
+              className="h-8 flex-1 justify-start px-2 text-muted-foreground hover:text-foreground"
             >
               <Plus className="size-4" />
               Add another
             </Button>
+            {rows.length > 1 && !keyDisabled && !valueReadOnly && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => onChange([{ key: "", value: "" }])}
+                className="text-muted-foreground hover:text-destructive"
+              >
+                <Trash2 className="size-4" />
+                Clear all
+              </Button>
+            )}
           </div>
         )}
       </div>
