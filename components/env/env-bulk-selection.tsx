@@ -1,14 +1,17 @@
 "use client";
 
 import * as React from "react";
-import { Copy, LockKeyhole, Trash2, X } from "lucide-react";
+import { Copy, LockKeyhole, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { useRouter } from "@/lib/nav";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { TableCell, TableHead } from "@/components/ui/table";
+import { SelectionBar } from "@/components/shared/card-selection";
 import { ConfirmAction } from "@/components/shared/confirm-action";
 import {
+  claimEnvSelection,
+  registerEnvSelection,
   copyEnvItems,
   readableEnvItems,
   retainEnvSelection,
@@ -41,6 +44,7 @@ export function EnvBulkSelection({
   children: React.ReactNode;
 }) {
   const router = useRouter();
+  const selectionId = React.useId();
   const available = items.filter(selectable);
   const scope = JSON.stringify(available.map((item) => item.id));
   const [selection, setSelection] = React.useState({
@@ -69,6 +73,15 @@ export function EnvBulkSelection({
   const [converted, setConverted] = React.useState<ReadonlySet<string>>(
     new Set(),
   );
+  React.useEffect(
+    () =>
+      registerEnvSelection(selectionId, () => {
+        if (busy.current) return;
+        setSelection((previous) => ({ ...previous, ids: new Set() }));
+        setConfirmation(null);
+      }),
+    [selectionId],
+  );
   const picked = available.filter((item) => selected.has(item.id));
   const removable = picked.filter((item) => item.remove);
   const convertible = picked.filter(
@@ -80,6 +93,7 @@ export function EnvBulkSelection({
 
   function toggle(ids: string[], checked: boolean) {
     if (busy.current) return;
+    if (checked) claimEnvSelection(selectionId);
     setSelection((previous) => {
       const next = retainEnvSelection(
         previous.ids,
@@ -151,79 +165,51 @@ export function EnvBulkSelection({
     <SelectionContext.Provider
       value={{ items: available, selected, pending, toggle }}
     >
-      {available.length > 0 && (
-        <div className="flex flex-wrap items-center gap-2 rounded-lg border border-border bg-surface p-2">
+      <SelectionBar
+        count={selected.size}
+        disabled={pending}
+        onSelectAll={() =>
+          toggle(
+            available.map((item) => item.id),
+            true,
+          )
+        }
+        onClear={() => toggle([...selected], false)}
+      >
+        {readable.length > 0 && (
+          <Button size="sm" variant="ghost" disabled={pending} onClick={copy}>
+            <Copy className="size-4" />
+            Copy Plain ({readable.length})
+          </Button>
+        )}
+        {convertible.length > 0 && (
           <Button
             size="sm"
             variant="ghost"
             disabled={pending}
             onClick={() =>
-              toggle(
-                available.map((item) => item.id),
-                selected.size !== available.length,
-              )
+              setConfirmation({ action: "makeSecret", items: convertible })
             }
           >
-            {selected.size === available.length ? "Unselect all" : "Select all"}
+            <LockKeyhole className="size-4" />
+            Make Secret ({convertible.length})
           </Button>
-          <span className="text-xs text-muted-foreground" aria-live="polite">
-            {selected.size} selected
-          </span>
-          {selected.size > 0 && (
-            <>
-              {readable.length > 0 && (
-                <Button
-                  size="sm"
-                  variant="outline"
-                  disabled={pending}
-                  onClick={copy}
-                >
-                  <Copy className="size-4" />
-                  Copy Plain ({readable.length})
-                </Button>
-              )}
-              {convertible.length > 0 && (
-                <Button
-                  size="sm"
-                  variant="outline"
-                  disabled={pending}
-                  onClick={() =>
-                    setConfirmation({
-                      action: "makeSecret",
-                      items: convertible,
-                    })
-                  }
-                >
-                  <LockKeyhole className="size-4" />
-                  Make Secret ({convertible.length})
-                </Button>
-              )}
-              {removable.length > 0 && (
-                <Button
-                  size="sm"
-                  variant="destructive"
-                  disabled={pending}
-                  onClick={() =>
-                    setConfirmation({ action: "remove", items: removable })
-                  }
-                >
-                  <Trash2 className="size-4" />
-                  Remove ({removable.length})
-                </Button>
-              )}
-              <Button
-                size="icon-sm"
-                variant="ghost"
-                disabled={pending}
-                aria-label="Clear selection"
-                onClick={() => toggle([...selected], false)}
-              >
-                <X className="size-4" />
-              </Button>
-            </>
-          )}
-        </div>
-      )}
+        )}
+        {removable.length > 0 && (
+          <Button
+            size="sm"
+            variant="ghost"
+            className="text-destructive hover:text-destructive"
+            disabled={pending}
+            onClick={() =>
+              setConfirmation({ action: "remove", items: removable })
+            }
+          >
+            <Trash2 className="size-4" />
+            Remove ({removable.length})
+          </Button>
+        )}
+      </SelectionBar>
       {children}
       <ConfirmAction
         open={confirmation !== null}

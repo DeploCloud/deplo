@@ -1,6 +1,8 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
+  claimEnvSelection,
+  registerEnvSelection,
   copyEnvItems,
   readableEnvItems,
   retainEnvSelection,
@@ -114,4 +116,24 @@ test("failed shared conversions keep every selected reference for retry", async 
   assert.equal(calls, 1);
   assert.deepEqual(result.failed, ["app-a:shared", "app-b:shared"]);
   assert.deepEqual(result.succeeded, []);
+});
+
+test("selecting one ENV section clears the other section and releases unmounted owners", () => {
+  const cleared: string[] = [];
+  const releaseApp = registerEnvSelection("app", () => cleared.push("app"));
+  const releasePreview = registerEnvSelection("preview", () =>
+    cleared.push("preview"),
+  );
+  try {
+    claimEnvSelection("app");
+    assert.deepEqual(cleared, ["preview"]);
+    claimEnvSelection("preview");
+    assert.deepEqual(cleared, ["preview", "app"]);
+    releasePreview();
+    claimEnvSelection("app");
+    assert.deepEqual(cleared, ["preview", "app"]);
+  } finally {
+    releaseApp();
+    releasePreview();
+  }
 });

@@ -87,11 +87,13 @@ export function SelectableCard({
 
 export function SelectionBar({
   count,
+  disabled = false,
   onSelectAll,
   onClear,
   children,
 }: {
   count: number;
+  disabled?: boolean;
   onSelectAll: () => void;
   onClear: () => void;
   children?: React.ReactNode;
@@ -100,22 +102,34 @@ export function SelectionBar({
   return (
     <div
       data-selection-bar=""
+      role="toolbar"
+      aria-label="Bulk actions"
+      aria-busy={disabled}
       className="pointer-events-none fixed inset-x-0 bottom-6 z-40 flex justify-center px-4"
     >
-      <div className="pointer-events-auto flex items-center gap-1 rounded-full border border-border bg-popover/95 py-1.5 pr-1.5 pl-4 shadow-lg backdrop-blur supports-[backdrop-filter]:bg-popover/80">
-        <span className="text-sm font-medium whitespace-nowrap">
+      <div className="pointer-events-auto flex max-w-full flex-wrap items-center justify-center gap-1 rounded-3xl border border-border bg-popover/95 py-1.5 pr-1.5 pl-4 shadow-lg backdrop-blur supports-[backdrop-filter]:bg-popover/80 sm:rounded-full">
+        <span
+          className="text-sm font-medium whitespace-nowrap"
+          aria-live="polite"
+        >
           {count} selected
         </span>
         <span className="mx-1.5 h-5 w-px bg-border" />
         {children}
         <span className="mx-1.5 h-5 w-px bg-border" />
-        <Button variant="ghost" size="sm" onClick={onSelectAll}>
+        <Button
+          variant="ghost"
+          size="sm"
+          disabled={disabled}
+          onClick={onSelectAll}
+        >
           <MousePointerSquareDashed className="size-4" />
           Select all
         </Button>
         <Button
           variant="ghost"
           size="icon-sm"
+          disabled={disabled}
           aria-label="Clear selection"
           onClick={onClear}
         >

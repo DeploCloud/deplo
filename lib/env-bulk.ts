@@ -74,3 +74,18 @@ export async function runEnvBulk(
   }
   return { succeeded, failed, errors };
 }
+
+const selectionOwners = new Map<string, () => void>();
+
+export function registerEnvSelection(owner: string, clear: () => void) {
+  selectionOwners.set(owner, clear);
+  return () => {
+    selectionOwners.delete(owner);
+  };
+}
+
+export function claimEnvSelection(owner: string) {
+  for (const [id, clear] of selectionOwners) {
+    if (id !== owner) clear();
+  }
+}

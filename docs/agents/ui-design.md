@@ -7,6 +7,10 @@
   colour, background, border, an indicator or an icon. Preserve the typography hierarchy
   between distinct elements and static layout variants.
 
+- **ENV bulk actions use the shared floating `SelectionBar`**, matching Overview and Storage.
+  Show it at the bottom of the viewport only while rows are selected, never as an inline toolbar.
+  Keep only one ENV section selected at a time so App variables and preview overrides cannot overlap.
+
 - **Default is RSC**; `"use client"` is leaf-ish (state/effects/forms). RSC pages `await`
   `lib/data`/`lib/auth`/`lib/membership` and pass plain props down.
 - **Mutations go through GraphQL, not server actions.** Use `lib/graphql-client.ts` (`gql`,
