@@ -1,5 +1,7 @@
 "use client";
 
+import { SlidingButtonGroup } from "@/components/ui/sliding-button-group";
+
 import * as React from "react";
 import { Minus, Plus, Type } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -112,19 +114,22 @@ export function LogsDisplayMenu({ className }: { className?: string }) {
             <span className="text-xs font-medium text-muted-foreground">
               Line spacing
             </span>
-            <div className="grid grid-cols-3 gap-1">
+            <SlidingButtonGroup
+              className="grid grid-cols-3 gap-1 border-0 p-0"
+              aria-label="Line spacing"
+            >
               {LOG_LEADINGS.map((l) => (
                 <Button
                   key={l.value}
                   size="sm"
-                  variant={display.leading === l.value ? "secondary" : "ghost"}
+                  variant="ghost"
                   aria-pressed={display.leading === l.value}
                   onClick={() => update({ ...display, leading: l.value })}
                 >
                   {l.label}
                 </Button>
               ))}
-            </div>
+            </SlidingButtonGroup>
           </div>
 
           <Button

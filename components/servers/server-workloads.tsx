@@ -209,18 +209,22 @@ export function ServerWorkloads({
       />
 
       <div className="overflow-x-auto rounded-xl border border-border">
-        <Table className="whitespace-nowrap">
+        <Table className="table-fixed whitespace-nowrap">
           <TableHeader>
             <TableRow>
               <TableHead className="w-8" />
               <TableHead>Name</TableHead>
-              <TableHead className="hidden sm:table-cell">Type</TableHead>
+              <TableHead className="hidden w-28 sm:table-cell">Type</TableHead>
               <TableHead className="hidden sm:table-cell">Team</TableHead>
               <TableHead className={WIDE}>Project</TableHead>
-              <TableHead>Status</TableHead>
-              <TableHead className={cn(WIDE, "text-right")}>CPU</TableHead>
-              <TableHead className={cn(WIDE, "text-right")}>Memory</TableHead>
-              <TableHead className={cn(WIDE, "text-right")}>Restarts</TableHead>
+              <TableHead className="w-32">Status</TableHead>
+              <TableHead className={cn(WIDE, "w-16 text-right")}>CPU</TableHead>
+              <TableHead className={cn(WIDE, "w-20 text-right")}>
+                Memory
+              </TableHead>
+              <TableHead className={cn(WIDE, "w-20 text-right")}>
+                Restarts
+              </TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -263,7 +267,7 @@ function WorkloadRows({
   const name = (
     <span className="flex items-center gap-2.5">
       <AppLogo logo={logo ?? null} tone={w.logoTone} size={24} />
-      <span className="font-medium">{w.name}</span>
+      <WorkloadText className="font-medium">{w.name}</WorkloadText>
     </span>
   );
   return (
@@ -306,11 +310,13 @@ function WorkloadRows({
               avatarUrl={w.teamAvatarUrl}
               size="xs"
             />
-            {w.teamName}
+            <WorkloadText>{w.teamName}</WorkloadText>
           </span>
         </TableCell>
         <TableCell className={cn(WIDE, "text-muted-foreground")}>
-          {[w.project, w.environment].filter(Boolean).join(" / ") || "-"}
+          <WorkloadText>
+            {[w.project, w.environment].filter(Boolean).join(" / ") || "-"}
+          </WorkloadText>
         </TableCell>
         <TableCell>
           <StatusIndicator status={w.status} detail={null} badge />
@@ -335,7 +341,9 @@ function ContainerRow({ c }: { c: WorkloadContainer }) {
   return (
     <TableRow className="bg-surface hover:bg-surface">
       <TableCell />
-      <TableCell className="pl-11 font-mono text-xs">{c.name}</TableCell>
+      <TableCell className="pl-11 font-mono text-xs">
+        <WorkloadText>{c.name}</WorkloadText>
+      </TableCell>
       <TableCell className="hidden sm:table-cell" />
       <TableCell className="hidden sm:table-cell" />
       <TableCell className={WIDE} />
@@ -380,5 +388,22 @@ function Usage({
         {memUsed == null ? "-" : formatBytes(memUsed)}
       </TableCell>
     </>
+  );
+}
+
+function WorkloadText({
+  children,
+  className,
+}: {
+  children: string;
+  className?: string;
+}) {
+  return (
+    <span
+      title={children}
+      className={cn("block max-w-xs min-w-0 truncate", className)}
+    >
+      {children}
+    </span>
   );
 }

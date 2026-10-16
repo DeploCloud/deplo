@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import { cn } from "@/lib/utils";
+import { gsap, useGSAP } from "@/lib/gsap";
 
 const useIsoLayoutEffect =
   typeof window !== "undefined" ? React.useLayoutEffect : React.useEffect;
@@ -62,7 +63,13 @@ export function useSlidingRect(
       mo.observe(container, {
         subtree: true,
         attributes: true,
-        attributeFilter: ["data-state"],
+        attributeFilter: [
+          "data-state",
+          "data-active",
+          "aria-pressed",
+          "aria-selected",
+          "aria-current",
+        ],
       });
     }
 
@@ -75,6 +82,66 @@ export function useSlidingRect(
   return rect;
 }
 
+function SlidingIndicator({
+  rect,
+  className,
+  underline = false,
+}: {
+  rect: SlideRect | null;
+  className?: string;
+  underline?: boolean;
+}) {
+  const ref = React.useRef<HTMLSpanElement>(null);
+  const positioned = React.useRef(false);
+
+  useGSAP(
+    () => {
+      if (!ref.current) return;
+      if (!rect) {
+        positioned.current = false;
+        gsap.set(ref.current, { autoAlpha: 0, overwrite: true });
+        return;
+      }
+      const target = {
+        x: rect.left,
+        width: rect.width,
+        autoAlpha: 1,
+        ...(underline ? {} : { y: rect.top, height: rect.height }),
+      };
+      if (
+        !positioned.current ||
+        window.matchMedia("(prefers-reduced-motion: reduce)").matches
+      ) {
+        gsap.set(ref.current, { ...target, overwrite: true });
+      } else {
+        gsap.to(ref.current, {
+          ...target,
+          duration: 0.3,
+          ease: "power3.out",
+          overwrite: true,
+        });
+      }
+      positioned.current = true;
+    },
+    { dependencies: [rect, underline] },
+  );
+
+  return (
+    <span
+      ref={ref}
+      aria-hidden
+      className={cn(
+        "pointer-events-none absolute left-0",
+        underline
+          ? "bottom-0 h-0.5 rounded-full bg-foreground"
+          : "top-0 z-0 rounded-md bg-sidebar-accent",
+        className,
+      )}
+      style={{ visibility: "hidden" }}
+    />
+  );
+}
+
 export function SlidingUnderline({
   rect,
   className,
@@ -82,17 +149,7 @@ export function SlidingUnderline({
   rect: SlideRect | null;
   className?: string;
 }) {
-  if (!rect) return null;
-  return (
-    <span
-      aria-hidden
-      className={cn(
-        "pointer-events-none absolute bottom-0 left-0 h-0.5 rounded-full bg-foreground transition-[transform,width] duration-300 ease-out",
-        className,
-      )}
-      style={{ transform: `translateX(${rect.left}px)`, width: rect.width }}
-    />
-  );
+  return <SlidingIndicator rect={rect} className={className} underline />;
 }
 
 export function SlidingBackground({
@@ -102,19 +159,5 @@ export function SlidingBackground({
   rect: SlideRect | null;
   className?: string;
 }) {
-  if (!rect) return null;
-  return (
-    <span
-      aria-hidden
-      className={cn(
-        "pointer-events-none absolute top-0 left-0 z-0 rounded-md bg-sidebar-accent transition-[transform,width,height] duration-200 ease-out",
-        className,
-      )}
-      style={{
-        transform: `translate3d(${rect.left}px, ${rect.top}px, 0)`,
-        width: rect.width,
-        height: rect.height,
-      }}
-    />
-  );
+  return <SlidingIndicator rect={rect} className={className} />;
 }

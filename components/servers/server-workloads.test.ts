@@ -62,13 +62,13 @@ const rows = [
   }),
 ];
 
-test("the shared viewer lists all statuses with full team and project names", () => {
+test("the shared viewer preserves full names in tooltips across all statuses", () => {
   const html = render(
     createElement(ServerWorkloads, { serverId: "srv_one", initial: rows }),
   );
-  for (const row of rows) assert.ok(html.includes(row.name));
-  assert.ok(html.includes("Customer experience team"));
-  assert.ok(html.includes("Customer platform / Production"));
+  for (const row of rows) assert.ok(html.includes(`title="${row.name}"`));
+  assert.ok(html.includes('title="Customer experience team"'));
+  assert.ok(html.includes('title="Customer platform / Production"'));
 });
 
 test("URL status, type and team filters narrow the shared viewer together", () => {

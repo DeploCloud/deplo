@@ -3,7 +3,7 @@
 import * as React from "react";
 import { useRouter } from "@/lib/nav";
 import { toast } from "sonner";
-import { Brush, CalendarClock, Loader2 } from "lucide-react";
+import { Brush, CalendarClock, Loader2, Server } from "lucide-react";
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -13,8 +13,11 @@ import { Switch } from "@/components/ui/switch";
 import { FieldLabel, InfoTip } from "@/components/ui/info-tip";
 import { SimpleTooltip } from "@/components/ui/tooltip";
 import { CleanupHistory } from "@/components/settings/cleanup-history";
+import { SettingItem } from "@/components/settings/deplo-settings-panel/setting-item";
+import { SchedulePicker } from "@/components/shared/schedule-picker";
+import { Badge } from "@/components/ui/badge";
 import { gqlAction, gqlSubscribe } from "@/lib/graphql-client";
-import { formatBytes } from "@/lib/utils";
+import { cn, formatBytes } from "@/lib/utils";
 import type { CleanupPolicy } from "@/lib/data/docker-cleanup/policy";
 import type { CleanupRunDTO } from "@/lib/data/docker-cleanup/run-history";
 import type { CleanupScopeId } from "@/lib/data/docker-cleanup/scopes";
@@ -144,7 +147,7 @@ export function ServerCleanupTab({
   server,
   cleanup,
 }: {
-  server: ServerSummary;
+  server: Pick<ServerSummary, "id" | "name">;
   cleanup: { policy: CleanupPolicy; runs: CleanupRunDTO[] };
 }) {
   const router = useRouter();
@@ -274,19 +277,20 @@ export function ServerCleanupTab({
   }
 
   return (
-    <>
+    <div className="space-y-4">
       <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2 text-base">
-            <Brush className="size-4" />
-            Reclaim disk now
-          </CardTitle>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Frees build cache, unused images and orphaned volumes on this
-            server. Your apps and their data are never touched.
-          </p>
-        </CardHeader>
-        <CardContent>
+        <CardHeader className="gap-4 space-y-0 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex items-start gap-3">
+            <span className="flex size-10 shrink-0 items-center justify-center rounded-lg border border-border bg-surface">
+              <Brush className="size-5 text-muted-foreground" />
+            </span>
+            <div>
+              <CardTitle className="text-base">Reclaim disk now</CardTitle>
+              <p className="mt-1 text-sm text-muted-foreground">
+                Free unused disk space. Your apps and their data stay untouched.
+              </p>
+            </div>
+          </div>
           <SimpleTooltip
             content={
               sweeping
@@ -295,11 +299,11 @@ export function ServerCleanupTab({
                   ? "Save the schedule first: a cleanup runs the saved scopes, not the unsaved ones"
                   : nothingSelected
                     ? "Select at least one thing to reclaim"
-                    : `Reclaim Docker disk on ${server.name} now`
+                    : `Reclaim disk on ${server.name} now`
             }
-            side="right"
+            side="bottom"
           >
-            <span tabIndex={0}>
+            <span tabIndex={0} className="shrink-0">
               <Button
                 onClick={runNow}
                 disabled={dirty || nothingSelected || sweeping || saving}
@@ -313,156 +317,176 @@ export function ServerCleanupTab({
               </Button>
             </span>
           </SimpleTooltip>
-        </CardContent>
+        </CardHeader>
       </Card>
 
       <Card>
-        <CardHeader className="flex-row items-start justify-between gap-3 space-y-0">
-          <div>
-            <CardTitle className="flex w-fit items-center gap-2 text-base">
-              <CalendarClock className="size-4" />
-              Scheduled cleanup
-            </CardTitle>
-            <p className="mt-1 text-sm text-muted-foreground">
-              Sweep this server automatically, so it never fills up unattended.
-            </p>
-          </div>
-          <Switch
-            checked={included}
-            onCheckedChange={setInclusion}
-            disabled={saving}
-            aria-label="Sweep this server on the schedule"
-          />
-        </CardHeader>
-        <CardContent>
-          <form className="space-y-5" onSubmit={savePolicy}>
-            <div className="flex items-center gap-2.5 rounded-lg border border-border p-3">
-              <Checkbox
-                id="cleanup-enabled"
-                checked={form.enabled}
-                onCheckedChange={(v) =>
-                  setForm((f) => ({ ...f, enabled: v === true }))
-                }
-              />
-              <FieldLabel
-                htmlFor="cleanup-enabled"
-                className="cursor-pointer font-normal"
-                info="One schedule for the whole instance, so turning it off here stops the sweep everywhere. To skip only this server, use the switch above."
-                docs="servers.cleanupSettings"
-              >
-                Run the cleanup on a schedule (all servers)
-              </FieldLabel>
-            </div>
-
-            <div className="grid gap-4 sm:grid-cols-3">
-              <div className="space-y-2">
-                <FieldLabel
-                  htmlFor="cleanup-schedule"
-                  info={
-                    <>
-                      Standard 5-field cron expression,{" "}
-                      <strong>evaluated in UTC</strong> - there is no per-server
-                      timezone. <code>0 4 * * *</code> is daily at 04:00 UTC.
-                    </>
-                  }
-                  docs="servers.cleanupSettings"
-                >
-                  Schedule
-                </FieldLabel>
-                <Input
-                  id="cleanup-schedule"
-                  value={form.schedule}
-                  onChange={(e) =>
-                    setForm((f) => ({ ...f, schedule: e.target.value }))
-                  }
-                  className="font-mono text-xs"
-                  placeholder="0 4 * * *"
-                  autoComplete="off"
-                  spellCheck={false}
-                />
-              </div>
-              <div className="space-y-2">
-                <FieldLabel
-                  htmlFor="cleanup-min-age"
-                  info="Caches only: build cache, dangling images and leaked build volumes older than this. 0 turns the age filter off."
-                  docs="servers.cleanupScopes"
-                >
-                  Minimum age (hours)
-                </FieldLabel>
-                <Input
-                  id="cleanup-min-age"
-                  type="number"
-                  min={0}
-                  max={8760}
-                  value={form.minAgeHours}
-                  onChange={(e) =>
-                    setForm((f) => ({ ...f, minAgeHours: e.target.value }))
-                  }
-                />
-              </div>
-              <div className="space-y-2">
-                <FieldLabel
-                  htmlFor="cleanup-keep-images"
-                  info="For apps that can't be rolled back: a compose stack, a prebuilt image, a preview. A removed image comes back only by rebuilding."
-                  docs="servers.cleanupScopes"
-                >
-                  Images kept per app
-                </FieldLabel>
-                <Input
-                  id="cleanup-keep-images"
-                  type="number"
-                  min={1}
-                  max={20}
-                  value={form.keepImagesPerApp}
-                  onChange={(e) =>
-                    setForm((f) => ({ ...f, keepImagesPerApp: e.target.value }))
-                  }
-                />
-              </div>
-            </div>
-
-            <div className="space-y-2.5">
-              <FieldLabel
-                info="Scheduled or manual, a sweep reclaims only this list. Named volumes and anything a container still uses are never touched."
-                docs="servers.cleanupScopes"
-              >
-                What to reclaim
-              </FieldLabel>
-              {SCOPES.map((scope) => (
-                <div key={scope.id} className="flex items-center gap-2.5">
-                  <Checkbox
-                    id={`cleanup-scope-${scope.id}`}
-                    checked={form.scopes.includes(scope.id)}
-                    onCheckedChange={(v) => toggleScope(scope.id, v === true)}
-                  />
-                  <FieldLabel
-                    htmlFor={`cleanup-scope-${scope.id}`}
-                    info={scope.info}
-                    className="cursor-pointer font-normal"
-                  >
-                    {scope.label}
-                  </FieldLabel>
-                </div>
-              ))}
-            </div>
-
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
-                The schedule and what it reclaims are shared by every server
-                <InfoTip
-                  content="One cleanup schedule for the whole instance, so a server you add later is swept too. Saving here changes it everywhere."
-                  docs="servers.cleanupSettings"
-                />
-              </span>
-              <Button type="submit" disabled={saving || !dirty}>
-                Save schedule
-              </Button>
-            </div>
-          </form>
-        </CardContent>
+        <SettingItem
+          icon={Server}
+          title="Include this server"
+          description="This server follows the shared cleanup schedule."
+          htmlFor="cleanup-included"
+          control={
+            <Switch
+              id="cleanup-included"
+              checked={included}
+              onCheckedChange={setInclusion}
+              disabled={saving}
+              aria-label="Sweep this server on the schedule"
+            />
+          }
+        />
       </Card>
 
+      <form className="space-y-4" onSubmit={savePolicy}>
+        <div className="grid items-start gap-4 lg:grid-cols-2">
+          <Card>
+            <CardHeader>
+              <div className="flex items-center justify-between gap-3">
+                <CardTitle className="flex items-center gap-2 text-base">
+                  <CalendarClock className="size-4" />
+                  Scheduled cleanup
+                </CardTitle>
+                <Badge variant="muted">All servers</Badge>
+              </div>
+              <p className="mt-1 text-sm text-muted-foreground">
+                Changes here apply to every server.
+              </p>
+            </CardHeader>
+            <CardContent className="space-y-5">
+              <div className="flex items-center justify-between gap-3 rounded-lg border border-border bg-surface p-3">
+                <FieldLabel
+                  htmlFor="cleanup-enabled"
+                  info="Turning this off pauses the schedule for all servers. To skip only this server, turn off Include this server."
+                  docs="servers.cleanupSettings"
+                  className="cursor-pointer"
+                >
+                  Enable schedule
+                </FieldLabel>
+                <Switch
+                  id="cleanup-enabled"
+                  checked={form.enabled}
+                  onCheckedChange={(enabled) =>
+                    setForm((f) => ({ ...f, enabled }))
+                  }
+                  aria-label="Enable scheduled cleanup on all servers"
+                />
+              </div>
+
+              <SchedulePicker
+                key={cleanup.policy.schedule}
+                id="cleanup-schedule"
+                value={form.schedule}
+                onChange={(schedule) => setForm((f) => ({ ...f, schedule }))}
+                timezone="UTC"
+                docs="servers.cleanupSettings"
+              />
+
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div className="space-y-2">
+                  <FieldLabel
+                    htmlFor="cleanup-min-age"
+                    info="Caches only: build cache, dangling images and leaked build volumes older than this. 0 turns the age filter off."
+                    docs="servers.cleanupScopes"
+                  >
+                    Minimum age (hours)
+                  </FieldLabel>
+                  <Input
+                    id="cleanup-min-age"
+                    type="number"
+                    min={0}
+                    max={8760}
+                    value={form.minAgeHours}
+                    onChange={(e) =>
+                      setForm((f) => ({ ...f, minAgeHours: e.target.value }))
+                    }
+                  />
+                </div>
+                <div className="space-y-2">
+                  <FieldLabel
+                    htmlFor="cleanup-keep-images"
+                    info="For apps that can't be rolled back: a compose stack, a prebuilt image, a preview. A removed image comes back only by rebuilding."
+                    docs="servers.cleanupScopes"
+                  >
+                    Images kept per app
+                  </FieldLabel>
+                  <Input
+                    id="cleanup-keep-images"
+                    type="number"
+                    min={1}
+                    max={20}
+                    value={form.keepImagesPerApp}
+                    onChange={(e) =>
+                      setForm((f) => ({
+                        ...f,
+                        keepImagesPerApp: e.target.value,
+                      }))
+                    }
+                  />
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-base">
+                <Brush className="size-4" />
+                What to reclaim
+                <InfoTip
+                  content="A cleanup reclaims only this list. Named volumes and anything a container still uses are never touched."
+                  docs="servers.cleanupScopes"
+                />
+              </CardTitle>
+              <p className="mt-1 text-sm text-muted-foreground">
+                Applies to scheduled and manual cleanups on all servers.
+              </p>
+            </CardHeader>
+            <CardContent className="space-y-2">
+              {SCOPES.map((scope) => {
+                const selected = form.scopes.includes(scope.id);
+                return (
+                  <div
+                    key={scope.id}
+                    className={cn(
+                      "flex items-center gap-3 rounded-lg border border-border px-3 py-2.5",
+                      selected && "bg-surface",
+                    )}
+                  >
+                    <Checkbox
+                      id={`cleanup-scope-${scope.id}`}
+                      checked={selected}
+                      onCheckedChange={(v) => toggleScope(scope.id, v === true)}
+                    />
+                    <FieldLabel
+                      htmlFor={`cleanup-scope-${scope.id}`}
+                      info={scope.info}
+                      className="cursor-pointer font-normal"
+                    >
+                      {scope.label}
+                    </FieldLabel>
+                  </div>
+                );
+              })}
+            </CardContent>
+          </Card>
+        </div>
+
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
+            The schedule and cleanup rules are shared by all servers
+            <InfoTip
+              content="One cleanup policy for the whole instance. Saving here updates every server, including ones you add later."
+              docs="servers.cleanupSettings"
+            />
+          </span>
+          <Button type="submit" disabled={saving || !dirty}>
+            Save schedule
+          </Button>
+        </div>
+      </form>
+
       <CleanupHistory runs={runs} hideServer />
-    </>
+    </div>
   );
 }

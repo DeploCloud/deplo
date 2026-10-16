@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { SlidingButtonGroup } from "@/components/ui/sliding-button-group";
 import type { LucideIcon } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { InfoTip } from "@/components/ui/info-tip";
@@ -133,11 +134,7 @@ export function WindowSelector({
   onChange: (ms: number) => void;
 }) {
   return (
-    <div
-      className="flex items-center gap-0.5 rounded-lg border p-0.5"
-      role="group"
-      aria-label="Chart time window"
-    >
+    <SlidingButtonGroup aria-label="Chart time window">
       {WINDOWS.map((w) => (
         <button
           key={w.label}
@@ -145,16 +142,16 @@ export function WindowSelector({
           onClick={() => onChange(w.ms)}
           aria-pressed={windowMs === w.ms}
           className={cn(
-            "rounded-md px-2.5 py-1 text-xs transition-colors",
+            "rounded-md px-2.5 py-1 text-xs",
             windowMs === w.ms
-              ? "bg-secondary font-medium"
+              ? "font-medium"
               : "text-muted-foreground hover:text-foreground",
           )}
         >
           Last {w.label}
         </button>
       ))}
-    </div>
+    </SlidingButtonGroup>
   );
 }
 

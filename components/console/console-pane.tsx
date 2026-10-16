@@ -250,10 +250,7 @@ export function ConsolePane({
         ) : null}
 
         <TabsList className="h-9 gap-0 rounded-lg border border-border bg-background/60 p-1">
-          <TabsTrigger
-            value="exec"
-            className="px-2.5 py-1 text-xs data-[state=active]:bg-accent"
-          >
+          <TabsTrigger value="exec" className="px-2.5 py-1 text-xs">
             <SquareTerminal />
             Shell
           </TabsTrigger>
@@ -268,7 +265,7 @@ export function ConsolePane({
               <TabsTrigger
                 value="attach"
                 disabled={!attachable}
-                className="px-2.5 py-1 text-xs data-[state=active]:bg-accent"
+                className="px-2.5 py-1 text-xs"
               >
                 <Plug />
                 Attach

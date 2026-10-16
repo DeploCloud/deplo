@@ -1,5 +1,7 @@
 "use client";
 
+import { SlidingButtonGroup } from "@/components/ui/sliding-button-group";
+
 import * as React from "react";
 import { Check, Clock } from "lucide-react";
 import {
@@ -157,7 +159,10 @@ export function TimelineMenu({
         {value.timestamps && (
           <div className="flex items-center justify-between gap-2 px-2 pb-1.5 text-sm">
             <span className="text-muted-foreground">Format</span>
-            <div className="flex rounded-md border border-input p-0.5">
+            <SlidingButtonGroup
+              className="rounded-md border-input"
+              aria-label="Timestamp format"
+            >
               {(["absolute", "relative"] as const).map((format) => (
                 <button
                   key={format}
@@ -165,16 +170,16 @@ export function TimelineMenu({
                   onClick={() => onChange({ ...value, format })}
                   aria-pressed={value.format === format}
                   className={cn(
-                    "cursor-pointer rounded px-2 py-0.5 text-xs capitalize transition-colors",
+                    "cursor-pointer rounded px-2 py-0.5 text-xs capitalize",
                     value.format === format
-                      ? "bg-secondary text-foreground"
+                      ? "text-foreground"
                       : "text-muted-foreground hover:text-foreground",
                   )}
                 >
                   {format}
                 </button>
               ))}
-            </div>
+            </SlidingButtonGroup>
           </div>
         )}
       </PopoverContent>

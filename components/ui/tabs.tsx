@@ -13,48 +13,13 @@ const Tabs = TabsPrimitive.Root;
 
 const TabsList = React.forwardRef<
   React.ElementRef<typeof TabsPrimitive.List>,
-  React.ComponentPropsWithoutRef<typeof TabsPrimitive.List>
->(({ className, ...props }, ref) => (
-  <TabsPrimitive.List
-    ref={ref}
-    className={cn(
-      "inline-flex h-9 items-center justify-center gap-1 text-muted-foreground",
-      className,
-    )}
-    {...props}
-  />
-));
-TabsList.displayName = TabsPrimitive.List.displayName;
-
-const TRIGGER_ICON = "gap-2 [&_svg]:size-4 [&_svg]:shrink-0";
-
-const triggerClass =
-  "inline-flex cursor-pointer items-center justify-center rounded-md px-3 py-1.5 text-sm font-medium whitespace-nowrap text-muted-foreground transition-all hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none disabled:pointer-events-none disabled:opacity-50 data-[state=active]:text-foreground";
-
-const TabsTrigger = React.forwardRef<
-  React.ElementRef<typeof TabsPrimitive.Trigger>,
-  React.ComponentPropsWithoutRef<typeof TabsPrimitive.Trigger>
->(({ className, ...props }, ref) => (
-  <TabsPrimitive.Trigger
-    ref={ref}
-    className={cn(
-      triggerClass,
-      "data-[state=active]:bg-accent",
-      TRIGGER_ICON,
-      className,
-    )}
-    {...props}
-  />
-));
-TabsTrigger.displayName = TabsPrimitive.Trigger.displayName;
-
-function SegmentedTabsList({
-  className,
-  children,
-  ...props
-}: React.ComponentPropsWithoutRef<typeof TabsPrimitive.List>) {
+  React.ComponentPropsWithoutRef<typeof TabsPrimitive.List> & {
+    indicatorClassName?: string;
+  }
+>(({ className, children, indicatorClassName, ...props }, ref) => {
   const listRef =
     React.useRef<React.ElementRef<typeof TabsPrimitive.List>>(null);
+  React.useImperativeHandle(ref, () => listRef.current!, []);
   const rect = useSlidingRect(
     listRef,
     () =>
@@ -67,19 +32,27 @@ function SegmentedTabsList({
     <TabsPrimitive.List
       ref={listRef}
       className={cn(
-        "relative isolate grid h-auto w-full auto-cols-fr grid-flow-col items-center rounded-lg border border-border bg-surface p-1",
+        "relative isolate inline-flex h-9 items-center justify-center gap-1 text-muted-foreground",
         className,
       )}
       {...props}
     >
-      <SlidingBackground rect={rect} className="bg-background shadow-sm" />
+      <SlidingBackground
+        rect={rect}
+        className={cn("bg-accent", indicatorClassName)}
+      />
       {children}
     </TabsPrimitive.List>
   );
-}
-SegmentedTabsList.displayName = "SegmentedTabsList";
+});
+TabsList.displayName = TabsPrimitive.List.displayName;
 
-const SegmentedTabsTrigger = React.forwardRef<
+const TRIGGER_ICON = "gap-2 [&_svg]:size-4 [&_svg]:shrink-0";
+
+const triggerClass =
+  "inline-flex cursor-pointer items-center justify-center rounded-md px-3 py-1.5 text-sm font-medium whitespace-nowrap text-muted-foreground hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none disabled:pointer-events-none disabled:opacity-50 data-[state=active]:text-foreground";
+
+const TabsTrigger = React.forwardRef<
   React.ElementRef<typeof TabsPrimitive.Trigger>,
   React.ComponentPropsWithoutRef<typeof TabsPrimitive.Trigger>
 >(({ className, ...props }, ref) => (
@@ -89,7 +62,26 @@ const SegmentedTabsTrigger = React.forwardRef<
     {...props}
   />
 ));
-SegmentedTabsTrigger.displayName = "SegmentedTabsTrigger";
+TabsTrigger.displayName = TabsPrimitive.Trigger.displayName;
+
+function SegmentedTabsList({
+  className,
+  ...props
+}: React.ComponentPropsWithoutRef<typeof TabsPrimitive.List>) {
+  return (
+    <TabsList
+      className={cn(
+        "grid h-auto w-full auto-cols-fr grid-flow-col items-center rounded-lg border border-border bg-surface p-1",
+        className,
+      )}
+      indicatorClassName="bg-background shadow-sm"
+      {...props}
+    />
+  );
+}
+SegmentedTabsList.displayName = "SegmentedTabsList";
+
+const SegmentedTabsTrigger = TabsTrigger;
 
 const TabsContent = React.forwardRef<
   React.ElementRef<typeof TabsPrimitive.Content>,
@@ -138,7 +130,7 @@ function UnderlineTabsList({
 UnderlineTabsList.displayName = "UnderlineTabsList";
 
 const underlineTabClass =
-  "inline-flex h-12 cursor-pointer items-center justify-center rounded-md px-3 text-sm font-medium whitespace-nowrap text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none data-[state=active]:text-foreground";
+  "inline-flex h-12 cursor-pointer items-center justify-center rounded-md px-3 text-sm font-medium whitespace-nowrap text-muted-foreground hover:text-foreground focus-visible:outline-none data-[state=active]:text-foreground";
 
 const UnderlineTabsTrigger = React.forwardRef<
   React.ElementRef<typeof TabsPrimitive.Trigger>,
