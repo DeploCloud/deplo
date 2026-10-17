@@ -1,0 +1,3 @@
+SHELL=/bin/sh
+PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+30 4 * * * root /usr/bin/ionice -c 3 /usr/bin/nice -n 10 /usr/local/sbin/deplo-main-host-cleanup
