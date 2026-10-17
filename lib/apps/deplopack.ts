@@ -10,6 +10,7 @@ import { pickBuildServer } from "../deploy/build-server";
 import { normalizeRootRel } from "../deploy/source";
 import { signState, verifyState } from "../crypto";
 import type { BuildConfig } from "../types/build";
+import { readGitCompose } from "./repo-compose";
 import {
   detectionKey,
   type RepoAnalysis,
@@ -210,7 +211,7 @@ export function validateRepoAnalysis(
   input: AnalysisRequest,
   teamId: string,
   userId: string,
-): { build: Partial<BuildConfig>; commitSha: string } {
+): { build: Partial<BuildConfig>; commitSha: string; composePath?: string } {
   const payload = verifyState(receipt);
   if (!payload)
     throw new Error(
@@ -268,27 +269,91 @@ export function validateRepoAnalysis(
       accepted.push({ env: field.env, type: field.type, values: raw.values });
   }
   const isDockerfile = detection.type === "dockerfile";
+  const isCompose = detection.type === "compose";
+  if (
+    isCompose &&
+    (!detection.path ||
+      detection.path.startsWith("/") ||
+      detection.path
+        .split("/")
+        .some((part) => part === ".." || part === ".git") ||
+      /[\\\0\r\n]/.test(detection.path))
+  )
+    throw new Error("Invalid repository Compose path");
   return {
     commitSha: analysis.commitSha,
+    composePath: isCompose ? detection.path : undefined,
     build: {
-      buildMethod: isDockerfile ? "dockerfile" : "deplopack",
+      buildMethod: isDockerfile || isCompose ? "dockerfile" : "deplopack",
       includeFilesOutsideRoot: false,
       installCommand: null,
       buildCommand: null,
       startCommand: null,
       outputDirectory: null,
       runtimeVersion: "",
-      methodSettings: isDockerfile
-        ? {
-            dockerfilePath: detection.path ?? "Dockerfile",
-            dockerContextPath: ".",
-          }
-        : {
-            deplopackVersion: analysis.version,
-            deplopackProvider: detection.type,
-            deplopackPath: detection.path ?? null,
-          },
-      deplopackInputs: isDockerfile ? [] : accepted,
+      methodSettings: isCompose
+        ? {}
+        : isDockerfile
+          ? {
+              dockerfilePath: detection.path ?? "Dockerfile",
+              dockerContextPath: ".",
+            }
+          : {
+              deplopackVersion: analysis.version,
+              deplopackProvider: detection.type,
+              deplopackPath: detection.path ?? null,
+            },
+      deplopackInputs: isDockerfile || isCompose ? [] : accepted,
     },
   };
+}
+
+export async function previewRepoCompose(
+  input: AnalysisRequest & { receipt: string; candidate: string },
+): Promise<string> {
+  const { membership, userId } = await requireMembership();
+  await resolveNewAppPlacement(input, membership.teamId);
+  const selection = validateRepoAnalysis(
+    input.receipt,
+    input.candidate,
+    [],
+    input,
+    membership.teamId,
+    userId,
+  );
+  if (!selection.composePath)
+    throw new Error("Select a repository Compose file");
+  const servers = await listServersForTeam(membership.teamId);
+  if (
+    !servers.some(
+      (server) =>
+        server.id === input.serverId &&
+        !server.buildOnly &&
+        !server.storageOnly &&
+        !server.importOnly,
+    )
+  )
+    throw new Error("Select a server available to this team");
+  const repo = await scopeRepoCredentials(
+    {
+      provider: "github",
+      url: `https://github.com/${input.repo}`,
+      repo: input.repo,
+      branch: input.branch ?? "main",
+      installationId: input.installationId,
+      connectionId: input.connectionId,
+    },
+    membership.teamId,
+  );
+  if (!repo) throw new Error("Repository is required");
+  return (
+    await readGitCompose(
+      input.serverId,
+      repo,
+      selection.composePath,
+      input.rootDirectory ?? "",
+      repo.branch,
+      selection.commitSha,
+    )
+  ).compose;
 }

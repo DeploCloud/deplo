@@ -12,7 +12,7 @@ export function ComposeSummary({
 }: {
   services: string[];
   diagnostics: LintDiagnostic[];
-  onOpen: () => void;
+  onOpen?: () => void;
 }) {
   const errors = diagnostics.filter((d) => d.severity === "error").length;
   return (
@@ -34,19 +34,21 @@ export function ComposeSummary({
           </p>
         </div>
       </div>
-      <Button type="button" variant="outline" onClick={onOpen}>
-        {services.length === 0 ? (
-          <>
-            <FileText className="size-4" />
-            Write compose
-          </>
-        ) : (
-          <>
-            <Pencil className="size-4" />
-            Edit compose
-          </>
-        )}
-      </Button>
+      {onOpen && (
+        <Button type="button" variant="outline" onClick={onOpen}>
+          {services.length === 0 ? (
+            <>
+              <FileText className="size-4" />
+              Write compose
+            </>
+          ) : (
+            <>
+              <Pencil className="size-4" />
+              Edit compose
+            </>
+          )}
+        </Button>
+      )}
     </div>
   );
 }

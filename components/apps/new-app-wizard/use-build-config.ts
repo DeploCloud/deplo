@@ -15,12 +15,12 @@ import { parseRepo } from "./source-hints";
 
 export function useBuildConfig({
   source,
-  buildsImage,
   ghSelection,
   gitValue,
   serverId,
   buildServerId,
   placement,
+  onComposeSelected,
 }: {
   source: DeploySource | null;
   buildsImage: boolean;
@@ -28,6 +28,7 @@ export function useBuildConfig({
   gitValue: GitSourceValue;
   serverId: string;
   buildServerId: string | null;
+  onComposeSelected?: () => void;
   placement?: {
     folderId?: string | null;
     projectId?: string | null;
@@ -87,6 +88,7 @@ export function useBuildConfig({
           ...placement,
         }
       : null,
+    onComposeSelected,
   );
 
   const build = React.useMemo(() => {

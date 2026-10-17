@@ -11,6 +11,7 @@ import type { RepoAnalysisState } from "./use-repo-analysis";
 function render(candidate: DeplopackDetection) {
   const state: RepoAnalysisState = {
     enabled: true,
+    compose: null,
     analysis: {
       receipt: "receipt",
       expiresAt: Date.now() + 60_000,

@@ -1,4 +1,5 @@
 import { validateRepoAnalysis } from "../../apps/deplopack";
+import { readGitCompose } from "../../apps/repo-compose";
 import { saveDeplopackInputs } from "./deplopack-settings";
 import "server-only";
 
@@ -230,7 +231,6 @@ export async function createApp(input: CreateAppInput): Promise<AppSummary> {
   assertImageRef(input.source, input.dockerImage);
 
   if (input.sharedVarIds?.length) await requireCapability("manage_env");
-  const reach = await assertComposeSavable(input.compose);
 
   const claimsAHostname = [
     input.autoDomain,
@@ -303,6 +303,7 @@ export async function createApp(input: CreateAppInput): Promise<AppSummary> {
   }
 
   let analyzedCommit: string | undefined;
+  let composePath: string | null = null;
   if (
     (input.source === "github" || input.source === "git") &&
     input.repo?.provider === "github"
@@ -329,11 +330,31 @@ export async function createApp(input: CreateAppInput): Promise<AppSummary> {
       url: `https://github.com/${input.repo.repo}`,
     };
     analyzedCommit = validated.commitSha;
+    if (validated.composePath) {
+      if (buildServerId)
+        throw new Error(
+          "Repository Compose builds run on the deployment server",
+        );
+      const repo = await scopeRepoCredentials(input.repo, membership.teamId);
+      if (!repo) throw new Error("Repository is required");
+      composePath = validated.composePath;
+      input.compose = (
+        await readGitCompose(
+          server.id,
+          repo,
+          composePath,
+          input.build?.rootDirectory ?? "",
+          repo.branch,
+          analyzedCommit,
+        )
+      ).compose;
+    }
   } else if (input.build?.buildMethod === "deplopack") {
     throw new Error(
       "DeploPack repository analysis is required for this source",
     );
   }
+  const reach = await assertComposeSavable(input.compose, Boolean(composePath));
   const serverIp = await serverIpv4(server);
   const hosts = rehostBlueprintHosts(
     {
@@ -350,6 +371,10 @@ export async function createApp(input: CreateAppInput): Promise<AppSummary> {
 
   // ponytail: renamed before the lock, like the import; a concurrent clashing
   const renameNotes: string[] = [];
+  if (input.renameClashes && composePath)
+    throw new Error(
+      "Rename conflicting services in your repository before deploying.",
+    );
   if (input.renameClashes && input.compose) {
     const mine = new Set(
       composeNamesOnNetwork(input.compose).map((n) => n.toLowerCase()),
@@ -421,6 +446,7 @@ export async function createApp(input: CreateAppInput): Promise<AppSummary> {
     dockerImage: input.dockerImage ?? null,
     upload: null,
     compose: input.compose ?? null,
+    composePath,
     mounts: input.mounts?.length ? input.mounts : null,
     build: buildConfigFor(
       imagePort ? { ...input.build, port: imagePort } : input.build,

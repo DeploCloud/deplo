@@ -77,7 +77,7 @@ async function rerouteAppLocked(
         deployKey,
         appId,
         domainRoutes: routes,
-        filesDir: composeFilesDir(deployKey),
+        filesDir: project.composePath ? undefined : composeFilesDir(deployKey),
         basicAuthUsers: await basicAuthUsersValue(appId),
         // Omitting these would silently unmount storage: a compose stack is re-rendered, not read back.
         envKeys: await appEnvKeys(appId),

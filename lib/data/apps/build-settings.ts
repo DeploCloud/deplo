@@ -133,6 +133,8 @@ export async function setAppBuildServer(
 
   let buildServerId: string | null = null;
   if (input.buildServerId) {
+    if (project.composePath)
+      throw new Error("Repository Compose builds run on the deployment server");
     const servers = await listServersForTeam(membership.teamId);
     const picked = servers.find((s) => s.id === input.buildServerId);
     if (!picked) throw new Error("That server isn't available to this team.");

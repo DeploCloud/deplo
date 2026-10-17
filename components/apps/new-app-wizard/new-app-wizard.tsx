@@ -135,8 +135,8 @@ export function NewAppWizard({
   });
   const [dockerImage, setDockerImage] = React.useState("");
   const [uploadFile, setUploadFile] = React.useState<File | null>(dropped);
-  const [compose, setCompose] = React.useState(template?.compose ?? "");
-  const [composeDiags, setComposeDiags] = React.useState<LintDiagnostic[]>(
+  const [draftCompose, setCompose] = React.useState(template?.compose ?? "");
+  const [draftComposeDiags, setComposeDiags] = React.useState<LintDiagnostic[]>(
     () => (template?.compose ? lintCompose(template.compose) : []),
   );
   const [extraRouted, setExtraRouted] = React.useState<string[]>([]);
@@ -168,9 +168,9 @@ export function NewAppWizard({
   } | null>(null);
 
   const usesGit = source === "github" || source === "git";
-  const buildsImage = source !== "docker-image" && source !== "compose";
+  const sourceBuildsImage = source !== "docker-image" && source !== "compose";
   const templateCompose = isTemplate && source === "docker-image";
-  const useCompose = templateCompose || source === "compose";
+  const onComposeSelected = React.useCallback(() => setBuildServerId(null), []);
 
   const {
     build,
@@ -183,13 +183,24 @@ export function NewAppWizard({
     deplopack,
   } = useBuildConfig({
     source,
-    buildsImage,
+    onComposeSelected,
+    buildsImage: sourceBuildsImage,
     ghSelection,
     gitValue,
     serverId,
     buildServerId,
     placement,
   });
+
+  const repositoryCompose = deplopack.selected?.type === "compose";
+  const compose = repositoryCompose ? (deplopack.compose ?? "") : draftCompose;
+  const composeDiags = React.useMemo(
+    () => (repositoryCompose ? lintCompose(compose, true) : draftComposeDiags),
+    [repositoryCompose, compose, draftComposeDiags],
+  );
+  const useCompose =
+    templateCompose || source === "compose" || repositoryCompose;
+  const buildsImage = sourceBuildsImage && !repositoryCompose;
 
   function suggestName(suggested: string) {
     if (!nameTouched && suggested) setName(suggested);
@@ -297,6 +308,12 @@ export function NewAppWizard({
           return;
         }
         if (pre.data && pre.data.length > 0) {
+          if (repositoryCompose) {
+            toast.error(
+              "Rename conflicting services in your repository before deploying.",
+            );
+            return;
+          }
           setClash({ input, clashes: pre.data });
           return;
         }
@@ -317,7 +334,7 @@ export function NewAppWizard({
       servers={servers}
       serverId={serverId}
       setServerId={setServerId}
-      buildServers={buildServers}
+      buildServers={repositoryCompose ? [] : buildServers}
       buildServerId={buildServerId}
       setBuildServerId={setBuildServerId}
       envRows={envRows}
@@ -334,7 +351,7 @@ export function NewAppWizard({
       setGitOptions={setGitOptions}
       composeServices={composeServices}
       composeDiags={composeDiags}
-      onOpenCompose={() => setComposeOpen(true)}
+      onOpenCompose={repositoryCompose ? undefined : () => setComposeOpen(true)}
       composeUpArgs={composeUpArgs}
       setComposeUpArgs={setComposeUpArgs}
       composeArgsProblem={composeArgsProblem}
@@ -437,7 +454,9 @@ export function NewAppWizard({
             useCompose={useCompose}
             composeServices={composeServices}
             composeDiags={composeDiags}
-            onOpenCompose={() => setComposeOpen(true)}
+            onOpenCompose={
+              repositoryCompose ? undefined : () => setComposeOpen(true)
+            }
             routeCandidates={routeCandidates}
             extraRouted={extraRouted}
             setExtraRouted={setExtraRouted}

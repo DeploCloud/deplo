@@ -806,6 +806,8 @@ export interface DeployRequest {
    * connects Traefik to it. Empty is REJECTED - there is no shared default any more.
    */
   network: string;
+  /** A repository Compose path, relative to git.subdir. Used with SOURCE_KIND_COMPOSE. */
+  composePath: string;
 }
 
 export interface DeployRequest_EnvEntry {
@@ -2485,6 +2487,16 @@ export interface AnalyzeRepoRequest {
 export interface AnalyzeRepoRequest_EnvironmentEntry {
   key: string;
   value: string;
+}
+
+export interface ReadRepoComposeRequest {
+  source?: GitSource | undefined;
+  composePath: string;
+}
+
+export interface ReadRepoComposeResponse {
+  commitSha: string;
+  composeYaml: string;
 }
 
 export interface AnalyzeRepoResponse {
@@ -4535,6 +4547,7 @@ function createBaseDeployRequest(): DeployRequest {
     buildOnly: false,
     registryAuth: [],
     network: "",
+    composePath: "",
   };
 }
 
@@ -4605,6 +4618,9 @@ export const DeployRequest: MessageFns<DeployRequest> = {
     }
     if (message.network !== "") {
       writer.uint32(178).string(message.network);
+    }
+    if (message.composePath !== "") {
+      writer.uint32(186).string(message.composePath);
     }
     return writer;
   },
@@ -4801,6 +4817,14 @@ export const DeployRequest: MessageFns<DeployRequest> = {
             message.network = reader.string();
             continue;
           }
+          case 23: {
+            if (tag !== 186) {
+              break;
+            }
+
+            message.composePath = reader.string();
+            continue;
+          }
         }
         if ((tag & 7) === 4 || tag === 0) {
           break;
@@ -4916,6 +4940,11 @@ export const DeployRequest: MessageFns<DeployRequest> = {
         ? object.registry_auth.map((e: any) => RegistryAuth.fromJSON(e))
         : [],
       network: isSet(object.network) ? globalThis.String(object.network) : "",
+      composePath: isSet(object.composePath)
+        ? globalThis.String(object.composePath)
+        : isSet(object.compose_path)
+        ? globalThis.String(object.compose_path)
+        : "",
     };
   },
 
@@ -4993,6 +5022,9 @@ export const DeployRequest: MessageFns<DeployRequest> = {
     if (message.network !== "") {
       obj.network = message.network;
     }
+    if (message.composePath !== "") {
+      obj.composePath = message.composePath;
+    }
     return obj;
   },
 
@@ -5035,6 +5067,7 @@ export const DeployRequest: MessageFns<DeployRequest> = {
     message.buildOnly = object.buildOnly ?? false;
     message.registryAuth = object.registryAuth?.map((e) => RegistryAuth.fromPartial(e)) || [];
     message.network = object.network ?? "";
+    message.composePath = object.composePath ?? "";
     return message;
   },
 };
@@ -18944,6 +18977,190 @@ export const AnalyzeRepoRequest_EnvironmentEntry: MessageFns<AnalyzeRepoRequest_
   },
 };
 
+function createBaseReadRepoComposeRequest(): ReadRepoComposeRequest {
+  return { source: undefined, composePath: "" };
+}
+
+export const ReadRepoComposeRequest: MessageFns<ReadRepoComposeRequest> = {
+  encode(message: ReadRepoComposeRequest, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.source !== undefined) {
+      GitSource.encode(message.source, writer.uint32(10).fork()).join();
+    }
+    if (message.composePath !== "") {
+      writer.uint32(18).string(message.composePath);
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): ReadRepoComposeRequest {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const previousRecursionDepth = (reader as any).__tsProtoDecodeDepth ?? 0;
+    if (previousRecursionDepth >= 100) {
+      throw new globalThis.Error("protobuf decode recursion limit exceeded");
+    }
+    (reader as any).__tsProtoDecodeDepth = previousRecursionDepth + 1;
+    try {
+      const end = length === undefined ? reader.len : reader.pos + length;
+      const message = createBaseReadRepoComposeRequest();
+      while (reader.pos < end) {
+        const tag = reader.uint32();
+        switch (tag >>> 3) {
+          case 1: {
+            if (tag !== 10) {
+              break;
+            }
+
+            message.source = GitSource.decode(reader, reader.uint32());
+            continue;
+          }
+          case 2: {
+            if (tag !== 18) {
+              break;
+            }
+
+            message.composePath = reader.string();
+            continue;
+          }
+        }
+        if ((tag & 7) === 4 || tag === 0) {
+          break;
+        }
+        reader.skip(tag & 7);
+      }
+      return message;
+    } finally {
+      (reader as any).__tsProtoDecodeDepth = previousRecursionDepth;
+    }
+  },
+
+  fromJSON(object: any): ReadRepoComposeRequest {
+    return {
+      source: isSet(object.source) ? GitSource.fromJSON(object.source) : undefined,
+      composePath: isSet(object.composePath)
+        ? globalThis.String(object.composePath)
+        : isSet(object.compose_path)
+        ? globalThis.String(object.compose_path)
+        : "",
+    };
+  },
+
+  toJSON(message: ReadRepoComposeRequest): unknown {
+    const obj: any = {};
+    if (message.source !== undefined) {
+      obj.source = GitSource.toJSON(message.source);
+    }
+    if (message.composePath !== "") {
+      obj.composePath = message.composePath;
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<ReadRepoComposeRequest>, I>>(base?: I): ReadRepoComposeRequest {
+    return ReadRepoComposeRequest.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<ReadRepoComposeRequest>, I>>(object: I): ReadRepoComposeRequest {
+    const message = createBaseReadRepoComposeRequest();
+    message.source = (object.source !== undefined && object.source !== null)
+      ? GitSource.fromPartial(object.source)
+      : undefined;
+    message.composePath = object.composePath ?? "";
+    return message;
+  },
+};
+
+function createBaseReadRepoComposeResponse(): ReadRepoComposeResponse {
+  return { commitSha: "", composeYaml: "" };
+}
+
+export const ReadRepoComposeResponse: MessageFns<ReadRepoComposeResponse> = {
+  encode(message: ReadRepoComposeResponse, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.commitSha !== "") {
+      writer.uint32(10).string(message.commitSha);
+    }
+    if (message.composeYaml !== "") {
+      writer.uint32(18).string(message.composeYaml);
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): ReadRepoComposeResponse {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const previousRecursionDepth = (reader as any).__tsProtoDecodeDepth ?? 0;
+    if (previousRecursionDepth >= 100) {
+      throw new globalThis.Error("protobuf decode recursion limit exceeded");
+    }
+    (reader as any).__tsProtoDecodeDepth = previousRecursionDepth + 1;
+    try {
+      const end = length === undefined ? reader.len : reader.pos + length;
+      const message = createBaseReadRepoComposeResponse();
+      while (reader.pos < end) {
+        const tag = reader.uint32();
+        switch (tag >>> 3) {
+          case 1: {
+            if (tag !== 10) {
+              break;
+            }
+
+            message.commitSha = reader.string();
+            continue;
+          }
+          case 2: {
+            if (tag !== 18) {
+              break;
+            }
+
+            message.composeYaml = reader.string();
+            continue;
+          }
+        }
+        if ((tag & 7) === 4 || tag === 0) {
+          break;
+        }
+        reader.skip(tag & 7);
+      }
+      return message;
+    } finally {
+      (reader as any).__tsProtoDecodeDepth = previousRecursionDepth;
+    }
+  },
+
+  fromJSON(object: any): ReadRepoComposeResponse {
+    return {
+      commitSha: isSet(object.commitSha)
+        ? globalThis.String(object.commitSha)
+        : isSet(object.commit_sha)
+        ? globalThis.String(object.commit_sha)
+        : "",
+      composeYaml: isSet(object.composeYaml)
+        ? globalThis.String(object.composeYaml)
+        : isSet(object.compose_yaml)
+        ? globalThis.String(object.compose_yaml)
+        : "",
+    };
+  },
+
+  toJSON(message: ReadRepoComposeResponse): unknown {
+    const obj: any = {};
+    if (message.commitSha !== "") {
+      obj.commitSha = message.commitSha;
+    }
+    if (message.composeYaml !== "") {
+      obj.composeYaml = message.composeYaml;
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<ReadRepoComposeResponse>, I>>(base?: I): ReadRepoComposeResponse {
+    return ReadRepoComposeResponse.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<ReadRepoComposeResponse>, I>>(object: I): ReadRepoComposeResponse {
+    const message = createBaseReadRepoComposeResponse();
+    message.commitSha = object.commitSha ?? "";
+    message.composeYaml = object.composeYaml ?? "";
+    return message;
+  },
+};
+
 function createBaseAnalyzeRepoResponse(): AnalyzeRepoResponse {
   return { commitSha: "", rootDirectory: "", detectorVersion: "", result: undefined };
 }
@@ -19084,6 +19301,17 @@ export const AgentService = {
     requestDeserialize: (value: Buffer): AnalyzeRepoRequest => AnalyzeRepoRequest.decode(value),
     responseSerialize: (value: AnalyzeRepoResponse): Buffer => Buffer.from(AnalyzeRepoResponse.encode(value).finish()),
     responseDeserialize: (value: Buffer): AnalyzeRepoResponse => AnalyzeRepoResponse.decode(value),
+  },
+  readRepoCompose: {
+    path: "/deplo.agent.v1.Agent/ReadRepoCompose" as const,
+    requestStream: false as const,
+    responseStream: false as const,
+    requestSerialize: (value: ReadRepoComposeRequest): Buffer =>
+      Buffer.from(ReadRepoComposeRequest.encode(value).finish()),
+    requestDeserialize: (value: Buffer): ReadRepoComposeRequest => ReadRepoComposeRequest.decode(value),
+    responseSerialize: (value: ReadRepoComposeResponse): Buffer =>
+      Buffer.from(ReadRepoComposeResponse.encode(value).finish()),
+    responseDeserialize: (value: Buffer): ReadRepoComposeResponse => ReadRepoComposeResponse.decode(value),
   },
   /**
    * Health + identity handshake. The control plane calls this as a mandatory
@@ -19927,6 +20155,7 @@ export const AgentService = {
 export interface AgentServer extends UntypedServiceImplementation {
   /** Analyze a temporary Git checkout without building or deploying. */
   analyzeRepo: handleUnaryCall<AnalyzeRepoRequest, AnalyzeRepoResponse>;
+  readRepoCompose: handleUnaryCall<ReadRepoComposeRequest, ReadRepoComposeResponse>;
   /**
    * Health + identity handshake. The control plane calls this as a mandatory
    * pre-flight before every deploy (PLAN P5): if the agent does not answer, the
@@ -20232,6 +20461,21 @@ export interface AgentClient extends Client {
     metadata: Metadata,
     options: Partial<CallOptions>,
     callback: (error: ServiceError | null, response: AnalyzeRepoResponse) => void,
+  ): ClientUnaryCall;
+  readRepoCompose(
+    request: ReadRepoComposeRequest,
+    callback: (error: ServiceError | null, response: ReadRepoComposeResponse) => void,
+  ): ClientUnaryCall;
+  readRepoCompose(
+    request: ReadRepoComposeRequest,
+    metadata: Metadata,
+    callback: (error: ServiceError | null, response: ReadRepoComposeResponse) => void,
+  ): ClientUnaryCall;
+  readRepoCompose(
+    request: ReadRepoComposeRequest,
+    metadata: Metadata,
+    options: Partial<CallOptions>,
+    callback: (error: ServiceError | null, response: ReadRepoComposeResponse) => void,
   ): ClientUnaryCall;
   /**
    * Health + identity handshake. The control plane calls this as a mandatory

@@ -63,11 +63,15 @@ export async function setAppPorts(
   const validated = validatePorts(ports);
 
   const [app] = await getDb()
-    .select({ source: appsTable.source, serverId: appsTable.serverId })
+    .select({
+      source: appsTable.source,
+      serverId: appsTable.serverId,
+      composePath: appsTable.composePath,
+    })
     .from(appsTable)
     .where(and(eq(appsTable.id, id), eq(appsTable.teamId, membership.teamId)));
   if (!app) throw new Error("App not found");
-  if (app.source === "compose")
+  if (app.source === "compose" || app.composePath)
     throw new Error(
       "A compose stack publishes its ports in its own compose file.",
     );

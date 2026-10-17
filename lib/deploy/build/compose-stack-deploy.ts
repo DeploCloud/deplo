@@ -1,4 +1,11 @@
 import "server-only";
+import { readGitCompose } from "../../apps/repo-compose";
+import { assertRepositoryComposeSavable } from "../../data/apps/source-guards";
+import { getDb } from "../../db/client";
+import { apps as appsTable } from "../../db/schema/control-plane/apps";
+import { eq } from "drizzle-orm";
+import type { GitRepo } from "../../types/build";
+import type { GitSource } from "../../agent/gen/agent";
 
 import { basicAuthUsersValue } from "../../data/basic-auth";
 import type { RoutableDomain } from "../../data/domains/routes";
@@ -17,6 +24,7 @@ import {
   log,
   settleMove,
   sweepAfterDeploy,
+  setDep,
   type DeployTarget,
 } from "./deployment-state";
 
@@ -28,6 +36,10 @@ export interface ComposeStackApp {
   name: string;
   slug: string;
   compose: string | null;
+  composePath?: string | null;
+  repo?: GitRepo | null;
+  build?: { rootDirectory: string };
+  buildServerId?: string | null;
   composeUpArgs?: string | null;
   mounts?: { filePath: string; content: string }[] | null;
   resources?: ResourceLimits | null;
@@ -48,6 +60,7 @@ export interface ComposeStackOpts {
   environment: DeploymentEnvironment;
   started: number;
   forceRecreate: boolean;
+  repository?: { branch: string; commit: string; publicCloneUrl?: string };
 }
 
 export function composeFilesDir(deployKey: string): string {
@@ -92,7 +105,7 @@ async function prepareComposeStack(opts: ComposeStackOpts): Promise<{
     appId: project.id,
     trackingId,
     domainRoutes,
-    filesDir,
+    filesDir: project.composePath ? undefined : filesDir,
     basicAuthUsers,
     envKeys,
     resources: project.resources,
@@ -152,6 +165,44 @@ export async function deployComposeStackViaAgent(
   opts: ComposeStackOpts & { serverId: string },
 ): Promise<void> {
   const { depId, project, deployKey, serverId } = opts;
+  let git: GitSource | undefined;
+  if (project.composePath) {
+    if (!project.repo || !opts.repository)
+      throw new Error("Repository Compose source is missing");
+    if (project.buildServerId)
+      throw new Error("Repository Compose builds run on the deployment server");
+    const result = await readGitCompose(
+      serverId,
+      project.repo,
+      project.composePath,
+      project.build?.rootDirectory ?? "",
+      opts.repository.branch,
+      opts.repository.commit,
+      opts.repository.publicCloneUrl,
+    );
+    const [owner] = await getDb()
+      .select({
+        createdBy: appsTable.createdByUserId,
+        approvedBy: appsTable.hostReachBy,
+      })
+      .from(appsTable)
+      .where(eq(appsTable.id, project.id))
+      .limit(1);
+    await assertRepositoryComposeSavable(
+      result.compose,
+      opts.preview?.isFork
+        ? null
+        : (owner?.approvedBy ?? owner?.createdBy ?? null),
+    );
+    git = result.git;
+    opts = { ...opts, project: { ...project, compose: result.compose } };
+    if (!opts.preview)
+      await getDb()
+        .update(appsTable)
+        .set({ compose: result.compose })
+        .where(eq(appsTable.id, project.id));
+    await setDep(depId, { commitSha: result.commitSha });
+  }
 
   try {
     const hello = await agentPreflight(serverId);
@@ -194,10 +245,13 @@ export async function deployComposeStackViaAgent(
     env,
     plan: {
       kind: "compose",
+      git,
+      composePath: project.composePath ?? undefined,
       mounts: opts.preview?.isFork ? [] : (project.mounts ?? []),
     },
     readyTimeoutMs: 90_000,
     forceRecreate: opts.forceRecreate,
+    forkPreview: Boolean(opts.preview?.isFork),
   });
 
   await finishComposeStack(opts, outcome === "agent");

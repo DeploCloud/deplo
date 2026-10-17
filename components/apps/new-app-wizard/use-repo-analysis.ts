@@ -20,8 +20,14 @@ export interface RepoAnalysisInput {
   projectId?: string | null;
   environmentId?: string | null;
 }
-export function useRepoAnalysis(input: RepoAnalysisInput | null) {
+export function useRepoAnalysis(
+  input: RepoAnalysisInput | null,
+  onComposeSelected?: () => void,
+) {
   const key = input?.repo && input.serverId ? JSON.stringify(input) : null;
+  const selectionKey = input
+    ? JSON.stringify({ ...input, buildServerId: null })
+    : null;
   const [attempt, setAttempt] = React.useState(0);
   const [answer, setAnswer] = React.useState<{
     key: string;
@@ -34,21 +40,28 @@ export function useRepoAnalysis(input: RepoAnalysisInput | null) {
     values: Record<string, string[]>;
   } | null>(null);
   const [expired, setExpired] = React.useState(false);
+  const [composeAnswer, setComposeAnswer] = React.useState<{
+    key: string;
+    value: string | null;
+    error: string | null;
+  } | null>(null);
   React.useEffect(() => {
     if (!key) return;
     const controller = new AbortController();
-    setAnswer(null);
-    setSelection(null);
-    setExpired(false);
     const timer = setTimeout(() => {
+      setAnswer(null);
+      setExpired(false);
       void gql<{ analyzeRepo: RepoAnalysis }>(
         `query($repo:String!,$branch:String,$installationId:String,$connectionId:String,$serverId:String!,$buildServerId:String,$rootDirectory:String,$folderId:String,$projectId:String,$environmentId:String){analyzeRepo(repo:$repo,branch:$branch,installationId:$installationId,connectionId:$connectionId,serverId:$serverId,buildServerId:$buildServerId,rootDirectory:$rootDirectory,folderId:$folderId,projectId:$projectId,environmentId:$environmentId)}`,
         JSON.parse(key),
         controller.signal,
       )
         .then((data) => {
-          if (!controller.signal.aborted)
+          if (!controller.signal.aborted) {
+            if (data.analyzeRepo.result.detections[0]?.type === "compose")
+              onComposeSelected?.();
             setAnswer({ key, analysis: data.analyzeRepo, error: null });
+          }
         })
         .catch((error) => {
           if (!controller.signal.aborted)
@@ -66,7 +79,7 @@ export function useRepoAnalysis(input: RepoAnalysisInput | null) {
       clearTimeout(timer);
       controller.abort();
     };
-  }, [key, attempt]);
+  }, [key, attempt, onComposeSelected]);
   const analysis = answer?.key === key ? answer.analysis : null;
   React.useEffect(() => {
     if (!analysis) return;
@@ -77,7 +90,7 @@ export function useRepoAnalysis(input: RepoAnalysisInput | null) {
     return () => clearTimeout(timer);
   }, [analysis]);
   const candidates = analysis?.result.detections ?? [];
-  const current = selection?.key === key ? selection : null;
+  const current = selection?.key === selectionKey ? selection : null;
   const selected =
     candidates.find(
       (candidate) => detectionKey(candidate) === current?.candidate,
@@ -85,6 +98,52 @@ export function useRepoAnalysis(input: RepoAnalysisInput | null) {
     candidates[0] ??
     null;
   const values = current?.values ?? {};
+  const composeKey =
+    selected?.type === "compose" && analysis && key
+      ? JSON.stringify([key, analysis.receipt, detectionKey(selected)])
+      : null;
+  React.useEffect(() => {
+    if (!composeKey) return;
+    const [requestKey, receipt, candidate] = JSON.parse(composeKey) as [
+      string,
+      string,
+      string,
+    ];
+    const controller = new AbortController();
+    void gql<{ previewRepoCompose: string }>(
+      `query($receipt:String!,$candidate:String!,$repo:String!,$branch:String,$installationId:String,$connectionId:String,$serverId:String!,$buildServerId:String,$rootDirectory:String,$folderId:String,$projectId:String,$environmentId:String){previewRepoCompose(receipt:$receipt,candidate:$candidate,repo:$repo,branch:$branch,installationId:$installationId,connectionId:$connectionId,serverId:$serverId,buildServerId:$buildServerId,rootDirectory:$rootDirectory,folderId:$folderId,projectId:$projectId,environmentId:$environmentId)}`,
+      { ...JSON.parse(requestKey), receipt, candidate },
+      controller.signal,
+    )
+      .then((data) => {
+        if (!controller.signal.aborted)
+          setComposeAnswer({
+            key: composeKey,
+            value: data.previewRepoCompose,
+            error: null,
+          });
+      })
+      .catch((error) => {
+        if (!controller.signal.aborted)
+          setComposeAnswer({
+            key: composeKey,
+            value: null,
+            error:
+              error instanceof Error
+                ? error.message
+                : "Cannot read repository Compose file",
+          });
+      });
+    return () => controller.abort();
+  }, [composeKey]);
+  const compose =
+    composeKey && composeAnswer?.key === composeKey
+      ? composeAnswer.value
+      : null;
+  const composeError =
+    composeKey && composeAnswer?.key === composeKey
+      ? composeAnswer.error
+      : null;
   const overrides: DeplopackOverride[] = (selected?.inputs ?? []).flatMap(
     (field) => {
       const raw = values[field.env];
@@ -97,38 +156,52 @@ export function useRepoAnalysis(input: RepoAnalysisInput | null) {
   );
   const error = expired
     ? "Repository analysis expired. Analyze it again."
-    : answer?.key === key
-      ? answer.error
-      : null;
+    : ((answer?.key === key ? answer.error : null) ?? composeError);
   const detecting = Boolean(key) && answer?.key !== key;
   const ready = Boolean(
-    analysis?.result.success && selected && !error && !detecting,
+    analysis?.result.success &&
+    selected &&
+    !error &&
+    !detecting &&
+    (!composeKey || compose !== null),
   );
   return {
     enabled: input !== null,
     analysis,
     selected,
+    compose,
     values,
     overrides,
     error,
     detecting,
     ready,
     select: (candidate: string) => {
-      if (key) setSelection({ key, candidate, values: {} });
+      if (
+        analysis?.result.detections.some(
+          (item) => detectionKey(item) === candidate && item.type === "compose",
+        )
+      )
+        onComposeSelected?.();
+      if (selectionKey)
+        setSelection({ key: selectionKey, candidate, values: {} });
     },
     change: (env: string, next: string[]) => {
-      if (key && selected)
+      if (selectionKey && selected)
         setSelection({
-          key,
+          key: selectionKey,
           candidate: detectionKey(selected),
           values: { ...values, [env]: next },
         });
     },
     reset: (env: string) => {
-      if (key && selected) {
+      if (selectionKey && selected) {
         const next = { ...values };
         delete next[env];
-        setSelection({ key, candidate: detectionKey(selected), values: next });
+        setSelection({
+          key: selectionKey,
+          candidate: detectionKey(selected),
+          values: next,
+        });
       }
     },
     refresh: () => setAttempt((value) => value + 1),

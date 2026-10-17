@@ -45,7 +45,10 @@ const SAFE_NETWORK_MODE = /^(none|default)$/i;
 // Hardening is never gated - a prompt in front of the safer choice is one people learn to skip.
 const SAFE_SECURITY_OPTS = /^no-new-privileges(?:[:=]\s*true)?$/i;
 
-export function hostPrivilegeKeys(svc: Record<string, unknown>): string[] {
+export function hostPrivilegeKeys(
+  svc: Record<string, unknown>,
+  repositoryPaths = false,
+): string[] {
   const out: string[] = [];
   for (const key of HOST_PRIVILEGE_KEYS) {
     const v = svc[key];
@@ -122,7 +125,8 @@ export function hostPrivilegeKeys(svc: Record<string, unknown>): string[] {
           ? String((e as Record<string, unknown>).path ?? "")
           : String(e),
       );
-      if (names.some((n) => isHostBindSource(n.trim()))) out.push(key);
+      if (names.some((n) => isHostBindSource(n.trim(), repositoryPaths)))
+        out.push(key);
       continue;
     }
     if (key === "post_start" || key === "pre_stop") {
@@ -184,7 +188,10 @@ export function composeNeedsHostPrivileges(composeYaml: string): boolean {
   return composeHostPrivilegeKeys(composeYaml).length > 0;
 }
 
-export function composeHostPrivilegeKeys(composeYaml: string): string[] {
+export function composeHostPrivilegeKeys(
+  composeYaml: string,
+  repositoryPaths = false,
+): string[] {
   const doc = loadComposeDoc<{ services?: Record<string, unknown> }>(
     composeYaml,
   );
@@ -193,28 +200,37 @@ export function composeHostPrivilegeKeys(composeYaml: string): string[] {
   const out = new Set<string>();
   for (const svc of Object.values(services)) {
     if (!svc || typeof svc !== "object" || Array.isArray(svc)) continue;
-    for (const key of hostPrivilegeKeys(svc as Record<string, unknown>))
+    for (const key of hostPrivilegeKeys(
+      svc as Record<string, unknown>,
+      repositoryPaths,
+    ))
       out.add(key);
   }
   return [...out];
 }
 
-export function composeHostReach(composeYaml: string): string[] {
+export function composeHostReach(
+  composeYaml: string,
+  repositoryPaths = false,
+): string[] {
   const out: string[] = [];
-  if (composeHasHostBindMount(composeYaml))
+  if (composeHasHostBindMount(composeYaml, repositoryPaths))
     out.push("a bind mount of a folder on the server");
-  const keys = composeHostPrivilegeKeys(composeYaml);
+  const keys = composeHostPrivilegeKeys(composeYaml, repositoryPaths);
   if (keys.length > 0) out.push(keys.map((k) => `\`${k}\``).join(", "));
-  if (composeMountsForeignStorage(composeYaml))
+  if (composeMountsForeignStorage(composeYaml, repositoryPaths))
     out.push("a volume it did not declare");
-  if (composeBuildReachesHost(composeYaml))
+  if (composeBuildReachesHost(composeYaml, repositoryPaths))
     out.push("a build that reads a path on the server");
   if (composeJoinsForeignNetwork(composeYaml))
     out.push("a network outside this app");
   return out;
 }
 
-export function composeBuildReachesHost(composeYaml: string): boolean {
+export function composeBuildReachesHost(
+  composeYaml: string,
+  repositoryPaths = false,
+): boolean {
   const doc = loadComposeDoc<{ services?: Record<string, unknown> }>(
     composeYaml,
   );
@@ -225,14 +241,20 @@ export function composeBuildReachesHost(composeYaml: string): boolean {
     const b = (raw as Record<string, unknown>).build;
     if (b == null) continue;
     if (typeof b === "string") {
-      if (isHostBindSource(b)) return true;
+      if (isHostBindSource(b, repositoryPaths)) return true;
       continue;
     }
     if (typeof b !== "object" || Array.isArray(b)) continue;
     const rec = b as Record<string, unknown>;
-    if (typeof rec.context === "string" && isHostBindSource(rec.context))
+    if (
+      typeof rec.context === "string" &&
+      isHostBindSource(rec.context, repositoryPaths)
+    )
       return true;
-    if (typeof rec.dockerfile === "string" && isHostBindSource(rec.dockerfile))
+    if (
+      typeof rec.dockerfile === "string" &&
+      isHostBindSource(rec.dockerfile, repositoryPaths)
+    )
       return true;
     const ac = rec.additional_contexts;
     const acSources = Array.isArray(ac)
@@ -242,7 +264,8 @@ export function composeBuildReachesHost(composeYaml: string): boolean {
       : ac && typeof ac === "object"
         ? Object.values(ac as Record<string, unknown>).map((v) => String(v))
         : [];
-    if (acSources.some((s) => isHostBindSource(s))) return true;
+    if (acSources.some((s) => isHostBindSource(s, repositoryPaths)))
+      return true;
     if (rec.ssh != null && (Array.isArray(rec.ssh) ? rec.ssh.length > 0 : true))
       return true;
     if (composeTruthy(rec.privileged) || isInterpolated(rec.privileged))

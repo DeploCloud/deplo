@@ -86,7 +86,7 @@ export function WizardAdvanced({
   setGitOptions: (value: GitDeployOptionsValue) => void;
   composeServices: string[];
   composeDiags: LintDiagnostic[];
-  onOpenCompose: () => void;
+  onOpenCompose?: () => void;
   composeUpArgs: string;
   setComposeUpArgs: (value: string) => void;
   composeArgsProblem: string | null;

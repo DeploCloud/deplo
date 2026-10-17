@@ -3,6 +3,8 @@ import "server-only";
 import type {
   AnalyzeRepoRequest,
   AnalyzeRepoResponse,
+  ReadRepoComposeRequest,
+  ReadRepoComposeResponse,
   HelloResponse,
   HostMetrics,
   ContainerStat,
@@ -128,6 +130,9 @@ export interface FollowLogsOptions {
 
 export interface AgentConnection {
   analyzeRepo(request: AnalyzeRepoRequest): Promise<AnalyzeRepoResponse>;
+  readRepoCompose(
+    request: ReadRepoComposeRequest,
+  ): Promise<ReadRepoComposeResponse>;
   hello(timeoutMs?: number): Promise<HelloResponse>;
   metrics(dataDir?: string): Promise<HostMetrics>;
   containerStats(

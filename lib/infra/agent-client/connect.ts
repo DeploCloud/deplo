@@ -24,6 +24,13 @@ import { stackRpc } from "./stack-rpc";
 export function dial(target: DialTarget): AgentConnection {
   const channel = openChannel(target);
   return {
+    readRepoCompose(request) {
+      return unary(
+        channel.client.readRepoCompose.bind(channel.client),
+        request,
+        310_000,
+      );
+    },
     analyzeRepo(request) {
       return unary(
         channel.client.analyzeRepo.bind(channel.client),

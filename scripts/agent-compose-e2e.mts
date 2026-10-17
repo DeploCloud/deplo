@@ -110,6 +110,7 @@ networks:
         composeUpArgs: [],
         buildOnly: false,
         registryAuth: [],
+        composePath: "",
       })) {
         if (ev.log) console.log(`  [${ev.log.level}] ${ev.log.text}`);
         if (ev.result) {

@@ -111,7 +111,10 @@ type ComposeDoc = {
 
 const VALID_RESTART = new Set(["no", "always", "on-failure", "unless-stopped"]);
 
-export function lintCompose(source: string): LintDiagnostic[] {
+export function lintCompose(
+  source: string,
+  repositoryPaths = false,
+): LintDiagnostic[] {
   const diags: LintDiagnostic[] = [];
   const lines = source.split("\n");
 
@@ -346,14 +349,14 @@ export function lintCompose(source: string): LintDiagnostic[] {
             message: `\`${name}\` mounts \`${src}\`, whose path is filled in from a variable at \`compose up\`. Deplo can't tell where that points, so it counts as a host bind mount and needs the host-volume permission. Write the path here instead.`,
             line: volLine,
           });
-        } else if (isFilesConventionSource(src)) {
+        } else if (!repositoryPaths && isFilesConventionSource(src)) {
           diags.push({
             severity: "info",
             rule: "bind-mount-files-note",
             message: `\`${name}\` mounts \`${src}\` - Deplo rewrites this to your project's isolated files directory at deploy time, and creates it there if it is missing: as a file when the name looks like one (config.yml), else as a folder.`,
             line: volLine,
           });
-        } else if (isEscapingSource(src)) {
+        } else if (!repositoryPaths && isEscapingSource(src)) {
           diags.push({
             severity: "warning",
             rule: "bind-mount-escapes-sandbox",
@@ -418,7 +421,7 @@ export function lintCompose(source: string): LintDiagnostic[] {
       });
     }
 
-    for (const key of hostPrivilegeKeys(svc)) {
+    for (const key of hostPrivilegeKeys(svc, repositoryPaths)) {
       diags.push({
         severity: "warning",
         rule: "host-privileges",
@@ -449,7 +452,7 @@ export function lintCompose(source: string): LintDiagnostic[] {
       raw && typeof raw === "object" && !Array.isArray(raw)
         ? (raw as Record<string, unknown>)
         : {};
-    for (const key of fileSourcedKeys(map)) {
+    for (const key of fileSourcedKeys(map, repositoryPaths)) {
       diags.push({
         severity: "warning",
         rule: "host-file-source",
@@ -477,7 +480,7 @@ export function lintCompose(source: string): LintDiagnostic[] {
       line: lineOfTopKey(lines, "networks"),
     });
   }
-  if (composeBuildReachesHost(source)) {
+  if (composeBuildReachesHost(source, repositoryPaths)) {
     diags.push({
       severity: "warning",
       rule: "build-host-context",

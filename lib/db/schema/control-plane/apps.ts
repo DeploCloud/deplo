@@ -70,6 +70,7 @@ export const apps = pgTable(
     uploadSize: bigint("upload_size", { mode: "number" }),
     uploadUploadedAt: isoTimestamptz("upload_uploaded_at"),
     compose: text("compose"),
+    composePath: text("compose_path"),
     productionUrl: text("production_url"),
     status: text("status").notNull(),
     autoDeploy: boolean("auto_deploy").notNull(),

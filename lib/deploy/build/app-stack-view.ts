@@ -38,7 +38,7 @@ export async function renderAppStack(appId: string): Promise<string | null> {
       network: deployNetwork(project),
       domainRoutes,
       takenNames: await takenNamesForApp(project, appId),
-      filesDir: composeFilesDir(deployKey),
+      filesDir: project.composePath ? undefined : composeFilesDir(deployKey),
       basicAuthUsers: await basicAuthUsersValue(appId),
       envKeys: await appEnvKeys(appId),
       resources: project.resources,
