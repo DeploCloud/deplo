@@ -229,6 +229,10 @@ export async function createApp(input: CreateAppInput): Promise<AppSummary> {
   const { membership, userId } = await requireMembership();
   input = { ...input, name: cleanAppName(input.name) };
   assertImageRef(input.source, input.dockerImage);
+  if (input.source === "compose" && input.repo && input.analysisReceipt)
+    throw new Error(
+      "Repository analysis requires a Git source. Select the Compose file again.",
+    );
 
   if (input.sharedVarIds?.length) await requireCapability("manage_env");
 

@@ -8,10 +8,10 @@ import type { DeplopackDetection } from "@/lib/apps/deplopack-types";
 import { DeplopackDetections } from "./deplopack-fields";
 import type { RepoAnalysisState } from "./use-repo-analysis";
 
-function render(candidate: DeplopackDetection) {
+function render(candidate: DeplopackDetection, compose: string | null = null) {
   const state: RepoAnalysisState = {
     enabled: true,
-    compose: null,
+    compose,
     analysis: {
       receipt: "receipt",
       expiresAt: Date.now() + 60_000,
@@ -87,5 +87,17 @@ test("Next.js reuses its catalog name and non-Node candidates keep their identif
   assert.match(
     render({ type: "staticfile", rootDir: "public" }),
     />public<\/span>/,
+  );
+});
+
+test("repository Compose shows its path without displaying YAML", () => {
+  const html = render(
+    { type: "compose", path: "deploy/compose.yml" },
+    "services: {private-yaml-sentinel: {build: .}}",
+  );
+  assert.match(html, /deploy\/compose.yml/);
+  assert.doesNotMatch(
+    html,
+    /private-yaml-sentinel|<pre|<details|Edit compose|Write compose/,
   );
 });

@@ -131,7 +131,7 @@ export function DetailsStep({
         </div>
       )}
 
-      {useCompose && (!isTemplate || template!.imported) && (
+      {useCompose && !usesGit && (!isTemplate || template!.imported) && (
         <ComposeSummary
           services={composeServices}
           diagnostics={composeDiags}

@@ -133,6 +133,9 @@ async function finishComposeStack(
       {
         status: "active",
         ...(environment === "production" ? { productionUrl: url || null } : {}),
+        ...(environment === "production" && project.composePath
+          ? { compose: project.compose }
+          : {}),
       },
     );
     if (applied) {
@@ -196,11 +199,6 @@ export async function deployComposeStackViaAgent(
     );
     git = result.git;
     opts = { ...opts, project: { ...project, compose: result.compose } };
-    if (!opts.preview)
-      await getDb()
-        .update(appsTable)
-        .set({ compose: result.compose })
-        .where(eq(appsTable.id, project.id));
     await setDep(depId, { commitSha: result.commitSha });
   }
 

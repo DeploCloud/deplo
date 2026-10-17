@@ -186,7 +186,7 @@ async function runDeployment(depId: string): Promise<void> {
       );
       return;
     }
-    if (useCompose && hasCompose) {
+    if (useCompose && (hasCompose || project.composePath)) {
       let publicCloneUrl: string | undefined;
       if (project.composePath && project.repo) {
         if (preview?.isFork) {

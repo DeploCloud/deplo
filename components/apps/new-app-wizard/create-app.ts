@@ -173,9 +173,10 @@ export function buildCreateAppInput({
     };
   }
 
-  const payloadBuild = buildsImage
-    ? build
-    : buildConfigFor({ buildMethod: "dockerfile" });
+  const payloadBuild =
+    buildsImage || usesGit
+      ? build
+      : buildConfigFor({ buildMethod: "dockerfile" });
   const filledEnv = envRows.filter((e) => e.key.trim());
 
   return {
@@ -183,14 +184,14 @@ export function buildCreateAppInput({
     deplopackCandidate,
     deplopackInputs,
     name: name.trim(),
-    source: deploySourceEnumName(useCompose ? "compose" : source!),
+    source: deploySourceEnumName(useCompose && !usesGit ? "compose" : source!),
     serverId,
     buildServerId,
     composeUpArgs: useCompose ? composeUpArgs.trim() || null : null,
     dockerImage: image,
     logo: isTemplate ? template!.logo : null,
     logoFromTemplate: isTemplate,
-    compose: useCompose ? compose : null,
+    compose: useCompose && !usesGit ? compose : null,
     env: filledEnv.length
       ? filledEnv.map((e) => ({
           key: e.key.trim(),

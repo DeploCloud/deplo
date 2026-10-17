@@ -39,7 +39,6 @@ export function DeploySourceCard({
   appId,
   source: initialSource,
   composePath,
-  compose: repositoryCompose,
   repo: initialRepo,
   upload: initialUpload,
   installations,
@@ -85,17 +84,7 @@ export function DeploySourceCard({
       </CardHeader>
       <CardContent className="space-y-4">
         {composePath && (
-          <details className="rounded-lg border p-3">
-            <summary className="cursor-pointer text-sm">
-              {composePath} · Updated from Git on every deploy
-            </summary>
-            <p className="mt-2 text-sm text-muted-foreground">
-              Edit this Compose file in your repository.
-            </p>
-            <pre className="mt-3 max-h-96 overflow-auto text-xs">
-              {repositoryCompose}
-            </pre>
-          </details>
+          <p className="text-sm text-muted-foreground">{composePath}</p>
         )}
         <Tabs
           value={source}

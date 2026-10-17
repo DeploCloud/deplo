@@ -122,21 +122,6 @@ export function DeplopackDetections({ state }: { state: RepoAnalysisState }) {
           );
         })}
       </div>
-      {state.selected?.type === "compose" &&
-        (state.compose === null ? (
-          <p role="status" className="text-sm text-muted-foreground">
-            Reading Compose file…
-          </p>
-        ) : (
-          <details className="rounded-lg border p-3">
-            <summary className="cursor-pointer text-sm">
-              {state.selected.path} · Updated from Git on every deploy
-            </summary>
-            <pre className="mt-3 max-h-72 overflow-auto text-xs">
-              {state.compose}
-            </pre>
-          </details>
-        ))}
       {result.logs
         ?.filter((log) => log.Level === "error")
         .map((log, index) => (
