@@ -1,6 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createElement } from "react";
+import { formatBytes } from "@/lib/utils";
 import { renderServerView } from "@/components/servers/server-test-helpers";
 import { ServerCleanupTab } from "@/app/(dashboard)/[team]/settings/servers/[id]/cleanup-tab";
 import { CLEANUP_SCOPES } from "@/lib/data/docker-cleanup/scopes";
@@ -76,4 +77,44 @@ test("a cleanup in progress keeps the manual action disabled", () => {
   ]);
   assert.match(html, /<button[^>]*disabled=""[^>]*>[\s\S]*?Cleaning up/);
   assert.ok(html.includes("Recent cleanups"));
+});
+
+test("zero eligible items explains the cleanup rules", () => {
+  const html = render({}, [
+    {
+      id: "empty",
+      serverId: "srv_one",
+      serverName: "Main",
+      trigger: "manual",
+      actor: "Admin",
+      status: "success",
+      error: null,
+      reclaimedBytes: 0,
+      startedAt: new Date().toISOString(),
+      finishedAt: new Date().toISOString(),
+      items: [],
+    },
+  ]);
+  assert.ok(html.includes("No items eligible under the cleanup rules"));
+  assert.ok(!html.includes("Nothing to reclaim"));
+});
+
+test("failed cleanups still show the bytes reclaimed before the error", () => {
+  const html = render({}, [
+    {
+      id: "partial",
+      serverId: "srv_one",
+      serverName: "Main",
+      trigger: "manual",
+      actor: "Admin",
+      status: "failed",
+      error: "permission denied",
+      reclaimedBytes: 1073741824,
+      startedAt: new Date().toISOString(),
+      finishedAt: new Date().toISOString(),
+      items: [],
+    },
+  ]);
+  assert.ok(html.includes(formatBytes(1073741824)));
+  assert.ok(html.includes("permission denied"));
 });

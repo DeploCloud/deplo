@@ -4,6 +4,7 @@ import assert from "node:assert/strict";
 import {
   compensateKeepPerSlug,
   dropUnsupportedScopes,
+  normalizeCleanupResponse,
 } from "./agent-client/docker-cleanup";
 import { CleanupScope, ContractVersion } from "../agent/gen/agent";
 import type { DockerCleanupRequest, HelloResponse } from "../agent/gen/agent";
@@ -131,7 +132,96 @@ test("a capable agent gets every scope and the list untouched", () => {
       "cleanup.leftover-networks",
       "cleanup.orphan-volumes",
       "cleanup.pulled-images",
+      "cleanup.safe-prune",
     ]),
   );
   assert.equal(out, input);
+});
+
+test("older agents still sweep BuildKit volumes alongside anonymous volumes", () => {
+  const out = dropUnsupportedScopes(
+    req({ scopes: [CleanupScope.CLEANUP_SCOPE_ORPHAN_VOLUMES] }),
+    hello(["docker-cleanup", "cleanup.orphan-volumes"]),
+  );
+  assert.deepEqual(out.scopes, [
+    CleanupScope.CLEANUP_SCOPE_ORPHAN_BUILDKIT_CACHE,
+    CleanupScope.CLEANUP_SCOPE_ORPHAN_VOLUMES,
+  ]);
+});
+
+test("older pulled-image cleanup is withheld until local images are protected", () => {
+  const out = dropUnsupportedScopes(
+    req({ scopes: [CleanupScope.CLEANUP_SCOPE_UNUSED_PULLED_IMAGES] }),
+    hello(["docker-cleanup", "cleanup.pulled-images"]),
+  );
+  assert.deepEqual(out.scopes, []);
+});
+
+test("scope errors override legacy success and preserve reclaimed bytes", () => {
+  const input = req();
+  const out = normalizeCleanupResponse(input, input, {
+    ok: true,
+    error: "",
+    reclaimedBytes: 123,
+    results: [
+      {
+        scope: input.scopes[0],
+        reclaimedBytes: 123,
+        itemsRemoved: 1,
+        items: [],
+        skipped: false,
+        error: "permission denied",
+      },
+    ],
+  });
+  assert.equal(out.ok, false);
+  assert.equal(out.reclaimedBytes, 123);
+  assert.match(out.error, /permission denied/);
+});
+
+test("unsupported scopes explain that the agent needs updating", () => {
+  const input = req({
+    scopes: [CleanupScope.CLEANUP_SCOPE_UNUSED_PULLED_IMAGES],
+  });
+  const out = normalizeCleanupResponse(input, req({ scopes: [] }), {
+    ok: true,
+    error: "",
+    reclaimedBytes: 0,
+    results: [],
+  });
+  assert.equal(out.ok, false);
+  assert.equal(out.results[0].skipped, true);
+  assert.match(out.error, /Update the server agent/);
+});
+
+test("missing results fail unless the legacy volume fallback was used", () => {
+  const modern = CleanupScope.CLEANUP_SCOPE_ORPHAN_VOLUMES;
+  const legacy = CleanupScope.CLEANUP_SCOPE_ORPHAN_BUILDKIT_CACHE;
+  const input = req({ scopes: [modern] });
+  const response = {
+    ok: true,
+    error: "",
+    reclaimedBytes: 10,
+    results: [
+      {
+        scope: legacy,
+        reclaimedBytes: 10,
+        itemsRemoved: 1,
+        items: [],
+        skipped: false,
+        error: "",
+      },
+    ],
+  };
+  assert.equal(
+    normalizeCleanupResponse(input, req({ scopes: [legacy] }), response).ok,
+    true,
+  );
+  const missing = normalizeCleanupResponse(
+    input,
+    req({ scopes: [legacy, modern] }),
+    response,
+  );
+  assert.equal(missing.ok, false);
+  assert.match(missing.error, /did not report/);
 });

@@ -12,7 +12,10 @@ import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { FieldLabel, InfoTip } from "@/components/ui/info-tip";
 import { SimpleTooltip } from "@/components/ui/tooltip";
-import { CleanupHistory } from "@/components/settings/cleanup-history";
+import {
+  CleanupHistory,
+  cleanupSummary,
+} from "@/components/settings/cleanup-history";
 import { SettingItem } from "@/components/settings/deplo-settings-panel/setting-item";
 import { SchedulePicker } from "@/components/shared/schedule-picker";
 import { Badge } from "@/components/ui/badge";
@@ -63,9 +66,8 @@ const SCOPES: { id: CleanupScopeId; label: string; info: React.ReactNode }[] = [
     label: "Orphaned volumes",
     info: (
       <>
-        Anonymous volumes no container references: the data dirs of removed
-        containers and abandoned build caches. A <strong>named</strong> volume
-        is never touched, so your data is safe.
+        Unused anonymous volumes, abandoned build caches and empty Deplo
+        volumes. Named volumes containing app or workspace data are kept.
       </>
     ),
   },
@@ -85,9 +87,9 @@ const SCOPES: { id: CleanupScopeId; label: string; info: React.ReactNode }[] = [
     label: "Unused pulled images",
     info: (
       <>
-        Images Deplo did not build that no container uses: what a deleted stack
-        pulled, or the tag a redeploy moved past. A deploy that needs one pulls
-        it again.
+        Unused images with a registry reference. Locally built images and build
+        tools are kept; a later deploy may need to download removed images
+        again.
       </>
     ),
   },
@@ -184,7 +186,9 @@ export function ServerCleanupTab({
             toast.error(run.error || `Cleanup failed on ${run.serverName}`);
           } else {
             toast.success(
-              `Reclaimed ${formatBytes(run.reclaimedBytes)} on ${run.serverName}`,
+              run.reclaimedBytes === 0
+                ? cleanupSummary(run)
+                : `Reclaimed ${formatBytes(run.reclaimedBytes)} on ${run.serverName}`,
             );
           }
         }
@@ -386,7 +390,7 @@ export function ServerCleanupTab({
                 <div className="space-y-2">
                   <FieldLabel
                     htmlFor="cleanup-min-age"
-                    info="Caches only: build cache, dangling images and leaked build volumes older than this. 0 turns the age filter off."
+                    info="Minimum age for caches, dangling images, orphan volumes and unused registry images. App images follow rollback retention. 0 disables this age filter."
                     docs="servers.cleanupScopes"
                   >
                     Minimum age (hours)

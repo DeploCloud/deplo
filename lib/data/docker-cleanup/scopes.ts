@@ -78,6 +78,11 @@ const WIRE_TO_SCOPE = new Map<CleanupScope, CleanupScopeId>(
   ),
 );
 
+WIRE_TO_SCOPE.set(
+  CleanupScope.CLEANUP_SCOPE_ORPHAN_BUILDKIT_CACHE,
+  "orphan_volumes",
+);
+
 export function toRunItems(results: CleanupScopeResult[]): CleanupRunItem[] {
   const byScope = new Map<CleanupScopeId, CleanupRunItem>();
   for (const r of results) {
@@ -88,13 +93,14 @@ export function toRunItems(results: CleanupScopeResult[]): CleanupRunItem[] {
       );
       continue;
     }
-    if (byScope.has(scope)) continue;
+    const previous = byScope.get(scope);
     byScope.set(scope, {
       scope,
-      reclaimedBytes: Number(r.reclaimedBytes ?? 0),
-      itemsRemoved: r.itemsRemoved ?? 0,
-      skipped: r.skipped ?? false,
-      error: r.error || null,
+      reclaimedBytes:
+        (previous?.reclaimedBytes ?? 0) + Number(r.reclaimedBytes ?? 0),
+      itemsRemoved: (previous?.itemsRemoved ?? 0) + (r.itemsRemoved ?? 0),
+      skipped: (previous?.skipped ?? false) || (r.skipped ?? false),
+      error: [previous?.error, r.error].filter(Boolean).join("; ") || null,
     });
   }
   return CLEANUP_SCOPES.filter((s) => byScope.has(s)).map((s) =>

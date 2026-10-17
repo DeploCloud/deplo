@@ -94,9 +94,9 @@ export function CleanupHistory({
                       )}
                     </TableCell>
                     <TableCell className="text-right tabular-nums">
-                      {run.status === "success"
+                      {run.status !== "running"
                         ? formatBytes(run.reclaimedBytes)
-                        : "—"}
+                        : "-"}
                     </TableCell>
                     <TableCell
                       className="whitespace-nowrap text-muted-foreground"
@@ -114,7 +114,7 @@ export function CleanupHistory({
                         </span>
                       ) : (
                         <span className="text-xs text-muted-foreground">
-                          {summarize(run)}
+                          {cleanupSummary(run)}
                         </span>
                       )}
                     </TableCell>
@@ -142,11 +142,14 @@ function Elapsed({ startedAt }: { startedAt: string }) {
   );
 }
 
-function summarize(run: CleanupRunDTO): string {
+export function cleanupSummary(run: CleanupRunDTO): string {
   if (run.status === "running") return "Reclaiming disk on the host";
   const swept = run.items.filter((i) => !i.skipped && !i.error);
   const objects = swept.reduce((n, i) => n + i.itemsRemoved, 0);
-  if (objects === 0) return "Nothing to reclaim";
+  if (objects === 0)
+    return run.reclaimedBytes > 0
+      ? "Cleanup completed under the current rules"
+      : "No items eligible under the cleanup rules";
   return `${objects} object${objects === 1 ? "" : "s"} across ${swept.length} scope${
     swept.length === 1 ? "" : "s"
   }`;

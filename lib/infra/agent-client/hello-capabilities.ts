@@ -33,6 +33,8 @@ export const SELF_UNINSTALL_CAPABILITY = "self-uninstall";
 
 export const DOCKER_CLEANUP_CAPABILITY = "docker-cleanup";
 
+export const CLEANUP_SAFE_PRUNE_CAPABILITY = "cleanup.safe-prune";
+
 export const CLEANUP_KEEP_PER_SLUG_CAPABILITY = "cleanup.keep-per-slug";
 
 // An agent answers an unknown scope with INVALID_ARGUMENT, which fails the whole sweep.
@@ -40,7 +42,8 @@ export const CLEANUP_SCOPE_CAPABILITY: Partial<Record<CleanupScope, string>> = {
   [CleanupScope.CLEANUP_SCOPE_LEFTOVER_APP_FILES]: "cleanup.leftover-files",
   [CleanupScope.CLEANUP_SCOPE_LEFTOVER_NETWORKS]: "cleanup.leftover-networks",
   [CleanupScope.CLEANUP_SCOPE_ORPHAN_VOLUMES]: "cleanup.orphan-volumes",
-  [CleanupScope.CLEANUP_SCOPE_UNUSED_PULLED_IMAGES]: "cleanup.pulled-images",
+  [CleanupScope.CLEANUP_SCOPE_UNUSED_PULLED_IMAGES]:
+    CLEANUP_SAFE_PRUNE_CAPABILITY,
 };
 
 export const HOSTOPS_CAPABILITY = "hostops";
