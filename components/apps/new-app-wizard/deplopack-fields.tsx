@@ -20,8 +20,11 @@ import type { RepoAnalysisState } from "./use-repo-analysis";
 export function DeplopackDetections({ state }: { state: RepoAnalysisState }) {
   if (state.detecting)
     return (
-      <div className="h-20 animate-pulse rounded-lg bg-muted" role="status">
-        Analyzing repository…
+      <div
+        className="rounded-lg border border-border p-3 text-sm text-muted-foreground"
+        role="status"
+      >
+        Analyzing repository
       </div>
     );
   if (state.error)
@@ -48,7 +51,8 @@ export function DeplopackDetections({ state }: { state: RepoAnalysisState }) {
       )}
       {!result.detections.length && (
         <p className="text-sm text-muted-foreground">
-          No deployment candidates were found.
+          No compatible build detections were found. Choose another build
+          method.
         </p>
       )}
       <div

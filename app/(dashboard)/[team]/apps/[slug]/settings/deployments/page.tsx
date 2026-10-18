@@ -64,6 +64,8 @@ export default async function AppDeploymentSettingsPage(
       <CapabilityFieldset cap="configure_apps">
         <DeploymentSettingsForm
           appId={project.id}
+          serverId={project.serverId}
+          buildServerId={project.buildServerId ?? null}
           slug={project.slug}
           build={project.build}
           framework={project.framework}

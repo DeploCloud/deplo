@@ -20,6 +20,9 @@ export function DeploymentSettingsForm(props: DeploymentSettingsProps) {
         {settings.buildCardVisible && (
           <BuildOutputCard
             build={settings.build}
+            deplopack={settings.deplopack}
+            deplopackAvailable={settings.deplopackAvailable}
+            deplopackBlockedReason={settings.deplopackBlockedReason}
             onBuildChange={settings.setBuild}
             framework={settings.frameworkOverride ?? props.framework}
             detectedFramework={props.framework}

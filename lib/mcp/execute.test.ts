@@ -155,6 +155,7 @@ test("a root is refused for what it returns, whatever its name", () => {
     "rotateDatabasePassword",
     "destinationRecoveryKey",
     "analyzeRepo",
+    "analyzeAppRepo",
     "startTwoFactorEnrolment",
   ])
     assert.ok(deniedRootFields().has(name), `${name} is not denied`);

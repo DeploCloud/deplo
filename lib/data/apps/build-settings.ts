@@ -1,5 +1,10 @@
 import "server-only";
 
+import { validateRepoAnalysis } from "../../apps/deplopack";
+import { appRepoAnalysisInput } from "../../apps/app-repo-analysis";
+import type { RepoBuildSelection } from "../../apps/deplopack-types";
+import { saveDeplopackInputs } from "./deplopack-settings";
+
 import { and, eq } from "drizzle-orm";
 
 import { getDb } from "../../db/client";
@@ -24,44 +29,85 @@ import type { BuildConfig } from "../../types/build";
 export async function updateAppBuild(
   id: string,
   build: Partial<BuildConfig>,
+  selection: RepoBuildSelection = {},
 ): Promise<void> {
-  const { membership } = await requireAppCapability(id, "configure_apps");
+  const { membership, userId } = await requireAppCapability(
+    id,
+    "configure_apps",
+  );
   const user = (await getCurrentUser())!;
   let portBefore: number | null = null;
   await getDb().transaction(async (tx) => {
+    await tx
+      .select({ id: appsTable.id })
+      .from(appsTable)
+      .where(and(eq(appsTable.id, id), eq(appsTable.teamId, membership.teamId)))
+      .for("update");
     const existing = await loadAppGraph(id, tx);
     if (!existing || existing.teamId !== membership.teamId)
       throw new Error("App not found");
     portBefore = existing.build.port ?? null;
-    if (existing.build.buildMethod === "deplopack") {
-      if (build.buildMethod && build.buildMethod !== "deplopack")
-        throw new Error("This app builds with DeploPack");
-      for (const key of [
-        "deplopackVersion",
-        "deplopackProvider",
-        "deplopackPath",
-      ] as const) {
+    const method = build.buildMethod ?? existing.build.buildMethod;
+    let validated: Partial<BuildConfig> | null = null;
+    if (method === "deplopack") {
+      const input = appRepoAnalysisInput(existing);
+      if (
+        selection.receipt !== undefined ||
+        existing.build.buildMethod !== "deplopack"
+      ) {
+        const selected = validateRepoAnalysis(
+          selection.receipt,
+          selection.candidate,
+          selection.inputs ?? [],
+          {
+            ...input,
+            rootDirectory: build.rootDirectory ?? input.rootDirectory,
+          },
+          membership.teamId,
+          userId,
+        );
+        if (selected.build.buildMethod !== "deplopack")
+          throw new Error("Select a DeploPacks build detection");
+        validated = selected.build;
+      } else {
+        for (const key of [
+          "deplopackVersion",
+          "deplopackProvider",
+          "deplopackPath",
+        ] as const) {
+          if (
+            build.methodSettings?.[key] !== undefined &&
+            build.methodSettings[key] !== existing.build.methodSettings[key]
+          )
+            throw new Error(
+              "Analyze the repository again before changing the DeploPack selection",
+            );
+        }
         if (
-          build.methodSettings?.[key] !== undefined &&
-          build.methodSettings[key] !== existing.build.methodSettings[key]
+          selection.candidate !== undefined ||
+          selection.inputs !== undefined ||
+          build.deplopackInputs !== undefined
         )
           throw new Error(
-            "Analyze the repository again before changing the DeploPack selection",
+            "Analyze the repository again before changing DeploPacks inputs",
           );
       }
-    } else if (build.buildMethod === "deplopack") {
-      throw new Error(
-        "Existing apps will be migrated to DeploPack in a later update",
-      );
     }
 
     const merged: BuildConfig = {
       ...existing.build,
       ...build,
-      methodSettings:
-        existing.build.buildMethod === "deplopack"
-          ? { ...existing.build.methodSettings, ...build.methodSettings }
-          : (build.methodSettings ?? existing.build.methodSettings),
+      methodSettings: {
+        ...existing.build.methodSettings,
+        ...build.methodSettings,
+        ...validated?.methodSettings,
+      },
+      ...(validated
+        ? {
+            includeFilesOutsideRoot: false,
+            deplopackInputs: validated.deplopackInputs,
+          }
+        : {}),
       buildCacheClearPending: existing.build.buildCacheClearPending,
     };
     await tx
@@ -72,12 +118,14 @@ export async function updateAppBuild(
       .update(appBuildTable)
       .set(buildToRow(id, merged))
       .where(eq(appBuildTable.appId, id));
-    if (build.methodSettings) {
+    if (build.methodSettings || validated) {
       await tx
         .update(appBuildMethodSettingsTable)
         .set(methodSettingsToRow(id, merged.methodSettings))
         .where(eq(appBuildMethodSettingsTable.appId, id));
     }
+    if (validated)
+      await saveDeplopackInputs(tx, id, validated.deplopackInputs ?? []);
   });
 
   // Domains still routing to the OLD port follow the new one, or a green deploy answers 502 from another screen.

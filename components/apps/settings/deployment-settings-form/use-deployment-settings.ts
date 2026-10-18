@@ -1,6 +1,8 @@
 "use client";
 
 import * as React from "react";
+import { useRepoAnalysis } from "@/components/apps/new-app-wizard/use-repo-analysis";
+import { detectionKey } from "@/lib/apps/deplopack-types";
 import { toast } from "sonner";
 import { useRouter } from "@/lib/nav";
 import {
@@ -31,6 +33,8 @@ import { computeSourceKey } from "./source-key";
 
 export type DeploymentSettingsProps = {
   appId: string;
+  serverId: string | null;
+  buildServerId: string | null;
   slug: string;
   build: BuildConfig;
   framework: string | null;
@@ -57,6 +61,8 @@ export type DeploymentSettings = ReturnType<typeof useDeploymentSettings>;
 
 export function useDeploymentSettings({
   appId,
+  serverId,
+  buildServerId,
   slug,
   build: initialBuild,
   autoDeploy: initialAutoDeploy,
@@ -186,6 +192,52 @@ export function useDeploymentSettings({
       ? false
       : currentSourceKey !== savedSourceKey;
 
+  const deplopackAvailable =
+    ["git", "github"].includes(initialSource) &&
+    initialRepo?.provider === "github" &&
+    !composePath;
+  const deplopackBlockedReason = !deplopackAvailable
+    ? "DeploPacks BETA is available for GitHub repositories."
+    : sourceDirty || build.rootDirectory !== initialBuild.rootDirectory
+      ? "Save the deploy source and root directory before analyzing the repository."
+      : null;
+  const initialDeplopackSelection =
+    initialBuild.buildMethod === "deplopack"
+      ? {
+          candidate: detectionKey({
+            type: initialBuild.methodSettings.deplopackProvider ?? "",
+            path: initialBuild.methodSettings.deplopackPath ?? undefined,
+          }),
+          inputs: initialBuild.deplopackInputs ?? [],
+        }
+      : undefined;
+  const deplopack = useRepoAnalysis(
+    build.buildMethod === "deplopack" && !deplopackBlockedReason
+      ? {
+          appId,
+          revision: JSON.stringify([
+            initialRepo,
+            initialBuild.rootDirectory,
+            serverId,
+            buildServerId,
+          ]),
+        }
+      : null,
+    undefined,
+    initialDeplopackSelection,
+  );
+  const deplopackSelectionKey =
+    build.buildMethod === "deplopack"
+      ? JSON.stringify({
+          candidate: deplopack.selected
+            ? detectionKey(deplopack.selected)
+            : initialDeplopackSelection?.candidate,
+          inputs: deplopack.analysis
+            ? deplopack.overrides
+            : (initialDeplopackSelection?.inputs ?? []),
+        })
+      : null;
+
   const currentBuildKey = React.useMemo(
     () =>
       JSON.stringify({
@@ -198,8 +250,9 @@ export function useDeploymentSettings({
         runtimeVersion: build.runtimeVersion,
         port: build.port,
         frameworkOverride,
+        deplopackSelectionKey,
       }),
-    [build, frameworkOverride],
+    [build, frameworkOverride, deplopackSelectionKey],
   );
   const currentRootKey = React.useMemo(
     () => JSON.stringify({ rootDirectory: build.rootDirectory }),
@@ -364,6 +417,16 @@ export function useDeploymentSettings({
   }
 
   function saveBuild() {
+    if (
+      build.buildMethod === "deplopack" &&
+      (!deplopack.ready || deplopackBlockedReason)
+    ) {
+      toast.error(
+        deplopackBlockedReason ??
+          "Analyze the repository and select a build detection",
+      );
+      return;
+    }
     const committed = currentBuildKey;
     startTransition(async () => {
       if (frameworkOverride !== savedFrameworkOverride) {
@@ -378,9 +441,18 @@ export function useDeploymentSettings({
         setSavedFrameworkOverride(frameworkOverride);
       }
       const res = await gqlAction(
-        `mutation($id: String!, $build: BuildConfigInput!) { updateAppBuild(id: $id, build: $build) { id } }`,
+        `mutation($id: String!, $build: BuildConfigInput!, $receipt: String, $candidate: String, $inputs: JSON) { updateAppBuild(id: $id, build: $build, analysisReceipt: $receipt, deplopackCandidate: $candidate, deplopackInputs: $inputs) { id } }`,
         {
           id: appId,
+          ...(build.buildMethod === "deplopack"
+            ? {
+                receipt: deplopack.analysis?.receipt,
+                candidate: deplopack.selected
+                  ? detectionKey(deplopack.selected)
+                  : undefined,
+                inputs: deplopack.overrides,
+              }
+            : {}),
           build: {
             buildMethod: build.buildMethod,
             settings: build.methodSettings,
@@ -422,6 +494,9 @@ export function useDeploymentSettings({
   }
 
   return {
+    deplopack,
+    deplopackAvailable,
+    deplopackBlockedReason,
     build,
     setBuild,
     frameworkOverride,

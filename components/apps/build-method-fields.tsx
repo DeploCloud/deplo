@@ -1,5 +1,7 @@
 "use client";
 
+import { Badge } from "@/components/ui/badge";
+
 import * as React from "react";
 import {
   FileCode2,
@@ -36,12 +38,14 @@ interface MethodMeta {
   name: string;
   icon: React.ComponentType<{ className?: string }>;
   blurb: string;
+  beta?: boolean;
 }
 
 export const BUILD_METHODS: MethodMeta[] = [
   {
     id: "deplopack",
-    name: "DeploPack",
+    name: "DeploPacks",
+    beta: true,
     icon: Layers,
     blurb: "Build using the selected repository detection.",
   },
@@ -79,6 +83,7 @@ export function BuildMethodFields({
   framework,
   detectedFramework,
   onFrameworkChange,
+  deplopackAvailable = false,
 }: {
   method: BuildMethod;
   settings: BuildMethodSettings;
@@ -87,16 +92,8 @@ export function BuildMethodFields({
   framework?: string | null;
   detectedFramework?: string | null;
   onFrameworkChange?: (id: string | null) => void;
+  deplopackAvailable?: boolean;
 }) {
-  if (method === "deplopack")
-    return (
-      <div className="rounded-lg border border-border p-3">
-        <p className="text-sm font-medium">DeploPack</p>
-        <p className="text-xs text-muted-foreground">
-          {settings.deplopackProvider}
-        </p>
-      </div>
-    );
   return (
     <div className="space-y-4">
       <div
@@ -104,12 +101,13 @@ export function BuildMethodFields({
         aria-label="Build method"
         className="grid gap-2 sm:grid-cols-2"
       >
-        {BUILD_METHODS.filter((m) => m.id !== "deplopack").map((m) => (
+        {BUILD_METHODS.map((m) => (
           <MethodCard
             key={m.id}
             meta={m}
             selected={m.id === method}
             onSelect={() => onMethodChange(m.id)}
+            disabled={m.id === "deplopack" && !deplopackAvailable}
           />
         ))}
       </div>
@@ -130,10 +128,12 @@ function MethodCard({
   meta,
   selected,
   onSelect,
+  disabled,
 }: {
   meta: MethodMeta;
   selected: boolean;
   onSelect: () => void;
+  disabled?: boolean;
 }) {
   const Icon = meta.icon;
   return (
@@ -142,8 +142,9 @@ function MethodCard({
       role="radio"
       aria-checked={selected}
       onClick={onSelect}
+      disabled={disabled}
       className={cn(
-        "flex items-start gap-3 rounded-lg border p-3 text-left transition-colors",
+        "flex items-start gap-3 rounded-lg border p-3 text-left disabled:cursor-not-allowed disabled:opacity-50",
         "focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-background focus-visible:outline-none",
         selected
           ? "border-primary bg-primary-wash ring-1 ring-primary/60"
@@ -152,7 +153,7 @@ function MethodCard({
     >
       <span
         className={cn(
-          "flex size-8 shrink-0 items-center justify-center rounded-md border transition-colors",
+          "flex size-8 shrink-0 items-center justify-center rounded-md border",
           selected
             ? "border-primary/40 bg-background text-primary"
             : "border-border bg-surface-strong text-muted-foreground",
@@ -161,15 +162,18 @@ function MethodCard({
         <Icon className="size-4" />
       </span>
       <span className="min-w-0 flex-1">
-        <span className="block text-sm font-medium">{meta.name}</span>
+        <span className="flex items-center gap-2 text-sm font-medium">
+          {meta.name}
+          {meta.beta && <Badge variant="secondary">BETA</Badge>}
+        </span>
         <span className="mt-0.5 block text-xs leading-snug text-muted-foreground">
-          {meta.blurb}
+          {disabled ? "Available for GitHub repositories." : meta.blurb}
         </span>
       </span>
       <span
         aria-hidden
         className={cn(
-          "mt-0.5 flex size-4 shrink-0 items-center justify-center rounded-full border transition-colors",
+          "mt-0.5 flex size-4 shrink-0 items-center justify-center rounded-full border",
           selected ? "border-primary" : "border-muted-foreground/40",
         )}
       >

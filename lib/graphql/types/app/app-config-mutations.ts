@@ -123,9 +123,19 @@ builder.mutationFields((t) => ({
     args: {
       id: t.arg.string({ required: true }),
       build: t.arg({ type: BuildConfigInput, required: true }),
+      analysisReceipt: t.arg.string(),
+      deplopackCandidate: t.arg.string(),
+      deplopackInputs: t.arg({ type: "JSON" }),
     },
-    resolve: async (_r, { id, build }) => {
-      await updateAppBuild(id, remapBuildInput(build) as never);
+    resolve: async (
+      _r,
+      { id, build, analysisReceipt, deplopackCandidate, deplopackInputs },
+    ) => {
+      await updateAppBuild(id, remapBuildInput(build) as never, {
+        receipt: analysisReceipt ?? undefined,
+        candidate: deplopackCandidate ?? undefined,
+        inputs: deplopackInputs ?? undefined,
+      });
       return reloadApp(id);
     },
   }),

@@ -21,6 +21,11 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { InfoTip } from "@/components/ui/info-tip";
 import { SettingRow } from "@/components/shared/setting-row";
+import {
+  DeplopackDetections,
+  DeplopackFields,
+} from "@/components/apps/new-app-wizard/deplopack-fields";
+import type { RepoAnalysisState } from "@/components/apps/new-app-wizard/use-repo-analysis";
 import { BuildMethodFields } from "@/components/apps/build-method-fields";
 import { NodeVersionInput } from "@/components/apps/node-version-input";
 import { DirtyHint } from "@/components/apps/settings/settings-shared";
@@ -50,6 +55,9 @@ export function BuildOutputCard({
   dirty,
   pending,
   onSave,
+  deplopack,
+  deplopackAvailable,
+  deplopackBlockedReason,
 }: {
   build: BuildConfig;
   onBuildChange: (next: BuildConfig) => void;
@@ -59,6 +67,9 @@ export function BuildOutputCard({
   dirty: boolean;
   pending: boolean;
   onSave: () => void;
+  deplopack: RepoAnalysisState;
+  deplopackAvailable: boolean;
+  deplopackBlockedReason: string | null;
 }) {
   function setBuild(updater: (b: BuildConfig) => BuildConfig) {
     onBuildChange(updater(build));
@@ -116,6 +127,7 @@ export function BuildOutputCard({
       <CardContent className="space-y-3">
         <BuildMethodFields
           method={build.buildMethod}
+          deplopackAvailable={deplopackAvailable}
           settings={build.methodSettings}
           onMethodChange={(m: BuildMethod) =>
             setBuild((b) => ({ ...b, buildMethod: m }))
@@ -130,6 +142,25 @@ export function BuildOutputCard({
           detectedFramework={detectedFramework}
           onFrameworkChange={pickFramework}
         />
+
+        {method === "deplopack" && (
+          <div className="space-y-4">
+            {deplopackBlockedReason ? (
+              <p className="text-sm text-muted-foreground" role="status">
+                {deplopackBlockedReason}
+              </p>
+            ) : (
+              <>
+                <p className="text-sm text-muted-foreground">
+                  Review the detected build settings. Saving applies them to the
+                  next deployment.
+                </p>
+                <DeplopackDetections state={deplopack} />
+                {deplopack.ready && <DeplopackFields state={deplopack} />}
+              </>
+            )}
+          </div>
+        )}
 
         <div className="grid gap-3 sm:grid-cols-2">
           {showInstallCommand && (
@@ -257,7 +288,15 @@ export function BuildOutputCard({
 
       <CardFooter className="justify-between border-t border-border pt-4">
         <DirtyHint dirty={dirty} />
-        <Button onClick={onSave} disabled={pending || !dirty}>
+        <Button
+          onClick={onSave}
+          disabled={
+            pending ||
+            !dirty ||
+            (method === "deplopack" &&
+              (!deplopack.ready || Boolean(deplopackBlockedReason)))
+          }
+        >
           <Save className="size-4" />
           Save build settings
         </Button>

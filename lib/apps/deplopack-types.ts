@@ -50,3 +50,12 @@ export function deplopackEnvironment(
   }
   return env;
 }
+
+export function isDeplopackDetection(detection: DeplopackDetection): boolean {
+  return detection.type !== "dockerfile" && detection.type !== "compose";
+}
+export interface RepoBuildSelection {
+  receipt?: string;
+  candidate?: string;
+  inputs?: unknown;
+}

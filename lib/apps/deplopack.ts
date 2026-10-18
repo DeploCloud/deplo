@@ -66,10 +66,18 @@ export async function analyzeRepo(
 ): Promise<RepoAnalysis> {
   const { membership, userId } = await requireMembership();
   await resolveNewAppPlacement(input, membership.teamId);
+  return analyzeRepoForMember(input, membership.teamId, userId);
+}
+
+export async function analyzeRepoForMember(
+  input: AnalysisRequest,
+  teamId: string,
+  userId: string,
+): Promise<RepoAnalysis> {
   const bound = binding(input);
   if (!/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(bound.repo))
     throw new Error("Select a GitHub repository");
-  const servers = await listServersForTeam(membership.teamId);
+  const servers = await listServersForTeam(teamId);
   const target = servers.find((server) => server.id === bound.serverId);
   if (!target || target.buildOnly || target.storageOnly || target.importOnly)
     throw new Error("Select a server available to this team");
@@ -99,7 +107,7 @@ export async function analyzeRepo(
       installationId: bound.installationId,
       connectionId: bound.connectionId,
     },
-    membership.teamId,
+    teamId,
   );
   if (!repo) throw new Error("Repository is required");
   const clone = new URL(await resolveCloneUrl(repo));
@@ -174,7 +182,7 @@ export async function analyzeRepo(
     const receipt: Receipt = {
       success: result.success,
       purpose: "deplopack-analysis",
-      teamId: membership.teamId,
+      teamId: teamId,
       userId,
       binding: bound,
       commitSha: response.commitSha,

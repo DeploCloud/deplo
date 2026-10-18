@@ -1,3 +1,4 @@
+import { analyzeAppRepo } from "@/lib/apps/app-repo-analysis";
 import { analyzeRepo, previewRepoCompose } from "@/lib/apps/deplopack";
 import { builder } from "../../builder";
 import { DeploymentStatusEnum, DeploymentEnvironmentEnum } from "../enums";
@@ -249,6 +250,13 @@ builder.queryFields((t) => ({
     authScopes: { loggedIn: true },
     args: { slug: t.arg.string({ required: true }) },
     resolve: (_r, { slug }) => getAppBySlug(slug),
+  }),
+  analyzeAppRepo: t.field({
+    type: "JSON",
+    extensions: { credential: true },
+    authScopes: { capability: "configure_apps" },
+    args: { id: t.arg.string({ required: true }) },
+    resolve: (_root, { id }) => analyzeAppRepo(id),
   }),
   analyzeRepo: t.field({
     type: "JSON",

@@ -21,10 +21,14 @@ export interface RepoAnalysisInput {
   environmentId?: string | null;
 }
 export function useRepoAnalysis(
-  input: RepoAnalysisInput | null,
+  input: RepoAnalysisInput | { appId: string; revision: string } | null,
   onComposeSelected?: () => void,
+  initialSelection?: { candidate: string; inputs: DeplopackOverride[] },
 ) {
-  const key = input?.repo && input.serverId ? JSON.stringify(input) : null;
+  const key =
+    input && ("appId" in input || (input.repo && input.serverId))
+      ? JSON.stringify(input)
+      : null;
   const selectionKey = input
     ? JSON.stringify({ ...input, buildServerId: null })
     : null;
@@ -51,9 +55,13 @@ export function useRepoAnalysis(
     const timer = setTimeout(() => {
       setAnswer(null);
       setExpired(false);
+      const request = JSON.parse(key);
+      const appAnalysis = "appId" in request;
       void gql<{ analyzeRepo: RepoAnalysis }>(
-        `query($repo:String!,$branch:String,$installationId:String,$connectionId:String,$serverId:String!,$buildServerId:String,$rootDirectory:String,$folderId:String,$projectId:String,$environmentId:String){analyzeRepo(repo:$repo,branch:$branch,installationId:$installationId,connectionId:$connectionId,serverId:$serverId,buildServerId:$buildServerId,rootDirectory:$rootDirectory,folderId:$folderId,projectId:$projectId,environmentId:$environmentId)}`,
-        JSON.parse(key),
+        appAnalysis
+          ? "query($id:String!){analyzeRepo:analyzeAppRepo(id:$id)}"
+          : `query($repo:String!,$branch:String,$installationId:String,$connectionId:String,$serverId:String!,$buildServerId:String,$rootDirectory:String,$folderId:String,$projectId:String,$environmentId:String){analyzeRepo(repo:$repo,branch:$branch,installationId:$installationId,connectionId:$connectionId,serverId:$serverId,buildServerId:$buildServerId,rootDirectory:$rootDirectory,folderId:$folderId,projectId:$projectId,environmentId:$environmentId)}`,
+        appAnalysis ? { id: request.appId } : request,
         controller.signal,
       )
         .then((data) => {
@@ -91,13 +99,25 @@ export function useRepoAnalysis(
   }, [analysis]);
   const candidates = analysis?.result.detections ?? [];
   const current = selection?.key === selectionKey ? selection : null;
+  const initialCandidate = candidates.find(
+    (candidate) =>
+      detectionKey({ ...candidate, rootDir: undefined }) ===
+      initialSelection?.candidate,
+  );
   const selected =
     candidates.find(
       (candidate) => detectionKey(candidate) === current?.candidate,
     ) ??
+    initialCandidate ??
     candidates[0] ??
     null;
-  const values = current?.values ?? {};
+  const values =
+    current?.values ??
+    (selected && selected === initialCandidate && initialSelection
+      ? Object.fromEntries(
+          initialSelection.inputs.map((field) => [field.env, field.values]),
+        )
+      : {});
   const composeKey =
     selected?.type === "compose" && analysis && key
       ? JSON.stringify([key, analysis.receipt, detectionKey(selected)])
@@ -176,6 +196,7 @@ export function useRepoAnalysis(
     detecting,
     ready,
     select: (candidate: string) => {
+      if (selected && candidate === detectionKey(selected)) return;
       if (
         analysis?.result.detections.some(
           (item) => detectionKey(item) === candidate && item.type === "compose",
