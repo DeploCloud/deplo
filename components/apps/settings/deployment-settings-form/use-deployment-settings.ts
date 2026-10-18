@@ -230,7 +230,7 @@ export function useDeploymentSettings({
     build.buildMethod === "deplopack"
       ? JSON.stringify({
           candidate: deplopack.selected
-            ? detectionKey(deplopack.selected)
+            ? detectionKey({ ...deplopack.selected, rootDir: undefined })
             : initialDeplopackSelection?.candidate,
           inputs: deplopack.analysis
             ? deplopack.overrides
