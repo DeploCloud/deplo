@@ -1,3 +1,4 @@
+import type { DeplopackOverride } from "@/lib/apps/deplopack-types";
 import type { LogoAccent } from "@/lib/templates/logo-color";
 
 export interface WizardServer {
@@ -16,6 +17,9 @@ export interface WizardBuildServer {
 }
 
 export type CreateAppVariables = Record<string, unknown> & {
+  analysisReceipt?: string;
+  deplopackCandidate?: string;
+  deplopackInputs?: DeplopackOverride[];
   folderId: string | null;
   projectId: string | null;
   environmentId: string | null;

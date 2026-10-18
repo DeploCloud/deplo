@@ -126,6 +126,7 @@ export const AppRef = builder.objectRef<AppSummary>("App").implement({
     }),
     source: t.field({ type: DeploySourceEnum, resolve: (p) => p.source }),
     dockerImage: t.exposeString("dockerImage", { nullable: true }),
+    composePath: t.exposeString("composePath", { nullable: true }),
     compose: t.string({
       nullable: true,
       description:

@@ -46,6 +46,10 @@ export function assembleMethodSettings(
   if (ms.dockerContextPath != null)
     out.dockerContextPath = ms.dockerContextPath;
   if (ms.dockerBuildStage != null) out.dockerBuildStage = ms.dockerBuildStage;
+  if (ms.deplopackVersion != null) out.deplopackVersion = ms.deplopackVersion;
+  if (ms.deplopackProvider != null)
+    out.deplopackProvider = ms.deplopackProvider;
+  if (ms.deplopackPath != null) out.deplopackPath = ms.deplopackPath;
   if (ms.railpackVersion != null) out.railpackVersion = ms.railpackVersion;
   if (ms.nixpacksPublishDirectory != null)
     out.nixpacksPublishDirectory = ms.nixpacksPublishDirectory;
@@ -93,6 +97,9 @@ export function methodSettingsToRow(
     dockerContextPath: ms.dockerContextPath ?? null,
     dockerBuildStage: ms.dockerBuildStage ?? null,
     railpackVersion: cleanToolVersion(ms.railpackVersion),
+    deplopackVersion: cleanToolVersion(ms.deplopackVersion),
+    deplopackProvider: ms.deplopackProvider ?? null,
+    deplopackPath: ms.deplopackPath ?? null,
     nixpacksPublishDirectory: ms.nixpacksPublishDirectory ?? null,
     staticSinglePageApp: ms.staticSinglePageApp ?? null,
   } satisfies Record<keyof BuildMethodSettings, unknown>;

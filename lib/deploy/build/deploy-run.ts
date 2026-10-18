@@ -186,7 +186,31 @@ async function runDeployment(depId: string): Promise<void> {
       );
       return;
     }
-    if (useCompose && hasCompose) {
+    if (useCompose && (hasCompose || project.composePath)) {
+      let publicCloneUrl: string | undefined;
+      if (project.composePath && project.repo) {
+        if (preview?.isFork) {
+          if (
+            !preview.approvedSha ||
+            (dep.commitSha && dep.commitSha !== preview.approvedSha)
+          )
+            throw new Error(
+              "Approve this fork revision before deploying its Compose file",
+            );
+          publicCloneUrl = forkCloneUrl(project.repo.url, preview.headCloneUrl);
+          const tip = await publicBranchHead(
+            forkFullName(preview.headCloneUrl),
+            dep.branch,
+          );
+          if (tip && tip !== preview.approvedSha)
+            throw new Error(
+              "The fork changed after approval. Approve the new commit before deploying.",
+            );
+        } else {
+          const refusal = await repoCloneRefusal(project.repo);
+          if (refusal) throw new Error(refusal);
+        }
+      }
       const composeOpts = {
         depId,
         project,
@@ -201,6 +225,15 @@ async function runDeployment(depId: string): Promise<void> {
         environment: dep.environment,
         preview: previewCtx,
         started,
+        repository: project.composePath
+          ? {
+              branch: dep.branch,
+              commit: preview?.isFork
+                ? preview.approvedSha!
+                : (dep.commitSha ?? ""),
+              publicCloneUrl,
+            }
+          : undefined,
       };
       await deployComposeStackViaAgent({
         ...composeOpts,
@@ -233,7 +266,10 @@ async function runDeployment(depId: string): Promise<void> {
       dep.rollbackOf && dep.imageRef && !isOwnImage(dep.imageRef, dep.id),
     );
     const rebuildCommit =
-      dep.rollbackOf && !instantRollback ? dep.commitSha : "";
+      (dep.rollbackOf && !instantRollback) ||
+      project.build.buildMethod === "deplopack"
+        ? dep.commitSha
+        : "";
 
     const buildServerOpts = await resolveBuildServerOpts(
       project,

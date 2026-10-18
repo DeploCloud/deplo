@@ -41,6 +41,7 @@ export type DeploymentSettingsProps = {
   dockerImage: string | null;
   upload: CurrentUpload | null;
   compose: string | null;
+  composePath?: string | null;
   installations: GithubInstallationDTO[];
   connections: GitConnectionDTO[];
   providers: GitProviderChoice[];
@@ -60,6 +61,7 @@ export function useDeploymentSettings({
   build: initialBuild,
   autoDeploy: initialAutoDeploy,
   source: initialSource,
+  composePath,
   repo: initialRepo,
   dockerImage: initialDockerImage,
   upload: initialUpload,
@@ -120,6 +122,7 @@ export function useDeploymentSettings({
   const usesGitUrl = source === "git";
 
   const isComposeStack = usesComposeStack({
+    composePath,
     source,
     compose,
     repo: usesGithubApp

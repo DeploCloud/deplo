@@ -55,6 +55,7 @@ export interface App {
   dockerImage: string | null;
   upload: UploadArchive | null;
   compose: string | null;
+  composePath?: string | null;
   mounts?: { filePath: string; content: string }[] | null;
   volumes?: VolumeMount[] | null;
   ports?: PublishedPort[] | null;

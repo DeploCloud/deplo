@@ -511,6 +511,10 @@ export async function userMayReachHost(userId: string): Promise<boolean> {
   return hasGrant({ id: userId }, "canMountHostVolumes");
 }
 
+export async function userMayExposePorts(userId: string): Promise<boolean> {
+  return hasGrant({ id: userId }, "canExposePorts");
+}
+
 export async function requireMountHostVolumes(
   reach?: string,
 ): Promise<{ userId: string }> {

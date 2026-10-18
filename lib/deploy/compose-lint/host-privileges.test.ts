@@ -297,3 +297,23 @@ test("composeBuildReachesHost: build entitlements and host networking need the g
     );
   }
 });
+
+test("repository Compose keeps host protections while allowing repository paths", () => {
+  const yaml = (build: string) =>
+    "services:\n  web:\n    build: " + build + "\n";
+  assert.equal(composeBuildReachesHost(yaml("../"), true), false);
+  assert.equal(composeBuildReachesHost(yaml("../")), true);
+  for (const build of [
+    "~/private",
+    "/root/private",
+    "{context: ., network: host}",
+    "{context: ., privileged: true}",
+  ]) {
+    assert.equal(composeBuildReachesHost(yaml(build), true), true, build);
+    assert.ok(
+      composeHostReach(yaml(build), true).includes(
+        "a build that reaches the server",
+      ),
+    );
+  }
+});

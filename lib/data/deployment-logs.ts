@@ -56,6 +56,7 @@ function bufferFor(depId: string): DeploymentBuffer {
 }
 
 export function appendLog(depId: string, line: LogLine): void {
+  line = classifyUnstated(line);
   const b = bufferFor(depId);
   const s = state();
   if (s.enqueued.size > MAX_TRACKED_BUDGETS && !s.enqueued.has(depId)) {
@@ -152,9 +153,14 @@ export async function clearDeploymentLogs(depId: string): Promise<void> {
 }
 
 function classifyUnstated(line: LogLine): LogLine {
-  if (line.level !== "info") return line;
-  const level = detectLogLevel(stripAnsi(line.text));
-  return level === "info" ? line : { ...line, level };
+  const text = stripAnsi(line.text);
+  if (
+    line.level !== "info" &&
+    !(line.level === "command" && /^#\d+\s/.test(text))
+  )
+    return line;
+  const level = detectLogLevel(text);
+  return level === line.level ? line : { ...line, level };
 }
 
 // `after` skips lines the caller already holds; lines are append-only, so an index is stable.

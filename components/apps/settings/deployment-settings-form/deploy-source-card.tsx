@@ -38,6 +38,7 @@ export function DeploySourceCard({
   settings,
   appId,
   source: initialSource,
+  composePath,
   repo: initialRepo,
   upload: initialUpload,
   installations,
@@ -82,6 +83,9 @@ export function DeploySourceCard({
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
+        {composePath && (
+          <p className="text-sm text-muted-foreground">{composePath}</p>
+        )}
         <Tabs
           value={source}
           onValueChange={(v) => setSource(v as DeploySource)}

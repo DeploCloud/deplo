@@ -1,3 +1,4 @@
+import { analyzeRepo, previewRepoCompose } from "@/lib/apps/deplopack";
 import { builder } from "../../builder";
 import { DeploymentStatusEnum, DeploymentEnvironmentEnum } from "../enums";
 import { AppRef } from "./app-object";
@@ -248,6 +249,42 @@ builder.queryFields((t) => ({
     authScopes: { loggedIn: true },
     args: { slug: t.arg.string({ required: true }) },
     resolve: (_r, { slug }) => getAppBySlug(slug),
+  }),
+  analyzeRepo: t.field({
+    type: "JSON",
+    extensions: { credential: true },
+    authScopes: { loggedIn: true },
+    args: {
+      repo: t.arg.string({ required: true }),
+      branch: t.arg.string(),
+      installationId: t.arg.string(),
+      connectionId: t.arg.string(),
+      serverId: t.arg.string({ required: true }),
+      buildServerId: t.arg.string(),
+      rootDirectory: t.arg.string(),
+      folderId: t.arg.string(),
+      projectId: t.arg.string(),
+      environmentId: t.arg.string(),
+    },
+    resolve: (_root, args) => analyzeRepo(args),
+  }),
+  previewRepoCompose: t.string({
+    authScopes: { loggedIn: true },
+    args: {
+      receipt: t.arg.string({ required: true }),
+      candidate: t.arg.string({ required: true }),
+      repo: t.arg.string({ required: true }),
+      branch: t.arg.string(),
+      installationId: t.arg.string(),
+      connectionId: t.arg.string(),
+      serverId: t.arg.string({ required: true }),
+      buildServerId: t.arg.string(),
+      rootDirectory: t.arg.string(),
+      folderId: t.arg.string(),
+      projectId: t.arg.string(),
+      environmentId: t.arg.string(),
+    },
+    resolve: (_root, args) => previewRepoCompose(args),
   }),
   detectRepoFramework: t.field({
     type: RecognizedFrameworkRef,

@@ -171,6 +171,7 @@ type App {
   The authored compose file. Its inline values are masked unless you can configure the app.
   """
   compose: String
+  composePath: String
 
   """
   Extra flags this app appends to the `docker compose up` that brings it up, or null for the untouched command. Additive only - the flags that choose the project, stack file or env-file are refused.
@@ -1004,6 +1005,7 @@ input CreateAppFromTemplateInput {
 }
 
 input CreateAppInput {
+  analysisReceipt: String
   autoDeploy: Boolean
   autoDomain: String
   autoDomainPath: String
@@ -1021,6 +1023,8 @@ input CreateAppInput {
   Extra flags appended to `docker compose up` for a compose stack. Validated against the same allow-list the app's settings use.
   """
   composeUpArgs: String
+  deplopackCandidate: String
+  deplopackInputs: JSON
 
   """Whether to start the first deployment. Defaults to true."""
   deploy: Boolean
@@ -4714,6 +4718,7 @@ type Query {
 
   """Every registered user on the instance (no email)."""
   allUsers: [GlobalUser!]
+  analyzeRepo(branch: String, buildServerId: String, connectionId: String, environmentId: String, folderId: String, installationId: String, projectId: String, repo: String!, rootDirectory: String, serverId: String!): JSON
 
   """
   Diagnostic: how the request authenticated and the active team. Useful when testing token auth.
@@ -5085,6 +5090,7 @@ type Query {
 
   """The app's preview-only variable overrides (advanced)."""
   previewEnvVars(appId: ID!): [PreviewEnvVar!]
+  previewRepoCompose(branch: String, buildServerId: String, candidate: String!, connectionId: String, environmentId: String, folderId: String, installationId: String, projectId: String, receipt: String!, repo: String!, rootDirectory: String, serverId: String!): String
 
   """
   The first server available, or null when none has been added/provisioned yet.

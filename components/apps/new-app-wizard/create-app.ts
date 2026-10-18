@@ -1,5 +1,7 @@
 "use client";
 
+import type { DeplopackOverride } from "@/lib/apps/deplopack-types";
+
 import { toast } from "sonner";
 
 import {
@@ -31,6 +33,9 @@ import type {
 import { parseRepo } from "./source-hints";
 
 export function buildCreateAppInput({
+  analysisReceipt,
+  deplopackCandidate,
+  deplopackInputs,
   name,
   serverId,
   buildServerId,
@@ -59,6 +64,9 @@ export function buildCreateAppInput({
   extraRouted,
   placement,
 }: {
+  analysisReceipt?: string;
+  deplopackCandidate?: string;
+  deplopackInputs?: DeplopackOverride[];
   name: string;
   serverId: string;
   buildServerId: string | null;
@@ -165,21 +173,25 @@ export function buildCreateAppInput({
     };
   }
 
-  const payloadBuild = buildsImage
-    ? build
-    : buildConfigFor({ buildMethod: "dockerfile" });
+  const payloadBuild =
+    buildsImage || usesGit
+      ? build
+      : buildConfigFor({ buildMethod: "dockerfile" });
   const filledEnv = envRows.filter((e) => e.key.trim());
 
   return {
+    analysisReceipt,
+    deplopackCandidate,
+    deplopackInputs,
     name: name.trim(),
-    source: deploySourceEnumName(useCompose ? "compose" : source!),
+    source: deploySourceEnumName(useCompose && !usesGit ? "compose" : source!),
     serverId,
     buildServerId,
     composeUpArgs: useCompose ? composeUpArgs.trim() || null : null,
     dockerImage: image,
     logo: isTemplate ? template!.logo : null,
     logoFromTemplate: isTemplate,
-    compose: useCompose ? compose : null,
+    compose: useCompose && !usesGit ? compose : null,
     env: filledEnv.length
       ? filledEnv.map((e) => ({
           key: e.key.trim(),

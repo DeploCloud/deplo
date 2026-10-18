@@ -43,6 +43,8 @@ export const MOVE_TABLES: Readonly<Record<string, TablePolicy>> = {
   app_basic_auth_users: { kind: "copy", rekey: { password_enc: SECRET } },
   app_build: COPY,
   app_build_method_settings: COPY,
+  app_deplopack_inputs: COPY,
+  app_deplopack_input_values: COPY,
   app_environments: COPY,
   app_grants: COPY,
   app_mounts: COPY,

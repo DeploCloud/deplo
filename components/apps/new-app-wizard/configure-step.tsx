@@ -1,5 +1,8 @@
 "use client";
 
+import { DeplopackDetections } from "./deplopack-fields";
+import type { RepoAnalysisState } from "./use-repo-analysis";
+
 import * as React from "react";
 import { GitBranch } from "lucide-react";
 
@@ -17,6 +20,7 @@ import type { DeploySource } from "@/lib/types/app";
 import type { BuildConfig } from "@/lib/types/build";
 
 export function ConfigureStep({
+  deplopack,
   meta,
   onBack,
   onNext,
@@ -38,6 +42,7 @@ export function ConfigureStep({
   hasServers,
   advanced,
 }: {
+  deplopack: RepoAnalysisState;
   meta: React.ReactNode;
   onBack: () => void;
   onNext: () => void;
@@ -73,7 +78,9 @@ export function ConfigureStep({
     >
       {nameField}
 
-      {detectingFramework ? (
+      {deplopack.enabled ? (
+        <DeplopackDetections state={deplopack} />
+      ) : detectingFramework ? (
         <FrameworkRowSkeleton />
       ) : (
         framework && (
@@ -84,25 +91,28 @@ export function ConfigureStep({
         )
       )}
 
-      <CommandField
-        id="build-command"
-        label="Build command"
-        info="Run to compile the app. Leave it empty and the builder works it out."
-        value={build.buildCommand ?? ""}
-        onChange={(v) => onBuildChange({ ...build, buildCommand: v })}
-        detected={prefilledBuild}
-        placeholder="Detected at build time"
-      />
-      <CommandField
-        id="start-command"
-        label="Deploy command"
-        info="Run to start the container. Leave it empty and the builder works it out."
-        value={build.startCommand ?? ""}
-        onChange={(v) => onBuildChange({ ...build, startCommand: v })}
-        detected={prefilledStart}
-        placeholder="Detected at build time"
-      />
-
+      {!deplopack.enabled && (
+        <>
+          <CommandField
+            id="build-command"
+            label="Build command"
+            info="Run to compile the app. Leave it empty and the builder works it out."
+            value={build.buildCommand ?? ""}
+            onChange={(v) => onBuildChange({ ...build, buildCommand: v })}
+            detected={prefilledBuild}
+            placeholder="Detected at build time"
+          />
+          <CommandField
+            id="start-command"
+            label="Deploy command"
+            info="Run to start the container. Leave it empty and the builder works it out."
+            value={build.startCommand ?? ""}
+            onChange={(v) => onBuildChange({ ...build, startCommand: v })}
+            detected={prefilledStart}
+            placeholder="Detected at build time"
+          />
+        </>
+      )}
       <div className="flex items-center justify-between rounded-lg border border-border p-3">
         <div className="flex items-center gap-2">
           <GitBranch className="size-5 text-muted-foreground" />

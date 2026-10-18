@@ -98,6 +98,7 @@ async function writeAppSource(
       previewServerId: appsTable.previewServerId,
       environmentId: appsTable.environmentId,
       compose: appsTable.compose,
+      composePath: appsTable.composePath,
       slug: appsTable.slug,
       migrateFromServerId: appsTable.migrateFromServerId,
       dataCopyError: appsTable.dataCopyError,
@@ -108,6 +109,12 @@ async function writeAppSource(
   const moving = Boolean(
     current && input.serverId && input.serverId !== current.serverId,
   );
+  if (
+    current?.composePath &&
+    input.compose != null &&
+    (input.source === "github" || input.source === "git")
+  )
+    throw new Error("Edit this Compose file in the repository");
   if (current && moving) {
     if (current.dataCopyError && !current.migrateFromServerId)
       throw new Error(
@@ -231,6 +238,15 @@ async function writeAppSource(
             migrateFromServerId,
             ...(isMove && pending ? { dataCopyError: "" } : {}),
             source: input.source,
+            composePath:
+              input.source === "github" || input.source === "git"
+                ? (current?.composePath ?? null)
+                : null,
+            ...(current?.composePath &&
+            input.source !== "github" &&
+            input.source !== "git"
+              ? { compose: input.compose ?? null }
+              : {}),
             repoProvider: repo?.provider ?? null,
             repoUrl: repo?.url ?? null,
             repoRepo: repo?.repo ?? null,

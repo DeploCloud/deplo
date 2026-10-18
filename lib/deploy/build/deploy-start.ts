@@ -33,6 +33,7 @@ export async function startDeployment(
     creator: string;
     creatorProvider?: string | null;
     commitMessage?: string;
+    commitSha?: string;
     branch?: string;
     forceRecreate?: boolean;
     preview?: {
@@ -76,7 +77,11 @@ export async function startDeployment(
   // Known up front, so a building deploy already shows its commit; the build re-stamps the SHA it cloned.
   const fullName = githubFullName(project.repo);
   const head =
-    rollback || preview || !project.repo?.installationId || !fullName
+    rollback ||
+    preview ||
+    opts.commitSha ||
+    !project.repo?.installationId ||
+    !fullName
       ? null
       : await branchHead(fullName, branch, project.repo.installationId);
   const primaryRow = preview ? null : await primaryDomainRow(appId);
@@ -98,7 +103,7 @@ export async function startDeployment(
     deployKey,
     previewId: preview?.id ?? null,
     prNumber: preview?.prNumber ?? null,
-    commitSha: rollback?.commitSha ?? head?.sha ?? "",
+    commitSha: rollback?.commitSha ?? opts.commitSha ?? head?.sha ?? "",
     commitMessage:
       rollback?.commitMessage ||
       opts.commitMessage ||

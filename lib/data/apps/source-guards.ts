@@ -17,6 +17,8 @@ import {
   isInstanceAdmin,
   requireExposePorts,
   requireMountHostVolumes,
+  userMayReachHost,
+  userMayExposePorts,
 } from "../../membership";
 import { assertCloneTargetSafe } from "../../git/clone-url";
 import { listGithubInstallations } from "../github";
@@ -46,13 +48,15 @@ export function assertImageRef(
 
 export async function assertComposeSavable(
   compose: string | null | undefined,
+  repositoryPaths = false,
 ): Promise<string[]> {
   if (compose != null && composePublishesPorts(compose)) {
     await requireExposePorts();
   }
   if (compose != null) assertComposeWithinLimits(compose);
   // composeHostReach is EVERY way out of the container, not only a bind mount, and all of it is one grant.
-  const reach = compose != null ? composeHostReach(compose) : [];
+  const reach =
+    compose != null ? composeHostReach(compose, repositoryPaths) : [];
   if (reach.length > 0) await requireMountHostVolumes(reach.join(", "));
   if (compose != null) {
     const merge = composeUsesExternalMerge(compose);
@@ -63,6 +67,33 @@ export async function assertComposeSavable(
     if (filled) throw new Error(interpolatedHostnameMessage(filled));
   }
   return reach;
+}
+
+export async function assertRepositoryComposeSavable(
+  compose: string,
+  userId: string | null,
+): Promise<void> {
+  assertComposeWithinLimits(compose);
+  const merge = composeUsesExternalMerge(compose);
+  if (merge) throw new Error(externalMergeMessage(merge));
+  const claimed = composeClaimsReservedName(compose);
+  if (claimed) throw new Error(reservedNameMessage(claimed));
+  const filled = composeInterpolatedHostname(compose);
+  if (filled) throw new Error(interpolatedHostnameMessage(filled));
+  if (
+    composePublishesPorts(compose) &&
+    (!userId || !(await userMayExposePorts(userId)))
+  )
+    throw new Error(
+      "The repository Compose publishes ports without an authorized user",
+    );
+  if (
+    composeHostReach(compose, true).length &&
+    (!userId || !(await userMayReachHost(userId)))
+  )
+    throw new Error(
+      "The repository Compose reaches the server without an authorized user",
+    );
 }
 
 // Drops a credential from another team rather than cloning a private repo with it.

@@ -25,6 +25,7 @@ import type { Server } from "../types/server";
 
 const ALL_CAPS = [
   "deploy.dockerfile",
+  "deploy.deplopack",
   "deploy.image",
   "deploy.compose.single",
   "deploy.compose.multi",

@@ -1,3 +1,4 @@
+import { deplopackEnvironment } from "../apps/deplopack-types";
 import "server-only";
 
 import { access } from "node:fs/promises";
@@ -9,6 +10,7 @@ import {
   type DeployRequest,
   type DeployEvent,
   type RegistryAuth,
+  type GitSource,
   type BuildSpec,
 } from "../agent/gen/agent";
 import { explainNetworkError } from "./network";
@@ -58,6 +60,8 @@ export type AgentBuildPlan =
   | {
       kind: "compose";
       mounts: { filePath: string; content: string }[];
+      git?: GitSource;
+      composePath?: string;
     };
 
 export function agentCanHandle(build: BuildConfig | null): boolean {
@@ -70,6 +74,10 @@ const HEAVY_METHOD: Record<
   string,
   { kind: BuildKind; capability: string } | undefined
 > = {
+  deplopack: {
+    kind: BuildKind.BUILD_KIND_DEPLOPACK,
+    capability: "deploy.deplopack",
+  },
   static: { kind: BuildKind.BUILD_KIND_STATIC, capability: "deploy.static" },
   nixpacks: {
     kind: BuildKind.BUILD_KIND_NIXPACKS,
@@ -100,6 +108,10 @@ export function buildSpecFor(build: BuildConfig): BuildSpec {
   const runtimeVersion =
     pinned || (usesDefaultNodeMajor(b.buildMethod) ? DEFAULT_NODE_MAJOR : "");
   return {
+    deplopackVersion: b.methodSettings.deplopackVersion ?? "",
+    deplopackProvider: b.methodSettings.deplopackProvider ?? "",
+    deplopackPath: b.methodSettings.deplopackPath ?? "",
+    deplopackEnvironment: deplopackEnvironment(b.deplopackInputs ?? []),
     method: b.buildMethod,
     port: b.port ?? 0,
     installCommand: b.installCommand ?? "",
@@ -234,6 +246,14 @@ export async function runAgentDeploy(opts: {
   sink: AgentDeploySink;
 }): Promise<AgentDeployResult> {
   const hello = await agentPreflight(opts.serverId);
+  if (
+    opts.plan.kind === "compose" &&
+    opts.plan.git &&
+    !hello.capabilities.includes("deploy.compose.git")
+  )
+    throw new AgentUnavailableError(
+      "Update the server agent to deploy Compose files from Git",
+    );
   if (!hello.dockerAvailable) {
     throw new AgentUnavailableError(
       "the agent reports Docker is not available on the target server",
@@ -535,12 +555,15 @@ export async function buildDeployRequest(opts: {
       opts.composeYaml,
       stackFilesDir(opts.slug),
     ),
+    composePath: "",
   };
 
   if (opts.plan.kind === "compose") {
     return {
       ...base,
       sourceKind: SourceKind.SOURCE_KIND_COMPOSE,
+      git: opts.plan.git,
+      composePath: opts.plan.composePath ?? "",
       buildKind: BuildKind.BUILD_KIND_NONE,
       composeUpArgs: composeDeployArgs(opts.composeUpArgs ?? []),
       mounts: opts.plan.mounts.map((m) => ({

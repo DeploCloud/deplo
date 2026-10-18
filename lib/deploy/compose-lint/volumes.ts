@@ -33,17 +33,25 @@ export function isEscapingSource(src: string | null | undefined): boolean {
   return Boolean(src && src.split(/[\\/]/).includes(".."));
 }
 
-export function isHostBindSource(src: string | null | undefined): boolean {
+export function isHostBindSource(
+  src: string | null | undefined,
+  repositoryPaths = false,
+): boolean {
   if (!src) return false;
   if (interpolates(src)) return true;
   // Compose expands a leading `~` to the home folder of whoever runs it on the server.
   return (
-    (src.startsWith("/") || src.startsWith("~") || isEscapingSource(src)) &&
+    (src.startsWith("/") ||
+      src.startsWith("~") ||
+      (!repositoryPaths && isEscapingSource(src))) &&
     !isFilesConventionSource(src)
   );
 }
 
-export function composeHasHostBindMount(composeYaml: string): boolean {
+export function composeHasHostBindMount(
+  composeYaml: string,
+  repositoryPaths = false,
+): boolean {
   const doc = loadComposeDoc<ComposeDocShape>(composeYaml);
   const services = doc?.services;
   if (!services || typeof services !== "object") return false;
@@ -51,7 +59,7 @@ export function composeHasHostBindMount(composeYaml: string): boolean {
     const vols = svc?.volumes;
     if (!Array.isArray(vols)) continue;
     for (const v of vols) {
-      if (isHostBindSource(volumeSource(v))) return true;
+      if (isHostBindSource(volumeSource(v), repositoryPaths)) return true;
     }
   }
   return false;
@@ -123,12 +131,18 @@ export function foreignVolumeKeys(volumes: Record<string, unknown>): string[] {
   return out;
 }
 
-export function fileSourcedKeys(entries: Record<string, unknown>): string[] {
+export function fileSourcedKeys(
+  entries: Record<string, unknown>,
+  repositoryPaths = false,
+): string[] {
   const out: string[] = [];
   for (const [key, raw] of Object.entries(entries)) {
     if (!raw || typeof raw !== "object" || Array.isArray(raw)) continue;
     const v = raw as Record<string, unknown>;
-    if (typeof v.file === "string" && isHostBindSource(v.file.trim()))
+    if (
+      typeof v.file === "string" &&
+      isHostBindSource(v.file.trim(), repositoryPaths)
+    )
       out.push(key);
   }
   return out;
@@ -151,7 +165,10 @@ export function composeOwnVolumeKeys(composeYaml: string): string[] {
     .map(([k]) => k);
 }
 
-export function composeMountsForeignStorage(composeYaml: string): boolean {
+export function composeMountsForeignStorage(
+  composeYaml: string,
+  repositoryPaths = false,
+): boolean {
   const doc = loadComposeDoc<{
     volumes?: Record<string, unknown>;
     secrets?: Record<string, unknown>;
@@ -163,7 +180,7 @@ export function composeMountsForeignStorage(composeYaml: string): boolean {
       : {};
   return (
     foreignVolumeKeys(asMap(doc?.volumes)).length > 0 ||
-    fileSourcedKeys(asMap(doc?.secrets)).length > 0 ||
-    fileSourcedKeys(asMap(doc?.configs)).length > 0
+    fileSourcedKeys(asMap(doc?.secrets), repositoryPaths).length > 0 ||
+    fileSourcedKeys(asMap(doc?.configs), repositoryPaths).length > 0
   );
 }

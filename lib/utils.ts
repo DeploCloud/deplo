@@ -190,10 +190,12 @@ export function usesComposeStack(project: {
   compose: string | null;
   repo: unknown | null;
   dockerImage: string | null;
+  composePath?: string | null;
 }): boolean {
   const hasCompose = Boolean(project.compose && project.compose.trim());
   return (
     project.source === "compose" ||
+    Boolean(project.composePath) ||
     (project.source !== "upload" &&
       hasCompose &&
       !project.repo &&

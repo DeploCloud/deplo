@@ -59,7 +59,7 @@ export function DetailsStep({
   useCompose: boolean;
   composeServices: string[];
   composeDiags: LintDiagnostic[];
-  onOpenCompose: () => void;
+  onOpenCompose?: () => void;
   routeCandidates: ComposeRouteCandidate[];
   extraRouted: string[];
   setExtraRouted: React.Dispatch<React.SetStateAction<string[]>>;
@@ -131,7 +131,7 @@ export function DetailsStep({
         </div>
       )}
 
-      {useCompose && (!isTemplate || template!.imported) && (
+      {useCompose && !usesGit && (!isTemplate || template!.imported) && (
         <ComposeSummary
           services={composeServices}
           diagnostics={composeDiags}

@@ -70,6 +70,7 @@ export default async function AppDeploymentSettingsPage(
           frameworkOverride={project.frameworkOverride}
           autoDeploy={project.autoDeploy}
           source={project.source}
+          composePath={project.composePath}
           repo={project.repo}
           dockerImage={project.dockerImage}
           upload={

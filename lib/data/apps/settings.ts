@@ -52,11 +52,11 @@ export async function updateAppHealthCheck(
   const { membership } = await requireAppCapability(id, "configure_apps");
   const user = (await getCurrentUser())!;
   const [app] = await getDb()
-    .select({ source: appsTable.source })
+    .select({ source: appsTable.source, composePath: appsTable.composePath })
     .from(appsTable)
     .where(and(eq(appsTable.id, id), eq(appsTable.teamId, membership.teamId)));
   if (!app) throw new Error("App not found");
-  if (app.source === "compose")
+  if (app.source === "compose" || app.composePath)
     throw new Error(
       "A compose stack's health check belongs in its own compose file.",
     );

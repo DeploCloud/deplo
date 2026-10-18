@@ -80,6 +80,8 @@ const CONTROL_PLANE = [
   "apps",
   "app_build",
   "app_build_method_settings",
+  "app_deplopack_inputs",
+  "app_deplopack_input_values",
   "app_volumes",
   "app_ports",
   "app_mounts",

@@ -56,6 +56,9 @@ builder.mutationFields((t) => ({
         compose: input.compose ?? null,
         serverId: input.serverId ?? undefined,
         buildServerId: input.buildServerId ?? null,
+        analysisReceipt: input.analysisReceipt ?? undefined,
+        deplopackCandidate: input.deplopackCandidate ?? undefined,
+        deplopackInputs: input.deplopackInputs ?? [],
         composeUpArgs: input.composeUpArgs ?? null,
         sharedVarIds: input.sharedVarIds ?? null,
         build: input.build

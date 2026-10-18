@@ -17,6 +17,12 @@ export interface BuildMethodSpec {
 
 export const BUILD_METHODS: readonly BuildMethodSpec[] = [
   {
+    id: "build.deplopack",
+    capability: "deploy.deplopack",
+    label: "DeploPack",
+    supported: "The agent supports DeploPack builds.",
+  },
+  {
     id: "build.dockerfile",
     capability: "deploy.dockerfile",
     label: "Dockerfile",

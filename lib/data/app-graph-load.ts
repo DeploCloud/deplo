@@ -9,6 +9,8 @@ import {
   apps,
   appBuild,
   appBuildMethodSettings,
+  appDeplopackInputs,
+  appDeplopackInputValues,
   appMounts,
   appPorts,
   appVolumes,
@@ -87,6 +89,37 @@ async function loadChildrenByAppIds(
       .orderBy(asc(appMounts.appId), asc(appMounts.position)),
   ]);
 
+  const packIds = builds
+    .filter((build) => build.buildMethod === "deplopack")
+    .map((build) => build.appId);
+  const [definitions, values] = packIds.length
+    ? await Promise.all([
+        db
+          .select()
+          .from(appDeplopackInputs)
+          .where(inArray(appDeplopackInputs.appId, packIds)),
+        db
+          .select()
+          .from(appDeplopackInputValues)
+          .where(inArray(appDeplopackInputValues.appId, packIds))
+          .orderBy(asc(appDeplopackInputValues.position)),
+      ])
+    : [[], []];
+  const byInput = new Map<string, string[]>();
+  for (const value of values) {
+    const key = `${value.appId}:${value.env}`;
+    const list = byInput.get(key) ?? [];
+    list.push(value.value);
+    byInput.set(key, list);
+  }
+  for (const definition of definitions) {
+    const children = out.get(definition.appId)!;
+    (children.deplopackInputs ??= []).push({
+      env: definition.env,
+      type: definition.type as "text" | "select" | "text-list",
+      values: byInput.get(`${definition.appId}:${definition.env}`) ?? [],
+    });
+  }
   for (const b of builds) out.get(b.appId)!.build = b;
   for (const s of settings) out.get(s.appId)!.methodSettings = s;
   for (const v of volumes) out.get(v.appId)!.volumes.push(v);

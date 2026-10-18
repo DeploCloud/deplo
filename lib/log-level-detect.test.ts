@@ -197,3 +197,35 @@ test("classification is bounded work per line (no catastrophic backtracking)", (
   const ms = Number(process.hrtime.bigint() - started) / 1e6;
   assert.ok(ms < 50, `took ${ms}ms`);
 });
+
+test("DeploPack summaries and BuildKit prefixes retain the meaning of each line", () => {
+  expect({
+    "✖ build planning failed": "error",
+    "unrecognized image format": "error",
+    "failed to solve: context deadline exceeded": "error",
+    "⚠ Package-lock.json detected, assuming npm": "warn",
+    "⚑ Deprecated: old option": "warn",
+    "→ Specify the package manager and version explicitly": "info",
+    "#16 0.151 error: lockfile had changes, but lockfile is frozen": "error",
+    "#10 7.300 error: rustc 1.85.1 is not supported": "error",
+    "#3 0.1 npm WARN peer dependency mismatch": "warn",
+    "#3 0.1 npm notice installed": "info",
+    "#3 0.1 warning: unused variable": "warn",
+    "#7 19.29 mise ✓ rust@1.85.1": "success",
+    "#10 CACHED": "success",
+    "#9 DONE 0.1s": "success",
+    "#8 CANCELED": "info",
+    "#16 bun install --frozen-lockfile": "info",
+    "#10 cargo build --release": "info",
+    "#10 RUN echo 'ERROR: test message'": "info",
+    "#10 0.1 copied error.json": "info",
+    "  $ bun run build": "info",
+    "  $ echo 'ERROR: example'": "info",
+    "#2 docker-image://ghcr.io/railwayapp/railpack-builder:tag": "info",
+    "#2 0.1 no errors found": "info",
+    "#15 12.22 $ tsc -b && vite build": "command",
+    "#15 39.42 (!) Some chunks are larger than 500 kB after minification. Consider:":
+      "warn",
+    "Successfully built image in 59.88s": "success",
+  });
+});
