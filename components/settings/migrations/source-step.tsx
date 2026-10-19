@@ -1,7 +1,6 @@
 "use client";
 
-import * as React from "react";
-import { ArrowUpFromLine, Truck, Users } from "lucide-react";
+import { ArrowDownToLine, ArrowUpFromLine, Truck, Users } from "lucide-react";
 
 import Link from "@/components/ui/link";
 import { Button } from "@/components/ui/button";
@@ -12,6 +11,7 @@ import { SourceMark } from "./sources";
 import { StepShell } from "./step-shell";
 
 export type SourcePick = "panel" | "deplo-teams" | "deplo-move";
+export type SourceView = "sources" | "direction" | "deplo" | "out";
 
 export interface MoveContext {
   // This Deplo leaving: its move code and progress.
@@ -38,31 +38,65 @@ function PanelIcons() {
 
 export function SourceStep({
   move,
+  view,
+  onViewChange,
   onPick,
 }: {
   move: MoveContext;
+  view: SourceView;
+  onViewChange: (view: SourceView) => void;
   onPick: (pick: SourcePick) => void;
 }) {
-  const [view, setView] = React.useState<"sources" | "deplo" | "out">(() =>
-    move.openOutbound || move.source ? "out" : "sources",
-  );
   const incoming = move.activeTargetId !== null;
   const back = (
     <Button
       type="button"
       variant="outline"
       className="justify-self-start"
-      onClick={() => setView("sources")}
+      onClick={() =>
+        onViewChange(view === "direction" ? "sources" : "direction")
+      }
     >
       Back
     </Button>
   );
 
+  if (view === "direction")
+    return (
+      <StepShell
+        hero
+        title="Which way?"
+        lead="Choose where the copy should go. The source keeps running."
+      >
+        <div className="grid gap-4">
+          <div className="grid gap-3 sm:grid-cols-2">
+            <ChoiceCard
+              icon={ArrowUpFromLine}
+              arrow
+              title="This Deplo to another Deplo"
+              blurb="Copy everything to a fresh Deplo. Create a move code here, then enter it there."
+              disabled={incoming}
+              onSelect={() => onViewChange("out")}
+            />
+            <ChoiceCard
+              icon={ArrowDownToLine}
+              arrow
+              title="Another Deplo to this Deplo"
+              blurb="Bring everything here, or choose only some teams."
+              disabled={incoming}
+              onSelect={() => onViewChange("deplo")}
+            />
+          </div>
+          {back}
+        </div>
+      </StepShell>
+    );
+
   if (view === "out")
     return (
       <StepShell
         hero
-        title="Move to another machine"
+        title="This Deplo to another Deplo"
         lead="Copies everything to a fresh Deplo on another machine. This one keeps running as it is."
         docs="deplo.move"
       >
@@ -87,7 +121,7 @@ export function SourceStep({
               arrow
               title="Everything"
               blurb="Every team, person, app and database, data included. Only into an empty Deplo."
-              disabled={!move.readiness.ready}
+              disabled={incoming || !move.readiness.ready}
               disabledNote={move.readiness.reason ?? undefined}
               onSelect={() => onPick("deplo-move")}
             />
@@ -96,6 +130,7 @@ export function SourceStep({
               arrow
               title="Only some teams"
               blurb="Copies the teams you pick onto this Deplo's servers. The rest of the other Deplo stays as it is."
+              disabled={incoming}
               onSelect={() => onPick("deplo-teams")}
             />
           </div>
@@ -107,8 +142,8 @@ export function SourceStep({
   return (
     <StepShell
       hero
-      title="Where is it now?"
-      lead="Bring it here from another Deplo, Dokploy or Coolify."
+      title="What are you migrating?"
+      lead="Copy between Deplo instances, or bring apps here from Dokploy or Coolify."
     >
       <div className="grid gap-4">
         {incoming && (
@@ -123,10 +158,10 @@ export function SourceStep({
           <ChoiceCard
             icon={DeploIcon}
             arrow
-            title="Another Deplo"
-            blurb="All of it, or only some of its teams."
+            title="Between Deplo"
+            blurb="Copy this Deplo to another one, or bring another Deplo here."
             disabled={incoming}
-            onSelect={() => setView("deplo")}
+            onSelect={() => onViewChange("direction")}
           />
           <ChoiceCard
             icon={PanelIcons}
@@ -137,14 +172,6 @@ export function SourceStep({
             onSelect={() => onPick("panel")}
           />
         </div>
-        <button
-          type="button"
-          className="inline-flex items-center justify-center gap-1.5 text-sm text-muted-foreground underline-offset-4 hover:text-foreground hover:underline"
-          onClick={() => setView("out")}
-        >
-          <ArrowUpFromLine className="size-4" />
-          Moving this Deplo to another machine? Create a move code
-        </button>
       </div>
     </StepShell>
   );

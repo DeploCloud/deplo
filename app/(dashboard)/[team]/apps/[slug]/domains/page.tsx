@@ -4,23 +4,15 @@ import { serverIpForApp } from "@/lib/data/servers/roster";
 import { listDomains } from "@/lib/data/domains/crud";
 import { domainDnsHints } from "@/lib/data/domains/dns-check";
 import { productionDomain } from "@/lib/deploy/domains";
-import { isRoutableDomain } from "@/lib/deploy/cloudflare";
 import { composeServiceNames } from "@/lib/deploy/compose-stack/compose-read";
 import { redactComposeForDisplay } from "@/lib/deploy/compose-redact";
 import { usesComposeStack } from "@/lib/utils";
 import { EmptyState } from "@/components/shared/empty-state";
-import {
-  Table,
-  TableBody,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
+
 import { AddDomain } from "@/components/domains/add-domain";
-import { DomainDnsAutoCheck } from "@/components/domains/domain-dns-auto-check";
+import { DomainNotices } from "@/components/domains/domain-notices";
 import { DomainGraphic } from "@/components/domains/domain-graphic";
-import { DomainRows } from "@/components/domains/domain-row";
-import { ImportedDomainsNotice } from "@/components/domains/imported-domains-notice";
+import { DomainTable } from "@/components/domains/domain-table";
 import {
   PendingCreateProvider,
   PendingList,
@@ -51,14 +43,6 @@ export default async function AppDomainsPage(
     containerCount > 1 ||
     (isComposeStack && domains.some((d) => !(d.service ?? "").trim()));
 
-  const unsettledDomains = domains
-    .filter((d) => !isRoutableDomain(d))
-    .map((d) => ({ id: d.id, name: d.name, status: d.status }));
-
-  const importedDomains = domains
-    .filter((d) => (d.importedFrom ?? "").trim())
-    .map((d) => ({ id: d.id, name: d.name, importedFrom: d.importedFrom! }));
-
   const composeForBrowser =
     project.compose == null ? null : redactComposeForDisplay(project.compose);
   return (
@@ -88,15 +72,12 @@ export default async function AppDomainsPage(
           />
         </div>
 
-        <ImportedDomainsNotice appId={project.id} domains={importedDomains} />
-
-        {unsettledDomains.length > 0 && (
-          <DomainDnsAutoCheck
-            domains={unsettledDomains}
-            serverIp={serverIp}
-            serverIpv6={hints.serverIpv6}
-          />
-        )}
+        <DomainNotices
+          appId={project.id}
+          domains={domains}
+          serverIp={serverIp}
+          serverIpv6={hints.serverIpv6}
+        />
 
         <PendingList
           empty={domains.length === 0}
@@ -109,32 +90,18 @@ export default async function AppDomainsPage(
             />
           }
         >
-          <div className="rounded-xl border border-border">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Domain</TableHead>
-                  {showContainer && (
-                    <TableHead className="w-56">Container</TableHead>
-                  )}
-                  <TableHead>Status</TableHead>
-                  <TableHead className="text-right">Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                <DomainRows
-                  domains={domains}
-                  compose={composeForBrowser}
-                  isCompose={isComposeStack}
-                  showContainer={showContainer}
-                  serverIp={serverIp}
-                  serverIpv6={hints.serverIpv6}
-                  strays={hints.strays}
-                />
-                <PendingRows columns={showContainer ? 4 : 3} />
-              </TableBody>
-            </Table>
-          </div>
+          <DomainTable
+            domains={domains}
+            compose={composeForBrowser}
+            isCompose={isComposeStack}
+            showContainer={showContainer}
+            suggestedDomain={suggestedDomain}
+            serverIp={serverIp}
+            serverIpv6={hints.serverIpv6}
+            strays={hints.strays}
+          >
+            <PendingRows columns={showContainer ? 4 : 3} />
+          </DomainTable>
         </PendingList>
       </div>
     </PendingCreateProvider>

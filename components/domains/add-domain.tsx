@@ -1,9 +1,9 @@
 "use client";
 
 import * as React from "react";
-import yaml from "@/lib/yaml";
+import { servicesOf } from "@/lib/deploy/compose-lint/document";
 import { toast } from "sonner";
-import { Plus, Sparkles } from "lucide-react";
+import { Plus } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -15,9 +15,7 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { CapabilityTip, useAppCan } from "@/components/apps/app-capabilities";
-import { Input } from "@/components/ui/input";
 import { AnimatedHeight } from "@/components/shared/animated-height";
-import { FieldLabel } from "@/components/ui/info-tip";
 import {
   DomainConfigFields,
   initialDomainConfig,
@@ -26,7 +24,7 @@ import {
 } from "@/components/domains/domain-config-fields";
 import { usePendingCreate } from "@/components/shared/pending-create";
 import { gqlAction } from "@/lib/graphql-client";
-import { regenerateAutoDomain } from "@/lib/auto-domain-suggestion";
+import { DomainNameField } from "./domain-name-field";
 import { DocsLink } from "@/components/ui/docs-link";
 
 export interface AddDomainApp {
@@ -41,32 +39,17 @@ export interface AddDomainProps {
   suggestedDomain?: string;
 }
 
-function composeServices(compose?: string | null): string[] {
-  if (!compose || !compose.trim()) return [];
-  try {
-    const doc = yaml.load(compose) as
-      { services?: Record<string, unknown> } | undefined;
-    const svc = doc?.services;
-    return svc && typeof svc === "object" && !Array.isArray(svc)
-      ? Object.keys(svc)
-      : [];
-  } catch {
-    return [];
-  }
-}
-
 export function AddDomain({ project, suggestedDomain }: AddDomainProps) {
   const canManage = useAppCan("manage_domains");
   const [open, setOpen] = React.useState(false);
   const { create } = usePendingCreate();
   const [name, setName] = React.useState("");
-  const [suggestion, setSuggestion] = React.useState(suggestedDomain);
   const [config, setConfig] = React.useState<DomainConfigState>(() =>
     initialDomainConfig(undefined, project.defaultPort),
   );
 
   const services = React.useMemo(
-    () => composeServices(project.compose),
+    () => Object.keys(servicesOf(project.compose ?? null) ?? {}),
     [project.compose],
   );
 
@@ -181,51 +164,12 @@ export function AddDomain({ project, suggestedDomain }: AddDomainProps) {
         <form className="grid gap-4" onSubmit={onSubmit}>
           <AnimatedHeight className="grid gap-4" scroll={false}>
             <div className="space-y-4">
-              <div className="space-y-2">
-                <div className="flex items-center justify-between gap-2">
-                  <FieldLabel
-                    htmlFor="domain-name"
-                    info={
-                      suggestedDomain ? (
-                        <>
-                          No domain? Generate a free{" "}
-                          <span className="font-mono">{suggestion}</span> that
-                          works with zero DNS setup. Click again for a different
-                          one.
-                        </>
-                      ) : (
-                        "The custom hostname to route to this app, e.g. app.example.com. Add its DNS record afterward to verify."
-                      )
-                    }
-                    docs="domains.noDomainYet"
-                  >
-                    Domain
-                  </FieldLabel>
-                  {suggestedDomain ? (
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="sm"
-                      className="h-7 px-2 text-xs text-muted-foreground"
-                      onClick={() => {
-                        const next = regenerateAutoDomain(suggestedDomain);
-                        setSuggestion(next);
-                        setName(next);
-                      }}
-                    >
-                      <Sparkles className="size-3.5" />
-                      Generate
-                    </Button>
-                  ) : null}
-                </div>
-                <Input
-                  id="domain-name"
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  placeholder="app.example.com"
-                  className="font-mono text-sm"
-                />
-              </div>
+              <DomainNameField
+                id="domain-name"
+                value={name}
+                onChange={setName}
+                suggestedDomain={suggestedDomain}
+              />
               <DomainConfigFields
                 state={config}
                 onChange={setConfig}

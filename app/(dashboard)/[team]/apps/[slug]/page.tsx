@@ -1,3 +1,5 @@
+import { Suspense } from "react";
+import { AppDomainNotices } from "@/components/domains/app-domain-notices";
 import Link from "@/components/ui/link";
 import { notFound } from "next/navigation";
 import {
@@ -66,6 +68,10 @@ export default async function AppOverview(
           repoName={project.repo.repo || project.repo.url}
         />
       )}
+
+      <Suspense fallback={null}>
+        <AppDomainNotices app={project} />
+      </Suspense>
 
       <Card>
         <CardHeader className="flex-row items-center justify-between space-y-0">

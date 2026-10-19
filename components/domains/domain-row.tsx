@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { useRouter } from "@/lib/nav";
-import yaml from "@/lib/yaml";
+import { servicesOf } from "@/lib/deploy/compose-lint/document";
 import { toast } from "sonner";
 import {
   ShieldCheck,
@@ -22,11 +22,10 @@ import {
 import { TableCell, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { FieldLabel } from "@/components/ui/info-tip";
 import { SimpleTooltip } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
-import { isReservedSharedName } from "@/lib/deploy/compose-lint/networks";
+import { domainRoutingWarning } from "@/lib/domain-issues";
+import { DomainNameField } from "./domain-name-field";
 import {
   Dialog,
   DialogContent,
@@ -58,28 +57,15 @@ import { DocsLink } from "@/components/ui/docs-link";
 
 type Row = Domain & { serviceName: string; appSlug: string };
 
-function composeServices(compose?: string | null): string[] {
-  if (!compose || !compose.trim()) return [];
-  try {
-    const doc = yaml.load(compose) as
-      { services?: Record<string, unknown> } | undefined;
-    const svc = doc?.services;
-    return svc && typeof svc === "object" && !Array.isArray(svc)
-      ? Object.keys(svc)
-      : [];
-  } catch {
-    return [];
-  }
-}
-
 // Keyed here, not in the page: keys don't survive the RSC boundary, so a row could never hide.
 export function DomainRows({
   domains,
   strays = {},
+  siblings = domains,
   ...rest
 }: { domains: Row[]; strays?: Record<string, StrayRecord> } & Omit<
   React.ComponentProps<typeof DomainRow>,
-  "domain" | "siblings" | "stray"
+  "domain" | "stray"
 >) {
   return (
     <OptimisticList>
@@ -87,7 +73,7 @@ export function DomainRows({
         <DomainRow
           key={d.id}
           domain={d}
-          siblings={domains}
+          siblings={siblings}
           stray={strays[d.id] ?? null}
           {...rest}
         />
@@ -114,6 +100,7 @@ export function DomainRow({
   showContainer,
   serverIp,
   serverIpv6,
+  suggestedDomain,
   stray,
   siblings = [],
 }: {
@@ -124,6 +111,7 @@ export function DomainRow({
   showContainer: boolean;
   serverIp?: string | null;
   serverIpv6?: string | null;
+  suggestedDomain?: string;
   stray?: StrayRecord | null;
 }) {
   const records = [
@@ -139,17 +127,14 @@ export function DomainRow({
   const { hide, restore } = useOptimisticRow(domain.id);
   const [editOpen, setEditOpen] = React.useState(false);
   const [verifying, setVerifying] = React.useState(false);
-  const services = React.useMemo(() => composeServices(compose), [compose]);
+  const services = React.useMemo(
+    () => Object.keys(servicesOf(compose ?? null) ?? {}),
+    [compose],
+  );
 
   const service = (domain.service ?? "").trim();
   const container = service || `deplo-${domain.appSlug}`;
-  const unrouted = isCompose && !service;
-  const missing =
-    isCompose &&
-    Boolean(service) &&
-    services.length > 0 &&
-    !services.includes(service);
-  const reserved = isCompose && isReservedSharedName(service);
+  const routingWarning = domainRoutingWarning(domain, isCompose, services);
 
   const www = React.useMemo(
     () => deriveWwwRedirect(domain.name, siblings),
@@ -486,19 +471,11 @@ export function DomainRow({
       </TableCell>
       {showContainer && (
         <TableCell className="w-56">
-          {unrouted || missing || reserved ? (
-            <SimpleTooltip
-              content={
-                reserved
-                  ? `“${service}” is a name Deplo's own network uses, so nothing serves this domain. Rename the container in the compose file, or point this domain at another one.`
-                  : missing
-                    ? `This app's compose file has no container “${service}” any more, so nothing serves this domain. Edit the domain to pick one.`
-                    : "This domain doesn't name a container, so nothing serves it. Edit the domain to pick one."
-              }
-            >
+          {routingWarning ? (
+            <SimpleTooltip content={routingWarning}>
               <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
                 <TriangleAlert className="size-3.5 shrink-0 text-[var(--warning,#d97706)]" />
-                {missing || reserved ? service : "Not set"}
+                {service || "Not set"}
               </span>
             </SimpleTooltip>
           ) : (
@@ -630,22 +607,13 @@ export function DomainRow({
             </DialogHeader>
             <form className="grid gap-4" onSubmit={onSubmitEdit}>
               <div className="space-y-4">
-                <div className="space-y-2">
-                  <FieldLabel
-                    htmlFor={`edit-name-${domain.id}`}
-                    info="Fully-qualified hostname, e.g. app.example.com. Its A record (or AAAA for IPv6) must point at this server to verify."
-                    docs="domains.dnsRecord"
-                  >
-                    Domain
-                  </FieldLabel>
-                  <Input
-                    id={`edit-name-${domain.id}`}
-                    value={name}
-                    onChange={(e) => setName(e.target.value)}
-                    placeholder="app.example.com"
-                    className="font-mono text-sm"
-                  />
-                </div>
+                <DomainNameField
+                  id={`edit-name-${domain.id}`}
+                  value={name}
+                  onChange={setName}
+                  suggestedDomain={suggestedDomain}
+                  disabled={pending || !canManage}
+                />
                 <DomainConfigFields
                   state={config}
                   onChange={setConfig}

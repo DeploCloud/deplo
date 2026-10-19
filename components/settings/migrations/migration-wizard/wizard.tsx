@@ -16,7 +16,12 @@ import { ReviewStep } from "../review-step";
 import { PeopleStep } from "../people-step";
 import { MigrationConsole } from "../migration-console";
 import { ChooseStep } from "../choose-step";
-import { SourceStep, type MoveContext, type SourcePick } from "../source-step";
+import {
+  SourceStep,
+  type MoveContext,
+  type SourcePick,
+  type SourceView,
+} from "../source-step";
 import {
   reviewShows,
   stepReachable,
@@ -108,6 +113,9 @@ export function MigrationWizard({
             : "source"),
   );
   const [path, setPath] = React.useState<MigrationPath>("import");
+  const [sourceView, setSourceView] = React.useState<SourceView>(() =>
+    move?.openOutbound || move?.source ? "out" : "sources",
+  );
   const moveIn = useMoveIn();
   /* eslint-disable react-hooks/refs -- deliberate render-phase adjustment; the rule
      only bailed before because the pre-split component was too large to analyse. */
@@ -366,6 +374,7 @@ export function MigrationWizard({
                   void closeReport().then(() => {
                     forgetQueue();
                     resetToStart();
+                    setSourceView("sources");
                     setStep("source");
                   });
                 }
@@ -399,7 +408,7 @@ export function MigrationWizard({
             )}
           >
             <AnimatedHeight scroll={false} className="space-y-6">
-              {step !== "choose" && !cuttingOver && (
+              {step !== "choose" && step !== "source" && !cuttingOver && (
                 <div className="flex justify-center">
                   <WizardStepper
                     steps={STEPS}
@@ -418,7 +427,12 @@ export function MigrationWizard({
 
               <div>
                 {!takenOver && step === "source" && move && (
-                  <SourceStep move={move} onPick={pickSource} />
+                  <SourceStep
+                    move={move}
+                    view={sourceView}
+                    onViewChange={setSourceView}
+                    onPick={pickSource}
+                  />
                 )}
 
                 {path === "move" && step === "connect" && (

@@ -19,6 +19,8 @@ import {
   TRUNCATE_PROJECT_GRAPH,
 } from "./app-graph-test-helpers";
 import { ensureAutoDomain } from "./domains/auto-domains";
+import { loadDomain, loadDomainsForApp } from "./app-graph-load";
+import { regenerateAutoDomain } from "../auto-domain-suggestion";
 import { addDomain, updateDomain } from "./domains/crud";
 import {
   domainDnsHints,
@@ -395,4 +397,42 @@ test("ipv6: the drift check flips a valid domain when a stray AAAA appears, and 
   );
   assert.equal(hints.serverIpv6, SERVER_V6);
   assert.deepEqual(hints.strays[d.id], { type: "AAAA", address: STRAY_V6 });
+});
+
+test("renaming to a generated address preserves routing settings and existing redirects", async () => {
+  __setDnsResolve4ForTest(async () => [SERVER_IP]);
+  const config = {
+    port: 8080,
+    entrypoint: "websecure" as const,
+    certProvider: "custom" as const,
+    middlewares: ["custom-auth"],
+    securityHeaders: false,
+    corsOrigins: ["https://client.example.com"],
+    proxied: true,
+    www: "toThis" as const,
+  };
+  const domain = await asUser1(() => addDomain("prj_1", "example.com", config));
+  const before = await loadDomain(domain.id);
+  const name = regenerateAutoDomain("web-otter-0a000001.deplo.site");
+  await asUser1(() =>
+    updateDomain(domain.id, { ...config, name, www: "none" }),
+  );
+  const after = await loadDomain(domain.id);
+  assert.ok(before && after);
+  for (const key of [
+    "port",
+    "entrypoint",
+    "certProvider",
+    "middlewares",
+    "securityHeaders",
+    "corsOrigins",
+    "proxied",
+    "primary",
+  ] as const)
+    assert.deepEqual(after[key], before[key], key);
+  assert.equal(after.name, name);
+  const redirect = (await loadDomainsForApp("prj_1")).find(
+    (row) => row.name === "www.example.com",
+  );
+  assert.equal(redirect?.redirectTo, name);
 });

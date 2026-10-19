@@ -120,7 +120,9 @@ export const FRIENDLY_ANIMALS: readonly string[] = [
   "wren",
 ];
 
-export function friendlyWord(): string {
-  const all = [...FRIENDLY_ADJECTIVES, ...FRIENDLY_ANIMALS];
+export function friendlyWord(exclude?: string): string {
+  const all = [...FRIENDLY_ADJECTIVES, ...FRIENDLY_ANIMALS].filter(
+    (word) => word !== exclude,
+  );
   return all[Math.floor(Math.random() * all.length)]!;
 }

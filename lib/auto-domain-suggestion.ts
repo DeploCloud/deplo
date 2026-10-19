@@ -7,9 +7,15 @@ const AUTO_DOMAIN_RE = new RegExp(
   "i",
 );
 
-export function regenerateAutoDomain(suggested: string): string {
+export function regenerateAutoDomain(
+  suggested: string,
+  current = suggested,
+): string {
   const m = AUTO_DOMAIN_RE.exec(suggested);
   if (!m) return suggested;
   const [, label, hexSuffix] = m;
-  return `${label}-${friendlyWord()}-${hexSuffix}`;
+  const previousWord = AUTO_DOMAIN_RE.test(current)
+    ? current.match(/-([a-z0-9]+)-[0-9a-f]{8}\./i)?.[1]?.toLowerCase()
+    : undefined;
+  return `${label}-${friendlyWord(previousWord)}-${hexSuffix}`;
 }

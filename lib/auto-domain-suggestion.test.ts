@@ -40,3 +40,16 @@ test("anything that is not a suggestion comes back untouched", () => {
     assert.equal(regenerateAutoDomain(name), name);
   }
 });
+
+test("Generate never returns the current name, even when the random pick repeats", (t) => {
+  t.mock.method(Math, "random", () => 0);
+  const base = `web-amber-${HEX}`;
+  const next = regenerateAutoDomain(base, base);
+  assert.notEqual(next, base);
+  assert.notEqual(
+    regenerateAutoDomain(base, base.toUpperCase()).toLowerCase(),
+    base,
+  );
+  assert.notEqual(regenerateAutoDomain(base, next), next);
+  assert.ok(next.endsWith(HEX));
+});
