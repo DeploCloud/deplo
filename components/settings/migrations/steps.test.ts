@@ -5,6 +5,7 @@ import {
   needsYou,
   reviewShows,
   stepAfterScan,
+  stepAfterReport,
   stepReachable,
   stepsFor,
   type StepId,
@@ -89,6 +90,7 @@ const NOTHING: StepProgress = {
   machinesReady: false,
   runId: null,
   reportDone: false,
+  showPeople: false,
   teamsLeft: 0,
   inFlight: false,
   takeoverDone: false,
@@ -197,8 +199,26 @@ test("People opens on a reload with no plan", () => {
       ...NOTHING,
       isTakeover: false,
       reportDone: true,
+      showPeople: true,
     }),
   );
+});
+
+test("an empty People step is hidden, unreachable and skipped after the report", () => {
+  for (const isTakeover of [false, true]) {
+    assert.ok(
+      !stepsFor(false, isTakeover).some((step) => step.id === "people"),
+    );
+    assert.equal(
+      stepReachable("people", { ...NOTHING, isTakeover, reportDone: true }),
+      false,
+    );
+    assert.equal(
+      stepAfterReport(false, isTakeover),
+      isTakeover ? "takeover" : "done",
+    );
+    assert.equal(stepAfterReport(true, isTakeover), "people");
+  }
 });
 
 test("the source stays open until a run exists", () => {

@@ -14,6 +14,7 @@ import { MigrationGraphic, type MigrationState } from "../migration-graphic";
 import { type SourceKind } from "../sources";
 import { ReviewStep } from "../review-step";
 import { PeopleStep } from "../people-step";
+import { hasMigrationPeople } from "../people";
 import { MigrationConsole } from "../migration-console";
 import { ChooseStep } from "../choose-step";
 import {
@@ -24,6 +25,7 @@ import {
 } from "../source-step";
 import {
   reviewShows,
+  stepAfterReport,
   stepReachable,
   stepsFor,
   type MigrationPath,
@@ -171,7 +173,10 @@ export function MigrationWizard({
   } = source;
 
   const afterRun = React.useCallback(
-    (): StepId => (isTakeover ? "review" : isInstanceAdmin ? "people" : "done"),
+    (hasPeople: boolean): StepId =>
+      isTakeover
+        ? "review"
+        : stepAfterReport(isInstanceAdmin && hasPeople, false),
     [isTakeover, isInstanceAdmin],
   );
 
@@ -214,9 +219,10 @@ export function MigrationWizard({
       ? sessionRuns.filter((r) => r.status === "queued").length
       : teamsAfter(queue, at);
 
+  const showPeople = isInstanceAdmin && hasMigrationPeople(sessionRuns);
   const STEPS = React.useMemo(
-    () => stepsFor(isInstanceAdmin, isTakeover, mode, path),
-    [isInstanceAdmin, isTakeover, mode, path],
+    () => stepsFor(showPeople, isTakeover, mode, path),
+    [showPeople, isTakeover, mode, path],
   );
 
   function pickSource(pick: SourcePick) {
@@ -234,13 +240,7 @@ export function MigrationWizard({
 
   function acknowledgeReport() {
     void closeReport();
-    setStep(
-      isInstanceAdmin && peopleGroups.length > 0
-        ? "people"
-        : isTakeover
-          ? "takeover"
-          : "done",
-    );
+    setStep(stepAfterReport(showPeople, isTakeover));
   }
 
   const resumed =
@@ -285,6 +285,7 @@ export function MigrationWizard({
         machinesReady,
         runId: adoptedId ?? runId,
         reportDone: report != null || startOnTakeover,
+        showPeople,
         teamsLeft,
         inFlight,
         takeoverDone: takeover?.state === "removed",
@@ -300,6 +301,7 @@ export function MigrationWizard({
       runId,
       report,
       startOnTakeover,
+      showPeople,
       teamsLeft,
       inFlight,
       takeover?.state,

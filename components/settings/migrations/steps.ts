@@ -27,7 +27,7 @@ const STEP_LABEL: Record<StepId, string> = {
 };
 
 export function stepsFor(
-  canInvite: boolean,
+  showPeople: boolean,
   canTakeOver: boolean,
   mode: TakeoverMode | null = "migrate",
   path: MigrationPath = "import",
@@ -36,7 +36,7 @@ export function stepsFor(
     "connect",
     "install",
     "review",
-    ...(canInvite ? (["people"] as StepId[]) : []),
+    ...(showPeople ? (["people"] as StepId[]) : []),
   ];
   const ids: StepId[] = !canTakeOver
     ? path === "move"
@@ -57,6 +57,7 @@ export interface StepProgress {
   machinesReady: boolean;
   runId: string | null;
   reportDone: boolean;
+  showPeople: boolean;
   teamsLeft: number;
   inFlight: boolean;
   takeoverDone: boolean;
@@ -77,12 +78,19 @@ export function stepReachable(s: StepId, at: StepProgress): boolean {
       if (at.path === "move") return at.movePreview;
       return at.plan && at.machinesReady && (at.isTakeover || !at.reportDone);
     case "people":
-      return at.reportDone;
+      return at.reportDone && at.showPeople;
     case "takeover":
       return at.mode === "clean" || (at.reportDone && at.teamsLeft === 0);
     case "done":
       return at.isTakeover ? at.takeoverDone : at.reportDone;
   }
+}
+
+export function stepAfterReport(
+  showPeople: boolean,
+  isTakeover: boolean,
+): StepId {
+  return showPeople ? "people" : isTakeover ? "takeover" : "done";
 }
 
 export function reviewShows(at: {

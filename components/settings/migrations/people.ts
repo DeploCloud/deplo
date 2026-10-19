@@ -1,4 +1,10 @@
-import type { Invite } from "./types";
+import type { Invite, SessionRun } from "./types";
+
+export function hasMigrationPeople(
+  runs: Pick<SessionRun, "status" | "members">[],
+): boolean {
+  return runs.some((run) => run.status === "done" && run.members.length > 0);
+}
 
 export type PersonLanding = {
   team: string;

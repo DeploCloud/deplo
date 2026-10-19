@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 
 import {
   filterPeople,
+  hasMigrationPeople,
   linkGroups,
   linksCsv,
   linksTsv,
@@ -27,6 +28,34 @@ const person = (over: Partial<Invite> = {}): Invite => ({
 const group = (name: string, people: Invite[]) => ({
   team: { name, avatarUrl: null },
   people,
+});
+
+test("empty migrated teams never require the People step", () => {
+  assert.equal(hasMigrationPeople([]), false);
+  assert.equal(hasMigrationPeople([{ status: "done", members: [] }]), false);
+  assert.equal(
+    hasMigrationPeople([
+      { status: "done", members: [] },
+      { status: "done", members: [] },
+      { status: "failed", members: [person()] },
+      { status: "stopped", members: [person()] },
+      { status: "queued", members: [person()] },
+      { status: "running", members: [person()] },
+    ]),
+    false,
+  );
+});
+
+test("people in any completed team keep the step, including failed invitations", () => {
+  for (const outcome of ["manual", "failed", "exists"]) {
+    assert.equal(
+      hasMigrationPeople([
+        { status: "done", members: [] },
+        { status: "done", members: [person({ outcome })] },
+      ]),
+      true,
+    );
+  }
 });
 
 test("somebody on three teams is one card with three teams and one link", () => {

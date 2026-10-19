@@ -11,6 +11,7 @@ import {
 } from "@/components/layout/migration-activity";
 import { type ConsoleRun } from "../migration-console";
 import { type PeopleGroup } from "../people-step";
+import { hasMigrationPeople } from "../people";
 import { type StepId } from "../steps";
 import { type ImportRun, type Plan, type SessionRun } from "../types";
 import {
@@ -35,7 +36,7 @@ export function useMigrationRun({
   resumable: ImportRun | null;
   source: SourceQueue;
   setStep: React.Dispatch<React.SetStateAction<StepId>>;
-  afterRun: () => StepId;
+  afterRun: (hasPeople: boolean) => StepId;
 }) {
   const router = useRouter();
   const {
@@ -268,7 +269,9 @@ export function useMigrationRun({
         failed: sum(runs, "failed"),
         manual: sum(runs, "manual"),
       });
-      setStep((at2) => (at2 === "review" ? afterRun() : at2));
+      setStep((at2) =>
+        at2 === "review" ? afterRun(hasMigrationPeople(runs)) : at2,
+      );
     },
     [afterRun, forgetQueue, resetToStart],
   );
