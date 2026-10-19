@@ -13,9 +13,13 @@ import {
   sharedEnvVars as sharedVarsTable,
   sharedEnvVarApps as sharedVarAppsTable,
 } from "../../db/schema/control-plane/env-vars";
+import { __setMigrationFetchForTest } from "../../migration/transport";
 import { beginMigration } from "./run-lifecycle";
 import {
   URL_BASE,
+  APPLICATIONS,
+  routingFetch,
+  source,
   asOwner,
   importProject,
   openMigrationHarness,
@@ -137,5 +141,59 @@ test("a shared variable never clobbers an app's own value of the same name", asy
   assert.equal(
     decryptSecret(resolved.find((e) => e.key === "NODE_ENV")!.valueEnc),
     "production",
+  );
+});
+
+test("the same name at two levels stays two shared variables", async () => {
+  const blink = (
+    source.fixtures["project.all"] as { environments: { env: string }[] }[]
+  )[0];
+  blink.environments[0].env = "ENV_LEVEL=yes\nSHARED_TOKEN=env-level\n";
+  __setMigrationFetchForTest(
+    routingFetch({
+      applications: {
+        "dok-app-api": {
+          ...(APPLICATIONS["dok-app-api"] as object),
+          env:
+            "SHARED_TOKEN=${{environment.SHARED_TOKEN}}\n" +
+            "TOKEN_COPY=${{project.SHARED_TOKEN}}\n",
+        },
+      },
+    }),
+  );
+  const runId = await asOwner(() => beginMigration({ url: URL_BASE }));
+  await importProject(runId, "dok-prj-blink");
+
+  const rows = await db
+    .select()
+    .from(sharedVarsTable)
+    .where(eq(sharedVarsTable.key, "SHARED_TOKEN"));
+  assert.deepEqual(rows.map((r) => decryptSecret(r.valueEnc)).sort(), [
+    "env-level",
+    "project-level",
+  ]);
+
+  const linked = await db
+    .select({ valueEnc: sharedVarsTable.valueEnc })
+    .from(sharedVarAppsTable)
+    .innerJoin(
+      sharedVarsTable,
+      eq(sharedVarsTable.id, sharedVarAppsTable.varId),
+    );
+  assert.deepEqual(
+    linked.map((l) => decryptSecret(l.valueEnc)),
+    ["env-level"],
+    "the app is linked to the level it named",
+  );
+  const api = (await db.select().from(appsTable)).find(
+    (a) => a.name === "blink-api",
+  )!;
+  const own = await db
+    .select()
+    .from(envVarsTable)
+    .where(eq(envVarsTable.appId, api.id));
+  assert.equal(
+    decryptSecret(own.find((v) => v.key === "TOKEN_COPY")!.valueEnc),
+    "project-level",
   );
 });

@@ -15,7 +15,7 @@ import type { SourceApplication, SourceCompose } from "../../migration/model";
 import { mapLogo } from "../../migration/map/app-settings";
 import { cloneTarget } from "../../migration/map/app-source";
 import { composeAsRepoApp } from "../../migration/map/compose-read";
-import { mapDomains } from "../../migration/map/domains";
+import { mapDomains, pickPrimaryDomain } from "../../migration/map/domains";
 import { mapMounts } from "../../migration/map/mounts";
 import { createApp } from "../apps/create";
 import { setAppPorts } from "../apps/ports";
@@ -24,7 +24,7 @@ import { setSharedVarAppLink } from "../shared-vars/app-links";
 import { composeGrantRefusal } from "./compose-notes";
 import type { Report } from "./run-report";
 import type { SourceService } from "./source-tree";
-import type { SharedIndex } from "./shared-vars-import";
+import { type SharedIndex, sharedEntry } from "./shared-vars-import";
 import { landSourceBackups } from "./source-backups";
 import { landingServerId } from "./target-servers";
 import { mapAppEnv } from "./app-env";
@@ -135,8 +135,7 @@ export async function importAppService(
   )
     for (const d of domains.value)
       if (d.generated && !/(^|\.)localhost$/i.test(d.host)) d.generated = false;
-  const primary =
-    domains.value.find((d) => !d.generated) ?? domains.value[0] ?? null;
+  const primary = pickPrimaryDomain(domains.value);
   const mounts = mapMounts(detail.mounts, { isCompose, compose: yamlText });
   notes.push(...mounts.notes);
 
@@ -245,7 +244,7 @@ export async function importAppService(
   for (const r of linkable) {
     try {
       await setSharedVarAppLink(
-        home.shared.get(r.sharedKey)!.varId,
+        sharedEntry(home.shared, r.level, r.sharedKey)!.varId,
         created.id,
         true,
       );

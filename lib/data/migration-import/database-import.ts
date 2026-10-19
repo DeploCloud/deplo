@@ -210,7 +210,9 @@ export async function importDatabaseService(
       );
     }
   }
-  const dbResources = mapResources(row);
+  const dbResources = row.nativeResources
+    ? { value: row.nativeResources, notes: [] }
+    : mapResources(row);
   notes.push(...dbResources.notes);
   if (dbResources.value) {
     try {

@@ -150,6 +150,7 @@ async function runImportMigrationProject(
     servicesOf(env).filter((s) => !wanted || wanted.has(s.id));
 
   const shared: SharedIndex = new Map();
+  const createdVars = new Set<string>();
   await noteLevel(report, source.platformNotes);
   try {
     const team = await sourceClient(c).teamSharedEnv();
@@ -159,6 +160,8 @@ async function runImportMigrationProject(
         secretKeys: team?.secretEnvKeys,
         teamId,
         label: "Team",
+        level: "team",
+        created: createdVars,
         environmentIds: [],
         projectIds: [],
         teamWide: true,
@@ -176,6 +179,8 @@ async function runImportMigrationProject(
       secretKeys: source.secretEnvKeys,
       teamId,
       label: source.name,
+      level: "project",
+      created: createdVars,
       environmentIds: [],
       projectIds: [projectId],
       scopeNote: "Offered to this project.",
@@ -196,6 +201,8 @@ async function runImportMigrationProject(
           secretKeys: machine?.secretEnvKeys,
           teamId,
           label: `${source.name} (server)`,
+          level: "server",
+          created: createdVars,
           environmentIds: [],
           projectIds: [projectId],
           scopeNote:
@@ -224,6 +231,8 @@ async function runImportMigrationProject(
     if (!environmentId) continue;
     await noteLevel(envReport, env.platformNotes);
 
+    // Each environment sees its own variables, never a sibling's of the same name.
+    const envShared: SharedIndex = new Map(shared);
     const envLevel =
       env.env != null
         ? env
@@ -234,12 +243,14 @@ async function runImportMigrationProject(
         secretKeys: envLevel?.secretEnvKeys,
         teamId,
         label: `${source.name} / ${env.name}`,
+        level: "environment",
+        created: createdVars,
         environmentIds: [environmentId],
         projectIds: [],
         scopeNote: `Offered to ${env.name}.`,
         report: envReport,
       },
-      shared,
+      envShared,
     );
 
     const appIds: string[] = [];
@@ -306,7 +317,7 @@ async function runImportMigrationProject(
               buildServerId: placed.get(svc.id)?.buildServerId ?? null,
               sourceHost: await hostOfMachine(sourceServerId),
               dbHosts,
-              shared,
+              shared: envShared,
               destinations,
             },
             svcReport,

@@ -1,7 +1,8 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-import { mapDomains } from "../map/domains";
+import { mapDomains, pickPrimaryDomain } from "../map/domains";
+import { mapMounts } from "../map/mounts";
 import { mapSource } from "../map/app-source";
 import { parseEnvBlob } from "../map/env";
 import { servicesOf } from "../../data/migration-import/source-tree";
@@ -153,6 +154,61 @@ test("a preview-only variable stays a preview variable", () => {
   assert.deepEqual(app.secretEnvKeys, ["PREVIEW"]);
 });
 
+test("a production-only variable is named so previews do not get it", () => {
+  const x = deploExport({
+    apps: [
+      exportApp({
+        env: [
+          {
+            key: "BOTH",
+            value: "1",
+            secret: false,
+            targets: ["production", "preview"],
+          },
+          { key: "PROD", value: "2", secret: false, targets: ["production"] },
+        ],
+      }),
+    ],
+  });
+  const app = sourceApplication(x, x.apps[0]) as SourceApplication;
+  assert.deepEqual(app.productionOnlyEnvKeys, ["PROD"]);
+});
+
+test("a read-only volume stays read-only", () => {
+  const x = deploExport({
+    apps: [
+      exportApp({
+        volumes: [
+          {
+            id: "v1",
+            type: "named",
+            name: "data",
+            mountPath: "/data",
+            readOnly: true,
+          },
+          {
+            id: "v2",
+            type: "host",
+            name: "logs",
+            hostPath: "/srv/logs",
+            mountPath: "/logs",
+            readOnly: false,
+          },
+        ],
+      }),
+    ],
+  });
+  const app = sourceApplication(x, x.apps[0]) as SourceApplication;
+  const mapped = mapMounts(app.mounts, { isCompose: false });
+  assert.deepEqual(
+    mapped.value.volumes.map((v) => [v.mountPath, v.readOnly]),
+    [
+      ["/data", true],
+      ["/logs", false],
+    ],
+  );
+});
+
 test("each git provider maps to a repository the importer clones from the same place", () => {
   for (const [provider, url, repo] of [
     ["github", "https://github.com/acme/web.git", "acme/web"],
@@ -257,6 +313,39 @@ test("a host the old Deplo minted is not claimed as somebody's domain", () => {
     app.platformNotes!.join(" "),
     /www\.shop\.example only redirected/,
   );
+  assert.equal(
+    pickPrimaryDomain(mapped.value)?.host,
+    "shop.example",
+    "a minted primary cannot be claimed here, so a real one leads",
+  );
+});
+
+test("the domain the old Deplo marked primary is the primary here", () => {
+  const domain = (host: string, primary: boolean) => ({
+    host,
+    port: 3000,
+    pathPrefix: "",
+    stripPrefix: false,
+    service: null,
+    https: true,
+    certProvider: "letsencrypt",
+    primary,
+    redirectTo: null,
+    generated: false,
+  });
+  const x = deploExport({
+    apps: [
+      exportApp({
+        domains: [
+          domain("shop.example", false),
+          domain("www.shop.example", true),
+        ],
+      }),
+    ],
+  });
+  const app = sourceApplication(x, x.apps[0]) as SourceApplication;
+  const mapped = mapDomains(app.domains, { isCompose: false });
+  assert.equal(pickPrimaryDomain(mapped.value)?.host, "www.shop.example");
 });
 
 test("a compose app carries its stack and its files", () => {
@@ -303,4 +392,16 @@ test("a database keeps its engine, version and credentials", () => {
   assert.equal(db.dockerImage, "mongo:7");
   assert.equal(db.databasePassword, "pw");
   assert.match(db.platformNotes!.join(" "), /vacuum ran on a schedule/);
+});
+
+test("a database carries every limit in Deplo's own shape", () => {
+  const x = deploExport({
+    databases: [
+      exportDatabase({
+        resources: { memoryMb: 256, pidsLimit: 64 } as never,
+      }),
+    ],
+  });
+  const db = sourceDatabase(x, x.databases[0]);
+  assert.deepEqual(db.nativeResources, { memoryMb: 256, pidsLimit: 64 });
 });

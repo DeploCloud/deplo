@@ -7,7 +7,7 @@ import {
   renameDatabaseHosts,
   resolveSharedRefs,
 } from "../../migration/map/env";
-import type { SharedIndex } from "./shared-vars-import";
+import { type SharedIndex, sharedEntry } from "./shared-vars-import";
 
 export function mapAppEnv(
   detail: SourceApplication & SourceCompose,
@@ -24,7 +24,10 @@ export function mapAppEnv(
     (r) => !argEntries.some((a) => a.key === r.key),
   );
   const linkable = refs.filter(
-    (r) => r.whole && r.key === r.sharedKey && home.shared.has(r.sharedKey),
+    (r) =>
+      r.whole &&
+      r.key === r.sharedKey &&
+      sharedEntry(home.shared, r.level, r.sharedKey) != null,
   );
   const dropped = new Map<string, { key: string; value: string }>();
   for (const r of linkable) {
@@ -33,13 +36,15 @@ export function mapAppEnv(
   }
   const refResolved = resolveSharedRefs(
     rows,
-    new Map([...home.shared].map(([k, v]) => [k, v.value] as const)),
+    (level, key) => sharedEntry(home.shared, level, key)?.value,
   );
   // Typed secret only where the panel said so: a secret is immutable here and a fork's preview drops it.
   const secretKeys = new Set(detail.secretEnvKeys ?? []);
+  const productionOnly = new Set(detail.productionOnlyEnvKeys ?? []);
   const env = rows.map((e) => ({
     ...e,
     type: secretKeys.has(e.key) ? ("secret" as const) : ("plain" as const),
+    ...(productionOnly.has(e.key) && { targets: ["production" as const] }),
   }));
   const masked = env.filter((e) => e.type === "secret").map((e) => e.key);
   if (masked.length > 0)
@@ -47,7 +52,10 @@ export function mapAppEnv(
       `${masked.join(", ")} came across as secrets, as {panel} marked them: write-only here too, and never shown again.`,
     );
   const aliased = refs.filter(
-    (r) => r.whole && r.key !== r.sharedKey && home.shared.has(r.sharedKey),
+    (r) =>
+      r.whole &&
+      r.key !== r.sharedKey &&
+      sharedEntry(home.shared, r.level, r.sharedKey) != null,
   );
   if (linkable.length > 0)
     notes.push(

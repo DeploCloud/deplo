@@ -28,6 +28,7 @@ export interface SourceDomain {
   enabled?: boolean | null;
   // A host the source platform minted for itself, which never comes across as a domain someone owns.
   generated?: boolean | null;
+  primary?: boolean | null;
 }
 
 export interface SourceMount {
@@ -39,6 +40,7 @@ export interface SourceMount {
   filePath?: string | null;
   content?: string | null;
   mountPath: string;
+  readOnly?: boolean | null;
 }
 
 export interface SourcePort {
@@ -67,6 +69,8 @@ export interface SourceApplication {
   backups?: SourceBackupSchedule[] | null;
   sharedRefs?: SharedRef[] | null;
   secretEnvKeys?: string[] | null;
+  // Variables the source kept away from previews; absent means every one reaches both.
+  productionOnlyEnvKeys?: string[] | null;
   platformNotes?: string[] | null;
   healthCheck?: HealthCheck | null;
   // Settings already in Deplo's own shape, laid over what the platform-shaped fields map to.
@@ -159,6 +163,7 @@ export interface SourceCompose {
   backups?: SourceBackupSchedule[] | null;
   sharedRefs?: SharedRef[] | null;
   secretEnvKeys?: string[] | null;
+  productionOnlyEnvKeys?: string[] | null;
   platformNotes?: string[] | null;
   composeId: string;
   name?: string | null;
@@ -219,6 +224,7 @@ export interface SourceDatabase {
   memoryReservation?: string | null;
   cpuLimit?: string | null;
   cpuReservation?: string | null;
+  nativeResources?: Partial<ResourceLimits> | null;
   serverId?: string | null;
   environmentId?: string | null;
   mounts?: SourceMount[] | null;

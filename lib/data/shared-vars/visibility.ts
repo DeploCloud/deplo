@@ -40,12 +40,14 @@ export async function loadVisibleToTeam(teamId: string): Promise<SharedVar[]> {
 
 export async function visibleSharedVarIdsByKey(
   teamId: string,
-): Promise<Map<string, string>> {
+): Promise<Map<string, string[]>> {
   const rows = await getDb()
     .select({ id: varsTable.id, key: varsTable.key })
     .from(varsTable)
     .where(visibleTo(teamId));
-  return new Map(rows.map((r) => [r.key, r.id] as const));
+  const out = new Map<string, string[]>();
+  for (const r of rows) out.set(r.key, [...(out.get(r.key) ?? []), r.id]);
+  return out;
 }
 
 async function stitch(

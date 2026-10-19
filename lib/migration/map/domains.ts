@@ -20,6 +20,19 @@ export interface MappedDomain {
   entrypoint: DomainEntrypoint;
   service: string | null;
   generated: boolean;
+  primary: boolean;
+}
+
+// The source's own primary when it is a host this side can claim; a minted one never is.
+export function pickPrimaryDomain(
+  domains: MappedDomain[],
+): MappedDomain | null {
+  return (
+    domains.find((d) => d.primary && !d.generated) ??
+    domains.find((d) => !d.generated) ??
+    domains[0] ??
+    null
+  );
 }
 
 export function mapDomains(
@@ -80,6 +93,7 @@ export function mapDomains(
         d.https === false && certProvider === "none" ? "web" : "websecure",
       service,
       generated: d.generated === true || isThrowawayHost(host),
+      primary: d.primary === true,
     });
   }
   return { value: out, notes };

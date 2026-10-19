@@ -103,7 +103,7 @@ export function sharedRefsIn(
 
 export function resolveSharedRefs(
   entries: { key: string; value: string }[],
-  shared: Map<string, string>,
+  lookup: (level: SharedRefLevel, key: string) => string | undefined,
 ): { resolved: string[]; unresolved: string[] } {
   const resolved: string[] = [];
   const unresolved: string[] = [];
@@ -111,8 +111,8 @@ export function resolveSharedRefs(
     if (!e.value.includes("{{")) continue;
     let hit = false;
     let miss = false;
-    e.value = e.value.replace(SHARED_REF, (whole, _level, key: string) => {
-      const v = shared.get(key);
+    e.value = e.value.replace(SHARED_REF, (whole, level, key: string) => {
+      const v = lookup(level as SharedRefLevel, key);
       if (v === undefined) {
         miss = true;
         return whole;

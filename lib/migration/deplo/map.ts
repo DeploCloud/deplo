@@ -142,6 +142,7 @@ function domainsOf(
             : "letsencrypt",
       enabled: !d.redirectTo,
       generated: d.generated,
+      primary: d.primary,
     };
   });
   return { domains, notes };
@@ -165,6 +166,7 @@ function mountsOf(a: DeploExportApp, compose: boolean): SourceMount[] {
         type: "bind",
         hostPath: v.hostPath,
         mountPath: v.mountPath,
+        readOnly: v.readOnly,
       };
     if (v.type === "app")
       return {
@@ -173,12 +175,14 @@ function mountsOf(a: DeploExportApp, compose: boolean): SourceMount[] {
         filePath: v.projectPath,
         content: content.get(v.projectPath ?? "") ?? "",
         mountPath: v.mountPath,
+        readOnly: v.readOnly,
       };
     return {
       mountId,
       type: "volume",
       volumeName: v.name,
       mountPath: v.mountPath,
+      readOnly: v.readOnly,
     };
   });
 }
@@ -247,6 +251,7 @@ interface EnvShape {
   env: string;
   previewEnv: string;
   secretEnvKeys: string[];
+  productionOnlyEnvKeys: string[];
   sharedRefs: SharedRef[];
   notes: string[];
 }
@@ -285,6 +290,10 @@ export function appEnv(x: DeploExport, a: DeploExportApp): EnvShape {
     env: main.blob,
     previewEnv: preview.blob,
     secretEnvKeys: [...secret],
+    productionOnlyEnvKeys: a.env
+      .filter((e) => e.targets.includes("production"))
+      .filter((e) => !e.targets.includes("preview"))
+      .map((e) => e.key),
     sharedRefs: refs,
     notes: unreadNote(
       [...main.unrepresentable, ...preview.unrepresentable],
@@ -337,6 +346,7 @@ export function sourceApplication(
     appName: a.slug,
     env: env.env,
     secretEnvKeys: env.secretEnvKeys,
+    productionOnlyEnvKeys: env.productionOnlyEnvKeys,
     sharedRefs: env.sharedRefs,
     domains,
     mounts: mountsOf(a, compose),
@@ -402,17 +412,6 @@ export function sourceApplication(
   } satisfies SourceApplication;
 }
 
-function resourceStrings(d: DeploExportDatabase) {
-  const r = d.resources;
-  return {
-    memoryLimit: r?.memoryMb ? `${r.memoryMb}m` : null,
-    memoryReservation: r?.memoryReservationMb
-      ? `${r.memoryReservationMb}m`
-      : null,
-    cpuLimit: r?.cpuMilli ? String(r.cpuMilli / 1000) : null,
-  };
-}
-
 export function sourceDatabase(
   x: DeploExport,
   d: DeploExportDatabase,
@@ -428,7 +427,7 @@ export function sourceDatabase(
     databasePassword: d.password || null,
     command: d.customCommand,
     externalPort: d.exposedPort,
-    ...resourceStrings(d),
+    nativeResources: d.resources,
     serverId: d.serverId,
     environmentId: placementOf(x, d).environmentId,
     mounts: d.mounts.map((m, i) => ({
