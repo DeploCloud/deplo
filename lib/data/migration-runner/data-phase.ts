@@ -173,10 +173,8 @@ export async function runDataPhase(
       failedHere++;
       continue;
     }
-    if (res.sourceGone) {
-      failedHere++;
-      deadMachines.add(d.sourceServerId);
-    }
+    if (res.sourceGone) deadMachines.add(d.sourceServerId);
+    if (res.sourceGone || res.failed > 0) failedHere++;
   }
 
   await setProgress(row.id, { doneSteps: movable.length, stepLabel: null });
