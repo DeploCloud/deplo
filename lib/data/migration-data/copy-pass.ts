@@ -181,12 +181,10 @@ export async function copyBindMounts(
 ): Promise<void> {
   for (const bind of binds) {
     if (!mayCopyHostPaths && !bind.stackRelative) {
-      await record(
-        ctx,
-        bind.sourcePath,
-        "manual",
-        `${bind.sourcePath} is a host directory (mounted at ${bind.mountPath}). Copying one needs instance admin and the host-volumes permission, so its contents did not come over.`,
-      );
+      const message = `${bind.sourcePath} is a host directory (mounted at ${bind.mountPath}). Copying one needs instance admin and the host-volumes permission, so its contents did not come over.`;
+      ctx.tally.notCopied++;
+      ctx.tally.lost.push(`${bind.sourcePath} (${bind.mountPath}): ${message}`);
+      await record(ctx, bind.sourcePath, "manual", message);
       continue;
     }
     if (
