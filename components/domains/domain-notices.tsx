@@ -27,7 +27,7 @@ export function DomainNotices({
       importedFrom: importedFrom!,
     }));
   const action = domainsHref ? (
-    <Button asChild size="sm" variant="outline">
+    <Button asChild size="sm" variant="default">
       <Link href={domainsHref}>View domains</Link>
     </Button>
   ) : undefined;

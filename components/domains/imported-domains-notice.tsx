@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { CopyButton } from "@/components/shared/copy-button";
 import { gqlAction } from "@/lib/graphql-client";
 import { useAppCan } from "@/components/apps/app-capabilities";
+import { DomainNoticeContent } from "./domain-notice-content";
 
 export function ImportedDomainsNotice({
   appId,
@@ -37,7 +38,7 @@ export function ImportedDomainsNotice({
   return (
     <div className="flex items-start gap-2.5 rounded-lg border border-warning/40 bg-warning-wash-strong px-3.5 py-2.5 text-sm">
       <Import className="mt-0.5 size-4 shrink-0 text-warning" />
-      <div className="min-w-0 flex-1 space-y-1.5">
+      <DomainNoticeContent action={action}>
         <p className="font-medium text-warning">
           This app answers on a new address
         </p>
@@ -51,19 +52,18 @@ export function ImportedDomainsNotice({
         <ul className="space-y-1">
           {domains.map((d) => (
             <li key={d.id} className="flex flex-wrap items-center gap-1.5">
-              <code className="rounded bg-muted px-1 py-0.5 font-mono text-xs text-muted-foreground/70">
+              <code className="rounded bg-muted px-1 py-0.5 font-mono text-xs break-all text-muted-foreground/70">
                 {d.importedFrom}
               </code>
               <ArrowRight className="size-3 shrink-0 text-muted-foreground" />
-              <code className="rounded bg-muted px-1 py-0.5 font-mono text-xs text-foreground">
+              <code className="rounded bg-muted px-1 py-0.5 font-mono text-xs break-all text-foreground">
                 {d.name}
               </code>
               <CopyButton value={d.name} className="size-6" />
             </li>
           ))}
         </ul>
-        {action && <div className="pt-2">{action}</div>}
-      </div>
+      </DomainNoticeContent>
       {canManage && (
         <Button
           type="button"

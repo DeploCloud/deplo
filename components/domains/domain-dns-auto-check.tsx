@@ -6,6 +6,7 @@ import { toast } from "sonner";
 import { RefreshCw } from "lucide-react";
 import { gqlAction } from "@/lib/graphql-client";
 import { useAppCan } from "@/components/apps/app-capabilities";
+import { DomainNoticeContent } from "./domain-notice-content";
 
 const CHECK_INTERVAL_MS = 30_000;
 
@@ -113,7 +114,7 @@ export function DomainDnsAutoCheck({
             : "mt-0.5 size-4 shrink-0 text-muted-foreground"
         }
       />
-      <div className="space-y-0.5">
+      <DomainNoticeContent action={action}>
         <p className="font-medium">
           {disabled
             ? "Waiting for DNS"
@@ -152,8 +153,7 @@ export function DomainDnsAutoCheck({
             </>
           )}
         </p>
-        {action && <div className="pt-2">{action}</div>}
-      </div>
+      </DomainNoticeContent>
     </div>
   );
 }
