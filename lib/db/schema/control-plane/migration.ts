@@ -91,6 +91,8 @@ export const migrationRuns = pgTable(
     heartbeatAt: isoTimestamptz("heartbeat_at"),
     runnerOwner: text("runner_owner"),
     actorUserId: text("actor_user_id"),
+    // The API token that started the run, so the background passes keep its limits.
+    actorTokenId: text("actor_token_id"),
     sessionId: text("session_id"),
   },
   (t) => [

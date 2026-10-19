@@ -96,6 +96,7 @@ export async function startMigrationRun(input: StartRunInput): Promise<string> {
   const { getCurrentUser } = await import("../../auth/current-user");
   const me = await getCurrentUser();
   const userId = currentIdentity()?.userId ?? me?.id ?? null;
+  const tokenId = currentIdentity()?.token?.id ?? null;
   const actorName = me?.name ?? "someone";
 
   await getDb().transaction(async (tx) => {
@@ -104,6 +105,7 @@ export async function startMigrationRun(input: StartRunInput): Promise<string> {
       .set({
         apiKeyEnc: encryptSecret(input.apiKey),
         actorUserId: userId,
+        actorTokenId: tokenId,
         totalSteps: input.targets.length,
         doneSteps: 0,
         phase: "config",
@@ -137,7 +139,7 @@ export async function startMigrationRun(input: StartRunInput): Promise<string> {
       url: input.url,
       credential: queuedCreds[i],
       team: q,
-      actor: { name: actorName, userId },
+      actor: { name: actorName, userId, tokenId },
       keepSources: i < queued.length - 1,
     });
 
@@ -153,7 +155,7 @@ async function enqueueTeam(opts: {
   url: string;
   credential: SourceCredential;
   team: QueuedTeamInput;
-  actor: { name: string; userId: string | null };
+  actor: { name: string; userId: string | null; tokenId: string | null };
   keepSources: boolean;
 }): Promise<string> {
   const { team } = opts;
@@ -177,6 +179,7 @@ async function enqueueTeam(opts: {
       orgName: team.orgName?.trim() || null,
       actor: opts.actor.name,
       actorUserId: opts.actor.userId,
+      actorTokenId: opts.actor.tokenId,
       status: "queued",
       created: 0,
       skipped: 0,

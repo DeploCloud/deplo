@@ -8,6 +8,7 @@ import { getDb } from "../../db/client";
 import { migrationRuns as runsTable } from "../../db/schema/control-plane/migration";
 import { publishMigrationChanged } from "../../graphql/pubsub";
 import { nowIso } from "../../ids";
+import { identityForTokenId } from "../tokens/authenticate";
 import { abortRunCopy } from "../migration-data/move";
 import { markRunTargetsUncopied } from "../migration-data/recopy";
 import { undoMigration } from "../migration-import/revert";
@@ -39,6 +40,27 @@ import { stopWanted, stopped } from "./stop";
 import { instanceFrozen } from "../deplo-move/freeze";
 
 let timer: ReturnType<typeof setInterval> | null = null;
+
+class TokenGone extends Error {
+  constructor() {
+    super(
+      "The API token that started this migration was revoked, expired or lost access to this team, so Deplo stopped it.",
+    );
+  }
+}
+
+// Started by a token, every pass acts with that token's limits, never with everything its owner holds.
+async function asActor<T>(
+  row: Pick<RunRow, "actorUserId" | "actorTokenId" | "teamId">,
+  fn: () => Promise<T>,
+): Promise<T> {
+  if (!row.actorUserId) throw new Error("This run has no one to act as.");
+  if (!row.actorTokenId)
+    return runWithIdentity({ userId: row.actorUserId, teamId: row.teamId }, fn);
+  const identity = await identityForTokenId(row.actorTokenId, row.teamId);
+  if (!identity || identity.userId !== row.actorUserId) throw new TokenGone();
+  return runWithIdentity(identity, fn);
+}
 
 export async function runMigrationTick(): Promise<void> {
   if (await instanceFrozen()) return;
@@ -94,9 +116,8 @@ async function promoteQueuedRuns(): Promise<void> {
       const why = `The team before this one ${before.status === "stopped" ? "was stopped" : "did not finish"}, so the rest of the migration did not start.`;
       await cancelQueuedRuns(sessionId, why);
       if (before.actorUserId)
-        await runWithIdentity(
-          { userId: before.actorUserId, teamId: before.teamId },
-          () => removeSourcesOfRun(before.id, before.teamId),
+        await asActor(before, () =>
+          removeSourcesOfRun(before.id, before.teamId),
         ).catch((e) =>
           console.error("[migration] clearing sources after a stop:", e),
         );
@@ -110,9 +131,8 @@ async function promoteQueuedRuns(): Promise<void> {
       continue;
     }
     try {
-      await runWithIdentity(
-        { userId: next.actorUserId, teamId: next.teamId },
-        () => handOverMigrationSources(before?.teamId ?? null),
+      await asActor(next, () =>
+        handOverMigrationSources(before?.teamId ?? null),
       );
     } catch (e) {
       console.error("[migration] handing the sources to the next team:", e);
@@ -207,11 +227,20 @@ async function failRun(row: RunRow, why: string): Promise<void> {
 
   if (!row.actorUserId) return;
   try {
-    await runWithIdentity({ userId: row.actorUserId, teamId: row.teamId }, () =>
+    await asActor(row, () =>
       undoMigration(row.id, { forceSourceRemoval: false }),
     );
   } catch (e) {
-    console.error("[migration] undo after failure", row.id, "failed:", e);
+    if (e instanceof TokenGone)
+      await appendRunItem(row.id, panelNameFor(row), {
+        path: "Migration",
+        sourceKind: "run",
+        sourceName: "Migration",
+        outcome: "manual",
+        message:
+          "Nothing it created here was removed, because the API token that started it no longer works. Delete what you do not want to keep yourself.",
+      });
+    else console.error("[migration] undo after failure", row.id, "failed:", e);
   }
 }
 
@@ -227,9 +256,7 @@ async function advance(row: RunRow): Promise<void> {
   }, IDLE_TICK_MS);
   heart.unref?.();
   try {
-    await runWithIdentity({ userId: row.actorUserId, teamId: row.teamId }, () =>
-      advanceAsActor(row),
-    );
+    await asActor(row, () => advanceAsActor(row));
   } finally {
     clearInterval(heart);
   }
