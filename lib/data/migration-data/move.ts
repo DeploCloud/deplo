@@ -28,7 +28,7 @@ import {
 } from "../../migration/map/volume-pairing";
 
 import { requireAppCapability } from "../node-access";
-import { stopStackOn, type OnBytes } from "../volume-migration";
+import { isCopyAborted, stopStackOn, type OnBytes } from "../volume-migration";
 import { recordActivity } from "../activity";
 import { clearDataCopyError, markDataCopyFailed } from "../data-copy";
 import { runAsMigration } from "../migration-guard";
@@ -69,6 +69,12 @@ export interface DataMoveResult {
   failed: number;
   notes: string[];
   sourceGone: boolean;
+}
+
+class TargetWouldNotStop extends Error {
+  constructor(cause: unknown) {
+    super("the destination would not stop", { cause });
+  }
 }
 
 const inFlightCopies = new Map<string, AbortController>();
@@ -322,17 +328,40 @@ async function runMoveMigrationServiceData(
       `{panel} would not stop ${svc.name} (${why}), but nothing of it is running there, so its data was read as it is.`,
     );
   }
-  if (stoppedThere)
-    await recordSourceStopped(input.runId, input.sourceId, input.sourceKind);
+  // Past this point the source is down: every way out has to start it again.
+  const giveUp = async (what: string, e: unknown): Promise<DataMoveResult> => {
+    const why = e instanceof Error ? e.message : "it failed";
+    const undone =
+      stoppedThere && state.running ? ` ${await startAgainThere()}` : "";
+    return refuse({
+      message: `${what} (${why}), so ${svc.name}'s data was not copied.${undone} Run the copy again.`,
+      reason: `${what}, so ${svc.name}'s data was never copied`,
+    });
+  };
 
+  let connection: Awaited<ReturnType<typeof host.connect>>;
   try {
+    if (stoppedThere)
+      await recordSourceStopped(input.runId, input.sourceId, input.sourceKind);
     // Untarring into a volume a container is still writing to is the same mistake in the other direction.
-    await stopStackOn(landed.targetServerId, landed.targetSlug);
+    try {
+      await stopStackOn(landed.targetServerId, landed.targetSlug);
+    } catch (e) {
+      throw new TargetWouldNotStop(e);
+    }
     await recordStoppedForCopy(landed, teamId);
-  } catch {}
+    connection = await host.connect(landed.targetServerId);
+  } catch (e) {
+    return giveUp(
+      e instanceof TargetWouldNotStop
+        ? `${landed.targetName} would not stop here, and copying into data it may still be writing would arrive corrupted`
+        : `Deplo could not get ${landed.targetName} ready for the copy`,
+      e instanceof TargetWouldNotStop ? e.cause : e,
+    );
+  }
 
   const tally = newCopyTally();
-  const { source, dest, close } = await host.connect(landed.targetServerId);
+  const { source, dest, close } = connection;
   const aborter = new AbortController();
   inFlightCopies.set(input.runId, aborter);
   const ctx: CopyContext = {
@@ -354,6 +383,13 @@ async function runMoveMigrationServiceData(
   try {
     await copyPairedVolumes(ctx, paired.value);
     await copyBindMounts(ctx, binds, bindOwners, mayCopyHostPaths);
+  } catch (e) {
+    if (isCopyAborted(e)) throw e;
+    // Counted as a failure, so the restart below still runs.
+    const message = e instanceof Error ? e.message : "the copy failed";
+    tally.failed++;
+    tally.lost.push(message);
+    notes.push(`The copy stopped part way: ${message}`);
   } finally {
     inFlightCopies.delete(input.runId);
     close();
