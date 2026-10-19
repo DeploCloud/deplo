@@ -12,9 +12,11 @@ import { useAppCan } from "@/components/apps/app-capabilities";
 export function ImportedDomainsNotice({
   appId,
   domains,
+  action,
 }: {
   appId: string;
   domains: { id: string; name: string; importedFrom: string }[];
+  action?: React.ReactNode;
 }) {
   const router = useRouter();
   const canManage = useAppCan("manage_domains");
@@ -60,6 +62,7 @@ export function ImportedDomainsNotice({
             </li>
           ))}
         </ul>
+        {action && <div className="pt-2">{action}</div>}
       </div>
       {canManage && (
         <Button

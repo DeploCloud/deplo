@@ -19,10 +19,12 @@ export function DomainDnsAutoCheck({
   domains,
   serverIp,
   serverIpv6,
+  action,
 }: {
   domains: UnsettledDomain[];
   serverIp?: string | null;
   serverIpv6?: string | null;
+  action?: React.ReactNode;
 }) {
   const records = [
     serverIp ? { type: "A", ip: serverIp } : null,
@@ -150,6 +152,7 @@ export function DomainDnsAutoCheck({
             </>
           )}
         </p>
+        {action && <div className="pt-2">{action}</div>}
       </div>
     </div>
   );

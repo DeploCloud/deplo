@@ -16,14 +16,3 @@ export function domainRoutingWarning(
     return `This app's compose file has no container “${service}” any more, so nothing serves this domain. Edit the domain to pick one.`;
   return null;
 }
-
-export function domainNeedsAttention(
-  domain: Pick<Domain, "status" | "service">,
-  isCompose: boolean,
-  services: string[],
-): boolean {
-  return (
-    domain.status !== "valid" ||
-    domainRoutingWarning(domain, isCompose, services) !== null
-  );
-}
