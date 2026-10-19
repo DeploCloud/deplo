@@ -1,3 +1,4 @@
+import { appTraefikOverrides } from "../../data/apps/traefik-labels";
 import "server-only";
 
 import { loadAppGraph } from "../../data/app-graph-load";
@@ -69,6 +70,7 @@ async function rerouteAppLocked(
     let mounts: { path: string; content: string }[] = [];
     if (useCompose && hasCompose) {
       rendered = buildComposeStack({
+        ...(await appTraefikOverrides(appId)),
         compose: project.compose ?? "",
         name,
         onWarn: (message) => console.warn(`[deplo] ${appId}: ${message}`),
@@ -95,6 +97,7 @@ async function rerouteAppLocked(
       const volumes = readStackVolumesFromYaml(current.yaml, name);
       const basicAuthUsers = await basicAuthUsersValue(appId);
       rendered = renderCompose({
+        ...(await appTraefikOverrides(appId)),
         name,
         image,
         port: project.build.port,

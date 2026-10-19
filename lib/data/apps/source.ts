@@ -1,10 +1,12 @@
+import { authorizeComposeTraefik } from "./traefik-labels";
 import "server-only";
 
-import { and, eq } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 
 import { getDb } from "../../db/client";
 import {
   apps as appsTable,
+  appTraefikLabels,
   appPorts as appPortsTable,
 } from "../../db/schema/control-plane/apps";
 import { domains as domainsTable } from "../../db/schema/control-plane/domains";
@@ -80,6 +82,7 @@ async function writeAppSource(
   const { membership } = await requireAppCapability(id, "configure_apps");
   assertImageRef(input.source, input.dockerImage);
   const editReach = await assertComposeSavable(input.compose);
+  const traefikLabelsBy = await authorizeComposeTraefik(input.compose);
   const user = (await getCurrentUser())!;
   // A move re-writes the stored repo, already scoped when it was saved.
   const repo = move
@@ -247,6 +250,12 @@ async function writeAppSource(
               ? {
                   compose: input.compose,
                   hostReachBy: editReach.length > 0 ? user.id : null,
+                  traefikLabelsBy:
+                    traefikLabelsBy ??
+                    sql`case when exists (
+                    select 1 from ${appTraefikLabels}
+                    where ${appTraefikLabels.appId} = ${appsTable.id}
+                  ) then ${appsTable.traefikLabelsBy} else null end`,
                 }
               : {}),
             pendingChangesAt: nowIso(),

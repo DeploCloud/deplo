@@ -34,6 +34,7 @@ export interface GlobalUserDTO {
   suspended: boolean;
   canExposePorts: boolean;
   canMountHostVolumes: boolean;
+  canConfigureTraefik: boolean;
   createdAt: string;
 }
 
@@ -49,6 +50,7 @@ export interface UserDetailDTO {
   suspended: boolean;
   canExposePorts: boolean;
   canMountHostVolumes: boolean;
+  canConfigureTraefik: boolean;
   twoFactorEnabled: boolean;
   passkeyCount: number;
   createdAt: string;
@@ -75,6 +77,7 @@ export async function listAllUsers(): Promise<GlobalUserDTO[]> {
       suspended: usersTable.suspended,
       canExposePorts: usersTable.canExposePorts,
       canMountHostVolumes: usersTable.canMountHostVolumes,
+      canConfigureTraefik: usersTable.canConfigureTraefik,
       createdAt: usersTable.createdAt,
     })
     .from(usersTable)
@@ -109,6 +112,7 @@ export async function listAllUsers(): Promise<GlobalUserDTO[]> {
     suspended: u.suspended ?? false,
     canExposePorts: u.canExposePorts ?? false,
     canMountHostVolumes: u.canMountHostVolumes ?? false,
+    canConfigureTraefik: u.canConfigureTraefik ?? false,
     createdAt: u.createdAt,
   }));
 }
@@ -128,6 +132,7 @@ export async function getUserDetail(userId: string): Promise<UserDetailDTO> {
       suspended: usersTable.suspended,
       canExposePorts: usersTable.canExposePorts,
       canMountHostVolumes: usersTable.canMountHostVolumes,
+      canConfigureTraefik: usersTable.canConfigureTraefik,
       twoFactorEnabled: usersTable.twoFactorEnabled,
       createdAt: usersTable.createdAt,
     })
@@ -162,6 +167,7 @@ export async function getUserDetail(userId: string): Promise<UserDetailDTO> {
     suspended: u.suspended ?? false,
     canExposePorts: u.canExposePorts ?? false,
     canMountHostVolumes: u.canMountHostVolumes ?? false,
+    canConfigureTraefik: u.canConfigureTraefik ?? false,
     twoFactorEnabled: u.twoFactorEnabled ?? false,
     passkeyCount: passkeyRows.length,
     createdAt: u.createdAt,
@@ -195,6 +201,7 @@ export async function updateUserAdmin(input: {
   suspended: boolean;
   canExposePorts: boolean;
   canMountHostVolumes: boolean;
+  canConfigureTraefik?: boolean;
   newPassword?: string;
 }): Promise<void> {
   const { userId: actingUserId } = await requireInstanceAdmin();
@@ -272,6 +279,7 @@ export async function updateUserAdmin(input: {
         suspended: input.suspended,
         canExposePorts: input.canExposePorts,
         canMountHostVolumes: input.canMountHostVolumes,
+        canConfigureTraefik: input.canConfigureTraefik,
       })
       .where(eq(usersTable.id, input.userId));
     if (newPassword) await setUserPassword(input.userId, newPassword, tx);

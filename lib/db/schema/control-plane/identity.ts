@@ -21,6 +21,9 @@ export const users = pgTable(
     role: text("role").notNull(),
     isInstanceAdmin: boolean("is_instance_admin").notNull().default(false),
     suspended: boolean("suspended").notNull().default(false),
+    canConfigureTraefik: boolean("can_configure_traefik")
+      .notNull()
+      .default(false),
     canExposePorts: boolean("can_expose_ports").notNull().default(false),
     canMountHostVolumes: boolean("can_mount_host_volumes")
       .notNull()

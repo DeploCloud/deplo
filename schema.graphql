@@ -2510,6 +2510,7 @@ type GlobalUser {
   Resolved profile picture: uploaded image, else Gravatar, else null for the monogram.
   """
   avatarUrl: String
+  canConfigureTraefik: Boolean
   canExposePorts: Boolean
   canMountHostVolumes: Boolean
   createdAt: String
@@ -4074,6 +4075,7 @@ type Mutation {
   How many previous deployments this app can be rolled back to (0-20, default 3). It is retention: the app's server keeps this many of its images behind the running one. Takes effect on the next sweep - lowering it removes nothing now, and raising it cannot bring back images already removed.
   """
   setAppRollbackKeep(count: Int!, id: String!): App
+  setAppTraefikLabels(id: String!, labels: [TraefikLabelInput!]!): App
 
   """
   Replace an app's volumes (named, app-files, and host bind mounts). Compose-stack apps included - each volume names the service it mounts into.
@@ -6342,6 +6344,11 @@ type TemplateVariantSummary {
   variantSlug: String
 }
 
+input TraefikLabelInput {
+  key: String!
+  value: String!
+}
+
 """
 A pending enrolment: the secret to scan and the codes to save. Two-factor is not on until `confirmTwoFactorEnrolment` succeeds.
 """
@@ -6454,6 +6461,7 @@ input UpdateTokenInput {
 }
 
 input UpdateUserAdminInput {
+  canConfigureTraefik: Boolean
   canExposePorts: Boolean
   canMountHostVolumes: Boolean
   isInstanceAdmin: Boolean!
@@ -6494,6 +6502,7 @@ type UserDetail {
   Resolved profile picture: uploaded image, else Gravatar, else null for the monogram.
   """
   avatarUrl: String
+  canConfigureTraefik: Boolean
   canExposePorts: Boolean
   canMountHostVolumes: Boolean
   createdAt: String

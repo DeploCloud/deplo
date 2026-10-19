@@ -107,6 +107,7 @@ export interface User {
   suspended?: boolean;
   canExposePorts?: boolean;
   canMountHostVolumes?: boolean;
+  canConfigureTraefik?: boolean;
   avatarColor: string;
   createdAt: string;
 }

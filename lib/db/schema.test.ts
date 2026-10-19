@@ -82,6 +82,7 @@ const CONTROL_PLANE = [
   "app_build_method_settings",
   "app_volumes",
   "app_ports",
+  "app_traefik_labels",
   "app_mounts",
   "deployments",
   "deployment_logs",

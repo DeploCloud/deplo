@@ -1,3 +1,4 @@
+import { setAppTraefikLabels } from "@/lib/data/apps/traefik-labels";
 import { builder } from "../../builder";
 import { remapBuildInput } from "../build-input";
 import { ResourceLimitsInputType } from "../resource-limits";
@@ -40,7 +41,26 @@ import {
   setDeployHookEnabled,
 } from "@/lib/data/deploy-hook";
 
+const TraefikLabelInput = builder.inputType("TraefikLabelInput", {
+  fields: (t) => ({
+    key: t.string({ required: true }),
+    value: t.string({ required: true }),
+  }),
+});
+
 builder.mutationFields((t) => ({
+  setAppTraefikLabels: t.field({
+    type: AppRef,
+    authScopes: { capability: "configure_apps" },
+    args: {
+      id: t.arg.string({ required: true }),
+      labels: t.arg({ type: [TraefikLabelInput], required: true }),
+    },
+    resolve: async (_r, { id, labels }) => {
+      await setAppTraefikLabels(id, labels);
+      return reloadApp(id);
+    },
+  }),
   createApp: t.field({
     type: AppRef,
     authScopes: { capability: "create_apps" },

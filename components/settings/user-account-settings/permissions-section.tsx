@@ -16,6 +16,8 @@ export function PermissionsSection({
   onExposePortsChange,
   mountHostVolumes,
   onMountHostVolumesChange,
+  configureTraefik,
+  onConfigureTraefikChange,
   isSelf,
   ownerLocked,
   ownerFlagsLocked,
@@ -28,6 +30,8 @@ export function PermissionsSection({
   onExposePortsChange: (v: boolean) => void;
   mountHostVolumes: boolean;
   onMountHostVolumesChange: (v: boolean) => void;
+  configureTraefik: boolean;
+  onConfigureTraefikChange: (v: boolean) => void;
   isSelf: boolean;
   ownerLocked: boolean;
   ownerFlagsLocked: boolean;
@@ -62,7 +66,7 @@ export function PermissionsSection({
       <div>
         <ToggleRow
           title="Instance admin"
-          info="Manage every user, mint registration links, and administer every team and server. Instance admins also hold both advanced grants implicitly."
+          info="Manage every user, mint registration links, and administer every team and server. Instance admins also hold all advanced grants implicitly."
           docs="instance.admin"
           checked={admin}
           disabled={isSelf || ownerFlagsLocked}
@@ -108,6 +112,16 @@ export function PermissionsSection({
               checked={admin || mountHostVolumes}
               disabled={admin || ownerLocked}
               onChange={onMountHostVolumesChange}
+            />
+            <ToggleRow
+              title="Configure Traefik"
+              info={withAdminNote(
+                "Allow custom proxy labels, including routes that can affect other teams on the same server.",
+              )}
+              docs="instance.admin"
+              checked={admin || configureTraefik}
+              disabled={admin || ownerLocked}
+              onChange={onConfigureTraefikChange}
             />
           </AccordionContent>
         </AccordionItem>

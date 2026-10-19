@@ -76,6 +76,7 @@ export const apps = pgTable(
     deployHookEnabled: boolean("deploy_hook_enabled").notNull().default(true),
     composeUpArgs: text("compose_up_args"),
     // A deploy has no user of its own, so this is who a revoked host-privilege grant is read against.
+    traefikLabelsBy: text("traefik_labels_by"),
     hostReachBy: text("host_reach_by"),
     rollbackKeep: integer("rollback_keep").notNull().default(3),
     resourceMemLimitMb: integer("resource_mem_limit_mb"),
@@ -251,4 +252,16 @@ export const appMounts = pgTable(
     content: text("content").notNull(),
   },
   (t) => [primaryKey({ columns: [t.appId, t.position] })],
+);
+
+export const appTraefikLabels = pgTable(
+  "app_traefik_labels",
+  {
+    appId: text("app_id")
+      .notNull()
+      .references(() => apps.id, { onDelete: "cascade" }),
+    key: text("key").notNull(),
+    value: text("value").notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.appId, t.key] })],
 );

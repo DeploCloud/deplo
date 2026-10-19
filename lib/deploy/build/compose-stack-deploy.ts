@@ -1,3 +1,4 @@
+import { appTraefikOverrides } from "../../data/apps/traefik-labels";
 import "server-only";
 
 import { basicAuthUsersValue } from "../../data/basic-auth";
@@ -83,6 +84,7 @@ async function prepareComposeStack(opts: ComposeStackOpts): Promise<{
   });
   const takenNames = await takenNamesForApp(project, project.id);
   const stackYaml = buildComposeStack({
+    ...(await appTraefikOverrides(project.id, Boolean(opts.preview))),
     compose: project.compose ?? "",
     name,
     deployKey,

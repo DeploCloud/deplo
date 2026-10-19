@@ -30,6 +30,8 @@ let db: PgliteDatabase<typeof schema>;
 
 async function applyFile(file: string): Promise<void> {
   const sql = readFileSync(path.join(MIG_DIR, file), "utf8");
+  if (file.startsWith("0175_"))
+    await pg.exec("ALTER TABLE users DROP COLUMN can_configure_traefik");
   for (const chunk of sql.split("--> statement-breakpoint")) {
     const s = chunk.trim();
     if (s) await pg.exec(s);
@@ -68,6 +70,9 @@ before(async () => {
     alter table memberships add column if not exists switcher_position integer;
   `);
 
+  await pg.exec(
+    "ALTER TABLE users ADD COLUMN can_configure_traefik boolean NOT NULL DEFAULT false",
+  );
   await seedIdentity(db, {
     users: [{ id: USER_1, teamId: TEAM_A, role: "owner" }],
   });

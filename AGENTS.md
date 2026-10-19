@@ -12,8 +12,8 @@ on the deeper docs it links (this file points; it does not restate them).
 - **`docs/agents/`**: `issue-tracker.md`, `triage-labels.md`, `domain.md`, `releasing.md`,
   `fleet-rollout.md`.
 
-**Every count in this file is a snapshot of a moving tree** (45 Capabilities, 107 tables, 187 MCP
-tools, 35 ADRs, the pin list). The rule they carry is the durable part; re-derive the number
+**Every count in this file is a snapshot of a moving tree** (45 Capabilities, 108 tables, 187 MCP
+tools, 36 ADRs, the pin list). The rule they carry is the durable part; re-derive the number
 before you rely on it, and fix the line here when it has moved:
 
 ```sh

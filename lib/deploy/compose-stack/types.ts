@@ -1,3 +1,4 @@
+import type { TraefikLabel } from "../traefik-overrides";
 import "server-only";
 
 import type { ResourceLimits, VolumeMount } from "../../types/container";
@@ -18,6 +19,8 @@ export interface ComposeDomainRoute {
 }
 
 export interface ComposeStackInput {
+  allowTraefikLabels?: boolean;
+  traefikLabels?: TraefikLabel[];
   compose: string;
   name: string;
   deployKey: string;

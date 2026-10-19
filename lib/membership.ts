@@ -496,6 +496,40 @@ export async function canExposePorts(): Promise<boolean> {
   return hasGrant(await getCurrentUser(), "canExposePorts");
 }
 
+export async function userMayConfigureTraefik(
+  userId: string,
+  allowAdmin = true,
+): Promise<boolean> {
+  const [row] = await getDb()
+    .select({
+      admin: usersTable.isInstanceAdmin,
+      granted: usersTable.canConfigureTraefik,
+      suspended: usersTable.suspended,
+    })
+    .from(usersTable)
+    .where(eq(usersTable.id, userId))
+    .limit(1);
+  return Boolean(
+    row && !row.suspended && (row.granted || (allowAdmin && row.admin)),
+  );
+}
+
+export async function canConfigureTraefik(): Promise<boolean> {
+  const user = await getCurrentUser();
+  return Boolean(
+    user && (await userMayConfigureTraefik(user.id, tokenHoldsInstanceAdmin())),
+  );
+}
+
+export async function requireConfigureTraefik(): Promise<{ userId: string }> {
+  const user = await assertUser();
+  if (!(await canConfigureTraefik()))
+    throw new Error(
+      'You need "Configure Traefik" permission. An instance admin can grant it in Settings > Users.',
+    );
+  return { userId: user.id };
+}
+
 export async function requireExposePorts(): Promise<{ userId: string }> {
   const user = await assertUser();
   if (!(await hasGrant(user, "canExposePorts")))

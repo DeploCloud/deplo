@@ -126,6 +126,7 @@ export const GlobalUserRef = builder
       suspended: t.exposeBoolean("suspended"),
       canExposePorts: t.exposeBoolean("canExposePorts"),
       canMountHostVolumes: t.exposeBoolean("canMountHostVolumes"),
+      canConfigureTraefik: t.exposeBoolean("canConfigureTraefik"),
       createdAt: t.exposeString("createdAt"),
     }),
   });
@@ -165,6 +166,7 @@ export const UserDetailRef = builder
       suspended: t.exposeBoolean("suspended"),
       canExposePorts: t.exposeBoolean("canExposePorts"),
       canMountHostVolumes: t.exposeBoolean("canMountHostVolumes"),
+      canConfigureTraefik: t.exposeBoolean("canConfigureTraefik"),
       twoFactorEnabled: t.exposeBoolean("twoFactorEnabled", {
         description:
           "Has an authenticator app enrolled. Only then is `resetUserTwoFactor` offered.",
@@ -309,6 +311,7 @@ const UpdateUserAdminInputType = builder.inputType("UpdateUserAdminInput", {
     suspended: t.boolean({ required: true }),
     canExposePorts: t.boolean({ required: false }),
     canMountHostVolumes: t.boolean({ required: false }),
+    canConfigureTraefik: t.boolean({ required: false }),
     newPassword: t.string({ required: false }),
   }),
 });
@@ -499,6 +502,8 @@ builder.mutationFields((t) => ({
         canExposePorts: input.canExposePorts ?? current.canExposePorts,
         canMountHostVolumes:
           input.canMountHostVolumes ?? current.canMountHostVolumes,
+        canConfigureTraefik:
+          input.canConfigureTraefik ?? current.canConfigureTraefik,
         newPassword: input.newPassword ?? undefined,
       });
       return getUserDetail(input.userId);

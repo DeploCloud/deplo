@@ -80,7 +80,7 @@ export function ignoredTraefikMessage(service: string, keys: string[]): string {
   const shown = keys.slice(0, 4).map((k) => `\`${k}\``);
   const more = keys.length > 4 ? ` and ${keys.length - 4} more` : "";
   return (
-    `\`${service}\` has Traefik labels Deplo does not apply: ${shown.join(", ")}${more}. ` +
-    `Routes come from the app's Domains; a supported middleware is kept and applied to this service's domains.`
+    `\`${service}\` has custom Traefik labels: ${shown.join(", ")}${more}. ` +
+    `Save them with Configure Traefik permission to override routing. Until then, and in previews, Domains controls routing.`
   );
 }

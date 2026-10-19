@@ -47,6 +47,7 @@ export const MOVE_TABLES: Readonly<Record<string, TablePolicy>> = {
   app_grants: COPY,
   app_mounts: COPY,
   app_ports: COPY,
+  app_traefik_labels: COPY,
   app_preview_env_vars: { kind: "copy", rekey: { value_enc: SECRET } },
   // Run by the old Deplo on its own servers; the deployments they built stay as history.
   app_previews: { kind: "skip" },

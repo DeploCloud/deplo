@@ -20,6 +20,7 @@ function u(over: Partial<GlobalUserDTO>): GlobalUserDTO {
     suspended: false,
     canExposePorts: false,
     canMountHostVolumes: false,
+    canConfigureTraefik: false,
     createdAt: "2026-10-05T00:00:00.000Z",
     ...over,
   };

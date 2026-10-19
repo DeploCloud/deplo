@@ -1,3 +1,10 @@
+import {
+  traefikLabelsFrom,
+  overlayTraefikLabels,
+  validateTraefikLabels,
+  type TraefikLabel,
+} from "../traefik-overrides";
+import { labelEntries } from "../compose-lint/traefik-labels";
 import "server-only";
 
 import yaml from "../../yaml";
@@ -70,6 +77,7 @@ export function buildComposeStack(input: ComposeStackInput): string {
   // Off by default: an image's own `traefik.*` labels ride in, and Traefik reads the container.
   const containerLabels = [...tracking, "traefik.enable=false"];
   const ownMiddlewares = new Map<string, string[]>();
+  const customLabels = new Map<string, TraefikLabel[]>();
   for (const [serviceName, svc] of Object.entries(services)) {
     if (svc && typeof svc === "object") {
       assertNetworkModeIsNotANetwork(serviceName, (svc as App).network_mode);
@@ -77,9 +85,31 @@ export function buildComposeStack(input: ComposeStackInput): string {
       delete (svc as App).container_name;
       if (input.stripPublishedPorts) delete (svc as App).ports;
       if (input.filesDir) rewriteAppVolumes(svc as App, input.filesDir);
-      // The `domains` table is the only routing source: a hand-written router could claim another host.
+      if (input.allowTraefikLabels) {
+        const labels = validateTraefikLabels(traefikLabelsFrom(svc.labels));
+        customLabels.set(serviceName, labels);
+        svc.labels = labelEntries(svc.labels)
+          .filter(([key]) => !key.trim().toLowerCase().startsWith("traefik."))
+          .map(([key, value]) =>
+            value === undefined ? key : `${key}=${value}`,
+          );
+      }
       const traefik = takeTraefikLabels(svc as App, trackingId);
-      ownMiddlewares.set(serviceName, traefik.middlewares);
+      ownMiddlewares.set(
+        serviceName,
+        input.allowTraefikLabels
+          ? [
+              ...new Set(
+                (customLabels.get(serviceName) ?? []).flatMap(({ key }) => {
+                  const match = /^traefik\.http\.middlewares\.([^.]+)\./.exec(
+                    key,
+                  );
+                  return match ? [match[1]] : [];
+                }),
+              ),
+            ]
+          : traefik.middlewares,
+      );
       if (traefik.ignored.length > 0)
         input.onWarn?.(ignoredTraefikMessage(serviceName, traefik.ignored));
       mergeLabels(svc as App, containerLabels);
@@ -91,6 +121,21 @@ export function buildComposeStack(input: ComposeStackInput): string {
 
   const wireApp = createAppWiring(services);
   wireDomainRoutes({ services, input, basicAuth, wireApp, ownMiddlewares });
+  for (const [service, labels] of customLabels) {
+    if (!labels.length) continue;
+    const svc = services[service];
+    svc.labels = overlayTraefikLabels(
+      [...(svc.labels as string[]), `traefik.docker.network=${input.network}`],
+      labels,
+    );
+    if (
+      (svc.labels as string[]).some((label) =>
+        /^traefik\.enable=true$/i.test(label),
+      ) &&
+      !wireApp(service)
+    )
+      throw new Error(`Service ${service} cannot join the proxy network`);
+  }
   joinEveryService({ doc, services, input, wireApp });
   collapseOntoStackNetwork(doc, services, input.network);
 

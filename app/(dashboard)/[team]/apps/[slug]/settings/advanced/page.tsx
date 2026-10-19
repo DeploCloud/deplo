@@ -1,3 +1,6 @@
+import { TraefikLabelsForm } from "@/components/apps/settings/traefik-labels-form";
+import { getAppTraefikLabels } from "@/lib/data/apps/traefik-labels";
+import { canConfigureTraefik } from "@/lib/membership";
 import { notFound } from "next/navigation";
 import { SlidersHorizontal } from "lucide-react";
 import { getAppBySlug } from "@/lib/data/apps/listing";
@@ -44,6 +47,13 @@ export default async function AppAdvancedSettingsPage(
       canExposePorts(),
       listBuildServerChoices(),
     ]);
+  const mayConfigureTraefik =
+    (await canConfigureTraefik()) &&
+    (await hasAppCapability(project.id, "configure_apps"));
+  const traefikLabels =
+    mayConfigureTraefik && !usesComposeStack(project)
+      ? await getAppTraefikLabels(project.id)
+      : null;
   const cron = canCron ? await listAppCronJobs(project.id) : null;
 
   const isComposeStack = usesComposeStack(project);
@@ -170,6 +180,10 @@ export default async function AppAdvancedSettingsPage(
           </CapabilityFieldset>
         </CardContent>
       </Card>
+
+      {traefikLabels && (
+        <TraefikLabelsForm appId={project.id} labels={traefikLabels} />
+      )}
 
       <RebuildContainerCard
         appId={project.id}

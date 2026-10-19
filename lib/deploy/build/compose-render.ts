@@ -1,3 +1,5 @@
+import { overlayTraefikLabels, type TraefikLabel } from "../traefik-overrides";
+import { appTraefikOverrides } from "../../data/apps/traefik-labels";
 import "server-only";
 
 import { basicAuthUsersValue } from "../../data/basic-auth";
@@ -21,6 +23,7 @@ import { traefikRouterLabels } from "../routing";
 import { appEnv, type PreviewEnvContext } from "./deploy-env";
 
 export function renderCompose(opts: {
+  traefikLabels?: TraefikLabel[];
   name: string;
   image: string;
   port: number;
@@ -76,7 +79,12 @@ export function renderCompose(opts: {
     `deplo.slug=${deployKey}`,
     ...(trackingId === appId ? [] : [`deplo.app=${appId}`]),
   ];
-  const labelsYaml = labels
+  if (
+    opts.traefikLabels?.length &&
+    !labels.some((label) => label.startsWith("traefik.docker.network="))
+  )
+    labels.push(`traefik.docker.network=${opts.network}`);
+  const labelsYaml = overlayTraefikLabels(labels, opts.traefikLabels ?? [])
     .map((l) => `      - ${JSON.stringify(l)}`)
     .join("\n");
   const envYaml = Object.keys(env).length
@@ -167,6 +175,7 @@ export async function renderDeployStack(opts: {
   const basicAuthUsers = await basicAuthUsersValue(project.id);
   const network = deployNetwork(project, preview ? deployKey : null);
   const composeYaml = renderCompose({
+    ...(await appTraefikOverrides(project.id, Boolean(preview))),
     name: opts.name,
     image: opts.image,
     port: opts.previewPort ?? project.build.port,

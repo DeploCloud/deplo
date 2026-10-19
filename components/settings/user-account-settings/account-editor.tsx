@@ -34,6 +34,7 @@ export interface EditUserSeedFlags {
   suspended: boolean;
   canExposePorts: boolean;
   canMountHostVolumes: boolean;
+  canConfigureTraefik: boolean;
   createdAt: string;
   teamCount: number;
 }
@@ -42,6 +43,7 @@ interface Grants {
   isInstanceAdmin: boolean;
   canExposePorts: boolean;
   canMountHostVolumes: boolean;
+  canConfigureTraefik: boolean;
 }
 
 const UPDATE_USER = /* GraphQL */ `
@@ -80,6 +82,9 @@ export function UserAccountSettings({
   const [mountHostVolumes, setMountHostVolumes] = React.useState(
     seed?.canMountHostVolumes ?? false,
   );
+  const [configureTraefik, setConfigureTraefik] = React.useState(
+    seed?.canConfigureTraefik ?? false,
+  );
   const [password, setPassword] = React.useState("");
 
   const [suspended, setSuspended] = React.useState(seed?.suspended ?? false);
@@ -87,6 +92,7 @@ export function UserAccountSettings({
     isInstanceAdmin: seed?.isInstanceAdmin ?? false,
     canExposePorts: seed?.canExposePorts ?? false,
     canMountHostVolumes: seed?.canMountHostVolumes ?? false,
+    canConfigureTraefik: seed?.canConfigureTraefik ?? false,
   });
 
   const [confirmSuspend, setConfirmSuspend] = React.useState(false);
@@ -97,7 +103,11 @@ export function UserAccountSettings({
   const [twoFactorEnabled, setTwoFactorEnabled] = React.useState(false);
   const [passkeyCount, setPasskeyCount] = React.useState(0);
   const [advancedOpen, setAdvancedOpen] = React.useState(
-    Boolean(seed?.canExposePorts || seed?.canMountHostVolumes),
+    Boolean(
+      seed?.canExposePorts ||
+      seed?.canMountHostVolumes ||
+      seed?.canConfigureTraefik,
+    ),
   );
   const hasSeed = seed != null;
 
@@ -118,6 +128,7 @@ export function UserAccountSettings({
           suspended
           canExposePorts
           canMountHostVolumes
+          canConfigureTraefik
           twoFactorEnabled
           passkeyCount
           teams { teamId teamName teamAvatarUrl role }
@@ -133,6 +144,7 @@ export function UserAccountSettings({
           isInstanceAdmin: res.data.isInstanceAdmin,
           canExposePorts: res.data.canExposePorts,
           canMountHostVolumes: res.data.canMountHostVolumes,
+          canConfigureTraefik: res.data.canConfigureTraefik,
         });
         setSuspended(res.data.suspended);
         setTwoFactorEnabled(res.data.twoFactorEnabled);
@@ -141,7 +153,12 @@ export function UserAccountSettings({
           setAdmin(res.data.isInstanceAdmin);
           setExposePorts(res.data.canExposePorts);
           setMountHostVolumes(res.data.canMountHostVolumes);
-          if (res.data.canExposePorts || res.data.canMountHostVolumes)
+          setConfigureTraefik(res.data.canConfigureTraefik);
+          if (
+            res.data.canExposePorts ||
+            res.data.canMountHostVolumes ||
+            res.data.canConfigureTraefik
+          )
             setAdvancedOpen(true);
         }
       } else if (!res.ok) {
@@ -167,6 +184,7 @@ export function UserAccountSettings({
     admin !== savedGrants.isInstanceAdmin ||
     exposePorts !== savedGrants.canExposePorts ||
     mountHostVolumes !== savedGrants.canMountHostVolumes ||
+    configureTraefik !== savedGrants.canConfigureTraefik ||
     password.length > 0;
 
   function commit(patch: {
@@ -186,6 +204,7 @@ export function UserAccountSettings({
           isInstanceAdmin: grants.isInstanceAdmin,
           canExposePorts: grants.canExposePorts,
           canMountHostVolumes: grants.canMountHostVolumes,
+          canConfigureTraefik: grants.canConfigureTraefik,
           suspended: patch.suspended ?? suspended,
           newPassword: patch.newPassword || undefined,
         },
@@ -201,6 +220,7 @@ export function UserAccountSettings({
         isInstanceAdmin: admin,
         canExposePorts: exposePorts,
         canMountHostVolumes: mountHostVolumes,
+        canConfigureTraefik: configureTraefik,
       };
       const res = await commit({ grants, newPassword: password || undefined });
       if (res.ok) {
@@ -306,6 +326,8 @@ export function UserAccountSettings({
               onExposePortsChange={setExposePorts}
               mountHostVolumes={mountHostVolumes}
               onMountHostVolumesChange={setMountHostVolumes}
+              configureTraefik={configureTraefik}
+              onConfigureTraefikChange={setConfigureTraefik}
               isSelf={isSelf}
               ownerLocked={ownerLocked}
               ownerFlagsLocked={ownerFlagsLocked}

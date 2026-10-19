@@ -1,3 +1,4 @@
+import { appTraefikOverrides } from "../../data/apps/traefik-labels";
 import "server-only";
 
 import { loadAppGraph, loadDomainsForApp } from "../../data/app-graph-load";
@@ -31,6 +32,7 @@ export async function renderAppStack(appId: string): Promise<string | null> {
           .sort((a, b) => Number(b.primary) - Number(a.primary))
           .map((d) => defaultRoute(d.name, d.service ?? null, d.port ?? null));
     return buildComposeStack({
+      ...(await appTraefikOverrides(appId)),
       compose: project.compose ?? "",
       name,
       deployKey,

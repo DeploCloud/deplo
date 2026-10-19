@@ -1,4 +1,5 @@
 import "server-only";
+import { appTraefikOverrides } from "../../data/apps/traefik-labels";
 
 import { and, eq, ne } from "drizzle-orm";
 import { recordActivity, resolveActorUserId } from "../../data/activity";
@@ -58,6 +59,7 @@ export async function startDeployment(
   const project = await loadAppGraph(appId);
   if (!project) throw new Error("App not found");
   const preview = opts.preview ?? null;
+  await appTraefikOverrides(appId, Boolean(preview));
   if (!preview && !project.migrateFromServerId)
     assertDataCopyIntact(project.name, project.dataCopyError);
   assertNotMigrating("app", project.name, project.migrationRunId);

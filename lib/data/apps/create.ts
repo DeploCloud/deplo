@@ -1,3 +1,4 @@
+import { authorizeComposeTraefik } from "./traefik-labels";
 import "server-only";
 
 import { eq } from "drizzle-orm";
@@ -227,6 +228,7 @@ export async function createApp(input: CreateAppInput): Promise<AppSummary> {
 
   if (input.sharedVarIds?.length) await requireCapability("manage_env");
   const reach = await assertComposeSavable(input.compose);
+  const traefikLabelsBy = await authorizeComposeTraefik(input.compose);
 
   const claimsAHostname = [
     input.autoDomain,
@@ -445,6 +447,7 @@ export async function createApp(input: CreateAppInput): Promise<AppSummary> {
               ...appToRow(project),
               createdByUserId: userId,
               hostReachBy: reach.length > 0 ? userId : null,
+              traefikLabelsBy,
             });
             await tx
               .insert(appBuildTable)

@@ -42,6 +42,7 @@ repository root.
 | [0033](0033-usage-reports-are-anonymous-opt-out-and-first-party.md)                       | Usage reports are anonymous, opt-out, and land on a service of our own                                                      |
 | [0034](0034-another-deplo-hands-its-team-over-itself.md)                                  | Another Deplo hands its team over itself                                                                                    |
 | [0035](0035-a-whole-deplo-copies-onto-a-new-machine.md)                                   | A whole Deplo copies onto a new machine, and the old one keeps running                                                      |
+| [0036](0036-custom-traefik-labels.md)                                                     | Custom Traefik labels require an instance-wide grant                                                                        |
 
 ## Amended or superseded
 

@@ -302,6 +302,7 @@ function UserRow({
             suspended: patch.suspended ?? user.suspended,
             canExposePorts: user.canExposePorts,
             canMountHostVolumes: user.canMountHostVolumes,
+            canConfigureTraefik: user.canConfigureTraefik,
           },
         },
       );
@@ -543,6 +544,7 @@ function UserRow({
             suspended: user.suspended,
             canExposePorts: user.canExposePorts,
             canMountHostVolumes: user.canMountHostVolumes,
+            canConfigureTraefik: user.canConfigureTraefik,
             createdAt: user.createdAt,
             teamCount: user.teamCount,
           }}
@@ -571,6 +573,7 @@ function UserRow({
                   suspended: true,
                   canExposePorts: user.canExposePorts,
                   canMountHostVolumes: user.canMountHostVolumes,
+                  canConfigureTraefik: user.canConfigureTraefik,
                 },
               },
             );
