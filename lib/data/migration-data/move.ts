@@ -50,10 +50,12 @@ import {
   copyPairedVolumes,
   newCopyTally,
   type CopyContext,
+  type CopyTally,
 } from "./copy-pass";
 import { startAndVerifyDatabase, waitForProvision } from "./database-verify";
 import { hostPathOwners } from "./host-path-clashes";
 import { landedFor, runTargets, type Landed } from "./landed-targets";
+import { restoreDumpInto } from "./live-copy";
 import { recordSourceStopped } from "./source-cutover";
 import { sourceDataHost } from "./source-data-host";
 import { sourceServices, type SourceService } from "./source-services";
@@ -63,6 +65,8 @@ export interface MoveInput extends ConnectInput {
   sourceKind: string;
   sourceId: string;
   onBytes?: OnBytes;
+  // Copy without stopping the source; the switch-over is left to the user.
+  liveCopy?: boolean;
 }
 
 export interface DataMoveResult {
@@ -290,6 +294,51 @@ async function runMoveMigrationServiceData(
       });
   }
 
+  const live = input.liveCopy === true;
+  if (live && landed.targetKind === "database") {
+    const exportDump = sourceClient(c).dataExport?.exportDump;
+    if (!exportDump)
+      return refuse({
+        message: `Only another Deplo can hand over ${svc.name} without stopping it, so its data was not copied. Run the copy again with the source stopped.`,
+        reason: `${svc.name} could not be copied without stopping it on ${panel}`,
+      });
+    const tally = newCopyTally();
+    const aborter = new AbortController();
+    inFlightCopies.set(input.runId, aborter);
+    try {
+      const restored = await restoreDumpInto(
+        landed,
+        teamId,
+        (recipient) => exportDump(svc, recipient),
+        { onBytes: input.onBytes, signal: aborter.signal },
+      );
+      if (restored.ok) {
+        tally.moved++;
+        notes.push(
+          `${landed.targetName} holds a snapshot of ${svc.name} taken while it kept running on {panel}. Anything written there after the copy is not here.`,
+        );
+      } else {
+        tally.failed++;
+        tally.lost.push(restored.message);
+        notes.push(blocker(`${svc.name}: ${restored.message}`));
+      }
+    } finally {
+      inFlightCopies.delete(input.runId);
+    }
+    return settle({
+      input,
+      teamId,
+      panel,
+      path,
+      svc,
+      landed,
+      state,
+      notes,
+      tally,
+      live,
+    });
+  }
+
   let stoppedThere = false;
   const startAgainThere = async (): Promise<string> => {
     try {
@@ -309,8 +358,10 @@ async function runMoveMigrationServiceData(
     }
   };
   try {
-    await sourceClient(c).stopService(input.sourceKind, input.sourceId);
-    stoppedThere = true;
+    if (!live) {
+      await sourceClient(c).stopService(input.sourceKind, input.sourceId);
+      stoppedThere = true;
+    }
   } catch (e) {
     const why = e instanceof Error ? e.message : `${panel} refused`;
     if (state.running) {
@@ -376,6 +427,7 @@ async function runMoveMigrationServiceData(
     svc,
     landed,
     running: state.running,
+    live,
     sourceServerId: host.serverId ?? "",
     source,
     dest,
@@ -407,6 +459,35 @@ async function runMoveMigrationServiceData(
   )
     notes.push(await startAgainThere());
 
+  return settle({
+    input,
+    teamId,
+    panel,
+    path,
+    svc,
+    landed,
+    state,
+    notes,
+    tally,
+    live,
+  });
+}
+
+async function settle(o: {
+  input: MoveInput;
+  teamId: string;
+  panel: string;
+  path: string;
+  svc: SourceService;
+  landed: Landed;
+  state: { running: boolean };
+  notes: Note[];
+  tally: CopyTally;
+  live: boolean;
+}): Promise<DataMoveResult> {
+  const { input, teamId, panel, path, svc, landed, state, notes, tally, live } =
+    o;
+  const saidHere = (text: string) => withPanel(text, panel);
   if (
     landed.targetKind === "database" &&
     tally.failed === 0 &&
@@ -438,7 +519,13 @@ async function runMoveMigrationServiceData(
     await markDataCopyFailed(marker, tally.lost.join(" | "));
   else if (tally.failed === 0) await clearDataCopyError(marker);
 
-  if (tally.moved > 0 && landed.targetKind === "app")
+  if (tally.moved > 0 && live)
+    notes.push(
+      landed.targetKind === "app"
+        ? `${svc.name} still serves on {panel}, and ${landed.targetName} here is a copy of it. Press Deploy to start the copy, and move the domains over when you want the traffic to follow.`
+        : `${svc.name} still serves on {panel}. Point your apps at ${landed.targetName} when you switch over.`,
+    );
+  else if (tally.moved > 0 && landed.targetKind === "app")
     notes.push(
       `${landed.targetName} is stopped on both sides. Press Deploy when the traffic should follow the data.`,
     );

@@ -31,8 +31,12 @@ import { __resetExportTrailForTest, exportTeamForMigration } from "./export";
 import {
   ExportRefusedError,
   openAppUpload,
+  openDatabaseDump,
   openWorkloadData,
 } from "./data-stream";
+import type { BackupRequest } from "../../agent/gen/agent";
+import type { AgentConnection } from "../../infra/agent-client/connection";
+import { __setAgentConnectorForTest } from "../../infra/agent-client/connect";
 import { storeUpload } from "../../deploy/upload";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -466,6 +470,65 @@ test("the data stream answers 404 for an app with no archive", async () => {
   await assert.rejects(
     () =>
       as(USER_1, TEAM_A, () => openAppUpload({ kind: "app", id: "prj_web" })),
+    (e: unknown) => e instanceof ExportRefusedError && e.status === 404,
+  );
+});
+
+const RECIPIENT =
+  "age1qyqszqgpqyqszqgpqyqszqgpqyqszqgpqyqszqgpqyqszqgpqyqs3290gq";
+
+function dumpingAgent(asked: BackupRequest[]) {
+  return async () =>
+    ({
+      async hello() {
+        return { capabilities: ["backup", "backup-store"] };
+      },
+      async *backup(req: BackupRequest) {
+        asked.push(req);
+        yield { data: Buffer.from("encrypted ") };
+        yield { data: Buffer.from("dump") };
+        yield { result: { ok: true, error: "" } };
+      },
+      close() {},
+    }) as unknown as AgentConnection;
+}
+
+test("the data stream dumps a database through its engine, encrypted to the caller's key", async () => {
+  const asked: BackupRequest[] = [];
+  __setAgentConnectorForTest(dumpingAgent(asked));
+  try {
+    const { chunks } = await as(USER_1, TEAM_A, () =>
+      openDatabaseDump({ kind: "database", id: "db_main" }, RECIPIENT),
+    );
+    assert.equal(await drain(chunks), "encrypted dump");
+    assert.equal(asked.length, 1);
+    assert.equal(asked[0].streamOut, true);
+    assert.equal(asked[0].ageRecipient, RECIPIENT);
+    assert.equal(asked[0].database?.container, "db-main");
+    assert.equal(asked[0].database?.projectId, "db_main");
+  } finally {
+    __setAgentConnectorForTest();
+  }
+});
+
+test("the data stream dumps only a database, and only to an age key", async () => {
+  for (const [ref, recipient] of [
+    [{ kind: "app", id: "prj_web" }, RECIPIENT],
+    [{ kind: "database", id: "db_main" }, "not-a-key"],
+  ] as const)
+    await assert.rejects(
+      () => as(USER_1, TEAM_A, () => openDatabaseDump(ref, recipient)),
+      (e: unknown) => e instanceof ExportRefusedError && e.status === 400,
+    );
+});
+
+test("the data stream does not dump another team's database", async () => {
+  await seedDatabase(db, { id: "db_theirs", name: "theirs", teamId: TEAM_B });
+  await assert.rejects(
+    () =>
+      as(USER_1, TEAM_A, () =>
+        openDatabaseDump({ kind: "database", id: "db_theirs" }, RECIPIENT),
+      ),
     (e: unknown) => e instanceof ExportRefusedError && e.status === 404,
   );
 });

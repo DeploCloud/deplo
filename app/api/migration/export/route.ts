@@ -4,6 +4,7 @@ import {
   ExportRefusedError,
   checkWorkloadData,
   openAppUpload,
+  openDatabaseDump,
   openWorkloadData,
   type WorkloadRef,
 } from "@/lib/data/migration-export/data-stream";
@@ -18,6 +19,8 @@ interface ExportRequest extends WorkloadRef {
   allowFile?: boolean;
   check?: string[];
   upload?: boolean;
+  dump?: boolean;
+  recipient?: string;
 }
 
 function refused(message: string, status: number): Response {
@@ -86,13 +89,15 @@ export async function POST(request: Request) {
         );
 
       const { chunks, close } =
-        body.upload === true
-          ? await openAppUpload(ref)
-          : await openWorkloadData(ref, {
-              volume: body.volume,
-              hostPath: body.hostPath,
-              allowFile: body.allowFile,
-            });
+        body.dump === true
+          ? await openDatabaseDump(ref, String(body.recipient ?? ""))
+          : body.upload === true
+            ? await openAppUpload(ref)
+            : await openWorkloadData(ref, {
+                volume: body.volume,
+                hostPath: body.hostPath,
+                allowFile: body.allowFile,
+              });
       const it = chunks[Symbol.asyncIterator]();
       let first: IteratorResult<Buffer>;
       try {
@@ -110,7 +115,7 @@ export async function POST(request: Request) {
       return new Response(streamOf(first.value, it, close), {
         headers: {
           "Content-Type":
-            body.upload === true
+            body.upload === true || body.dump === true
               ? "application/octet-stream"
               : "application/gzip",
           "Cache-Control": "no-store",
