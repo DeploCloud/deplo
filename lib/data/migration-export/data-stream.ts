@@ -1,5 +1,10 @@
 import "server-only";
 
+import { and, eq } from "drizzle-orm";
+
+import { getDb } from "../../db/client";
+import { apps as appsTable } from "../../db/schema/control-plane/apps";
+import { readUpload } from "../../deploy/upload";
 import { connectAgent } from "../../infra/agent-client/connect";
 import { canMountHostVolumes, isInstanceAdmin } from "../../membership";
 import { sourceAgentReachable } from "../agent-reach";
@@ -59,6 +64,30 @@ export async function checkWorkloadData(
   } catch {
     return { reachable: true, present: null };
   }
+}
+
+// An upload app's archive is its source, kept on this control plane's disk rather than a server.
+export async function openAppUpload(
+  ref: WorkloadRef,
+): Promise<{ chunks: AsyncIterable<Buffer>; close: () => void }> {
+  const { teamId } = await assertExportGate();
+  if (ref.kind !== "app")
+    throw new ExportRefusedError("Only an app has an archive.", 400);
+  const [row] = await getDb()
+    .select({ source: appsTable.source, uploadPath: appsTable.uploadPath })
+    .from(appsTable)
+    .where(and(eq(appsTable.id, ref.id), eq(appsTable.teamId, teamId)));
+  if (
+    !row?.uploadPath ||
+    row.source !== "upload" ||
+    !(await hasAppCapability(ref.id, "reveal_secrets"))
+  )
+    throw new ExportRefusedError("Not found", 404);
+  const chunks = readUpload(ref.id, row.uploadPath);
+  return {
+    chunks,
+    close: () => chunks.destroy(),
+  };
 }
 
 // Only what the named workload mounts leaves this instance; a host path outside its own files needs the host-volumes grant.

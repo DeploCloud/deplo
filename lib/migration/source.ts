@@ -75,6 +75,8 @@ export interface SourceDataExport {
     path: string,
     allowFile?: boolean,
   ): AsyncIterable<Buffer>;
+  // The archive an upload app builds from, as it was uploaded.
+  exportUpload?(svc: { kind: string; id: string }): AsyncIterable<Buffer>;
 }
 
 export interface MigrationSourceClient {
