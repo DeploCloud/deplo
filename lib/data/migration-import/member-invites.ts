@@ -275,7 +275,7 @@ async function accessPlanFor(
     outcome: "manual",
     message:
       access === undefined
-        ? "{panel} is too old to send its roles and who could reach which folder, so everyone joined as a member. Update it and import again, or set each person's access in Members."
+        ? "{panel} is too old to send its roles and who could reach which folder, so everyone joined as a member. Update it and run the migration again, or set each person's access in Members."
         : "The token's owner cannot manage members on {panel}, so its roles and who could reach which folder did not come across, and everyone joined as a member. Set each person's access in Members.",
   });
   return null;

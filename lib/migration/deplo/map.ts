@@ -131,7 +131,7 @@ function backupHistoryOf(w: {
     notes:
       w.backups.length > 0
         ? [
-            "{panel} is too old to send its backup history, so its restore points are not listed here. Restore from {panel}, or update it and import again.",
+            "{panel} is too old to send its backup history, so its restore points are not listed here. Restore from {panel}, or update it and run the migration again.",
           ]
         : [],
   };
@@ -179,7 +179,7 @@ function domainsOf(
   }));
   if (a.domains.some((d) => d.securityHeaders === undefined))
     notes.push(
-      "{panel} is too old to hand over its domains' middlewares, CORS origins and security headers, so they arrive with this Deplo's defaults. Check them under Domains.",
+      "{panel} is too old to hand over its domains' Middlewares, Allowed origins and Security headers, so they arrive with this Deplo's defaults. Check them under Domains.",
     );
   return { domains, notes };
 }

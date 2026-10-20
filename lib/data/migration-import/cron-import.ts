@@ -1,5 +1,6 @@
 import "server-only";
 
+import { errorMessage } from "../../utils";
 import type { Note } from "../../migration/note";
 import { sourceClient } from "../../migration/source";
 import type { SourceCredential } from "../../migration/source";
@@ -33,7 +34,9 @@ export async function importCrons(
   for (const s of await sourceClient(c).listSchedules(scheduleType, sourceId)) {
     const command = (s.command ?? s.script ?? "").trim();
     if (!command) {
-      notes.push(`Cron "${s.name}" has no command on {panel} - not imported.`);
+      notes.push(
+        `Cron "${s.name}" has no command on {panel}, so it did not come across.`,
+      );
       continue;
     }
     try {
@@ -49,7 +52,7 @@ export async function importCrons(
       landed++;
     } catch (e) {
       notes.push(
-        `Cron "${s.name}" was not imported: ${e instanceof Error ? e.message : "refused"}.`,
+        `Cron "${s.name}" did not come across: ${errorMessage(e, "refused")}.`,
       );
     }
   }

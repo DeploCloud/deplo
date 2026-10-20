@@ -21,7 +21,7 @@ export async function landNativeOps(
     } catch (e) {
       notes.push(
         blocker(
-          `Its extra compose flags (${ops.composeUpArgs}) did not come across: ${why(e)}. Set them under Settings -> Extra compose flags before deploying.`,
+          `Its extra compose flags (${ops.composeUpArgs}) did not come across: ${why(e)}. Set them under Settings → Extra compose flags before deploying.`,
         ),
       );
     }
@@ -30,7 +30,7 @@ export async function landNativeOps(
       await setAppRollbackKeep(appId, ops.rollbackKeep);
     } catch (e) {
       notes.push(
-        `It kept ${ops.rollbackKeep} deploys to roll back to, which did not come across (${why(e)}). Set it under Settings -> Rollbacks.`,
+        `It kept ${ops.rollbackKeep} deploys to roll back to, which did not come across (${why(e)}). Set it under Settings → Rollbacks.`,
       );
     }
   if (!ops.deployHook.enabled)
@@ -38,11 +38,11 @@ export async function landNativeOps(
       await setDeployHookEnabled(appId, false);
     } catch (e) {
       notes.push(
-        `Its deploy hook was off on {panel} but is on here (${why(e)}). Turn it off under Settings -> Deploy hook.`,
+        `Its deploy hook was off on {panel} but is on here (${why(e)}). Turn it off under Settings → Deploy hook.`,
       );
     }
   else if (ops.deployHook.used)
     notes.push(
-      "Its deploy hook has a new address here. Copy it from Settings -> Deploy hook and give it to whatever called the old one, which still deploys on {panel}.",
+      "Its deploy hook has a new address here. Copy it from Settings → Deploy hook and give it to whatever called the old one, which still deploys on {panel}.",
     );
 }

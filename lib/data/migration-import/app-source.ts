@@ -188,7 +188,7 @@ export async function resolveAppSource(
       if (!(await serverSupports(home.serverId, COMPOSE_PROJECTDIR_CAPABILITY)))
         notes.push(
           blocker(
-            "Its compose file names an `env_file`, which needs a newer agent on this server than the one running there. Update the server's agent under Servers before deploying.",
+            "Its compose file names an `env_file`, which needs a newer server agent on this server than the one running there. Update the server agent under Servers before deploying.",
           ),
         );
     }

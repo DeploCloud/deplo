@@ -24,7 +24,7 @@ export async function noteDomainMiddlewares(
     if (d.middlewares?.length)
       notes.push(
         blocker(
-          `${d.name} uses the middlewares ${d.middlewares.join(", ")} from {panel}'s proxy. Unless they are set up on this server too, ${d.name} does not answer - set them up, or remove them under Domains.`,
+          `${d.name} uses the Middlewares ${d.middlewares.join(", ")}, which were set up on {panel}'s server. Unless they are set up on this server too, ${d.name} does not answer - set them up, or remove them under Domains.`,
         ),
       );
 }
@@ -54,8 +54,8 @@ export function noteLeftRules(
 const WITHHELD: Record<string, string> = {
   admin:
     "only an instance admin's token on {panel} hands a certificate's key over",
-  missing: "{panel}'s proxy no longer holds a certificate for it",
-  unreadable: "{panel} could not read its server's proxy",
+  missing: "{panel}'s server no longer holds a certificate for it",
+  unreadable: "{panel} could not read its server's certificates",
   old: "{panel} is too old to hand certificates over",
 };
 
@@ -74,7 +74,7 @@ export async function landDomainCertificates(
       ? await listServerCertificates(serverId)
       : null;
   } catch {}
-  const upload = `Upload it under Servers -> ${serverName} -> Certificates, then set the domain to use it`;
+  const upload = `Upload it under Servers → ${serverName} → Certificates, then set the domain to use it`;
   for (const d of wanted) {
     const cert = d.rules!.certificate!;
     if (
