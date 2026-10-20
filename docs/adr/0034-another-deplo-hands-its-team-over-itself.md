@@ -58,3 +58,7 @@ path cannot simply be pointed at it:
   restorable here, a server disk's are named in the report, since only the old Deplo reaches it.
 - Not carried, and said so in the report: a database's crons, a compose stack's `up` flags, and
   preview settings beyond on/off.
+- A domain carries its middlewares, CORS origins, security headers, proxied flag and its www
+  redirect. A custom certificate travels with its key only when an instance admin's token reads
+  the export (the right to install one), and is installed on the target's server; any other
+  lands without one, named as a blocker in the report.

@@ -10,26 +10,31 @@ import {
 } from "../../db/schema/control-plane/backups";
 import { cronJobs as cronTable } from "../../db/schema/control-plane/crons";
 import { databases as databasesTable } from "../../db/schema/control-plane/databases";
-import {
-  appBasicAuthUsers as basicAuthTable,
-  domains as domainsTable,
-} from "../../db/schema/control-plane/domains";
+import { appBasicAuthUsers as basicAuthTable } from "../../db/schema/control-plane/domains";
 import { tryDecryptSecret } from "../../crypto";
 import { parseConnectionPassword } from "../../deploy/database-compose";
 import type {
   DeploExportApp,
   DeploExportBackup,
   DeploExportBackupRun,
+  DeploExportCertificate,
   DeploExportCron,
   DeploExportData,
   DeploExportDatabase,
   DeploExportDomain,
 } from "../../migration/deplo/export-shape";
-import { loadAppsByTeam, loadEnvVarsForApps } from "../app-graph-load";
+import {
+  loadAppsByTeam,
+  loadDomainsForApps,
+  loadEnvVarsForApps,
+} from "../app-graph-load";
 import { assembleDatabase } from "../backup-rows";
 import { mountsByDatabase } from "../databases/rows";
 import { landedFor } from "../migration-data/landed-targets";
 import { appCapabilitiesForTeam } from "../node-access";
+import { certificateFor, serverCertificatePairs } from "../server-certificates";
+import type { CustomCertificate } from "../../deploy/traefik-stack";
+import { isInstanceAdmin } from "../../membership";
 
 function opened(enc: string): string | null {
   const res = tryDecryptSecret(enc);
@@ -116,6 +121,28 @@ async function schedulesFor(teamId: string) {
   };
 }
 
+// A key is a secret: it leaves only for whoever could install one, and each proxy is read once.
+async function customCertificates(): Promise<
+  (serverId: string, host: string) => Promise<DeploExportCertificate>
+> {
+  const admin = await isInstanceAdmin();
+  const read = new Map<string, Promise<CustomCertificate[] | null>>();
+  return async (serverId, host) => {
+    if (!admin) return { withheld: "admin" };
+    if (!read.has(serverId))
+      read.set(
+        serverId,
+        serverCertificatePairs(serverId).catch(() => null),
+      );
+    const pairs = await read.get(serverId)!;
+    if (!pairs) return { withheld: "unreadable" };
+    const pair = certificateFor(pairs, host);
+    return pair
+      ? { certPem: pair.certPem, keyPem: pair.keyPem }
+      : { withheld: "missing" };
+  };
+}
+
 // A private folder hides its apps from a team-wide member too, so the export reads what the caller can reveal.
 export async function exportApps(
   teamId: string,
@@ -137,13 +164,14 @@ export async function exportApps(
   if (ids.length === 0) return { apps: [], withheld };
   const [vars, domains, basicAuth, schedules] = await Promise.all([
     loadEnvVarsForApps(ids),
-    db.select().from(domainsTable).where(inArray(domainsTable.appId, ids)),
+    loadDomainsForApps(ids),
     db.select().from(basicAuthTable).where(inArray(basicAuthTable.appId, ids)),
     schedulesFor(teamId),
   ]);
   const varsBy = groupBy(vars, (v) => v.appId);
   const domainsBy = groupBy(domains, (d) => d.appId);
   const authBy = groupBy(basicAuth, (b) => b.appId);
+  const certificateOf = await customCertificates();
 
   const out: DeploExportApp[] = [];
   for (const a of apps) {
@@ -198,18 +226,30 @@ export async function exportApps(
       healthCheck: a.healthCheck,
       logo: a.logo,
       env,
-      domains: (domainsBy.get(a.id) ?? []).map((d): DeploExportDomain => ({
-        host: d.name,
-        port: d.port,
-        pathPrefix: d.pathPrefix ?? "",
-        stripPrefix: d.stripPrefix ?? false,
-        service: d.service,
-        https: d.entrypoint !== "web",
-        certProvider: d.certProvider,
-        primary: d.isPrimary,
-        redirectTo: d.redirectTo,
-        generated: d.source === "auto",
-      })),
+      domains: await Promise.all(
+        (domainsBy.get(a.id) ?? []).map(
+          async (d): Promise<DeploExportDomain> => ({
+            host: d.name,
+            port: d.port ?? null,
+            pathPrefix: d.pathPrefix ?? "",
+            stripPrefix: d.stripPrefix ?? false,
+            service: d.service ?? null,
+            https: d.entrypoint !== "web",
+            certProvider: d.certProvider ?? null,
+            primary: d.primary,
+            redirectTo: d.redirectTo,
+            generated: d.source === "auto",
+            entrypoint: d.entrypoint ?? null,
+            middlewares: d.middlewares ?? [],
+            corsOrigins: d.corsOrigins ?? [],
+            securityHeaders: d.securityHeaders ?? true,
+            proxied: d.proxied === true,
+            ...(d.certProvider === "custom"
+              ? { certificate: await certificateOf(a.serverId, d.name) }
+              : {}),
+          }),
+        ),
+      ),
       basicAuth: auth,
       crons: (schedules.appCrons.get(a.id) ?? []).map(schedules.cron),
       backups: (schedules.appBackups.get(a.id) ?? []).map(schedules.backup),

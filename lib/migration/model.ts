@@ -30,7 +30,25 @@ export interface SourceDomain {
   // A host the source platform minted for itself, which never comes across as a domain someone owns.
   generated?: boolean | null;
   primary?: boolean | null;
+  // A domain's own rules, already in Deplo's shape; only another Deplo sends them.
+  nativeRules?: SourceDomainRules | null;
 }
+
+export interface SourceDomainRules {
+  entrypoint?: "web" | "websecure" | null;
+  middlewares?: string[];
+  corsOrigins?: string[];
+  securityHeaders?: boolean;
+  proxied?: boolean;
+  // Set on a domain that only redirects there; it comes across once that host has.
+  redirectTo?: string | null;
+  // Only on a custom-certificate domain: the pair, or why it did not come across.
+  certificate?: SourceCertificate;
+}
+
+export type SourceCertificate =
+  | { certPem: string; keyPem: string }
+  | { withheld: "admin" | "missing" | "unreadable" | "old" };
 
 export interface SourceMount {
   mountId: string;

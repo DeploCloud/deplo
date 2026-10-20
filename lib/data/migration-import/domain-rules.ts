@@ -1,0 +1,120 @@
+import "server-only";
+
+import { isInstanceAdmin } from "../../membership";
+import type { MappedDomain } from "../../migration/map/domains";
+import type { SourceDomain } from "../../migration/model";
+import { blocker, type Note } from "../../migration/note";
+import { wwwCounterpart } from "../../www-redirect";
+import { loadDomainsForApp } from "../app-graph-load";
+import { updateDomain } from "../domains/crud";
+import {
+  addServerCertificate,
+  certificateCovers,
+  listServerCertificates,
+  type ServerCertificate,
+} from "../server-certificates";
+import { getServerById } from "../servers/roster";
+
+// A middleware lives on the proxy, not on the domain: one missing here leaves the domain answering nothing.
+export async function noteDomainMiddlewares(
+  appId: string,
+  notes: Note[],
+): Promise<void> {
+  for (const d of await loadDomainsForApp(appId))
+    if (d.middlewares?.length)
+      notes.push(
+        blocker(
+          `${d.name} uses the middlewares ${d.middlewares.join(", ")} from {panel}'s proxy. Unless they are set up on this server too, ${d.name} does not answer - set them up, or remove them under Domains.`,
+        ),
+      );
+}
+
+const WITHHELD: Record<string, string> = {
+  admin:
+    "only an instance admin's token on {panel} hands a certificate's key over",
+  missing: "{panel}'s proxy no longer holds a certificate for it",
+  unreadable: "{panel} could not read its server's proxy",
+  old: "{panel} is too old to hand certificates over",
+};
+
+// Before the domains land: one whose certificate is here stays "custom", any other lands without one.
+export async function landDomainCertificates(
+  serverId: string,
+  domains: MappedDomain[],
+  notes: Note[],
+): Promise<void> {
+  const wanted = domains.filter((d) => !d.generated && d.rules?.certificate);
+  if (wanted.length === 0) return;
+  const serverName = (await getServerById(serverId))?.name ?? "this server";
+  let installed: ServerCertificate[] | null = null;
+  try {
+    installed = (await isInstanceAdmin())
+      ? await listServerCertificates(serverId)
+      : null;
+  } catch {}
+  const upload = `Upload it under Servers -> ${serverName} -> Certificates, then set the domain to use it`;
+  for (const d of wanted) {
+    const cert = d.rules!.certificate!;
+    if (
+      installed?.some((c) => !c.expired && certificateCovers(c.domains, d.host))
+    ) {
+      d.certProvider = "custom";
+      d.entrypoint = "websecure";
+      if ("withheld" in cert)
+        notes.push(
+          `${d.host} keeps the certificate already installed on ${serverName}; the one on {panel} did not come across (${WITHHELD[cert.withheld]}).`,
+        );
+      continue;
+    }
+    let why: string;
+    if ("withheld" in cert) why = WITHHELD[cert.withheld] ?? "refused";
+    else
+      try {
+        installed = await addServerCertificate(serverId, cert);
+        d.certProvider = "custom";
+        d.entrypoint = "websecure";
+        notes.push(
+          `${d.host}'s own certificate is installed on ${serverName} too. Nothing renews it automatically, so upload the next one there when it expires.`,
+        );
+        continue;
+      } catch (e) {
+        why = e instanceof Error ? e.message : "refused";
+      }
+    notes.push(
+      blocker(
+        `${d.host} served its own certificate on {panel}, and it did not come across (${why}). Until it is here, ${d.host} has no valid certificate. ${upload}.`,
+      ),
+    );
+  }
+}
+
+// Another Deplo only ever redirects a host to its www twin, so that is the redirect made here.
+export async function landDomainRedirects(
+  appId: string,
+  source: SourceDomain[] | null | undefined,
+  notes: Note[],
+): Promise<void> {
+  for (const d of source ?? []) {
+    const host = d.host.trim().toLowerCase();
+    const to = d.nativeRules?.redirectTo?.trim().toLowerCase();
+    if (!to) continue;
+    const target = (await loadDomainsForApp(appId)).find(
+      (r) => r.name === to && !r.redirectTo,
+    );
+    const why = !target
+      ? `${to} did not come across under that name`
+      : wwwCounterpart(to) !== host
+        ? "Deplo redirects a host only to its www twin"
+        : null;
+    try {
+      if (why) throw new Error(why);
+      await updateDomain(target!.id, { www: "toThis" });
+    } catch (e) {
+      notes.push(
+        `${host} redirected to ${to} on {panel}, and that redirect did not come across (${
+          e instanceof Error ? e.message : "refused"
+        }). Add ${host} under Domains if you still need it.`,
+      );
+    }
+  }
+}

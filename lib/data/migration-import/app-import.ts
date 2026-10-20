@@ -31,6 +31,11 @@ import { landingServerId } from "./target-servers";
 import { mapAppEnv } from "./app-env";
 import { loadComposeText, resolveAppSource } from "./app-source";
 import { rehostAppDomains } from "./app-domains";
+import {
+  landDomainCertificates,
+  landDomainRedirects,
+  noteDomainMiddlewares,
+} from "./domain-rules";
 import { landAppStorage } from "./app-storage";
 import { landAppExtras } from "./app-extras";
 import { landAppUpload } from "./app-upload";
@@ -284,7 +289,12 @@ export async function importAppService(
   });
   const target = { kind: "app", id: created.id };
 
+  if (mayClaimHosts)
+    await landDomainCertificates(created.serverId, domains.value, notes);
   await rehostAppDomains(created, domains, primary, env, notes);
+  if (mayClaimHosts)
+    await landDomainRedirects(created.id, detail.domains, notes);
+  await noteDomainMiddlewares(created.id, notes);
 
   const upload = (detail as SourceApplication).upload;
   if (source === "upload" && upload)

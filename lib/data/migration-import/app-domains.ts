@@ -44,6 +44,20 @@ export function importedRoute(d: MappedDomain): ImportedRoute {
   };
 }
 
+// What another Deplo set on the domain beyond its route; nothing for a platform that has no such rules.
+export function domainRules(d: MappedDomain): DomainPatch {
+  const r = d.rules;
+  if (!r) return {};
+  return {
+    ...(r.middlewares ? { middlewares: r.middlewares } : {}),
+    ...(r.corsOrigins ? { corsOrigins: r.corsOrigins } : {}),
+    ...(r.securityHeaders !== undefined
+      ? { securityHeaders: r.securityHeaders }
+      : {}),
+    ...(r.proxied !== undefined ? { proxied: r.proxied } : {}),
+  };
+}
+
 async function addExtraDomain(
   appId: string,
   d: MappedDomain,
@@ -57,6 +71,7 @@ async function addExtraDomain(
       certProvider: d.certProvider,
       entrypoint: d.entrypoint,
       service: d.service ?? undefined,
+      ...domainRules(d),
     });
     return true;
   } catch (e) {
@@ -112,7 +127,7 @@ export async function rehostAppDomains(
           : `${primary.host} could not be taken, so the app answers on ${row.name} instead.`,
       );
     } else if (row) {
-      const patch: DomainPatch = {};
+      const patch: DomainPatch = domainRules(primary);
       const tls = temporaryAddressTls(row.name, primary);
       if (row.certProvider !== tls.certProvider)
         patch.certProvider = tls.certProvider;
