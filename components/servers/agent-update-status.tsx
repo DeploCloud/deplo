@@ -10,7 +10,7 @@ import { gql, gqlAction } from "@/lib/graphql-client";
 import type { AgentUpdateDTO } from "@/lib/data/servers/agent-update-state";
 import { agentUpdateText } from "./agent-update-text";
 
-const FIELDS = /* GraphQL */ `
+const FIELDS = `
   running
   failed
   gaveUp
