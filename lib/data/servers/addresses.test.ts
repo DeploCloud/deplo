@@ -5,7 +5,7 @@ import {
   __resetAgentAddressesForTest,
   __setAgentAddressesForTest,
   serverAddresses,
-  serverIpv4,
+  serverWildcardIp,
 } from "./addresses";
 import {
   __resetDnsResolve4ForTest,
@@ -90,19 +90,85 @@ test("an agent too old to report, or unreachable, leaves IPv6 unknown", async ()
   );
 });
 
-test("serverIpv4: a generated name gets this server's IPv4 or none, never the panel's for another machine", async () => {
-  assert.equal(await serverIpv4(at("198.51.100.1")), "198.51.100.1");
-  assert.equal(await serverIpv4(at("box.example")), "198.51.100.7");
-  assert.equal(await serverIpv4(at("2001:db8::1")), null);
-  assert.equal(await serverIpv4(at("gone.example")), null);
+test("serverWildcardIp: a generated name gets this server's own address or none, never the panel's for another machine", async () => {
+  assert.equal(await serverWildcardIp(at("198.51.100.1")), "198.51.100.1");
+  assert.equal(await serverWildcardIp(at("box.example")), "198.51.100.7");
+  assert.equal(await serverWildcardIp(at("2001:db8::1")), "2001:db8::1");
+  assert.equal(await serverWildcardIp(at("gone.example")), null);
   __setAgentAddressesForTest(async () => ["198.51.100.9", "2001:db8::1"]);
-  assert.equal(await serverIpv4(at("2001:db8::1", true)), "198.51.100.9");
-  assert.equal(await serverIpv4(at("127.0.0.1")), PANEL_IP);
-  assert.equal(await serverIpv4(null), PANEL_IP);
+  assert.equal(await serverWildcardIp(at("2001:db8::1", true)), "198.51.100.9");
+  assert.equal(await serverWildcardIp(at("127.0.0.1")), PANEL_IP);
+  assert.equal(await serverWildcardIp(null), PANEL_IP);
 });
 
 test("loopback, or no server at all, means the machine Deplo runs on", async () => {
   assert.deepEqual((await serverAddresses(at("127.0.0.1"))).v4, [PANEL_IP]);
   assert.deepEqual((await serverAddresses(at("localhost"))).v4, [PANEL_IP]);
   assert.deepEqual((await serverAddresses(null)).v4, [PANEL_IP]);
+});
+
+const choosing = (
+  ip: string,
+  family: Server["generatedAddressFamily"],
+  withAgent = true,
+): Server => ({ ...at(ip, withAgent), generatedAddressFamily: family });
+
+test("serverWildcardIp: an IPv6 is picked only when asked for, or when the host has nothing else", async () => {
+  __setAgentAddressesForTest(async () => ["198.51.100.9", "2001:db8::9"]);
+  assert.equal(
+    await serverWildcardIp(choosing("198.51.100.9", null)),
+    "198.51.100.9",
+  );
+  assert.equal(
+    await serverWildcardIp(choosing("198.51.100.9", "ipv4")),
+    "198.51.100.9",
+  );
+  assert.equal(
+    await serverWildcardIp(choosing("198.51.100.9", "ipv6")),
+    "2001:db8::9",
+  );
+  assert.equal(
+    await serverWildcardIp(choosing("box.example", "ipv6", false)),
+    "2001:db8::7",
+  );
+  __setAgentAddressesForTest(async () => ["198.51.100.9"]);
+  assert.equal(
+    await serverWildcardIp(choosing("198.51.100.9", "ipv6")),
+    "198.51.100.9",
+    "a host with no IPv6 keeps a working IPv4 name",
+  );
+});
+
+test("serverWildcardIp: a private or link-local IPv6 never ends up in a name", async () => {
+  __setAgentAddressesForTest(async () => ["fd00::1", "fe80::1"]);
+  assert.equal(await serverWildcardIp(choosing("fd00::1", "ipv6")), null);
+});
+
+test("the Deplo host takes its kinds from what the installer measured", async () => {
+  process.env.DEPLO_SERVER_IPV6 = "2001:db8::200";
+  try {
+    assert.equal(await serverWildcardIp(choosing("127.0.0.1", null)), PANEL_IP);
+    assert.equal(
+      await serverWildcardIp(choosing("127.0.0.1", "ipv6")),
+      "2001:db8::200",
+    );
+    assert.deepEqual((await serverAddresses(null)).v6, ["2001:db8::200"]);
+  } finally {
+    delete process.env.DEPLO_SERVER_IPV6;
+  }
+});
+
+test("automatic on the Deplo host follows the installer, not the address its row was enrolled at", async () => {
+  process.env.DEPLO_SERVER_IP = "2001:db8::200";
+  process.env.DEPLO_SERVER_IPV4 = PANEL_IP;
+  try {
+    assert.equal(
+      await serverWildcardIp(choosing(PANEL_IP, null)),
+      "2001:db8::200",
+    );
+    assert.equal(await serverWildcardIp(choosing(PANEL_IP, "ipv4")), PANEL_IP);
+  } finally {
+    process.env.DEPLO_SERVER_IP = PANEL_IP;
+    delete process.env.DEPLO_SERVER_IPV4;
+  }
 });

@@ -26,9 +26,11 @@ import {
   deploHostSelfAddresses,
   instanceHost,
   isDeploHostServer,
-  isIpv4,
+  isLoopbackIp,
+  isWildcardIp,
   panelFallbackHost,
 } from "../../deploy/domains";
+import { canonicalHost } from "../../host-address";
 import { DEPLO_VERSION } from "../../version";
 import { serverLabel } from "../../utils";
 import { recordActivity } from "../activity";
@@ -278,9 +280,9 @@ async function instanceOwnerName(): Promise<string | null> {
 }
 
 export function reachableHostIp(host: { ip?: string } | null): string | null {
-  const candidate = host?.ip?.trim() || instanceHost();
-  if (!isIpv4(candidate)) return null;
-  return candidate.startsWith("127.") ? null : candidate;
+  const candidate = canonicalHost(host?.ip?.trim() || instanceHost());
+  if (!isWildcardIp(candidate)) return null;
+  return isLoopbackIp(candidate) ? null : candidate;
 }
 
 export async function getInstanceSettings(): Promise<InstanceSettings> {

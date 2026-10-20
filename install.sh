@@ -16,6 +16,8 @@
 #   --domain <d>     serve the dashboard on this domain over HTTPS
 #   --email <e>      Let's Encrypt contact address (default admin@<domain>)
 #   --version <v>    install this Deplo version instead of `latest`
+#   --ipv4 | --ipv6  serve on this kind of address (default: IPv4 when the
+#                    server has one; an IPv6-only server is set up for IPv6)
 #   --yes            take every default (the takeover question is never one)
 #   --force          continue even if the preflight failed
 #   --plain          ASCII output, no colour, no spinners
@@ -319,6 +321,7 @@ usage() {
   printf '   --domain <d>     serve the dashboard on this domain over HTTPS\n'
   printf '   --email <e>      Let'"'"'s Encrypt contact address\n'
   printf '   --version <v>    install this Deplo version instead of latest\n'
+  printf '   --ipv4 | --ipv6  serve on this kind of address (default: IPv4 when there is one)\n'
   printf '   --owner-email <e>     create the owner account with a temporary password\n'
   printf '   --owner-password <p>  that password; the owner replaces it at first sign-in\n'
   printf '   --yes            take every default\n'
@@ -328,7 +331,8 @@ usage() {
   printf '   --quiet          only warnings, errors and the summary\n'
   printf '   --log-file <p>   transcript location\n'
   printf '   --help\n\n'
-  printf ' %bEnvironment%b  DEPLO_DOMAIN, ACME_EMAIL, DEPLO_VERSION,\n' "$C_B" "$C_OFF"
+  printf ' %bEnvironment%b  DEPLO_DOMAIN, ACME_EMAIL, DEPLO_VERSION, DEPLO_IP_FAMILY=ipv4|ipv6,\n' "$C_B" "$C_OFF"
+  printf '               DEPLO_NAT64_DNS=<resolvers> (an IPv6-only server: your own DNS64),\n'
   printf '               DEPLO_SKIP_NET_CHECKS=1 (no outbound probes, no public-IP lookup),\n'
   printf '               DEPLO_TRACE=0 (transcript without the command trace),\n'
   printf '               DEPLO_IMAGE=<ref> (an image already on the host, no pull),\n'
@@ -342,6 +346,7 @@ FORCE=false
 WANT_HELP=false
 OWNER_EMAIL=""
 OWNER_PASSWORD=""
+IP_FAMILY="${DEPLO_IP_FAMILY:-}"
 # The background half of a takeover, run by deplo-takeover.service: same script,
 # same steps, and at the end it waits for the dashboard instead of a person.
 TAKEOVER_WORKER=false
@@ -360,6 +365,8 @@ while [ $# -gt 0 ]; do
     --domain)    DEPLO_DOMAIN="${2:-}"; shift ;;
     --email)     ACME_EMAIL="${2:-}"; shift ;;
     --version)   DEPLO_VERSION="${2:-}"; shift ;;
+    --ipv4)      IP_FAMILY=ipv4 ;;
+    --ipv6)      IP_FAMILY=ipv6 ;;
     --log-file)  UI_LOG="${2:-}"; shift ;;
     --takeover-worker) TAKEOVER_WORKER=true; ASSUME_YES=true ;;
     --help|-h)   WANT_HELP=true ;;
@@ -432,6 +439,46 @@ ip_hex() {
   # `10#0$n` so a zero-padded or empty octet is not read as octal, which under
   # `set -e` would end the install on an arithmetic error.
   printf '%02x%02x%02x%02x' "$((10#0$1))" "$((10#0$2))" "$((10#0$3))" "$((10#0$4))"
+}
+
+# The label an address rides in under deplo.site: an IPv4 in hex, an IPv6 as
+# v6-<groups>, compressed unless the run of zeros sits at an end (a label cannot
+# end in a dash). KEEP IN SYNC with `ipLabel` in lib/deploy/domains.ts.
+ip_label() {
+  case "$1" in *:*) ;; *) ip_hex "$1"; return ;; esac
+  printf '%s\n' "$1" | tr 'A-F' 'a-f' | awk -F'::' '
+    NF > 2 { exit 1 }
+    {
+      nh = ($1 == "") ? 0 : split($1, h, ":")
+      nt = (NF < 2 || $2 == "") ? 0 : split($2, t, ":")
+      if (NF == 1 && nh != 8) exit 1
+      if (nh + nt > 7 && NF == 2) exit 1
+      n = 0
+      for (i = 1; i <= nh; i++) g[++n] = h[i]
+      for (i = 0; i < 8 - nh - nt; i++) g[++n] = "0"
+      for (i = 1; i <= nt; i++) g[++n] = t[i]
+      for (i = 1; i <= 8; i++) {
+        if (length(g[i]) > 4 || g[i] !~ /^[0-9a-f]+$/) exit 1
+        sub(/^0+/, "", g[i]); if (g[i] == "") g[i] = "0"
+      }
+      bs = 0; bl = 0; l = 0
+      for (i = 1; i <= 8; i++)
+        if (g[i] == "0") { if (l == 0) s = i; l++; if (l > bl) { bl = l; bs = s } } else l = 0
+      out = g[1]
+      if (bl >= 2 && bs > 1 && bs + bl <= 8) {
+        for (i = 2; i < bs; i++) out = out "-" g[i]
+        out = out "-"
+        for (i = bs + bl; i <= 8; i++) out = out "-" g[i]
+      } else for (i = 2; i <= 8; i++) out = out "-" g[i]
+      printf "v6-%s", out
+    }'
+}
+
+# A name the installer or the panel generated for some address of this host -
+# never mistaken for a domain somebody chose, whichever kind it embeds.
+is_generated_host() {
+  case "$1" in deplo-*.deplo.site | deplo-*.nip.io | deplo-*.sslip.io) return 0 ;; esac
+  return 1
 }
 
 # Traefik mints its own default certificate at EVERY start (measured), so both
@@ -511,6 +558,226 @@ port_holder() {
   printf '%s' "$who"
 }
 
+# ==== Deplo IPv6 ============================================ KEEP IN SYNC ====
+# Identical in install.sh and install-agent.sh (a test holds them together).
+# A host the internet reaches over IPv6 only needs two things set up, or nothing
+# works: Docker's networks get no way out, and ghcr.io and github.com have no
+# IPv6 address at all - a public NAT64 carries those.
+# https://deplo.build/docs/reference/installers/install#ipv6
+
+# The address the kernel answers the internet from, per kind. Only a routable
+# IPv6 (2000::/3) counts: a private or link-local one reaches nobody.
+host_ipv4() {
+  ip -4 route get 1.1.1.1 2>/dev/null \
+    | awk '{for (i = 1; i < NF; i++) if ($i == "src") { print $(i + 1); exit }}' || true
+}
+
+host_ipv6() {
+  local a
+  a="$(ip -6 route get 2606:4700:4700::1111 2>/dev/null \
+    | awk '{for (i = 1; i < NF; i++) if ($i == "src") { print $(i + 1); exit }}' || true)"
+  case "$a" in
+    [23][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F]:*) printf '%s' "$a" | tr 'A-F' 'a-f' ;;
+  esac
+}
+
+# --ipv4 / --ipv6 (or DEPLO_IP_FAMILY) choose; otherwise IPv4 whenever the host
+# has one. Sets IP_FAMILY, HOST_V4, HOST_V6 and IPV6_ONLY; fails only when the
+# kind asked for is not on this host.
+resolve_ip_family() {
+  HOST_V4="$(host_ipv4)"
+  HOST_V6="$(host_ipv6)"
+  IPV6_ONLY=false
+  [ -z "$HOST_V4" ] && [ -n "$HOST_V6" ] && IPV6_ONLY=true
+  case "${IP_FAMILY:-auto}" in
+    ipv4) [ -n "$HOST_V4" ] ;;
+    ipv6) [ -n "$HOST_V6" ] ;;
+    *)
+      IP_FAMILY=ipv4
+      [ "$IPV6_ONLY" = true ] && IP_FAMILY=ipv6
+      return 0
+      ;;
+  esac
+}
+
+# Public DNS64 resolvers, each in front of a NAT64 gateway: they answer an
+# IPv4-only name with an IPv6 address the gateway forwards. Three operators.
+NAT64_DNS="${DEPLO_NAT64_DNS:-2a00:1098:2b::1 2a01:4f8:c2c:123f::1 2001:67c:2960::64}"
+NAT64_FILES="/etc/systemd/resolved.conf.d/deplo-nat64.conf /etc/resolvconf/resolv.conf.d/head /etc/resolvconf.conf /etc/resolv.conf"
+
+reaches_over_ipv6() {
+  local code
+  code="$(curl -6 -sS -o /dev/null -w '%{http_code}' --max-time 8 "$1" </dev/null 2>&9 || true)"
+  case "${code:-000}" in "" | 000) return 1 ;; *) return 0 ;; esac
+}
+
+nat64_lines() { local ns; for ns in $NAT64_DNS; do printf 'nameserver %s\n' "$ns"; done; }
+
+# Wherever this host's DNS setup reads its resolvers from, so a reboot keeps them.
+write_nat64_dns() {
+  local f
+  for f in $NAT64_FILES; do
+    [ -e "$f" ] && [ ! -e "$f.deplo-bak" ] && cp -P "$f" "$f.deplo-bak"
+  done
+  if systemctl is-active --quiet systemd-resolved 2>/dev/null; then
+    mkdir -p /etc/systemd/resolved.conf.d
+    printf '[Resolve]\nDNS=%s\nDomains=~.\n' "$NAT64_DNS" >/etc/systemd/resolved.conf.d/deplo-nat64.conf
+    systemctl restart systemd-resolved >&9 2>&9
+  elif [ -d /etc/resolvconf/resolv.conf.d ] && command -v resolvconf >/dev/null 2>&1; then
+    nat64_lines >/etc/resolvconf/resolv.conf.d/head
+    resolvconf -u >&9 2>&9
+  elif [ -f /etc/resolvconf.conf ] && command -v resolvconf >/dev/null 2>&1; then
+    # openresolv: prepended, so they are the three a resolver reads first.
+    { grep -v '^name_servers=' /etc/resolvconf.conf || true
+      printf 'name_servers="%s"\n' "$NAT64_DNS"; } >/etc/resolvconf.conf.deplo-tmp
+    mv /etc/resolvconf.conf.deplo-tmp /etc/resolvconf.conf
+    resolvconf -u >&9 2>&9
+  else
+    rm -f /etc/resolv.conf
+    nat64_lines >/etc/resolv.conf
+  fi
+}
+
+undo_nat64_dns() {
+  local f
+  rm -f /etc/systemd/resolved.conf.d/deplo-nat64.conf
+  for f in $NAT64_FILES; do
+    [ -e "$f.deplo-bak" ] || [ -L "$f.deplo-bak" ] || continue
+    rm -f "$f"; mv "$f.deplo-bak" "$f"
+  done
+  if systemctl is-active --quiet systemd-resolved 2>/dev/null; then
+    systemctl restart systemd-resolved >&9 2>&9 || true
+  elif command -v resolvconf >/dev/null 2>&1; then
+    resolvconf -u >&9 2>&9 || true
+  fi
+}
+
+# Nothing changes on a host whose own network already translates (its provider runs NAT64).
+ensure_nat64() {
+  [ "$IPV6_ONLY" = true ] || return 0
+  if reaches_over_ipv6 https://ghcr.io/v2/ && reaches_over_ipv6 https://github.com; then
+    ok "IPv4-only sites reachable over IPv6" "this network translates them"
+    return 0
+  fi
+  spin_start "Routing IPv4-only sites through public NAT64"
+  write_nat64_dns || true
+  local i=0
+  until reaches_over_ipv6 https://ghcr.io/v2/ && reaches_over_ipv6 https://github.com; do
+    i=$((i + 1))
+    if [ "$i" -ge 4 ]; then
+      undo_nat64_dns
+      spin_err "ghcr.io and github.com have no IPv6 address, and no NAT64 answered"
+      note "Set DEPLO_NAT64_DNS to your provider's DNS64 resolvers and re-run."
+      return 1
+    fi
+    sleep 2
+  done
+  spin_ok "IPv4-only sites reachable through NAT64" "ghcr.io, github.com"
+}
+
+# Containers that are not Deplo's own: a daemon restart must never bounce them.
+foreign_running() {
+  docker ps --format '{{.Label "com.docker.compose.project"}}' 2>/dev/null \
+    | grep -cvE '^(deplo|traefik)$' || true
+}
+
+# Docker gives a network IPv6 only when asked. Every network gets a /64 from a
+# private /48, sent out through the host the same way IPv4 is.
+configure_docker_ipv6() {
+  [ "$IP_FAMILY" = ipv6 ] || return 0
+  local cfg=/etc/docker/daemon.json tmp major ula running
+  if [ -f "$cfg" ] && grep -q '"com.docker.network.enable_ipv6"' "$cfg" 2>/dev/null; then
+    ok "Docker networks already get IPv6"
+    return 0
+  fi
+  major="$(docker version --format '{{.Server.Version}}' 2>/dev/null | cut -d. -f1 || true)"
+  if [ "${major:-0}" -lt 27 ] 2>/dev/null; then
+    err "Docker ${major:-?} cannot give every network IPv6 - 27 or newer can. Update Docker and re-run."
+    return 0
+  fi
+  if ! command -v python3 >/dev/null 2>&1; then
+    err "python3 is needed to add IPv6 to $cfg safely, NOT touching it."
+    return 0
+  fi
+  ula="$(od -An -N5 -tx1 /dev/urandom | tr -d ' \n' \
+    | sed 's/^\(..\)\(....\)\(....\)$/fd\1:\2:\3/')"
+  tmp="$(mktemp)"
+  python3 -c 'import json, os, sys
+cfg, ula = sys.argv[1], sys.argv[2]
+d = json.load(open(cfg)) if os.path.exists(cfg) else {}
+d["ipv6"] = True
+d.setdefault("fixed-cidr-v6", ula + "::/64")
+d["ip6tables"] = True
+pools = d.get("default-address-pools") or []
+if pools and not any(":" in p.get("base", "") for p in pools):
+    pools.append({"base": ula + ":8000::/49", "size": 64})
+    d["default-address-pools"] = pools
+d.setdefault("default-network-opts", {}).setdefault("bridge", {})["com.docker.network.enable_ipv6"] = "true"
+sys.stdout.write(json.dumps(d, indent=2) + "\n")' "$cfg" "$ula" >"$tmp" 2>&9 || {
+    err "Could not parse $cfg as JSON, leaving it untouched."
+    rm -f "$tmp"; return 0
+  }
+  if command -v dockerd >/dev/null 2>&1 && ! dockerd --validate --config-file="$tmp" >&9 2>&9; then
+    err "The IPv6 Docker config failed validation, leaving $cfg untouched."
+    rm -f "$tmp"; return 0
+  fi
+  [ -f "$cfg" ] && cp "$cfg" "$cfg.deplo-ipv6-bak"
+  mkdir -p /etc/docker
+  install -m 0644 "$tmp" "$cfg"
+  rm -f "$tmp"
+  running="$(foreign_running)"
+  if [ "${running:-0}" -gt 0 ]; then
+    ok "IPv6 written to $cfg"
+    err "Docker is running $running app container(s), so it was NOT restarted."
+    err "Apply it in a maintenance window: systemctl restart docker, then re-run this."
+    return 0
+  fi
+  spin_start "Giving Docker networks IPv6 ($ula::/48)"
+  systemctl restart docker >&9 2>&9 || true
+  local i=0
+  until docker info >/dev/null 2>&1; do
+    i=$((i + 1)); [ "$i" -ge 15 ] && break
+    sleep 1
+  done
+  if docker info >/dev/null 2>&1; then
+    spin_ok "Docker networks get IPv6" "$ula::/48"
+  else
+    spin_err "Docker did not come back with IPv6 - rolling back."
+    if [ -f "$cfg.deplo-ipv6-bak" ]; then mv "$cfg.deplo-ipv6-bak" "$cfg"; else rm -f "$cfg"; fi
+    systemctl restart docker >&9 2>&9 || true
+  fi
+}
+
+# `--ipv6` when this install serves on IPv6, for the networks it creates itself.
+ipv6_net_flag() { [ "$IP_FAMILY" = ipv6 ] && printf -- '--ipv6'; return 0; }
+
+# A network keeps the setting it was created with. Deplo's own are re-made with
+# IPv6 and their containers moved across live, under the same names.
+ensure_networks_ipv6() {
+  [ "$IP_FAMILY" = ipv6 ] || return 0
+  grep -q '"com.docker.network.enable_ipv6"' /etc/docker/daemon.json 2>/dev/null || return 0
+  local net ids id alias moved=0
+  for net in $(docker network ls --format '{{.Name}}' 2>/dev/null \
+      | grep -E '^deplo(-(env|team|preview)-.+)?$' || true); do
+    [ "$(docker network inspect -f '{{.EnableIPv6}}' "$net" 2>/dev/null)" = true ] && continue
+    ids="$(docker network inspect -f '{{range $k, $v := .Containers}}{{$k}} {{end}}' "$net" 2>/dev/null || true)"
+    for id in $ids; do docker network disconnect -f "$net" "$id" >&9 2>&9 || true; done
+    if ! docker network rm "$net" >&9 2>&9; then
+      warn "Could not give the '$net' network IPv6; it keeps IPv4 only."
+      for id in $ids; do docker network connect "$net" "$id" >&9 2>&9 || true; done
+      continue
+    fi
+    docker network create --ipv6 "$net" >&9 2>&9
+    for id in $ids; do
+      alias="$(docker inspect -f '{{index .Config.Labels "com.docker.compose.service"}}' "$id" 2>/dev/null || true)"
+      docker network connect ${alias:+--alias "$alias"} "$net" "$id" >&9 2>&9 || true
+    done
+    moved=$((moved + 1))
+  done
+  [ "$moved" -eq 0 ] || ok "Moved $moved existing $(plural "$moved" network) onto IPv6"
+}
+# ==== end Deplo IPv6 ==========================================================
+
 # --- the platform already on this machine --------------------------------------
 # Deplo cannot share ports 80 and 443 with another panel, so on a machine that has
 # one the install is a TAKEOVER or it is nothing. Only these two are migratable;
@@ -565,6 +832,22 @@ resolve_a() {
   fi
   printf '%s' "$out"
 }
+
+# `ahostsv6` maps an IPv4-only name into ::ffff:, which is not an AAAA record.
+resolve_aaaa() {
+  local out=""
+  if command -v getent >/dev/null 2>&1; then
+    out="$(getent ahostsv6 "$1" 2>/dev/null | awk '$1 !~ /^::ffff:/ {print $1}' | sort -u || true)"
+  elif command -v dig >/dev/null 2>&1; then
+    out="$(dig +short AAAA "$1" 2>/dev/null | grep ':' || true)"
+  elif command -v host >/dev/null 2>&1; then
+    out="$(host -t AAAA "$1" 2>/dev/null | awk '/has IPv6 address/ {print $NF}' || true)"
+  fi
+  printf '%s' "$out"
+}
+
+# The records of the kind this install serves on.
+resolve_target() { if [ "${IP_FAMILY:-ipv4}" = ipv6 ]; then resolve_aaaa "$1"; else resolve_a "$1"; fi; }
 
 # Reachable means "an HTTP response came back", NOT "the status was a success".
 # `curl -f` fails on any status >= 400, and https://ghcr.io/v2/ answers 401 to an
@@ -972,40 +1255,94 @@ for p in $HTTP_PORT $HTTPS_PORT $PANEL_PORT; do
   esac
 done
 
+# Address kind -----------------------------------------------------------------
+# An update keeps the kind the install chose: the generated address, and every
+# link to it, is built from it. Only a flag is held to strictly - a kept choice
+# the server no longer has (its IPv4 was removed) falls back to the one it does.
+FAMILY_FLAG="$IP_FAMILY"
+if [ -z "$IP_FAMILY" ] && [ -f "$ENV_FILE" ]; then
+  IP_FAMILY="$(grep '^DEPLO_IP_FAMILY=' "$ENV_FILE" | cut -d= -f2- || true)"
+fi
+case "${IP_FAMILY:-}" in
+  "" | ipv4 | ipv6) ;;
+  *) pf_fail "'$IP_FAMILY' is not a kind of address." "Use --ipv4 or --ipv6."; FAMILY_FLAG=""; IP_FAMILY="" ;;
+esac
+if ! resolve_ip_family; then
+  [ -z "$FAMILY_FLAG" ] || pf_fail \
+    "This server has no $([ "$FAMILY_FLAG" = ipv6 ] && echo IPv6 || echo IPv4) address the internet can reach, so --$FAMILY_FLAG cannot be used." \
+    "Leave the flag out and the installer uses the kind this server has."
+  IP_FAMILY=""
+  resolve_ip_family || true
+fi
+DNS_RECORD=A
+[ "$IP_FAMILY" = ipv6 ] && DNS_RECORD=AAAA
+
+# ghcr.io and github.com have no IPv6 address, so an IPv6-only server reaches
+# them through public NAT64 - set up here, because every step after needs it.
+NAT64_PENDING=false
+if [ "$IPV6_ONLY" = true ] && [ "${DEPLO_SKIP_NET_CHECKS:-0}" != 1 ]; then
+  if [ "$CHECK_ONLY" != true ]; then
+    ensure_nat64 || PF_FAIL=$((PF_FAIL + 1))
+    if [ "$IMAGE_PINNED" = false ] && [ "$DEPLO_VERSION" = latest ]; then
+      resolve_version
+      DEPLO_IMAGE="ghcr.io/deplocloud/deplo:${DEPLO_VERSION}"
+    fi
+  elif ! reaches_over_ipv6 https://ghcr.io/v2/; then
+    NAT64_PENDING=true
+    pf_warn "This server has IPv6 only, and ghcr.io and github.com have no IPv6 address." \
+      "The install reaches them through public NAT64 (DEPLO_NAT64_DNS picks your own)."
+  fi
+fi
+
 # Reachability -----------------------------------------------------------------
 if [ "${DEPLO_SKIP_NET_CHECKS:-0}" = 1 ]; then
   skip "Network checks skipped (DEPLO_SKIP_NET_CHECKS=1)"
 else
   spin_start "Checking outbound connectivity"
   NET_BAD=""
-  can_reach "https://ghcr.io/v2/" || NET_BAD="$NET_BAD ghcr.io"
+  [ "$NAT64_PENDING" = true ] || can_reach "https://ghcr.io/v2/" || NET_BAD="$NET_BAD ghcr.io"
   command -v docker >/dev/null 2>&1 || can_reach "https://get.docker.com" || NET_BAD="$NET_BAD get.docker.com"
   spin_kill
   if [ -n "$NET_BAD" ]; then
     pf_fail "Cannot reach:$NET_BAD." "Deplo pulls its image from ghcr.io. Check egress, a proxy, or a firewall."
-  else
+  elif [ "$NAT64_PENDING" != true ]; then
     ok "Outbound HTTPS reaches ghcr.io"
   fi
 fi
 
-SERVER_IP="$(detect_ip)"
+# The IPv4 is asked of the internet too: behind NAT the host's own is private.
+V4_LOCAL=""
 PUBLIC_IP=""
-if [ "${DEPLO_SKIP_NET_CHECKS:-0}" != 1 ]; then
-  PUBLIC_IP="$(detect_public_ip || true)"
+if [ -n "$HOST_V4" ] || [ -z "$HOST_V6" ]; then
+  V4_LOCAL="$(detect_ip)"
+  [ "${DEPLO_SKIP_NET_CHECKS:-0}" = 1 ] || PUBLIC_IP="$(detect_public_ip || true)"
 fi
-TARGET_IP="${PUBLIC_IP:-$SERVER_IP}"
-if [ -n "$PUBLIC_IP" ] && [ "$PUBLIC_IP" != "$SERVER_IP" ]; then
-  ok "Address: $SERVER_IP on this network, $PUBLIC_IP from the internet"
-  is_private_ip "$SERVER_IP" && note "This host is behind NAT - forward $HTTP_PORT and $HTTPS_PORT to $SERVER_IP."
+SERVER_IPV4="${PUBLIC_IP:-$V4_LOCAL}"
+SERVER_IPV6="$HOST_V6"
+if [ "$IP_FAMILY" = ipv6 ]; then
+  SERVER_IP="$HOST_V6"
+  TARGET_IP="$HOST_V6"
+  if [ "$IPV6_ONLY" = true ]; then
+    ok "Address: $HOST_V6" "IPv6 only"
+  else
+    ok "Address: $HOST_V6" "IPv6, chosen over $SERVER_IPV4"
+  fi
 else
-  ok "Address: $SERVER_IP"
+  SERVER_IP="$V4_LOCAL"
+  TARGET_IP="${PUBLIC_IP:-$SERVER_IP}"
+  if [ -n "$PUBLIC_IP" ] && [ "$PUBLIC_IP" != "$SERVER_IP" ]; then
+    ok "Address: $SERVER_IP on this network, $PUBLIC_IP from the internet"
+    is_private_ip "$SERVER_IP" && note "This host is behind NAT - forward $HTTP_PORT and $HTTPS_PORT to $SERVER_IP."
+  else
+    ok "Address: $SERVER_IP" "${HOST_V6:+IPv6 too: --ipv6 serves on it instead}"
+  fi
 fi
 
 # The dashboard's own address when nobody gives it a domain. deplo.site is public
-# wildcard DNS: a host whose last label before .deplo.site is an IPv4 in hex
-# resolves to that IP, with nothing to set up. Same shape lib/deploy/domains.ts
-# mints for apps, so the panel and the apps on it read alike.
-FALLBACK_HOST="deplo-$(ip_hex "$TARGET_IP" || ip_hex 127.0.0.1).deplo.site"
+# wildcard DNS: a host whose last label before .deplo.site is an IPv4 in hex, or
+# v6-<its IPv6>, resolves to that address, with nothing to set up. Same shape
+# lib/deploy/domains.ts mints for apps, so the panel and the apps on it read alike.
+FALLBACK_HOST="deplo-$(ip_label "$TARGET_IP" || ip_hex 127.0.0.1).deplo.site"
 
 # What the panel serves RIGHT NOW. Its settings page moves the panel's address and
 # its certificate contact by rewriting the proxy's stack file, never this .env, so
@@ -1036,9 +1373,9 @@ adopt_live_panel_route() {
     DEPLO_DOMAIN="$(grep '^DEPLO_DOMAIN=' "$ENV_FILE" | cut -d= -f2- || true)"
     return 0
   fi
-  # The generated host is not a domain: storing it as one would pin the panel to
-  # an IP that moves.
-  [ "$host" = "$FALLBACK_HOST" ] || DEPLO_DOMAIN="$host"
+  # A generated host is not a domain: storing it as one would pin the panel to an
+  # IP that moves, or to the kind of address this run is moving off.
+  is_generated_host "$host" || DEPLO_DOMAIN="$host"
   # Plain http is the operator's advanced opt-out, made from the panel itself.
   [ "$entry" != web ] || PANEL_HTTPS=false
 }
@@ -1046,21 +1383,21 @@ adopt_live_panel_route
 
 # A bare address reads as a domain to the lexical check below, and no certificate
 # authority issues for one. The generated host is the better answer.
-if [ -n "${DEPLO_DOMAIN:-}" ] && ip_hex "${DEPLO_DOMAIN}" >/dev/null 2>&1; then
+if [ -n "${DEPLO_DOMAIN:-}" ] && { ip_hex "${DEPLO_DOMAIN}" || ip_label "${DEPLO_DOMAIN}"; } >/dev/null 2>&1; then
   pf_warn "'$DEPLO_DOMAIN' is an IP address, not a domain, so the dashboard stays on https://$FALLBACK_HOST."
   DEPLO_DOMAIN=""
 fi
 
 if is_real_domain "${DEPLO_DOMAIN:-}"; then
-  DOMAIN_IPS="$(resolve_a "$DEPLO_DOMAIN" | tr '\n' ' ' | sed 's/ *$//' || true)"
+  DOMAIN_IPS="$(resolve_target "$DEPLO_DOMAIN" | tr '\n' ' ' | sed 's/ *$//' || true)"
   if [ -z "$DOMAIN_IPS" ]; then
     pf_warn "$DEPLO_DOMAIN does not resolve yet." \
-      "Point its A record at $TARGET_IP. The dashboard answers on https://$FALLBACK_HOST meanwhile."
+      "Point its $DNS_RECORD record at $TARGET_IP. The dashboard answers on https://$FALLBACK_HOST meanwhile."
   elif printf '%s' " $DOMAIN_IPS " | grep -q " $TARGET_IP "; then
     ok "$DEPLO_DOMAIN $G_ARROW $TARGET_IP"
   else
     pf_warn "$DEPLO_DOMAIN resolves to $DOMAIN_IPS, not $TARGET_IP." \
-      "Let's Encrypt will fail the HTTP-01 challenge until the A record points here."
+      "Let's Encrypt will fail the HTTP-01 challenge until the $DNS_RECORD record points here."
   fi
 else
   if [ -n "${DEPLO_DOMAIN:-}" ]; then
@@ -1071,7 +1408,7 @@ else
   # resolvers drop answers pointing into a private range (DNS rebind protection),
   # which is exactly what a generated host for a LAN address is.
   if [ "${DEPLO_SKIP_NET_CHECKS:-0}" != 1 ]; then
-    case " $(resolve_a "$FALLBACK_HOST" | tr '\n' ' ') " in
+    case " $(resolve_target "$FALLBACK_HOST" | tr '\n' ' ') " in
       *" $TARGET_IP "*) ok "$FALLBACK_HOST $G_ARROW $TARGET_IP" ;;
       *) pf_warn "$FALLBACK_HOST does not resolve from this host." \
            "The generated host needs public DNS. If this network blocks it, re-run with --domain <your domain>." ;;
@@ -1288,6 +1625,7 @@ sys.stdout.write(json.dumps(d, indent=2) + "\n")' "$CFG" "$BASE" "$SIZE" > "$TMP
 }
 
 configure_docker_address_pools
+configure_docker_ipv6
 
 # ==============================================================================
 # 2. Workspace, secrets and the platform network
@@ -1296,7 +1634,9 @@ phase "Workspace"
 
 step "Preparing $DEPLO_DIR and the 'deplo' network"
 mkdir -p "$DEPLO_DIR/traefik" "$DEPLO_DIR/data" "$DEPLO_DIR/acme" "$CERT_DIR"
-docker network inspect deplo >/dev/null 2>&1 || docker network create deplo >&9 2>&9
+# shellcheck disable=SC2046
+docker network inspect deplo >/dev/null 2>&1 || docker network create $(ipv6_net_flag) deplo >&9 2>&9
+ensure_networks_ipv6
 touch "$DEPLO_DIR/acme/acme.json"
 chmod 600 "$DEPLO_DIR/acme/acme.json"
 ensure_default_cert || warn "Could not mint the fallback certificate; Traefik will use its own, which changes at every restart."
@@ -1349,6 +1689,7 @@ env_put() {
 }
 env_put DEPLO_DOMAIN "${DEPLO_DOMAIN:-}"
 env_put ACME_EMAIL "${ACME_EMAIL:-}"
+env_put DEPLO_IP_FAMILY "$IP_FAMILY"
 
 # The token that lets THIS machine enroll itself as a server (agent 0). Appended
 # rather than written in the block above so an instance installed before host
@@ -1750,6 +2091,9 @@ services:
       - DEPLO_SECRET=\${DEPLO_SECRET}
       - DEPLO_PUBLIC_URL=$PUBLIC_URL
       - DEPLO_SERVER_IP=$SERVER_IP
+      # Both kinds, so the panel can move its apps' generated addresses between them.
+      - DEPLO_SERVER_IPV4=$SERVER_IPV4
+      - DEPLO_SERVER_IPV6=$SERVER_IPV6
       - DEPLO_HOST_BOOTSTRAP_TOKEN=\${DEPLO_HOST_BOOTSTRAP_TOKEN}
       - DEPLO_SETUP_KEY=\${DEPLO_SETUP_KEY}
       - DEPLO_HOST_NAME=$HOST_NAME
@@ -1960,9 +2304,9 @@ agent_is_ours() {
 # The token on stdin keeps it out of `ps`; an older panel's installer only takes it as an argument.
 run_agent_installer() {
   if grep -q token-stdin "$1"; then
-    printf '%s\n' "$HOST_TOKEN" | bash "$1" - "$AGENT_BOOTSTRAP_URL" --quiet
+    printf '%s\n' "$HOST_TOKEN" | DEPLO_IP_FAMILY="${IP_FAMILY:-}" bash "$1" - "$AGENT_BOOTSTRAP_URL" --quiet
   else
-    bash "$1" "$HOST_TOKEN" "$AGENT_BOOTSTRAP_URL" --quiet
+    DEPLO_IP_FAMILY="${IP_FAMILY:-}" bash "$1" "$HOST_TOKEN" "$AGENT_BOOTSTRAP_URL" --quiet
   fi
 }
 

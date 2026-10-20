@@ -11,7 +11,7 @@ import { newId, nowIso } from "../../ids";
 import { publishAppChanged } from "../../graphql/pubsub";
 import { previewDeployKey } from "../deploy-key";
 import { previewHost } from "../domains";
-import { serverIpv4 } from "../../data/servers/addresses";
+import { serverWildcardIp } from "../../data/servers/addresses";
 import { deployPreviewRow } from "./deploy";
 import { forkRefusal, type PreviewRefusal } from "./fork-guard";
 import { forkPolicyOf, previewSettings } from "./settings";
@@ -122,10 +122,12 @@ export async function openOrSyncPreview(
       }
     } else {
       const server = await getServerById(settings.serverId ?? app.serverId);
-      const ip = settings.baseDomain?.trim() ? null : await serverIpv4(server);
+      const ip = settings.baseDomain?.trim()
+        ? null
+        : await serverWildcardIp(server);
       if (!settings.baseDomain?.trim() && !ip)
         throw new Error(
-          `Deplo doesn't know ${server?.name ?? "this server"}'s IPv4 address, so its previews need a preview domain. Set one in the app's preview settings.`,
+          `Deplo doesn't know ${server?.name ?? "this server"}'s address, so its previews need a preview domain. Set one in the app's preview settings.`,
         );
       const { host, certProvider } = previewHost({
         appId,

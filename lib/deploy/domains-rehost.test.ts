@@ -10,6 +10,10 @@ import {
   wildcardEmbeddedIp,
   panelFallbackHost,
   instanceHost,
+  ipLabel,
+  isWildcardIp,
+  randomWord,
+  wildcardDomain,
 } from "./domains";
 
 const MASTER = "95.135.208.208";
@@ -255,4 +259,82 @@ test("rehostBlueprintHosts handles a project with no blueprint fields", () => {
   );
   assert.equal(moved.autoDomain, null);
   assert.equal(moved.extraDomains, null);
+});
+
+const V6 = "2a12:bec4:1821:7cf::a";
+const V6_LABEL = "v6-2a12-bec4-1821-7cf--a";
+
+test("an IPv6 rides behind a v6- marker, so a hex-looking word never joins the address", () => {
+  assert.equal(ipLabel(V6), V6_LABEL);
+  assert.equal(ipLabel("2A12:BEC4:1821:07CF:0:0:0:A"), V6_LABEL);
+  assert.equal(ipLabel(MASTER), MASTER_HEX);
+  assert.equal(panelFallbackHost(V6), `deplo-${V6_LABEL}.deplo.site`);
+  assert.equal(wildcardEmbeddedIp(`cafe-bad-${V6_LABEL}.deplo.site`), V6);
+});
+
+test("an IPv6 that would compress at either end is spelled out, since a label cannot end in a dash", () => {
+  assert.equal(ipLabel("2a12:bec4::"), "v6-2a12-bec4-0-0-0-0-0-0");
+  assert.equal(
+    wildcardEmbeddedIp("x-v6-2a12-bec4-0-0-0-0-0-0.deplo.site"),
+    "2a12:bec4::",
+  );
+});
+
+test("only a routable IPv6 is read back out of a name", () => {
+  assert.equal(wildcardEmbeddedIp("x-v6-fd00--1.deplo.site"), null);
+  assert.equal(wildcardEmbeddedIp("x-v6-fe80--1.deplo.site"), null);
+  assert.equal(wildcardEmbeddedIp("x-v6-zz.deplo.site"), null);
+  assert.equal(isWildcardIp(V6), true);
+  assert.equal(isWildcardIp("fd00::1"), false);
+  assert.equal(isWildcardIp("::1"), false);
+  assert.equal(isWildcardIp(MASTER), true);
+});
+
+test("a generated name moves between an IPv4 and an IPv6 and back, keeping its words", () => {
+  const v4 = `web-calm-fox-${MASTER_HEX}.deplo.site`;
+  const v6 = rehostWildcard(v4, V6);
+  assert.equal(v6, `web-calm-fox-${V6_LABEL}.deplo.site`);
+  assert.equal(rehostWildcard(v6, MASTER), v4);
+  assert.equal(
+    rehostEmbeddedWildcard(`https://${v6}/x`, V6, REMOTE),
+    `https://web-calm-fox-${REMOTE_HEX}.deplo.site/x`,
+  );
+  assert.equal(
+    rehostEmbeddedWildcard(`https://${v6}/x`, MASTER, REMOTE),
+    `https://${v6}/x`,
+  );
+});
+
+test("a name generated for an IPv6 stays one DNS label", () => {
+  for (let i = 0; i < 50; i++) {
+    const name = wildcardDomain(
+      "a-very-long-application-slug-that-goes-on",
+      `${randomWord()}-${randomWord()}-${randomWord()}`,
+      "2a12:bec4:1821:7cf:1234:5678:9abc:def0",
+    );
+    const label = name.slice(0, -".deplo.site".length);
+    assert.ok(label.length <= 63, `${label} is ${label.length} characters`);
+    assert.ok(!label.endsWith("-") && !label.startsWith("-"), label);
+    assert.equal(
+      wildcardEmbeddedIp(name),
+      "2a12:bec4:1821:7cf:1234:5678:9abc:def0",
+    );
+  }
+});
+
+test("an IPv6 instance reads its own address from DEPLO_SERVER_IP or its generated host", () => {
+  const prevIp = process.env.DEPLO_SERVER_IP;
+  const prevUrl = process.env.DEPLO_PUBLIC_URL;
+  try {
+    process.env.DEPLO_SERVER_IP = "2A12:BEC4:1821:7CF::A";
+    assert.equal(instanceHost(), V6);
+    delete process.env.DEPLO_SERVER_IP;
+    process.env.DEPLO_PUBLIC_URL = `https://${panelFallbackHost(V6)}`;
+    assert.equal(instanceHost(), V6);
+  } finally {
+    if (prevIp === undefined) delete process.env.DEPLO_SERVER_IP;
+    else process.env.DEPLO_SERVER_IP = prevIp;
+    if (prevUrl === undefined) delete process.env.DEPLO_PUBLIC_URL;
+    else process.env.DEPLO_PUBLIC_URL = prevUrl;
+  }
 });

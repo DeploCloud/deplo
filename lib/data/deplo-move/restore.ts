@@ -24,7 +24,7 @@ import {
   wildcardEmbeddedIp,
 } from "../../deploy/domains";
 import { parseHostAddress } from "../../host-address";
-import { serverIpv4 } from "../servers/addresses";
+import { serverWildcardIp } from "../servers/addresses";
 import { listAllServers } from "../servers/roster";
 import { isSealed, resultRows, sealValue } from "./rekey";
 
@@ -208,7 +208,7 @@ function checkBegin(frame: DumpFrame | undefined): string[] {
   return order;
 }
 
-// Every server the map names exists here; each one's IPv4, for the generated names that move onto it.
+// Every server the map names exists here; each one's address, for the generated names that move onto it.
 async function placeTargets(
   serverMap: ReadonlyMap<string, string | null>,
 ): Promise<Map<string, string | null>> {
@@ -218,7 +218,7 @@ async function placeTargets(
     if (!id || ips.has(id)) continue;
     const server = here.get(id);
     if (!server) throw new Error(TARGET_GONE);
-    ips.set(id, await serverIpv4(server).catch(() => null));
+    ips.set(id, await serverWildcardIp(server).catch(() => null));
   }
   return ips;
 }
@@ -398,7 +398,7 @@ async function applyServerAccess(tx: DbTx, copy: Copy): Promise<void> {
   }
 }
 
-// A generated name embeds its server's IPv4, so one minted for the old server would answer from there.
+// A generated name embeds its server's address, so one minted for the old server would answer from there.
 async function rehostGeneratedNames(tx: DbTx, copy: Copy): Promise<void> {
   const moved = new Map<string, { from: string; to: string }>();
   for (const [appId, s] of copy.appServers) {

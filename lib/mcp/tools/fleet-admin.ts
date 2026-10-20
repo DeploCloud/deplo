@@ -10,6 +10,7 @@ const SERVER_ROW = /* GraphQL */ `
   status
   allTeams
   buildFallback
+  generatedAddressFamily
   deployConcurrency
   agentVersion
   isDeploHost
@@ -63,7 +64,7 @@ export const FLEET: McpToolDef[] = [
     name: "update_server",
     title: "Change a server's address, role, teams or limits",
     description:
-      "Any of: the address Deplo dials, its role, which teams may use it, build fallback, deploy concurrency, timezone. Canary agent releases follow the instance's switch (set_canary_releases), never one server.",
+      "Any of: the address Deplo dials, its role, which teams may use it, build fallback, IPv4 or IPv6 for generated names, deploy concurrency, timezone. Canary releases follow set_canary_releases, never one server.",
     group: "Servers",
     requires: "instanceAdmin",
     idempotent: true,
@@ -75,6 +76,12 @@ export const FLEET: McpToolDef[] = [
       allTeams: z.boolean().optional(),
       teamIds: z.array(z.string()).optional(),
       buildFallback: z.boolean().optional(),
+      addressFamily: z
+        .enum(["ipv4", "ipv6", "automatic"])
+        .optional()
+        .describe(
+          "Generated names on IPv4, IPv6, or automatic (IPv4 when the host has one).",
+        ),
       deployConcurrency: z.number().int().optional(),
       timezone: z.string().optional().describe("IANA zone."),
     }),
@@ -89,12 +96,14 @@ export const FLEET: McpToolDef[] = [
         teamIds: a.teamIds,
       },
       buildFallback: a.buildFallback,
+      family: a.addressFamily === "automatic" ? null : a.addressFamily,
       concurrency: a.deployConcurrency ?? 1,
       timezone: a.timezone ?? "",
       setAddress: a.address !== undefined,
       setRole: a.role !== undefined,
       setTeams: a.allTeams !== undefined || a.teamIds !== undefined,
       setFallback: a.buildFallback !== undefined,
+      setFamily: a.addressFamily !== undefined,
       setConcurrency: a.deployConcurrency !== undefined,
       setTimezone: a.timezone !== undefined,
     }),
@@ -106,12 +115,14 @@ export const FLEET: McpToolDef[] = [
         $role: String!
         $teams: SetServerTeamsInput!
         $buildFallback: Boolean
+        $family: AddressFamily
         $concurrency: Int!
         $timezone: String!
         $setAddress: Boolean!
         $setRole: Boolean!
         $setTeams: Boolean!
         $setFallback: Boolean!
+        $setFamily: Boolean!
         $setConcurrency: Boolean!
         $setTimezone: Boolean!
       ) {
@@ -130,6 +141,8 @@ export const FLEET: McpToolDef[] = [
           id
           buildFallback
         }
+        setServerAddressFamily(id: $id, family: $family)
+          @include(if: $setFamily)
         setServerDeployConcurrency(id: $id, concurrency: $concurrency)
           @include(if: $setConcurrency) {
           id

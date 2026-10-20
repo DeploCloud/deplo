@@ -22,7 +22,9 @@
 #                    binds the response via HMAC instead).
 #
 # Flags, anywhere among the args: --check (preflight only), --force (install even
-# if the preflight failed), --plain, --no-color, --quiet, --help.
+# if the preflight failed), --ipv4 | --ipv6 (set Docker up for that kind of
+# address; an IPv6-only host is set up for IPv6 on its own), --plain,
+# --no-color, --quiet, --help.
 #
 # The agent binary ships as a GitHub Release asset (DeploCloud/deplo-agent).
 # The control plane serves this script over its own domain and substitutes the
@@ -340,11 +342,14 @@ on_err() {
 # handed out with the token itself in place of `-` must keep working.
 CHECK_ONLY=false
 FORCE=false
+IP_FAMILY="${DEPLO_IP_FAMILY:-}"
 ARGS=()
 for a in "$@"; do
   case "$a" in
     --check)     CHECK_ONLY=true ;;
     --force)     FORCE=true ;;
+    --ipv4)      IP_FAMILY=ipv4 ;;
+    --ipv6)      IP_FAMILY=ipv6 ;;
     --plain)     UI_FORCE_PLAIN=1 ;;
     --no-color)  UI_FORCE_NOCOLOR=1 ;;
     --quiet|-q)  UI_QUIET=1 ;;
@@ -416,6 +421,226 @@ case "$AGENT_URL_AMD64" in
     ;;
 esac
 
+# ==== Deplo IPv6 ============================================ KEEP IN SYNC ====
+# Identical in install.sh and install-agent.sh (a test holds them together).
+# A host the internet reaches over IPv6 only needs two things set up, or nothing
+# works: Docker's networks get no way out, and ghcr.io and github.com have no
+# IPv6 address at all - a public NAT64 carries those.
+# https://deplo.build/docs/reference/installers/install#ipv6
+
+# The address the kernel answers the internet from, per kind. Only a routable
+# IPv6 (2000::/3) counts: a private or link-local one reaches nobody.
+host_ipv4() {
+  ip -4 route get 1.1.1.1 2>/dev/null \
+    | awk '{for (i = 1; i < NF; i++) if ($i == "src") { print $(i + 1); exit }}' || true
+}
+
+host_ipv6() {
+  local a
+  a="$(ip -6 route get 2606:4700:4700::1111 2>/dev/null \
+    | awk '{for (i = 1; i < NF; i++) if ($i == "src") { print $(i + 1); exit }}' || true)"
+  case "$a" in
+    [23][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F]:*) printf '%s' "$a" | tr 'A-F' 'a-f' ;;
+  esac
+}
+
+# --ipv4 / --ipv6 (or DEPLO_IP_FAMILY) choose; otherwise IPv4 whenever the host
+# has one. Sets IP_FAMILY, HOST_V4, HOST_V6 and IPV6_ONLY; fails only when the
+# kind asked for is not on this host.
+resolve_ip_family() {
+  HOST_V4="$(host_ipv4)"
+  HOST_V6="$(host_ipv6)"
+  IPV6_ONLY=false
+  [ -z "$HOST_V4" ] && [ -n "$HOST_V6" ] && IPV6_ONLY=true
+  case "${IP_FAMILY:-auto}" in
+    ipv4) [ -n "$HOST_V4" ] ;;
+    ipv6) [ -n "$HOST_V6" ] ;;
+    *)
+      IP_FAMILY=ipv4
+      [ "$IPV6_ONLY" = true ] && IP_FAMILY=ipv6
+      return 0
+      ;;
+  esac
+}
+
+# Public DNS64 resolvers, each in front of a NAT64 gateway: they answer an
+# IPv4-only name with an IPv6 address the gateway forwards. Three operators.
+NAT64_DNS="${DEPLO_NAT64_DNS:-2a00:1098:2b::1 2a01:4f8:c2c:123f::1 2001:67c:2960::64}"
+NAT64_FILES="/etc/systemd/resolved.conf.d/deplo-nat64.conf /etc/resolvconf/resolv.conf.d/head /etc/resolvconf.conf /etc/resolv.conf"
+
+reaches_over_ipv6() {
+  local code
+  code="$(curl -6 -sS -o /dev/null -w '%{http_code}' --max-time 8 "$1" </dev/null 2>&9 || true)"
+  case "${code:-000}" in "" | 000) return 1 ;; *) return 0 ;; esac
+}
+
+nat64_lines() { local ns; for ns in $NAT64_DNS; do printf 'nameserver %s\n' "$ns"; done; }
+
+# Wherever this host's DNS setup reads its resolvers from, so a reboot keeps them.
+write_nat64_dns() {
+  local f
+  for f in $NAT64_FILES; do
+    [ -e "$f" ] && [ ! -e "$f.deplo-bak" ] && cp -P "$f" "$f.deplo-bak"
+  done
+  if systemctl is-active --quiet systemd-resolved 2>/dev/null; then
+    mkdir -p /etc/systemd/resolved.conf.d
+    printf '[Resolve]\nDNS=%s\nDomains=~.\n' "$NAT64_DNS" >/etc/systemd/resolved.conf.d/deplo-nat64.conf
+    systemctl restart systemd-resolved >&9 2>&9
+  elif [ -d /etc/resolvconf/resolv.conf.d ] && command -v resolvconf >/dev/null 2>&1; then
+    nat64_lines >/etc/resolvconf/resolv.conf.d/head
+    resolvconf -u >&9 2>&9
+  elif [ -f /etc/resolvconf.conf ] && command -v resolvconf >/dev/null 2>&1; then
+    # openresolv: prepended, so they are the three a resolver reads first.
+    { grep -v '^name_servers=' /etc/resolvconf.conf || true
+      printf 'name_servers="%s"\n' "$NAT64_DNS"; } >/etc/resolvconf.conf.deplo-tmp
+    mv /etc/resolvconf.conf.deplo-tmp /etc/resolvconf.conf
+    resolvconf -u >&9 2>&9
+  else
+    rm -f /etc/resolv.conf
+    nat64_lines >/etc/resolv.conf
+  fi
+}
+
+undo_nat64_dns() {
+  local f
+  rm -f /etc/systemd/resolved.conf.d/deplo-nat64.conf
+  for f in $NAT64_FILES; do
+    [ -e "$f.deplo-bak" ] || [ -L "$f.deplo-bak" ] || continue
+    rm -f "$f"; mv "$f.deplo-bak" "$f"
+  done
+  if systemctl is-active --quiet systemd-resolved 2>/dev/null; then
+    systemctl restart systemd-resolved >&9 2>&9 || true
+  elif command -v resolvconf >/dev/null 2>&1; then
+    resolvconf -u >&9 2>&9 || true
+  fi
+}
+
+# Nothing changes on a host whose own network already translates (its provider runs NAT64).
+ensure_nat64() {
+  [ "$IPV6_ONLY" = true ] || return 0
+  if reaches_over_ipv6 https://ghcr.io/v2/ && reaches_over_ipv6 https://github.com; then
+    ok "IPv4-only sites reachable over IPv6" "this network translates them"
+    return 0
+  fi
+  spin_start "Routing IPv4-only sites through public NAT64"
+  write_nat64_dns || true
+  local i=0
+  until reaches_over_ipv6 https://ghcr.io/v2/ && reaches_over_ipv6 https://github.com; do
+    i=$((i + 1))
+    if [ "$i" -ge 4 ]; then
+      undo_nat64_dns
+      spin_err "ghcr.io and github.com have no IPv6 address, and no NAT64 answered"
+      note "Set DEPLO_NAT64_DNS to your provider's DNS64 resolvers and re-run."
+      return 1
+    fi
+    sleep 2
+  done
+  spin_ok "IPv4-only sites reachable through NAT64" "ghcr.io, github.com"
+}
+
+# Containers that are not Deplo's own: a daemon restart must never bounce them.
+foreign_running() {
+  docker ps --format '{{.Label "com.docker.compose.project"}}' 2>/dev/null \
+    | grep -cvE '^(deplo|traefik)$' || true
+}
+
+# Docker gives a network IPv6 only when asked. Every network gets a /64 from a
+# private /48, sent out through the host the same way IPv4 is.
+configure_docker_ipv6() {
+  [ "$IP_FAMILY" = ipv6 ] || return 0
+  local cfg=/etc/docker/daemon.json tmp major ula running
+  if [ -f "$cfg" ] && grep -q '"com.docker.network.enable_ipv6"' "$cfg" 2>/dev/null; then
+    ok "Docker networks already get IPv6"
+    return 0
+  fi
+  major="$(docker version --format '{{.Server.Version}}' 2>/dev/null | cut -d. -f1 || true)"
+  if [ "${major:-0}" -lt 27 ] 2>/dev/null; then
+    err "Docker ${major:-?} cannot give every network IPv6 - 27 or newer can. Update Docker and re-run."
+    return 0
+  fi
+  if ! command -v python3 >/dev/null 2>&1; then
+    err "python3 is needed to add IPv6 to $cfg safely, NOT touching it."
+    return 0
+  fi
+  ula="$(od -An -N5 -tx1 /dev/urandom | tr -d ' \n' \
+    | sed 's/^\(..\)\(....\)\(....\)$/fd\1:\2:\3/')"
+  tmp="$(mktemp)"
+  python3 -c 'import json, os, sys
+cfg, ula = sys.argv[1], sys.argv[2]
+d = json.load(open(cfg)) if os.path.exists(cfg) else {}
+d["ipv6"] = True
+d.setdefault("fixed-cidr-v6", ula + "::/64")
+d["ip6tables"] = True
+pools = d.get("default-address-pools") or []
+if pools and not any(":" in p.get("base", "") for p in pools):
+    pools.append({"base": ula + ":8000::/49", "size": 64})
+    d["default-address-pools"] = pools
+d.setdefault("default-network-opts", {}).setdefault("bridge", {})["com.docker.network.enable_ipv6"] = "true"
+sys.stdout.write(json.dumps(d, indent=2) + "\n")' "$cfg" "$ula" >"$tmp" 2>&9 || {
+    err "Could not parse $cfg as JSON, leaving it untouched."
+    rm -f "$tmp"; return 0
+  }
+  if command -v dockerd >/dev/null 2>&1 && ! dockerd --validate --config-file="$tmp" >&9 2>&9; then
+    err "The IPv6 Docker config failed validation, leaving $cfg untouched."
+    rm -f "$tmp"; return 0
+  fi
+  [ -f "$cfg" ] && cp "$cfg" "$cfg.deplo-ipv6-bak"
+  mkdir -p /etc/docker
+  install -m 0644 "$tmp" "$cfg"
+  rm -f "$tmp"
+  running="$(foreign_running)"
+  if [ "${running:-0}" -gt 0 ]; then
+    ok "IPv6 written to $cfg"
+    err "Docker is running $running app container(s), so it was NOT restarted."
+    err "Apply it in a maintenance window: systemctl restart docker, then re-run this."
+    return 0
+  fi
+  spin_start "Giving Docker networks IPv6 ($ula::/48)"
+  systemctl restart docker >&9 2>&9 || true
+  local i=0
+  until docker info >/dev/null 2>&1; do
+    i=$((i + 1)); [ "$i" -ge 15 ] && break
+    sleep 1
+  done
+  if docker info >/dev/null 2>&1; then
+    spin_ok "Docker networks get IPv6" "$ula::/48"
+  else
+    spin_err "Docker did not come back with IPv6 - rolling back."
+    if [ -f "$cfg.deplo-ipv6-bak" ]; then mv "$cfg.deplo-ipv6-bak" "$cfg"; else rm -f "$cfg"; fi
+    systemctl restart docker >&9 2>&9 || true
+  fi
+}
+
+# `--ipv6` when this install serves on IPv6, for the networks it creates itself.
+ipv6_net_flag() { [ "$IP_FAMILY" = ipv6 ] && printf -- '--ipv6'; return 0; }
+
+# A network keeps the setting it was created with. Deplo's own are re-made with
+# IPv6 and their containers moved across live, under the same names.
+ensure_networks_ipv6() {
+  [ "$IP_FAMILY" = ipv6 ] || return 0
+  grep -q '"com.docker.network.enable_ipv6"' /etc/docker/daemon.json 2>/dev/null || return 0
+  local net ids id alias moved=0
+  for net in $(docker network ls --format '{{.Name}}' 2>/dev/null \
+      | grep -E '^deplo(-(env|team|preview)-.+)?$' || true); do
+    [ "$(docker network inspect -f '{{.EnableIPv6}}' "$net" 2>/dev/null)" = true ] && continue
+    ids="$(docker network inspect -f '{{range $k, $v := .Containers}}{{$k}} {{end}}' "$net" 2>/dev/null || true)"
+    for id in $ids; do docker network disconnect -f "$net" "$id" >&9 2>&9 || true; done
+    if ! docker network rm "$net" >&9 2>&9; then
+      warn "Could not give the '$net' network IPv6; it keeps IPv4 only."
+      for id in $ids; do docker network connect "$net" "$id" >&9 2>&9 || true; done
+      continue
+    fi
+    docker network create --ipv6 "$net" >&9 2>&9
+    for id in $ids; do
+      alias="$(docker inspect -f '{{index .Config.Labels "com.docker.compose.service"}}' "$id" 2>/dev/null || true)"
+      docker network connect ${alias:+--alias "$alias"} "$net" "$id" >&9 2>&9 || true
+    done
+    moved=$((moved + 1))
+  done
+  [ "$moved" -eq 0 ] || ok "Moved $moved existing $(plural "$moved" network) onto IPv6"
+}
+# ==== end Deplo IPv6 ==========================================================
+
 # ==============================================================================
 # 0. Preflight
 # ==============================================================================
@@ -456,6 +681,31 @@ DISK_GB="$(df -PBG / 2>/dev/null | awk 'NR==2 {gsub("G","",$4); print $4}' || tr
 if [ "${DISK_GB:-0}" -ge 30 ]; then ok "Disk: ${DISK_GB} GB free on /"
 elif [ "${DISK_GB:-0}" -ge 5 ]; then pf_warn "${DISK_GB} GB free on /." "Images and build caches grow fast; 30 GB is the recommended minimum."
 else pf_fail "Only ${DISK_GB:-0} GB free on /." "Free some space and re-run."; fi
+
+# Address kind -----------------------------------------------------------------
+# Picks how Docker is set up here, never this server's generated addresses: the
+# dashboard decides those (Settings > Servers > Advanced).
+FAMILY_FLAG="$IP_FAMILY"
+case "${IP_FAMILY:-}" in
+  "" | ipv4 | ipv6) ;;
+  *) pf_fail "'$IP_FAMILY' is not a kind of address." "Use --ipv4 or --ipv6."; FAMILY_FLAG=""; IP_FAMILY="" ;;
+esac
+if ! resolve_ip_family; then
+  [ -z "$FAMILY_FLAG" ] || pf_fail \
+    "This server has no $([ "$FAMILY_FLAG" = ipv6 ] && echo IPv6 || echo IPv4) address the internet can reach, so --$FAMILY_FLAG cannot be used." \
+    "Leave the flag out and the installer uses the kind this server has."
+  IP_FAMILY=""
+  resolve_ip_family || true
+fi
+if [ "$IPV6_ONLY" = true ]; then
+  ok "Address: $HOST_V6" "IPv6 only"
+elif [ -n "$HOST_V4" ]; then
+  ok "Address: $HOST_V4" "${HOST_V6:+and $HOST_V6}"
+fi
+# The panel and the agent's own download may both be IPv4-only, so NAT64 goes first.
+if [ "$IPV6_ONLY" = true ] && [ "$CHECK_ONLY" != true ]; then
+  ensure_nat64 || PF_FAIL=$((PF_FAIL + 1))
+fi
 
 # The control plane, before anything is installed ------------------------------
 case "$URL" in
@@ -793,6 +1043,7 @@ elif [ "$IMPORT_ONLY" = "1" ]; then
   skip "Migration source: leaving this host's Docker configuration alone"
 else
   configure_docker_address_pools
+  configure_docker_ipv6
 fi
 
 # ==============================================================================
@@ -862,7 +1113,9 @@ fi
 if [ "$IMPORT_ONLY" = "1" ]; then
   skip "Migration source: skipping the 'deplo' network (no proxy is installed here)"
 else
-  docker network create deplo >&9 2>&9 || true
+  # shellcheck disable=SC2046
+  docker network inspect deplo >/dev/null 2>&1 || docker network create $(ipv6_net_flag) deplo >&9 2>&9 || true
+  ensure_networks_ipv6
 fi
 
 # ==============================================================================

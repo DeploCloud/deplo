@@ -208,16 +208,28 @@ test("an extra domain with no host of its own gets one generated", async () => {
   assert.match(extra.name, /^shop-admin-/);
 });
 
-test("on a server whose IPv4 is unknown the app gets no generated address, never the panel's", async () => {
+const STACK_WITH_EXTRA = {
+  compose:
+    'services:\n  web:\n    image: nginx\n    expose:\n      - "80"\n' +
+    "  admin:\n    image: acme/admin\n",
+  extraDomains: [{ service: "admin", port: 3003, host: "" }],
+};
+
+test("on an IPv6-only server every generated address carries that server's IPv6", async () => {
   await pg.exec(`update servers set ip = '2001:db8::1', host = '2001:db8::1'`);
-  const app = await asUser1(() =>
-    newApp({
-      compose:
-        'services:\n  web:\n    image: nginx\n    expose:\n      - "80"\n' +
-        "  admin:\n    image: acme/admin\n",
-      extraDomains: [{ service: "admin", port: 3003, host: "" }],
-    }),
-  );
+  const app = await asUser1(() => newApp(STACK_WITH_EXTRA));
+  const rows = await db
+    .select({ name: domainsTable.name })
+    .from(domainsTable)
+    .where(eq(domainsTable.appId, app.id));
+  assert.equal(rows.length, 2);
+  for (const { name } of rows)
+    assert.match(name, /-v6-2001-db8--1\.deplo\.site$/);
+});
+
+test("on a server whose address is unknown the app gets no generated address, never the panel's", async () => {
+  await pg.exec(`update servers set ip = '', host = ''`);
+  const app = await asUser1(() => newApp(STACK_WITH_EXTRA));
   const rows = await db
     .select({ name: domainsTable.name })
     .from(domainsTable)

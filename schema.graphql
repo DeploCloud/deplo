@@ -92,6 +92,11 @@ type AddServerPayload {
   server: Server
 }
 
+enum AddressFamily {
+  ipv4
+  ipv6
+}
+
 """
 A PERSONAL API token: it belongs to the person who minted it, and nobody else can list, edit or revoke it. Only the prefix is ever exposed - the raw token is shown once at creation and only its hash is persisted.
 """
@@ -2374,6 +2379,18 @@ type FolderShareCandidate {
 }
 
 """
+The addresses this server's generated (.deplo.site) names can carry, read live from its agent and DNS.
+"""
+type GeneratedAddresses {
+  """
+  The address a name generated here right now embeds. Null when Deplo knows none.
+  """
+  inUse: String
+  ipv4: String
+  ipv6: String
+}
+
+"""
 A team's stored credentials for one git host that is not GitHub. The token is never exposed.
 """
 type GitConnection {
@@ -4223,6 +4240,11 @@ type Mutation {
   setSaveMetrics(enabled: Boolean!): MonitoringSettings
 
   """
+  Choose which kind of address (ipv4 | ipv6) the generated .deplo.site names of apps on this server carry; omit the family to go back to automatic. Every generated name already on the server is renamed at once, and the count of apps whose names moved is returned: each answers on its new name after its next deploy. Refused when the server has no address of that kind.
+  """
+  setServerAddressFamily(family: AddressFamily, id: String!): Int
+
+  """
   Whether this host may compile for an app whose own build server could not be reached (the app's own server stays the last resort). Omit the flag to go back to automatic: the Deplo host builds as a fallback, no other server does. Refused on a host with no Docker of ours to build with.
   """
   setServerBuildFallback(buildFallback: Boolean, id: String!): Server
@@ -5688,6 +5710,16 @@ type Server {
   The agent version this server should be running: the one release of DeploCloud/deplo-agent this Deplo is pinned to. A newer agent is left alone, never downgraded.
   """
   expectedAgentVersion: String
+
+  """
+  Which kind of address the generated (.deplo.site) names of apps on this server carry. Null is automatic: IPv4 when the host has one, IPv6 otherwise - and on the Deplo host, whichever the installer chose. setServerAddressFamily changes it.
+  """
+  generatedAddressFamily: AddressFamily
+
+  """
+  Live: asks the server's agent and DNS, so select it on one server at a time. Requires instanceAdmin.
+  """
+  generatedAddresses: GeneratedAddresses
   host: String
 
   """

@@ -1,5 +1,6 @@
 import { builder } from "../../builder";
-import { ServerRef } from "./server-ref";
+import { AddressFamilyEnum, ServerRef } from "./server-ref";
+import { setServerAddressFamily } from "@/lib/data/servers/address-family";
 import { type ServerRole } from "@/lib/data/servers/roster";
 import {
   renameServer,
@@ -53,6 +54,18 @@ builder.mutationFields((t) => ({
     },
     resolve: (_r, { id, buildFallback }) =>
       setServerBuildFallback(id, buildFallback ?? null),
+  }),
+  setServerAddressFamily: t.field({
+    type: "Int",
+    authScopes: { instanceAdmin: true },
+    description:
+      "Choose which kind of address (ipv4 | ipv6) the generated .deplo.site names of apps on this server carry; omit the family to go back to automatic. Every generated name already on the server is renamed at once, and the count of apps whose names moved is returned: each answers on its new name after its next deploy. Refused when the server has no address of that kind.",
+    args: {
+      id: t.arg.string({ required: true }),
+      family: t.arg({ type: AddressFamilyEnum, required: false }),
+    },
+    resolve: async (_r, { id, family }) =>
+      (await setServerAddressFamily(id, family ?? null)).appsMoved,
   }),
   setServerTeams: t.field({
     type: ServerRef,

@@ -129,6 +129,7 @@ async function main() {
       storageOnly: false,
       buildOnly: false,
       buildFallback: null,
+      generatedAddressFamily: null,
       importOnly: false,
       uninstallPending: false,
       uninstallError: "",

@@ -1,0 +1,1 @@
+ALTER TABLE "servers" ADD COLUMN "generated_address_family" text;
