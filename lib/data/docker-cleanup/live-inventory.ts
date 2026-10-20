@@ -1,15 +1,21 @@
 import "server-only";
 
-import { eq, isNull } from "drizzle-orm";
+import { and, eq, inArray, isNotNull, isNull } from "drizzle-orm";
 
 import { getDb } from "../../db/client";
 import { apps as appsTable } from "../../db/schema/control-plane/apps";
 import { databases as databasesTable } from "../../db/schema/control-plane/databases";
-import { appPreviews as appPreviewsTable } from "../../db/schema/control-plane/deployments";
+import {
+  appPreviews as appPreviewsTable,
+  deployments as deploymentsTable,
+} from "../../db/schema/control-plane/deployments";
 import { appBuildsItsOwnImage } from "../../utils";
 import { previewDeployKey } from "../../deploy/deploy-key";
 import { appNetwork, previewNetwork } from "../../deploy/network";
 import { MAX_ROLLBACK_KEEP } from "../../types/app";
+
+// The largest int32, keep_per_slug's wire type: anything bigger wraps around.
+export const SPARE_ALL_IMAGES = 2_147_483_647;
 
 export async function rollbackKeepBySlug(
   serverId: string,
@@ -33,6 +39,20 @@ export async function rollbackKeepBySlug(
       Math.max(1, Math.trunc(r.keep) + 1),
     );
   }
+  // A rollback still queued needs an image that a deploy finishing first may have pushed out of the count.
+  for (const r of await getDb()
+    .select({ slug: appsTable.slug })
+    .from(deploymentsTable)
+    .innerJoin(appsTable, eq(appsTable.id, deploymentsTable.appId))
+    .where(
+      and(
+        eq(appsTable.serverId, serverId),
+        inArray(deploymentsTable.status, ["queued", "building"]),
+        isNotNull(deploymentsTable.rollbackOf),
+        isNotNull(deploymentsTable.imageRef),
+      ),
+    ))
+    if (r.slug in out) out[r.slug] = SPARE_ALL_IMAGES;
   return out;
 }
 

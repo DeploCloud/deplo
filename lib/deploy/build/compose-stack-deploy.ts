@@ -135,7 +135,7 @@ async function finishComposeStack(
       if (environment === "production") {
         await settleMove(depId, project.id, opts.serverId);
       }
-      await sweepAfterDeploy(depId, opts.serverId);
+      sweepAfterDeploy(depId, opts.serverId);
     }
   } else {
     if (
