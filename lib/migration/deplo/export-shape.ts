@@ -106,6 +106,23 @@ export interface DeploExportApp {
   notes: string[];
   // The archive an upload app builds from; null when it has none, absent from an older Deplo.
   upload?: DeploExportUpload | null;
+  // Preview settings as stored (null = the default) and its preview overrides; absent from an older Deplo.
+  preview?: DeploExportPreview;
+  previewEnv?: Omit<DeploExportVar, "targets">[];
+}
+
+export interface DeploExportPreview {
+  baseDomain: string | null;
+  maxActive: number | null;
+  ttlDays: number | null;
+  forkPolicy: string | null;
+  serverId: string | null;
+  https: boolean;
+  autoDeploy: boolean;
+  port: number | null;
+  buildDrafts: boolean;
+  comment: boolean;
+  requiredLabels: string | null;
 }
 
 export interface DeploExportUpload {

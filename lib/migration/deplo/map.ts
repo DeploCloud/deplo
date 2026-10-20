@@ -272,6 +272,7 @@ function repoFields(repo: GitRepo | null): Partial<SourceApplication> {
 interface EnvShape {
   envEntries: EnvPair[];
   previewEnvEntries: EnvPair[];
+  previewSecretEnvKeys?: string[];
   secretEnvKeys: string[];
   productionOnlyEnvKeys: string[];
   sharedRefs: SharedRef[];
@@ -294,7 +295,16 @@ export function appEnv(x: DeploExport, a: DeploExportApp): EnvShape {
     ...a.env.filter((e) => e.targets.includes("production")),
     ...copies,
   ];
-  const previewOnly = a.env.filter((e) => !e.targets.includes("production"));
+  // A preview override replaces the app's variable of that name in a preview.
+  const overrides = a.previewEnv ?? [];
+  const previewVars = [
+    ...a.env.filter(
+      (e) =>
+        !e.targets.includes("production") &&
+        !overrides.some((o) => o.key === e.key),
+    ),
+    ...overrides,
+  ];
   const secret = new Set([
     ...a.env.filter((e) => e.secret).map((e) => e.key),
     ...copies.filter((e) => e.secret).map((e) => e.key),
@@ -307,7 +317,10 @@ export function appEnv(x: DeploExport, a: DeploExportApp): EnvShape {
       ...pairs(runtime),
       ...refs.map((r) => ({ key: r.key, value: `\${{${r.level}.${r.key}}}` })),
     ],
-    previewEnvEntries: pairs(previewOnly),
+    previewEnvEntries: pairs(previewVars),
+    previewSecretEnvKeys: a.previewEnv
+      ? previewVars.filter((e) => e.secret).map((e) => e.key)
+      : undefined,
     secretEnvKeys: [...secret],
     productionOnlyEnvKeys: a.env
       .filter((e) => e.targets.includes("production"))
@@ -363,6 +376,10 @@ export function sourceApplication(
         ? "{panel} is too old to hand over its uploaded archive. Upload it again here before deploying."
         : "It had no archive uploaded on {panel}. Upload one here before deploying.",
     );
+  if (a.preview === undefined && a.previewEnabled)
+    notes.push(
+      "{panel} is too old to hand over its preview settings, so only previews being on came across. Check them under Previews.",
+    );
   const common = {
     name: a.name,
     appName: a.slug,
@@ -379,6 +396,11 @@ export function sourceApplication(
     backupRuns: history.backupRuns,
     routingPort: a.build.port,
     platformNotes: notes,
+    previewEnvEntries: env.previewEnvEntries,
+    previewSecretEnvKeys: env.previewSecretEnvKeys,
+    nativePreview: a.preview
+      ? { enabled: a.previewEnabled, ...a.preview }
+      : undefined,
   };
   if (compose)
     return {
@@ -415,7 +437,6 @@ export function sourceApplication(
     installCommand: a.build.installCommand,
     buildCommand: a.build.buildCommand,
     command: a.source === "docker-image" ? null : a.build.startCommand,
-    previewEnvEntries: env.previewEnvEntries,
     isPreviewDeploymentsActive: a.previewEnabled,
     ports: a.ports.map((p) => ({
       portId: p.id,

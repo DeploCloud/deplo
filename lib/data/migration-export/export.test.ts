@@ -12,6 +12,7 @@ import { apps as appsTable } from "../../db/schema/control-plane/apps";
 import { folders as foldersTable } from "../../db/schema/control-plane/projects";
 import { ALL_CAPABILITIES } from "../../types/identity";
 import { appBasicAuthUsers } from "../../db/schema/control-plane/domains";
+import { appPreviewEnvVars } from "../../db/schema/control-plane/env-vars";
 import { runWithIdentity } from "../../auth/request-context";
 import { encryptSecret } from "../../crypto";
 import { insertEnvVars } from "../app-graph-load";
@@ -181,6 +182,65 @@ test("the export carries the team's apps and databases with their secret values"
   const main = out.databases.find((d) => d.id === "db_main");
   assert.equal(main?.password, "pw");
   assert.equal(main?.data.volumes[0]?.name, "deplo-db-main_db-main-data");
+});
+
+test("the export carries every preview setting and override", async () => {
+  await seedServer(db, "srv_previews");
+  await db
+    .update(appsTable)
+    .set({
+      previewBaseDomain: "pr.example.com",
+      previewMaxActive: 7,
+      previewTtlDays: 14,
+      previewForkPolicy: "deny",
+      previewServerId: "srv_previews",
+      previewHttps: true,
+      previewAutoDeploy: false,
+      previewPort: 8080,
+      previewBuildDrafts: true,
+      previewComment: false,
+      previewRequiredLabels: "preview\nqa",
+    })
+    .where(eq(appsTable.id, "prj_web"));
+  await db.insert(appPreviewEnvVars).values([
+    {
+      id: "penv_1",
+      appId: "prj_web",
+      key: "API_URL",
+      valueEnc: encryptSecret("https://staging.example.com"),
+      type: "plain",
+      createdAt: T0,
+      updatedAt: T0,
+    },
+    {
+      id: "penv_2",
+      appId: "prj_web",
+      key: "STRIPE_KEY",
+      valueEnc: encryptSecret("sk_test"),
+      type: "secret",
+      createdAt: T0,
+      updatedAt: T0,
+    },
+  ]);
+  const out = await as(USER_1, TEAM_A, () => exportTeamForMigration());
+  const web = out.apps.find((a) => a.id === "prj_web");
+  assert.deepEqual(web?.preview, {
+    baseDomain: "pr.example.com",
+    maxActive: 7,
+    ttlDays: 14,
+    forkPolicy: "deny",
+    serverId: "srv_previews",
+    https: true,
+    autoDeploy: false,
+    port: 8080,
+    buildDrafts: true,
+    comment: false,
+    requiredLabels: "preview\nqa",
+  });
+  assert.deepEqual(web?.previewEnv, [
+    { key: "API_URL", value: "https://staging.example.com", secret: false },
+    { key: "STRIPE_KEY", value: "sk_test", secret: true },
+  ]);
 });
 
 test("another team's apps never leave in this team's export", async () => {

@@ -1,6 +1,6 @@
 import "server-only";
 
-import { and, eq, inArray } from "drizzle-orm";
+import { and, asc, eq, inArray } from "drizzle-orm";
 
 import { getDb } from "../../db/client";
 import {
@@ -9,11 +9,13 @@ import {
   backups as backupsTable,
 } from "../../db/schema/control-plane/backups";
 import { cronJobs as cronTable } from "../../db/schema/control-plane/crons";
+import { apps as appsTable } from "../../db/schema/control-plane/apps";
 import { databases as databasesTable } from "../../db/schema/control-plane/databases";
 import {
   appBasicAuthUsers as basicAuthTable,
   domains as domainsTable,
 } from "../../db/schema/control-plane/domains";
+import { appPreviewEnvVars as previewVarsTable } from "../../db/schema/control-plane/env-vars";
 import { tryDecryptSecret } from "../../crypto";
 import { parseConnectionPassword } from "../../deploy/database-compose";
 import type {
@@ -24,6 +26,7 @@ import type {
   DeploExportData,
   DeploExportDatabase,
   DeploExportDomain,
+  DeploExportPreview,
 } from "../../migration/deplo/export-shape";
 import { loadAppsByTeam, loadEnvVarsForApps } from "../app-graph-load";
 import { assembleDatabase } from "../backup-rows";
@@ -135,12 +138,42 @@ export async function exportApps(
   const withheld = all.length - apps.length;
   const ids = apps.map((a) => a.id);
   if (ids.length === 0) return { apps: [], withheld };
-  const [vars, domains, basicAuth, schedules] = await Promise.all([
-    loadEnvVarsForApps(ids),
-    db.select().from(domainsTable).where(inArray(domainsTable.appId, ids)),
-    db.select().from(basicAuthTable).where(inArray(basicAuthTable.appId, ids)),
-    schedulesFor(teamId),
-  ]);
+  const [vars, domains, basicAuth, schedules, previews, previewVars] =
+    await Promise.all([
+      loadEnvVarsForApps(ids),
+      db.select().from(domainsTable).where(inArray(domainsTable.appId, ids)),
+      db
+        .select()
+        .from(basicAuthTable)
+        .where(inArray(basicAuthTable.appId, ids)),
+      schedulesFor(teamId),
+      db
+        .select({
+          appId: appsTable.id,
+          baseDomain: appsTable.previewBaseDomain,
+          maxActive: appsTable.previewMaxActive,
+          ttlDays: appsTable.previewTtlDays,
+          forkPolicy: appsTable.previewForkPolicy,
+          serverId: appsTable.previewServerId,
+          https: appsTable.previewHttps,
+          autoDeploy: appsTable.previewAutoDeploy,
+          port: appsTable.previewPort,
+          buildDrafts: appsTable.previewBuildDrafts,
+          comment: appsTable.previewComment,
+          requiredLabels: appsTable.previewRequiredLabels,
+        })
+        .from(appsTable)
+        .where(inArray(appsTable.id, ids)),
+      db
+        .select()
+        .from(previewVarsTable)
+        .where(inArray(previewVarsTable.appId, ids))
+        .orderBy(asc(previewVarsTable.key)),
+    ]);
+  const previewBy = new Map(
+    previews.map(({ appId, ...p }): [string, DeploExportPreview] => [appId, p]),
+  );
+  const previewVarsBy = groupBy(previewVars, (v) => v.appId);
   const varsBy = groupBy(vars, (v) => v.appId);
   const domainsBy = groupBy(domains, (d) => d.appId);
   const authBy = groupBy(basicAuth, (b) => b.appId);
@@ -174,6 +207,16 @@ export async function exportApps(
         return [];
       }
       return [{ username: b.username, password }];
+    });
+    const previewEnv = (previewVarsBy.get(a.id) ?? []).flatMap((v) => {
+      const value = opened(v.valueEnc);
+      if (value === null) {
+        notes.push(
+          `The preview override ${v.key} could not be decrypted on {panel}, so it did not come across. Set it under Previews.`,
+        );
+        return [];
+      }
+      return [{ key: v.key, value, secret: v.type === "secret" }];
     });
     out.push({
       id: a.id,
@@ -224,6 +267,8 @@ export async function exportApps(
               uploadedAt: a.upload.uploadedAt,
             }
           : null,
+      preview: previewBy.get(a.id),
+      previewEnv,
     });
   }
   return { apps: out, withheld };
