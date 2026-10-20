@@ -23,8 +23,8 @@ import {
 } from "./migration-import-test-helpers";
 import {
   DEPLO_SOURCE,
-  importFromDeplo,
-  serveDeploExport,
+  importDeploProject,
+  fakeDeplo,
 } from "./deplo-import-test-helpers";
 
 let db: TestDb;
@@ -129,8 +129,8 @@ beforeEach(async () => {
 });
 
 test("every destination kind, every schedule and the restore points come across", async () => {
-  serveDeploExport(withBackups());
-  const runId = await importFromDeplo("prc_shop");
+  fakeDeplo(withBackups());
+  const runId = await importDeploProject("prc_shop");
   const log = [
     ...(await notesOf(runId, "postgres")),
     ...(await notesOf(runId, "destination")),
@@ -192,7 +192,7 @@ test("every destination kind, every schedule and the restore points come across"
   assert.match(log, /1 restore point on bucket came across/);
   assert.match(log, /1 restore point on disk did not come across: .*old-box/);
 
-  const again = await importFromDeplo("prc_shop");
+  const again = await importDeploProject("prc_shop");
   const count = await db.execute("select count(*)::int as n from backup_runs");
   assert.equal(count.rows[0]!.n, 1, (await notesOf(again, "postgres")).join());
 });
@@ -203,8 +203,8 @@ test("restore points stay off a bucket already here that encrypts with another k
     .update(destTable)
     .set({ endpoint: "https://s3.acme.test", bucket: "backups" })
     .where(eq(destTable.id, "dst_here"));
-  serveDeploExport(withBackups());
-  const runId = await importFromDeplo("prc_shop");
+  fakeDeplo(withBackups());
+  const runId = await importDeploProject("prc_shop");
   const log = (await notesOf(runId, "postgres")).join("\n");
 
   const runs = await db.execute("select count(*)::int as n from backup_runs");

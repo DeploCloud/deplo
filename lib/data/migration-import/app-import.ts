@@ -32,6 +32,7 @@ import { loadComposeText, resolveAppSource } from "./app-source";
 import { rehostAppDomains } from "./app-domains";
 import { landAppStorage } from "./app-storage";
 import { landAppExtras } from "./app-extras";
+import { landAppUpload } from "./app-upload";
 
 export async function importAppService(
   c: SourceCredential,
@@ -282,6 +283,10 @@ export async function importAppService(
   const target = { kind: "app", id: created.id };
 
   await rehostAppDomains(created, domains, primary, env, notes);
+
+  const upload = (detail as SourceApplication).upload;
+  if (source === "upload" && upload)
+    await landAppUpload(c, svc, created.id, upload, notes);
 
   await landAppStorage(
     created,

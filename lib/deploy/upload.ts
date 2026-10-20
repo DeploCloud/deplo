@@ -1,13 +1,13 @@
 import "server-only";
 
 import { mkdir, rm, readdir, stat } from "node:fs/promises";
-import { createReadStream, createWriteStream } from "node:fs";
+import { type ReadStream, createReadStream, createWriteStream } from "node:fs";
 import { spawn } from "node:child_process";
 import { createGunzip } from "node:zlib";
 import { Readable, Transform, Writable } from "node:stream";
 import type { ReadableStream as NodeReadableStream } from "node:stream/web";
 import { pipeline as streamPipeline } from "node:stream/promises";
-import { join, basename, relative } from "node:path";
+import { join, basename, isAbsolute, relative } from "node:path";
 import { newId, nowIso } from "../ids";
 import { spawnStream } from "../infra/exec";
 import { MAX_UPLOAD_BYTES, archiveExt } from "./upload-shared";
@@ -117,6 +117,14 @@ export async function restoreUpload(opts: {
     throw err;
   }
   return { path, size: (await stat(path)).size };
+}
+
+// Reads an app's stored archive back, refusing a path outside that app's own upload folder.
+export function readUpload(appId: string, path: string): ReadStream {
+  const rel = relative(appUploadDir(appId), path);
+  if (!SAFE_ID.test(appId) || !rel || rel.startsWith("..") || isAbsolute(rel))
+    throw new Error("That archive is not one of this app's uploads.");
+  return createReadStream(path);
 }
 
 export async function pruneUploads(

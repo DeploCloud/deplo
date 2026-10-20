@@ -374,6 +374,12 @@ export function sourceApplication(
   const { domains, notes: domainNotes } = domainsOf(a, compose);
   const history = backupHistoryOf(a);
   const notes = [...a.notes, ...env.notes, ...domainNotes, ...history.notes];
+  if (a.source === "upload" && !a.upload)
+    notes.push(
+      a.upload === undefined
+        ? "{panel} is too old to hand over its uploaded archive. Upload it again here before deploying."
+        : "It had no archive uploaded on {panel}. Upload one here before deploying.",
+    );
   const common = {
     name: a.name,
     appName: a.slug,
@@ -404,7 +410,7 @@ export function sourceApplication(
     a.source === "docker-image"
       ? { sourceType: "docker", dockerImage: a.dockerImage }
       : a.source === "upload"
-        ? { sourceType: "drop" }
+        ? { sourceType: "drop", upload: a.upload ?? null }
         : repoFields(a.repo);
   // A pending cache clear is this host's housekeeping, not a setting.
   const build: Partial<BuildConfig> = { ...a.build };

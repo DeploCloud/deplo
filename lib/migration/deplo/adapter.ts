@@ -137,6 +137,10 @@ function dataExport(c: SourceCredential): SourceDataExport {
           allowFile: allowFile === true,
         });
       })(),
+    exportUpload: (svc) =>
+      (async function* () {
+        yield* streamData(c, { ...(await ref(svc)), upload: true });
+      })(),
   };
 }
 

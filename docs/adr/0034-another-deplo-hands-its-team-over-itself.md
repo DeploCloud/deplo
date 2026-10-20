@@ -30,7 +30,11 @@ path cannot simply be pointed at it:
 - `POST /api/migration/export` (API token) streams one volume or host path of one workload
   through the source's own agent. It refuses a volume the named workload does not mount, and a
   host path outside the app's own files unless the caller is an instance admin with the
-  host-volumes grant - the same rule the target applies when it copies one.
+  host-volumes grant - the same rule the target applies when it copies one. With `upload: true`
+  it hands over an upload app's archive instead, read from the source control plane's own disk
+  (that is where an archive lives); the target stores it with the app at import time, since it
+  is the app's source rather than its data. An export without the `upload` field is from a
+  Deplo too old to do this, and the report says the archive needs uploading again.
 - `deplo` is the third adapter behind `MigrationSourceClient`, with one optional addition,
   `dataExport`. When it is set no machine is planned or installed on, and the data move pulls
   from the panel into the target's agents (`sourceDataHost`); the checksum, the stop/start
