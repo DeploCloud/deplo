@@ -31,6 +31,7 @@ import {
 import {
   orderItems,
   SCOPE_TO_WIRE,
+  scopesWithInventory,
   toRunItems,
   type CleanupRunItem,
   type CleanupRunStatus,
@@ -101,14 +102,20 @@ async function finishCleanupRun(args: {
     if (!server.agent?.certFingerprint)
       throw new Error(notProvisionedMessage(serverName));
 
+    const [liveSlugs, liveNetworks] = await Promise.all([
+      liveStackSlugs(),
+      liveNetworkNames(),
+    ]);
     const resp = await runAgentCleanup(serverId, {
-      scopes: policy.scopes.map((s) => SCOPE_TO_WIRE[s]),
+      scopes: scopesWithInventory(policy.scopes, liveSlugs, liveNetworks).map(
+        (s) => SCOPE_TO_WIRE[s],
+      ),
       dryRun: false,
       minAgeHours: policy.minAgeHours,
       keepImagesPerApp: policy.keepImagesPerApp,
       keepPerSlug: await rollbackKeepBySlug(serverId),
-      liveSlugs: await liveStackSlugs(),
-      liveNetworks: await liveNetworkNames(),
+      liveSlugs,
+      liveNetworks,
     });
     items = toRunItems(resp.results ?? []);
     reclaimedBytes = Number(resp.reclaimedBytes ?? 0);
