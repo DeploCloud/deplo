@@ -1,10 +1,11 @@
 import "server-only";
 
-import { eq, inArray } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 
 import { getDb } from "../../db/client";
 import {
   backupDestination as destTable,
+  backupRuns as runsTable,
   backups as backupsTable,
 } from "../../db/schema/control-plane/backups";
 import { cronJobs as cronTable } from "../../db/schema/control-plane/crons";
@@ -18,6 +19,7 @@ import { parseConnectionPassword } from "../../deploy/database-compose";
 import type {
   DeploExportApp,
   DeploExportBackup,
+  DeploExportBackupRun,
   DeploExportCron,
   DeploExportData,
   DeploExportDatabase,
@@ -58,9 +60,14 @@ async function dataOf(
 
 async function schedulesFor(teamId: string) {
   const db = getDb();
-  const [crons, backups, destinations] = await Promise.all([
+  const [crons, backups, runs, destinations] = await Promise.all([
     db.select().from(cronTable).where(eq(cronTable.teamId, teamId)),
     db.select().from(backupsTable).where(eq(backupsTable.teamId, teamId)),
+    db
+      .select()
+      .from(runsTable)
+      .where(and(eq(runsTable.teamId, teamId), eq(runsTable.status, "success")))
+      .orderBy(runsTable.seq),
     db
       .select({ id: destTable.id, name: destTable.name })
       .from(destTable)
@@ -79,7 +86,25 @@ async function schedulesFor(teamId: string) {
     enabled: r.enabled,
     retentionCount: r.retentionCount,
     destination: destName.get(r.destinationId) ?? null,
+    timezone: r.timezone,
   });
+  const runsBy = groupBy(runs, (r) => r.appId ?? r.databaseId);
+  const restorePoints = (id: string): DeploExportBackupRun[] =>
+    (runsBy.get(id) ?? []).flatMap((r) => {
+      const destination = destName.get(r.destinationId);
+      if (!destination || !r.objectKey) return [];
+      return [
+        {
+          destination,
+          objectKey: r.objectKey,
+          sizeBytes: r.sizeBytes,
+          decryptedSizeBytes: r.decryptedSizeBytes,
+          sha256: r.sha256,
+          startedAt: r.startedAt,
+          finishedAt: r.finishedAt,
+        },
+      ];
+    });
   return {
     appCrons: groupBy(crons, (r) => r.appId),
     dbCrons: groupBy(crons, (r) => r.databaseId),
@@ -87,6 +112,7 @@ async function schedulesFor(teamId: string) {
     dbBackups: groupBy(backups, (r) => r.databaseId),
     cron,
     backup,
+    restorePoints,
   };
 }
 
@@ -187,6 +213,7 @@ export async function exportApps(
       basicAuth: auth,
       crons: (schedules.appCrons.get(a.id) ?? []).map(schedules.cron),
       backups: (schedules.appBackups.get(a.id) ?? []).map(schedules.backup),
+      backupRuns: schedules.restorePoints(a.id),
       data: await dataOf(teamId, "app", a.id),
       notes,
       upload:
@@ -237,6 +264,7 @@ export async function exportDatabases(
       mounts: d.mounts,
       crons: (schedules.dbCrons.get(d.id) ?? []).map(schedules.cron),
       backups: (schedules.dbBackups.get(d.id) ?? []).map(schedules.backup),
+      backupRuns: schedules.restorePoints(d.id),
       data: await dataOf(teamId, "database", d.id),
       notes: conn
         ? []

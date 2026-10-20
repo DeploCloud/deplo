@@ -54,6 +54,19 @@ export interface DeploExportBackup {
   enabled: boolean;
   retentionCount: number;
   destination: string | null;
+  // Absent from a source older than #102, like every field below marked so.
+  timezone?: string;
+}
+
+// A successful run: a restore point the artifact at `objectKey` still answers for.
+export interface DeploExportBackupRun {
+  destination: string;
+  objectKey: string;
+  sizeBytes: number;
+  decryptedSizeBytes: number | null;
+  sha256: string | null;
+  startedAt: string;
+  finishedAt: string | null;
 }
 
 export interface DeploExportData {
@@ -88,6 +101,7 @@ export interface DeploExportApp {
   basicAuth: { username: string; password: string }[];
   crons: DeploExportCron[];
   backups: DeploExportBackup[];
+  backupRuns?: DeploExportBackupRun[];
   data: DeploExportData;
   notes: string[];
   // The archive an upload app builds from; null when it has none, absent from an older Deplo.
@@ -119,6 +133,7 @@ export interface DeploExportDatabase {
   mounts: DatabaseMount[];
   crons: DeploExportCron[];
   backups: DeploExportBackup[];
+  backupRuns?: DeploExportBackupRun[];
   data: DeploExportData;
   notes: string[];
 }
@@ -130,6 +145,17 @@ export interface DeploExportDestination {
   region: string;
   accessKeyId: string;
   secretAccessKey: string;
+  provider?: string;
+  // null: that destination never encrypted. Old artifacts open only with this key.
+  ageIdentity?: string | null;
+}
+
+export interface DeploExportServerDestination {
+  name: string;
+  serverId: string;
+  serverName: string | null;
+  path: string | null;
+  ageIdentity?: string;
 }
 
 export interface DeploExport {
@@ -157,4 +183,6 @@ export interface DeploExport {
   }[];
   members: { email: string; name: string | null; role: string | null }[];
   destinations: DeploExportDestination[];
+  // Apart from `destinations`, so an older target never reads a disk as a bucket.
+  serverDestinations?: DeploExportServerDestination[];
 }

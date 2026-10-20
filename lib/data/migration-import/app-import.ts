@@ -26,7 +26,7 @@ import { composeGrantRefusal } from "./compose-notes";
 import type { Report } from "./run-report";
 import type { SourceService } from "./source-tree";
 import { type SharedIndex, sharedEntry } from "./shared-vars-import";
-import { landSourceBackups } from "./source-backups";
+import { landSourceBackups, type LandedDestinations } from "./source-backups";
 import { landingServerId } from "./target-servers";
 import { mapAppEnv } from "./app-env";
 import { loadComposeText, resolveAppSource } from "./app-source";
@@ -48,7 +48,7 @@ export async function importAppService(
     sourceHost: string | null;
     dbHosts: Map<string, string>;
     shared: SharedIndex;
-    destinations?: Map<string, string>;
+    destinations?: LandedDestinations;
   },
   report: Report,
 ): Promise<string | null> {
@@ -68,6 +68,7 @@ export async function importAppService(
       home.destinations,
       { kind: "app", id: match.id, name },
       extra,
+      detail.backupRuns,
     );
     await report.add({
       sourceKind: svc.kind,
@@ -232,6 +233,7 @@ export async function importAppService(
     home.destinations,
     { kind: "app", id: created.id, name },
     notes,
+    detail.backupRuns,
   );
 
   if (namesake)

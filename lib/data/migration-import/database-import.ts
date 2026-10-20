@@ -21,7 +21,7 @@ import { setDatabaseMounts } from "../databases/mounts";
 import { createDatabase } from "../databases/provision";
 import type { Report } from "./run-report";
 import type { SourceService } from "./source-tree";
-import { landSourceBackups } from "./source-backups";
+import { landSourceBackups, type LandedDestinations } from "./source-backups";
 
 export async function importDatabaseService(
   c: SourceCredential,
@@ -36,7 +36,7 @@ export async function importDatabaseService(
     sourceIsTargetHost: boolean;
     projectName?: string;
     dbHosts: Map<string, string>;
-    destinations?: Map<string, string>;
+    destinations?: LandedDestinations;
   },
   report: Report,
 ): Promise<void> {
@@ -80,6 +80,7 @@ export async function importDatabaseService(
       opts.destinations,
       { kind: "database", id: clash.id, name: spec.name },
       extra,
+      row.backupRuns,
     );
     await report.add({
       sourceKind: svc.kind,
@@ -245,6 +246,7 @@ export async function importDatabaseService(
     opts.destinations,
     { kind: "database", id: created.id, name: spec.name },
     notes,
+    row.backupRuns,
   );
 
   if (publishPort != null && sourcePort != null && publishPort !== sourcePort)

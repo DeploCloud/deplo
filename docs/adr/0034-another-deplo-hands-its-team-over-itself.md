@@ -52,5 +52,9 @@ path cannot simply be pointed at it:
   and the top level becomes one named after the team.
 - The shared model gained `nativeBuild`, `nativeResources` and `SourceDomain.generated`, all
   optional, so the other two platforms are untouched and a Deplo source loses no build setting.
+- Backups carry every destination (bucket or server disk) with the key its artifacts are
+  encrypted to, every schedule paused or not, and each successful run as a copied run
+  ([ADR-0035](0035-a-whole-deplo-copies-onto-a-new-machine.md)): a bucket's restore points stay
+  restorable here, a server disk's are named in the report, since only the old Deplo reaches it.
 - Not carried, and said so in the report: a database's crons, a compose stack's `up` flags, and
   preview settings beyond on/off.
