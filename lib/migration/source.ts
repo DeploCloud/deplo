@@ -9,6 +9,7 @@ import type {
   SourceMember,
   SourceProject,
   SourceBackupDestination,
+  SourceRegistry,
   SourceSchedule,
   SourceServer,
   SourceSharedEnv,
@@ -78,6 +79,11 @@ export interface SourceDataExport {
   ): AsyncIterable<Buffer>;
   // The archive an upload app builds from, as it was uploaded.
   exportUpload?(svc: { kind: string; id: string }): AsyncIterable<Buffer>;
+  // The image an app runs, as its source server holds it (`docker save`).
+  exportImage?(
+    svc: { kind: string; id: string },
+    image: string,
+  ): AsyncIterable<Buffer>;
   // A database dumped through its engine while it keeps running, encrypted to `recipient` (an age key).
   exportDump?(
     svc: { kind: string; id: string },
@@ -107,6 +113,8 @@ export interface MigrationSourceClient {
   teamSharedEnv(): Promise<SourceSharedEnv | null>;
   serverSharedEnv(sourceServerId: string): Promise<SourceSharedEnv | null>;
   listBackupDestinations(): Promise<SourceBackupDestination[]>;
+  // null: a source that could hand them over but is too old to.
+  listRegistries?(): Promise<SourceRegistry[] | null>;
 
   serviceRuntime(svc: RuntimeQuery): Promise<ServiceRuntime>;
 

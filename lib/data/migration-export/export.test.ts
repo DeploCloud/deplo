@@ -26,9 +26,13 @@ import { ALL_CAPABILITIES } from "../../types/identity";
 import { appBasicAuthUsers } from "../../db/schema/control-plane/domains";
 import { appPreviewEnvVars } from "../../db/schema/control-plane/env-vars";
 import { cronJobEnv, cronJobs } from "../../db/schema/control-plane/crons";
+import {
+  gitConnections,
+  registries,
+} from "../../db/schema/control-plane/integrations";
 import { runWithIdentity } from "../../auth/request-context";
 import { encryptSecret } from "../../crypto";
-import { insertEnvVars } from "../app-graph-load";
+import { insertDomain, insertEnvVars } from "../app-graph-load";
 import { seedApp, seedServer } from "../app-graph-test-helpers";
 import {
   seedBackup,
@@ -43,6 +47,7 @@ import { instanceFingerprint } from "../../migration/deplo/instance";
 import { __resetExportTrailForTest, exportTeamForMigration } from "./export";
 import {
   ExportRefusedError,
+  openAppImage,
   openAppUpload,
   openDatabaseDump,
   openWorkloadData,
@@ -51,6 +56,13 @@ import type { BackupRequest } from "../../agent/gen/agent";
 import type { AgentConnection } from "../../infra/agent-client/connection";
 import { __setAgentConnectorForTest } from "../../infra/agent-client/connect";
 import { storeUpload } from "../../deploy/upload";
+import type { Domain } from "../../types/domain";
+import { withTraefikCertificates } from "../../deploy/traefik-stack";
+import {
+  ACME_CERT,
+  ACME_KEY,
+  TRAEFIK_STACK,
+} from "../certificate-test-fixtures";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -114,7 +126,7 @@ const as = <T>(userId: string, teamId: string, fn: () => Promise<T>) =>
 beforeEach(async () => {
   __resetExportTrailForTest();
   await pg.exec(`${TRUNCATE_BACKUPS}
-    truncate table activities, app_build_method_settings, app_build, apps,
+    truncate table activities, git_connections, registries, app_build_method_settings, app_build, apps,
       servers, users, teams restart identity cascade;`);
   await seedIdentity(db, {
     users: [
@@ -518,6 +530,134 @@ test("the data stream answers 404 for an app with no archive", async () => {
   );
 });
 
+const seedDomain = (d: Partial<Domain> & { id: string; name: string }) =>
+  insertDomain(db as unknown as Parameters<typeof insertDomain>[0], {
+    appId: "prj_web",
+    status: "valid",
+    primary: false,
+    redirectTo: null,
+    ssl: true,
+    source: "custom",
+    createdAt: T0,
+    ...d,
+  });
+
+test("a domain's routing rules leave in the export", async () => {
+  await seedDomain({
+    id: "dom_shop",
+    name: "shop.example.com",
+    primary: true,
+    entrypoint: "websecure",
+    certProvider: "letsencrypt",
+    middlewares: ["ratelimit@file", "auth"],
+    securityHeaders: false,
+    corsOrigins: ["https://a.example.com", "https://b.example.com"],
+    proxied: true,
+  });
+  await seedDomain({
+    id: "dom_www",
+    name: "www.shop.example.com",
+    redirectTo: "shop.example.com",
+    source: "redirect",
+  });
+  const out = await as(USER_1, TEAM_A, () => exportTeamForMigration());
+  const domains = out.apps.find((a) => a.id === "prj_web")?.domains ?? [];
+  const shop = domains.find((d) => d.host === "shop.example.com");
+  assert.deepEqual(
+    {
+      entrypoint: shop?.entrypoint,
+      middlewares: shop?.middlewares,
+      corsOrigins: shop?.corsOrigins,
+      securityHeaders: shop?.securityHeaders,
+      proxied: shop?.proxied,
+    },
+    {
+      entrypoint: "websecure",
+      middlewares: ["ratelimit@file", "auth"],
+      corsOrigins: ["https://a.example.com", "https://b.example.com"],
+      securityHeaders: false,
+      proxied: true,
+    },
+  );
+  const www = domains.find((d) => d.host === "www.shop.example.com");
+  assert.equal(www?.redirectTo, "shop.example.com");
+  assert.equal(www?.securityHeaders, true);
+  assert.deepEqual(www?.middlewares, []);
+});
+
+function proxyHolding(certificates: { certPem: string; keyPem: string }[]) {
+  __setAgentConnectorForTest(
+    async () =>
+      ({
+        hello: async () => ({ capabilities: ["hostops"] }),
+        hostInfo: async () => ({
+          traefikComposeYaml: withTraefikCertificates(
+            TRAEFIK_STACK,
+            certificates,
+          ),
+        }),
+        close: () => {},
+      }) as unknown as AgentConnection,
+  );
+}
+
+const certificateOf = async (userId: string, host: string) =>
+  (await as(userId, TEAM_A, () => exportTeamForMigration())).apps
+    .find((a) => a.id === "prj_web")
+    ?.domains.find((d) => d.host === host)?.certificate;
+
+test("a custom certificate leaves with its key only for an instance admin", async (t) => {
+  t.after(() => __setAgentConnectorForTest());
+  await db
+    .insert(membershipCapabilities)
+    .values(
+      ALL_CAPABILITIES.filter((c) => c !== "manage_team").map((capability) => ({
+        membershipId: `mem_${INTRUDER}`,
+        capability,
+      })),
+    )
+    .onConflictDoNothing();
+  await seedDomain({
+    id: "dom_acme",
+    name: "acme.example.com",
+    certProvider: "custom",
+  });
+  await seedDomain({
+    id: "dom_le",
+    name: "le.example.com",
+    certProvider: "letsencrypt",
+  });
+  proxyHolding([{ certPem: ACME_CERT, keyPem: ACME_KEY }]);
+
+  assert.deepEqual(await certificateOf(USER_1, "acme.example.com"), {
+    certPem: ACME_CERT,
+    keyPem: ACME_KEY,
+  });
+  assert.equal(await certificateOf(USER_1, "le.example.com"), undefined);
+  assert.deepEqual(await certificateOf(INTRUDER, "acme.example.com"), {
+    withheld: "admin",
+  });
+});
+
+test("a custom certificate the proxy does not hold, or cannot be read, says why", async (t) => {
+  t.after(() => __setAgentConnectorForTest());
+  await seedDomain({
+    id: "dom_other",
+    name: "other.example.com",
+    certProvider: "custom",
+  });
+  proxyHolding([{ certPem: ACME_CERT, keyPem: ACME_KEY }]);
+  assert.deepEqual(await certificateOf(USER_1, "other.example.com"), {
+    withheld: "missing",
+  });
+  __setAgentConnectorForTest(async () => {
+    throw new Error("unreachable");
+  });
+  assert.deepEqual(await certificateOf(USER_1, "other.example.com"), {
+    withheld: "unreadable",
+  });
+});
+
 const RECIPIENT =
   "age1qyqszqgpqyqszqgpqyqszqgpqyqszqgpqyqszqgpqyqszqgpqyqs3290gq";
 
@@ -650,6 +790,176 @@ test("every cron job leaves with all its settings and variables, on apps and dat
   ]);
   assert.equal(main.crons[0]?.name, "vacuum");
   assert.deepEqual(main.crons[0]?.env, [{ key: "TOKEN", value: "s3cr3t" }]);
+});
+
+test("an app's compose flags, rollback count and deploy hook leave in the export", async () => {
+  await db
+    .update(appsTable)
+    .set({
+      composeUpArgs: "--remove-orphans --wait",
+      rollbackKeep: 7,
+      deployHookEnabled: true,
+      deployHookTokenEnc: encryptSecret("hook-token"),
+    })
+    .where(eq(appsTable.id, "prj_web"));
+  const out = await as(USER_1, TEAM_A, () => exportTeamForMigration());
+  const web = out.apps.find((a) => a.id === "prj_web")!;
+  assert.equal(web.composeUpArgs, "--remove-orphans --wait");
+  assert.equal(web.rollbackKeep, 7);
+  assert.deepEqual(web.deployHook, { enabled: true, used: true });
+  assert.doesNotMatch(JSON.stringify(out), /hook-token/);
+});
+
+async function seedGitConnection() {
+  await db.insert(gitConnections).values({
+    id: "gitc_acme",
+    teamId: TEAM_A,
+    provider: "gitlab",
+    label: "Acme GitLab",
+    baseUrl: "https://gitlab.acme.com",
+    allowPrivateEndpoint: false,
+    username: "oauth2",
+    tokenEnc: encryptSecret("glpat-secret"),
+    webhookSecretEnc: encryptSecret("w"),
+    webhookToken: "wht_acme",
+    createdAt: T0,
+    createdBy: USER_1,
+  });
+}
+
+async function withoutCapability(userId: string, capability: string) {
+  await db
+    .delete(membershipCapabilities)
+    .where(
+      and(
+        eq(membershipCapabilities.membershipId, `mem_${userId}`),
+        eq(membershipCapabilities.capability, capability),
+      ),
+    );
+}
+
+test("the team's git connections leave with their tokens", async () => {
+  await seedGitConnection();
+  const out = await as(USER_1, TEAM_A, () => exportTeamForMigration());
+  assert.deepEqual(out.gitConnections, [
+    {
+      id: "gitc_acme",
+      provider: "gitlab",
+      label: "Acme GitLab",
+      baseUrl: "https://gitlab.acme.com",
+      allowPrivateEndpoint: false,
+      username: "oauth2",
+      token: "glpat-secret",
+    },
+  ]);
+});
+
+test("a git token stays behind when the reader may not manage git connections", async () => {
+  await seedGitConnection();
+  await withoutCapability(USER_1, "manage_git");
+  const out = await as(USER_1, TEAM_A, () => exportTeamForMigration());
+  assert.equal(out.gitConnections?.[0]?.label, "Acme GitLab");
+  assert.equal(out.gitConnections?.[0]?.token, null);
+  assert.doesNotMatch(JSON.stringify(out), /glpat-secret/);
+});
+
+async function seedRegistry() {
+  await db.insert(registries).values({
+    id: "reg_acme",
+    teamId: TEAM_A,
+    name: "Acme images",
+    type: "generic",
+    registryUrl: "registry.acme.com",
+    username: "ci",
+    passwordEnc: encryptSecret("reg-password"),
+    createdAt: T0,
+  });
+}
+
+test("the team's registries leave with their passwords", async () => {
+  await seedRegistry();
+  const out = await as(USER_1, TEAM_A, () => exportTeamForMigration());
+  assert.deepEqual(out.registries, [
+    {
+      name: "Acme images",
+      type: "generic",
+      registryUrl: "registry.acme.com",
+      username: "ci",
+      password: "reg-password",
+    },
+  ]);
+});
+
+test("a registry password stays behind when the reader may not manage registries", async () => {
+  await seedRegistry();
+  await withoutCapability(USER_1, "manage_registries");
+  const out = await as(USER_1, TEAM_A, () => exportTeamForMigration());
+  assert.equal(out.registries?.[0]?.name, "Acme images");
+  assert.equal(out.registries?.[0]?.password, null);
+  assert.doesNotMatch(JSON.stringify(out), /reg-password/);
+});
+
+async function imageApp() {
+  await seedApp(db, {
+    id: "prj_img",
+    teamId: TEAM_A,
+    source: "docker-image",
+    repo: null,
+  });
+  await db
+    .update(appsTable)
+    .set({ dockerImage: "acme-api:local" })
+    .where(eq(appsTable.id, "prj_img"));
+}
+
+test("the data stream hands over the image an app runs, from its own server", async () => {
+  await imageApp();
+  const asked: { server: string; ref: string; removeAfter: boolean }[] = [];
+  __setAgentConnectorForTest(
+    async (server) =>
+      ({
+        exportImage: (ref: string, removeAfter: boolean) => {
+          asked.push({ server, ref, removeAfter });
+          return (async function* () {
+            yield Buffer.from("image-bytes");
+          })();
+        },
+        close() {},
+      }) as unknown as AgentConnection,
+  );
+  try {
+    const { chunks, close } = await as(USER_1, TEAM_A, () =>
+      openAppImage({ kind: "app", id: "prj_img" }, "acme-api:local"),
+    );
+    try {
+      assert.equal(await drain(chunks), "image-bytes");
+    } finally {
+      close();
+    }
+    assert.deepEqual(asked, [
+      { server: "srv_1", ref: "acme-api:local", removeAfter: false },
+    ]);
+  } finally {
+    __setAgentConnectorForTest();
+  }
+});
+
+test("the data stream refuses an image the named app does not run", async () => {
+  await imageApp();
+  await assert.rejects(
+    () =>
+      as(USER_1, TEAM_A, () =>
+        openAppImage({ kind: "app", id: "prj_img" }, "postgres:16"),
+      ),
+    (e: unknown) => e instanceof ExportRefusedError && e.status === 404,
+  );
+  await assert.rejects(
+    () =>
+      as(USER_1, TEAM_A, () =>
+        openAppImage({ kind: "app", id: "prj_other" }, "acme-api:local"),
+      ),
+    (e: unknown) => e instanceof ExportRefusedError && e.status === 404,
+  );
 });
 
 test("roles, each member's role and their per-folder and per-app access leave by email", async () => {

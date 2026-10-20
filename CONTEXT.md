@@ -951,7 +951,8 @@ Exactly one domain per app is **primary** - the _canonical host_, the app's
 A TLS certificate the operator brought themselves (a wildcard, a company CA, a domain no
 HTTP challenge can reach), installed on ONE **server** from Settings, Servers, its
 Certificates tab. It lives in that host's own Traefik stack file and nowhere else: Deplo
-keeps no copy, the list is read back off the host, and the private key has no read path.
+keeps no copy, the list is read back off the host, and the private key has one read path
+only: a migration export read with an instance admin's token (ADR-0034).
 The proxy picks it by the hostname the browser asked for. Installing one is only half of
 it: a **Domain** reaches it by setting its `certProvider` to `custom` ("Installed on the
 server"), which serves that hostname over HTTPS with no ACME resolver named. A Domain left

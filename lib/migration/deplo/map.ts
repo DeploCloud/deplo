@@ -2,6 +2,7 @@ import { DB_REPOS } from "../../databases/images";
 import type { BuildConfig, GitRepo } from "../../types/build";
 import type { EnvironmentKind } from "../../types/team";
 import type { EnvPair, SharedRef } from "../map/env";
+import { blocker, type Note } from "../note";
 import type {
   SourceApplication,
   SourceBackupDestination,
@@ -11,8 +12,10 @@ import type {
   SourceDatabase,
   SourceDbKind,
   SourceDomain,
+  SourceDomainRules,
   SourceEnvironment,
   SourceFolder,
+  SourceGitConnection,
   SourceMount,
   SourceProject,
   SourceSharedEnv,
@@ -24,6 +27,7 @@ import type {
   DeploExportBackupRun,
   DeploExportCron,
   DeploExportDatabase,
+  DeploExportDomain,
   DeploExportSharedVar,
   DeploExportVar,
 } from "./export-shape";
@@ -153,32 +157,49 @@ function domainsOf(
   notes: string[];
 } {
   const notes: string[] = [];
-  const domains = a.domains.map((d, i): SourceDomain => {
-    if (d.redirectTo)
-      notes.push(
-        `${d.host} only redirected to ${d.redirectTo} on {panel}, so it did not come across. Add it under Domains if you still need the redirect.`,
-      );
-    return {
-      domainId: `${a.id}:${i}`,
-      host: d.host,
-      https: d.https,
-      port: d.port,
-      path: d.pathPrefix || "/",
-      stripPath: d.stripPrefix,
-      serviceName: d.service,
-      domainType: compose ? "compose" : "application",
-      certificateType:
-        d.certProvider === "custom"
-          ? "custom"
-          : d.certProvider === "none" || d.certProvider === "cloudflare"
-            ? "none"
-            : "letsencrypt",
-      enabled: !d.redirectTo,
-      generated: d.generated,
-      primary: d.primary,
-    };
-  });
+  const domains = a.domains.map((d, i): SourceDomain => ({
+    domainId: `${a.id}:${i}`,
+    host: d.host,
+    https: d.https,
+    port: d.port,
+    path: d.pathPrefix || "/",
+    stripPath: d.stripPrefix,
+    serviceName: d.service,
+    domainType: compose ? "compose" : "application",
+    certificateType:
+      d.certProvider === "custom"
+        ? "custom"
+        : d.certProvider === "none" || d.certProvider === "cloudflare"
+          ? "none"
+          : "letsencrypt",
+    enabled: !d.redirectTo,
+    generated: d.generated,
+    primary: d.primary,
+    nativeRules: rulesOf(d),
+  }));
+  if (a.domains.some((d) => d.securityHeaders === undefined))
+    notes.push(
+      "{panel} is too old to hand over its domains' middlewares, CORS origins and security headers, so they arrive with this Deplo's defaults. Check them under Domains.",
+    );
   return { domains, notes };
+}
+
+function rulesOf(d: DeploExportDomain): SourceDomainRules {
+  const entrypoint =
+    d.entrypoint === "web" || d.entrypoint === "websecure"
+      ? d.entrypoint
+      : null;
+  return {
+    entrypoint,
+    middlewares: d.middlewares,
+    corsOrigins: d.corsOrigins,
+    securityHeaders: d.securityHeaders,
+    proxied: d.proxied,
+    redirectTo: d.redirectTo,
+    ...(d.certProvider === "custom"
+      ? { certificate: d.certificate ?? { withheld: "old" } }
+      : {}),
+  };
 }
 
 function mountsOf(a: DeploExportApp, compose: boolean): SourceMount[] {
@@ -218,6 +239,54 @@ function mountsOf(a: DeploExportApp, compose: boolean): SourceMount[] {
       readOnly: v.readOnly,
     };
   });
+}
+
+// Which connection it clones with, from a source that says; the GitHub App never moves between instances.
+function gitCredentialOf(
+  x: DeploExport,
+  repo: GitRepo | null,
+): { gitConnection?: SourceGitConnection | null; notes: Note[] } {
+  if (!repo) return { notes: [] };
+  if (repo.installationId)
+    return {
+      gitConnection: null,
+      notes: [
+        blocker(
+          `It cloned ${repo.repo} through the GitHub App on {panel}, which cannot move to another Deplo. Link a GitHub App under the app's Source settings before deploying.`,
+        ),
+      ],
+    };
+  if (!repo.connectionId) return { gitConnection: null, notes: [] };
+  if (!x.gitConnections)
+    return {
+      gitConnection: null,
+      notes: [
+        blocker(
+          `{panel} is too old to hand over the git connection ${repo.repo} clones with. Attach one under the app's Source settings before deploying.`,
+        ),
+      ],
+    };
+  const conn = x.gitConnections.find((g) => g.id === repo.connectionId);
+  if (!conn)
+    return {
+      gitConnection: null,
+      notes: [
+        blocker(
+          `The git connection ${repo.repo} cloned with on {panel} is gone there. Attach one under the app's Source settings before deploying.`,
+        ),
+      ],
+    };
+  return {
+    gitConnection: {
+      provider: conn.provider,
+      label: conn.label,
+      baseUrl: conn.baseUrl,
+      allowPrivateEndpoint: conn.allowPrivateEndpoint,
+      username: conn.username,
+      token: conn.token,
+    },
+    notes: [],
+  };
 }
 
 function repoFields(repo: GitRepo | null): Partial<SourceApplication> {
@@ -390,12 +459,21 @@ export function sourceApplication(
   const env = appEnv(x, a);
   const { domains, notes: domainNotes } = domainsOf(a, compose);
   const history = backupHistoryOf(a);
-  const notes = [...a.notes, ...domainNotes, ...history.notes, ...cronNotes(a)];
+  const notes: Note[] = [
+    ...a.notes,
+    ...domainNotes,
+    ...history.notes,
+    ...cronNotes(a),
+  ];
   if (a.source === "upload" && !a.upload)
     notes.push(
       a.upload === undefined
         ? "{panel} is too old to hand over its uploaded archive. Upload it again here before deploying."
         : "It had no archive uploaded on {panel}. Upload one here before deploying.",
+    );
+  if (a.rollbackKeep === undefined)
+    notes.push(
+      "{panel} is too old to hand over its compose flags, rollback count and deploy hook switch, so they start at Deplo's defaults. Check them under Settings.",
     );
   if (a.preview === undefined && a.previewEnabled)
     notes.push(
@@ -423,6 +501,15 @@ export function sourceApplication(
     nativePreview: a.preview
       ? { enabled: a.previewEnabled, ...a.preview }
       : undefined,
+    registriesCarried: x.registries !== undefined,
+    nativeOps:
+      a.rollbackKeep === undefined
+        ? undefined
+        : {
+            composeUpArgs: a.composeUpArgs ?? null,
+            rollbackKeep: a.rollbackKeep,
+            deployHook: a.deployHook ?? { enabled: true, used: false },
+          },
   };
   if (compose)
     return {
@@ -439,12 +526,20 @@ export function sourceApplication(
       : a.source === "upload"
         ? { sourceType: "drop", upload: a.upload ?? null }
         : repoFields(a.repo);
+  const git: ReturnType<typeof gitCredentialOf> =
+    a.source === "docker-image" || a.source === "upload"
+      ? { notes: [] }
+      : gitCredentialOf(x, a.repo);
+  notes.push(...git.notes);
   // A pending cache clear is this host's housekeeping, not a setting.
   const build: Partial<BuildConfig> = { ...a.build };
   delete build.buildCacheClearPending;
   return {
     ...common,
     ...origin,
+    ...(git.gitConnection !== undefined
+      ? { gitConnection: git.gitConnection }
+      : {}),
     applicationId: a.id,
     sourceType: origin.sourceType ?? "git",
     buildType: a.build.buildMethod,

@@ -56,7 +56,14 @@ export function mapSource(app: SourceApplication): Mapped<MappedSource> {
       );
       return { value: { kind: "none" }, notes };
     }
-    if (app.registryId || app.registry || app.username || app.registryUrl)
+    if (app.registriesCarried) {
+      // Every registry of the team came along with the run.
+    } else if (
+      app.registryId ||
+      app.registry ||
+      app.username ||
+      app.registryUrl
+    )
       notes.push(
         "From a private registry. Add it under Registries and reselect it - {panel} never exposes the password.",
       );
@@ -87,7 +94,9 @@ export function mapSource(app: SourceApplication): Mapped<MappedSource> {
     return { value: { kind: "none" }, notes };
   }
 
-  if (app.customGitSSHKeyId)
+  if (app.gitConnection !== undefined) {
+    // The source named its credential, so the import brings it or reports it precisely.
+  } else if (app.customGitSSHKeyId)
     notes.push(
       "Clones over SSH with a key stored in {panel}. Deplo clones over https, so add a git connection for this host.",
     );
