@@ -1,6 +1,10 @@
 import { builder } from "../builder";
 import { AgentUpdateRef } from "./server/server-ref";
 import {
+  strandedByPanelUpdate,
+  type StrandedServer,
+} from "@/lib/data/servers/stranded-servers";
+import {
   fleetAgentStatus,
   type FleetAgentStatus,
 } from "@/lib/data/servers/agent-rollout";
@@ -14,6 +18,18 @@ import {
   type DeploUpdateStarted,
   type UpdateInfo,
 } from "@/lib/data/updates";
+
+const StrandedServerRef = builder
+  .objectRef<StrandedServer>("StrandedServer")
+  .implement({
+    description:
+      "An offline server whose agent the offered Deplo version would refuse.",
+    fields: (t) => ({
+      id: t.exposeID("id"),
+      name: t.exposeString("name"),
+      version: t.exposeString("version", { nullable: true }),
+    }),
+  });
 
 const UpdateInfoRef = builder.objectRef<UpdateInfo>("UpdateInfo").implement({
   description:
@@ -31,6 +47,16 @@ const UpdateInfoRef = builder.objectRef<UpdateInfo>("UpdateInfo").implement({
         "Whether canary (pre-release) versions count as updates. Off: only stable releases do.",
     }),
     error: t.exposeString("error", { nullable: true }),
+    strandedServers: t.field({
+      type: [StrandedServerRef],
+      authScopes: { instanceAdmin: true },
+      description:
+        "Offline servers whose agent is older than the minimum the `latest` Deplo supports. They cannot update while offline, so they stay unusable until they come back and their agent updates. Empty when there is no update or the release does not say.",
+      resolve: (info) =>
+        info.updateAvailable && info.latest
+          ? strandedByPanelUpdate(info.latest.replace(/^v/i, ""))
+          : [],
+    }),
   }),
 });
 

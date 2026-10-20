@@ -6217,6 +6217,13 @@ enum SourceMoveState {
   done
 }
 
+"""An offline server whose agent the offered Deplo version would refuse."""
+type StrandedServer {
+  id: ID
+  name: String
+  version: String
+}
+
 type Subscription {
   """
   Emits how many deployments are in flight (queued or building) across the active team, counting only the apps the caller can reach. Fires once immediately, then on every change - it is what the sidebar's live chip reads.
@@ -6465,6 +6472,11 @@ type UpdateInfo {
   latest: String
   name: String
   publishedAt: String
+
+  """
+  Offline servers whose agent is older than the minimum the `latest` Deplo supports. They cannot update while offline, so they stay unusable until they come back and their agent updates. Empty when there is no update or the release does not say.
+  """
+  strandedServers: [StrandedServer!]
   updateAvailable: Boolean
   url: String
 }

@@ -34,6 +34,7 @@ type UpdateInfo = {
   publishedAt: string | null;
   canary: boolean;
   error?: string | null;
+  strandedServers?: { id: string; name: string; version: string | null }[];
 };
 
 const UPDATES_QUERY = /* GraphQL */ `
@@ -45,6 +46,11 @@ const UPDATES_QUERY = /* GraphQL */ `
       publishedAt
       canary
       error
+      strandedServers {
+        id
+        name
+        version
+      }
     }
     deploChangelog {
       error
@@ -284,6 +290,11 @@ export function DeploUpdatesTab({
                             </>
                           }
                           consequence="The dashboard is unreachable while it restarts. Deployed apps, sites and databases keep running."
+                          extra={
+                            <StrandedServers
+                              servers={info.strandedServers ?? []}
+                            />
+                          }
                           confirmLabel="Update"
                           trigger={
                             <Button size="sm">
@@ -349,6 +360,29 @@ function Updating({
         This page reloads itself when Deplo is back.
       </p>
     </div>
+  );
+}
+
+// Offline servers the new version refuses: they cannot update until they come back.
+function StrandedServers({
+  servers,
+}: {
+  servers: NonNullable<UpdateInfo["strandedServers"]>;
+}) {
+  if (servers.length === 0) return null;
+  return (
+    <ul className="space-y-1 text-sm">
+      {servers.map((s) => (
+        <li key={s.id} className="flex items-start gap-1.5">
+          <TriangleAlert className="mt-0.5 size-4 shrink-0 text-[var(--warning)]" />
+          <span>
+            <strong>{s.name}</strong> is offline on{" "}
+            {s.version ? `v${s.version}` : "an unknown agent"} and will be
+            unusable until its agent updates.
+          </span>
+        </li>
+      ))}
+    </ul>
   );
 }
 
