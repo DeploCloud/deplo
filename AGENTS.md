@@ -666,8 +666,9 @@ runs on a machine you choose. See "Core mission" for why the words are the produ
   beta, so a release is `0.x.y` - **minor** when the user notices (feature, changed behaviour, DB
   migration, needs a newer agent), **patch** for everything else, and `1.0.0` is the launch, which
   is the owner's call. One command does the whole thing and makes tag/file drift impossible:
-  `bun pm version minor --message "chore(release): Deplo %s"` then `git push --follow-tags`. Full
-  procedure in `docs/agents/releasing.md`. `deplo-agent` versions on its own clock (also `0.x`
+  `bun pm version minor --message "chore(release): Deplo %s"` then `git push --follow-tags`. A
+  release request is the go-ahead, not the answers: settle "The questions before a release" (does
+  the agent need a release, does `agentMin` move) first. Full procedure in `docs/agents/releasing.md`. `deplo-agent` versions on its own clock (also `0.x`
   since 24 Aug 2026) and the fleet only ever moves forward (`docs/agents/fleet-rollout.md`).
 - **Stop what you start, including :3000.** Any build or server you launch to work a task (dev
   server, test server, watcher, Playwright harness) MUST be stopped once the task is 100% done,

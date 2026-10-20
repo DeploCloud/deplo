@@ -22,6 +22,29 @@ instances poll `releases/latest` for the update banner, images carry the tag, an
 published tag rewrites what an operator has already installed. A new number is the cheaper answer,
 and the two repos keep their own clocks - but the call is the owner's, not yours.
 
+## The questions before a release
+
+A release request ("cut a release", "a new pre-release of everything") is the go-ahead to tag, not
+the answers. Settle these first - from the request or the tree when they are there, with ONE
+`AskUserQuestion` round for the rest - and never ask what the owner already said:
+
+1. **Stable or canary, and which number.** A canary is `<next stable>-canary.N`, the base is the
+   owner's (below); `minor` vs `patch` follows "Which digit".
+2. **Does the agent need a release too?** Look, don't guess:
+   `git -C ../deplo-agent log --oneline v<deplo.agent>..origin/main`. Empty means the pinned agent
+   is already the newest code: **cut no agent release**, because a new tag over the same binary
+   makes every server self-update for nothing. Not empty: the agent ships **first** (its own
+   `v*` tag in `DeploCloud/deplo-agent`, wait for its release to publish `checksums.txt`), then the
+   pin moves (`chore(agent):` commit), then the panel is tagged - `docker-image.yml` refuses a
+   panel whose pin is not published.
+3. **Does this panel need the newer agent?** Only then does `deplo.agentMin` move, and every server
+   below it becomes **unusable** until it updates (ADR-0037). Name the servers that would be
+   (Settings → Deplo → Updates, or the `servers` table) in the question.
+4. **Is there an upgrade step or a bad bug to put on top of the notes?** Usually not.
+
+Then run the checks in "How", tag, replace the notes once the image is published, and say what
+happens to the fleet: which version the servers will be updated to, or that the pin did not move.
+
 ## Which digit
 
 Deplo is in **beta**, so every release is `0.x.y` and there are exactly two buckets.
