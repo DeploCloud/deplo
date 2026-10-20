@@ -21,7 +21,15 @@ import { seedIdentity, TEAM_A, TEAM_B, USER_1 } from "../identity-test-helpers";
 import { DEPLO_EXPORT_VERSION } from "../../migration/deplo/export-shape";
 import { instanceFingerprint } from "../../migration/deplo/instance";
 import { __resetExportTrailForTest, exportTeamForMigration } from "./export";
-import { ExportRefusedError, openWorkloadData } from "./data-stream";
+import {
+  ExportRefusedError,
+  openAppUpload,
+  openWorkloadData,
+} from "./data-stream";
+import { storeUpload } from "../../deploy/upload";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
 const USER_NO_REVEAL = "user_no_reveal";
 const USER_B = "user_b";
@@ -31,15 +39,50 @@ const T0 = "2026-01-01T00:00:00.000Z";
 let db: TestDb;
 let pg: PGlite;
 
+let dataDir = "";
+const priorDataDir = process.env.DEPLO_DATA_DIR;
+
 before(async () => {
   ({ db, pg } = await makeTestDb());
   __setTestDb(db);
+  dataDir = mkdtempSync(join(tmpdir(), "deplo-export-"));
+  process.env.DEPLO_DATA_DIR = dataDir;
 });
 
 after(async () => {
   __resetTestDb();
   await pg.close();
+  if (priorDataDir === undefined) delete process.env.DEPLO_DATA_DIR;
+  else process.env.DEPLO_DATA_DIR = priorDataDir;
+  rmSync(dataDir, { recursive: true, force: true });
 });
+
+async function uploadArchive(appId: string, bytes: string) {
+  const stored = await storeUpload({
+    appId,
+    filename: "site.tar.gz",
+    ext: ".tar.gz",
+    body: new Blob([bytes]).stream(),
+  });
+  await db
+    .update(appsTable)
+    .set({
+      source: "upload",
+      uploadId: stored.id,
+      uploadFilename: stored.filename,
+      uploadPath: stored.path,
+      uploadSize: stored.size,
+      uploadUploadedAt: stored.uploadedAt,
+    })
+    .where(eq(appsTable.id, appId));
+  return stored;
+}
+
+async function drain(chunks: AsyncIterable<Buffer>): Promise<string> {
+  const parts: Buffer[] = [];
+  for await (const c of chunks) parts.push(c);
+  return Buffer.concat(parts).toString();
+}
 
 const as = <T>(userId: string, teamId: string, fn: () => Promise<T>) =>
   runWithIdentity({ userId, teamId }, fn);
@@ -240,4 +283,49 @@ test("an app in a private folder the reader cannot open is counted, never handed
   const owner = await as(USER_1, TEAM_A, () => exportTeamForMigration());
   assert.equal(owner.withheld, 0);
   assert.ok(owner.apps.some((a) => a.id === "prj_web"));
+});
+
+test("an app built from an uploaded archive names that archive in the export", async () => {
+  const stored = await uploadArchive("prj_web", "the site");
+  const out = await as(USER_1, TEAM_A, () => exportTeamForMigration());
+  const web = out.apps.find((a) => a.id === "prj_web");
+  assert.deepEqual(web?.upload, {
+    filename: "site.tar.gz",
+    size: 8,
+    uploadedAt: stored.uploadedAt,
+  });
+});
+
+test("an app with no archive says so rather than leaving the field out", async () => {
+  const out = await as(USER_1, TEAM_A, () => exportTeamForMigration());
+  assert.equal(out.apps.find((a) => a.id === "prj_web")?.upload, null);
+});
+
+test("the data stream hands over an app's uploaded archive byte for byte", async () => {
+  await uploadArchive("prj_web", "the site");
+  const { chunks, close } = await as(USER_1, TEAM_A, () =>
+    openAppUpload({ kind: "app", id: "prj_web" }),
+  );
+  try {
+    assert.equal(await drain(chunks), "the site");
+  } finally {
+    close();
+  }
+});
+
+test("the data stream does not hand over another team's archive", async () => {
+  await uploadArchive("prj_other", "not yours");
+  await assert.rejects(
+    () =>
+      as(USER_1, TEAM_A, () => openAppUpload({ kind: "app", id: "prj_other" })),
+    (e: unknown) => e instanceof ExportRefusedError && e.status === 404,
+  );
+});
+
+test("the data stream answers 404 for an app with no archive", async () => {
+  await assert.rejects(
+    () =>
+      as(USER_1, TEAM_A, () => openAppUpload({ kind: "app", id: "prj_web" })),
+    (e: unknown) => e instanceof ExportRefusedError && e.status === 404,
+  );
 });

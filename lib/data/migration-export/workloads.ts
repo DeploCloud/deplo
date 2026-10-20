@@ -189,6 +189,14 @@ export async function exportApps(
       backups: (schedules.appBackups.get(a.id) ?? []).map(schedules.backup),
       data: await dataOf(teamId, "app", a.id),
       notes,
+      upload:
+        a.source === "upload" && a.upload
+          ? {
+              filename: a.upload.filename,
+              size: a.upload.size,
+              uploadedAt: a.upload.uploadedAt,
+            }
+          : null,
     });
   }
   return { apps: out, withheld };
