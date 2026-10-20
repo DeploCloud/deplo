@@ -8,7 +8,6 @@ import {
   migrationRunServers as runServersTable,
   migrationRunTargets as targetsTable,
 } from "../../db/schema/control-plane/migration";
-import { pauseCopiedSchedules } from "../migration-import/live-copy-schedules";
 import { importMigrationProject } from "../migration-import/project-import";
 import { appendRunItem } from "../migration-import/run-report";
 import type { ServicePlacement } from "../migration-import/target-servers";
@@ -135,7 +134,6 @@ export async function runConfigPhase(
         serviceIds: g.serviceIds,
         placements: g.placements,
       });
-      if (row.liveCopy) await pauseCopiedSchedules(row.id);
       await markTargets(g.rowIds, "done");
       inARow = 0;
     } catch (e) {

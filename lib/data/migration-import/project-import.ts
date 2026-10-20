@@ -60,6 +60,7 @@ import { importRegistries } from "./registry-import";
 import { importBackupDestinations } from "./source-backups";
 import { importAppService } from "./app-import";
 import { importDatabaseService } from "./database-import";
+import { isLiveCopy } from "./live-copy-schedules";
 
 export interface ImportProjectResult {
   projectName: string;
@@ -115,6 +116,7 @@ async function runImportMigrationProject(
   );
 
   const mayExposePorts = await canExposePorts();
+  const liveCopy = await isLiveCopy(report.id);
 
   let machineHosts: Map<string, string | null> | null = null;
   const hostOfMachine = async (sourceServerId: string) => {
@@ -364,6 +366,7 @@ async function runImportMigrationProject(
               dbHosts,
               shared: envShared,
               destinations,
+              liveCopy,
             },
             svcReport,
           );
@@ -389,6 +392,7 @@ async function runImportMigrationProject(
                 (await hostOfMachine(sourceServerId)) === serverId,
               dbHosts,
               destinations,
+              liveCopy,
             },
             svcReport,
           );

@@ -18,6 +18,7 @@ export async function landGitConnection(
   conn: SourceGitConnection,
   repo: string,
   notes: Note[],
+  opts: { liveCopy?: boolean } = {},
 ): Promise<string | null> {
   const named = `the ${conn.label} git connection`;
   if (!conn.token) {
@@ -62,10 +63,11 @@ export async function landGitConnection(
       );
       return null;
     }
-  notes.push(
-    providerFor(conn.provider).api
-      ? `Pushes to ${repo} reach this Deplo through a webhook it adds with ${named}. The old webhook still deploys on {panel} - remove it there once you have moved.`
-      : `Pushes to ${repo} reached {panel} through a webhook on your git server. Point it at this Deplo - the address is under the app's Source settings.`,
-  );
+  if (!opts.liveCopy)
+    notes.push(
+      providerFor(conn.provider).api
+        ? `Pushes to ${repo} reach this Deplo through a webhook it adds with ${named}. The old webhook still deploys on {panel} - remove it there once you have moved.`
+        : `Pushes to ${repo} reached {panel} through a webhook on your git server. Point it at this Deplo - the address is under the app's Source settings.`,
+    );
   return id;
 }

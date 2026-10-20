@@ -42,8 +42,8 @@ path cannot simply be pointed at it:
   on the app's server at import time. An image that cannot be copied is reported as blocking.
 - A run may ask for a copy that keeps the source running (`live_copy`, Deplo sources only, an
   advanced option): nothing is stopped there, databases come over as that dump, app volumes are
-  read live and each says so, crons and backup schedules land paused, and the switch-over is
-  left to the user. The target is still stopped before any volume is written into it.
+  read live and each says so, crons and backup schedules land paused, deploy on push lands off
+  with no webhook added (turning it on adds one), and the switch-over is left to the user. The target is still stopped before any volume is written into it.
 - `deplo` is the third adapter behind `MigrationSourceClient`, with one optional addition,
   `dataExport`. When it is set no machine is planned or installed on, and the data move pulls
   from the panel into the target's agents (`sourceDataHost`); the checksum, the stop/start

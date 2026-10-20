@@ -40,11 +40,15 @@ export async function landSourceBackups(
   target: BackupTarget,
   notes: Note[],
   runs?: SourceBackupRun[] | null,
-): Promise<void> {
+  opts: { paused?: boolean } = {},
+): Promise<number> {
   const schedules = (backups ?? []).filter((b) => b?.schedule?.trim());
-  if (schedules.length > 0)
-    await landSchedules(schedules, destinations, target, notes);
+  const landed =
+    schedules.length > 0
+      ? await landSchedules(schedules, destinations, target, notes, opts)
+      : 0;
   if (runs?.length) await landRestorePoints(runs, destinations, target, notes);
+  return landed;
 }
 
 async function landSchedules(
@@ -52,8 +56,10 @@ async function landSchedules(
   destinations: LandedDestinations | undefined,
   target: BackupTarget,
   notes: Note[],
-): Promise<void> {
-  const { createBackup, toggleBackup } = await import("../backups/schedules");
+  opts: { paused?: boolean },
+): Promise<number> {
+  const { createBackup } = await import("../backups/schedules");
+  let landed = 0;
   const held = new Set(
     (
       await getDb()
@@ -104,7 +110,7 @@ async function landSchedules(
     if (held.has(`${schedule}|${destinationId}`)) continue;
     const paused = b.enabled === false;
     try {
-      const created = await createBackup({
+      await createBackup({
         name: `${target.name} to ${destName}`,
         targetKind: target.kind,
         appId: target.kind === "app" ? target.id : null,
@@ -116,11 +122,14 @@ async function landSchedules(
           typeof b.keepLatestCount === "number" && b.keepLatestCount > 0
             ? b.keepLatestCount
             : 7,
+        enabled: !paused && !opts.paused,
       });
-      if (paused) await toggleBackup(created.id, false);
+      landed++;
       const came = paused
         ? "Its backup schedule came across paused, as it was"
-        : "Its backup schedule came across";
+        : opts.paused
+          ? "Its backup schedule came across paused"
+          : "Its backup schedule came across";
       notes.push(
         what
           ? `${came}: ${where}. Here it backs up every volume of the app, not only ${what}.`
@@ -142,6 +151,7 @@ async function landSchedules(
         notes.push(
           `${whats.join(", ")} shared the schedule ${key.split("|")[0]} on {panel}; one app backup here covers them all.`,
         );
+  return landed;
 }
 
 async function landRestorePoints(

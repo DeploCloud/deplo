@@ -25,9 +25,11 @@ export async function importCrons(
   opts: {
     serviceRenames?: Map<string, string>;
     cronEnabled?: boolean | null;
+    paused?: boolean;
   } = {},
-): Promise<void> {
+): Promise<number> {
   const renames = opts.serviceRenames ?? new Map<string, string>();
+  let landed = 0;
   for (const s of await sourceClient(c).listSchedules(scheduleType, sourceId)) {
     const command = (s.command ?? s.script ?? "").trim();
     if (!command) {
@@ -41,16 +43,17 @@ export async function importCrons(
         schedule: s.cronExpression,
         command,
         service: renamedService(s.serviceName, renames),
-        enabled: s.enabled !== false,
+        enabled: !opts.paused && s.enabled !== false,
         env: s.env ?? undefined,
       });
+      landed++;
     } catch (e) {
       notes.push(
         `Cron "${s.name}" was not imported: ${e instanceof Error ? e.message : "refused"}.`,
       );
     }
   }
-  if (opts.cronEnabled !== true) return;
+  if (opts.cronEnabled !== true) return landed;
   try {
     await setCronEnabled(target.kind, target.id, true);
   } catch (e) {
@@ -58,4 +61,5 @@ export async function importCrons(
       `Cron jobs ran on {panel} but are switched off here: ${e instanceof Error ? e.message : "refused"}. Switch them on under Crons.`,
     );
   }
+  return landed;
 }

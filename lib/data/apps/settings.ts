@@ -26,6 +26,8 @@ import { healthCheckToRow } from "../app-graph-rows/health-check";
 import { requireAppCapability } from "../node-access";
 import { listGithubInstallations } from "../github";
 import { recordActivity } from "../activity";
+import { loadAppGraph } from "../app-graph-load";
+import { syncAppWebhook } from "../git-connections";
 import { publishAppChanged } from "../../graphql/pubsub";
 import { cleanAppName } from "./create";
 import type { UploadArchive } from "../../types/app";
@@ -129,6 +131,11 @@ export async function setAutoDeploy(id: string, value: boolean): Promise<void> {
     autoDeploy: value,
     updatedAt: nowIso(),
   });
+  // A migrated copy lands without its webhook; switching pushes on is what adds it.
+  if (value)
+    await syncAppWebhook((await loadAppGraph(id))?.repo ?? null).catch(
+      () => {},
+    );
 }
 
 export async function renameApp(id: string, name: string): Promise<void> {

@@ -41,6 +41,7 @@ import { landAppStorage } from "./app-storage";
 import { landAppExtras } from "./app-extras";
 import { landAppUpload } from "./app-upload";
 import { landSourceImage } from "./app-image";
+import { pausedNote } from "./live-copy-schedules";
 
 export async function importAppService(
   c: SourceCredential,
@@ -58,9 +59,11 @@ export async function importAppService(
     dbHosts: Map<string, string>;
     shared: SharedIndex;
     destinations?: LandedDestinations;
+    liveCopy?: boolean;
   },
   report: Report,
 ): Promise<string | null> {
+  const paused = { paused: home.liveCopy };
   let isCompose = svc.kind === "compose";
 
   const teamId = await requireActiveTeamId();
@@ -95,13 +98,16 @@ export async function importAppService(
   );
   if (match) {
     const extra: Note[] = [];
-    await landSourceBackups(
+    const schedules = await landSourceBackups(
       detail.backups,
       home.destinations,
       { kind: "app", id: match.id, name },
       extra,
       detail.backupRuns,
+      paused,
     );
+    const pausedLine = home.liveCopy ? pausedNote(name, { schedules }) : null;
+    if (pausedLine) extra.push(pausedLine);
     await report.add({
       sourceKind: svc.kind,
       sourceId: svc.id,
@@ -233,7 +239,8 @@ export async function importAppService(
     environmentId: home.environmentId,
     folderId: home.folderId ?? null,
     build,
-    autoDeploy: detail.autoDeploy ?? true,
+    autoDeploy: home.liveCopy ? false : (detail.autoDeploy ?? true),
+    noWebhook: home.liveCopy,
     autoDomain:
       mayClaimHosts && primary && !primary.generated ? primary.host : null,
     autoDomainPath: primary?.pathPrefix || null,
@@ -267,12 +274,13 @@ export async function importAppService(
       }
   }
 
-  await landSourceBackups(
+  const schedules = await landSourceBackups(
     detail.backups,
     home.destinations,
     { kind: "app", id: created.id, name },
     notes,
     detail.backupRuns,
+    paused,
   );
 
   if (namesake)
@@ -351,14 +359,28 @@ export async function importAppService(
     notes,
   );
 
-  await landAppExtras(
+  const crons = await landAppExtras(
     c,
     svc,
     detail,
     created,
-    { isCompose, secretKeys, serviceRenames, servers: home.servers },
+    {
+      isCompose,
+      secretKeys,
+      serviceRenames,
+      servers: home.servers,
+      liveCopy: home.liveCopy,
+    },
     notes,
   );
+  if (home.liveCopy) {
+    const pausedLine = pausedNote(name, { crons, schedules });
+    if (pausedLine) notes.push(pausedLine);
+    if (repo && (detail.autoDeploy ?? true))
+      notes.push(
+        `Deploy on push is off for this copy, so a push to ${repo.repo} still deploys only on {panel}. Turn it on under the app's Deployments settings when you switch over.`,
+      );
+  }
 
   await report.notes(svc.kind, name, notes, target, svc.id);
   return created.id;

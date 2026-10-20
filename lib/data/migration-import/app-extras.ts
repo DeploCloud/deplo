@@ -115,9 +115,10 @@ export async function landAppExtras(
     secretKeys: Set<string>;
     serviceRenames: Map<string, string>;
     servers?: Map<string, string | undefined>;
+    liveCopy?: boolean;
   },
   notes: Note[],
-): Promise<void> {
+): Promise<number> {
   const { isCompose, secretKeys, serviceRenames } = shape;
   const native = (detail as SourceApplication).nativeResources;
   const resources = native
@@ -221,12 +222,16 @@ export async function landAppExtras(
   if (detail.nativeOps)
     await landNativeOps(created.id, detail.nativeOps, isCompose, notes);
 
-  await importCrons(
+  return importCrons(
     c,
     isCompose ? "compose" : "application",
     svc.id,
     { kind: "app", id: created.id },
     notes,
-    { serviceRenames, cronEnabled: detail.cronEnabled },
+    {
+      serviceRenames,
+      cronEnabled: detail.cronEnabled,
+      paused: shape.liveCopy,
+    },
   );
 }
