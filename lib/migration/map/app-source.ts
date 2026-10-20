@@ -72,9 +72,10 @@ export function mapSource(app: SourceApplication): Mapped<MappedSource> {
   }
 
   if (app.sourceType === "drop") {
-    notes.push(
-      "Its code is an archive somebody uploaded to {panel}, and the API will not hand the file over. Upload it again here.",
-    );
+    if (app.upload === undefined)
+      notes.push(
+        "Its code is an archive somebody uploaded to {panel}, and the API will not hand the file over. Upload it again here.",
+      );
     return { value: { kind: "none" }, notes };
   }
 

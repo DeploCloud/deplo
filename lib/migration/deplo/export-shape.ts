@@ -90,6 +90,14 @@ export interface DeploExportApp {
   backups: DeploExportBackup[];
   data: DeploExportData;
   notes: string[];
+  // The archive an upload app builds from; null when it has none, absent from an older Deplo.
+  upload?: DeploExportUpload | null;
+}
+
+export interface DeploExportUpload {
+  filename: string;
+  size: number;
+  uploadedAt: string;
 }
 
 export interface DeploExportDatabase {
