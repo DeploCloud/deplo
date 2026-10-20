@@ -12,7 +12,7 @@ import type { AgentConnection } from "../infra/agent-client/connection";
 import { AgentUnreachableError } from "../infra/agent-client/errors";
 import { VOLUME_USAGE_CAPABILITY } from "../infra/agent-client/hello-capabilities";
 import { wildcardEmbeddedIp, rehostWildcard } from "../deploy/domains";
-import { serverIpv4 } from "./servers/addresses";
+import { serverWildcardIp } from "./servers/addresses";
 import { stopPreviewsForServerChange } from "../deploy/preview-lifecycle/close";
 import type { App } from "../types/app";
 import { recordActivity } from "./activity";
@@ -336,8 +336,8 @@ async function relocate(
     getServerById(serverId),
   ]);
   const [oldIp, newIp] = await Promise.all([
-    serverIpv4(leaving),
-    serverIpv4(arriving),
+    serverWildcardIp(leaving),
+    serverWildcardIp(arriving),
   ]);
   const rehost = (host: string) =>
     newIp && wildcardEmbeddedIp(host) === oldIp

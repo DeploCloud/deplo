@@ -56,7 +56,7 @@ import {
   productionDomain,
   rehostBlueprintHosts,
 } from "../../deploy/domains";
-import { serverIpv4 } from "../servers/addresses";
+import { serverWildcardIp } from "../servers/addresses";
 import { isValidLogoValue } from "../../apps/logo-shared";
 import { logoToneFromDataUri } from "../../apps/logo-tone";
 import { getTemplateBlueprint } from "../../templates-blueprint";
@@ -292,7 +292,7 @@ export async function createApp(input: CreateAppInput): Promise<AppSummary> {
     if (problem) throw new Error(problem);
   }
 
-  const serverIp = await serverIpv4(server);
+  const serverIp = await serverWildcardIp(server);
   const hosts = rehostBlueprintHosts(
     {
       autoDomain: input.autoDomain,

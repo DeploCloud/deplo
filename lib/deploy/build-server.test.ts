@@ -27,6 +27,7 @@ function srv(over: Partial<Server> & { id: string }): Server {
     storageOnly: over.storageOnly ?? false,
     buildOnly: over.buildOnly ?? false,
     buildFallback: over.buildFallback ?? null,
+    generatedAddressFamily: over.generatedAddressFamily ?? null,
     importOnly: over.importOnly ?? false,
     uninstallPending: false,
     uninstallError: "",

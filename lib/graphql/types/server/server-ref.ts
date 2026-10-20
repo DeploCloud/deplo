@@ -9,11 +9,37 @@ import {
 } from "@/lib/deploy/domains";
 import { reportedAgentVersion } from "@/lib/version";
 import { expectedAgentVersion } from "@/lib/data/release-channel";
+import { serverAddressChoices } from "@/lib/data/servers/addresses";
 import type { Server } from "@/lib/types/server";
 
 export const ServerStatusEnum = builder.enumType("ServerStatus", {
   values: ["online", "warning", "error", "offline", "provisioning"] as const,
 });
+
+export const AddressFamilyEnum = builder.enumType("AddressFamily", {
+  values: ["ipv4", "ipv6"] as const,
+});
+
+const GeneratedAddressesRef = builder
+  .objectRef<{
+    ipv4: string | null;
+    ipv6: string | null;
+    inUse: string | null;
+  }>("GeneratedAddresses")
+  .implement({
+    description:
+      "The addresses this server's generated (.deplo.site) names can carry, read live from its agent and DNS.",
+    fields: (t) => ({
+      ipv4: t.string({ nullable: true, resolve: (a) => a.ipv4 }),
+      ipv6: t.string({ nullable: true, resolve: (a) => a.ipv6 }),
+      inUse: t.string({
+        nullable: true,
+        description:
+          "The address a name generated here right now embeds. Null when Deplo knows none.",
+        resolve: (a) => a.inUse,
+      }),
+    }),
+  });
 
 const ServerTypeEnum = builder.enumType("ServerType", {
   values: ["remote"] as const,
@@ -63,6 +89,20 @@ export const ServerRef = builder.objectRef<Server>("Server").implement({
       description:
         "Whether this host compiles for an app whose own build server could not be reached. On by default for the Deplo host and off for every other server, until setServerBuildFallback says otherwise. An app opts out of the whole chain with setAppBuildServer's buildFallback.",
       resolve: (s) => isBuildFallbackServer(s, deploHostSelfAddresses()),
+    }),
+    generatedAddressFamily: t.field({
+      type: AddressFamilyEnum,
+      nullable: true,
+      description:
+        "Which kind of address the generated (.deplo.site) names of apps on this server carry. Null is automatic: IPv4 when the host has one, IPv6 otherwise - and on the Deplo host, whichever the installer chose. setServerAddressFamily changes it.",
+      resolve: (s) => s.generatedAddressFamily,
+    }),
+    generatedAddresses: t.field({
+      type: GeneratedAddressesRef,
+      authScopes: { instanceAdmin: true },
+      description:
+        "Live: asks the server's agent and DNS, so select it on one server at a time. Requires instanceAdmin.",
+      resolve: (s) => serverAddressChoices(s),
     }),
     teams: t.field({
       type: [TeamRef],

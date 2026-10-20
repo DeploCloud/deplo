@@ -41,6 +41,8 @@ export const servers = pgTable(
     storageOnly: boolean("storage_only").notNull().default(false),
     buildOnly: boolean("build_only").notNull().default(false),
     buildFallback: boolean("build_fallback"),
+    // "ipv4" | "ipv6"; null = automatic, IPv4 when the host has one.
+    generatedAddressFamily: text("generated_address_family"),
     importOnly: boolean("import_only").notNull().default(false),
     uninstallNextAt: isoTimestamptz("uninstall_next_at"),
     uninstallAttempts: integer("uninstall_attempts").notNull().default(0),

@@ -40,6 +40,7 @@ const SERVER_FIELDS = {
   uninstallPending: true,
   uninstallError: true,
   buildFallback: true,
+  generatedAddressFamily: true,
   hostArch: true,
   deployConcurrency: true,
   createdAt: true,
@@ -68,6 +69,7 @@ export function serverToRow(s: Server): ServerInsert {
     storageOnly: s.storageOnly,
     buildOnly: s.buildOnly,
     buildFallback: s.buildFallback,
+    generatedAddressFamily: s.generatedAddressFamily,
     importOnly: s.importOnly,
     uninstallError: s.uninstallError,
     hostArch: s.hostArch,
@@ -103,6 +105,11 @@ export function assembleServer(row: ServerRow): Server {
     storageOnly: row.storageOnly ?? false,
     buildOnly: row.buildOnly ?? false,
     buildFallback: row.buildFallback ?? null,
+    generatedAddressFamily:
+      row.generatedAddressFamily === "ipv4" ||
+      row.generatedAddressFamily === "ipv6"
+        ? row.generatedAddressFamily
+        : null,
     importOnly: row.importOnly ?? false,
     uninstallPending: row.uninstallNextAt !== null,
     uninstallError: row.uninstallError ?? "",

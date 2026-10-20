@@ -10,6 +10,7 @@ import { ServerClock } from "./server-clock";
 import { InstallCommand } from "./install-command";
 import { DangerZone } from "./danger-zone";
 import { ServerRolePanel } from "./server-role-panel";
+import { AddressFamilyPanel } from "./address-family-panel";
 
 export function ServerAdvancedTab({ server }: { server: ServerSummary }) {
   const [reading, setReading] = React.useState<Reading | null>(null);
@@ -44,6 +45,7 @@ export function ServerAdvancedTab({ server }: { server: ServerSummary }) {
   return (
     <>
       <ServerRolePanel server={server} />
+      {server.role === "everything" && <AddressFamilyPanel server={server} />}
       <HostDetails info={info} loading={loading} error={error} onRetry={load} />
       <ServerClock
         server={server}
