@@ -19,8 +19,12 @@ import {
   isDeploHostServer,
 } from "@/lib/deploy/domains";
 import { serverLabel } from "@/lib/utils";
-import { reportedAgentVersion, agentUpdateAvailable } from "@/lib/version";
-import { AGENT_VERSION } from "@/lib/version";
+import {
+  AGENT_VERSION,
+  agentUsable,
+  reportedAgentVersion,
+} from "@/lib/version";
+import { serverAgentUpdate } from "@/lib/data/servers/agent-maintenance";
 import type { TeamOption } from "@/components/servers/server-team-access";
 import {
   ServerHealthProvider,
@@ -50,13 +54,15 @@ export default async function ServerDetailPage(
   if (server.importOnly) notFound();
 
   const expectedAgentVersion = AGENT_VERSION;
-  const [teamIds, teamsRaw, policy, runs, workloads] = await Promise.all([
-    getServerTeamIds(id),
-    listAllTeamsForAdmin(),
-    getCleanupPolicy(),
-    listCleanupRuns({ serverId: id }),
-    listServerWorkloads(id),
-  ]);
+  const [teamIds, teamsRaw, policy, runs, workloads, agentUpdate] =
+    await Promise.all([
+      getServerTeamIds(id),
+      listAllTeamsForAdmin(),
+      getCleanupPolicy(),
+      listCleanupRuns({ serverId: id }),
+      listServerWorkloads(id),
+      serverAgentUpdate(id),
+    ]);
 
   const [hydrated] = await hydrateServerSpecs([server]);
   const self = deploHostSelfAddresses();
@@ -144,10 +150,9 @@ export default async function ServerDetailPage(
             provisioning: hydrated.status === "provisioning",
             agentVersion,
             expectedAgentVersion,
-            agentUpdateAvailable: agentUpdateAvailable(
-              agentVersion,
-              expectedAgentVersion,
-            ),
+            agentUsable:
+              !hydrated.agent?.certFingerprint || agentUsable(agentVersion),
+            agentUpdate,
           }}
           teams={teams}
           accessTeamIds={teamIds}

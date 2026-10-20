@@ -144,6 +144,19 @@ export async function fleetAgentStatus(): Promise<FleetAgentStatus> {
   };
 }
 
+/** The servers this Deplo refuses until their agent updates, for the admin banner. */
+export async function unusableServerNames(): Promise<string[]> {
+  await requireInstanceAdmin();
+  return (await listAllServers())
+    .filter(
+      (s) =>
+        !s.importOnly &&
+        Boolean(s.agent?.certFingerprint) &&
+        !agentUsable(reportedAgentVersion(s)),
+    )
+    .map((s) => s.name);
+}
+
 /**
  * Remotes first, fewest Apps first, the Deplo host last: a bad release must break
  * a leaf before it breaks the machine that would tell you. See docs/agents/fleet-rollout.md.

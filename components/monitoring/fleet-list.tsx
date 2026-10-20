@@ -10,7 +10,11 @@ import { StatusDot } from "@/components/shared/status-badge";
 import { Sparkline } from "@/components/monitoring/sparkline";
 import type { ServerStatus } from "@/lib/types/server";
 import { cn } from "@/lib/utils";
-import { agentUpdateAvailable } from "@/lib/version";
+import {
+  AGENT_TOO_OLD_MESSAGE,
+  agentUpdateAvailable,
+  agentUsable,
+} from "@/lib/version";
 
 export interface FleetRow {
   serverId: string;
@@ -149,10 +153,24 @@ export function FleetList({
                     </p>
                   </div>
 
-                  {outdated && (
-                    <Badge variant="outline" className="hidden sm:inline-flex">
-                      Agent outdated
-                    </Badge>
+                  {outdated && !agentUsable(row?.agentVersion) ? (
+                    <SimpleTooltip content={AGENT_TOO_OLD_MESSAGE}>
+                      <Badge
+                        variant="destructive"
+                        className="hidden sm:inline-flex"
+                      >
+                        Agent too old
+                      </Badge>
+                    </SimpleTooltip>
+                  ) : (
+                    outdated && (
+                      <Badge
+                        variant="outline"
+                        className="hidden sm:inline-flex"
+                      >
+                        Agent outdated
+                      </Badge>
+                    )
                   )}
                   {row?.source === "docker-stats" && (
                     <SimpleTooltip content="This host samples through docker stats instead of cgroups, which costs the machine noticeably more CPU. Updating the agent usually switches it back.">

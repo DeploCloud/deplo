@@ -7,6 +7,9 @@ export const DEPLO_REPO = "DeploCloud/deplo";
 export const AGENT_VERSION: string = agentPin.agent;
 export const AGENT_MIN_VERSION: string = agentPin.agentMin;
 
+export const AGENT_TOO_OLD_MESSAGE =
+  "This server is being updated. Deplo retries on its own; an instance admin can retry it now.";
+
 type Semver = { core: [number, number, number]; pre: string[] };
 
 function parseSemver(v: string): Semver | null {

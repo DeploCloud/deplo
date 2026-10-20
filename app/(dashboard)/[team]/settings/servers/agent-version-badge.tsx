@@ -4,7 +4,11 @@ import { Package } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { SimpleTooltip } from "@/components/ui/tooltip";
-import { agentUpdateAvailable } from "@/lib/version";
+import {
+  AGENT_TOO_OLD_MESSAGE,
+  agentUpdateAvailable,
+  agentUsable,
+} from "@/lib/version";
 
 export function AgentVersionBadge({
   version,
@@ -24,10 +28,21 @@ export function AgentVersionBadge({
     );
   }
 
+  if (!agentUsable(version)) {
+    return (
+      <SimpleTooltip content={AGENT_TOO_OLD_MESSAGE}>
+        <Badge variant="destructive">
+          <Package className="size-3" />
+          Agent too old
+        </Badge>
+      </SimpleTooltip>
+    );
+  }
+
   if (expected && agentUpdateAvailable(version, expected)) {
     return (
       <SimpleTooltip
-        content={`This server is behind the fleet, which runs agent v${expected}. Deplo updates it on its own after a panel update.`}
+        content={`This Deplo runs agent v${expected}. Deplo updates this server on its own.`}
       >
         <Badge variant="warning">
           <Package className="size-3" />
