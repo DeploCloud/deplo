@@ -4,7 +4,6 @@ import assert from "node:assert/strict";
 import { mapDomains, pickPrimaryDomain } from "../map/domains";
 import { mapMounts } from "../map/mounts";
 import { mapSource } from "../map/app-source";
-import { parseEnvBlob } from "../map/env";
 import { servicesOf } from "../../data/migration-import/source-tree";
 import type { SourceApplication, SourceCompose } from "../model";
 import { deploExport, exportApp, exportDatabase } from "./deplo-test-helpers";
@@ -102,7 +101,7 @@ test("a linked shared variable becomes a reference at the narrowest level that o
     ["PROJ", "project"],
     ["TEAM", "team"],
   ]);
-  const vars = new Map(parseEnvBlob(env.env).map((e) => [e.key, e.value]));
+  const vars = new Map(env.envEntries.map((e) => [e.key, e.value]));
   assert.equal(vars.get("ENVV"), "${{environment.ENVV}}");
   assert.equal(vars.get("STRAY"), "inline", "out of scope: its own copy");
   assert.equal(vars.has("UNLINKED"), false);
@@ -127,7 +126,7 @@ test("an app's own variable wins over a shared one of the same name", () => {
   });
   const env = appEnv(x, x.apps[0]);
   assert.deepEqual(env.sharedRefs, []);
-  assert.deepEqual(parseEnvBlob(env.env), [{ key: "TEAM", value: "mine" }]);
+  assert.deepEqual(env.envEntries, [{ key: "TEAM", value: "mine" }]);
 });
 
 test("a preview-only variable stays a preview variable", () => {
@@ -147,10 +146,8 @@ test("a preview-only variable stays a preview variable", () => {
     ],
   });
   const app = sourceApplication(x, x.apps[0]) as SourceApplication;
-  assert.deepEqual(parseEnvBlob(app.env), [{ key: "BOTH", value: "1" }]);
-  assert.deepEqual(parseEnvBlob(app.previewEnv), [
-    { key: "PREVIEW", value: "2" },
-  ]);
+  assert.deepEqual(app.envEntries, [{ key: "BOTH", value: "1" }]);
+  assert.deepEqual(app.previewEnvEntries, [{ key: "PREVIEW", value: "2" }]);
   assert.deepEqual(app.secretEnvKeys, ["PREVIEW"]);
 });
 

@@ -1,6 +1,10 @@
 import "server-only";
 
-import { parseEnvBlob, type SharedRefLevel } from "../../migration/map/env";
+import {
+  envEntriesOf,
+  type EnvPair,
+  type SharedRefLevel,
+} from "../../migration/map/env";
 import { saveSharedVar } from "../shared-vars/authoring";
 import { visibleSharedVarIdsByKey } from "../shared-vars/visibility";
 import type { Report } from "./run-report";
@@ -27,7 +31,8 @@ export function sharedEntry(
 }
 
 export async function importSharedVars(
-  blob: string | null | undefined,
+  vars:
+    { env?: string | null; envEntries?: EnvPair[] | null } | null | undefined,
   opts: {
     teamId: string;
     label: string;
@@ -43,7 +48,7 @@ export async function importSharedVars(
   },
   index: SharedIndex,
 ): Promise<void> {
-  const entries = parseEnvBlob(blob);
+  const entries = envEntriesOf(vars);
   if (entries.length === 0) return;
 
   const already = await visibleSharedVarIdsByKey(opts.teamId);

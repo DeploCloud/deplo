@@ -2,6 +2,7 @@ import "server-only";
 
 import type { SourceApplication, SourceCompose } from "../../migration/model";
 import {
+  envEntriesOf,
   envNeedsInterpolation,
   parseEnvBlob,
   renameDatabaseHosts,
@@ -14,7 +15,7 @@ export function mapAppEnv(
   home: { shared: SharedIndex; dbHosts: Map<string, string> },
   notes: string[],
 ) {
-  const envEntries = parseEnvBlob(detail.env);
+  const envEntries = envEntriesOf(detail);
   const argEntries = parseEnvBlob(
     (detail as SourceApplication).buildArgs,
   ).filter((a) => !envEntries.some((e) => e.key === a.key));

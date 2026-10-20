@@ -1,5 +1,5 @@
-import type { DeploExport } from "../../migration/deplo/export-shape";
 import { __resetDeploExportsForTest } from "../../migration/deplo/client";
+import type { DeploExport } from "../../migration/deplo/export-shape";
 import { __setMigrationFetchForTest } from "../../migration/transport";
 import { asOwner } from "./migration-import-test-helpers";
 import { importMigrationProject } from "./project-import";
@@ -49,6 +49,20 @@ export async function importDeploProject(projectId: string): Promise<string> {
   await asOwner(() =>
     importMigrationProject({ ...DEPLO_SOURCE, runId, projectId }),
   );
+  return runId;
+}
+
+// Use with openMigrationHarness/resetMigrationHarness; the export's projects are imported by id.
+export async function importFromDeplo(
+  x: DeploExport,
+  projectIds: string[],
+): Promise<string> {
+  fakeDeplo(x);
+  const runId = await asOwner(() => beginMigration(DEPLO_SOURCE));
+  for (const projectId of projectIds)
+    await asOwner(() =>
+      importMigrationProject({ ...DEPLO_SOURCE, runId, projectId }),
+    );
   return runId;
 }
 

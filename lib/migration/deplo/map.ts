@@ -1,6 +1,6 @@
 import { DB_REPOS } from "../../databases/images";
 import type { BuildConfig, GitRepo } from "../../types/build";
-import type { SharedRef } from "../map/env";
+import type { EnvPair, SharedRef } from "../map/env";
 import type {
   SourceApplication,
   SourceBackupSchedule,
@@ -13,7 +13,6 @@ import type {
   SourceProject,
   SourceSharedEnv,
 } from "../model";
-import { toEnvBlob } from "./env-blob";
 import type {
   DeploExport,
   DeploExportApp,
@@ -36,24 +35,15 @@ export function dbKindOf(d: Pick<DeploExportDatabase, "type">): SourceDbKind {
   return DB_KIND[d.type] ?? "unknown";
 }
 
-export function sharedBlob(
-  vars: DeploExportVar[],
-): (SourceSharedEnv & { unrepresentable: string[] }) | null {
-  if (vars.length === 0) return null;
-  const { blob, unrepresentable } = toEnvBlob(vars);
-  return {
-    env: blob,
-    secretEnvKeys: vars.filter((v) => v.secret).map((v) => v.key),
-    unrepresentable,
-  };
-}
+const pairs = (vars: DeploExportVar[]): EnvPair[] =>
+  vars.map(({ key, value }) => ({ key, value }));
 
-function unreadNote(keys: string[], where: string): string[] {
-  return keys.length === 0
-    ? []
-    : [
-        `${keys.join(", ")} in ${where} could not be carried exactly (a line break the copy would change), so ${keys.length === 1 ? "it was" : "they were"} left out. Set ${keys.length === 1 ? "it" : "them"} under Variables.`,
-      ];
+export function sharedVarsOf(vars: DeploExportVar[]): SourceSharedEnv | null {
+  if (vars.length === 0) return null;
+  return {
+    envEntries: pairs(vars),
+    secretEnvKeys: vars.filter((v) => v.secret).map((v) => v.key),
+  };
 }
 
 export interface Placement {
@@ -248,12 +238,11 @@ function repoFields(repo: GitRepo | null): Partial<SourceApplication> {
 }
 
 interface EnvShape {
-  env: string;
-  previewEnv: string;
+  envEntries: EnvPair[];
+  previewEnvEntries: EnvPair[];
   secretEnvKeys: string[];
   productionOnlyEnvKeys: string[];
   sharedRefs: SharedRef[];
-  notes: string[];
 }
 
 // A linked shared variable becomes a reference at the narrowest level that offers it here, so the import links it again.
@@ -274,11 +263,6 @@ export function appEnv(x: DeploExport, a: DeploExportApp): EnvShape {
     ...copies,
   ];
   const previewOnly = a.env.filter((e) => !e.targets.includes("production"));
-  const main = toEnvBlob([
-    ...runtime,
-    ...refs.map((r) => ({ key: r.key, value: `\${{${r.level}.${r.key}}}` })),
-  ]);
-  const preview = toEnvBlob(previewOnly);
   const secret = new Set([
     ...a.env.filter((e) => e.secret).map((e) => e.key),
     ...copies.filter((e) => e.secret).map((e) => e.key),
@@ -287,18 +271,17 @@ export function appEnv(x: DeploExport, a: DeploExportApp): EnvShape {
       .map((v) => v.key),
   ]);
   return {
-    env: main.blob,
-    previewEnv: preview.blob,
+    envEntries: [
+      ...pairs(runtime),
+      ...refs.map((r) => ({ key: r.key, value: `\${{${r.level}.${r.key}}}` })),
+    ],
+    previewEnvEntries: pairs(previewOnly),
     secretEnvKeys: [...secret],
     productionOnlyEnvKeys: a.env
       .filter((e) => e.targets.includes("production"))
       .filter((e) => !e.targets.includes("preview"))
       .map((e) => e.key),
     sharedRefs: refs,
-    notes: unreadNote(
-      [...main.unrepresentable, ...preview.unrepresentable],
-      "its variables",
-    ),
   };
 }
 
@@ -313,17 +296,17 @@ function levelFor(
 }
 
 export function teamShared(x: DeploExport) {
-  return sharedBlob(x.sharedVars.filter((v) => v.teamWide));
+  return sharedVarsOf(x.sharedVars.filter((v) => v.teamWide));
 }
 
 export function projectShared(x: DeploExport, projectId: string) {
-  return sharedBlob(
+  return sharedVarsOf(
     x.sharedVars.filter((v) => !v.teamWide && v.projectIds.includes(projectId)),
   );
 }
 
 export function environmentShared(x: DeploExport, at: Placement) {
-  return sharedBlob(
+  return sharedVarsOf(
     x.sharedVars.filter(
       (v) =>
         !v.teamWide &&
@@ -340,7 +323,7 @@ export function sourceApplication(
   const compose = a.source === "compose";
   const env = appEnv(x, a);
   const { domains, notes: domainNotes } = domainsOf(a, compose);
-  const notes = [...a.notes, ...env.notes, ...domainNotes];
+  const notes = [...a.notes, ...domainNotes];
   if (a.source === "upload" && !a.upload)
     notes.push(
       a.upload === undefined
@@ -350,7 +333,7 @@ export function sourceApplication(
   const common = {
     name: a.name,
     appName: a.slug,
-    env: env.env,
+    envEntries: env.envEntries,
     secretEnvKeys: env.secretEnvKeys,
     productionOnlyEnvKeys: env.productionOnlyEnvKeys,
     sharedRefs: env.sharedRefs,
@@ -398,7 +381,7 @@ export function sourceApplication(
     installCommand: a.build.installCommand,
     buildCommand: a.build.buildCommand,
     command: a.source === "docker-image" ? null : a.build.startCommand,
-    previewEnv: env.previewEnv || null,
+    previewEnvEntries: env.previewEnvEntries,
     isPreviewDeploymentsActive: a.previewEnabled,
     ports: a.ports.map((p) => ({
       portId: p.id,
@@ -469,7 +452,7 @@ export function sourceTree(x: DeploExport): SourceProject[] {
       project = {
         projectId: at.projectId,
         name: real?.name ?? (folder ? folderPath(x, folder) : x.team.name),
-        env: shared?.env ?? null,
+        envEntries: shared?.envEntries ?? null,
         secretEnvKeys: shared?.secretEnvKeys ?? null,
         platformNotes: [
           ...(real
@@ -479,7 +462,6 @@ export function sourceTree(x: DeploExport): SourceProject[] {
                   ? `These were in the ${folderPath(x, folder)} folder on {panel}, outside any project, so they came across as a project of that name.`
                   : "These were at the top level on {panel}, outside any project, so they came across as a project named after the team.",
               ]),
-          ...unreadNote(shared?.unrepresentable ?? [], "its shared variables"),
         ],
         environments: [],
       };
@@ -495,12 +477,8 @@ export function sourceTree(x: DeploExport): SourceProject[] {
         environmentId: at.environmentId,
         name: real?.name ?? "production",
         isDefault: real?.isDefault ?? true,
-        env: shared?.env ?? "",
+        envEntries: shared?.envEntries ?? [],
         secretEnvKeys: shared?.secretEnvKeys ?? null,
-        platformNotes: unreadNote(
-          shared?.unrepresentable ?? [],
-          "its shared variables",
-        ),
         applications: [],
         compose: [],
       };
