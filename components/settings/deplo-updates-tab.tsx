@@ -78,7 +78,7 @@ export function DeploUpdatesTab({
   canary: boolean;
   fleet: FleetSummary;
 }) {
-  const fleet = useFleetAgents(seed);
+  const { fleet, refresh: refreshFleet } = useFleetAgents(seed);
   const [info, setInfo] = React.useState<UpdateInfo | null>(null);
   const [releases, setReleases] = React.useState<Release[] | null>(null);
   const [listError, setListError] = React.useState<string | null>(null);
@@ -195,6 +195,26 @@ export function DeploUpdatesTab({
     return res;
   }
 
+  const allCurrent =
+    !updating &&
+    !manual &&
+    info !== null &&
+    !info.error &&
+    !info.updateAvailable &&
+    fleet.behind.length === 0;
+  const checkNow = (
+    <Button
+      type="button"
+      variant="outline"
+      size="sm"
+      onClick={check}
+      disabled={checking}
+    >
+      <RefreshCw className={checking ? "size-4 animate-spin" : "size-4"} />
+      {checking ? "Checking" : "Check now"}
+    </Button>
+  );
+
   return (
     <div className="grid gap-8 xl:grid-cols-[minmax(0,1fr)_clamp(24rem,30vw,36rem)] xl:gap-12">
       <div className="relative order-first flex justify-center xl:sticky xl:top-24 xl:order-last xl:self-start">
@@ -202,80 +222,88 @@ export function DeploUpdatesTab({
       </div>
 
       <div className="min-w-0 space-y-6">
-        <div className="grid gap-4 sm:grid-cols-2">
+        {allCurrent ? (
           <Card>
-            <CardHeader>
-              <CardTitle className="flex w-fit items-center gap-2 text-base">
-                <CircleFadingArrowUp className="size-4" />
-                Control plane
-                <InfoTip
-                  content="Deplo saves a copy of its database first, keeps every setting, and puts the old version back if the new one fails."
-                  docs="upgrade.overview"
-                />
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              {updating ? (
-                <Updating
-                  updating={updating}
-                  stalled={stalled}
-                  version={version}
-                />
-              ) : (
-                <>
-                  <Verdict info={info} version={version} />
-                  {manual && <ManualUpdate reason={manual} />}
-                </>
-              )}
-              {(!updating || stalled) && (
-                <>
-                  <div className="flex flex-wrap items-center gap-2">
-                    {info?.updateAvailable && info.latest && (
-                      <ConfirmAction
-                        variant="default"
-                        title={
-                          fleet.total > 0
-                            ? `Update Deplo to ${info.latest}, then its ${fleet.total} server${fleet.total === 1 ? "" : "s"}?`
-                            : `Update Deplo to ${info.latest}?`
-                        }
-                        description={
-                          <>
-                            The machine Deplo runs on pulls the new version and
-                            restarts the panel. It takes about a{" "}
-                            <strong>minute</strong>.
-                          </>
-                        }
-                        consequence="The dashboard is unreachable while it restarts. Deployed apps, sites and databases keep running."
-                        confirmLabel="Update"
-                        trigger={
-                          <Button size="sm">
-                            <CircleFadingArrowUp className="size-4" />
-                            Update to {info.latest}
-                          </Button>
-                        }
-                        onConfirm={startUpdate}
-                      />
-                    )}
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      onClick={check}
-                      disabled={checking}
-                    >
-                      <RefreshCw
-                        className={checking ? "size-4 animate-spin" : "size-4"}
-                      />
-                      {checking ? "Checking" : "Check now"}
-                    </Button>
-                  </div>
-                </>
-              )}
+            <CardContent className="flex flex-col gap-3 p-5 sm:flex-row sm:items-center sm:justify-between">
+              <div className="min-w-0">
+                <p className="flex items-center gap-2 text-sm font-medium">
+                  <CheckCircle2 className="size-4 text-[var(--success)]" />
+                  Everything is up to date
+                </p>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  Deplo v{version}
+                  {fleet.total > 0 &&
+                    ` - ${fleet.total} of ${fleet.total} server${fleet.total === 1 ? "" : "s"} on agent v${fleet.expected}`}
+                </p>
+              </div>
+              <div className="shrink-0">{checkNow}</div>
             </CardContent>
           </Card>
+        ) : (
+          <div className="grid gap-4 sm:grid-cols-2">
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex w-fit items-center gap-2 text-base">
+                  <CircleFadingArrowUp className="size-4" />
+                  Control plane
+                  <InfoTip
+                    content="Deplo saves a copy of its database first, keeps every setting, and puts the old version back if the new one fails."
+                    docs="upgrade.overview"
+                  />
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                {updating ? (
+                  <Updating
+                    updating={updating}
+                    stalled={stalled}
+                    version={version}
+                  />
+                ) : (
+                  <>
+                    <Verdict info={info} version={version} />
+                    {manual && <ManualUpdate reason={manual} />}
+                  </>
+                )}
+                {(!updating || stalled) && (
+                  <>
+                    <div className="flex flex-wrap items-center gap-2">
+                      {info?.updateAvailable && info.latest && (
+                        <ConfirmAction
+                          variant="default"
+                          title={
+                            fleet.total > 0
+                              ? `Update Deplo to ${info.latest}, then its ${fleet.total} server${fleet.total === 1 ? "" : "s"}?`
+                              : `Update Deplo to ${info.latest}?`
+                          }
+                          description={
+                            <>
+                              The machine Deplo runs on pulls the new version
+                              and restarts the panel. It takes about a{" "}
+                              <strong>minute</strong>.
+                            </>
+                          }
+                          consequence="The dashboard is unreachable while it restarts. Deployed apps, sites and databases keep running."
+                          confirmLabel="Update"
+                          trigger={
+                            <Button size="sm">
+                              <CircleFadingArrowUp className="size-4" />
+                              Update to {info.latest}
+                            </Button>
+                          }
+                          onConfirm={startUpdate}
+                        />
+                      )}
+                      {checkNow}
+                    </div>
+                  </>
+                )}
+              </CardContent>
+            </Card>
 
-          <FleetAgentsCard fleet={fleet} />
-        </div>
+            <FleetAgentsCard fleet={fleet} onSettled={refreshFleet} />
+          </div>
+        )}
 
         <section className="space-y-3">
           <h2 className="text-base font-semibold tracking-tight lg:text-lg">
