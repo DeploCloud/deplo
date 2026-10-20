@@ -231,8 +231,8 @@ test("a shared variable whose value clashes here becomes the app's own, on the n
   assert.equal(await sharedValue("DASHBOARD_HOST"), "elsewhere.example.com");
 });
 
-test("an old address that still answers here, for another app, is only named", async () => {
-  await seedApp(db, { id: "prj_theirs", teamId: TEAM_B, slug: "theirs" });
+test("an old address that still answers here, for another app of this team, is only named", async () => {
+  await seedApp(db, { id: "prj_theirs", teamId: TEAM_A, slug: "theirs" });
   await db.insert(domainsTable).values({
     id: "dom_theirs",
     appId: "prj_theirs",
@@ -268,5 +268,43 @@ test("an old address that still answers here, for another app, is only named", a
     ),
     lines.join("\n"),
   );
+  assert.deepEqual(await blockingLines(runId), []);
+});
+
+test("an old address another team holds here is left alone without naming it", async () => {
+  await seedApp(db, { id: "prj_theirs", teamId: TEAM_B, slug: "theirs" });
+  await db.insert(domainsTable).values({
+    id: "dom_theirs",
+    appId: "prj_theirs",
+    name: "dash.example.com",
+    status: "valid",
+    isPrimary: true,
+    ssl: true,
+    source: "custom",
+    entrypoint: "websecure",
+    certProvider: "letsencrypt",
+    stripPrefix: false,
+    createdAt: "2026-01-01T00:00:00.000Z",
+  });
+  const runId = await importFromDeplo(
+    deploExport({
+      apps: [
+        exportApp({
+          domains: [temporary("dash.example.com", { generated: false })],
+          env: [prod("DASHBOARD_HOST", "dash.example.com")],
+        }),
+      ],
+      databases: [],
+    }),
+    ["prc_shop"],
+  );
+  const { host, vars } = await landed();
+  assert.notEqual(host, "dash.example.com");
+  assert.equal(vars.DASHBOARD_HOST, "dash.example.com");
+  const lines = await reportLines(runId);
+  const line = lines.find((l) => /^DASHBOARD_HOST /.test(l));
+  assert.ok(line, lines.join("\n"));
+  assert.match(line, new RegExp(host.replace(/\./g, "\\.")));
+  assert.doesNotMatch(line, /dash\.example\.com/);
   assert.deepEqual(await blockingLines(runId), []);
 });
