@@ -10,6 +10,7 @@ import {
   isLoopbackIp,
   wildcardEmbeddedIp,
   rehostWildcard,
+  temporaryAddressTls,
 } from "../../deploy/domains";
 import { certProviderForDns, isRoutableDomain } from "../../deploy/cloudflare";
 import { composeServiceReservedClaim } from "../../deploy/compose-lint/networks";
@@ -32,6 +33,12 @@ import {
 import { appServerAddresses, checkDomainDns } from "./dns-check";
 import { certProviderWithinQuota } from "./letsencrypt-quota";
 import { composeServiceNames, normalizePath } from "./route-config";
+
+const bornCertProvider = (name: string, asked?: CertProvider): CertProvider =>
+  temporaryAddressTls(name, {
+    certProvider: asked ?? "none",
+    entrypoint: "websecure",
+  }).certProvider;
 
 export async function ensureAutoDomain(
   appId: string,
@@ -93,7 +100,10 @@ export async function ensureAutoDomain(
   // An absent provider reads as letsencrypt at the deploy edge, so the born-without-a-cert default is written.
   const certProvider = certProviderForDns(
     status,
-    await certProviderWithinQuota(teamId, opts.certProvider ?? "none"),
+    await certProviderWithinQuota(
+      teamId,
+      bornCertProvider(name, opts.certProvider),
+    ),
   );
   const domain: Domain = {
     id: newId("dom"),
@@ -167,7 +177,7 @@ export async function ensureExtraDomain(
       );
   const certProvider = await certProviderWithinQuota(
     teamId,
-    route.certProvider ?? "none",
+    bornCertProvider(name, route.certProvider),
   );
   const domain: Domain = {
     id: newId("dom"),

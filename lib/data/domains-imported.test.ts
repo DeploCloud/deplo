@@ -246,3 +246,58 @@ test("a service the stack does not declare is dropped, never stored", async () =
     .where(eq(domainsTable.id, all[0].id));
   assert.equal(row.service, null);
 });
+
+test("a temporary address recreated on a public server always gets a certificate", async () => {
+  await addImportedDomains(
+    "prj_web",
+    [
+      route({ sourceHost: "a.sslip.io", certProvider: "none" }),
+      route({ sourceHost: "b.sslip.io", certProvider: "custom" }),
+    ],
+    { slug: "web", ip: "203.0.113.7" },
+  );
+  const all = await rows();
+  assert.equal(all.length, 2);
+  for (const d of all) {
+    assert.equal(d.certProvider, "letsencrypt", d.importedFrom!);
+    assert.equal(d.entrypoint, "websecure");
+    assert.equal(d.ssl, true);
+  }
+
+  await db.insert(domainsTable).values({
+    id: "dom_auto",
+    appId: "prj_web",
+    name: "web-keen-puma-cb007107.deplo.site",
+    status: "valid",
+    isPrimary: true,
+    redirectTo: null,
+    ssl: false,
+    source: "auto",
+    port: 3000,
+    certProvider: "none",
+    createdAt: "2026-01-01T00:00:00.000Z",
+  });
+  await applyImportedRoute(
+    "prj_web",
+    "dom_auto",
+    route({ sourceHost: "c.sslip.io", certProvider: "custom" }),
+  );
+  const [primary] = await db
+    .select()
+    .from(domainsTable)
+    .where(eq(domainsTable.id, "dom_auto"));
+  assert.equal(primary.certProvider, "letsencrypt");
+  assert.equal(primary.entrypoint, "websecure");
+  assert.equal(primary.ssl, true);
+});
+
+test("a temporary address on a private server keeps plain HTTP, never a self-signed one", async () => {
+  await addImportedDomains(
+    "prj_web",
+    [route({ certProvider: "custom", entrypoint: "websecure" })],
+    { slug: "web", ip: IP },
+  );
+  const [row] = await rows();
+  assert.equal(row.certProvider, "none");
+  assert.equal(row.entrypoint, "web");
+});

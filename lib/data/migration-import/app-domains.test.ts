@@ -148,6 +148,27 @@ test("the primary domain is the real hostname, not Dokploy's throwaway one", asy
   );
 });
 
+test("a recreated temporary address on a public server has a certificate, no setting touched", async () => {
+  const { servers: serversTable } =
+    await import("../../db/schema/control-plane/servers");
+  await db
+    .update(serversTable)
+    .set({ ip: "203.0.113.7" })
+    .where(eq(serversTable.id, SERVER_1));
+  const runId = await asOwner(() => beginMigration({ url: URL_BASE }));
+  await importProject(runId, "dok-prj-blink");
+
+  const web = (await db.select().from(appsTable)).find(
+    (a) => a.name === "blink-web",
+  )!;
+  const rehosted = (
+    await db.select().from(domainsTable).where(eq(domainsTable.appId, web.id))
+  ).find((d) => d.name.endsWith(".deplo.site"))!;
+  assert.equal(rehosted.certProvider, "letsencrypt");
+  assert.equal(rehosted.entrypoint, "websecure");
+  assert.equal(rehosted.ssl, true);
+});
+
 test("on a takeover the throwaway address stays, because it names this machine", async () => {
   const { servers: serversTable } =
     await import("../../db/schema/control-plane/servers");

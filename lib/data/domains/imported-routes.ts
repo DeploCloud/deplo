@@ -10,7 +10,10 @@ import {
   loadDomainsForApp,
   loadAppGraph,
 } from "../app-graph-load";
-import { LETSENCRYPT_DOMAINS_PER_TEAM_CAP } from "../../deploy/domains";
+import {
+  LETSENCRYPT_DOMAINS_PER_TEAM_CAP,
+  temporaryAddressTls,
+} from "../../deploy/domains";
 import { requireAppCapability } from "../node-access";
 import type {
   CertProvider,
@@ -73,11 +76,12 @@ export async function addImportedDomains(
     const key = `${name}\u0000${pathPrefix}`;
     if (taken.has(key)) continue;
     taken.add(key);
+    const tls = temporaryAddressTls(name, route);
     const certProvider = await certProviderWithinQuota(
       teamId,
-      route.certProvider,
+      tls.certProvider,
     );
-    if (certProvider !== route.certProvider) opts.notes?.push(capNote(name));
+    if (certProvider !== tls.certProvider) opts.notes?.push(capNote(name));
 
     const domain: Domain = {
       id: newId("dom"),
@@ -91,7 +95,7 @@ export async function addImportedDomains(
       port: route.port,
       ...(service ? { service } : {}),
       certProvider,
-      entrypoint: route.entrypoint,
+      entrypoint: tls.entrypoint,
       ...(pathPrefix ? { pathPrefix } : {}),
       ...(pathPrefix && route.stripPrefix ? { stripPrefix: true } : {}),
       importedFrom: route.sourceHost,
@@ -120,14 +124,15 @@ export async function applyImportedRoute(
     .from(domainsTable)
     .where(and(eq(domainsTable.id, domainId), eq(domainsTable.appId, appId)));
   if (!row) return;
+  const tls = temporaryAddressTls(row.name, route);
   const certProvider =
-    row.certProvider === route.certProvider
-      ? route.certProvider
+    row.certProvider === tls.certProvider
+      ? tls.certProvider
       : await certProviderWithinQuota(
           await appTeamId(row.appId),
-          route.certProvider,
+          tls.certProvider,
         );
-  if (certProvider !== route.certProvider) notes?.push(capNote(row.name));
+  if (certProvider !== tls.certProvider) notes?.push(capNote(row.name));
   const routable = await routableServiceOf(appId);
   await getDb()
     .update(domainsTable)
@@ -135,7 +140,7 @@ export async function applyImportedRoute(
       port: route.port,
       service: routable(route.service),
       certProvider,
-      entrypoint: route.entrypoint,
+      entrypoint: tls.entrypoint,
       pathPrefix: pathPrefix || null,
       stripPrefix: (pathPrefix && route.stripPrefix) || null,
       ssl: certProvider !== "none",

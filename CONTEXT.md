@@ -933,7 +933,9 @@ single whole-set concept.
 A hostname routed to an app - one row per `(hostname, path)`, and the **sole** routing
 source the renderers read (`routableRoutes` ⇒ `traefikRouterLabels`). Carries its own DNS
 `status` (only `valid`/`cloudflare` are routed), certificate provider (opt-in; `none` ⇒
-plain HTTP), container port, compose service, optional path prefix and middleware chain.
+plain HTTP - except a temporary address on a public server, which always gets `letsencrypt`,
+on creation and after a migration, within the team's Let's Encrypt cap), container port,
+compose service, optional path prefix and middleware chain.
 Exactly one domain per app is **primary** - the _canonical host_, the app's
 `productionUrl`.
 
