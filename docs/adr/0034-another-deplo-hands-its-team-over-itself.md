@@ -57,8 +57,15 @@ path cannot simply be pointed at it:
 
 - Both sides must run a version that has the export. An older source is told to update, and an
   export version this side does not know is refused rather than half-read.
-- Deplo keeps apps outside projects; the import lands in projects, so each folder becomes one
-  and the top level becomes one named after the team.
+- Apps outside projects land where they were: in the same folder tree (matched by name under
+  its parent, colour included) or at the top level.
+- Roles, each member's role and their per-project, per-folder and per-app access travel when the
+  reader may manage members (absent from an older Deplo, and said so). They are rebuilt through
+  the same guarded calls as Settings, so the person migrating never hands out more than they hold,
+  and only on nodes this run created. A member matched by email to an account already here joins
+  able to view only and is then given exactly what they had in one write; anyone whose access
+  could not be rebuilt exactly, or who has no account yet, stays at view only and is named in the
+  report. Access to a single environment has no writer here yet and is reported the same way.
 - The shared model gained `nativeBuild`, `nativeResources` and `SourceDomain.generated`, all
   optional, so the other two platforms are untouched and a Deplo source loses no build setting.
 - Backups carry every destination (bucket or server disk) with the key its artifacts are
