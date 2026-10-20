@@ -60,6 +60,7 @@ function sameRun(a: ImportRunDTO | null, b: ImportRunDTO | null): boolean {
     a.created === b.created &&
     a.skipped === b.skipped &&
     a.failed === b.failed &&
-    a.manual === b.manual
+    a.manual === b.manual &&
+    a.blocking === b.blocking
   );
 }

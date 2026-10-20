@@ -23,6 +23,10 @@ export const ImportItemRef = builder
       targetKind: t.exposeString("targetKind", { nullable: true }),
       targetId: t.exposeString("targetId", { nullable: true }),
       message: t.exposeString("message", { nullable: true }),
+      blocking: t.exposeBoolean("blocking", {
+        description:
+          "The app will not run until somebody does what this line says. Every other note is information.",
+      }),
       at: t.exposeString("at", {
         nullable: true,
         description:
@@ -91,7 +95,13 @@ export const ImportRunRef = builder
       created: t.exposeInt("created"),
       skipped: t.exposeInt("skipped"),
       failed: t.exposeInt("failed"),
-      manual: t.exposeInt("manual"),
+      manual: t.exposeInt("manual", {
+        description:
+          "Lines for your information. What keeps an app from running is counted in `blocking` instead.",
+      }),
+      blocking: t.exposeInt("blocking", {
+        description: "Lines that keep an app from running until they are done.",
+      }),
       error: t.exposeString("error", { nullable: true }),
       startedAt: t.exposeString("startedAt"),
       finishedAt: t.exposeString("finishedAt", { nullable: true }),
@@ -150,6 +160,7 @@ export const ImportProjectResultRef = builder
       skipped: t.exposeInt("skipped"),
       failed: t.exposeInt("failed"),
       manual: t.exposeInt("manual"),
+      blocking: t.exposeInt("blocking"),
       items: t.field({ type: [ImportItemRef], resolve: (r) => r.items }),
     }),
   });

@@ -6,6 +6,7 @@ import { gqlSubscribe } from "@/lib/graphql-client";
 import { MIGRATION_HEARTBEAT_STALE_MS } from "@/lib/types/migration";
 import { Badge } from "@/components/ui/badge";
 import { StatusDot } from "@/components/shared/status-badge";
+import { reportBadges } from "@/components/settings/migrations/steps";
 import {
   Tooltip,
   TooltipContent,
@@ -23,6 +24,7 @@ export type ActiveMigration = {
   skipped: number;
   failed: number;
   manual: number;
+  blocking: number;
   lastPath: string | null;
   phase: string;
   doneSteps: number;
@@ -53,6 +55,7 @@ const ACTIVE_MIGRATION_SUBSCRIPTION = /* GraphQL */ `
       skipped
       failed
       manual
+      blocking
       lastPath
       phase
       doneSteps
@@ -188,7 +191,9 @@ function FinishedChip({
       <span className="hidden sm:inline">{label}</span>
     </span>
   );
-  const counts = `${run.created} created, ${run.failed} failed, ${run.manual} to finish by hand.`;
+  const counts = `${reportBadges(run)
+    .map((b) => b.label)
+    .join(", ")}.`;
   return (
     <Tooltip delayDuration={200}>
       <TooltipTrigger asChild>

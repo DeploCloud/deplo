@@ -12,6 +12,7 @@ import {
   TRUNCATE_PROJECT_GRAPH,
 } from "../app-graph-test-helpers";
 import { listBasicAuthUsers } from "../basic-auth";
+import { isBlocking, noteText, type Note } from "../../migration/note";
 import { importBasicAuth, LOCK_USERNAME } from "./app-extras";
 
 process.env.DEPLO_SECRET = "test-secret-for-basic-auth-import-aaaaaaaaa";
@@ -61,6 +62,7 @@ test("every user landing is the only case that claims identical protection", asy
   );
   assert.deepEqual(await names(), ["alice"]);
   assert.match(notes.join(" "), /protected exactly as it was/);
+  assert.equal(notes.some(isBlocking), false, "nothing to fix before it runs");
 });
 
 test("a partial failure names the refused user and never claims identical protection", async () => {
@@ -82,13 +84,15 @@ test("a partial failure names the refused user and never claims identical protec
 });
 
 test("when no user lands the app is locked, not left open", async () => {
-  const notes: string[] = [];
+  const notes: Note[] = [];
   await as(OWNER, () =>
     importBasicAuth(APP, [{ username: "bad name", password: "pw" }], notes),
   );
   assert.deepEqual(await names(), [LOCK_USERNAME]);
-  assert.match(notes.join(" "), /locked/);
-  assert.doesNotMatch(notes.join(" "), /exactly as it was/);
+  const said = notes.map(noteText).join(" ");
+  assert.match(said, /locked/);
+  assert.doesNotMatch(said, /exactly as it was/);
+  assert.equal(notes.every(isBlocking), true, "nobody can open it until fixed");
 });
 
 test("when even the lock is refused the import fails instead of landing open", async () => {

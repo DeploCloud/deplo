@@ -70,6 +70,7 @@ export interface ReportItem {
   targetId: string | null;
   message: string | null;
   at?: string | null;
+  blocking?: boolean;
 }
 
 export interface Invite {
@@ -94,6 +95,7 @@ export interface SessionRun {
   skipped: number;
   failed: number;
   manual: number;
+  blocking: number;
   error: string | null;
   members: Invite[];
 }
@@ -116,6 +118,7 @@ export interface ImportRun {
   skipped: number;
   failed: number;
   manual: number;
+  blocking: number;
   error: string | null;
   startedAt: string;
   finishedAt: string | null;

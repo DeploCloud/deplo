@@ -113,3 +113,68 @@ export function stepAfterScan(plans: { servers: unknown[] }[]): StepId {
 export function needsYou(n: number): string {
   return `${n} need${n === 1 ? "s" : ""} you`;
 }
+
+export interface ReportCounts {
+  created: number;
+  skipped: number;
+  failed: number;
+  manual: number;
+  blocking: number;
+}
+
+// "Needs you" is only what keeps an app from running; `manual` is information.
+export function reportBadges(r: ReportCounts): {
+  key: string;
+  label: string;
+  variant: "warning" | "destructive" | "success" | "secondary" | "outline";
+}[] {
+  return [
+    r.blocking > 0 && {
+      key: "blocking",
+      label: needsYou(r.blocking),
+      variant: "warning" as const,
+    },
+    r.failed > 0 && {
+      key: "failed",
+      label: `${r.failed} failed`,
+      variant: "destructive" as const,
+    },
+    {
+      key: "created",
+      label: `${r.created} created`,
+      variant: "success" as const,
+    },
+    r.skipped > 0 && {
+      key: "skipped",
+      label: `${r.skipped} already here`,
+      variant: "secondary" as const,
+    },
+    r.manual > 0 && {
+      key: "manual",
+      label: `${r.manual} note${r.manual === 1 ? "" : "s"}`,
+      variant: "outline" as const,
+    },
+  ].filter((b) => b !== false);
+}
+
+export const REPORT_LEVELS = [
+  "blocking",
+  "failed",
+  "created",
+  "skipped",
+  "unsupported",
+  "manual",
+] as const;
+export type ReportLevel = (typeof REPORT_LEVELS)[number];
+
+// A note that blocks an app is grouped on its own, whatever outcome it was written with.
+export function reportLevel(item: {
+  outcome: string;
+  blocking?: boolean;
+}): ReportLevel {
+  const note = item.outcome === "manual" || item.outcome === "unsupported";
+  if (note && item.blocking) return "blocking";
+  return (REPORT_LEVELS as readonly string[]).includes(item.outcome)
+    ? (item.outcome as ReportLevel)
+    : "manual";
+}

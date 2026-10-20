@@ -1,5 +1,6 @@
 import "server-only";
 
+import { blocker, type Note } from "../../migration/note";
 import { randomToken } from "../../crypto";
 import { sourceClient } from "../../migration/source";
 import type { SourceCredential } from "../../migration/source";
@@ -30,7 +31,7 @@ async function importCrons(
   scheduleType: "application" | "compose",
   sourceId: string,
   appId: string,
-  notes: string[],
+  notes: Note[],
   serviceRenames: Map<string, string> = new Map(),
 ): Promise<void> {
   for (const s of await sourceClient(c).listSchedules(scheduleType, sourceId)) {
@@ -61,7 +62,7 @@ export const LOCK_USERNAME = "migration-lock";
 export async function importBasicAuth(
   appId: string,
   security: { username: string; password: string }[],
-  notes: string[],
+  notes: Note[],
 ): Promise<void> {
   if (security.length === 0) return;
   const refused: string[] = [];
@@ -97,7 +98,9 @@ export async function importBasicAuth(
     );
   }
   notes.push(
-    `None of its basic-auth users came across (${refused.join(", ")}). So it is not left open, it is locked behind a "${LOCK_USERNAME}" user whose password nobody knows - add the real users under Access, then remove that one.`,
+    blocker(
+      `None of its basic-auth users came across (${refused.join(", ")}). So it is not left open, it is locked behind a "${LOCK_USERNAME}" user whose password nobody knows - add the real users under Access, then remove that one.`,
+    ),
   );
 }
 
@@ -111,7 +114,7 @@ export async function landAppExtras(
     secretKeys: Set<string>;
     serviceRenames: Map<string, string>;
   },
-  notes: string[],
+  notes: Note[],
 ): Promise<void> {
   const { isCompose, secretKeys, serviceRenames } = shape;
   const native = (detail as SourceApplication).nativeResources;

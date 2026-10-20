@@ -757,6 +757,14 @@ _Avoid_: transfer (that is **app transfer**, moving an App between teams), move 
 **server move**, relocating one workload between hosts), sync (nothing here is continuous - a
 migration happens once and stops the source), import (the old wire word, now retired).
 
+**Blocker** (a report line):
+A line of a migration **report** saying the app will not run until somebody does what it says
+(its code is not here, a value arrived empty, nobody can sign in). Written `blocker("...")`
+(`lib/migration/note.ts`), stored as `migration_run_items.blocking`, counted in
+`migration_runs.blocking` and shown first as "N need you". Every other note is **information**,
+a plain string, counted in `manual` and shown as "N notes". Failures keep their own count.
+_Avoid_: warning, error (a failure is `failed`), "needs you" for a line that is only information.
+
 **Deplo move**:
 Copying a WHOLE Deplo - every team, account, App, variable, token, backup and setting - onto a
 fresh install on another machine, while the **old Deplo** keeps running exactly as it was

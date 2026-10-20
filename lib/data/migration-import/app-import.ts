@@ -1,5 +1,6 @@
 import "server-only";
 
+import { type Note } from "../../migration/note";
 import { and, eq, isNull, ne, or, sql } from "drizzle-orm";
 
 import { getDb } from "../../db/client";
@@ -82,7 +83,7 @@ export async function importAppService(
     return match.id;
   }
 
-  const notes: string[] = [
+  const notes: Note[] = [
     ...((detail as SourceApplication).platformNotes ?? []),
   ];
 
@@ -174,6 +175,7 @@ export async function importAppService(
       outcome: "manual",
       targetKind: "app",
       message: grantRefusal,
+      blocking: true,
     });
     return null;
   }

@@ -1,5 +1,6 @@
 import "server-only";
 
+import { blocker, type Note } from "../../migration/note";
 import { newId } from "../../ids";
 import { canMountHostVolumes } from "../../membership";
 import type { VolumeMount } from "../../types/container";
@@ -21,7 +22,7 @@ export async function landAppStorage(
     asRepoApp: ComposeRepoApp | null;
     yamlText: string;
   },
-  notes: string[],
+  notes: Note[],
 ): Promise<void> {
   const { isCompose, compose, asRepoApp, yamlText } = shape;
   const unwritten = new Set<string>();
@@ -36,9 +37,11 @@ export async function landAppStorage(
       unwritten.add(f.filePath);
       if (!isCompose)
         notes.push(
-          `${f.filePath} could not be written into this app's Files: ${
-            e instanceof Error ? e.message : "refused"
-          }. {panel} still has it - copy it from there into Files, and mount it under Storage.`,
+          blocker(
+            `${f.filePath} could not be written into this app's Files: ${
+              e instanceof Error ? e.message : "refused"
+            }. {panel} still has it - copy it from there into Files, and mount it under Storage.`,
+          ),
         );
     }
   }
@@ -106,7 +109,9 @@ export async function landAppStorage(
       );
     } catch (e) {
       notes.push(
-        `Volumes were not imported: ${e instanceof Error ? e.message : "refused"}. Add them under Storage.`,
+        blocker(
+          `Volumes were not imported: ${e instanceof Error ? e.message : "refused"}. Add them under Storage.`,
+        ),
       );
     }
   }
