@@ -184,6 +184,8 @@ export interface DataRequest {
   check?: string[];
   upload?: boolean;
   image?: string;
+  dump?: boolean;
+  recipient?: string;
 }
 
 async function dataResponse(

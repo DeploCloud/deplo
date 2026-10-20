@@ -5,6 +5,7 @@ import {
   checkWorkloadData,
   openAppImage,
   openAppUpload,
+  openDatabaseDump,
   openWorkloadData,
   type WorkloadRef,
 } from "@/lib/data/migration-export/data-stream";
@@ -20,6 +21,8 @@ interface ExportRequest extends WorkloadRef {
   check?: string[];
   upload?: boolean;
   image?: string;
+  dump?: boolean;
+  recipient?: string;
 }
 
 function refused(message: string, status: number): Response {
@@ -87,17 +90,22 @@ export async function POST(request: Request) {
           await checkWorkloadData(ref, body.check.map(String)),
         );
 
-      const raw = body.upload === true || typeof body.image === "string";
+      const raw =
+        body.upload === true ||
+        body.dump === true ||
+        typeof body.image === "string";
       const { chunks, close } =
-        body.upload === true
-          ? await openAppUpload(ref)
-          : typeof body.image === "string"
-            ? await openAppImage(ref, body.image.trim())
-            : await openWorkloadData(ref, {
-                volume: body.volume,
-                hostPath: body.hostPath,
-                allowFile: body.allowFile,
-              });
+        body.dump === true
+          ? await openDatabaseDump(ref, String(body.recipient ?? ""))
+          : body.upload === true
+            ? await openAppUpload(ref)
+            : typeof body.image === "string"
+              ? await openAppImage(ref, body.image.trim())
+              : await openWorkloadData(ref, {
+                  volume: body.volume,
+                  hostPath: body.hostPath,
+                  allowFile: body.allowFile,
+                });
       const it = chunks[Symbol.asyncIterator]();
       let first: IteratorResult<Buffer>;
       try {

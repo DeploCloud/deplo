@@ -251,7 +251,7 @@ export async function importAppService(
   for (const r of linkable) {
     try {
       await setSharedVarAppLink(
-        sharedEntry(home.shared, r.level, r.sharedKey)!.varId,
+        sharedEntry(home.shared, r.level, r.sharedKey)!.varId!,
         created.id,
         true,
       );

@@ -77,6 +77,7 @@ export function useMigrationRun({
   const [running, setRunning] = React.useState(false);
   const startingRef = React.useRef(false);
   const [starting, setStarting] = React.useState(false);
+  const [liveCopy, setLiveCopy] = React.useState(false);
   const [undoing, setUndoing] = React.useState(false);
   const [adoptedId, setAdoptedId] = React.useState<string | null>(null);
   const [logOpen, setLogOpen] = React.useState(false);
@@ -106,6 +107,7 @@ export function useMigrationRun({
         targets,
         servers,
         queued: opts.queued,
+        liveCopy: opts.from.platform === "deplo" && liveCopy,
       },
       (d) => d.startMigration,
       { teamId: opts.home },
@@ -404,6 +406,8 @@ export function useMigrationRun({
     setFailure,
     running,
     starting,
+    liveCopy,
+    setLiveCopy,
     undoing,
     logOpen,
     setLogOpen,

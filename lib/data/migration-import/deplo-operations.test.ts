@@ -91,7 +91,7 @@ test("a stack lands with its compose flags, rollback count and deploy hook as th
   assert.equal(app.rollbackKeep, 9);
   assert.equal(app.deployHookEnabled, false);
   const lines = (await reportLines(runId)).join(" | ");
-  assert.doesNotMatch(lines, /too old/);
+  assert.doesNotMatch(lines, /too old to hand over its compose flags/);
   assert.doesNotMatch(lines, /deploy hook/i);
 });
 

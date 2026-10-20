@@ -29,7 +29,7 @@ export function mapAppEnv(
     (r) =>
       r.whole &&
       r.key === r.sharedKey &&
-      sharedEntry(home.shared, r.level, r.sharedKey) != null,
+      sharedEntry(home.shared, r.level, r.sharedKey)?.varId != null,
   );
   const dropped = new Map<string, { key: string; value: string }>();
   for (const r of linkable) {

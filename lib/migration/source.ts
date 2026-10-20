@@ -83,6 +83,11 @@ export interface SourceDataExport {
     svc: { kind: string; id: string },
     image: string,
   ): AsyncIterable<Buffer>;
+  // A database dumped through its engine while it keeps running, encrypted to `recipient` (an age key).
+  exportDump?(
+    svc: { kind: string; id: string },
+    recipient: string,
+  ): AsyncIterable<Buffer>;
 }
 
 export interface MigrationSourceClient {

@@ -54,6 +54,8 @@ export interface CopyContext {
   svc: SourceService;
   landed: Landed;
   running: boolean;
+  // Read while the source keeps serving (a copy without stopping it).
+  live?: boolean;
   sourceServerId: string;
   source: DataSource;
   dest: AgentConnection;
@@ -115,7 +117,11 @@ async function recordCopied(
   message: string,
 ): Promise<void> {
   ctx.tally.moved++;
-  await record(ctx, sourceName, "created", message);
+  const live =
+    ctx.live && ctx.running
+      ? ` ${ctx.svc.name} kept running on {panel} while it was read, so anything written to it during the copy may be missing or half-written here.`
+      : "";
+  await record(ctx, sourceName, "created", message + live);
 }
 
 async function recordFailure(

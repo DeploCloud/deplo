@@ -1,5 +1,6 @@
 import { DB_REPOS } from "../../databases/images";
 import type { BuildConfig, GitRepo } from "../../types/build";
+import type { EnvironmentKind } from "../../types/team";
 import type { EnvPair, SharedRef } from "../map/env";
 import { blocker, type Note } from "../note";
 import type {
@@ -591,6 +592,7 @@ export function sourceTree(x: DeploExport): SourceProject[] {
       project = {
         projectId: at.projectId,
         name: real?.name ?? (folder ? folderPath(x, folder) : x.team.name),
+        ...(real && real.color !== undefined ? { color: real.color } : {}),
         envEntries: shared?.envEntries ?? null,
         secretEnvKeys: shared?.secretEnvKeys ?? null,
         platformNotes: [
@@ -616,6 +618,8 @@ export function sourceTree(x: DeploExport): SourceProject[] {
         environmentId: at.environmentId,
         name: real?.name ?? "production",
         isDefault: real?.isDefault ?? true,
+        ...(real?.kind !== undefined ? { kind: kindOf(real.kind) } : {}),
+        ...(real?.gitBranch !== undefined ? { gitBranch: real.gitBranch } : {}),
         envEntries: shared?.envEntries ?? [],
         secretEnvKeys: shared?.secretEnvKeys ?? null,
         applications: [],
@@ -641,9 +645,12 @@ export function sourceTree(x: DeploExport): SourceProject[] {
     const kind = dbKindOf(d);
     ((env[kind] ??= []) as SourceDatabase[]).push(sourceDatabase(x, d));
   }
-  const tree = [...projects.values()].filter((p) =>
-    (p.environments ?? []).some(hasServices),
-  );
+  const tree = [...projects.values()];
+  if (tree[0] && x.projects.some((p) => p.color === undefined))
+    tree[0].platformNotes = [
+      ...(tree[0].platformNotes ?? []),
+      "{panel} is too old to send each project's colour, or each environment's kind and branch, so those were left as Deplo sets them. Update it first to bring them across.",
+    ];
   if (x.withheld > 0 && tree[0])
     tree[0].platformNotes = [
       ...(tree[0].platformNotes ?? []),
@@ -652,12 +659,13 @@ export function sourceTree(x: DeploExport): SourceProject[] {
   return tree;
 }
 
-function hasServices(e: SourceEnvironment): boolean {
-  return (
-    (e.applications?.length ?? 0) > 0 ||
-    (e.compose?.length ?? 0) > 0 ||
-    Object.values(DB_KIND).some(
-      (k) => ((e[k] as SourceDatabase[] | null | undefined)?.length ?? 0) > 0,
-    )
-  );
+const KINDS: EnvironmentKind[] = [
+  "development",
+  "preview",
+  "production",
+  "custom",
+];
+
+function kindOf(kind: string): EnvironmentKind {
+  return KINDS.find((k) => k === kind) ?? "custom";
 }

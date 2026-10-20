@@ -6,11 +6,17 @@ import {
   type SharedRefLevel,
 } from "../../migration/map/env";
 import { saveSharedVar } from "../shared-vars/authoring";
-import { visibleSharedVarIdsByKey } from "../shared-vars/visibility";
+import { tryDecryptSecret } from "../../crypto";
+import { visibleSharedVarsByKey } from "../shared-vars/visibility";
 import type { Report } from "./run-report";
 
 // Keyed by level and name: a team's X and an environment's X are two variables.
-export type SharedIndex = Map<string, { varId: string; value: string }>;
+// varId null: a variable here holds another value, so apps keep the source's as their own.
+export interface SharedEntry {
+  varId: string | null;
+  value: string;
+}
+export type SharedIndex = Map<string, SharedEntry>;
 
 const NARROW_FIRST: SharedRefLevel[] = [
   "environment",
@@ -23,7 +29,7 @@ export function sharedEntry(
   index: SharedIndex,
   level: SharedRefLevel,
   key: string,
-): { varId: string; value: string } | undefined {
+): SharedEntry | undefined {
   return (
     index.get(`${level}.${key}`) ??
     NARROW_FIRST.map((l) => index.get(`${l}.${key}`)).find(Boolean)
@@ -51,15 +57,21 @@ export async function importSharedVars(
   const entries = envEntriesOf(vars);
   if (entries.length === 0) return;
 
-  const already = await visibleSharedVarIdsByKey(opts.teamId);
+  const already = await visibleSharedVarsByKey(opts.teamId);
 
   for (const { key, value } of entries) {
     const at = `${opts.level}.${key}`;
     if (index.has(at)) continue;
     // One this run created at another level is not "already in this team".
-    const here = already.get(key)?.find((id) => !opts.created.has(id));
-    if (here) {
-      index.set(at, { varId: here, value });
+    const here = (already.get(key) ?? []).filter(
+      (v) => !opts.created.has(v.id),
+    );
+    const same = here.find((v) => {
+      const open = tryDecryptSecret(v.valueEnc);
+      return open.ok && open.value === value;
+    });
+    if (same) {
+      index.set(at, { varId: same.id, value });
       await opts.report.add({
         path: opts.label,
         sourceKind: "shared-var",
@@ -67,7 +79,20 @@ export async function importSharedVars(
         outcome: "skipped",
         targetKind: "shared-var",
         message:
-          "A shared variable with this name is already in this team. The apps that referenced it are linked to that one, whatever value it holds.",
+          "A shared variable with this name and value is already in this team. The apps that referenced it are linked to that one.",
+      });
+      continue;
+    }
+    if (here.length > 0) {
+      index.set(at, { varId: null, value });
+      await opts.report.add({
+        path: opts.label,
+        sourceKind: "shared-var",
+        sourceName: key,
+        outcome: "skipped",
+        targetKind: "shared-var",
+        message:
+          "A shared variable with this name is already in this team with a different value, so it was left as it is. The apps that referenced it on {panel} keep {panel}'s value as their own variable.",
       });
       continue;
     }

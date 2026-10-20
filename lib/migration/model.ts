@@ -1,5 +1,6 @@
 import type { BuildConfig } from "../types/build";
 import type { HealthCheck, ResourceLimits } from "../types/container";
+import type { EnvironmentKind } from "../types/team";
 import type { EnvPair, SharedRef } from "./map/env";
 import type { Note } from "./note";
 
@@ -338,6 +339,8 @@ export interface SourceEnvironment {
   secretEnvKeys?: string[] | null;
   platformNotes?: Note[] | null;
   isDefault?: boolean | null;
+  kind?: EnvironmentKind;
+  gitBranch?: string;
   applications?: SourceApplication[] | null;
   compose?: SourceCompose[] | null;
   postgres?: SourceDatabase[] | null;
@@ -355,6 +358,7 @@ export interface SourceEnvironment {
 export interface SourceProject {
   projectId: string;
   name: string;
+  color?: string | null;
   description?: string | null;
   env?: string | null;
   envEntries?: EnvPair[] | null;
