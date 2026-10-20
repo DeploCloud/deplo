@@ -4,6 +4,8 @@ import type { EnvironmentKind } from "../../types/team";
 import type { EnvPair, SharedRef } from "../map/env";
 import type {
   SourceApplication,
+  SourceBackupDestination,
+  SourceBackupRun,
   SourceBackupSchedule,
   SourceCompose,
   SourceDatabase,
@@ -18,6 +20,8 @@ import type {
   DeploExport,
   DeploExportApp,
   DeploExportBackup,
+  DeploExportBackupRun,
+  DeploExportCron,
   DeploExportDatabase,
   DeploExportSharedVar,
   DeploExportVar,
@@ -100,7 +104,36 @@ function backupsOf(rows: DeploExportBackup[]): SourceBackupSchedule[] {
     enabled: b.enabled,
     keepLatestCount: b.retentionCount,
     destination: b.destination ? { name: b.destination } : null,
+    timezone: b.timezone ?? null,
   }));
+}
+
+// Absent from an older source: say so, rather than let its restore points vanish quietly.
+function backupHistoryOf(w: {
+  backups: DeploExportBackup[];
+  backupRuns?: DeploExportBackupRun[];
+}): { backupRuns?: SourceBackupRun[]; notes: string[] } {
+  if (w.backupRuns) return { backupRuns: w.backupRuns, notes: [] };
+  return {
+    notes:
+      w.backups.length > 0
+        ? [
+            "{panel} is too old to send its backup history, so its restore points are not listed here. Restore from {panel}, or update it and import again.",
+          ]
+        : [],
+  };
+}
+
+export function backupDestinationsOf(
+  x: DeploExport,
+): SourceBackupDestination[] {
+  return [
+    ...x.destinations.map((d) => ({ kind: "s3" as const, ...d })),
+    ...(x.serverDestinations ?? []).map((d) => ({
+      kind: "server" as const,
+      ...d,
+    })),
+  ];
 }
 
 function domainsOf(
@@ -241,6 +274,7 @@ function repoFields(repo: GitRepo | null): Partial<SourceApplication> {
 interface EnvShape {
   envEntries: EnvPair[];
   previewEnvEntries: EnvPair[];
+  previewSecretEnvKeys?: string[];
   secretEnvKeys: string[];
   productionOnlyEnvKeys: string[];
   sharedRefs: SharedRef[];
@@ -263,7 +297,16 @@ export function appEnv(x: DeploExport, a: DeploExportApp): EnvShape {
     ...a.env.filter((e) => e.targets.includes("production")),
     ...copies,
   ];
-  const previewOnly = a.env.filter((e) => !e.targets.includes("production"));
+  // A preview override replaces the app's variable of that name in a preview.
+  const overrides = a.previewEnv ?? [];
+  const previewVars = [
+    ...a.env.filter(
+      (e) =>
+        !e.targets.includes("production") &&
+        !overrides.some((o) => o.key === e.key),
+    ),
+    ...overrides,
+  ];
   const secret = new Set([
     ...a.env.filter((e) => e.secret).map((e) => e.key),
     ...copies.filter((e) => e.secret).map((e) => e.key),
@@ -276,7 +319,10 @@ export function appEnv(x: DeploExport, a: DeploExportApp): EnvShape {
       ...pairs(runtime),
       ...refs.map((r) => ({ key: r.key, value: `\${{${r.level}.${r.key}}}` })),
     ],
-    previewEnvEntries: pairs(previewOnly),
+    previewEnvEntries: pairs(previewVars),
+    previewSecretEnvKeys: a.previewEnv
+      ? previewVars.filter((e) => e.secret).map((e) => e.key)
+      : undefined,
     secretEnvKeys: [...secret],
     productionOnlyEnvKeys: a.env
       .filter((e) => e.targets.includes("production"))
@@ -317,6 +363,16 @@ export function environmentShared(x: DeploExport, at: Placement) {
   );
 }
 
+// A job from an older Deplo arrives as schedule and command alone.
+function cronNotes(w: { crons: DeploExportCron[] }): string[] {
+  const bare = w.crons.filter((j) => j.env === undefined).map((j) => j.name);
+  return bare.length > 0
+    ? [
+        `{panel} is too old to hand over the variables and settings of cron job(s) ${bare.join(", ")}, so only the schedule and command came across. Check them under Crons.`,
+      ]
+    : [];
+}
+
 export function sourceApplication(
   x: DeploExport,
   a: DeploExportApp,
@@ -324,12 +380,17 @@ export function sourceApplication(
   const compose = a.source === "compose";
   const env = appEnv(x, a);
   const { domains, notes: domainNotes } = domainsOf(a, compose);
-  const notes = [...a.notes, ...domainNotes];
+  const history = backupHistoryOf(a);
+  const notes = [...a.notes, ...domainNotes, ...history.notes, ...cronNotes(a)];
   if (a.source === "upload" && !a.upload)
     notes.push(
       a.upload === undefined
         ? "{panel} is too old to hand over its uploaded archive. Upload it again here before deploying."
         : "It had no archive uploaded on {panel}. Upload one here before deploying.",
+    );
+  if (a.preview === undefined && a.previewEnabled)
+    notes.push(
+      "{panel} is too old to hand over its preview settings, so only previews being on came across. Check them under Previews.",
     );
   const common = {
     name: a.name,
@@ -344,8 +405,15 @@ export function sourceApplication(
     serverId: a.serverId,
     environmentId: placementOf(x, a).environmentId,
     backups: backupsOf(a.backups),
+    backupRuns: history.backupRuns,
     routingPort: a.build.port,
+    cronEnabled: a.cronEnabled ?? null,
     platformNotes: notes,
+    previewEnvEntries: env.previewEnvEntries,
+    previewSecretEnvKeys: env.previewSecretEnvKeys,
+    nativePreview: a.preview
+      ? { enabled: a.previewEnabled, ...a.preview }
+      : undefined,
   };
   if (compose)
     return {
@@ -382,7 +450,6 @@ export function sourceApplication(
     installCommand: a.build.installCommand,
     buildCommand: a.build.buildCommand,
     command: a.source === "docker-image" ? null : a.build.startCommand,
-    previewEnvEntries: env.previewEnvEntries,
     isPreviewDeploymentsActive: a.previewEnabled,
     ports: a.ports.map((p) => ({
       portId: p.id,
@@ -407,6 +474,7 @@ export function sourceDatabase(
   d: DeploExportDatabase,
 ): SourceDatabase {
   const kind = dbKindOf(d);
+  const history = backupHistoryOf(d);
   return {
     [`${kind}Id`]: d.id,
     name: d.name,
@@ -428,14 +496,9 @@ export function sourceDatabase(
       mountPath: m.mountPath,
     })),
     backups: backupsOf(d.backups),
-    platformNotes: [
-      ...d.notes,
-      ...(d.crons.length > 0
-        ? [
-            `${d.crons.map((j) => j.name).join(", ")} ran on a schedule on {panel} and did not come across. Add ${d.crons.length === 1 ? "it" : "them"} again under Crons.`,
-          ]
-        : []),
-    ],
+    backupRuns: history.backupRuns,
+    cronEnabled: d.cronEnabled ?? null,
+    platformNotes: [...d.notes, ...history.notes, ...cronNotes(d)],
   };
 }
 

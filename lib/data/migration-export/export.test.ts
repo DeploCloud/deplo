@@ -16,11 +16,19 @@ import {
 import { createProject, reorderProjects } from "../projects/lifecycle";
 import { ALL_CAPABILITIES } from "../../types/identity";
 import { appBasicAuthUsers } from "../../db/schema/control-plane/domains";
+import { appPreviewEnvVars } from "../../db/schema/control-plane/env-vars";
+import { cronJobEnv, cronJobs } from "../../db/schema/control-plane/crons";
 import { runWithIdentity } from "../../auth/request-context";
 import { encryptSecret } from "../../crypto";
 import { insertEnvVars } from "../app-graph-load";
 import { seedApp, seedServer } from "../app-graph-test-helpers";
-import { seedDatabase, TRUNCATE_BACKUPS } from "../backup-test-helpers";
+import {
+  seedBackup,
+  seedDatabase,
+  seedDestination,
+  seedRun,
+  TRUNCATE_BACKUPS,
+} from "../backup-test-helpers";
 import { seedIdentity, TEAM_A, TEAM_B, USER_1 } from "../identity-test-helpers";
 import { DEPLO_EXPORT_VERSION } from "../../migration/deplo/export-shape";
 import { instanceFingerprint } from "../../migration/deplo/instance";
@@ -181,6 +189,65 @@ test("the export carries the team's apps and databases with their secret values"
   assert.equal(main?.data.volumes[0]?.name, "deplo-db-main_db-main-data");
 });
 
+test("the export carries every preview setting and override", async () => {
+  await seedServer(db, "srv_previews");
+  await db
+    .update(appsTable)
+    .set({
+      previewBaseDomain: "pr.example.com",
+      previewMaxActive: 7,
+      previewTtlDays: 14,
+      previewForkPolicy: "deny",
+      previewServerId: "srv_previews",
+      previewHttps: true,
+      previewAutoDeploy: false,
+      previewPort: 8080,
+      previewBuildDrafts: true,
+      previewComment: false,
+      previewRequiredLabels: "preview\nqa",
+    })
+    .where(eq(appsTable.id, "prj_web"));
+  await db.insert(appPreviewEnvVars).values([
+    {
+      id: "penv_1",
+      appId: "prj_web",
+      key: "API_URL",
+      valueEnc: encryptSecret("https://staging.example.com"),
+      type: "plain",
+      createdAt: T0,
+      updatedAt: T0,
+    },
+    {
+      id: "penv_2",
+      appId: "prj_web",
+      key: "STRIPE_KEY",
+      valueEnc: encryptSecret("sk_test"),
+      type: "secret",
+      createdAt: T0,
+      updatedAt: T0,
+    },
+  ]);
+  const out = await as(USER_1, TEAM_A, () => exportTeamForMigration());
+  const web = out.apps.find((a) => a.id === "prj_web");
+  assert.deepEqual(web?.preview, {
+    baseDomain: "pr.example.com",
+    maxActive: 7,
+    ttlDays: 14,
+    forkPolicy: "deny",
+    serverId: "srv_previews",
+    https: true,
+    autoDeploy: false,
+    port: 8080,
+    buildDrafts: true,
+    comment: false,
+    requiredLabels: "preview\nqa",
+  });
+  assert.deepEqual(web?.previewEnv, [
+    { key: "API_URL", value: "https://staging.example.com", secret: false },
+    { key: "STRIPE_KEY", value: "sk_test", secret: true },
+  ]);
+});
+
 test("another team's apps never leave in this team's export", async () => {
   const out = await as(USER_1, TEAM_A, () => exportTeamForMigration());
   assert.equal(
@@ -289,6 +356,80 @@ test("an app in a private folder the reader cannot open is counted, never handed
   assert.ok(owner.apps.some((a) => a.id === "prj_web"));
 });
 
+test("every backup destination, schedule and restore point leaves in the export", async () => {
+  await seedDestination(db, { id: "dst_s3", name: "bucket" });
+  await seedDestination(db, {
+    id: "dst_disk",
+    name: "disk",
+    kind: "server",
+    path: "/mnt/backups",
+  });
+  await seedBackup(db, {
+    id: "bkp_off",
+    destinationId: "dst_disk",
+    databaseId: "db_main",
+    schedule: "0 2 * * *",
+    timezone: "Europe/Paris",
+    enabled: false,
+  });
+  await seedRun(db, {
+    id: "brun_ok",
+    destinationId: "dst_s3",
+    databaseId: "db_main",
+    objectKey: "deplo/a/db_main/1.sql.gz.age",
+    sizeBytes: 2048,
+    sha256: "abc",
+    startedAt: "2026-02-01T03:00:00.000Z",
+  });
+  await seedRun(db, {
+    id: "brun_bad",
+    destinationId: "dst_s3",
+    databaseId: "db_main",
+    status: "failed",
+  });
+
+  const out = await as(USER_1, TEAM_A, () => exportTeamForMigration());
+  const s3 = out.destinations.find((d) => d.name === "bucket");
+  assert.match(s3?.ageIdentity ?? "", /^AGE-SECRET-KEY-/);
+  assert.equal(s3?.provider, "aws");
+  assert.deepEqual(
+    out.serverDestinations?.map((d) => ({
+      ...d,
+      ageIdentity: !!d.ageIdentity,
+    })),
+    [
+      {
+        name: "disk",
+        serverId: "srv_1",
+        serverName: out.servers.find((s) => s.id === "srv_1")?.name ?? null,
+        path: "/mnt/backups",
+        ageIdentity: true,
+      },
+    ],
+  );
+  const main = out.databases.find((d) => d.id === "db_main")!;
+  assert.deepEqual(main.backups, [
+    {
+      schedule: "0 2 * * *",
+      enabled: false,
+      timezone: "Europe/Paris",
+      retentionCount: 7,
+      destination: "disk",
+    },
+  ]);
+  assert.deepEqual(main.backupRuns, [
+    {
+      destination: "bucket",
+      objectKey: "deplo/a/db_main/1.sql.gz.age",
+      sizeBytes: 2048,
+      decryptedSizeBytes: null,
+      sha256: "abc",
+      startedAt: "2026-02-01T03:00:00.000Z",
+      finishedAt: T0,
+    },
+  ]);
+});
+
 test("an app built from an uploaded archive names that archive in the export", async () => {
   const stored = await uploadArchive("prj_web", "the site");
   const out = await as(USER_1, TEAM_A, () => exportTeamForMigration());
@@ -363,4 +504,79 @@ test("the data stream answers 404 for an app with no archive", async () => {
       as(USER_1, TEAM_A, () => openAppUpload({ kind: "app", id: "prj_web" })),
     (e: unknown) => e instanceof ExportRefusedError && e.status === 404,
   );
+});
+
+const CRON_ROW = {
+  teamId: TEAM_A,
+  description: "nightly",
+  service: null,
+  schedule: "0 3 * * *",
+  timezone: "Europe/Rome",
+  shell: "bash",
+  command: "./cleanup.sh",
+  enabled: false,
+  timeoutSeconds: 600,
+  maxAttempts: 3,
+  overlap: "allow",
+  keepRuns: 20,
+  workdir: "/srv",
+  user: "app",
+  createdAt: T0,
+  updatedAt: T0,
+};
+
+test("every cron job leaves with all its settings and variables, on apps and databases", async () => {
+  await db
+    .update(appsTable)
+    .set({ cronEnabled: true })
+    .where(eq(appsTable.id, "prj_web"));
+  await db.insert(cronJobs).values([
+    {
+      ...CRON_ROW,
+      id: "cron_app",
+      targetKind: "app",
+      appId: "prj_web",
+      name: "cleanup",
+    },
+    {
+      ...CRON_ROW,
+      id: "cron_db",
+      targetKind: "database",
+      databaseId: "db_main",
+      name: "vacuum",
+    },
+  ]);
+  await db.insert(cronJobEnv).values({
+    id: "cenv_1",
+    jobId: "cron_db",
+    key: "TOKEN",
+    valueEnc: encryptSecret("s3cr3t"),
+    createdAt: T0,
+  });
+  const out = await as(USER_1, TEAM_A, () => exportTeamForMigration());
+  const web = out.apps.find((a) => a.id === "prj_web")!;
+  const main = out.databases.find((d) => d.id === "db_main")!;
+  assert.equal(web.cronEnabled, true);
+  assert.equal(main.cronEnabled, false);
+  assert.deepEqual(web.crons, [
+    {
+      name: "cleanup",
+      description: "nightly",
+      schedule: "0 3 * * *",
+      timezone: "Europe/Rome",
+      shell: "bash",
+      command: "./cleanup.sh",
+      service: null,
+      enabled: false,
+      timeoutSeconds: 600,
+      maxAttempts: 3,
+      overlap: "allow",
+      keepRuns: 20,
+      workdir: "/srv",
+      user: "app",
+      env: [],
+    },
+  ]);
+  assert.equal(main.crons[0]?.name, "vacuum");
+  assert.deepEqual(main.crons[0]?.env, [{ key: "TOKEN", value: "s3cr3t" }]);
 });

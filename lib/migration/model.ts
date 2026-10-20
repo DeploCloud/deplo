@@ -65,12 +65,41 @@ export interface SourceBackupSchedule {
   destination?: { name?: string | null } | null;
   volumeName?: string | null;
   serviceName?: string | null;
+  timezone?: string | null;
+}
+
+// A restore point the source can still restore from; only another Deplo sends them.
+export interface SourceBackupRun {
+  destination: string;
+  objectKey: string;
+  sizeBytes: number;
+  decryptedSizeBytes?: number | null;
+  sha256?: string | null;
+  startedAt: string;
+  finishedAt?: string | null;
+}
+
+// Every preview setting as Deplo stores it; null means Deplo's default.
+export interface NativePreview {
+  enabled: boolean;
+  baseDomain: string | null;
+  maxActive: number | null;
+  ttlDays: number | null;
+  forkPolicy: string | null;
+  serverId: string | null;
+  https: boolean;
+  autoDeploy: boolean;
+  port: number | null;
+  buildDrafts: boolean;
+  comment: boolean;
+  requiredLabels: string | null;
 }
 
 export interface SourceApplication {
   // An uploaded archive the source hands over itself; null when there is none to fetch, absent when it never can.
   upload?: { filename: string; size: number } | null;
   backups?: SourceBackupSchedule[] | null;
+  backupRuns?: SourceBackupRun[] | null;
   sharedRefs?: SharedRef[] | null;
   secretEnvKeys?: string[] | null;
   // Variables the source kept away from previews; absent means every one reaches both.
@@ -80,6 +109,11 @@ export interface SourceApplication {
   // Settings already in Deplo's own shape, laid over what the platform-shaped fields map to.
   nativeBuild?: Partial<BuildConfig> | null;
   nativeResources?: Partial<ResourceLimits> | null;
+  nativePreview?: NativePreview | null;
+  // How each preview variable is typed; absent means the app's own secretEnvKeys decide.
+  previewSecretEnvKeys?: string[] | null;
+  // Whether its cron jobs run at all; absent when the source has no such switch.
+  cronEnabled?: boolean | null;
   applicationId: string;
   name?: string | null;
   appName?: string | null;
@@ -168,10 +202,12 @@ export interface SourceApplication {
 
 export interface SourceCompose {
   backups?: SourceBackupSchedule[] | null;
+  backupRuns?: SourceBackupRun[] | null;
   sharedRefs?: SharedRef[] | null;
   secretEnvKeys?: string[] | null;
   productionOnlyEnvKeys?: string[] | null;
   platformNotes?: Note[] | null;
+  cronEnabled?: boolean | null;
   composeId: string;
   name?: string | null;
   appName?: string | null;
@@ -216,11 +252,13 @@ export interface SourceCompose {
 
 export interface SourceDatabase {
   platformNotes?: Note[] | null;
+  cronEnabled?: boolean | null;
   name?: string | null;
   appName?: string | null;
   description?: string | null;
   dockerImage?: string | null;
   backups?: SourceBackupSchedule[] | null;
+  backupRuns?: SourceBackupRun[] | null;
   databaseName?: string | null;
   databaseUser?: string | null;
   databasePassword?: string | null;
@@ -344,6 +382,21 @@ export interface SourceSchedule {
   serviceName?: string | null;
   scheduleType?: string | null;
   enabled?: boolean | null;
+  env?: EnvPair[] | null;
+  // The rest of a job already in Deplo's own shape.
+  native?: SourceCronSettings | null;
+}
+
+export interface SourceCronSettings {
+  description?: string;
+  timezone?: string;
+  shell?: string;
+  timeoutSeconds?: number;
+  maxAttempts?: number;
+  overlap?: string;
+  keepRuns?: number;
+  workdir?: string | null;
+  user?: string | null;
 }
 
 export interface NamedVolume {
@@ -359,10 +412,26 @@ export interface HostMount {
 }
 
 export interface SourceS3Destination {
+  kind?: "s3";
   name: string;
   endpoint: string;
   bucket: string;
   region: string;
   accessKeyId: string;
   secretAccessKey: string;
+  provider?: string | null;
+  // The key its artifacts are encrypted to; null when it never encrypted, absent when unknown.
+  ageIdentity?: string | null;
 }
+
+export interface SourceServerDestination {
+  kind: "server";
+  name: string;
+  serverId: string;
+  serverName: string | null;
+  path: string | null;
+  ageIdentity?: string;
+}
+
+export type SourceBackupDestination =
+  SourceS3Destination | SourceServerDestination;

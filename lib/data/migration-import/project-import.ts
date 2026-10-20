@@ -154,7 +154,9 @@ async function runImportMigrationProject(
     };
   const { projectId } = landing;
 
-  const destinations = await importBackupDestinations(c, report);
+  const destinations = await importBackupDestinations(c, report, (id) =>
+    targetServerFor(serverMap.get(id)),
+  );
 
   const wanted = input.serviceIds ? new Set(input.serviceIds) : null;
   const picked = (env: SourceEnvironment) =>
@@ -343,6 +345,7 @@ async function runImportMigrationProject(
                 placed.get(svc.id)?.serverId ?? serverMap.get(sourceServerId),
               buildServerId: placed.get(svc.id)?.buildServerId ?? null,
               sourceHost: await hostOfMachine(sourceServerId),
+              servers: serverMap,
               dbHosts,
               shared: envShared,
               destinations,

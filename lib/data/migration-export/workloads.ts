@@ -1,27 +1,35 @@
 import "server-only";
 
-import { eq, inArray } from "drizzle-orm";
+import { and, asc, eq, inArray } from "drizzle-orm";
 
 import { getDb } from "../../db/client";
 import {
   backupDestination as destTable,
+  backupRuns as runsTable,
   backups as backupsTable,
 } from "../../db/schema/control-plane/backups";
-import { cronJobs as cronTable } from "../../db/schema/control-plane/crons";
+import {
+  cronJobEnv as cronEnvTable,
+  cronJobs as cronTable,
+} from "../../db/schema/control-plane/crons";
+import { apps as appsTable } from "../../db/schema/control-plane/apps";
 import { databases as databasesTable } from "../../db/schema/control-plane/databases";
 import {
   appBasicAuthUsers as basicAuthTable,
   domains as domainsTable,
 } from "../../db/schema/control-plane/domains";
+import { appPreviewEnvVars as previewVarsTable } from "../../db/schema/control-plane/env-vars";
 import { tryDecryptSecret } from "../../crypto";
 import { parseConnectionPassword } from "../../deploy/database-compose";
 import type {
   DeploExportApp,
   DeploExportBackup,
+  DeploExportBackupRun,
   DeploExportCron,
   DeploExportData,
   DeploExportDatabase,
   DeploExportDomain,
+  DeploExportPreview,
 } from "../../migration/deplo/export-shape";
 import { loadAppsByTeam, loadEnvVarsForApps } from "../app-graph-load";
 import { assembleDatabase } from "../backup-rows";
@@ -58,28 +66,82 @@ async function dataOf(
 
 async function schedulesFor(teamId: string) {
   const db = getDb();
-  const [crons, backups, destinations] = await Promise.all([
+  const [crons, cronEnv, backups, runs, destinations] = await Promise.all([
     db.select().from(cronTable).where(eq(cronTable.teamId, teamId)),
+    db
+      .select({
+        jobId: cronEnvTable.jobId,
+        key: cronEnvTable.key,
+        valueEnc: cronEnvTable.valueEnc,
+      })
+      .from(cronEnvTable)
+      .innerJoin(cronTable, eq(cronTable.id, cronEnvTable.jobId))
+      .where(eq(cronTable.teamId, teamId)),
     db.select().from(backupsTable).where(eq(backupsTable.teamId, teamId)),
+    db
+      .select()
+      .from(runsTable)
+      .where(and(eq(runsTable.teamId, teamId), eq(runsTable.status, "success")))
+      .orderBy(runsTable.seq),
     db
       .select({ id: destTable.id, name: destTable.name })
       .from(destTable)
       .where(eq(destTable.teamId, teamId)),
   ]);
   const destName = new Map(destinations.map((d) => [d.id, d.name]));
-  const cron = (r: (typeof crons)[number]): DeploExportCron => ({
-    name: r.name,
-    schedule: r.schedule,
-    command: r.command,
-    service: r.service,
-    enabled: r.enabled,
-  });
+  const envBy = groupBy(cronEnv, (e) => e.jobId);
+  const cron =
+    (notes: string[]) =>
+    (r: (typeof crons)[number]): DeploExportCron => ({
+      name: r.name,
+      description: r.description,
+      schedule: r.schedule,
+      timezone: r.timezone,
+      shell: r.shell,
+      command: r.command,
+      service: r.service,
+      enabled: r.enabled,
+      timeoutSeconds: r.timeoutSeconds,
+      maxAttempts: r.maxAttempts,
+      overlap: r.overlap,
+      keepRuns: r.keepRuns,
+      workdir: r.workdir,
+      user: r.user,
+      env: (envBy.get(r.id) ?? []).flatMap((e) => {
+        const value = opened(e.valueEnc);
+        if (value === null) {
+          notes.push(
+            `${e.key} of cron job ${r.name} could not be decrypted on {panel}, so it did not come across. Set it under Crons.`,
+          );
+          return [];
+        }
+        return [{ key: e.key, value }];
+      }),
+    });
   const backup = (r: (typeof backups)[number]): DeploExportBackup => ({
     schedule: r.schedule,
     enabled: r.enabled,
     retentionCount: r.retentionCount,
     destination: destName.get(r.destinationId) ?? null,
+    timezone: r.timezone,
   });
+  const runsBy = groupBy(runs, (r) => r.appId ?? r.databaseId);
+  const restorePoints = (id: string): DeploExportBackupRun[] =>
+    (runsBy.get(id) ?? []).flatMap((r) => {
+      const destination = destName.get(r.destinationId);
+      if (!destination || !r.objectKey) return [];
+      return [
+        {
+          destination,
+          objectKey: r.objectKey,
+          sizeBytes: r.sizeBytes,
+          decryptedSizeBytes: r.decryptedSizeBytes,
+          sha256: r.sha256,
+          startedAt: r.startedAt,
+          finishedAt: r.finishedAt,
+        },
+      ];
+    });
   return {
     appCrons: groupBy(crons, (r) => r.appId),
     dbCrons: groupBy(crons, (r) => r.databaseId),
@@ -87,6 +149,7 @@ async function schedulesFor(teamId: string) {
     dbBackups: groupBy(backups, (r) => r.databaseId),
     cron,
     backup,
+    restorePoints,
   };
 }
 
@@ -109,12 +172,42 @@ export async function exportApps(
   const withheld = all.length - apps.length;
   const ids = apps.map((a) => a.id);
   if (ids.length === 0) return { apps: [], withheld };
-  const [vars, domains, basicAuth, schedules] = await Promise.all([
-    loadEnvVarsForApps(ids),
-    db.select().from(domainsTable).where(inArray(domainsTable.appId, ids)),
-    db.select().from(basicAuthTable).where(inArray(basicAuthTable.appId, ids)),
-    schedulesFor(teamId),
-  ]);
+  const [vars, domains, basicAuth, schedules, previews, previewVars] =
+    await Promise.all([
+      loadEnvVarsForApps(ids),
+      db.select().from(domainsTable).where(inArray(domainsTable.appId, ids)),
+      db
+        .select()
+        .from(basicAuthTable)
+        .where(inArray(basicAuthTable.appId, ids)),
+      schedulesFor(teamId),
+      db
+        .select({
+          appId: appsTable.id,
+          baseDomain: appsTable.previewBaseDomain,
+          maxActive: appsTable.previewMaxActive,
+          ttlDays: appsTable.previewTtlDays,
+          forkPolicy: appsTable.previewForkPolicy,
+          serverId: appsTable.previewServerId,
+          https: appsTable.previewHttps,
+          autoDeploy: appsTable.previewAutoDeploy,
+          port: appsTable.previewPort,
+          buildDrafts: appsTable.previewBuildDrafts,
+          comment: appsTable.previewComment,
+          requiredLabels: appsTable.previewRequiredLabels,
+        })
+        .from(appsTable)
+        .where(inArray(appsTable.id, ids)),
+      db
+        .select()
+        .from(previewVarsTable)
+        .where(inArray(previewVarsTable.appId, ids))
+        .orderBy(asc(previewVarsTable.key)),
+    ]);
+  const previewBy = new Map(
+    previews.map(({ appId, ...p }): [string, DeploExportPreview] => [appId, p]),
+  );
+  const previewVarsBy = groupBy(previewVars, (v) => v.appId);
   const varsBy = groupBy(vars, (v) => v.appId);
   const domainsBy = groupBy(domains, (d) => d.appId);
   const authBy = groupBy(basicAuth, (b) => b.appId);
@@ -148,6 +241,16 @@ export async function exportApps(
         return [];
       }
       return [{ username: b.username, password }];
+    });
+    const previewEnv = (previewVarsBy.get(a.id) ?? []).flatMap((v) => {
+      const value = opened(v.valueEnc);
+      if (value === null) {
+        notes.push(
+          `The preview override ${v.key} could not be decrypted on {panel}, so it did not come across. Set it under Previews.`,
+        );
+        return [];
+      }
+      return [{ key: v.key, value, secret: v.type === "secret" }];
     });
     out.push({
       id: a.id,
@@ -185,8 +288,10 @@ export async function exportApps(
         generated: d.source === "auto",
       })),
       basicAuth: auth,
-      crons: (schedules.appCrons.get(a.id) ?? []).map(schedules.cron),
+      crons: (schedules.appCrons.get(a.id) ?? []).map(schedules.cron(notes)),
+      cronEnabled: a.cronEnabled,
       backups: (schedules.appBackups.get(a.id) ?? []).map(schedules.backup),
+      backupRuns: schedules.restorePoints(a.id),
       data: await dataOf(teamId, "app", a.id),
       notes,
       upload:
@@ -197,6 +302,8 @@ export async function exportApps(
               uploadedAt: a.upload.uploadedAt,
             }
           : null,
+      preview: previewBy.get(a.id),
+      previewEnv,
     });
   }
   return { apps: out, withheld };
@@ -218,6 +325,11 @@ export async function exportDatabases(
   for (const row of rows) {
     const d = assembleDatabase(row, mounts.get(row.id) ?? []);
     const conn = opened(d.connectionStringEnc);
+    const notes = conn
+      ? []
+      : [
+          "Its password could not be decrypted on {panel}, so the database here has a new one. Update every app that connects to it.",
+        ];
     out.push({
       id: d.id,
       name: d.name,
@@ -235,14 +347,12 @@ export async function exportDatabases(
       customCommand: d.customCommand,
       resources: d.resources,
       mounts: d.mounts,
-      crons: (schedules.dbCrons.get(d.id) ?? []).map(schedules.cron),
+      crons: (schedules.dbCrons.get(d.id) ?? []).map(schedules.cron(notes)),
+      cronEnabled: d.cronEnabled,
       backups: (schedules.dbBackups.get(d.id) ?? []).map(schedules.backup),
+      backupRuns: schedules.restorePoints(d.id),
       data: await dataOf(teamId, "database", d.id),
-      notes: conn
-        ? []
-        : [
-            "Its password could not be decrypted on {panel}, so the database here has a new one. Update every app that connects to it.",
-          ],
+      notes,
     });
   }
   return out;

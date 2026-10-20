@@ -2,9 +2,12 @@ import "server-only";
 
 import { blocker, type Note } from "../../migration/note";
 import { randomToken } from "../../crypto";
-import { sourceClient } from "../../migration/source";
 import type { SourceCredential } from "../../migration/source";
-import type { SourceApplication, SourceCompose } from "../../migration/model";
+import type {
+  NativePreview,
+  SourceApplication,
+  SourceCompose,
+} from "../../migration/model";
 import {
   mapResources,
   swarmHealthCheck,
@@ -14,47 +17,8 @@ import type { createApp } from "../apps/create";
 import { updateAppResources } from "../apps/resources";
 import { updateAppHealthCheck } from "../apps/settings";
 import { addBasicAuthUser } from "../basic-auth";
-import { createCronJob } from "../crons/job-crud";
+import { importCrons } from "./cron-import";
 import type { SourceService } from "./source-tree";
-
-function renamedService(
-  name: string | null | undefined,
-  renames: Map<string, string>,
-): string | null {
-  const trimmed = name?.trim();
-  if (!trimmed) return null;
-  return renames.get(trimmed.toLowerCase()) ?? trimmed;
-}
-
-async function importCrons(
-  c: SourceCredential,
-  scheduleType: "application" | "compose",
-  sourceId: string,
-  appId: string,
-  notes: Note[],
-  serviceRenames: Map<string, string> = new Map(),
-): Promise<void> {
-  for (const s of await sourceClient(c).listSchedules(scheduleType, sourceId)) {
-    const command = (s.command ?? s.script ?? "").trim();
-    if (!command) {
-      notes.push(`Cron "${s.name}" has no command on {panel} - not imported.`);
-      continue;
-    }
-    try {
-      await createCronJob("app", appId, {
-        name: s.name,
-        schedule: s.cronExpression,
-        command,
-        service: renamedService(s.serviceName, serviceRenames),
-        enabled: s.enabled !== false,
-      });
-    } catch (e) {
-      notes.push(
-        `Cron "${s.name}" was not imported: ${e instanceof Error ? e.message : "refused"}.`,
-      );
-    }
-  }
-}
 
 export const LOCK_USERNAME = "migration-lock";
 
@@ -104,6 +68,42 @@ export async function importBasicAuth(
   );
 }
 
+// The base domain goes on its own, so a refused one does not take the other settings with it.
+async function landNativePreview(
+  appId: string,
+  preview: NativePreview,
+  servers: Map<string, string | undefined>,
+  notes: Note[],
+): Promise<void> {
+  const { setAppPreviewSettings } = await import("../previews");
+  // A new app starts with previews off; saying so again would only log a "Disabled" Activity line.
+  const { baseDomain, serverId, enabled, ...rest } = preview;
+  const server = serverId ? servers.get(serverId) : undefined;
+  if (serverId && !server)
+    notes.push(
+      "Its previews ran on a server of their own on {panel}, which has no counterpart here, so they run on the app's server. Pick another under Previews.",
+    );
+  try {
+    await setAppPreviewSettings(appId, {
+      ...rest,
+      ...(enabled ? { enabled } : {}),
+      ...(server ? { serverId: server } : {}),
+    });
+  } catch (e) {
+    notes.push(
+      `Its preview settings did not come across: ${e instanceof Error ? e.message : "refused"}. Set them under Previews.`,
+    );
+  }
+  if (!baseDomain) return;
+  try {
+    await setAppPreviewSettings(appId, { baseDomain });
+  } catch (e) {
+    notes.push(
+      `Its preview domain ${baseDomain} did not come across: ${e instanceof Error ? e.message : "refused"}. Set one under Previews.`,
+    );
+  }
+}
+
 export async function landAppExtras(
   c: SourceCredential,
   svc: SourceService,
@@ -113,6 +113,7 @@ export async function landAppExtras(
     isCompose: boolean;
     secretKeys: Set<string>;
     serviceRenames: Map<string, string>;
+    servers?: Map<string, string | undefined>;
   },
   notes: Note[],
 ): Promise<void> {
@@ -152,9 +153,16 @@ export async function landAppExtras(
     notes,
   );
 
-  if (!isCompose) {
-    const app = detail as SourceApplication;
-    if (app.isPreviewDeploymentsActive) {
+  const app = detail as SourceApplication;
+  if (app.nativePreview)
+    await landNativePreview(
+      created.id,
+      app.nativePreview,
+      shape.servers ?? new Map(),
+      notes,
+    );
+  if (!isCompose || app.nativePreview) {
+    if (!app.nativePreview && app.isPreviewDeploymentsActive) {
       try {
         const { setAppPreviewSettings } = await import("../previews");
         const base = app.previewWildcard?.trim().replace(/^\*\./, "") || null;
@@ -176,6 +184,9 @@ export async function landAppExtras(
     const previewVars = (
       app.previewEnvEntries ?? parseEnvBlob(app.previewEnv)
     ).filter((v) => v.key);
+    const previewSecrets = app.previewSecretEnvKeys
+      ? new Set(app.previewSecretEnvKeys)
+      : secretKeys;
     if (previewVars.length > 0) {
       const { setPreviewEnvVar } = await import("../previews");
       const landed: string[] = [];
@@ -186,7 +197,7 @@ export async function landAppExtras(
             created.id,
             v.key,
             v.value,
-            secretKeys.has(v.key) ? "secret" : "plain",
+            previewSecrets.has(v.key) ? "secret" : "plain",
           );
           landed.push(v.key);
         } catch (e) {
@@ -210,8 +221,8 @@ export async function landAppExtras(
     c,
     isCompose ? "compose" : "application",
     svc.id,
-    created.id,
+    { kind: "app", id: created.id },
     notes,
-    serviceRenames,
+    { serviceRenames, cronEnabled: detail.cronEnabled },
   );
 }
