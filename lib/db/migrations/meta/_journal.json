@@ -1254,6 +1254,13 @@
       "when": 1792657225598,
       "tag": "0178_migration_blocking",
       "breakpoints": true
+    },
+    {
+      "idx": 179,
+      "version": "7",
+      "when": 1792743625598,
+      "tag": "0179_migration_live_copy",
+      "breakpoints": true
     }
   ]
 }

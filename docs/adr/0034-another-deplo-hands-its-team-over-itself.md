@@ -35,6 +35,12 @@ path cannot simply be pointed at it:
   (that is where an archive lives); the target stores it with the app at import time, since it
   is the app's source rather than its data. An export without the `upload` field is from a
   Deplo too old to do this, and the report says the archive needs uploading again.
+  With `dump: true` and an age `recipient` it hands over a database as a dump its own engine
+  takes while it keeps running, encrypted on the source agent to a key only the target holds.
+- A run may ask for a copy that keeps the source running (`live_copy`, Deplo sources only, an
+  advanced option): nothing is stopped there, databases come over as that dump, app volumes are
+  read live and each says so, crons and backup schedules land paused, and the switch-over is
+  left to the user. The target is still stopped before any volume is written into it.
 - `deplo` is the third adapter behind `MigrationSourceClient`, with one optional addition,
   `dataExport`. When it is set no machine is planned or installed on, and the data move pulls
   from the panel into the target's agents (`sourceDataHost`); the checksum, the stop/start

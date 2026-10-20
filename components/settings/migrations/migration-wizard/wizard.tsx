@@ -196,6 +196,8 @@ export function MigrationWizard({
     setFailure,
     running,
     starting,
+    liveCopy,
+    setLiveCopy,
     undoing,
     logOpen,
     setLogOpen,
@@ -592,6 +594,8 @@ export function MigrationWizard({
                       onBack={() => setStep("install")}
                       starting={starting}
                       onStart={() => void startChain()}
+                      liveCopy={liveCopy}
+                      setLiveCopy={setLiveCopy}
                     />
                   ) : null)}
 
