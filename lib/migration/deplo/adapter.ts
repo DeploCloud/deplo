@@ -141,6 +141,10 @@ function dataExport(c: SourceCredential): SourceDataExport {
       (async function* () {
         yield* streamData(c, { ...(await ref(svc)), upload: true });
       })(),
+    exportImage: (svc, image) =>
+      (async function* () {
+        yield* streamData(c, { ...(await ref(svc)), image });
+      })(),
   };
 }
 

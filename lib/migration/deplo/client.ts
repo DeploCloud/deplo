@@ -183,6 +183,7 @@ export interface DataRequest {
   allowFile?: boolean;
   check?: string[];
   upload?: boolean;
+  image?: string;
 }
 
 async function dataResponse(

@@ -34,7 +34,10 @@ path cannot simply be pointed at it:
   it hands over an upload app's archive instead, read from the source control plane's own disk
   (that is where an archive lives); the target stores it with the app at import time, since it
   is the app's source rather than its data. An export without the `upload` field is from a
-  Deplo too old to do this, and the report says the archive needs uploading again.
+  Deplo too old to do this, and the report says the archive needs uploading again. With
+  `image: <ref>` it hands over the image an app runs, from that app's own server, and only the
+  image the app names; the target asks for it when no registry has that image, and loads it on
+  the app's server at import time. An image that cannot be copied is reported as blocking.
 - `deplo` is the third adapter behind `MigrationSourceClient`, with one optional addition,
   `dataExport`. When it is set no machine is planned or installed on, and the data move pulls
   from the panel into the target's agents (`sourceDataHost`); the checksum, the stop/start

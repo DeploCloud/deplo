@@ -29,9 +29,13 @@ import {
 } from "./migration-import-test-helpers";
 import {
   blockingLines,
+  fakeDeplo,
+  importDeploProject,
   importFromDeplo,
   reportLines,
 } from "./deplo-import-test-helpers";
+import { __setAgentConnectorForTest } from "../../infra/agent-client/connect";
+import type { AgentConnection } from "../../infra/agent-client/connection";
 
 let db: TestDb;
 let pg: PGlite;
@@ -320,4 +324,96 @@ test("a registry password the old Deplo would not reveal blocks what pulls from 
     (await blockingLines(runId)).join(" | "),
     /Acme images.*Add it under Registries/,
   );
+});
+
+// Every registry answers the manifest with this status: 404 is "no such image".
+function registryAnswering(status = 404): () => void {
+  const real = globalThis.fetch;
+  globalThis.fetch = (async (input: string | URL | Request) => {
+    const url = String(input instanceof Request ? input.url : input);
+    if (url.endsWith("/v2/")) return new Response("{}", { status: 200 });
+    if (url.includes("/manifests/")) return new Response("", { status });
+    return real(input);
+  }) as typeof fetch;
+  return () => {
+    globalThis.fetch = real;
+  };
+}
+
+function targetAgent() {
+  const loaded: { server: string; ref: string; bytes: string }[] = [];
+  __setAgentConnectorForTest(
+    async (server) =>
+      ({
+        importImage: async (ref: string, chunks: AsyncIterable<Buffer>) => {
+          const parts: Buffer[] = [];
+          for await (const c of chunks) parts.push(c);
+          loaded.push({ server, ref, bytes: Buffer.concat(parts).toString() });
+          return { ok: true, error: "", bytesWritten: 1 };
+        },
+        close() {},
+      }) as unknown as AgentConnection,
+  );
+  return loaded;
+}
+
+test("an image that exists only on the old server is copied to the app's server here", async () => {
+  const restore = registryAnswering();
+  try {
+    const loaded = targetAgent();
+    const source = fakeDeplo(
+      deploExport({ apps: [fromImage("acme-api:local")], databases: [] }),
+      (body) =>
+        body.image === "acme-api:local" && body.id === "prj_img"
+          ? new Response("image-bytes", { status: 200 })
+          : new Response("not found", { status: 404 }),
+    );
+    const runId = await importDeploProject("prc_shop");
+
+    const app = await landed("img");
+    assert.deepEqual(loaded, [
+      { server: app.serverId, ref: "acme-api:local", bytes: "image-bytes" },
+    ]);
+    assert.ok(source.asked.some((b) => b.image === "acme-api:local"));
+    assert.match(
+      (await reportLines(runId)).join(" | "),
+      /acme-api:local is in no registry.*copied to this one/,
+    );
+    assert.equal((await blockingLines(runId)).length, 0);
+  } finally {
+    restore();
+  }
+});
+
+test("an image the old server will not hand over blocks the app", async () => {
+  const restore = registryAnswering();
+  try {
+    targetAgent();
+    fakeDeplo(
+      deploExport({ apps: [fromImage("acme-api:local")], databases: [] }),
+      () => new Response("boom", { status: 500 }),
+    );
+    const runId = await importDeploProject("prc_shop");
+    assert.match(
+      (await blockingLines(runId)).join(" | "),
+      /acme-api:local is in no registry.*could not be copied here/,
+    );
+  } finally {
+    restore();
+  }
+});
+
+test("an image a registry still has is pulled there, not copied", async () => {
+  const restore = registryAnswering(200);
+  try {
+    const loaded = targetAgent();
+    const source = fakeDeplo(
+      deploExport({ apps: [fromImage("nginx:1.27")], databases: [] }),
+    );
+    await importDeploProject("prc_shop");
+    assert.equal(loaded.length, 0);
+    assert.ok(!source.asked.some((b) => b.image));
+  } finally {
+    restore();
+  }
 });

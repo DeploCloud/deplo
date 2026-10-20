@@ -78,6 +78,11 @@ export interface SourceDataExport {
   ): AsyncIterable<Buffer>;
   // The archive an upload app builds from, as it was uploaded.
   exportUpload?(svc: { kind: string; id: string }): AsyncIterable<Buffer>;
+  // The image an app runs, as its source server holds it (`docker save`).
+  exportImage?(
+    svc: { kind: string; id: string },
+    image: string,
+  ): AsyncIterable<Buffer>;
 }
 
 export interface MigrationSourceClient {

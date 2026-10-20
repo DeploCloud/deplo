@@ -35,10 +35,13 @@ import { instanceFingerprint } from "../../migration/deplo/instance";
 import { __resetExportTrailForTest, exportTeamForMigration } from "./export";
 import {
   ExportRefusedError,
+  openAppImage,
   openAppUpload,
   openWorkloadData,
 } from "./data-stream";
 import { storeUpload } from "../../deploy/upload";
+import { __setAgentConnectorForTest } from "../../infra/agent-client/connect";
+import type { AgentConnection } from "../../infra/agent-client/connection";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -655,4 +658,67 @@ test("a registry password stays behind when the reader may not manage registries
   assert.equal(out.registries?.[0]?.name, "Acme images");
   assert.equal(out.registries?.[0]?.password, null);
   assert.doesNotMatch(JSON.stringify(out), /reg-password/);
+});
+
+async function imageApp() {
+  await seedApp(db, {
+    id: "prj_img",
+    teamId: TEAM_A,
+    source: "docker-image",
+    repo: null,
+  });
+  await db
+    .update(appsTable)
+    .set({ dockerImage: "acme-api:local" })
+    .where(eq(appsTable.id, "prj_img"));
+}
+
+test("the data stream hands over the image an app runs, from its own server", async () => {
+  await imageApp();
+  const asked: { server: string; ref: string; removeAfter: boolean }[] = [];
+  __setAgentConnectorForTest(
+    async (server) =>
+      ({
+        exportImage: (ref: string, removeAfter: boolean) => {
+          asked.push({ server, ref, removeAfter });
+          return (async function* () {
+            yield Buffer.from("image-bytes");
+          })();
+        },
+        close() {},
+      }) as unknown as AgentConnection,
+  );
+  try {
+    const { chunks, close } = await as(USER_1, TEAM_A, () =>
+      openAppImage({ kind: "app", id: "prj_img" }, "acme-api:local"),
+    );
+    try {
+      assert.equal(await drain(chunks), "image-bytes");
+    } finally {
+      close();
+    }
+    assert.deepEqual(asked, [
+      { server: "srv_1", ref: "acme-api:local", removeAfter: false },
+    ]);
+  } finally {
+    __setAgentConnectorForTest();
+  }
+});
+
+test("the data stream refuses an image the named app does not run", async () => {
+  await imageApp();
+  await assert.rejects(
+    () =>
+      as(USER_1, TEAM_A, () =>
+        openAppImage({ kind: "app", id: "prj_img" }, "postgres:16"),
+      ),
+    (e: unknown) => e instanceof ExportRefusedError && e.status === 404,
+  );
+  await assert.rejects(
+    () =>
+      as(USER_1, TEAM_A, () =>
+        openAppImage({ kind: "app", id: "prj_other" }, "acme-api:local"),
+      ),
+    (e: unknown) => e instanceof ExportRefusedError && e.status === 404,
+  );
 });
