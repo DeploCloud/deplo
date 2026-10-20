@@ -5,6 +5,7 @@ import { and, eq } from "drizzle-orm";
 import { getDb } from "../../db/client";
 import { domains as domainsTable } from "../../db/schema/control-plane/domains";
 import { newId, nowIso } from "../../ids";
+import type { Note } from "../../migration/note";
 import {
   insertDomain,
   loadDomainsForApp,
@@ -50,7 +51,7 @@ export async function addImportedDomains(
     slug: string;
     ip: string;
     seed?: Map<string, string>;
-    notes?: string[];
+    notes?: Note[];
   },
 ): Promise<Map<string, string>> {
   const landed = new Map<string, string>(opts.seed);
@@ -112,7 +113,7 @@ export async function applyImportedRoute(
   appId: string,
   domainId: string,
   route: ImportedRoute,
-  notes?: string[],
+  notes?: Note[],
 ): Promise<void> {
   const pathPrefix = normalizePath(route.pathPrefix);
   const [row] = await getDb()

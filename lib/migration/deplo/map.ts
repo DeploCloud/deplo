@@ -45,7 +45,7 @@ export function dbKindOf(d: Pick<DeploExportDatabase, "type">): SourceDbKind {
   return DB_KIND[d.type] ?? "unknown";
 }
 
-const pairs = (vars: DeploExportVar[]): EnvPair[] =>
+const pairs = (vars: Pick<DeploExportVar, "key" | "value">[]): EnvPair[] =>
   vars.map(({ key, value }) => ({ key, value }));
 
 export function sharedVarsOf(vars: DeploExportVar[]): SourceSharedEnv | null {

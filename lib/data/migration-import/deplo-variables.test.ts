@@ -56,10 +56,23 @@ const prod = (key: string, value: string) => ({
 const valuesOf = (rows: { key: string; valueEnc: string }[]) =>
   Object.fromEntries(rows.map((r) => [r.key, decryptSecret(r.valueEnc)]));
 
-async function appVars(name: string, table = envVarsTable) {
+async function appVars(
+  name: string,
+  table: typeof envVarsTable | typeof appPreviewEnvVars = envVarsTable,
+) {
   const app = (await db.select().from(appsTable)).find((a) => a.name === name);
   assert.ok(app, `${name} landed`);
-  return valuesOf(await db.select().from(table).where(eq(table.appId, app.id)));
+  const rows =
+    table === envVarsTable
+      ? await db
+          .select()
+          .from(envVarsTable)
+          .where(eq(envVarsTable.appId, app.id))
+      : await db
+          .select()
+          .from(appPreviewEnvVars)
+          .where(eq(appPreviewEnvVars.appId, app.id));
+  return valuesOf(rows);
 }
 
 function shared(

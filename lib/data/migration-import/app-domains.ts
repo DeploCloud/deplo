@@ -30,7 +30,12 @@ export function importedRoute(d: MappedDomain): ImportedRoute {
 }
 
 // What another Deplo set on the domain beyond its route; nothing for a platform that has no such rules.
-export function domainRules(d: MappedDomain): DomainPatch {
+export function domainRules(
+  d: MappedDomain,
+): Pick<
+  DomainPatch,
+  "middlewares" | "corsOrigins" | "securityHeaders" | "proxied"
+> {
   const r = d.rules;
   if (!r) return {};
   return {

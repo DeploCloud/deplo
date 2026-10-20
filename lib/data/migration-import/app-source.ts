@@ -76,7 +76,7 @@ export async function resolveAppSource(
   svc: SourceService,
   detail: SourceApplication & SourceCompose,
   name: string,
-  home: { environmentId: string; serverId: string | undefined },
+  home: { environmentId: string | null; serverId: string | undefined },
   shape: {
     isCompose: boolean;
     yamlText: string;

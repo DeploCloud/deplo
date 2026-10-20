@@ -9,6 +9,7 @@ import type { SourceApplication, SourceCompose } from "../model";
 import { deploExport, exportApp, exportDatabase } from "./deplo-test-helpers";
 import type { DeploExportSharedVar } from "./export-shape";
 import { appEnv, sourceApplication, sourceDatabase, sourceTree } from "./map";
+import { noteText } from "../note";
 
 function shared(over: Partial<DeploExportSharedVar>): DeploExportSharedVar {
   return {
@@ -282,7 +283,9 @@ test("an older Deplo that hands over only on/off says so", () => {
   assert.equal(app.nativePreview, undefined);
   assert.equal(app.isPreviewDeploymentsActive, true);
   assert.ok(
-    app.platformNotes?.some((n) => /too old to hand over its preview/.test(n)),
+    app.platformNotes?.some((n) =>
+      /too old to hand over its preview/.test(noteText(n)),
+    ),
   );
 });
 
@@ -583,7 +586,7 @@ test("a source too old to send backup history says its restore points stayed beh
   assert.equal(old.backupRuns, undefined);
   assert.ok(
     old.platformNotes?.some((n) =>
-      /too old to send its backup history/.test(n),
+      /too old to send its backup history/.test(noteText(n)),
     ),
   );
   const fresh = sourceDatabase(
@@ -592,7 +595,7 @@ test("a source too old to send backup history says its restore points stayed beh
   );
   assert.deepEqual(fresh.backupRuns, []);
   assert.equal(
-    fresh.platformNotes?.some((n) => /backup history/.test(n)),
+    fresh.platformNotes?.some((n) => /backup history/.test(noteText(n))),
     false,
   );
 });

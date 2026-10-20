@@ -13,10 +13,8 @@ import {
   traefikCertificates,
   withTraefikCertificates,
 } from "../../deploy/traefik-stack";
-import {
-  __setAgentConnectorForTest,
-  type AgentConnection,
-} from "../../infra/agent-client/connect";
+import { __setAgentConnectorForTest } from "../../infra/agent-client/connect";
+import type { AgentConnection } from "../../infra/agent-client/connection";
 import { loadDomainsForApp } from "../app-graph-load";
 import {
   ACME_CERT,

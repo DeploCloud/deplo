@@ -4,6 +4,7 @@ import assert from "node:assert/strict";
 import { coolifyCompose } from "./compose";
 import { APP } from "./map-test-helpers";
 import type { CoolifyApplication } from "../client";
+import { noteText } from "../../note";
 
 test("a stack keeps the compose its author wrote", () => {
   const raw = "services:\n  app:\n    image: nginx\n";
@@ -153,7 +154,7 @@ test("two services exposing a port is a question, not a default", () => {
   } as CoolifyApplication);
   assert.equal(value.domains?.[0].serviceName, null);
   assert.equal(
-    value.platformNotes?.some((n) => /routes it to/.test(n)),
+    value.platformNotes?.some((n) => /routes it to/.test(noteText(n))),
     false,
   );
 });
