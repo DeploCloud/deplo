@@ -48,7 +48,7 @@ export function CanaryReleasesCard({
       icon={FlaskConical}
       title="Canary releases"
       htmlFor="canary-releases"
-      info="New versions of Deplo before they are marked stable. They can have bugs, and nothing installs until you click Update. Each server follows the version of Deplo it is paired with."
+      info="New versions of Deplo before they are marked stable. They can have bugs, and nothing installs until you click Update. Servers follow Deplo."
       docs="upgrade.releases"
       description={
         enabled
