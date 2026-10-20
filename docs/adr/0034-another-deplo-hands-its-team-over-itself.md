@@ -52,5 +52,8 @@ path cannot simply be pointed at it:
   and the top level becomes one named after the team.
 - The shared model gained `nativeBuild`, `nativeResources` and `SourceDomain.generated`, all
   optional, so the other two platforms are untouched and a Deplo source loses no build setting.
-- Not carried, and said so in the report: a database's crons, a compose stack's `up` flags, and
-  preview settings beyond on/off.
+- Not carried, and said so in the report: a compose stack's `up` flags, and preview settings
+  beyond on/off.
+- Every cron job, on an app or a database, carries all its settings and variables, and the
+  target's `cron_enabled` switch comes along, so jobs run here as they ran there once the source is
+  stopped. A source older than this sends schedule and command only, and the report says so.

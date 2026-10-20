@@ -78,6 +78,8 @@ export interface SourceApplication {
   // Settings already in Deplo's own shape, laid over what the platform-shaped fields map to.
   nativeBuild?: Partial<BuildConfig> | null;
   nativeResources?: Partial<ResourceLimits> | null;
+  // Whether its cron jobs run at all; absent when the source has no such switch.
+  cronEnabled?: boolean | null;
   applicationId: string;
   name?: string | null;
   appName?: string | null;
@@ -170,6 +172,7 @@ export interface SourceCompose {
   secretEnvKeys?: string[] | null;
   productionOnlyEnvKeys?: string[] | null;
   platformNotes?: string[] | null;
+  cronEnabled?: boolean | null;
   composeId: string;
   name?: string | null;
   appName?: string | null;
@@ -214,6 +217,7 @@ export interface SourceCompose {
 
 export interface SourceDatabase {
   platformNotes?: string[] | null;
+  cronEnabled?: boolean | null;
   name?: string | null;
   appName?: string | null;
   description?: string | null;
@@ -339,6 +343,21 @@ export interface SourceSchedule {
   serviceName?: string | null;
   scheduleType?: string | null;
   enabled?: boolean | null;
+  env?: EnvPair[] | null;
+  // The rest of a job already in Deplo's own shape.
+  native?: SourceCronSettings | null;
+}
+
+export interface SourceCronSettings {
+  description?: string;
+  timezone?: string;
+  shell?: string;
+  timeoutSeconds?: number;
+  maxAttempts?: number;
+  overlap?: string;
+  keepRuns?: number;
+  workdir?: string | null;
+  user?: string | null;
 }
 
 export interface NamedVolume {

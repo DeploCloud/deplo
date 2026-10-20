@@ -18,6 +18,7 @@ import { mapResources } from "../../migration/map/app-settings";
 import { mapDatabase } from "../../migration/map/databases";
 import { setDatabaseMounts } from "../databases/mounts";
 import { createDatabase } from "../databases/provision";
+import { importCrons } from "./cron-import";
 import type { Report } from "./run-report";
 import type { SourceService } from "./source-tree";
 import { landSourceBackups } from "./source-backups";
@@ -41,7 +42,7 @@ export async function importDatabaseService(
 ): Promise<void> {
   const { serverId } = opts;
   const mapped = mapDatabase(svc.kind as SourceDbKind, { ...row, name });
-  const notes = [...mapped.notes];
+  const notes = [...(row.platformNotes ?? []), ...mapped.notes];
   if (!mapped.value) {
     await report.add({
       sourceKind: svc.kind,
@@ -242,6 +243,15 @@ export async function importDatabaseService(
     opts.destinations,
     { kind: "database", id: created.id, name: spec.name },
     notes,
+  );
+
+  await importCrons(
+    c,
+    svc.kind,
+    svc.id,
+    { kind: "database", id: created.id },
+    notes,
+    { cronEnabled: row.cronEnabled },
   );
 
   if (publishPort != null && sourcePort != null && publishPort !== sourcePort)

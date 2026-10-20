@@ -388,7 +388,10 @@ test("a database keeps its engine, version and credentials", () => {
   assert.equal(db.mongoId, "db_main");
   assert.equal(db.dockerImage, "mongo:7");
   assert.equal(db.databasePassword, "pw");
-  assert.match(db.platformNotes!.join(" "), /vacuum ran on a schedule/);
+  assert.match(
+    db.platformNotes!.join(" "),
+    /too old to hand over the variables and settings of cron job\(s\) vacuum/,
+  );
 });
 
 test("a database carries every limit in Deplo's own shape", () => {

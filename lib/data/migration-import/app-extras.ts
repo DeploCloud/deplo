@@ -1,7 +1,6 @@
 import "server-only";
 
 import { randomToken } from "../../crypto";
-import { sourceClient } from "../../migration/source";
 import type { SourceCredential } from "../../migration/source";
 import type { SourceApplication, SourceCompose } from "../../migration/model";
 import {
@@ -13,47 +12,8 @@ import type { createApp } from "../apps/create";
 import { updateAppResources } from "../apps/resources";
 import { updateAppHealthCheck } from "../apps/settings";
 import { addBasicAuthUser } from "../basic-auth";
-import { createCronJob } from "../crons/job-crud";
+import { importCrons } from "./cron-import";
 import type { SourceService } from "./source-tree";
-
-function renamedService(
-  name: string | null | undefined,
-  renames: Map<string, string>,
-): string | null {
-  const trimmed = name?.trim();
-  if (!trimmed) return null;
-  return renames.get(trimmed.toLowerCase()) ?? trimmed;
-}
-
-async function importCrons(
-  c: SourceCredential,
-  scheduleType: "application" | "compose",
-  sourceId: string,
-  appId: string,
-  notes: string[],
-  serviceRenames: Map<string, string> = new Map(),
-): Promise<void> {
-  for (const s of await sourceClient(c).listSchedules(scheduleType, sourceId)) {
-    const command = (s.command ?? s.script ?? "").trim();
-    if (!command) {
-      notes.push(`Cron "${s.name}" has no command on {panel} - not imported.`);
-      continue;
-    }
-    try {
-      await createCronJob("app", appId, {
-        name: s.name,
-        schedule: s.cronExpression,
-        command,
-        service: renamedService(s.serviceName, serviceRenames),
-        enabled: s.enabled !== false,
-      });
-    } catch (e) {
-      notes.push(
-        `Cron "${s.name}" was not imported: ${e instanceof Error ? e.message : "refused"}.`,
-      );
-    }
-  }
-}
 
 export const LOCK_USERNAME = "migration-lock";
 
@@ -207,8 +167,8 @@ export async function landAppExtras(
     c,
     isCompose ? "compose" : "application",
     svc.id,
-    created.id,
+    { kind: "app", id: created.id },
     notes,
-    serviceRenames,
+    { serviceRenames, cronEnabled: detail.cronEnabled },
   );
 }

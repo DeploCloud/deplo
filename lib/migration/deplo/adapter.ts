@@ -178,14 +178,18 @@ export function deploClient(c: SourceCredential): MigrationSourceClient {
 
     listSchedules: async (kind, id): Promise<SourceSchedule[]> => {
       const w = workloadOf(await exportOf(c), kind, id);
-      return (w.app?.crons ?? []).map((j, i) => ({
-        scheduleId: `${id}:cron:${i}`,
-        name: j.name,
-        cronExpression: j.schedule,
-        command: j.command,
-        serviceName: j.service,
-        enabled: j.enabled,
-      }));
+      return (w.app?.crons ?? w.db?.crons ?? []).map(
+        ({ name, schedule, command, service, enabled, env, ...native }, i) => ({
+          scheduleId: `${id}:cron:${i}`,
+          name,
+          cronExpression: schedule,
+          command,
+          serviceName: service,
+          enabled,
+          env: env ?? null,
+          native,
+        }),
+      );
     },
     teamSharedEnv: async () => teamShared(await exportOf(c)),
     serverSharedEnv: async () => null,

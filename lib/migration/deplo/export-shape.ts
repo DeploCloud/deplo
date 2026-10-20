@@ -47,6 +47,17 @@ export interface DeploExportCron {
   command: string;
   service: string | null;
   enabled: boolean;
+  // The rest of the job, absent from an older Deplo.
+  description?: string;
+  timezone?: string;
+  shell?: string;
+  timeoutSeconds?: number;
+  maxAttempts?: number;
+  overlap?: string;
+  keepRuns?: number;
+  workdir?: string | null;
+  user?: string | null;
+  env?: { key: string; value: string }[];
 }
 
 export interface DeploExportBackup {
@@ -87,6 +98,8 @@ export interface DeploExportApp {
   domains: DeploExportDomain[];
   basicAuth: { username: string; password: string }[];
   crons: DeploExportCron[];
+  // Whether its cron jobs run at all; absent from an older Deplo.
+  cronEnabled?: boolean;
   backups: DeploExportBackup[];
   data: DeploExportData;
   notes: string[];
@@ -118,6 +131,7 @@ export interface DeploExportDatabase {
   resources: ResourceLimits | null;
   mounts: DatabaseMount[];
   crons: DeploExportCron[];
+  cronEnabled?: boolean;
   backups: DeploExportBackup[];
   data: DeploExportData;
   notes: string[];
