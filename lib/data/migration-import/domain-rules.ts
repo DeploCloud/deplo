@@ -29,6 +29,28 @@ export async function noteDomainMiddlewares(
       );
 }
 
+// A domain moved onto a temporary address keeps its route only; what it set beyond that is named.
+export function noteLeftRules(
+  from: MappedDomain,
+  to: string,
+  notes: Note[],
+): void {
+  const r = from.rules;
+  if (!r) return;
+  const left = [
+    r.corsOrigins?.length
+      ? `Allowed origins (${r.corsOrigins.join(", ")})`
+      : "",
+    r.securityHeaders === false ? "Security headers off" : "",
+    r.proxied ? "Behind a proxy" : "",
+    r.middlewares?.length ? `Middlewares (${r.middlewares.join(", ")})` : "",
+  ].filter(Boolean);
+  if (left.length > 0)
+    notes.push(
+      `${from.host}'s settings did not move to ${to}: ${left.join(", ")}. Set them on ${to} under Domains if the app needs them there.`,
+    );
+}
+
 const WITHHELD: Record<string, string> = {
   admin:
     "only an instance admin's token on {panel} hands a certificate's key over",
