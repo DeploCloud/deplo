@@ -113,7 +113,7 @@ async function landNativePreview(
   appId: string,
   preview: NativePreview,
   servers: Map<string, string | undefined>,
-  notes: string[],
+  notes: Note[],
 ): Promise<void> {
   const { setAppPreviewSettings } = await import("../previews");
   // A new app starts with previews off; saying so again would only log a "Disabled" Activity line.

@@ -19,7 +19,11 @@ import {
   provisionServer1,
   resetMigrationHarness,
 } from "./migration-import-test-helpers";
-import { importFromDeplo, reportLines } from "./deplo-import-test-helpers";
+import {
+  blockingLines,
+  importFromDeplo,
+  reportLines,
+} from "./deplo-import-test-helpers";
 
 let db: TestDb;
 let pg: PGlite;
@@ -105,6 +109,7 @@ test("a preview server with no counterpart here leaves previews on the app's ser
       /previews ran on a server of their own/.test(l),
     ),
   );
+  assert.deepEqual(await blockingLines(runId), [], "previews never block");
 });
 
 test("preview overrides land with their type", async () => {
