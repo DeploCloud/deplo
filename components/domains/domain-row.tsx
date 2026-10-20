@@ -41,6 +41,7 @@ import { ConfirmAction } from "@/components/shared/confirm-action";
 import {
   DomainConfigFields,
   initialDomainConfig,
+  lockCloudflare,
   resolveDomainConfig,
   type DomainConfigState,
 } from "@/components/domains/domain-config-fields";
@@ -153,6 +154,10 @@ export function DomainRow({
   const cloudflare = domain.status === "cloudflare";
   const proxied = cloudflare || Boolean(domain.proxied);
   const oneCloudflareChip = cloudflare && effectiveProvider === "cloudflare";
+  // The detection belongs to the saved name: edit the name and the certificate is free again.
+  const cloudflareLocked =
+    cloudflare && name.trim().toLowerCase() === domain.name;
+  const lockedConfig = lockCloudflare(config, cloudflareLocked);
 
   function call(
     fn: () => Promise<{ ok: boolean; error?: string; data?: string }>,
@@ -185,7 +190,7 @@ export function DomainRow({
       return;
     }
     const resolved = resolveDomainConfig(
-      config,
+      lockedConfig,
       services.length > 0,
       trimmedName,
     );
@@ -615,11 +620,11 @@ export function DomainRow({
                   disabled={pending || !canManage}
                 />
                 <DomainConfigFields
-                  state={config}
+                  state={lockedConfig}
                   onChange={setConfig}
                   services={services}
                   idPrefix={`edit-${domain.id}`}
-                  proxied={cloudflare}
+                  proxied={cloudflareLocked}
                   hostname={name}
                   serverIp={serverIp}
                 />
