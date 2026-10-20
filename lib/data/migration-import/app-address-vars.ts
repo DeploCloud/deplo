@@ -1,5 +1,6 @@
 import "server-only";
 
+import { errorMessage } from "../../utils";
 import { eq, inArray, sql } from "drizzle-orm";
 
 import { getDb } from "../../db/client";
@@ -97,9 +98,10 @@ export async function rehostAppVariables(
     } catch (e) {
       notes.push(
         blocker(
-          `${list(touched)} still name the old address, which no longer answers for this app (${
-            e instanceof Error ? e.message : "refused"
-          }) - set ${they(touched, "it", "them")} to ${list([...gone.values()])} under Variables.`,
+          `${list(touched)} still name the old address, which no longer answers for this app (${errorMessage(
+            e,
+            "refused",
+          )}) - set ${they(touched, "it", "them")} to ${list([...gone.values()])} under Variables.`,
         ),
       );
     }

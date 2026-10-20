@@ -1,5 +1,6 @@
 import "server-only";
 
+import { errorMessage } from "../../utils";
 import { and, eq } from "drizzle-orm";
 
 import { getDb } from "../../db/client";
@@ -58,7 +59,7 @@ export async function landGitConnection(
     } catch (e) {
       notes.push(
         blocker(
-          `${named[0]!.toUpperCase()}${named.slice(1)} did not come across (${e instanceof Error ? e.message : "refused"}). Add it under Git, then attach it under the app's Source settings before deploying.`,
+          `${named[0]!.toUpperCase()}${named.slice(1)} did not come across (${errorMessage(e, "refused")}). Add it under Git, then attach it under the app's Source settings before deploying.`,
         ),
       );
       return null;

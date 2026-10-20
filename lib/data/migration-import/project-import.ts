@@ -531,9 +531,10 @@ async function landOutsideProjects(
         sourceName: f.name,
         outcome: "failed",
         targetKind: "folder",
-        message: `The ${f.name} folder could not be created (${
-          e instanceof Error ? e.message : "Deplo refused it"
-        }), so nothing in it came across. Create it, then run the migration again.`,
+        message: `The ${f.name} folder could not be created (${errorMessage(
+          e,
+          "Deplo refused it",
+        )}), so nothing in it came across. Create it, then run the migration again.`,
       });
       return null;
     }
@@ -615,9 +616,10 @@ async function landEnvironment(
       sourceName: env.name,
       outcome: "failed",
       targetKind: "environment",
-      message: `${env.name} could not be created: ${
-        e instanceof Error ? e.message : "Deplo refused it."
-      }`,
+      message: `${env.name} could not be created: ${errorMessage(
+        e,
+        "Deplo refused it.",
+      )}`,
     });
     return null;
   }

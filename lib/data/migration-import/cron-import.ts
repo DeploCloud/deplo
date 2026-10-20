@@ -61,7 +61,7 @@ export async function importCrons(
     await setCronEnabled(target.kind, target.id, true);
   } catch (e) {
     notes.push(
-      `Cron jobs ran on {panel} but are switched off here: ${e instanceof Error ? e.message : "refused"}. Switch them on under Crons.`,
+      `Cron jobs ran on {panel} but are switched off here: ${errorMessage(e, "refused")}. Switch them on under Crons.`,
     );
   }
   return landed;

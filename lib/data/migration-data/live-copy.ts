@@ -80,7 +80,7 @@ export async function restoreDumpInto(
   } catch (e) {
     if (isCopyAborted(e)) throw e;
     if (opts.signal?.aborted) throw new CopyAbortedError();
-    return failed(e instanceof Error ? e.message : "it failed");
+    return failed(errorMessage(e, "it failed"));
   } finally {
     opts.signal?.removeEventListener("abort", stop);
     conn.close();

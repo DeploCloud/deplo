@@ -1,5 +1,6 @@
 import "server-only";
 
+import { errorMessage } from "../../utils";
 import { blocker, type Note } from "../../migration/note";
 import { randomToken } from "../../crypto";
 import type { SourceCredential } from "../../migration/source";
@@ -35,9 +36,7 @@ export async function importBasicAuth(
     try {
       await addBasicAuthUser(appId, s.username, s.password, { imported: true });
     } catch (e) {
-      refused.push(
-        `"${s.username}" (${e instanceof Error ? e.message : "refused"})`,
-      );
+      refused.push(`"${s.username}" (${errorMessage(e, "refused")})`);
     }
   }
   const landed = security.length - refused.length;
@@ -59,7 +58,7 @@ export async function importBasicAuth(
     });
   } catch (e) {
     throw new Error(
-      `It was password-protected over there, and none of its basic-auth users could be added here (${refused.join(", ")}; the lock: ${e instanceof Error ? e.message : "refused"}). Do not deploy it until it has a password under Access.`,
+      `It was password-protected over there, and none of its basic-auth users could be added here (${refused.join(", ")}; the lock: ${errorMessage(e, "refused")}). Do not deploy it until it has a password under Access.`,
     );
   }
   notes.push(
@@ -92,7 +91,7 @@ async function landNativePreview(
     });
   } catch (e) {
     notes.push(
-      `Its preview settings did not come across: ${e instanceof Error ? e.message : "refused"}. Set them under Previews.`,
+      `Its preview settings did not come across: ${errorMessage(e, "refused")}. Set them under Previews.`,
     );
   }
   if (!baseDomain) return;
@@ -100,7 +99,7 @@ async function landNativePreview(
     await setAppPreviewSettings(appId, { baseDomain });
   } catch (e) {
     notes.push(
-      `Its preview domain ${baseDomain} did not come across: ${e instanceof Error ? e.message : "refused"}. Set one under Previews.`,
+      `Its preview domain ${baseDomain} did not come across: ${errorMessage(e, "refused")}. Set one under Previews.`,
     );
   }
 }

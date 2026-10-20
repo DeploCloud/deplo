@@ -1,5 +1,6 @@
 import "server-only";
 
+import { errorMessage } from "../../utils";
 import { blocker, noteText, type Note } from "../../migration/note";
 import { and, eq } from "drizzle-orm";
 
@@ -386,7 +387,7 @@ async function runMoveMigrationServiceData(
   }
   // Past this point the source is down: every way out has to start it again.
   const giveUp = async (what: string, e: unknown): Promise<DataMoveResult> => {
-    const why = e instanceof Error ? e.message : "it failed";
+    const why = errorMessage(e, "it failed");
     const undone =
       stoppedThere && state.running ? ` ${await startAgainThere()}` : "";
     return refuse({
@@ -443,7 +444,7 @@ async function runMoveMigrationServiceData(
   } catch (e) {
     if (isCopyAborted(e)) throw e;
     // Counted as a failure, so the restart below still runs.
-    const message = e instanceof Error ? e.message : "the copy failed";
+    const message = errorMessage(e, "the copy failed");
     tally.failed++;
     tally.lost.push(message);
     notes.push(blocker(`The copy stopped part way: ${message}`));

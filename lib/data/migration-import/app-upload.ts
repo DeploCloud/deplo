@@ -1,5 +1,6 @@
 import "server-only";
 
+import { errorMessage } from "../../utils";
 import { Readable } from "node:stream";
 
 import { archiveExt, removeUploads, storeUpload } from "../../deploy/upload";
@@ -37,7 +38,7 @@ export async function landAppUpload(
   } catch (e) {
     notes.push(
       blocker(
-        `${upload.filename} could not be copied from {panel} (${e instanceof Error ? e.message : String(e)}). Upload it again here before deploying.`,
+        `${upload.filename} could not be copied from {panel} (${errorMessage(e, String(e))}). Upload it again here before deploying.`,
       ),
     );
   }

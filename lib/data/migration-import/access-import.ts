@@ -1,5 +1,6 @@
 import "server-only";
 
+import { errorMessage, plural } from "../../utils";
 import { eq, inArray } from "drizzle-orm";
 
 import { getDb } from "../../db/client";
@@ -202,9 +203,10 @@ export async function planAccess(
         sourceName: r.name,
         outcome: "failed",
         targetKind: "role",
-        message: `The ${r.name} role could not be created here: ${
-          e instanceof Error ? e.message : "Deplo refused it."
-        }`,
+        message: `The ${r.name} role could not be created here: ${errorMessage(
+          e,
+          "Deplo refused it.",
+        )}`,
       });
     }
   }
@@ -230,7 +232,7 @@ function described(m: SourceMemberAccess, plan: AccessPlan): string {
   return [
     role ? `the ${role.name} role` : "their own set of Capabilities",
     nodes > 0
-      ? `their own access to ${nodes} folder${nodes === 1 ? "" : "s"}, project${nodes === 1 ? "" : "s"} or app${nodes === 1 ? "" : "s"}`
+      ? `their own access to ${plural(nodes, "folder, project or app", "folders, projects or apps")}`
       : null,
   ]
     .filter(Boolean)

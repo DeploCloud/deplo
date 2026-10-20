@@ -1,5 +1,6 @@
 import "server-only";
 
+import { errorMessage } from "../../utils";
 import { isInstanceAdmin } from "../../membership";
 import type { MappedDomain } from "../../migration/map/domains";
 import type { SourceDomain } from "../../migration/model";
@@ -100,7 +101,7 @@ export async function landDomainCertificates(
         );
         continue;
       } catch (e) {
-        why = e instanceof Error ? e.message : "refused";
+        why = errorMessage(e, "refused");
       }
     notes.push(
       blocker(
@@ -133,9 +134,10 @@ export async function landDomainRedirects(
       await updateDomain(target!.id, { www: "toThis" });
     } catch (e) {
       notes.push(
-        `${host} redirected to ${to} on {panel}, and that redirect did not come across (${
-          e instanceof Error ? e.message : "refused"
-        }). Add ${host} under Domains if you still need it.`,
+        `${host} redirected to ${to} on {panel}, and that redirect did not come across (${errorMessage(
+          e,
+          "refused",
+        )}). Add ${host} under Domains if you still need it.`,
       );
     }
   }

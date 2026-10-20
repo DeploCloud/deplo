@@ -1,5 +1,6 @@
 import "server-only";
 
+import { errorMessage } from "../../utils";
 import { eq } from "drizzle-orm";
 
 import { getDb } from "../../db/client";
@@ -74,7 +75,7 @@ export async function importRegistries(
       known.add(keyOf(r));
       await report.add({ ...entry, outcome: "created" });
     } catch (e) {
-      await failed(e instanceof Error ? e.message : "refused");
+      await failed(errorMessage(e, "refused"));
     }
   }
 }

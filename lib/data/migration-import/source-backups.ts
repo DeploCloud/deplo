@@ -1,6 +1,6 @@
 import "server-only";
 
-import { errorMessage } from "../../utils";
+import { errorMessage, plural } from "../../utils";
 import { and, eq } from "drizzle-orm";
 import { blocker, type Note } from "../../migration/note";
 
@@ -139,9 +139,10 @@ async function landSchedules(
     } catch (e) {
       notes.push(
         blocker(
-          `${subject} on {panel} (${where}); the schedule was not set here: ${
-            e instanceof Error ? e.message : "refused"
-          }. Set one under Backups.`,
+          `${subject} on {panel} (${where}); the schedule was not set here: ${errorMessage(
+            e,
+            "refused",
+          )}. Set one under Backups.`,
         ),
       );
     }
@@ -170,7 +171,7 @@ async function landRestorePoints(
   }
   for (const [name, points] of byDest) {
     const dest = destinations?.get(name.toLowerCase());
-    const count = `${points.length} restore point${points.length === 1 ? "" : "s"} on ${name}`;
+    const count = `${plural(points.length, "restore point", "restore points")} on ${name}`;
     if (!dest?.copiedFrom) {
       notes.push(
         blocker(
@@ -471,7 +472,7 @@ async function createAndProbe(
       const { report: probe } = await testDestination(landed.id);
       failure = probe.ok ? null : probe.error || "it did not answer";
     } catch (e) {
-      failure = e instanceof Error ? e.message : "the test did not run";
+      failure = errorMessage(e, "the test did not run");
     }
     await ctx.report.add({
       sourceKind: "destination",
@@ -493,7 +494,7 @@ async function createAndProbe(
       sourceName: store.name,
       outcome: "failed",
       targetKind: "destination",
-      message: e instanceof Error ? e.message : "Could not be created.",
+      message: errorMessage(e, "Could not be created."),
     });
   }
 }
