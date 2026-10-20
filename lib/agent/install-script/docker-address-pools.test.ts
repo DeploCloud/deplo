@@ -37,7 +37,9 @@ test("the address-pool step runs BEFORE anything creates a docker network", asyn
     const agent = await renderInstallScript();
     assert.ok(agent);
     const configured = poolCallIndex(agent!);
-    const firstNetwork = agent!.indexOf("docker network create deplo");
+    const firstNetwork = agent!.search(
+      /docker network create (\$\(ipv6_net_flag\) )?deplo/,
+    );
     assert.ok(
       configured > 0,
       "install-agent.sh never calls configure_docker_address_pools",
