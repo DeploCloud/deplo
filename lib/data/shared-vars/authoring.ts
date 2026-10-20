@@ -276,6 +276,34 @@ export async function makeSharedVarSecret(id: string): Promise<void> {
   }
 }
 
+// A migration moving a variable it created onto the address its app landed on; its reach stays as it is.
+export async function setImportedSharedVarValue(
+  id: string,
+  value: string,
+): Promise<void> {
+  await requireTeamWide("shared variables");
+  const { teamId, userId } = await requireCapability("manage_env");
+  const changed = await getDb()
+    .update(varsTable)
+    .set({
+      valueEnc: encryptSecret(value),
+      updatedByUserId: userId,
+      updatedAt: nowIso(),
+    })
+    .where(and(eq(varsTable.id, id), eq(varsTable.teamId, teamId)))
+    .returning({ key: varsTable.key });
+  if (!changed[0]) throw new Error("Not found");
+  await markPendingChangesForSharedVar(id);
+  const user = (await getCurrentUser())!;
+  await recordActivity(
+    "env",
+    `Edited shared variable ${changed[0].key}`,
+    user.name,
+    null,
+    teamId,
+  );
+}
+
 export async function deleteSharedVar(id: string): Promise<void> {
   await requireTeamWide("shared variables");
   const { teamId } = await requireCapability("manage_env");

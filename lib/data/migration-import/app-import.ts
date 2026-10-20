@@ -31,6 +31,7 @@ import { landingServerId } from "./target-servers";
 import { mapAppEnv } from "./app-env";
 import { loadComposeText, resolveAppSource } from "./app-source";
 import { rehostAppDomains } from "./app-domains";
+import { rehostAppVariables } from "./app-address-vars";
 import {
   landDomainCertificates,
   landDomainRedirects,
@@ -317,7 +318,15 @@ export async function importAppService(
 
   if (mayClaimHosts)
     await landDomainCertificates(created.serverId, domains.value, notes);
-  await rehostAppDomains(created, domains, primary, env, notes);
+  const rehosted = await rehostAppDomains(created, domains, primary, notes);
+  await rehostAppVariables(
+    created.id,
+    rehosted,
+    [...env, ...linkRefused],
+    linkable.filter((r) => !linkRefused.some((e) => e.key === r.key)),
+    home.shared,
+    notes,
+  );
   if (mayClaimHosts)
     await landDomainRedirects(created.id, detail.domains, notes);
   await noteDomainMiddlewares(created.id, notes);

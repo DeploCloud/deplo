@@ -12,9 +12,11 @@ import type { Report } from "./run-report";
 
 // Keyed by level and name: a team's X and an environment's X are two variables.
 // varId null: a variable here holds another value, so apps keep the source's as their own.
+// created: this run made it, so only apps it brought over are linked to it.
 export interface SharedEntry {
   varId: string | null;
   value: string;
+  created?: boolean;
 }
 export type SharedIndex = Map<string, SharedEntry>;
 
@@ -106,7 +108,7 @@ export async function importSharedVars(
         projectIds: opts.projectIds,
         appIds: undefined,
       });
-      index.set(at, { varId, value });
+      index.set(at, { varId, value, created: true });
       opts.created.add(varId);
       await opts.report.add({
         path: opts.label,

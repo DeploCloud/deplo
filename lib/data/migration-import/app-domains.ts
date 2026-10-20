@@ -13,24 +13,9 @@ import {
   applyImportedRoute,
   type ImportedRoute,
 } from "../domains/imported-routes";
-import { setAppEnv } from "../env";
 import { getServerById } from "../servers/roster";
 import { serverIpv4 } from "../servers/addresses";
 import type { createApp } from "../apps/create";
-
-function rewriteHosts(value: string, hosts: Map<string, string>): string {
-  let out = value;
-  for (const [from, to] of [...hosts].sort(
-    (a, b) => b[0].length - a[0].length,
-  )) {
-    if (!from) continue;
-    out = out.replace(
-      new RegExp(from.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "gi"),
-      to,
-    );
-  }
-  return out;
-}
 
 export function importedRoute(d: MappedDomain): ImportedRoute {
   return {
@@ -86,9 +71,8 @@ export async function rehostAppDomains(
   created: Awaited<ReturnType<typeof createApp>>,
   domains: { value: MappedDomain[] },
   primary: MappedDomain | null,
-  env: { key: string; value: string }[],
   notes: Note[],
-): Promise<void> {
+): Promise<Map<string, string>> {
   const rehosted = new Map<string, string>();
   const rehostNotes: string[] = [];
   if (domains.value.length === 0)
@@ -191,31 +175,5 @@ export async function rehostAppDomains(
     notes.push(...rehostNotes);
   }
 
-  if (rehosted.size > 0) {
-    const rewritten = env.map((e) => ({
-      key: e.key,
-      value: rewriteHosts(e.value, rehosted),
-    }));
-    const touched = rewritten
-      .filter((r, i) => r.value !== env[i]!.value)
-      .map((r) => r.key);
-    if (touched.length > 0) {
-      try {
-        await setAppEnv(created.id, rewritten, undefined, {
-          overwriteSecrets: true,
-        });
-        notes.push(
-          `${touched.join(", ")} named the old address, so ${
-            touched.length === 1 ? "it now names" : "they now name"
-          } the new one.`,
-        );
-      } catch (e) {
-        notes.push(
-          `${touched.join(", ")} still name the old address (${
-            e instanceof Error ? e.message : "refused"
-          }) - update them under Variables.`,
-        );
-      }
-    }
-  }
+  return rehosted;
 }
