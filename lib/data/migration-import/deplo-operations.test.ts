@@ -3,8 +3,17 @@ import assert from "node:assert/strict";
 
 import type { PGlite } from "@electric-sql/pglite";
 import { makeTestDb, type TestDb } from "../../db/test-harness";
+import { decryptSecret } from "../../crypto";
 import { apps as appsTable } from "../../db/schema/control-plane/apps";
-import type { DeploExportApp } from "../../migration/deplo/export-shape";
+import { gitConnections } from "../../db/schema/control-plane/integrations";
+import type {
+  DeploExportApp,
+  DeploExportGitConnection,
+} from "../../migration/deplo/export-shape";
+import {
+  __resetDnsLookupForTest,
+  __setDnsLookupForTest,
+} from "../../outbound-url";
 import {
   deploExport,
   exportApp,
@@ -27,13 +36,18 @@ let pg: PGlite;
 before(async () => {
   ({ db, pg } = await makeTestDb());
   await openMigrationHarness(db);
+  __setDnsLookupForTest(async () => [{ address: "93.184.216.34" }]);
 });
 
-after(() => closeMigrationHarness(db, pg));
+after(async () => {
+  __resetDnsLookupForTest();
+  await closeMigrationHarness(db, pg);
+});
 
 beforeEach(async () => {
   await resetMigrationHarness(db);
   await provisionServer1(db);
+  await db.execute("truncate table git_connections cascade;");
 });
 
 const landed = async (name: string) =>
@@ -109,5 +123,132 @@ test("a Deplo too old to send them says the deploy settings start at the default
   assert.match(
     (await reportLines(runId)).join(" | "),
     /too old to hand over its compose flags, rollback count and deploy hook/,
+  );
+});
+
+const ACME_GIT: DeploExportGitConnection = {
+  id: "gitc_src",
+  provider: "git",
+  label: "Acme git",
+  baseUrl: "https://git.acme.com",
+  allowPrivateEndpoint: false,
+  username: "deploy",
+  token: "s3cret-token",
+};
+
+const fromGit = (over: Partial<DeploExportApp> = {}) =>
+  exportApp({
+    source: "git",
+    repo: {
+      provider: "git",
+      url: "https://git.acme.com/acme/web.git",
+      repo: "acme/web",
+      branch: "main",
+      connectionId: "gitc_src",
+    },
+    ...over,
+  });
+
+test("an app cloned through a git connection lands with that connection, token and all", async () => {
+  const runId = await importFromDeplo(
+    deploExport({
+      apps: [fromGit(), fromGit({ id: "prj_api", name: "api", slug: "api" })],
+      databases: [],
+      gitConnections: [ACME_GIT],
+    }),
+    ["prc_shop"],
+  );
+
+  const conns = await db.select().from(gitConnections);
+  assert.equal(conns.length, 1, "both apps share the one connection");
+  assert.equal(conns[0]!.label, "Acme git");
+  assert.equal(conns[0]!.baseUrl, "https://git.acme.com");
+  assert.equal(decryptSecret(conns[0]!.tokenEnc), "s3cret-token");
+  for (const name of ["web", "api"])
+    assert.equal((await landed(name)).repoConnectionId, conns[0]!.id);
+  const lines = (await reportLines(runId)).join(" | ");
+  assert.doesNotMatch(lines, /s3cret-token/);
+  assert.doesNotMatch(lines, /no credential came with it/);
+  assert.equal((await blockingLines(runId)).length, 0);
+  assert.match(lines, /webhook/);
+});
+
+test("a git token the old Deplo would not reveal leaves the app asking for a connection", async () => {
+  const runId = await importFromDeplo(
+    deploExport({
+      apps: [fromGit()],
+      databases: [],
+      gitConnections: [{ ...ACME_GIT, token: null }],
+    }),
+    ["prc_shop"],
+  );
+
+  assert.equal((await db.select().from(gitConnections)).length, 0);
+  assert.equal((await landed("web")).repoConnectionId, null);
+  assert.match(
+    (await blockingLines(runId)).join(" | "),
+    /Acme git git connection/,
+  );
+});
+
+test("a git connection this Deplo refuses blocks the app with the reason", async () => {
+  const runId = await importFromDeplo(
+    deploExport({
+      apps: [fromGit()],
+      databases: [],
+      gitConnections: [
+        { ...ACME_GIT, baseUrl: "https://user:pw@git.acme.com" },
+      ],
+    }),
+    ["prc_shop"],
+  );
+
+  assert.equal((await landed("web")).repoConnectionId, null);
+  assert.match(
+    (await blockingLines(runId)).join(" | "),
+    /Acme git git connection did not come across \(Put the token in the token field/,
+  );
+});
+
+test("a Deplo too old to send its git connections says the app needs one attached", async () => {
+  const runId = await importFromDeplo(
+    deploExport({ apps: [fromGit()], databases: [] }),
+    ["prc_shop"],
+  );
+
+  assert.equal((await landed("web")).repoConnectionId, null);
+  assert.match(
+    (await blockingLines(runId)).join(" | "),
+    /too old to hand over the git connection acme\/web clones with/,
+  );
+});
+
+test("a repository cloned through the GitHub App says the app must be linked again", async () => {
+  const runId = await importFromDeplo(
+    deploExport({
+      apps: [
+        exportApp({
+          repo: {
+            provider: "github",
+            url: "https://github.com/acme/web.git",
+            repo: "acme/web",
+            branch: "main",
+            installationId: "ghi_src",
+          },
+        }),
+      ],
+      databases: [],
+      gitConnections: [],
+    }),
+    ["prc_shop"],
+  );
+
+  assert.match(
+    (await blockingLines(runId)).join(" | "),
+    /through the GitHub App on .*, which cannot move/,
+  );
+  assert.doesNotMatch(
+    (await reportLines(runId)).join(" | "),
+    /no credential came with it/,
   );
 });

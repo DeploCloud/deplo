@@ -8,6 +8,7 @@ import {
   teamRoles as teamRolesTable,
 } from "../../db/schema/control-plane/access-control";
 import { backupDestination as destTable } from "../../db/schema/control-plane/backups";
+import { gitConnections as gitTable } from "../../db/schema/control-plane/integrations";
 import { servers as serversTable } from "../../db/schema/control-plane/servers";
 import {
   teams as teamsTable,
@@ -34,6 +35,7 @@ import {
   DEPLO_EXPORT_VERSION,
   type DeploExport,
   type DeploExportDestination,
+  type DeploExportGitConnection,
   type DeploExportServerDestination,
   type DeploExportSharedVar,
 } from "../../migration/deplo/export-shape";
@@ -173,6 +175,26 @@ async function destinations(
   return { buckets, disks };
 }
 
+// A token is revealed on the same terms as editing the connection that holds it.
+async function gitConnections(
+  teamId: string,
+  withTokens: boolean,
+): Promise<DeploExportGitConnection[]> {
+  const rows = await getDb()
+    .select()
+    .from(gitTable)
+    .where(eq(gitTable.teamId, teamId));
+  return rows.map((r) => ({
+    id: r.id,
+    provider: r.provider,
+    label: r.label,
+    baseUrl: r.baseUrl,
+    allowPrivateEndpoint: r.allowPrivateEndpoint,
+    username: r.username,
+    token: withTokens ? opened(r.tokenEnc) || null : null,
+  }));
+}
+
 export async function exportTeamForMigration(): Promise<DeploExport> {
   const { teamId, userId } = await assertExportGate();
   const db = getDb();
@@ -218,6 +240,7 @@ export async function exportTeamForMigration(): Promise<DeploExport> {
     controlApps,
     controlDatabases,
     visibleFolders,
+    git,
   ] = await Promise.all([
     db
       .select({
@@ -240,6 +263,7 @@ export async function exportTeamForMigration(): Promise<DeploExport> {
     hasCapability("control_apps"),
     hasCapability("control_databases"),
     visibleFolderIds(teamId),
+    hasCapability("manage_git").then((may) => gitConnections(teamId, may)),
   ]);
 
   await trailExport(teamId, userId);
@@ -277,5 +301,6 @@ export async function exportTeamForMigration(): Promise<DeploExport> {
     members: people,
     destinations: stores.buckets,
     serverDestinations: stores.disks,
+    gitConnections: git,
   };
 }

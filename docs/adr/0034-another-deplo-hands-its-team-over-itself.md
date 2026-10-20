@@ -59,6 +59,10 @@ path cannot simply be pointed at it:
 - An app's compose `up` flags, rollback count and deploy hook switch carry as they were. The hook
   never keeps its token: its address names the app, so it changes anyway, and the report says so
   when the old one was ever handed out. An older source sends none of them, and the report says so.
+- Git connections travel as `gitConnections`, their tokens only when the reader may manage git
+  connections there (`manage_git`). The import reuses a connection here for the same account on
+  the same server, or adds one, and attaches it to the app. A GitHub App install cannot move
+  between instances, so the app is reported as needing one linked before it deploys.
 - Preview settings travel whole, as an optional `preview` block plus the preview overrides
   (`previewEnv`), and land even when previews are off; the preview server goes through the
   run's server map. An export without them came from an older Deplo, and only on/off lands.

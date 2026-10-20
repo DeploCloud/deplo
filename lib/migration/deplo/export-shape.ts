@@ -193,6 +193,17 @@ export interface DeploExportServerDestination {
   ageIdentity?: string;
 }
 
+// token is null when the reader may not manage git connections there.
+export interface DeploExportGitConnection {
+  id: string;
+  provider: string;
+  label: string;
+  baseUrl: string;
+  allowPrivateEndpoint: boolean;
+  username: string;
+  token: string | null;
+}
+
 export interface DeploExport {
   version: number;
   instance: string;
@@ -220,4 +231,6 @@ export interface DeploExport {
   destinations: DeploExportDestination[];
   // Apart from `destinations`, so an older target never reads a disk as a bucket.
   serverDestinations?: DeploExportServerDestination[];
+  // Absent from an older Deplo; an app names its connection in `repo.connectionId`.
+  gitConnections?: DeploExportGitConnection[];
 }

@@ -87,7 +87,9 @@ export function mapSource(app: SourceApplication): Mapped<MappedSource> {
     return { value: { kind: "none" }, notes };
   }
 
-  if (app.customGitSSHKeyId)
+  if (app.gitConnection !== undefined) {
+    // The source named its credential, so the import brings it or reports it precisely.
+  } else if (app.customGitSSHKeyId)
     notes.push(
       "Clones over SSH with a key stored in {panel}. Deplo clones over https, so add a git connection for this host.",
     );

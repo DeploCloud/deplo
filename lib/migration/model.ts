@@ -101,8 +101,20 @@ export interface NativeOps {
   deployHook: { enabled: boolean; used: boolean };
 }
 
+// The credential a Deplo app clones with; a null token is one the source would not reveal.
+export interface SourceGitConnection {
+  provider: string;
+  label: string;
+  baseUrl: string;
+  allowPrivateEndpoint: boolean;
+  username: string;
+  token: string | null;
+}
+
 export interface SourceApplication {
   nativeOps?: NativeOps | null;
+  // Set when the source said how it clones: null means no connection to bring (the notes say why).
+  gitConnection?: SourceGitConnection | null;
   // An uploaded archive the source hands over itself; null when there is none to fetch, absent when it never can.
   upload?: { filename: string; size: number } | null;
   backups?: SourceBackupSchedule[] | null;

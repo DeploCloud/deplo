@@ -2,7 +2,7 @@ import { test, before, after, beforeEach } from "node:test";
 import assert from "node:assert/strict";
 
 import type { PGlite } from "@electric-sql/pglite";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 
 import { makeTestDb, type TestDb } from "../../db/test-harness";
 import { __setTestDb, __resetTestDb } from "../../db/client";
@@ -14,6 +14,7 @@ import { ALL_CAPABILITIES } from "../../types/identity";
 import { appBasicAuthUsers } from "../../db/schema/control-plane/domains";
 import { appPreviewEnvVars } from "../../db/schema/control-plane/env-vars";
 import { cronJobEnv, cronJobs } from "../../db/schema/control-plane/crons";
+import { gitConnections } from "../../db/schema/control-plane/integrations";
 import { runWithIdentity } from "../../auth/request-context";
 import { encryptSecret } from "../../crypto";
 import { insertEnvVars } from "../app-graph-load";
@@ -98,7 +99,7 @@ const as = <T>(userId: string, teamId: string, fn: () => Promise<T>) =>
 beforeEach(async () => {
   __resetExportTrailForTest();
   await pg.exec(`${TRUNCATE_BACKUPS}
-    truncate table activities, app_build_method_settings, app_build, apps,
+    truncate table activities, git_connections, registries, app_build_method_settings, app_build, apps,
       servers, users, teams restart identity cascade;`);
   await seedIdentity(db, {
     users: [
@@ -562,4 +563,57 @@ test("an app's compose flags, rollback count and deploy hook leave in the export
   assert.equal(web.rollbackKeep, 7);
   assert.deepEqual(web.deployHook, { enabled: true, used: true });
   assert.doesNotMatch(JSON.stringify(out), /hook-token/);
+});
+
+async function seedGitConnection() {
+  await db.insert(gitConnections).values({
+    id: "gitc_acme",
+    teamId: TEAM_A,
+    provider: "gitlab",
+    label: "Acme GitLab",
+    baseUrl: "https://gitlab.acme.com",
+    allowPrivateEndpoint: false,
+    username: "oauth2",
+    tokenEnc: encryptSecret("glpat-secret"),
+    webhookSecretEnc: encryptSecret("w"),
+    webhookToken: "wht_acme",
+    createdAt: T0,
+    createdBy: USER_1,
+  });
+}
+
+async function withoutCapability(userId: string, capability: string) {
+  await db
+    .delete(membershipCapabilities)
+    .where(
+      and(
+        eq(membershipCapabilities.membershipId, `mem_${userId}`),
+        eq(membershipCapabilities.capability, capability),
+      ),
+    );
+}
+
+test("the team's git connections leave with their tokens", async () => {
+  await seedGitConnection();
+  const out = await as(USER_1, TEAM_A, () => exportTeamForMigration());
+  assert.deepEqual(out.gitConnections, [
+    {
+      id: "gitc_acme",
+      provider: "gitlab",
+      label: "Acme GitLab",
+      baseUrl: "https://gitlab.acme.com",
+      allowPrivateEndpoint: false,
+      username: "oauth2",
+      token: "glpat-secret",
+    },
+  ]);
+});
+
+test("a git token stays behind when the reader may not manage git connections", async () => {
+  await seedGitConnection();
+  await withoutCapability(USER_1, "manage_git");
+  const out = await as(USER_1, TEAM_A, () => exportTeamForMigration());
+  assert.equal(out.gitConnections?.[0]?.label, "Acme GitLab");
+  assert.equal(out.gitConnections?.[0]?.token, null);
+  assert.doesNotMatch(JSON.stringify(out), /glpat-secret/);
 });
