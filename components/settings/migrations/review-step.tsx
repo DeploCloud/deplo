@@ -24,6 +24,7 @@ import { TeamImagePicker } from "./team-image-picker";
 import type { TeamTarget } from "./queue";
 import { copyFor, type SourceKind, stepDocs } from "./sources";
 import {
+  emptyPicked,
   importableOf,
   type Placement,
   type Plan,
@@ -320,7 +321,8 @@ export function ReviewStep({
   const picked = (g: ReviewGroup) =>
     g.plan.projects
       .flatMap((p) => importableOf(p))
-      .some((s) => chosen.has(s.sourceId));
+      .some((s) => chosen.has(s.sourceId)) ||
+    emptyPicked(g.plan, chosen).length > 0;
   const running = groups.filter(picked).length;
 
   return (

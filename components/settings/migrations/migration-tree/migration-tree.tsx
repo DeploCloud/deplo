@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input";
 import { SimpleTooltip } from "@/components/ui/tooltip";
 import {
   importableOf,
+  isEmptyProject,
   type Placement,
   type PlanProject,
   type PlanService,
@@ -50,6 +51,13 @@ export function MigrationTree({
 
   function set(services: PlanService[], on: boolean) {
     onChange(tickAll(chosen, services, on));
+  }
+
+  function pickProject(id: string, on: boolean) {
+    const next = new Set(chosen);
+    if (on) next.add(id);
+    else next.delete(id);
+    onChange(next);
   }
 
   function place(serviceIds: string[], patch: Partial<Placement>) {
@@ -117,6 +125,7 @@ export function MigrationTree({
                 const on = pickable.filter((s) =>
                   chosen.has(s.sourceId),
                 ).length;
+                const empty = isEmptyProject(p);
                 return (
                   <React.Fragment key={p.sourceId}>
                     <Row
@@ -126,13 +135,23 @@ export function MigrationTree({
                       mark={
                         <FolderTree className="size-3.5 text-muted-foreground" />
                       }
-                      meta={countLabel(on, pickable.length)}
+                      meta={
+                        empty
+                          ? "Empty project"
+                          : countLabel(on, pickable.length)
+                      }
                       expandable
                       expanded={isOpen(p.sourceId)}
                       onToggleExpand={() => toggleOpen(p.sourceId)}
-                      checked={tristate(on, pickable.length)}
-                      disabled={pickable.length === 0}
-                      onCheckedChange={(v) => set(pickable, v)}
+                      checked={
+                        empty
+                          ? chosen.has(p.sourceId)
+                          : tristate(on, pickable.length)
+                      }
+                      disabled={!empty && pickable.length === 0}
+                      onCheckedChange={(v) =>
+                        empty ? pickProject(p.sourceId, v) : set(pickable, v)
+                      }
                       showBuild={showBuild}
                       status={
                         p.exists ? (

@@ -9,7 +9,11 @@ export const RunTargetInput = builder.inputType("MigrationRunTargetInput", {
       description:
         "Shown while the run works through it, so the runner needs no second read of the API for a name.",
     }),
-    serviceId: t.string({ required: true }),
+    serviceId: t.string({
+      required: true,
+      description:
+        "Empty picks the project itself, so a project with nothing in it still comes across.",
+    }),
     serverId: t.string({ required: false }),
     buildServerId: t.string({ required: false }),
     exposedPort: t.int({

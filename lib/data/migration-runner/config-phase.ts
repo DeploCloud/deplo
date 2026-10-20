@@ -8,8 +8,6 @@ import {
   migrationRunServers as runServersTable,
   migrationRunTargets as targetsTable,
 } from "../../db/schema/control-plane/migration";
-import { sourceClient } from "../../migration/source";
-import { credentialFor as connectCredential } from "../migration-import/gates";
 import { pauseCopiedSchedules } from "../migration-import/live-copy-schedules";
 import { importMigrationProject } from "../migration-import/project-import";
 import { appendRunItem } from "../migration-import/run-report";
@@ -53,49 +51,6 @@ interface ProjectGroup {
   placements: ServicePlacement[];
 }
 
-async function noteEmptyProjects(row: RunRow, c: RunCredential): Promise<void> {
-  let projects;
-  try {
-    projects = await sourceClient(await connectCredential(c)).listProjects();
-  } catch {
-    return;
-  }
-  for (const p of projects) {
-    const holds = (e: {
-      applications?: unknown[] | null;
-      compose?: unknown[] | null;
-      postgres?: unknown[] | null;
-      mysql?: unknown[] | null;
-      mariadb?: unknown[] | null;
-      mongo?: unknown[] | null;
-      redis?: unknown[] | null;
-      libsql?: unknown[] | null;
-      clickhouse?: unknown[] | null;
-    }) =>
-      [
-        e.applications,
-        e.compose,
-        e.postgres,
-        e.mysql,
-        e.mariadb,
-        e.mongo,
-        e.redis,
-        e.libsql,
-        e.clickhouse,
-      ].some((l) => (l ?? []).length > 0);
-    if ((p.environments ?? []).some(holds) || holds(p)) continue;
-    await appendRunItem(row.id, panelNameFor(row), {
-      path: p.name,
-      sourceKind: "project",
-      sourceName: p.name,
-      sourceId: p.projectId,
-      outcome: "skipped",
-      message:
-        "Nothing is in this project on {panel}, so there was nothing to bring across.",
-    });
-  }
-}
-
 async function pendingGroups(runId: string): Promise<ProjectGroup[]> {
   const rows = await getDb()
     .select()
@@ -118,6 +73,8 @@ async function pendingGroups(runId: string): Promise<ProjectGroup[]> {
       byProject.set(r.projectId, g);
     }
     g.rowIds.push(r.id);
+    // A row with no service picks the project itself: it comes across even when empty.
+    if (!r.serviceId) continue;
     g.serviceIds.push(r.serviceId);
     if (r.serverId)
       g.placements.push({
@@ -154,7 +111,6 @@ export async function runConfigPhase(
   let inARow = 0;
   let done = row.doneSteps;
 
-  await noteEmptyProjects(row, c);
   await appendRunItem(row.id, panelNameFor(row), {
     path: "{panel}",
     sourceKind: "organization",

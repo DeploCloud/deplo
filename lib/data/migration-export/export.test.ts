@@ -2,14 +2,18 @@ import { test, before, after, beforeEach } from "node:test";
 import assert from "node:assert/strict";
 
 import type { PGlite } from "@electric-sql/pglite";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 
 import { makeTestDb, type TestDb } from "../../db/test-harness";
 import { __setTestDb, __resetTestDb } from "../../db/client";
 import { activities } from "../../db/schema/control-plane/activity";
 import { membershipCapabilities } from "../../db/schema/control-plane/access-control";
 import { apps as appsTable } from "../../db/schema/control-plane/apps";
-import { folders as foldersTable } from "../../db/schema/control-plane/projects";
+import {
+  environments as environmentsTable,
+  folders as foldersTable,
+} from "../../db/schema/control-plane/projects";
+import { createProject, reorderProjects } from "../projects/lifecycle";
 import { ALL_CAPABILITIES } from "../../types/identity";
 import { appBasicAuthUsers } from "../../db/schema/control-plane/domains";
 import { appPreviewEnvVars } from "../../db/schema/control-plane/env-vars";
@@ -464,6 +468,37 @@ test("the data stream does not hand over another team's archive", async () => {
     () =>
       as(USER_1, TEAM_A, () => openAppUpload({ kind: "app", id: "prj_other" })),
     (e: unknown) => e instanceof ExportRefusedError && e.status === 404,
+  );
+});
+
+test("projects leave in the team's order, with their colour and each environment's kind and branch", async () => {
+  const alpha = await as(USER_1, TEAM_A, () => createProject("Alpha"));
+  const zeta = await as(USER_1, TEAM_A, () => createProject("Zeta", "#ff8800"));
+  await as(USER_1, TEAM_A, () => reorderProjects([zeta.id, alpha.id]));
+  await db
+    .update(environmentsTable)
+    .set({ gitBranch: "main" })
+    .where(
+      and(
+        eq(environmentsTable.projectId, zeta.id),
+        eq(environmentsTable.kind, "production"),
+      ),
+    );
+  const out = await as(USER_1, TEAM_A, () => exportTeamForMigration());
+  assert.deepEqual(
+    out.projects.map((p) => [p.name, p.color]),
+    [
+      ["Zeta", "#ff8800"],
+      ["Alpha", null],
+    ],
+  );
+  assert.deepEqual(
+    out.projects[0].environments.map((e) => [e.name, e.kind, e.gitBranch]),
+    [
+      ["Development", "development", ""],
+      ["Preview", "preview", ""],
+      ["Production", "production", "main"],
+    ],
   );
 });
 

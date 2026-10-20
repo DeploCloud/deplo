@@ -17,9 +17,16 @@ import type {
   SourceProject,
 } from "../../migration/model";
 import { deploEngineFor } from "../../migration/map/databases";
-import { createEnvironment, listEnvironmentsForProject } from "../environments";
+import {
+  createEnvironment,
+  deleteEnvironment,
+  listEnvironmentsForProject,
+  renameEnvironment,
+  setDefaultEnvironment,
+  setEnvironmentBranch,
+} from "../environments";
 import { createProject } from "../projects/lifecycle";
-import { defaultEnvironmentFor } from "../projects/placement";
+import type { Environment } from "../../types/team";
 import { listProjects } from "../projects/read";
 import { canHostWorkloads, listServersForTeam } from "../servers/roster";
 import { recordActivity } from "../activity";
@@ -138,13 +145,14 @@ async function runImportMigrationProject(
       .where(eq(dbHostsTable.runId, report.id)))
       dbHosts.set(h.from, h.to);
 
-  const projectId = await ensureProject(source, report);
-  if (!projectId)
+  const landing = await ensureProject(source, report);
+  if (!landing)
     return {
       projectName: source.name,
       ...countOutcomes(report.items),
       items: report.items,
     };
+  const { projectId } = landing;
 
   const destinations = await importBackupDestinations(c, report, (id) =>
     targetServerFor(serverMap.get(id)),
@@ -229,11 +237,27 @@ async function runImportMigrationProject(
           Number(a.kind === "application" || a.kind === "compose") -
           Number(b.kind === "application" || b.kind === "compose"),
       );
-    if (chosen.length === 0) continue;
+    // An environment empty on the source still comes across; one whose services were all left out does not.
+    if (chosen.length === 0 && servicesOf(env).length > 0) continue;
 
     const envReport = report.at(env.name);
-    const environmentId = await ensureEnvironment(projectId, env, envReport);
-    if (!environmentId) continue;
+    const environmentId = await ensureEnvironment(landing, env, envReport);
+    if (!environmentId) {
+      for (const svc of chosen)
+        await envReport.at(svc.name || svc.id).add({
+          sourceKind: svc.kind,
+          sourceId: svc.id,
+          sourceName: svc.name || svc.id,
+          outcome: "failed",
+          blocking: true,
+          targetKind:
+            svc.kind === "application" || svc.kind === "compose"
+              ? "app"
+              : "database",
+          message: `${svc.name || svc.id} did not come across: its environment ${env.name} could not be created. Create it in the project, then run the migration again.`,
+        });
+      continue;
+    }
     await noteLevel(envReport, env.platformNotes);
 
     // Each environment sees its own variables, never a sibling's of the same name.
@@ -367,6 +391,7 @@ async function runImportMigrationProject(
     }
   }
 
+  await finishEnvironments(landing, source.environments ?? []);
   await refreshCounts(input.runId, teamId);
   await recordActivity(
     "project",
@@ -383,10 +408,18 @@ async function runImportMigrationProject(
   };
 }
 
+// A project this run created is shaped like the source's; one already here is left as it is.
+interface ProjectLanding {
+  projectId: string;
+  fresh: boolean;
+  seeded: Environment[];
+  landed: Map<string, string>;
+}
+
 async function ensureProject(
   source: SourceProject,
   report: Report,
-): Promise<string | null> {
+): Promise<ProjectLanding | null> {
   const key = source.name.trim().toLowerCase();
   for (const p of await listProjects())
     if (p.name.trim().toLowerCase() === key) {
@@ -398,10 +431,10 @@ async function ensureProject(
         targetId: p.id,
         message: "A project with this name is already here.",
       });
-      return p.id;
+      return { projectId: p.id, fresh: false, seeded: [], landed: new Map() };
     }
   try {
-    const created = await createProject(source.name);
+    const created = await createProject(source.name, source.color ?? null);
     await report.add({
       sourceKind: "project",
       sourceName: source.name,
@@ -409,7 +442,12 @@ async function ensureProject(
       targetKind: "project",
       targetId: created.id,
     });
-    return created.id;
+    return {
+      projectId: created.id,
+      fresh: true,
+      seeded: await listEnvironmentsForProject(created.id),
+      landed: new Map(),
+    };
   } catch (e) {
     await report.add({
       sourceKind: "project",
@@ -423,48 +461,102 @@ async function ensureProject(
 }
 
 async function ensureEnvironment(
-  projectId: string,
+  landing: ProjectLanding,
+  env: SourceEnvironment,
+  report: Report,
+): Promise<string | null> {
+  const id = await landEnvironment(landing, env, report);
+  if (id) landing.landed.set(env.environmentId, id);
+  return id;
+}
+
+async function landEnvironment(
+  { projectId, fresh, seeded, landed }: ProjectLanding,
   env: SourceEnvironment,
   report: Report,
 ): Promise<string | null> {
   const key = env.name.trim().toLowerCase();
-  for (const e of await listEnvironmentsForProject(projectId))
-    if (e.name.trim().toLowerCase() === key) {
+  const existing = await listEnvironmentsForProject(projectId);
+  const taken = new Set(landed.values());
+  const same = existing.find(
+    (e) => !taken.has(e.id) && e.name.trim().toLowerCase() === key,
+  );
+  // The source's own production may be named differently: it takes over the one Deplo just made.
+  const stand =
+    !same && fresh && env.kind && env.kind !== "custom"
+      ? seeded.find(
+          (s) =>
+            s.kind === env.kind &&
+            !taken.has(s.id) &&
+            existing.some((e) => e.id === s.id),
+        )
+      : undefined;
+  try {
+    if (same) {
+      if (fresh && env.gitBranch && same.gitBranch !== env.gitBranch)
+        await setEnvironmentBranch(same.id, env.gitBranch);
       await report.add({
         sourceKind: "environment",
         sourceName: env.name,
         outcome: "skipped",
         targetKind: "environment",
-        targetId: e.id,
+        targetId: same.id,
         message: "This environment already exists in the project.",
       });
-      return e.id;
+      return same.id;
     }
-  try {
-    const created = await createEnvironment(projectId, env.name);
+    if (stand) {
+      await renameEnvironment(stand.id, env.name);
+      if (env.gitBranch) await setEnvironmentBranch(stand.id, env.gitBranch);
+    }
+    const id =
+      stand?.id ??
+      (
+        await createEnvironment(projectId, env.name, {
+          kind: env.kind,
+          gitBranch: env.gitBranch,
+        })
+      ).id;
     await report.add({
       sourceKind: "environment",
       sourceName: env.name,
       outcome: "created",
       targetKind: "environment",
-      targetId: created.id,
+      targetId: id,
     });
-    return created.id;
+    return id;
   } catch (e) {
-    const fallback = await defaultEnvironmentFor(projectId);
     await report.add({
       sourceKind: "environment",
       sourceName: env.name,
-      outcome: fallback ? "manual" : "failed",
-      blocking: Boolean(fallback),
+      outcome: "failed",
+      blocking: true,
       targetKind: "environment",
-      targetId: fallback?.id ?? null,
-      message:
-        (e instanceof Error ? e.message : "Could not create the environment.") +
-        (fallback ? ` Its services went to ${fallback.name} instead.` : ""),
+      message: `${env.name} could not be created: ${
+        e instanceof Error ? e.message : "Deplo refused it."
+      }`,
     });
-    return fallback?.id ?? null;
+    return null;
   }
+}
+
+// On a project this run created: the source's default, and none of the environments it never had.
+async function finishEnvironments(
+  { fresh, seeded, landed }: ProjectLanding,
+  envs: SourceEnvironment[],
+): Promise<void> {
+  if (!fresh) return;
+  const def = envs.find((e) => e.isDefault);
+  const target = def && landed.get(def.environmentId);
+  if (!target) return;
+  await setDefaultEnvironment(target);
+  // Only a source that names each kind made its projects the way Deplo does; what it lacks it deleted.
+  if (envs.length === 0 || envs.some((e) => !e.kind)) return;
+  const kept = new Set(landed.values());
+  const named = new Set(envs.map((e) => e.name.trim().toLowerCase()));
+  for (const s of seeded)
+    if (!kept.has(s.id) && !named.has(s.name.trim().toLowerCase()))
+      await deleteEnvironment(s.id).catch(() => {});
 }
 
 async function noteLevel(

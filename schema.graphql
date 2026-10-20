@@ -3149,6 +3149,10 @@ input MigrationRunTargetInput {
   """
   projectName: String!
   serverId: String
+
+  """
+  Empty picks the project itself, so a project with nothing in it still comes across.
+  """
   serviceId: String!
 }
 
