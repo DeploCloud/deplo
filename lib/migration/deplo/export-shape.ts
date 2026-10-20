@@ -132,17 +132,29 @@ export interface DeploExportDestination {
   secretAccessKey: string;
 }
 
+// Colour, kind and branch are absent from an older Deplo; projects come in the team's order.
+export interface DeploExportProject {
+  id: string;
+  name: string;
+  color?: string | null;
+  environments: DeploExportEnvironment[];
+}
+
+export interface DeploExportEnvironment {
+  id: string;
+  name: string;
+  isDefault: boolean;
+  kind?: string;
+  gitBranch?: string;
+}
+
 export interface DeploExport {
   version: number;
   instance: string;
   team: { id: string; name: string; slug: string };
   otherTeams: string[];
   canControl: { apps: boolean; databases: boolean };
-  projects: {
-    id: string;
-    name: string;
-    environments: { id: string; name: string; isDefault: boolean }[];
-  }[];
+  projects: DeploExportProject[];
   folders: { id: string; name: string; parentId: string | null }[];
   apps: DeploExportApp[];
   // Apps in folders the caller cannot open: counted, never named.

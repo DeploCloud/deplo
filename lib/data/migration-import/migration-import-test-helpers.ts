@@ -345,6 +345,7 @@ export async function resetMigrationHarness(db: TestDb): Promise<void> {
         capabilities: [
           "view",
           "create_projects",
+          "manage_environments",
           "create_apps",
           "create_databases",
           "manage_env",

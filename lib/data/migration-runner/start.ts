@@ -67,7 +67,7 @@ export async function startMigrationRun(input: StartRunInput): Promise<string> {
   await client.listProjects();
   await assertMigrationMachinesReady(
     c,
-    input.targets.map((t) => t.serviceId),
+    input.targets.map((t) => t.serviceId).filter(Boolean),
   );
 
   const queued = input.queued ?? [];

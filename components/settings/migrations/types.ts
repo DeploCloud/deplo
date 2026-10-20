@@ -168,3 +168,14 @@ export function isImportable(s: PlanService): boolean {
 export function importableOf(p: PlanProject): PlanService[] {
   return p.environments.flatMap((e) => e.services.filter(isImportable));
 }
+
+// A project with nothing in it is picked by its own id, so it still comes across.
+export function isEmptyProject(p: PlanProject): boolean {
+  return p.environments.every((e) => e.services.length === 0);
+}
+
+export function emptyPicked(plan: Plan, chosen: Set<string>): PlanProject[] {
+  return plan.projects.filter(
+    (p) => isEmptyProject(p) && chosen.has(p.sourceId),
+  );
+}

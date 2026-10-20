@@ -67,7 +67,7 @@ test("apps outside any project land in a project per folder, and one for the top
   });
   const tree = sourceTree(x);
   const names = tree.map((p) => p.name).sort();
-  assert.deepEqual(names, ["Acme", "Clients / Big"]);
+  assert.deepEqual(names, ["Acme", "Clients / Big", "Shop"]);
   const top = tree.find((p) => p.name === "Acme")!;
   assert.deepEqual(
     servicesOf(top.environments![0])
@@ -106,6 +106,54 @@ test("a linked shared variable becomes a reference at the narrowest level that o
   assert.equal(vars.get("STRAY"), "inline", "out of scope: its own copy");
   assert.equal(vars.has("UNLINKED"), false);
   assert.ok(env.secretEnvKeys.includes("ENVV"));
+});
+
+test("a project with nothing in it still comes across, with its colour and environments", () => {
+  const x = deploExport({
+    projects: [
+      ...deploExport().projects,
+      {
+        id: "prc_empty",
+        name: "Later",
+        color: "#ff8800",
+        environments: [
+          {
+            id: "environ_live",
+            name: "Live",
+            isDefault: true,
+            kind: "production",
+            gitBranch: "main",
+          },
+          {
+            id: "environ_qa",
+            name: "QA",
+            isDefault: false,
+            kind: "custom",
+            gitBranch: "qa",
+          },
+        ],
+      },
+    ],
+  });
+  const later = sourceTree(x).find((p) => p.projectId === "prc_empty");
+  assert.ok(later, "an empty project is offered");
+  assert.equal(later.color, "#ff8800");
+  assert.deepEqual(
+    later.environments!.map((e) => [e.name, e.isDefault, e.kind, e.gitBranch]),
+    [
+      ["Live", true, "production", "main"],
+      ["QA", false, "custom", "qa"],
+    ],
+  );
+});
+
+test("an older Deplo that sends no colour or branches says so once", () => {
+  const tree = sourceTree(deploExport());
+  const shop = tree.find((p) => p.projectId === "prc_shop")!;
+  assert.equal(shop.color, undefined);
+  assert.equal(shop.environments![0].kind, undefined);
+  const notes = tree.flatMap((p) => p.platformNotes ?? []).join(" ");
+  assert.equal(notes.match(/too old to send/g)?.length, 1);
 });
 
 test("an app's own variable wins over a shared one of the same name", () => {
