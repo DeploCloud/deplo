@@ -1,9 +1,10 @@
 import type { SharedRef } from "../../map/env";
 import type { SourceDatabase, SourceMount } from "../../model";
+import type { Note } from "../../note";
 
 export interface CoolifyExtras {
   env?: string;
-  envNotes?: string[];
+  envNotes?: Note[];
   sharedRefs?: SharedRef[];
   secretEnvKeys?: string[];
   mounts?: SourceMount[];

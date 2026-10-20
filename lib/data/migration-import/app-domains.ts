@@ -1,5 +1,6 @@
 import "server-only";
 
+import { type Note } from "../../migration/note";
 import { and, eq } from "drizzle-orm";
 
 import { getDb } from "../../db/client";
@@ -45,7 +46,7 @@ export function importedRoute(d: MappedDomain): ImportedRoute {
 async function addExtraDomain(
   appId: string,
   d: MappedDomain,
-  notes: string[],
+  notes: Note[],
 ): Promise<boolean> {
   try {
     await addDomain(appId, d.host, {
@@ -70,7 +71,7 @@ export async function rehostAppDomains(
   domains: { value: MappedDomain[] },
   primary: MappedDomain | null,
   env: { key: string; value: string }[],
-  notes: string[],
+  notes: Note[],
 ): Promise<void> {
   const rehosted = new Map<string, string>();
   const rehostNotes: string[] = [];

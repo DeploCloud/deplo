@@ -268,6 +268,7 @@ export function useMigrationRun({
         skipped: sum(runs, "skipped"),
         failed: sum(runs, "failed"),
         manual: sum(runs, "manual"),
+        blocking: sum(runs, "blocking"),
       });
       setStep((at2) =>
         at2 === "review" ? afterRun(hasMigrationPeople(runs)) : at2,
@@ -331,6 +332,7 @@ export function useMigrationRun({
         skipped: r.skipped,
         failed: r.failed,
         manual: r.manual,
+        blocking: r.blocking,
       },
     }));
   const totals = {
@@ -338,6 +340,7 @@ export function useMigrationRun({
     skipped: sum(sessionRuns, "skipped"),
     failed: sum(sessionRuns, "failed"),
     manual: sum(sessionRuns, "manual"),
+    blocking: sum(sessionRuns, "blocking"),
   };
   const watched = useMigrationFeed(targetTeamId ?? teamId);
 

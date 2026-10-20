@@ -15,6 +15,7 @@ import {
 } from "../../db/schema/control-plane/projects";
 import { newId, nowIso } from "../../ids";
 import { withPanel } from "../../migration/map/source-platform";
+import { isBlocking, noteText, type Note } from "../../migration/note";
 import { publishMigrationChanged } from "../../graphql/pubsub";
 
 export interface ImportItemDTO {
@@ -27,6 +28,47 @@ export interface ImportItemDTO {
   targetId: string | null;
   message: string | null;
   at: string | null;
+  // The app will not run until this is done; every other note is information.
+  blocking: boolean;
+}
+
+export type ImportOutcome =
+  "created" | "skipped" | "failed" | "manual" | "unsupported";
+
+export interface ImportEntry {
+  path?: string;
+  sourceKind: string;
+  sourceName: string;
+  sourceId?: string | null;
+  outcome: ImportOutcome;
+  targetKind?: string | null;
+  targetId?: string | null;
+  message?: string | null;
+  blocking?: boolean;
+}
+
+// A blocker counts on its own; `manual` is what is left to read. Failures keep their own count.
+export function countOutcomes(
+  items: { outcome: string; blocking: boolean }[],
+): {
+  created: number;
+  skipped: number;
+  failed: number;
+  manual: number;
+  blocking: number;
+} {
+  const n = (o: string) => items.filter((i) => i.outcome === o).length;
+  const notes = items.filter(
+    (i) => i.outcome === "manual" || i.outcome === "unsupported",
+  );
+  const blocking = notes.filter((i) => i.blocking).length;
+  return {
+    created: n("created"),
+    skipped: n("skipped"),
+    failed: n("failed"),
+    manual: notes.length - blocking,
+    blocking,
+  };
 }
 
 export async function ownRun(runId: string, teamId: string): Promise<boolean> {
@@ -42,18 +84,12 @@ export async function refreshCounts(
   teamId: string,
 ): Promise<void> {
   const rows = await getDb()
-    .select({ outcome: itemsTable.outcome })
+    .select({ outcome: itemsTable.outcome, blocking: itemsTable.blocking })
     .from(itemsTable)
     .where(eq(itemsTable.runId, runId));
-  const count = (o: string) => rows.filter((r) => r.outcome === o).length;
   await getDb()
     .update(runsTable)
-    .set({
-      created: count("created"),
-      skipped: count("skipped"),
-      failed: count("failed"),
-      manual: count("manual") + count("unsupported"),
-    })
+    .set(countOutcomes(rows))
     .where(and(eq(runsTable.id, runId), eq(runsTable.teamId, teamId)));
   publishMigrationChanged();
 }
@@ -78,16 +114,7 @@ export class Report {
     );
   }
 
-  async add(entry: {
-    path?: string;
-    sourceKind: string;
-    sourceName: string;
-    sourceId?: string | null;
-    outcome: "created" | "skipped" | "failed" | "manual" | "unsupported";
-    targetKind?: string | null;
-    targetId?: string | null;
-    message?: string | null;
-  }): Promise<void> {
+  async add(entry: ImportEntry): Promise<void> {
     const row: ImportItemDTO = {
       path: withPanel(entry.path ?? this.path.join(" / "), this.panel),
       sourceKind: entry.sourceKind,
@@ -98,6 +125,7 @@ export class Report {
       targetId: entry.targetId ?? null,
       message: entry.message ? withPanel(entry.message, this.panel) : null,
       at: nowIso(),
+      blocking: entry.blocking ?? false,
     };
     this.items.push(row);
     if (!this.runId) return;
@@ -119,6 +147,7 @@ export class Report {
           eq(itemsTable.outcome, "manual"),
           eq(itemsTable.path, row.path),
           eq(itemsTable.message, row.message),
+          eq(itemsTable.blocking, row.blocking),
         ),
       )
       .limit(1);
@@ -128,11 +157,11 @@ export class Report {
   async notes(
     kind: string,
     name: string,
-    notes: string[],
+    notes: Note[],
     target?: { kind: string; id: string },
     sourceId?: string | null,
   ): Promise<void> {
-    for (const message of notes)
+    for (const note of notes)
       await this.add({
         sourceKind: kind,
         sourceName: name,
@@ -140,7 +169,8 @@ export class Report {
         outcome: "manual",
         targetKind: target?.kind ?? null,
         targetId: target?.id ?? null,
-        message,
+        message: noteText(note),
+        blocking: isBlocking(note),
       });
   }
 }
@@ -148,16 +178,7 @@ export class Report {
 export async function appendRunItem(
   runId: string,
   panel: string,
-  entry: {
-    path: string;
-    sourceKind: string;
-    sourceName: string;
-    sourceId?: string | null;
-    outcome: "created" | "skipped" | "failed" | "manual" | "unsupported";
-    targetKind?: string | null;
-    targetId?: string | null;
-    message?: string | null;
-  },
+  entry: ImportEntry & { path: string },
 ): Promise<void> {
   await new Report(runId, panel).add(entry);
 }

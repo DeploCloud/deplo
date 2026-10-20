@@ -1,5 +1,6 @@
 import "server-only";
 
+import { noteText } from "../../migration/note";
 import { eq } from "drizzle-orm";
 
 import { getDb } from "../../db/client";
@@ -233,7 +234,9 @@ export async function scanMigrationSource(
           line.sourceServerId = detail.serverId?.trim() || line.sourceServerId;
           line.logo = mapLogo((detail as SourceApplication).icon);
           line.notes.push(
-            ...((detail as SourceApplication).platformNotes ?? []),
+            ...((detail as SourceApplication).platformNotes ?? []).map(
+              noteText,
+            ),
           );
 
           if (line.targetKind === "database") {

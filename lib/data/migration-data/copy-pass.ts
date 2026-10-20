@@ -1,5 +1,6 @@
 import "server-only";
 
+import { blocker, type Note } from "../../migration/note";
 import { formatBytes } from "../../utils";
 import type { AgentConnection } from "../../infra/agent-client/connection";
 import type { SourceCredential } from "../../migration/source";
@@ -58,7 +59,7 @@ export interface CopyContext {
   dest: AgentConnection;
   signal: AbortSignal;
   onBytes?: OnBytes;
-  notes: string[];
+  notes: Note[];
   tally: CopyTally;
 }
 
@@ -69,6 +70,7 @@ async function record(
   sourceName: string,
   outcome: Outcome,
   message: string,
+  blocking = false,
 ): Promise<void> {
   await appendRunItem(ctx.runId, ctx.panel, {
     path: ctx.path,
@@ -78,6 +80,7 @@ async function record(
     targetKind: ctx.landed.targetKind,
     targetId: ctx.landed.targetId,
     message,
+    blocking,
   });
 }
 
@@ -216,9 +219,9 @@ export async function copyBindMounts(
     } else if (clash) {
       ctx.tally.notCopied++;
       const message = sharedPathNote(clash, bind.targetPath);
-      ctx.notes.push(message);
+      ctx.notes.push(blocker(message));
       ctx.tally.lost.push(`${bind.sourcePath} (${bind.mountPath}): ${message}`);
-      await record(ctx, bind.sourcePath, "manual", message);
+      await record(ctx, bind.sourcePath, "manual", message, true);
       continue;
     }
     try {

@@ -1,5 +1,6 @@
 import "server-only";
 
+import { blocker, type Note } from "../../migration/note";
 import type { SourceApplication, SourceCompose } from "../../migration/model";
 import {
   envEntriesOf,
@@ -13,7 +14,7 @@ import { type SharedIndex, sharedEntry } from "./shared-vars-import";
 export function mapAppEnv(
   detail: SourceApplication & SourceCompose,
   home: { shared: SharedIndex; dbHosts: Map<string, string> },
-  notes: string[],
+  notes: Note[],
 ) {
   const envEntries = envEntriesOf(detail);
   const argEntries = parseEnvBlob(
@@ -74,9 +75,11 @@ export function mapAppEnv(
     );
   if (refResolved.unresolved.length > 0)
     notes.push(
-      `${refResolved.unresolved.join(
-        ", ",
-      )} still read a shared variable {panel} did not answer with the value behind. Put the real values in under Variables.`,
+      blocker(
+        `${refResolved.unresolved.join(
+          ", ",
+        )} still read a shared variable {panel} did not answer with the value behind. Put the real values in under Variables.`,
+      ),
     );
   const renamed = renameDatabaseHosts(env, home.dbHosts);
   if (renamed.length > 0)
@@ -93,7 +96,9 @@ export function mapAppEnv(
   const interpolated = envNeedsInterpolation(env);
   if (interpolated.length > 0)
     notes.push(
-      `Deplo does not resolve {panel}'s \`\${{...}}\` templating - put the real values in: ${interpolated.join(", ")}.`,
+      blocker(
+        `Deplo does not resolve {panel}'s \`\${{...}}\` templating - put the real values in: ${interpolated.join(", ")}.`,
+      ),
     );
 
   return { env, linkable, dropped, secretKeys };
