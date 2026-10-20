@@ -1,4 +1,4 @@
-import { test, afterEach } from "node:test";
+import { test, afterEach, beforeEach } from "node:test";
 import assert from "node:assert/strict";
 
 import { AGENT_VERSION } from "../version";
@@ -19,6 +19,7 @@ function stub(respond: (url: string) => Response) {
   return { seen, restore: () => void (globalThis.fetch = orig) };
 }
 
+beforeEach(() => __resetReleaseCacheForTests());
 afterEach(() => __resetReleaseCacheForTests());
 
 const base = `https://github.com/${AGENT_REPO}/releases/download/v${AGENT_VERSION}`;

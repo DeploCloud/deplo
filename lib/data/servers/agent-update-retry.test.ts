@@ -10,6 +10,7 @@ import { serverAgentUpdates } from "../../db/schema/control-plane/servers";
 import { runWithIdentity } from "../../auth/request-context";
 import { __setAgentConnectorForTest } from "../../infra/agent-client/connect";
 import type { AgentConnection } from "../../infra/agent-client/connection";
+import { __resetReleaseCacheForTests } from "../../agent/release";
 import { AGENT_VERSION } from "../../version";
 import { seedIdentity, TEAM_A, USER_1 } from "../identity-test-helpers";
 import { seedServerRow } from "../infra-test-helpers";
@@ -107,6 +108,7 @@ before(async () => {
 });
 
 after(async () => {
+  __resetReleaseCacheForTests();
   __resetTestDb();
   await pg.close();
 });
