@@ -545,3 +545,21 @@ test("every cron job leaves with all its settings and variables, on apps and dat
   assert.equal(main.crons[0]?.name, "vacuum");
   assert.deepEqual(main.crons[0]?.env, [{ key: "TOKEN", value: "s3cr3t" }]);
 });
+
+test("an app's compose flags, rollback count and deploy hook leave in the export", async () => {
+  await db
+    .update(appsTable)
+    .set({
+      composeUpArgs: "--remove-orphans --wait",
+      rollbackKeep: 7,
+      deployHookEnabled: true,
+      deployHookTokenEnc: encryptSecret("hook-token"),
+    })
+    .where(eq(appsTable.id, "prj_web"));
+  const out = await as(USER_1, TEAM_A, () => exportTeamForMigration());
+  const web = out.apps.find((a) => a.id === "prj_web")!;
+  assert.equal(web.composeUpArgs, "--remove-orphans --wait");
+  assert.equal(web.rollbackKeep, 7);
+  assert.deepEqual(web.deployHook, { enabled: true, used: true });
+  assert.doesNotMatch(JSON.stringify(out), /hook-token/);
+});

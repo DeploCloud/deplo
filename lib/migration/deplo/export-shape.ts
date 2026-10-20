@@ -122,6 +122,10 @@ export interface DeploExportApp {
   // Preview settings as stored (null = the default) and its preview overrides; absent from an older Deplo.
   preview?: DeploExportPreview;
   previewEnv?: Omit<DeploExportVar, "targets">[];
+  // How it deploys and rolls back; absent from an older Deplo. `used`: a hook address was ever handed out.
+  composeUpArgs?: string | null;
+  rollbackKeep?: number;
+  deployHook?: { enabled: boolean; used: boolean };
 }
 
 export interface DeploExportPreview {

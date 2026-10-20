@@ -94,7 +94,15 @@ export interface NativePreview {
   requiredLabels: string | null;
 }
 
+// How a Deplo app deploys and rolls back; only another Deplo sends it.
+export interface NativeOps {
+  composeUpArgs: string | null;
+  rollbackKeep: number;
+  deployHook: { enabled: boolean; used: boolean };
+}
+
 export interface SourceApplication {
+  nativeOps?: NativeOps | null;
   // An uploaded archive the source hands over itself; null when there is none to fetch, absent when it never can.
   upload?: { filename: string; size: number } | null;
   backups?: SourceBackupSchedule[] | null;
@@ -200,6 +208,7 @@ export interface SourceApplication {
 }
 
 export interface SourceCompose {
+  nativeOps?: NativeOps | null;
   backups?: SourceBackupSchedule[] | null;
   backupRuns?: SourceBackupRun[] | null;
   sharedRefs?: SharedRef[] | null;

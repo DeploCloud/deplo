@@ -56,7 +56,9 @@ path cannot simply be pointed at it:
   encrypted to, every schedule paused or not, and each successful run as a copied run
   ([ADR-0035](0035-a-whole-deplo-copies-onto-a-new-machine.md)): a bucket's restore points stay
   restorable here, a server disk's are named in the report, since only the old Deplo reaches it.
-- Not carried, and said so in the report: a compose stack's `up` flags.
+- An app's compose `up` flags, rollback count and deploy hook switch carry as they were. The hook
+  never keeps its token: its address names the app, so it changes anyway, and the report says so
+  when the old one was ever handed out. An older source sends none of them, and the report says so.
 - Preview settings travel whole, as an optional `preview` block plus the preview overrides
   (`previewEnv`), and land even when previews are off; the preview server goes through the
   run's server map. An export without them came from an older Deplo, and only on/off lands.

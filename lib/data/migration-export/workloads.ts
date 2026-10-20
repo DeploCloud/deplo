@@ -195,6 +195,7 @@ export async function exportApps(
           buildDrafts: appsTable.previewBuildDrafts,
           comment: appsTable.previewComment,
           requiredLabels: appsTable.previewRequiredLabels,
+          hookTokenEnc: appsTable.deployHookTokenEnc,
         })
         .from(appsTable)
         .where(inArray(appsTable.id, ids)),
@@ -204,8 +205,14 @@ export async function exportApps(
         .where(inArray(previewVarsTable.appId, ids))
         .orderBy(asc(previewVarsTable.key)),
     ]);
+  const hookUsed = new Set<string>();
   const previewBy = new Map(
-    previews.map(({ appId, ...p }): [string, DeploExportPreview] => [appId, p]),
+    previews.map(
+      ({ appId, hookTokenEnc, ...p }): [string, DeploExportPreview] => {
+        if (hookTokenEnc) hookUsed.add(appId);
+        return [appId, p];
+      },
+    ),
   );
   const previewVarsBy = groupBy(previewVars, (v) => v.appId);
   const varsBy = groupBy(vars, (v) => v.appId);
@@ -304,6 +311,9 @@ export async function exportApps(
           : null,
       preview: previewBy.get(a.id),
       previewEnv,
+      composeUpArgs: a.composeUpArgs,
+      rollbackKeep: a.rollbackKeep,
+      deployHook: { enabled: a.deployHookEnabled, used: hookUsed.has(a.id) },
     });
   }
   return { apps: out, withheld };

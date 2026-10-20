@@ -387,6 +387,10 @@ export function sourceApplication(
         ? "{panel} is too old to hand over its uploaded archive. Upload it again here before deploying."
         : "It had no archive uploaded on {panel}. Upload one here before deploying.",
     );
+  if (a.rollbackKeep === undefined)
+    notes.push(
+      "{panel} is too old to hand over its compose flags, rollback count and deploy hook switch, so they start at Deplo's defaults. Check them under Settings.",
+    );
   if (a.preview === undefined && a.previewEnabled)
     notes.push(
       "{panel} is too old to hand over its preview settings, so only previews being on came across. Check them under Previews.",
@@ -413,6 +417,14 @@ export function sourceApplication(
     nativePreview: a.preview
       ? { enabled: a.previewEnabled, ...a.preview }
       : undefined,
+    nativeOps:
+      a.rollbackKeep === undefined
+        ? undefined
+        : {
+            composeUpArgs: a.composeUpArgs ?? null,
+            rollbackKeep: a.rollbackKeep,
+            deployHook: a.deployHook ?? { enabled: true, used: false },
+          },
   };
   if (compose)
     return {
