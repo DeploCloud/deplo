@@ -68,7 +68,7 @@ interface RunLog {
 
 const LEVELS = {
   blocking: {
-    label: "Blocks the app",
+    label: "Needs you",
     icon: TriangleAlert,
     tone: "text-warning",
   },
@@ -83,7 +83,7 @@ const LEVELS = {
     tone: "text-success",
   },
   skipped: {
-    label: "Skipped",
+    label: "Already here",
     icon: SkipForward,
     tone: "text-muted-foreground",
   },
@@ -93,7 +93,7 @@ const LEVELS = {
     tone: "text-muted-foreground",
   },
   manual: {
-    label: "For your information",
+    label: "Notes",
     icon: Info,
     tone: "text-muted-foreground",
   },

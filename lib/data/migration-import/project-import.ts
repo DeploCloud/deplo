@@ -1,6 +1,7 @@
 import "server-only";
 
-import { isBlocking, noteText, type Note } from "../../migration/note";
+import { blocker, type Note } from "../../migration/note";
+import { errorMessage } from "../../utils";
 import { eq } from "drizzle-orm";
 
 import { getDb } from "../../db/client";
@@ -60,6 +61,7 @@ import { importRegistries } from "./registry-import";
 import { importBackupDestinations } from "./source-backups";
 import { importAppService } from "./app-import";
 import { importDatabaseService } from "./database-import";
+import { isLiveCopy } from "./live-copy-schedules";
 
 export interface ImportProjectResult {
   projectName: string;
@@ -115,6 +117,7 @@ async function runImportMigrationProject(
   );
 
   const mayExposePorts = await canExposePorts();
+  const liveCopy = await isLiveCopy(report.id);
 
   let machineHosts: Map<string, string | null> | null = null;
   const hostOfMachine = async (sourceServerId: string) => {
@@ -261,7 +264,6 @@ async function runImportMigrationProject(
           sourceId: svc.id,
           sourceName: svc.name || svc.id,
           outcome: "failed",
-          blocking: true,
           targetKind:
             svc.kind === "application" || svc.kind === "compose"
               ? "app"
@@ -364,6 +366,7 @@ async function runImportMigrationProject(
               dbHosts,
               shared: envShared,
               destinations,
+              liveCopy,
             },
             svcReport,
           );
@@ -389,6 +392,7 @@ async function runImportMigrationProject(
                 (await hostOfMachine(sourceServerId)) === serverId,
               dbHosts,
               destinations,
+              liveCopy,
             },
             svcReport,
           );
@@ -526,11 +530,11 @@ async function landOutsideProjects(
         sourceId: f.sourceId,
         sourceName: f.name,
         outcome: "failed",
-        blocking: true,
         targetKind: "folder",
-        message: `The ${f.name} folder could not be created (${
-          e instanceof Error ? e.message : "Deplo refused it"
-        }), so nothing in it came across. Create it, then run the migration again.`,
+        message: `The ${f.name} folder could not be created (${errorMessage(
+          e,
+          "Deplo refused it",
+        )}), so nothing in it came across. Create it, then run the migration again.`,
       });
       return null;
     }
@@ -611,11 +615,11 @@ async function landEnvironment(
       sourceId: env.environmentId,
       sourceName: env.name,
       outcome: "failed",
-      blocking: true,
       targetKind: "environment",
-      message: `${env.name} could not be created: ${
-        e instanceof Error ? e.message : "Deplo refused it."
-      }`,
+      message: `${env.name} could not be created: ${errorMessage(
+        e,
+        "Deplo refused it.",
+      )}`,
     });
     return null;
   }
@@ -644,15 +648,9 @@ async function noteLevel(
   report: Report,
   notes: Note[] | null | undefined,
 ): Promise<void> {
-  for (const note of notes ?? [])
-    await report.add({
-      sourceKind: "shared-var",
-      sourceName: "Shared variables",
-      outcome: "manual",
-      targetKind: "shared-var",
-      message: noteText(note),
-      blocking: isBlocking(note),
-    });
+  await report.notes("shared-var", "Shared variables", notes ?? [], {
+    kind: "shared-var",
+  });
 }
 
 async function levelRefused(
@@ -661,13 +659,15 @@ async function levelRefused(
   name: string,
   e: unknown,
 ): Promise<void> {
-  const why = e instanceof Error ? e.message : "it refused the request";
-  await report.add({
-    sourceKind: "shared-var",
-    sourceName: level === "team" ? "Team" : name || "Server",
-    outcome: "manual",
-    targetKind: "shared-var",
-    message: `{panel} would not answer for the ${level} shared variables (${why}). None of them came across - copy them in under Variables.`,
-    blocking: true,
-  });
+  const why = errorMessage(e, "it refused the request");
+  await report.notes(
+    "shared-var",
+    level === "team" ? "Team" : name || "Server",
+    [
+      blocker(
+        `{panel} would not answer for the ${level} shared variables (${why}). None of them came across - copy them in under Variables.`,
+      ),
+    ],
+    { kind: "shared-var" },
+  );
 }

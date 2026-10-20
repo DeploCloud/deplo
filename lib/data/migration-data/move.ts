@@ -1,6 +1,7 @@
 import "server-only";
 
-import { blocker, isBlocking, noteText, type Note } from "../../migration/note";
+import { errorMessage } from "../../utils";
+import { blocker, noteText, type Note } from "../../migration/note";
 import { and, eq } from "drizzle-orm";
 
 import { getDb } from "../../db/client";
@@ -39,6 +40,7 @@ import {
   type ConnectInput,
 } from "../migration-import/gates";
 import {
+  Report,
   appendRunItem,
   ownRun,
   refreshCounts,
@@ -385,7 +387,7 @@ async function runMoveMigrationServiceData(
   }
   // Past this point the source is down: every way out has to start it again.
   const giveUp = async (what: string, e: unknown): Promise<DataMoveResult> => {
-    const why = e instanceof Error ? e.message : "it failed";
+    const why = errorMessage(e, "it failed");
     const undone =
       stoppedThere && state.running ? ` ${await startAgainThere()}` : "";
     return refuse({
@@ -442,7 +444,7 @@ async function runMoveMigrationServiceData(
   } catch (e) {
     if (isCopyAborted(e)) throw e;
     // Counted as a failure, so the restart below still runs.
-    const message = e instanceof Error ? e.message : "the copy failed";
+    const message = errorMessage(e, "the copy failed");
     tally.failed++;
     tally.lost.push(message);
     notes.push(blocker(`The copy stopped part way: ${message}`));
@@ -538,17 +540,12 @@ async function settle(o: {
           : `Nothing was copied for ${landed.targetName}: every volume it has on {panel} is empty.`,
     );
 
-  for (const note of notes)
-    await appendRunItem(input.runId, panel, {
-      path,
-      sourceKind: input.sourceKind,
-      sourceName: svc.name,
-      outcome: "manual",
-      targetKind: landed.targetKind,
-      targetId: landed.targetId,
-      message: noteText(note),
-      blocking: isBlocking(note),
-    });
+  await new Report(input.runId, panel, [path]).notes(
+    input.sourceKind,
+    svc.name,
+    notes,
+    { kind: landed.targetKind, id: landed.targetId },
+  );
 
   await refreshCounts(input.runId, teamId);
   await recordActivity(

@@ -755,7 +755,17 @@ MCP tools; it turned out no MCP tool names a field here, and `scanDokploy` point
 panel was a lie, which is worse than an old name.
 _Avoid_: transfer (that is **app transfer**, moving an App between teams), move (that is a
 **server move**, relocating one workload between hosts), sync (nothing here is continuous - a
-migration happens once and stops the source), import (the old wire word, now retired).
+migration happens once, and stops the source unless it is a **live copy**), import (the old wire
+word, now retired).
+
+**Live copy** (keep it running):
+A migration from another Deplo that leaves the source running: `migration_runs.live_copy`, the
+wizard's advanced "Keep everything running on {panel}", Deplo sources only. Nothing is stopped
+there; databases arrive as a snapshot their engine takes while running, app files are copied while
+the apps keep writing, and crons, backup schedules and deploy on push land switched off so the two
+copies never both run them. The switch-over is the user's
+([ADR-0034](docs/adr/0034-another-deplo-hands-its-team-over-itself.md)).
+_Avoid_: sync, mirror (nothing is kept in step after the run), a **Deplo move** (a whole Deplo).
 
 **Blocker** (a report line):
 A line of a migration **report** saying the app will not run until somebody does what it says

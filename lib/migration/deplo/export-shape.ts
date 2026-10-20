@@ -190,8 +190,9 @@ export interface DeploExportDestination {
   endpoint: string;
   bucket: string;
   region: string;
-  accessKeyId: string;
-  secretAccessKey: string;
+  // null: the reader may not manage backup destinations there.
+  accessKeyId: string | null;
+  secretAccessKey: string | null;
   provider?: string;
   // null: that destination never encrypted. Old artifacts open only with this key.
   ageIdentity?: string | null;

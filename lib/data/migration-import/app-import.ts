@@ -1,6 +1,6 @@
 import "server-only";
 
-import { type Note } from "../../migration/note";
+import { blocker, isBlocking, noteText, type Note } from "../../migration/note";
 import { and, eq, isNotNull, isNull, ne, or, sql } from "drizzle-orm";
 
 import { getDb } from "../../db/client";
@@ -41,6 +41,7 @@ import { landAppStorage } from "./app-storage";
 import { landAppExtras } from "./app-extras";
 import { landAppUpload } from "./app-upload";
 import { landSourceImage } from "./app-image";
+import { pausedNote } from "./live-copy-schedules";
 
 export async function importAppService(
   c: SourceCredential,
@@ -58,9 +59,11 @@ export async function importAppService(
     dbHosts: Map<string, string>;
     shared: SharedIndex;
     destinations?: LandedDestinations;
+    liveCopy?: boolean;
   },
   report: Report,
 ): Promise<string | null> {
+  const paused = { paused: home.liveCopy };
   let isCompose = svc.kind === "compose";
 
   const teamId = await requireActiveTeamId();
@@ -94,14 +97,17 @@ export async function importAppService(
     (a) => a.name.trim().toLowerCase() === name.trim().toLowerCase(),
   );
   if (match) {
-    const extra: string[] = [];
-    await landSourceBackups(
+    const extra: Note[] = [];
+    const schedules = await landSourceBackups(
       detail.backups,
       home.destinations,
       { kind: "app", id: match.id, name },
       extra,
       detail.backupRuns,
+      paused,
     );
+    const pausedLine = home.liveCopy ? pausedNote(name, { schedules }) : null;
+    if (pausedLine) extra.push(pausedLine);
     await report.add({
       sourceKind: svc.kind,
       sourceId: svc.id,
@@ -113,9 +119,16 @@ export async function importAppService(
         home.environmentId
           ? "An app with this name is already in this environment."
           : "An app with this name is already here.",
-        ...extra,
+        ...extra.filter((n) => !isBlocking(n)).map(noteText),
       ].join(" "),
     });
+    await report.notes(
+      svc.kind,
+      name,
+      extra.filter(isBlocking),
+      { kind: "app", id: match.id },
+      svc.id,
+    );
     return match.id;
   }
 
@@ -201,15 +214,13 @@ export async function importAppService(
     ? await composeGrantRefusal(compose, name)
     : null;
   if (grantRefusal) {
-    await report.add({
-      sourceKind: svc.kind,
-      sourceId: svc.id,
-      sourceName: name,
-      outcome: "manual",
-      targetKind: "app",
-      message: grantRefusal,
-      blocking: true,
-    });
+    await report.notes(
+      svc.kind,
+      name,
+      [blocker(grantRefusal)],
+      { kind: "app" },
+      svc.id,
+    );
     return null;
   }
 
@@ -226,7 +237,8 @@ export async function importAppService(
     environmentId: home.environmentId,
     folderId: home.folderId ?? null,
     build,
-    autoDeploy: detail.autoDeploy ?? true,
+    autoDeploy: home.liveCopy ? false : (detail.autoDeploy ?? true),
+    noWebhook: home.liveCopy,
     autoDomain:
       mayClaimHosts && primary && !primary.generated ? primary.host : null,
     autoDomainPath: primary?.pathPrefix || null,
@@ -260,12 +272,13 @@ export async function importAppService(
       }
   }
 
-  await landSourceBackups(
+  const schedules = await landSourceBackups(
     detail.backups,
     home.destinations,
     { kind: "app", id: created.id, name },
     notes,
     detail.backupRuns,
+    paused,
   );
 
   if (namesake)
@@ -344,14 +357,28 @@ export async function importAppService(
     notes,
   );
 
-  await landAppExtras(
+  const crons = await landAppExtras(
     c,
     svc,
     detail,
     created,
-    { isCompose, secretKeys, serviceRenames, servers: home.servers },
+    {
+      isCompose,
+      secretKeys,
+      serviceRenames,
+      servers: home.servers,
+      liveCopy: home.liveCopy,
+    },
     notes,
   );
+  if (home.liveCopy) {
+    const pausedLine = pausedNote(name, { crons, schedules });
+    if (pausedLine) notes.push(pausedLine);
+    if (repo && (detail.autoDeploy ?? true))
+      notes.push(
+        `Deploy on push is off for this copy, so a push to ${repo.repo} still deploys only on {panel}. Turn it on under the app's Deployments settings when you switch over.`,
+      );
+  }
 
   await report.notes(svc.kind, name, notes, target, svc.id);
   return created.id;

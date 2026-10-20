@@ -403,6 +403,27 @@ test("an image the old server will not hand over blocks the app", async () => {
   }
 });
 
+test("a Deplo too old to hand over an image says so, not what it refused", async () => {
+  const restore = registryAnswering();
+  try {
+    targetAgent();
+    fakeDeplo(
+      deploExport({ apps: [fromImage("acme-api:local")], databases: [] }),
+      () =>
+        Response.json(
+          { error: "Name a volume or a host path." },
+          { status: 400 },
+        ),
+    );
+    const runId = await importDeploProject("prc_shop");
+    const blocking = (await blockingLines(runId)).join(" | ");
+    assert.match(blocking, /acme-api:local .*too old to hand over the image/);
+    assert.doesNotMatch(blocking, /Name a volume/);
+  } finally {
+    restore();
+  }
+});
+
 test("an image a registry still has is pulled there, not copied", async () => {
   const restore = registryAnswering(200);
   try {

@@ -477,7 +477,7 @@ test("a Deplo too old to send a domain's rules says they arrive with the default
       sourceApplication(x, x.apps[0]) as SourceApplication
     ).platformNotes!.join(" ");
   };
-  assert.match(notesFor({}), /too old to hand over its domains' middlewares/);
+  assert.match(notesFor({}), /too old to hand over its domains' Middlewares/);
   assert.doesNotMatch(
     notesFor({ securityHeaders: true, middlewares: [], corsOrigins: [] }),
     /too old to hand over its domains'/,

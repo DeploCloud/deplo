@@ -158,7 +158,7 @@ export class Report {
     kind: string,
     name: string,
     notes: Note[],
-    target?: { kind: string; id: string },
+    target?: { kind: string; id?: string | null },
     sourceId?: string | null,
   ): Promise<void> {
     for (const note of notes)

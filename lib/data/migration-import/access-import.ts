@@ -1,5 +1,6 @@
 import "server-only";
 
+import { errorMessage, plural } from "../../utils";
 import { eq, inArray } from "drizzle-orm";
 
 import { getDb } from "../../db/client";
@@ -159,7 +160,7 @@ export async function planAccess(
           r.scope.folderIds.length +
           r.scope.appIds.length;
     const name = taken.has(r.name.toLowerCase())
-      ? `${r.name} (imported)`
+      ? `${r.name} (migrated)`
       : r.name;
     try {
       // The same guards as Settings: nobody authors a role beyond what they hold, or scoped wider than they reach.
@@ -188,7 +189,7 @@ export async function planAccess(
               ? "Some of what it reached on {panel} did not come across, so here it reaches only what did."
               : null,
             dropped
-              ? "Some of its permissions do not exist in this Deplo and were left out."
+              ? "Some of its Capabilities do not exist in this Deplo and were left out."
               : null,
           ]
             .filter(Boolean)
@@ -202,9 +203,10 @@ export async function planAccess(
         sourceName: r.name,
         outcome: "failed",
         targetKind: "role",
-        message: `The ${r.name} role could not be created here: ${
-          e instanceof Error ? e.message : "Deplo refused it."
-        }`,
+        message: `The ${r.name} role could not be created here: ${errorMessage(
+          e,
+          "Deplo refused it.",
+        )}`,
       });
     }
   }
@@ -228,9 +230,9 @@ function described(m: SourceMemberAccess, plan: AccessPlan): string {
   const role = plan.access.roles.find((r) => r.id === m.roleId);
   const nodes = m.grants.length;
   return [
-    role ? `the ${role.name} role` : "their own set of permissions",
+    role ? `the ${role.name} role` : "their own set of Capabilities",
     nodes > 0
-      ? `their own access to ${nodes} folder${nodes === 1 ? "" : "s"}, project${nodes === 1 ? "" : "s"} or app${nodes === 1 ? "" : "s"}`
+      ? `their own access to ${plural(nodes, "folder, project or app", "folders, projects or apps")}`
       : null,
   ]
     .filter(Boolean)

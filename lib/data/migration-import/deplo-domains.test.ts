@@ -16,6 +16,9 @@ import {
 import { __setAgentConnectorForTest } from "../../infra/agent-client/connect";
 import type { AgentConnection } from "../../infra/agent-client/connection";
 import { loadDomainsForApp } from "../app-graph-load";
+import { seedApp } from "../app-graph-test-helpers";
+import { TEAM_B } from "../identity-test-helpers";
+import { domains as domainsTable } from "../../db/schema/control-plane/domains";
 import {
   ACME_CERT,
   ACME_KEY,
@@ -108,6 +111,52 @@ test("a domain's CORS origins, headers and proxy setting land on the same domain
     [["https://b.example.com", "https://c.example.com"], false, true],
   );
   assert.deepEqual(await blockingLines(runId), []);
+});
+
+test("a domain that moves to a temporary address names the settings it left behind", async () => {
+  await seedApp(db, { id: "prj_theirs", teamId: TEAM_B, slug: "theirs" });
+  await db.insert(domainsTable).values({
+    id: "dom_theirs",
+    appId: "prj_theirs",
+    name: "shop.example.com",
+    status: "valid",
+    isPrimary: true,
+    ssl: true,
+    source: "custom",
+    entrypoint: "websecure",
+    certProvider: "letsencrypt",
+    stripPrefix: false,
+    createdAt: "2026-01-01T00:00:00.000Z",
+  });
+  const runId = await importFromDeplo(
+    deploExport({
+      apps: [
+        exportApp({
+          domains: [
+            domain("shop.example.com", {
+              primary: true,
+              ...rules,
+              middlewares: ["auth"],
+            }),
+          ],
+        }),
+      ],
+    }),
+    ["prc_shop"],
+  );
+  const [moved] = await landedDomains();
+  assert.notEqual(moved?.name, "shop.example.com");
+  const lines = (await reportLines(runId)).join("\n");
+  assert.match(
+    lines,
+    new RegExp(
+      `shop\\.example\\.com's settings did not move to ${moved!.name.replace(/\./g, "\\.")}: Allowed origins \\(https://a\\.example\\.com\\), Security headers off, Behind a proxy, Middlewares \\(auth\\)`,
+    ),
+  );
+  assert.doesNotMatch(
+    (await blockingLines(runId)).join("\n"),
+    /settings did not move/,
+  );
 });
 
 test("a domain keeps its middlewares, and the report names them as something to set up here", async () => {

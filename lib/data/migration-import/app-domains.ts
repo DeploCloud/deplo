@@ -1,5 +1,6 @@
 import "server-only";
 
+import { noteLeftRules } from "./domain-rules";
 import { type Note } from "../../migration/note";
 import { and, eq } from "drizzle-orm";
 
@@ -110,6 +111,7 @@ export async function rehostAppDomains(
         notes,
       );
       rehosted.set(primary.host, row.name);
+      noteLeftRules(primary, row.name, notes);
       rehostNotes.push(
         primary.generated
           ? `${primary.host} was {panel}'s own temporary address, so this app answers on ${row.name} here - same port, same route.`
@@ -158,6 +160,8 @@ export async function rehostAppDomains(
       for (const [source, host] of landed)
         if (!rehosted.has(source)) {
           rehosted.set(source, host);
+          const from = toRehost.find((d) => d.host === source);
+          if (from) noteLeftRules(from, host, notes);
           rehostNotes.push(
             wasThrowaway.has(source)
               ? `${source} was {panel}'s own temporary address, so it comes across as ${host} here - same port, same route.`

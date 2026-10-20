@@ -1,12 +1,11 @@
 import "server-only";
 
+import { errorMessage } from "../../utils";
 import { blocker, type Note } from "../../migration/note";
 import type { NativeOps } from "../../migration/model";
 import { DEFAULT_ROLLBACK_KEEP } from "../../types/app";
 import { setAppComposeUpArgs, setAppRollbackKeep } from "../apps/settings";
 import { setDeployHookEnabled } from "../deploy-hook";
-
-const why = (e: unknown) => (e instanceof Error ? e.message : "refused");
 
 // A new app starts with Deplo's defaults, so only what differs is written.
 export async function landNativeOps(
@@ -21,7 +20,7 @@ export async function landNativeOps(
     } catch (e) {
       notes.push(
         blocker(
-          `Its extra compose flags (${ops.composeUpArgs}) did not come across: ${why(e)}. Set them under Settings -> Extra compose flags before deploying.`,
+          `Its extra compose flags (${ops.composeUpArgs}) did not come across: ${errorMessage(e, "refused")}. Set them under Settings → Extra compose flags before deploying.`,
         ),
       );
     }
@@ -30,7 +29,7 @@ export async function landNativeOps(
       await setAppRollbackKeep(appId, ops.rollbackKeep);
     } catch (e) {
       notes.push(
-        `It kept ${ops.rollbackKeep} deploys to roll back to, which did not come across (${why(e)}). Set it under Settings -> Rollbacks.`,
+        `It kept ${ops.rollbackKeep} deploys to roll back to, which did not come across (${errorMessage(e, "refused")}). Set it under Settings → Rollbacks.`,
       );
     }
   if (!ops.deployHook.enabled)
@@ -38,11 +37,11 @@ export async function landNativeOps(
       await setDeployHookEnabled(appId, false);
     } catch (e) {
       notes.push(
-        `Its deploy hook was off on {panel} but is on here (${why(e)}). Turn it off under Settings -> Deploy hook.`,
+        `Its deploy hook was off on {panel} but is on here (${errorMessage(e, "refused")}). Turn it off under Settings → Deploy hook.`,
       );
     }
   else if (ops.deployHook.used)
     notes.push(
-      "Its deploy hook has a new address here. Copy it from Settings -> Deploy hook and give it to whatever called the old one, which still deploys on {panel}.",
+      "Its deploy hook has a new address here. Copy it from Settings → Deploy hook and give it to whatever called the old one, which still deploys on {panel}.",
     );
 }

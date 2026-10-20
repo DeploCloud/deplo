@@ -1,6 +1,6 @@
 import "server-only";
 
-import { blocker, noteText, type Note } from "../../migration/note";
+import { blocker, isBlocking, noteText, type Note } from "../../migration/note";
 import { and, eq, sql } from "drizzle-orm";
 
 import { getDb } from "../../db/client";
@@ -23,6 +23,7 @@ import { importCrons } from "./cron-import";
 import type { Report } from "./run-report";
 import type { SourceService } from "./source-tree";
 import { landSourceBackups, type LandedDestinations } from "./source-backups";
+import { pausedNote } from "./live-copy-schedules";
 
 export async function importDatabaseService(
   c: SourceCredential,
@@ -38,9 +39,11 @@ export async function importDatabaseService(
     projectName?: string;
     dbHosts: Map<string, string>;
     destinations?: LandedDestinations;
+    liveCopy?: boolean;
   },
   report: Report,
 ): Promise<void> {
+  const paused = { paused: opts.liveCopy };
   const { serverId } = opts;
   const mapped = mapDatabase(svc.kind as SourceDbKind, { ...row, name });
   const notes: Note[] = [...(row.platformNotes ?? []), ...mapped.notes];
@@ -75,14 +78,17 @@ export async function importDatabaseService(
     )[0];
   const clash = await taken(spec.name);
   if (clash && clash.environmentId === opts.environmentId) {
-    const extra: string[] = [];
-    await landSourceBackups(
+    const extra: Note[] = [];
+    const schedules = await landSourceBackups(
       row.backups,
       opts.destinations,
       { kind: "database", id: clash.id, name: spec.name },
       extra,
       row.backupRuns,
+      paused,
     );
+    const pausedLine = opts.liveCopy ? pausedNote(name, { schedules }) : null;
+    if (pausedLine) extra.push(pausedLine);
     await report.add({
       sourceKind: svc.kind,
       sourceId: svc.id,
@@ -92,9 +98,16 @@ export async function importDatabaseService(
       targetId: clash.id,
       message: [
         "A database with this name is already in this environment, so it is the one that is kept - its data is copied again in this same import.",
-        ...extra,
+        ...extra.filter((n) => !isBlocking(n)).map(noteText),
       ].join(" "),
     });
+    await report.notes(
+      svc.kind,
+      name,
+      extra.filter(isBlocking),
+      { kind: "database", id: clash.id },
+      svc.id,
+    );
     return;
   }
   if (clash) {
@@ -242,22 +255,27 @@ export async function importDatabaseService(
     }
   }
 
-  await landSourceBackups(
+  const schedules = await landSourceBackups(
     row.backups,
     opts.destinations,
     { kind: "database", id: created.id, name: spec.name },
     notes,
     row.backupRuns,
+    paused,
   );
 
-  await importCrons(
+  const crons = await importCrons(
     c,
     svc.kind,
     svc.id,
     { kind: "database", id: created.id },
     notes,
-    { cronEnabled: row.cronEnabled },
+    { cronEnabled: row.cronEnabled, ...paused },
   );
+  const pausedLine = opts.liveCopy
+    ? pausedNote(name, { crons, schedules })
+    : null;
+  if (pausedLine) notes.push(pausedLine);
 
   if (publishPort != null && sourcePort != null && publishPort !== sourcePort)
     notes.push(

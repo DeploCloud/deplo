@@ -76,7 +76,11 @@ export async function resolveAppSource(
   svc: SourceService,
   detail: SourceApplication & SourceCompose,
   name: string,
-  home: { environmentId: string | null; serverId: string | undefined },
+  home: {
+    environmentId: string | null;
+    serverId: string | undefined;
+    liveCopy?: boolean;
+  },
   shape: {
     isCompose: boolean;
     yamlText: string;
@@ -184,7 +188,7 @@ export async function resolveAppSource(
       if (!(await serverSupports(home.serverId, COMPOSE_PROJECTDIR_CAPABILITY)))
         notes.push(
           blocker(
-            "Its compose file names an `env_file`, which needs a newer agent on this server than the one running there. Update the server's agent under Servers before deploying.",
+            "Its compose file names an `env_file`, which needs a newer server agent on this server than the one running there. Update the server agent under Servers before deploying.",
           ),
         );
     }
@@ -219,6 +223,7 @@ export async function resolveAppSource(
             app.gitConnection,
             repo.repo,
             notes,
+            { liveCopy: home.liveCopy },
           ),
         };
     } else if (mapped.value.kind === "docker-image") {

@@ -201,6 +201,19 @@ test("every destination kind, every schedule and the restore points come across"
   assert.equal(count.rows[0]!.n, 1, (await notesOf(again, "postgres")).join());
 });
 
+test("a second run onto the database already here keeps its blockers as their own lines", async () => {
+  fakeDeplo(withBackups());
+  await importDeploProject("prc_shop");
+  const again = await importDeploProject("prc_shop");
+  const log = (await notesOf(again, "postgres")).join("\n");
+  assert.doesNotMatch(log, /\[object Object\]/);
+  assert.match(log, /skipped: A database with this name is already/);
+  assert.match(
+    (await blockingLines(again)).join("\n"),
+    /restore point on disk did not come across/,
+  );
+});
+
 test("restore points stay off a bucket already here that encrypts with another key", async () => {
   await seedDestination(db, { id: "dst_here", name: "mine" });
   await db
@@ -220,5 +233,22 @@ test("restore points stay off a bucket already here that encrypts with another k
   assert.match(
     (await blockingLines(runId)).join("\n"),
     /restore point on bucket did not come across/,
+  );
+});
+
+test("a bucket that arrives without its keys is not created, and says why", async () => {
+  const x = withBackups();
+  x.destinations = x.destinations.map((d) => ({
+    ...d,
+    accessKeyId: null,
+    secretAccessKey: null,
+  }));
+  fakeDeplo(x);
+  const runId = await importDeploProject("prc_shop");
+  const dests = await db.select().from(destTable);
+  assert.ok(!dests.some((d) => d.name === "bucket"));
+  assert.match(
+    (await blockingLines(runId)).join("\n"),
+    /bucket came across without its access keys/,
   );
 });

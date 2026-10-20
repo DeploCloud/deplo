@@ -1,10 +1,12 @@
 import "server-only";
 
+import { errorMessage } from "../../utils";
 import { eq } from "drizzle-orm";
 
 import { getDb } from "../../db/client";
 import { registries as registriesTable } from "../../db/schema/control-plane/integrations";
 import { requireActiveTeamId } from "../../membership";
+import { blocker } from "../../migration/note";
 import { sourceClient, type SourceCredential } from "../../migration/source";
 import type { RegistryType } from "../../types/integration";
 import { addRegistry, dockerConfigKey } from "../registries";
@@ -46,12 +48,16 @@ export async function importRegistries(
       continue;
     }
     const failed = async (why: string) =>
-      report.add({
-        ...entry,
-        outcome: "manual",
-        blocking: true,
-        message: `${r.name} (${r.registryUrl}) did not come across: ${why}. Add it under Registries before deploying an app that pulls a private image from it.`,
-      });
+      report.notes(
+        entry.sourceKind,
+        entry.sourceName,
+        [
+          blocker(
+            `${r.name} (${r.registryUrl}) did not come across: ${why}. Add it under Registries before deploying an app that pulls a private image from it.`,
+          ),
+        ],
+        { kind: entry.targetKind },
+      );
     if (!r.password) {
       await failed("this token's owner may not see its password on {panel}");
       continue;
@@ -69,7 +75,7 @@ export async function importRegistries(
       known.add(keyOf(r));
       await report.add({ ...entry, outcome: "created" });
     } catch (e) {
-      await failed(e instanceof Error ? e.message : "refused");
+      await failed(errorMessage(e, "refused"));
     }
   }
 }

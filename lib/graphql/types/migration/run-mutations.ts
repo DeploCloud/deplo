@@ -36,7 +36,7 @@ builder.mutationFields((t) => ({
       liveCopy: t.arg.boolean({
         required: false,
         description:
-          "Copy without stopping anything on the source (another Deplo only). Databases arrive as a consistent dump, app volumes are read while the app keeps writing, and crons and backup schedules land paused so the two copies do not both run them. The switch-over is left to the user.",
+          "Copy without stopping anything on the source (another Deplo only). Databases arrive as a snapshot their engine takes while they keep running, app files are copied while the app keeps writing, and crons, backup schedules and deploy on push land switched off so the two copies do not both run them. The switch-over is left to the user.",
       }),
       queued: t.arg({
         type: [QueuedTeamInputRef],

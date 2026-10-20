@@ -60,9 +60,12 @@ export async function importFromDeplo(
   x: DeploExport,
   projectIds: string[],
   extra: Partial<ImportProjectInput> = {},
+  run: { liveCopy?: boolean } = {},
 ): Promise<string> {
   fakeDeplo(x);
-  const runId = await asOwner(() => beginMigration(DEPLO_SOURCE));
+  const runId = await asOwner(() =>
+    beginMigration({ ...run, url: DEPLO_SOURCE.url, kind: "deplo" }),
+  );
   for (const projectId of projectIds)
     await asOwner(() =>
       importMigrationProject({ ...DEPLO_SOURCE, ...extra, runId, projectId }),

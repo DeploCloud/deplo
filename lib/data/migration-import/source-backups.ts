@@ -1,5 +1,6 @@
 import "server-only";
 
+import { errorMessage, plural } from "../../utils";
 import { and, eq } from "drizzle-orm";
 import { blocker, type Note } from "../../migration/note";
 
@@ -40,11 +41,15 @@ export async function landSourceBackups(
   target: BackupTarget,
   notes: Note[],
   runs?: SourceBackupRun[] | null,
-): Promise<void> {
+  opts: { paused?: boolean } = {},
+): Promise<number> {
   const schedules = (backups ?? []).filter((b) => b?.schedule?.trim());
-  if (schedules.length > 0)
-    await landSchedules(schedules, destinations, target, notes);
+  const landed =
+    schedules.length > 0
+      ? await landSchedules(schedules, destinations, target, notes, opts)
+      : 0;
   if (runs?.length) await landRestorePoints(runs, destinations, target, notes);
+  return landed;
 }
 
 async function landSchedules(
@@ -52,8 +57,10 @@ async function landSchedules(
   destinations: LandedDestinations | undefined,
   target: BackupTarget,
   notes: Note[],
-): Promise<void> {
-  const { createBackup, toggleBackup } = await import("../backups/schedules");
+  opts: { paused?: boolean },
+): Promise<number> {
+  const { createBackup } = await import("../backups/schedules");
+  let landed = 0;
   const held = new Set(
     (
       await getDb()
@@ -104,7 +111,7 @@ async function landSchedules(
     if (held.has(`${schedule}|${destinationId}`)) continue;
     const paused = b.enabled === false;
     try {
-      const created = await createBackup({
+      await createBackup({
         name: `${target.name} to ${destName}`,
         targetKind: target.kind,
         appId: target.kind === "app" ? target.id : null,
@@ -116,11 +123,14 @@ async function landSchedules(
           typeof b.keepLatestCount === "number" && b.keepLatestCount > 0
             ? b.keepLatestCount
             : 7,
+        enabled: !paused && !opts.paused,
       });
-      if (paused) await toggleBackup(created.id, false);
+      landed++;
       const came = paused
         ? "Its backup schedule came across paused, as it was"
-        : "Its backup schedule came across";
+        : opts.paused
+          ? "Its backup schedule came across paused"
+          : "Its backup schedule came across";
       notes.push(
         what
           ? `${came}: ${where}. Here it backs up every volume of the app, not only ${what}.`
@@ -129,9 +139,10 @@ async function landSchedules(
     } catch (e) {
       notes.push(
         blocker(
-          `${subject} on {panel} (${where}); the schedule was not set here: ${
-            e instanceof Error ? e.message : "refused"
-          }. Set one under Backups.`,
+          `${subject} on {panel} (${where}); the schedule was not set here: ${errorMessage(
+            e,
+            "refused",
+          )}. Set one under Backups.`,
         ),
       );
     }
@@ -142,6 +153,7 @@ async function landSchedules(
         notes.push(
           `${whats.join(", ")} shared the schedule ${key.split("|")[0]} on {panel}; one app backup here covers them all.`,
         );
+  return landed;
 }
 
 async function landRestorePoints(
@@ -159,7 +171,7 @@ async function landRestorePoints(
   }
   for (const [name, points] of byDest) {
     const dest = destinations?.get(name.toLowerCase());
-    const count = `${points.length} restore point${points.length === 1 ? "" : "s"} on ${name}`;
+    const count = `${plural(points.length, "restore point", "restore points")} on ${name}`;
     if (!dest?.copiedFrom) {
       notes.push(
         blocker(
@@ -266,14 +278,18 @@ export async function importBackupDestinations(
   try {
     stores = await sourceClient(c).listBackupDestinations();
   } catch (e) {
-    await report.add({
-      sourceKind: "destination",
-      sourceName: "backup destinations",
-      outcome: "manual",
-      blocking: true,
-      targetKind: "destination",
-      message: `{panel} would not answer for its backup stores (${e instanceof Error ? e.message : "refused"}), so no backup destination came across. Add it under Backups, then the schedules.`,
-    });
+    await report.notes(
+      "destination",
+      "backup destinations",
+      [
+        blocker(
+          `{panel} would not answer for its backup stores (${errorMessage(e, "refused")}), so no backup destination came across. Add it under Backups, then the schedules.`,
+        ),
+      ],
+      {
+        kind: "destination",
+      },
+    );
     return byName;
   }
   if (stores.length === 0) return byName;
@@ -328,6 +344,22 @@ async function landBucket(
     });
     return;
   }
+  const { accessKeyId, secretAccessKey } = store;
+  if (!accessKeyId || !secretAccessKey) {
+    await ctx.report.notes(
+      "destination",
+      store.name,
+      [
+        blocker(
+          `${store.name} came across without its access keys: the token's owner may not manage backup destinations on {panel}. Add it under Backups, then the schedules.`,
+        ),
+      ],
+      {
+        kind: "destination",
+      },
+    );
+    return;
+  }
   const provider = S3_PROVIDERS.find((p) => p === store.provider) ?? null;
   await createAndProbe(store, ctx, async (createDestination) => {
     const created = await createDestination({
@@ -337,8 +369,8 @@ async function landBucket(
       endpoint: store.endpoint,
       region: store.region,
       bucket: store.bucket,
-      accessKey: store.accessKeyId,
-      secretKey: store.secretAccessKey,
+      accessKey: accessKeyId,
+      secretKey: secretAccessKey,
     });
     let copiedFrom: string | null = null;
     let why =
@@ -363,14 +395,18 @@ async function landServerStore(
   const why = `they sit on ${host}'s disk, which only {panel} can reach. Restore from {panel}, and keep that server until you no longer need them.`;
   const serverId = await ctx.serverFor(store.serverId);
   if (!serverId) {
-    await ctx.report.add({
-      sourceKind: "destination",
-      sourceName: store.name,
-      outcome: "manual",
-      blocking: true,
-      targetKind: "destination",
-      message: `It kept backups on ${host}'s disk on {panel}, and no server here was picked for it. Add a destination on one under Backups, then the schedules.`,
-    });
+    await ctx.report.notes(
+      "destination",
+      store.name,
+      [
+        blocker(
+          `It kept backups on ${host}'s disk on {panel}, and no server here was picked for it. Add a destination on one under Backups, then the schedules.`,
+        ),
+      ],
+      {
+        kind: "destination",
+      },
+    );
     return;
   }
   const already = ctx.here.find(
@@ -436,7 +472,7 @@ async function createAndProbe(
       const { report: probe } = await testDestination(landed.id);
       failure = probe.ok ? null : probe.error || "it did not answer";
     } catch (e) {
-      failure = e instanceof Error ? e.message : "the test did not run";
+      failure = errorMessage(e, "the test did not run");
     }
     await ctx.report.add({
       sourceKind: "destination",
@@ -458,7 +494,7 @@ async function createAndProbe(
       sourceName: store.name,
       outcome: "failed",
       targetKind: "destination",
-      message: e instanceof Error ? e.message : "Could not be created.",
+      message: errorMessage(e, "Could not be created."),
     });
   }
 }

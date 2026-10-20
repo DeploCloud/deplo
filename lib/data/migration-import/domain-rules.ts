@@ -1,5 +1,6 @@
 import "server-only";
 
+import { errorMessage } from "../../utils";
 import { isInstanceAdmin } from "../../membership";
 import type { MappedDomain } from "../../migration/map/domains";
 import type { SourceDomain } from "../../migration/model";
@@ -24,16 +25,38 @@ export async function noteDomainMiddlewares(
     if (d.middlewares?.length)
       notes.push(
         blocker(
-          `${d.name} uses the middlewares ${d.middlewares.join(", ")} from {panel}'s proxy. Unless they are set up on this server too, ${d.name} does not answer - set them up, or remove them under Domains.`,
+          `${d.name} uses the Middlewares ${d.middlewares.join(", ")}, which were set up on {panel}'s server. Unless they are set up on this server too, ${d.name} does not answer - set them up, or remove them under Domains.`,
         ),
       );
+}
+
+// A domain moved onto a temporary address keeps its route only; what it set beyond that is named.
+export function noteLeftRules(
+  from: MappedDomain,
+  to: string,
+  notes: Note[],
+): void {
+  const r = from.rules;
+  if (!r) return;
+  const left = [
+    r.corsOrigins?.length
+      ? `Allowed origins (${r.corsOrigins.join(", ")})`
+      : "",
+    r.securityHeaders === false ? "Security headers off" : "",
+    r.proxied ? "Behind a proxy" : "",
+    r.middlewares?.length ? `Middlewares (${r.middlewares.join(", ")})` : "",
+  ].filter(Boolean);
+  if (left.length > 0)
+    notes.push(
+      `${from.host}'s settings did not move to ${to}: ${left.join(", ")}. Set them on ${to} under Domains if the app needs them there.`,
+    );
 }
 
 const WITHHELD: Record<string, string> = {
   admin:
     "only an instance admin's token on {panel} hands a certificate's key over",
-  missing: "{panel}'s proxy no longer holds a certificate for it",
-  unreadable: "{panel} could not read its server's proxy",
+  missing: "{panel}'s server no longer holds a certificate for it",
+  unreadable: "{panel} could not read its server's certificates",
   old: "{panel} is too old to hand certificates over",
 };
 
@@ -52,7 +75,7 @@ export async function landDomainCertificates(
       ? await listServerCertificates(serverId)
       : null;
   } catch {}
-  const upload = `Upload it under Servers -> ${serverName} -> Certificates, then set the domain to use it`;
+  const upload = `Upload it under Servers → ${serverName} → Certificates, then set the domain to use it`;
   for (const d of wanted) {
     const cert = d.rules!.certificate!;
     if (
@@ -78,7 +101,7 @@ export async function landDomainCertificates(
         );
         continue;
       } catch (e) {
-        why = e instanceof Error ? e.message : "refused";
+        why = errorMessage(e, "refused");
       }
     notes.push(
       blocker(
@@ -111,9 +134,10 @@ export async function landDomainRedirects(
       await updateDomain(target!.id, { www: "toThis" });
     } catch (e) {
       notes.push(
-        `${host} redirected to ${to} on {panel}, and that redirect did not come across (${
-          e instanceof Error ? e.message : "refused"
-        }). Add ${host} under Domains if you still need it.`,
+        `${host} redirected to ${to} on {panel}, and that redirect did not come across (${errorMessage(
+          e,
+          "refused",
+        )}). Add ${host} under Domains if you still need it.`,
       );
     }
   }

@@ -1,9 +1,12 @@
 import "server-only";
 
-import { inArray, sql } from "drizzle-orm";
+import { errorMessage } from "../../utils";
+import { eq, inArray, sql } from "drizzle-orm";
 
 import { getDb } from "../../db/client";
+import { apps as appsTable } from "../../db/schema/control-plane/apps";
 import { domains as domainsTable } from "../../db/schema/control-plane/domains";
+import { requireActiveTeamId } from "../../membership";
 import type { SharedRefLevel } from "../../migration/map/env";
 import { blocker, type Note } from "../../migration/note";
 import { setAppEnv } from "../env";
@@ -32,24 +35,36 @@ const list = (keys: string[]) => keys.join(", ");
 const they = (keys: string[], one: string, many: string) =>
   keys.length === 1 ? one : many;
 
-// Old address -> new one, split by whether the old one still answers on this Deplo.
+// Old address -> new one, split by whether the old one still answers on this Deplo, and for whom.
+// Another team's address is never named to this one.
 async function splitByCarried(rehosted: Map<string, string>) {
+  const teamId = await requireActiveTeamId();
   const olds = [...rehosted.keys()].map((h) => h.toLowerCase());
-  const here = new Set(
+  const held =
     olds.length === 0
       ? []
-      : (
-          await getDb()
-            .select({ name: sql<string>`lower(${domainsTable.name})` })
-            .from(domainsTable)
-            .where(inArray(sql`lower(${domainsTable.name})`, olds))
-        ).map((r) => r.name),
+      : await getDb()
+          .select({
+            name: sql<string>`lower(${domainsTable.name})`,
+            teamId: appsTable.teamId,
+          })
+          .from(domainsTable)
+          .leftJoin(appsTable, eq(appsTable.id, domainsTable.appId))
+          .where(inArray(sql`lower(${domainsTable.name})`, olds));
+  const ours = new Set(
+    held.filter((r) => r.teamId === teamId).map((r) => r.name),
+  );
+  const theirs = new Set(
+    held.filter((r) => r.teamId !== teamId).map((r) => r.name),
   );
   const gone = new Map<string, string>();
   const carried = new Map<string, string>();
-  for (const [from, to] of rehosted)
-    (here.has(from.toLowerCase()) ? carried : gone).set(from.toLowerCase(), to);
-  return { gone, carried };
+  const foreign = new Map<string, string>();
+  for (const [from, to] of rehosted) {
+    const key = from.toLowerCase();
+    (ours.has(key) ? carried : theirs.has(key) ? foreign : gone).set(key, to);
+  }
+  return { gone, carried, foreign };
 }
 
 export async function rehostAppVariables(
@@ -61,9 +76,11 @@ export async function rehostAppVariables(
   notes: Note[],
 ): Promise<void> {
   if (rehosted.size === 0) return;
-  const { gone, carried } = await splitByCarried(rehosted);
-  const named = (value: string) =>
-    carried.size > 0 && renameHost(value, carried) !== value;
+  const { gone, carried, foreign } = await splitByCarried(rehosted);
+  const names = (value: string, hosts: Map<string, string>) =>
+    hosts.size > 0 && renameHost(value, hosts) !== value;
+  const named = (value: string) => names(value, carried);
+  const elsewhere = (value: string) => names(value, foreign);
 
   const rewritten = env.map((e) => ({
     key: e.key,
@@ -81,9 +98,10 @@ export async function rehostAppVariables(
     } catch (e) {
       notes.push(
         blocker(
-          `${list(touched)} still name the old address, which no longer answers for this app (${
-            e instanceof Error ? e.message : "refused"
-          }) - set ${they(touched, "it", "them")} to ${list([...gone.values()])} under Variables.`,
+          `${list(touched)} still name the old address, which no longer answers for this app (${errorMessage(
+            e,
+            "refused",
+          )}) - set ${they(touched, "it", "them")} to ${list([...gone.values()])} under Variables.`,
         ),
       );
     }
@@ -92,12 +110,14 @@ export async function rehostAppVariables(
   const movedShared: string[] = [];
   const stuckShared: string[] = [];
   const namedShared: string[] = [];
+  const foreignShared: string[] = [];
   for (const r of linked) {
     const entry = sharedEntry(shared, r.level, r.sharedKey);
     if (!entry?.varId) continue;
     const next = renameHost(entry.value, gone);
     if (next === entry.value) {
       if (named(entry.value)) namedShared.push(r.key);
+      else if (elsewhere(entry.value)) foreignShared.push(r.key);
       continue;
     }
     if (!entry.created) {
@@ -128,5 +148,14 @@ export async function rehostAppVariables(
   if (stillNamed.length > 0)
     notes.push(
       `${list(stillNamed)} ${they(stillNamed, "names", "name")} ${list([...carried.keys()])}, which answers for another app here, so ${they(stillNamed, "it was", "they were")} left as ${they(stillNamed, "it is", "they are")}. If this app should use its own address (${list([...carried.values()])}), change ${they(stillNamed, "it", "them")} under Variables.`,
+    );
+
+  const namedForeign = [
+    ...env.filter((e) => elsewhere(e.value)).map((e) => e.key),
+    ...foreignShared,
+  ];
+  if (namedForeign.length > 0)
+    notes.push(
+      `${list(namedForeign)} ${they(namedForeign, "names", "name")} an address this Deplo already serves for someone else, so ${they(namedForeign, "it was", "they were")} left as ${they(namedForeign, "it is", "they are")}. If this app should use its own address (${list([...foreign.values()])}), change ${they(namedForeign, "it", "them")} under Variables.`,
     );
 }

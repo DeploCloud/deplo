@@ -443,7 +443,8 @@ export function ReviewStep({
               <span className="block text-sm text-muted-foreground">
                 Makes a copy for testing or staging. Databases come over as a
                 snapshot, files are copied while the apps keep writing, and
-                crons and backups arrive paused. You choose when to switch.
+                crons, backups and deploy on push arrive switched off. You
+                choose when to switch.
               </span>
             </span>
             <Switch

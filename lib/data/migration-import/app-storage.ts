@@ -1,5 +1,6 @@
 import "server-only";
 
+import { errorMessage } from "../../utils";
 import { blocker, type Note } from "../../migration/note";
 import { newId } from "../../ids";
 import { canMountHostVolumes } from "../../membership";
@@ -38,9 +39,10 @@ export async function landAppStorage(
       if (!isCompose)
         notes.push(
           blocker(
-            `${f.filePath} could not be written into this app's Files: ${
-              e instanceof Error ? e.message : "refused"
-            }. {panel} still has it - copy it from there into Files, and mount it under Storage.`,
+            `${f.filePath} could not be written into this app's Files: ${errorMessage(
+              e,
+              "refused",
+            )}. {panel} still has it - copy it from there into Files, and mount it under Storage.`,
           ),
         );
     }
@@ -110,7 +112,7 @@ export async function landAppStorage(
     } catch (e) {
       notes.push(
         blocker(
-          `Volumes were not imported: ${e instanceof Error ? e.message : "refused"}. Add them under Storage.`,
+          `Volumes did not come across: ${errorMessage(e, "refused")}. Add them under Storage.`,
         ),
       );
     }
