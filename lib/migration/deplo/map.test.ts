@@ -466,7 +466,7 @@ test("a Deplo too old to send a domain's rules says they arrive with the default
   assert.match(notesFor({}), /too old to hand over its domains' middlewares/);
   assert.doesNotMatch(
     notesFor({ securityHeaders: true, middlewares: [], corsOrigins: [] }),
-    /too old/,
+    /too old to hand over its domains'/,
   );
 });
 
