@@ -39,7 +39,19 @@ export interface DeploExportDomain {
   primary: boolean;
   redirectTo: string | null;
   generated: boolean;
+  // Absent from a source older than #95, like every field below.
+  entrypoint?: string | null;
+  middlewares?: string[];
+  corsOrigins?: string[];
+  securityHeaders?: boolean;
+  proxied?: boolean;
+  // Only on a custom-certificate domain: the pair, or why it was kept back.
+  certificate?: DeploExportCertificate;
 }
+
+export type DeploExportCertificate =
+  | { certPem: string; keyPem: string }
+  | { withheld: "admin" | "missing" | "unreadable" };
 
 export interface DeploExportCron {
   name: string;

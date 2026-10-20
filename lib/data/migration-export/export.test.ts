@@ -20,7 +20,7 @@ import { appPreviewEnvVars } from "../../db/schema/control-plane/env-vars";
 import { cronJobEnv, cronJobs } from "../../db/schema/control-plane/crons";
 import { runWithIdentity } from "../../auth/request-context";
 import { encryptSecret } from "../../crypto";
-import { insertEnvVars } from "../app-graph-load";
+import { insertDomain, insertEnvVars } from "../app-graph-load";
 import { seedApp, seedServer } from "../app-graph-test-helpers";
 import {
   seedBackup,
@@ -43,6 +43,13 @@ import type { BackupRequest } from "../../agent/gen/agent";
 import type { AgentConnection } from "../../infra/agent-client/connection";
 import { __setAgentConnectorForTest } from "../../infra/agent-client/connect";
 import { storeUpload } from "../../deploy/upload";
+import type { Domain } from "../../types/domain";
+import { withTraefikCertificates } from "../../deploy/traefik-stack";
+import {
+  ACME_CERT,
+  ACME_KEY,
+  TRAEFIK_STACK,
+} from "../certificate-test-fixtures";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -508,6 +515,134 @@ test("the data stream answers 404 for an app with no archive", async () => {
       as(USER_1, TEAM_A, () => openAppUpload({ kind: "app", id: "prj_web" })),
     (e: unknown) => e instanceof ExportRefusedError && e.status === 404,
   );
+});
+
+const seedDomain = (d: Partial<Domain> & { id: string; name: string }) =>
+  insertDomain(db as unknown as Parameters<typeof insertDomain>[0], {
+    appId: "prj_web",
+    status: "valid",
+    primary: false,
+    redirectTo: null,
+    ssl: true,
+    source: "custom",
+    createdAt: T0,
+    ...d,
+  });
+
+test("a domain's routing rules leave in the export", async () => {
+  await seedDomain({
+    id: "dom_shop",
+    name: "shop.example.com",
+    primary: true,
+    entrypoint: "websecure",
+    certProvider: "letsencrypt",
+    middlewares: ["ratelimit@file", "auth"],
+    securityHeaders: false,
+    corsOrigins: ["https://a.example.com", "https://b.example.com"],
+    proxied: true,
+  });
+  await seedDomain({
+    id: "dom_www",
+    name: "www.shop.example.com",
+    redirectTo: "shop.example.com",
+    source: "redirect",
+  });
+  const out = await as(USER_1, TEAM_A, () => exportTeamForMigration());
+  const domains = out.apps.find((a) => a.id === "prj_web")?.domains ?? [];
+  const shop = domains.find((d) => d.host === "shop.example.com");
+  assert.deepEqual(
+    {
+      entrypoint: shop?.entrypoint,
+      middlewares: shop?.middlewares,
+      corsOrigins: shop?.corsOrigins,
+      securityHeaders: shop?.securityHeaders,
+      proxied: shop?.proxied,
+    },
+    {
+      entrypoint: "websecure",
+      middlewares: ["ratelimit@file", "auth"],
+      corsOrigins: ["https://a.example.com", "https://b.example.com"],
+      securityHeaders: false,
+      proxied: true,
+    },
+  );
+  const www = domains.find((d) => d.host === "www.shop.example.com");
+  assert.equal(www?.redirectTo, "shop.example.com");
+  assert.equal(www?.securityHeaders, true);
+  assert.deepEqual(www?.middlewares, []);
+});
+
+function proxyHolding(certificates: { certPem: string; keyPem: string }[]) {
+  __setAgentConnectorForTest(
+    async () =>
+      ({
+        hello: async () => ({ capabilities: ["hostops"] }),
+        hostInfo: async () => ({
+          traefikComposeYaml: withTraefikCertificates(
+            TRAEFIK_STACK,
+            certificates,
+          ),
+        }),
+        close: () => {},
+      }) as unknown as AgentConnection,
+  );
+}
+
+const certificateOf = async (userId: string, host: string) =>
+  (await as(userId, TEAM_A, () => exportTeamForMigration())).apps
+    .find((a) => a.id === "prj_web")
+    ?.domains.find((d) => d.host === host)?.certificate;
+
+test("a custom certificate leaves with its key only for an instance admin", async (t) => {
+  t.after(() => __setAgentConnectorForTest());
+  await db
+    .insert(membershipCapabilities)
+    .values(
+      ALL_CAPABILITIES.filter((c) => c !== "manage_team").map((capability) => ({
+        membershipId: `mem_${INTRUDER}`,
+        capability,
+      })),
+    )
+    .onConflictDoNothing();
+  await seedDomain({
+    id: "dom_acme",
+    name: "acme.example.com",
+    certProvider: "custom",
+  });
+  await seedDomain({
+    id: "dom_le",
+    name: "le.example.com",
+    certProvider: "letsencrypt",
+  });
+  proxyHolding([{ certPem: ACME_CERT, keyPem: ACME_KEY }]);
+
+  assert.deepEqual(await certificateOf(USER_1, "acme.example.com"), {
+    certPem: ACME_CERT,
+    keyPem: ACME_KEY,
+  });
+  assert.equal(await certificateOf(USER_1, "le.example.com"), undefined);
+  assert.deepEqual(await certificateOf(INTRUDER, "acme.example.com"), {
+    withheld: "admin",
+  });
+});
+
+test("a custom certificate the proxy does not hold, or cannot be read, says why", async (t) => {
+  t.after(() => __setAgentConnectorForTest());
+  await seedDomain({
+    id: "dom_other",
+    name: "other.example.com",
+    certProvider: "custom",
+  });
+  proxyHolding([{ certPem: ACME_CERT, keyPem: ACME_KEY }]);
+  assert.deepEqual(await certificateOf(USER_1, "other.example.com"), {
+    withheld: "missing",
+  });
+  __setAgentConnectorForTest(async () => {
+    throw new Error("unreachable");
+  });
+  assert.deepEqual(await certificateOf(USER_1, "other.example.com"), {
+    withheld: "unreadable",
+  });
 });
 
 const RECIPIENT =

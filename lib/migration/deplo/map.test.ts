@@ -428,14 +428,45 @@ test("a host the old Deplo minted is not claimed as somebody's domain", () => {
       ["shop.example", false],
     ],
   );
-  assert.match(
-    app.platformNotes!.join(" "),
-    /www\.shop\.example only redirected/,
+  assert.equal(
+    app.domains?.find((d) => d.host === "www.shop.example")?.nativeRules
+      ?.redirectTo,
+    "shop.example",
+    "the redirect travels to the import, which lands it once its target has",
   );
   assert.equal(
     pickPrimaryDomain(mapped.value)?.host,
     "shop.example",
     "a minted primary cannot be claimed here, so a real one leads",
+  );
+});
+
+test("a Deplo too old to send a domain's rules says they arrive with the defaults", () => {
+  const route = {
+    port: 3000,
+    pathPrefix: "",
+    stripPrefix: false,
+    service: null,
+    https: true,
+    certProvider: "letsencrypt",
+    primary: true,
+    redirectTo: null,
+    generated: false,
+  };
+  const notesFor = (over: object) => {
+    const x = deploExport({
+      apps: [
+        exportApp({ domains: [{ host: "shop.example", ...route, ...over }] }),
+      ],
+    });
+    return (
+      sourceApplication(x, x.apps[0]) as SourceApplication
+    ).platformNotes!.join(" ");
+  };
+  assert.match(notesFor({}), /too old to hand over its domains' middlewares/);
+  assert.doesNotMatch(
+    notesFor({ securityHeaders: true, middlewares: [], corsOrigins: [] }),
+    /too old/,
   );
 });
 

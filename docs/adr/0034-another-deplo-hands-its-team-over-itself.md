@@ -69,3 +69,7 @@ path cannot simply be pointed at it:
 - Every cron job, on an app or a database, carries all its settings and variables, and the
   target's `cron_enabled` switch comes along, so jobs run here as they ran there once the source is
   stopped. A source older than this sends schedule and command only, and the report says so.
+- A domain carries its middlewares, CORS origins, security headers, proxied flag and its www
+  redirect. A custom certificate travels with its key only when an instance admin's token reads
+  the export (the right to install one), and is installed on the target's server; any other
+  lands without one, named as a blocker in the report.

@@ -11,6 +11,7 @@ import type {
   SourceDatabase,
   SourceDbKind,
   SourceDomain,
+  SourceDomainRules,
   SourceEnvironment,
   SourceMount,
   SourceProject,
@@ -23,6 +24,7 @@ import type {
   DeploExportBackupRun,
   DeploExportCron,
   DeploExportDatabase,
+  DeploExportDomain,
   DeploExportSharedVar,
   DeploExportVar,
 } from "./export-shape";
@@ -144,32 +146,49 @@ function domainsOf(
   notes: string[];
 } {
   const notes: string[] = [];
-  const domains = a.domains.map((d, i): SourceDomain => {
-    if (d.redirectTo)
-      notes.push(
-        `${d.host} only redirected to ${d.redirectTo} on {panel}, so it did not come across. Add it under Domains if you still need the redirect.`,
-      );
-    return {
-      domainId: `${a.id}:${i}`,
-      host: d.host,
-      https: d.https,
-      port: d.port,
-      path: d.pathPrefix || "/",
-      stripPath: d.stripPrefix,
-      serviceName: d.service,
-      domainType: compose ? "compose" : "application",
-      certificateType:
-        d.certProvider === "custom"
-          ? "custom"
-          : d.certProvider === "none" || d.certProvider === "cloudflare"
-            ? "none"
-            : "letsencrypt",
-      enabled: !d.redirectTo,
-      generated: d.generated,
-      primary: d.primary,
-    };
-  });
+  const domains = a.domains.map((d, i): SourceDomain => ({
+    domainId: `${a.id}:${i}`,
+    host: d.host,
+    https: d.https,
+    port: d.port,
+    path: d.pathPrefix || "/",
+    stripPath: d.stripPrefix,
+    serviceName: d.service,
+    domainType: compose ? "compose" : "application",
+    certificateType:
+      d.certProvider === "custom"
+        ? "custom"
+        : d.certProvider === "none" || d.certProvider === "cloudflare"
+          ? "none"
+          : "letsencrypt",
+    enabled: !d.redirectTo,
+    generated: d.generated,
+    primary: d.primary,
+    nativeRules: rulesOf(d),
+  }));
+  if (a.domains.some((d) => d.securityHeaders === undefined))
+    notes.push(
+      "{panel} is too old to hand over its domains' middlewares, CORS origins and security headers, so they arrive with this Deplo's defaults. Check them under Domains.",
+    );
   return { domains, notes };
+}
+
+function rulesOf(d: DeploExportDomain): SourceDomainRules {
+  const entrypoint =
+    d.entrypoint === "web" || d.entrypoint === "websecure"
+      ? d.entrypoint
+      : null;
+  return {
+    entrypoint,
+    middlewares: d.middlewares,
+    corsOrigins: d.corsOrigins,
+    securityHeaders: d.securityHeaders,
+    proxied: d.proxied,
+    redirectTo: d.redirectTo,
+    ...(d.certProvider === "custom"
+      ? { certificate: d.certificate ?? { withheld: "old" } }
+      : {}),
+  };
 }
 
 function mountsOf(a: DeploExportApp, compose: boolean): SourceMount[] {
