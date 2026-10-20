@@ -3,6 +3,7 @@ import "server-only";
 import { Readable } from "node:stream";
 
 import { archiveExt, removeUploads, storeUpload } from "../../deploy/upload";
+import { blocker, type Note } from "../../migration/note";
 import { sourceClient, type SourceCredential } from "../../migration/source";
 import { setAppUpload } from "../apps/settings";
 import type { SourceService } from "./source-tree";
@@ -13,7 +14,7 @@ export async function landAppUpload(
   svc: SourceService,
   appId: string,
   upload: { filename: string },
-  notes: string[],
+  notes: Note[],
 ): Promise<void> {
   const exportUpload = sourceClient(c).dataExport?.exportUpload;
   const ext = archiveExt(upload.filename);
@@ -35,7 +36,9 @@ export async function landAppUpload(
     });
   } catch (e) {
     notes.push(
-      `${upload.filename} could not be copied from {panel} (${e instanceof Error ? e.message : String(e)}). Upload it again here before deploying.`,
+      blocker(
+        `${upload.filename} could not be copied from {panel} (${e instanceof Error ? e.message : String(e)}). Upload it again here before deploying.`,
+      ),
     );
   }
 }

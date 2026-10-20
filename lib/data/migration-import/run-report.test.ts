@@ -13,7 +13,13 @@ import { seedApp } from "../app-graph-test-helpers";
 import { importMigrationProject } from "./project-import";
 import { beginMigration, finishMigration } from "./run-lifecycle";
 import { getMigrationRun } from "./run-queries";
-import { appendRunItem, sweepFinishedMigrationMarks } from "./run-report";
+import { blocker } from "../../migration/note";
+import {
+  Report,
+  appendRunItem,
+  refreshCounts,
+  sweepFinishedMigrationMarks,
+} from "./run-report";
 import {
   URL_BASE,
   CONNECT,
@@ -190,4 +196,47 @@ test("the sweep frees a row whose migration is over", async () => {
     (a) => a.id === web.id,
   )!;
   assert.equal(after.migrationRunId, null);
+});
+
+test("what keeps an app from running is counted apart from information", async () => {
+  const runId = await asOwner(() => beginMigration({ url: URL_BASE }));
+  await new Report(runId, "Dokploy")
+    .at("Blink")
+    .notes("application", "blink-web", [
+      blocker("Its code was uploaded to {panel}. Upload it again here."),
+      "SECRET_KEY came across as a secret, as {panel} marked it.",
+    ]);
+  await refreshCounts(runId, TEAM_A);
+
+  const run = (await asOwner(() => getMigrationRun(runId)))!;
+  assert.equal(run.blocking, 1);
+  assert.equal(
+    run.manual,
+    1,
+    "information is no longer counted as needing you",
+  );
+  const byText = (re: RegExp) => run.items.find((i) => re.test(i.message!))!;
+  assert.equal(byText(/Upload it again/).blocking, true);
+  assert.equal(byText(/Dokploy marked it/).blocking, false);
+});
+
+test("a blocker is not folded into the same words written as information", async () => {
+  const runId = await asOwner(() => beginMigration({ url: URL_BASE }));
+  const line = {
+    path: "Blink / production / blink-web",
+    sourceKind: "data",
+    sourceName: "blink-web",
+    outcome: "manual" as const,
+    message: "Nothing of its data came across.",
+  };
+  await appendRunItem(runId, "Dokploy", line);
+  await appendRunItem(runId, "Dokploy", { ...line, blocking: true });
+  await appendRunItem(runId, "Dokploy", { ...line, blocking: true });
+  await refreshCounts(runId, TEAM_A);
+
+  const run = (await asOwner(() => getMigrationRun(runId)))!;
+  assert.deepEqual(
+    run.items.map((i) => i.blocking),
+    [false, true],
+  );
 });

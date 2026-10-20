@@ -1,9 +1,11 @@
 import "server-only";
 
+import { type Note } from "../../migration/note";
 import { and, eq } from "drizzle-orm";
 
 import { getDb } from "../../db/client";
 import { domains as domainsTable } from "../../db/schema/control-plane/domains";
+import { temporaryAddressTls } from "../../deploy/domains";
 import type { MappedDomain } from "../../migration/map/domains";
 import { type DomainPatch, addDomain, updateDomain } from "../domains/crud";
 import {
@@ -45,7 +47,7 @@ export function importedRoute(d: MappedDomain): ImportedRoute {
 async function addExtraDomain(
   appId: string,
   d: MappedDomain,
-  notes: string[],
+  notes: Note[],
 ): Promise<boolean> {
   try {
     await addDomain(appId, d.host, {
@@ -70,7 +72,7 @@ export async function rehostAppDomains(
   domains: { value: MappedDomain[] },
   primary: MappedDomain | null,
   env: { key: string; value: string }[],
-  notes: string[],
+  notes: Note[],
 ): Promise<void> {
   const rehosted = new Map<string, string>();
   const rehostNotes: string[] = [];
@@ -111,14 +113,15 @@ export async function rehostAppDomains(
       );
     } else if (row) {
       const patch: DomainPatch = {};
-      if (row.certProvider !== primary.certProvider)
-        patch.certProvider = primary.certProvider;
+      const tls = temporaryAddressTls(row.name, primary);
+      if (row.certProvider !== tls.certProvider)
+        patch.certProvider = tls.certProvider;
       if ((row.pathPrefix ?? "") !== primary.pathPrefix)
         patch.pathPrefix = primary.pathPrefix;
       if (primary.pathPrefix && !!row.stripPrefix !== primary.stripPrefix)
         patch.stripPrefix = primary.stripPrefix;
-      if ((row.entrypoint ?? "") !== primary.entrypoint)
-        patch.entrypoint = primary.entrypoint;
+      if ((row.entrypoint ?? "") !== tls.entrypoint)
+        patch.entrypoint = tls.entrypoint;
       if (Object.keys(patch).length > 0)
         try {
           await updateDomain(row.id, patch);

@@ -1,5 +1,6 @@
 import "server-only";
 
+import { blocker, type Note } from "../../migration/note";
 import { sourceClient } from "../../migration/source";
 import type { SourceCredential } from "../../migration/source";
 import type { SourceApplication, SourceCompose } from "../../migration/model";
@@ -84,7 +85,7 @@ export async function resolveAppSource(
     mounts: { value: MappedMounts };
     env: { key: string; value: string }[];
   },
-  notes: string[],
+  notes: Note[],
 ) {
   const { isCompose, yamlText, asRepoApp, repoTarget, domains, mounts, env } =
     shape;
@@ -157,16 +158,22 @@ export async function resolveAppSource(
     const builders = composeBuildServices(compose);
     if (builders.length > 0)
       notes.push(
-        `${builders.join(", ")} ${builders.length === 1 ? "builds" : "build"} from source, and Deplo has no repository for this stack - only the compose file came over. Give ${builders.length === 1 ? "it an" : "them"} image, or split ${builders.length === 1 ? "it" : "them"} out into ${builders.length === 1 ? "its" : "their"} own app built from the repository.`,
+        blocker(
+          `${builders.join(", ")} ${builders.length === 1 ? "builds" : "build"} from source, and Deplo has no repository for this stack - only the compose file came over. Give ${builders.length === 1 ? "it an" : "them"} image, or split ${builders.length === 1 ? "it" : "them"} out into ${builders.length === 1 ? "its" : "their"} own app built from the repository.`,
+        ),
       );
     const services = composeServiceCount(compose);
     if (services === null)
       notes.push(
-        "Its compose file is not valid YAML, so it came across exactly as it is - nothing here rewrote it. Fix it under Compose before deploying.",
+        blocker(
+          "Its compose file is not valid YAML, so it came across exactly as it is - nothing here rewrote it. Fix it under Compose before deploying.",
+        ),
       );
     else if (services === 0)
       notes.push(
-        "Its compose file declares no services, so there is nothing to deploy yet. Add them under Compose.",
+        blocker(
+          "Its compose file declares no services, so there is nothing to deploy yet. Add them under Compose.",
+        ),
       );
     if (/^\s*env_file\s*:/m.test(compose) && home.serverId) {
       const { serverSupports } =
@@ -175,7 +182,9 @@ export async function resolveAppSource(
         await import("../../infra/agent-client/hello-capabilities");
       if (!(await serverSupports(home.serverId, COMPOSE_PROJECTDIR_CAPABILITY)))
         notes.push(
-          "Its compose file names an `env_file`, which needs a newer agent on this server than the one running there. Update the server's agent under Servers before deploying.",
+          blocker(
+            "Its compose file names an `env_file`, which needs a newer agent on this server than the one running there. Update the server's agent under Servers before deploying.",
+          ),
         );
     }
     const wantedPorts = composeHostPorts(compose);
@@ -185,7 +194,9 @@ export async function resolveAppSource(
         const probe = await hostPortsInUse(home.serverId, wantedPorts);
         if (probe.checked && probe.inUse.length > 0)
           notes.push(
-            `It publishes ${probe.inUse.join(", ")} on the host, and ${probe.inUse.length === 1 ? "that port is" : "those ports are"} already taken on this server - the stack will not start until you change ${probe.inUse.length === 1 ? "it" : "them"} under Compose.`,
+            blocker(
+              `It publishes ${probe.inUse.join(", ")} on the host, and ${probe.inUse.length === 1 ? "that port is" : "those ports are"} already taken on this server - the stack will not start until you change ${probe.inUse.length === 1 ? "it" : "them"} under Compose.`,
+            ),
           );
       } catch {}
     }
@@ -208,10 +219,12 @@ export async function resolveAppSource(
       const watched = (app.watchPaths ?? []).filter((p) => p.trim());
       if (app.upload === undefined)
         notes.push(
-          "Set the source under the app's Source settings before deploying." +
-            (watched.length > 0
-              ? ` It only deployed on changes under ${watched.join(", ")} - set those again once the repository is there.`
-              : ""),
+          blocker(
+            "Set the source under the app's Source settings before deploying." +
+              (watched.length > 0
+                ? ` It only deployed on changes under ${watched.join(", ")} - set those again once the repository is there.`
+                : ""),
+          ),
         );
     }
     const mappedBuild = mapBuildSettings(app);

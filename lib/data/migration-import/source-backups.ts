@@ -1,5 +1,6 @@
 import "server-only";
 
+import { type Note } from "../../migration/note";
 import { eq } from "drizzle-orm";
 
 import { getDb } from "../../db/client";
@@ -16,7 +17,7 @@ export async function landSourceBackups(
   backups: SourceBackupSchedule[] | null | undefined,
   destinations: Map<string, string> | undefined,
   target: { kind: "app" | "database"; id: string; name: string },
-  notes: string[],
+  notes: Note[],
 ): Promise<void> {
   const schedules = (backups ?? []).filter(
     (b) => b?.enabled !== false && b.schedule?.trim(),
