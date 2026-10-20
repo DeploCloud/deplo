@@ -52,5 +52,7 @@ path cannot simply be pointed at it:
   and the top level becomes one named after the team.
 - The shared model gained `nativeBuild`, `nativeResources` and `SourceDomain.generated`, all
   optional, so the other two platforms are untouched and a Deplo source loses no build setting.
-- Not carried, and said so in the report: a database's crons, a compose stack's `up` flags, and
-  preview settings beyond on/off.
+- Not carried, and said so in the report: a database's crons and a compose stack's `up` flags.
+- Preview settings travel whole, as an optional `preview` block plus the preview overrides
+  (`previewEnv`), and land even when previews are off; the preview server goes through the
+  run's server map. An export without them came from an older Deplo, and only on/off lands.

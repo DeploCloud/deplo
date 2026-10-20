@@ -2,7 +2,10 @@ import { __resetDeploExportsForTest } from "../../migration/deplo/client";
 import type { DeploExport } from "../../migration/deplo/export-shape";
 import { __setMigrationFetchForTest } from "../../migration/transport";
 import { asOwner } from "./migration-import-test-helpers";
-import { importMigrationProject } from "./project-import";
+import {
+  importMigrationProject,
+  type ImportProjectInput,
+} from "./project-import";
 import { beginMigration } from "./run-lifecycle";
 import { getMigrationRun } from "./run-queries";
 
@@ -56,12 +59,13 @@ export async function importDeploProject(projectId: string): Promise<string> {
 export async function importFromDeplo(
   x: DeploExport,
   projectIds: string[],
+  extra: Partial<ImportProjectInput> = {},
 ): Promise<string> {
   fakeDeplo(x);
   const runId = await asOwner(() => beginMigration(DEPLO_SOURCE));
   for (const projectId of projectIds)
     await asOwner(() =>
-      importMigrationProject({ ...DEPLO_SOURCE, runId, projectId }),
+      importMigrationProject({ ...DEPLO_SOURCE, ...extra, runId, projectId }),
     );
   return runId;
 }

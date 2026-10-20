@@ -171,6 +171,80 @@ test("a production-only variable is named so previews do not get it", () => {
   assert.deepEqual(app.productionOnlyEnvKeys, ["PROD"]);
 });
 
+const PREVIEW = {
+  baseDomain: "pr.example.com",
+  maxActive: 7,
+  ttlDays: 14,
+  forkPolicy: "deny",
+  serverId: "srv_previews",
+  https: true,
+  autoDeploy: false,
+  port: 8080,
+  buildDrafts: true,
+  comment: false,
+  requiredLabels: "preview\nqa",
+};
+
+test("preview settings travel in Deplo's own shape, off or on", () => {
+  const x = deploExport({
+    apps: [exportApp({ previewEnabled: false, preview: PREVIEW })],
+  });
+  const app = sourceApplication(x, x.apps[0]) as SourceApplication;
+  assert.deepEqual(app.nativePreview, { enabled: false, ...PREVIEW });
+});
+
+test("a preview override travels with its type, and wins over a preview-only variable", () => {
+  const x = deploExport({
+    apps: [
+      exportApp({
+        env: [
+          { key: "API", value: "app", secret: true, targets: ["preview"] },
+          { key: "ONLY", value: "1", secret: false, targets: ["preview"] },
+        ],
+        previewEnv: [
+          { key: "API", value: "override", secret: false },
+          { key: "TOKEN", value: "t", secret: true },
+        ],
+      }),
+    ],
+  });
+  const app = sourceApplication(x, x.apps[0]) as SourceApplication;
+  assert.deepEqual(app.previewEnvEntries, [
+    { key: "ONLY", value: "1" },
+    { key: "API", value: "override" },
+    { key: "TOKEN", value: "t" },
+  ]);
+  assert.deepEqual(app.previewSecretEnvKeys, ["TOKEN"]);
+});
+
+test("an older Deplo that hands over only on/off says so", () => {
+  const x = deploExport({ apps: [exportApp({ previewEnabled: true })] });
+  const app = sourceApplication(x, x.apps[0]) as SourceApplication;
+  assert.equal(app.nativePreview, undefined);
+  assert.equal(app.isPreviewDeploymentsActive, true);
+  assert.ok(
+    app.platformNotes?.some((n) => /too old to hand over its preview/.test(n)),
+  );
+});
+
+test("a compose app carries its preview settings too", () => {
+  const x = deploExport({
+    apps: [
+      exportApp({
+        source: "compose",
+        repo: null,
+        compose: "services:\n  web:\n    image: nginx\n",
+        previewEnabled: true,
+        preview: PREVIEW,
+        previewEnv: [{ key: "TOKEN", value: "t", secret: true }],
+      }),
+    ],
+  });
+  const app = sourceApplication(x, x.apps[0]) as SourceApplication;
+  assert.deepEqual(app.nativePreview, { enabled: true, ...PREVIEW });
+  assert.deepEqual(app.previewEnvEntries, [{ key: "TOKEN", value: "t" }]);
+});
+
 test("a read-only volume stays read-only", () => {
   const x = deploExport({
     apps: [

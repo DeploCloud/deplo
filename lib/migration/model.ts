@@ -65,6 +65,22 @@ export interface SourceBackupSchedule {
   serviceName?: string | null;
 }
 
+// Every preview setting as Deplo stores it; null means Deplo's default.
+export interface NativePreview {
+  enabled: boolean;
+  baseDomain: string | null;
+  maxActive: number | null;
+  ttlDays: number | null;
+  forkPolicy: string | null;
+  serverId: string | null;
+  https: boolean;
+  autoDeploy: boolean;
+  port: number | null;
+  buildDrafts: boolean;
+  comment: boolean;
+  requiredLabels: string | null;
+}
+
 export interface SourceApplication {
   // An uploaded archive the source hands over itself; null when there is none to fetch, absent when it never can.
   upload?: { filename: string; size: number } | null;
@@ -78,6 +94,9 @@ export interface SourceApplication {
   // Settings already in Deplo's own shape, laid over what the platform-shaped fields map to.
   nativeBuild?: Partial<BuildConfig> | null;
   nativeResources?: Partial<ResourceLimits> | null;
+  nativePreview?: NativePreview | null;
+  // How each preview variable is typed; absent means the app's own secretEnvKeys decide.
+  previewSecretEnvKeys?: string[] | null;
   applicationId: string;
   name?: string | null;
   appName?: string | null;
