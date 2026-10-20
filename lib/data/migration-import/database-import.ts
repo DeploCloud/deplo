@@ -1,6 +1,6 @@
 import "server-only";
 
-import { blocker, noteText, type Note } from "../../migration/note";
+import { blocker, isBlocking, noteText, type Note } from "../../migration/note";
 import { and, eq, sql } from "drizzle-orm";
 
 import { getDb } from "../../db/client";
@@ -75,7 +75,7 @@ export async function importDatabaseService(
     )[0];
   const clash = await taken(spec.name);
   if (clash && clash.environmentId === opts.environmentId) {
-    const extra: string[] = [];
+    const extra: Note[] = [];
     await landSourceBackups(
       row.backups,
       opts.destinations,
@@ -92,9 +92,16 @@ export async function importDatabaseService(
       targetId: clash.id,
       message: [
         "A database with this name is already in this environment, so it is the one that is kept - its data is copied again in this same import.",
-        ...extra,
+        ...extra.filter((n) => !isBlocking(n)).map(noteText),
       ].join(" "),
     });
+    await report.notes(
+      svc.kind,
+      name,
+      extra.filter(isBlocking),
+      { kind: "database", id: clash.id },
+      svc.id,
+    );
     return;
   }
   if (clash) {

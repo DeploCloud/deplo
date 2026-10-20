@@ -1,6 +1,6 @@
 import "server-only";
 
-import { type Note } from "../../migration/note";
+import { isBlocking, noteText, type Note } from "../../migration/note";
 import { and, eq, isNotNull, isNull, ne, or, sql } from "drizzle-orm";
 
 import { getDb } from "../../db/client";
@@ -94,7 +94,7 @@ export async function importAppService(
     (a) => a.name.trim().toLowerCase() === name.trim().toLowerCase(),
   );
   if (match) {
-    const extra: string[] = [];
+    const extra: Note[] = [];
     await landSourceBackups(
       detail.backups,
       home.destinations,
@@ -113,9 +113,16 @@ export async function importAppService(
         home.environmentId
           ? "An app with this name is already in this environment."
           : "An app with this name is already here.",
-        ...extra,
+        ...extra.filter((n) => !isBlocking(n)).map(noteText),
       ].join(" "),
     });
+    await report.notes(
+      svc.kind,
+      name,
+      extra.filter(isBlocking),
+      { kind: "app", id: match.id },
+      svc.id,
+    );
     return match.id;
   }
 
