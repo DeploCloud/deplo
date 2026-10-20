@@ -109,31 +109,29 @@ test("rollout order leaves out an unprovisioned host and a migration source", ()
   );
 });
 
-test("a first boot records the version and arms nothing", async () => {
-  await seedServerRow(db, {
-    id: "srv_old",
-    ip: "10.0.0.7",
-    agent: agentAt("0.1.0"),
-  });
+test("a first boot records the version and signs nothing", async () => {
   await claimBootRollout();
-  const status = await asAdmin(() => fleetAgentStatus());
-  assert.equal(status.updating, false);
-  assert.equal(status.expected, EXPECTED);
+  const [row] = await db
+    .select({
+      actor: instanceSettings.agentRolloutBy,
+      booted: instanceSettings.bootedVersion,
+    })
+    .from(instanceSettings);
+  assert.equal(row.actor, null);
+  assert.equal(row.booted, DEPLO_VERSION);
 });
 
-test("a version that moved since the last boot arms the rollout", async () => {
+test("a version that moved since the last boot signs the rollout Deplo", async () => {
   await db.insert(instanceSettings).values({
     id: "default",
     bootedVersion: "0.0.1-previous",
     updatedAt: new Date().toISOString(),
   });
   await claimBootRollout();
-  assert.equal((await asAdmin(() => fleetAgentStatus())).updating, true);
-
-  // A plain restart on the same version leaves the fleet alone.
-  await db.update(instanceSettings).set({ agentRolloutBy: null });
-  await claimBootRollout();
-  assert.equal((await asAdmin(() => fleetAgentStatus())).updating, false);
+  const [row] = await db
+    .select({ actor: instanceSettings.agentRolloutBy })
+    .from(instanceSettings);
+  assert.equal(row.actor, "Deplo");
 });
 
 test("the click's actor survives the restart that follows it", async () => {
@@ -172,8 +170,10 @@ test("the fleet status names the servers left behind", async () => {
 
   const status = await asAdmin(() => fleetAgentStatus());
   assert.equal(status.total, 2);
+  assert.equal(status.expected, EXPECTED);
   assert.deepEqual(
-    status.behind.map((s) => [s.name, s.version]),
-    [["neon-s2", "0.1.0"]],
+    status.behind.map((s) => [s.name, s.version, s.usable]),
+    [["neon-s2", "0.1.0", false]],
   );
+  assert.equal(status.updating, true, "Deplo is on it, nothing failed yet");
 });

@@ -2255,19 +2255,37 @@ input ExtraDomainInput {
 type FleetAgent {
   id: ID
   name: String
+  update: ServerAgentUpdate
+
+  """
+  False when the agent is older than `FleetAgents.minimum`: the server refuses everything until it updates.
+  """
+  usable: Boolean
   version: String
 }
 
 """
-How far the server agents are from the version this panel expects. They follow a panel update on their own, so `behind` is what that rollout has not carried yet.
+How far the server agents are from the agent this Deplo is pinned to. Deplo updates every server that is behind on its own, so `behind` is what it has not carried yet.
 """
 type FleetAgents {
   behind: [FleetAgent!]
+
+  """The agent version this Deplo installs everywhere."""
   expected: String
+
+  """
+  The oldest agent this Deplo still talks to. Older is unusable until it updates.
+  """
+  minimum: String
+
+  """
+  The server that took a new agent and did not come back on it. Every other update waits until it recovers.
+  """
+  pausedBy: String
   total: Int
 
   """
-  A rollout is still owed: Deplo retries every 15 minutes until every server is on `expected`.
+  Deplo is still working on it: some server behind `expected` has not used up its 24 hours of retries.
   """
   updating: Boolean
 }
@@ -3920,6 +3938,11 @@ type Mutation {
   retryNetworkIsolation: Boolean
 
   """
+  Try again, now, to update this server's agent to the version this Deplo is pinned to. Only after Deplo's own attempt failed: it cancels the scheduled retry, keeps the 24-hour window running, and is refused while another attempt is in progress. Returns the attempt as it starts; poll `server(id).agentUpdate` for the outcome.
+  """
+  retryServerAgentUpdate(id: String!): ServerAgentUpdate
+
+  """
   The app's full deploy hook URL, minting it on first read. Calling it still requires an API token as `Authorization: Bearer deplo_…`.
   """
   revealAppDeployHook(id: String!): String
@@ -4467,11 +4490,6 @@ type Mutation {
     """
     keepHost: Boolean
   ): String
-
-  """
-  Update this server's agent binary in place to the latest released version WITHOUT reissuing its certificates - the agent self-updates over its existing pinned-mTLS channel and re-execs keeping the same on-disk trust materials, so the server stays online with the same identity. Returns the version the agent is now running. Errors clearly when the server is unreachable/unprovisioned, or, until the agent ships the self-update RPC, when its agent is too old to update itself remotely (re-run the installer to upgrade it for now).
-  """
-  updateServerAgent(id: String!): String
   updateTeam(input: UpdateTeamInput!): Team
 
   """
@@ -5633,6 +5651,16 @@ type Server {
   agentPort: Int
 
   """
+  Deplo's update of this server's agent, while one is in flight or has failed. Null otherwise. Requires instanceAdmin.
+  """
+  agentUpdate: ServerAgentUpdate
+
+  """
+  Whether this Deplo talks to the server's agent at all. False when the agent is older than the minimum this version of Deplo supports: everything on the server is refused until the agent updates, though its apps keep running. True while it is not provisioned yet.
+  """
+  agentUsable: Boolean
+
+  """
   The agent binary version last reported by this server on its last Hello. Null until the server's agent has called home and been provisioned.
   """
   agentVersion: String
@@ -5714,6 +5742,34 @@ type Server {
   Deplo is still trying to take its agent off this migration source, and will try again on its own. Nothing is asked of anyone while this is true. False for every other server.
   """
   uninstallPending: Boolean
+}
+
+"""
+Where Deplo's update of one server's agent stands. Deplo retries a failed update on its own (1, 2, 4 … up to 60 minutes apart) for 24 hours from the first failure; `retryServerAgentUpdate` tries again now.
+"""
+type ServerAgentUpdate {
+  attempts: Int
+
+  """
+  At least one attempt failed. Only then can an instance admin retry by hand.
+  """
+  failed: Boolean
+
+  """
+  Why the last attempt failed: "busy" (a deploy was running), "unreachable", "error", or "no_return" (it took the new agent and did not come back, which pauses every other server). Empty before the first failure.
+  """
+  failure: String
+  firstFailedAt: String
+
+  """
+  24 hours passed since the first failure: no automatic retry is scheduled.
+  """
+  gaveUp: Boolean
+  lastError: String
+  nextRetryAt: String
+
+  """An attempt is in progress; a retry is refused until it ends."""
+  running: Boolean
 }
 
 """

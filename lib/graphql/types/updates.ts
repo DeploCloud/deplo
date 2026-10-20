@@ -1,4 +1,5 @@
 import { builder } from "../builder";
+import { AgentUpdateRef } from "./server/server-ref";
 import {
   fleetAgentStatus,
   type FleetAgentStatus,
@@ -73,6 +74,15 @@ const FleetAgentRef = builder
       id: t.exposeID("id"),
       name: t.exposeString("name"),
       version: t.exposeString("version", { nullable: true }),
+      usable: t.exposeBoolean("usable", {
+        description:
+          "False when the agent is older than `FleetAgents.minimum`: the server refuses everything until it updates.",
+      }),
+      update: t.field({
+        type: AgentUpdateRef,
+        nullable: true,
+        resolve: (a) => a.update,
+      }),
     }),
   });
 
@@ -80,14 +90,25 @@ const FleetAgentsRef = builder
   .objectRef<FleetAgentStatus>("FleetAgents")
   .implement({
     description:
-      "How far the server agents are from the version this panel expects. They follow a panel update on their own, so `behind` is what that rollout has not carried yet.",
+      "How far the server agents are from the agent this Deplo is pinned to. Deplo updates every server that is behind on its own, so `behind` is what it has not carried yet.",
     fields: (t) => ({
-      expected: t.exposeString("expected"),
+      expected: t.exposeString("expected", {
+        description: "The agent version this Deplo installs everywhere.",
+      }),
+      minimum: t.exposeString("minimum", {
+        description:
+          "The oldest agent this Deplo still talks to. Older is unusable until it updates.",
+      }),
       total: t.exposeInt("total"),
       behind: t.field({ type: [FleetAgentRef], resolve: (f) => f.behind }),
       updating: t.exposeBoolean("updating", {
         description:
-          "A rollout is still owed: Deplo retries every 15 minutes until every server is on `expected`.",
+          "Deplo is still working on it: some server behind `expected` has not used up its 24 hours of retries.",
+      }),
+      pausedBy: t.exposeString("pausedBy", {
+        nullable: true,
+        description:
+          "The server that took a new agent and did not come back on it. Every other update waits until it recovers.",
       }),
     }),
   });

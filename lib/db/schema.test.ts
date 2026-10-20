@@ -62,6 +62,7 @@ const CONTROL_PLANE = [
   "team_folder_order",
   "servers",
   "server_teams",
+  "server_agent_updates",
   "docker_cleanup_policy",
   "docker_cleanup_policy_scopes",
   "docker_cleanup_excluded_servers",

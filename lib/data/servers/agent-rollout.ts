@@ -2,6 +2,7 @@ import "server-only";
 
 import { count, eq, inArray, sql } from "drizzle-orm";
 
+import { resolveAgentRelease } from "../../agent/release";
 import { getDb } from "../../db/client";
 import { apps as appsTable } from "../../db/schema/control-plane/apps";
 import { deployments as deploymentsTable } from "../../db/schema/control-plane/deployments";
@@ -11,51 +12,73 @@ import {
   isDeploHostServer,
 } from "../../deploy/domains";
 import { selfUpdateServerAgent } from "../../infra/agent-client/agent-lifecycle";
-import { AgentUpdateUnsupportedError } from "../../infra/agent-client/errors";
-import { agentPreflight } from "../../infra/agent-client/preflight";
+import { openAgent } from "../../infra/agent-client/connect";
 import { nowIso } from "../../ids";
 import { requireInstanceAdmin } from "../../membership";
+import { dispatchServerAlert } from "../../notify/dispatch";
 import {
+  AGENT_MIN_VERSION,
   AGENT_VERSION,
   DEPLO_VERSION,
   agentUpdateAvailable,
+  agentUsable,
   reportedAgentVersion,
 } from "../../version";
 import type { Server } from "../../types/server";
 import { recordActivity } from "../activity";
 import { SETTINGS_ID } from "../instance-settings/settings-store";
 import { markServerSeen } from "./agent-handshake";
+import {
+  type AgentUpdateDTO,
+  type AgentUpdateFailure,
+  type AgentUpdateRow,
+  claimAgentUpdate,
+  clearAgentUpdate,
+  dropStaleAgentUpdates,
+  getAgentUpdate,
+  listAgentUpdates,
+  recordAgentUpdateFailure,
+  toAgentUpdateDTO,
+} from "./agent-update-state";
 import { listAllServers } from "./roster";
 import { instanceFrozen } from "../deplo-move/freeze";
 
-const RETRY_MS = 15 * 60_000;
+const TICK_MS = 60_000;
 const FIRST_RUN_MS = 20_000;
-const CONFIRM_TRIES = 20;
-const CONFIRM_DELAY_MS = 1500;
+export const rolloutTiming = { confirmTries: 20, confirmDelayMs: 1500 };
+
+export interface FleetAgent {
+  id: string;
+  name: string;
+  version: string | null;
+  usable: boolean;
+  update: AgentUpdateDTO | null;
+}
 
 export interface FleetAgentStatus {
   expected: string;
+  minimum: string;
   total: number;
-  behind: { id: string; name: string; version: string | null }[];
+  behind: FleetAgent[];
   updating: boolean;
+  // The server whose update did not come back: every other one waits for it.
+  pausedBy: string | null;
 }
 
 function sleep(ms: number): Promise<void> {
   return new Promise((r) => setTimeout(r, ms));
 }
 
-function rolloutState(): Promise<{
-  bootedVersion: string | null;
-  actor: string | null;
-}> {
-  return getDb()
-    .select({
-      bootedVersion: instanceSettings.bootedVersion,
-      actor: instanceSettings.agentRolloutBy,
-    })
+function errorText(e: unknown): string {
+  return e instanceof Error ? e.message : String(e);
+}
+
+async function rolloutActor(): Promise<string | null> {
+  const rows = await getDb()
+    .select({ actor: instanceSettings.agentRolloutBy })
     .from(instanceSettings)
-    .where(eq(instanceSettings.id, SETTINGS_ID))
-    .then((rows) => rows[0] ?? { bootedVersion: null, actor: null });
+    .where(eq(instanceSettings.id, SETTINGS_ID));
+  return rows[0]?.actor ?? null;
 }
 
 async function writeRolloutState(patch: {
@@ -72,36 +95,53 @@ async function writeRolloutState(patch: {
     });
 }
 
-/** Arm the rollout that follows a panel update, signed by whoever asked for it. */
+/** Sign the rollout that follows a panel update with whoever asked for it. */
 export async function markAgentRolloutPending(actor: string): Promise<void> {
   await writeRolloutState({ agentRolloutBy: actor });
 }
 
-/** The fleet as the Updates tab reads it: what is behind, and whether Deplo is still working on it. */
+function behindServers(servers: Server[]): Server[] {
+  return servers.filter(
+    (s) =>
+      !s.importOnly &&
+      agentUpdateAvailable(reportedAgentVersion(s), AGENT_VERSION),
+  );
+}
+
+function pausedBy(
+  behind: Server[],
+  updates: Map<string, AgentUpdateRow>,
+): Server | null {
+  return behind.find((s) => updates.get(s.id)?.failure === "no_return") ?? null;
+}
+
+/** The fleet as the Updates tab reads it: who is behind, and where each update stands. */
 export async function fleetAgentStatus(): Promise<FleetAgentStatus> {
   await requireInstanceAdmin();
-  const expected = AGENT_VERSION;
-  const [servers, state] = await Promise.all([
+  const [servers, updates] = await Promise.all([
     listAllServers(),
-    rolloutState(),
+    listAgentUpdates(),
   ]);
   const fleet = servers.filter((s) => !s.importOnly);
-  return {
-    expected,
-    total: fleet.length,
-    behind: behindServers(fleet, expected).map((s) => ({
+  const behind = behindServers(fleet);
+  const rows = behind.map((s) => {
+    const row = updates.get(s.id);
+    return {
       id: s.id,
       name: s.name,
       version: reportedAgentVersion(s),
-    })),
-    updating: Boolean(state.actor),
+      usable: agentUsable(reportedAgentVersion(s)),
+      update: row ? toAgentUpdateDTO(row) : null,
+    };
+  });
+  return {
+    expected: AGENT_VERSION,
+    minimum: AGENT_MIN_VERSION,
+    total: fleet.length,
+    behind: rows,
+    updating: rows.some((b) => !b.update?.gaveUp),
+    pausedBy: pausedBy(behind, updates)?.name ?? null,
   };
-}
-
-function behindServers(servers: Server[], expected: string): Server[] {
-  return servers.filter((s) =>
-    agentUpdateAvailable(reportedAgentVersion(s), expected),
-  );
 }
 
 /**
@@ -134,40 +174,140 @@ async function appsPerServer(): Promise<Map<string, number>> {
 
 // deployments.server_id is a nullable mirror of apps.server_id, so a bare read
 // makes an in-flight deploy invisible and the agent re-exec drops it.
-async function busyServerIds(): Promise<Set<string>> {
+async function serverBusy(serverId: string): Promise<boolean> {
   const rows = await getDb()
-    .select({
-      serverId: sql<string>`coalesce(${deploymentsTable.serverId}, ${appsTable.serverId})`,
-    })
+    .select({ id: deploymentsTable.id })
     .from(deploymentsTable)
     .innerJoin(appsTable, eq(appsTable.id, deploymentsTable.appId))
-    .where(inArray(deploymentsTable.status, ["queued", "building"]));
-  return new Set(rows.map((r) => r.serverId).filter(Boolean));
+    .where(
+      sql`${inArray(deploymentsTable.status, ["queued", "building"])} and coalesce(${deploymentsTable.serverId}, ${appsTable.serverId}) = ${serverId}`,
+    )
+    .limit(1);
+  return rows.length > 0;
+}
+
+// Past the minimum-agent gate: the agent being updated is often the one it refuses.
+async function helloVersion(serverId: string): Promise<string> {
+  const conn = await openAgent(serverId);
+  try {
+    return (await conn.hello()).agentVersion;
+  } finally {
+    conn.close();
+  }
 }
 
 async function confirmUpdated(
   serverId: string,
   before: string,
 ): Promise<string | null> {
-  for (let i = 0; i < CONFIRM_TRIES; i++) {
-    await sleep(CONFIRM_DELAY_MS);
+  for (let i = 0; i < rolloutTiming.confirmTries; i++) {
+    await sleep(rolloutTiming.confirmDelayMs);
     try {
-      const hello = await agentPreflight(serverId);
-      if (hello.agentVersion !== before) {
-        await markServerSeen(serverId, hello.agentVersion);
-        return hello.agentVersion;
+      const version = await helloVersion(serverId);
+      if (version !== before) {
+        await markServerSeen(serverId, version);
+        return version;
       }
     } catch {}
   }
   return null;
 }
 
+async function failAttempt(
+  server: Server,
+  row: AgentUpdateRow,
+  failure: AgentUpdateFailure,
+  error: string,
+  actor: string,
+): Promise<void> {
+  const { firstFailure, gaveUp } = await recordAgentUpdateFailure(
+    row,
+    failure,
+    error,
+  );
+  if (firstFailure) {
+    await recordActivity(
+      "server",
+      `Could not update the agent on ${server.name}: ${error} Deplo retries on its own.`,
+      actor,
+    );
+    if (!agentUsable(reportedAgentVersion(server))) {
+      await recordActivity(
+        "server",
+        `${server.name} is unusable until its agent updates to v${AGENT_VERSION}`,
+        "Deplo",
+      );
+      dispatchServerAlert(server.id, {
+        key: "agent_incompatible",
+        title: `${server.name} is unusable until its agent updates`,
+        body: `Its agent is too old for this version of Deplo, and the update failed: ${error}`,
+        dedupe: { id: `agent:${server.id}`, state: AGENT_VERSION },
+        path: `/settings/servers/${server.id}`,
+      });
+    }
+  }
+  if (gaveUp && row.nextRetryAt !== null)
+    await recordActivity(
+      "server",
+      `Stopped retrying the agent update on ${server.name} after 24 hours. An instance admin can retry it.`,
+      "Deplo",
+    );
+}
+
+/** One attempt on a server whose slot is already claimed. Never leaves the slot running. */
+export async function attemptAgentUpdate(
+  server: Server,
+  row: AgentUpdateRow,
+  actor: string,
+): Promise<void> {
+  const fail = (failure: AgentUpdateFailure, error: string) =>
+    failAttempt(server, row, failure, error, actor);
+  try {
+    if (await serverBusy(server.id))
+      return fail(
+        "busy",
+        "A deploy is running on it; Deplo updates it once the deploy ends.",
+      );
+    let before: string;
+    try {
+      before = await helloVersion(server.id);
+    } catch (e) {
+      return fail("unreachable", errorText(e));
+    }
+    if (!agentUpdateAvailable(before, AGENT_VERSION)) {
+      await markServerSeen(server.id, before);
+      return clearAgentUpdate(server.id);
+    }
+    try {
+      await selfUpdateServerAgent(server.id);
+    } catch (e) {
+      return fail("error", errorText(e));
+    }
+    const version = await confirmUpdated(server.id, before);
+    if (!version)
+      return fail(
+        "no_return",
+        "It took the new agent but did not come back on it. The other servers wait until it does.",
+      );
+    if (agentUpdateAvailable(version, AGENT_VERSION))
+      return fail(
+        "error",
+        `It came back on v${version}, not v${AGENT_VERSION}.`,
+      );
+    await clearAgentUpdate(server.id);
+    await recordActivity(
+      "server",
+      `Updated the agent on ${server.name} to v${version}`,
+      actor,
+    );
+  } catch (e) {
+    await fail("error", errorText(e)).catch(() => {});
+  }
+}
+
 let pass: Promise<void> | null = null;
 
-/**
- * One rollout pass: every agent behind the fleet version, one at a time, in the
- * safe order. Skips what it cannot touch now and leaves the marker for the retry.
- */
+/** One pass: every server behind the pin whose retry is due, one at a time, in the safe order. */
 export function runAgentRollout(): Promise<void> {
   pass ??= rolloutPass().finally(() => {
     pass = null;
@@ -177,63 +317,43 @@ export function runAgentRollout(): Promise<void> {
 
 async function rolloutPass(): Promise<void> {
   if (await instanceFrozen()) return;
-  const { actor } = await rolloutState();
-  if (!actor) return;
-
-  const expected = AGENT_VERSION;
-  const [servers, load, busy] = await Promise.all([
-    listAllServers(),
-    appsPerServer(),
-    busyServerIds(),
-  ]);
-
-  for (const server of rolloutOrder(servers, load)) {
-    if (!agentUpdateAvailable(reportedAgentVersion(server), expected)) continue;
-    if (busy.has(server.id)) continue;
-
-    let before: string;
-    try {
-      before = (await agentPreflight(server.id)).agentVersion;
-    } catch {
-      continue;
-    }
-
-    try {
-      await selfUpdateServerAgent(server.id);
-    } catch (e) {
-      // An agent too old to update itself needs its installer re-run: permanent, so it must not block the fleet.
-      if (e instanceof AgentUpdateUnsupportedError) continue;
-      console.error(`[deplo] agent rollout stopped on ${server.name}:`, e);
-      break;
-    }
-
-    const version = await confirmUpdated(server.id, before);
-    if (!version) {
-      console.error(
-        `[deplo] agent rollout stopped: ${server.name} never came back on a new version`,
-      );
-      break;
-    }
-    await recordActivity(
-      "server",
-      `Updated the agent on ${server.name} to v${version}`,
-      actor,
-    );
+  const behind = behindServers(await listAllServers());
+  const actor = await rolloutActor();
+  if (behind.length === 0) {
+    if (actor) await writeRolloutState({ agentRolloutBy: null });
+    return;
   }
+  // GitHub down: nothing is claimed, so no server's 24 hours run on an outage.
+  if (!(await resolveAgentRelease())) return;
 
-  const left = behindServers(
-    (await listAllServers()).filter((s) => !s.importOnly),
-    expected,
-  );
-  if (left.length === 0) await writeRolloutState({ agentRolloutBy: null });
+  const suspect = pausedBy(behind, await listAgentUpdates());
+  if (suspect) {
+    const row = await claimAgentUpdate(suspect.id, false);
+    if (!row) return;
+    await attemptAgentUpdate(suspect, row, actor ?? "Deplo");
+    if (await getAgentUpdate(suspect.id)) return;
+  }
+  for (const server of rolloutOrder(behind, await appsPerServer())) {
+    const row = await claimAgentUpdate(server.id, false);
+    if (!row) continue;
+    await attemptAgentUpdate(server, row, actor ?? "Deplo");
+    // A release that breaks one agent must not break four.
+    if ((await listAgentUpdates()).get(server.id)?.failure === "no_return")
+      break;
+  }
 }
 
-/**
- * At boot: a version that moved means the panel just updated, so the fleet follows it.
- * The marker survives the restart, so the retry outlives the browser tab.
- */
+/** At boot: a new pin opens a fresh window, and a version that moved signs the rollout. */
 export async function claimBootRollout(): Promise<void> {
-  const state = await rolloutState();
+  await dropStaleAgentUpdates();
+  const rows = await getDb()
+    .select({
+      bootedVersion: instanceSettings.bootedVersion,
+      actor: instanceSettings.agentRolloutBy,
+    })
+    .from(instanceSettings)
+    .where(eq(instanceSettings.id, SETTINGS_ID));
+  const state = rows[0] ?? { bootedVersion: null, actor: null };
   const updated =
     Boolean(state.bootedVersion) && state.bootedVersion !== DEPLO_VERSION;
   await writeRolloutState({
@@ -249,11 +369,10 @@ export async function startAgentRollout(): Promise<void> {
 
   await claimBootRollout();
 
-  // ponytail: retries forever while a host stays behind - a dial every 15 minutes, and the tab says who.
   const tick = () =>
     void runAgentRollout().catch((e) =>
       console.error("[deplo] agent rollout failed:", e),
     );
   setTimeout(tick, FIRST_RUN_MS).unref?.();
-  setInterval(tick, RETRY_MS).unref?.();
+  setInterval(tick, TICK_MS).unref?.();
 }
