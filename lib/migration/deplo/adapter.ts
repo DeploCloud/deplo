@@ -11,6 +11,7 @@ import { SELF_PANEL_REFUSAL } from "../self";
 import {
   TOKEN_RECIPE,
   checkData,
+  tooOldFor,
   exportOf,
   forgetExport,
   setRunning,
@@ -142,13 +143,19 @@ function dataExport(c: SourceCredential): SourceDataExport {
         yield* streamData(c, { ...(await ref(svc)), upload: true });
       })(),
     exportImage: (svc, image) =>
-      (async function* () {
-        yield* streamData(c, { ...(await ref(svc)), image });
-      })(),
+      tooOldFor(
+        "the image",
+        (async function* () {
+          yield* streamData(c, { ...(await ref(svc)), image });
+        })(),
+      ),
     exportDump: (svc, recipient) =>
-      (async function* () {
-        yield* streamData(c, { ...(await ref(svc)), dump: true, recipient });
-      })(),
+      tooOldFor(
+        "a database while it keeps running",
+        (async function* () {
+          yield* streamData(c, { ...(await ref(svc)), dump: true, recipient });
+        })(),
+      ),
   };
 }
 

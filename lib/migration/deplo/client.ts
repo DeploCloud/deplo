@@ -14,6 +14,24 @@ import { DEPLO_EXPORT_VERSION, type DeploExport } from "./export-shape";
 
 export const DEPLO_PANEL: PanelIdentity = { name: "Deplo", portHint: ":3000" };
 
+// A source older than the request answers it as one naming neither a volume nor a path.
+export class DeploTooOldError extends Error {}
+
+export function tooOldFor(
+  what: string,
+  stream: AsyncIterable<Buffer>,
+): AsyncIterable<Buffer> {
+  return (async function* () {
+    try {
+      yield* stream;
+    } catch (e) {
+      if (e instanceof Error && /Name a volume or a host path/.test(e.message))
+        throw new DeploTooOldError(`{panel} is too old to hand over ${what}`);
+      throw e;
+    }
+  })();
+}
+
 export const TOKEN_RECIPE =
   "Mint one in that Deplo under Settings, API tokens, limited to the team you are moving, with Reveal secret values, Start & stop apps and Start & stop databases.";
 

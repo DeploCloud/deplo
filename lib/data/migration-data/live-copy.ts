@@ -1,5 +1,7 @@
 import "server-only";
 
+import { DeploTooOldError } from "../../migration/deplo/client";
+import { errorMessage } from "../../utils";
 import { BackupKind } from "../../agent/gen/agent";
 import { mapBackupUnsupported } from "../../infra/agent-client/errors";
 import { connectBackupAgent } from "../../infra/agent-client/preflight";
@@ -85,10 +87,8 @@ export async function restoreDumpInto(
   }
 }
 
-// v0.5.0 answers a dump request with the refusal it gives any request naming neither a volume nor a path.
 function dumpRefusal(e: unknown): string {
-  const why = e instanceof Error ? e.message : String(e);
-  if (/Name a volume or a host path/.test(why))
-    return "{panel} is too old to hand over a database while it keeps running. Update it, or run the copy again without that option.";
-  return `{panel} could not hand over a copy of it (${why})`;
+  if (e instanceof DeploTooOldError)
+    return `${e.message}. Update it, or run the copy again without that option.`;
+  return `{panel} could not hand over a copy of it (${errorMessage(e, String(e))})`;
 }
