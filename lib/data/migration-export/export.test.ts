@@ -13,6 +13,7 @@ import { folders as foldersTable } from "../../db/schema/control-plane/projects"
 import { ALL_CAPABILITIES } from "../../types/identity";
 import { appBasicAuthUsers } from "../../db/schema/control-plane/domains";
 import { appPreviewEnvVars } from "../../db/schema/control-plane/env-vars";
+import { cronJobEnv, cronJobs } from "../../db/schema/control-plane/crons";
 import { runWithIdentity } from "../../auth/request-context";
 import { encryptSecret } from "../../crypto";
 import { insertEnvVars } from "../app-graph-load";
@@ -468,4 +469,79 @@ test("the data stream answers 404 for an app with no archive", async () => {
       as(USER_1, TEAM_A, () => openAppUpload({ kind: "app", id: "prj_web" })),
     (e: unknown) => e instanceof ExportRefusedError && e.status === 404,
   );
+});
+
+const CRON_ROW = {
+  teamId: TEAM_A,
+  description: "nightly",
+  service: null,
+  schedule: "0 3 * * *",
+  timezone: "Europe/Rome",
+  shell: "bash",
+  command: "./cleanup.sh",
+  enabled: false,
+  timeoutSeconds: 600,
+  maxAttempts: 3,
+  overlap: "allow",
+  keepRuns: 20,
+  workdir: "/srv",
+  user: "app",
+  createdAt: T0,
+  updatedAt: T0,
+};
+
+test("every cron job leaves with all its settings and variables, on apps and databases", async () => {
+  await db
+    .update(appsTable)
+    .set({ cronEnabled: true })
+    .where(eq(appsTable.id, "prj_web"));
+  await db.insert(cronJobs).values([
+    {
+      ...CRON_ROW,
+      id: "cron_app",
+      targetKind: "app",
+      appId: "prj_web",
+      name: "cleanup",
+    },
+    {
+      ...CRON_ROW,
+      id: "cron_db",
+      targetKind: "database",
+      databaseId: "db_main",
+      name: "vacuum",
+    },
+  ]);
+  await db.insert(cronJobEnv).values({
+    id: "cenv_1",
+    jobId: "cron_db",
+    key: "TOKEN",
+    valueEnc: encryptSecret("s3cr3t"),
+    createdAt: T0,
+  });
+  const out = await as(USER_1, TEAM_A, () => exportTeamForMigration());
+  const web = out.apps.find((a) => a.id === "prj_web")!;
+  const main = out.databases.find((d) => d.id === "db_main")!;
+  assert.equal(web.cronEnabled, true);
+  assert.equal(main.cronEnabled, false);
+  assert.deepEqual(web.crons, [
+    {
+      name: "cleanup",
+      description: "nightly",
+      schedule: "0 3 * * *",
+      timezone: "Europe/Rome",
+      shell: "bash",
+      command: "./cleanup.sh",
+      service: null,
+      enabled: false,
+      timeoutSeconds: 600,
+      maxAttempts: 3,
+      overlap: "allow",
+      keepRuns: 20,
+      workdir: "/srv",
+      user: "app",
+      env: [],
+    },
+  ]);
+  assert.equal(main.crons[0]?.name, "vacuum");
+  assert.deepEqual(main.crons[0]?.env, [{ key: "TOKEN", value: "s3cr3t" }]);
 });

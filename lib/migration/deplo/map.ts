@@ -20,6 +20,7 @@ import type {
   DeploExportApp,
   DeploExportBackup,
   DeploExportBackupRun,
+  DeploExportCron,
   DeploExportDatabase,
   DeploExportSharedVar,
   DeploExportVar,
@@ -361,6 +362,16 @@ export function environmentShared(x: DeploExport, at: Placement) {
   );
 }
 
+// A job from an older Deplo arrives as schedule and command alone.
+function cronNotes(w: { crons: DeploExportCron[] }): string[] {
+  const bare = w.crons.filter((j) => j.env === undefined).map((j) => j.name);
+  return bare.length > 0
+    ? [
+        `{panel} is too old to hand over the variables and settings of cron job(s) ${bare.join(", ")}, so only the schedule and command came across. Check them under Crons.`,
+      ]
+    : [];
+}
+
 export function sourceApplication(
   x: DeploExport,
   a: DeploExportApp,
@@ -369,7 +380,7 @@ export function sourceApplication(
   const env = appEnv(x, a);
   const { domains, notes: domainNotes } = domainsOf(a, compose);
   const history = backupHistoryOf(a);
-  const notes = [...a.notes, ...domainNotes, ...history.notes];
+  const notes = [...a.notes, ...domainNotes, ...history.notes, ...cronNotes(a)];
   if (a.source === "upload" && !a.upload)
     notes.push(
       a.upload === undefined
@@ -395,6 +406,7 @@ export function sourceApplication(
     backups: backupsOf(a.backups),
     backupRuns: history.backupRuns,
     routingPort: a.build.port,
+    cronEnabled: a.cronEnabled ?? null,
     platformNotes: notes,
     previewEnvEntries: env.previewEnvEntries,
     previewSecretEnvKeys: env.previewSecretEnvKeys,
@@ -484,15 +496,8 @@ export function sourceDatabase(
     })),
     backups: backupsOf(d.backups),
     backupRuns: history.backupRuns,
-    platformNotes: [
-      ...d.notes,
-      ...history.notes,
-      ...(d.crons.length > 0
-        ? [
-            `${d.crons.map((j) => j.name).join(", ")} ran on a schedule on {panel} and did not come across. Add ${d.crons.length === 1 ? "it" : "them"} again under Crons.`,
-          ]
-        : []),
-    ],
+    cronEnabled: d.cronEnabled ?? null,
+    platformNotes: [...d.notes, ...history.notes, ...cronNotes(d)],
   };
 }
 
