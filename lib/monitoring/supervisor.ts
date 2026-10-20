@@ -12,6 +12,7 @@ import { classifyServerHealth } from "../infra/server-health";
 import type { AgentConnection } from "../infra/agent-client/connection";
 import {
   AgentMetricsStreamUnsupportedError,
+  AgentTooOldError,
   AgentUnreachableError,
 } from "../infra/agent-client/errors";
 import { connectMetricsStreamAgent } from "../infra/agent-client/preflight";
@@ -293,7 +294,8 @@ async function runStreamLoop(
         lifetime >= MIN_STREAM_MS;
 
       if (!rotation) {
-        if (attempt === 0) {
+        // An unusable agent is reachable: the health probe owns its status, not this loop.
+        if (attempt === 0 && !(e instanceof AgentTooOldError)) {
           await recordServerHealth(
             serverId,
             classifyServerHealth(null, e),

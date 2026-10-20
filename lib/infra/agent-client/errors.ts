@@ -2,6 +2,8 @@ import "server-only";
 
 import { status as GrpcStatus, type ServiceError } from "@grpc/grpc-js";
 
+import { agentUsable } from "../../version";
+
 export class AgentUnreachableError extends Error {
   constructor(
     message: string,
@@ -13,6 +15,20 @@ export class AgentUnreachableError extends Error {
 }
 
 export class AgentNetworkUnsupportedError extends Error {}
+
+export const AGENT_TOO_OLD_MESSAGE =
+  "This server is being updated. Deplo retries on its own; an instance admin can retry it now.";
+
+// An agent below the panel's agentMin: unusable until it updates (ADR-0037).
+export class AgentTooOldError extends Error {
+  constructor(readonly agentVersion: string) {
+    super(AGENT_TOO_OLD_MESSAGE);
+  }
+}
+
+export function assertAgentUsable(agentVersion: string): void {
+  if (!agentUsable(agentVersion)) throw new AgentTooOldError(agentVersion);
+}
 
 export class AgentUpdateUnsupportedError extends Error {}
 

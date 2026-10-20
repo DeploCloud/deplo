@@ -21,7 +21,7 @@ const fakeAgent = () =>
     hello: async () => ({
       contractVersion: 1,
       dockerAvailable: true,
-      agentVersion: "test",
+      agentVersion: "9.9.9",
       capabilities,
     }),
     deploy: async function* (req: DeployRequest) {

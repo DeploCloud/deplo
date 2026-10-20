@@ -17,7 +17,7 @@ let reattaches = 0;
 const helloOk = async () => ({
   contractVersion: 1,
   dockerAvailable: true,
-  agentVersion: "test",
+  agentVersion: "9.9.9",
   capabilities: ["deploy.build-only"],
 });
 

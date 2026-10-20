@@ -14,7 +14,7 @@ import {
 import { getDb } from "../db/client";
 import { deployments as deploymentsTable } from "../db/schema/control-plane/deployments";
 import { servers as serversTable } from "../db/schema/control-plane/servers";
-import { connectAgent } from "../infra/agent-client/connect";
+import { openAgent } from "../infra/agent-client/connect";
 import { HEALTH_HELLO_TIMEOUT_MS } from "../infra/agent-client/deadlines";
 import {
   classifyServerHealth,
@@ -174,7 +174,8 @@ async function probeServer(
   const observedAt = nowIso();
 
   const dialHello = async (): Promise<HelloResponse> => {
-    const conn = await connectAgent(server.id);
+    // Ungated: health is about reachability, an unusable agent still answers.
+    const conn = await openAgent(server.id);
     try {
       return await conn.hello(HEALTH_HELLO_TIMEOUT_MS);
     } finally {

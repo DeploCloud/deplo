@@ -1,6 +1,8 @@
 import "server-only";
 
+import { markServerSeen } from "../../data/servers/agent-handshake";
 import { getServerById } from "../../data/servers/roster";
+import { agentUsable } from "../../version";
 import { agentSelfRpc } from "./agent-self-rpc";
 import { backupRpc } from "./backup-rpc";
 import type { AgentConnection } from "./connection";
@@ -8,7 +10,7 @@ import { consoleRpc } from "./console-rpc";
 import { cronRpc } from "./cron-rpc";
 import { dataCopyRpc } from "./data-copy-rpc";
 import { HELLO_TIMEOUT_MS } from "./deadlines";
-import { AgentUnreachableError } from "./errors";
+import { AgentUnreachableError, assertAgentUsable } from "./errors";
 import { filesRpc } from "./files-rpc";
 import { hostRpc } from "./host-rpc";
 import { metricsRpc } from "./metrics-rpc";
@@ -53,7 +55,31 @@ export function __setAgentConnectorForTest(
 export async function connectAgent(serverId: string): Promise<AgentConnection> {
   if (connector) return connector(serverId);
   const target = await resolveTarget(serverId);
-  return dial(target);
+  return gateConnection(dial(target), target.agentVersion, serverId);
+}
+
+/** Past the minimum-agent gate: Hello, SelfUpdate, the health probe and a Deplo update only (ADR-0037). */
+export async function openAgent(serverId: string): Promise<AgentConnection> {
+  if (connector) return connector(serverId);
+  return dial(await resolveTarget(serverId));
+}
+
+// A stored version only lets a call through; every refusal rests on a live Hello.
+export async function gateConnection(
+  conn: AgentConnection,
+  stored: string | undefined,
+  serverId: string,
+): Promise<AgentConnection> {
+  if (agentUsable(stored)) return conn;
+  try {
+    const hello = await conn.hello();
+    await markServerSeen(serverId, hello.agentVersion);
+    assertAgentUsable(hello.agentVersion);
+    return conn;
+  } catch (e) {
+    conn.close();
+    throw e;
+  }
 }
 
 export async function connectAgentAt(

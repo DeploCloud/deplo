@@ -6,7 +6,7 @@ import {
   type DockerCleanupResponse,
   type HelloResponse,
 } from "../../agent/gen/agent";
-import { dial } from "./connect";
+import { connectAgent } from "./connect";
 import {
   AgentCleanupUnsupportedError,
   CLEANUP_UNSUPPORTED_MESSAGE,
@@ -18,7 +18,6 @@ import {
   CLEANUP_SAFE_PRUNE_CAPABILITY,
   DOCKER_CLEANUP_CAPABILITY,
 } from "./hello-capabilities";
-import { resolveTarget } from "./mtls-channel";
 
 // An agent that ignores keep_per_slug falls back on the scalar and deletes the images rollback keeps.
 export function compensateKeepPerSlug(
@@ -71,9 +70,7 @@ export async function runAgentCleanup(
   serverId: string,
   req: DockerCleanupRequest,
 ): Promise<DockerCleanupResponse> {
-  const target = await resolveTarget(serverId);
-
-  const conn = dial(target);
+  const conn = await connectAgent(serverId);
   try {
     const hello = await conn.hello();
     if (!hello.capabilities?.includes(DOCKER_CLEANUP_CAPABILITY)) {

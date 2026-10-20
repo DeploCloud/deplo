@@ -2,7 +2,7 @@ import "server-only";
 
 import { status as GrpcStatus, type ServiceError } from "@grpc/grpc-js";
 import { isNewer } from "../../version";
-import { connectAgent, dial } from "./connect";
+import { connectAgent, openAgent } from "./connect";
 import {
   AgentReleaseUnavailableError,
   AgentUninstallUnsupportedError,
@@ -12,13 +12,10 @@ import {
   SELF_UNINSTALL_CAPABILITY,
   SELF_UPDATE_CAPABILITY,
 } from "./hello-capabilities";
-import { resolveTarget } from "./mtls-channel";
 
 export async function selfUpdateServerAgent(
   serverId: string,
 ): Promise<{ version: string; restarting: boolean }> {
-  const target = await resolveTarget(serverId);
-
   const { resolveAgentRelease } = await import("../../agent/release");
   const release = await resolveAgentRelease();
   if (!release) throw new AgentReleaseUnavailableError();
@@ -27,7 +24,7 @@ export async function selfUpdateServerAgent(
     if (bin) binaries[arch] = { url: bin.url, sha256: bin.sha256 };
   }
 
-  const conn = dial(target);
+  const conn = await openAgent(serverId);
   try {
     const hello = await conn.hello();
     if (!hello.capabilities?.includes(SELF_UPDATE_CAPABILITY)) {

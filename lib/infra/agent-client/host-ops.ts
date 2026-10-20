@@ -8,7 +8,7 @@ import type {
   UpdateControlPlaneResponse,
 } from "../../agent/gen/agent";
 import { isPrerelease } from "../../version";
-import { connectAgent, dial } from "./connect";
+import { connectAgent, openAgent } from "./connect";
 import type { AgentConnection } from "./connection";
 import {
   AgentControlPlaneUpdateUnsupportedError,
@@ -22,7 +22,6 @@ import {
   CONTROL_PLANE_UPDATE_CAPABILITY,
   HOSTOPS_CAPABILITY,
 } from "./hello-capabilities";
-import { resolveTarget } from "./mtls-channel";
 
 async function withHostOps<T>(
   serverId: string,
@@ -109,8 +108,8 @@ export async function updateControlPlaneOn(
   controlPlaneHint: string,
   version: string,
 ): Promise<UpdateControlPlaneResponse> {
-  const target = await resolveTarget(serverId);
-  const conn = dial(target);
+  // Ungated: an unusable Deplo host must still be able to update Deplo itself.
+  const conn = await openAgent(serverId);
   try {
     const hello = await conn.hello();
     if (!hello.capabilities?.includes(CONTROL_PLANE_UPDATE_CAPABILITY)) {

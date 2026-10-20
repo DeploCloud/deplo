@@ -36,7 +36,7 @@ const fakeAgent = () =>
           return async () => ({
             contractVersion: ContractVersion.CONTRACT_VERSION_V1,
             dockerAvailable: true,
-            agentVersion: "test",
+            agentVersion: "9.9.9",
             capabilities: ["deploy.network", "git.commit", "deploy.railpack"],
           });
         if (prop === "deploy")
