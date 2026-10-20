@@ -43,6 +43,7 @@ repository root.
 | [0034](0034-another-deplo-hands-its-team-over-itself.md)                                  | Another Deplo hands its team over itself                                                                                    |
 | [0035](0035-a-whole-deplo-copies-onto-a-new-machine.md)                                   | A whole Deplo copies onto a new machine, and the old one keeps running                                                      |
 | [0036](0036-custom-traefik-labels.md)                                                     | Custom Traefik labels require an instance-wide grant                                                                        |
+| [0037](0037-a-panel-pins-its-agent.md)                                                    | A panel pins its agent: one version installed, a floor below which a server is unusable                                     |
 
 ## Amended or superseded
 

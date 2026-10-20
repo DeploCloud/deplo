@@ -73,7 +73,8 @@ about ten minutes. `next typegen` before `tsc` is not optional on a clean tree, 
 ### Canary releases
 
 A canary is a pre-release of the NEXT version, for instances that opted in (Settings → Deplo →
-Updates, and per server under Advanced for the agent). Same rule: only when the owner asks.
+Advanced; `deplo update` on the host follows the same switch). The switch moves the panel only:
+agents follow the panel's pin. Same rule: only when the owner asks.
 
 ```bash
 bun pm version 0.3.0-canary.1 --message "chore(release): Deplo %s"
@@ -143,12 +144,15 @@ needs nothing from the reader gets no note at all.
 
 - **The server agent** (`DeploCloud/deplo-agent`) versions on its own clock, in its own repo. It is
   on the **0.x line too** since 24 Aug 2026, when its 1.x numbering was reset alongside the control
-  plane. The same two buckets apply, and its offline fallback (`FALLBACK_AGENT_VERSION`, declared in
-  `lib/version.ts` and re-exported by `lib/agent/release.ts`) follows the fleet in its own
-  `chore(agent):` commit.
-- **The fleet only ever moves forward.** `updateServerAgent` has no version argument anywhere in the
-  path: it installs `releases/latest`, whatever that resolves to. So a control-plane release that
-  needs a newer agent ships the agent **first**, and the reset above was a deliberate one-off, not a
-  thing to repeat. `docs/agents/fleet-rollout.md` §10 has the rollback options.
+  plane. The same two buckets apply.
+- **Each panel version pins its agent** ([ADR-0037](../adr/0037-a-panel-pins-its-agent.md)):
+  `"deplo": { "agent", "agentMin" }` in `package.json`, moved in its own `chore(agent):` commit.
+  `agent` is what every server gets; `agentMin` is the oldest this panel still talks to, and a
+  server below it is unusable until it updates, so raise it only when the panel really needs the
+  newer agent. Ship the agent **first**: `docker-image.yml` refuses to publish a panel whose pin has
+  no `checksums.txt` on GitHub. A canary panel may pin an agent canary; a stable panel pins a
+  stable agent.
+- **The fleet only ever moves forward.** Nothing installs an agent older than the one a server
+  runs. `docs/agents/fleet-rollout.md` §10 has the rollback options.
 - **The Beta badge** in Settings → Deplo is derived from the version starting with `0.`. Nothing
   turns it off; shipping `1.0.0` does.

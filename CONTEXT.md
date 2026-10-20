@@ -125,10 +125,11 @@ force it off, and the switch then shows as disabled with that reason.
 _Avoid_: telemetry (in anything a person reads), tracking, opt-out.
 
 **Canary release**:
-A pre-release of the next Deplo or **server agent** version, tagged `x.y.z-canary.n`. Off by
-default. The panel opts in once (Settings → Deplo → Updates); each server's agent opts in on its
-own (Server → Advanced). Opting in only changes which versions count as an update: nothing
-installs until someone clicks Update, and opting out never downgrades.
+A pre-release of the next Deplo version, tagged `x.y.z-canary.n`. Off by default; an instance
+admin opts in once (Settings → Deplo → Advanced), and `deplo update` on the host follows the same
+switch. Opting in only changes which versions count as an update: nothing installs until someone
+clicks Update, and opting out never downgrades. Server agents never follow the switch: each Deplo
+version pins its own agent ([ADR-0037](docs/adr/0037-a-panel-pins-its-agent.md)).
 _Avoid_: beta (the whole product is in beta), nightly, pre-release (in anything a person reads),
 channel.
 
@@ -453,6 +454,14 @@ per-server _Check status_ button, and the metrics poll - all through the one rec
 [`lib/infra/server-health.ts`](lib/infra/server-health.ts).
 _Avoid_: "the server is up/down" (say which of the five), treating **warning** as a soft
 **error** (it is a _deployability_ verdict), gating anything on the stored status.
+
+**Unusable server**:
+A provisioned server whose agent is older than the minimum the running Deplo supports
+(`deplo.agentMin` in `package.json`, [ADR-0037](docs/adr/0037-a-panel-pins-its-agent.md)). Deplo
+refuses every call to it except the ones that update it, until its agent updates; its Apps keep
+running. A live verdict from Hello, not a sixth **Server health** status.
+_Avoid_: outdated (an agent behind the pin but above the minimum is outdated and still usable),
+blocked, broken.
 
 **Server readiness**:
 A **live, never-stored** answer to _"is this host's installation complete enough to deploy Apps

@@ -12,8 +12,8 @@ on the deeper docs it links (this file points; it does not restate them).
 - **`docs/agents/`**: `issue-tracker.md`, `triage-labels.md`, `domain.md`, `releasing.md`,
   `fleet-rollout.md`.
 
-**Every count in this file is a snapshot of a moving tree** (45 Capabilities, 108 tables, 187 MCP
-tools, 36 ADRs, the pin list). The rule they carry is the durable part; re-derive the number
+**Every count in this file is a snapshot of a moving tree** (45 Capabilities, 109 tables, 186 MCP
+tools, 37 ADRs, the pin list). The rule they carry is the durable part; re-derive the number
 before you rely on it, and fix the line here when it has moved:
 
 ```sh
@@ -190,6 +190,10 @@ route `UI → GraphQL → lib/data/* → connectAgent(serverId) → agent`.
 - **Fails clearly, no in-process fallback**: a mandatory `Hello` pre-flight; an unreachable agent
   is a hard error, never a silent local build. New RPCs are additive (contract stays `V1`); gate
   host features behind Hello `capabilities[]`.
+- **A panel pins its agent** (ADR-0037): `deplo.agent` / `deplo.agentMin` in `package.json`. Deplo
+  updates every server to the pin on its own; below `agentMin` a server is **unusable** and
+  `connectAgent` refuses it. Only `openAgent` skips that gate, and only Hello, SelfUpdate, the
+  health probe and the Deplo self-update may use it.
 - **Don't generalize the exceptions:** installed **Plugins** (ADR-0005) are host-managed containers
   where Deplo _does_ own the socket (`lib/plugins/runtime.ts`) - a Plugin is not an App. That
   code is **dormant**: the feature is deferred (**ADR-0013**), so nothing installs a plugin and
@@ -347,7 +351,7 @@ scripts/gen-schema.ts`. Both halves of that prefix are load-bearing: the shim
     Adding a tool is adding a row; adding an authorization check there is a bug - it belongs in
     `lib/data/*`. Regenerate nothing, but keep `lib/mcp/tools.test.ts` green: it validates every
     document against `schema.graphql`, which is what stops a renamed field from silently
-    breaking all 187 of them (`MCP_TOOLS` in `lib/mcp/tools/catalog.ts`).
+    breaking all 186 of them (`MCP_TOOLS` in `lib/mcp/tools/catalog.ts`).
 
 ## Data & mutations (the security boundary)
 
@@ -491,7 +495,7 @@ scripts/gen-schema.ts`. Both halves of that prefix are load-bearing: the shim
 ## Persistence, secrets, auth
 
 - **Postgres is the only control-plane store** (`lib/db/pg.ts`, one bounded pool). There is **no
-  JSON/document store** - the old `deplo_state` JSONB was fully normalized into 107 tables (94
+  JSON/document store** - the old `deplo_state` JSONB was fully normalized into 109 tables (96
   under `schema/control-plane/`, plus 12 Better Auth and 1 scheduler); **never add a JSONB
   column** (nested → child table, list → ordered/junction table). The `jsonb` columns in
   `schema/auth.ts` are Better Auth's own and are not a precedent. `*_at` columns use
