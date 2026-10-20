@@ -63,6 +63,8 @@ path cannot simply be pointed at it:
   connections there (`manage_git`). The import reuses a connection here for the same account on
   the same server, or adds one, and attaches it to the app. A GitHub App install cannot move
   between instances, so the app is reported as needing one linked before it deploys.
+- Registries travel as `registries`, their passwords only with `manage_registries` there, and
+  land once per team (matched by host and username), since every deploy pulls with all of them.
 - Preview settings travel whole, as an optional `preview` block plus the preview overrides
   (`previewEnv`), and land even when previews are off; the preview server goes through the
   run's server map. An export without them came from an older Deplo, and only on/off lands.

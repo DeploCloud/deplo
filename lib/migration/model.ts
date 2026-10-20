@@ -111,8 +111,19 @@ export interface SourceGitConnection {
   token: string | null;
 }
 
+// A registry the team pulls private images from; a null password is one the source would not reveal.
+export interface SourceRegistry {
+  name: string;
+  type: string;
+  registryUrl: string;
+  username: string;
+  password: string | null;
+}
+
 export interface SourceApplication {
   nativeOps?: NativeOps | null;
+  // The source hands its registries over itself, so no per-image advice is needed.
+  registriesCarried?: boolean;
   // Set when the source said how it clones: null means no connection to bring (the notes say why).
   gitConnection?: SourceGitConnection | null;
   // An uploaded archive the source hands over itself; null when there is none to fetch, absent when it never can.
@@ -221,6 +232,7 @@ export interface SourceApplication {
 
 export interface SourceCompose {
   nativeOps?: NativeOps | null;
+  registriesCarried?: boolean;
   backups?: SourceBackupSchedule[] | null;
   backupRuns?: SourceBackupRun[] | null;
   sharedRefs?: SharedRef[] | null;

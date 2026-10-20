@@ -472,6 +472,7 @@ export function sourceApplication(
     nativePreview: a.preview
       ? { enabled: a.previewEnabled, ...a.preview }
       : undefined,
+    registriesCarried: x.registries !== undefined,
     nativeOps:
       a.rollbackKeep === undefined
         ? undefined

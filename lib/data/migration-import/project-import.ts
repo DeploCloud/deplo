@@ -47,6 +47,7 @@ import {
   type ServicePlacement,
 } from "./target-servers";
 import { importSharedVars, type SharedIndex } from "./shared-vars-import";
+import { importRegistries } from "./registry-import";
 import { importBackupDestinations } from "./source-backups";
 import { importAppService } from "./app-import";
 import { importDatabaseService } from "./database-import";
@@ -149,6 +150,7 @@ async function runImportMigrationProject(
   const destinations = await importBackupDestinations(c, report, (id) =>
     targetServerFor(serverMap.get(id)),
   );
+  await importRegistries(c, report);
 
   const wanted = input.serviceIds ? new Set(input.serviceIds) : null;
   const picked = (env: SourceEnvironment) =>

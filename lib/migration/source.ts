@@ -8,6 +8,7 @@ import type {
   SourceMember,
   SourceProject,
   SourceBackupDestination,
+  SourceRegistry,
   SourceSchedule,
   SourceServer,
   SourceSharedEnv,
@@ -101,6 +102,8 @@ export interface MigrationSourceClient {
   teamSharedEnv(): Promise<SourceSharedEnv | null>;
   serverSharedEnv(sourceServerId: string): Promise<SourceSharedEnv | null>;
   listBackupDestinations(): Promise<SourceBackupDestination[]>;
+  // null: a source that could hand them over but is too old to.
+  listRegistries?(): Promise<SourceRegistry[] | null>;
 
   serviceRuntime(svc: RuntimeQuery): Promise<ServiceRuntime>;
 

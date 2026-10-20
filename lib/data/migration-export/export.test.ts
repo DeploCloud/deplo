@@ -14,7 +14,10 @@ import { ALL_CAPABILITIES } from "../../types/identity";
 import { appBasicAuthUsers } from "../../db/schema/control-plane/domains";
 import { appPreviewEnvVars } from "../../db/schema/control-plane/env-vars";
 import { cronJobEnv, cronJobs } from "../../db/schema/control-plane/crons";
-import { gitConnections } from "../../db/schema/control-plane/integrations";
+import {
+  gitConnections,
+  registries,
+} from "../../db/schema/control-plane/integrations";
 import { runWithIdentity } from "../../auth/request-context";
 import { encryptSecret } from "../../crypto";
 import { insertEnvVars } from "../app-graph-load";
@@ -616,4 +619,40 @@ test("a git token stays behind when the reader may not manage git connections", 
   assert.equal(out.gitConnections?.[0]?.label, "Acme GitLab");
   assert.equal(out.gitConnections?.[0]?.token, null);
   assert.doesNotMatch(JSON.stringify(out), /glpat-secret/);
+});
+
+async function seedRegistry() {
+  await db.insert(registries).values({
+    id: "reg_acme",
+    teamId: TEAM_A,
+    name: "Acme images",
+    type: "generic",
+    registryUrl: "registry.acme.com",
+    username: "ci",
+    passwordEnc: encryptSecret("reg-password"),
+    createdAt: T0,
+  });
+}
+
+test("the team's registries leave with their passwords", async () => {
+  await seedRegistry();
+  const out = await as(USER_1, TEAM_A, () => exportTeamForMigration());
+  assert.deepEqual(out.registries, [
+    {
+      name: "Acme images",
+      type: "generic",
+      registryUrl: "registry.acme.com",
+      username: "ci",
+      password: "reg-password",
+    },
+  ]);
+});
+
+test("a registry password stays behind when the reader may not manage registries", async () => {
+  await seedRegistry();
+  await withoutCapability(USER_1, "manage_registries");
+  const out = await as(USER_1, TEAM_A, () => exportTeamForMigration());
+  assert.equal(out.registries?.[0]?.name, "Acme images");
+  assert.equal(out.registries?.[0]?.password, null);
+  assert.doesNotMatch(JSON.stringify(out), /reg-password/);
 });

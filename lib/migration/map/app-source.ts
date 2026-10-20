@@ -56,7 +56,14 @@ export function mapSource(app: SourceApplication): Mapped<MappedSource> {
       );
       return { value: { kind: "none" }, notes };
     }
-    if (app.registryId || app.registry || app.username || app.registryUrl)
+    if (app.registriesCarried) {
+      // Every registry of the team came along with the run.
+    } else if (
+      app.registryId ||
+      app.registry ||
+      app.username ||
+      app.registryUrl
+    )
       notes.push(
         "From a private registry. Add it under Registries and reselect it - {panel} never exposes the password.",
       );

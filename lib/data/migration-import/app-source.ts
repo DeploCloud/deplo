@@ -130,7 +130,7 @@ export async function resolveAppSource(
     notes.push(
       ...adapted.changes,
       ...retargeted.changes,
-      ...composeRegistryNotes(compose),
+      ...(detail.registriesCarried ? [] : composeRegistryNotes(compose)),
     );
     const takenNames = await namesTakenOnNetwork({
       teamId: await requireActiveTeamId(),

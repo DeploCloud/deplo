@@ -204,6 +204,15 @@ export interface DeploExportGitConnection {
   token: string | null;
 }
 
+// password is null when the reader may not manage registries there.
+export interface DeploExportRegistry {
+  name: string;
+  type: string;
+  registryUrl: string;
+  username: string;
+  password: string | null;
+}
+
 export interface DeploExport {
   version: number;
   instance: string;
@@ -233,4 +242,5 @@ export interface DeploExport {
   serverDestinations?: DeploExportServerDestination[];
   // Absent from an older Deplo; an app names its connection in `repo.connectionId`.
   gitConnections?: DeploExportGitConnection[];
+  registries?: DeploExportRegistry[];
 }

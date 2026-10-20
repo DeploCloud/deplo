@@ -5,7 +5,10 @@ import type { PGlite } from "@electric-sql/pglite";
 import { makeTestDb, type TestDb } from "../../db/test-harness";
 import { decryptSecret } from "../../crypto";
 import { apps as appsTable } from "../../db/schema/control-plane/apps";
-import { gitConnections } from "../../db/schema/control-plane/integrations";
+import {
+  gitConnections,
+  registries,
+} from "../../db/schema/control-plane/integrations";
 import type {
   DeploExportApp,
   DeploExportGitConnection,
@@ -47,7 +50,7 @@ after(async () => {
 beforeEach(async () => {
   await resetMigrationHarness(db);
   await provisionServer1(db);
-  await db.execute("truncate table git_connections cascade;");
+  await db.execute("truncate table git_connections, registries cascade;");
 });
 
 const landed = async (name: string) =>
@@ -250,5 +253,71 @@ test("a repository cloned through the GitHub App says the app must be linked aga
   assert.doesNotMatch(
     (await reportLines(runId)).join(" | "),
     /no credential came with it/,
+  );
+});
+
+const ACME_REGISTRY = {
+  name: "Acme images",
+  type: "generic",
+  registryUrl: "registry.acme.com",
+  username: "ci",
+  password: "reg-password",
+};
+
+const fromImage = (image: string) =>
+  exportApp({
+    id: "prj_img",
+    name: "img",
+    slug: "img",
+    source: "docker-image",
+    repo: null,
+    dockerImage: image,
+  });
+
+test("the team's registries land with their passwords, so private images still pull", async () => {
+  const runId = await importFromDeplo(
+    deploExport({
+      apps: [fromImage("registry.acme.com/acme/api:1.4")],
+      databases: [],
+      registries: [ACME_REGISTRY],
+    }),
+    ["prc_shop"],
+  );
+
+  const rows = await db.select().from(registries);
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0]!.registryUrl, "registry.acme.com");
+  assert.equal(decryptSecret(rows[0]!.passwordEnc), "reg-password");
+  const lines = (await reportLines(runId)).join(" | ");
+  assert.doesNotMatch(lines, /reg-password/);
+  assert.doesNotMatch(lines, /If that image is private/);
+  assert.equal((await blockingLines(runId)).length, 0);
+});
+
+test("a registry already here is kept, not added twice", async () => {
+  const x = deploExport({
+    apps: [fromImage("registry.acme.com/acme/api:1.4")],
+    databases: [],
+    registries: [ACME_REGISTRY],
+  });
+  await importFromDeplo(x, ["prc_shop"]);
+  await importFromDeplo(x, ["prc_shop"]);
+  assert.equal((await db.select().from(registries)).length, 1);
+});
+
+test("a registry password the old Deplo would not reveal blocks what pulls from it", async () => {
+  const runId = await importFromDeplo(
+    deploExport({
+      apps: [fromImage("registry.acme.com/acme/api:1.4")],
+      databases: [],
+      registries: [{ ...ACME_REGISTRY, password: null }],
+    }),
+    ["prc_shop"],
+  );
+
+  assert.equal((await db.select().from(registries)).length, 0);
+  assert.match(
+    (await blockingLines(runId)).join(" | "),
+    /Acme images.*Add it under Registries/,
   );
 });
