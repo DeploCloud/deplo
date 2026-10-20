@@ -18,6 +18,10 @@ import { ALL_CAPABILITIES } from "../../types/identity";
 import { appBasicAuthUsers } from "../../db/schema/control-plane/domains";
 import { appPreviewEnvVars } from "../../db/schema/control-plane/env-vars";
 import { cronJobEnv, cronJobs } from "../../db/schema/control-plane/crons";
+import {
+  gitConnections,
+  registries,
+} from "../../db/schema/control-plane/integrations";
 import { runWithIdentity } from "../../auth/request-context";
 import { encryptSecret } from "../../crypto";
 import { insertDomain, insertEnvVars } from "../app-graph-load";
@@ -35,6 +39,7 @@ import { instanceFingerprint } from "../../migration/deplo/instance";
 import { __resetExportTrailForTest, exportTeamForMigration } from "./export";
 import {
   ExportRefusedError,
+  openAppImage,
   openAppUpload,
   openDatabaseDump,
   openWorkloadData,
@@ -113,7 +118,7 @@ const as = <T>(userId: string, teamId: string, fn: () => Promise<T>) =>
 beforeEach(async () => {
   __resetExportTrailForTest();
   await pg.exec(`${TRUNCATE_BACKUPS}
-    truncate table activities, app_build_method_settings, app_build, apps,
+    truncate table activities, git_connections, registries, app_build_method_settings, app_build, apps,
       servers, users, teams restart identity cascade;`);
   await seedIdentity(db, {
     users: [
@@ -777,4 +782,174 @@ test("every cron job leaves with all its settings and variables, on apps and dat
   ]);
   assert.equal(main.crons[0]?.name, "vacuum");
   assert.deepEqual(main.crons[0]?.env, [{ key: "TOKEN", value: "s3cr3t" }]);
+});
+
+test("an app's compose flags, rollback count and deploy hook leave in the export", async () => {
+  await db
+    .update(appsTable)
+    .set({
+      composeUpArgs: "--remove-orphans --wait",
+      rollbackKeep: 7,
+      deployHookEnabled: true,
+      deployHookTokenEnc: encryptSecret("hook-token"),
+    })
+    .where(eq(appsTable.id, "prj_web"));
+  const out = await as(USER_1, TEAM_A, () => exportTeamForMigration());
+  const web = out.apps.find((a) => a.id === "prj_web")!;
+  assert.equal(web.composeUpArgs, "--remove-orphans --wait");
+  assert.equal(web.rollbackKeep, 7);
+  assert.deepEqual(web.deployHook, { enabled: true, used: true });
+  assert.doesNotMatch(JSON.stringify(out), /hook-token/);
+});
+
+async function seedGitConnection() {
+  await db.insert(gitConnections).values({
+    id: "gitc_acme",
+    teamId: TEAM_A,
+    provider: "gitlab",
+    label: "Acme GitLab",
+    baseUrl: "https://gitlab.acme.com",
+    allowPrivateEndpoint: false,
+    username: "oauth2",
+    tokenEnc: encryptSecret("glpat-secret"),
+    webhookSecretEnc: encryptSecret("w"),
+    webhookToken: "wht_acme",
+    createdAt: T0,
+    createdBy: USER_1,
+  });
+}
+
+async function withoutCapability(userId: string, capability: string) {
+  await db
+    .delete(membershipCapabilities)
+    .where(
+      and(
+        eq(membershipCapabilities.membershipId, `mem_${userId}`),
+        eq(membershipCapabilities.capability, capability),
+      ),
+    );
+}
+
+test("the team's git connections leave with their tokens", async () => {
+  await seedGitConnection();
+  const out = await as(USER_1, TEAM_A, () => exportTeamForMigration());
+  assert.deepEqual(out.gitConnections, [
+    {
+      id: "gitc_acme",
+      provider: "gitlab",
+      label: "Acme GitLab",
+      baseUrl: "https://gitlab.acme.com",
+      allowPrivateEndpoint: false,
+      username: "oauth2",
+      token: "glpat-secret",
+    },
+  ]);
+});
+
+test("a git token stays behind when the reader may not manage git connections", async () => {
+  await seedGitConnection();
+  await withoutCapability(USER_1, "manage_git");
+  const out = await as(USER_1, TEAM_A, () => exportTeamForMigration());
+  assert.equal(out.gitConnections?.[0]?.label, "Acme GitLab");
+  assert.equal(out.gitConnections?.[0]?.token, null);
+  assert.doesNotMatch(JSON.stringify(out), /glpat-secret/);
+});
+
+async function seedRegistry() {
+  await db.insert(registries).values({
+    id: "reg_acme",
+    teamId: TEAM_A,
+    name: "Acme images",
+    type: "generic",
+    registryUrl: "registry.acme.com",
+    username: "ci",
+    passwordEnc: encryptSecret("reg-password"),
+    createdAt: T0,
+  });
+}
+
+test("the team's registries leave with their passwords", async () => {
+  await seedRegistry();
+  const out = await as(USER_1, TEAM_A, () => exportTeamForMigration());
+  assert.deepEqual(out.registries, [
+    {
+      name: "Acme images",
+      type: "generic",
+      registryUrl: "registry.acme.com",
+      username: "ci",
+      password: "reg-password",
+    },
+  ]);
+});
+
+test("a registry password stays behind when the reader may not manage registries", async () => {
+  await seedRegistry();
+  await withoutCapability(USER_1, "manage_registries");
+  const out = await as(USER_1, TEAM_A, () => exportTeamForMigration());
+  assert.equal(out.registries?.[0]?.name, "Acme images");
+  assert.equal(out.registries?.[0]?.password, null);
+  assert.doesNotMatch(JSON.stringify(out), /reg-password/);
+});
+
+async function imageApp() {
+  await seedApp(db, {
+    id: "prj_img",
+    teamId: TEAM_A,
+    source: "docker-image",
+    repo: null,
+  });
+  await db
+    .update(appsTable)
+    .set({ dockerImage: "acme-api:local" })
+    .where(eq(appsTable.id, "prj_img"));
+}
+
+test("the data stream hands over the image an app runs, from its own server", async () => {
+  await imageApp();
+  const asked: { server: string; ref: string; removeAfter: boolean }[] = [];
+  __setAgentConnectorForTest(
+    async (server) =>
+      ({
+        exportImage: (ref: string, removeAfter: boolean) => {
+          asked.push({ server, ref, removeAfter });
+          return (async function* () {
+            yield Buffer.from("image-bytes");
+          })();
+        },
+        close() {},
+      }) as unknown as AgentConnection,
+  );
+  try {
+    const { chunks, close } = await as(USER_1, TEAM_A, () =>
+      openAppImage({ kind: "app", id: "prj_img" }, "acme-api:local"),
+    );
+    try {
+      assert.equal(await drain(chunks), "image-bytes");
+    } finally {
+      close();
+    }
+    assert.deepEqual(asked, [
+      { server: "srv_1", ref: "acme-api:local", removeAfter: false },
+    ]);
+  } finally {
+    __setAgentConnectorForTest();
+  }
+});
+
+test("the data stream refuses an image the named app does not run", async () => {
+  await imageApp();
+  await assert.rejects(
+    () =>
+      as(USER_1, TEAM_A, () =>
+        openAppImage({ kind: "app", id: "prj_img" }, "postgres:16"),
+      ),
+    (e: unknown) => e instanceof ExportRefusedError && e.status === 404,
+  );
+  await assert.rejects(
+    () =>
+      as(USER_1, TEAM_A, () =>
+        openAppImage({ kind: "app", id: "prj_other" }, "acme-api:local"),
+      ),
+    (e: unknown) => e instanceof ExportRefusedError && e.status === 404,
+  );
 });

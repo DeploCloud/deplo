@@ -37,6 +37,9 @@ path cannot simply be pointed at it:
   Deplo too old to do this, and the report says the archive needs uploading again.
   With `dump: true` and an age `recipient` it hands over a database as a dump its own engine
   takes while it keeps running, encrypted on the source agent to a key only the target holds.
+  With `image: <ref>` it hands over the image an app runs, from that app's own server, and only
+  the image the app names; the target asks for it when no registry has that image, and loads it
+  on the app's server at import time. An image that cannot be copied is reported as blocking.
 - A run may ask for a copy that keeps the source running (`live_copy`, Deplo sources only, an
   advanced option): nothing is stopped there, databases come over as that dump, app volumes are
   read live and each says so, crons and backup schedules land paused, and the switch-over is
@@ -62,7 +65,15 @@ path cannot simply be pointed at it:
   encrypted to, every schedule paused or not, and each successful run as a copied run
   ([ADR-0035](0035-a-whole-deplo-copies-onto-a-new-machine.md)): a bucket's restore points stay
   restorable here, a server disk's are named in the report, since only the old Deplo reaches it.
-- Not carried, and said so in the report: a compose stack's `up` flags.
+- An app's compose `up` flags, rollback count and deploy hook switch carry as they were. The hook
+  never keeps its token: its address names the app, so it changes anyway, and the report says so
+  when the old one was ever handed out. An older source sends none of them, and the report says so.
+- Git connections travel as `gitConnections`, their tokens only when the reader may manage git
+  connections there (`manage_git`). The import reuses a connection here for the same account on
+  the same server, or adds one, and attaches it to the app. A GitHub App install cannot move
+  between instances, so the app is reported as needing one linked before it deploys.
+- Registries travel as `registries`, their passwords only with `manage_registries` there, and
+  land once per team (matched by host and username), since every deploy pulls with all of them.
 - Preview settings travel whole, as an optional `preview` block plus the preview overrides
   (`previewEnv`), and land even when previews are off; the preview server goes through the
   run's server map. An export without them came from an older Deplo, and only on/off lands.

@@ -17,6 +17,7 @@ import type { createApp } from "../apps/create";
 import { updateAppResources } from "../apps/resources";
 import { updateAppHealthCheck } from "../apps/settings";
 import { addBasicAuthUser } from "../basic-auth";
+import { landNativeOps } from "./app-ops";
 import { importCrons } from "./cron-import";
 import type { SourceService } from "./source-tree";
 
@@ -216,6 +217,9 @@ export async function landAppExtras(
         );
     }
   }
+
+  if (detail.nativeOps)
+    await landNativeOps(created.id, detail.nativeOps, isCompose, notes);
 
   await importCrons(
     c,

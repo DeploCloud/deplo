@@ -134,6 +134,10 @@ export interface DeploExportApp {
   // Preview settings as stored (null = the default) and its preview overrides; absent from an older Deplo.
   preview?: DeploExportPreview;
   previewEnv?: Omit<DeploExportVar, "targets">[];
+  // How it deploys and rolls back; absent from an older Deplo. `used`: a hook address was ever handed out.
+  composeUpArgs?: string | null;
+  rollbackKeep?: number;
+  deployHook?: { enabled: boolean; used: boolean };
 }
 
 export interface DeploExportPreview {
@@ -201,6 +205,26 @@ export interface DeploExportServerDestination {
   ageIdentity?: string;
 }
 
+// token is null when the reader may not manage git connections there.
+export interface DeploExportGitConnection {
+  id: string;
+  provider: string;
+  label: string;
+  baseUrl: string;
+  allowPrivateEndpoint: boolean;
+  username: string;
+  token: string | null;
+}
+
+// password is null when the reader may not manage registries there.
+export interface DeploExportRegistry {
+  name: string;
+  type: string;
+  registryUrl: string;
+  username: string;
+  password: string | null;
+}
+
 // Colour, kind and branch are absent from an older Deplo; projects come in the team's order.
 export interface DeploExportProject {
   id: string;
@@ -240,4 +264,7 @@ export interface DeploExport {
   destinations: DeploExportDestination[];
   // Apart from `destinations`, so an older target never reads a disk as a bucket.
   serverDestinations?: DeploExportServerDestination[];
+  // Absent from an older Deplo; an app names its connection in `repo.connectionId`.
+  gitConnections?: DeploExportGitConnection[];
+  registries?: DeploExportRegistry[];
 }

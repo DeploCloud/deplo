@@ -95,6 +95,37 @@ export async function openAppUpload(
   };
 }
 
+// Only the image the app itself runs, read from its own server and left there.
+export async function openAppImage(
+  ref: WorkloadRef,
+  image: string,
+): Promise<{ chunks: AsyncIterable<Buffer>; close: () => void }> {
+  const { teamId } = await assertExportGate();
+  if (ref.kind !== "app")
+    throw new ExportRefusedError("Only an app runs an image.", 400);
+  const [row] = await getDb()
+    .select({
+      source: appsTable.source,
+      dockerImage: appsTable.dockerImage,
+      serverId: appsTable.serverId,
+    })
+    .from(appsTable)
+    .where(and(eq(appsTable.id, ref.id), eq(appsTable.teamId, teamId)));
+  if (
+    !row ||
+    row.source !== "docker-image" ||
+    !image ||
+    row.dockerImage?.trim() !== image ||
+    !(await hasAppCapability(ref.id, "reveal_secrets"))
+  )
+    throw new ExportRefusedError("Not found", 404);
+  const conn = await connectAgent(row.serverId);
+  return {
+    chunks: conn.exportImage(image, false),
+    close: () => conn.close(),
+  };
+}
+
 // Only what the named workload mounts leaves this instance; a host path outside its own files needs the host-volumes grant.
 export async function openWorkloadData(
   ref: WorkloadRef,

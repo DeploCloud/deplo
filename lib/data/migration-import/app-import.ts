@@ -39,6 +39,7 @@ import {
 import { landAppStorage } from "./app-storage";
 import { landAppExtras } from "./app-extras";
 import { landAppUpload } from "./app-upload";
+import { landSourceImage } from "./app-image";
 
 export async function importAppService(
   c: SourceCredential,
@@ -300,6 +301,8 @@ export async function importAppService(
   const upload = (detail as SourceApplication).upload;
   if (source === "upload" && upload)
     await landAppUpload(c, svc, created.id, upload, notes);
+  if (source === "docker-image" && dockerImage)
+    await landSourceImage(c, svc, created, dockerImage, notes);
 
   await landAppStorage(
     created,

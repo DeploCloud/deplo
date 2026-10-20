@@ -141,6 +141,10 @@ function dataExport(c: SourceCredential): SourceDataExport {
       (async function* () {
         yield* streamData(c, { ...(await ref(svc)), upload: true });
       })(),
+    exportImage: (svc, image) =>
+      (async function* () {
+        yield* streamData(c, { ...(await ref(svc)), image });
+      })(),
     exportDump: (svc, recipient) =>
       (async function* () {
         yield* streamData(c, { ...(await ref(svc)), dump: true, recipient });
@@ -199,6 +203,7 @@ export function deploClient(c: SourceCredential): MigrationSourceClient {
     teamSharedEnv: async () => teamShared(await exportOf(c)),
     serverSharedEnv: async () => null,
     listBackupDestinations: async () => backupDestinationsOf(await exportOf(c)),
+    listRegistries: async () => (await exportOf(c)).registries ?? null,
 
     serviceRuntime: (svc) => serviceRuntime(c, svc),
     stopService: (kind, id) => stopService(c, kind, id),

@@ -2,6 +2,7 @@ import { DB_REPOS } from "../../databases/images";
 import type { BuildConfig, GitRepo } from "../../types/build";
 import type { EnvironmentKind } from "../../types/team";
 import type { EnvPair, SharedRef } from "../map/env";
+import { blocker, type Note } from "../note";
 import type {
   SourceApplication,
   SourceBackupDestination,
@@ -13,6 +14,7 @@ import type {
   SourceDomain,
   SourceDomainRules,
   SourceEnvironment,
+  SourceGitConnection,
   SourceMount,
   SourceProject,
   SourceSharedEnv,
@@ -230,6 +232,54 @@ function mountsOf(a: DeploExportApp, compose: boolean): SourceMount[] {
   });
 }
 
+// Which connection it clones with, from a source that says; the GitHub App never moves between instances.
+function gitCredentialOf(
+  x: DeploExport,
+  repo: GitRepo | null,
+): { gitConnection?: SourceGitConnection | null; notes: Note[] } {
+  if (!repo) return { notes: [] };
+  if (repo.installationId)
+    return {
+      gitConnection: null,
+      notes: [
+        blocker(
+          `It cloned ${repo.repo} through the GitHub App on {panel}, which cannot move to another Deplo. Link a GitHub App under the app's Source settings before deploying.`,
+        ),
+      ],
+    };
+  if (!repo.connectionId) return { gitConnection: null, notes: [] };
+  if (!x.gitConnections)
+    return {
+      gitConnection: null,
+      notes: [
+        blocker(
+          `{panel} is too old to hand over the git connection ${repo.repo} clones with. Attach one under the app's Source settings before deploying.`,
+        ),
+      ],
+    };
+  const conn = x.gitConnections.find((g) => g.id === repo.connectionId);
+  if (!conn)
+    return {
+      gitConnection: null,
+      notes: [
+        blocker(
+          `The git connection ${repo.repo} cloned with on {panel} is gone there. Attach one under the app's Source settings before deploying.`,
+        ),
+      ],
+    };
+  return {
+    gitConnection: {
+      provider: conn.provider,
+      label: conn.label,
+      baseUrl: conn.baseUrl,
+      allowPrivateEndpoint: conn.allowPrivateEndpoint,
+      username: conn.username,
+      token: conn.token,
+    },
+    notes: [],
+  };
+}
+
 function repoFields(repo: GitRepo | null): Partial<SourceApplication> {
   if (!repo) return { sourceType: "git" };
   const [owner = "", ...rest] = repo.repo.split("/");
@@ -400,12 +450,21 @@ export function sourceApplication(
   const env = appEnv(x, a);
   const { domains, notes: domainNotes } = domainsOf(a, compose);
   const history = backupHistoryOf(a);
-  const notes = [...a.notes, ...domainNotes, ...history.notes, ...cronNotes(a)];
+  const notes: Note[] = [
+    ...a.notes,
+    ...domainNotes,
+    ...history.notes,
+    ...cronNotes(a),
+  ];
   if (a.source === "upload" && !a.upload)
     notes.push(
       a.upload === undefined
         ? "{panel} is too old to hand over its uploaded archive. Upload it again here before deploying."
         : "It had no archive uploaded on {panel}. Upload one here before deploying.",
+    );
+  if (a.rollbackKeep === undefined)
+    notes.push(
+      "{panel} is too old to hand over its compose flags, rollback count and deploy hook switch, so they start at Deplo's defaults. Check them under Settings.",
     );
   if (a.preview === undefined && a.previewEnabled)
     notes.push(
@@ -433,6 +492,15 @@ export function sourceApplication(
     nativePreview: a.preview
       ? { enabled: a.previewEnabled, ...a.preview }
       : undefined,
+    registriesCarried: x.registries !== undefined,
+    nativeOps:
+      a.rollbackKeep === undefined
+        ? undefined
+        : {
+            composeUpArgs: a.composeUpArgs ?? null,
+            rollbackKeep: a.rollbackKeep,
+            deployHook: a.deployHook ?? { enabled: true, used: false },
+          },
   };
   if (compose)
     return {
@@ -449,12 +517,20 @@ export function sourceApplication(
       : a.source === "upload"
         ? { sourceType: "drop", upload: a.upload ?? null }
         : repoFields(a.repo);
+  const git: ReturnType<typeof gitCredentialOf> =
+    a.source === "docker-image" || a.source === "upload"
+      ? { notes: [] }
+      : gitCredentialOf(x, a.repo);
+  notes.push(...git.notes);
   // A pending cache clear is this host's housekeeping, not a setting.
   const build: Partial<BuildConfig> = { ...a.build };
   delete build.buildCacheClearPending;
   return {
     ...common,
     ...origin,
+    ...(git.gitConnection !== undefined
+      ? { gitConnection: git.gitConnection }
+      : {}),
     applicationId: a.id,
     sourceType: origin.sourceType ?? "git",
     buildType: a.build.buildMethod,

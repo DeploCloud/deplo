@@ -3,6 +3,7 @@ import { TEAM_HEADER } from "@/lib/team-path";
 import {
   ExportRefusedError,
   checkWorkloadData,
+  openAppImage,
   openAppUpload,
   openDatabaseDump,
   openWorkloadData,
@@ -19,6 +20,7 @@ interface ExportRequest extends WorkloadRef {
   allowFile?: boolean;
   check?: string[];
   upload?: boolean;
+  image?: string;
   dump?: boolean;
   recipient?: string;
 }
@@ -88,16 +90,22 @@ export async function POST(request: Request) {
           await checkWorkloadData(ref, body.check.map(String)),
         );
 
+      const raw =
+        body.upload === true ||
+        body.dump === true ||
+        typeof body.image === "string";
       const { chunks, close } =
         body.dump === true
           ? await openDatabaseDump(ref, String(body.recipient ?? ""))
           : body.upload === true
             ? await openAppUpload(ref)
-            : await openWorkloadData(ref, {
-                volume: body.volume,
-                hostPath: body.hostPath,
-                allowFile: body.allowFile,
-              });
+            : typeof body.image === "string"
+              ? await openAppImage(ref, body.image.trim())
+              : await openWorkloadData(ref, {
+                  volume: body.volume,
+                  hostPath: body.hostPath,
+                  allowFile: body.allowFile,
+                });
       const it = chunks[Symbol.asyncIterator]();
       let first: IteratorResult<Buffer>;
       try {
@@ -114,10 +122,7 @@ export async function POST(request: Request) {
       }
       return new Response(streamOf(first.value, it, close), {
         headers: {
-          "Content-Type":
-            body.upload === true || body.dump === true
-              ? "application/octet-stream"
-              : "application/gzip",
+          "Content-Type": raw ? "application/octet-stream" : "application/gzip",
           "Cache-Control": "no-store",
         },
       });
