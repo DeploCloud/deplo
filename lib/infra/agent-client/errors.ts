@@ -16,6 +16,15 @@ export class AgentNetworkUnsupportedError extends Error {}
 
 export class AgentUpdateUnsupportedError extends Error {}
 
+// Raised before any agent is dialed, so a GitHub outage never counts against a server.
+export class AgentReleaseUnavailableError extends Error {
+  constructor() {
+    super(
+      "Could not download the agent release this Deplo installs from GitHub. Try again in a minute.",
+    );
+  }
+}
+
 export class AgentUninstallUnsupportedError extends Error {}
 
 export class AgentBackupUnsupportedError extends Error {}

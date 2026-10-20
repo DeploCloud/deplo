@@ -36,7 +36,7 @@ import {
   type FetchCapture,
 } from "../notify/fetch-capture-test-helpers";
 import { usageReportState } from "../data/instance-settings/settings-store";
-import { FALLBACK_AGENT_VERSION, DEPLO_VERSION } from "../version";
+import { AGENT_VERSION, DEPLO_VERSION } from "../version";
 import { USAGE_REPORT_SCHEMA, USAGE_REPORT_URL } from "./report";
 import { sendUsageReport } from "./send";
 
@@ -269,7 +269,7 @@ test("the report describes the fleet in aggregate and names nothing", async () =
     schema: USAGE_REPORT_SCHEMA,
     instanceId: state.instanceId,
     deploVersion: DEPLO_VERSION,
-    expectedAgentVersion: FALLBACK_AGENT_VERSION,
+    expectedAgentVersion: AGENT_VERSION,
     installKind: "plain",
     daysSinceFirstReport: 0,
     hosts: [

@@ -3304,11 +3304,6 @@ type Mutation {
   changePassword(currentPassword: String!, newPassword: String!): Boolean
 
   """
-  Force an immediate re-resolution of the latest agent release from GitHub, bypassing the in-process cache. Returns the resolved expected agent version so the dashboard re-renders with fresh outdated badges. Use after publishing a new agent release rather than waiting out the cache TTL.
-  """
-  checkAgentUpdates: String
-
-  """
   Probe every provisioned server's agent and persist each outcome; returns every server (unprovisioned ones pass through untouched). This is what the Servers page runs on load, so a reload always reflects reality rather than the status a server had when it first called home.
   """
   checkAllServerHealth(
@@ -4083,7 +4078,7 @@ type Mutation {
   setAppVolumes(id: String!, volumes: [VolumeInput!]!): App
 
   """
-  Offer canary (pre-release) versions of Deplo and of every server's agent as updates, or go back to stable ones. One switch for the whole fleet. Installs nothing: a newer version shows up as an update, and turning it off never downgrades anything already on a canary.
+  Offer canary (pre-release) versions of Deplo as updates, or go back to stable ones. Server agents follow the agent version the installed Deplo is pinned to, never this switch. Installs nothing: a newer version shows up as an update, and turning it off never downgrades anything already on a canary.
   """
   setCanaryReleases(enabled: Boolean!): UpdateInfo
 
@@ -5662,7 +5657,7 @@ type Server {
   dockerVersion: String
 
   """
-  The agent version this server should be running - the latest GitHub release of the agent (DeploCloud/deplo-agent), or the newest canary while `updateInfo.canary` is on: one switch for Deplo and every agent. Resolved at request time and cached; falls back to a built-in version when GitHub is unreachable.
+  The agent version this server should be running: the one release of DeploCloud/deplo-agent this Deplo is pinned to. A newer agent is left alone, never downgraded.
   """
   expectedAgentVersion: String
   host: String

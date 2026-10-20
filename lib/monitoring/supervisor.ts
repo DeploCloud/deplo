@@ -25,7 +25,7 @@ import {
   toContainerSample,
 } from "../data/container-metrics";
 import { reconcileAppStatusFromTelemetry } from "../data/app-status-reconcile";
-import { expectedAgentVersion } from "../data/release-channel";
+import { AGENT_VERSION } from "../version";
 import type { ServerMetrics } from "../data/monitoring";
 import type {
   ContainerStat,
@@ -214,7 +214,7 @@ async function runStreamLoop(
       const facts: ConnectionFacts = {
         agentVersion: hello.agentVersion || null,
         traefik: hello.traefikRunning,
-        expectedAgentVersion: await expectedAgentVersion(),
+        expectedAgentVersion: AGENT_VERSION,
         serverName,
       };
 
@@ -324,7 +324,7 @@ async function runPollLoop(
         const servers = await listAllServers();
         const server = servers.find((s) => s.id === serverId);
         if (!server) return;
-        const expected = await expectedAgentVersion();
+        const expected = AGENT_VERSION;
         recordMetricsSample(await measureServerForCollector(server, expected));
       }
     } catch {}

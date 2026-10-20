@@ -9,7 +9,7 @@ import { __setTestDb, __resetTestDb } from "../../db/client";
 import { runWithIdentity } from "../../auth/request-context";
 import { seedIdentity, TEAM_A, USER_1 } from "../identity-test-helpers";
 import { makeServer, seedServerRow } from "../infra-test-helpers";
-import { DEPLO_VERSION } from "../../version";
+import { AGENT_VERSION, DEPLO_VERSION } from "../../version";
 import {
   claimBootRollout,
   fleetAgentStatus,
@@ -21,18 +21,7 @@ let db: TestDb;
 let pg: PGlite;
 
 const SELF_IP = "192.0.2.200";
-const EXPECTED = "9.9.9";
-
-// The release resolver memoizes on a globalThis symbol; seeding it keeps the suite off GitHub.
-function pinExpectedAgentVersion(version: string): void {
-  const cell = (globalThis as Record<symbol, unknown>)[
-    Symbol.for("deplo.agent.release.cache")
-  ] as { value: unknown; lastGood: unknown };
-  cell.value = {
-    at: Date.now(),
-    release: { version, binaries: { amd64: null, arm64: null } },
-  };
-}
+const EXPECTED = AGENT_VERSION;
 
 // servers.cert_fingerprint is unique, so every seeded host needs its own.
 let fingerprints = 0;
@@ -60,7 +49,6 @@ beforeEach(async () => {
     `truncate table servers, instance_settings, users, teams restart identity cascade;`,
   );
   await seedIdentity(db, { users: [{ id: USER_1, teamId: TEAM_A }] });
-  pinExpectedAgentVersion(EXPECTED);
 });
 
 const asAdmin = <T>(fn: () => Promise<T>) =>

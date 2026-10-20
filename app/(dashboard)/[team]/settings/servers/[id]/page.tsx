@@ -20,7 +20,7 @@ import {
 } from "@/lib/deploy/domains";
 import { serverLabel } from "@/lib/utils";
 import { reportedAgentVersion, agentUpdateAvailable } from "@/lib/version";
-import { expectedAgentVersion as fleetAgentVersion } from "@/lib/data/release-channel";
+import { AGENT_VERSION } from "@/lib/version";
 import type { TeamOption } from "@/components/servers/server-team-access";
 import {
   ServerHealthProvider,
@@ -49,15 +49,14 @@ export default async function ServerDetailPage(
   if (!server) notFound();
   if (server.importOnly) notFound();
 
-  const [expectedAgentVersion, teamIds, teamsRaw, policy, runs, workloads] =
-    await Promise.all([
-      fleetAgentVersion(),
-      getServerTeamIds(id),
-      listAllTeamsForAdmin(),
-      getCleanupPolicy(),
-      listCleanupRuns({ serverId: id }),
-      listServerWorkloads(id),
-    ]);
+  const expectedAgentVersion = AGENT_VERSION;
+  const [teamIds, teamsRaw, policy, runs, workloads] = await Promise.all([
+    getServerTeamIds(id),
+    listAllTeamsForAdmin(),
+    getCleanupPolicy(),
+    listCleanupRuns({ serverId: id }),
+    listServerWorkloads(id),
+  ]);
 
   const [hydrated] = await hydrateServerSpecs([server]);
   const self = deploHostSelfAddresses();

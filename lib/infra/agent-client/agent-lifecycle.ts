@@ -2,9 +2,9 @@ import "server-only";
 
 import { status as GrpcStatus, type ServiceError } from "@grpc/grpc-js";
 import { isNewer } from "../../version";
-import type { AgentChannel } from "../../agent/release";
 import { connectAgent, dial } from "./connect";
 import {
+  AgentReleaseUnavailableError,
   AgentUninstallUnsupportedError,
   AgentUpdateUnsupportedError,
 } from "./errors";
@@ -16,17 +16,12 @@ import { resolveTarget } from "./mtls-channel";
 
 export async function selfUpdateServerAgent(
   serverId: string,
-  channel: AgentChannel = "stable",
 ): Promise<{ version: string; restarting: boolean }> {
   const target = await resolveTarget(serverId);
 
-  const { resolveLatestAgentRelease } = await import("../../agent/release");
-  const release = await resolveLatestAgentRelease(channel);
-  if (!release) {
-    throw new Error(
-      "Could not resolve the latest agent release from GitHub - try again, or use Check for updates.",
-    );
-  }
+  const { resolveAgentRelease } = await import("../../agent/release");
+  const release = await resolveAgentRelease();
+  if (!release) throw new AgentReleaseUnavailableError();
   const binaries: Record<string, { url: string; sha256: string }> = {};
   for (const [arch, bin] of Object.entries(release.binaries)) {
     if (bin) binaries[arch] = { url: bin.url, sha256: bin.sha256 };
@@ -41,10 +36,10 @@ export async function selfUpdateServerAgent(
           `(target v${release.version}). Re-run the install command to upgrade it.`,
       );
     }
-    // Forward-only: a GitHub blip resolves the pinned fallback, which can be older, and the agent cannot downgrade.
+    // Forward-only: an agent ahead of the pin stays where it is.
     if (isNewer(hello.agentVersion, release.version))
       throw new Error(
-        `This server already runs agent v${hello.agentVersion}, newer than the latest release Deplo can see (v${release.version}). Nothing to install.`,
+        `This server already runs agent v${hello.agentVersion}, newer than the v${release.version} this Deplo installs. Nothing to install.`,
       );
     return await conn.selfUpdate(release.version, binaries);
   } catch (e) {

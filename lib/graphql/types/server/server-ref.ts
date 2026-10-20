@@ -8,7 +8,7 @@ import {
   isDeploHostServer,
 } from "@/lib/deploy/domains";
 import { reportedAgentVersion } from "@/lib/version";
-import { expectedAgentVersion } from "@/lib/data/release-channel";
+import { AGENT_VERSION } from "@/lib/version";
 import type { Server } from "@/lib/types/server";
 
 export const ServerStatusEnum = builder.enumType("ServerStatus", {
@@ -88,8 +88,8 @@ export const ServerRef = builder.objectRef<Server>("Server").implement({
     }),
     expectedAgentVersion: t.string({
       description:
-        "The agent version this server should be running - the latest GitHub release of the agent (DeploCloud/deplo-agent), or the newest canary while `updateInfo.canary` is on: one switch for Deplo and every agent. Resolved at request time and cached; falls back to a built-in version when GitHub is unreachable.",
-      resolve: () => expectedAgentVersion(),
+        "The agent version this server should be running: the one release of DeploCloud/deplo-agent this Deplo is pinned to. A newer agent is left alone, never downgraded.",
+      resolve: () => AGENT_VERSION,
     }),
     lastSeenAt: t.string({
       nullable: true,

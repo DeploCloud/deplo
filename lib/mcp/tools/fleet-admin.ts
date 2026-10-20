@@ -171,21 +171,6 @@ export const FLEET: McpToolDef[] = [
     `,
   }),
   tool({
-    name: "check_agent_updates",
-    title: "Check for server agent updates",
-    description:
-      "Look up the newest agent release and compare it with what every server runs.",
-    group: "Servers",
-    requires: "instanceAdmin",
-    idempotent: true,
-    input: z.object({}),
-    query: /* GraphQL */ `
-      mutation McpCheckAgentUpdates {
-        checkAgentUpdates
-      }
-    `,
-  }),
-  tool({
     name: "uninstall_server_agent",
     title: "Uninstall a server's agent",
     description:

@@ -428,7 +428,6 @@ const SKIP = new Set([
   "addRegistry",
   "mintRegistrationLink",
   "checkForUpdates",
-  "checkAgentUpdates",
   "checkAllServerHealth",
   "updateDockerCleanupPolicy",
   "runDockerCleanupNow",

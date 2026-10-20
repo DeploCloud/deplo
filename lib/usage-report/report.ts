@@ -20,7 +20,7 @@ import { notificationChannels } from "../db/schema/control-plane/notifications";
 import { environments } from "../db/schema/control-plane/projects";
 import { servers } from "../db/schema/control-plane/servers";
 import { passkey } from "../db/schema/auth";
-import { knownExpectedAgentVersion } from "../agent/release";
+import { AGENT_VERSION } from "../version";
 import { deploHostSelfAddresses, isDeploHostServer } from "../deploy/domains";
 import { DEPLO_VERSION } from "../version";
 
@@ -183,7 +183,7 @@ export async function buildUsageReport(opts: {
     schema: USAGE_REPORT_SCHEMA,
     instanceId: opts.instanceId,
     deploVersion: DEPLO_VERSION,
-    expectedAgentVersion: knownExpectedAgentVersion(),
+    expectedAgentVersion: AGENT_VERSION,
     installKind: settings?.takeoverPlatform ?? "plain",
     daysSinceFirstReport: opts.mintedAt
       ? Math.max(

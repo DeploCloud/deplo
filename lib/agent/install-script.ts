@@ -3,10 +3,10 @@ import "server-only";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 
-import { resolveLatestAgentRelease } from "./release";
+import { resolveAgentRelease } from "./release";
 
 export async function renderInstallScript(): Promise<string | null> {
-  const release = await resolveLatestAgentRelease();
+  const release = await resolveAgentRelease();
   if (!release) return null;
 
   const amd64 = release.binaries.amd64;
