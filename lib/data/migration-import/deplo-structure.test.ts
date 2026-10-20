@@ -19,7 +19,8 @@ import {
   provisionServer1,
   resetMigrationHarness,
 } from "./migration-import-test-helpers";
-import { blockingLines, importFromDeplo } from "./deplo-import-test-helpers";
+import { importFromDeplo } from "./deplo-import-test-helpers";
+import { getMigrationRun } from "./run-queries";
 
 let db: TestDb;
 let pg: PGlite;
@@ -154,7 +155,11 @@ test("an environment Deplo cannot create keeps its apps out of the others, and s
     false,
     "the app did not land in another environment",
   );
-  const blocking = (await blockingLines(runId)).join("\n");
-  assert.match(blocking, /characters or fewer/);
-  assert.match(blocking, /qa-web/);
+  // A failure keeps its own count, so it is a failed line rather than a blocker.
+  const failed = (await asOwner(() => getMigrationRun(runId)))!.items
+    .filter((i) => i.outcome === "failed")
+    .map((i) => i.message ?? "")
+    .join("\n");
+  assert.match(failed, /characters or fewer/);
+  assert.match(failed, /qa-web/);
 });
