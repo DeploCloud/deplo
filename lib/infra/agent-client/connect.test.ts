@@ -50,15 +50,28 @@ const stored = async () =>
       .where(eq(servers.id, "srv_gate"))
   )[0].v;
 
-test("a usable stored version costs no Hello", async () => {
-  const { conn, calls } = fakeConn("0.0.1");
-  assert.equal(await gateConnection(conn, AGENT_VERSION, "srv_gate"), conn);
-  assert.equal(calls.hello, 0);
+test("every connection asks the agent live, and the caller's first hello is free", async () => {
+  const { conn, calls } = fakeConn(AGENT_VERSION);
+  const gated = await gateConnection(conn, AGENT_VERSION, "srv_gate");
+  assert.equal(calls.hello, 1);
+  assert.equal((await gated.hello()).agentVersion, AGENT_VERSION);
+  assert.equal(calls.hello, 1, "the gate's answer is reused once");
+  await gated.hello();
+  assert.equal(calls.hello, 2, "later hellos dial again");
 });
 
+test("a stored version on the pin does not hide an agent replaced by an old one", async () => {
+  const { conn, calls } = fakeConn("0.1.0");
+  await assert.rejects(
+    gateConnection(conn, AGENT_VERSION, "srv_gate"),
+    AgentTooOldError,
+  );
+  assert.equal(calls.closed, 1);
+  assert.equal(await stored(), "0.1.0");
+});
 test("an unknown stored version asks the agent and remembers the answer", async () => {
   const { conn, calls } = fakeConn(AGENT_VERSION);
-  assert.equal(await gateConnection(conn, "", "srv_gate"), conn);
+  await gateConnection(conn, "", "srv_gate");
   assert.equal(calls.hello, 1);
   assert.equal(calls.closed, 0);
   assert.equal(await stored(), AGENT_VERSION);
@@ -66,7 +79,7 @@ test("an unknown stored version asks the agent and remembers the answer", async 
 
 test("an agent below the minimum is refused, live, and the connection closed", async () => {
   const { conn, calls } = fakeConn("0.1.0");
-  await assert.rejects(gateConnection(conn, "0.1.0", "srv_gate"), (e) => {
+  await assert.rejects(gateConnection(conn, "", "srv_gate"), (e) => {
     assert.ok(e instanceof AgentTooOldError);
     assert.equal(e.message, AGENT_TOO_OLD_MESSAGE);
     return true;
@@ -77,5 +90,6 @@ test("an agent below the minimum is refused, live, and the connection closed", a
 
 test("a stale low stored version is not a refusal when the agent has moved on", async () => {
   const { conn } = fakeConn(AGENT_VERSION);
-  assert.equal(await gateConnection(conn, "0.1.0", "srv_gate"), conn);
+  const gated = await gateConnection(conn, "0.1.0", "srv_gate");
+  assert.equal((await gated.hello()).agentVersion, AGENT_VERSION);
 });
