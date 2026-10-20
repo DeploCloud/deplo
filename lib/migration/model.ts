@@ -63,10 +63,23 @@ export interface SourceBackupSchedule {
   destination?: { name?: string | null } | null;
   volumeName?: string | null;
   serviceName?: string | null;
+  timezone?: string | null;
+}
+
+// A restore point the source can still restore from; only another Deplo sends them.
+export interface SourceBackupRun {
+  destination: string;
+  objectKey: string;
+  sizeBytes: number;
+  decryptedSizeBytes?: number | null;
+  sha256?: string | null;
+  startedAt: string;
+  finishedAt?: string | null;
 }
 
 export interface SourceApplication {
   backups?: SourceBackupSchedule[] | null;
+  backupRuns?: SourceBackupRun[] | null;
   sharedRefs?: SharedRef[] | null;
   secretEnvKeys?: string[] | null;
   // Variables the source kept away from previews; absent means every one reaches both.
@@ -161,6 +174,7 @@ export interface SourceApplication {
 
 export interface SourceCompose {
   backups?: SourceBackupSchedule[] | null;
+  backupRuns?: SourceBackupRun[] | null;
   sharedRefs?: SharedRef[] | null;
   secretEnvKeys?: string[] | null;
   productionOnlyEnvKeys?: string[] | null;
@@ -213,6 +227,7 @@ export interface SourceDatabase {
   description?: string | null;
   dockerImage?: string | null;
   backups?: SourceBackupSchedule[] | null;
+  backupRuns?: SourceBackupRun[] | null;
   databaseName?: string | null;
   databaseUser?: string | null;
   databasePassword?: string | null;
@@ -345,10 +360,26 @@ export interface HostMount {
 }
 
 export interface SourceS3Destination {
+  kind?: "s3";
   name: string;
   endpoint: string;
   bucket: string;
   region: string;
   accessKeyId: string;
   secretAccessKey: string;
+  provider?: string | null;
+  // The key its artifacts are encrypted to; null when it never encrypted, absent when unknown.
+  ageIdentity?: string | null;
 }
+
+export interface SourceServerDestination {
+  kind: "server";
+  name: string;
+  serverId: string;
+  serverName: string | null;
+  path: string | null;
+  ageIdentity?: string;
+}
+
+export type SourceBackupDestination =
+  SourceS3Destination | SourceServerDestination;

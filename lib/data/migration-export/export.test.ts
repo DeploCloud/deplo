@@ -16,7 +16,13 @@ import { runWithIdentity } from "../../auth/request-context";
 import { encryptSecret } from "../../crypto";
 import { insertEnvVars } from "../app-graph-load";
 import { seedApp, seedServer } from "../app-graph-test-helpers";
-import { seedDatabase, TRUNCATE_BACKUPS } from "../backup-test-helpers";
+import {
+  seedBackup,
+  seedDatabase,
+  seedDestination,
+  seedRun,
+  TRUNCATE_BACKUPS,
+} from "../backup-test-helpers";
 import { seedIdentity, TEAM_A, TEAM_B, USER_1 } from "../identity-test-helpers";
 import { DEPLO_EXPORT_VERSION } from "../../migration/deplo/export-shape";
 import { instanceFingerprint } from "../../migration/deplo/instance";
@@ -240,4 +246,78 @@ test("an app in a private folder the reader cannot open is counted, never handed
   const owner = await as(USER_1, TEAM_A, () => exportTeamForMigration());
   assert.equal(owner.withheld, 0);
   assert.ok(owner.apps.some((a) => a.id === "prj_web"));
+});
+
+test("every backup destination, schedule and restore point leaves in the export", async () => {
+  await seedDestination(db, { id: "dst_s3", name: "bucket" });
+  await seedDestination(db, {
+    id: "dst_disk",
+    name: "disk",
+    kind: "server",
+    path: "/mnt/backups",
+  });
+  await seedBackup(db, {
+    id: "bkp_off",
+    destinationId: "dst_disk",
+    databaseId: "db_main",
+    schedule: "0 2 * * *",
+    timezone: "Europe/Paris",
+    enabled: false,
+  });
+  await seedRun(db, {
+    id: "brun_ok",
+    destinationId: "dst_s3",
+    databaseId: "db_main",
+    objectKey: "deplo/a/db_main/1.sql.gz.age",
+    sizeBytes: 2048,
+    sha256: "abc",
+    startedAt: "2026-02-01T03:00:00.000Z",
+  });
+  await seedRun(db, {
+    id: "brun_bad",
+    destinationId: "dst_s3",
+    databaseId: "db_main",
+    status: "failed",
+  });
+
+  const out = await as(USER_1, TEAM_A, () => exportTeamForMigration());
+  const s3 = out.destinations.find((d) => d.name === "bucket");
+  assert.match(s3?.ageIdentity ?? "", /^AGE-SECRET-KEY-/);
+  assert.equal(s3?.provider, "aws");
+  assert.deepEqual(
+    out.serverDestinations?.map((d) => ({
+      ...d,
+      ageIdentity: !!d.ageIdentity,
+    })),
+    [
+      {
+        name: "disk",
+        serverId: "srv_1",
+        serverName: out.servers.find((s) => s.id === "srv_1")?.name ?? null,
+        path: "/mnt/backups",
+        ageIdentity: true,
+      },
+    ],
+  );
+  const main = out.databases.find((d) => d.id === "db_main")!;
+  assert.deepEqual(main.backups, [
+    {
+      schedule: "0 2 * * *",
+      enabled: false,
+      timezone: "Europe/Paris",
+      retentionCount: 7,
+      destination: "disk",
+    },
+  ]);
+  assert.deepEqual(main.backupRuns, [
+    {
+      destination: "bucket",
+      objectKey: "deplo/a/db_main/1.sql.gz.age",
+      sizeBytes: 2048,
+      decryptedSizeBytes: null,
+      sha256: "abc",
+      startedAt: "2026-02-01T03:00:00.000Z",
+      finishedAt: T0,
+    },
+  ]);
 });

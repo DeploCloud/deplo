@@ -143,7 +143,9 @@ async function runImportMigrationProject(
       items: report.items,
     };
 
-  const destinations = await importBackupDestinations(c, report);
+  const destinations = await importBackupDestinations(c, report, (id) =>
+    targetServerFor(serverMap.get(id)),
+  );
 
   const wanted = input.serviceIds ? new Set(input.serviceIds) : null;
   const picked = (env: SourceEnvironment) =>

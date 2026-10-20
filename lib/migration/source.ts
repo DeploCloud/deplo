@@ -7,7 +7,7 @@ import type {
   SourceEnvironment,
   SourceMember,
   SourceProject,
-  SourceS3Destination,
+  SourceBackupDestination,
   SourceSchedule,
   SourceServer,
   SourceSharedEnv,
@@ -98,7 +98,7 @@ export interface MigrationSourceClient {
   listSchedules(kind: string, id: string): Promise<SourceSchedule[]>;
   teamSharedEnv(): Promise<SourceSharedEnv | null>;
   serverSharedEnv(sourceServerId: string): Promise<SourceSharedEnv | null>;
-  listBackupDestinations(): Promise<SourceS3Destination[]>;
+  listBackupDestinations(): Promise<SourceBackupDestination[]>;
 
   serviceRuntime(svc: RuntimeQuery): Promise<ServiceRuntime>;
 

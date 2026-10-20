@@ -3,6 +3,8 @@ import type { BuildConfig, GitRepo } from "../../types/build";
 import type { SharedRef } from "../map/env";
 import type {
   SourceApplication,
+  SourceBackupDestination,
+  SourceBackupRun,
   SourceBackupSchedule,
   SourceCompose,
   SourceDatabase,
@@ -18,6 +20,7 @@ import type {
   DeploExport,
   DeploExportApp,
   DeploExportBackup,
+  DeploExportBackupRun,
   DeploExportDatabase,
   DeploExportSharedVar,
   DeploExportVar,
@@ -109,7 +112,36 @@ function backupsOf(rows: DeploExportBackup[]): SourceBackupSchedule[] {
     enabled: b.enabled,
     keepLatestCount: b.retentionCount,
     destination: b.destination ? { name: b.destination } : null,
+    timezone: b.timezone ?? null,
   }));
+}
+
+// Absent from an older source: say so, rather than let its restore points vanish quietly.
+function backupHistoryOf(w: {
+  backups: DeploExportBackup[];
+  backupRuns?: DeploExportBackupRun[];
+}): { backupRuns?: SourceBackupRun[]; notes: string[] } {
+  if (w.backupRuns) return { backupRuns: w.backupRuns, notes: [] };
+  return {
+    notes:
+      w.backups.length > 0
+        ? [
+            "{panel} is too old to send its backup history, so its restore points are not listed here. Restore from {panel}, or update it and import again.",
+          ]
+        : [],
+  };
+}
+
+export function backupDestinationsOf(
+  x: DeploExport,
+): SourceBackupDestination[] {
+  return [
+    ...x.destinations.map((d) => ({ kind: "s3" as const, ...d })),
+    ...(x.serverDestinations ?? []).map((d) => ({
+      kind: "server" as const,
+      ...d,
+    })),
+  ];
 }
 
 function domainsOf(
@@ -340,7 +372,8 @@ export function sourceApplication(
   const compose = a.source === "compose";
   const env = appEnv(x, a);
   const { domains, notes: domainNotes } = domainsOf(a, compose);
-  const notes = [...a.notes, ...env.notes, ...domainNotes];
+  const history = backupHistoryOf(a);
+  const notes = [...a.notes, ...env.notes, ...domainNotes, ...history.notes];
   const common = {
     name: a.name,
     appName: a.slug,
@@ -354,6 +387,7 @@ export function sourceApplication(
     serverId: a.serverId,
     environmentId: placementOf(x, a).environmentId,
     backups: backupsOf(a.backups),
+    backupRuns: history.backupRuns,
     routingPort: a.build.port,
     platformNotes: notes,
   };
@@ -417,6 +451,7 @@ export function sourceDatabase(
   d: DeploExportDatabase,
 ): SourceDatabase {
   const kind = dbKindOf(d);
+  const history = backupHistoryOf(d);
   return {
     [`${kind}Id`]: d.id,
     name: d.name,
@@ -438,8 +473,10 @@ export function sourceDatabase(
       mountPath: m.mountPath,
     })),
     backups: backupsOf(d.backups),
+    backupRuns: history.backupRuns,
     platformNotes: [
       ...d.notes,
+      ...history.notes,
       ...(d.crons.length > 0
         ? [
             `${d.crons.map((j) => j.name).join(", ")} ran on a schedule on {panel} and did not come across. Add ${d.crons.length === 1 ? "it" : "them"} again under Crons.`,

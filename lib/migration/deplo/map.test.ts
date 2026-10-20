@@ -405,3 +405,30 @@ test("a database carries every limit in Deplo's own shape", () => {
   const db = sourceDatabase(x, x.databases[0]);
   assert.deepEqual(db.nativeResources, { memoryMb: 256, pidsLimit: 64 });
 });
+
+test("a source too old to send backup history says its restore points stayed behind", () => {
+  const backups = [
+    {
+      schedule: "0 3 * * *",
+      enabled: true,
+      retentionCount: 7,
+      destination: "b",
+    },
+  ];
+  const old = sourceDatabase(deploExport(), exportDatabase({ backups }));
+  assert.equal(old.backupRuns, undefined);
+  assert.ok(
+    old.platformNotes?.some((n) =>
+      /too old to send its backup history/.test(n),
+    ),
+  );
+  const fresh = sourceDatabase(
+    deploExport(),
+    exportDatabase({ backups, backupRuns: [] }),
+  );
+  assert.deepEqual(fresh.backupRuns, []);
+  assert.equal(
+    fresh.platformNotes?.some((n) => /backup history/.test(n)),
+    false,
+  );
+});

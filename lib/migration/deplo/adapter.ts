@@ -21,6 +21,7 @@ import {
 import type { DeploExport } from "./export-shape";
 import { instanceFingerprint } from "./instance";
 import {
+  backupDestinationsOf,
   sourceApplication,
   sourceDatabase,
   sourceTree,
@@ -190,7 +191,7 @@ export function deploClient(c: SourceCredential): MigrationSourceClient {
         : null;
     },
     serverSharedEnv: async () => null,
-    listBackupDestinations: async () => (await exportOf(c)).destinations,
+    listBackupDestinations: async () => backupDestinationsOf(await exportOf(c)),
 
     serviceRuntime: (svc) => serviceRuntime(c, svc),
     stopService: (kind, id) => stopService(c, kind, id),

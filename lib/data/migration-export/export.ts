@@ -1,6 +1,6 @@
 import "server-only";
 
-import { and, eq, inArray } from "drizzle-orm";
+import { eq, inArray } from "drizzle-orm";
 
 import { getDb } from "../../db/client";
 import {
@@ -8,6 +8,7 @@ import {
   teamRoles as teamRolesTable,
 } from "../../db/schema/control-plane/access-control";
 import { backupDestination as destTable } from "../../db/schema/control-plane/backups";
+import { servers as serversTable } from "../../db/schema/control-plane/servers";
 import {
   teams as teamsTable,
   users as usersTable,
@@ -33,6 +34,7 @@ import {
   DEPLO_EXPORT_VERSION,
   type DeploExport,
   type DeploExportDestination,
+  type DeploExportServerDestination,
   type DeploExportSharedVar,
 } from "../../migration/deplo/export-shape";
 import { instanceFingerprint } from "../../migration/deplo/instance";
@@ -121,26 +123,54 @@ async function members(teamId: string): Promise<DeploExport["members"]> {
   }));
 }
 
-async function destinations(teamId: string): Promise<DeploExportDestination[]> {
+async function destinations(
+  teamId: string,
+  withKeys: boolean,
+): Promise<{
+  buckets: DeploExportDestination[];
+  disks: DeploExportServerDestination[];
+}> {
   const rows = await getDb()
-    .select()
+    .select({ d: destTable, serverName: serversTable.name })
     .from(destTable)
-    .where(and(eq(destTable.teamId, teamId), eq(destTable.kind, "s3")));
-  return rows.map(assembleDestination).flatMap((d) => {
+    .leftJoin(serversTable, eq(serversTable.id, destTable.serverId))
+    .where(eq(destTable.teamId, teamId));
+  const buckets: DeploExportDestination[] = [];
+  const disks: DeploExportServerDestination[] = [];
+  for (const row of rows) {
+    const d = assembleDestination(row.d);
+    // Left out when it will not open or the reader may not see it: the target knows it was not told.
+    const ageIdentity = !withKeys
+      ? undefined
+      : d.ageIdentityEnc
+        ? opened(d.ageIdentityEnc) || undefined
+        : null;
+    if (d.kind === "server") {
+      if (d.serverId)
+        disks.push({
+          name: d.name,
+          serverId: d.serverId,
+          serverName: row.serverName ?? null,
+          path: d.path,
+          ...(ageIdentity ? { ageIdentity } : {}),
+        });
+      continue;
+    }
     const accessKeyId = opened(d.accessKeyEnc);
     const secretAccessKey = opened(d.secretKeyEnc);
-    if (!d.endpoint || !d.bucket || !accessKeyId || !secretAccessKey) return [];
-    return [
-      {
-        name: d.name,
-        endpoint: d.endpoint,
-        bucket: d.bucket,
-        region: d.region || "us-east-1",
-        accessKeyId,
-        secretAccessKey,
-      },
-    ];
-  });
+    if (!d.endpoint || !d.bucket || !accessKeyId || !secretAccessKey) continue;
+    buckets.push({
+      name: d.name,
+      endpoint: d.endpoint,
+      bucket: d.bucket,
+      region: d.region || "us-east-1",
+      accessKeyId,
+      secretAccessKey,
+      ...(d.provider ? { provider: d.provider } : {}),
+      ...(ageIdentity !== undefined ? { ageIdentity } : {}),
+    });
+  }
+  return { buckets, disks };
 }
 
 export async function exportTeamForMigration(): Promise<DeploExport> {
@@ -202,7 +232,10 @@ export async function exportTeamForMigration(): Promise<DeploExport> {
     sharedVars(teamId),
     listServersForTeam(teamId),
     members(teamId),
-    destinations(teamId),
+    // The recovery key is revealed on the same terms as revealRecoveryKey.
+    hasCapability("manage_backup_destinations").then((may) =>
+      destinations(teamId, may),
+    ),
     teamsForUser(userId),
     hasCapability("control_apps"),
     hasCapability("control_databases"),
@@ -242,6 +275,7 @@ export async function exportTeamForMigration(): Promise<DeploExport> {
         isDeploHost: isDeploHostServer(s, self),
       })),
     members: people,
-    destinations: stores,
+    destinations: stores.buckets,
+    serverDestinations: stores.disks,
   };
 }
