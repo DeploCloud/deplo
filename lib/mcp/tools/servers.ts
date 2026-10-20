@@ -11,6 +11,7 @@ const SERVER_FIELDS = /* GraphQL */ `
   role
   agentVersion
   expectedAgentVersion
+  agentUsable
   cpuCores
   memoryMb
   diskGb
@@ -98,17 +99,21 @@ export const SERVERS: McpToolDef[] = [
     `,
   }),
   tool({
-    name: "update_server_agent",
-    title: "Update a server's agent",
+    name: "retry_server_agent_update",
+    title: "Retry a server's agent update",
     description:
-      "Update the Deplo agent binary on one host in place. Agent releases are forward-only: this cannot be undone.",
+      "Try again now to update one host's agent, after Deplo's own attempt failed. Agent updates are forward-only: this cannot be undone.",
     group: "Servers",
     requires: "instanceAdmin",
     destructive: true,
     input: z.object({ id: serverId }),
     query: /* GraphQL */ `
-      mutation McpUpdateServerAgent($id: String!) {
-        updateServerAgent(id: $id)
+      mutation McpRetryServerAgentUpdate($id: String!) {
+        retryServerAgentUpdate(id: $id) {
+          running
+          attempts
+          nextRetryAt
+        }
       }
     `,
   }),

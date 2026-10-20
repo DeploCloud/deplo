@@ -16,7 +16,7 @@ import {
   newestVersion,
   rankedCurrent,
 } from "../version";
-import { canaryReleasesEnabled, expectedAgentVersion } from "./release-channel";
+import { canaryReleasesEnabled } from "./release-channel";
 
 export { canaryReleasesEnabled };
 import { requireActiveTeamId, requireInstanceAdmin } from "../membership";
@@ -176,7 +176,7 @@ export async function refreshUpdateInfo(): Promise<UpdateInfo> {
   return fetchUpdateInfo({ cache: "no-store" });
 }
 
-/** Offer canary versions of Deplo and every agent as updates, or go back to stable ones. Installs nothing by itself. */
+/** Offer canary versions of Deplo as updates, or go back to stable ones. Installs nothing by itself. */
 export async function setCanaryReleases(enabled: boolean): Promise<UpdateInfo> {
   await requireInstanceAdmin();
   const teamId = await requireActiveTeamId();
@@ -193,8 +193,8 @@ export async function setCanaryReleases(enabled: boolean): Promise<UpdateInfo> {
     await recordActivity(
       "server",
       enabled
-        ? "Switched Deplo and its agents to canary releases"
-        : "Switched Deplo and its agents back to stable releases",
+        ? "Switched Deplo to canary releases"
+        : "Switched Deplo back to stable releases",
       user.name,
       null,
       teamId,
@@ -260,13 +260,6 @@ export async function listDeploReleases(): Promise<{
       error: e instanceof Error ? e.message : "Could not read the changelog",
     };
   }
-}
-
-export async function refreshAgentVersion(): Promise<string> {
-  await requireInstanceAdmin();
-  const { refreshAgentRelease } = await import("../agent/release");
-  await refreshAgentRelease();
-  return expectedAgentVersion();
 }
 
 export interface DeploUpdateStarted {

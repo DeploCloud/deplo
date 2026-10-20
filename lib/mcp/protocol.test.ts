@@ -126,7 +126,7 @@ test("the tool list is filtered to what the token can call", async () => {
     "a token without delete_apps must not even see delete_app",
   );
   assert.ok(
-    !names.includes("update_server_agent"),
+    !names.includes("retry_server_agent_update"),
     "instance-admin tools stay hidden from a non-admin token",
   );
   assert.ok(

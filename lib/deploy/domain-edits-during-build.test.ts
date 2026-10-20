@@ -30,7 +30,7 @@ function fakeAgent(): AgentConnection {
     hello: async () => ({
       contractVersion: 1,
       dockerAvailable: true,
-      agentVersion: "test",
+      agentVersion: "9.9.9",
       capabilities: ["deploy.compose.multi", "deploy.network"],
     }),
     readStack: async () => ({ exists: true, yaml: "services: {}\n" }),

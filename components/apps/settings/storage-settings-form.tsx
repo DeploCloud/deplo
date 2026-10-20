@@ -352,11 +352,6 @@ export function StorageSettingsForm({
               }}
               onChange={setVolumes}
             />
-            <p className="mt-3 text-xs text-muted-foreground">
-              Applied on the next production deploy. Removing an entry stops
-              mounting it - the data itself is never deleted automatically, and
-              a Volume is included in this app&apos;s backups.
-            </p>
           </CardContent>
           <CardFooter className="justify-between border-t border-border pt-4">
             <DirtyHint dirty={dirty} />

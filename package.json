@@ -1,6 +1,10 @@
 {
   "name": "deplo",
-  "version": "0.5.0-canary.23",
+  "version": "0.5.0-canary.27",
+  "deplo": {
+    "agent": "0.5.0-canary.8",
+    "agentMin": "0.4.0"
+  },
   "license": "AGPL-3.0-only",
   "private": true,
   "scripts": {

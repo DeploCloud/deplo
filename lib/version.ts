@@ -1,9 +1,14 @@
-import { version as packageVersion } from "../package.json";
+import { deplo as agentPin, version as packageVersion } from "../package.json";
 
 export const DEPLO_VERSION: string = packageVersion;
 export const DEPLO_REPO = "DeploCloud/deplo";
 
-export const FALLBACK_AGENT_VERSION = "0.4.0";
+// The one agent this panel installs, and the oldest it still talks to (ADR-0037).
+export const AGENT_VERSION: string = agentPin.agent;
+export const AGENT_MIN_VERSION: string = agentPin.agentMin;
+
+export const AGENT_TOO_OLD_MESSAGE =
+  "This server is being updated. Deplo retries on its own; an instance admin can retry it now.";
 
 type Semver = { core: [number, number, number]; pre: string[] };
 
@@ -92,4 +97,13 @@ export function reportedAgentVersion(server: {
   agent?: { version: string };
 }): string | null {
   return server.agent?.version || null;
+}
+
+/** Whether this panel talks to an agent at all: parseable and not older than `min`. */
+export function agentUsable(
+  reported: string | null | undefined,
+  min: string = AGENT_MIN_VERSION,
+): boolean {
+  if (!reported || !parseSemver(reported)) return false;
+  return !isNewer(min, reported);
 }

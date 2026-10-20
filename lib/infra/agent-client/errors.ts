@@ -2,6 +2,10 @@ import "server-only";
 
 import { status as GrpcStatus, type ServiceError } from "@grpc/grpc-js";
 
+import { AGENT_TOO_OLD_MESSAGE, agentUsable } from "../../version";
+
+export { AGENT_TOO_OLD_MESSAGE };
+
 export class AgentUnreachableError extends Error {
   constructor(
     message: string,
@@ -14,7 +18,27 @@ export class AgentUnreachableError extends Error {
 
 export class AgentNetworkUnsupportedError extends Error {}
 
+// An agent below the panel's agentMin: unusable until it updates (ADR-0037).
+export class AgentTooOldError extends Error {
+  constructor(readonly agentVersion: string) {
+    super(AGENT_TOO_OLD_MESSAGE);
+  }
+}
+
+export function assertAgentUsable(agentVersion: string): void {
+  if (!agentUsable(agentVersion)) throw new AgentTooOldError(agentVersion);
+}
+
 export class AgentUpdateUnsupportedError extends Error {}
+
+// Raised before any agent is dialed, so a GitHub outage never counts against a server.
+export class AgentReleaseUnavailableError extends Error {
+  constructor() {
+    super(
+      "Could not download the agent release this Deplo installs from GitHub. Try again in a minute.",
+    );
+  }
+}
 
 export class AgentUninstallUnsupportedError extends Error {}
 

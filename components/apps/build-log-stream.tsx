@@ -253,11 +253,7 @@ export function BuildLogStream({
             />
           </div>
         </div>
-        <LogLines
-          ref={scrollRef}
-          onScroll={onScroll}
-          className="max-h-120 text-xs"
-        >
+        <LogLines ref={scrollRef} onScroll={onScroll} className="h-120 text-xs">
           {filters.shown.map((l, i) => (
             <LogRow
               key={i}

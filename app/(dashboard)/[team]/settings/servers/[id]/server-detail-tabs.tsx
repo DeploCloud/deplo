@@ -7,7 +7,6 @@ import {
   AppWindow,
   Boxes,
   Brush,
-  CircleFadingArrowUp,
   Cpu,
   Gauge,
   HardDrive,
@@ -32,14 +31,6 @@ import {
   SettingGroup,
   SettingItem,
 } from "@/components/settings/deplo-settings-panel/setting-item";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { gqlAction } from "@/lib/graphql-client";
@@ -59,7 +50,8 @@ import { ServerCleanupTab } from "./cleanup-tab";
 import { ServerAdvancedTab } from "./advanced-tab/server-advanced-tab";
 import { ServerCertificatesTab } from "./certificates-tab";
 import { ServerWorkloads } from "@/components/servers/server-workloads";
-import { DocsLink } from "@/components/ui/docs-link";
+import { AgentUpdateStatus } from "@/components/servers/agent-update-status";
+import type { AgentUpdateDTO } from "@/lib/data/servers/agent-update-state";
 
 export type ServerSummary = {
   id: string;
@@ -81,7 +73,8 @@ export type ServerSummary = {
   provisioning: boolean;
   agentVersion: string | null;
   expectedAgentVersion: string;
-  agentUpdateAvailable: boolean;
+  agentUsable: boolean;
+  agentUpdate: AgentUpdateDTO | null;
 };
 
 const TABS = [
@@ -224,7 +217,6 @@ function OverviewTab({
   const router = useRouter();
   const [pending, startTransition] = React.useTransition();
   const [readinessOpen, setReadinessOpen] = React.useState(false);
-  const [confirmUpdate, setConfirmUpdate] = React.useState(false);
   const [name, setName] = React.useState(server.name);
   const [concurrency, setConcurrency] = React.useState(
     String(server.deployConcurrency),
@@ -282,23 +274,6 @@ function OverviewTab({
     });
   }
 
-  function update() {
-    startTransition(async () => {
-      const res = await gqlAction<{ updateServerAgent: string }>(
-        `mutation UpdateServerAgent($id: String!) { updateServerAgent(id: $id) }`,
-        { id: server.id },
-      );
-      if (!res.ok) {
-        toast.error(res.error);
-        return;
-      }
-      setConfirmUpdate(false);
-      const version = res.data?.updateServerAgent;
-      toast.success(version ? `Agent updated to v${version}` : "Agent updated");
-      router.refresh();
-    });
-  }
-
   return (
     <div className="space-y-6">
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
@@ -345,6 +320,14 @@ function OverviewTab({
               <p className="mt-1 text-sm text-muted-foreground">
                 Keeps this server ready to build and run your apps.
               </p>
+              <div className="mt-2 empty:hidden">
+                <AgentUpdateStatus
+                  serverId={server.id}
+                  usable={server.agentUsable}
+                  update={server.agentUpdate}
+                  onSettled={() => router.refresh()}
+                />
+              </div>
             </div>
           </div>
           <div className="flex shrink-0 flex-wrap items-center gap-2">
@@ -356,12 +339,6 @@ function OverviewTab({
               <ListChecks className="size-4" />
               Check readiness
             </Button>
-            {server.agentUpdateAvailable && (
-              <Button onClick={() => setConfirmUpdate(true)} disabled={pending}>
-                <CircleFadingArrowUp className="size-4" />
-                Update to v{server.expectedAgentVersion}
-              </Button>
-            )}
           </div>
         </CardContent>
       </Card>
@@ -442,37 +419,6 @@ function OverviewTab({
         open={readinessOpen}
         onOpenChange={setReadinessOpen}
       />
-
-      <Dialog open={confirmUpdate} onOpenChange={setConfirmUpdate}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <CircleFadingArrowUp className="size-4" />
-              Update agent on {server.name}?
-            </DialogTitle>
-            <DialogDescription>
-              Updates the agent to{" "}
-              <strong>v{server.expectedAgentVersion}</strong> over its existing
-              secure connection. <strong>The server stays online</strong>, and
-              it takes a few seconds. <DocsLink topic="upgrade.overview" />
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
-            <Button
-              variant="outline"
-              onClick={() => setConfirmUpdate(false)}
-              disabled={pending}
-            >
-              Cancel
-            </Button>
-            <Button onClick={() => update()} disabled={pending}>
-              {pending
-                ? "Updating"
-                : `Update to v${server.expectedAgentVersion}`}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </div>
   );
 }

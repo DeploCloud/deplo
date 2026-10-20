@@ -5,13 +5,14 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
 
+import { AGENT_VERSION } from "../../version";
+
+const BASE = `https://github.com/DeploCloud/deplo-agent/releases/download/v${AGENT_VERSION}`;
 export const FAKE = {
-  tag: "v2.3.0",
-  amd64Url:
-    "https://github.com/DeploCloud/deplo-agent/releases/download/v2.3.0/deplo-agent-linux-amd64",
+  tag: `v${AGENT_VERSION}`,
+  amd64Url: `${BASE}/deplo-agent-linux-amd64`,
   amd64Sha: "a".repeat(64),
-  arm64Url:
-    "https://github.com/DeploCloud/deplo-agent/releases/download/v2.3.0/deplo-agent-linux-arm64",
+  arm64Url: `${BASE}/deplo-agent-linux-arm64`,
   arm64Sha: "b".repeat(64),
 };
 

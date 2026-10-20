@@ -1,5 +1,6 @@
 import "server-only";
 
+import { markServerSeen } from "../../data/servers/agent-handshake";
 import { getServerById } from "../../data/servers/roster";
 import { agentSelfRpc } from "./agent-self-rpc";
 import { backupRpc } from "./backup-rpc";
@@ -8,7 +9,7 @@ import { consoleRpc } from "./console-rpc";
 import { cronRpc } from "./cron-rpc";
 import { dataCopyRpc } from "./data-copy-rpc";
 import { HELLO_TIMEOUT_MS } from "./deadlines";
-import { AgentUnreachableError } from "./errors";
+import { AgentUnreachableError, assertAgentUsable } from "./errors";
 import { filesRpc } from "./files-rpc";
 import { hostRpc } from "./host-rpc";
 import { metricsRpc } from "./metrics-rpc";
@@ -53,7 +54,39 @@ export function __setAgentConnectorForTest(
 export async function connectAgent(serverId: string): Promise<AgentConnection> {
   if (connector) return connector(serverId);
   const target = await resolveTarget(serverId);
-  return dial(target);
+  return gateConnection(dial(target), target.agentVersion, serverId);
+}
+
+/** Past the minimum-agent gate: Hello, SelfUpdate, the health probe and a Deplo update only (ADR-0037). */
+export async function openAgent(serverId: string): Promise<AgentConnection> {
+  if (connector) return connector(serverId);
+  return dial(await resolveTarget(serverId));
+}
+
+// Every call is judged on a live Hello; the caller's first hello() reuses it rather than paying twice.
+export async function gateConnection(
+  conn: AgentConnection,
+  stored: string | undefined,
+  serverId: string,
+): Promise<AgentConnection> {
+  try {
+    const hello = await conn.hello();
+    if (hello.agentVersion !== stored)
+      await markServerSeen(serverId, hello.agentVersion);
+    assertAgentUsable(hello.agentVersion);
+    let first: typeof hello | null = hello;
+    return {
+      ...conn,
+      hello(timeoutMs) {
+        const answer = first;
+        first = null;
+        return answer ? Promise.resolve(answer) : conn.hello(timeoutMs);
+      },
+    };
+  } catch (e) {
+    conn.close();
+    throw e;
+  }
 }
 
 export async function connectAgentAt(

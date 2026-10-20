@@ -5,7 +5,6 @@ import {
   checkAllServerHealth,
 } from "@/lib/data/server-health";
 import { checkServerReadiness } from "@/lib/data/server-readiness";
-import { refreshAgentVersion } from "@/lib/data/updates";
 import type {
   ReadinessCheck,
   ReadinessReport,
@@ -132,12 +131,5 @@ builder.mutationFields((t) => ({
       "Check whether ONE server's installation is complete enough to run deployments, right now. Dials the agent (Hello), bind-tests host ports 80 and 443, and reads host metrics, then reports what it found: the agent's handshake/protocol/version and which build methods and platform features it supports, whether Docker answers, whether a Traefik container is running and holds the web ports, disk headroom, and this server's team access and deploy concurrency. Never persisted - it does not touch `status`, so it can neither create nor cure a stale badge. Degrades honestly: an agent too old to bind-test ports reports those rows as skipped, never as a pass.",
     args: { id: t.arg.string({ required: true }) },
     resolve: (_r, { id }) => checkServerReadiness(id),
-  }),
-  checkAgentUpdates: t.field({
-    type: "String",
-    authScopes: { instanceAdmin: true },
-    description:
-      "Force an immediate re-resolution of the latest agent release from GitHub, bypassing the in-process cache. Returns the resolved expected agent version so the dashboard re-renders with fresh outdated badges. Use after publishing a new agent release rather than waiting out the cache TTL.",
-    resolve: () => refreshAgentVersion(),
   }),
 }));

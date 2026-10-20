@@ -13,6 +13,7 @@ import {
   AgentCronUnsupportedError,
   AgentMetricsStreamUnsupportedError,
   CRON_UNSUPPORTED_MESSAGE,
+  assertAgentUsable,
   mapBackupUnsupported,
   mapCronUnsupported,
 } from "./errors";
@@ -63,6 +64,7 @@ export async function agentPreflight(serverId: string): Promise<HelloResponse> {
         resp.hostArch,
       );
     } catch {}
+    assertAgentUsable(resp.agentVersion);
     return resp;
   } finally {
     conn.close();

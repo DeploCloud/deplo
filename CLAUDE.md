@@ -28,5 +28,6 @@ it anyway) and the reason for each.
   command. See `docs/agents/triage-labels.md`.
 - **Domain docs**: single-context - one `CONTEXT.md` (glossary) + `docs/adr/` at the repo root.
   See `docs/agents/domain.md`.
-- **Shipping**: `docs/agents/releasing.md` (control plane, never bump on your own initiative) and
+- **Shipping**: `docs/agents/releasing.md` (control plane, never bump on your own initiative; its
+  "The questions before a release" comes before any tag) and
   `docs/agents/fleet-rollout.md` (the `deplo-agent` fleet, forward-only).

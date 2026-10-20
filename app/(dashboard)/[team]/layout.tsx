@@ -14,6 +14,7 @@ import { AppShell } from "@/components/layout/app-shell";
 import { FinishSetupScreen } from "@/components/auth/finish-setup-screen";
 import { TwoFactorLockScreen } from "@/components/settings/security/two-factor-lock-screen";
 import { NoTeamAccessScreen } from "@/components/teams/no-team-access";
+import { UnusableAgentsBanner } from "@/components/servers/unusable-agents-banner";
 import { MoveBanner } from "@/components/deplo-move/frozen-banner";
 
 export default async function DashboardLayout(props: LayoutProps<"/[team]">) {
@@ -68,7 +69,12 @@ export default async function DashboardLayout(props: LayoutProps<"/[team]">) {
       capabilities={capabilities}
       isAdmin={isAdmin}
       hasPasskey={await userHasPasskey(user.id)}
-      banner={<MoveBanner />}
+      banner={
+        <>
+          <MoveBanner />
+          {isAdmin && <UnusableAgentsBanner />}
+        </>
+      }
     >
       {children}
     </AppShell>

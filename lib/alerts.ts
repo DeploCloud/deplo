@@ -131,6 +131,13 @@ export const ALERT_META: Record<AlertKey, AlertMeta> = {
     keywords: "certificate mtls security fingerprint",
     defaultOn: true,
   },
+  agent_incompatible: {
+    label: "Server unusable until it updates",
+    description:
+      "A server is too far behind this version of Deplo, and updating it failed.",
+    keywords: "agent version old update retry blocked",
+    defaultOn: true,
+  },
   server_resources_high: {
     label: "Server running hot",
     description: "A server's CPU or memory has been near full for a while.",
@@ -308,6 +315,7 @@ export const ALERT_CATEGORIES: {
       "server_online",
       "server_unmanageable",
       "server_trust_changed",
+      "agent_incompatible",
       "server_resources_high",
       "server_disk_low",
       "agent_certificate_failed",

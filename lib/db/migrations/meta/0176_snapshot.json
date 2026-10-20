@@ -1,5 +1,5 @@
 {
-  "id": "a7be2965-a68f-4c2f-8ec0-8c67076db65b",
+  "id": "7e20a954-151f-495c-9cff-6aa54c9e56fa",
   "prevId": "3550348f-3b31-4a0d-bc1a-68e8eb6ea425",
   "version": "7",
   "dialect": "postgresql",
@@ -12603,6 +12603,97 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
+    "public.server_agent_updates": {
+      "name": "server_agent_updates",
+      "schema": "",
+      "columns": {
+        "server_id": {
+          "name": "server_id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "status": {
+          "name": "status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "failure": {
+          "name": "failure",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "''"
+        },
+        "attempts": {
+          "name": "attempts",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "target_version": {
+          "name": "target_version",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "first_failed_at": {
+          "name": "first_failed_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "next_retry_at": {
+          "name": "next_retry_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "revived": {
+          "name": "revived",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "last_error": {
+          "name": "last_error",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "''"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "server_agent_updates_server_id_servers_id_fk": {
+          "name": "server_agent_updates_server_id_servers_id_fk",
+          "tableFrom": "server_agent_updates",
+          "tableTo": "servers",
+          "columnsFrom": [
+            "server_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
     "public.server_teams": {
       "name": "server_teams",
       "schema": "",
@@ -12823,12 +12914,6 @@
         "build_fallback": {
           "name": "build_fallback",
           "type": "boolean",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "generated_address_family": {
-          "name": "generated_address_family",
-          "type": "text",
           "primaryKey": false,
           "notNull": false
         },

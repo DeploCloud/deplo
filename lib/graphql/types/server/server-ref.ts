@@ -7,9 +7,14 @@ import {
   isBuildFallbackServer,
   isDeploHostServer,
 } from "@/lib/deploy/domains";
-import { reportedAgentVersion } from "@/lib/version";
-import { expectedAgentVersion } from "@/lib/data/release-channel";
 import { serverAddressChoices } from "@/lib/data/servers/addresses";
+import { serverAgentUpdate } from "@/lib/data/servers/agent-maintenance";
+import type { AgentUpdateDTO } from "@/lib/data/servers/agent-update-state";
+import {
+  AGENT_VERSION,
+  agentUsable,
+  reportedAgentVersion,
+} from "@/lib/version";
 import type { Server } from "@/lib/types/server";
 
 export const ServerStatusEnum = builder.enumType("ServerStatus", {
@@ -44,6 +49,35 @@ const GeneratedAddressesRef = builder
 const ServerTypeEnum = builder.enumType("ServerType", {
   values: ["remote"] as const,
 });
+
+export const AgentUpdateRef = builder
+  .objectRef<AgentUpdateDTO>("ServerAgentUpdate")
+  .implement({
+    description:
+      "Where Deplo's update of one server's agent stands. Deplo retries a failed update on its own (1, 2, 4 … up to 60 minutes apart) for 24 hours from the first failure; `retryServerAgentUpdate` tries again now.",
+    fields: (t) => ({
+      running: t.exposeBoolean("running", {
+        description:
+          "An attempt is in progress; a retry is refused until it ends.",
+      }),
+      failed: t.exposeBoolean("failed", {
+        description:
+          "At least one attempt failed. Only then can an instance admin retry by hand.",
+      }),
+      gaveUp: t.exposeBoolean("gaveUp", {
+        description:
+          "24 hours passed since the first failure: no automatic retry is scheduled.",
+      }),
+      attempts: t.exposeInt("attempts"),
+      failure: t.exposeString("failure", {
+        description:
+          'Why the last attempt failed: "busy" (a deploy was running), "unreachable", "error", or "no_return" (it took the new agent and did not come back, which pauses every other server). Empty before the first failure.',
+      }),
+      lastError: t.exposeString("lastError"),
+      firstFailedAt: t.exposeString("firstFailedAt", { nullable: true }),
+      nextRetryAt: t.exposeString("nextRetryAt", { nullable: true }),
+    }),
+  });
 
 export const ServerRef = builder.objectRef<Server>("Server").implement({
   description: "A connected host running deployments (reached via its agent).",
@@ -128,8 +162,22 @@ export const ServerRef = builder.objectRef<Server>("Server").implement({
     }),
     expectedAgentVersion: t.string({
       description:
-        "The agent version this server should be running - the latest GitHub release of the agent (DeploCloud/deplo-agent), or the newest canary while `updateInfo.canary` is on: one switch for Deplo and every agent. Resolved at request time and cached; falls back to a built-in version when GitHub is unreachable.",
-      resolve: () => expectedAgentVersion(),
+        "The agent version this server should be running: the one release of DeploCloud/deplo-agent this Deplo is pinned to. A newer agent is left alone, never downgraded.",
+      resolve: () => AGENT_VERSION,
+    }),
+    agentUsable: t.boolean({
+      description:
+        "Whether this Deplo talks to the server's agent at all. False when the agent is older than the minimum this version of Deplo supports: everything on the server is refused until the agent updates, though its apps keep running. True while it is not provisioned yet.",
+      resolve: (s) =>
+        !s.agent?.certFingerprint || agentUsable(reportedAgentVersion(s)),
+    }),
+    agentUpdate: t.field({
+      type: AgentUpdateRef,
+      nullable: true,
+      authScopes: { instanceAdmin: true },
+      description:
+        "Deplo's update of this server's agent, while one is in flight or has failed. Null otherwise. Requires instanceAdmin.",
+      resolve: (s) => serverAgentUpdate(s.id),
     }),
     lastSeenAt: t.string({
       nullable: true,

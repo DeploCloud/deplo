@@ -5,15 +5,17 @@ import Link from "@/components/ui/link";
 import { moveBanner } from "@/lib/data/deplo-move/target";
 import { TurnOnSchedules } from "./turn-on-schedules";
 
-// A slim strip under the top bar while a Deplo move is under way here, or has left schedules paused.
-function Strip({
+// A slim strip under the top bar while something instance-wide needs saying.
+export function Strip({
   message,
   progressHref,
+  linkLabel = "Show progress",
   icon: Icon = CirclePause,
   action,
 }: {
   message: string;
   progressHref: string | null;
+  linkLabel?: string;
   icon?: ElementType;
   action?: ReactNode;
 }) {
@@ -29,7 +31,7 @@ function Strip({
           href={progressHref}
           className="font-medium underline underline-offset-2 hover:no-underline"
         >
-          Show progress
+          {linkLabel}
         </Link>
       )}
       {action}

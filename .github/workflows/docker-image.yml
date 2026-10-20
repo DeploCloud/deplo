@@ -16,10 +16,22 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # A panel that pins an unpublished agent would leave every server retrying (ADR-0037).
+  agent-pin:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: The pinned agent release is published
+        run: |
+          pin=$(node -p 'require("./package.json").deplo.agent')
+          curl -fsSL -o /dev/null "https://github.com/DeploCloud/deplo-agent/releases/download/v${pin}/checksums.txt" \
+            || { echo "::error::deplo-agent v${pin} (package.json deplo.agent) has no checksums.txt - publish the agent first"; exit 1; }
+
   # One runner per architecture, not QEMU on one: an emulated `next build` takes
   # the release from 5 minutes to ~40 and crashes on its own schedule. GitHub's
   # arm64 runners are free on a public repository.
   build:
+    needs: agent-pin
     strategy:
       fail-fast: false
       matrix:

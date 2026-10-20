@@ -1,7 +1,7 @@
 import { builder } from "../../builder";
-import { ServerRef } from "./server-ref";
+import { AgentUpdateRef, ServerRef } from "./server-ref";
 import {
-  updateServerAgent,
+  retryServerAgentUpdate,
   updateServerAddress,
 } from "@/lib/data/servers/agent-maintenance";
 import { addServer, reissueBootstrap } from "@/lib/data/servers/enrollment";
@@ -159,15 +159,12 @@ builder.mutationFields((t) => ({
     args: { id: t.arg.string({ required: true }) },
     resolve: (_r, { id }) => removeServer(id),
   }),
-  updateServerAgent: t.field({
-    type: "String",
+  retryServerAgentUpdate: t.field({
+    type: AgentUpdateRef,
     authScopes: { instanceAdmin: true },
     description:
-      "Update this server's agent binary in place to the latest released version WITHOUT reissuing its certificates - the agent self-updates over its existing pinned-mTLS channel and re-execs keeping the same on-disk trust materials, so the server stays online with the same identity. Returns the version the agent is now running. Errors clearly when the server is unreachable/unprovisioned, or, until the agent ships the self-update RPC, when its agent is too old to update itself remotely (re-run the installer to upgrade it for now).",
+      "Try again, now, to update this server's agent to the version this Deplo is pinned to. Only after Deplo's own attempt failed: it cancels the scheduled retry, keeps the 24-hour window running, and is refused while another attempt is in progress. Returns the attempt as it starts; poll `server(id).agentUpdate` for the outcome.",
     args: { id: t.arg.string({ required: true }) },
-    resolve: async (_r, { id }) => {
-      const { version } = await updateServerAgent(id);
-      return version;
-    },
+    resolve: (_r, { id }) => retryServerAgentUpdate(id),
   }),
 }));

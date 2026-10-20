@@ -76,3 +76,19 @@ export const serverTeams = pgTable(
   },
   (t) => [primaryKey({ columns: [t.serverId, t.teamId] })],
 );
+
+// One row per server whose agent update is in flight or failed; none means idle (ADR-0037).
+export const serverAgentUpdates = pgTable("server_agent_updates", {
+  serverId: text("server_id")
+    .primaryKey()
+    .references(() => servers.id, { onDelete: "cascade" }),
+  status: text("status").notNull(),
+  failure: text("failure").notNull().default(""),
+  attempts: integer("attempts").notNull().default(0),
+  targetVersion: text("target_version").notNull(),
+  firstFailedAt: isoTimestamptz("first_failed_at"),
+  nextRetryAt: isoTimestamptz("next_retry_at"),
+  revived: boolean("revived").notNull().default(false),
+  lastError: text("last_error").notNull().default(""),
+  updatedAt: isoTimestamptz("updated_at").notNull(),
+});

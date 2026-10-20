@@ -2,7 +2,10 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 
 import {
+  AGENT_MIN_VERSION,
+  AGENT_VERSION,
   agentUpdateAvailable,
+  agentUsable,
   isNewer,
   isPrerelease,
   newestVersion,
@@ -88,4 +91,21 @@ test("a listed stable and any canary compare as themselves", () => {
   assert.equal(rankedCurrent("0.4.0", ["v0.5.0-canary.10", "v0.4.0"]), "0.4.0");
   assert.equal(rankedCurrent("0.5.0-canary.9", ["v0.4.0"]), "0.5.0-canary.9");
   assert.equal(rankedCurrent("dev", ["v0.4.0"]), "dev");
+});
+
+test("agentUsable: the floor is inclusive, newer is fine, unparseable is not", () => {
+  assert.equal(agentUsable("0.4.0", "0.4.0"), true);
+  assert.equal(agentUsable("0.4.3", "0.4.0"), true);
+  assert.equal(agentUsable("0.6.0-canary.1", "0.4.0"), true);
+  assert.equal(agentUsable("0.3.9", "0.4.0"), false);
+  assert.equal(agentUsable("0.4.0-canary.9", "0.4.0"), false);
+  assert.equal(agentUsable("v0.4.0-8-gb39f8a7", "0.4.0"), true);
+  assert.equal(agentUsable("", "0.4.0"), false);
+  assert.equal(agentUsable(null, "0.4.0"), false);
+  assert.equal(agentUsable("dev", "0.4.0"), false);
+});
+
+test("the pin is usable by its own floor", () => {
+  assert.ok(agentUsable(AGENT_VERSION));
+  assert.ok(!isNewer(AGENT_MIN_VERSION, AGENT_VERSION));
 });

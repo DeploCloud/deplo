@@ -40,7 +40,7 @@ import { isInstanceAdmin } from "@/lib/membership";
 import { hydrateServerSpecs } from "@/lib/data/monitoring";
 import { serverLabel } from "@/lib/utils";
 import { reportedAgentVersion } from "@/lib/version";
-import { expectedAgentVersion } from "@/lib/data/release-channel";
+import { AGENT_VERSION } from "@/lib/version";
 import type { Server } from "@/lib/types/server";
 import type { TeamOption } from "@/components/servers/server-team-access";
 import { AgentVersionBadge } from "./agent-version-badge";
@@ -313,11 +313,11 @@ export default async function ServersPage(
   const autoOpenServer =
     (Array.isArray(newParam) ? newParam[0] : newParam) === "1";
 
-  const [serversRaw, serverTeamIds, teamsRaw, expected] = await Promise.all([
+  const expected = AGENT_VERSION;
+  const [serversRaw, serverTeamIds, teamsRaw] = await Promise.all([
     listAllServers().then((all) => all.filter((s) => !s.importOnly)),
     listAllServerTeamIds(),
     listAllTeamsForAdmin(),
-    expectedAgentVersion(),
   ]);
   const measured = hydrateServerSpecs(serversRaw)
     .catch(() => serversRaw)

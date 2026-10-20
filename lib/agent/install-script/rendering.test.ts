@@ -17,7 +17,7 @@ test("renderInstallScript substitutes per-arch URLs + sha256 from the release", 
   try {
     const script = await renderInstallScript();
     assert.ok(script, "expected a rendered script (release resolvable)");
-    assert.equal(shVar(script!, "AGENT_VERSION"), "2.3.0");
+    assert.equal(shVar(script!, "AGENT_VERSION"), FAKE.tag.slice(1));
     assert.equal(shVar(script!, "AGENT_URL_AMD64"), FAKE.amd64Url);
     assert.equal(shVar(script!, "AGENT_SHA256_AMD64"), FAKE.amd64Sha);
     assert.equal(shVar(script!, "AGENT_URL_ARM64"), FAKE.arm64Url);

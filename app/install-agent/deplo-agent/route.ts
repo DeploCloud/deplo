@@ -1,9 +1,9 @@
-import { resolveLatestAgentRelease } from "@/lib/agent/release";
+import { resolveAgentRelease } from "@/lib/agent/release";
 
 export async function GET(req: Request) {
   const arch =
     new URL(req.url).searchParams.get("arch") === "arm64" ? "arm64" : "amd64";
-  const release = await resolveLatestAgentRelease();
+  const release = await resolveAgentRelease();
   const target = release?.binaries[arch]?.url;
   if (!target) {
     return new Response("agent binary unavailable", { status: 503 });

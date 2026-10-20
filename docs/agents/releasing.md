@@ -22,6 +22,29 @@ instances poll `releases/latest` for the update banner, images carry the tag, an
 published tag rewrites what an operator has already installed. A new number is the cheaper answer,
 and the two repos keep their own clocks - but the call is the owner's, not yours.
 
+## The questions before a release
+
+A release request ("cut a release", "a new pre-release of everything") is the go-ahead to tag, not
+the answers. Settle these first - from the request or the tree when they are there, with ONE
+`AskUserQuestion` round for the rest - and never ask what the owner already said:
+
+1. **Stable or canary, and which number.** A canary is `<next stable>-canary.N`, the base is the
+   owner's (below); `minor` vs `patch` follows "Which digit".
+2. **Does the agent need a release too?** Look, don't guess:
+   `git -C ../deplo-agent log --oneline v<deplo.agent>..origin/main`. Empty means the pinned agent
+   is already the newest code: **cut no agent release**, because a new tag over the same binary
+   makes every server self-update for nothing. Not empty: the agent ships **first** (its own
+   `v*` tag in `DeploCloud/deplo-agent`, wait for its release to publish `checksums.txt`), then the
+   pin moves (`chore(agent):` commit), then the panel is tagged - `docker-image.yml` refuses a
+   panel whose pin is not published.
+3. **Does this panel need the newer agent?** Only then does `deplo.agentMin` move, and every server
+   below it becomes **unusable** until it updates (ADR-0037). Name the servers that would be
+   (Settings → Deplo → Updates, or the `servers` table) in the question.
+4. **Is there an upgrade step or a bad bug to put on top of the notes?** Usually not.
+
+Then run the checks in "How", tag, replace the notes once the image is published, and say what
+happens to the fleet: which version the servers will be updated to, or that the pin did not move.
+
 ## Which digit
 
 Deplo is in **beta**, so every release is `0.x.y` and there are exactly two buckets.
@@ -73,7 +96,8 @@ about ten minutes. `next typegen` before `tsc` is not optional on a clean tree, 
 ### Canary releases
 
 A canary is a pre-release of the NEXT version, for instances that opted in (Settings → Deplo →
-Updates, and per server under Advanced for the agent). Same rule: only when the owner asks.
+Advanced; `deplo update` on the host follows the same switch). The switch moves the panel only:
+agents follow the panel's pin. Same rule: only when the owner asks.
 
 ```bash
 bun pm version 0.3.0-canary.1 --message "chore(release): Deplo %s"
@@ -143,12 +167,15 @@ needs nothing from the reader gets no note at all.
 
 - **The server agent** (`DeploCloud/deplo-agent`) versions on its own clock, in its own repo. It is
   on the **0.x line too** since 24 Aug 2026, when its 1.x numbering was reset alongside the control
-  plane. The same two buckets apply, and its offline fallback (`FALLBACK_AGENT_VERSION`, declared in
-  `lib/version.ts` and re-exported by `lib/agent/release.ts`) follows the fleet in its own
-  `chore(agent):` commit.
-- **The fleet only ever moves forward.** `updateServerAgent` has no version argument anywhere in the
-  path: it installs `releases/latest`, whatever that resolves to. So a control-plane release that
-  needs a newer agent ships the agent **first**, and the reset above was a deliberate one-off, not a
-  thing to repeat. `docs/agents/fleet-rollout.md` §10 has the rollback options.
+  plane. The same two buckets apply.
+- **Each panel version pins its agent** ([ADR-0037](../adr/0037-a-panel-pins-its-agent.md)):
+  `"deplo": { "agent", "agentMin" }` in `package.json`, moved in its own `chore(agent):` commit.
+  `agent` is what every server gets; `agentMin` is the oldest this panel still talks to, and a
+  server below it is unusable until it updates, so raise it only when the panel really needs the
+  newer agent. Ship the agent **first**: `docker-image.yml` refuses to publish a panel whose pin has
+  no `checksums.txt` on GitHub. A canary panel may pin an agent canary; a stable panel pins a
+  stable agent.
+- **The fleet only ever moves forward.** Nothing installs an agent older than the one a server
+  runs. `docs/agents/fleet-rollout.md` §10 has the rollback options.
 - **The Beta badge** in Settings → Deplo is derived from the version starting with `0.`. Nothing
   turns it off; shipping `1.0.0` does.

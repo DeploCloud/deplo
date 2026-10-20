@@ -854,19 +854,88 @@ resolve_target() { if [ "${IP_FAMILY:-ipv4}" = ipv6 ]; then resolve_aaaa "$1"; e
 # anonymous caller by design (it is the registry ping), so -f reported every host
 # on earth as having no egress. %{http_code} is 000 only when nothing answered at
 # all - no DNS, no TCP, no TLS, or a timeout - which is the actual question.
+# Pure bash: busybox `sort -V` is not everywhere, and it ranks 1.2.0-canary.1 above 1.2.0.
+# True when $1 is an older semver than $2.
+semver_lt() {
+  local a="${1#v}" b="${2#v}" ap="" bp="" i
+  local ac="${a%%-*}" bc="${b%%-*}"
+  [ "$ac" != "$a" ] && ap="${a#*-}"
+  [ "$bc" != "$b" ] && bp="${b#*-}"
+  local IFS=.
+  local -a x=($ac) y=($bc)
+  for i in 0 1 2; do
+    if ((10#${x[i]:-0} < 10#${y[i]:-0})); then return 0; fi
+    if ((10#${x[i]:-0} > 10#${y[i]:-0})); then return 1; fi
+  done
+  [ -n "$ap" ] || return 1
+  [ -n "$bp" ] || return 0
+  local -a p=($ap) q=($bp)
+  for ((i = 0; i < ${#p[@]} || i < ${#q[@]}; i++)); do
+    [ "$i" -lt "${#p[@]}" ] || return 0
+    [ "$i" -lt "${#q[@]}" ] || return 1
+    if [[ ${p[i]} =~ ^[0-9]+$ && ${q[i]} =~ ^[0-9]+$ ]]; then
+      if ((10#${p[i]} < 10#${q[i]})); then return 0; fi
+      if ((10#${p[i]} > 10#${q[i]})); then return 1; fi
+    elif [[ ${p[i]} =~ ^[0-9]+$ ]]; then return 0
+    elif [[ ${q[i]} =~ ^[0-9]+$ ]]; then return 1
+    elif [[ ${p[i]} < ${q[i]} ]]; then return 0
+    elif [[ ${p[i]} > ${q[i]} ]]; then return 1
+    fi
+  done
+  return 1
+}
+
+# The newest of the versions on stdin, one per line.
+newest_version() {
+  local v best=""
+  while IFS= read -r v; do
+    case "$v" in v[0-9]* | [0-9]*) ;; *) continue ;; esac
+    if [ -z "$best" ] || semver_lt "$best" "$v"; then best="$v"; fi
+  done
+  [ -n "$best" ] && printf '%s\n' "$best"
+  return 0
+}
+
+# The panel's own canary switch (Settings > Deplo > Advanced), read where the
+# pre-update dump reads the database.
+canary_channel() {
+  [ "$MODE" = update ] || return 1
+  [ "$(docker exec deplo-postgres-1 psql -U deplo -d deplo -tAc \
+    "select canary_releases from instance_settings where id='default'" </dev/null 2>/dev/null || true)" = t ]
+}
+
+installed_version() {
+  local v
+  v="$(state_get version || true)"
+  [ -n "$v" ] || v="$(awk -F: '/^    image: ghcr.io\/deplocloud\/deplo:/ {print $NF}' "$DEPLO_DIR/docker-compose.yml" 2>/dev/null | head -n1 || true)"
+  case "$v" in [0-9]*) printf '%s\n' "$v" ;; esac
+  return 0
+}
+
 # `latest` is a Docker tag, not a version, and a header that reads "latest" tells
-# nobody anything. Ask GitHub which release that currently is. The release is
-# published AFTER the image is pushed (see docker-image.yml), so a tag that
-# answers here has an image behind it - which also makes it safe to PIN, and a
-# pinned tag is what gives an update something to roll back TO.
+# nobody anything. Ask GitHub which release that currently is: the newest of all on
+# the canary channel, stable otherwise. The release is published AFTER the image is
+# pushed (see docker-image.yml), so a tag that answers here has an image behind it.
+# An update never moves backwards: a canary panel is ahead of the newest stable.
 resolve_version() {
-  local tag
+  local tag current
   [ "${DEPLO_SKIP_NET_CHECKS:-0}" = 1 ] && return 0
-  tag="$(curl -fsS --max-time 3 https://api.github.com/repos/DeploCloud/deplo/releases/latest \
-    </dev/null 2>&9 \
-    | sed -n 's/.*"tag_name"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -n1 || true)"
+  if canary_channel; then
+    tag="$(curl -fsS --max-time 5 'https://api.github.com/repos/DeploCloud/deplo/releases?per_page=20' \
+      </dev/null 2>&9 \
+      | sed -n 's/.*"tag_name"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | newest_version || true)"
+  else
+    tag="$(curl -fsS --max-time 3 https://api.github.com/repos/DeploCloud/deplo/releases/latest \
+      </dev/null 2>&9 \
+      | sed -n 's/.*"tag_name"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -n1 || true)"
+  fi
   # The git tag carries a `v`, the image tag does not.
   case "$tag" in v[0-9]* | [0-9]*) DEPLO_VERSION="${tag#v}" ;; esac
+  current="$(installed_version)"
+  if [ "$MODE" = update ] && [ -n "$current" ] \
+    && { [ "$DEPLO_VERSION" = latest ] || semver_lt "$DEPLO_VERSION" "$current"; }; then
+    DEPLO_VERSION="$current"
+  fi
   return 0
 }
 
@@ -2105,7 +2174,7 @@ Deplo - the control plane on this host
   deplo recover [command]   break-glass account and address recovery
   deplo logs [lines]        follow the control plane's logs
   deplo restart             restart the control plane
-  deplo update              re-run the installer to the latest version
+  deplo update              update to the newest version (canary too, if turned on)
 
 Run \`deplo recover\` on its own for the recovery commands.
 USAGE

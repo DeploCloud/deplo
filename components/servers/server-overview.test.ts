@@ -29,7 +29,8 @@ const server: ServerSummary = {
   provisioning: false,
   agentVersion: "1.0.0",
   expectedAgentVersion: "1.0.0",
-  agentUpdateAvailable: false,
+  agentUsable: true,
+  agentUpdate: null,
 };
 
 const policy: CleanupPolicy = {
@@ -94,10 +95,29 @@ test("Overview retains server settings and readiness controls", () => {
   assert.ok(html.includes("Server agent"));
 });
 
-test("an available agent update stays actionable in Overview", () => {
+test("no update button while Deplo updates the agent on its own", () => {
   const html = render("", {
-    agentUpdateAvailable: true,
+    agentVersion: "1.0.0",
     expectedAgentVersion: "1.1.0",
   });
-  assert.ok(html.includes("Update to v1.1.0"));
+  assert.ok(!html.includes("Update to"));
+  assert.ok(!html.includes("Retry now"));
+});
+
+test("Retry now appears only after a failed attempt, with the state line", () => {
+  const html = render("", {
+    agentUsable: false,
+    agentUpdate: {
+      running: false,
+      failed: true,
+      gaveUp: true,
+      attempts: 9,
+      failure: "unreachable",
+      lastError: "connect ECONNREFUSED",
+      firstFailedAt: "2026-10-19T10:00:00Z",
+      nextRetryAt: null,
+    },
+  });
+  assert.ok(html.includes("Unusable - Update failed (gave up after 24 h)"));
+  assert.ok(html.includes("Retry now"));
 });

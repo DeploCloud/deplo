@@ -13,7 +13,7 @@ import {
   SERVER_1,
   TRUNCATE_PROJECT_GRAPH,
 } from "./app-graph-test-helpers";
-import { updateServerAgent } from "./servers/agent-maintenance";
+import { retryServerAgentUpdate } from "./servers/agent-maintenance";
 import { addServer } from "./servers/enrollment";
 import { listServersForTeam, getPrimaryServer } from "./servers/roster";
 import { updateAppSource } from "./apps/source";
@@ -163,7 +163,7 @@ test("readiness is not a question asked of a migration source", async () => {
 test("the agent on a migration source is not upgraded, it is removed", async () => {
   const id = await migrationSource();
   await assert.rejects(
-    () => asTeamA(() => updateServerAgent(id)),
+    () => asTeamA(() => retryServerAgentUpdate(id)),
     /migration source/i,
   );
 });

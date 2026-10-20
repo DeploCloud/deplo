@@ -19,19 +19,13 @@ reissued, so a server keeps its identity and stays online across the upgrade.
    so there is nothing for the fleet to pick up. It then builds static
    (`CGO_ENABLED=0 -trimpath`) `linux/amd64` + `linux/arm64`, runs `sha256sum` over both into
    `checksums.txt`, and publishes all three as release assets.
-3. **Bump the control plane's offline fallback**: `FALLBACK_AGENT_VERSION`, declared in
-   `lib/version.ts` and re-exported by `lib/agent/release.ts`. This is _only_ the value used when
-   GitHub is unreachable; the live "expected" comes from `resolveExpectedAgentVersion()`. Keep it
-   conservative: the comparison is `agentUpdateAvailable(reported, expected)` (`lib/version.ts`),
-   which answers false on an older or unparseable expected version, so a stale fallback
-   under-reports rather than false-flagging healthy agents.
-4. **Bust the memo.** `resolveLatestAgentRelease()` caches for `CACHE_TTL_MS = 300_000` (5 minutes,
-   in-process, on a global `Symbol` so the RSC and route-handler module graphs share one cell). The
-   Servers page header's **Check for updates** runs the `checkAgentUpdates` mutation →
-   `refreshAgentRelease()`, which clears the cell and re-resolves immediately. The underlying
-   fetches are `cache: "no-store"`, so there is no on-disk Data Cache to also defeat.
-5. **Update each server, one at a time**, in the order in §4 - by hand for an agent-only release.
-   A control-plane release needs none of this: the new panel walks that same order itself (§3).
+3. **Pin it in the control plane** (ADR-0037): `"deplo": { "agent": "<tag without v>" }` in
+   `package.json`, and raise `agentMin` only if the panel now needs the newer agent - every server
+   below it becomes unusable until it updates. That is the whole switch: the expected version is
+   the pin, resolved from `releases/download/v<pin>/checksums.txt` (no API call) and memoised for
+   the process. `docker-image.yml` refuses to publish a panel whose pin has no `checksums.txt`.
+4. **Ship the panel.** Once it runs, it updates every server behind the pin by itself (§3). By hand
+   is only for an agent-only re-cut, through §6.
 
 ## 2. The asset-name contract
 
@@ -44,19 +38,17 @@ checksums.txt          # sha256sum format: "<64-hex>  <filename>" per line
 ```
 
 `assetName()` in `lib/agent/release.ts` builds the first two by string interpolation and
-`fetchLatestRelease()` looks up `checksums.txt` by literal name. `install-agent.sh` picks its pair
+`fetchPinnedRelease()` fetches `checksums.txt` by literal name. `install-agent.sh` picks its pair
 by `uname -m`; the agent picks its own by `runtime.GOARCH`. Renaming an asset breaks both sides.
 
-**A release missing `checksums.txt` is refused entirely.** `fetchLatestRelease()` does
-`assets.find((a) => a.name === "checksums.txt")` and returns `null` if it is absent, if the fetch
-fails, or if it does not parse - before it ever looks at the binaries. `resolveLatestAgentRelease()`
+**A release missing `checksums.txt` is refused entirely.** `fetchPinnedRelease()` returns `null`
+if it is absent, if the fetch fails, or if it names neither binary. `resolveAgentRelease()`
 returning `null` means:
 
 - `/install-agent.sh` 503s instead of serving an unverifiable installer (`lib/agent/install-script.ts`),
-- `selfUpdateServerAgent` throws _before_ dialing any agent ("Could not resolve the latest agent
-  release from GitHub"),
-- the expected-version resolver falls back to `FALLBACK_AGENT_VERSION`, so every agent reads as
-  up-to-date.
+- `selfUpdateServerAgent` throws `AgentReleaseUnavailableError` _before_ dialing any agent,
+- the automatic rollout claims nothing that pass, so a GitHub outage never spends any server's
+  24 hours of retries.
 
 No unverifiable binary is ever served or installed. The checksum is read from the published
 artifact, deliberately **not** from the GitHub API's per-asset digest, so the integrity claim comes
@@ -64,44 +56,40 @@ from what CI actually signed off on. Per-arch resolution needs _both_ the asset 
 `checksums.txt` line; an arch missing either is dropped, and the release is only usable if at least
 one arch survives.
 
-## 3. The panel carries the fleet - and there is still no "update all" mutation
+## 3. The panel carries the fleet
 
-**A panel update rolls the agents forward on its own** (`lib/data/servers/agent-rollout.ts`). The
-new control plane compares `instance_settings.booted_version` to `DEPLO_VERSION` at boot: a version
-that moved means the panel just updated, so it walks the fleet in §4's order, one host at a time,
-and retries every 15 minutes until every provisioned server is on the expected version. The marker
-is `instance_settings.agent_rollout_by`, written by `applyDeploUpdate` with the name of whoever
-clicked (so the Activity entries are signed by a person, not by the scheduler) and cleared by the
-first pass that leaves nobody behind. A shell-run `install.sh` update is caught by the same
-version comparison and signed "Deplo".
+**Deplo updates every provisioned server behind the pin on its own**
+(`lib/data/servers/agent-rollout.ts`, ADR-0037). A pass runs every minute, one host at a time, in
+§4's order. Activity entries are signed by `instance_settings.agent_rollout_by` (whoever clicked
+the panel update, written by `applyDeploUpdate`), or "Deplo".
 
-What it skips, and why the distinction matters:
+Each server has at most one row in `server_agent_updates` (`agent-update-state.ts`): none means
+idle, the success of an attempt deletes it. An attempt is CLAIMED with one atomic upsert, so two
+never run on one host, across processes too; a `running` row older than 10 minutes is a dead
+process and can be taken back.
 
-- **A deploy in flight** on that host (`queued`/`building`, read through
-  `coalesce(deployments.server_id, apps.server_id)` - see §5) - skipped, retried in 15 minutes.
-- **Unreachable at preflight** - skipped, retried. It never stops the pass: one dead host must not
-  hold the rest of the fleet back forever.
-- **`AgentUpdateUnsupportedError`** (too old to self-update, needs `install-agent.sh` re-run) -
-  skipped for the same reason, since it is a permanent condition.
-- **Anything else during the update, or a host that never comes back on a new version** - the pass
-  **stops**. A release that breaks one agent must not break four.
+- **A deploy in flight** (`queued`/`building`, through `coalesce(deployments.server_id,
+apps.server_id)` - see §5) is a `busy` failure; **no Hello** is `unreachable`; a failed
+  SelfUpdate, including `AgentUpdateUnsupportedError`, is `error`. Each is that server's own
+  failure: the pass moves on.
+- **A host that took the binary and never came back** is `no_return`: the pass stops, and every
+  later pass tries only that server until it recovers. A release that breaks one agent must not
+  break four.
+- **Retries** back off 1, 2, 4 … 60 minutes for 24 hours from the first failure, then stop. A
+  server that was `unreachable` when Deplo gave up gets one more attempt the next time a Hello
+  sees it (`agentSeen`, called from `markServerSeen`). A Hello on the pin closes the row whatever
+  updated it. A new pin at boot drops every row (`dropStaleAgentUpdates`).
 
-**There is still no batch GraphQL mutation.** The API surface is unchanged:
-**`updateServerAgent(id: String!): String`** (`lib/graphql/types/server/enrollment.ts`,
-`lib/data/servers/agent-maintenance.ts`), one server per call, which is what the button on a
-server's own page calls when that host is behind - the only place in the UI that updates an agent
-by hand. `fleetAgents` is the read side: expected version, total, who is behind, and whether a
-rollout is still owed. The Updates tab shows that and nothing else; it has no agent action.
+**The only manual path is `retryServerAgentUpdate(id)`** (`lib/graphql/types/server/enrollment.ts`,
+`lib/data/servers/agent-maintenance.ts`): instance admin, refused before Deplo's own attempt has
+failed and while one runs. It skips the wait, keeps the 24 hours, and is the **Retry now** button on
+the server page and on the Updates tab. `fleetAgents` is the read side: pin, minimum, who is behind
+with their update state, and `pausedBy`.
 
-Contrast health, which _does_ have a fleet-wide action: `checkAllServerHealth(force: Boolean)` probes
-every provisioned server and is what the Servers page runs on load.
+Both gates apply: `authScopes: { instanceAdmin: true }` at the field and `requireInstanceAdmin()`
+inside. The automatic pass runs with no identity, so it calls the infra seam directly.
 
-Both are `authScopes: { instanceAdmin: true }` at the field, and `updateServerAgent` calls
-`requireInstanceAdmin()` inside the data layer (the real gate). The automatic rollout runs at boot
-with no identity at all, so it calls the infra seam directly - which is why §7 applies to it.
-
-**Driving a rollout by hand is still supported and still the release procedure**: the scripted path
-in §6 is unchanged, and the order it walks is the order the panel walks.
+**Driving a rollout by hand is still supported**: the scripted path in §6 walks the same order.
 
 ## 4. Order: canary → the rest → the Deplo host LAST
 
@@ -226,13 +214,10 @@ scripts from the repo root with:
 ## 7. The footgun: the infra seam does not write `agent_version`
 
 `selfUpdateServerAgent(serverId)` in `lib/infra/agent-client/agent-lifecycle.ts` returns `{ version, restarting }`
-and writes **nothing** to the database. The version badge is updated one layer up, by
-`updateServerAgent(id)` in `lib/data/servers/agent-maintenance.ts`, which sets `servers.agent_version` optimistically
-after the seam returns (and records the activity entry).
+and writes **nothing** to the database. The rollout writes the badge from the confirming Hello
+(`confirmUpdated` → `markServerSeen`).
 
-So the UI path is fine. A **script that calls the infra seam directly** - the usual shape, because
-the data-layer function needs `requireInstanceAdmin()` and an identity context - must do the write
-itself:
+A **script that calls the infra seam directly** must do the write itself:
 
 ```ts
 const { version } = await selfUpdateServerAgent(id);
@@ -329,38 +314,16 @@ past the canary, not after - the fix required a v1.11.1, because a published tag
 
 ## 10. Rollback is forward-only - know this before you start
 
-**`updateServerAgent` structurally cannot downgrade an agent.** It calls
-`resolveLatestAgentRelease()`, which is hard-wired to `releases/latest` (the ALWAYS-LATEST policy in
-`lib/agent/release.ts`). There is no version argument anywhere in the path, not in the GraphQL
-mutation, not in the data layer, not in the RPC. "Update to the previous version" is not an
-operation that exists.
+**Nothing installs an agent older than the one a server runs.** `selfUpdateServerAgent` refuses
+when the agent is ahead of the pin, and an agent newer than the pin is compatible and left alone
+(ADR-0037). The pin is now explicit, so a bad agent release is undone by **pinning a fixed one**:
 
-Re-running the installer does not save you either: `renderInstallScript()` substitutes the URL and
-sha256 from that _same_ always-latest resolver, so the script the control plane serves always
-installs the newest release.
-
-The three real options:
-
-- **Publish a patch release that reverts the change**, then roll it out through §1-§9. Preferred:
-  it keeps every host on a verified, checksummed artifact and leaves the fleet self-consistent.
-- **Move `releases/latest` backwards by DELETING the newer releases.** Always-latest cuts both
-  ways: the resolver has no opinion about direction, and neither does the agent (`SelfUpdate` in
-  `internal/server/selfupdate.go` verifies the sha256 and swaps, it never compares versions). Delete
-  the bad releases and run **Check for updates** so `refreshAgentRelease()` drops the in-process
-  memo. **The "Update agent" button will NOT take a host backwards**: `agentUpdateAvailable`
-  (lib/version.ts) offers an update only when the release is NEWER than what the host reports, so a
-  host already ahead of `latest` is not outdated and is offered nothing. That is deliberate - a
-  moved or deleted tag used to advertise a downgrade as an update - and it means this option now
-  only helps hosts that never took the bad release. For the ones that did, use the patch release or
-  the by-hand pin below. Deleting a release is irreversible, so this is for a bad release you want
-  gone anyway, not for a temporary pin.
+- **Publish a patch release that reverts the change**, pin it, ship the panel. Preferred: every host
+  stays on a verified, checksummed artifact. Hosts that took the bad release move forward to it.
 - **Pin by hand on the affected host**: take the rendered `install-agent.sh`, replace
-  `AGENT_VERSION` / `AGENT_URL_*` / `AGENT_SHA256_*` with the values from the older release's
-  `checksums.txt` and asset URLs, and run it there. This re-bootstraps (fresh token, new mTLS
-  materials) - it is not the in-place path, and it needs shell access to the host.
+  `AGENT_VERSION` / `AGENT_URL_*` / `AGENT_SHA256_*` with an older release's values, and run it
+  there. This re-bootstraps (fresh token, new mTLS materials) and needs shell access, which the
+  mission says nobody should need: it is the break-glass, not the procedure.
 
-**This is a known fleet-operations gap**, and it is a mission-level one: the second option requires
-SSH, which is exactly what Deplo promises the operator never needs (`AGENTS.md` → Core mission). The
-honest mitigation today is that a bad agent is _caught on the canary_, not on 66 Apps, which is why
-§4's ordering is not optional. A real fix (a pinnable target version through the whole path) belongs
-in the issue tracker, not in a runbook workaround.
+The canary in §4 is still the real protection, and the `no_return` pause in §3 is what stops a
+release that kills its agent from reaching the second server.

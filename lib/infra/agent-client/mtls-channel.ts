@@ -30,6 +30,7 @@ export interface DialTarget {
   serverName: string;
   clientCreds: { certPem: string; keyPem: string; caPem: string };
   pinnedFingerprint: string;
+  agentVersion?: string;
 }
 
 export async function resolveTarget(serverId: string): Promise<DialTarget> {
@@ -61,6 +62,7 @@ export async function remoteTarget(server: Server): Promise<DialTarget> {
       caPem: await caCertPem(),
     },
     pinnedFingerprint: agent.certFingerprint,
+    agentVersion: agent.version,
   };
 }
 

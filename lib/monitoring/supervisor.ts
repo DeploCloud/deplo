@@ -12,6 +12,7 @@ import { classifyServerHealth } from "../infra/server-health";
 import type { AgentConnection } from "../infra/agent-client/connection";
 import {
   AgentMetricsStreamUnsupportedError,
+  AgentTooOldError,
   AgentUnreachableError,
 } from "../infra/agent-client/errors";
 import { connectMetricsStreamAgent } from "../infra/agent-client/preflight";
@@ -25,7 +26,7 @@ import {
   toContainerSample,
 } from "../data/container-metrics";
 import { reconcileAppStatusFromTelemetry } from "../data/app-status-reconcile";
-import { expectedAgentVersion } from "../data/release-channel";
+import { AGENT_VERSION } from "../version";
 import type { ServerMetrics } from "../data/monitoring";
 import type {
   ContainerStat,
@@ -214,7 +215,7 @@ async function runStreamLoop(
       const facts: ConnectionFacts = {
         agentVersion: hello.agentVersion || null,
         traefik: hello.traefikRunning,
-        expectedAgentVersion: await expectedAgentVersion(),
+        expectedAgentVersion: AGENT_VERSION,
         serverName,
       };
 
@@ -293,7 +294,8 @@ async function runStreamLoop(
         lifetime >= MIN_STREAM_MS;
 
       if (!rotation) {
-        if (attempt === 0) {
+        // An unusable agent is reachable: the health probe owns its status, not this loop.
+        if (attempt === 0 && !(e instanceof AgentTooOldError)) {
           await recordServerHealth(
             serverId,
             classifyServerHealth(null, e),
@@ -324,7 +326,7 @@ async function runPollLoop(
         const servers = await listAllServers();
         const server = servers.find((s) => s.id === serverId);
         if (!server) return;
-        const expected = await expectedAgentVersion();
+        const expected = AGENT_VERSION;
         recordMetricsSample(await measureServerForCollector(server, expected));
       }
     } catch {}
