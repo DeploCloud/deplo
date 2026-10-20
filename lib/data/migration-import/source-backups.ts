@@ -1,5 +1,6 @@
 import "server-only";
 
+import { errorMessage } from "../../utils";
 import { and, eq } from "drizzle-orm";
 import { blocker, type Note } from "../../migration/note";
 
@@ -276,14 +277,18 @@ export async function importBackupDestinations(
   try {
     stores = await sourceClient(c).listBackupDestinations();
   } catch (e) {
-    await report.add({
-      sourceKind: "destination",
-      sourceName: "backup destinations",
-      outcome: "manual",
-      blocking: true,
-      targetKind: "destination",
-      message: `{panel} would not answer for its backup stores (${e instanceof Error ? e.message : "refused"}), so no backup destination came across. Add it under Backups, then the schedules.`,
-    });
+    await report.notes(
+      "destination",
+      "backup destinations",
+      [
+        blocker(
+          `{panel} would not answer for its backup stores (${errorMessage(e, "refused")}), so no backup destination came across. Add it under Backups, then the schedules.`,
+        ),
+      ],
+      {
+        kind: "destination",
+      },
+    );
     return byName;
   }
   if (stores.length === 0) return byName;
@@ -340,14 +345,18 @@ async function landBucket(
   }
   const { accessKeyId, secretAccessKey } = store;
   if (!accessKeyId || !secretAccessKey) {
-    await ctx.report.add({
-      sourceKind: "destination",
-      sourceName: store.name,
-      outcome: "manual",
-      blocking: true,
-      targetKind: "destination",
-      message: `${store.name} came across without its access keys: the token's owner may not manage backup destinations on {panel}. Add it under Backups, then the schedules.`,
-    });
+    await ctx.report.notes(
+      "destination",
+      store.name,
+      [
+        blocker(
+          `${store.name} came across without its access keys: the token's owner may not manage backup destinations on {panel}. Add it under Backups, then the schedules.`,
+        ),
+      ],
+      {
+        kind: "destination",
+      },
+    );
     return;
   }
   const provider = S3_PROVIDERS.find((p) => p === store.provider) ?? null;
@@ -385,14 +394,18 @@ async function landServerStore(
   const why = `they sit on ${host}'s disk, which only {panel} can reach. Restore from {panel}, and keep that server until you no longer need them.`;
   const serverId = await ctx.serverFor(store.serverId);
   if (!serverId) {
-    await ctx.report.add({
-      sourceKind: "destination",
-      sourceName: store.name,
-      outcome: "manual",
-      blocking: true,
-      targetKind: "destination",
-      message: `It kept backups on ${host}'s disk on {panel}, and no server here was picked for it. Add a destination on one under Backups, then the schedules.`,
-    });
+    await ctx.report.notes(
+      "destination",
+      store.name,
+      [
+        blocker(
+          `It kept backups on ${host}'s disk on {panel}, and no server here was picked for it. Add a destination on one under Backups, then the schedules.`,
+        ),
+      ],
+      {
+        kind: "destination",
+      },
+    );
     return;
   }
   const already = ctx.here.find(

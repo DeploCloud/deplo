@@ -1,6 +1,6 @@
 import "server-only";
 
-import { isBlocking, noteText, type Note } from "../../migration/note";
+import { blocker, isBlocking, noteText, type Note } from "../../migration/note";
 import { and, eq, isNotNull, isNull, ne, or, sql } from "drizzle-orm";
 
 import { getDb } from "../../db/client";
@@ -214,15 +214,13 @@ export async function importAppService(
     ? await composeGrantRefusal(compose, name)
     : null;
   if (grantRefusal) {
-    await report.add({
-      sourceKind: svc.kind,
-      sourceId: svc.id,
-      sourceName: name,
-      outcome: "manual",
-      targetKind: "app",
-      message: grantRefusal,
-      blocking: true,
-    });
+    await report.notes(
+      svc.kind,
+      name,
+      [blocker(grantRefusal)],
+      { kind: "app" },
+      svc.id,
+    );
     return null;
   }
 
