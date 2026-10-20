@@ -241,6 +241,55 @@ export interface DeploExportEnvironment {
   gitBranch?: string;
 }
 
+// Colour and owner are absent from an older Deplo.
+export interface DeploExportFolder {
+  id: string;
+  name: string;
+  parentId: string | null;
+  color?: string | null;
+  ownerEmail?: string | null;
+}
+
+export interface DeploExportNodeScope {
+  projectIds: string[];
+  environmentIds: string[];
+  folderIds: string[];
+  appIds: string[];
+}
+
+export interface DeploExportRole {
+  id: string;
+  name: string;
+  description: string | null;
+  builtinKey: string | null;
+  capabilities: string[];
+  scoped: boolean;
+  requireTwoFactor: boolean;
+  scope: DeploExportNodeScope | null;
+}
+
+export interface DeploExportGrant {
+  kind: "project" | "environment" | "folder" | "app";
+  nodeId: string;
+  capabilities: string[];
+}
+
+// `capabilities` is the member's effective set; grants name only nodes this export carries.
+export interface DeploExportMemberAccess {
+  email: string;
+  rank: string;
+  roleId: string | null;
+  granular: boolean;
+  customCapabilities: boolean;
+  capabilities: string[];
+  grants: DeploExportGrant[];
+}
+
+export interface DeploExportAccess {
+  roles: DeploExportRole[];
+  members: DeploExportMemberAccess[];
+}
+
 export interface DeploExport {
   version: number;
   instance: string;
@@ -248,7 +297,7 @@ export interface DeploExport {
   otherTeams: string[];
   canControl: { apps: boolean; databases: boolean };
   projects: DeploExportProject[];
-  folders: { id: string; name: string; parentId: string | null }[];
+  folders: DeploExportFolder[];
   apps: DeploExportApp[];
   // Apps in folders the caller cannot open: counted, never named.
   withheld: number;
@@ -267,4 +316,6 @@ export interface DeploExport {
   // Absent from an older Deplo; an app names its connection in `repo.connectionId`.
   gitConnections?: DeploExportGitConnection[];
   registries?: DeploExportRegistry[];
+  // Absent from an older Deplo; null when the reader may not manage members there.
+  access?: DeploExportAccess | null;
 }

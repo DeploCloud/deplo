@@ -7,7 +7,15 @@ import { and, eq } from "drizzle-orm";
 import { makeTestDb, type TestDb } from "../../db/test-harness";
 import { __setTestDb, __resetTestDb } from "../../db/client";
 import { activities } from "../../db/schema/control-plane/activity";
-import { membershipCapabilities } from "../../db/schema/control-plane/access-control";
+import {
+  appGrants,
+  folderGrants,
+  membershipCapabilities,
+  memberships,
+  teamRoleCapabilities,
+  teamRoleScopeFolders,
+  teamRoles,
+} from "../../db/schema/control-plane/access-control";
 import { apps as appsTable } from "../../db/schema/control-plane/apps";
 import {
   environments as environmentsTable,
@@ -952,4 +960,107 @@ test("the data stream refuses an image the named app does not run", async () => 
       ),
     (e: unknown) => e instanceof ExportRefusedError && e.status === 404,
   );
+});
+
+test("roles, each member's role and their per-folder and per-app access leave by email", async () => {
+  await db.insert(foldersTable).values([
+    {
+      id: "fld_root",
+      teamId: TEAM_A,
+      name: "Clients",
+      ownerUserId: USER_1,
+      createdAt: T0,
+      updatedAt: T0,
+    },
+    {
+      id: "fld_ops",
+      teamId: TEAM_A,
+      name: "Ops",
+      parentId: "fld_root",
+      color: "#123456",
+      ownerUserId: INTRUDER,
+      createdAt: T0,
+      updatedAt: T0,
+    },
+  ]);
+  await db.insert(teamRoles).values({
+    id: "role_deployers",
+    teamId: TEAM_A,
+    name: "Deployers",
+    description: "Ship it",
+    scoped: true,
+    requireTwoFactor: true,
+    createdAt: T0,
+  });
+  await db.insert(teamRoleCapabilities).values(
+    ["view", "deploy_apps"].map((capability) => ({
+      roleId: "role_deployers",
+      capability,
+    })),
+  );
+  await db
+    .insert(teamRoleScopeFolders)
+    .values({ roleId: "role_deployers", folderId: "fld_ops" });
+  await db
+    .update(memberships)
+    .set({ roleId: "role_deployers", granular: true })
+    .where(eq(memberships.id, `mem_${INTRUDER}`));
+  await db.insert(folderGrants).values({
+    folderId: "fld_ops",
+    userId: INTRUDER,
+    capability: "deploy_apps",
+  });
+  await db.insert(appGrants).values([
+    { appId: "prj_web", userId: INTRUDER, capability: "configure_apps" },
+    { appId: "prj_other", userId: INTRUDER, capability: "configure_apps" },
+  ]);
+
+  const out = await as(USER_1, TEAM_A, () => exportTeamForMigration());
+  assert.deepEqual(
+    out.folders.find((f) => f.id === "fld_ops"),
+    {
+      id: "fld_ops",
+      name: "Ops",
+      parentId: "fld_root",
+      color: "#123456",
+      ownerEmail: `${INTRUDER}@example.io`,
+    },
+  );
+  const role = out.access!.roles.find((r) => r.id === "role_deployers");
+  assert.deepEqual(role, {
+    id: "role_deployers",
+    name: "Deployers",
+    description: "Ship it",
+    builtinKey: null,
+    capabilities: ["view", "deploy_apps"],
+    scoped: true,
+    requireTwoFactor: true,
+    scope: {
+      projectIds: [],
+      environmentIds: [],
+      folderIds: ["fld_ops"],
+      appIds: [],
+    },
+  });
+  const who = out.access!.members.find(
+    (m) => m.email === `${INTRUDER}@example.io`,
+  )!;
+  assert.equal(who.roleId, "role_deployers");
+  assert.equal(who.granular, true);
+  assert.deepEqual(
+    who.grants.map((g) => [g.kind, g.nodeId, g.capabilities]),
+    [
+      ["folder", "fld_ops", ["deploy_apps"]],
+      ["app", "prj_web", ["configure_apps"]],
+    ],
+  );
+});
+
+test("a reader who cannot manage members hands over no one's access", async () => {
+  await db.insert(membershipCapabilities).values({
+    membershipId: `mem_${USER_NO_REVEAL}`,
+    capability: "reveal_secrets",
+  });
+  const out = await as(USER_NO_REVEAL, TEAM_A, () => exportTeamForMigration());
+  assert.equal(out.access, null);
 });
