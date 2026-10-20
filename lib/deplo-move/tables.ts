@@ -178,6 +178,8 @@ export const MOVE_TABLES: Readonly<Record<string, TablePolicy>> = {
   registration_links: { kind: "copy", rekey: { token_enc: SECRET } },
   registries: { kind: "copy", rekey: { password_enc: SECRET } },
   scheduler_lease: { kind: "skip" },
+  // Updates of this Deplo's own fleet against its own pin.
+  server_agent_updates: { kind: "local" },
   // The old Deplo's machines: read for the server map and team access, never inserted.
   server_teams: { kind: "copy", mapped: true },
   servers: { kind: "copy", mapped: true },

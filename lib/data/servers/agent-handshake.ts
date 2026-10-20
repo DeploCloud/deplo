@@ -9,6 +9,8 @@ import {
   signBootstrapCsr,
   DEFAULT_AGENT_PORT,
 } from "../../agent/bootstrap";
+import { AGENT_VERSION, agentUpdateAvailable } from "../../version";
+import { agentSeen } from "./agent-update-state";
 import { listAllServers } from "./roster";
 
 export interface BootstrapCallHome {
@@ -83,6 +85,9 @@ export async function markServerSeen(
       set.diskGb = specs.diskGb;
     }
     await getDb().update(serversTable).set(set).where(eq(serversTable.id, id));
+    // ponytail: one primary-key statement per Hello; fold into the update above if it ever shows up.
+    if (agentVersion)
+      await agentSeen(id, !agentUpdateAvailable(agentVersion, AGENT_VERSION));
   } catch (e) {
     console.error("[deplo] markServerSeen failed:", e);
   }
