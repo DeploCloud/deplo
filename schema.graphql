@@ -2988,6 +2988,7 @@ enum MigrationPlatform {
 }
 
 type MigrationProjectResult {
+  blocking: Int
   created: Int
   failed: Int
   items: [MigrationRunItem!]
@@ -3044,6 +3045,9 @@ One import, kept after the tab that started it is gone. The API key is stored en
 """
 type MigrationRun {
   actor: String
+
+  """Lines that keep an app from running until they are done."""
+  blocking: Int
   created: Int
   doneSteps: Int
   error: String
@@ -3063,6 +3067,10 @@ type MigrationRun {
   The last thing this run touched, as `Project / Environment / service`. Filled in only by the live `activeMigration` feed - the history list leaves it null, because a finished run says where it got to with its whole report. It is the only record of a run's POSITION that survives the tab: the loop lives in the browser, and so does the plan that knew how many projects there were.
   """
   lastPath: String
+
+  """
+  Lines for your information. What keeps an app from running is counted in `blocking` instead.
+  """
   manual: Int
 
   """
@@ -3111,6 +3119,11 @@ type MigrationRunItem {
   When this line happened. Null on rows written before the report became something you can watch. A report read afterwards is a list; read while it runs it is a log, and a log with no times is not one.
   """
   at: String
+
+  """
+  The app will not run until somebody does what this line says. Every other note is information.
+  """
+  blocking: Boolean
   message: String
   outcome: MigrationOutcome
 

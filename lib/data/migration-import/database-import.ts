@@ -1,5 +1,6 @@
 import "server-only";
 
+import { blocker, noteText, type Note } from "../../migration/note";
 import { and, eq, sql } from "drizzle-orm";
 
 import { getDb } from "../../db/client";
@@ -42,7 +43,7 @@ export async function importDatabaseService(
 ): Promise<void> {
   const { serverId } = opts;
   const mapped = mapDatabase(svc.kind as SourceDbKind, { ...row, name });
-  const notes = [...(row.platformNotes ?? []), ...mapped.notes];
+  const notes: Note[] = [...(row.platformNotes ?? []), ...mapped.notes];
   if (!mapped.value) {
     await report.add({
       sourceKind: svc.kind,
@@ -50,7 +51,7 @@ export async function importDatabaseService(
       sourceName: name,
       outcome: "unsupported",
       targetKind: "database",
-      message: notes.join(" ") || "Deplo has no such engine.",
+      message: notes.map(noteText).join(" ") || "Deplo has no such engine.",
     });
     return;
   }
@@ -185,7 +186,9 @@ export async function importDatabaseService(
     if (created) {
       if (publishPort != null) notes.push(portNote(firstError));
       notes.push(
-        `Password refused (${firstError}), so Deplo made a new one - the imported connection strings still hold the old.`,
+        blocker(
+          `Password refused (${firstError}), so Deplo made a new one - the imported connection strings still hold the old.`,
+        ),
       );
     }
   }

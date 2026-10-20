@@ -1,5 +1,6 @@
 import "server-only";
 
+import type { Note } from "../../migration/note";
 import { sourceClient } from "../../migration/source";
 import type { SourceCredential } from "../../migration/source";
 import type { CronTargetKind } from "../../types/cron";
@@ -20,7 +21,7 @@ export async function importCrons(
   scheduleType: string,
   sourceId: string,
   target: { kind: CronTargetKind; id: string },
-  notes: string[],
+  notes: Note[],
   opts: {
     serviceRenames?: Map<string, string>;
     cronEnabled?: boolean | null;

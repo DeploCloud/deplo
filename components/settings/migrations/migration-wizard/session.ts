@@ -1,12 +1,8 @@
 import type { ActiveMigration } from "@/components/layout/migration-activity";
+import type { ReportCounts } from "../steps";
 import type { ImportRun, MigrationProgress, SessionRun } from "../types";
 
-export interface RunReport {
-  created: number;
-  skipped: number;
-  failed: number;
-  manual: number;
-}
+export type RunReport = ReportCounts;
 
 export const NO_PROGRESS: MigrationProgress = {
   done: 0,
@@ -14,10 +10,7 @@ export const NO_PROGRESS: MigrationProgress = {
   current: "",
 };
 
-export function sum(
-  runs: SessionRun[],
-  key: "created" | "skipped" | "failed" | "manual",
-): number {
+export function sum(runs: SessionRun[], key: keyof ReportCounts): number {
   return runs.reduce((n, r) => n + r[key], 0);
 }
 
@@ -39,6 +32,7 @@ export function asActive(run: ImportRun): ActiveMigration {
     skipped: run.skipped,
     failed: run.failed,
     manual: run.manual,
+    blocking: run.blocking,
     lastPath: run.lastPath ?? null,
     phase: run.phase ?? "config",
     doneSteps: run.doneSteps ?? 0,

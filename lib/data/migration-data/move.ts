@@ -1,5 +1,6 @@
 import "server-only";
 
+import { blocker, isBlocking, noteText, type Note } from "../../migration/note";
 import { and, eq } from "drizzle-orm";
 
 import { getDb } from "../../db/client";
@@ -116,7 +117,7 @@ function refusalFor(base: {
   sourceKind: string;
   svc: SourceService;
   landed: Landed;
-  notes: string[];
+  notes: Note[];
   saidHere: (text: string) => string;
 }) {
   return async (r: {
@@ -144,7 +145,9 @@ function refusalFor(base: {
     return {
       moved: 0,
       failed: 1,
-      notes: (r.note ? [...base.notes, r.note] : base.notes).map(base.saidHere),
+      notes: (r.note ? [...base.notes, r.note] : base.notes).map((n) =>
+        base.saidHere(noteText(n)),
+      ),
       sourceGone: r.sourceGone ?? false,
     };
   };
@@ -201,7 +204,7 @@ async function runMoveMigrationServiceData(
   const paired = pairVolumes(state.volumes, landed.volumes, {
     singleData: landed.targetKind === "database",
   });
-  const notes = [...state.notes, ...paired.notes];
+  const notes: Note[] = [...state.notes, ...paired.notes];
   const refuse = refusalFor({
     runId: input.runId,
     teamId,
@@ -238,17 +241,18 @@ async function runMoveMigrationServiceData(
       sourceKind: input.sourceKind,
       sourceName: svc.name,
       outcome: state.undetermined ? "manual" : "skipped",
+      blocking: state.undetermined ?? false,
       targetKind: landed.targetKind,
       targetId: landed.targetId,
       message:
-        notes.join(" ") ||
+        notes.map(noteText).join(" ") ||
         "Nothing to move: this service has no data of its own on {panel}.",
     });
     await refreshCounts(input.runId, teamId);
     return {
       moved: 0,
       failed: 0,
-      notes: notes.map(saidHere),
+      notes: notes.map((n) => saidHere(noteText(n))),
       sourceGone: false,
     };
   }
@@ -389,7 +393,7 @@ async function runMoveMigrationServiceData(
     const message = e instanceof Error ? e.message : "the copy failed";
     tally.failed++;
     tally.lost.push(message);
-    notes.push(`The copy stopped part way: ${message}`);
+    notes.push(blocker(`The copy stopped part way: ${message}`));
   } finally {
     inFlightCopies.delete(input.runId);
     close();
@@ -447,7 +451,7 @@ async function runMoveMigrationServiceData(
           : `Nothing was copied for ${landed.targetName}: every volume it has on {panel} is empty.`,
     );
 
-  for (const message of notes)
+  for (const note of notes)
     await appendRunItem(input.runId, panel, {
       path,
       sourceKind: input.sourceKind,
@@ -455,7 +459,8 @@ async function runMoveMigrationServiceData(
       outcome: "manual",
       targetKind: landed.targetKind,
       targetId: landed.targetId,
-      message,
+      message: noteText(note),
+      blocking: isBlocking(note),
     });
 
   await refreshCounts(input.runId, teamId);
@@ -472,7 +477,7 @@ async function runMoveMigrationServiceData(
   return {
     moved: tally.moved,
     failed: tally.failed + tally.notCopied,
-    notes: notes.map(saidHere),
+    notes: notes.map((n) => saidHere(noteText(n))),
     sourceGone: tally.sourceGone,
   };
 }

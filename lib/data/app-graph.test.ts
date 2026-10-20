@@ -644,37 +644,38 @@ test("addDomain without a certProvider is born WITHOUT a certificate (`none`)", 
   });
 });
 
-test("auto domains are born plain-HTTP unless the blueprint opted into TLS", async () => {
-  await seedApp(db, { id: "prj_1", slug: "plain" });
-  await seedApp(db, { id: "prj_2", slug: "tls" });
+test("a temporary address is born with a certificate, unless its server is private", async () => {
+  await seedApp(db, { id: "prj_1", slug: "public" });
+  await seedApp(db, { id: "prj_2", slug: "lan" });
   await asUser1(async () => {
-    await ensureAutoDomain("prj_1", { slug: "plain", ip: IP, defaultPort: 80 });
-    await ensureAutoDomain("prj_2", {
-      slug: "tls",
+    await ensureAutoDomain("prj_1", {
+      slug: "public",
       ip: IP,
       defaultPort: 80,
-      certProvider: "letsencrypt",
     });
-    await ensureExtraDomain("prj_2", "tls-extra-keen-owl-01020304.deplo.site", {
+    await ensureExtraDomain("prj_1", "", {
       port: 81,
-      service: "web",
-      slug: "tls",
+      service: null,
+      slug: "public",
       ip: IP,
-      certProvider: "letsencrypt",
+    });
+    await ensureAutoDomain("prj_2", {
+      slug: "lan",
+      ip: "10.0.0.5",
+      defaultPort: 80,
     });
   });
-  const plain = await loadDomainsForApp("prj_1");
-  assert.equal(plain.length, 1);
-  assert.equal(
-    plain[0].certProvider,
-    "none",
-    "stored explicitly, not left absent",
-  );
-  assert.equal(plain[0].ssl, false, "ssl mirrors the cert-less birth");
-  const tls = await loadDomainsForApp("prj_2");
-  assert.equal(tls.length, 2);
-  for (const d of tls) {
-    assert.equal(d.certProvider, "letsencrypt");
+  const pub = await loadDomainsForApp("prj_1");
+  assert.equal(pub.length, 2);
+  for (const d of pub) {
+    assert.equal(d.certProvider, "letsencrypt", d.name);
     assert.equal(d.ssl, true);
   }
+  const [lan] = await loadDomainsForApp("prj_2");
+  assert.equal(
+    lan.certProvider,
+    "none",
+    "nothing outside can validate it: stored explicitly, not left absent",
+  );
+  assert.equal(lan.ssl, false, "ssl mirrors the cert-less birth");
 });

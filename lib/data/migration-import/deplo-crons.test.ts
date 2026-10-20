@@ -19,7 +19,11 @@ import {
   provisionServer1,
   resetMigrationHarness,
 } from "./migration-import-test-helpers";
-import { importFromDeplo, reportLines } from "./deplo-import-test-helpers";
+import {
+  blockingLines,
+  importFromDeplo,
+  reportLines,
+} from "./deplo-import-test-helpers";
 
 let db: TestDb;
 let pg: PGlite;
@@ -166,4 +170,5 @@ test("a job from an older Deplo lands with its schedule and says the rest did no
     (await reportLines(runId)).join("\n"),
     /too old to hand over the variables and settings of cron job\(s\) vacuum/,
   );
+  assert.deepEqual(await blockingLines(runId), [], "the database runs anyway");
 });

@@ -1,5 +1,6 @@
 import "server-only";
 
+import { isBlocking, noteText, type Note } from "../../migration/note";
 import { eq } from "drizzle-orm";
 
 import { getDb } from "../../db/client";
@@ -26,6 +27,7 @@ import { runAsMigration } from "../migration-guard";
 import { assertImportGate, credentialFor, type ConnectInput } from "./gates";
 import {
   Report,
+  countOutcomes,
   ownRun,
   refreshCounts,
   type ImportItemDTO,
@@ -55,6 +57,7 @@ export interface ImportProjectResult {
   skipped: number;
   failed: number;
   manual: number;
+  blocking: number;
   items: ImportItemDTO[];
 }
 
@@ -139,7 +142,7 @@ async function runImportMigrationProject(
   if (!projectId)
     return {
       projectName: source.name,
-      ...tally(report.items),
+      ...countOutcomes(report.items),
       items: report.items,
     };
 
@@ -372,23 +375,8 @@ async function runImportMigrationProject(
 
   return {
     projectName: source.name,
-    ...tally(report.items),
+    ...countOutcomes(report.items),
     items: report.items,
-  };
-}
-
-function tally(items: ImportItemDTO[]): {
-  created: number;
-  skipped: number;
-  failed: number;
-  manual: number;
-} {
-  const n = (o: string) => items.filter((i) => i.outcome === o).length;
-  return {
-    created: n("created"),
-    skipped: n("skipped"),
-    failed: n("failed"),
-    manual: n("manual") + n("unsupported"),
   };
 }
 
@@ -465,6 +453,7 @@ async function ensureEnvironment(
       sourceKind: "environment",
       sourceName: env.name,
       outcome: fallback ? "manual" : "failed",
+      blocking: Boolean(fallback),
       targetKind: "environment",
       targetId: fallback?.id ?? null,
       message:
@@ -477,15 +466,16 @@ async function ensureEnvironment(
 
 async function noteLevel(
   report: Report,
-  notes: string[] | null | undefined,
+  notes: Note[] | null | undefined,
 ): Promise<void> {
-  for (const message of notes ?? [])
+  for (const note of notes ?? [])
     await report.add({
       sourceKind: "shared-var",
       sourceName: "Shared variables",
       outcome: "manual",
       targetKind: "shared-var",
-      message,
+      message: noteText(note),
+      blocking: isBlocking(note),
     });
 }
 
@@ -502,5 +492,6 @@ async function levelRefused(
     outcome: "manual",
     targetKind: "shared-var",
     message: `{panel} would not answer for the ${level} shared variables (${why}). None of them came across - copy them in under Variables.`,
+    blocking: true,
   });
 }

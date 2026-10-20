@@ -145,6 +145,7 @@ export const SESSION = /* GraphQL */ `
       skipped
       failed
       manual
+      blocking
       error
       members {
         email

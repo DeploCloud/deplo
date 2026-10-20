@@ -3,6 +3,8 @@ import assert from "node:assert/strict";
 
 import {
   needsYou,
+  reportBadges,
+  reportLevel,
   reviewShows,
   stepAfterScan,
   stepAfterReport,
@@ -274,6 +276,31 @@ test("a single item needing a person is not plural", () => {
   assert.equal(needsYou(1), "1 needs you");
   assert.equal(needsYou(0), "0 need you");
   assert.equal(needsYou(3), "3 need you");
+});
+
+test("the summary leads with what keeps an app from running", () => {
+  const said = (r: Parameters<typeof reportBadges>[0]) =>
+    reportBadges(r).map((b) => b.label);
+  assert.deepEqual(
+    said({ created: 4, skipped: 1, failed: 1, manual: 12, blocking: 2 }),
+    ["2 need you", "1 failed", "4 created", "1 already here", "12 notes"],
+  );
+  assert.deepEqual(
+    said({ created: 3, skipped: 0, failed: 0, manual: 1, blocking: 0 }),
+    ["3 created", "1 note"],
+    "information alone never reads as needing you",
+  );
+});
+
+test("the log groups what blocks an app apart from information", () => {
+  assert.equal(reportLevel({ outcome: "manual", blocking: true }), "blocking");
+  assert.equal(
+    reportLevel({ outcome: "unsupported", blocking: true }),
+    "blocking",
+  );
+  assert.equal(reportLevel({ outcome: "manual", blocking: false }), "manual");
+  assert.equal(reportLevel({ outcome: "failed", blocking: false }), "failed");
+  assert.equal(reportLevel({ outcome: "something-new" }), "manual");
 });
 
 test("a source with no machines to install on goes straight to Review", () => {

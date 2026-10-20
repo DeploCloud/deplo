@@ -70,3 +70,11 @@ export async function reportLines(runId: string): Promise<string[]> {
   const run = await asOwner(() => getMigrationRun(runId));
   return (run?.items ?? []).map((i) => i.message ?? "");
 }
+
+// The lines written as blocker(): the app will not run until they are done.
+export async function blockingLines(runId: string): Promise<string[]> {
+  const run = await asOwner(() => getMigrationRun(runId));
+  return (run?.items ?? [])
+    .filter((i) => i.blocking)
+    .map((i) => i.message ?? "");
+}

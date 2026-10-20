@@ -1,6 +1,7 @@
 import type { BuildConfig } from "../types/build";
 import type { HealthCheck, ResourceLimits } from "../types/container";
 import type { EnvPair, SharedRef } from "./map/env";
+import type { Note } from "./note";
 
 export type SourceBuildType =
   | "dockerfile"
@@ -73,7 +74,7 @@ export interface SourceApplication {
   secretEnvKeys?: string[] | null;
   // Variables the source kept away from previews; absent means every one reaches both.
   productionOnlyEnvKeys?: string[] | null;
-  platformNotes?: string[] | null;
+  platformNotes?: Note[] | null;
   healthCheck?: HealthCheck | null;
   // Settings already in Deplo's own shape, laid over what the platform-shaped fields map to.
   nativeBuild?: Partial<BuildConfig> | null;
@@ -171,7 +172,7 @@ export interface SourceCompose {
   sharedRefs?: SharedRef[] | null;
   secretEnvKeys?: string[] | null;
   productionOnlyEnvKeys?: string[] | null;
-  platformNotes?: string[] | null;
+  platformNotes?: Note[] | null;
   cronEnabled?: boolean | null;
   composeId: string;
   name?: string | null;
@@ -216,7 +217,7 @@ export interface SourceCompose {
 }
 
 export interface SourceDatabase {
-  platformNotes?: string[] | null;
+  platformNotes?: Note[] | null;
   cronEnabled?: boolean | null;
   name?: string | null;
   appName?: string | null;
@@ -268,7 +269,7 @@ export interface SourceEnvironment {
   env?: string | null;
   envEntries?: EnvPair[] | null;
   secretEnvKeys?: string[] | null;
-  platformNotes?: string[] | null;
+  platformNotes?: Note[] | null;
   isDefault?: boolean | null;
   applications?: SourceApplication[] | null;
   compose?: SourceCompose[] | null;
@@ -291,7 +292,7 @@ export interface SourceProject {
   env?: string | null;
   envEntries?: EnvPair[] | null;
   secretEnvKeys?: string[] | null;
-  platformNotes?: string[] | null;
+  platformNotes?: Note[] | null;
   createdAt?: string | null;
   environments?: SourceEnvironment[] | null;
   applications?: SourceApplication[] | null;

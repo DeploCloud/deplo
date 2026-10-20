@@ -47,6 +47,7 @@ export interface ImportRunDTO {
   skipped: number;
   failed: number;
   manual: number;
+  blocking: number;
   error: string | null;
   startedAt: string;
   finishedAt: string | null;
@@ -266,6 +267,7 @@ export async function getMigrationRun(
         targetId: i.targetId,
         message: i.message,
         at: i.at,
+        blocking: i.blocking,
       })),
   };
 }
@@ -361,6 +363,7 @@ function toRunDTO(
     skipped: r.skipped,
     failed: r.failed,
     manual: r.manual,
+    blocking: r.blocking,
     error: r.error,
     startedAt: r.startedAt,
     finishedAt: r.finishedAt,

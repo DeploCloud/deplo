@@ -16,6 +16,7 @@ import {
   resetMigrationHarness,
 } from "./migration-import-test-helpers";
 import {
+  blockingLines,
   fakeDeplo,
   importDeploProject,
   reportLines,
@@ -86,6 +87,11 @@ test("an archive the old Deplo will not hand over leaves the app asking for a fr
   const lines = (await reportLines(runId)).join(" | ");
   assert.match(lines, /site\.tar\.gz could not be copied/);
   assert.match(lines, /Upload it again/);
+  assert.match(
+    (await blockingLines(runId)).join(" | "),
+    /site\.tar\.gz could not be copied/,
+    "the app cannot run without its code",
+  );
 });
 
 test("a Deplo too old to name its archive says the app needs a fresh upload", async () => {
