@@ -3,6 +3,7 @@ import { TEAM_HEADER } from "@/lib/team-path";
 import {
   ExportRefusedError,
   checkWorkloadData,
+  openAppUpload,
   openWorkloadData,
   type WorkloadRef,
 } from "@/lib/data/migration-export/data-stream";
@@ -16,6 +17,7 @@ interface ExportRequest extends WorkloadRef {
   hostPath?: string;
   allowFile?: boolean;
   check?: string[];
+  upload?: boolean;
 }
 
 function refused(message: string, status: number): Response {
@@ -83,11 +85,14 @@ export async function POST(request: Request) {
           await checkWorkloadData(ref, body.check.map(String)),
         );
 
-      const { chunks, close } = await openWorkloadData(ref, {
-        volume: body.volume,
-        hostPath: body.hostPath,
-        allowFile: body.allowFile,
-      });
+      const { chunks, close } =
+        body.upload === true
+          ? await openAppUpload(ref)
+          : await openWorkloadData(ref, {
+              volume: body.volume,
+              hostPath: body.hostPath,
+              allowFile: body.allowFile,
+            });
       const it = chunks[Symbol.asyncIterator]();
       let first: IteratorResult<Buffer>;
       try {
@@ -104,7 +109,10 @@ export async function POST(request: Request) {
       }
       return new Response(streamOf(first.value, it, close), {
         headers: {
-          "Content-Type": "application/gzip",
+          "Content-Type":
+            body.upload === true
+              ? "application/octet-stream"
+              : "application/gzip",
           "Cache-Control": "no-store",
         },
       });

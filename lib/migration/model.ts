@@ -67,6 +67,8 @@ export interface SourceBackupSchedule {
 }
 
 export interface SourceApplication {
+  // An uploaded archive the source hands over itself; null when there is none to fetch, absent when it never can.
+  upload?: { filename: string; size: number } | null;
   backups?: SourceBackupSchedule[] | null;
   sharedRefs?: SharedRef[] | null;
   secretEnvKeys?: string[] | null;

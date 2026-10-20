@@ -217,14 +217,15 @@ export async function resolveAppSource(
     } else {
       source = "upload";
       const watched = (app.watchPaths ?? []).filter((p) => p.trim());
-      notes.push(
-        blocker(
-          "Set the source under the app's Source settings before deploying." +
-            (watched.length > 0
-              ? ` It only deployed on changes under ${watched.join(", ")} - set those again once the repository is there.`
-              : ""),
-        ),
-      );
+      if (app.upload === undefined)
+        notes.push(
+          blocker(
+            "Set the source under the app's Source settings before deploying." +
+              (watched.length > 0
+                ? ` It only deployed on changes under ${watched.join(", ")} - set those again once the repository is there.`
+                : ""),
+          ),
+        );
     }
     const mappedBuild = mapBuildSettings(app);
     if (!app.nativeBuild) notes.push(...mappedBuild.notes);

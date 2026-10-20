@@ -182,6 +182,7 @@ export interface DataRequest {
   hostPath?: string;
   allowFile?: boolean;
   check?: string[];
+  upload?: boolean;
 }
 
 async function dataResponse(
