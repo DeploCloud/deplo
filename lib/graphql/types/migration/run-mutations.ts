@@ -33,6 +33,11 @@ builder.mutationFields((t) => ({
         description:
           "Another team of the SAME panel is still to come, so this run must leave Deplo's agents on the source machines - the next team reads the same disks, and an uninstall scheduled here would race the install that follows it. The last run of a series leaves this false, and it is that one that clears them. It also holds the takeover: the ports cannot be taken while a run says more teams are owed. Ignored when `queued` is given: the queue itself says which run is the last.",
       }),
+      liveCopy: t.arg.boolean({
+        required: false,
+        description:
+          "Copy without stopping anything on the source (another Deplo only). Databases arrive as a consistent dump, app volumes are read while the app keeps writing, and crons and backup schedules land paused so the two copies do not both run them. The switch-over is left to the user.",
+      }),
       queued: t.arg({
         type: [QueuedTeamInputRef],
         required: false,
@@ -40,13 +45,17 @@ builder.mutationFields((t) => ({
           "The other teams of this panel, in the order they should be brought over. Each is written down with its own token, its own targets and the team it lands in, and the control plane starts each one as the turn before it ends - so the browser tab is not what walks the list any more. Every token is proved before anything is created, and a team that is to be made here is made now.",
       }),
     },
-    resolve: (_r, { input, orgName, targets, servers, keepSources, queued }) =>
+    resolve: (
+      _r,
+      { input, orgName, targets, servers, keepSources, liveCopy, queued },
+    ) =>
       startMigrationRun({
         url: input.url,
         apiKey: input.apiKey,
         kind: input.kind ?? undefined,
         orgName: orgName ?? null,
         keepSources: keepSources ?? false,
+        liveCopy: liveCopy ?? false,
         targets: targets.map((t2) => ({
           projectId: t2.projectId,
           projectName: t2.projectName,

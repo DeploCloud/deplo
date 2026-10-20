@@ -1,6 +1,6 @@
 import "server-only";
 
-import { eq, inArray } from "drizzle-orm";
+import { and, asc, eq, inArray, sql } from "drizzle-orm";
 
 import { getDb } from "../../db/client";
 import {
@@ -18,6 +18,7 @@ import {
   folders as foldersTable,
   projects as projectsTable,
 } from "../../db/schema/control-plane/projects";
+import { teamProjectOrder } from "../../db/schema/control-plane/display-order";
 import { getCurrentUser } from "../../auth/current-user";
 import { tryDecryptSecret } from "../../crypto";
 import {
@@ -185,9 +186,25 @@ export async function exportTeamForMigration(): Promise<DeploExport> {
   if (!team) throw new Error("Not found");
 
   const projects = await db
-    .select({ id: projectsTable.id, name: projectsTable.name })
+    .select({
+      id: projectsTable.id,
+      name: projectsTable.name,
+      color: projectsTable.color,
+      position: teamProjectOrder.position,
+    })
     .from(projectsTable)
-    .where(eq(projectsTable.teamId, teamId));
+    .leftJoin(
+      teamProjectOrder,
+      and(
+        eq(teamProjectOrder.projectId, projectsTable.id),
+        eq(teamProjectOrder.teamId, teamId),
+      ),
+    )
+    .where(eq(projectsTable.teamId, teamId))
+    .orderBy(
+      sql`${teamProjectOrder.position} asc nulls last`,
+      asc(projectsTable.name),
+    );
   const environments = projects.length
     ? await db
         .select({
@@ -195,6 +212,8 @@ export async function exportTeamForMigration(): Promise<DeploExport> {
           projectId: environmentsTable.projectId,
           name: environmentsTable.name,
           isDefault: environmentsTable.isDefault,
+          kind: environmentsTable.kind,
+          gitBranch: environmentsTable.gitBranch,
           position: environmentsTable.position,
         })
         .from(environmentsTable)
@@ -254,10 +273,17 @@ export async function exportTeamForMigration(): Promise<DeploExport> {
     projects: projects.map((p) => ({
       id: p.id,
       name: p.name,
+      color: p.color,
       environments: environments
         .filter((e) => e.projectId === p.id)
         .sort((a, b) => a.position - b.position)
-        .map((e) => ({ id: e.id, name: e.name, isDefault: e.isDefault })),
+        .map((e) => ({
+          id: e.id,
+          name: e.name,
+          isDefault: e.isDefault,
+          kind: e.kind,
+          gitBranch: e.gitBranch,
+        })),
     })),
     folders: folders.filter(
       (f) => visibleFolders === "all" || visibleFolders.has(f.id),

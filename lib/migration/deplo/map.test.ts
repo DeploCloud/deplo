@@ -67,7 +67,7 @@ test("apps outside any project land in a project per folder, and one for the top
   });
   const tree = sourceTree(x);
   const names = tree.map((p) => p.name).sort();
-  assert.deepEqual(names, ["Acme", "Clients / Big"]);
+  assert.deepEqual(names, ["Acme", "Clients / Big", "Shop"]);
   const top = tree.find((p) => p.name === "Acme")!;
   assert.deepEqual(
     servicesOf(top.environments![0])
@@ -106,6 +106,54 @@ test("a linked shared variable becomes a reference at the narrowest level that o
   assert.equal(vars.get("STRAY"), "inline", "out of scope: its own copy");
   assert.equal(vars.has("UNLINKED"), false);
   assert.ok(env.secretEnvKeys.includes("ENVV"));
+});
+
+test("a project with nothing in it still comes across, with its colour and environments", () => {
+  const x = deploExport({
+    projects: [
+      ...deploExport().projects,
+      {
+        id: "prc_empty",
+        name: "Later",
+        color: "#ff8800",
+        environments: [
+          {
+            id: "environ_live",
+            name: "Live",
+            isDefault: true,
+            kind: "production",
+            gitBranch: "main",
+          },
+          {
+            id: "environ_qa",
+            name: "QA",
+            isDefault: false,
+            kind: "custom",
+            gitBranch: "qa",
+          },
+        ],
+      },
+    ],
+  });
+  const later = sourceTree(x).find((p) => p.projectId === "prc_empty");
+  assert.ok(later, "an empty project is offered");
+  assert.equal(later.color, "#ff8800");
+  assert.deepEqual(
+    later.environments!.map((e) => [e.name, e.isDefault, e.kind, e.gitBranch]),
+    [
+      ["Live", true, "production", "main"],
+      ["QA", false, "custom", "qa"],
+    ],
+  );
+});
+
+test("an older Deplo that sends no colour or branches says so once", () => {
+  const tree = sourceTree(deploExport());
+  const shop = tree.find((p) => p.projectId === "prc_shop")!;
+  assert.equal(shop.color, undefined);
+  assert.equal(shop.environments![0].kind, undefined);
+  const notes = tree.flatMap((p) => p.platformNotes ?? []).join(" ");
+  assert.equal(notes.match(/too old to send/g)?.length, 1);
 });
 
 test("an app's own variable wins over a shared one of the same name", () => {
@@ -169,6 +217,80 @@ test("a production-only variable is named so previews do not get it", () => {
   });
   const app = sourceApplication(x, x.apps[0]) as SourceApplication;
   assert.deepEqual(app.productionOnlyEnvKeys, ["PROD"]);
+});
+
+const PREVIEW = {
+  baseDomain: "pr.example.com",
+  maxActive: 7,
+  ttlDays: 14,
+  forkPolicy: "deny",
+  serverId: "srv_previews",
+  https: true,
+  autoDeploy: false,
+  port: 8080,
+  buildDrafts: true,
+  comment: false,
+  requiredLabels: "preview\nqa",
+};
+
+test("preview settings travel in Deplo's own shape, off or on", () => {
+  const x = deploExport({
+    apps: [exportApp({ previewEnabled: false, preview: PREVIEW })],
+  });
+  const app = sourceApplication(x, x.apps[0]) as SourceApplication;
+  assert.deepEqual(app.nativePreview, { enabled: false, ...PREVIEW });
+});
+
+test("a preview override travels with its type, and wins over a preview-only variable", () => {
+  const x = deploExport({
+    apps: [
+      exportApp({
+        env: [
+          { key: "API", value: "app", secret: true, targets: ["preview"] },
+          { key: "ONLY", value: "1", secret: false, targets: ["preview"] },
+        ],
+        previewEnv: [
+          { key: "API", value: "override", secret: false },
+          { key: "TOKEN", value: "t", secret: true },
+        ],
+      }),
+    ],
+  });
+  const app = sourceApplication(x, x.apps[0]) as SourceApplication;
+  assert.deepEqual(app.previewEnvEntries, [
+    { key: "ONLY", value: "1" },
+    { key: "API", value: "override" },
+    { key: "TOKEN", value: "t" },
+  ]);
+  assert.deepEqual(app.previewSecretEnvKeys, ["TOKEN"]);
+});
+
+test("an older Deplo that hands over only on/off says so", () => {
+  const x = deploExport({ apps: [exportApp({ previewEnabled: true })] });
+  const app = sourceApplication(x, x.apps[0]) as SourceApplication;
+  assert.equal(app.nativePreview, undefined);
+  assert.equal(app.isPreviewDeploymentsActive, true);
+  assert.ok(
+    app.platformNotes?.some((n) => /too old to hand over its preview/.test(n)),
+  );
+});
+
+test("a compose app carries its preview settings too", () => {
+  const x = deploExport({
+    apps: [
+      exportApp({
+        source: "compose",
+        repo: null,
+        compose: "services:\n  web:\n    image: nginx\n",
+        previewEnabled: true,
+        preview: PREVIEW,
+        previewEnv: [{ key: "TOKEN", value: "t", secret: true }],
+      }),
+    ],
+  });
+  const app = sourceApplication(x, x.apps[0]) as SourceApplication;
+  assert.deepEqual(app.nativePreview, { enabled: true, ...PREVIEW });
+  assert.deepEqual(app.previewEnvEntries, [{ key: "TOKEN", value: "t" }]);
 });
 
 test("a read-only volume stays read-only", () => {
@@ -419,7 +541,10 @@ test("a database keeps its engine, version and credentials", () => {
   assert.equal(db.mongoId, "db_main");
   assert.equal(db.dockerImage, "mongo:7");
   assert.equal(db.databasePassword, "pw");
-  assert.match(db.platformNotes!.join(" "), /vacuum ran on a schedule/);
+  assert.match(
+    db.platformNotes!.join(" "),
+    /too old to hand over the variables and settings of cron job\(s\) vacuum/,
+  );
 });
 
 test("a database carries every limit in Deplo's own shape", () => {

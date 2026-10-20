@@ -1,5 +1,6 @@
 import type { BuildConfig } from "../types/build";
 import type { HealthCheck, ResourceLimits } from "../types/container";
+import type { EnvironmentKind } from "../types/team";
 import type { EnvPair, SharedRef } from "./map/env";
 import type { Note } from "./note";
 
@@ -96,6 +97,22 @@ export interface SourceBackupRun {
   finishedAt?: string | null;
 }
 
+// Every preview setting as Deplo stores it; null means Deplo's default.
+export interface NativePreview {
+  enabled: boolean;
+  baseDomain: string | null;
+  maxActive: number | null;
+  ttlDays: number | null;
+  forkPolicy: string | null;
+  serverId: string | null;
+  https: boolean;
+  autoDeploy: boolean;
+  port: number | null;
+  buildDrafts: boolean;
+  comment: boolean;
+  requiredLabels: string | null;
+}
+
 export interface SourceApplication {
   // An uploaded archive the source hands over itself; null when there is none to fetch, absent when it never can.
   upload?: { filename: string; size: number } | null;
@@ -110,6 +127,11 @@ export interface SourceApplication {
   // Settings already in Deplo's own shape, laid over what the platform-shaped fields map to.
   nativeBuild?: Partial<BuildConfig> | null;
   nativeResources?: Partial<ResourceLimits> | null;
+  nativePreview?: NativePreview | null;
+  // How each preview variable is typed; absent means the app's own secretEnvKeys decide.
+  previewSecretEnvKeys?: string[] | null;
+  // Whether its cron jobs run at all; absent when the source has no such switch.
+  cronEnabled?: boolean | null;
   applicationId: string;
   name?: string | null;
   appName?: string | null;
@@ -203,6 +225,7 @@ export interface SourceCompose {
   secretEnvKeys?: string[] | null;
   productionOnlyEnvKeys?: string[] | null;
   platformNotes?: Note[] | null;
+  cronEnabled?: boolean | null;
   composeId: string;
   name?: string | null;
   appName?: string | null;
@@ -247,6 +270,7 @@ export interface SourceCompose {
 
 export interface SourceDatabase {
   platformNotes?: Note[] | null;
+  cronEnabled?: boolean | null;
   name?: string | null;
   appName?: string | null;
   description?: string | null;
@@ -300,6 +324,8 @@ export interface SourceEnvironment {
   secretEnvKeys?: string[] | null;
   platformNotes?: Note[] | null;
   isDefault?: boolean | null;
+  kind?: EnvironmentKind;
+  gitBranch?: string;
   applications?: SourceApplication[] | null;
   compose?: SourceCompose[] | null;
   postgres?: SourceDatabase[] | null;
@@ -317,6 +343,7 @@ export interface SourceEnvironment {
 export interface SourceProject {
   projectId: string;
   name: string;
+  color?: string | null;
   description?: string | null;
   env?: string | null;
   envEntries?: EnvPair[] | null;
@@ -373,6 +400,21 @@ export interface SourceSchedule {
   serviceName?: string | null;
   scheduleType?: string | null;
   enabled?: boolean | null;
+  env?: EnvPair[] | null;
+  // The rest of a job already in Deplo's own shape.
+  native?: SourceCronSettings | null;
+}
+
+export interface SourceCronSettings {
+  description?: string;
+  timezone?: string;
+  shell?: string;
+  timeoutSeconds?: number;
+  maxAttempts?: number;
+  overlap?: string;
+  keepRuns?: number;
+  workdir?: string | null;
+  user?: string | null;
 }
 
 export interface NamedVolume {

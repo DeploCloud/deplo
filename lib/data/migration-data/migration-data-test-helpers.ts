@@ -186,6 +186,8 @@ export const state = {
   goneAfterStop: false,
   extraWebMounts: [] as unknown[],
   webMounts: null as unknown[] | null,
+  restored: [] as { serverId: string; header: unknown; bytes: Buffer }[],
+  restoreRefusal: "",
 };
 
 function fakeSource() {
@@ -364,6 +366,15 @@ function fakeAgent(serverId: string) {
     async exec() {
       return { stdout: "7\n", stderr: "", code: 0, rawMode: false };
     },
+    async *restoreFrom(header: unknown, chunks: AsyncIterable<Buffer>) {
+      say("restore", "");
+      const parts: Buffer[] = [];
+      for await (const c of chunks) parts.push(c);
+      state.restored.push({ serverId, header, bytes: Buffer.concat(parts) });
+      yield {
+        result: { ok: !state.restoreRefusal, error: state.restoreRefusal },
+      };
+    },
     close() {},
   };
 }
@@ -486,6 +497,8 @@ export async function resetHarness(): Promise<void> {
   state.hostFiles = {};
   state.extraWebMounts = [];
   state.webMounts = null;
+  state.restored = [];
+  state.restoreRefusal = "";
   state.agentCapabilities = ["host-path-copy.file"];
   state.volumes = {
     srv_migration_host: {

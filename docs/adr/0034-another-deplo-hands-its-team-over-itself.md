@@ -35,6 +35,12 @@ path cannot simply be pointed at it:
   (that is where an archive lives); the target stores it with the app at import time, since it
   is the app's source rather than its data. An export without the `upload` field is from a
   Deplo too old to do this, and the report says the archive needs uploading again.
+  With `dump: true` and an age `recipient` it hands over a database as a dump its own engine
+  takes while it keeps running, encrypted on the source agent to a key only the target holds.
+- A run may ask for a copy that keeps the source running (`live_copy`, Deplo sources only, an
+  advanced option): nothing is stopped there, databases come over as that dump, app volumes are
+  read live and each says so, crons and backup schedules land paused, and the switch-over is
+  left to the user. The target is still stopped before any volume is written into it.
 - `deplo` is the third adapter behind `MigrationSourceClient`, with one optional addition,
   `dataExport`. When it is set no machine is planned or installed on, and the data move pulls
   from the panel into the target's agents (`sourceDataHost`); the checksum, the stop/start
@@ -56,8 +62,13 @@ path cannot simply be pointed at it:
   encrypted to, every schedule paused or not, and each successful run as a copied run
   ([ADR-0035](0035-a-whole-deplo-copies-onto-a-new-machine.md)): a bucket's restore points stay
   restorable here, a server disk's are named in the report, since only the old Deplo reaches it.
-- Not carried, and said so in the report: a database's crons, a compose stack's `up` flags, and
-  preview settings beyond on/off.
+- Not carried, and said so in the report: a compose stack's `up` flags.
+- Preview settings travel whole, as an optional `preview` block plus the preview overrides
+  (`previewEnv`), and land even when previews are off; the preview server goes through the
+  run's server map. An export without them came from an older Deplo, and only on/off lands.
+- Every cron job, on an app or a database, carries all its settings and variables, and the
+  target's `cron_enabled` switch comes along, so jobs run here as they ran there once the source is
+  stopped. A source older than this sends schedule and command only, and the report says so.
 - A domain carries its middlewares, CORS origins, security headers, proxied flag and its www
   redirect. A custom certificate travels with its key only when an instance admin's token reads
   the export (the right to install one), and is installed on the target's server; any other

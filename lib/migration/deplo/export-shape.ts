@@ -59,6 +59,17 @@ export interface DeploExportCron {
   command: string;
   service: string | null;
   enabled: boolean;
+  // The rest of the job, absent from an older Deplo.
+  description?: string;
+  timezone?: string;
+  shell?: string;
+  timeoutSeconds?: number;
+  maxAttempts?: number;
+  overlap?: string;
+  keepRuns?: number;
+  workdir?: string | null;
+  user?: string | null;
+  env?: { key: string; value: string }[];
 }
 
 export interface DeploExportBackup {
@@ -112,12 +123,31 @@ export interface DeploExportApp {
   domains: DeploExportDomain[];
   basicAuth: { username: string; password: string }[];
   crons: DeploExportCron[];
+  // Whether its cron jobs run at all; absent from an older Deplo.
+  cronEnabled?: boolean;
   backups: DeploExportBackup[];
   backupRuns?: DeploExportBackupRun[];
   data: DeploExportData;
   notes: string[];
   // The archive an upload app builds from; null when it has none, absent from an older Deplo.
   upload?: DeploExportUpload | null;
+  // Preview settings as stored (null = the default) and its preview overrides; absent from an older Deplo.
+  preview?: DeploExportPreview;
+  previewEnv?: Omit<DeploExportVar, "targets">[];
+}
+
+export interface DeploExportPreview {
+  baseDomain: string | null;
+  maxActive: number | null;
+  ttlDays: number | null;
+  forkPolicy: string | null;
+  serverId: string | null;
+  https: boolean;
+  autoDeploy: boolean;
+  port: number | null;
+  buildDrafts: boolean;
+  comment: boolean;
+  requiredLabels: string | null;
 }
 
 export interface DeploExportUpload {
@@ -144,6 +174,7 @@ export interface DeploExportDatabase {
   resources: ResourceLimits | null;
   mounts: DatabaseMount[];
   crons: DeploExportCron[];
+  cronEnabled?: boolean;
   backups: DeploExportBackup[];
   backupRuns?: DeploExportBackupRun[];
   data: DeploExportData;
@@ -170,17 +201,29 @@ export interface DeploExportServerDestination {
   ageIdentity?: string;
 }
 
+// Colour, kind and branch are absent from an older Deplo; projects come in the team's order.
+export interface DeploExportProject {
+  id: string;
+  name: string;
+  color?: string | null;
+  environments: DeploExportEnvironment[];
+}
+
+export interface DeploExportEnvironment {
+  id: string;
+  name: string;
+  isDefault: boolean;
+  kind?: string;
+  gitBranch?: string;
+}
+
 export interface DeploExport {
   version: number;
   instance: string;
   team: { id: string; name: string; slug: string };
   otherTeams: string[];
   canControl: { apps: boolean; databases: boolean };
-  projects: {
-    id: string;
-    name: string;
-    environments: { id: string; name: string; isDefault: boolean }[];
-  }[];
+  projects: DeploExportProject[];
   folders: { id: string; name: string; parentId: string | null }[];
   apps: DeploExportApp[];
   // Apps in folders the caller cannot open: counted, never named.

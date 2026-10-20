@@ -1,5 +1,6 @@
 import { DB_REPOS } from "../../databases/images";
 import type { BuildConfig, GitRepo } from "../../types/build";
+import type { EnvironmentKind } from "../../types/team";
 import type { EnvPair, SharedRef } from "../map/env";
 import type {
   SourceApplication,
@@ -21,6 +22,7 @@ import type {
   DeploExportApp,
   DeploExportBackup,
   DeploExportBackupRun,
+  DeploExportCron,
   DeploExportDatabase,
   DeploExportDomain,
   DeploExportSharedVar,
@@ -291,6 +293,7 @@ function repoFields(repo: GitRepo | null): Partial<SourceApplication> {
 interface EnvShape {
   envEntries: EnvPair[];
   previewEnvEntries: EnvPair[];
+  previewSecretEnvKeys?: string[];
   secretEnvKeys: string[];
   productionOnlyEnvKeys: string[];
   sharedRefs: SharedRef[];
@@ -313,7 +316,16 @@ export function appEnv(x: DeploExport, a: DeploExportApp): EnvShape {
     ...a.env.filter((e) => e.targets.includes("production")),
     ...copies,
   ];
-  const previewOnly = a.env.filter((e) => !e.targets.includes("production"));
+  // A preview override replaces the app's variable of that name in a preview.
+  const overrides = a.previewEnv ?? [];
+  const previewVars = [
+    ...a.env.filter(
+      (e) =>
+        !e.targets.includes("production") &&
+        !overrides.some((o) => o.key === e.key),
+    ),
+    ...overrides,
+  ];
   const secret = new Set([
     ...a.env.filter((e) => e.secret).map((e) => e.key),
     ...copies.filter((e) => e.secret).map((e) => e.key),
@@ -326,7 +338,10 @@ export function appEnv(x: DeploExport, a: DeploExportApp): EnvShape {
       ...pairs(runtime),
       ...refs.map((r) => ({ key: r.key, value: `\${{${r.level}.${r.key}}}` })),
     ],
-    previewEnvEntries: pairs(previewOnly),
+    previewEnvEntries: pairs(previewVars),
+    previewSecretEnvKeys: a.previewEnv
+      ? previewVars.filter((e) => e.secret).map((e) => e.key)
+      : undefined,
     secretEnvKeys: [...secret],
     productionOnlyEnvKeys: a.env
       .filter((e) => e.targets.includes("production"))
@@ -367,6 +382,16 @@ export function environmentShared(x: DeploExport, at: Placement) {
   );
 }
 
+// A job from an older Deplo arrives as schedule and command alone.
+function cronNotes(w: { crons: DeploExportCron[] }): string[] {
+  const bare = w.crons.filter((j) => j.env === undefined).map((j) => j.name);
+  return bare.length > 0
+    ? [
+        `{panel} is too old to hand over the variables and settings of cron job(s) ${bare.join(", ")}, so only the schedule and command came across. Check them under Crons.`,
+      ]
+    : [];
+}
+
 export function sourceApplication(
   x: DeploExport,
   a: DeploExportApp,
@@ -375,12 +400,16 @@ export function sourceApplication(
   const env = appEnv(x, a);
   const { domains, notes: domainNotes } = domainsOf(a, compose);
   const history = backupHistoryOf(a);
-  const notes = [...a.notes, ...domainNotes, ...history.notes];
+  const notes = [...a.notes, ...domainNotes, ...history.notes, ...cronNotes(a)];
   if (a.source === "upload" && !a.upload)
     notes.push(
       a.upload === undefined
         ? "{panel} is too old to hand over its uploaded archive. Upload it again here before deploying."
         : "It had no archive uploaded on {panel}. Upload one here before deploying.",
+    );
+  if (a.preview === undefined && a.previewEnabled)
+    notes.push(
+      "{panel} is too old to hand over its preview settings, so only previews being on came across. Check them under Previews.",
     );
   const common = {
     name: a.name,
@@ -397,7 +426,13 @@ export function sourceApplication(
     backups: backupsOf(a.backups),
     backupRuns: history.backupRuns,
     routingPort: a.build.port,
+    cronEnabled: a.cronEnabled ?? null,
     platformNotes: notes,
+    previewEnvEntries: env.previewEnvEntries,
+    previewSecretEnvKeys: env.previewSecretEnvKeys,
+    nativePreview: a.preview
+      ? { enabled: a.previewEnabled, ...a.preview }
+      : undefined,
   };
   if (compose)
     return {
@@ -434,7 +469,6 @@ export function sourceApplication(
     installCommand: a.build.installCommand,
     buildCommand: a.build.buildCommand,
     command: a.source === "docker-image" ? null : a.build.startCommand,
-    previewEnvEntries: env.previewEnvEntries,
     isPreviewDeploymentsActive: a.previewEnabled,
     ports: a.ports.map((p) => ({
       portId: p.id,
@@ -482,15 +516,8 @@ export function sourceDatabase(
     })),
     backups: backupsOf(d.backups),
     backupRuns: history.backupRuns,
-    platformNotes: [
-      ...d.notes,
-      ...history.notes,
-      ...(d.crons.length > 0
-        ? [
-            `${d.crons.map((j) => j.name).join(", ")} ran on a schedule on {panel} and did not come across. Add ${d.crons.length === 1 ? "it" : "them"} again under Crons.`,
-          ]
-        : []),
-    ],
+    cronEnabled: d.cronEnabled ?? null,
+    platformNotes: [...d.notes, ...history.notes, ...cronNotes(d)],
   };
 }
 
@@ -508,6 +535,7 @@ export function sourceTree(x: DeploExport): SourceProject[] {
       project = {
         projectId: at.projectId,
         name: real?.name ?? (folder ? folderPath(x, folder) : x.team.name),
+        ...(real && real.color !== undefined ? { color: real.color } : {}),
         envEntries: shared?.envEntries ?? null,
         secretEnvKeys: shared?.secretEnvKeys ?? null,
         platformNotes: [
@@ -533,6 +561,8 @@ export function sourceTree(x: DeploExport): SourceProject[] {
         environmentId: at.environmentId,
         name: real?.name ?? "production",
         isDefault: real?.isDefault ?? true,
+        ...(real?.kind !== undefined ? { kind: kindOf(real.kind) } : {}),
+        ...(real?.gitBranch !== undefined ? { gitBranch: real.gitBranch } : {}),
         envEntries: shared?.envEntries ?? [],
         secretEnvKeys: shared?.secretEnvKeys ?? null,
         applications: [],
@@ -558,9 +588,12 @@ export function sourceTree(x: DeploExport): SourceProject[] {
     const kind = dbKindOf(d);
     ((env[kind] ??= []) as SourceDatabase[]).push(sourceDatabase(x, d));
   }
-  const tree = [...projects.values()].filter((p) =>
-    (p.environments ?? []).some(hasServices),
-  );
+  const tree = [...projects.values()];
+  if (tree[0] && x.projects.some((p) => p.color === undefined))
+    tree[0].platformNotes = [
+      ...(tree[0].platformNotes ?? []),
+      "{panel} is too old to send each project's colour, or each environment's kind and branch, so those were left as Deplo sets them. Update it first to bring them across.",
+    ];
   if (x.withheld > 0 && tree[0])
     tree[0].platformNotes = [
       ...(tree[0].platformNotes ?? []),
@@ -569,12 +602,13 @@ export function sourceTree(x: DeploExport): SourceProject[] {
   return tree;
 }
 
-function hasServices(e: SourceEnvironment): boolean {
-  return (
-    (e.applications?.length ?? 0) > 0 ||
-    (e.compose?.length ?? 0) > 0 ||
-    Object.values(DB_KIND).some(
-      (k) => ((e[k] as SourceDatabase[] | null | undefined)?.length ?? 0) > 0,
-    )
-  );
+const KINDS: EnvironmentKind[] = [
+  "development",
+  "preview",
+  "production",
+  "custom",
+];
+
+function kindOf(kind: string): EnvironmentKind {
+  return KINDS.find((k) => k === kind) ?? "custom";
 }

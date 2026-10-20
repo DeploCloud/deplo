@@ -216,6 +216,7 @@ const MAX_ENVIRONMENTS_PER_PROJECT = 10;
 export async function createEnvironment(
   projectId: string,
   name: string,
+  opts: { kind?: EnvironmentKind; gitBranch?: string } = {},
 ): Promise<Environment> {
   await requireCapability("manage_environments");
   await requireOwnedProject(projectId);
@@ -237,8 +238,8 @@ export async function createEnvironment(
     projectId,
     name: clean,
     slug,
-    kind: "custom",
-    gitBranch: "",
+    kind: opts.kind ?? "custom",
+    gitBranch: opts.gitBranch?.trim() ?? "",
     isDefault: false,
     position,
     createdAt: now,

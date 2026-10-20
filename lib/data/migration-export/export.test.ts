@@ -2,16 +2,22 @@ import { test, before, after, beforeEach } from "node:test";
 import assert from "node:assert/strict";
 
 import type { PGlite } from "@electric-sql/pglite";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 
 import { makeTestDb, type TestDb } from "../../db/test-harness";
 import { __setTestDb, __resetTestDb } from "../../db/client";
 import { activities } from "../../db/schema/control-plane/activity";
 import { membershipCapabilities } from "../../db/schema/control-plane/access-control";
 import { apps as appsTable } from "../../db/schema/control-plane/apps";
-import { folders as foldersTable } from "../../db/schema/control-plane/projects";
+import {
+  environments as environmentsTable,
+  folders as foldersTable,
+} from "../../db/schema/control-plane/projects";
+import { createProject, reorderProjects } from "../projects/lifecycle";
 import { ALL_CAPABILITIES } from "../../types/identity";
 import { appBasicAuthUsers } from "../../db/schema/control-plane/domains";
+import { appPreviewEnvVars } from "../../db/schema/control-plane/env-vars";
+import { cronJobEnv, cronJobs } from "../../db/schema/control-plane/crons";
 import { runWithIdentity } from "../../auth/request-context";
 import { encryptSecret } from "../../crypto";
 import { insertDomain, insertEnvVars } from "../app-graph-load";
@@ -30,15 +36,15 @@ import { __resetExportTrailForTest, exportTeamForMigration } from "./export";
 import {
   ExportRefusedError,
   openAppUpload,
+  openDatabaseDump,
   openWorkloadData,
 } from "./data-stream";
+import type { BackupRequest } from "../../agent/gen/agent";
+import type { AgentConnection } from "../../infra/agent-client/connection";
+import { __setAgentConnectorForTest } from "../../infra/agent-client/connect";
 import { storeUpload } from "../../deploy/upload";
 import type { Domain } from "../../types/domain";
 import { withTraefikCertificates } from "../../deploy/traefik-stack";
-import {
-  __setAgentConnectorForTest,
-  type AgentConnection,
-} from "../../infra/agent-client/connect";
 import {
   ACME_CERT,
   ACME_KEY,
@@ -192,6 +198,65 @@ test("the export carries the team's apps and databases with their secret values"
   const main = out.databases.find((d) => d.id === "db_main");
   assert.equal(main?.password, "pw");
   assert.equal(main?.data.volumes[0]?.name, "deplo-db-main_db-main-data");
+});
+
+test("the export carries every preview setting and override", async () => {
+  await seedServer(db, "srv_previews");
+  await db
+    .update(appsTable)
+    .set({
+      previewBaseDomain: "pr.example.com",
+      previewMaxActive: 7,
+      previewTtlDays: 14,
+      previewForkPolicy: "deny",
+      previewServerId: "srv_previews",
+      previewHttps: true,
+      previewAutoDeploy: false,
+      previewPort: 8080,
+      previewBuildDrafts: true,
+      previewComment: false,
+      previewRequiredLabels: "preview\nqa",
+    })
+    .where(eq(appsTable.id, "prj_web"));
+  await db.insert(appPreviewEnvVars).values([
+    {
+      id: "penv_1",
+      appId: "prj_web",
+      key: "API_URL",
+      valueEnc: encryptSecret("https://staging.example.com"),
+      type: "plain",
+      createdAt: T0,
+      updatedAt: T0,
+    },
+    {
+      id: "penv_2",
+      appId: "prj_web",
+      key: "STRIPE_KEY",
+      valueEnc: encryptSecret("sk_test"),
+      type: "secret",
+      createdAt: T0,
+      updatedAt: T0,
+    },
+  ]);
+  const out = await as(USER_1, TEAM_A, () => exportTeamForMigration());
+  const web = out.apps.find((a) => a.id === "prj_web");
+  assert.deepEqual(web?.preview, {
+    baseDomain: "pr.example.com",
+    maxActive: 7,
+    ttlDays: 14,
+    forkPolicy: "deny",
+    serverId: "srv_previews",
+    https: true,
+    autoDeploy: false,
+    port: 8080,
+    buildDrafts: true,
+    comment: false,
+    requiredLabels: "preview\nqa",
+  });
+  assert.deepEqual(web?.previewEnv, [
+    { key: "API_URL", value: "https://staging.example.com", secret: false },
+    { key: "STRIPE_KEY", value: "sk_test", secret: true },
+  ]);
 });
 
 test("another team's apps never leave in this team's export", async () => {
@@ -413,6 +478,37 @@ test("the data stream does not hand over another team's archive", async () => {
   );
 });
 
+test("projects leave in the team's order, with their colour and each environment's kind and branch", async () => {
+  const alpha = await as(USER_1, TEAM_A, () => createProject("Alpha"));
+  const zeta = await as(USER_1, TEAM_A, () => createProject("Zeta", "#ff8800"));
+  await as(USER_1, TEAM_A, () => reorderProjects([zeta.id, alpha.id]));
+  await db
+    .update(environmentsTable)
+    .set({ gitBranch: "main" })
+    .where(
+      and(
+        eq(environmentsTable.projectId, zeta.id),
+        eq(environmentsTable.kind, "production"),
+      ),
+    );
+  const out = await as(USER_1, TEAM_A, () => exportTeamForMigration());
+  assert.deepEqual(
+    out.projects.map((p) => [p.name, p.color]),
+    [
+      ["Zeta", "#ff8800"],
+      ["Alpha", null],
+    ],
+  );
+  assert.deepEqual(
+    out.projects[0].environments.map((e) => [e.name, e.kind, e.gitBranch]),
+    [
+      ["Development", "development", ""],
+      ["Preview", "preview", ""],
+      ["Production", "production", "main"],
+    ],
+  );
+});
+
 test("the data stream answers 404 for an app with no archive", async () => {
   await assert.rejects(
     () =>
@@ -547,4 +643,138 @@ test("a custom certificate the proxy does not hold, or cannot be read, says why"
   assert.deepEqual(await certificateOf(USER_1, "other.example.com"), {
     withheld: "unreadable",
   });
+});
+
+const RECIPIENT =
+  "age1qyqszqgpqyqszqgpqyqszqgpqyqszqgpqyqszqgpqyqszqgpqyqs3290gq";
+
+function dumpingAgent(asked: BackupRequest[]) {
+  return async () =>
+    ({
+      async hello() {
+        return { capabilities: ["backup", "backup-store"] };
+      },
+      async *backup(req: BackupRequest) {
+        asked.push(req);
+        yield { data: Buffer.from("encrypted ") };
+        yield { data: Buffer.from("dump") };
+        yield { result: { ok: true, error: "" } };
+      },
+      close() {},
+    }) as unknown as AgentConnection;
+}
+
+test("the data stream dumps a database through its engine, encrypted to the caller's key", async () => {
+  const asked: BackupRequest[] = [];
+  __setAgentConnectorForTest(dumpingAgent(asked));
+  try {
+    const { chunks } = await as(USER_1, TEAM_A, () =>
+      openDatabaseDump({ kind: "database", id: "db_main" }, RECIPIENT),
+    );
+    assert.equal(await drain(chunks), "encrypted dump");
+    assert.equal(asked.length, 1);
+    assert.equal(asked[0].streamOut, true);
+    assert.equal(asked[0].ageRecipient, RECIPIENT);
+    assert.equal(asked[0].database?.container, "db-main");
+    assert.equal(asked[0].database?.projectId, "db_main");
+  } finally {
+    __setAgentConnectorForTest();
+  }
+});
+
+test("the data stream dumps only a database, and only to an age key", async () => {
+  for (const [ref, recipient] of [
+    [{ kind: "app", id: "prj_web" }, RECIPIENT],
+    [{ kind: "database", id: "db_main" }, "not-a-key"],
+  ] as const)
+    await assert.rejects(
+      () => as(USER_1, TEAM_A, () => openDatabaseDump(ref, recipient)),
+      (e: unknown) => e instanceof ExportRefusedError && e.status === 400,
+    );
+});
+
+test("the data stream does not dump another team's database", async () => {
+  await seedDatabase(db, { id: "db_theirs", name: "theirs", teamId: TEAM_B });
+  await assert.rejects(
+    () =>
+      as(USER_1, TEAM_A, () =>
+        openDatabaseDump({ kind: "database", id: "db_theirs" }, RECIPIENT),
+      ),
+    (e: unknown) => e instanceof ExportRefusedError && e.status === 404,
+  );
+});
+
+const CRON_ROW = {
+  teamId: TEAM_A,
+  description: "nightly",
+  service: null,
+  schedule: "0 3 * * *",
+  timezone: "Europe/Rome",
+  shell: "bash",
+  command: "./cleanup.sh",
+  enabled: false,
+  timeoutSeconds: 600,
+  maxAttempts: 3,
+  overlap: "allow",
+  keepRuns: 20,
+  workdir: "/srv",
+  user: "app",
+  createdAt: T0,
+  updatedAt: T0,
+};
+
+test("every cron job leaves with all its settings and variables, on apps and databases", async () => {
+  await db
+    .update(appsTable)
+    .set({ cronEnabled: true })
+    .where(eq(appsTable.id, "prj_web"));
+  await db.insert(cronJobs).values([
+    {
+      ...CRON_ROW,
+      id: "cron_app",
+      targetKind: "app",
+      appId: "prj_web",
+      name: "cleanup",
+    },
+    {
+      ...CRON_ROW,
+      id: "cron_db",
+      targetKind: "database",
+      databaseId: "db_main",
+      name: "vacuum",
+    },
+  ]);
+  await db.insert(cronJobEnv).values({
+    id: "cenv_1",
+    jobId: "cron_db",
+    key: "TOKEN",
+    valueEnc: encryptSecret("s3cr3t"),
+    createdAt: T0,
+  });
+  const out = await as(USER_1, TEAM_A, () => exportTeamForMigration());
+  const web = out.apps.find((a) => a.id === "prj_web")!;
+  const main = out.databases.find((d) => d.id === "db_main")!;
+  assert.equal(web.cronEnabled, true);
+  assert.equal(main.cronEnabled, false);
+  assert.deepEqual(web.crons, [
+    {
+      name: "cleanup",
+      description: "nightly",
+      schedule: "0 3 * * *",
+      timezone: "Europe/Rome",
+      shell: "bash",
+      command: "./cleanup.sh",
+      service: null,
+      enabled: false,
+      timeoutSeconds: 600,
+      maxAttempts: 3,
+      overlap: "allow",
+      keepRuns: 20,
+      workdir: "/srv",
+      user: "app",
+      env: [],
+    },
+  ]);
+  assert.equal(main.crons[0]?.name, "vacuum");
+  assert.deepEqual(main.crons[0]?.env, [{ key: "TOKEN", value: "s3cr3t" }]);
 });

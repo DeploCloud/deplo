@@ -51,6 +51,7 @@ export async function importAppService(
     serverId: string | undefined;
     buildServerId: string | null;
     sourceHost: string | null;
+    servers?: Map<string, string | undefined>;
     dbHosts: Map<string, string>;
     shared: SharedIndex;
     destinations?: LandedDestinations;
@@ -254,7 +255,7 @@ export async function importAppService(
   for (const r of linkable) {
     try {
       await setSharedVarAppLink(
-        sharedEntry(home.shared, r.level, r.sharedKey)!.varId,
+        sharedEntry(home.shared, r.level, r.sharedKey)!.varId!,
         created.id,
         true,
       );
@@ -312,7 +313,7 @@ export async function importAppService(
     svc,
     detail,
     created,
-    { isCompose, secretKeys, serviceRenames },
+    { isCompose, secretKeys, serviceRenames, servers: home.servers },
     notes,
   );
 

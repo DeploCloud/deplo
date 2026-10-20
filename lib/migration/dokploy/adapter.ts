@@ -216,7 +216,11 @@ export function dokployClient(c: SourceCredential): MigrationSourceClient {
       if (!all) return null;
       return all.filter((o) => o.id !== active.id).map((o) => o.name || o.id);
     },
-    listSchedules: (kind, id) => listSchedules(c, kind, id),
+    // Only apps and compose stacks carry schedules there.
+    listSchedules: async (kind, id) =>
+      kind === "application" || kind === "compose"
+        ? listSchedules(c, kind, id)
+        : [],
     teamSharedEnv: async () => null,
     serverSharedEnv: async () => null,
     listBackupDestinations: async () =>
