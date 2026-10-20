@@ -26,7 +26,7 @@ import { mapSource } from "../../migration/map/app-source";
 import { adaptComposeForDeplo } from "../../migration/map/compose-adapt";
 import { deploEngineFor, mapDatabase } from "../../migration/map/databases";
 import { mapDomains } from "../../migration/map/domains";
-import { envNeedsInterpolation, parseEnvBlob } from "../../migration/map/env";
+import { envEntriesOf, envNeedsInterpolation } from "../../migration/map/env";
 import { withPanel } from "../../migration/map/source-platform";
 import { listEnvironmentsForProject } from "../environments";
 import { listProjects } from "../projects/read";
@@ -255,7 +255,7 @@ export async function scanMigrationSource(
           if (homeKey && existing.apps.has(homeKey)) line.status = "exists";
 
           const isCompose = svc.kind === "compose";
-          const scanned = parseEnvBlob((detail as SourceApplication).env);
+          const scanned = envEntriesOf(detail as SourceApplication);
           const scannedRefs = (detail as SourceApplication).sharedRefs ?? [];
           const willLink = scannedRefs
             .filter((r) => r.whole && r.key === r.sharedKey)

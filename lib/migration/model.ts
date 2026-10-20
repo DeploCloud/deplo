@@ -1,6 +1,6 @@
 import type { BuildConfig } from "../types/build";
 import type { HealthCheck, ResourceLimits } from "../types/container";
-import type { SharedRef } from "./map/env";
+import type { EnvPair, SharedRef } from "./map/env";
 
 export type SourceBuildType =
   | "dockerfile"
@@ -81,6 +81,8 @@ export interface SourceApplication {
   appName?: string | null;
   description?: string | null;
   env?: string | null;
+  // Variables as pairs, exactly as the source held them; read before `env`, which is `.env` text.
+  envEntries?: EnvPair[] | null;
   buildArgs?: string | null;
   icon?: string | null;
   sourceType: SourceOrigin;
@@ -96,6 +98,7 @@ export interface SourceApplication {
   buildCommand?: string | null;
   previewWildcard?: string | null;
   previewEnv?: string | null;
+  previewEnvEntries?: EnvPair[] | null;
   dockerImage?: string | null;
   registryUrl?: string | null;
   registryId?: string | null;
@@ -170,6 +173,7 @@ export interface SourceCompose {
   appName?: string | null;
   description?: string | null;
   env?: string | null;
+  envEntries?: EnvPair[] | null;
   composeFile?: string | null;
   icon?: string | null;
   composeType?: "docker-compose" | "stack" | null;
@@ -246,7 +250,8 @@ export const SOURCE_DB_KINDS = [
 export type SourceDbKind = (typeof SOURCE_DB_KINDS)[number];
 
 export interface SourceSharedEnv {
-  env: string;
+  env?: string | null;
+  envEntries?: EnvPair[] | null;
   secretEnvKeys?: string[] | null;
 }
 
@@ -255,6 +260,7 @@ export interface SourceEnvironment {
   name: string;
   description?: string | null;
   env?: string | null;
+  envEntries?: EnvPair[] | null;
   secretEnvKeys?: string[] | null;
   platformNotes?: string[] | null;
   isDefault?: boolean | null;
@@ -277,6 +283,7 @@ export interface SourceProject {
   name: string;
   description?: string | null;
   env?: string | null;
+  envEntries?: EnvPair[] | null;
   secretEnvKeys?: string[] | null;
   platformNotes?: string[] | null;
   createdAt?: string | null;

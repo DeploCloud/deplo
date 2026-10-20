@@ -1,9 +1,19 @@
 const KEY_RE = /^[A-Z_][A-Z0-9_]*$/i;
 
-export function parseEnvBlob(blob: string | null | undefined): {
+export interface EnvPair {
   key: string;
   value: string;
-}[] {
+}
+
+// A source that hands variables over as pairs is taken as is; only `.env` text is parsed.
+export function envEntriesOf(
+  row:
+    { env?: string | null; envEntries?: EnvPair[] | null } | null | undefined,
+): EnvPair[] {
+  return row?.envEntries ?? parseEnvBlob(row?.env);
+}
+
+export function parseEnvBlob(blob: string | null | undefined): EnvPair[] {
   if (!blob) return [];
   const out: { key: string; value: string }[] = [];
   const seen = new Set<string>();

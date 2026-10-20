@@ -155,7 +155,7 @@ async function runImportMigrationProject(
   try {
     const team = await sourceClient(c).teamSharedEnv();
     await importSharedVars(
-      team?.env ?? null,
+      team,
       {
         secretKeys: team?.secretEnvKeys,
         teamId,
@@ -174,7 +174,7 @@ async function runImportMigrationProject(
     await levelRefused(report, "team", "", e);
   }
   await importSharedVars(
-    source.env,
+    source,
     {
       secretKeys: source.secretEnvKeys,
       teamId,
@@ -196,7 +196,7 @@ async function runImportMigrationProject(
     try {
       const machine = await sourceClient(c).serverSharedEnv(sourceServerId);
       await importSharedVars(
-        machine?.env ?? null,
+        machine,
         {
           secretKeys: machine?.secretEnvKeys,
           teamId,
@@ -234,11 +234,11 @@ async function runImportMigrationProject(
     // Each environment sees its own variables, never a sibling's of the same name.
     const envShared: SharedIndex = new Map(shared);
     const envLevel =
-      env.env != null
+      env.env != null || env.envEntries != null
         ? env
         : await sourceClient(c).getEnvironment(env.environmentId);
     await importSharedVars(
-      envLevel?.env ?? null,
+      envLevel,
       {
         secretKeys: envLevel?.secretEnvKeys,
         teamId,

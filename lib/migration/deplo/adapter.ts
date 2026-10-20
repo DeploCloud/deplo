@@ -183,12 +183,7 @@ export function deploClient(c: SourceCredential): MigrationSourceClient {
         enabled: j.enabled,
       }));
     },
-    teamSharedEnv: async () => {
-      const shared = teamShared(await exportOf(c));
-      return shared
-        ? { env: shared.env, secretEnvKeys: shared.secretEnvKeys }
-        : null;
-    },
+    teamSharedEnv: async () => teamShared(await exportOf(c)),
     serverSharedEnv: async () => null,
     listBackupDestinations: async () => (await exportOf(c)).destinations,
 

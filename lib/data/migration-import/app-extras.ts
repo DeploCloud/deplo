@@ -170,7 +170,9 @@ export async function landAppExtras(
         );
       }
     }
-    const previewVars = parseEnvBlob(app.previewEnv).filter((v) => v.key);
+    const previewVars = (
+      app.previewEnvEntries ?? parseEnvBlob(app.previewEnv)
+    ).filter((v) => v.key);
     if (previewVars.length > 0) {
       const { setPreviewEnvVar } = await import("../previews");
       const landed: string[] = [];
