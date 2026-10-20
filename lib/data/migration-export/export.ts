@@ -45,6 +45,7 @@ import { assembleDestination } from "../backup-rows";
 import { visibleFolderIds } from "../folder-access";
 import { listServersForTeam } from "../servers/roster";
 import { loadVisibleToTeam } from "../shared-vars/visibility";
+import { exportAccess } from "./access";
 import { exportApps, exportDatabases } from "./workloads";
 
 export async function assertExportGate(): Promise<{
@@ -237,14 +238,18 @@ export async function exportTeamForMigration(): Promise<DeploExport> {
     controlApps,
     controlDatabases,
     visibleFolders,
+    mayReadAccess,
   ] = await Promise.all([
     db
       .select({
         id: foldersTable.id,
         name: foldersTable.name,
         parentId: foldersTable.parentId,
+        color: foldersTable.color,
+        ownerEmail: usersTable.email,
       })
       .from(foldersTable)
+      .leftJoin(usersTable, eq(usersTable.id, foldersTable.ownerUserId))
       .where(eq(foldersTable.teamId, teamId)),
     exportApps(teamId),
     exportDatabases(teamId),
@@ -259,7 +264,19 @@ export async function exportTeamForMigration(): Promise<DeploExport> {
     hasCapability("control_apps"),
     hasCapability("control_databases"),
     visibleFolderIds(teamId),
+    hasCapability("manage_members"),
   ]);
+  const shownFolders = folders
+    .filter((f) => visibleFolders === "all" || visibleFolders.has(f.id))
+    .map((f) => ({ ...f, ownerEmail: f.ownerEmail ?? null }));
+  const access = mayReadAccess
+    ? await exportAccess(teamId, {
+        projectIds: new Set(projects.map((p) => p.id)),
+        environmentIds: new Set(environments.map((e) => e.id)),
+        folderIds: new Set(shownFolders.map((f) => f.id)),
+        appIds: new Set(apps.map((a) => a.id)),
+      })
+    : null;
 
   await trailExport(teamId, userId);
   const self = deploHostSelfAddresses();
@@ -285,9 +302,7 @@ export async function exportTeamForMigration(): Promise<DeploExport> {
           gitBranch: e.gitBranch,
         })),
     })),
-    folders: folders.filter(
-      (f) => visibleFolders === "all" || visibleFolders.has(f.id),
-    ),
+    folders: shownFolders,
     apps,
     withheld,
     databases,
@@ -303,5 +318,6 @@ export async function exportTeamForMigration(): Promise<DeploExport> {
     members: people,
     destinations: stores.buckets,
     serverDestinations: stores.disks,
+    access,
   };
 }

@@ -322,9 +322,59 @@ export interface SourceEnvironment {
   unknown?: SourceDatabase[] | null;
 }
 
+export interface SourceFolder {
+  sourceId: string;
+  name: string;
+  color: string | null;
+}
+
+// Set when the group is not a project at the source: it lands in that folder chain (root first), or at the top level.
+export type SourceLanding =
+  { kind: "folder"; folders: SourceFolder[] } | { kind: "top" };
+
+export interface SourceNodeScope {
+  projectIds: string[];
+  environmentIds: string[];
+  folderIds: string[];
+  appIds: string[];
+}
+
+export interface SourceRole {
+  id: string;
+  name: string;
+  description: string | null;
+  builtinKey: string | null;
+  capabilities: string[];
+  scoped: boolean;
+  requireTwoFactor: boolean;
+  scope: SourceNodeScope | null;
+}
+
+export interface SourceMemberAccess {
+  email: string;
+  rank: string;
+  roleId: string | null;
+  granular: boolean;
+  customCapabilities: boolean;
+  capabilities: string[];
+  grants: {
+    kind: "project" | "environment" | "folder" | "app";
+    nodeId: string;
+    capabilities: string[];
+  }[];
+}
+
+// Who could do what at the source, in source ids; only a source that knows roles sends it.
+export interface SourceAccess {
+  roles: SourceRole[];
+  members: SourceMemberAccess[];
+  folderOwners: { folderId: string; email: string }[];
+}
+
 export interface SourceProject {
   projectId: string;
   name: string;
+  landing?: SourceLanding;
   color?: string | null;
   description?: string | null;
   env?: string | null;

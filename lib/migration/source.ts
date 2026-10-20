@@ -5,6 +5,7 @@ import type {
   SourceCompose,
   SourceDatabase,
   SourceEnvironment,
+  SourceAccess,
   SourceMember,
   SourceProject,
   SourceBackupDestination,
@@ -117,6 +118,9 @@ export interface MigrationSourceClient {
 
   // Set when the source panel hands its data over itself, so no agent goes on its machines (ADR-0034).
   readonly dataExport?: SourceDataExport;
+
+  // Roles and per-node access; undefined = the source is too old to say, null = the reader may not see them.
+  accessExport?(): Promise<SourceAccess | null | undefined>;
 }
 
 export class StopAcceptedError extends Error {}

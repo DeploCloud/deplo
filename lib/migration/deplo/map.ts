@@ -12,6 +12,7 @@ import type {
   SourceDbKind,
   SourceDomain,
   SourceEnvironment,
+  SourceFolder,
   SourceMount,
   SourceProject,
   SourceSharedEnv,
@@ -58,7 +59,7 @@ export interface Placement {
 
 const TOP = "top";
 
-// Deplo keeps apps outside any project; a migration lands everything in a project, so each folder (and the top level) becomes one.
+// Apps outside any project are grouped per folder (and the top level); the import lands each group where it was.
 export function placementOf(
   x: DeploExport,
   w: {
@@ -85,17 +86,25 @@ export function placementOf(
   return { projectId: group, environmentId: `${group}:production` };
 }
 
-function folderPath(x: DeploExport, id: string): string {
-  const names: string[] = [];
+function folderChain(x: DeploExport, id: string): SourceFolder[] {
+  const chain: SourceFolder[] = [];
   const seen = new Set<string>();
   for (let at: string | null = id; at && !seen.has(at);) {
     seen.add(at);
     const f = x.folders.find((r) => r.id === at);
     if (!f) break;
-    names.unshift(f.name);
+    chain.unshift({ sourceId: f.id, name: f.name, color: f.color ?? null });
     at = f.parentId;
   }
-  return names.join(" / ") || "Folder";
+  return chain;
+}
+
+function folderPath(x: DeploExport, id: string): string {
+  return (
+    folderChain(x, id)
+      .map((f) => f.name)
+      .join(" / ") || "Folder"
+  );
 }
 
 function backupsOf(rows: DeploExportBackup[]): SourceBackupSchedule[] {
@@ -517,17 +526,16 @@ export function sourceTree(x: DeploExport): SourceProject[] {
         projectId: at.projectId,
         name: real?.name ?? (folder ? folderPath(x, folder) : x.team.name),
         ...(real && real.color !== undefined ? { color: real.color } : {}),
+        ...(real
+          ? {}
+          : {
+              landing: folder
+                ? { kind: "folder" as const, folders: folderChain(x, folder) }
+                : { kind: "top" as const },
+            }),
         envEntries: shared?.envEntries ?? null,
         secretEnvKeys: shared?.secretEnvKeys ?? null,
-        platformNotes: [
-          ...(real
-            ? []
-            : [
-                folder
-                  ? `These were in the ${folderPath(x, folder)} folder on {panel}, outside any project, so they came across as a project of that name.`
-                  : "These were at the top level on {panel}, outside any project, so they came across as a project named after the team.",
-              ]),
-        ],
+        platformNotes: [],
         environments: [],
       };
       projects.set(at.projectId, project);

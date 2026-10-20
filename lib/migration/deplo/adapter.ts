@@ -6,7 +6,7 @@ import {
   type SourceCredential,
   type SourceDataExport,
 } from "../source";
-import type { SourceMember, SourceSchedule } from "../model";
+import type { SourceAccess, SourceMember, SourceSchedule } from "../model";
 import { SELF_PANEL_REFUSAL } from "../self";
 import {
   TOKEN_RECIPE,
@@ -148,6 +148,17 @@ function dataExport(c: SourceCredential): SourceDataExport {
   };
 }
 
+function accessOf(x: DeploExport): SourceAccess | null | undefined {
+  if (!x.access) return x.access;
+  return {
+    roles: x.access.roles,
+    members: x.access.members,
+    folderOwners: x.folders.flatMap((f) =>
+      f.ownerEmail ? [{ folderId: f.id, email: f.ownerEmail }] : [],
+    ),
+  };
+}
+
 export function deploClient(c: SourceCredential): MigrationSourceClient {
   return {
     platform: "deplo",
@@ -208,5 +219,6 @@ export function deploClient(c: SourceCredential): MigrationSourceClient {
     },
     platformNetworks: () => [],
     dataExport: dataExport(c),
+    accessExport: async () => accessOf(await exportOf(c)),
   };
 }

@@ -12,7 +12,11 @@ import { newId, nowIso } from "../../ids";
 import { avatarResolver } from "../../avatar";
 import { requireInstanceAdmin } from "../../membership";
 import { sourceClient } from "../../migration/source";
-import type { SourceCredential } from "../../migration/source";
+import type {
+  MigrationSourceClient,
+  SourceCredential,
+} from "../../migration/source";
+import { withPanel } from "../../migration/map/source-platform";
 import { addExistingMember } from "../members/assignment";
 import {
   addTeamToRegistrationLink,
@@ -22,6 +26,13 @@ import {
 import { assertImportGate, credentialFor, type ConnectInput } from "./gates";
 import { Report, ownRun, refreshCounts } from "./run-report";
 import { planMembers } from "./source-people";
+import {
+  folderOwnerNotes,
+  inviteNote,
+  landMemberAccess,
+  planAccess,
+  type AccessPlan,
+} from "./access-import";
 
 export interface MigrationInvite {
   email: string;
@@ -98,10 +109,12 @@ async function bringOverRunMembers(
   const already = await runMembersOf(runId);
   if (already.length > 0) return already;
 
-  const panel = sourceClient(c).displayName;
+  const client = sourceClient(c);
+  const panel = client.displayName;
   const report = new Report(runId, panel).at("Members");
   const people = await planMembers(c, teamId);
   const out: MigrationInvite[] = [];
+  const plan = await accessPlanFor(runId, client, people.length > 0, report);
 
   const accounts = new Map<string, string>();
   if (people.length > 0)
@@ -120,7 +133,7 @@ async function bringOverRunMembers(
 
   for (const p of people) {
     const roleNote =
-      p.sourceRole && p.sourceRole !== "member"
+      !plan && p.sourceRole && p.sourceRole !== "member"
         ? ` Was ${p.sourceRole} on ${panel} - promote them in Members if that should carry over.`
         : "";
     const record = async (
@@ -160,7 +173,19 @@ async function bringOverRunMembers(
 
     const userId = accounts.get(p.email);
     try {
-      if (userId) {
+      if (userId && plan) {
+        const landed = await landMemberAccess(plan, p, userId);
+        const outcome = landed.restored ? "created" : "manual";
+        await record(outcome, withPanel(landed.message, panel), null, null);
+        await report.add({
+          sourceKind: "member",
+          sourceName: p.email,
+          outcome,
+          targetKind: "member",
+          targetId: userId,
+          message: landed.message,
+        });
+      } else if (userId) {
         await addExistingMember({ userId, role: "member" });
         const message = `Added to the team as a member.${roleNote}`;
         await record("created", message, null, null);
@@ -173,30 +198,36 @@ async function bringOverRunMembers(
           message,
         });
       } else {
+        // Without an account no grant can land yet, so they join at the floor and are named.
+        const joinsAs = plan ? "viewer" : "member";
         const mine = sessionLinks.get(p.email);
         const reused =
           mine != null &&
-          (await addTeamToRegistrationLink(mine, teamId, "member"));
+          (await addTeamToRegistrationLink(mine, teamId, joinsAs));
         const linkId = reused
           ? mine!
           : (
               await mintRegistrationLink({
                 mode: "existing_teams",
-                teamAssignments: [{ teamId, role: "member" }],
+                teamAssignments: [{ teamId, role: joinsAs }],
               })
             ).id;
         sessionLinks.set(p.email, linkId);
         const link = await revealRegistrationLink(linkId).catch(() => null);
-        const message = reused
-          ? `They were on more than one team here, so this is the same link - it joins them to all of them.${roleNote}`
-          : `Send them this link to create their account.${roleNote}`;
+        const message =
+          (reused
+            ? `They were on more than one team here, so this is the same link - it joins them to all of them.${roleNote}`
+            : `Send them this link to create their account.${roleNote}`) +
+          (plan ? ` ${withPanel(inviteNote(plan, p), panel)}` : "");
         await record("manual", message, linkId, link);
         await report.add({
           sourceKind: "member",
           sourceName: p.email,
           outcome: "manual",
           targetKind: "registration-link",
-          message: `A registration link was created for ${p.email}.${roleNote}`,
+          message: plan
+            ? `A registration link was created for ${p.email}. ${inviteNote(plan, p)}`
+            : `A registration link was created for ${p.email}.${roleNote}`,
         });
       }
     } catch (e) {
@@ -211,8 +242,43 @@ async function bringOverRunMembers(
     }
   }
 
+  if (plan)
+    for (const message of await folderOwnerNotes(
+      plan,
+      new Map(people.map((p) => [p.email, p.name])),
+    ))
+      await report.add({
+        sourceKind: "folder",
+        sourceName: "Folders",
+        outcome: "manual",
+        targetKind: "folder",
+        message,
+      });
+
   await refreshCounts(runId, teamId);
   return out.length > 0 ? runMembersOf(runId) : out;
+}
+
+// Only a source that knows roles sends them; one that cannot is said so once, and everyone joins as before.
+async function accessPlanFor(
+  runId: string,
+  client: MigrationSourceClient,
+  anyone: boolean,
+  report: Report,
+): Promise<AccessPlan | null> {
+  if (!client.accessExport || !anyone) return null;
+  const access = await client.accessExport();
+  if (access) return planAccess(runId, access, report);
+  await report.add({
+    sourceKind: "member",
+    sourceName: "Members",
+    outcome: "manual",
+    message:
+      access === undefined
+        ? "{panel} is too old to send its roles and who could reach which folder, so everyone joined as a member. Update it and import again, or set each person's access in Members."
+        : "The token's owner cannot manage members on {panel}, so its roles and who could reach which folder did not come across, and everyone joined as a member. Set each person's access in Members.",
+  });
+  return null;
 }
 
 async function linksMintedInSession(

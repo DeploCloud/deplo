@@ -1,7 +1,7 @@
 import "server-only";
 
 import { type Note } from "../../migration/note";
-import { and, eq, isNull, ne, or, sql } from "drizzle-orm";
+import { and, eq, isNotNull, isNull, ne, or, sql } from "drizzle-orm";
 
 import { getDb } from "../../db/client";
 import { apps as appsTable } from "../../db/schema/control-plane/apps";
@@ -41,8 +41,9 @@ export async function importAppService(
   detail: SourceApplication & SourceCompose,
   name: string,
   home: {
-    projectId: string;
-    environmentId: string;
+    projectId: string | null;
+    environmentId: string | null;
+    folderId?: string | null;
     serverId: string | undefined;
     buildServerId: string | null;
     sourceHost: string | null;
@@ -55,10 +56,33 @@ export async function importAppService(
 ): Promise<string | null> {
   let isCompose = svc.kind === "compose";
 
+  const teamId = await requireActiveTeamId();
+  // Outside a project, the same place is the same folder (or the top level).
+  const samePlace = home.environmentId
+    ? eq(appsTable.environmentId, home.environmentId)
+    : and(
+        eq(appsTable.teamId, teamId),
+        isNull(appsTable.environmentId),
+        home.folderId
+          ? eq(appsTable.folderId, home.folderId)
+          : isNull(appsTable.folderId),
+      );
+  const elsewhere = home.environmentId
+    ? or(
+        isNull(appsTable.environmentId),
+        ne(appsTable.environmentId, home.environmentId),
+      )
+    : home.folderId
+      ? or(
+          isNotNull(appsTable.environmentId),
+          isNull(appsTable.folderId),
+          ne(appsTable.folderId, home.folderId),
+        )
+      : or(isNotNull(appsTable.environmentId), isNotNull(appsTable.folderId));
   const existing = await getDb()
     .select({ id: appsTable.id, name: appsTable.name })
     .from(appsTable)
-    .where(eq(appsTable.environmentId, home.environmentId));
+    .where(samePlace);
   const match = existing.find(
     (a) => a.name.trim().toLowerCase() === name.trim().toLowerCase(),
   );
@@ -79,7 +103,9 @@ export async function importAppService(
       targetKind: "app",
       targetId: match.id,
       message: [
-        "An app with this name is already in this environment.",
+        home.environmentId
+          ? "An app with this name is already in this environment."
+          : "An app with this name is already here.",
         ...extra,
       ].join(" "),
     });
@@ -103,12 +129,9 @@ export async function importAppService(
       )
       .where(
         and(
-          eq(appsTable.teamId, await requireActiveTeamId()),
+          eq(appsTable.teamId, teamId),
           sql`lower(${appsTable.name}) = ${name.trim().toLowerCase()}`,
-          or(
-            isNull(appsTable.environmentId),
-            ne(appsTable.environmentId, home.environmentId),
-          ),
+          elsewhere,
         ),
       )
       .limit(1)
@@ -194,6 +217,7 @@ export async function importAppService(
     buildServerId: home.buildServerId,
     projectId: home.projectId,
     environmentId: home.environmentId,
+    folderId: home.folderId ?? null,
     build,
     autoDeploy: detail.autoDeploy ?? true,
     autoDomain:

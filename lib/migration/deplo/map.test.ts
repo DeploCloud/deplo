@@ -48,10 +48,10 @@ test("an app keeps its project and environment", () => {
   );
 });
 
-test("apps outside any project land in a project per folder, and one for the top level", () => {
+test("apps outside any project stay in their folder, or at the top level", () => {
   const x = deploExport({
     folders: [
-      { id: "fld_a", name: "Clients", parentId: null },
+      { id: "fld_a", name: "Clients", parentId: null, color: "#112233" },
       { id: "fld_b", name: "Big", parentId: "fld_a" },
     ],
     apps: [
@@ -75,7 +75,18 @@ test("apps outside any project land in a project per folder, and one for the top
       .sort(),
     ["db_main", "prj_top"],
   );
-  assert.match(top.platformNotes!.join(" "), /top level on \{panel\}/);
+  assert.deepEqual(top.landing, { kind: "top" });
+  assert.deepEqual(tree.find((p) => p.name === "Clients / Big")!.landing, {
+    kind: "folder",
+    folders: [
+      { sourceId: "fld_a", name: "Clients", color: "#112233" },
+      { sourceId: "fld_b", name: "Big", color: null },
+    ],
+  });
+  assert.doesNotMatch(
+    tree.flatMap((p) => p.platformNotes ?? []).join(" "),
+    /came across as a project/,
+  );
 });
 
 test("a linked shared variable becomes a reference at the narrowest level that offers it", () => {
