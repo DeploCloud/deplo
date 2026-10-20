@@ -164,9 +164,10 @@ async function destinations(
         });
       continue;
     }
-    const accessKeyId = opened(d.accessKeyEnc);
-    const secretAccessKey = opened(d.secretKeyEnc);
-    if (!d.endpoint || !d.bucket || !accessKeyId || !secretAccessKey) continue;
+    if (!d.endpoint || !d.bucket) continue;
+    const accessKeyId = withKeys ? opened(d.accessKeyEnc) : null;
+    const secretAccessKey = withKeys ? opened(d.secretKeyEnc) : null;
+    if (withKeys && (!accessKeyId || !secretAccessKey)) continue;
     buckets.push({
       name: d.name,
       endpoint: d.endpoint,
@@ -301,7 +302,7 @@ export async function exportTeamForMigration(): Promise<DeploExport> {
     sharedVars(teamId),
     listServersForTeam(teamId),
     members(teamId),
-    // The recovery key is revealed on the same terms as revealRecoveryKey.
+    // A bucket's keys and the recovery key are revealed on the same terms as revealRecoveryKey.
     hasCapability("manage_backup_destinations").then((may) =>
       destinations(teamId, may),
     ),

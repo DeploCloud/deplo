@@ -518,8 +518,8 @@ export interface SourceS3Destination {
   endpoint: string;
   bucket: string;
   region: string;
-  accessKeyId: string;
-  secretAccessKey: string;
+  accessKeyId: string | null;
+  secretAccessKey: string | null;
   provider?: string | null;
   // The key its artifacts are encrypted to; null when it never encrypted, absent when unknown.
   ageIdentity?: string | null;

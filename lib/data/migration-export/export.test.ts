@@ -454,6 +454,16 @@ test("every backup destination, schedule and restore point leaves in the export"
   ]);
 });
 
+test("a bucket's keys stay behind when the reader may not manage backup destinations", async () => {
+  await seedDestination(db, { id: "dst_s3", name: "bucket" });
+  await withoutCapability(USER_1, "manage_backup_destinations");
+  const out = await as(USER_1, TEAM_A, () => exportTeamForMigration());
+  const s3 = out.destinations.find((d) => d.name === "bucket");
+  assert.equal(s3?.accessKeyId, null);
+  assert.equal(s3?.secretAccessKey, null);
+  assert.equal(s3?.ageIdentity, undefined);
+});
+
 test("an app built from an uploaded archive names that archive in the export", async () => {
   const stored = await uploadArchive("prj_web", "the site");
   const out = await as(USER_1, TEAM_A, () => exportTeamForMigration());

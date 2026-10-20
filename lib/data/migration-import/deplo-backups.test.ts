@@ -235,3 +235,20 @@ test("restore points stay off a bucket already here that encrypts with another k
     /restore point on bucket did not come across/,
   );
 });
+
+test("a bucket that arrives without its keys is not created, and says why", async () => {
+  const x = withBackups();
+  x.destinations = x.destinations.map((d) => ({
+    ...d,
+    accessKeyId: null,
+    secretAccessKey: null,
+  }));
+  fakeDeplo(x);
+  const runId = await importDeploProject("prc_shop");
+  const dests = await db.select().from(destTable);
+  assert.ok(!dests.some((d) => d.name === "bucket"));
+  assert.match(
+    (await blockingLines(runId)).join("\n"),
+    /bucket came across without its access keys/,
+  );
+});

@@ -338,6 +338,18 @@ async function landBucket(
     });
     return;
   }
+  const { accessKeyId, secretAccessKey } = store;
+  if (!accessKeyId || !secretAccessKey) {
+    await ctx.report.add({
+      sourceKind: "destination",
+      sourceName: store.name,
+      outcome: "manual",
+      blocking: true,
+      targetKind: "destination",
+      message: `${store.name} came across without its access keys: the token's owner may not manage backup destinations on {panel}. Add it under Backups, then the schedules.`,
+    });
+    return;
+  }
   const provider = S3_PROVIDERS.find((p) => p === store.provider) ?? null;
   await createAndProbe(store, ctx, async (createDestination) => {
     const created = await createDestination({
@@ -347,8 +359,8 @@ async function landBucket(
       endpoint: store.endpoint,
       region: store.region,
       bucket: store.bucket,
-      accessKey: store.accessKeyId,
-      secretKey: store.secretAccessKey,
+      accessKey: accessKeyId,
+      secretKey: secretAccessKey,
     });
     let copiedFrom: string | null = null;
     let why =
