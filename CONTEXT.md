@@ -761,7 +761,7 @@ word, now retired).
 **Live copy** (keep it running):
 A migration from another Deplo that leaves the source running: `migration_runs.live_copy`, the
 wizard's advanced "Keep everything running on {panel}", Deplo sources only. Nothing is stopped
-there; databases arrive as a snapshot their engine takes while running, app files are copied while
+there (a database whose port is taken lands on a free one, or unpublished); databases arrive as a snapshot their engine takes while running, app files are copied while
 the apps keep writing, and crons, backup schedules and deploy on push land switched off so the two
 copies never both run them. The switch-over is the user's
 ([ADR-0034](docs/adr/0034-another-deplo-hands-its-team-over-itself.md)).

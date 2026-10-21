@@ -19,6 +19,7 @@ import { mapResources } from "../../migration/map/app-settings";
 import { mapDatabase } from "../../migration/map/databases";
 import { setDatabaseMounts } from "../databases/mounts";
 import { createDatabase } from "../databases/provision";
+import { generateAvailableDbPort } from "../databases/server-ports";
 import { importCrons } from "./cron-import";
 import type { Report } from "./run-report";
 import type { SourceService } from "./source-tree";
@@ -153,14 +154,16 @@ export async function importDatabaseService(
     notes.push(
       `Port ${sourcePort} was not published, as chosen during the import.`,
     );
-  const publishPort = opts.mayExposePorts ? chosenPort : null;
+  let publishPort = opts.mayExposePorts ? chosenPort : null;
   const withPort =
     publishPort != null
       ? { exposedPublicly: true, exposedPort: publishPort }
       : {};
 
   const portNote = (why: string) =>
-    `Port ${publishPort} was not published (${why}). Publish it from the database's Connection settings once that port is free.`;
+    opts.liveCopy
+      ? `Port ${publishPort} is taken on this server and Deplo found no free one to use instead, so the copy's port was not published. Publish it from the database's Connection settings.`
+      : `Port ${publishPort} was not published (${why}). Publish it from the database's Connection settings once that port is free.`;
 
   let firstError = "";
   const attempt = async (payload: Parameters<typeof createDatabase>[0]) => {
@@ -174,7 +177,22 @@ export async function importDatabaseService(
 
   let created = await attempt({ ...withPassword, ...withPort });
 
-  if (!created && publishPort != null && opts.sourceIsTargetHost) {
+  // A live copy never stops the original: its port clash lands the copy on a free one.
+  if (!created && publishPort != null && opts.liveCopy) {
+    const free = await generateAvailableDbPort({ serverId }).catch(() => null);
+    if (free != null) {
+      const moved = { exposedPublicly: true, exposedPort: free };
+      created = await attempt({ ...withPassword, ...moved });
+      if (created) publishPort = free;
+    }
+  }
+
+  if (
+    !created &&
+    publishPort != null &&
+    opts.sourceIsTargetHost &&
+    !opts.liveCopy
+  ) {
     try {
       await sourceClient(c).stopService(svc.kind, svc.id);
       if (report.id)

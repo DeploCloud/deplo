@@ -41,7 +41,8 @@ path cannot simply be pointed at it:
   the image the app names; the target asks for it when no registry has that image, and loads it
   on the app's server at import time. An image that cannot be copied is reported as blocking.
 - A run may ask for a copy that keeps the source running (`live_copy`, Deplo sources only, an
-  advanced option): nothing is stopped there, databases come over as that dump, app volumes are
+  advanced option): nothing is stopped there (a database whose port is taken lands on a free one,
+  or unpublished), databases come over as that dump, app volumes are
   read live and each says so, crons and backup schedules land paused, deploy on push lands off
   with no webhook added (turning it on adds one), and the switch-over is left to the user. The target is still stopped before any volume is written into it.
 - `deplo` is the third adapter behind `MigrationSourceClient`, with one optional addition,
