@@ -79,7 +79,7 @@ export default function Loading() {
           <Skeleton className="hidden h-[38px] w-[74px] rounded-lg sm:block" />
         </div>
 
-        <div className="grid gap-4 sm:grid-cols-2 2xl:grid-cols-3">
+        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
           {CARDS.map(([name, url, message, repo], i) => (
             <Card key={i} className="flex flex-col gap-4 p-5">
               <div className="flex items-start justify-between gap-3">
