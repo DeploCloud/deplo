@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button";
 import { TeamAvatar } from "@/components/shared/user-avatar";
 import { RemoveMigrationSources } from "../remove-sources";
 import { StepShell } from "../step-shell";
-import { needsYou } from "../steps";
+import { reportBadges } from "../steps";
 import type { RunReport } from "./session";
 
 export function ReportBody({
@@ -26,16 +26,11 @@ export function ReportBody({
   return (
     <>
       <div className="flex flex-wrap justify-center gap-1.5">
-        <Badge variant="success">{report.created} created</Badge>
-        {report.skipped > 0 && (
-          <Badge variant="secondary">{report.skipped} already here</Badge>
-        )}
-        {report.manual > 0 && (
-          <Badge variant="warning">{needsYou(report.manual)}</Badge>
-        )}
-        {report.failed > 0 && (
-          <Badge variant="destructive">{report.failed} failed</Badge>
-        )}
+        {reportBadges(report).map((b) => (
+          <Badge key={b.key} variant={b.variant}>
+            {b.label}
+          </Badge>
+        ))}
       </div>
       {teams && teams.length > 1 && (
         <ul className="divide-y divide-border rounded-lg border border-border bg-background">
@@ -49,9 +44,9 @@ export function ReportBody({
                 {t.name}
               </span>
               <span className="text-muted-foreground">
-                {t.report.created} created
-                {t.report.manual > 0 ? `, ${needsYou(t.report.manual)}` : ""}
-                {t.report.failed > 0 ? `, ${t.report.failed} failed` : ""}
+                {reportBadges(t.report)
+                  .map((b) => b.label)
+                  .join(", ")}
               </span>
             </li>
           ))}

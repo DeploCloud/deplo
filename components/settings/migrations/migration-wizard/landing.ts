@@ -1,5 +1,7 @@
 import {
+  emptyPicked,
   importableOf,
+  isEmptyProject,
   type Placement,
   type Plan,
   type ServerChoice,
@@ -22,11 +24,23 @@ export interface Fleet {
 export function defaultChoice(plan: Plan): Set<string> {
   return new Set(
     plan.projects.flatMap((p) =>
-      importableOf(p)
-        .filter((s) => s.status !== "exists")
-        .map((s) => s.sourceId),
+      isEmptyProject(p)
+        ? p.exists
+          ? []
+          : [p.sourceId]
+        : importableOf(p)
+            .filter((s) => s.status !== "exists")
+            .map((s) => s.sourceId),
     ),
   );
+}
+
+export function emptyProjectTargets(plan: Plan, chosen: Set<string>) {
+  return emptyPicked(plan, chosen).map((p) => ({
+    projectId: p.sourceId,
+    projectName: p.name,
+    serviceId: "",
+  }));
 }
 
 export function landingDefaults(

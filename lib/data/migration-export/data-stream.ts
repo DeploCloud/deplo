@@ -1,5 +1,15 @@
 import "server-only";
 
+import { and, eq } from "drizzle-orm";
+
+import { getDb } from "../../db/client";
+import { apps as appsTable } from "../../db/schema/control-plane/apps";
+import { databases as databasesTable } from "../../db/schema/control-plane/databases";
+import { BackupKind } from "../../agent/gen/agent";
+import { connectBackupAgent } from "../../infra/agent-client/preflight";
+import { assembleDatabase } from "../backup-rows";
+import { databaseDescriptor } from "../backups/target-descriptor";
+import { readUpload } from "../../deploy/upload";
 import { connectAgent } from "../../infra/agent-client/connect";
 import { canMountHostVolumes, isInstanceAdmin } from "../../membership";
 import { sourceAgentReachable } from "../agent-reach";
@@ -61,6 +71,61 @@ export async function checkWorkloadData(
   }
 }
 
+// An upload app's archive is its source, kept on this control plane's disk rather than a server.
+export async function openAppUpload(
+  ref: WorkloadRef,
+): Promise<{ chunks: AsyncIterable<Buffer>; close: () => void }> {
+  const { teamId } = await assertExportGate();
+  if (ref.kind !== "app")
+    throw new ExportRefusedError("Only an app has an archive.", 400);
+  const [row] = await getDb()
+    .select({ source: appsTable.source, uploadPath: appsTable.uploadPath })
+    .from(appsTable)
+    .where(and(eq(appsTable.id, ref.id), eq(appsTable.teamId, teamId)));
+  if (
+    !row?.uploadPath ||
+    row.source !== "upload" ||
+    !(await hasAppCapability(ref.id, "reveal_secrets"))
+  )
+    throw new ExportRefusedError("Not found", 404);
+  const chunks = readUpload(ref.id, row.uploadPath);
+  return {
+    chunks,
+    close: () => chunks.destroy(),
+  };
+}
+
+// Only the image the app itself runs, read from its own server and left there.
+export async function openAppImage(
+  ref: WorkloadRef,
+  image: string,
+): Promise<{ chunks: AsyncIterable<Buffer>; close: () => void }> {
+  const { teamId } = await assertExportGate();
+  if (ref.kind !== "app")
+    throw new ExportRefusedError("Only an app runs an image.", 400);
+  const [row] = await getDb()
+    .select({
+      source: appsTable.source,
+      dockerImage: appsTable.dockerImage,
+      serverId: appsTable.serverId,
+    })
+    .from(appsTable)
+    .where(and(eq(appsTable.id, ref.id), eq(appsTable.teamId, teamId)));
+  if (
+    !row ||
+    row.source !== "docker-image" ||
+    !image ||
+    row.dockerImage?.trim() !== image ||
+    !(await hasAppCapability(ref.id, "reveal_secrets"))
+  )
+    throw new ExportRefusedError("Not found", 404);
+  const conn = await connectAgent(row.serverId);
+  return {
+    chunks: conn.exportImage(image, false),
+    close: () => conn.close(),
+  };
+}
+
 // Only what the named workload mounts leaves this instance; a host path outside its own files needs the host-volumes grant.
 export async function openWorkloadData(
   ref: WorkloadRef,
@@ -88,6 +153,45 @@ export async function openWorkloadData(
     chunks: what.volume
       ? conn.exportVolume(what.volume)
       : conn.exportHostPath(what.hostPath!, what.allowFile === true),
+    close: () => conn.close(),
+  };
+}
+
+const AGE_RECIPIENT = /^age1[02-9ac-hj-np-z]{58}$/;
+
+// Read through the engine so a running database still copies consistently; the agent encrypts it to the caller's key.
+export async function openDatabaseDump(
+  ref: WorkloadRef,
+  recipient: string,
+): Promise<{ chunks: AsyncIterable<Buffer>; close: () => void }> {
+  if (ref.kind !== "database")
+    throw new ExportRefusedError("Only a database can be dumped.", 400);
+  if (!AGE_RECIPIENT.test(recipient))
+    throw new ExportRefusedError("recipient must be an age public key.", 400);
+  const { teamId } = await assertExportGate();
+  const [row] = await getDb()
+    .select()
+    .from(databasesTable)
+    .where(
+      and(eq(databasesTable.id, ref.id), eq(databasesTable.teamId, teamId)),
+    );
+  if (!row) throw new ExportRefusedError("Not found", 404);
+  const db = assembleDatabase(row);
+  const conn = await connectBackupAgent(db.serverId, { store: true });
+  const events = conn.backup({
+    kind: BackupKind.BACKUP_KIND_DATABASE,
+    database: databaseDescriptor(db),
+    ageRecipient: recipient,
+    streamOut: true,
+  });
+  return {
+    chunks: (async function* () {
+      for await (const ev of events) {
+        if (ev.result && !ev.result.ok)
+          throw new Error(ev.result.error || "the dump failed");
+        if (ev.data?.length) yield Buffer.from(ev.data);
+      }
+    })(),
     close: () => conn.close(),
   };
 }

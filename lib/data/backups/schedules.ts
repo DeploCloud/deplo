@@ -146,6 +146,7 @@ export async function createBackup(input: {
   schedule: string;
   timezone?: string | null;
   retentionCount: number;
+  enabled?: boolean;
 }): Promise<BackupDTO> {
   const { membership } =
     (input.targetKind ?? "database") === "app" && input.appId
@@ -186,7 +187,7 @@ export async function createBackup(input: {
     retentionCount: clampRetention(input.retentionCount),
     lastRunAt: null,
     lastStatus: "never",
-    enabled: true,
+    enabled: input.enabled ?? true,
     createdAt: nowIso(),
   };
   await getDb().insert(backupsTable).values(backupToRow(b));

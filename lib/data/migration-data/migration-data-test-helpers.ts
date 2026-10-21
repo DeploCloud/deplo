@@ -181,8 +181,13 @@ export const state = {
   sourceRunning: true,
   startRefusesNoContainer: false,
   stopRefusal: "",
+  targetStopRefusal: "",
+  refuseConnect: new Set<string>(),
+  goneAfterStop: false,
   extraWebMounts: [] as unknown[],
   webMounts: null as unknown[] | null,
+  restored: [] as { serverId: string; header: unknown; bytes: Buffer }[],
+  restoreRefusal: "",
 };
 
 function fakeSource() {
@@ -323,6 +328,9 @@ function fakeAgent(serverId: string) {
     },
     async stopStack(slug: string) {
       say("stop", slug);
+      if (state.targetStopRefusal)
+        return { ok: false, error: state.targetStopRefusal };
+      if (state.goneAfterStop) state.refuseConnect.add(serverId);
       return { ok: true, error: "" };
     },
     async startStack(slug: string) {
@@ -357,6 +365,15 @@ function fakeAgent(serverId: string) {
     },
     async exec() {
       return { stdout: "7\n", stderr: "", code: 0, rawMode: false };
+    },
+    async *restoreFrom(header: unknown, chunks: AsyncIterable<Buffer>) {
+      say("restore", "");
+      const parts: Buffer[] = [];
+      for await (const c of chunks) parts.push(c);
+      state.restored.push({ serverId, header, bytes: Buffer.concat(parts) });
+      yield {
+        result: { ok: !state.restoreRefusal, error: state.restoreRefusal },
+      };
     },
     close() {},
   };
@@ -471,12 +488,17 @@ export async function resetHarness(): Promise<void> {
   state.sourceRunning = true;
   state.startRefusesNoContainer = false;
   state.stopRefusal = "";
+  state.targetStopRefusal = "";
+  state.refuseConnect.clear();
+  state.goneAfterStop = false;
   state.hostPaths = {
     srv_migration_host: { "/etc/dokploy/x": CONFIG_DIR },
   };
   state.hostFiles = {};
   state.extraWebMounts = [];
   state.webMounts = null;
+  state.restored = [];
+  state.restoreRefusal = "";
   state.agentCapabilities = ["host-path-copy.file"];
   state.volumes = {
     srv_migration_host: {
@@ -489,14 +511,13 @@ export async function resetHarness(): Promise<void> {
       "deplo-db-blink-db_db-blink-db-data": LANDED_DB,
     },
   };
-  __setAgentConnectorForTest(
-    async (serverId) =>
-      fakeAgent(serverId) as unknown as Awaited<
-        ReturnType<
-          typeof import("../../infra/agent-client/connect").connectAgent
-        >
-      >,
-  );
+  __setAgentConnectorForTest(async (serverId) => {
+    if (state.refuseConnect.has(serverId))
+      throw new Error("14 UNAVAILABLE: No connection established");
+    return fakeAgent(serverId) as unknown as Awaited<
+      ReturnType<typeof import("../../infra/agent-client/connect").connectAgent>
+    >;
+  });
 
   await db.insert(projectsTable).values({
     id: "prc_blink",

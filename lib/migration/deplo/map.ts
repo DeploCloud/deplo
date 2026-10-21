@@ -1,24 +1,33 @@
 import { DB_REPOS } from "../../databases/images";
 import type { BuildConfig, GitRepo } from "../../types/build";
-import type { SharedRef } from "../map/env";
+import type { EnvironmentKind } from "../../types/team";
+import type { EnvPair, SharedRef } from "../map/env";
+import { blocker, type Note } from "../note";
 import type {
   SourceApplication,
+  SourceBackupDestination,
+  SourceBackupRun,
   SourceBackupSchedule,
   SourceCompose,
   SourceDatabase,
   SourceDbKind,
   SourceDomain,
+  SourceDomainRules,
   SourceEnvironment,
+  SourceFolder,
+  SourceGitConnection,
   SourceMount,
   SourceProject,
   SourceSharedEnv,
 } from "../model";
-import { toEnvBlob } from "./env-blob";
 import type {
   DeploExport,
   DeploExportApp,
   DeploExportBackup,
+  DeploExportBackupRun,
+  DeploExportCron,
   DeploExportDatabase,
+  DeploExportDomain,
   DeploExportSharedVar,
   DeploExportVar,
 } from "./export-shape";
@@ -36,24 +45,15 @@ export function dbKindOf(d: Pick<DeploExportDatabase, "type">): SourceDbKind {
   return DB_KIND[d.type] ?? "unknown";
 }
 
-export function sharedBlob(
-  vars: DeploExportVar[],
-): (SourceSharedEnv & { unrepresentable: string[] }) | null {
-  if (vars.length === 0) return null;
-  const { blob, unrepresentable } = toEnvBlob(vars);
-  return {
-    env: blob,
-    secretEnvKeys: vars.filter((v) => v.secret).map((v) => v.key),
-    unrepresentable,
-  };
-}
+const pairs = (vars: Pick<DeploExportVar, "key" | "value">[]): EnvPair[] =>
+  vars.map(({ key, value }) => ({ key, value }));
 
-function unreadNote(keys: string[], where: string): string[] {
-  return keys.length === 0
-    ? []
-    : [
-        `${keys.join(", ")} in ${where} could not be carried exactly (a line break the copy would change), so ${keys.length === 1 ? "it was" : "they were"} left out. Set ${keys.length === 1 ? "it" : "them"} under Variables.`,
-      ];
+export function sharedVarsOf(vars: DeploExportVar[]): SourceSharedEnv | null {
+  if (vars.length === 0) return null;
+  return {
+    envEntries: pairs(vars),
+    secretEnvKeys: vars.filter((v) => v.secret).map((v) => v.key),
+  };
 }
 
 export interface Placement {
@@ -63,7 +63,7 @@ export interface Placement {
 
 const TOP = "top";
 
-// Deplo keeps apps outside any project; a migration lands everything in a project, so each folder (and the top level) becomes one.
+// Apps outside any project are grouped per folder (and the top level); the import lands each group where it was.
 export function placementOf(
   x: DeploExport,
   w: {
@@ -90,17 +90,25 @@ export function placementOf(
   return { projectId: group, environmentId: `${group}:production` };
 }
 
-function folderPath(x: DeploExport, id: string): string {
-  const names: string[] = [];
+function folderChain(x: DeploExport, id: string): SourceFolder[] {
+  const chain: SourceFolder[] = [];
   const seen = new Set<string>();
   for (let at: string | null = id; at && !seen.has(at);) {
     seen.add(at);
     const f = x.folders.find((r) => r.id === at);
     if (!f) break;
-    names.unshift(f.name);
+    chain.unshift({ sourceId: f.id, name: f.name, color: f.color ?? null });
     at = f.parentId;
   }
-  return names.join(" / ") || "Folder";
+  return chain;
+}
+
+function folderPath(x: DeploExport, id: string): string {
+  return (
+    folderChain(x, id)
+      .map((f) => f.name)
+      .join(" / ") || "Folder"
+  );
 }
 
 function backupsOf(rows: DeploExportBackup[]): SourceBackupSchedule[] {
@@ -109,7 +117,36 @@ function backupsOf(rows: DeploExportBackup[]): SourceBackupSchedule[] {
     enabled: b.enabled,
     keepLatestCount: b.retentionCount,
     destination: b.destination ? { name: b.destination } : null,
+    timezone: b.timezone ?? null,
   }));
+}
+
+// Absent from an older source: say so, rather than let its restore points vanish quietly.
+function backupHistoryOf(w: {
+  backups: DeploExportBackup[];
+  backupRuns?: DeploExportBackupRun[];
+}): { backupRuns?: SourceBackupRun[]; notes: string[] } {
+  if (w.backupRuns) return { backupRuns: w.backupRuns, notes: [] };
+  return {
+    notes:
+      w.backups.length > 0
+        ? [
+            "{panel} is too old to send its backup history, so its restore points are not listed here. Restore from {panel}, or update it and run the migration again.",
+          ]
+        : [],
+  };
+}
+
+export function backupDestinationsOf(
+  x: DeploExport,
+): SourceBackupDestination[] {
+  return [
+    ...x.destinations.map((d) => ({ kind: "s3" as const, ...d })),
+    ...(x.serverDestinations ?? []).map((d) => ({
+      kind: "server" as const,
+      ...d,
+    })),
+  ];
 }
 
 function domainsOf(
@@ -120,31 +157,49 @@ function domainsOf(
   notes: string[];
 } {
   const notes: string[] = [];
-  const domains = a.domains.map((d, i): SourceDomain => {
-    if (d.redirectTo)
-      notes.push(
-        `${d.host} only redirected to ${d.redirectTo} on {panel}, so it did not come across. Add it under Domains if you still need the redirect.`,
-      );
-    return {
-      domainId: `${a.id}:${i}`,
-      host: d.host,
-      https: d.https,
-      port: d.port,
-      path: d.pathPrefix || "/",
-      stripPath: d.stripPrefix,
-      serviceName: d.service,
-      domainType: compose ? "compose" : "application",
-      certificateType:
-        d.certProvider === "custom"
-          ? "custom"
-          : d.certProvider === "none" || d.certProvider === "cloudflare"
-            ? "none"
-            : "letsencrypt",
-      enabled: !d.redirectTo,
-      generated: d.generated,
-    };
-  });
+  const domains = a.domains.map((d, i): SourceDomain => ({
+    domainId: `${a.id}:${i}`,
+    host: d.host,
+    https: d.https,
+    port: d.port,
+    path: d.pathPrefix || "/",
+    stripPath: d.stripPrefix,
+    serviceName: d.service,
+    domainType: compose ? "compose" : "application",
+    certificateType:
+      d.certProvider === "custom"
+        ? "custom"
+        : d.certProvider === "none" || d.certProvider === "cloudflare"
+          ? "none"
+          : "letsencrypt",
+    enabled: !d.redirectTo,
+    generated: d.generated,
+    primary: d.primary,
+    nativeRules: rulesOf(d),
+  }));
+  if (a.domains.some((d) => d.securityHeaders === undefined))
+    notes.push(
+      "{panel} is too old to hand over its domains' Middlewares, Allowed origins and Security headers, so they arrive with this Deplo's defaults. Check them under Domains.",
+    );
   return { domains, notes };
+}
+
+function rulesOf(d: DeploExportDomain): SourceDomainRules {
+  const entrypoint =
+    d.entrypoint === "web" || d.entrypoint === "websecure"
+      ? d.entrypoint
+      : null;
+  return {
+    entrypoint,
+    middlewares: d.middlewares,
+    corsOrigins: d.corsOrigins,
+    securityHeaders: d.securityHeaders,
+    proxied: d.proxied,
+    redirectTo: d.redirectTo,
+    ...(d.certProvider === "custom"
+      ? { certificate: d.certificate ?? { withheld: "old" } }
+      : {}),
+  };
 }
 
 function mountsOf(a: DeploExportApp, compose: boolean): SourceMount[] {
@@ -165,6 +220,7 @@ function mountsOf(a: DeploExportApp, compose: boolean): SourceMount[] {
         type: "bind",
         hostPath: v.hostPath,
         mountPath: v.mountPath,
+        readOnly: v.readOnly,
       };
     if (v.type === "app")
       return {
@@ -173,14 +229,64 @@ function mountsOf(a: DeploExportApp, compose: boolean): SourceMount[] {
         filePath: v.projectPath,
         content: content.get(v.projectPath ?? "") ?? "",
         mountPath: v.mountPath,
+        readOnly: v.readOnly,
       };
     return {
       mountId,
       type: "volume",
       volumeName: v.name,
       mountPath: v.mountPath,
+      readOnly: v.readOnly,
     };
   });
+}
+
+// Which connection it clones with, from a source that says; the GitHub App never moves between instances.
+function gitCredentialOf(
+  x: DeploExport,
+  repo: GitRepo | null,
+): { gitConnection?: SourceGitConnection | null; notes: Note[] } {
+  if (!repo) return { notes: [] };
+  if (repo.installationId)
+    return {
+      gitConnection: null,
+      notes: [
+        blocker(
+          `It cloned ${repo.repo} through the GitHub App on {panel}, which cannot move to another Deplo. Link a GitHub App under the app's Source settings before deploying.`,
+        ),
+      ],
+    };
+  if (!repo.connectionId) return { gitConnection: null, notes: [] };
+  if (!x.gitConnections)
+    return {
+      gitConnection: null,
+      notes: [
+        blocker(
+          `{panel} is too old to hand over the git connection ${repo.repo} clones with. Attach one under the app's Source settings before deploying.`,
+        ),
+      ],
+    };
+  const conn = x.gitConnections.find((g) => g.id === repo.connectionId);
+  if (!conn)
+    return {
+      gitConnection: null,
+      notes: [
+        blocker(
+          `The git connection ${repo.repo} cloned with on {panel} is gone there. Attach one under the app's Source settings before deploying.`,
+        ),
+      ],
+    };
+  return {
+    gitConnection: {
+      provider: conn.provider,
+      label: conn.label,
+      baseUrl: conn.baseUrl,
+      allowPrivateEndpoint: conn.allowPrivateEndpoint,
+      username: conn.username,
+      token: conn.token,
+    },
+    notes: [],
+  };
 }
 
 function repoFields(repo: GitRepo | null): Partial<SourceApplication> {
@@ -244,11 +350,12 @@ function repoFields(repo: GitRepo | null): Partial<SourceApplication> {
 }
 
 interface EnvShape {
-  env: string;
-  previewEnv: string;
+  envEntries: EnvPair[];
+  previewEnvEntries: EnvPair[];
+  previewSecretEnvKeys?: string[];
   secretEnvKeys: string[];
+  productionOnlyEnvKeys: string[];
   sharedRefs: SharedRef[];
-  notes: string[];
 }
 
 // A linked shared variable becomes a reference at the narrowest level that offers it here, so the import links it again.
@@ -268,12 +375,16 @@ export function appEnv(x: DeploExport, a: DeploExportApp): EnvShape {
     ...a.env.filter((e) => e.targets.includes("production")),
     ...copies,
   ];
-  const previewOnly = a.env.filter((e) => !e.targets.includes("production"));
-  const main = toEnvBlob([
-    ...runtime,
-    ...refs.map((r) => ({ key: r.key, value: `\${{${r.level}.${r.key}}}` })),
-  ]);
-  const preview = toEnvBlob(previewOnly);
+  // A preview override replaces the app's variable of that name in a preview.
+  const overrides = a.previewEnv ?? [];
+  const previewVars = [
+    ...a.env.filter(
+      (e) =>
+        !e.targets.includes("production") &&
+        !overrides.some((o) => o.key === e.key),
+    ),
+    ...overrides,
+  ];
   const secret = new Set([
     ...a.env.filter((e) => e.secret).map((e) => e.key),
     ...copies.filter((e) => e.secret).map((e) => e.key),
@@ -282,14 +393,20 @@ export function appEnv(x: DeploExport, a: DeploExportApp): EnvShape {
       .map((v) => v.key),
   ]);
   return {
-    env: main.blob,
-    previewEnv: preview.blob,
+    envEntries: [
+      ...pairs(runtime),
+      ...refs.map((r) => ({ key: r.key, value: `\${{${r.level}.${r.key}}}` })),
+    ],
+    previewEnvEntries: pairs(previewVars),
+    previewSecretEnvKeys: a.previewEnv
+      ? previewVars.filter((e) => e.secret).map((e) => e.key)
+      : undefined,
     secretEnvKeys: [...secret],
+    productionOnlyEnvKeys: a.env
+      .filter((e) => e.targets.includes("production"))
+      .filter((e) => !e.targets.includes("preview"))
+      .map((e) => e.key),
     sharedRefs: refs,
-    notes: unreadNote(
-      [...main.unrepresentable, ...preview.unrepresentable],
-      "its variables",
-    ),
   };
 }
 
@@ -304,17 +421,17 @@ function levelFor(
 }
 
 export function teamShared(x: DeploExport) {
-  return sharedBlob(x.sharedVars.filter((v) => v.teamWide));
+  return sharedVarsOf(x.sharedVars.filter((v) => v.teamWide));
 }
 
 export function projectShared(x: DeploExport, projectId: string) {
-  return sharedBlob(
+  return sharedVarsOf(
     x.sharedVars.filter((v) => !v.teamWide && v.projectIds.includes(projectId)),
   );
 }
 
 export function environmentShared(x: DeploExport, at: Placement) {
-  return sharedBlob(
+  return sharedVarsOf(
     x.sharedVars.filter(
       (v) =>
         !v.teamWide &&
@@ -324,6 +441,16 @@ export function environmentShared(x: DeploExport, at: Placement) {
   );
 }
 
+// A job from an older Deplo arrives as schedule and command alone.
+function cronNotes(w: { crons: DeploExportCron[] }): string[] {
+  const bare = w.crons.filter((j) => j.env === undefined).map((j) => j.name);
+  return bare.length > 0
+    ? [
+        `{panel} is too old to hand over the variables and settings of cron job(s) ${bare.join(", ")}, so only the schedule and command came across. Check them under Crons.`,
+      ]
+    : [];
+}
+
 export function sourceApplication(
   x: DeploExport,
   a: DeploExportApp,
@@ -331,12 +458,33 @@ export function sourceApplication(
   const compose = a.source === "compose";
   const env = appEnv(x, a);
   const { domains, notes: domainNotes } = domainsOf(a, compose);
-  const notes = [...a.notes, ...env.notes, ...domainNotes];
+  const history = backupHistoryOf(a);
+  const notes: Note[] = [
+    ...a.notes,
+    ...domainNotes,
+    ...history.notes,
+    ...cronNotes(a),
+  ];
+  if (a.source === "upload" && !a.upload)
+    notes.push(
+      a.upload === undefined
+        ? "{panel} is too old to hand over its uploaded archive. Upload it again here before deploying."
+        : "It had no archive uploaded on {panel}. Upload one here before deploying.",
+    );
+  if (a.rollbackKeep === undefined)
+    notes.push(
+      "{panel} is too old to hand over its compose flags, rollback count and deploy hook switch, so they start at Deplo's defaults. Check them under Settings.",
+    );
+  if (a.preview === undefined && a.previewEnabled)
+    notes.push(
+      "{panel} is too old to hand over its preview settings, so only previews being on came across. Check them under Previews.",
+    );
   const common = {
     name: a.name,
     appName: a.slug,
-    env: env.env,
+    envEntries: env.envEntries,
     secretEnvKeys: env.secretEnvKeys,
+    productionOnlyEnvKeys: env.productionOnlyEnvKeys,
     sharedRefs: env.sharedRefs,
     domains,
     mounts: mountsOf(a, compose),
@@ -344,8 +492,24 @@ export function sourceApplication(
     serverId: a.serverId,
     environmentId: placementOf(x, a).environmentId,
     backups: backupsOf(a.backups),
+    backupRuns: history.backupRuns,
     routingPort: a.build.port,
+    cronEnabled: a.cronEnabled ?? null,
     platformNotes: notes,
+    previewEnvEntries: env.previewEnvEntries,
+    previewSecretEnvKeys: env.previewSecretEnvKeys,
+    nativePreview: a.preview
+      ? { enabled: a.previewEnabled, ...a.preview }
+      : undefined,
+    registriesCarried: x.registries !== undefined,
+    nativeOps:
+      a.rollbackKeep === undefined
+        ? undefined
+        : {
+            composeUpArgs: a.composeUpArgs ?? null,
+            rollbackKeep: a.rollbackKeep,
+            deployHook: a.deployHook ?? { enabled: true, used: false },
+          },
   };
   if (compose)
     return {
@@ -360,14 +524,22 @@ export function sourceApplication(
     a.source === "docker-image"
       ? { sourceType: "docker", dockerImage: a.dockerImage }
       : a.source === "upload"
-        ? { sourceType: "drop" }
+        ? { sourceType: "drop", upload: a.upload ?? null }
         : repoFields(a.repo);
+  const git: ReturnType<typeof gitCredentialOf> =
+    a.source === "docker-image" || a.source === "upload"
+      ? { notes: [] }
+      : gitCredentialOf(x, a.repo);
+  notes.push(...git.notes);
   // A pending cache clear is this host's housekeeping, not a setting.
   const build: Partial<BuildConfig> = { ...a.build };
   delete build.buildCacheClearPending;
   return {
     ...common,
     ...origin,
+    ...(git.gitConnection !== undefined
+      ? { gitConnection: git.gitConnection }
+      : {}),
     applicationId: a.id,
     sourceType: origin.sourceType ?? "git",
     buildType: a.build.buildMethod,
@@ -382,7 +554,6 @@ export function sourceApplication(
     installCommand: a.build.installCommand,
     buildCommand: a.build.buildCommand,
     command: a.source === "docker-image" ? null : a.build.startCommand,
-    previewEnv: env.previewEnv || null,
     isPreviewDeploymentsActive: a.previewEnabled,
     ports: a.ports.map((p) => ({
       portId: p.id,
@@ -402,22 +573,12 @@ export function sourceApplication(
   } satisfies SourceApplication;
 }
 
-function resourceStrings(d: DeploExportDatabase) {
-  const r = d.resources;
-  return {
-    memoryLimit: r?.memoryMb ? `${r.memoryMb}m` : null,
-    memoryReservation: r?.memoryReservationMb
-      ? `${r.memoryReservationMb}m`
-      : null,
-    cpuLimit: r?.cpuMilli ? String(r.cpuMilli / 1000) : null,
-  };
-}
-
 export function sourceDatabase(
   x: DeploExport,
   d: DeploExportDatabase,
 ): SourceDatabase {
   const kind = dbKindOf(d);
+  const history = backupHistoryOf(d);
   return {
     [`${kind}Id`]: d.id,
     name: d.name,
@@ -428,7 +589,7 @@ export function sourceDatabase(
     databasePassword: d.password || null,
     command: d.customCommand,
     externalPort: d.exposedPort,
-    ...resourceStrings(d),
+    nativeResources: d.resources,
     serverId: d.serverId,
     environmentId: placementOf(x, d).environmentId,
     mounts: d.mounts.map((m, i) => ({
@@ -439,14 +600,9 @@ export function sourceDatabase(
       mountPath: m.mountPath,
     })),
     backups: backupsOf(d.backups),
-    platformNotes: [
-      ...d.notes,
-      ...(d.crons.length > 0
-        ? [
-            `${d.crons.map((j) => j.name).join(", ")} ran on a schedule on {panel} and did not come across. Add ${d.crons.length === 1 ? "it" : "them"} again under Crons.`,
-          ]
-        : []),
-    ],
+    backupRuns: history.backupRuns,
+    cronEnabled: d.cronEnabled ?? null,
+    platformNotes: [...d.notes, ...history.notes, ...cronNotes(d)],
   };
 }
 
@@ -464,18 +620,17 @@ export function sourceTree(x: DeploExport): SourceProject[] {
       project = {
         projectId: at.projectId,
         name: real?.name ?? (folder ? folderPath(x, folder) : x.team.name),
-        env: shared?.env ?? null,
+        ...(real && real.color !== undefined ? { color: real.color } : {}),
+        ...(real
+          ? {}
+          : {
+              landing: folder
+                ? { kind: "folder" as const, folders: folderChain(x, folder) }
+                : { kind: "top" as const },
+            }),
+        envEntries: shared?.envEntries ?? null,
         secretEnvKeys: shared?.secretEnvKeys ?? null,
-        platformNotes: [
-          ...(real
-            ? []
-            : [
-                folder
-                  ? `These were in the ${folderPath(x, folder)} folder on {panel}, outside any project, so they came across as a project of that name.`
-                  : "These were at the top level on {panel}, outside any project, so they came across as a project named after the team.",
-              ]),
-          ...unreadNote(shared?.unrepresentable ?? [], "its shared variables"),
-        ],
+        platformNotes: [],
         environments: [],
       };
       projects.set(at.projectId, project);
@@ -490,12 +645,10 @@ export function sourceTree(x: DeploExport): SourceProject[] {
         environmentId: at.environmentId,
         name: real?.name ?? "production",
         isDefault: real?.isDefault ?? true,
-        env: shared?.env ?? "",
+        ...(real?.kind !== undefined ? { kind: kindOf(real.kind) } : {}),
+        ...(real?.gitBranch !== undefined ? { gitBranch: real.gitBranch } : {}),
+        envEntries: shared?.envEntries ?? [],
         secretEnvKeys: shared?.secretEnvKeys ?? null,
-        platformNotes: unreadNote(
-          shared?.unrepresentable ?? [],
-          "its shared variables",
-        ),
         applications: [],
         compose: [],
       };
@@ -519,9 +672,12 @@ export function sourceTree(x: DeploExport): SourceProject[] {
     const kind = dbKindOf(d);
     ((env[kind] ??= []) as SourceDatabase[]).push(sourceDatabase(x, d));
   }
-  const tree = [...projects.values()].filter((p) =>
-    (p.environments ?? []).some(hasServices),
-  );
+  const tree = [...projects.values()];
+  if (tree[0] && x.projects.some((p) => p.color === undefined))
+    tree[0].platformNotes = [
+      ...(tree[0].platformNotes ?? []),
+      "{panel} is too old to send each project's colour, or each environment's kind and branch, so those were left as Deplo sets them. Update it first to bring them across.",
+    ];
   if (x.withheld > 0 && tree[0])
     tree[0].platformNotes = [
       ...(tree[0].platformNotes ?? []),
@@ -530,12 +686,13 @@ export function sourceTree(x: DeploExport): SourceProject[] {
   return tree;
 }
 
-function hasServices(e: SourceEnvironment): boolean {
-  return (
-    (e.applications?.length ?? 0) > 0 ||
-    (e.compose?.length ?? 0) > 0 ||
-    Object.values(DB_KIND).some(
-      (k) => ((e[k] as SourceDatabase[] | null | undefined)?.length ?? 0) > 0,
-    )
-  );
+const KINDS: EnvironmentKind[] = [
+  "development",
+  "preview",
+  "production",
+  "custom",
+];
+
+function kindOf(kind: string): EnvironmentKind {
+  return KINDS.find((k) => k === kind) ?? "custom";
 }

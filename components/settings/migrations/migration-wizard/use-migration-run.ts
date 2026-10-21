@@ -77,6 +77,7 @@ export function useMigrationRun({
   const [running, setRunning] = React.useState(false);
   const startingRef = React.useRef(false);
   const [starting, setStarting] = React.useState(false);
+  const [liveCopy, setLiveCopy] = React.useState(false);
   const [undoing, setUndoing] = React.useState(false);
   const [adoptedId, setAdoptedId] = React.useState<string | null>(null);
   const [logOpen, setLogOpen] = React.useState(false);
@@ -106,6 +107,7 @@ export function useMigrationRun({
         targets,
         servers,
         queued: opts.queued,
+        liveCopy: opts.from.platform === "deplo" && liveCopy,
       },
       (d) => d.startMigration,
       { teamId: opts.home },
@@ -268,6 +270,7 @@ export function useMigrationRun({
         skipped: sum(runs, "skipped"),
         failed: sum(runs, "failed"),
         manual: sum(runs, "manual"),
+        blocking: sum(runs, "blocking"),
       });
       setStep((at2) =>
         at2 === "review" ? afterRun(hasMigrationPeople(runs)) : at2,
@@ -331,6 +334,7 @@ export function useMigrationRun({
         skipped: r.skipped,
         failed: r.failed,
         manual: r.manual,
+        blocking: r.blocking,
       },
     }));
   const totals = {
@@ -338,6 +342,7 @@ export function useMigrationRun({
     skipped: sum(sessionRuns, "skipped"),
     failed: sum(sessionRuns, "failed"),
     manual: sum(sessionRuns, "manual"),
+    blocking: sum(sessionRuns, "blocking"),
   };
   const watched = useMigrationFeed(targetTeamId ?? teamId);
 
@@ -401,6 +406,8 @@ export function useMigrationRun({
     setFailure,
     running,
     starting,
+    liveCopy,
+    setLiveCopy,
     undoing,
     logOpen,
     setLogOpen,

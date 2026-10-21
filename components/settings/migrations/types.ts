@@ -70,6 +70,7 @@ export interface ReportItem {
   targetId: string | null;
   message: string | null;
   at?: string | null;
+  blocking?: boolean;
 }
 
 export interface Invite {
@@ -94,6 +95,7 @@ export interface SessionRun {
   skipped: number;
   failed: number;
   manual: number;
+  blocking: number;
   error: string | null;
   members: Invite[];
 }
@@ -116,6 +118,7 @@ export interface ImportRun {
   skipped: number;
   failed: number;
   manual: number;
+  blocking: number;
   error: string | null;
   startedAt: string;
   finishedAt: string | null;
@@ -164,4 +167,15 @@ export function isImportable(s: PlanService): boolean {
 
 export function importableOf(p: PlanProject): PlanService[] {
   return p.environments.flatMap((e) => e.services.filter(isImportable));
+}
+
+// A project with nothing in it is picked by its own id, so it still comes across.
+export function isEmptyProject(p: PlanProject): boolean {
+  return p.environments.every((e) => e.services.length === 0);
+}
+
+export function emptyPicked(plan: Plan, chosen: Set<string>): PlanProject[] {
+  return plan.projects.filter(
+    (p) => isEmptyProject(p) && chosen.has(p.sourceId),
+  );
 }

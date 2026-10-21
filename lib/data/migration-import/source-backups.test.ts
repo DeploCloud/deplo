@@ -71,7 +71,7 @@ test("an application's volume backup comes across as an app backup on that desti
   const runId = await asOwner(() => beginMigration({ url: URL_BASE }));
   await importProject(runId, "dok-prj-blink");
   const rows = await db.execute(
-    "select b.schedule, b.retention_count, b.target_kind, d.name as dest from backups b join backup_destination d on d.id = b.destination_id where b.app_id is not null",
+    "select b.schedule, b.retention_count, b.target_kind, d.name as dest from backups b join backup_destination d on d.id = b.destination_id where b.app_id is not null and b.enabled",
   );
   const notes = (await db.select().from(itemsTable))
     .filter((i) => i.runId === runId && i.sourceKind === "application")
@@ -100,6 +100,15 @@ test("an application's volume backup comes across as an app backup on that desti
     notes.some((m) =>
       /volume uploads, volume cache shared the schedule/.test(m),
     ),
+    notes.join("\n"),
+  );
+  const paused = await db.execute(
+    "select schedule from backups where app_id is not null and not enabled",
+  );
+  assert.ok(paused.rows.length >= 1);
+  for (const r of paused.rows) assert.equal(r.schedule, "0 6 * * *");
+  assert.ok(
+    notes.some((m) => /came across paused, as it was: 0 6 \* \* \*/.test(m)),
     notes.join("\n"),
   );
   delete source.fixtures["volumeBackups.list"];
@@ -141,7 +150,7 @@ test("a database's backup schedule comes across onto the destination that came w
   const runId = await asOwner(() => beginMigration({ url: URL_BASE }));
   await importProject(runId, "dok-prj-blink");
   const rows = await db.execute(
-    "select b.schedule, b.retention_count, d.name as dest from backups b join backup_destination d on d.id = b.destination_id",
+    "select b.schedule, b.retention_count, b.enabled, d.name as dest from backups b join backup_destination d on d.id = b.destination_id order by b.schedule",
   );
   const notes = (await db.select().from(itemsTable))
     .filter((i) => i.runId === runId && i.sourceKind === "postgres")
@@ -151,7 +160,20 @@ test("a database's backup schedule comes across onto the destination that came w
     .map((i) => `${i.outcome}: ${i.message ?? ""}`);
   assert.deepEqual(
     rows.rows,
-    [{ schedule: "0 3 * * *", retention_count: 5, dest: "nightly" }],
+    [
+      {
+        schedule: "0 3 * * *",
+        retention_count: 5,
+        enabled: true,
+        dest: "nightly",
+      },
+      {
+        schedule: "0 5 * * *",
+        retention_count: 7,
+        enabled: false,
+        dest: "nightly",
+      },
+    ],
     notes.join("\n") + "\nDEST " + dests.join("\n"),
   );
   assert.ok(

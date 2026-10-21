@@ -97,3 +97,19 @@ test("domainTlsConfig: every other provider still names a resolver", () => {
     certResolver: "",
   });
 });
+
+test("domainTlsConfig: a temporary address on `custom` still gets a real certificate", () => {
+  assert.deepEqual(
+    domainTlsConfig({
+      name: "web-keen-puma-cb007107.deplo.site",
+      certProvider: "custom",
+      entrypoint: "web",
+    }),
+    { entrypoint: "websecure", tls: true, certResolver: certResolver() },
+  );
+  assert.deepEqual(
+    domainTlsConfig({ name: "app.example.com", certProvider: "custom" }),
+    { entrypoint: "websecure", tls: true, certResolver: "" },
+    "a real hostname may carry a certificate the operator installed",
+  );
+});

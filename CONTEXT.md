@@ -755,7 +755,25 @@ MCP tools; it turned out no MCP tool names a field here, and `scanDokploy` point
 panel was a lie, which is worse than an old name.
 _Avoid_: transfer (that is **app transfer**, moving an App between teams), move (that is a
 **server move**, relocating one workload between hosts), sync (nothing here is continuous - a
-migration happens once and stops the source), import (the old wire word, now retired).
+migration happens once, and stops the source unless it is a **live copy**), import (the old wire
+word, now retired).
+
+**Live copy** (keep it running):
+A migration from another Deplo that leaves the source running: `migration_runs.live_copy`, the
+wizard's advanced "Keep everything running on {panel}", Deplo sources only. Nothing is stopped
+there (a database whose port is taken lands on a free one, or unpublished); databases arrive as a snapshot their engine takes while running, app files are copied while
+the apps keep writing, and crons, backup schedules and deploy on push land switched off so the two
+copies never both run them. The switch-over is the user's
+([ADR-0034](docs/adr/0034-another-deplo-hands-its-team-over-itself.md)).
+_Avoid_: sync, mirror (nothing is kept in step after the run), a **Deplo move** (a whole Deplo).
+
+**Blocker** (a report line):
+A line of a migration **report** saying the app will not run until somebody does what it says
+(its code is not here, a value arrived empty, nobody can sign in). Written `blocker("...")`
+(`lib/migration/note.ts`), stored as `migration_run_items.blocking`, counted in
+`migration_runs.blocking` and shown first as "N need you". Every other note is **information**,
+a plain string, counted in `manual` and shown as "N notes". Failures keep their own count.
+_Avoid_: warning, error (a failure is `failed`), "needs you" for a line that is only information.
 
 **Deplo move**:
 Copying a WHOLE Deplo - every team, account, App, variable, token, backup and setting - onto a
@@ -933,7 +951,9 @@ single whole-set concept.
 A hostname routed to an app - one row per `(hostname, path)`, and the **sole** routing
 source the renderers read (`routableRoutes` ⇒ `traefikRouterLabels`). Carries its own DNS
 `status` (only `valid`/`cloudflare` are routed), certificate provider (opt-in; `none` ⇒
-plain HTTP), container port, compose service, optional path prefix and middleware chain.
+plain HTTP - except a temporary address on a public server, which always gets `letsencrypt`,
+on creation and after a migration, within the team's Let's Encrypt cap), container port,
+compose service, optional path prefix and middleware chain.
 Exactly one domain per app is **primary** - the _canonical host_, the app's
 `productionUrl`.
 
@@ -941,7 +961,8 @@ Exactly one domain per app is **primary** - the _canonical host_, the app's
 A TLS certificate the operator brought themselves (a wildcard, a company CA, a domain no
 HTTP challenge can reach), installed on ONE **server** from Settings, Servers, its
 Certificates tab. It lives in that host's own Traefik stack file and nowhere else: Deplo
-keeps no copy, the list is read back off the host, and the private key has no read path.
+keeps no copy, the list is read back off the host, and the private key has one read path
+only: a migration export read with an instance admin's token (ADR-0034).
 The proxy picks it by the hostname the browser asked for. Installing one is only half of
 it: a **Domain** reaches it by setting its `certProvider` to `custom` ("Installed on the
 server"), which serves that hostname over HTTPS with no ACME resolver named. A Domain left

@@ -134,7 +134,12 @@ export interface CreateAppInput {
   logo?: string | null;
   logoFromTemplate?: boolean;
   compose?: string | null;
-  env?: { key: string; value: string; type?: EnvEntryType }[];
+  env?: {
+    key: string;
+    value: string;
+    type?: EnvEntryType;
+    targets?: EnvTarget[];
+  }[];
   serverId?: string;
   buildServerId?: string | null;
   build?: Partial<BuildConfig>;
@@ -155,6 +160,8 @@ export interface CreateAppInput {
   projectId?: string | null;
   environmentId?: string | null;
   deploy?: boolean;
+  // A copy of an app still running elsewhere leaves its push webhook to the original.
+  noWebhook?: boolean;
 }
 
 export interface CreateAppFromTemplateInput {
@@ -414,7 +421,9 @@ export async function createApp(input: CreateAppInput): Promise<AppSummary> {
         appId: project.id,
         key,
         valueEnc: encryptSecret(e.value),
-        targets: ["production", "preview"] as EnvTarget[],
+        targets: e.targets?.length
+          ? e.targets
+          : (["production", "preview"] as EnvTarget[]),
         type: e.type ?? ("plain" as const),
         createdByUserId: userId,
         updatedByUserId: userId,
@@ -481,7 +490,7 @@ export async function createApp(input: CreateAppInput): Promise<AppSummary> {
   );
   for (const note of renameNotes)
     await recordActivity("app", note, user.name, project.id);
-  await syncAppWebhook(project.repo).catch(() => {});
+  if (!input.noWebhook) await syncAppWebhook(project.repo).catch(() => {});
 
   const ip = serverIp;
   // Named by a template or another panel, so held to the rule every domain is.

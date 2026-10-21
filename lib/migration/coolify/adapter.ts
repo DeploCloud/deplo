@@ -1,4 +1,5 @@
 import { mapLimit } from "../../utils";
+import { blocker, type Note } from "../note";
 import { composeServices } from "../map/compose-read";
 import { deploFilesPath } from "../map/source-platform";
 import {
@@ -276,10 +277,12 @@ async function detail(
   ]);
   const env = coolifyEnvBlob(envRows);
   const { mounts } = coolifyMounts(storages, id);
-  const envNotes = [
+  const envNotes: Note[] = [
     ...(env.unreadableKeys.length > 0
       ? [
-          `${env.unreadableKeys.join(", ")} arrived empty: {panel} shows those values once and does not answer with them again. Set them under Variables before deploying.`,
+          blocker(
+            `${env.unreadableKeys.join(", ")} arrived empty: {panel} shows those values once and does not answer with them again. Set them under Variables before deploying.`,
+          ),
         ]
       : []),
     ...(env.interpolatedKeys.length > 0

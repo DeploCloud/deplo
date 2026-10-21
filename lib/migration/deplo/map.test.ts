@@ -1,14 +1,15 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-import { mapDomains } from "../map/domains";
+import { mapDomains, pickPrimaryDomain } from "../map/domains";
+import { mapMounts } from "../map/mounts";
 import { mapSource } from "../map/app-source";
-import { parseEnvBlob } from "../map/env";
 import { servicesOf } from "../../data/migration-import/source-tree";
 import type { SourceApplication, SourceCompose } from "../model";
 import { deploExport, exportApp, exportDatabase } from "./deplo-test-helpers";
 import type { DeploExportSharedVar } from "./export-shape";
 import { appEnv, sourceApplication, sourceDatabase, sourceTree } from "./map";
+import { noteText } from "../note";
 
 function shared(over: Partial<DeploExportSharedVar>): DeploExportSharedVar {
   return {
@@ -48,10 +49,10 @@ test("an app keeps its project and environment", () => {
   );
 });
 
-test("apps outside any project land in a project per folder, and one for the top level", () => {
+test("apps outside any project stay in their folder, or at the top level", () => {
   const x = deploExport({
     folders: [
-      { id: "fld_a", name: "Clients", parentId: null },
+      { id: "fld_a", name: "Clients", parentId: null, color: "#112233" },
       { id: "fld_b", name: "Big", parentId: "fld_a" },
     ],
     apps: [
@@ -67,7 +68,7 @@ test("apps outside any project land in a project per folder, and one for the top
   });
   const tree = sourceTree(x);
   const names = tree.map((p) => p.name).sort();
-  assert.deepEqual(names, ["Acme", "Clients / Big"]);
+  assert.deepEqual(names, ["Acme", "Clients / Big", "Shop"]);
   const top = tree.find((p) => p.name === "Acme")!;
   assert.deepEqual(
     servicesOf(top.environments![0])
@@ -75,7 +76,18 @@ test("apps outside any project land in a project per folder, and one for the top
       .sort(),
     ["db_main", "prj_top"],
   );
-  assert.match(top.platformNotes!.join(" "), /top level on \{panel\}/);
+  assert.deepEqual(top.landing, { kind: "top" });
+  assert.deepEqual(tree.find((p) => p.name === "Clients / Big")!.landing, {
+    kind: "folder",
+    folders: [
+      { sourceId: "fld_a", name: "Clients", color: "#112233" },
+      { sourceId: "fld_b", name: "Big", color: null },
+    ],
+  });
+  assert.doesNotMatch(
+    tree.flatMap((p) => p.platformNotes ?? []).join(" "),
+    /came across as a project/,
+  );
 });
 
 test("a linked shared variable becomes a reference at the narrowest level that offers it", () => {
@@ -101,11 +113,59 @@ test("a linked shared variable becomes a reference at the narrowest level that o
     ["PROJ", "project"],
     ["TEAM", "team"],
   ]);
-  const vars = new Map(parseEnvBlob(env.env).map((e) => [e.key, e.value]));
+  const vars = new Map(env.envEntries.map((e) => [e.key, e.value]));
   assert.equal(vars.get("ENVV"), "${{environment.ENVV}}");
   assert.equal(vars.get("STRAY"), "inline", "out of scope: its own copy");
   assert.equal(vars.has("UNLINKED"), false);
   assert.ok(env.secretEnvKeys.includes("ENVV"));
+});
+
+test("a project with nothing in it still comes across, with its colour and environments", () => {
+  const x = deploExport({
+    projects: [
+      ...deploExport().projects,
+      {
+        id: "prc_empty",
+        name: "Later",
+        color: "#ff8800",
+        environments: [
+          {
+            id: "environ_live",
+            name: "Live",
+            isDefault: true,
+            kind: "production",
+            gitBranch: "main",
+          },
+          {
+            id: "environ_qa",
+            name: "QA",
+            isDefault: false,
+            kind: "custom",
+            gitBranch: "qa",
+          },
+        ],
+      },
+    ],
+  });
+  const later = sourceTree(x).find((p) => p.projectId === "prc_empty");
+  assert.ok(later, "an empty project is offered");
+  assert.equal(later.color, "#ff8800");
+  assert.deepEqual(
+    later.environments!.map((e) => [e.name, e.isDefault, e.kind, e.gitBranch]),
+    [
+      ["Live", true, "production", "main"],
+      ["QA", false, "custom", "qa"],
+    ],
+  );
+});
+
+test("an older Deplo that sends no colour or branches says so once", () => {
+  const tree = sourceTree(deploExport());
+  const shop = tree.find((p) => p.projectId === "prc_shop")!;
+  assert.equal(shop.color, undefined);
+  assert.equal(shop.environments![0].kind, undefined);
+  const notes = tree.flatMap((p) => p.platformNotes ?? []).join(" ");
+  assert.equal(notes.match(/too old to send/g)?.length, 1);
 });
 
 test("an app's own variable wins over a shared one of the same name", () => {
@@ -126,7 +186,7 @@ test("an app's own variable wins over a shared one of the same name", () => {
   });
   const env = appEnv(x, x.apps[0]);
   assert.deepEqual(env.sharedRefs, []);
-  assert.deepEqual(parseEnvBlob(env.env), [{ key: "TEAM", value: "mine" }]);
+  assert.deepEqual(env.envEntries, [{ key: "TEAM", value: "mine" }]);
 });
 
 test("a preview-only variable stays a preview variable", () => {
@@ -146,11 +206,140 @@ test("a preview-only variable stays a preview variable", () => {
     ],
   });
   const app = sourceApplication(x, x.apps[0]) as SourceApplication;
-  assert.deepEqual(parseEnvBlob(app.env), [{ key: "BOTH", value: "1" }]);
-  assert.deepEqual(parseEnvBlob(app.previewEnv), [
-    { key: "PREVIEW", value: "2" },
-  ]);
+  assert.deepEqual(app.envEntries, [{ key: "BOTH", value: "1" }]);
+  assert.deepEqual(app.previewEnvEntries, [{ key: "PREVIEW", value: "2" }]);
   assert.deepEqual(app.secretEnvKeys, ["PREVIEW"]);
+});
+
+test("a production-only variable is named so previews do not get it", () => {
+  const x = deploExport({
+    apps: [
+      exportApp({
+        env: [
+          {
+            key: "BOTH",
+            value: "1",
+            secret: false,
+            targets: ["production", "preview"],
+          },
+          { key: "PROD", value: "2", secret: false, targets: ["production"] },
+        ],
+      }),
+    ],
+  });
+  const app = sourceApplication(x, x.apps[0]) as SourceApplication;
+  assert.deepEqual(app.productionOnlyEnvKeys, ["PROD"]);
+});
+
+const PREVIEW = {
+  baseDomain: "pr.example.com",
+  maxActive: 7,
+  ttlDays: 14,
+  forkPolicy: "deny",
+  serverId: "srv_previews",
+  https: true,
+  autoDeploy: false,
+  port: 8080,
+  buildDrafts: true,
+  comment: false,
+  requiredLabels: "preview\nqa",
+};
+
+test("preview settings travel in Deplo's own shape, off or on", () => {
+  const x = deploExport({
+    apps: [exportApp({ previewEnabled: false, preview: PREVIEW })],
+  });
+  const app = sourceApplication(x, x.apps[0]) as SourceApplication;
+  assert.deepEqual(app.nativePreview, { enabled: false, ...PREVIEW });
+});
+
+test("a preview override travels with its type, and wins over a preview-only variable", () => {
+  const x = deploExport({
+    apps: [
+      exportApp({
+        env: [
+          { key: "API", value: "app", secret: true, targets: ["preview"] },
+          { key: "ONLY", value: "1", secret: false, targets: ["preview"] },
+        ],
+        previewEnv: [
+          { key: "API", value: "override", secret: false },
+          { key: "TOKEN", value: "t", secret: true },
+        ],
+      }),
+    ],
+  });
+  const app = sourceApplication(x, x.apps[0]) as SourceApplication;
+  assert.deepEqual(app.previewEnvEntries, [
+    { key: "ONLY", value: "1" },
+    { key: "API", value: "override" },
+    { key: "TOKEN", value: "t" },
+  ]);
+  assert.deepEqual(app.previewSecretEnvKeys, ["TOKEN"]);
+});
+
+test("an older Deplo that hands over only on/off says so", () => {
+  const x = deploExport({ apps: [exportApp({ previewEnabled: true })] });
+  const app = sourceApplication(x, x.apps[0]) as SourceApplication;
+  assert.equal(app.nativePreview, undefined);
+  assert.equal(app.isPreviewDeploymentsActive, true);
+  assert.ok(
+    app.platformNotes?.some((n) =>
+      /too old to hand over its preview/.test(noteText(n)),
+    ),
+  );
+});
+
+test("a compose app carries its preview settings too", () => {
+  const x = deploExport({
+    apps: [
+      exportApp({
+        source: "compose",
+        repo: null,
+        compose: "services:\n  web:\n    image: nginx\n",
+        previewEnabled: true,
+        preview: PREVIEW,
+        previewEnv: [{ key: "TOKEN", value: "t", secret: true }],
+      }),
+    ],
+  });
+  const app = sourceApplication(x, x.apps[0]) as SourceApplication;
+  assert.deepEqual(app.nativePreview, { enabled: true, ...PREVIEW });
+  assert.deepEqual(app.previewEnvEntries, [{ key: "TOKEN", value: "t" }]);
+});
+
+test("a read-only volume stays read-only", () => {
+  const x = deploExport({
+    apps: [
+      exportApp({
+        volumes: [
+          {
+            id: "v1",
+            type: "named",
+            name: "data",
+            mountPath: "/data",
+            readOnly: true,
+          },
+          {
+            id: "v2",
+            type: "host",
+            name: "logs",
+            hostPath: "/srv/logs",
+            mountPath: "/logs",
+            readOnly: false,
+          },
+        ],
+      }),
+    ],
+  });
+  const app = sourceApplication(x, x.apps[0]) as SourceApplication;
+  const mapped = mapMounts(app.mounts, { isCompose: false });
+  assert.deepEqual(
+    mapped.value.volumes.map((v) => [v.mountPath, v.readOnly]),
+    [
+      ["/data", true],
+      ["/logs", false],
+    ],
+  );
 });
 
 test("each git provider maps to a repository the importer clones from the same place", () => {
@@ -253,10 +442,74 @@ test("a host the old Deplo minted is not claimed as somebody's domain", () => {
       ["shop.example", false],
     ],
   );
-  assert.match(
-    app.platformNotes!.join(" "),
-    /www\.shop\.example only redirected/,
+  assert.equal(
+    app.domains?.find((d) => d.host === "www.shop.example")?.nativeRules
+      ?.redirectTo,
+    "shop.example",
+    "the redirect travels to the import, which lands it once its target has",
   );
+  assert.equal(
+    pickPrimaryDomain(mapped.value)?.host,
+    "shop.example",
+    "a minted primary cannot be claimed here, so a real one leads",
+  );
+});
+
+test("a Deplo too old to send a domain's rules says they arrive with the defaults", () => {
+  const route = {
+    port: 3000,
+    pathPrefix: "",
+    stripPrefix: false,
+    service: null,
+    https: true,
+    certProvider: "letsencrypt",
+    primary: true,
+    redirectTo: null,
+    generated: false,
+  };
+  const notesFor = (over: object) => {
+    const x = deploExport({
+      apps: [
+        exportApp({ domains: [{ host: "shop.example", ...route, ...over }] }),
+      ],
+    });
+    return (
+      sourceApplication(x, x.apps[0]) as SourceApplication
+    ).platformNotes!.join(" ");
+  };
+  assert.match(notesFor({}), /too old to hand over its domains' Middlewares/);
+  assert.doesNotMatch(
+    notesFor({ securityHeaders: true, middlewares: [], corsOrigins: [] }),
+    /too old to hand over its domains'/,
+  );
+});
+
+test("the domain the old Deplo marked primary is the primary here", () => {
+  const domain = (host: string, primary: boolean) => ({
+    host,
+    port: 3000,
+    pathPrefix: "",
+    stripPrefix: false,
+    service: null,
+    https: true,
+    certProvider: "letsencrypt",
+    primary,
+    redirectTo: null,
+    generated: false,
+  });
+  const x = deploExport({
+    apps: [
+      exportApp({
+        domains: [
+          domain("shop.example", false),
+          domain("www.shop.example", true),
+        ],
+      }),
+    ],
+  });
+  const app = sourceApplication(x, x.apps[0]) as SourceApplication;
+  const mapped = mapDomains(app.domains, { isCompose: false });
+  assert.equal(pickPrimaryDomain(mapped.value)?.host, "www.shop.example");
 });
 
 test("a compose app carries its stack and its files", () => {
@@ -302,5 +555,47 @@ test("a database keeps its engine, version and credentials", () => {
   assert.equal(db.mongoId, "db_main");
   assert.equal(db.dockerImage, "mongo:7");
   assert.equal(db.databasePassword, "pw");
-  assert.match(db.platformNotes!.join(" "), /vacuum ran on a schedule/);
+  assert.match(
+    db.platformNotes!.join(" "),
+    /too old to hand over the variables and settings of cron job\(s\) vacuum/,
+  );
+});
+
+test("a database carries every limit in Deplo's own shape", () => {
+  const x = deploExport({
+    databases: [
+      exportDatabase({
+        resources: { memoryMb: 256, pidsLimit: 64 } as never,
+      }),
+    ],
+  });
+  const db = sourceDatabase(x, x.databases[0]);
+  assert.deepEqual(db.nativeResources, { memoryMb: 256, pidsLimit: 64 });
+});
+
+test("a source too old to send backup history says its restore points stayed behind", () => {
+  const backups = [
+    {
+      schedule: "0 3 * * *",
+      enabled: true,
+      retentionCount: 7,
+      destination: "b",
+    },
+  ];
+  const old = sourceDatabase(deploExport(), exportDatabase({ backups }));
+  assert.equal(old.backupRuns, undefined);
+  assert.ok(
+    old.platformNotes?.some((n) =>
+      /too old to send its backup history/.test(noteText(n)),
+    ),
+  );
+  const fresh = sourceDatabase(
+    deploExport(),
+    exportDatabase({ backups, backupRuns: [] }),
+  );
+  assert.deepEqual(fresh.backupRuns, []);
+  assert.equal(
+    fresh.platformNotes?.some((n) => /backup history/.test(noteText(n))),
+    false,
+  );
 });

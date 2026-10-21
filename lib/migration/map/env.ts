@@ -1,9 +1,19 @@
 const KEY_RE = /^[A-Z_][A-Z0-9_]*$/i;
 
-export function parseEnvBlob(blob: string | null | undefined): {
+export interface EnvPair {
   key: string;
   value: string;
-}[] {
+}
+
+// A source that hands variables over as pairs is taken as is; only `.env` text is parsed.
+export function envEntriesOf(
+  row:
+    { env?: string | null; envEntries?: EnvPair[] | null } | null | undefined,
+): EnvPair[] {
+  return row?.envEntries ?? parseEnvBlob(row?.env);
+}
+
+export function parseEnvBlob(blob: string | null | undefined): EnvPair[] {
   if (!blob) return [];
   const out: { key: string; value: string }[] = [];
   const seen = new Set<string>();
@@ -103,7 +113,7 @@ export function sharedRefsIn(
 
 export function resolveSharedRefs(
   entries: { key: string; value: string }[],
-  shared: Map<string, string>,
+  lookup: (level: SharedRefLevel, key: string) => string | undefined,
 ): { resolved: string[]; unresolved: string[] } {
   const resolved: string[] = [];
   const unresolved: string[] = [];
@@ -111,8 +121,8 @@ export function resolveSharedRefs(
     if (!e.value.includes("{{")) continue;
     let hit = false;
     let miss = false;
-    e.value = e.value.replace(SHARED_REF, (whole, _level, key: string) => {
-      const v = shared.get(key);
+    e.value = e.value.replace(SHARED_REF, (whole, level, key: string) => {
+      const v = lookup(level as SharedRefLevel, key);
       if (v === undefined) {
         miss = true;
         return whole;

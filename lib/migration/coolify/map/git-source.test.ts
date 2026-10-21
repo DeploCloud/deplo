@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 
 import { coolifyApplication } from "./applications";
 import { APP } from "./map-test-helpers";
+import { noteText } from "../../note";
 
 test("a short repository is joined to the host its source lives on", () => {
   const short = coolifyApplication({
@@ -73,7 +74,9 @@ test("a repository with no source at all says github was assumed", () => {
   assert.equal(a.customGitUrl, "https://github.com/acme/web.git");
   assert.equal(a.sourceType, "github");
   assert.ok(
-    a.platformNotes?.some((n) => n.includes("Change it under Source")),
+    a.platformNotes?.some((n) =>
+      noteText(n).includes("Change it under Source"),
+    ),
     "the guess has to be said out loud",
   );
 });

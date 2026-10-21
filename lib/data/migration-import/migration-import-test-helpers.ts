@@ -345,6 +345,7 @@ export async function resetMigrationHarness(db: TestDb): Promise<void> {
         capabilities: [
           "view",
           "create_projects",
+          "manage_environments",
           "create_apps",
           "create_databases",
           "manage_env",
@@ -389,7 +390,7 @@ export async function seedSource(
 
 export async function provisionServer1(
   db: TestDb,
-  taken: number[] = [],
+  taken: number[] | ((port: number) => boolean) = [],
 ): Promise<{ probed: number[] }> {
   await db
     .update(serversTable)
@@ -400,7 +401,7 @@ export async function provisionServer1(
       agentVersion: "1.27.0",
     })
     .where(eq(serversTable.id, SERVER_1));
-  const held = new Set(taken);
+  const held = typeof taken === "function" ? { has: taken } : new Set(taken);
   const probed: number[] = [];
   __setAgentConnectorForTest(
     async () =>

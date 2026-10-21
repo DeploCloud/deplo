@@ -30,6 +30,7 @@ import { copyText } from "@/lib/clipboard";
 import { gql } from "@/lib/graphql-client";
 import { FacetMenu } from "@/components/env/env-filters/facet-menu";
 import type { EnvFacet } from "@/components/env/env-filters/types";
+import { reportLevel, type ReportLevel } from "./steps";
 import type { ReportItem } from "./types";
 
 const RUN_LOG = /* GraphQL */ `
@@ -48,6 +49,7 @@ const RUN_LOG = /* GraphQL */ `
         targetKind
         message
         at
+        blocking
       }
     }
   }
@@ -65,13 +67,23 @@ interface RunLog {
 }
 
 const LEVELS = {
+  blocking: {
+    label: "Needs you",
+    icon: TriangleAlert,
+    tone: "text-warning",
+  },
+  failed: {
+    label: "Failed",
+    icon: TriangleAlert,
+    tone: "text-destructive",
+  },
   created: {
     label: "Created",
     icon: Check,
     tone: "text-success",
   },
   skipped: {
-    label: "Skipped",
+    label: "Already here",
     icon: SkipForward,
     tone: "text-muted-foreground",
   },
@@ -81,34 +93,23 @@ const LEVELS = {
     tone: "text-muted-foreground",
   },
   manual: {
-    label: "Needs you",
+    label: "Notes",
     icon: Info,
-    tone: "text-warning",
+    tone: "text-muted-foreground",
   },
-  failed: {
-    label: "Failed",
-    icon: TriangleAlert,
-    tone: "text-destructive",
-  },
-} as const;
-
-type Level = keyof typeof LEVELS;
-
-function levelOf(outcome: string): Level {
-  return outcome in LEVELS ? (outcome as Level) : "manual";
-}
+} as const satisfies Record<ReportLevel, unknown>;
 
 const LEVEL_FACET: EnvFacet<ReportItem> = {
   id: "outcome",
   label: "Outcome",
   allLabel: "All outcomes",
   icon: SlidersHorizontal,
-  options: (Object.keys(LEVELS) as Level[]).map((value) => ({
+  options: (Object.keys(LEVELS) as ReportLevel[]).map((value) => ({
     value,
     label: LEVELS[value].label,
     labelClassName: LEVELS[value].tone,
   })),
-  match: (row, value) => levelOf(row.outcome) === value,
+  match: (row, value) => reportLevel(row) === value,
 };
 
 function clock(at: string | null | undefined): string {
@@ -205,7 +206,7 @@ export function MigrationConsole({
     () =>
       levels.length === 0
         ? searched
-        : searched.filter((i) => levels.includes(levelOf(i.outcome))),
+        : searched.filter((i) => levels.includes(reportLevel(i))),
     [searched, levels],
   );
 
@@ -216,13 +217,17 @@ export function MigrationConsole({
 
   const counts = searched.reduce(
     (acc, i) => {
-      acc[levelOf(i.outcome)] += 1;
+      acc[reportLevel(i)] += 1;
       return acc;
     },
-    { created: 0, skipped: 0, unsupported: 0, manual: 0, failed: 0 } as Record<
-      Level,
-      number
-    >,
+    {
+      blocking: 0,
+      created: 0,
+      skipped: 0,
+      unsupported: 0,
+      manual: 0,
+      failed: 0,
+    } as Record<ReportLevel, number>,
   );
 
   async function copyLog() {
@@ -303,7 +308,7 @@ export function MigrationConsole({
           )}
           <ul className="divide-y divide-border/40">
             {shown.map((i, n) => {
-              const lv = LEVELS[levelOf(i.outcome)];
+              const lv = LEVELS[reportLevel(i)];
               const Icon = lv.icon;
               return (
                 <li

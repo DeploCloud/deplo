@@ -67,6 +67,21 @@ export async function authenticateToken(
   return null;
 }
 
+// A background job started by a token re-resolves it each pass, so revoking or narrowing it stops the job.
+export async function identityForTokenId(
+  tokenId: string,
+  teamId: string,
+): Promise<RequestIdentity | null> {
+  const [row] = await getDb()
+    .select(TOKEN_ROW_COLUMNS)
+    .from(apiTokens)
+    .innerJoin(usersTable, eq(usersTable.id, apiTokens.userId))
+    .where(eq(apiTokens.id, tokenId))
+    .limit(1);
+  const identity = row ? await identityForTokenRow(row, teamId) : null;
+  return identity?.teamId === teamId ? identity : null;
+}
+
 async function oauthTokenRow(raw: string): Promise<TokenRow | null> {
   const hash = sha256Hex(raw.slice(OAUTH_ACCESS_TOKEN_PREFIX.length));
   const rows = await getDb()

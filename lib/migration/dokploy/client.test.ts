@@ -13,6 +13,7 @@ import {
   describeTransportError,
   normalizeSourceBaseUrl,
 } from "../transport";
+import { noteText } from "../note";
 
 const cred = {
   kind: "dokploy" as const,
@@ -127,7 +128,7 @@ test("a middleware written into the app's own Traefik file is reported by name",
     "application.readTraefikConfig": traefik,
   });
   const row = await dokployClient(cred).getService("application", "a1");
-  const notes = row.platformNotes ?? [];
+  const notes = (row.platformNotes ?? []).map(noteText);
   assert.equal(notes.length, 1);
   assert.match(notes[0], /custom middleware, mx-headers \(headers\)/);
   assert.doesNotMatch(notes[0], /auth-mxweb/);

@@ -76,12 +76,13 @@ test("resolveSharedRefs rewrites in place and names what it could not answer", (
   const entries = parseEnvBlob(
     "A=${{project.DB_URL}}\nB=pre-{{team.X}}-post\nC={{team.MISSING}}\nD=plain",
   );
-  const r = resolveSharedRefs(
-    entries,
-    new Map([
-      ["DB_URL", "postgres://here"],
-      ["X", "mid"],
-    ]),
+  const shared = new Map([
+    ["project.DB_URL", "postgres://here"],
+    ["team.X", "mid"],
+    ["project.MISSING", "wrong level"],
+  ]);
+  const r = resolveSharedRefs(entries, (level, key) =>
+    shared.get(`${level}.${key}`),
   );
   assert.deepEqual(entries, [
     { key: "A", value: "postgres://here" },

@@ -1,5 +1,6 @@
 import "server-only";
 
+import { blocker, isBlocking, noteText, type Note } from "../../migration/note";
 import { and, eq, sql } from "drizzle-orm";
 
 import { getDb } from "../../db/client";
@@ -18,9 +19,12 @@ import { mapResources } from "../../migration/map/app-settings";
 import { mapDatabase } from "../../migration/map/databases";
 import { setDatabaseMounts } from "../databases/mounts";
 import { createDatabase } from "../databases/provision";
+import { generateAvailableDbPort } from "../databases/server-ports";
+import { importCrons } from "./cron-import";
 import type { Report } from "./run-report";
 import type { SourceService } from "./source-tree";
-import { landSourceBackups } from "./source-backups";
+import { landSourceBackups, type LandedDestinations } from "./source-backups";
+import { pausedNote } from "./live-copy-schedules";
 
 export async function importDatabaseService(
   c: SourceCredential,
@@ -35,13 +39,15 @@ export async function importDatabaseService(
     sourceIsTargetHost: boolean;
     projectName?: string;
     dbHosts: Map<string, string>;
-    destinations?: Map<string, string>;
+    destinations?: LandedDestinations;
+    liveCopy?: boolean;
   },
   report: Report,
 ): Promise<void> {
+  const paused = { paused: opts.liveCopy };
   const { serverId } = opts;
   const mapped = mapDatabase(svc.kind as SourceDbKind, { ...row, name });
-  const notes = [...mapped.notes];
+  const notes: Note[] = [...(row.platformNotes ?? []), ...mapped.notes];
   if (!mapped.value) {
     await report.add({
       sourceKind: svc.kind,
@@ -49,7 +55,7 @@ export async function importDatabaseService(
       sourceName: name,
       outcome: "unsupported",
       targetKind: "database",
-      message: notes.join(" ") || "Deplo has no such engine.",
+      message: notes.map(noteText).join(" ") || "Deplo has no such engine.",
     });
     return;
   }
@@ -73,13 +79,17 @@ export async function importDatabaseService(
     )[0];
   const clash = await taken(spec.name);
   if (clash && clash.environmentId === opts.environmentId) {
-    const extra: string[] = [];
-    await landSourceBackups(
+    const extra: Note[] = [];
+    const schedules = await landSourceBackups(
       row.backups,
       opts.destinations,
       { kind: "database", id: clash.id, name: spec.name },
       extra,
+      row.backupRuns,
+      paused,
     );
+    const pausedLine = opts.liveCopy ? pausedNote(name, { schedules }) : null;
+    if (pausedLine) extra.push(pausedLine);
     await report.add({
       sourceKind: svc.kind,
       sourceId: svc.id,
@@ -89,9 +99,16 @@ export async function importDatabaseService(
       targetId: clash.id,
       message: [
         "A database with this name is already in this environment, so it is the one that is kept - its data is copied again in this same import.",
-        ...extra,
+        ...extra.filter((n) => !isBlocking(n)).map(noteText),
       ].join(" "),
     });
+    await report.notes(
+      svc.kind,
+      name,
+      extra.filter(isBlocking),
+      { kind: "database", id: clash.id },
+      svc.id,
+    );
     return;
   }
   if (clash) {
@@ -137,14 +154,16 @@ export async function importDatabaseService(
     notes.push(
       `Port ${sourcePort} was not published, as chosen during the import.`,
     );
-  const publishPort = opts.mayExposePorts ? chosenPort : null;
+  let publishPort = opts.mayExposePorts ? chosenPort : null;
   const withPort =
     publishPort != null
       ? { exposedPublicly: true, exposedPort: publishPort }
       : {};
 
   const portNote = (why: string) =>
-    `Port ${publishPort} was not published (${why}). Publish it from the database's Connection settings once that port is free.`;
+    opts.liveCopy
+      ? `Port ${publishPort} is taken on this server and Deplo found no free one to use instead, so the copy's port was not published. Publish it from the database's Connection settings.`
+      : `Port ${publishPort} was not published (${why}). Publish it from the database's Connection settings once that port is free.`;
 
   let firstError = "";
   const attempt = async (payload: Parameters<typeof createDatabase>[0]) => {
@@ -158,7 +177,22 @@ export async function importDatabaseService(
 
   let created = await attempt({ ...withPassword, ...withPort });
 
-  if (!created && publishPort != null && opts.sourceIsTargetHost) {
+  // A live copy never stops the original: its port clash lands the copy on a free one.
+  if (!created && publishPort != null && opts.liveCopy) {
+    const free = await generateAvailableDbPort({ serverId }).catch(() => null);
+    if (free != null) {
+      const moved = { exposedPublicly: true, exposedPort: free };
+      created = await attempt({ ...withPassword, ...moved });
+      if (created) publishPort = free;
+    }
+  }
+
+  if (
+    !created &&
+    publishPort != null &&
+    opts.sourceIsTargetHost &&
+    !opts.liveCopy
+  ) {
     try {
       await sourceClient(c).stopService(svc.kind, svc.id);
       if (report.id)
@@ -184,7 +218,9 @@ export async function importDatabaseService(
     if (created) {
       if (publishPort != null) notes.push(portNote(firstError));
       notes.push(
-        `Password refused (${firstError}), so Deplo made a new one - the imported connection strings still hold the old.`,
+        blocker(
+          `Password refused (${firstError}), so Deplo made a new one - the imported connection strings still hold the old.`,
+        ),
       );
     }
   }
@@ -210,7 +246,9 @@ export async function importDatabaseService(
       );
     }
   }
-  const dbResources = mapResources(row);
+  const dbResources = row.nativeResources
+    ? { value: row.nativeResources, notes: [] }
+    : mapResources(row);
   notes.push(...dbResources.notes);
   if (dbResources.value) {
     try {
@@ -235,12 +273,27 @@ export async function importDatabaseService(
     }
   }
 
-  await landSourceBackups(
+  const schedules = await landSourceBackups(
     row.backups,
     opts.destinations,
     { kind: "database", id: created.id, name: spec.name },
     notes,
+    row.backupRuns,
+    paused,
   );
+
+  const crons = await importCrons(
+    c,
+    svc.kind,
+    svc.id,
+    { kind: "database", id: created.id },
+    notes,
+    { cronEnabled: row.cronEnabled, ...paused },
+  );
+  const pausedLine = opts.liveCopy
+    ? pausedNote(name, { crons, schedules })
+    : null;
+  if (pausedLine) notes.push(pausedLine);
 
   if (publishPort != null && sourcePort != null && publishPort !== sourcePort)
     notes.push(

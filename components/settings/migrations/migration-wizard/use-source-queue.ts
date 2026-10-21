@@ -17,6 +17,7 @@ import {
   type TeamTarget,
 } from "../queue";
 import {
+  emptyPicked,
   importableOf,
   type ImportRun,
   type Placement,
@@ -27,6 +28,7 @@ import {
 import { FLEET, HAND_OVER_SOURCES, IDENTIFY, SCAN } from "./operations";
 import {
   defaultChoice,
+  emptyProjectTargets,
   landingDefaults,
   reconcilePlacements,
   type Fleet,
@@ -291,9 +293,10 @@ export function useSourceQueue({
     }
     const fresh = res.data;
     setTeamPlans((prev) => ({ ...prev, [i]: fresh }));
-    const mine = new Set(
-      fresh.projects.flatMap(importableOf).map((s) => s.sourceId),
-    );
+    const mine = new Set([
+      ...fresh.projects.flatMap(importableOf).map((s) => s.sourceId),
+      ...fresh.projects.map((p) => p.sourceId),
+    ]);
     setChosen((prev) => {
       const next = new Set([...prev].filter((id) => !mine.has(id)));
       for (const id of defaultChoice(fresh)) next.add(id);
@@ -324,9 +327,10 @@ export function useSourceQueue({
     return (
       queueRef.current[j]?.status === "waiting" &&
       own != null &&
-      own.projects
+      (own.projects
         .flatMap(importableOf)
-        .some((s) => chosenRef.current.has(s.sourceId))
+        .some((s) => chosenRef.current.has(s.sourceId)) ||
+        emptyPicked(own, chosenRef.current).length > 0)
     );
   }
 
@@ -338,7 +342,7 @@ export function useSourceQueue({
       fleet.buildServers,
     );
     const ticked = chosenRef.current;
-    const targets = from.projects.flatMap((p) =>
+    const services = from.projects.flatMap((p) =>
       importableOf(p)
         .filter((svc) => ticked.has(svc.sourceId))
         .map((svc) => ({
@@ -354,6 +358,7 @@ export function useSourceQueue({
             : {}),
         })),
     );
+    const targets = [...services, ...emptyProjectTargets(from, ticked)];
     const servers = Object.entries(landing.servers)
       .filter(([, to]) => to)
       .map(([from2, to]) => ({ from: from2, to }));

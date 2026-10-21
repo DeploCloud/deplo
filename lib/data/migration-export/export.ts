@@ -1,6 +1,6 @@
 import "server-only";
 
-import { and, eq, inArray } from "drizzle-orm";
+import { and, asc, eq, inArray, sql } from "drizzle-orm";
 
 import { getDb } from "../../db/client";
 import {
@@ -8,6 +8,11 @@ import {
   teamRoles as teamRolesTable,
 } from "../../db/schema/control-plane/access-control";
 import { backupDestination as destTable } from "../../db/schema/control-plane/backups";
+import {
+  gitConnections as gitTable,
+  registries as registriesTable,
+} from "../../db/schema/control-plane/integrations";
+import { servers as serversTable } from "../../db/schema/control-plane/servers";
 import {
   teams as teamsTable,
   users as usersTable,
@@ -17,6 +22,7 @@ import {
   folders as foldersTable,
   projects as projectsTable,
 } from "../../db/schema/control-plane/projects";
+import { teamProjectOrder } from "../../db/schema/control-plane/display-order";
 import { getCurrentUser } from "../../auth/current-user";
 import { tryDecryptSecret } from "../../crypto";
 import {
@@ -33,6 +39,9 @@ import {
   DEPLO_EXPORT_VERSION,
   type DeploExport,
   type DeploExportDestination,
+  type DeploExportGitConnection,
+  type DeploExportRegistry,
+  type DeploExportServerDestination,
   type DeploExportSharedVar,
 } from "../../migration/deplo/export-shape";
 import { instanceFingerprint } from "../../migration/deplo/instance";
@@ -42,6 +51,7 @@ import { assembleDestination } from "../backup-rows";
 import { visibleFolderIds } from "../folder-access";
 import { listServersForTeam } from "../servers/roster";
 import { loadVisibleToTeam } from "../shared-vars/visibility";
+import { exportAccess } from "./access";
 import { exportApps, exportDatabases } from "./workloads";
 
 export async function assertExportGate(): Promise<{
@@ -121,26 +131,92 @@ async function members(teamId: string): Promise<DeploExport["members"]> {
   }));
 }
 
-async function destinations(teamId: string): Promise<DeploExportDestination[]> {
+async function destinations(
+  teamId: string,
+  withKeys: boolean,
+): Promise<{
+  buckets: DeploExportDestination[];
+  disks: DeploExportServerDestination[];
+}> {
+  const rows = await getDb()
+    .select({ d: destTable, serverName: serversTable.name })
+    .from(destTable)
+    .leftJoin(serversTable, eq(serversTable.id, destTable.serverId))
+    .where(eq(destTable.teamId, teamId));
+  const buckets: DeploExportDestination[] = [];
+  const disks: DeploExportServerDestination[] = [];
+  for (const row of rows) {
+    const d = assembleDestination(row.d);
+    // Left out when it will not open or the reader may not see it: the target knows it was not told.
+    const ageIdentity = !withKeys
+      ? undefined
+      : d.ageIdentityEnc
+        ? opened(d.ageIdentityEnc) || undefined
+        : null;
+    if (d.kind === "server") {
+      if (d.serverId)
+        disks.push({
+          name: d.name,
+          serverId: d.serverId,
+          serverName: row.serverName ?? null,
+          path: d.path,
+          ...(ageIdentity ? { ageIdentity } : {}),
+        });
+      continue;
+    }
+    if (!d.endpoint || !d.bucket) continue;
+    const accessKeyId = withKeys ? opened(d.accessKeyEnc) : null;
+    const secretAccessKey = withKeys ? opened(d.secretKeyEnc) : null;
+    if (withKeys && (!accessKeyId || !secretAccessKey)) continue;
+    buckets.push({
+      name: d.name,
+      endpoint: d.endpoint,
+      bucket: d.bucket,
+      region: d.region || "us-east-1",
+      accessKeyId,
+      secretAccessKey,
+      ...(d.provider ? { provider: d.provider } : {}),
+      ...(ageIdentity !== undefined ? { ageIdentity } : {}),
+    });
+  }
+  return { buckets, disks };
+}
+
+// A token is revealed on the same terms as editing the connection that holds it.
+async function gitConnections(
+  teamId: string,
+  withTokens: boolean,
+): Promise<DeploExportGitConnection[]> {
   const rows = await getDb()
     .select()
-    .from(destTable)
-    .where(and(eq(destTable.teamId, teamId), eq(destTable.kind, "s3")));
-  return rows.map(assembleDestination).flatMap((d) => {
-    const accessKeyId = opened(d.accessKeyEnc);
-    const secretAccessKey = opened(d.secretKeyEnc);
-    if (!d.endpoint || !d.bucket || !accessKeyId || !secretAccessKey) return [];
-    return [
-      {
-        name: d.name,
-        endpoint: d.endpoint,
-        bucket: d.bucket,
-        region: d.region || "us-east-1",
-        accessKeyId,
-        secretAccessKey,
-      },
-    ];
-  });
+    .from(gitTable)
+    .where(eq(gitTable.teamId, teamId));
+  return rows.map((r) => ({
+    id: r.id,
+    provider: r.provider,
+    label: r.label,
+    baseUrl: r.baseUrl,
+    allowPrivateEndpoint: r.allowPrivateEndpoint,
+    username: r.username,
+    token: withTokens ? opened(r.tokenEnc) || null : null,
+  }));
+}
+
+async function registries(
+  teamId: string,
+  withPasswords: boolean,
+): Promise<DeploExportRegistry[]> {
+  const rows = await getDb()
+    .select()
+    .from(registriesTable)
+    .where(eq(registriesTable.teamId, teamId));
+  return rows.map((r) => ({
+    name: r.name,
+    type: r.type,
+    registryUrl: r.registryUrl,
+    username: r.username,
+    password: withPasswords ? opened(r.passwordEnc) || null : null,
+  }));
 }
 
 export async function exportTeamForMigration(): Promise<DeploExport> {
@@ -155,9 +231,25 @@ export async function exportTeamForMigration(): Promise<DeploExport> {
   if (!team) throw new Error("Not found");
 
   const projects = await db
-    .select({ id: projectsTable.id, name: projectsTable.name })
+    .select({
+      id: projectsTable.id,
+      name: projectsTable.name,
+      color: projectsTable.color,
+      position: teamProjectOrder.position,
+    })
     .from(projectsTable)
-    .where(eq(projectsTable.teamId, teamId));
+    .leftJoin(
+      teamProjectOrder,
+      and(
+        eq(teamProjectOrder.projectId, projectsTable.id),
+        eq(teamProjectOrder.teamId, teamId),
+      ),
+    )
+    .where(eq(projectsTable.teamId, teamId))
+    .orderBy(
+      sql`${teamProjectOrder.position} asc nulls last`,
+      asc(projectsTable.name),
+    );
   const environments = projects.length
     ? await db
         .select({
@@ -165,6 +257,8 @@ export async function exportTeamForMigration(): Promise<DeploExport> {
           projectId: environmentsTable.projectId,
           name: environmentsTable.name,
           isDefault: environmentsTable.isDefault,
+          kind: environmentsTable.kind,
+          gitBranch: environmentsTable.gitBranch,
           position: environmentsTable.position,
         })
         .from(environmentsTable)
@@ -188,26 +282,49 @@ export async function exportTeamForMigration(): Promise<DeploExport> {
     controlApps,
     controlDatabases,
     visibleFolders,
+    git,
+    pulls,
+    mayReadAccess,
   ] = await Promise.all([
     db
       .select({
         id: foldersTable.id,
         name: foldersTable.name,
         parentId: foldersTable.parentId,
+        color: foldersTable.color,
+        ownerEmail: usersTable.email,
       })
       .from(foldersTable)
+      .leftJoin(usersTable, eq(usersTable.id, foldersTable.ownerUserId))
       .where(eq(foldersTable.teamId, teamId)),
     exportApps(teamId),
     exportDatabases(teamId),
     sharedVars(teamId),
     listServersForTeam(teamId),
     members(teamId),
-    destinations(teamId),
+    // A bucket's keys and the recovery key are revealed on the same terms as revealRecoveryKey.
+    hasCapability("manage_backup_destinations").then((may) =>
+      destinations(teamId, may),
+    ),
     teamsForUser(userId),
     hasCapability("control_apps"),
     hasCapability("control_databases"),
     visibleFolderIds(teamId),
+    hasCapability("manage_git").then((may) => gitConnections(teamId, may)),
+    hasCapability("manage_registries").then((may) => registries(teamId, may)),
+    hasCapability("manage_members"),
   ]);
+  const shownFolders = folders
+    .filter((f) => visibleFolders === "all" || visibleFolders.has(f.id))
+    .map((f) => ({ ...f, ownerEmail: f.ownerEmail ?? null }));
+  const access = mayReadAccess
+    ? await exportAccess(teamId, {
+        projectIds: new Set(projects.map((p) => p.id)),
+        environmentIds: new Set(environments.map((e) => e.id)),
+        folderIds: new Set(shownFolders.map((f) => f.id)),
+        appIds: new Set(apps.map((a) => a.id)),
+      })
+    : null;
 
   await trailExport(teamId, userId);
   const self = deploHostSelfAddresses();
@@ -221,14 +338,19 @@ export async function exportTeamForMigration(): Promise<DeploExport> {
     projects: projects.map((p) => ({
       id: p.id,
       name: p.name,
+      color: p.color,
       environments: environments
         .filter((e) => e.projectId === p.id)
         .sort((a, b) => a.position - b.position)
-        .map((e) => ({ id: e.id, name: e.name, isDefault: e.isDefault })),
+        .map((e) => ({
+          id: e.id,
+          name: e.name,
+          isDefault: e.isDefault,
+          kind: e.kind,
+          gitBranch: e.gitBranch,
+        })),
     })),
-    folders: folders.filter(
-      (f) => visibleFolders === "all" || visibleFolders.has(f.id),
-    ),
+    folders: shownFolders,
     apps,
     withheld,
     databases,
@@ -242,6 +364,10 @@ export async function exportTeamForMigration(): Promise<DeploExport> {
         isDeploHost: isDeploHostServer(s, self),
       })),
     members: people,
-    destinations: stores,
+    destinations: stores.buckets,
+    serverDestinations: stores.disks,
+    gitConnections: git,
+    registries: pulls,
+    access,
   };
 }

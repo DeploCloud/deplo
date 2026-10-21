@@ -6,11 +6,12 @@ import {
   type SourceCredential,
   type SourceDataExport,
 } from "../source";
-import type { SourceMember, SourceSchedule } from "../model";
+import type { SourceAccess, SourceMember, SourceSchedule } from "../model";
 import { SELF_PANEL_REFUSAL } from "../self";
 import {
   TOKEN_RECIPE,
   checkData,
+  tooOldFor,
   exportOf,
   forgetExport,
   setRunning,
@@ -21,6 +22,7 @@ import {
 import type { DeploExport } from "./export-shape";
 import { instanceFingerprint } from "./instance";
 import {
+  backupDestinationsOf,
   sourceApplication,
   sourceDatabase,
   sourceTree,
@@ -136,6 +138,35 @@ function dataExport(c: SourceCredential): SourceDataExport {
           allowFile: allowFile === true,
         });
       })(),
+    exportUpload: (svc) =>
+      (async function* () {
+        yield* streamData(c, { ...(await ref(svc)), upload: true });
+      })(),
+    exportImage: (svc, image) =>
+      tooOldFor(
+        "the image",
+        (async function* () {
+          yield* streamData(c, { ...(await ref(svc)), image });
+        })(),
+      ),
+    exportDump: (svc, recipient) =>
+      tooOldFor(
+        "a database while it keeps running",
+        (async function* () {
+          yield* streamData(c, { ...(await ref(svc)), dump: true, recipient });
+        })(),
+      ),
+  };
+}
+
+function accessOf(x: DeploExport): SourceAccess | null | undefined {
+  if (!x.access) return x.access;
+  return {
+    roles: x.access.roles,
+    members: x.access.members,
+    folderOwners: x.folders.flatMap((f) =>
+      f.ownerEmail ? [{ folderId: f.id, email: f.ownerEmail }] : [],
+    ),
   };
 }
 
@@ -174,23 +205,23 @@ export function deploClient(c: SourceCredential): MigrationSourceClient {
 
     listSchedules: async (kind, id): Promise<SourceSchedule[]> => {
       const w = workloadOf(await exportOf(c), kind, id);
-      return (w.app?.crons ?? []).map((j, i) => ({
-        scheduleId: `${id}:cron:${i}`,
-        name: j.name,
-        cronExpression: j.schedule,
-        command: j.command,
-        serviceName: j.service,
-        enabled: j.enabled,
-      }));
+      return (w.app?.crons ?? w.db?.crons ?? []).map(
+        ({ name, schedule, command, service, enabled, env, ...native }, i) => ({
+          scheduleId: `${id}:cron:${i}`,
+          name,
+          cronExpression: schedule,
+          command,
+          serviceName: service,
+          enabled,
+          env: env ?? null,
+          native,
+        }),
+      );
     },
-    teamSharedEnv: async () => {
-      const shared = teamShared(await exportOf(c));
-      return shared
-        ? { env: shared.env, secretEnvKeys: shared.secretEnvKeys }
-        : null;
-    },
+    teamSharedEnv: async () => teamShared(await exportOf(c)),
     serverSharedEnv: async () => null,
-    listBackupDestinations: async () => (await exportOf(c)).destinations,
+    listBackupDestinations: async () => backupDestinationsOf(await exportOf(c)),
+    listRegistries: async () => (await exportOf(c)).registries ?? null,
 
     serviceRuntime: (svc) => serviceRuntime(c, svc),
     stopService: (kind, id) => stopService(c, kind, id),
@@ -200,5 +231,6 @@ export function deploClient(c: SourceCredential): MigrationSourceClient {
     },
     platformNetworks: () => [],
     dataExport: dataExport(c),
+    accessExport: async () => accessOf(await exportOf(c)),
   };
 }

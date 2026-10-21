@@ -68,6 +68,21 @@ async function statusOf(id: string): Promise<string> {
   return String((r.rows[0] as { status: string }).status);
 }
 
+test("a run whose starting token no longer works stops instead of acting as its owner", async () => {
+  const id = await seedRun("dimp_token");
+  await harness.db.execute(
+    `update migration_runs set actor_user_id = '${USER_1}', actor_token_id = 'tok_gone' where id = '${id}';`,
+  );
+
+  await runMigrationTick();
+
+  assert.equal(await statusOf(id), "failed");
+  const r = await harness.db.execute(
+    `select error from migration_runs where id = '${id}'`,
+  );
+  assert.match(String((r.rows[0] as { error: string }).error), /API token/);
+});
+
 test("a run that fails hands its services back", async () => {
   const id = await seedRun("dimp_frozen");
   await harness.db.execute(

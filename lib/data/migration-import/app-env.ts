@@ -1,20 +1,22 @@
 import "server-only";
 
+import { blocker, type Note } from "../../migration/note";
 import type { SourceApplication, SourceCompose } from "../../migration/model";
 import {
+  envEntriesOf,
   envNeedsInterpolation,
   parseEnvBlob,
   renameDatabaseHosts,
   resolveSharedRefs,
 } from "../../migration/map/env";
-import type { SharedIndex } from "./shared-vars-import";
+import { type SharedIndex, sharedEntry } from "./shared-vars-import";
 
 export function mapAppEnv(
   detail: SourceApplication & SourceCompose,
   home: { shared: SharedIndex; dbHosts: Map<string, string> },
-  notes: string[],
+  notes: Note[],
 ) {
-  const envEntries = parseEnvBlob(detail.env);
+  const envEntries = envEntriesOf(detail);
   const argEntries = parseEnvBlob(
     (detail as SourceApplication).buildArgs,
   ).filter((a) => !envEntries.some((e) => e.key === a.key));
@@ -24,7 +26,10 @@ export function mapAppEnv(
     (r) => !argEntries.some((a) => a.key === r.key),
   );
   const linkable = refs.filter(
-    (r) => r.whole && r.key === r.sharedKey && home.shared.has(r.sharedKey),
+    (r) =>
+      r.whole &&
+      r.key === r.sharedKey &&
+      sharedEntry(home.shared, r.level, r.sharedKey)?.varId != null,
   );
   const dropped = new Map<string, { key: string; value: string }>();
   for (const r of linkable) {
@@ -33,13 +38,15 @@ export function mapAppEnv(
   }
   const refResolved = resolveSharedRefs(
     rows,
-    new Map([...home.shared].map(([k, v]) => [k, v.value] as const)),
+    (level, key) => sharedEntry(home.shared, level, key)?.value,
   );
   // Typed secret only where the panel said so: a secret is immutable here and a fork's preview drops it.
   const secretKeys = new Set(detail.secretEnvKeys ?? []);
+  const productionOnly = new Set(detail.productionOnlyEnvKeys ?? []);
   const env = rows.map((e) => ({
     ...e,
     type: secretKeys.has(e.key) ? ("secret" as const) : ("plain" as const),
+    ...(productionOnly.has(e.key) && { targets: ["production" as const] }),
   }));
   const masked = env.filter((e) => e.type === "secret").map((e) => e.key);
   if (masked.length > 0)
@@ -47,7 +54,10 @@ export function mapAppEnv(
       `${masked.join(", ")} came across as secrets, as {panel} marked them: write-only here too, and never shown again.`,
     );
   const aliased = refs.filter(
-    (r) => r.whole && r.key !== r.sharedKey && home.shared.has(r.sharedKey),
+    (r) =>
+      r.whole &&
+      r.key !== r.sharedKey &&
+      sharedEntry(home.shared, r.level, r.sharedKey) != null,
   );
   if (linkable.length > 0)
     notes.push(
@@ -65,9 +75,11 @@ export function mapAppEnv(
     );
   if (refResolved.unresolved.length > 0)
     notes.push(
-      `${refResolved.unresolved.join(
-        ", ",
-      )} still read a shared variable {panel} did not answer with the value behind. Put the real values in under Variables.`,
+      blocker(
+        `${refResolved.unresolved.join(
+          ", ",
+        )} still read a shared variable {panel} did not answer with the value behind. Put the real values in under Variables.`,
+      ),
     );
   const renamed = renameDatabaseHosts(env, home.dbHosts);
   if (renamed.length > 0)
@@ -84,7 +96,9 @@ export function mapAppEnv(
   const interpolated = envNeedsInterpolation(env);
   if (interpolated.length > 0)
     notes.push(
-      `Deplo does not resolve {panel}'s \`\${{...}}\` templating - put the real values in: ${interpolated.join(", ")}.`,
+      blocker(
+        `Deplo does not resolve {panel}'s \`\${{...}}\` templating - put the real values in: ${interpolated.join(", ")}.`,
+      ),
     );
 
   return { env, linkable, dropped, secretKeys };

@@ -231,10 +231,33 @@ export function cloudflareCertResolver(): string {
   return process.env.DEPLO_CLOUDFLARE_CERT_RESOLVER?.trim() || "cloudflare";
 }
 
+// Nobody can install a certificate for a temporary address, so one on a public machine always asks for a real one.
+// A private machine's stays as asked: nothing outside can validate it, so "custom" falls back to plain HTTP.
+export function temporaryAddressTls(
+  name: string,
+  tls: { certProvider: CertProvider; entrypoint: DomainEntrypoint },
+): { certProvider: CertProvider; entrypoint: DomainEntrypoint } {
+  const ip = wildcardEmbeddedIp(name);
+  if (ip == null) return tls;
+  if (!isPrivateIpv4(ip) && !isLoopbackIp(ip))
+    return { certProvider: "letsencrypt", entrypoint: "websecure" };
+  return tls.certProvider === "custom" || tls.certProvider === "cloudflare"
+    ? { certProvider: "none", entrypoint: "web" }
+    : tls;
+}
+
 export function domainTlsConfig(domain: {
+  name?: string;
   entrypoint?: DomainEntrypoint;
   certProvider?: CertProvider;
 }): { entrypoint: string; tls: boolean; certResolver: string } {
+  // A row written before temporaryAddressTls existed: "custom" there only ever served a self-signed certificate.
+  if (
+    domain.certProvider === "custom" &&
+    domain.name &&
+    wildcardEmbeddedIp(domain.name) != null
+  )
+    return { entrypoint: "websecure", tls: true, certResolver: certResolver() };
   const provider = domain.certProvider ?? "letsencrypt";
   if (provider === "none") {
     return { entrypoint: "web", tls: false, certResolver: "" };

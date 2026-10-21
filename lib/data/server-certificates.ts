@@ -33,6 +33,38 @@ export async function listServerCertificates(
   return describeStackCertificates(yaml);
 }
 
+// The pairs themselves, keys included: what a migration hands to the next Deplo.
+export async function serverCertificatePairs(
+  serverId: string,
+): Promise<CustomCertificate[]> {
+  await requireInstanceAdmin();
+  const { yaml } = await readStack(serverId);
+  return traefikCertificates(yaml);
+}
+
+export function certificateCovers(names: string[], host: string): boolean {
+  const h = host.trim().toLowerCase();
+  return names.some((raw) => {
+    const n = raw.trim().toLowerCase();
+    if (n === h) return true;
+    if (!n.startsWith("*.")) return false;
+    const dot = h.indexOf(".");
+    return dot > 0 && h.slice(dot + 1) === n.slice(2);
+  });
+}
+
+export function certificateFor(
+  certificates: CustomCertificate[],
+  host: string,
+): CustomCertificate | null {
+  return (
+    certificates.find((c) => {
+      const d = identify(c);
+      return !!d && !d.expired && certificateCovers(d.domains, host);
+    }) ?? null
+  );
+}
+
 export function describeStackCertificates(
   stackYaml: string,
 ): ServerCertificate[] {

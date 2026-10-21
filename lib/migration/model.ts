@@ -1,6 +1,8 @@
 import type { BuildConfig } from "../types/build";
 import type { HealthCheck, ResourceLimits } from "../types/container";
-import type { SharedRef } from "./map/env";
+import type { EnvironmentKind } from "../types/team";
+import type { EnvPair, SharedRef } from "./map/env";
+import type { Note } from "./note";
 
 export type SourceBuildType =
   | "dockerfile"
@@ -28,7 +30,26 @@ export interface SourceDomain {
   enabled?: boolean | null;
   // A host the source platform minted for itself, which never comes across as a domain someone owns.
   generated?: boolean | null;
+  primary?: boolean | null;
+  // A domain's own rules, already in Deplo's shape; only another Deplo sends them.
+  nativeRules?: SourceDomainRules | null;
 }
+
+export interface SourceDomainRules {
+  entrypoint?: "web" | "websecure" | null;
+  middlewares?: string[];
+  corsOrigins?: string[];
+  securityHeaders?: boolean;
+  proxied?: boolean;
+  // Set on a domain that only redirects there; it comes across once that host has.
+  redirectTo?: string | null;
+  // Only on a custom-certificate domain: the pair, or why it did not come across.
+  certificate?: SourceCertificate;
+}
+
+export type SourceCertificate =
+  | { certPem: string; keyPem: string }
+  | { withheld: "admin" | "missing" | "unreadable" | "old" };
 
 export interface SourceMount {
   mountId: string;
@@ -39,6 +60,7 @@ export interface SourceMount {
   filePath?: string | null;
   content?: string | null;
   mountPath: string;
+  readOnly?: boolean | null;
 }
 
 export interface SourcePort {
@@ -61,22 +83,93 @@ export interface SourceBackupSchedule {
   destination?: { name?: string | null } | null;
   volumeName?: string | null;
   serviceName?: string | null;
+  timezone?: string | null;
+}
+
+// A restore point the source can still restore from; only another Deplo sends them.
+export interface SourceBackupRun {
+  destination: string;
+  objectKey: string;
+  sizeBytes: number;
+  decryptedSizeBytes?: number | null;
+  sha256?: string | null;
+  startedAt: string;
+  finishedAt?: string | null;
+}
+
+// Every preview setting as Deplo stores it; null means Deplo's default.
+export interface NativePreview {
+  enabled: boolean;
+  baseDomain: string | null;
+  maxActive: number | null;
+  ttlDays: number | null;
+  forkPolicy: string | null;
+  serverId: string | null;
+  https: boolean;
+  autoDeploy: boolean;
+  port: number | null;
+  buildDrafts: boolean;
+  comment: boolean;
+  requiredLabels: string | null;
+}
+
+// How a Deplo app deploys and rolls back; only another Deplo sends it.
+export interface NativeOps {
+  composeUpArgs: string | null;
+  rollbackKeep: number;
+  deployHook: { enabled: boolean; used: boolean };
+}
+
+// The credential a Deplo app clones with; a null token is one the source would not reveal.
+export interface SourceGitConnection {
+  provider: string;
+  label: string;
+  baseUrl: string;
+  allowPrivateEndpoint: boolean;
+  username: string;
+  token: string | null;
+}
+
+// A registry the team pulls private images from; a null password is one the source would not reveal.
+export interface SourceRegistry {
+  name: string;
+  type: string;
+  registryUrl: string;
+  username: string;
+  password: string | null;
 }
 
 export interface SourceApplication {
+  nativeOps?: NativeOps | null;
+  // The source hands its registries over itself, so no per-image advice is needed.
+  registriesCarried?: boolean;
+  // Set when the source said how it clones: null means no connection to bring (the notes say why).
+  gitConnection?: SourceGitConnection | null;
+  // An uploaded archive the source hands over itself; null when there is none to fetch, absent when it never can.
+  upload?: { filename: string; size: number } | null;
   backups?: SourceBackupSchedule[] | null;
+  backupRuns?: SourceBackupRun[] | null;
   sharedRefs?: SharedRef[] | null;
   secretEnvKeys?: string[] | null;
-  platformNotes?: string[] | null;
+  // Variables the source kept away from previews; absent means every one reaches both.
+  productionOnlyEnvKeys?: string[] | null;
+  platformNotes?: Note[] | null;
   healthCheck?: HealthCheck | null;
   // Settings already in Deplo's own shape, laid over what the platform-shaped fields map to.
   nativeBuild?: Partial<BuildConfig> | null;
   nativeResources?: Partial<ResourceLimits> | null;
+  nativePreview?: NativePreview | null;
+  // How each preview variable is typed; absent means the app's own secretEnvKeys decide.
+  previewSecretEnvKeys?: string[] | null;
+  // Whether its cron jobs run at all; absent when the source has no such switch.
+  cronEnabled?: boolean | null;
   applicationId: string;
   name?: string | null;
   appName?: string | null;
   description?: string | null;
   env?: string | null;
+  // Variables as pairs, exactly as the source held them; read before `env`, which is `.env` text.
+  envEntries?: EnvPair[] | null;
   buildArgs?: string | null;
   icon?: string | null;
   sourceType: SourceOrigin;
@@ -92,6 +185,7 @@ export interface SourceApplication {
   buildCommand?: string | null;
   previewWildcard?: string | null;
   previewEnv?: string | null;
+  previewEnvEntries?: EnvPair[] | null;
   dockerImage?: string | null;
   registryUrl?: string | null;
   registryId?: string | null;
@@ -156,15 +250,21 @@ export interface SourceApplication {
 }
 
 export interface SourceCompose {
+  nativeOps?: NativeOps | null;
+  registriesCarried?: boolean;
   backups?: SourceBackupSchedule[] | null;
+  backupRuns?: SourceBackupRun[] | null;
   sharedRefs?: SharedRef[] | null;
   secretEnvKeys?: string[] | null;
-  platformNotes?: string[] | null;
+  productionOnlyEnvKeys?: string[] | null;
+  platformNotes?: Note[] | null;
+  cronEnabled?: boolean | null;
   composeId: string;
   name?: string | null;
   appName?: string | null;
   description?: string | null;
   env?: string | null;
+  envEntries?: EnvPair[] | null;
   composeFile?: string | null;
   icon?: string | null;
   composeType?: "docker-compose" | "stack" | null;
@@ -202,12 +302,14 @@ export interface SourceCompose {
 }
 
 export interface SourceDatabase {
-  platformNotes?: string[] | null;
+  platformNotes?: Note[] | null;
+  cronEnabled?: boolean | null;
   name?: string | null;
   appName?: string | null;
   description?: string | null;
   dockerImage?: string | null;
   backups?: SourceBackupSchedule[] | null;
+  backupRuns?: SourceBackupRun[] | null;
   databaseName?: string | null;
   databaseUser?: string | null;
   databasePassword?: string | null;
@@ -219,6 +321,7 @@ export interface SourceDatabase {
   memoryReservation?: string | null;
   cpuLimit?: string | null;
   cpuReservation?: string | null;
+  nativeResources?: Partial<ResourceLimits> | null;
   serverId?: string | null;
   environmentId?: string | null;
   mounts?: SourceMount[] | null;
@@ -240,7 +343,8 @@ export const SOURCE_DB_KINDS = [
 export type SourceDbKind = (typeof SOURCE_DB_KINDS)[number];
 
 export interface SourceSharedEnv {
-  env: string;
+  env?: string | null;
+  envEntries?: EnvPair[] | null;
   secretEnvKeys?: string[] | null;
 }
 
@@ -249,9 +353,12 @@ export interface SourceEnvironment {
   name: string;
   description?: string | null;
   env?: string | null;
+  envEntries?: EnvPair[] | null;
   secretEnvKeys?: string[] | null;
-  platformNotes?: string[] | null;
+  platformNotes?: Note[] | null;
   isDefault?: boolean | null;
+  kind?: EnvironmentKind;
+  gitBranch?: string;
   applications?: SourceApplication[] | null;
   compose?: SourceCompose[] | null;
   postgres?: SourceDatabase[] | null;
@@ -266,13 +373,65 @@ export interface SourceEnvironment {
   unknown?: SourceDatabase[] | null;
 }
 
+export interface SourceFolder {
+  sourceId: string;
+  name: string;
+  color: string | null;
+}
+
+// Set when the group is not a project at the source: it lands in that folder chain (root first), or at the top level.
+export type SourceLanding =
+  { kind: "folder"; folders: SourceFolder[] } | { kind: "top" };
+
+export interface SourceNodeScope {
+  projectIds: string[];
+  environmentIds: string[];
+  folderIds: string[];
+  appIds: string[];
+}
+
+export interface SourceRole {
+  id: string;
+  name: string;
+  description: string | null;
+  builtinKey: string | null;
+  capabilities: string[];
+  scoped: boolean;
+  requireTwoFactor: boolean;
+  scope: SourceNodeScope | null;
+}
+
+export interface SourceMemberAccess {
+  email: string;
+  rank: string;
+  roleId: string | null;
+  granular: boolean;
+  customCapabilities: boolean;
+  capabilities: string[];
+  grants: {
+    kind: "project" | "environment" | "folder" | "app";
+    nodeId: string;
+    capabilities: string[];
+  }[];
+}
+
+// Who could do what at the source, in source ids; only a source that knows roles sends it.
+export interface SourceAccess {
+  roles: SourceRole[];
+  members: SourceMemberAccess[];
+  folderOwners: { folderId: string; email: string }[];
+}
+
 export interface SourceProject {
   projectId: string;
   name: string;
+  landing?: SourceLanding;
+  color?: string | null;
   description?: string | null;
   env?: string | null;
+  envEntries?: EnvPair[] | null;
   secretEnvKeys?: string[] | null;
-  platformNotes?: string[] | null;
+  platformNotes?: Note[] | null;
   createdAt?: string | null;
   environments?: SourceEnvironment[] | null;
   applications?: SourceApplication[] | null;
@@ -324,6 +483,21 @@ export interface SourceSchedule {
   serviceName?: string | null;
   scheduleType?: string | null;
   enabled?: boolean | null;
+  env?: EnvPair[] | null;
+  // The rest of a job already in Deplo's own shape.
+  native?: SourceCronSettings | null;
+}
+
+export interface SourceCronSettings {
+  description?: string;
+  timezone?: string;
+  shell?: string;
+  timeoutSeconds?: number;
+  maxAttempts?: number;
+  overlap?: string;
+  keepRuns?: number;
+  workdir?: string | null;
+  user?: string | null;
 }
 
 export interface NamedVolume {
@@ -339,10 +513,26 @@ export interface HostMount {
 }
 
 export interface SourceS3Destination {
+  kind?: "s3";
   name: string;
   endpoint: string;
   bucket: string;
   region: string;
-  accessKeyId: string;
-  secretAccessKey: string;
+  accessKeyId: string | null;
+  secretAccessKey: string | null;
+  provider?: string | null;
+  // The key its artifacts are encrypted to; null when it never encrypted, absent when unknown.
+  ageIdentity?: string | null;
 }
+
+export interface SourceServerDestination {
+  kind: "server";
+  name: string;
+  serverId: string;
+  serverName: string | null;
+  path: string | null;
+  ageIdentity?: string;
+}
+
+export type SourceBackupDestination =
+  SourceS3Destination | SourceServerDestination;

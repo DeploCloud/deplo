@@ -76,7 +76,9 @@ export const migrationRuns = pgTable(
     created: integer("created").notNull(),
     skipped: integer("skipped").notNull(),
     failed: integer("failed").notNull(),
+    // Information lines; `blocking` counts the ones that keep an app from running.
     manual: integer("manual").notNull(),
+    blocking: integer("blocking").notNull().default(0),
     error: text("error"),
     startedAt: isoTimestamptz("started_at").notNull(),
     finishedAt: isoTimestamptz("finished_at"),
@@ -87,10 +89,14 @@ export const migrationRuns = pgTable(
     phase: text("phase").notNull().default("config"),
     stopRequested: boolean("stop_requested").notNull().default(false),
     keepSources: boolean("keep_sources").notNull().default(false),
+    // Copy while the source keeps serving; the switch-over is the user's.
+    liveCopy: boolean("live_copy").notNull().default(false),
     reportSeenAt: isoTimestamptz("report_seen_at"),
     heartbeatAt: isoTimestamptz("heartbeat_at"),
     runnerOwner: text("runner_owner"),
     actorUserId: text("actor_user_id"),
+    // The API token that started the run, so the background passes keep its limits.
+    actorTokenId: text("actor_token_id"),
     sessionId: text("session_id"),
   },
   (t) => [
@@ -153,6 +159,7 @@ export const migrationRunItems = pgTable(
     targetKind: text("target_kind"),
     targetId: text("target_id"),
     message: text("message"),
+    blocking: boolean("blocking").notNull().default(false),
   },
   (t) => [index("migration_run_items_run_idx").on(t.runId, t.seq)],
 );

@@ -19,6 +19,7 @@ export async function beginMigration(input: {
   orgName?: string | null;
   kind?: MigrationPlatform;
   keepSources?: boolean;
+  liveCopy?: boolean;
   sessionId?: string | null;
 }): Promise<string> {
   const { teamId } = await assertImportGate();
@@ -71,6 +72,7 @@ export async function beginMigration(input: {
     platform: input.kind ?? "dokploy",
     orgName: input.orgName?.trim() || null,
     keepSources: input.keepSources ?? false,
+    liveCopy: input.liveCopy ?? false,
     actor: user?.name ?? "someone",
     actorUserId: user?.id ?? null,
     status: "running",

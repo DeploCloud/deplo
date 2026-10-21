@@ -1,5 +1,6 @@
 import "server-only";
 
+import { blocker, type Note } from "../../migration/note";
 import { formatBytes } from "../../utils";
 import type { AgentConnection } from "../../infra/agent-client/connection";
 import type { SourceCredential } from "../../migration/source";
@@ -53,12 +54,14 @@ export interface CopyContext {
   svc: SourceService;
   landed: Landed;
   running: boolean;
+  // Read while the source keeps serving (a copy without stopping it).
+  live?: boolean;
   sourceServerId: string;
   source: DataSource;
   dest: AgentConnection;
   signal: AbortSignal;
   onBytes?: OnBytes;
-  notes: string[];
+  notes: Note[];
   tally: CopyTally;
 }
 
@@ -69,6 +72,7 @@ async function record(
   sourceName: string,
   outcome: Outcome,
   message: string,
+  blocking = false,
 ): Promise<void> {
   await appendRunItem(ctx.runId, ctx.panel, {
     path: ctx.path,
@@ -78,6 +82,7 @@ async function record(
     targetKind: ctx.landed.targetKind,
     targetId: ctx.landed.targetId,
     message,
+    blocking,
   });
 }
 
@@ -112,7 +117,11 @@ async function recordCopied(
   message: string,
 ): Promise<void> {
   ctx.tally.moved++;
-  await record(ctx, sourceName, "created", message);
+  const live =
+    ctx.live && ctx.running
+      ? ` ${ctx.svc.name} kept running on {panel} while it was read, so anything written to it during the copy may be missing or half-written here.`
+      : "";
+  await record(ctx, sourceName, "created", message + live);
 }
 
 async function recordFailure(
@@ -181,12 +190,10 @@ export async function copyBindMounts(
 ): Promise<void> {
   for (const bind of binds) {
     if (!mayCopyHostPaths && !bind.stackRelative) {
-      await record(
-        ctx,
-        bind.sourcePath,
-        "manual",
-        `${bind.sourcePath} is a host directory (mounted at ${bind.mountPath}). Copying one needs instance admin and the host-volumes permission, so its contents did not come over.`,
-      );
+      const message = `${bind.sourcePath} is a host directory (mounted at ${bind.mountPath}). Copying one needs instance admin and the host-volumes permission, so its contents did not come over.`;
+      ctx.tally.notCopied++;
+      ctx.tally.lost.push(`${bind.sourcePath} (${bind.mountPath}): ${message}`);
+      await record(ctx, bind.sourcePath, "manual", message);
       continue;
     }
     if (
@@ -218,9 +225,9 @@ export async function copyBindMounts(
     } else if (clash) {
       ctx.tally.notCopied++;
       const message = sharedPathNote(clash, bind.targetPath);
-      ctx.notes.push(message);
+      ctx.notes.push(blocker(message));
       ctx.tally.lost.push(`${bind.sourcePath} (${bind.mountPath}): ${message}`);
-      await record(ctx, bind.sourcePath, "manual", message);
+      await record(ctx, bind.sourcePath, "manual", message, true);
       continue;
     }
     try {

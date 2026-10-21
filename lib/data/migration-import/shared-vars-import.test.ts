@@ -13,15 +13,24 @@ import {
   sharedEnvVars as sharedVarsTable,
   sharedEnvVarApps as sharedVarAppsTable,
 } from "../../db/schema/control-plane/env-vars";
+import { __setMigrationFetchForTest } from "../../migration/transport";
 import { beginMigration } from "./run-lifecycle";
 import {
   URL_BASE,
+  APPLICATIONS,
+  routingFetch,
+  source,
   asOwner,
   importProject,
   openMigrationHarness,
   closeMigrationHarness,
   resetMigrationHarness,
 } from "./migration-import-test-helpers";
+import { getMigrationRun } from "./run-queries";
+import { fakeDeplo, importDeploProject } from "./deplo-import-test-helpers";
+import { deploExport } from "../../migration/deplo/deplo-test-helpers";
+import { saveSharedVar } from "../shared-vars/authoring";
+import { TEAM_A } from "../identity-test-helpers";
 
 let db: TestDb;
 let pg: PGlite;
@@ -83,7 +92,9 @@ test("only the app that referenced a shared variable is linked to it", async () 
   );
 });
 
-test("a second project links to the shared variable already here", async () => {
+test("a second project links to the shared variable already here when the value matches", async () => {
+  const other = (source.fixtures["project.all"] as { env: string }[])[1];
+  other.env = "SHARED_TOKEN=project-level\n";
   const runId = await asOwner(() => beginMigration({ url: URL_BASE }));
   await importProject(runId, "dok-prj-blink");
   await importProject(runId, "dok-prj-other");
@@ -108,6 +119,54 @@ test("a second project links to the shared variable already here", async () => {
     ["blink-api", "other-stack"],
     "both projects' referencing apps are linked to the one row",
   );
+});
+
+test("a second project keeps its own value when the shared variable here holds another", async () => {
+  const runId = await asOwner(() => beginMigration({ url: URL_BASE }));
+  await importProject(runId, "dok-prj-blink");
+  await importProject(runId, "dok-prj-other");
+
+  const rows = await db
+    .select()
+    .from(sharedVarsTable)
+    .where(eq(sharedVarsTable.key, "SHARED_TOKEN"));
+  assert.deepEqual(
+    rows.map((r) => decryptSecret(r.valueEnc)),
+    ["project-level"],
+    "the variable already here is left as it is",
+  );
+
+  const links = await db
+    .select({ appName: appsTable.name })
+    .from(sharedVarAppsTable)
+    .innerJoin(appsTable, eq(appsTable.id, sharedVarAppsTable.appId));
+  assert.deepEqual(
+    links.map((l) => l.appName),
+    ["blink-api"],
+  );
+
+  const stack = (await db.select().from(appsTable)).find(
+    (a) => a.name === "other-stack",
+  )!;
+  const own = await db
+    .select()
+    .from(envVarsTable)
+    .where(eq(envVarsTable.appId, stack.id));
+  assert.equal(
+    decryptSecret(own.find((v) => v.key === "SHARED_TOKEN")!.valueEnc),
+    "other-level",
+    "the app runs with the value it had on the source",
+  );
+
+  const items = (await asOwner(() => getMigrationRun(runId)))!.items;
+  const clash = items.filter(
+    (i) =>
+      i.sourceName === "SHARED_TOKEN" && i.message?.includes("different value"),
+  );
+  assert.equal(clash.length, 1, "one line names the clash");
+  assert.equal(clash[0].sourceKind, "shared-var");
+  assert.doesNotMatch(clash[0].message!, /other-level|project-level/);
+  assert.equal(clash[0].blocking, false, "the app keeps the value it ran with");
 });
 
 test("a shared variable never clobbers an app's own value of the same name", async () => {
@@ -137,5 +196,112 @@ test("a shared variable never clobbers an app's own value of the same name", asy
   assert.equal(
     decryptSecret(resolved.find((e) => e.key === "NODE_ENV")!.valueEnc),
     "production",
+  );
+});
+
+test("the same name at two levels stays two shared variables", async () => {
+  const blink = (
+    source.fixtures["project.all"] as { environments: { env: string }[] }[]
+  )[0];
+  blink.environments[0].env = "ENV_LEVEL=yes\nSHARED_TOKEN=env-level\n";
+  __setMigrationFetchForTest(
+    routingFetch({
+      applications: {
+        "dok-app-api": {
+          ...(APPLICATIONS["dok-app-api"] as object),
+          env:
+            "SHARED_TOKEN=${{environment.SHARED_TOKEN}}\n" +
+            "TOKEN_COPY=${{project.SHARED_TOKEN}}\n",
+        },
+      },
+    }),
+  );
+  const runId = await asOwner(() => beginMigration({ url: URL_BASE }));
+  await importProject(runId, "dok-prj-blink");
+
+  const rows = await db
+    .select()
+    .from(sharedVarsTable)
+    .where(eq(sharedVarsTable.key, "SHARED_TOKEN"));
+  assert.deepEqual(rows.map((r) => decryptSecret(r.valueEnc)).sort(), [
+    "env-level",
+    "project-level",
+  ]);
+
+  const linked = await db
+    .select({ valueEnc: sharedVarsTable.valueEnc })
+    .from(sharedVarAppsTable)
+    .innerJoin(
+      sharedVarsTable,
+      eq(sharedVarsTable.id, sharedVarAppsTable.varId),
+    );
+  assert.deepEqual(
+    linked.map((l) => decryptSecret(l.valueEnc)),
+    ["env-level"],
+    "the app is linked to the level it named",
+  );
+  const api = (await db.select().from(appsTable)).find(
+    (a) => a.name === "blink-api",
+  )!;
+  const own = await db
+    .select()
+    .from(envVarsTable)
+    .where(eq(envVarsTable.appId, api.id));
+  assert.equal(
+    decryptSecret(own.find((v) => v.key === "TOKEN_COPY")!.valueEnc),
+    "project-level",
+  );
+});
+
+test("from Deplo, a secret shared variable that clashes stays the app's own secret", async () => {
+  await asOwner(() =>
+    saveSharedVar({
+      key: "API_KEY",
+      value: "already-here",
+      type: "plain",
+      teamIds: [TEAM_A],
+      environmentIds: [],
+      projectIds: [],
+    }),
+  );
+  fakeDeplo(
+    deploExport({
+      databases: [],
+      sharedVars: [
+        {
+          key: "API_KEY",
+          value: "from-source",
+          secret: true,
+          targets: ["production", "preview"],
+          teamWide: false,
+          autoInject: false,
+          projectIds: ["prc_shop"],
+          environmentIds: [],
+          appIds: ["prj_web"],
+        },
+      ],
+    }),
+  );
+  const runId = await importDeploProject("prc_shop");
+
+  const web = (await db.select().from(appsTable)).find(
+    (a) => a.name === "web",
+  )!;
+  const own = await db
+    .select()
+    .from(envVarsTable)
+    .where(eq(envVarsTable.appId, web.id));
+  const key = own.find((v) => v.key === "API_KEY")!;
+  assert.equal(decryptSecret(key.valueEnc), "from-source");
+  assert.equal(key.type, "secret");
+  assert.deepEqual(await db.select().from(sharedVarAppsTable), []);
+  const items = (await asOwner(() => getMigrationRun(runId)))!.items;
+  assert.ok(
+    items.some(
+      (i) =>
+        i.sourceName === "API_KEY" &&
+        i.message?.includes("different value") &&
+        !i.blocking,
+    ),
   );
 });

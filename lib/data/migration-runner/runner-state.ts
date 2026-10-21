@@ -3,7 +3,7 @@ import "server-only";
 import { decryptSecretOrThrow } from "../../crypto";
 import { migrationRuns as runsTable } from "../../db/schema/control-plane/migration";
 import { newId } from "../../ids";
-import { isMigrationPlatform } from "../../migration/source";
+import { isMigrationPlatform, sourceClient } from "../../migration/source";
 import type { MigrationPlatform } from "../../migration/source";
 import { MIGRATION_HEARTBEAT_STALE_MS } from "../../types/migration";
 
@@ -33,8 +33,16 @@ export interface RunCredential {
   apiKey: string;
 }
 
-export function panelNameFor(row: { platform: string }): string {
-  return row.platform === "coolify" ? "Coolify" : "Dokploy";
+export function panelNameFor(row: {
+  platform: string;
+  sourceUrl: string;
+}): string {
+  if (!isMigrationPlatform(row.platform)) return "the other panel";
+  return sourceClient({
+    kind: row.platform,
+    baseUrl: row.sourceUrl,
+    apiKey: "",
+  }).displayName;
 }
 
 export async function credentialFor(row: RunRow): Promise<RunCredential> {

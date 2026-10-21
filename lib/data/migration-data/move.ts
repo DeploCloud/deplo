@@ -1,5 +1,7 @@
 import "server-only";
 
+import { errorMessage } from "../../utils";
+import { blocker, noteText, type Note } from "../../migration/note";
 import { and, eq } from "drizzle-orm";
 
 import { getDb } from "../../db/client";
@@ -28,7 +30,7 @@ import {
 } from "../../migration/map/volume-pairing";
 
 import { requireAppCapability } from "../node-access";
-import { stopStackOn, type OnBytes } from "../volume-migration";
+import { isCopyAborted, stopStackOn, type OnBytes } from "../volume-migration";
 import { recordActivity } from "../activity";
 import { clearDataCopyError, markDataCopyFailed } from "../data-copy";
 import { runAsMigration } from "../migration-guard";
@@ -38,6 +40,7 @@ import {
   type ConnectInput,
 } from "../migration-import/gates";
 import {
+  Report,
   appendRunItem,
   ownRun,
   refreshCounts,
@@ -49,10 +52,12 @@ import {
   copyPairedVolumes,
   newCopyTally,
   type CopyContext,
+  type CopyTally,
 } from "./copy-pass";
 import { startAndVerifyDatabase, waitForProvision } from "./database-verify";
 import { hostPathOwners } from "./host-path-clashes";
 import { landedFor, runTargets, type Landed } from "./landed-targets";
+import { restoreDumpInto } from "./live-copy";
 import { recordSourceStopped } from "./source-cutover";
 import { sourceDataHost } from "./source-data-host";
 import { sourceServices, type SourceService } from "./source-services";
@@ -62,6 +67,8 @@ export interface MoveInput extends ConnectInput {
   sourceKind: string;
   sourceId: string;
   onBytes?: OnBytes;
+  // Copy without stopping the source; the switch-over is left to the user.
+  liveCopy?: boolean;
 }
 
 export interface DataMoveResult {
@@ -69,6 +76,12 @@ export interface DataMoveResult {
   failed: number;
   notes: string[];
   sourceGone: boolean;
+}
+
+class TargetWouldNotStop extends Error {
+  constructor(cause: unknown) {
+    super("the destination would not stop", { cause });
+  }
 }
 
 const inFlightCopies = new Map<string, AbortController>();
@@ -110,7 +123,7 @@ function refusalFor(base: {
   sourceKind: string;
   svc: SourceService;
   landed: Landed;
-  notes: string[];
+  notes: Note[];
   saidHere: (text: string) => string;
 }) {
   return async (r: {
@@ -138,7 +151,9 @@ function refusalFor(base: {
     return {
       moved: 0,
       failed: 1,
-      notes: (r.note ? [...base.notes, r.note] : base.notes).map(base.saidHere),
+      notes: (r.note ? [...base.notes, r.note] : base.notes).map((n) =>
+        base.saidHere(noteText(n)),
+      ),
       sourceGone: r.sourceGone ?? false,
     };
   };
@@ -195,7 +210,7 @@ async function runMoveMigrationServiceData(
   const paired = pairVolumes(state.volumes, landed.volumes, {
     singleData: landed.targetKind === "database",
   });
-  const notes = [...state.notes, ...paired.notes];
+  const notes: Note[] = [...state.notes, ...paired.notes];
   const refuse = refusalFor({
     runId: input.runId,
     teamId,
@@ -232,17 +247,18 @@ async function runMoveMigrationServiceData(
       sourceKind: input.sourceKind,
       sourceName: svc.name,
       outcome: state.undetermined ? "manual" : "skipped",
+      blocking: state.undetermined ?? false,
       targetKind: landed.targetKind,
       targetId: landed.targetId,
       message:
-        notes.join(" ") ||
+        notes.map(noteText).join(" ") ||
         "Nothing to move: this service has no data of its own on {panel}.",
     });
     await refreshCounts(input.runId, teamId);
     return {
       moved: 0,
       failed: 0,
-      notes: notes.map(saidHere),
+      notes: notes.map((n) => saidHere(noteText(n))),
       sourceGone: false,
     };
   }
@@ -280,6 +296,51 @@ async function runMoveMigrationServiceData(
       });
   }
 
+  const live = input.liveCopy === true;
+  if (live && landed.targetKind === "database") {
+    const exportDump = sourceClient(c).dataExport?.exportDump;
+    if (!exportDump)
+      return refuse({
+        message: `Only another Deplo can hand over ${svc.name} without stopping it, so its data was not copied. Run the copy again with the source stopped.`,
+        reason: `${svc.name} could not be copied without stopping it on ${panel}`,
+      });
+    const tally = newCopyTally();
+    const aborter = new AbortController();
+    inFlightCopies.set(input.runId, aborter);
+    try {
+      const restored = await restoreDumpInto(
+        landed,
+        teamId,
+        (recipient) => exportDump(svc, recipient),
+        { onBytes: input.onBytes, signal: aborter.signal },
+      );
+      if (restored.ok) {
+        tally.moved++;
+        notes.push(
+          `${landed.targetName} holds a snapshot of ${svc.name} taken while it kept running on {panel}. Anything written there after the copy is not here.`,
+        );
+      } else {
+        tally.failed++;
+        tally.lost.push(restored.message);
+        notes.push(blocker(`${svc.name}: ${restored.message}`));
+      }
+    } finally {
+      inFlightCopies.delete(input.runId);
+    }
+    return settle({
+      input,
+      teamId,
+      panel,
+      path,
+      svc,
+      landed,
+      state,
+      notes,
+      tally,
+      live,
+    });
+  }
+
   let stoppedThere = false;
   const startAgainThere = async (): Promise<string> => {
     try {
@@ -299,8 +360,10 @@ async function runMoveMigrationServiceData(
     }
   };
   try {
-    await sourceClient(c).stopService(input.sourceKind, input.sourceId);
-    stoppedThere = true;
+    if (!live) {
+      await sourceClient(c).stopService(input.sourceKind, input.sourceId);
+      stoppedThere = true;
+    }
   } catch (e) {
     const why = e instanceof Error ? e.message : `${panel} refused`;
     if (state.running) {
@@ -322,17 +385,40 @@ async function runMoveMigrationServiceData(
       `{panel} would not stop ${svc.name} (${why}), but nothing of it is running there, so its data was read as it is.`,
     );
   }
-  if (stoppedThere)
-    await recordSourceStopped(input.runId, input.sourceId, input.sourceKind);
+  // Past this point the source is down: every way out has to start it again.
+  const giveUp = async (what: string, e: unknown): Promise<DataMoveResult> => {
+    const why = errorMessage(e, "it failed");
+    const undone =
+      stoppedThere && state.running ? ` ${await startAgainThere()}` : "";
+    return refuse({
+      message: `${what} (${why}), so ${svc.name}'s data was not copied.${undone} Run the copy again.`,
+      reason: `${what}, so ${svc.name}'s data was never copied`,
+    });
+  };
 
+  let connection: Awaited<ReturnType<typeof host.connect>>;
   try {
+    if (stoppedThere)
+      await recordSourceStopped(input.runId, input.sourceId, input.sourceKind);
     // Untarring into a volume a container is still writing to is the same mistake in the other direction.
-    await stopStackOn(landed.targetServerId, landed.targetSlug);
+    try {
+      await stopStackOn(landed.targetServerId, landed.targetSlug);
+    } catch (e) {
+      throw new TargetWouldNotStop(e);
+    }
     await recordStoppedForCopy(landed, teamId);
-  } catch {}
+    connection = await host.connect(landed.targetServerId);
+  } catch (e) {
+    return giveUp(
+      e instanceof TargetWouldNotStop
+        ? `${landed.targetName} would not stop here, and copying into data it may still be writing would arrive corrupted`
+        : `Deplo could not get ${landed.targetName} ready for the copy`,
+      e instanceof TargetWouldNotStop ? e.cause : e,
+    );
+  }
 
   const tally = newCopyTally();
-  const { source, dest, close } = await host.connect(landed.targetServerId);
+  const { source, dest, close } = connection;
   const aborter = new AbortController();
   inFlightCopies.set(input.runId, aborter);
   const ctx: CopyContext = {
@@ -343,6 +429,7 @@ async function runMoveMigrationServiceData(
     svc,
     landed,
     running: state.running,
+    live,
     sourceServerId: host.serverId ?? "",
     source,
     dest,
@@ -354,6 +441,13 @@ async function runMoveMigrationServiceData(
   try {
     await copyPairedVolumes(ctx, paired.value);
     await copyBindMounts(ctx, binds, bindOwners, mayCopyHostPaths);
+  } catch (e) {
+    if (isCopyAborted(e)) throw e;
+    // Counted as a failure, so the restart below still runs.
+    const message = errorMessage(e, "the copy failed");
+    tally.failed++;
+    tally.lost.push(message);
+    notes.push(blocker(`The copy stopped part way: ${message}`));
   } finally {
     inFlightCopies.delete(input.runId);
     close();
@@ -367,6 +461,35 @@ async function runMoveMigrationServiceData(
   )
     notes.push(await startAgainThere());
 
+  return settle({
+    input,
+    teamId,
+    panel,
+    path,
+    svc,
+    landed,
+    state,
+    notes,
+    tally,
+    live,
+  });
+}
+
+async function settle(o: {
+  input: MoveInput;
+  teamId: string;
+  panel: string;
+  path: string;
+  svc: SourceService;
+  landed: Landed;
+  state: { running: boolean };
+  notes: Note[];
+  tally: CopyTally;
+  live: boolean;
+}): Promise<DataMoveResult> {
+  const { input, teamId, panel, path, svc, landed, state, notes, tally, live } =
+    o;
+  const saidHere = (text: string) => withPanel(text, panel);
   if (
     landed.targetKind === "database" &&
     tally.failed === 0 &&
@@ -398,7 +521,13 @@ async function runMoveMigrationServiceData(
     await markDataCopyFailed(marker, tally.lost.join(" | "));
   else if (tally.failed === 0) await clearDataCopyError(marker);
 
-  if (tally.moved > 0 && landed.targetKind === "app")
+  if (tally.moved > 0 && live)
+    notes.push(
+      landed.targetKind === "app"
+        ? `${svc.name} still serves on {panel}, and ${landed.targetName} here is a copy of it. Press Deploy to start the copy, and move the domains over when you want the traffic to follow.`
+        : `${svc.name} still serves on {panel}. Point your apps at ${landed.targetName} when you switch over.`,
+    );
+  else if (tally.moved > 0 && landed.targetKind === "app")
     notes.push(
       `${landed.targetName} is stopped on both sides. Press Deploy when the traffic should follow the data.`,
     );
@@ -411,16 +540,12 @@ async function runMoveMigrationServiceData(
           : `Nothing was copied for ${landed.targetName}: every volume it has on {panel} is empty.`,
     );
 
-  for (const message of notes)
-    await appendRunItem(input.runId, panel, {
-      path,
-      sourceKind: input.sourceKind,
-      sourceName: svc.name,
-      outcome: "manual",
-      targetKind: landed.targetKind,
-      targetId: landed.targetId,
-      message,
-    });
+  await new Report(input.runId, panel, [path]).notes(
+    input.sourceKind,
+    svc.name,
+    notes,
+    { kind: landed.targetKind, id: landed.targetId },
+  );
 
   await refreshCounts(input.runId, teamId);
   await recordActivity(
@@ -436,7 +561,7 @@ async function runMoveMigrationServiceData(
   return {
     moved: tally.moved,
     failed: tally.failed + tally.notCopied,
-    notes: notes.map(saidHere),
+    notes: notes.map((n) => saidHere(noteText(n))),
     sourceGone: tally.sourceGone,
   };
 }

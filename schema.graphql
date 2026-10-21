@@ -3005,6 +3005,7 @@ enum MigrationPlatform {
 }
 
 type MigrationProjectResult {
+  blocking: Int
   created: Int
   failed: Int
   items: [MigrationRunItem!]
@@ -3061,6 +3062,9 @@ One import, kept after the tab that started it is gone. The API key is stored en
 """
 type MigrationRun {
   actor: String
+
+  """Lines that keep an app from running until they are done."""
+  blocking: Int
   created: Int
   doneSteps: Int
   error: String
@@ -3080,6 +3084,10 @@ type MigrationRun {
   The last thing this run touched, as `Project / Environment / service`. Filled in only by the live `activeMigration` feed - the history list leaves it null, because a finished run says where it got to with its whole report. It is the only record of a run's POSITION that survives the tab: the loop lives in the browser, and so does the plan that knew how many projects there were.
   """
   lastPath: String
+
+  """
+  Lines for your information. What keeps an app from running is counted in `blocking` instead.
+  """
   manual: Int
 
   """
@@ -3128,6 +3136,11 @@ type MigrationRunItem {
   When this line happened. Null on rows written before the report became something you can watch. A report read afterwards is a list; read while it runs it is a log, and a log with no times is not one.
   """
   at: String
+
+  """
+  The app will not run until somebody does what this line says. Every other note is information.
+  """
+  blocking: Boolean
   message: String
   outcome: MigrationOutcome
 
@@ -3153,6 +3166,10 @@ input MigrationRunTargetInput {
   """
   projectName: String!
   serverId: String
+
+  """
+  Empty picks the project itself, so a project with nothing in it still comes across.
+  """
   serviceId: String!
 }
 
@@ -4327,6 +4344,11 @@ type Mutation {
     Another team of the SAME panel is still to come, so this run must leave Deplo's agents on the source machines - the next team reads the same disks, and an uninstall scheduled here would race the install that follows it. The last run of a series leaves this false, and it is that one that clears them. It also holds the takeover: the ports cannot be taken while a run says more teams are owed. Ignored when `queued` is given: the queue itself says which run is the last.
     """
     keepSources: Boolean
+
+    """
+    Copy without stopping anything on the source (another Deplo only). Databases arrive as a snapshot their engine takes while they keep running, app files are copied while the app keeps writing, and crons, backup schedules and deploy on push land switched off so the two copies do not both run them. The switch-over is left to the user.
+    """
+    liveCopy: Boolean
     orgName: String
 
     """

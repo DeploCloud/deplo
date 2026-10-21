@@ -152,6 +152,7 @@ export async function runDataPhase(
         runId: row.id,
         sourceKind: d.sourceKind,
         sourceId: d.sourceId,
+        liveCopy: row.liveCopy,
         onBytes: (chunk) => {
           copied += chunk;
           const now = Date.now();
@@ -173,13 +174,20 @@ export async function runDataPhase(
       failedHere++;
       continue;
     }
-    if (res.sourceGone) {
-      failedHere++;
-      deadMachines.add(d.sourceServerId);
-    }
+    if (res.sourceGone) deadMachines.add(d.sourceServerId);
+    if (res.sourceGone || res.failed > 0) failedHere++;
   }
 
   await setProgress(row.id, { doneSteps: movable.length, stepLabel: null });
+  if (row.liveCopy)
+    await appendRunItem(row.id, panelNameFor(row), {
+      path: "Migration",
+      sourceKind: "run",
+      sourceName: "Migration",
+      outcome: "manual",
+      message:
+        "Nothing was stopped on {panel}, and it still serves everything. What landed here is a copy: deploy it to try it out, and move the domains over when you want the traffic to follow.",
+    });
   if (failedHere > 0)
     await appendRunItem(row.id, panelNameFor(row), {
       path: "Migration",

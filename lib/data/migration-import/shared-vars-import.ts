@@ -1,20 +1,54 @@
 import "server-only";
 
-import { parseEnvBlob } from "../../migration/map/env";
+import {
+  envEntriesOf,
+  type EnvPair,
+  type SharedRefLevel,
+} from "../../migration/map/env";
 import { saveSharedVar } from "../shared-vars/authoring";
-import { visibleSharedVarIdsByKey } from "../shared-vars/visibility";
+import { tryDecryptSecret } from "../../crypto";
+import { visibleSharedVarsByKey } from "../shared-vars/visibility";
 import type { Report } from "./run-report";
 
-// carrying a key wins - ponytail: first-level-wins; compare values if a report line naming the winner is asked for.
-export type SharedIndex = Map<string, { varId: string; value: string }>;
+// Keyed by level and name: a team's X and an environment's X are two variables.
+// varId null: a variable here holds another value, so apps keep the source's as their own.
+// created: this run made it, so only apps it brought over are linked to it.
+export interface SharedEntry {
+  varId: string | null;
+  value: string;
+  created?: boolean;
+}
+export type SharedIndex = Map<string, SharedEntry>;
+
+const NARROW_FIRST: SharedRefLevel[] = [
+  "environment",
+  "server",
+  "project",
+  "team",
+];
+
+export function sharedEntry(
+  index: SharedIndex,
+  level: SharedRefLevel,
+  key: string,
+): SharedEntry | undefined {
+  return (
+    index.get(`${level}.${key}`) ??
+    NARROW_FIRST.map((l) => index.get(`${l}.${key}`)).find(Boolean)
+  );
+}
 
 export async function importSharedVars(
-  blob: string | null | undefined,
+  vars:
+    { env?: string | null; envEntries?: EnvPair[] | null } | null | undefined,
   opts: {
     teamId: string;
     label: string;
     environmentIds: string[];
     projectIds: string[];
+    level: SharedRefLevel;
+    // Every variable this import created, across levels and environments.
+    created: Set<string>;
     teamWide?: boolean;
     secretKeys?: string[] | null;
     scopeNote?: string;
@@ -22,16 +56,24 @@ export async function importSharedVars(
   },
   index: SharedIndex,
 ): Promise<void> {
-  const entries = parseEnvBlob(blob);
+  const entries = envEntriesOf(vars);
   if (entries.length === 0) return;
 
-  const already = await visibleSharedVarIdsByKey(opts.teamId);
+  const already = await visibleSharedVarsByKey(opts.teamId);
 
   for (const { key, value } of entries) {
-    if (index.has(key)) continue;
-    const here = already.get(key);
-    if (here) {
-      index.set(key, { varId: here, value });
+    const at = `${opts.level}.${key}`;
+    if (index.has(at)) continue;
+    // One this run created at another level is not "already in this team".
+    const here = (already.get(key) ?? []).filter(
+      (v) => !opts.created.has(v.id),
+    );
+    const same = here.find((v) => {
+      const open = tryDecryptSecret(v.valueEnc);
+      return open.ok && open.value === value;
+    });
+    if (same) {
+      index.set(at, { varId: same.id, value });
       await opts.report.add({
         path: opts.label,
         sourceKind: "shared-var",
@@ -39,7 +81,20 @@ export async function importSharedVars(
         outcome: "skipped",
         targetKind: "shared-var",
         message:
-          "A shared variable with this name is already in this team. The apps that referenced it are linked to that one, whatever value it holds.",
+          "A shared variable with this name and value is already in this team. The apps that referenced it are linked to that one.",
+      });
+      continue;
+    }
+    if (here.length > 0) {
+      index.set(at, { varId: null, value });
+      await opts.report.add({
+        path: opts.label,
+        sourceKind: "shared-var",
+        sourceName: key,
+        outcome: "skipped",
+        targetKind: "shared-var",
+        message:
+          "A shared variable with this name is already in this team with a different value, so it was left as it is. The apps that referenced it on {panel} keep {panel}'s value as their own variable.",
       });
       continue;
     }
@@ -53,7 +108,8 @@ export async function importSharedVars(
         projectIds: opts.projectIds,
         appIds: undefined,
       });
-      index.set(key, { varId, value });
+      index.set(at, { varId, value, created: true });
+      opts.created.add(varId);
       await opts.report.add({
         path: opts.label,
         sourceKind: "shared-var",

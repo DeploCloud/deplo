@@ -5,9 +5,11 @@ import type {
   SourceCompose,
   SourceDatabase,
   SourceEnvironment,
+  SourceAccess,
   SourceMember,
   SourceProject,
-  SourceS3Destination,
+  SourceBackupDestination,
+  SourceRegistry,
   SourceSchedule,
   SourceServer,
   SourceSharedEnv,
@@ -75,6 +77,18 @@ export interface SourceDataExport {
     path: string,
     allowFile?: boolean,
   ): AsyncIterable<Buffer>;
+  // The archive an upload app builds from, as it was uploaded.
+  exportUpload?(svc: { kind: string; id: string }): AsyncIterable<Buffer>;
+  // The image an app runs, as its source server holds it (`docker save`).
+  exportImage?(
+    svc: { kind: string; id: string },
+    image: string,
+  ): AsyncIterable<Buffer>;
+  // A database dumped through its engine while it keeps running, encrypted to `recipient` (an age key).
+  exportDump?(
+    svc: { kind: string; id: string },
+    recipient: string,
+  ): AsyncIterable<Buffer>;
 }
 
 export interface MigrationSourceClient {
@@ -98,7 +112,9 @@ export interface MigrationSourceClient {
   listSchedules(kind: string, id: string): Promise<SourceSchedule[]>;
   teamSharedEnv(): Promise<SourceSharedEnv | null>;
   serverSharedEnv(sourceServerId: string): Promise<SourceSharedEnv | null>;
-  listBackupDestinations(): Promise<SourceS3Destination[]>;
+  listBackupDestinations(): Promise<SourceBackupDestination[]>;
+  // null: a source that could hand them over but is too old to.
+  listRegistries?(): Promise<SourceRegistry[] | null>;
 
   serviceRuntime(svc: RuntimeQuery): Promise<ServiceRuntime>;
 
@@ -110,6 +126,9 @@ export interface MigrationSourceClient {
 
   // Set when the source panel hands its data over itself, so no agent goes on its machines (ADR-0034).
   readonly dataExport?: SourceDataExport;
+
+  // Roles and per-node access; undefined = the source is too old to say, null = the reader may not see them.
+  accessExport?(): Promise<SourceAccess | null | undefined>;
 }
 
 export class StopAcceptedError extends Error {}

@@ -7,8 +7,10 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { MigrationTree } from "./migration-tree/migration-tree";
 import type { PortConflict } from "./migration-tree/port-conflict-row";
 import { visible } from "./migration-tree/search";
+import { defaultChoice, emptyProjectTargets } from "./migration-wizard/landing";
 import type {
   Placement,
+  Plan,
   PlanProject,
   PlanService,
   ServerChoice,
@@ -369,4 +371,49 @@ test("a database says what it publishes, and only asks when that port is taken",
 
   const noGrant = render(["s-db"], { showPorts: false });
   assert.equal(/Publishes 5432/.test(noGrant), false);
+});
+
+const EMPTY: PlanProject = {
+  sourceId: "p-empty",
+  name: "Later",
+  exists: false,
+  environments: [
+    { sourceId: "e-live", name: "Live", exists: false, services: [] },
+  ],
+};
+
+test("a project with nothing in it can still be picked", () => {
+  const on = render(["p-empty"], { projects: [EMPTY] });
+  assert.equal(stateOf(on, "imp-p-p-empty"), "checked");
+  assert.doesNotMatch(tagFor(on, "imp-p-p-empty"), /\sdisabled[\s=>]/);
+  assert.match(on, />Empty project</);
+  const off = render([], { projects: [EMPTY] });
+  assert.equal(stateOf(off, "imp-p-p-empty"), "unchecked");
+});
+
+test("an empty project is picked by default and travels as a target of its own", () => {
+  const plan: Plan = {
+    platform: "deplo",
+    sourceUrl: "https://old.deplo.test",
+    orgName: null,
+    otherTeams: null,
+    projects: [
+      EMPTY,
+      { ...EMPTY, sourceId: "p-here", exists: true },
+      ...PROJECTS,
+    ],
+    servers: [],
+    members: [],
+  };
+  const chosen = defaultChoice(plan);
+  assert.equal(chosen.has("p-empty"), true);
+  assert.equal(chosen.has("p-here"), false, "one already here is left alone");
+  assert.equal(
+    chosen.has("p1"),
+    false,
+    "a project with services is picked by them",
+  );
+  assert.deepEqual(emptyProjectTargets(plan, chosen), [
+    { projectId: "p-empty", projectName: "Later", serviceId: "" },
+  ]);
 });
