@@ -40,9 +40,7 @@ curl -fsSL https://deplo.build/install.sh | bash
 Your dashboard comes up on a generated address like `https://deplo-cb00710a.deplo.site`, with HTTPS and no domain needed. Requirements, your own domain and every option are in the [installation guide](https://deplo.build/docs/getting-started/install).
 
 > [!TIP]
-> **No server yet? Get one with Deplo already on it.**
-> Answer three questions at **[deplo.build/get-started](https://deplo.build/get-started)** and pick a plan from one of our hosting partners. No terminal: you get a link and create your account.
-> Deplo earns a commission from the partner, and your price stays the same.
+> **Never want to touch a server, a terminal or SSH?** Get a server with Deplo already installed from one of our hosting partners at **[deplo.build/get-started](https://deplo.build/get-started)**: open the link you receive, create your account, deploy. Nothing else to learn.
 
 [![Deplo Bento](https://deplo.build/api/media/file/readme_bento.png)](https://deplo.build)
 
