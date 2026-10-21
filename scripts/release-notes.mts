@@ -47,8 +47,10 @@ if (from) {
 
 const authorOf = new Map<string, string>();
 if (from) {
+  // Compare answers 250 commits a page; a range since the last stable runs past that.
   const json = run("gh", [
     "api",
+    "--paginate",
     `repos/${REPO}/compare/${from}...${to}?per_page=250`,
     "-q",
     '.commits[] | .sha + "\\u001f" + (.author.login // "")',
