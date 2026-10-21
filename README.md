@@ -24,7 +24,7 @@ Deplo gives you the cloud experience on a server of your own choosing: connect a
 </p>
 
 <p align="center">
-Builds, domains, certificates, databases, backups and rollbacks are handled for you. You pay your host, not Deplo.
+Open source and self-hosted: builds, domains, certificates, databases, backups and rollbacks are handled for you. You pay your host, not Deplo.
 </p>
 
 <br />
