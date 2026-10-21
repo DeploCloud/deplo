@@ -1,6 +1,13 @@
 import { test, before, after, beforeEach } from "node:test";
 import assert from "node:assert/strict";
+import { mkdtempSync } from "node:fs";
 import { readFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+
+process.env.DEPLO_DATA_DIR = mkdtempSync(
+  join(tmpdir(), "deplo-upload-import-"),
+);
 
 import type { PGlite } from "@electric-sql/pglite";
 import { makeTestDb, type TestDb } from "../../db/test-harness";
