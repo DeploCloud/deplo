@@ -31,7 +31,11 @@ import { landingServerId } from "./target-servers";
 import { mapAppEnv } from "./app-env";
 import { loadComposeText, resolveAppSource } from "./app-source";
 import { rehostAppDomains } from "./app-domains";
-import { rehostAppVariables } from "./app-address-vars";
+import {
+  addressRules,
+  composeAddressNotes,
+  rehostAppVariables,
+} from "./app-address-vars";
 import {
   landDomainCertificates,
   landDomainRedirects,
@@ -332,9 +336,10 @@ export async function importAppService(
   if (mayClaimHosts)
     await landDomainCertificates(created.serverId, domains.value, notes);
   const rehosted = await rehostAppDomains(created, domains, primary, notes);
+  const address = await addressRules(rehosted);
   await rehostAppVariables(
     created.id,
-    rehosted,
+    address,
     [...env, ...linkRefused],
     linkable.filter((r) => !linkRefused.some((e) => e.key === r.key)),
     home.shared,
@@ -368,9 +373,12 @@ export async function importAppService(
       serviceRenames,
       servers: home.servers,
       liveCopy: home.liveCopy,
+      address,
     },
     notes,
   );
+  if (isCompose && compose)
+    notes.push(...composeAddressNotes(compose, address));
   if (home.liveCopy) {
     const pausedLine = pausedNote(name, { crons, schedules });
     if (pausedLine) notes.push(pausedLine);

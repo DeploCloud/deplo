@@ -4,6 +4,7 @@ import { errorMessage } from "../../utils";
 import { eq, inArray, sql } from "drizzle-orm";
 
 import { getDb } from "../../db/client";
+import { load as loadYaml } from "../../yaml";
 import { apps as appsTable } from "../../db/schema/control-plane/apps";
 import { domains as domainsTable } from "../../db/schema/control-plane/domains";
 import { requireActiveTeamId } from "../../membership";
@@ -67,24 +68,102 @@ async function splitByCarried(rehosted: Map<string, string>) {
   return { gone, carried, foreign };
 }
 
+export interface AddressRules {
+  gone: Map<string, string>;
+  carried: Map<string, string>;
+  foreign: Map<string, string>;
+  // The value on the new address, when the old one is not carried.
+  rewrite(value: string): string;
+  // Names an old address that still answers here, for this team or for another.
+  named(value: string): boolean;
+  elsewhere(value: string): boolean;
+}
+
+export async function addressRules(
+  rehosted: Map<string, string>,
+): Promise<AddressRules> {
+  const { gone, carried, foreign } =
+    rehosted.size === 0
+      ? { gone: new Map(), carried: new Map(), foreign: new Map() }
+      : await splitByCarried(rehosted);
+  const names = (value: string, hosts: Map<string, string>) =>
+    hosts.size > 0 && renameHost(value, hosts) !== value;
+  return {
+    gone,
+    carried,
+    foreign,
+    rewrite: (value) => (gone.size > 0 ? renameHost(value, gone) : value),
+    named: (value) => names(value, carried),
+    elsewhere: (value) => names(value, foreign),
+  };
+}
+
+// What has to stay as it is: an old address that answers for another app here.
+function leftNotes(
+  rules: AddressRules,
+  named: string[],
+  foreign: string[],
+  label: string,
+  where: string,
+): Note[] {
+  const notes: Note[] = [];
+  if (named.length > 0)
+    notes.push(
+      `${label}${list(named)} ${they(named, "names", "name")} ${list([...rules.carried.keys()])}, which answers for another app here, so ${they(named, "it was", "they were")} left as ${they(named, "it is", "they are")}. If this app should use its own address (${list([...rules.carried.values()])}), change ${they(named, "it", "them")} under ${where}.`,
+    );
+  if (foreign.length > 0)
+    notes.push(
+      `${label}${list(foreign)} ${they(foreign, "names", "name")} an address this Deplo already serves for someone else, so ${they(foreign, "it was", "they were")} left as ${they(foreign, "it is", "they are")}. If this app should use its own address (${list([...rules.foreign.values()])}), change ${they(foreign, "it", "them")} under ${where}.`,
+    );
+  return notes;
+}
+
+// Variables kept outside the app's own (preview, cron job): new values plus the report lines.
+export function rehostPairs<T extends { key: string; value: string }>(
+  pairs: T[],
+  rules: AddressRules,
+  label: (keys: string[]) => string,
+  where: string,
+): { pairs: T[]; notes: Note[] } {
+  const out = pairs.map((p) => ({ ...p, value: rules.rewrite(p.value) }));
+  const touched = out
+    .filter((p, i) => p.value !== pairs[i]!.value)
+    .map((p) => p.key);
+  const notes: Note[] = [];
+  if (touched.length > 0)
+    notes.push(
+      `${label(touched)}${list(touched)} named the old address, so ${they(touched, "it now names", "they now name")} the new one.`,
+    );
+  const named = pairs.filter((p) => rules.named(p.value)).map((p) => p.key);
+  const foreign = pairs
+    .filter((p) => rules.elsewhere(p.value))
+    .map((p) => p.key);
+  notes.push(
+    ...leftNotes(
+      rules,
+      named,
+      foreign,
+      named.length + foreign.length > 0 ? label([...named, ...foreign]) : "",
+      where,
+    ),
+  );
+  return { pairs: out, notes };
+}
+
 export async function rehostAppVariables(
   appId: string,
-  rehosted: Map<string, string>,
+  rules: AddressRules,
   env: { key: string; value: string }[],
   linked: { key: string; level: SharedRefLevel; sharedKey: string }[],
   shared: SharedIndex,
   notes: Note[],
 ): Promise<void> {
-  if (rehosted.size === 0) return;
-  const { gone, carried, foreign } = await splitByCarried(rehosted);
-  const names = (value: string, hosts: Map<string, string>) =>
-    hosts.size > 0 && renameHost(value, hosts) !== value;
-  const named = (value: string) => names(value, carried);
-  const elsewhere = (value: string) => names(value, foreign);
+  const { gone, named, elsewhere } = rules;
+  if (gone.size + rules.carried.size + rules.foreign.size === 0) return;
 
   const rewritten = env.map((e) => ({
     key: e.key,
-    value: renameHost(e.value, gone),
+    value: rules.rewrite(e.value),
   }));
   const touched = rewritten
     .filter((r, i) => r.value !== env[i]!.value)
@@ -114,7 +193,7 @@ export async function rehostAppVariables(
   for (const r of linked) {
     const entry = sharedEntry(shared, r.level, r.sharedKey);
     if (!entry?.varId) continue;
-    const next = renameHost(entry.value, gone);
+    const next = rules.rewrite(entry.value);
     if (next === entry.value) {
       if (named(entry.value)) namedShared.push(r.key);
       else if (elsewhere(entry.value)) foreignShared.push(r.key);
@@ -144,18 +223,68 @@ export async function rehostAppVariables(
     );
 
   const namedOwn = env.filter((e) => named(e.value)).map((e) => e.key);
-  const stillNamed = [...namedOwn, ...namedShared];
-  if (stillNamed.length > 0)
-    notes.push(
-      `${list(stillNamed)} ${they(stillNamed, "names", "name")} ${list([...carried.keys()])}, which answers for another app here, so ${they(stillNamed, "it was", "they were")} left as ${they(stillNamed, "it is", "they are")}. If this app should use its own address (${list([...carried.values()])}), change ${they(stillNamed, "it", "them")} under Variables.`,
-    );
+  const namedForeign = env.filter((e) => elsewhere(e.value)).map((e) => e.key);
+  notes.push(
+    ...leftNotes(
+      rules,
+      [...namedOwn, ...namedShared],
+      [...namedForeign, ...foreignShared],
+      "",
+      "Variables",
+    ),
+  );
+}
 
-  const namedForeign = [
-    ...env.filter((e) => elsewhere(e.value)).map((e) => e.key),
-    ...foreignShared,
-  ];
-  if (namedForeign.length > 0)
+// A compose file's own `environment:` values, as `service: KEY` and the value.
+function composeValues(yaml: string): { name: string; value: string }[] {
+  let doc: unknown;
+  try {
+    doc = loadYaml(yaml);
+  } catch {
+    return [];
+  }
+  const services = (doc as { services?: unknown } | null)?.services;
+  if (!services || typeof services !== "object") return [];
+  const out: { name: string; value: string }[] = [];
+  for (const [svc, def] of Object.entries(services)) {
+    const env = (def as { environment?: unknown } | null)?.environment;
+    const pairs: [string, unknown][] = Array.isArray(env)
+      ? env
+          .filter((e): e is string => typeof e === "string" && e.includes("="))
+          .map((e) => [e.slice(0, e.indexOf("=")), e.slice(e.indexOf("=") + 1)])
+      : env && typeof env === "object"
+        ? Object.entries(env)
+        : [];
+    for (const [key, value] of pairs)
+      if (typeof value === "string")
+        out.push({ name: `${svc}: ${key.trim()}`, value });
+  }
+  return out;
+}
+
+// Values written into the compose file stay as written; the report names the ones to change.
+export function composeAddressNotes(yaml: string, rules: AddressRules): Note[] {
+  if (rules.gone.size + rules.carried.size + rules.foreign.size === 0)
+    return [];
+  const values = composeValues(yaml);
+  const gone = values
+    .filter((v) => rules.rewrite(v.value) !== v.value)
+    .map((v) => v.name);
+  const notes: Note[] = [];
+  if (gone.length > 0)
     notes.push(
-      `${list(namedForeign)} ${they(namedForeign, "names", "name")} an address this Deplo already serves for someone else, so ${they(namedForeign, "it was", "they were")} left as ${they(namedForeign, "it is", "they are")}. If this app should use its own address (${list([...foreign.values()])}), change ${they(namedForeign, "it", "them")} under Variables.`,
+      blocker(
+        `The compose file sets ${list(gone)} to the old address, which no longer answers for this app. Change ${they(gone, "it", "them")} to ${list([...rules.gone.values()])} under Compose.`,
+      ),
     );
+  notes.push(
+    ...leftNotes(
+      rules,
+      values.filter((v) => rules.named(v.value)).map((v) => v.name),
+      values.filter((v) => rules.elsewhere(v.value)).map((v) => v.name),
+      "The compose file's ",
+      "Compose",
+    ),
+  );
+  return notes;
 }

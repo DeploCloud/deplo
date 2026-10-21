@@ -19,6 +19,7 @@ import { updateAppResources } from "../apps/resources";
 import { updateAppHealthCheck } from "../apps/settings";
 import { addBasicAuthUser } from "../basic-auth";
 import { landNativeOps } from "./app-ops";
+import { type AddressRules, rehostPairs } from "./app-address-vars";
 import { importCrons } from "./cron-import";
 import type { SourceService } from "./source-tree";
 
@@ -115,6 +116,7 @@ export async function landAppExtras(
     serviceRenames: Map<string, string>;
     servers?: Map<string, string | undefined>;
     liveCopy?: boolean;
+    address?: AddressRules;
   },
   notes: Note[],
 ): Promise<number> {
@@ -182,9 +184,20 @@ export async function landAppExtras(
         );
       }
     }
-    const previewVars = (
+    let previewVars = (
       app.previewEnvEntries ?? parseEnvBlob(app.previewEnv)
     ).filter((v) => v.key);
+    if (shape.address) {
+      const moved = rehostPairs(
+        previewVars,
+        shape.address,
+        (keys) =>
+          `The preview ${keys.length === 1 ? "variable" : "variables"} `,
+        "Previews",
+      );
+      previewVars = moved.pairs;
+      notes.push(...moved.notes);
+    }
     const previewSecrets = app.previewSecretEnvKeys
       ? new Set(app.previewSecretEnvKeys)
       : secretKeys;
@@ -231,6 +244,7 @@ export async function landAppExtras(
       serviceRenames,
       cronEnabled: detail.cronEnabled,
       paused: shape.liveCopy,
+      address: shape.address,
     },
   );
 }

@@ -308,3 +308,245 @@ test("an old address another team holds here is left alone without naming it", a
   assert.doesNotMatch(line, /dash\.example\.com/);
   assert.deepEqual(await blockingLines(runId), []);
 });
+
+async function previewVars(appId: string) {
+  const { appPreviewEnvVars } =
+    await import("../../db/schema/control-plane/env-vars");
+  const rows = await db
+    .select()
+    .from(appPreviewEnvVars)
+    .where(eq(appPreviewEnvVars.appId, appId));
+  return Object.fromEntries(
+    rows.map((v) => [v.key, decryptSecret(v.valueEnc)]),
+  );
+}
+
+async function cronVars(appId: string) {
+  const { cronJobs, cronJobEnv } =
+    await import("../../db/schema/control-plane/crons");
+  const jobs = await db
+    .select()
+    .from(cronJobs)
+    .where(eq(cronJobs.appId, appId));
+  const env = await db.select().from(cronJobEnv);
+  return Object.fromEntries(
+    jobs.map((j) => [
+      j.name,
+      Object.fromEntries(
+        env
+          .filter((e) => e.jobId === j.id)
+          .map((e) => [e.key, decryptSecret(e.valueEnc)]),
+      ),
+    ]),
+  );
+}
+
+const appIdOf = async (name = "web") =>
+  (await db.select().from(appsTable)).find((a) => a.name === name)!.id;
+
+async function theirsAnswersOn(host: string) {
+  await seedApp(db, { id: "prj_theirs", teamId: TEAM_A, slug: "theirs" });
+  await db.insert(domainsTable).values({
+    id: "dom_theirs",
+    appId: "prj_theirs",
+    name: host,
+    status: "valid",
+    isPrimary: true,
+    ssl: true,
+    source: "custom",
+    entrypoint: "websecure",
+    certProvider: "letsencrypt",
+    stripPrefix: false,
+    createdAt: "2026-01-01T00:00:00.000Z",
+  });
+}
+
+test("a preview variable holding the old address names the new one", async () => {
+  const runId = await importFromDeplo(
+    deploExport({
+      apps: [
+        exportApp({
+          domains: [temporary(OLD)],
+          previewEnv: [
+            { key: "PREVIEW_HOST", value: `https://${OLD}/`, secret: false },
+            { key: "PREVIEW_KEEP", value: "other.example.com", secret: false },
+          ],
+        }),
+      ],
+      databases: [],
+    }),
+    ["prc_shop"],
+  );
+  const { host } = await landed();
+  assert.deepEqual(await previewVars(await appIdOf()), {
+    PREVIEW_HOST: `https://${host}/`,
+    PREVIEW_KEEP: "other.example.com",
+  });
+  const lines = await reportLines(runId);
+  assert.ok(
+    lines.some((l) =>
+      /preview variable PREVIEW_HOST named the old address/i.test(l),
+    ),
+    lines.join("\n"),
+  );
+  assert.deepEqual(await blockingLines(runId), []);
+});
+
+test("a preview variable naming an address another app here answers on is only named", async () => {
+  await theirsAnswersOn("dash.example.com");
+  const runId = await importFromDeplo(
+    deploExport({
+      apps: [
+        exportApp({
+          domains: [temporary("dash.example.com", { generated: false })],
+          previewEnv: [
+            { key: "PREVIEW_HOST", value: "dash.example.com", secret: false },
+          ],
+        }),
+      ],
+      databases: [],
+    }),
+    ["prc_shop"],
+  );
+  assert.equal(
+    (await previewVars(await appIdOf())).PREVIEW_HOST,
+    "dash.example.com",
+  );
+  const lines = await reportLines(runId);
+  assert.ok(
+    lines.some((l) =>
+      /PREVIEW_HOST names dash\.example\.com.*under Previews/.test(l),
+    ),
+    lines.join("\n"),
+  );
+});
+
+test("a cron job's variable holding the old address names the new one", async () => {
+  const runId = await importFromDeplo(
+    deploExport({
+      apps: [
+        exportApp({
+          domains: [temporary(OLD)],
+          crons: [
+            {
+              name: "ping",
+              schedule: "*/5 * * * *",
+              command: "curl $TARGET",
+              service: null,
+              enabled: true,
+              env: [
+                { key: "TARGET", value: `https://${OLD}/health` },
+                { key: "OTHER", value: "example.com" },
+              ],
+            },
+          ],
+        }),
+      ],
+      databases: [],
+    }),
+    ["prc_shop"],
+  );
+  const { host } = await landed();
+  assert.deepEqual(await cronVars(await appIdOf()), {
+    ping: { TARGET: `https://${host}/health`, OTHER: "example.com" },
+  });
+  const lines = await reportLines(runId);
+  assert.ok(
+    lines.some((l) => /Cron "ping".*TARGET named the old address/.test(l)),
+    lines.join("\n"),
+  );
+  assert.deepEqual(await blockingLines(runId), []);
+});
+
+test("a cron job's variable naming another team's address is left without naming it", async () => {
+  await seedApp(db, { id: "prj_theirs", teamId: TEAM_B, slug: "theirs" });
+  await db.insert(domainsTable).values({
+    id: "dom_theirs",
+    appId: "prj_theirs",
+    name: "dash.example.com",
+    status: "valid",
+    isPrimary: true,
+    ssl: true,
+    source: "custom",
+    entrypoint: "websecure",
+    certProvider: "letsencrypt",
+    stripPrefix: false,
+    createdAt: "2026-01-01T00:00:00.000Z",
+  });
+  const runId = await importFromDeplo(
+    deploExport({
+      apps: [
+        exportApp({
+          domains: [temporary("dash.example.com", { generated: false })],
+          crons: [
+            {
+              name: "ping",
+              schedule: "*/5 * * * *",
+              command: "curl $TARGET",
+              service: null,
+              enabled: true,
+              env: [{ key: "TARGET", value: "https://dash.example.com/" }],
+            },
+          ],
+        }),
+      ],
+      databases: [],
+    }),
+    ["prc_shop"],
+  );
+  assert.deepEqual(await cronVars(await appIdOf()), {
+    ping: { TARGET: "https://dash.example.com/" },
+  });
+  const lines = await reportLines(runId);
+  const line = lines.find((l) => /Cron "ping"/.test(l));
+  assert.ok(line, lines.join("\n"));
+  assert.match(line, /TARGET/);
+  assert.doesNotMatch(line, /dash\.example\.com/);
+});
+
+test("a compose file's own value holding the old address is named, the file left as written", async () => {
+  const compose = [
+    "services:",
+    "  web:",
+    "    image: nginx:1.27",
+    "    environment:",
+    `      DASHBOARD_HOST: ${OLD}`,
+    "      PLAIN: hello",
+    "  worker:",
+    "    image: busybox",
+    "    environment:",
+    `      - CALLBACK=https://${OLD}/hook`,
+    "",
+  ].join("\n");
+  const runId = await importFromDeplo(
+    deploExport({
+      apps: [
+        exportApp({
+          id: "prj_stack",
+          name: "stack",
+          slug: "stack",
+          source: "compose",
+          repo: null,
+          compose,
+          domains: [temporary(OLD, { service: "web", port: 80 })],
+        }),
+      ],
+      databases: [],
+    }),
+    ["prc_shop"],
+  );
+  const app = (await db.select().from(appsTable)).find(
+    (a) => a.name === "stack",
+  )!;
+  assert.equal(
+    app.compose?.trim(),
+    compose.trim(),
+    "the compose file is not rewritten",
+  );
+  const lines = await blockingLines(runId);
+  const line = lines.find((l) => /compose file/.test(l));
+  assert.ok(line, (await reportLines(runId)).join("\n"));
+  assert.match(line, /web: DASHBOARD_HOST/);
+  assert.match(line, /worker: CALLBACK/);
+  assert.doesNotMatch(line, /PLAIN/);
+});
