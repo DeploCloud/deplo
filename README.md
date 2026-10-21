@@ -20,47 +20,50 @@
 <br />
 
 <p align="center">
-Deplo is an open source platform that makes deploying and managing applications on your own infrastructure ridiculously simple.
+Deplo gives you the cloud experience on a server of your own choosing: connect a repository, push, and it is live.
 </p>
 
 <p align="center">
-Instead of paying more and more for increasingly complex cloud platforms, Deplo gives you a simple way to run your applications on the infrastructure you already own or rent.
-</p>
-
-<p align="center">
-Connect your repository, deploy your application, and let Deplo handle the infrastructure, without the unnecessary complexity.
-</p>
-
-<p align="center">
-The cloud experience, without being locked into the cloud.
+Open source and self-hosted: builds, domains, certificates, databases, backups and rollbacks are handled for you. You pay your host, not Deplo.
 </p>
 
 <br />
 
+## Get started
+
+Run this as root on a fresh Linux server:
+
+```bash
+curl -fsSL https://deplo.build/install.sh | bash
+```
+
+Your dashboard comes up on a generated address like `https://deplo-cb00710a.deplo.site`, with HTTPS and no domain needed. Requirements, your own domain and every option are in the [installation guide](https://deplo.build/docs/getting-started/install).
+
+> [!TIP]
+> **No server yet? Get one with Deplo already on it.**
+> Answer three questions at **[deplo.build/get-started](https://deplo.build/get-started)** and pick a plan from one of our hosting partners. No terminal: you get a link and create your account.
+> Deplo earns a commission from the partner, and your price stays the same.
+
 [![Deplo Bento](https://deplo.build/api/media/file/readme_bento.png)](https://deplo.build)
 
-## Installing Deplo
+## What you get
 
-Deplo is designed to run on your own infrastructure, giving you complete control over where your applications live and how they're managed.
+- **Push to deploy** from GitHub, GitLab, Bitbucket or Gitea, or from an image, a Compose file or a plain upload.
+- **A free URL from the first deploy**, then your own domains with certificates handled for you.
+- **Databases** (Postgres, MySQL, MariaDB, MongoDB, Redis, ClickHouse) with encrypted, scheduled backups.
+- **Built for teams**: fine-grained access for every member, an activity log, 2FA and API tokens.
+- **The shell is optional**: useful for experts, never required.
 
-Whether you're running a VPS, a dedicated server, or your own hardware, Deplo turns it into a powerful deployment platform without forcing you to become a full-time DevOps engineer.
+Deplo is in beta: rough edges are expected, and 1.0 is planned for Q4 2026.
 
-### Installation guides
+## Learn more
 
-- [Install Deplo on a Linux server](https://deplo.build/docs/getting-started/install)
-- [Deploy your first application](https://deplo.build/docs/getting-started/first-app)
-- [Migrate from Coolify](https://deplo.build/docs/migrations/move-from-coolify)
-- [Migrate from Dokploy](https://deplo.build/docs/migrations/move-from-dokploy)
+- [Deploy your first app](https://deplo.build/docs/getting-started/first-app)
+- [How Deplo works](https://deplo.build/docs/concepts/how-deplo-works)
+- Move to Deplo from [Coolify](https://deplo.build/docs/migrations/move-from-coolify), [Dokploy](https://deplo.build/docs/migrations/move-from-dokploy) or [another Deplo](https://deplo.build/docs/migrations/move-from-another-deplo)
+- [Offer Deplo to your customers](https://deplo.build/docs/guides/hosting-providers) as a hosting provider
 
-## Building with Deplo
-
-Deplo is built to make deploying applications simple without taking away control.
-
-Connect your Git repository, configure your application, and deploy directly to your own infrastructure.
-
-Whether you're deploying a personal project, a production application, or multiple services for a team, Deplo gives you the tools to manage everything from one place.
-
-For more information, see the [Deplo documentation](https://deplo.build/docs).
+**[Read the full documentation](https://deplo.build/docs)**
 
 ## Thanks to our sponsors
 
@@ -72,9 +75,7 @@ You can sponsor us [here](https://github.com/sponsors/IdraDev)
 
 ## Contributing
 
-Deplo is open source, and contributions are welcome.
-
-Whether you want to improve the platform, build integrations, fix bugs, or help improve the documentation, you can contribute to the project and help shape the future of self-hosted infrastructure.
+Deplo is open source, and contributions are welcome: fixes, features, integrations. See [CONTRIBUTING.md](CONTRIBUTING.md). The documentation lives in [DeploCloud/docs](https://github.com/DeploCloud/docs).
 
 ## License
 
