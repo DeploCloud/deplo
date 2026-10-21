@@ -223,94 +223,107 @@ export function DeploUpdatesTab({
     error: listError,
   });
 
+  const extras =
+    (manual && !updating) || fleet.behind.length > 0 || fleet.pausedBy !== null;
+
   return (
-    <div className="space-y-8">
-      <Card className="overflow-hidden">
-        <CardContent className={HERO_BODY}>
-          <div className="min-w-0 flex-1 space-y-5">
-            <div>
-              <h2 className={HERO_TITLE}>
-                {HERO_ICON[hero.tone]}
+    <UpdatesLayout>
+      <Card>
+        <CardContent className={STATUS_ROW}>
+          <div className="min-w-0 flex-1">
+            <h2 className={STATUS_TITLE}>
+              {HERO_ICON[hero.tone]}
+              <span className="min-w-0">
                 {hero.title}
                 {hero.tone === "new" && (
                   <InfoTip
+                    className="ml-1.5 align-middle"
                     content="Deplo saves a copy of its database first, keeps every setting, and puts the old version back if the new one fails."
                     docs="upgrade.overview"
                   />
                 )}
-              </h2>
-              <p className="mt-1 text-sm text-muted-foreground">{hero.line}</p>
-            </div>
-            {manual && !updating && <ManualUpdate />}
-            {(!updating || stalled) && (
-              <div className="flex flex-wrap items-center gap-2">
-                {info?.updateAvailable && info.latest && (
-                  <ConfirmAction
-                    variant="default"
-                    title={
-                      fleet.total > 0
-                        ? `Update Deplo to ${info.latest}, then its ${fleet.total} server${fleet.total === 1 ? "" : "s"}?`
-                        : `Update Deplo to ${info.latest}?`
-                    }
-                    description={
-                      <>
-                        The machine Deplo runs on pulls the new version and
-                        restarts the panel. It takes about a{" "}
-                        <strong>minute</strong>.
-                      </>
-                    }
-                    consequence="The dashboard is unreachable while it restarts. Deployed apps, sites and databases keep running."
-                    extra={
-                      <StrandedServers servers={info.strandedServers ?? []} />
-                    }
-                    confirmLabel="Update"
-                    trigger={
-                      <Button size="sm">
-                        <CircleFadingArrowUp className="size-4" />
-                        Update to {info.latest}
-                      </Button>
-                    }
-                    onConfirm={startUpdate}
-                  />
-                )}
-                {checkNow}
-              </div>
-            )}
-            <FleetBehind
-              fleet={fleet}
-              onSettled={refreshFleet}
-              className="border-t border-border pt-5"
-            />
+              </span>
+            </h2>
+            <p className="mt-1 text-sm text-muted-foreground">{hero.line}</p>
           </div>
-          <UpdateGraphic grid className={HERO_ART} />
+          {(!updating || stalled) && (
+            <div className="flex shrink-0 flex-wrap items-center gap-2">
+              {info?.updateAvailable && info.latest && (
+                <ConfirmAction
+                  variant="default"
+                  title={
+                    fleet.total > 0
+                      ? `Update Deplo to ${info.latest}, then its ${fleet.total} server${fleet.total === 1 ? "" : "s"}?`
+                      : `Update Deplo to ${info.latest}?`
+                  }
+                  description={
+                    <>
+                      The machine Deplo runs on pulls the new version and
+                      restarts the panel. It takes about a{" "}
+                      <strong>minute</strong>.
+                    </>
+                  }
+                  consequence="The dashboard is unreachable while it restarts. Deployed apps, sites and databases keep running."
+                  extra={
+                    <StrandedServers servers={info.strandedServers ?? []} />
+                  }
+                  confirmLabel="Update"
+                  trigger={
+                    <Button size="sm">
+                      <CircleFadingArrowUp className="size-4" />
+                      Update
+                    </Button>
+                  }
+                  onConfirm={startUpdate}
+                />
+              )}
+              {checkNow}
+            </div>
+          )}
         </CardContent>
+        {extras && (
+          <div className="space-y-3 border-t border-border p-5">
+            {manual && !updating && <ManualUpdate />}
+            <FleetBehind fleet={fleet} onSettled={refreshFleet} />
+          </div>
+        )}
       </Card>
 
       <section className="space-y-3">
         <h2 className={titleClass.section}>What changed</h2>
         <Changelog releases={releases} error={listError} />
       </section>
+    </UpdatesLayout>
+  );
+}
+
+// The illustration follows the page down on wide screens, beside the status and the changelog.
+function UpdatesLayout({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="grid gap-8 xl:grid-cols-[minmax(0,1fr)_clamp(24rem,30vw,36rem)] xl:gap-12">
+      <div className="relative order-first flex justify-center xl:sticky xl:top-24 xl:order-last xl:self-start">
+        <UpdateGraphic grid className="w-48 xl:w-[72%]" />
+      </div>
+      <div className="min-w-0 space-y-6">{children}</div>
     </div>
   );
 }
 
 const UPDATE_TIMEOUT_MS = 10 * 60_000;
 
-const HERO_BODY =
-  "flex flex-col-reverse gap-6 p-6 sm:flex-row sm:items-center sm:gap-10 sm:p-8";
-const HERO_TITLE =
-  "flex flex-wrap items-center gap-2.5 text-2xl font-semibold tracking-tight";
-const HERO_ART = "w-32 shrink-0 self-center sm:w-44 lg:w-52";
+const STATUS_ROW =
+  "flex flex-col gap-3 p-5 sm:flex-row sm:items-center sm:justify-between";
+const STATUS_TITLE = "flex items-center gap-2 text-base font-medium";
 
 type HeroTone = "ok" | "new" | "busy" | "warn";
 
 const HERO_ICON: Record<HeroTone, React.ReactNode> = {
-  ok: <CheckCircle2 className="size-6 shrink-0 text-success" />,
-  new: <CircleFadingArrowUp className="size-6 shrink-0 text-info" />,
+  ok: <CheckCircle2 className="size-4 shrink-0 text-success" />,
+  new: <CircleFadingArrowUp className="size-4 shrink-0 text-info" />,
   busy: (
-    <Loader2 className="size-6 shrink-0 animate-spin text-muted-foreground" />
+    <Loader2 className="size-4 shrink-0 animate-spin text-muted-foreground" />
   ),
-  warn: <TriangleAlert className="size-6 shrink-0 text-warning" />,
+  warn: <TriangleAlert className="size-4 shrink-0 text-warning" />,
 };
 
 // The panel and the fleet read as one answer: the first thing that needs a look wins.
@@ -386,32 +399,26 @@ export function heroState({
 
 export function UpdatesSkeleton() {
   return (
-    <div
-      className="space-y-8"
-      role="status"
-      aria-busy
-      aria-label="Loading updates"
-    >
-      <Card className="overflow-hidden">
-        <CardContent className={HERO_BODY}>
-          <div className="min-w-0 flex-1 space-y-5">
-            <div>
-              <div className={HERO_TITLE}>
-                <Skeleton className="size-6 rounded-full" />
-                <TextLine className="w-56" />
+    <div role="status" aria-busy aria-label="Loading updates">
+      <UpdatesLayout>
+        <Card>
+          <CardContent className={STATUS_ROW}>
+            <div className="min-w-0 flex-1">
+              <div className={STATUS_TITLE}>
+                <Skeleton className="size-4 rounded-full" />
+                <TextLine className="w-40" />
               </div>
-              <TextLine type="mt-1 text-sm" className="w-32" />
+              <TextLine type="mt-1 text-sm leading-[1.6]" className="w-32" />
             </div>
-            <Skeleton className="h-8 w-[106px]" />
-          </div>
-          <UpdateGraphic grid className={HERO_ART} />
-        </CardContent>
-      </Card>
+            <Skeleton className="h-8 w-[106px] shrink-0" />
+          </CardContent>
+        </Card>
 
-      <section className="space-y-3">
-        <TextLine type={titleClass.section} className="w-28" />
-        <ChangelogSkeleton />
-      </section>
+        <section className="space-y-3">
+          <TextLine type={titleClass.section} className="w-28" />
+          <ChangelogSkeleton />
+        </section>
+      </UpdatesLayout>
     </div>
   );
 }

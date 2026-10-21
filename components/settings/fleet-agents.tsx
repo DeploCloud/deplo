@@ -14,7 +14,6 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { gqlAction } from "@/lib/graphql-client";
-import { cn } from "@/lib/utils";
 import type { AgentUpdateDTO } from "@/lib/data/servers/agent-update-state";
 import { AgentUpdateStatus } from "@/components/servers/agent-update-status";
 
@@ -101,15 +100,13 @@ export function useFleetAgents(seed: FleetSummary): {
 export function FleetBehind({
   fleet,
   onSettled,
-  className,
 }: {
   fleet: FleetSummary;
   onSettled: () => void;
-  className?: string;
 }) {
   if (fleet.behind.length === 0 && !fleet.pausedBy) return null;
   return (
-    <div className={cn("space-y-2", className)}>
+    <div className="space-y-2">
       {fleet.pausedBy && (
         <p className="flex items-start gap-1.5 text-sm">
           <TriangleAlert className="mt-0.5 size-4 shrink-0 text-[var(--warning)]" />
