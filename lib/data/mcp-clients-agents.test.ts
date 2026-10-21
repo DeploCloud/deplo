@@ -168,3 +168,21 @@ test("mcpTokenConnected answers only for your own token", async () => {
   assert.equal(await as(OWNER, () => mcpTokenConnected(theirs)), false);
   assert.equal(await as(MEMBER, () => mcpTokenConnected(theirs)), true);
 });
+
+test("an agent's token waits for the team's MCP switch", async () => {
+  await pg.query(`update teams set mcp_enabled = false`);
+  await assert.rejects(
+    as(OWNER, () =>
+      createToken({
+        name: "Early",
+        capabilities: ["view"],
+        mcpAgent: "cursor",
+      }),
+    ),
+    /Turn on MCP/,
+  );
+  const plain = await as(OWNER, () =>
+    createToken({ name: "Plain", capabilities: ["view"] }),
+  );
+  assert.ok(plain.raw.startsWith("deplo_"), "a plain API token is not gated");
+});

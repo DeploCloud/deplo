@@ -35,6 +35,7 @@ import {
 } from "./acting-token";
 import { trail } from "./activity-trail";
 import { isMcpAgentId } from "../../mcp/agent-ids";
+import { getMcpSettings } from "../mcp-settings";
 
 const MAX_NAME = 40;
 
@@ -89,6 +90,9 @@ export async function createToken(
   const name = cleanTokenName(input.name);
   if (input.mcpAgent !== undefined && !isMcpAgentId(input.mcpAgent))
     throw new Error("That is not an agent Deplo knows.");
+  // The connect wizard's order, held here too: an agent's token waits for the team's MCP switch.
+  if (input.mcpAgent !== undefined && !(await getMcpSettings()).enabled)
+    throw new Error("Turn on MCP for this team before connecting an agent.");
   const { scoped, instanceAdmin } = await validateScope(input);
   const expiresAt =
     input.expiresAt === undefined
