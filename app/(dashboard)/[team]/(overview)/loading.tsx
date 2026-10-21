@@ -2,7 +2,7 @@ import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Skeleton, TextLine } from "@/components/ui/skeleton";
 import { titleClass } from "@/components/shared/page-header";
 
-// [name, url, commit message, repo] per card; enough rows to run past the fold.
+// [name, url, commit message, repo] per card; six fill whole rows of two or three.
 const CARDS: [string, string, string, string][] = [
   ["w-10", "w-20", "w-36", "w-36"],
   ["w-16", "w-40", "w-56", "w-36"],
@@ -10,10 +10,6 @@ const CARDS: [string, string, string, string][] = [
   ["w-12", "w-24", "w-36", "w-40"],
   ["w-16", "w-14", "w-44", "w-16"],
   ["w-10", "w-24", "w-44", "w-16"],
-  ["w-20", "w-20", "w-24", "w-16"],
-  ["w-20", "w-28", "w-56", "w-36"],
-  ["w-10", "w-56", "w-44", "w-16"],
-  ["w-14", "w-32", "w-40", "w-28"],
 ];
 
 // The sidebar's six recent events: [actor, sentence lines].

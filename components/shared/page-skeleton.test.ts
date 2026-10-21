@@ -19,3 +19,10 @@ test("pages without their own skeleton fall back to a neutral one", () => {
 test("the Overview keeps its own skeleton, scoped to the Overview", () => {
   assert.equal(label(OverviewLoading), "Loading dashboard");
 });
+
+test("the Overview skeleton stops at six cards, whole rows of two or three", () => {
+  const html = renderToStaticMarkup(createElement(OverviewLoading));
+  // One commit box per app card.
+  const cards = html.split("bg-surface p-3").length - 1;
+  assert.equal(cards, 6);
+});
