@@ -139,4 +139,28 @@ describe("extractArchive", () => {
       "<h1>tar</h1>",
     );
   });
+
+  test("a tar that stops reading at its end marker still extracts", async () => {
+    const prev = __setExtractLimitsForTest({ bytes: 4 * 1024 * 1024 });
+    try {
+      const src = join(dir, "early");
+      await mkdir(join(src, "site"), { recursive: true });
+      await writeFile(join(src, "site", "index.html"), "<h1>early</h1>");
+      execFileSync("tar", ["-cf", join(dir, "early.tar"), "-C", src, "site"]);
+      // Trailing bytes tar never reads: it exits before the write side finishes.
+      const bytes = Buffer.concat([
+        await readFile(join(dir, "early.tar")),
+        Buffer.alloc(2 * 1024 * 1024),
+      ]);
+      const root = await (
+        await extract(await archiveAt("early.tar", bytes))
+      ).run;
+      assert.equal(
+        await readFile(join(root, "index.html"), "utf8"),
+        "<h1>early</h1>",
+      );
+    } finally {
+      __setExtractLimitsForTest(prev);
+    }
+  });
 });

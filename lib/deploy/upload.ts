@@ -246,11 +246,14 @@ async function extractTarBounded(
       await streamPipeline(source, cap, child.stdin!);
     }
   } catch (err) {
-    child.kill("SIGKILL");
-    await exit;
-    clearTimeout(timer);
-    if (timedOut) throw new Error("tar timed out after 300000ms");
-    throw tooMany ?? err;
+    // tar exits at its end-of-archive marker without draining stdin; its exit code decides then.
+    if (!tarStoppedReading(err)) {
+      child.kill("SIGKILL");
+      await exit;
+      clearTimeout(timer);
+      if (timedOut) throw new Error("tar timed out after 300000ms");
+      throw tooMany ?? err;
+    }
   }
 
   const code = await exit;
@@ -262,6 +265,11 @@ async function extractTarBounded(
     throw new Error(`tar failed (exit ${code})${detail ? `: ${detail}` : ""}`);
   }
 }
+
+const tarStoppedReading = (err: unknown): boolean => {
+  const code = (err as NodeJS.ErrnoException | null)?.code;
+  return code === "EPIPE" || code === "ERR_STREAM_PREMATURE_CLOSE";
+};
 
 const newlines = (chunk: Buffer): number => {
   let n = 0;
