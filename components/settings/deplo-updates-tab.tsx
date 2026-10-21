@@ -313,17 +313,18 @@ const UPDATE_TIMEOUT_MS = 10 * 60_000;
 
 const STATUS_ROW =
   "flex flex-col gap-3 p-5 sm:flex-row sm:items-center sm:justify-between";
-const STATUS_TITLE = "flex items-center gap-2 text-base font-medium";
+const STATUS_TITLE =
+  "flex items-center gap-2.5 text-2xl font-semibold tracking-tight";
 
 type HeroTone = "ok" | "new" | "busy" | "warn";
 
 const HERO_ICON: Record<HeroTone, React.ReactNode> = {
-  ok: <CheckCircle2 className="size-4 shrink-0 text-success" />,
-  new: <CircleFadingArrowUp className="size-4 shrink-0 text-info" />,
+  ok: <CheckCircle2 className="size-6 shrink-0 text-success" />,
+  new: <CircleFadingArrowUp className="size-6 shrink-0 text-info" />,
   busy: (
-    <Loader2 className="size-4 shrink-0 animate-spin text-muted-foreground" />
+    <Loader2 className="size-6 shrink-0 animate-spin text-muted-foreground" />
   ),
-  warn: <TriangleAlert className="size-4 shrink-0 text-warning" />,
+  warn: <TriangleAlert className="size-6 shrink-0 text-warning" />,
 };
 
 // The panel and the fleet read as one answer: the first thing that needs a look wins.
@@ -405,8 +406,8 @@ export function UpdatesSkeleton() {
           <CardContent className={STATUS_ROW}>
             <div className="min-w-0 flex-1">
               <div className={STATUS_TITLE}>
-                <Skeleton className="size-4 rounded-full" />
-                <TextLine className="w-40" />
+                <Skeleton className="size-6 rounded-full" />
+                <TextLine className="w-64" />
               </div>
               <TextLine type="mt-1 text-sm leading-[1.6]" className="w-32" />
             </div>
