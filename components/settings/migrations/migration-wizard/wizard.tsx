@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import { useRouter } from "@/lib/nav";
+import { useUrlStep } from "@/lib/wizard-step";
 import { cn } from "@/lib/utils";
 
 import { TEAM_HEADER } from "@/lib/team-path";
@@ -103,7 +104,7 @@ export function MigrationWizard({
       return "migrate";
     return takeover.state === "pending" ? null : "clean";
   });
-  const [step, setStep] = React.useState<StepId>(
+  const { step, setStep, settle } = useUrlStep<StepId>(
     () =>
       stepForHandover(takeover?.state) ??
       (mode == null
@@ -238,7 +239,7 @@ export function MigrationWizard({
     setStep("connect");
   }
 
-  const goToReview = React.useCallback(() => setStep("review"), []);
+  const goToReview = React.useCallback(() => setStep("review"), [setStep]);
 
   function acknowledgeReport() {
     void closeReport();
@@ -308,6 +309,11 @@ export function MigrationWizard({
       inFlight,
       takeover?.state,
     ],
+  );
+  // A reload forgets the source picked on the first screen, so Connect starts over from it.
+  settle(
+    STEPS.map((x) => x.id),
+    (s) => (s === "connect" && !isTakeover ? false : reach(s)),
   );
 
   const guarded =

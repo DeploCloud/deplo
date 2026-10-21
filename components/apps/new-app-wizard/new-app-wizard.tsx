@@ -3,6 +3,7 @@
 import * as React from "react";
 import Link from "@/components/ui/link";
 import { useRouter } from "@/lib/nav";
+import { useUrlStep } from "@/lib/wizard-step";
 import { toast } from "sonner";
 import { Server as ServerIcon } from "lucide-react";
 
@@ -117,9 +118,10 @@ export function NewAppWizard({
         ? "upload"
         : (presetSource ?? (presetRepo ? "git" : null)),
   );
-  const { step, direction, leaving, go } = useStepSwap<Step>(
-    isTemplate || presetSource || presetRepo || dropped ? "details" : "source",
-  );
+  const firstStep: Step =
+    isTemplate || presetSource || presetRepo || dropped ? "details" : "source";
+  const url = useUrlStep<Step>(firstStep);
+  const { step, direction, leaving, go } = useStepSwap(firstStep, url);
 
   const [ghSelection, setGhSelection] = React.useState<GithubSelection | null>(
     null,
@@ -219,6 +221,14 @@ export function NewAppWizard({
     if (source === "compose") return Boolean(compose.trim());
     return false;
   }
+
+  url.settle(
+    isTemplate
+      ? ["details"]
+      : ["source", "details", ...(usesGit ? (["configure"] as Step[]) : [])],
+    (s) =>
+      s === "source" || (source !== null && (s === "details" || sourceReady())),
+  );
 
   const nextDisabled =
     step === "details"

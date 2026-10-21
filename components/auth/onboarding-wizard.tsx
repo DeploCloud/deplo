@@ -16,6 +16,7 @@ import {
   TeamStep,
 } from "@/components/auth/wizard-steps";
 import { useStepSwap } from "@/components/apps/wizard/wizard-card";
+import { useUrlStep } from "@/lib/wizard-step";
 import { Collapse } from "@/components/ui/field-error";
 import { Button } from "@/components/ui/button";
 import { gql, gqlAction, GraphQLRequestError } from "@/lib/graphql-client";
@@ -95,7 +96,11 @@ export function OnboardingWizard({
   finishEmail?: string;
 }) {
   const { phase, markSeen } = useLogoIntro(INTRO_SEEN);
-  const { step, leaving, go } = useStepSwap<"account" | "team">("account");
+  // Finishing setup stands in for whatever page was asked for, so that address is left alone.
+  const url = useUrlStep<"account" | "team">("account", !finishEmail);
+  const { step, leaving, go } = useStepSwap("account", url);
+  // The account draft lives only in this tab, so a fresh load always starts on it.
+  url.settle(["account", "team"], (s) => s === "account");
   const [error, setError] = React.useState<string | null>(null);
   const [pending, startTransition] = React.useTransition();
   const [account, setAccount] = React.useState(() => ({

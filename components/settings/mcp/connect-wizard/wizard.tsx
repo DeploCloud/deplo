@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import { useRouter } from "@/lib/nav";
+import { setSearchParam, useInitialParam, useUrlStep } from "@/lib/wizard-step";
 import { toast } from "sonner";
 import { WizardStepper } from "@/components/shared/wizard-stepper";
 import type { ScopeSelection } from "@/components/settings/tokens/scope-picker/selection";
@@ -65,7 +66,11 @@ export function ConnectWizard({
       https={https}
       tree={tree}
       connectionCount={connectionCount}
-      onRestart={() => setRunId((n) => n + 1)}
+      onRestart={() => {
+        setSearchParam("step", null);
+        setSearchParam("agent", null);
+        setRunId((n) => n + 1);
+      }}
       onRefresh={() => router.refresh()}
     />
   );
@@ -93,13 +98,19 @@ function WizardRun({
   onRefresh: () => void;
 }) {
   const [enabled, setEnabled] = React.useState(mcpEnabled);
-  const [step, setStep] = React.useState<StepId>(
+  const { step, setStep, settle } = useUrlStep<StepId>(
     mcpEnabled ? "agent" : "enable",
   );
-  const [agentId, setAgentId] = React.useState<AgentId | null>(null);
+  const agentParam = useInitialParam("agent");
+  const [agentId, setAgentId] = React.useState<AgentId | null>(() =>
+    canConnect ? (AGENTS.find((a) => a.id === agentParam)?.id ?? null) : null,
+  );
+  React.useEffect(() => setSearchParam("agent", agentId), [agentId]);
   const [pending, setPending] = React.useState(false);
 
-  const [name, setName] = React.useState("");
+  const [name, setName] = React.useState(
+    () => AGENTS.find((a) => a.id === agentId)?.label ?? "",
+  );
   const [caps, setCaps] = React.useState<Capability[]>(MCP_PRESET.capabilities);
   const [expiry, setExpiry] = React.useState("90");
   const [scope, setScope] = React.useState<ScopeSelection>({
@@ -142,7 +153,17 @@ function WizardRun({
       cancelled = true;
       clearTimeout(timer);
     };
-  }, [agent, tokenId, baseline, connected, attempt, round, step, onRefresh]);
+  }, [
+    agent,
+    tokenId,
+    baseline,
+    connected,
+    attempt,
+    round,
+    step,
+    setStep,
+    onRefresh,
+  ]);
 
   const gaveUp = !connected && attempt >= POLL_LIMIT;
   const [discarding, setDiscarding] = React.useState(false);
@@ -166,6 +187,14 @@ function WizardRun({
     connect: web || minted,
     done: false,
   };
+  const reach = (s: StepId) =>
+    s === "done"
+      ? connected
+      : minted
+        ? s === "connect"
+        : steps.slice(0, steps.indexOf(s)).every((p) => valid[p]);
+  settle(steps, reach);
+
   function back() {
     if (step === "connect" && minted) setDiscarding(true);
     else setStep(steps[steps.indexOf(step) - 1]);
@@ -299,13 +328,7 @@ function WizardRun({
         <WizardStepper
           steps={steps.map((id) => ({ id, label: STEP_LABEL[id] }))}
           current={step}
-          reachable={(s) =>
-            s === "done"
-              ? connected
-              : minted
-                ? s === "connect"
-                : steps.slice(0, steps.indexOf(s)).every((p) => valid[p])
-          }
+          reachable={reach}
           onSelect={setStep}
         />
 

@@ -31,8 +31,14 @@ function prefersReducedMotion(): boolean {
   );
 }
 
-export function useStepSwap<T extends string>(initial: T) {
-  const [step, setStep] = React.useState<T>(initial);
+// Pass `state` (from useUrlStep) to keep the step in the address instead of in memory.
+export function useStepSwap<T extends string>(
+  initial: T,
+  state?: { step: T; setStep: (step: T) => void },
+) {
+  const [own, setOwn] = React.useState<T>(initial);
+  const step = state ? state.step : own;
+  const setStep = state ? state.setStep : setOwn;
   const [direction, setDirection] = React.useState<StepDirection>("forward");
   const [leaving, setLeaving] = React.useState(false);
   const timer = React.useRef<ReturnType<typeof setTimeout> | undefined>(
@@ -41,18 +47,21 @@ export function useStepSwap<T extends string>(initial: T) {
 
   React.useEffect(() => () => clearTimeout(timer.current), []);
 
-  const go = React.useCallback((next: T, dir: StepDirection) => {
-    setDirection(dir);
-    if (prefersReducedMotion()) {
-      setStep(next);
-      return;
-    }
-    setLeaving(true);
-    timer.current = setTimeout(() => {
-      setStep(next);
-      setLeaving(false);
-    }, OUT_MS);
-  }, []);
+  const go = React.useCallback(
+    (next: T, dir: StepDirection) => {
+      setDirection(dir);
+      if (prefersReducedMotion()) {
+        setStep(next);
+        return;
+      }
+      setLeaving(true);
+      timer.current = setTimeout(() => {
+        setStep(next);
+        setLeaving(false);
+      }, OUT_MS);
+    },
+    [setStep],
+  );
 
   return { step, direction, leaving, go };
 }

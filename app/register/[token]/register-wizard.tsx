@@ -18,6 +18,7 @@ import {
   TeamStep,
 } from "@/components/auth/wizard-steps";
 import { useStepSwap } from "@/components/apps/wizard/wizard-card";
+import { useUrlStep } from "@/lib/wizard-step";
 import { TeamAvatar } from "@/components/shared/user-avatar";
 import { Collapse } from "@/components/ui/field-error";
 import { gql } from "@/lib/graphql-client";
@@ -69,7 +70,10 @@ export function RegisterWizard({
 }) {
   const ownTeam = mode === "own_team";
   const { phase } = useLogoIntro();
-  const { step, leaving, go } = useStepSwap<"account" | "team">("account");
+  const url = useUrlStep<"account" | "team">("account", ownTeam);
+  const { step, leaving, go } = useStepSwap("account", url);
+  // The account draft lives only in this tab, so a fresh load always starts on it.
+  url.settle(["account", "team"], (s) => s === "account");
   const [error, setError] = React.useState<string | null>(null);
   const [pending, startTransition] = React.useTransition();
   const [account, setAccount] = React.useState(() => ({
