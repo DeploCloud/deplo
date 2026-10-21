@@ -146,6 +146,7 @@ export default async function ServerDetailPage(
             deployConcurrency: hydrated.deployConcurrency,
             role: serverRole(hydrated) as "everything" | "build" | "storage",
             buildFallback: isBuildFallbackServer(hydrated, self),
+            generatedAddressFamily: hydrated.generatedAddressFamily,
             isDeploHost,
             provisioning: hydrated.status === "provisioning",
             agentVersion,

@@ -63,6 +63,21 @@ export const SCOPE_TO_WIRE: Record<CleanupScopeId, CleanupScope> = {
   leftover_networks: CleanupScope.CLEANUP_SCOPE_LEFTOVER_NETWORKS,
 };
 
+// The agent skips these without a live list to compare against, so an instance with nothing live does not ask.
+export function scopesWithInventory(
+  scopes: readonly CleanupScopeId[],
+  liveSlugs: readonly string[],
+  liveNetworks: readonly string[],
+): CleanupScopeId[] {
+  return scopes.filter((s) =>
+    s === "leftover_app_files"
+      ? liveSlugs.length > 0
+      : s === "leftover_networks"
+        ? liveSlugs.length + liveNetworks.length > 0
+        : true,
+  );
+}
+
 export function deploySweepScopes(
   scopes: readonly CleanupScopeId[],
 ): CleanupScope[] {

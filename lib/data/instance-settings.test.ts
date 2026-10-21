@@ -16,6 +16,7 @@ import {
 import { seedServerRow, TRUNCATE_INFRA } from "./infra-test-helpers";
 import {
   __setDnsResolve4ForTest,
+  __setDnsResolve6ForTest,
   __resetDnsResolve4ForTest,
 } from "./domains/dns-check";
 import {
@@ -512,6 +513,33 @@ test("the panel's DNS check classifies the address the instance answers on", asy
     await withPanelUrl(`http://${HOST_IP}:3000`, async () => {
       assert.equal((await at([HOST_IP])).status, "unknown");
     });
+  } finally {
+    __resetDnsResolve4ForTest();
+    if (prevIp === undefined) delete process.env.DEPLO_SERVER_IP;
+    else process.env.DEPLO_SERVER_IP = prevIp;
+  }
+});
+
+test("on an IPv6-only instance the panel's DNS check reads the AAAA record", async () => {
+  const V6 = "2001:db8::10";
+  const prevIp = process.env.DEPLO_SERVER_IP;
+  process.env.DEPLO_SERVER_IP = V6;
+  await pg.exec(TRUNCATE_INFRA);
+  await seedServerRow(db, { id: "srv_self", ip: V6, host: V6 });
+  await asUser(ADMIN, () => setPanelUrl("https://panel.example.com"));
+
+  const at = async (aaaa: string[]) => {
+    __setDnsResolve4ForTest(async () => []);
+    __setDnsResolve6ForTest(async () => aaaa);
+    return asUser(ADMIN, checkPanelDns);
+  };
+
+  try {
+    const ok = await at([V6]);
+    assert.equal(ok.status, "valid");
+    assert.equal(ok.ipv6, V6);
+    assert.equal((await at(["2001:db8::99"])).status, "misconfigured");
+    assert.equal((await at([])).status, "pending");
   } finally {
     __resetDnsResolve4ForTest();
     if (prevIp === undefined) delete process.env.DEPLO_SERVER_IP;

@@ -158,6 +158,8 @@ export const DOCS = {
   "servers.remove": "operations/remove-a-server-or-uninstall",
   "servers.maintenance": "operations/servers/maintenance-and-advanced",
   "servers.advanced": "operations/servers/maintenance-and-advanced#advanced",
+  "servers.generatedAddresses":
+    "operations/servers/maintenance-and-advanced#generated-addresses",
   "registries.overview": "operations/servers/container-registries",
   "registries.add": "operations/servers/container-registries#add-one",
 

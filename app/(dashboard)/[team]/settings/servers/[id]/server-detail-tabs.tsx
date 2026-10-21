@@ -68,6 +68,7 @@ export type ServerSummary = {
   deployConcurrency: number;
   role: "everything" | "build" | "storage";
   buildFallback: boolean;
+  generatedAddressFamily: "ipv4" | "ipv6" | null;
   isDeploHost: boolean;
   provisioning: boolean;
   agentVersion: string | null;

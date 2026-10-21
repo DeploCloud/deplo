@@ -111,6 +111,7 @@ export async function addServer(
     storageOnly: !importOnly && (input.storageOnly ?? false),
     buildOnly: !importOnly && !input.storageOnly && (input.buildOnly ?? false),
     buildFallback: null,
+    generatedAddressFamily: null,
     importOnly,
     uninstallPending: false,
     uninstallError: "",
@@ -231,9 +232,8 @@ export async function ensureDeploHostServer(): Promise<void> {
   const ip = parseHostAddress(raw)?.host ?? raw;
 
   const self = deploHostSelfAddresses();
-  const existing = (await listAllServers()).find((s) =>
-    isDeploHostServer(s, self),
-  );
+  const all = await listAllServers();
+  const existing = all.find((s) => isDeploHostServer(s, self));
   const stored = storedBootstrapFor(rawToken);
 
   if (existing) {
@@ -246,6 +246,17 @@ export async function ensureDeploHostServer(): Promise<void> {
         bootstrapUsedAt: stored.usedAt,
       })
       .where(eq(serversTable.id, existing.id));
+    return;
+  }
+
+  // The installer moved this host to an address the row was not enrolled at (its IPv4 went away):
+  // the row still holds the host's token, and follows it rather than leaving a second server behind.
+  const moved = all.find((s) => s.bootstrap?.tokenHash === stored.tokenHash);
+  if (moved) {
+    await getDb()
+      .update(serversTable)
+      .set({ ip, host: ip })
+      .where(eq(serversTable.id, moved.id));
     return;
   }
 
@@ -265,6 +276,7 @@ export async function ensureDeploHostServer(): Promise<void> {
     storageOnly: false,
     buildOnly: false,
     buildFallback: null,
+    generatedAddressFamily: null,
     importOnly: false,
     uninstallPending: false,
     uninstallError: "",

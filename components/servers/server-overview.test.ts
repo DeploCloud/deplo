@@ -24,6 +24,7 @@ const server: ServerSummary = {
   deployConcurrency: 2,
   role: "everything",
   buildFallback: false,
+  generatedAddressFamily: null,
   isDeploHost: false,
   provisioning: false,
   agentVersion: "1.0.0",

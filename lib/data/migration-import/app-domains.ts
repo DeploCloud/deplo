@@ -15,7 +15,7 @@ import {
   type ImportedRoute,
 } from "../domains/imported-routes";
 import { getServerById } from "../servers/roster";
-import { serverIpv4 } from "../servers/addresses";
+import { serverWildcardIp } from "../servers/addresses";
 import type { createApp } from "../apps/create";
 
 export function importedRoute(d: MappedDomain): ImportedRoute {
@@ -147,8 +147,8 @@ export async function rehostAppDomains(
   const toRehost = [...rest.filter((d) => d.generated), ...refused];
   if (toRehost.length > 0) {
     try {
-      const ip = await serverIpv4(await getServerById(created.serverId));
-      if (!ip) throw new Error("Deplo doesn't know this server's IPv4 address");
+      const ip = await serverWildcardIp(await getServerById(created.serverId));
+      if (!ip) throw new Error("Deplo doesn't know this server's address");
       const landed = await addImportedDomains(
         created.id,
         toRehost.map(importedRoute),

@@ -111,6 +111,7 @@ export async function checkPanelDns(): Promise<PanelDns> {
 async function panelTargets(deploHostIp: string | null): Promise<DnsTargets> {
   const self = (await listAllServers()).find((s) => isDeploHostServer(s));
   const known = await serverAddresses(self ?? null);
-  const v4 = deploHostIp ? [...new Set([deploHostIp, ...known.v4])] : known.v4;
-  return { ...known, v4 };
+  if (!deploHostIp) return known;
+  const key = deploHostIp.includes(":") ? "v6" : "v4";
+  return { ...known, [key]: [...new Set([deploHostIp, ...known[key]])] };
 }

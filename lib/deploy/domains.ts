@@ -11,7 +11,7 @@ import {
 import { hash6 } from "./routing";
 import type { CertProvider, DomainEntrypoint } from "../types/domain";
 import { publicBaseUrl } from "../public-url";
-import { canonicalHost } from "../host-address";
+import { canonicalHost, canonicalIpv6 } from "../host-address";
 
 const IPV4_RE = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/;
 
@@ -20,8 +20,19 @@ export function isIpv4(s: string): boolean {
   return !!m && m.slice(1).every((o) => Number(o) <= 255);
 }
 
+export function isIpv6(s: string): boolean {
+  return s.includes(":") && canonicalIpv6(s.trim()) !== null;
+}
+
+// The only addresses a generated name can embed: an IPv4, or an IPv6 the internet routes (2000::/3).
+export function isWildcardIp(s: string): boolean {
+  if (isIpv4(s)) return true;
+  const v6 = isIpv6(s) ? canonicalIpv6(s.trim())! : "";
+  return /^[23][0-9a-f]{3}:/.test(v6);
+}
+
 export function isLoopbackIp(ip: string): boolean {
-  return ip.startsWith("127.");
+  return ip.startsWith("127.") || canonicalHost(ip) === "::1";
 }
 
 function isPrivateIpv4(ip: string): boolean {
@@ -96,17 +107,18 @@ export function instanceHost(): string {
   const fromEnv = process.env.DEPLO_SERVER_IP?.trim();
   if (fromEnv) {
     if (isIpv4(fromEnv)) return fromEnv;
+    if (isWildcardIp(fromEnv)) return canonicalHost(fromEnv);
     warnOnce(
       "bad-server-ip",
-      `DEPLO_SERVER_IP="${fromEnv}" is not a valid IPv4 and was ignored. Generated domains require a literal IPv4 address.`,
+      `DEPLO_SERVER_IP="${fromEnv}" is not a public IPv4 or IPv6 and was ignored.`,
     );
   }
 
   const pub = process.env.DEPLO_PUBLIC_URL?.trim();
   if (pub) {
     try {
-      const host = new URL(pub).hostname;
-      if (isIpv4(host)) return host;
+      const host = new URL(pub).hostname.replace(/^\[(.*)\]$/, "$1");
+      if (isWildcardIp(host)) return canonicalHost(host);
       const embedded = wildcardEmbeddedIp(host);
       if (embedded) return embedded;
     } catch {}
@@ -119,14 +131,31 @@ export function instanceHost(): string {
     "loopback-fallback",
     "Could not determine this server's public IP; falling back to 127.0.0.1. " +
       "Generated URLs will only work on this machine. " +
-      "Set DEPLO_SERVER_IP=<public-IPv4> and restart.",
+      "Set DEPLO_SERVER_IP=<public IP> and restart.",
   );
   return "127.0.0.1";
 }
 
+// The Deplo host's address of each kind, as the installer measured them from the host itself.
+export function instanceAddresses(): { v4: string | null; v6: string | null } {
+  const pick = (raw: string | undefined, ok: (s: string) => boolean) => {
+    const s = raw?.trim() ?? "";
+    return s && ok(s) && isWildcardIp(s) ? canonicalHost(s) : null;
+  };
+  const primary = instanceHost();
+  return {
+    v4:
+      pick(process.env.DEPLO_SERVER_IPV4, isIpv4) ??
+      (isIpv4(primary) && !isLoopbackIp(primary) ? primary : null),
+    v6:
+      pick(process.env.DEPLO_SERVER_IPV6, isIpv6) ??
+      (isIpv6(primary) ? primary : null),
+  };
+}
+
 export function deploHostSelfAddresses(): Set<string> {
   const now = Date.now();
-  const key = `${process.env.DEPLO_SERVER_IP}|${process.env.DEPLO_PUBLIC_URL}|${publicBaseUrl()}`;
+  const key = `${process.env.DEPLO_SERVER_IP}|${process.env.DEPLO_SERVER_IPV4}|${process.env.DEPLO_SERVER_IPV6}|${process.env.DEPLO_PUBLIC_URL}|${publicBaseUrl()}`;
   if (
     !selfAddresses ||
     selfAddresses.key !== key ||
@@ -147,6 +176,8 @@ function computeSelfAddresses(): Set<string> {
     if (s) addrs.add(s);
   };
   add(process.env.DEPLO_SERVER_IP);
+  add(process.env.DEPLO_SERVER_IPV4);
+  add(process.env.DEPLO_SERVER_IPV6);
   for (const pub of [process.env.DEPLO_PUBLIC_URL?.trim(), publicBaseUrl()]) {
     if (!pub) continue;
     try {
@@ -285,20 +316,44 @@ export function hexToIp(hex: string): string | null {
   return isIpv4(ip) ? ip : null;
 }
 
+// deplo.site reads the FIRST eight hex groups of a label, so `v6-` keeps a word like `cafe` out of the address.
+// KEEP IN SYNC with `ip_label` in install.sh.
+export function ipLabel(ip: string): string {
+  const v6 = isIpv6(ip) ? canonicalIpv6(ip.trim())! : null;
+  if (!v6) return ipToHex(ip);
+  // A label cannot end in `-`, so an address that would compress at either end is spelled out whole.
+  const groups = v6.startsWith("::") || v6.endsWith("::") ? expandIpv6(v6) : v6;
+  return `v6-${groups.replace(/:/g, "-")}`;
+}
+
+function expandIpv6(v6: string): string {
+  const [head, tail] = v6.split("::");
+  const h = head ? head.split(":") : [];
+  const t = tail ? tail.split(":") : [];
+  return [...h, ...Array(8 - h.length - t.length).fill("0"), ...t].join(":");
+}
+
+function labelToIp(hex: string | undefined, v6: string | undefined) {
+  if (hex) return hexToIp(hex);
+  const ip = canonicalIpv6((v6 ?? "").replace(/-/g, ":"));
+  return ip && isWildcardIp(ip) ? ip : null;
+}
+
 const SUFFIX_GROUP = wildcardSuffixGroup();
-const WILDCARD_HEXIP_RE = new RegExp(`-([0-9a-f]{8})\\.${SUFFIX_GROUP}$`, "i");
+const IP_LABEL = "(?:([0-9a-f]{8})|v6-([0-9a-f-]+))";
+const WILDCARD_HEXIP_RE = new RegExp(`-${IP_LABEL}\\.${SUFFIX_GROUP}$`, "i");
 const WILDCARD_HEXIP_EMBEDDED_RE = new RegExp(
-  `-([0-9a-f]{8})\\.${SUFFIX_GROUP}`,
+  `-${IP_LABEL}\\.${SUFFIX_GROUP}`,
   "gi",
 );
 
 export function wildcardEmbeddedIp(name: string): string | null {
   const m = WILDCARD_HEXIP_RE.exec(name.trim());
-  return m ? hexToIp(m[1]) : null;
+  return m ? labelToIp(m[1], m[2]) : null;
 }
 
 export function panelFallbackHost(ip = instanceHost()): string {
-  return `deplo-${ipToHex(ip)}.${WILDCARD_DOMAIN}`;
+  return `deplo-${ipLabel(ip)}.${WILDCARD_DOMAIN}`;
 }
 
 // A host minted before deplo.site keeps answering, so the panel still owns its old address.
@@ -307,15 +362,16 @@ export function isPanelFallbackHost(
   ip = instanceHost(),
 ): boolean {
   const host = name.trim().toLowerCase();
-  const hex = ipToHex(ip);
-  return WILDCARD_SUFFIXES.some((s) => host === `deplo-${hex}.${s}`);
+  const label = ipLabel(ip);
+  return WILDCARD_SUFFIXES.some((s) => host === `deplo-${label}.${s}`);
 }
 
 // Keeps the zone the host was minted in: an existing .nip.io name only changes its IP.
 export function rehostWildcard(name: string, ip: string): string {
   return name.replace(
     WILDCARD_HEXIP_RE,
-    (_whole, _hex: string, suffix: string) => `-${ipToHex(ip)}.${suffix}`,
+    (whole, hex: string, v6: string, suffix: string) =>
+      labelToIp(hex, v6) ? `-${ipLabel(ip)}.${suffix}` : whole,
   );
 }
 
@@ -324,12 +380,11 @@ export function rehostEmbeddedWildcard(
   fromIp: string,
   toIp: string,
 ): string {
-  const fromHex = ipToHex(fromIp);
-  const toHex = ipToHex(toIp);
+  const from = canonicalHost(fromIp);
   return value.replace(
     WILDCARD_HEXIP_EMBEDDED_RE,
-    (whole, hex: string, suffix: string) =>
-      hex.toLowerCase() === fromHex ? `-${toHex}.${suffix}` : whole,
+    (whole, hex: string, v6: string, suffix: string) =>
+      labelToIp(hex, v6) === from ? `-${ipLabel(toIp)}.${suffix}` : whole,
   );
 }
 
@@ -347,8 +402,9 @@ export function rehostBlueprintHosts<T extends BlueprintHosts>(
   toIp: string | null,
 ): T {
   if (fromIp === toIp) return input;
-  const minted = (host: string) => wildcardEmbeddedIp(host) === fromIp;
-  // A target with no known IPv4 cannot have a generated name; keeping this one would route to the wrong machine.
+  const minted = (host: string) =>
+    wildcardEmbeddedIp(host) === canonicalHost(fromIp);
+  // A target with no known address cannot have a generated name; keeping this one would route to the wrong machine.
   if (toIp === null)
     return {
       ...input,
@@ -391,7 +447,12 @@ export function wildcardDomain(
       .toLowerCase()
       .replace(/[^a-z0-9-]/g, "-")
       .replace(/^-+|-+$/g, "");
-  const tail = `${clean(words)}-${ipToHex(ip)}`;
+  const addr = ipLabel(ip);
+  // An IPv6 label is long; the words give way first so the whole name stays one 63-character label.
+  const said = clean(words)
+    .slice(0, Math.max(1, 59 - addr.length))
+    .replace(/-+$/, "");
+  const tail = `${said}-${addr}`;
   const head = clean(label)
     .slice(0, Math.max(1, 62 - tail.length))
     .replace(/-+$/, "");

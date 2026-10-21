@@ -120,3 +120,19 @@ test("does nothing without the installer's environment", async () => {
   await ensureDeploHostServer();
   assert.equal((await listAllServers()).length, 0);
 });
+
+test("follows this host to a new address when the one it enrolled at is gone", async () => {
+  await ensureDeploHostServer();
+  await db.execute(
+    `update servers set status = 'online', agent_port = 9443,
+       agent_cert_fingerprint = 'fp', bootstrap_used_at = now()`,
+  );
+  process.env.DEPLO_SERVER_IP = "2001:db8::7";
+  await ensureDeploHostServer();
+
+  const servers = await listAllServers();
+  assert.equal(servers.length, 1, "the same row, never a second server");
+  assert.equal(servers[0]!.ip, "2001:db8::7");
+  assert.equal(servers[0]!.host, "2001:db8::7");
+  assert.equal(servers[0]!.status, "online", "its agent is not disturbed");
+});

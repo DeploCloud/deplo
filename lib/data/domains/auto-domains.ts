@@ -6,7 +6,7 @@ import { getDb } from "../../db/client";
 import { domains as domainsTable } from "../../db/schema/control-plane/domains";
 import { newId, nowIso } from "../../ids";
 import {
-  isIpv4,
+  isWildcardIp,
   isLoopbackIp,
   wildcardEmbeddedIp,
   rehostWildcard,
@@ -58,7 +58,7 @@ export async function ensureAutoDomain(
     if (
       primary.source === "auto" &&
       opts.ip &&
-      isIpv4(opts.ip) &&
+      isWildcardIp(opts.ip) &&
       !isLoopbackIp(opts.ip)
     ) {
       const embedded = wildcardEmbeddedIp(primary.name);

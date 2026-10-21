@@ -2,7 +2,6 @@ import "server-only";
 
 import { markServerSeen } from "../../data/servers/agent-handshake";
 import { getServerById } from "../../data/servers/roster";
-import { agentUsable } from "../../version";
 import { agentSelfRpc } from "./agent-self-rpc";
 import { backupRpc } from "./backup-rpc";
 import type { AgentConnection } from "./connection";
@@ -64,18 +63,26 @@ export async function openAgent(serverId: string): Promise<AgentConnection> {
   return dial(await resolveTarget(serverId));
 }
 
-// A stored version only lets a call through; every refusal rests on a live Hello.
+// Every call is judged on a live Hello; the caller's first hello() reuses it rather than paying twice.
 export async function gateConnection(
   conn: AgentConnection,
   stored: string | undefined,
   serverId: string,
 ): Promise<AgentConnection> {
-  if (agentUsable(stored)) return conn;
   try {
     const hello = await conn.hello();
-    await markServerSeen(serverId, hello.agentVersion);
+    if (hello.agentVersion !== stored)
+      await markServerSeen(serverId, hello.agentVersion);
     assertAgentUsable(hello.agentVersion);
-    return conn;
+    let first: typeof hello | null = hello;
+    return {
+      ...conn,
+      hello(timeoutMs) {
+        const answer = first;
+        first = null;
+        return answer ? Promise.resolve(answer) : conn.hello(timeoutMs);
+      },
+    };
   } catch (e) {
     conn.close();
     throw e;

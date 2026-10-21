@@ -20,7 +20,11 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { wwwCounterpart, type WwwRedirect } from "@/lib/www-redirect";
-import type { CertProvider, DomainEntrypoint } from "@/lib/types/domain";
+import type {
+  CertProvider,
+  DomainEntrypoint,
+  DomainStatus,
+} from "@/lib/types/domain";
 
 export const ENTRYPOINTS: { value: DomainEntrypoint; label: string }[] = [
   { value: "websecure", label: "HTTPS - websecure (:443)" },
@@ -56,6 +60,7 @@ export function initialDomainConfig(
     port?: number | null;
     entrypoint?: DomainEntrypoint;
     certProvider?: CertProvider;
+    status?: DomainStatus;
     middlewares?: string[];
     securityHeaders?: boolean;
     corsOrigins?: string[];
@@ -76,7 +81,11 @@ export function initialDomainConfig(
           : "",
     manualEntrypoint: domain?.entrypoint != null,
     entrypoint: domain?.entrypoint ?? "websecure",
-    certProvider: domain ? (domain.certProvider ?? "letsencrypt") : "none",
+    certProvider: domain
+      ? domain.status === "cloudflare"
+        ? "cloudflare"
+        : (domain.certProvider ?? "letsencrypt")
+      : "none",
     middlewares: (domain?.middlewares ?? []).join(", "),
     securityHeaders: domain ? domain.securityHeaders === true : true,
     corsOrigins: (domain?.corsOrigins ?? []).join(", "),
@@ -86,6 +95,16 @@ export function initialDomainConfig(
     proxied: Boolean(domain?.proxied),
     www,
   };
+}
+
+// While Cloudflare is detected on a domain its certificate is Cloudflare's, whatever the form held.
+export function lockCloudflare(
+  state: DomainConfigState,
+  detected: boolean,
+): DomainConfigState {
+  return detected && state.certProvider !== "cloudflare"
+    ? { ...state, certProvider: "cloudflare" }
+    : state;
 }
 
 export function parseMiddlewares(text: string): string[] {
@@ -310,13 +329,18 @@ export function DomainConfigFields({
         <div className="space-y-2">
           <FieldLabel
             htmlFor={`${idPrefix}-cert`}
-            info="Where this domain's HTTPS certificate comes from. A Cloudflare-proxied domain is set automatically; None serves plain HTTP."
+            info={
+              proxied
+                ? "Cloudflare serves this domain's HTTPS, so its certificate is fixed. Change the domain, or re-check its DNS, to pick another."
+                : "Where this domain's HTTPS certificate comes from. A Cloudflare-proxied domain is set automatically; None serves plain HTTP."
+            }
             docs="domains.certificates"
           >
             Certificate
           </FieldLabel>
           <Select
             value={state.certProvider}
+            disabled={proxied}
             onValueChange={(v) =>
               onChange({
                 ...state,

@@ -524,7 +524,7 @@ async function runDeployment(depId: string): Promise<void> {
         if (dep.environment === "production") {
           await settleMove(depId, project.id, serverId);
         }
-        await sweepAfterDeploy(depId, serverId);
+        sweepAfterDeploy(depId, serverId);
       }
     } else {
       await commitOutcome(

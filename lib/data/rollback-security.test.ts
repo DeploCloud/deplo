@@ -24,7 +24,10 @@ import { setFolderGrant } from "./folder-access";
 import { listDeployments } from "./deployments/deployment-queries";
 import { rollbackDeployment } from "./deployments/rollback";
 import { setAppRollbackKeep } from "./apps/settings";
-import { rollbackKeepBySlug } from "./docker-cleanup/live-inventory";
+import {
+  rollbackKeepBySlug,
+  SPARE_ALL_IMAGES,
+} from "./docker-cleanup/live-inventory";
 import { isInstanceAdmin } from "../membership";
 import { loadAppGraph, loadDeploymentsForApp } from "./app-graph-load";
 import { MAX_ROLLBACK_KEEP } from "../types/app";
@@ -355,6 +358,28 @@ test("a value that got past the setter is still clamped on the way to the wire",
   assert.deepEqual(await rollbackKeepBySlug(SERVER_1), {
     web: MAX_ROLLBACK_KEEP + 1,
   });
+});
+
+test("a rollback still in flight spares every image of its app", async () => {
+  await seedApp(db, { id: "prj_1", teamId: TEAM_A, slug: "web" });
+  await seedApp(db, { id: "prj_2", teamId: TEAM_A, slug: "api" });
+  for (const [id, appId, status] of [
+    ["dpl_rb", "prj_1", "queued"],
+    ["dpl_done", "prj_2", "error"],
+  ] as const)
+    await seedDeployment(db, {
+      id,
+      appId,
+      status,
+      createdAt: at(0),
+      serverId: SERVER_1,
+      rollbackOf: "dpl_old",
+      imageRef: "deplo/x:dpl_old",
+    });
+
+  const map = await rollbackKeepBySlug(SERVER_1);
+  assert.deepEqual(map, { web: SPARE_ALL_IMAGES, api: 4 });
+  assert.equal(SPARE_ALL_IMAGES | 0, SPARE_ALL_IMAGES, "fits the int32 wire");
 });
 
 test("a preview stack is deliberately absent from the map", async () => {

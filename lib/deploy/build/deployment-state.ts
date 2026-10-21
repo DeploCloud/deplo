@@ -278,18 +278,17 @@ export async function commitOutcome(
   return true;
 }
 
-export async function sweepAfterDeploy(
-  depId: string,
-  serverId: string,
-): Promise<void> {
-  const freed = await sweepSupersededAppImages(serverId);
-  if (freed > 0) {
+// Off the queue lane on purpose: a sweep can take minutes, and the next deploy must not wait on it.
+export function sweepAfterDeploy(depId: string, serverId: string): void {
+  void sweepSupersededAppImages(serverId).then((freed) => {
+    if (freed <= 0) return;
     log(
       depId,
       "info",
       `Reclaimed ${formatBytes(freed)} of superseded images and build cache`,
     );
-  }
+    void finalizeDeploymentLogs(depId);
+  });
 }
 
 export async function settleIfCanceled(

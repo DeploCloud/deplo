@@ -16,6 +16,8 @@ export interface ServerBootstrap {
   usedAt: string | null;
 }
 
+export type AddressFamily = "ipv4" | "ipv6";
+
 export interface Server {
   id: ID;
   name: string;
@@ -32,6 +34,7 @@ export interface Server {
   storageOnly: boolean;
   buildOnly: boolean;
   buildFallback: boolean | null;
+  generatedAddressFamily: AddressFamily | null;
   importOnly: boolean;
   uninstallPending: boolean;
   uninstallError: string;

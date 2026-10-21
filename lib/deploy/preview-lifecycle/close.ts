@@ -13,7 +13,7 @@ import { nowIso } from "../../ids";
 import { publishAppChanged } from "../../graphql/pubsub";
 import { syncPreviewComment } from "../preview-comment";
 import { rehostWildcard } from "../domains";
-import { serverIpv4 } from "../../data/servers/addresses";
+import { serverWildcardIp } from "../../data/servers/addresses";
 import { mapLimit } from "../../utils";
 import { PREVIEW_MAX_ACTIVE_DEFAULT, previewSettings } from "./settings";
 import { hasStack } from "./slots";
@@ -91,7 +91,7 @@ export async function stopPreviewsForServerChange(
       max: settings?.maxActive ?? PREVIEW_MAX_ACTIVE_DEFAULT,
     });
   }
-  const newIp = await serverIpv4(await getServerById(newServerId));
+  const newIp = await serverWildcardIp(await getServerById(newServerId));
   for (const r of rows) {
     if (!newIp) break;
     const host = rehostWildcard(r.host, newIp);

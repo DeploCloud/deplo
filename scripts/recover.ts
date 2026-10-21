@@ -15,7 +15,7 @@ import { panelRoute, withPanelRoute } from "../lib/deploy/traefik-stack";
 import {
   deploHostSelfAddresses,
   isDeploHostServer,
-  isIpv4,
+  isWildcardIp,
   wildcardEmbeddedIp,
   panelFallbackHost,
 } from "../lib/deploy/domains";
@@ -337,7 +337,9 @@ async function cmdPanelAddress(arg: string) {
   let domain: string;
   let https = current.https;
   if (generated) {
-    domain = panelFallbackHost(isIpv4(server.ip ?? "") ? server.ip : undefined);
+    domain = panelFallbackHost(
+      isWildcardIp(server.ip ?? "") ? server.ip : undefined,
+    );
     if (!wildcardEmbeddedIp(domain))
       fail(
         `Deplo cannot work out the generated address on ${server.name}. Pass a domain instead.`,
