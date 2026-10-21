@@ -2,16 +2,9 @@
 
 import * as React from "react";
 import Link from "@/components/ui/link";
-import {
-  ArrowUpRight,
-  CheckCircle2,
-  Loader2,
-  Server as ServerIcon,
-  TriangleAlert,
-} from "lucide-react";
+import { Loader2, TriangleAlert } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Dialog,
   DialogContent,
@@ -20,8 +13,8 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
-import { InfoTip } from "@/components/ui/info-tip";
 import { gqlAction } from "@/lib/graphql-client";
+import { cn } from "@/lib/utils";
 import type { AgentUpdateDTO } from "@/lib/data/servers/agent-update-state";
 import { AgentUpdateStatus } from "@/components/servers/agent-update-status";
 
@@ -104,64 +97,34 @@ export function useFleetAgents(seed: FleetSummary): {
   return { fleet, refresh };
 }
 
-export function FleetAgentsCard({
+// The servers still short of the pinned agent; nothing when the whole fleet is on it.
+export function FleetBehind({
   fleet,
   onSettled,
+  className,
 }: {
   fleet: FleetSummary;
   onSettled: () => void;
+  className?: string;
 }) {
+  if (fleet.behind.length === 0 && !fleet.pausedBy) return null;
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="flex w-fit items-center gap-2 text-base">
-          <ServerIcon className="size-4" />
-          Server agents
-          <InfoTip
-            content="Every server runs a small agent. Deplo brings each one to the version it is paired with, one server at a time."
-            docs="servers.overview"
-          />
-        </CardTitle>
-      </CardHeader>
-      <CardContent className="space-y-2">
-        <FleetLine fleet={fleet} />
-        {fleet.pausedBy && (
-          <p className="flex items-start gap-1.5 text-sm">
-            <TriangleAlert className="mt-0.5 size-4 shrink-0 text-[var(--warning)]" />
-            <span>
-              Waiting for {fleet.pausedBy} to recover before updating the rest.
-            </span>
-          </p>
-        )}
-        {fleet.behind.slice(0, BEHIND_SHOWN).map((server) => (
-          <BehindLine key={server.id} server={server} onSettled={onSettled} />
-        ))}
-        {fleet.behind.length > BEHIND_SHOWN && (
-          <BehindDialog fleet={fleet} onSettled={onSettled} />
-        )}
-      </CardContent>
-    </Card>
-  );
-}
-
-function FleetLine({ fleet }: { fleet: FleetSummary }) {
-  if (fleet.total === 0)
-    return (
-      <p className="text-sm text-muted-foreground">No servers connected yet.</p>
-    );
-  const upToDate = fleet.total - fleet.behind.length;
-  return (
-    <p className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm">
-      {fleet.behind.length === 0 ? (
-        <CheckCircle2 className="size-4 text-[var(--success)]" />
-      ) : (
-        <ArrowUpRight className="size-4 text-[var(--success)]" />
+    <div className={cn("space-y-2", className)}>
+      {fleet.pausedBy && (
+        <p className="flex items-start gap-1.5 text-sm">
+          <TriangleAlert className="mt-0.5 size-4 shrink-0 text-[var(--warning)]" />
+          <span>
+            Waiting for {fleet.pausedBy} to recover before updating the rest.
+          </span>
+        </p>
       )}
-      <span className="font-medium">
-        {upToDate} of {fleet.total}
-      </span>
-      on v{fleet.expected}
-    </p>
+      {fleet.behind.slice(0, BEHIND_SHOWN).map((server) => (
+        <BehindLine key={server.id} server={server} onSettled={onSettled} />
+      ))}
+      {fleet.behind.length > BEHIND_SHOWN && (
+        <BehindDialog fleet={fleet} onSettled={onSettled} />
+      )}
+    </div>
   );
 }
 

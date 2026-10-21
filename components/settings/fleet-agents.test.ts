@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { createElement } from "react";
 
 import { renderServerView } from "@/components/servers/server-test-helpers";
-import { FleetAgentsCard, type FleetSummary } from "./fleet-agents-card";
+import { FleetBehind, type FleetSummary } from "./fleet-agents";
 
 const fleet = (over: Partial<FleetSummary> = {}): FleetSummary => ({
   expected: "0.5.0",
@@ -16,9 +16,7 @@ const fleet = (over: Partial<FleetSummary> = {}): FleetSummary => ({
 });
 
 const render = (f: FleetSummary) =>
-  renderServerView(
-    createElement(FleetAgentsCard, { fleet: f, onSettled() {} }),
-  );
+  renderServerView(createElement(FleetBehind, { fleet: f, onSettled() {} }));
 
 test("a server Deplo is still updating gets no button", () => {
   const html = render(
