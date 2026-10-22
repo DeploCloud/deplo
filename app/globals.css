@@ -577,13 +577,3 @@ html body[data-scroll-locked] {
     color-mix(in srgb, var(--deplo-migrate-g3) 18%, var(--background))
   );
 }
-
-/* Cloudflare's orange fading into the card, opaque at every stop. */
-.cloudflare-wash {
-  border-color: color-mix(in srgb, #f38020 35%, var(--border));
-  background-image: linear-gradient(
-    to bottom,
-    color-mix(in srgb, #f38020 16%, var(--card)),
-    var(--card) 75%
-  );
-}
