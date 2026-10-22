@@ -232,6 +232,9 @@ is remapped onto the control-plane `users` table. Deploy execution is the Go age
 ## Commands (Bun) & environment
 
 - `bun install` · `bun run dev` · `bun run build` · `bun run lint` (eslint).
+- **Two TypeScripts, on purpose.** `tsc` is 7 (`@typescript/native`); the `typescript` package is
+  the 6.0 API (`@typescript/typescript6`), which typescript-eslint, Next and `font-weight.test.ts`
+  still need. Bump with **Bun 1.4+**: 1.3 resolves that alias onto itself.
 - **Formatting is Prettier, and it is automatic** - `bun run format` / `format:check`. The
   pre-commit hook (`.githooks/pre-commit` → lint-staged, wired by `bun install`) formats what
   you stage, and CI's lint job re-checks it, so **never hand-align code to match a file**: write
@@ -268,15 +271,14 @@ is remapped onto the control-plane `users` table. Deploy execution is the Go age
   `typegen` emits them without a build and needs no environment. Run it before `tsc` in a clean
   tree too.
   `docker-image.yml` is separate and still fires only on a `v*` tag.
-- **`overrides` in `package.json` are pins with a reason, never preferences.** Five, in two
-  kinds (the file is the list; this is why each one is there):
+- **`overrides` in `package.json` are pins with a reason, never preferences.** Two, one of
+  each kind (the file is the list; this is why each one is there):
   - **Security**: `esbuild` - a transitive that still pulls an older, flagged copy into the tree
-    when the entry goes (`drizzle-kit` and `tsx` both do). `@graphql-tools/utils` (prototype pollution in
-    `mergeDeep`, patched in 12) brings `schema` and `merge` with it - those two versions are what
-    accept 12, while `graphql-yoga@5.24` still names `^11` itself.
-  - **Functional**: `graphql` (`^17.0.2`). It used to hold 16 because `graphql-yoga@5` refused 17;
-    yoga 5.23 peers `^15 || ^16 || ^17`, so the pin now holds the tree **on** 17 instead. Two
-    copies of `graphql` and Pothos and yoga stop recognising each other's types.
+    when the entry goes (`drizzle-kit` and `tsx` both do). The three `@graphql-tools/*` pins went
+    on 22 Oct 2026 with `graphql-yoga@6`, which names the patched majors itself.
+  - **Functional**: `graphql` (`^17.0.2`). The `@escape.tech/graphql-armor-*` packages still
+    nest a 16 when it goes. Two copies of `graphql` and Pothos and yoga stop recognising each
+    other's types.
   - **Dedupe is now a TEST, not a pin.** The three `@codemirror/*` overrides went in September
     2026 once the tree deduped on its own, and `sharp` + `source-map-js` followed on 8 Oct 2026
     with the bump to `next@16.3.8`; `lockfile-single-copy.test.ts` fails if a second copy comes
