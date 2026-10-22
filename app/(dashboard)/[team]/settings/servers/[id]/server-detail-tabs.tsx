@@ -9,6 +9,7 @@ import {
   Brush,
   Cpu,
   Gauge,
+  Globe,
   HardDrive,
   LayoutDashboard,
   ListChecks,
@@ -33,9 +34,11 @@ import {
 } from "@/components/settings/deplo-settings-panel/setting-item";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { SlidingButtonGroup } from "@/components/ui/sliding-button-group";
+import { cn } from "@/lib/utils";
 import { gqlAction } from "@/lib/graphql-client";
 import {
-  ServerTeamAccess,
+  TeamChecklist,
   accessIsComplete,
   type ServerAccess,
   type TeamOption,
@@ -474,25 +477,69 @@ function AccessCard({
 
   return (
     <SettingGroup icon={Users} title="Team access">
-      <div className="p-4 sm:p-5">
-        <form className="space-y-4" onSubmit={saveAccess}>
-          <ServerTeamAccess
-            label={null}
-            value={access}
+      <form onSubmit={saveAccess} className="divide-y divide-border">
+        <SettingItem
+          icon={access.allTeams ? Globe : Users}
+          title="Who can deploy"
+          info="Which teams are allowed to deploy to this server."
+          docs="servers.teams"
+          description={
+            access.allTeams
+              ? "Every team can deploy here"
+              : "Only the teams you pick"
+          }
+          control={
+            <SlidingButtonGroup aria-label="Team access">
+              {[
+                { all: true, label: "All teams" },
+                { all: false, label: "Specific teams" },
+              ].map((o) => (
+                <button
+                  key={o.label}
+                  type="button"
+                  aria-pressed={access.allTeams === o.all}
+                  disabled={pending}
+                  onClick={() =>
+                    setAccess({
+                      allTeams: o.all,
+                      teamIds: o.all ? [] : access.teamIds,
+                    })
+                  }
+                  className={cn(
+                    "rounded-md px-3 py-1.5 text-sm font-medium transition-colors disabled:opacity-50",
+                    access.allTeams === o.all
+                      ? "text-foreground"
+                      : "text-muted-foreground hover:text-foreground",
+                  )}
+                >
+                  {o.label}
+                </button>
+              ))}
+            </SlidingButtonGroup>
+          }
+        />
+        {!access.allTeams && (
+          <TeamChecklist
             teams={teams}
-            onChange={setAccess}
+            value={access.teamIds}
+            onChange={(teamIds) => setAccess({ allTeams: false, teamIds })}
             disabled={pending}
+            className="p-2 sm:px-3"
           />
-          <div className="flex justify-end">
-            <Button
-              type="submit"
-              disabled={pending || !accessDirty || !accessIsComplete(access)}
-            >
-              Save access
-            </Button>
-          </div>
-        </form>
-      </div>
+        )}
+        <div className="flex items-center justify-between gap-3 p-4 sm:px-5">
+          <span className="text-xs text-muted-foreground">
+            {!access.allTeams &&
+              `${access.teamIds.length} team${access.teamIds.length === 1 ? "" : "s"} selected`}
+          </span>
+          <Button
+            type="submit"
+            disabled={pending || !accessDirty || !accessIsComplete(access)}
+          >
+            Save access
+          </Button>
+        </div>
+      </form>
     </SettingGroup>
   );
 }

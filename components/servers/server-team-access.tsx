@@ -36,14 +36,7 @@ export function ServerTeamAccess({
   onChange: (next: ServerAccess) => void;
   disabled?: boolean;
 }) {
-  const selected = new Set(value.teamIds);
-
-  function toggleTeam(id: string, on: boolean) {
-    const next = new Set(selected);
-    if (on) next.add(id);
-    else next.delete(id);
-    onChange({ allTeams: false, teamIds: [...next] });
-  }
+  const count = value.teamIds.length;
 
   return (
     <div className="space-y-2">
@@ -75,33 +68,66 @@ export function ServerTeamAccess({
       </div>
 
       {!value.allTeams && (
-        <div className="mt-2 max-h-48 space-y-1 overflow-y-auto rounded-lg border border-border p-2">
-          {teams.length === 0 ? (
-            <p className="px-1 py-2 text-xs text-muted-foreground">
-              No teams to choose from.
-            </p>
-          ) : (
-            teams.map((team) => (
-              <label
-                key={team.id}
-                className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 hover:bg-accent"
-              >
-                <Checkbox
-                  checked={selected.has(team.id)}
-                  onCheckedChange={(c) => toggleTeam(team.id, c === true)}
-                  disabled={disabled}
-                />
-                <TeamAvatar name={team.name} avatarUrl={team.avatarUrl} />
-                <span className="truncate text-sm">{team.name}</span>
-              </label>
-            ))
-          )}
-        </div>
+        <TeamChecklist
+          teams={teams}
+          value={value.teamIds}
+          onChange={(teamIds) => onChange({ allTeams: false, teamIds })}
+          disabled={disabled}
+          className="mt-2 rounded-lg border border-border p-2"
+        />
       )}
-      {!value.allTeams && selected.size > 0 && (
+      {!value.allTeams && count > 0 && (
         <p className="text-xs text-muted-foreground">
-          {`${selected.size} team${selected.size === 1 ? "" : "s"} selected.`}
+          {`${count} team${count === 1 ? "" : "s"} selected.`}
         </p>
+      )}
+    </div>
+  );
+}
+
+export function TeamChecklist({
+  teams,
+  value,
+  onChange,
+  disabled,
+  className,
+}: {
+  teams: TeamOption[];
+  value: string[];
+  onChange: (teamIds: string[]) => void;
+  disabled?: boolean;
+  className?: string;
+}) {
+  const selected = new Set(value);
+
+  function toggleTeam(id: string, on: boolean) {
+    const next = new Set(selected);
+    if (on) next.add(id);
+    else next.delete(id);
+    onChange([...next]);
+  }
+
+  return (
+    <div className={cn("max-h-48 space-y-1 overflow-y-auto", className)}>
+      {teams.length === 0 ? (
+        <p className="px-1 py-2 text-xs text-muted-foreground">
+          No teams to choose from.
+        </p>
+      ) : (
+        teams.map((team) => (
+          <label
+            key={team.id}
+            className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 hover:bg-accent"
+          >
+            <Checkbox
+              checked={selected.has(team.id)}
+              onCheckedChange={(c) => toggleTeam(team.id, c === true)}
+              disabled={disabled}
+            />
+            <TeamAvatar name={team.name} avatarUrl={team.avatarUrl} />
+            <span className="truncate text-sm">{team.name}</span>
+          </label>
+        ))
       )}
     </div>
   );
