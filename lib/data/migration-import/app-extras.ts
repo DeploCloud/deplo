@@ -4,11 +4,7 @@ import { errorMessage } from "../../utils";
 import { blocker, type Note } from "../../migration/note";
 import { randomToken } from "../../crypto";
 import type { SourceCredential } from "../../migration/source";
-import type {
-  NativePreview,
-  SourceApplication,
-  SourceCompose,
-} from "../../migration/model";
+import type { SourceApplication, SourceCompose } from "../../migration/model";
 import {
   mapResources,
   swarmHealthCheck,
@@ -18,7 +14,6 @@ import type { createApp } from "../apps/create";
 import { updateAppResources } from "../apps/resources";
 import { updateAppHealthCheck } from "../apps/settings";
 import { addBasicAuthUser } from "../basic-auth";
-import { landNativeOps } from "./app-ops";
 import { type AddressRules, rehostPairs } from "./app-address-vars";
 import { importCrons } from "./cron-import";
 import type { SourceService } from "./source-tree";
@@ -69,42 +64,6 @@ export async function importBasicAuth(
   );
 }
 
-// The base domain goes on its own, so a refused one does not take the other settings with it.
-async function landNativePreview(
-  appId: string,
-  preview: NativePreview,
-  servers: Map<string, string | undefined>,
-  notes: Note[],
-): Promise<void> {
-  const { setAppPreviewSettings } = await import("../previews");
-  // A new app starts with previews off; saying so again would only log a "Disabled" Activity line.
-  const { baseDomain, serverId, enabled, ...rest } = preview;
-  const server = serverId ? servers.get(serverId) : undefined;
-  if (serverId && !server)
-    notes.push(
-      "Its previews ran on a server of their own on {panel}, which has no counterpart here, so they run on the app's server. Pick another under Previews.",
-    );
-  try {
-    await setAppPreviewSettings(appId, {
-      ...rest,
-      ...(enabled ? { enabled } : {}),
-      ...(server ? { serverId: server } : {}),
-    });
-  } catch (e) {
-    notes.push(
-      `Its preview settings did not come across: ${errorMessage(e, "refused")}. Set them under Previews.`,
-    );
-  }
-  if (!baseDomain) return;
-  try {
-    await setAppPreviewSettings(appId, { baseDomain });
-  } catch (e) {
-    notes.push(
-      `Its preview domain ${baseDomain} did not come across: ${errorMessage(e, "refused")}. Set one under Previews.`,
-    );
-  }
-}
-
 export async function landAppExtras(
   c: SourceCredential,
   svc: SourceService,
@@ -114,17 +73,12 @@ export async function landAppExtras(
     isCompose: boolean;
     secretKeys: Set<string>;
     serviceRenames: Map<string, string>;
-    servers?: Map<string, string | undefined>;
-    liveCopy?: boolean;
     address?: AddressRules;
   },
   notes: Note[],
-): Promise<number> {
+): Promise<void> {
   const { isCompose, secretKeys, serviceRenames } = shape;
-  const native = (detail as SourceApplication).nativeResources;
-  const resources = native
-    ? { value: native, notes: [] }
-    : mapResources(detail);
+  const resources = mapResources(detail);
   notes.push(...resources.notes);
   if (resources.value) {
     try {
@@ -157,15 +111,8 @@ export async function landAppExtras(
   );
 
   const app = detail as SourceApplication;
-  if (app.nativePreview)
-    await landNativePreview(
-      created.id,
-      app.nativePreview,
-      shape.servers ?? new Map(),
-      notes,
-    );
-  if (!isCompose || app.nativePreview) {
-    if (!app.nativePreview && app.isPreviewDeploymentsActive) {
+  if (!isCompose) {
+    if (app.isPreviewDeploymentsActive) {
       try {
         const { setAppPreviewSettings } = await import("../previews");
         const base = app.previewWildcard?.trim().replace(/^\*\./, "") || null;
@@ -184,9 +131,7 @@ export async function landAppExtras(
         );
       }
     }
-    let previewVars = (
-      app.previewEnvEntries ?? parseEnvBlob(app.previewEnv)
-    ).filter((v) => v.key);
+    let previewVars = parseEnvBlob(app.previewEnv).filter((v) => v.key);
     if (shape.address) {
       const moved = rehostPairs(
         previewVars,
@@ -198,9 +143,7 @@ export async function landAppExtras(
       previewVars = moved.pairs;
       notes.push(...moved.notes);
     }
-    const previewSecrets = app.previewSecretEnvKeys
-      ? new Set(app.previewSecretEnvKeys)
-      : secretKeys;
+    const previewSecrets = secretKeys;
     if (previewVars.length > 0) {
       const { setPreviewEnvVar } = await import("../previews");
       const landed: string[] = [];
@@ -231,20 +174,12 @@ export async function landAppExtras(
     }
   }
 
-  if (detail.nativeOps)
-    await landNativeOps(created.id, detail.nativeOps, isCompose, notes);
-
-  return importCrons(
+  await importCrons(
     c,
     isCompose ? "compose" : "application",
     svc.id,
     { kind: "app", id: created.id },
     notes,
-    {
-      serviceRenames,
-      cronEnabled: detail.cronEnabled,
-      paused: shape.liveCopy,
-      address: shape.address,
-    },
+    serviceRenames,
   );
 }

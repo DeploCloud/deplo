@@ -160,8 +160,6 @@ export interface CreateAppInput {
   projectId?: string | null;
   environmentId?: string | null;
   deploy?: boolean;
-  // A copy of an app still running elsewhere leaves its push webhook to the original.
-  noWebhook?: boolean;
 }
 
 export interface CreateAppFromTemplateInput {
@@ -490,7 +488,7 @@ export async function createApp(input: CreateAppInput): Promise<AppSummary> {
   );
   for (const note of renameNotes)
     await recordActivity("app", note, user.name, project.id);
-  if (!input.noWebhook) await syncAppWebhook(project.repo).catch(() => {});
+  await syncAppWebhook(project.repo).catch(() => {});
 
   const ip = serverIp;
   // Named by a template or another panel, so held to the rule every domain is.

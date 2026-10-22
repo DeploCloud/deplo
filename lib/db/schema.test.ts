@@ -126,10 +126,6 @@ const CONTROL_PLANE = [
   "github_apps",
   "github_installation",
   "git_connections",
-  "deplo_moves",
-  "deplo_move_servers",
-  "deplo_move_workloads",
-  "deplo_move_pauses",
 ] as const;
 
 async function publicTables(): Promise<Set<string>> {

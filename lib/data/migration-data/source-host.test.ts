@@ -7,7 +7,6 @@ import {
   resetHarness,
   seedMigrationHostServer,
   state,
-  UPLOADS,
 } from "./migration-data-test-helpers";
 
 import { test, before, after, beforeEach } from "node:test";
@@ -161,42 +160,4 @@ test("an ordinary failed copy does NOT claim the machine went away", async () =>
     }),
   );
   assert.equal(res.sourceGone, false);
-});
-
-test("a volume the panel names in Deplo's own namespace is never read off our server", async () => {
-  await seedMigrationHostServer();
-  // Another team's app volume, and the panel claims the service mounts it.
-  state.volumes.srv_migration_host["deplo-victim-uploads"] = UPLOADS;
-  state.webMounts = [
-    {
-      Type: "volume",
-      Name: "deplo-victim-uploads",
-      Destination: "/app/uploads",
-    },
-  ];
-  const landed = state.volumes[SERVER_1]["deplo-blink-web-uploads"];
-
-  for (const running of [true, false]) {
-    state.sourceRunning = running;
-    state.agentCalls = [];
-    const runId = await openRun();
-    const res = await asOwner(() =>
-      moveMigrationServiceData({
-        ...CONNECT,
-        runId,
-        sourceKind: "application",
-        sourceId: "dok-app-web",
-      }),
-    );
-    assert.equal(res.moved, 0);
-    assert.equal(
-      state.agentCalls.some((c) => c.includes("deplo-victim-uploads")),
-      false,
-      `running=${running}: the name must not reach the agent`,
-    );
-    assert.deepEqual(
-      state.volumes[SERVER_1]["deplo-blink-web-uploads"],
-      landed,
-    );
-  }
 });

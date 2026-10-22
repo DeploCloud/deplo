@@ -18,8 +18,6 @@ import {
   BACKUP_SCHEDULER_LEASE,
   LEASE_STALE_MS,
 } from "./lease";
-import { instanceFrozen } from "../data/deplo-move/freeze";
-import { schedulesPaused } from "../data/deplo-move/schedules";
 
 const TICK_MS = 60_000;
 
@@ -52,12 +50,9 @@ const state: SchedulerState = (g[STATE_KEY] ??= {
 });
 
 export async function runSchedulerTick(now: Date = new Date()): Promise<void> {
-  if (await instanceFrozen()) return;
   if (state.ticking) return;
   state.ticking = true;
   try {
-    // Paused after a Deplo move: the tick still moves lastTickAt on, so turning it on replays nothing.
-    if (await schedulesPaused()) return;
     const held = await acquireLease(BACKUP_SCHEDULER_LEASE, state.owner, now);
     if (!held) return;
 

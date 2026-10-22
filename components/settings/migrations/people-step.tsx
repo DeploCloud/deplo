@@ -50,7 +50,7 @@ export function PeopleStep({
   const [query, setQuery] = React.useState("");
   const [picked, setPicked] = React.useState<string[]>([]);
 
-  const panel = copyFor(kind).mention;
+  const panel = copyFor(kind).name;
   const people = React.useMemo(() => mergePeople(groups), [groups]);
   const teams = teamsOf(people);
   const shown = filterPeople(people, query, picked);

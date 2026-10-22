@@ -14,8 +14,6 @@ import { projects as projectsTable } from "../../db/schema/control-plane/project
 import { oauthClient } from "../../db/schema/auth";
 import { seedIdentity, TEAM_A, USER_1 } from "../leaf-test-helpers";
 import { authenticateToken } from "./authenticate";
-import { deploMoves } from "../../db/schema/control-plane/deplo-move";
-import { invalidateFrozen } from "../deplo-move/freeze";
 import { createToken } from "./mint";
 import { TRUNCATE, asUser1, seedProject } from "./tokens-test-helpers";
 
@@ -127,30 +125,4 @@ test("an MCP connection's token stops resolving in a team that turned MCP off", 
     createToken({ name: "ci", capabilities: ["view"] }),
   );
   assert.ok(await authenticateToken(plain.raw));
-});
-
-test("a Deplo copied to another machine keeps accepting its own tokens", async () => {
-  const raw = await asUser1(
-    async () =>
-      (await createToken({ name: "CI", capabilities: ["deploy_apps"] })).raw,
-  );
-  try {
-    for (const state of ["copying", "done"]) {
-      await db.delete(deploMoves);
-      await db.insert(deploMoves).values({
-        id: `dmv_${state}`,
-        side: "source",
-        state,
-        peerUrl: "https://new.example",
-        startedBy: "Ada",
-        createdAt: "2026-01-01T00:00:00.000Z",
-        updatedAt: "2026-01-01T00:00:00.000Z",
-      });
-      invalidateFrozen();
-      assert.ok(await authenticateToken(raw), state);
-    }
-  } finally {
-    await db.delete(deploMoves);
-    invalidateFrozen();
-  }
 });

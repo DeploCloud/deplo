@@ -9,7 +9,6 @@ const FLAT_SEGMENTS = [
   "install-agent",
   "login",
   "migrations",
-  "moving",
   "oauth",
   "register",
   "setup",

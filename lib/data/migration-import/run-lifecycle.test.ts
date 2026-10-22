@@ -173,30 +173,6 @@ test("a machine with no agent stops the run before it starts", async () => {
   assert.equal((await db.select().from(runsTable)).length, before);
 });
 
-test("copying without stopping the source is offered for another Deplo only", async () => {
-  const before = (await db.select().from(runsTable)).length;
-  await assert.rejects(
-    () =>
-      asOwner(() =>
-        startMigrationRun({
-          url: URL_BASE,
-          apiKey: CONNECT.apiKey,
-          targets: [
-            {
-              projectId: "dok-prj-blink",
-              projectName: "Blink",
-              serviceId: "dok-app-web",
-            },
-          ],
-          servers: [],
-          liveCopy: true,
-        }),
-      ),
-    /only when moving from another Deplo/,
-  );
-  assert.equal((await db.select().from(runsTable)).length, before);
-});
-
 test("a panel that does not answer leaves no run behind", async () => {
   __setMigrationFetchForTest(async () => new Response("nope", { status: 502 }));
   const before = (await db.select().from(runsTable)).length;

@@ -12,7 +12,6 @@ import { dispatchAlert } from "../../notify/dispatch";
 import { BACKUP_RUN_MAX_MS } from "../../infra/agent-client/deadlines";
 import { getDestinationWithSecretsForTeam } from "../destinations/credentials";
 import { deleteManyFromDestination } from "../backup-transport";
-import { ownsArtifact } from "./copied-runs";
 import { anyBackupCapableServer } from "./target-lookup";
 
 const ORPHAN_ARTIFACT_KEEP_MS = 30 * 24 * 60 * 60_000;
@@ -50,9 +49,13 @@ export async function sweepOrphanedBackupArtifacts(): Promise<number> {
   for (const [key, runs] of byDestination) {
     const [teamId, destinationId] = key.split(" ") as [string, string];
     const removable = new Set(
-      runs.filter((r) => !ownsArtifact(r)).map((r) => r.id),
+      runs
+        .filter((r) => r.status !== "success" || !r.objectKey)
+        .map((r) => r.id),
     );
-    const withArtifacts = runs.filter(ownsArtifact);
+    const withArtifacts = runs.filter(
+      (r) => r.status === "success" && r.objectKey,
+    );
     if (withArtifacts.length > 0) {
       try {
         const creds = await getDestinationWithSecretsForTeam(

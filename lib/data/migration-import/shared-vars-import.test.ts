@@ -27,10 +27,6 @@ import {
   resetMigrationHarness,
 } from "./migration-import-test-helpers";
 import { getMigrationRun } from "./run-queries";
-import { fakeDeplo, importDeploProject } from "./deplo-import-test-helpers";
-import { deploExport } from "../../migration/deplo/deplo-test-helpers";
-import { saveSharedVar } from "../shared-vars/authoring";
-import { TEAM_A } from "../identity-test-helpers";
 
 let db: TestDb;
 let pg: PGlite;
@@ -250,58 +246,5 @@ test("the same name at two levels stays two shared variables", async () => {
   assert.equal(
     decryptSecret(own.find((v) => v.key === "TOKEN_COPY")!.valueEnc),
     "project-level",
-  );
-});
-
-test("from Deplo, a secret shared variable that clashes stays the app's own secret", async () => {
-  await asOwner(() =>
-    saveSharedVar({
-      key: "API_KEY",
-      value: "already-here",
-      type: "plain",
-      teamIds: [TEAM_A],
-      environmentIds: [],
-      projectIds: [],
-    }),
-  );
-  fakeDeplo(
-    deploExport({
-      databases: [],
-      sharedVars: [
-        {
-          key: "API_KEY",
-          value: "from-source",
-          secret: true,
-          targets: ["production", "preview"],
-          teamWide: false,
-          autoInject: false,
-          projectIds: ["prc_shop"],
-          environmentIds: [],
-          appIds: ["prj_web"],
-        },
-      ],
-    }),
-  );
-  const runId = await importDeploProject("prc_shop");
-
-  const web = (await db.select().from(appsTable)).find(
-    (a) => a.name === "web",
-  )!;
-  const own = await db
-    .select()
-    .from(envVarsTable)
-    .where(eq(envVarsTable.appId, web.id));
-  const key = own.find((v) => v.key === "API_KEY")!;
-  assert.equal(decryptSecret(key.valueEnc), "from-source");
-  assert.equal(key.type, "secret");
-  assert.deepEqual(await db.select().from(sharedVarAppsTable), []);
-  const items = (await asOwner(() => getMigrationRun(runId)))!.items;
-  assert.ok(
-    items.some(
-      (i) =>
-        i.sourceName === "API_KEY" &&
-        i.message?.includes("different value") &&
-        !i.blocking,
-    ),
   );
 });

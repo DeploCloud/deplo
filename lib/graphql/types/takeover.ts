@@ -1,5 +1,5 @@
 import { builder } from "../builder";
-import { TAKEOVER_PLATFORMS } from "@/lib/migration/source";
+import { MIGRATION_PLATFORMS } from "@/lib/migration/source";
 import {
   cancelTakeover,
   requestTakeover,
@@ -19,7 +19,7 @@ const TakeoverStateEnum = builder.enumType("TakeoverState", {
 
 const TakeoverPlatformEnum = builder.enumType("TakeoverPlatform", {
   description: "The panel this install is replacing.",
-  values: TAKEOVER_PLATFORMS,
+  values: MIGRATION_PLATFORMS,
 });
 
 const TakeoverRef = builder.objectRef<TakeoverStatus>("Takeover").implement({

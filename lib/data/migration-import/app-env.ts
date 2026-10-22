@@ -3,7 +3,6 @@ import "server-only";
 import { blocker, type Note } from "../../migration/note";
 import type { SourceApplication, SourceCompose } from "../../migration/model";
 import {
-  envEntriesOf,
   envNeedsInterpolation,
   parseEnvBlob,
   renameDatabaseHosts,
@@ -16,7 +15,7 @@ export function mapAppEnv(
   home: { shared: SharedIndex; dbHosts: Map<string, string> },
   notes: Note[],
 ) {
-  const envEntries = envEntriesOf(detail);
+  const envEntries = parseEnvBlob(detail.env);
   const argEntries = parseEnvBlob(
     (detail as SourceApplication).buildArgs,
   ).filter((a) => !envEntries.some((e) => e.key === a.key));
@@ -42,11 +41,9 @@ export function mapAppEnv(
   );
   // Typed secret only where the panel said so: a secret is immutable here and a fork's preview drops it.
   const secretKeys = new Set(detail.secretEnvKeys ?? []);
-  const productionOnly = new Set(detail.productionOnlyEnvKeys ?? []);
   const env = rows.map((e) => ({
     ...e,
     type: secretKeys.has(e.key) ? ("secret" as const) : ("plain" as const),
-    ...(productionOnly.has(e.key) && { targets: ["production" as const] }),
   }));
   const masked = env.filter((e) => e.type === "secret").map((e) => e.key);
   if (masked.length > 0)

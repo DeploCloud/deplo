@@ -3,7 +3,6 @@ import "server-only";
 import { getCurrentUser } from "../../auth/current-user";
 import { recordActivity } from "../activity";
 import { syncProductionUrl } from "../domains/primary-domain";
-import { assertNotPausedForMove } from "../deplo-move/source-guard";
 import { startDeployment } from "../../deploy/build/deploy-start";
 import { rerouteApp } from "../../deploy/build/reroute";
 import { destroyStack } from "../../deploy/build/stack-lifecycle";
@@ -19,7 +18,6 @@ export async function reloadApp(
   const user = (await getCurrentUser())!;
   if (!(await appInTeam(appId, membership.teamId)))
     throw new Error("App not found");
-  await assertNotPausedForMove("app", appId);
   const result = await rerouteApp(appId);
   if (result !== "deferred") await syncProductionUrl(appId);
   if (result === "rerouted")

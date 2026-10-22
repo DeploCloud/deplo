@@ -1,10 +1,6 @@
 import "server-only";
 
-import {
-  envEntriesOf,
-  type EnvPair,
-  type SharedRefLevel,
-} from "../../migration/map/env";
+import { parseEnvBlob, type SharedRefLevel } from "../../migration/map/env";
 import { saveSharedVar } from "../shared-vars/authoring";
 import { tryDecryptSecret } from "../../crypto";
 import { visibleSharedVarsByKey } from "../shared-vars/visibility";
@@ -39,8 +35,7 @@ export function sharedEntry(
 }
 
 export async function importSharedVars(
-  vars:
-    { env?: string | null; envEntries?: EnvPair[] | null } | null | undefined,
+  vars: { env?: string | null } | null | undefined,
   opts: {
     teamId: string;
     label: string;
@@ -56,7 +51,7 @@ export async function importSharedVars(
   },
   index: SharedIndex,
 ): Promise<void> {
-  const entries = envEntriesOf(vars);
+  const entries = parseEnvBlob(vars?.env);
   if (entries.length === 0) return;
 
   const already = await visibleSharedVarsByKey(opts.teamId);

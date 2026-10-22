@@ -1,6 +1,6 @@
 import { ServerCrash } from "lucide-react";
 
-import { Strip } from "@/components/deplo-move/frozen-banner";
+import { Strip } from "@/components/shared/strip";
 import { unusableServerNames } from "@/lib/data/servers/agent-rollout";
 
 // Instance admins only: the servers this Deplo refuses until their agent updates.

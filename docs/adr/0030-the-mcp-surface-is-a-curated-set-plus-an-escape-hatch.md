@@ -49,8 +49,7 @@ table held families that differed only in which id they took (`app_metrics` / `d
    a document the caller writes walks straight past it. The `reveal*` family is derived (`/^reveal[A-Z]/`
    over the root types) so a new one is refused the day it lands, and so is every root whose return
    type reaches a field marked `extensions: { credential: true }` (an install command, a token's
-   `raw`, a registration link), plus a short list of irregulars - `execConsole`, the Deplo move
-   mutations and the rest. It is judged on the PARENT
+   `raw`, a registration link), plus a short list of irregulars - `execConsole` and the rest. It is judged on the PARENT
    TYPE, so a field named `login` on some object stays readable. `deleteTeam` and `deleteApp` pass:
    those are the token's Capabilities, and the client asks.
 

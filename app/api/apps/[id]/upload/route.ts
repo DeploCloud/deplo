@@ -13,7 +13,6 @@ import {
   MAX_UPLOAD_BYTES,
   ARCHIVE_TOO_LARGE,
 } from "@/lib/deploy/upload";
-import { refuseWhileFrozen } from "@/lib/data/deplo-move/freeze";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -40,8 +39,6 @@ export async function POST(
   request: NextRequest,
   ctx: RouteContext<"/api/apps/[id]/upload">,
 ) {
-  const paused = await refuseWhileFrozen();
-  if (paused) return paused;
   if (isCrossSite(request))
     return Response.json(
       { error: "Cross-site request refused" },

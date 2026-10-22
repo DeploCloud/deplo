@@ -22,13 +22,6 @@ export async function register(): Promise<void> {
       e,
     );
   }
-  // After the panel address: a resumed Deplo move sends it to the old Deplo.
-  try {
-    const { resumeDeploMoves } = await import("./lib/data/deplo-move/runner");
-    await resumeDeploMoves();
-  } catch (e) {
-    console.error("[deplo] could not resume a Deplo move:", e);
-  }
   try {
     const { logSetupLink } = await import("./lib/auth/setup");
     await logSetupLink();
@@ -90,29 +83,20 @@ export async function register(): Promise<void> {
       e,
     );
   }
-  // Skipped while a move has this Deplo paused; the move picks them up when it ends (ADR-0035).
-  const frozenAtBoot = await import("./lib/data/deplo-move/freeze")
-    .then((m) => m.instanceFrozen())
-    .catch(() => null);
   try {
     const { resumeAppDeletes } = await import("./lib/data/apps/delete");
-    if (!frozenAtBoot)
-      void resumeAppDeletes().catch((e) =>
-        console.error(
-          "[deplo] unfinished app deletes could not be resumed:",
-          e,
-        ),
-      );
+    void resumeAppDeletes().catch((e) =>
+      console.error("[deplo] unfinished app deletes could not be resumed:", e),
+    );
   } catch (e) {
     console.error("[deplo] app delete reconcile failed to start:", e);
   }
   try {
     const { runNetworkIsolationSweep } =
       await import("./lib/deploy/network-migration");
-    if (!frozenAtBoot)
-      void runNetworkIsolationSweep().catch((e) =>
-        console.error("[deplo] network isolation sweep failed:", e),
-      );
+    void runNetworkIsolationSweep().catch((e) =>
+      console.error("[deplo] network isolation sweep failed:", e),
+    );
   } catch (e) {
     console.error("[deplo] network isolation sweep failed to start:", e);
   }
@@ -153,14 +137,6 @@ export async function register(): Promise<void> {
     startMetricsStreams();
   } catch (e) {
     console.error("[deplo] metrics stream supervisor startup failed:", e);
-  }
-  // Never frozen-gated: a workload lent to a Deplo move starts again here once its lease lapses.
-  try {
-    const { startPauseSweep } =
-      await import("./lib/data/deplo-move/source-pauses");
-    startPauseSweep();
-  } catch (e) {
-    console.error("[deplo] Deplo move pause sweep startup failed:", e);
   }
   {
     const g = globalThis as { __deploCertSweep?: boolean };

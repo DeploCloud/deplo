@@ -176,7 +176,7 @@ const ARCHIVE_ROOTS: ReadonlySet<string> = new Set([".", "./"]);
 const FILES_ROOTS: ReadonlySet<string> = new Set(["files", "files/"]);
 
 export async function filesDirHasContent(
-  source: { exportFiles(slug: string): AsyncIterable<Buffer> },
+  source: AgentConnection,
   slug: string,
 ): Promise<boolean> {
   return archiveHasEntries(source.exportFiles(slug), FILES_ROOTS);
@@ -235,14 +235,14 @@ async function relayedArchiveHeldEntries(head: Buffer[]): Promise<boolean> {
 }
 
 async function sourceHasData(
-  source: { exportVolume(name: string): AsyncIterable<Buffer> },
+  source: AgentConnection,
   volumeName: string,
 ): Promise<boolean> {
   return archiveHasEntries(source.exportVolume(volumeName));
 }
 
 export async function copyVolumeBetween(
-  source: { exportVolume(name: string): AsyncIterable<Buffer> },
+  source: AgentConnection,
   dest: AgentConnection,
   volumeName: string,
   targetName: string = volumeName,
@@ -325,9 +325,7 @@ export async function copyVolumeBetween(
 }
 
 export async function copyHostPathBetween(
-  source: {
-    exportHostPath(path: string, allowFile?: boolean): AsyncIterable<Buffer>;
-  },
+  source: AgentConnection,
   dest: AgentConnection,
   sourcePath: string,
   targetPath: string,
@@ -423,7 +421,7 @@ export async function copyHostPathBetween(
 }
 
 export async function copyFilesBetween(
-  source: { exportFiles(slug: string): AsyncIterable<Buffer> },
+  source: AgentConnection,
   dest: AgentConnection,
   slug: string,
 ): Promise<{ empty: boolean }> {

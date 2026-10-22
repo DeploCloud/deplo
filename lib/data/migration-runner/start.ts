@@ -43,8 +43,6 @@ export interface StartRunInput {
   }[];
   servers: { from: string; to: string }[];
   keepSources?: boolean;
-  // Copy without stopping the source (expert option); the switch-over is left to the user.
-  liveCopy?: boolean;
   queued?: QueuedTeamInput[];
 }
 
@@ -64,10 +62,6 @@ export async function startMigrationRun(input: StartRunInput): Promise<string> {
     throw new Error("Nothing is selected, so there is nothing to migrate.");
 
   const c = await connectCredential(input);
-  if (input.liveCopy && c.kind !== "deplo")
-    throw new Error(
-      "A copy that keeps the source running is offered only when moving from another Deplo.",
-    );
   const client = sourceClient(c);
   await client.assertReadable();
   await client.listProjects();
@@ -97,7 +91,6 @@ export async function startMigrationRun(input: StartRunInput): Promise<string> {
     orgName: input.orgName ?? null,
     kind: c.kind,
     keepSources: queued.length > 0 || (input.keepSources ?? false),
-    liveCopy: input.liveCopy ?? false,
   });
   const { currentIdentity } = await import("../../auth/request-context");
   const { getCurrentUser } = await import("../../auth/current-user");
@@ -148,7 +141,6 @@ export async function startMigrationRun(input: StartRunInput): Promise<string> {
       team: q,
       actor: { name: actorName, userId, tokenId },
       keepSources: i < queued.length - 1,
-      liveCopy: input.liveCopy ?? false,
     });
 
   publishMigrationChanged();
@@ -165,7 +157,6 @@ async function enqueueTeam(opts: {
   team: QueuedTeamInput;
   actor: { name: string; userId: string | null; tokenId: string | null };
   keepSources: boolean;
-  liveCopy: boolean;
 }): Promise<string> {
   const { team } = opts;
   let teamId = team.teamId?.trim() || "";
@@ -202,7 +193,6 @@ async function enqueueTeam(opts: {
       doneSteps: 0,
       phase: "config",
       keepSources: opts.keepSources,
-      liveCopy: opts.liveCopy,
       sessionId: opts.sessionId,
     });
     for (const t of team.targets)

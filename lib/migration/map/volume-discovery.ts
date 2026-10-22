@@ -216,11 +216,6 @@ export function deploDatabaseVolumeName(host: string): string {
   return `deplo-${host}_${host}-data`;
 }
 
-// Every volume Deplo names starts this way, its own database's (`deplo_deplo-postgres`) included.
-export function isDeploVolumeName(name: string): boolean {
-  return /^deplo[-_]/.test(name);
-}
-
 export function composeVolumeHostNames(compose: string): Map<string, string> {
   const out = new Map<string, string>();
   let doc: { volumes?: unknown } | null;

@@ -27,7 +27,7 @@ import { mapSource } from "../../migration/map/app-source";
 import { adaptComposeForDeplo } from "../../migration/map/compose-adapt";
 import { deploEngineFor, mapDatabase } from "../../migration/map/databases";
 import { mapDomains } from "../../migration/map/domains";
-import { envEntriesOf, envNeedsInterpolation } from "../../migration/map/env";
+import { envNeedsInterpolation, parseEnvBlob } from "../../migration/map/env";
 import { withPanel } from "../../migration/map/source-platform";
 import { listEnvironmentsForProject } from "../environments";
 import { listProjects } from "../projects/read";
@@ -136,9 +136,7 @@ export async function scanMigrationSource(
     sourceClient(c).listProjects(),
   ]);
 
-  // A panel that hands its data over itself has no machines to install on (ADR-0034).
-  const panelServesData = Boolean(sourceClient(c).dataExport);
-  if (!opts.newTeam && !panelServesData)
+  if (!opts.newTeam)
     await adoptMigrationSources(
       teamId,
       new Set(
@@ -258,7 +256,7 @@ export async function scanMigrationSource(
           if (homeKey && existing.apps.has(homeKey)) line.status = "exists";
 
           const isCompose = svc.kind === "compose";
-          const scanned = envEntriesOf(detail as SourceApplication);
+          const scanned = parseEnvBlob((detail as SourceApplication).env);
           const scannedRefs = (detail as SourceApplication).sharedRefs ?? [];
           const willLink = scannedRefs
             .filter((r) => r.whole && r.key === r.sharedKey)
@@ -392,12 +390,10 @@ export async function scanMigrationSource(
     orgName: sourceTeam.name,
     otherTeams,
     projects: planned,
-    servers: panelServesData
-      ? []
-      : await planMachines(c, teamId, servers, {
-          probe: true,
-          only: used,
-        }),
+    servers: await planMachines(c, teamId, servers, {
+      probe: true,
+      only: used,
+    }),
     members: await planMembers(c, teamId),
   };
 }

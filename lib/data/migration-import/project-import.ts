@@ -15,21 +15,15 @@ import type {
   SourceCompose,
   SourceDatabase,
   SourceEnvironment,
-  SourceLanding,
   SourceProject,
 } from "../../migration/model";
 import { deploEngineFor } from "../../migration/map/databases";
 import {
   createEnvironment,
-  deleteEnvironment,
   listEnvironmentsForProject,
-  renameEnvironment,
   setDefaultEnvironment,
-  setEnvironmentBranch,
 } from "../environments";
-import { createFolder, listFolders } from "../folders";
 import { createProject } from "../projects/lifecycle";
-import type { Environment } from "../../types/team";
 import { listProjects } from "../projects/read";
 import { canHostWorkloads, listServersForTeam } from "../servers/roster";
 import { recordActivity } from "../activity";
@@ -57,11 +51,9 @@ import {
   type ServicePlacement,
 } from "./target-servers";
 import { importSharedVars, type SharedIndex } from "./shared-vars-import";
-import { importRegistries } from "./registry-import";
 import { importBackupDestinations } from "./source-backups";
 import { importAppService } from "./app-import";
 import { importDatabaseService } from "./database-import";
-import { isLiveCopy } from "./live-copy-schedules";
 
 export interface ImportProjectResult {
   projectName: string;
@@ -117,7 +109,6 @@ async function runImportMigrationProject(
   );
 
   const mayExposePorts = await canExposePorts();
-  const liveCopy = await isLiveCopy(report.id);
 
   let machineHosts: Map<string, string | null> | null = null;
   const hostOfMachine = async (sourceServerId: string) => {
@@ -151,23 +142,16 @@ async function runImportMigrationProject(
       .where(eq(dbHostsTable.runId, report.id)))
       dbHosts.set(h.from, h.to);
 
-  const place = source.landing
-    ? await landOutsideProjects(source.landing, report)
-    : await ensureProject(source, report);
-  if (!place)
+  const landing = await ensureProject(source, report);
+  if (!landing)
     return {
       projectName: source.name,
       ...countOutcomes(report.items),
       items: report.items,
     };
-  const landing = "projectId" in place ? place : null;
-  const projectId = landing?.projectId ?? null;
-  const folderId = "folderId" in place ? place.folderId : null;
+  const projectId = landing.projectId;
 
-  const destinations = await importBackupDestinations(c, report, (id) =>
-    targetServerFor(serverMap.get(id)),
-  );
-  await importRegistries(c, report);
+  const destinations = await importBackupDestinations(c, report);
 
   const wanted = input.serviceIds ? new Set(input.serviceIds) : null;
   const picked = (env: SourceEnvironment) =>
@@ -197,24 +181,23 @@ async function runImportMigrationProject(
   } catch (e) {
     await levelRefused(report, "team", "", e);
   }
-  if (projectId)
-    await importSharedVars(
-      source,
-      {
-        secretKeys: source.secretEnvKeys,
-        teamId,
-        label: source.name,
-        level: "project",
-        created: createdVars,
-        environmentIds: [],
-        projectIds: [projectId],
-        scopeNote: "Offered to this project.",
-        report,
-      },
-      shared,
-    );
+  await importSharedVars(
+    source,
+    {
+      secretKeys: source.secretEnvKeys,
+      teamId,
+      label: source.name,
+      level: "project",
+      created: createdVars,
+      environmentIds: [],
+      projectIds: [projectId],
+      scopeNote: "Offered to this project.",
+      report,
+    },
+    shared,
+  );
   for (const sourceServerId of new Set(
-    (projectId ? (source.environments ?? []) : []).flatMap((env) =>
+    (source.environments ?? []).flatMap((env) =>
       picked(env).map((s) => s.serverId ?? ""),
     ),
   )) {
@@ -229,7 +212,7 @@ async function runImportMigrationProject(
           level: "server",
           created: createdVars,
           environmentIds: [],
-          projectIds: projectId ? [projectId] : [],
+          projectIds: [projectId],
           scopeNote:
             "{panel} shared this across everything on one machine. Deplo has no server scope, so it is offered to this project instead.",
           report,
@@ -252,12 +235,9 @@ async function runImportMigrationProject(
     // An environment empty on the source still comes across; one whose services were all left out does not.
     if (chosen.length === 0 && servicesOf(env).length > 0) continue;
 
-    // Outside a project there is no environment: the group's one only holds it together for the wizard.
-    const envReport = landing ? report.at(env.name) : report;
-    const environmentId = landing
-      ? await ensureEnvironment(landing, env, envReport)
-      : null;
-    if (landing && !environmentId) {
+    const envReport = report.at(env.name);
+    const environmentId = await ensureEnvironment(landing, env, envReport);
+    if (!environmentId) {
       for (const svc of chosen)
         await envReport.at(svc.name || svc.id).add({
           sourceKind: svc.kind,
@@ -276,27 +256,25 @@ async function runImportMigrationProject(
 
     // Each environment sees its own variables, never a sibling's of the same name.
     const envShared: SharedIndex = new Map(shared);
-    if (environmentId) {
-      const envLevel =
-        env.env != null || env.envEntries != null
-          ? env
-          : await sourceClient(c).getEnvironment(env.environmentId);
-      await importSharedVars(
-        envLevel,
-        {
-          secretKeys: envLevel?.secretEnvKeys,
-          teamId,
-          label: `${source.name} / ${env.name}`,
-          level: "environment",
-          created: createdVars,
-          environmentIds: [environmentId],
-          projectIds: [],
-          scopeNote: `Offered to ${env.name}.`,
-          report: envReport,
-        },
-        envShared,
-      );
-    }
+    const envLevel =
+      env.env != null
+        ? env
+        : await sourceClient(c).getEnvironment(env.environmentId);
+    await importSharedVars(
+      envLevel,
+      {
+        secretKeys: envLevel?.secretEnvKeys,
+        teamId,
+        label: `${source.name} / ${env.name}`,
+        level: "environment",
+        created: createdVars,
+        environmentIds: [environmentId],
+        projectIds: [],
+        scopeNote: `Offered to ${env.name}.`,
+        report: envReport,
+      },
+      envShared,
+    );
 
     const appIds: string[] = [];
 
@@ -357,16 +335,13 @@ async function runImportMigrationProject(
             {
               projectId,
               environmentId,
-              folderId,
               serverId:
                 placed.get(svc.id)?.serverId ?? serverMap.get(sourceServerId),
               buildServerId: placed.get(svc.id)?.buildServerId ?? null,
               sourceHost: await hostOfMachine(sourceServerId),
-              servers: serverMap,
               dbHosts,
               shared: envShared,
               destinations,
-              liveCopy,
             },
             svcReport,
           );
@@ -392,7 +367,6 @@ async function runImportMigrationProject(
                 (await hostOfMachine(sourceServerId)) === serverId,
               dbHosts,
               destinations,
-              liveCopy,
             },
             svcReport,
           );
@@ -410,7 +384,7 @@ async function runImportMigrationProject(
     }
   }
 
-  if (landing) await finishEnvironments(landing, source.environments ?? []);
+  await finishEnvironments(landing, source.environments ?? []);
   await refreshCounts(input.runId, teamId);
   await recordActivity(
     "project",
@@ -431,7 +405,6 @@ async function runImportMigrationProject(
 interface ProjectLanding {
   projectId: string;
   fresh: boolean;
-  seeded: Environment[];
   landed: Map<string, string>;
 }
 
@@ -451,10 +424,10 @@ async function ensureProject(
         targetId: p.id,
         message: "A project with this name is already here.",
       });
-      return { projectId: p.id, fresh: false, seeded: [], landed: new Map() };
+      return { projectId: p.id, fresh: false, landed: new Map() };
     }
   try {
-    const created = await createProject(source.name, source.color ?? null);
+    const created = await createProject(source.name);
     await report.add({
       sourceKind: "project",
       sourceId: source.projectId,
@@ -463,12 +436,7 @@ async function ensureProject(
       targetKind: "project",
       targetId: created.id,
     });
-    return {
-      projectId: created.id,
-      fresh: true,
-      seeded: await listEnvironmentsForProject(created.id),
-      landed: new Map(),
-    };
+    return { projectId: created.id, fresh: true, landed: new Map() };
   } catch (e) {
     await report.add({
       sourceKind: "project",
@@ -482,66 +450,6 @@ async function ensureProject(
   }
 }
 
-interface OutsideLanding {
-  folderId: string | null;
-}
-
-// A folder chain is matched by name under the same parent, so a second run reuses what the first made.
-async function landOutsideProjects(
-  landing: SourceLanding,
-  report: Report,
-): Promise<OutsideLanding | null> {
-  if (landing.kind === "top") return { folderId: null };
-  let parentId: string | null = null;
-  for (const f of landing.folders) {
-    const key = f.name.trim().toLowerCase();
-    const here = (await listFolders()).find(
-      (x) =>
-        (x.parentId ?? null) === parentId &&
-        x.name.trim().toLowerCase() === key,
-    );
-    if (here) {
-      await report.add({
-        sourceKind: "folder",
-        sourceId: f.sourceId,
-        sourceName: f.name,
-        outcome: "skipped",
-        targetKind: "folder",
-        targetId: here.id,
-        message: "A folder with this name is already here.",
-      });
-      parentId = here.id;
-      continue;
-    }
-    try {
-      const created = await createFolder(f.name, f.color, parentId);
-      await report.add({
-        sourceKind: "folder",
-        sourceId: f.sourceId,
-        sourceName: f.name,
-        outcome: "created",
-        targetKind: "folder",
-        targetId: created.id,
-      });
-      parentId = created.id;
-    } catch (e) {
-      await report.add({
-        sourceKind: "folder",
-        sourceId: f.sourceId,
-        sourceName: f.name,
-        outcome: "failed",
-        targetKind: "folder",
-        message: `The ${f.name} folder could not be created (${errorMessage(
-          e,
-          "Deplo refused it",
-        )}), so nothing in it came across. Create it, then run the migration again.`,
-      });
-      return null;
-    }
-  }
-  return { folderId: parentId };
-}
-
 async function ensureEnvironment(
   landing: ProjectLanding,
   env: SourceEnvironment,
@@ -553,7 +461,7 @@ async function ensureEnvironment(
 }
 
 async function landEnvironment(
-  { projectId, fresh, seeded, landed }: ProjectLanding,
+  { projectId, landed }: ProjectLanding,
   env: SourceEnvironment,
   report: Report,
 ): Promise<string | null> {
@@ -563,20 +471,8 @@ async function landEnvironment(
   const same = existing.find(
     (e) => !taken.has(e.id) && e.name.trim().toLowerCase() === key,
   );
-  // The source's own production may be named differently: it takes over the one Deplo just made.
-  const stand =
-    !same && fresh && env.kind && env.kind !== "custom"
-      ? seeded.find(
-          (s) =>
-            s.kind === env.kind &&
-            !taken.has(s.id) &&
-            existing.some((e) => e.id === s.id),
-        )
-      : undefined;
   try {
     if (same) {
-      if (fresh && env.gitBranch && same.gitBranch !== env.gitBranch)
-        await setEnvironmentBranch(same.id, env.gitBranch);
       await report.add({
         sourceKind: "environment",
         sourceId: env.environmentId,
@@ -588,18 +484,7 @@ async function landEnvironment(
       });
       return same.id;
     }
-    if (stand) {
-      await renameEnvironment(stand.id, env.name);
-      if (env.gitBranch) await setEnvironmentBranch(stand.id, env.gitBranch);
-    }
-    const id =
-      stand?.id ??
-      (
-        await createEnvironment(projectId, env.name, {
-          kind: env.kind,
-          gitBranch: env.gitBranch,
-        })
-      ).id;
+    const id = (await createEnvironment(projectId, env.name)).id;
     await report.add({
       sourceKind: "environment",
       sourceId: env.environmentId,
@@ -625,23 +510,15 @@ async function landEnvironment(
   }
 }
 
-// On a project this run created: the source's default, and none of the environments it never had.
+// On a project this run created: the source's default environment is the default here too.
 async function finishEnvironments(
-  { fresh, seeded, landed }: ProjectLanding,
+  { fresh, landed }: ProjectLanding,
   envs: SourceEnvironment[],
 ): Promise<void> {
   if (!fresh) return;
   const def = envs.find((e) => e.isDefault);
   const target = def && landed.get(def.environmentId);
-  if (!target) return;
-  await setDefaultEnvironment(target);
-  // Only a source that names each kind made its projects the way Deplo does; what it lacks it deleted.
-  if (envs.length === 0 || envs.some((e) => !e.kind)) return;
-  const kept = new Set(landed.values());
-  const named = new Set(envs.map((e) => e.name.trim().toLowerCase()));
-  for (const s of seeded)
-    if (!kept.has(s.id) && !named.has(s.name.trim().toLowerCase()))
-      await deleteEnvironment(s.id).catch(() => {});
+  if (target) await setDefaultEnvironment(target);
 }
 
 async function noteLevel(

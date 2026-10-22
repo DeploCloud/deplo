@@ -1,6 +1,5 @@
 "use client";
 
-import * as React from "react";
 import { useSearchParams } from "next/navigation";
 import { Cable, History } from "lucide-react";
 
@@ -10,7 +9,6 @@ import {
   UnderlineTabsList,
   UnderlineTabsTrigger,
 } from "@/components/ui/tabs";
-import type { SourceMoveStatus } from "@/lib/data/deplo-move/source";
 import { MigrationWizard } from "./migration-wizard/wizard";
 import { MigrationsHistory } from "./migrations-history";
 import type { ImportRun, ServerChoice, TargetTeam } from "./types";
@@ -27,7 +25,6 @@ export function MigrationsTabs({
   resumable,
   sameMachineHost,
   canExposePorts,
-  move,
 }: {
   teamId: string;
   targetTeams: TargetTeam[];
@@ -37,17 +34,9 @@ export function MigrationsTabs({
   resumable: ImportRun | null;
   sameMachineHost: string;
   canExposePorts: boolean;
-  move: {
-    source: SourceMoveStatus | null;
-    // A move into this Deplo that has already started.
-    activeTargetId: string | null;
-    readiness: { ready: boolean; reason: string | null };
-  };
 }) {
   const params = useSearchParams();
   const requested = params.get("tab");
-  // "move" was its own tab once; old links land on Move this Deplo.
-  const [openOutbound] = React.useState(requested === "move");
   const active: TabId = (TABS as readonly string[]).includes(requested ?? "")
     ? (requested as TabId)
     : "migrate";
@@ -93,7 +82,6 @@ export function MigrationsTabs({
           canExposePorts={canExposePorts}
           resumable={resumable}
           sameMachineHost={sameMachineHost}
-          move={{ ...move, openOutbound }}
         />
       </TabsContent>
 

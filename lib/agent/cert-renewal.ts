@@ -9,7 +9,6 @@ import { servers as serversTable } from "../db/schema/control-plane/servers";
 import { connectAgent, connectAgentAt } from "../infra/agent-client/connect";
 import { dispatchServerAlert } from "../notify/dispatch";
 import { signAgentCsr } from "./pki";
-import { instanceFrozen } from "../data/deplo-move/freeze";
 
 export const CERT_RENEWAL_CAPABILITY = "cert-renewal";
 
@@ -118,7 +117,6 @@ function notAfterOf(certPem: string): string {
 }
 
 export async function sweepExpiringAgentCerts(): Promise<void> {
-  if (await instanceFrozen()) return;
   const rows = await getDb()
     .select({ id: serversTable.id, name: serversTable.name })
     .from(serversTable)

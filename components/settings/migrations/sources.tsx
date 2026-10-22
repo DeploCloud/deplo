@@ -2,13 +2,9 @@ import * as React from "react";
 
 import { cn } from "@/lib/utils";
 import type { DocsTopic } from "@/lib/docs";
-import { MARK_PATH, MARK_VIEWBOX } from "@/components/logo";
 
-export const SOURCE_KINDS = ["dokploy", "coolify", "deplo"] as const;
+export const SOURCE_KINDS = ["dokploy", "coolify"] as const;
 export type SourceKind = (typeof SOURCE_KINDS)[number];
-
-// A Deplo names itself by its token, so it is never guessed at or offered as a choice.
-export const PICKABLE_KINDS = ["dokploy", "coolify"] as const;
 
 export const SWAP_HALF_MS = 2600;
 
@@ -60,7 +56,6 @@ export const SOURCE_ART: Record<SourceKind, SourceArt> = {
       },
     ],
   },
-  deplo: { viewBox: MARK_VIEWBOX, paths: [{ d: MARK_PATH }] },
 };
 
 export function markPaths(art: SourceArt, dim = false): React.ReactNode {
@@ -97,10 +92,7 @@ export function SourceMark({
 
 interface SourceCopy {
   name: string;
-  // The source inside a sentence: "on the other Deplo", never an ambiguous "on Deplo".
-  mention: string;
   connectTitle: string;
-  urlLabel: string;
   urlInfo: string;
   urlPlaceholder: string;
   tokenLabel: string;
@@ -115,9 +107,7 @@ interface SourceCopy {
 export const SOURCE_COPY: Record<SourceKind | "unknown", SourceCopy> = {
   unknown: {
     name: "the panel",
-    mention: "the panel",
     connectTitle: "Connect to Dokploy or Coolify",
-    urlLabel: "Panel address",
     urlInfo:
       "The address you open Dokploy or Coolify on. Not the machine's address - the next step asks for that.",
     urlPlaceholder: "https://panel.acme.com",
@@ -132,9 +122,7 @@ export const SOURCE_COPY: Record<SourceKind | "unknown", SourceCopy> = {
   },
   dokploy: {
     name: "Dokploy",
-    mention: "Dokploy",
     connectTitle: "Connect to Dokploy",
-    urlLabel: "Panel address",
     urlInfo:
       "The address you open Dokploy on. Deplo adds /api. Not the machine's address - the next step asks for that.",
     urlPlaceholder: "https://dokploy.acme.com",
@@ -149,9 +137,7 @@ export const SOURCE_COPY: Record<SourceKind | "unknown", SourceCopy> = {
   },
   coolify: {
     name: "Coolify",
-    mention: "Coolify",
     connectTitle: "Connect to Coolify",
-    urlLabel: "Panel address",
     urlInfo:
       "The address you open Coolify on. Deplo adds /api/v1. Not the machine's address - the next step asks for that.",
     urlPlaceholder: "https://coolify.acme.com",
@@ -164,23 +150,6 @@ export const SOURCE_COPY: Record<SourceKind | "unknown", SourceCopy> = {
     scanBusy: "Reading Coolify",
     docs: "migration.coolify",
   },
-  deplo: {
-    name: "Deplo",
-    mention: "the other Deplo",
-    connectTitle: "Connect to your other Deplo",
-    urlLabel: "Deplo address",
-    urlInfo:
-      "The address you open that Deplo on. Its data comes across through it, so nothing is installed over there.",
-    urlPlaceholder: "https://deplo.acme.com",
-    tokenLabel: "API token",
-    tokenInfo:
-      "In that Deplo: Settings, API tokens, limited to one team, with Reveal secret values. One token reads one team, so add one for each.",
-    teamLabel: "team",
-    privatePort: 3000,
-    scanIdle: "Check this Deplo",
-    scanBusy: "Reading that Deplo",
-    docs: "migration.deplo",
-  },
 };
 
 export function copyFor(kind: SourceKind | null): SourceCopy {
@@ -191,7 +160,7 @@ export function stepDocs(
   kind: SourceKind | null,
   step: "run" | "source" | "people" | "changes",
 ): DocsTopic {
-  if (kind === "coolify") return `migration.coolify.${step}` as const;
-  if (kind === "deplo") return `migration.deplo.${step}` as const;
-  return `migration.${step}` as const;
+  return kind === "coolify"
+    ? (`migration.coolify.${step}` as const)
+    : (`migration.${step}` as const);
 }

@@ -62,17 +62,12 @@ export async function runGraphql(
   return { data: value.data ?? null, error };
 }
 
-// Hand-listed: they run a command, sign someone in, manage tokens or drive a Deplo move by its id
-// (ADR-0035) - nothing a return type shows. A credential is refused by its type, below.
+// Hand-listed: they run a command, sign someone in or manage tokens - nothing a return type shows.
+// A credential is refused by its type, below.
 const IRREGULAR = [
   "execConsole",
   "execDatabaseConsole",
   "updateToken",
-  "startDeploMove",
-  "retryDeploMove",
-  "cancelDeploMove",
-  "finishDeploMoveWithoutSource",
-  "skipDeploMoveWorkload",
   "startPasskeyRegistration",
   "passkeyChallenge",
   "login",

@@ -103,7 +103,7 @@ export function mapMounts(
           name: volumeLabel(name, "file"),
           projectPath: name,
           mountPath,
-          readOnly: m.readOnly === true,
+          readOnly: false,
         });
       continue;
     }
@@ -121,12 +121,7 @@ export function mapMounts(
       let name = base;
       for (let i = 2; used.has(name); i++) name = `${base}-${i}`;
       used.add(name);
-      volumes.push({
-        type: "named",
-        name,
-        mountPath,
-        readOnly: m.readOnly === true,
-      });
+      volumes.push({ type: "named", name, mountPath, readOnly: false });
       continue;
     }
     const hostPath = m.hostPath?.trim();
@@ -151,7 +146,7 @@ export function mapMounts(
         name: volumeLabel(mountPath, "files"),
         projectPath,
         mountPath,
-        readOnly: m.readOnly === true,
+        readOnly: false,
       });
       continue;
     }
@@ -160,7 +155,7 @@ export function mapMounts(
       name: volumeLabel(mountPath, "bind"),
       hostPath,
       mountPath,
-      readOnly: m.readOnly === true,
+      readOnly: false,
     });
   }
 

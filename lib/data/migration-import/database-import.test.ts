@@ -140,65 +140,6 @@ test("the source holding the port is not a reason to drop it - it is stopped", a
   assert.equal(row?.exposedPort, 5432);
 });
 
-async function sourceOnThisServer() {
-  const { servers: serversTable } =
-    await import("../../db/schema/control-plane/servers");
-  await db
-    .update(serversTable)
-    .set({ ip: "dokploy.acme.test", host: "dokploy.acme.test" })
-    .where(eq(serversTable.id, SERVER_1));
-}
-
-test("a live copy never stops the source for its port - it takes a free one", async () => {
-  await sourceOnThisServer();
-  await provisionServer1(db, [5432]);
-  await grantExposePorts(db);
-
-  const runId = await asOwner(() =>
-    beginMigration({ url: URL_BASE, liveCopy: true }),
-  );
-  await importProject(runId, "dok-prj-blink");
-  await settleProvisioning(db);
-
-  assert.deepEqual(
-    source.calls.filter((p) => p.endsWith(".stop")),
-    [],
-    "nothing was stopped on the source",
-  );
-  const row = await dbRowOf(db, "blink-db");
-  assert.equal(row?.exposedPublicly, true);
-  assert.notEqual(row?.exposedPort, 5432);
-  assert.ok(row!.exposedPort! >= 20000 && row!.exposedPort! <= 40000);
-  assert.match(
-    await notesOf(runId),
-    new RegExp(`Published on ${row!.exposedPort} instead of 5432`),
-  );
-});
-
-test("a live copy with no free port lands unpublished and says so", async () => {
-  await sourceOnThisServer();
-  await provisionServer1(db, () => true);
-  await grantExposePorts(db);
-
-  const runId = await asOwner(() =>
-    beginMigration({ url: URL_BASE, liveCopy: true }),
-  );
-  await importProject(runId, "dok-prj-blink");
-  await settleProvisioning(db);
-
-  assert.deepEqual(
-    source.calls.filter((p) => p.endsWith(".stop")),
-    [],
-  );
-  const row = await dbRowOf(db, "blink-db");
-  assert.ok(row, "the copy still landed");
-  assert.equal(row?.exposedPublicly, false);
-  assert.match(
-    await notesOf(runId),
-    /Port 5432 is taken.*was not published.*Connection settings/,
-  );
-});
-
 test("without the publish-ports grant the port is dropped, and the report says why", async () => {
   await provisionServer1(db);
   await db.execute(

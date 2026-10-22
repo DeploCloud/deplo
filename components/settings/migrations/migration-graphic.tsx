@@ -19,8 +19,8 @@ import { cn } from "@/lib/utils";
 import {
   markPaths,
   SOURCE_ART,
-  PICKABLE_KINDS,
   SOURCE_COPY,
+  SOURCE_KINDS,
   SWAP_HALF_MS,
   type SourceKind,
 } from "./sources";
@@ -31,10 +31,10 @@ export type MigrationState =
 function graphicLabel(state: MigrationState, kind: SourceKind | null): string {
   if (!kind)
     return "A Dokploy or a Coolify server and a Deplo server, not yet linked";
-  const n = kind === "deplo" ? "old Deplo" : SOURCE_COPY[kind].name;
+  const n = SOURCE_COPY[kind].name;
   switch (state) {
     case "connect":
-      return `The ${n} server and a Deplo server, not yet linked`;
+      return `A ${n} server and a Deplo server, not yet linked`;
     case "install":
       return `A cable being run from the ${n} server toward Deplo`;
     case "review":
@@ -108,7 +108,7 @@ export function MigrationGraphic({
               )}
             />
           ) : (
-            PICKABLE_KINDS.map((k, i) => (
+            SOURCE_KINDS.map((k, i) => (
               <SourceFace
                 key={k}
                 kind={k}

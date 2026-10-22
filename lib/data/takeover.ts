@@ -15,12 +15,8 @@ import {
 import { decryptSecretOrThrow } from "../crypto";
 import { nowIso } from "../ids";
 import { requireInstanceAdmin } from "../membership";
-import {
-  isMigrationPlatform,
-  isTakeoverPlatform,
-  sourceClient,
-} from "../migration/source";
-import type { TakeoverPlatform } from "../migration/source";
+import { isMigrationPlatform, sourceClient } from "../migration/source";
+import type { MigrationPlatform } from "../migration/source";
 
 const SETTINGS_ID = "default";
 
@@ -46,7 +42,7 @@ const NEXT: Record<TakeoverState, readonly TakeoverState[]> = {
 };
 
 export interface TakeoverStatus {
-  platform: TakeoverPlatform;
+  platform: MigrationPlatform;
   state: TakeoverState;
   runId: string | null;
   seenExternalRequest: boolean;
@@ -71,7 +67,7 @@ export const takeoverStatus = cache(
       })
       .from(instanceSettings)
       .where(eq(instanceSettings.id, SETTINGS_ID));
-    if (!row || !isTakeoverPlatform(row.platform)) return null;
+    if (!row || !isMigrationPlatform(row.platform)) return null;
     if (!isTakeoverState(row.state)) return null;
     return {
       platform: row.platform,
@@ -117,7 +113,7 @@ async function writeState(
 
 export async function ensureTakeoverFromEnv(): Promise<void> {
   const platform = process.env.DEPLO_TAKEOVER?.trim().toLowerCase();
-  if (!isTakeoverPlatform(platform)) return;
+  if (!isMigrationPlatform(platform)) return;
   const current = await takeoverStatus();
   if (current) return;
   await writeState({ takeoverPlatform: platform, takeoverState: "pending" });

@@ -1,6 +1,6 @@
 import { composeRoutePort } from "../../deploy/compose-lint/routing";
 import type { CertProvider, DomainEntrypoint } from "../../types/domain";
-import type { SourceDomain, SourceDomainRules } from "../model";
+import type { SourceDomain } from "../model";
 
 import type { Mapped } from "./source-platform";
 
@@ -20,21 +20,6 @@ export interface MappedDomain {
   entrypoint: DomainEntrypoint;
   service: string | null;
   generated: boolean;
-  primary: boolean;
-  // Another Deplo's own rules for this domain, landed as they are.
-  rules?: SourceDomainRules;
-}
-
-// The source's own primary when it is a host this side can claim; a minted one never is.
-export function pickPrimaryDomain(
-  domains: MappedDomain[],
-): MappedDomain | null {
-  return (
-    domains.find((d) => d.primary && !d.generated) ??
-    domains.find((d) => !d.generated) ??
-    domains[0] ??
-    null
-  );
 }
 
 export function mapDomains(
@@ -55,7 +40,7 @@ export function mapDomains(
 
     let certProvider: CertProvider = "none";
     if (d.certificateType === "letsencrypt") certProvider = "letsencrypt";
-    else if (d.certificateType === "custom" && !d.nativeRules)
+    else if (d.certificateType === "custom")
       notes.push(
         `${host} uses a custom certificate resolver on {panel}. Imported without a certificate - pick one in Domains.`,
       );
@@ -92,12 +77,9 @@ export function mapDomains(
       stripPrefix: pathPrefix ? d.stripPath === true : false,
       certProvider,
       entrypoint:
-        d.nativeRules?.entrypoint ??
-        (d.https === false && certProvider === "none" ? "web" : "websecure"),
+        d.https === false && certProvider === "none" ? "web" : "websecure",
       service,
-      generated: d.generated === true || isThrowawayHost(host),
-      primary: d.primary === true,
-      ...(d.nativeRules ? { rules: d.nativeRules } : {}),
+      generated: isThrowawayHost(host),
     });
   }
   return { value: out, notes };

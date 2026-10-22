@@ -26,7 +26,6 @@ import {
   readStackImageFromYaml,
   readStackVolumesFromYaml,
 } from "./stack-yaml";
-import { isPausedForMove } from "../../data/deplo-move/source-guard";
 
 const DEFERS_REROUTE = new Set<AppStatus>([
   "idle",
@@ -46,8 +45,6 @@ export async function rerouteApp(
 async function rerouteAppLocked(
   appId: string,
 ): Promise<"rerouted" | "unchanged" | "deferred"> {
-  // Re-applying would start a stack a copy of this Deplo is reading (ADR-0035); the next deploy applies it.
-  if (await isPausedForMove("app", appId)) return "deferred";
   const project = await loadAppGraph(appId);
   if (!project) return "deferred";
   const deployKey = project.slug;

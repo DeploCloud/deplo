@@ -81,7 +81,6 @@ test("mapDomains keeps a throwaway host's whole route", () => {
       entrypoint: "web",
       service: "api",
       generated: true,
-      primary: false,
     },
   ]);
 });

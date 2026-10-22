@@ -37,7 +37,6 @@ import {
   panelNameFor,
 } from "./runner-state";
 import { stopWanted, stopped } from "./stop";
-import { instanceFrozen } from "../deplo-move/freeze";
 
 let timer: ReturnType<typeof setInterval> | null = null;
 
@@ -63,7 +62,6 @@ async function asActor<T>(
 }
 
 export async function runMigrationTick(): Promise<void> {
-  if (await instanceFrozen()) return;
   try {
     await promoteQueuedRuns();
   } catch (e) {

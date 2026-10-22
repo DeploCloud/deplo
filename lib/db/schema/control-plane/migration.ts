@@ -89,8 +89,6 @@ export const migrationRuns = pgTable(
     phase: text("phase").notNull().default("config"),
     stopRequested: boolean("stop_requested").notNull().default(false),
     keepSources: boolean("keep_sources").notNull().default(false),
-    // Copy while the source keeps serving; the switch-over is the user's.
-    liveCopy: boolean("live_copy").notNull().default(false),
     reportSeenAt: isoTimestamptz("report_seen_at"),
     heartbeatAt: isoTimestamptz("heartbeat_at"),
     runnerOwner: text("runner_owner"),
