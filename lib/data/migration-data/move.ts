@@ -115,6 +115,24 @@ async function recordStoppedForCopy(
     );
 }
 
+// An app that never ran here has no stack to stop, so nothing can be writing to it.
+async function neverDeployedHere(
+  landed: Landed,
+  teamId: string,
+): Promise<boolean> {
+  if (landed.targetKind !== "app") return false;
+  const [row] = await getDb()
+    .select({
+      status: appsTable.status,
+      latestDeploymentId: appsTable.latestDeploymentId,
+    })
+    .from(appsTable)
+    .where(
+      and(eq(appsTable.id, landed.targetId), eq(appsTable.teamId, teamId)),
+    );
+  return row?.status === "idle" && row.latestDeploymentId == null;
+}
+
 function refusalFor(base: {
   runId: string;
   teamId: string;
@@ -401,12 +419,14 @@ async function runMoveMigrationServiceData(
     if (stoppedThere)
       await recordSourceStopped(input.runId, input.sourceId, input.sourceKind);
     // Untarring into a volume a container is still writing to is the same mistake in the other direction.
-    try {
-      await stopStackOn(landed.targetServerId, landed.targetSlug);
-    } catch (e) {
-      throw new TargetWouldNotStop(e);
+    if (!(await neverDeployedHere(landed, teamId))) {
+      try {
+        await stopStackOn(landed.targetServerId, landed.targetSlug);
+      } catch (e) {
+        throw new TargetWouldNotStop(e);
+      }
+      await recordStoppedForCopy(landed, teamId);
     }
-    await recordStoppedForCopy(landed, teamId);
     connection = await host.connect(landed.targetServerId);
   } catch (e) {
     return giveUp(

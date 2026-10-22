@@ -108,6 +108,42 @@ test("a destination that will not stop is never copied into, and the source star
   assert.match(String(rows.rows[0]?.message), /would not stop here/);
 });
 
+test("a destination never deployed here needs no stop, and is copied into", async () => {
+  await seedMigrationHostServer();
+  await db.execute(
+    "update apps set status = 'idle', latest_deployment_id = null where id = 'prj_web'",
+  );
+  const runId = await openRun();
+  state.targetStopRefusal =
+    "open /data/stacks/blink-web.yml: no such file or directory";
+  state.agentCalls = [];
+
+  const res = await asOwner(() =>
+    moveMigrationServiceData({
+      ...CONNECT,
+      runId,
+      sourceKind: "application",
+      sourceId: "dok-app-web",
+    }),
+  );
+
+  assert.ok(res.moved >= 1, res.notes.join(" | "));
+  assert.ok(
+    state.agentCalls.some((c) => c.startsWith(`${SERVER_1}:import`)),
+    state.agentCalls.join(" | "),
+  );
+  assert.equal(
+    state.agentCalls.some((c) => c.startsWith(`${SERVER_1}:start`)),
+    false,
+    "an app that never ran here is not started after the copy",
+  );
+  const app = await db.execute(
+    "select status, latest_deployment_id from apps where id = 'prj_web'",
+  );
+  assert.equal(app.rows[0].status, "idle");
+  assert.equal(app.rows[0].latest_deployment_id, null);
+});
+
 test("a destination lost after the source stopped starts the source again", async () => {
   await seedMigrationHostServer();
   const runId = await openRun();
