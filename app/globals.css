@@ -582,7 +582,7 @@ html body[data-scroll-locked] {
 .cloudflare-wash {
   border-color: color-mix(in srgb, #f38020 35%, var(--border));
   background-image: linear-gradient(
-    100deg,
+    to bottom,
     color-mix(in srgb, #f38020 16%, var(--card)),
     var(--card) 75%
   );
