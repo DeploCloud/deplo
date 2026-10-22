@@ -40,6 +40,7 @@ export interface DeploymentRow {
   commitUrl: string | null;
   pullRequestUrl?: string | null;
   prNumber?: number | null;
+  previewId?: string | null;
   status: DeploymentStatus;
   branch: string;
   createdAt: string;
@@ -243,6 +244,8 @@ export function DeploymentTableRow({
           url={d.url}
           status={d.status}
           pullRequestUrl={d.pullRequestUrl}
+          isPreview={d.prNumber != null}
+          previewId={d.previewId}
           canDelete={canManage && !d.appMigrating}
           canDeploy={canManage && !d.appMigrating}
           canRollback={d.canRollback && !d.appMigrating}

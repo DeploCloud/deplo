@@ -58,6 +58,7 @@ export default async function DeploymentsPage() {
             commitUrl: d.commitUrl,
             status: d.status,
             prNumber: d.prNumber,
+            previewId: d.previewId,
             pullRequestUrl: d.pullRequestUrl,
             branch: d.branch,
             createdAt: d.createdAt,

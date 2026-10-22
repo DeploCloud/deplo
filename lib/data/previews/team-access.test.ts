@@ -35,6 +35,19 @@ test("another team can neither destroy nor redeploy a preview", async () => {
   assert.equal(row.state, "open");
 });
 
+test("a closed pull request is refused, not silently skipped", async () => {
+  await seedPreviewApp(h.db, "prj_1", { slug: "blog" });
+  await seedPreview(h.db, {
+    id: "prv_closed",
+    appId: "prj_1",
+    prNumber: 1,
+    state: "closed",
+  });
+  await runWithIdentity({ userId: USER_1, teamId: TEAM_A }, async () => {
+    await assert.rejects(() => redeployPreview("prv_closed"), /closed/i);
+  });
+});
+
 test("the list puts open pull requests first, most recently touched on top", async () => {
   await seedPreviewApp(h.db, "prj_1", { slug: "blog" });
   await seedPreview(h.db, {

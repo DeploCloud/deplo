@@ -48,8 +48,15 @@ builder.mutationFields((t) => ({
   redeploy: t.field({
     type: DeploymentRef,
     authScopes: { capability: "deploy_apps" },
-    args: { appId: t.arg.string({ required: true }) },
-    resolve: (_r, { appId }) => redeploy(appId),
+    description:
+      "Deploy the app again from the latest commit of its branch. With " +
+      "`deploymentId`, the latest commit of that deployment's branch or tag " +
+      "instead. A preview deployment is rebuilt with `redeployPreview`.",
+    args: {
+      appId: t.arg.string({ required: true }),
+      deploymentId: t.arg.string({ required: false }),
+    },
+    resolve: (_r, { appId, deploymentId }) => redeploy(appId, deploymentId),
   }),
   rollbackDeployment: t.field({
     type: DeploymentRef,

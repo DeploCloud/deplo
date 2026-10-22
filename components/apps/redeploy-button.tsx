@@ -65,7 +65,7 @@ export function RedeployButton({
       content={
         first
           ? "Build and start this app for the first time"
-          : "Redeploy the latest successful build"
+          : "Deploy the latest version of this app again"
       }
     >
       <Button

@@ -35,6 +35,8 @@ export function DeploymentActions({
   url,
   status,
   pullRequestUrl,
+  isPreview = false,
+  previewId = null,
   canDelete = false,
   canDeploy = false,
   canRollback = false,
@@ -51,6 +53,8 @@ export function DeploymentActions({
   url: string;
   status: DeploymentStatus;
   pullRequestUrl?: string | null;
+  isPreview?: boolean;
+  previewId?: string | null;
   canDelete?: boolean;
   canDeploy?: boolean;
   canRollback?: boolean;
@@ -72,18 +76,27 @@ export function DeploymentActions({
 
   function redeploy() {
     startTransition(async () => {
-      const res = await gqlAction<
-        { redeploy: { id: string | null } | null },
-        { id: string | null } | null
-      >(
-        `mutation ($appId: String!) { redeploy(appId: $appId) { id } }`,
-        { appId },
-        (d) => d.redeploy,
-      );
+      const res = previewId
+        ? await gqlAction<
+            { redeployPreview: { latestDeploymentId: string | null } },
+            string | null
+          >(
+            `mutation ($id: ID!) { redeployPreview(id: $id) { latestDeploymentId } }`,
+            { id: previewId },
+            (d) => d.redeployPreview.latestDeploymentId,
+          )
+        : await gqlAction<
+            { redeploy: { id: string | null } | null },
+            string | null
+          >(
+            `mutation ($appId: String!, $deploymentId: String) { redeploy(appId: $appId, deploymentId: $deploymentId) { id } }`,
+            { appId, deploymentId: id },
+            (d) => d.redeploy?.id ?? null,
+          );
       if (res.ok) {
         toast.success("Redeploy started");
-        if (res.data?.id) {
-          router.push(`/apps/${appSlug}/deployments/${res.data.id}`);
+        if (res.data) {
+          router.push(`/apps/${appSlug}/deployments/${res.data}`);
         } else {
           router.refresh();
         }
@@ -158,13 +171,16 @@ export function DeploymentActions({
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="w-52">
-            <DropdownMenuItem
-              onClick={redeploy}
-              disabled={pending || !canDeploy}
-            >
-              <RotateCw className="size-4" />
-              Redeploy
-            </DropdownMenuItem>
+            {/* A preview whose pull request is gone has nothing left to rebuild. */}
+            {(!isPreview || previewId) && (
+              <DropdownMenuItem
+                onClick={redeploy}
+                disabled={pending || !canDeploy}
+              >
+                <RotateCw className="size-4" />
+                Redeploy
+              </DropdownMenuItem>
+            )}
             {canRollback && (
               <DropdownMenuItem
                 onSelect={() => setRollbackOpen(true)}

@@ -35,15 +35,24 @@ const REDEPLOY_MESSAGE: Record<DeploySource, string> = {
   compose: "Redeploy of the compose stack",
 };
 
-export async function redeploy(appId: string): Promise<Deployment> {
+export async function redeploy(
+  appId: string,
+  fromDeploymentId?: string | null,
+): Promise<Deployment> {
   const { membership } = await requireAppCapability(appId, "deploy_apps");
   const user = (await getCurrentUser())!;
   const source = await appSourceInTeam(appId, membership.teamId);
   if (!source) throw new Error("App not found");
+  const from = fromDeploymentId ? await loadDeployment(fromDeploymentId) : null;
+  if (fromDeploymentId && from?.appId !== appId)
+    throw new Error("Deployment not found");
+  if (from?.environment === "preview")
+    throw new Error("A preview deployment is rebuilt from its preview");
   const depId = await startDeployment(appId, {
     environment: "production",
     creator: user.name,
     commitMessage: REDEPLOY_MESSAGE[source],
+    branch: from?.branch || undefined,
   });
   return (await loadDeployment(depId))!;
 }

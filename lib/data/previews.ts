@@ -261,6 +261,10 @@ export async function redeployPreview(
   await requireCapability("manage_previews");
   const p = await ownedPreview(previewId);
   await requireFolderCapabilityForApp(p.appId, "manage_previews");
+  if (p.state === "closed")
+    throw new Error(
+      "This pull request is closed, so its preview is not rebuilt",
+    );
   // Per COMMIT for a fork: an approval three pushes ago is not an approval of this head.
   if (p.isFork ? p.approvedSha !== p.headSha : !p.approvedAt) {
     throw new Error("Approve this fork pull request before building it");

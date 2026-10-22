@@ -3769,7 +3769,11 @@ type Mutation {
   DESTRUCTIVE factory reset: tear down the database container AND its data volume, then re-provision a fresh, empty stack from the current settings - same engine, version and credentials, so the connection string is unchanged. ALL DATA IS ERASED. Use redeployDatabase for the data-preserving recreate.
   """
   rebuildDatabase(id: String!): Database
-  redeploy(appId: String!): Deployment
+
+  """
+  Deploy the app again from the latest commit of its branch. With `deploymentId`, the latest commit of that deployment's branch or tag instead. A preview deployment is rebuilt with `redeployPreview`.
+  """
+  redeploy(appId: String!, deploymentId: String): Deployment
 
   """
   Re-render the database's compose from its current settings (resource limits, image/command overrides, exposure) and reroute it on its server. The container is recreated only when its config actually changed; the data volume is always preserved.
