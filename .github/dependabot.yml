@@ -1,7 +1,16 @@
 version: 2
 updates:
-  # No npm entry: the tree is bumped by hand in batches and the lockfile is
-  # bun.lock, which dependabot does not update.
+  # Version bumps stay manual (batches), so the limit is 0: this entry only lets
+  # security updates edit bun.lock instead of failing on the npm_and_yarn default.
+  - package-ecosystem: bun
+    directory: "/"
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 0
+    commit-message:
+      prefix: "fix(deps)"
+    labels: ["dependencies"]
+
   - package-ecosystem: github-actions
     directory: "/"
     schedule:
