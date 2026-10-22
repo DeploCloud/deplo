@@ -3,7 +3,7 @@ import { CopyButton } from "@/components/shared/copy-button";
 
 export function CloudflareNote({ serverIp }: { serverIp?: string | null }) {
   return (
-    <div className="flex items-start gap-3 rounded-md border border-[#f38020]/30 bg-[#f38020]/10 px-3 py-2.5">
+    <div className="cloudflare-wash flex items-start gap-3 rounded-md border px-3 py-2.5">
       <CloudflareIcon className="mt-0.5 size-5 shrink-0 text-[#f38020]" />
       <div className="min-w-0">
         <p className="text-sm font-medium">Cloudflare detected</p>
