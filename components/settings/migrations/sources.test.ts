@@ -4,12 +4,15 @@ import { renderToStaticMarkup } from "react-dom/server";
 import * as React from "react";
 
 import { MigrationGraphic } from "./migration-graphic";
+import { MARK_PATH } from "@/components/logo";
 import {
   copyFor,
+  PICKABLE_KINDS,
   SOURCE_ART,
   SOURCE_COPY,
   SOURCE_KINDS,
   SWAP_HALF_MS,
+  stepDocs,
 } from "./sources";
 
 const html = (props: Parameters<typeof MigrationGraphic>[0]) =>
@@ -83,4 +86,22 @@ test("the token help says a token reads one team", () => {
     assert.doesNotMatch(copy.tokenInfo, /whatever its owner can see/i, kind);
     assert.ok(copy.teamLabel.length > 0, kind);
   }
+});
+
+test("a Deplo is only shown once the address turns out to be one", () => {
+  const blank = html({ state: "connect" });
+  assert.equal(blank.includes(MARK_PATH), true, "Deplo's own machine, right");
+  assert.equal(
+    (blank.match(/iso-migration-swap/g) ?? []).length,
+    PICKABLE_KINDS.length,
+    "the guessing swap stays Dokploy and Coolify",
+  );
+
+  const deplo = html({ state: "install", kind: "deplo" });
+  assert.equal(deplo.split(MARK_PATH).length - 1, 2, "both machines are Deplo");
+  assert.match(deplo, /from the old Deplo server toward Deplo/);
+  assert.equal(copyFor("deplo").name, "Deplo");
+  assert.equal(copyFor("deplo").mention, "the other Deplo");
+  assert.match(SOURCE_COPY.deplo.tokenInfo, /Reveal secret values/);
+  assert.equal(stepDocs("deplo", "changes"), "migration.deplo.changes");
 });

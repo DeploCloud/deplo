@@ -1,10 +1,14 @@
 import "server-only";
 
-import { and, eq, inArray, isNull, ne, sql } from "drizzle-orm";
+import { and, eq, inArray, isNotNull, isNull, ne, sql } from "drizzle-orm";
 import { getDb } from "../db/client";
 import { apps as appsTable } from "../db/schema/control-plane/apps";
-import { backupDestination as backupDestinationTable } from "../db/schema/control-plane/backups";
+import {
+  backupDestination as backupDestinationTable,
+  backupRuns as backupRunsTable,
+} from "../db/schema/control-plane/backups";
 import { databases as databasesTable } from "../db/schema/control-plane/databases";
+import { deploMoves } from "../db/schema/control-plane/deplo-move";
 import { appPreviews as appPreviewsTable } from "../db/schema/control-plane/deployments";
 import {
   sharedEnvVars,
@@ -27,7 +31,11 @@ import {
   getDestinationWithSecretsForTeam,
   type DestinationWithSecrets,
 } from "./destinations/credentials";
-import { deleteFromDestination } from "./backup-transport";
+import {
+  deleteFromDestination,
+  deleteManyFromDestination,
+} from "./backup-transport";
+import { ownsArtifact } from "./backups/copied-runs";
 import {
   enqueueTeardowns,
   teardownOrQueue,
@@ -116,6 +124,8 @@ export interface TeardownPlan {
   backupSweeps?: {
     creds: DestinationWithSecrets;
     prefix: string;
+    // Exact keys instead of the prefix: another Deplo may write under it too (ADR-0035).
+    keys?: string[];
     viaServerId: string;
   }[];
 }
@@ -127,14 +137,25 @@ export function teardownTeamResources(
   void (async () => {
     await mapLimit(plan.backupSweeps ?? [], 2, async (sweep) => {
       try {
-        const r = await deleteFromDestination(
-          sweep.creds,
-          sweep.viaServerId,
-          sweep.prefix,
-          true,
-        );
-        if (!r.ok)
-          throw new Error(r.error || "the destination refused the delete");
+        const results = sweep.keys
+          ? await deleteManyFromDestination(
+              sweep.creds,
+              sweep.viaServerId,
+              sweep.keys.map((key) => ({ key })),
+            )
+          : [
+              await deleteFromDestination(
+                sweep.creds,
+                sweep.viaServerId,
+                sweep.prefix,
+                true,
+              ),
+            ];
+        const refused = results.find((r) => !r.ok);
+        if (refused)
+          throw new Error(
+            refused.error || "the destination refused the delete",
+          );
       } catch (e) {
         console.warn(
           `[${tag}] could not remove the backups at ${sweep.creds.destination.name}: ` +
@@ -271,6 +292,22 @@ export async function deleteTeam(teamId: string): Promise<void> {
           .from(backupDestinationTable)
           .where(eq(backupDestinationTable.teamId, ctx.teamId))
       ).map((d) => d.id);
+      const runs = await db
+        .select({
+          destinationId: backupRunsTable.destinationId,
+          objectKey: backupRunsTable.objectKey,
+          status: backupRunsTable.status,
+          copiedFrom: backupRunsTable.copiedFrom,
+        })
+        .from(backupRunsTable)
+        .where(eq(backupRunsTable.teamId, ctx.teamId));
+      // A copied Deplo keeps this team's id, so its backups may sit under the same prefix of a shared bucket.
+      const ownKeysOnly =
+        (await db.$count(deploMoves)) > 0 ||
+        (await db.$count(
+          backupRunsTable,
+          isNotNull(backupRunsTable.copiedFrom),
+        )) > 0;
       const backupSweeps = (
         await Promise.all(
           destinationIds.map(async (id) => {
@@ -281,9 +318,13 @@ export async function deleteTeam(teamId: string): Promise<void> {
               );
               const via = creds.destination.serverId ?? viaServerId;
               if (!via) return null;
+              const here = runs.filter((r) => r.destinationId === id);
               return {
                 creds,
                 prefix: `deplo/${ctx.teamId}/`,
+                keys: ownKeysOnly
+                  ? here.filter(ownsArtifact).map((r) => r.objectKey)
+                  : undefined,
                 viaServerId: via,
               };
             } catch {

@@ -43,7 +43,7 @@ export function MovingPanel({
   const pct = progress.total === 0 ? 0 : (progress.done / progress.total) * 100;
   const now = useNow(startedAt != null || heartbeatAt != null);
   const driven = isDriven({ heartbeatAt }, now);
-  const panelName = copyFor(kind).name;
+  const panelName = copyFor(kind).mention;
 
   if (!running && !undoing)
     return (

@@ -40,6 +40,7 @@ import {
 } from "./compose-notes";
 import type { Report } from "./run-report";
 import type { SourceService } from "./source-tree";
+import { landGitConnection } from "./app-git";
 import { landingServerId } from "./target-servers";
 
 export async function loadComposeText(
@@ -75,7 +76,11 @@ export async function resolveAppSource(
   svc: SourceService,
   detail: SourceApplication & SourceCompose,
   name: string,
-  home: { environmentId: string | null; serverId: string | undefined },
+  home: {
+    environmentId: string | null;
+    serverId: string | undefined;
+    liveCopy?: boolean;
+  },
   shape: {
     isCompose: boolean;
     yamlText: string;
@@ -129,7 +134,7 @@ export async function resolveAppSource(
     notes.push(
       ...adapted.changes,
       ...retargeted.changes,
-      ...composeRegistryNotes(compose),
+      ...(detail.registriesCarried ? [] : composeRegistryNotes(compose)),
     );
     const takenNames = await namesTakenOnNetwork({
       teamId: await requireActiveTeamId(),
@@ -211,24 +216,35 @@ export async function resolveAppSource(
     if (mapped.value.kind === "git") {
       source = mapped.value.repo.provider === "github" ? "github" : "git";
       repo = mapped.value.repo;
+      if (app.gitConnection)
+        repo = {
+          ...repo,
+          connectionId: await landGitConnection(
+            app.gitConnection,
+            repo.repo,
+            notes,
+            { liveCopy: home.liveCopy },
+          ),
+        };
     } else if (mapped.value.kind === "docker-image") {
       source = "docker-image";
       dockerImage = mapped.value.image;
     } else {
       source = "upload";
       const watched = (app.watchPaths ?? []).filter((p) => p.trim());
-      notes.push(
-        blocker(
-          "Set the source under the app's Source settings before deploying." +
-            (watched.length > 0
-              ? ` It only deployed on changes under ${watched.join(", ")} - set those again once the repository is there.`
-              : ""),
-        ),
-      );
+      if (app.upload === undefined)
+        notes.push(
+          blocker(
+            "Set the source under the app's Source settings before deploying." +
+              (watched.length > 0
+                ? ` It only deployed on changes under ${watched.join(", ")} - set those again once the repository is there.`
+                : ""),
+          ),
+        );
     }
     const mappedBuild = mapBuildSettings(app);
-    notes.push(...mappedBuild.notes);
-    Object.assign(build, mappedBuild.value);
+    if (!app.nativeBuild) notes.push(...mappedBuild.notes);
+    Object.assign(build, mappedBuild.value, app.nativeBuild ?? {});
     const mappedPorts = mapPorts(app);
     ports = mappedPorts.value;
     notes.push(...mappedPorts.notes);

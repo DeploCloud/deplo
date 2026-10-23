@@ -4,6 +4,7 @@ import { verifyDeployHookToken } from "@/lib/data/deploy-hook";
 import { redeploy } from "@/lib/data/deployments/stack-actions";
 import { runWithIdentity } from "@/lib/auth/request-context";
 import { owningTeamId } from "@/lib/data/deploy-hook";
+import { refuseWhileFrozen } from "@/lib/data/deplo-move/freeze";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -26,6 +27,8 @@ export async function POST(
   request: Request,
   ctx: { params: Promise<{ id: string; token: string }> },
 ) {
+  const paused = await refuseWhileFrozen();
+  if (paused) return paused;
   // Bearer first: until the caller proves team membership, the URL token must not reveal whether an app exists.
   const header = request.headers.get("authorization") ?? "";
   const raw = /^bearer /i.test(header) ? header.slice(7).trim() : "";

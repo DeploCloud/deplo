@@ -393,8 +393,8 @@ test("a project with nothing in it can still be picked", () => {
 
 test("an empty project is picked by default and travels as a target of its own", () => {
   const plan: Plan = {
-    platform: "dokploy",
-    sourceUrl: "https://dokploy.acme.test",
+    platform: "deplo",
+    sourceUrl: "https://old.deplo.test",
     orgName: null,
     otherTeams: null,
     projects: [

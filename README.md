@@ -58,7 +58,7 @@ Deplo is in beta: rough edges are expected, and 1.0 is planned for Q4 2026.
 
 - [Deploy your first app](https://deplo.build/docs/getting-started/first-app)
 - [How Deplo works](https://deplo.build/docs/concepts/how-deplo-works)
-- Move to Deplo from [Coolify](https://deplo.build/docs/migrations/move-from-coolify) or [Dokploy](https://deplo.build/docs/migrations/move-from-dokploy)
+- Move to Deplo from [Coolify](https://deplo.build/docs/migrations/move-from-coolify), [Dokploy](https://deplo.build/docs/migrations/move-from-dokploy) or [another Deplo](https://deplo.build/docs/migrations/move-from-another-deplo)
 - [Offer Deplo to your customers](https://deplo.build/docs/guides/hosting-providers) as a hosting provider
 
 **[Read the full documentation](https://deplo.build/docs)**

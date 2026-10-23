@@ -15,6 +15,7 @@ import {
   requireTeamWide,
 } from "../../membership";
 import { recordActivity } from "../activity";
+import { notCopied } from "../backups/copied-runs";
 import { getDestinationWithSecretsForTeam } from "./credentials";
 import { loadDestination } from "./listing";
 
@@ -48,6 +49,7 @@ export async function destinationRemovalImpact(id: string): Promise<{
         eq(backupRunsTable.destinationId, id),
         eq(backupRunsTable.teamId, teamId),
         eq(backupRunsTable.status, "success"),
+        notCopied,
       ),
     );
   return {
@@ -76,6 +78,7 @@ export async function deleteDestination(
           eq(backupRunsTable.destinationId, id),
           eq(backupRunsTable.teamId, teamId),
           eq(backupRunsTable.status, "success"),
+          notCopied,
         ),
       );
     const keys = runs

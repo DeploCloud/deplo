@@ -19,13 +19,25 @@ import { hasMigrationPeople } from "../people";
 import { MigrationConsole } from "../migration-console";
 import { ChooseStep } from "../choose-step";
 import {
+  SourceStep,
+  type MoveContext,
+  type SourcePick,
+  type SourceView,
+} from "../source-step";
+import {
   reviewShows,
   stepAfterReport,
   stepReachable,
   stepsFor,
+  type MigrationPath,
   type StepId,
   type TakeoverMode,
 } from "../steps";
+import { useMoveIn } from "@/components/deplo-move/use-move-in";
+import {
+  MoveConnectStep,
+  MoveReviewStep,
+} from "@/components/deplo-move/move-in-steps";
 import {
   TakeoverStep,
   type TakeoverState,
@@ -61,6 +73,7 @@ export function MigrationWizard({
   takeover = null,
   preflight = null,
   startOnTakeover = false,
+  move = null,
 }: {
   teamId: string;
   targetTeams: TargetTeam[];
@@ -81,6 +94,7 @@ export function MigrationWizard({
   } | null;
   preflight?: React.ReactNode;
   startOnTakeover?: boolean;
+  move?: MoveContext | null;
 }) {
   const router = useRouter();
   const isTakeover = takeover != null;
@@ -93,8 +107,19 @@ export function MigrationWizard({
   const { step, setStep, settle } = useUrlStep<StepId>(
     () =>
       stepForHandover(takeover?.state) ??
-      (mode == null ? "choose" : startOnTakeover ? "takeover" : "connect"),
+      (mode == null
+        ? "choose"
+        : startOnTakeover
+          ? "takeover"
+          : isTakeover
+            ? "connect"
+            : "source"),
   );
+  const [path, setPath] = React.useState<MigrationPath>("import");
+  const [sourceView, setSourceView] = React.useState<SourceView>(() =>
+    move?.openOutbound || move?.source ? "out" : "sources",
+  );
+  const moveIn = useMoveIn();
   /* eslint-disable react-hooks/refs -- deliberate render-phase adjustment; the rule
      only bailed before because the pre-split component was too large to analyse. */
   const seenHandover = React.useRef(takeover?.state);
@@ -172,6 +197,8 @@ export function MigrationWizard({
     setFailure,
     running,
     starting,
+    liveCopy,
+    setLiveCopy,
     undoing,
     logOpen,
     setLogOpen,
@@ -197,9 +224,20 @@ export function MigrationWizard({
 
   const showPeople = isInstanceAdmin && hasMigrationPeople(sessionRuns);
   const STEPS = React.useMemo(
-    () => stepsFor(showPeople, isTakeover, mode),
-    [showPeople, isTakeover, mode],
+    () => stepsFor(showPeople, isTakeover, mode, path),
+    [showPeople, isTakeover, mode, path],
   );
+
+  function pickSource(pick: SourcePick) {
+    setPath(pick === "deplo-move" ? "move" : "import");
+    const current: SourcePick =
+      forcedKind === "deplo" ? "deplo-teams" : "panel";
+    if (pick !== "deplo-move" && pick !== current) {
+      resetToStart();
+      setForcedKind(pick === "deplo-teams" ? "deplo" : null);
+    }
+    setStep("connect");
+  }
 
   const goToReview = React.useCallback(() => setStep("review"), [setStep]);
 
@@ -242,6 +280,8 @@ export function MigrationWizard({
   const reach = React.useCallback(
     (s: StepId) =>
       stepReachable(s, {
+        path,
+        movePreview: moveIn.preview != null,
         mode,
         isTakeover,
         plan: plan != null,
@@ -254,6 +294,8 @@ export function MigrationWizard({
         takeoverDone: takeover?.state === "removed",
       }),
     [
+      path,
+      moveIn.preview,
       mode,
       isTakeover,
       plan,
@@ -268,9 +310,10 @@ export function MigrationWizard({
       takeover?.state,
     ],
   );
+  // A reload forgets the source picked on the first screen, so Connect starts over from it.
   settle(
     STEPS.map((x) => x.id),
-    reach,
+    (s) => (s === "connect" && !isTakeover ? false : reach(s)),
   );
 
   const guarded =
@@ -341,6 +384,8 @@ export function MigrationWizard({
                   void closeReport().then(() => {
                     forgetQueue();
                     resetToStart();
+                    setSourceView("sources");
+                    setStep("source");
                   });
                 }
           }
@@ -357,7 +402,7 @@ export function MigrationWizard({
           ) : (
             <MigrationGraphic
               state={pose}
-              kind={kind}
+              kind={path === "move" ? "deplo" : kind}
               grid
               className={cn(
                 "h-auto w-full",
@@ -373,7 +418,7 @@ export function MigrationWizard({
             )}
           >
             <AnimatedHeight scroll={false} className="space-y-6">
-              {step !== "choose" && !cuttingOver && (
+              {step !== "choose" && step !== "source" && !cuttingOver && (
                 <div className="flex justify-center">
                   <WizardStepper
                     steps={STEPS}
@@ -391,6 +436,30 @@ export function MigrationWizard({
               {mode !== "clean" && preflight}
 
               <div>
+                {!takenOver && step === "source" && move && (
+                  <SourceStep
+                    move={move}
+                    view={sourceView}
+                    onViewChange={setSourceView}
+                    onPick={pickSource}
+                  />
+                )}
+
+                {path === "move" && step === "connect" && (
+                  <MoveConnectStep
+                    move={moveIn}
+                    onBack={() => setStep("source")}
+                    onConnected={() => setStep("review")}
+                  />
+                )}
+
+                {path === "move" && step === "review" && (
+                  <MoveReviewStep
+                    move={moveIn}
+                    onBack={() => setStep("connect")}
+                  />
+                )}
+
                 {!takenOver && step === "choose" && (
                   <ChooseStep
                     kind={kind}
@@ -426,7 +495,7 @@ export function MigrationWizard({
                   />
                 )}
 
-                {!takenOver && step === "connect" && (
+                {!takenOver && path === "import" && step === "connect" && (
                   <ConnectStep
                     url={url}
                     setUrl={setUrl}
@@ -450,7 +519,11 @@ export function MigrationWizard({
                     }
                     onSubmit={submitConnect}
                     onBack={
-                      reach("choose") ? () => setStep("choose") : undefined
+                      reach("choose")
+                        ? () => setStep("choose")
+                        : reach("source")
+                          ? () => setStep("source")
+                          : undefined
                     }
                   />
                 )}
@@ -488,6 +561,7 @@ export function MigrationWizard({
                   )}
 
                 {!takenOver &&
+                  path === "import" &&
                   step === "review" &&
                   showing !== "report" &&
                   (moving ? (
@@ -526,6 +600,8 @@ export function MigrationWizard({
                       onBack={() => setStep("install")}
                       starting={starting}
                       onStart={() => void startChain()}
+                      liveCopy={liveCopy}
+                      setLiveCopy={setLiveCopy}
                     />
                   ) : null)}
 

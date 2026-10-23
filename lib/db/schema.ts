@@ -20,6 +20,7 @@ export * from "./schema/control-plane/apps";
 export * from "./schema/control-plane/backups";
 export * from "./schema/control-plane/crons";
 export * from "./schema/control-plane/databases";
+export * from "./schema/control-plane/deplo-move";
 export * from "./schema/control-plane/deployments";
 export * from "./schema/control-plane/display-order";
 export * from "./schema/control-plane/docker-cleanup";
@@ -55,6 +56,7 @@ import * as cpApps from "./schema/control-plane/apps";
 import * as cpBackups from "./schema/control-plane/backups";
 import * as cpCrons from "./schema/control-plane/crons";
 import * as cpDatabases from "./schema/control-plane/databases";
+import * as cpDeploMove from "./schema/control-plane/deplo-move";
 import * as cpDeployments from "./schema/control-plane/deployments";
 import * as cpDisplayOrder from "./schema/control-plane/display-order";
 import * as cpDockerCleanup from "./schema/control-plane/docker-cleanup";
@@ -90,6 +92,7 @@ export const schema = {
   ...cpBackups,
   ...cpCrons,
   ...cpDatabases,
+  ...cpDeploMove,
   ...cpDeployments,
   ...cpDisplayOrder,
   ...cpDockerCleanup,

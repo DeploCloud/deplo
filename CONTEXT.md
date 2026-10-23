@@ -734,9 +734,13 @@ and the History of every team's runs. A **migration run** is the stored row plus
 tab in the same dialog. The wizard's steps are `choose, connect, install, review, people, takeover, done`
 (`components/settings/migrations/steps.ts`), and `stepsFor()` shows a subset: People only when the
 admin can invite, Take over only on a takeover, and a "start clean" takeover skips straight to
-those last two. Install is where the **migration source** gets its agent.
-A token of either panel reads exactly ONE team over there (Coolify binds it to the team it
-was minted in, a Dokploy key carries one `organizationId`), so a panel with three teams is
+those last two. Install is where the **migration source** gets its agent; a migration from
+another Deplo has none to install, because that Deplo hands its data over itself
+([ADR-0034](docs/adr/0034-another-deplo-hands-its-team-over-itself.md)), so Connect goes
+straight to Review.
+A token of any panel reads exactly ONE team over there (Coolify binds it to the team it
+was minted in, a Dokploy key carries one `organizationId`, a Deplo token is limited to one
+team in its editor), so a panel with three teams is
 three tokens and **three runs**, one after another. Connect collects them as the **Teams to
 bring over** list, and each row names the Deplo team it **lands in** (`TeamTarget`): one
 that exists, where the admin holds `create_projects`, or a **new team** named after the
@@ -751,7 +755,17 @@ MCP tools; it turned out no MCP tool names a field here, and `scanDokploy` point
 panel was a lie, which is worse than an old name.
 _Avoid_: transfer (that is **app transfer**, moving an App between teams), move (that is a
 **server move**, relocating one workload between hosts), sync (nothing here is continuous - a
-migration happens once and stops the source), import (the old wire word, now retired).
+migration happens once, and stops the source unless it is a **live copy**), import (the old wire
+word, now retired).
+
+**Live copy** (keep it running):
+A migration from another Deplo that leaves the source running: `migration_runs.live_copy`, the
+wizard's advanced "Keep everything running on {panel}", Deplo sources only. Nothing is stopped
+there (a database whose port is taken lands on a free one, or unpublished); databases arrive as a snapshot their engine takes while running, app files are copied while
+the apps keep writing, and crons, backup schedules and deploy on push land switched off so the two
+copies never both run them. The switch-over is the user's
+([ADR-0034](docs/adr/0034-another-deplo-hands-its-team-over-itself.md)).
+_Avoid_: sync, mirror (nothing is kept in step after the run), a **Deplo move** (a whole Deplo).
 
 **Blocker** (a report line):
 A line of a migration **report** saying the app will not run until somebody does what it says
@@ -761,13 +775,36 @@ A line of a migration **report** saying the app will not run until somebody does
 a plain string, counted in `manual` and shown as "N notes". Failures keep their own count.
 _Avoid_: warning, error (a failure is `failed`), "needs you" for a line that is only information.
 
+**Deplo move**:
+Copying a WHOLE Deplo - every team, account, App, variable, token, backup and setting - onto a
+fresh install on another machine, while the **old Deplo** keeps running exactly as it was
+([ADR-0035](docs/adr/0035-a-whole-deplo-copies-onto-a-new-machine.md)). The rows are copied 1:1 with
+their ids and re-sealed under the **new Deplo**'s own secret; each old server is mapped onto a
+server of the new Deplo, and every App and database is deployed there and filled with its data.
+Nothing is handed over: the old Deplo keeps every server, and each workload with data pauses
+there only while its own data copies. Run from `Settings → System → Migrations → Move Deplo`: the
+old Deplo mints a **move code**, the new Deplo (empty) connects with it and drives the rest. The
+new Deplo starts with its crons and backup schedules paused, so nothing runs twice.
+_Avoid_: migration (that brings teams in from another platform, or one team from another Deplo),
+transfer (an **app transfer**), server move (one workload between hosts), backup/restore (nothing
+is restored from an artifact), handover (servers are never handed over).
+
+**Move code**:
+The one-time credential a **Deplo move** runs on: `dmove_…`, minted by an instance admin on the old
+Deplo, shown once, stored hashed, valid for an hour until a new Deplo first uses it and bound to
+that Deplo from then on. It authorises reading every secret and every workload's data, so it is
+never an API token and never reaches GraphQL.
+_Avoid_: token (that is an **API token**), key, password.
+
 **Platform** (of a migration):
-WHICH product a migration reads - `dokploy` or `coolify`, and nothing else. Worked out from the
+WHICH product a migration reads - `dokploy`, `coolify` or `deplo` (another Deplo instance), and
+nothing else. Worked out from the
 address and the token at Connect (`detectMigrationSource`), written once to
 `migration_runs.platform`, and never re-derived: a run resumes hours later from that row, and a
 detection that answered differently the second time would point the data cutover at the wrong
-API. The wizard asks only when the detection came back empty-handed, and refuses a third product
-by name.
+API. The wizard asks only when the detection came back empty-handed, and refuses any other product
+by name. A Deplo token names itself (`deplo_`), so a Deplo is never guessed at or offered in that
+question. Take over is narrower: only `dokploy` and `coolify` (`TAKEOVER_PLATFORMS`).
 Each platform is one adapter behind `MigrationSourceClient` (`lib/migration/<name>/`); above that
 seam nothing knows which panel it is reading, which is why a mapper's note writes `{panel}` and
 the report resolves it.
@@ -924,7 +961,8 @@ Exactly one domain per app is **primary** - the _canonical host_, the app's
 A TLS certificate the operator brought themselves (a wildcard, a company CA, a domain no
 HTTP challenge can reach), installed on ONE **server** from Settings, Servers, its
 Certificates tab. It lives in that host's own Traefik stack file and nowhere else: Deplo
-keeps no copy, the list is read back off the host, and the private key has no read path.
+keeps no copy, the list is read back off the host, and the private key has one read path
+only: a migration export read with an instance admin's token (ADR-0034).
 The proxy picks it by the hostname the browser asked for. Installing one is only half of
 it: a **Domain** reaches it by setting its `certProvider` to `custom` ("Installed on the
 server"), which serves that hostname over HTTPS with no ACME resolver named. A Domain left

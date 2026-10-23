@@ -1,13 +1,13 @@
 import "server-only";
 
 import { mkdir, rm, readdir, stat } from "node:fs/promises";
-import { createReadStream, createWriteStream } from "node:fs";
+import { type ReadStream, createReadStream, createWriteStream } from "node:fs";
 import { spawn } from "node:child_process";
 import { createGunzip } from "node:zlib";
 import { Readable, Transform, Writable } from "node:stream";
 import type { ReadableStream as NodeReadableStream } from "node:stream/web";
 import { pipeline as streamPipeline } from "node:stream/promises";
-import { join, basename, relative } from "node:path";
+import { join, basename, isAbsolute, relative } from "node:path";
 import { newId, nowIso } from "../ids";
 import { spawnStream } from "../infra/exec";
 import { MAX_UPLOAD_BYTES, archiveExt } from "./upload-shared";
@@ -89,6 +89,42 @@ export async function storeUpload(opts: {
     size,
     uploadedAt: nowIso(),
   };
+}
+
+const SAFE_ID = /^[A-Za-z0-9_-]+$/;
+
+// A Deplo move (ADR-0035) puts an app's current archive back under the id its copied row already names.
+export async function restoreUpload(opts: {
+  appId: string;
+  uploadId: string;
+  ext: string;
+  body: AsyncIterable<Uint8Array>;
+}): Promise<{ path: string; size: number }> {
+  if (!SAFE_ID.test(opts.appId) || !SAFE_ID.test(opts.uploadId))
+    throw new Error("That archive is named in a way Deplo never writes.");
+  const dir = join(appUploadDir(opts.appId), opts.uploadId);
+  await rm(dir, { recursive: true, force: true });
+  await mkdir(dir, { recursive: true });
+  const path = join(dir, `archive${opts.ext}`);
+  try {
+    await streamPipeline(
+      Readable.from(opts.body),
+      capBytes(MAX_UPLOAD_BYTES),
+      createWriteStream(path),
+    );
+  } catch (err) {
+    await rm(dir, { recursive: true, force: true }).catch(() => {});
+    throw err;
+  }
+  return { path, size: (await stat(path)).size };
+}
+
+// Reads an app's stored archive back, refusing a path outside that app's own upload folder.
+export function readUpload(appId: string, path: string): ReadStream {
+  const rel = relative(appUploadDir(appId), path);
+  if (!SAFE_ID.test(appId) || !rel || rel.startsWith("..") || isAbsolute(rel))
+    throw new Error("That archive is not one of this app's uploads.");
+  return createReadStream(path);
 }
 
 export async function pruneUploads(

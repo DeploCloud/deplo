@@ -41,6 +41,7 @@ import {
   toAgentUpdateDTO,
 } from "./agent-update-state";
 import { listAllServers } from "./roster";
+import { instanceFrozen } from "../deplo-move/freeze";
 
 const TICK_MS = 60_000;
 const FIRST_RUN_MS = 20_000;
@@ -328,6 +329,7 @@ export function runAgentRollout(): Promise<void> {
 }
 
 async function rolloutPass(): Promise<void> {
+  if (await instanceFrozen()) return;
   const behind = behindServers(await listAllServers());
   const actor = await rolloutActor();
   if (behind.length === 0) {

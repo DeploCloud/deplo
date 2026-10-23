@@ -16,6 +16,12 @@ import {
   TRUNCATE_BACKUPS,
 } from "../data/backup-test-helpers";
 import { runWithIdentity } from "../auth/request-context";
+import { deploMoves } from "../db/schema/control-plane/deplo-move";
+import {
+  invalidateSchedulesPaused,
+  resumeMoveSchedules,
+} from "../data/deplo-move/schedules";
+import { runBackup } from "../data/backups/run-now";
 
 let db: TestDb;
 let pg: PGlite;
@@ -183,4 +189,34 @@ test("a daily schedule fires ONCE across a repeated wall-clock hour", async () =
     1,
     "one nightly backup, not two, across the repeated hour",
   );
+});
+
+test("after a Deplo move, no backup schedule fires until an admin turns them on", async () => {
+  await seedDue("bkp_1");
+  await db.insert(deploMoves).values({
+    id: "dmv_1",
+    side: "target",
+    state: "deploying",
+    schedulesPaused: true,
+    startedBy: USER_1,
+    createdAt: NOW.toISOString(),
+    updatedAt: NOW.toISOString(),
+  });
+  invalidateSchedulesPaused();
+  const asOwner = <T>(fn: () => Promise<T>) =>
+    runWithIdentity({ userId: USER_1, teamId: TEAM_A }, fn);
+  try {
+    await tick(NOW);
+    assert.equal((await runsFor("bkp_1")).length, 0, "the due one waits");
+
+    await asOwner(() => runBackup("bkp_1")).catch(() => {});
+    assert.equal((await runsFor("bkp_1")).length, 1, "Run now still runs");
+
+    await asOwner(() => resumeMoveSchedules());
+    await tick(new Date(NOW.getTime() + 60_000));
+    assert.equal((await runsFor("bkp_1")).length, 2, "on again, it fires");
+  } finally {
+    await db.delete(deploMoves);
+    invalidateSchedulesPaused();
+  }
 });

@@ -1,0 +1,178 @@
+"use client";
+
+import { ArrowDownToLine, ArrowUpFromLine, Truck, Users } from "lucide-react";
+
+import Link from "@/components/ui/link";
+import { Button } from "@/components/ui/button";
+import { ChoiceCard } from "@/components/shared/choice-card";
+import { MoveOutCard } from "@/components/deplo-move/move-out-card";
+import type { SourceMoveStatus } from "@/lib/data/deplo-move/source";
+import { SourceMark } from "./sources";
+import { StepShell } from "./step-shell";
+
+export type SourcePick = "panel" | "deplo-teams" | "deplo-move";
+export type SourceView = "sources" | "direction" | "deplo" | "out";
+
+export interface MoveContext {
+  // This Deplo leaving: its move code and progress.
+  source: SourceMoveStatus | null;
+  // A move into this Deplo that has already started.
+  activeTargetId: string | null;
+  readiness: { ready: boolean; reason: string | null };
+  // Opened from an old "Move Deplo" link.
+  openOutbound: boolean;
+}
+
+function DeploIcon({ className }: { className?: string }) {
+  return <SourceMark kind="deplo" className={className} />;
+}
+
+function PanelIcons() {
+  return (
+    <span className="flex items-center gap-0.5">
+      <SourceMark kind="dokploy" className="size-3" />
+      <SourceMark kind="coolify" className="size-3" />
+    </span>
+  );
+}
+
+export function SourceStep({
+  move,
+  view,
+  onViewChange,
+  onPick,
+}: {
+  move: MoveContext;
+  view: SourceView;
+  onViewChange: (view: SourceView) => void;
+  onPick: (pick: SourcePick) => void;
+}) {
+  const incoming = move.activeTargetId !== null;
+  const back = (
+    <Button
+      type="button"
+      variant="outline"
+      className="justify-self-start"
+      onClick={() =>
+        onViewChange(view === "direction" ? "sources" : "direction")
+      }
+    >
+      Back
+    </Button>
+  );
+
+  if (view === "direction")
+    return (
+      <StepShell
+        hero
+        title="Which way?"
+        lead="Choose where the copy should go. The source keeps running."
+      >
+        <div className="grid gap-4">
+          <div className="grid gap-3 sm:grid-cols-2">
+            <ChoiceCard
+              icon={ArrowUpFromLine}
+              arrow
+              title="This Deplo to another Deplo"
+              blurb="Copy everything to a fresh Deplo. Create a move code here, then enter it there."
+              disabled={incoming}
+              onSelect={() => onViewChange("out")}
+            />
+            <ChoiceCard
+              icon={ArrowDownToLine}
+              arrow
+              title="Another Deplo to this Deplo"
+              blurb="Bring everything here, or choose only some teams."
+              disabled={incoming}
+              onSelect={() => onViewChange("deplo")}
+            />
+          </div>
+          {back}
+        </div>
+      </StepShell>
+    );
+
+  if (view === "out")
+    return (
+      <StepShell
+        hero
+        title="This Deplo to another Deplo"
+        lead="Copies everything to a fresh Deplo on another machine. This one keeps running as it is."
+        docs="deplo.move"
+      >
+        <div className="grid gap-4">
+          <MoveOutCard initial={move.source} incoming={incoming} />
+          {back}
+        </div>
+      </StepShell>
+    );
+
+  if (view === "deplo")
+    return (
+      <StepShell
+        hero
+        title="What comes over?"
+        lead="A whole Deplo, or only some of its teams."
+      >
+        <div className="grid gap-4">
+          <div className="grid gap-3 sm:grid-cols-2">
+            <ChoiceCard
+              icon={Truck}
+              arrow
+              title="Everything"
+              blurb="Every team, person, app and database, data included. Only into an empty Deplo."
+              disabled={incoming || !move.readiness.ready}
+              disabledNote={move.readiness.reason ?? undefined}
+              onSelect={() => onPick("deplo-move")}
+            />
+            <ChoiceCard
+              icon={Users}
+              arrow
+              title="Only some teams"
+              blurb="Copies the teams you pick onto this Deplo's servers. The rest of the other Deplo stays as it is."
+              disabled={incoming}
+              onSelect={() => onPick("deplo-teams")}
+            />
+          </div>
+          {back}
+        </div>
+      </StepShell>
+    );
+
+  return (
+    <StepShell
+      hero
+      title="What are you migrating?"
+      lead="Copy between Deplo instances, or bring apps here from Dokploy or Coolify."
+    >
+      <div className="grid gap-4">
+        {incoming && (
+          <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border bg-surface p-3">
+            <p className="text-sm">A move into this Deplo is under way.</p>
+            <Button size="sm" asChild>
+              <Link href={`/moving/${move.activeTargetId}`}>Show progress</Link>
+            </Button>
+          </div>
+        )}
+        <div className="grid gap-3 sm:grid-cols-2">
+          <ChoiceCard
+            icon={DeploIcon}
+            arrow
+            title="Between Deplo"
+            blurb="Copy this Deplo to another one, or bring another Deplo here."
+            disabled={incoming}
+            onSelect={() => onViewChange("direction")}
+          />
+          <ChoiceCard
+            icon={PanelIcons}
+            arrow
+            title="Dokploy or Coolify"
+            blurb="Its projects, apps and databases, into teams here."
+            disabled={incoming}
+            onSelect={() => onPick("panel")}
+          />
+        </div>
+      </div>
+    </StepShell>
+  );
+}

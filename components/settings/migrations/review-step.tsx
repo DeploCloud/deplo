@@ -11,6 +11,8 @@ import {
 
 import { gqlAction } from "@/lib/graphql-client";
 import { Button } from "@/components/ui/button";
+import { Switch } from "@/components/ui/switch";
+import { AdvancedSection } from "@/components/apps/wizard/advanced-section";
 import { TeamAvatar } from "@/components/shared/user-avatar";
 import { SimpleTooltip } from "@/components/ui/tooltip";
 import { EmptyState } from "@/components/shared/empty-state";
@@ -280,6 +282,8 @@ export function ReviewStep({
   onBack,
   onStart,
   starting,
+  liveCopy = false,
+  setLiveCopy,
 }: {
   kind: SourceKind | null;
   groups: ReviewGroup[];
@@ -296,6 +300,8 @@ export function ReviewStep({
   onBack: () => void;
   onStart: () => void;
   starting: boolean;
+  liveCopy?: boolean;
+  setLiveCopy?: (v: boolean) => void;
 }) {
   const all = React.useMemo(() => mergedPlan(groups), [groups]);
   const servers = React.useMemo(() => everyServer(groups), [groups]);
@@ -311,7 +317,7 @@ export function ReviewStep({
   const chosenNames = pickable
     .filter((s) => chosen.has(s.sourceId))
     .map((s) => s.name);
-  const panel = copyFor(kind).name;
+  const panel = copyFor(kind).mention;
   const picked = (g: ReviewGroup) =>
     g.plan.projects
       .flatMap((p) => importableOf(p))
@@ -427,7 +433,30 @@ export function ReviewStep({
         </fieldset>
       )}
 
-      {chosenNames.length > 0 && (
+      {kind === "deplo" && setLiveCopy && (
+        <AdvancedSection summary={liveCopy ? "Keep it running" : undefined}>
+          <label className="flex items-start justify-between gap-4">
+            <span className="min-w-0 space-y-1">
+              <span className="block text-sm font-medium">
+                Keep everything running on {panel}
+              </span>
+              <span className="block text-sm text-muted-foreground">
+                Makes a copy for testing or staging. Databases come over as a
+                snapshot, files are copied while the apps keep writing, and
+                crons, backups and deploy on push arrive switched off. You
+                choose when to switch.
+              </span>
+            </span>
+            <Switch
+              checked={liveCopy}
+              onCheckedChange={setLiveCopy}
+              disabled={starting}
+            />
+          </label>
+        </AdvancedSection>
+      )}
+
+      {chosenNames.length > 0 && !(kind === "deplo" && liveCopy) && (
         <div className="flex items-start gap-2 rounded-lg border border-warning/40 bg-warning-wash-strong px-3 py-2 text-sm leading-relaxed">
           <TriangleAlert className="mt-0.5 size-4 shrink-0 text-warning" />
           <p className="min-w-0 text-muted-foreground">

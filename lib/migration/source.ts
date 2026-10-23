@@ -5,18 +5,32 @@ import type {
   SourceCompose,
   SourceDatabase,
   SourceEnvironment,
+  SourceAccess,
   SourceMember,
   SourceProject,
-  SourceS3Destination,
+  SourceBackupDestination,
+  SourceRegistry,
   SourceSchedule,
   SourceServer,
   SourceSharedEnv,
 } from "./model";
 import { coolifyClient } from "./coolify/adapter";
+import { deploClient } from "./deplo/adapter";
 import { dokployClient } from "./dokploy/adapter";
 
-export const MIGRATION_PLATFORMS = ["dokploy", "coolify"] as const;
+export const MIGRATION_PLATFORMS = ["dokploy", "coolify", "deplo"] as const;
 export type MigrationPlatform = (typeof MIGRATION_PLATFORMS)[number];
+
+// The panels a Deplo install can take over on their own machine. Another Deplo is not one of them.
+export const TAKEOVER_PLATFORMS = ["dokploy", "coolify"] as const;
+export type TakeoverPlatform = (typeof TAKEOVER_PLATFORMS)[number];
+
+export function isTakeoverPlatform(v: unknown): v is TakeoverPlatform {
+  return (
+    typeof v === "string" &&
+    (TAKEOVER_PLATFORMS as readonly string[]).includes(v)
+  );
+}
 
 export function isMigrationPlatform(v: unknown): v is MigrationPlatform {
   return (
@@ -49,6 +63,34 @@ export interface RuntimeQuery {
   composeFile: string | null;
 }
 
+export interface SourceDataExport {
+  check(
+    svc: { kind: string; id: string },
+    volumes: string[],
+  ): Promise<{ reachable: boolean; present: string[] | null }>;
+  exportVolume(
+    svc: { kind: string; id: string },
+    name: string,
+  ): AsyncIterable<Buffer>;
+  exportHostPath(
+    svc: { kind: string; id: string },
+    path: string,
+    allowFile?: boolean,
+  ): AsyncIterable<Buffer>;
+  // The archive an upload app builds from, as it was uploaded.
+  exportUpload?(svc: { kind: string; id: string }): AsyncIterable<Buffer>;
+  // The image an app runs, as its source server holds it (`docker save`).
+  exportImage?(
+    svc: { kind: string; id: string },
+    image: string,
+  ): AsyncIterable<Buffer>;
+  // A database dumped through its engine while it keeps running, encrypted to `recipient` (an age key).
+  exportDump?(
+    svc: { kind: string; id: string },
+    recipient: string,
+  ): AsyncIterable<Buffer>;
+}
+
 export interface MigrationSourceClient {
   readonly platform: MigrationPlatform;
   readonly baseUrl: string;
@@ -70,7 +112,9 @@ export interface MigrationSourceClient {
   listSchedules(kind: string, id: string): Promise<SourceSchedule[]>;
   teamSharedEnv(): Promise<SourceSharedEnv | null>;
   serverSharedEnv(sourceServerId: string): Promise<SourceSharedEnv | null>;
-  listBackupDestinations(): Promise<SourceS3Destination[]>;
+  listBackupDestinations(): Promise<SourceBackupDestination[]>;
+  // null: a source that could hand them over but is too old to.
+  listRegistries?(): Promise<SourceRegistry[] | null>;
 
   serviceRuntime(svc: RuntimeQuery): Promise<ServiceRuntime>;
 
@@ -79,10 +123,17 @@ export interface MigrationSourceClient {
   startService(kind: string, id: string): Promise<void>;
 
   platformNetworks(svc: { kind: string; id: string }): string[];
+
+  // Set when the source panel hands its data over itself, so no agent goes on its machines (ADR-0034).
+  readonly dataExport?: SourceDataExport;
+
+  // Roles and per-node access; undefined = the source is too old to say, null = the reader may not see them.
+  accessExport?(): Promise<SourceAccess | null | undefined>;
 }
 
 export class StopAcceptedError extends Error {}
 
 export function sourceClient(c: SourceCredential): MigrationSourceClient {
+  if (c.kind === "deplo") return deploClient(c);
   return c.kind === "coolify" ? coolifyClient(c) : dokployClient(c);
 }

@@ -7,6 +7,7 @@ import { apps as appsTable } from "../db/schema/control-plane/apps";
 import { deployments as deploymentsTable } from "../db/schema/control-plane/deployments";
 import { servers as serversTable } from "../db/schema/control-plane/servers";
 import { runDeploymentGuarded } from "./build/deploy-run";
+import { instanceFrozen } from "../data/deplo-move/freeze";
 
 interface ServerLane {
   running: Set<string>;
@@ -123,7 +124,11 @@ async function pump(serverId: string, lane: ServerLane): Promise<void> {
   try {
     while (lane.dirty) {
       lane.dirty = false;
-      const concurrency = await concurrencyFor(serverId);
+      const [frozen, concurrency] = await Promise.all([
+        instanceFrozen(),
+        concurrencyFor(serverId),
+      ]);
+      if (frozen) break;
       while (lane.running.size < concurrency) {
         const next = await pickNext(serverId);
         if (!next) break;

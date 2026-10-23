@@ -15,6 +15,7 @@ import {
 import { appSourceInTeam, loadAppGraph } from "../app-graph-load";
 import { requireAppCapability } from "../node-access";
 import { assertDataCopyIntact } from "../data-copy";
+import { assertNotPausedForMove } from "../deplo-move/source-guard";
 import { recordActivity } from "../activity";
 import { publishAppChanged } from "../../graphql/pubsub";
 import type { AppStatus, DeploySource } from "../../types/app";
@@ -41,6 +42,7 @@ export async function stopApp(id: string): Promise<void> {
   const project = await loadAppGraph(id);
   if (!project || project.teamId !== membership.teamId)
     throw new Error("App not found");
+  await assertNotPausedForMove("app", id);
 
   await setAppStatus(id, "stopping");
   await recordActivity("app", `Stopping ${project.name}`, user.name, id);
@@ -64,6 +66,7 @@ export async function startApp(id: string): Promise<void> {
 
   // Start is a second door onto the same volumes and skips the deploy pipeline, so it needs the same refusal.
   assertDataCopyIntact(project.name, project.dataCopyError);
+  await assertNotPausedForMove("app", id);
   await getDb()
     .update(appsTable)
     .set({ restartLoopStoppedAt: null })

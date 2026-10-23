@@ -7,12 +7,15 @@ import { decryptSecret } from "@/lib/crypto";
 import { dispatchPushEvent } from "@/lib/deploy/git-webhook-dispatch";
 import { providerFor } from "@/lib/git/providers/registry";
 import { readTextCapped } from "@/lib/http/body-cap";
+import { refuseWhileFrozen } from "@/lib/data/deplo-move/freeze";
 
 // The URL token names the provider: sniffing headers would let attacker-controlled input pick the verification rule.
 export async function POST(
   request: Request,
   ctx: { params: Promise<{ token: string }> },
 ) {
+  const paused = await refuseWhileFrozen();
+  if (paused) return paused;
   const { token } = await ctx.params;
   const raw = await readTextCapped(request);
   if (raw instanceof Response) return raw;

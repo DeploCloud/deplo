@@ -131,11 +131,24 @@ test("the passthrough refuses every field that hands back a credential", () => {
   }
 });
 
+test("a Deplo move is never driven over MCP: its mutations act by id and can wipe the instance", () => {
+  for (const name of [
+    "createMoveCode",
+    "startDeploMove",
+    "retryDeploMove",
+    "cancelDeploMove",
+    "finishDeploMoveWithoutSource",
+    "skipDeploMoveWorkload",
+  ])
+    assert.ok(deniedRootFields().has(name), `${name} is not denied`);
+});
+
 test("a root is refused for what it returns, whatever its name", () => {
   for (const name of [
     "addServer",
     "reissueServerBootstrap",
     "createToken",
+    "migrationExport",
     "migrationSession",
     "importMigrationMembers",
     "mintRegistrationLink",

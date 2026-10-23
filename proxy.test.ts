@@ -104,3 +104,9 @@ test("a signed-out visit to /new keeps where it was going, other pages do not", 
   );
   assert.equal(new URL(loginFor(`${PANEL}/apps/web`)).search, "");
 });
+
+test("a Deplo move's progress page opens without a session", () => {
+  process.env.DEPLO_PUBLIC_URL = PANEL;
+  const res = proxy(new NextRequest(new Request(`${PANEL}/moving/dmv_abc`)));
+  assert.equal(res.headers.get("location"), null);
+});

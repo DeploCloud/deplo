@@ -121,6 +121,8 @@ export const backupRuns = pgTable(
     backupId: text("backup_id").references(() => backups.id, {
       onDelete: "set null",
     }),
+    // ADR-0035: a run copied from the Deplo this one was copied from. Never pruned, never deleted there.
+    copiedFrom: text("copied_from"),
     targetKind: text("target_kind").notNull(),
     databaseId: text("database_id").references(() => databases.id, {
       onDelete: "set null",

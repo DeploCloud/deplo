@@ -1,5 +1,6 @@
 import "server-only";
 
+import { noteLeftRules } from "./domain-rules";
 import { type Note } from "../../migration/note";
 import { and, eq } from "drizzle-orm";
 
@@ -29,6 +30,25 @@ export function importedRoute(d: MappedDomain): ImportedRoute {
   };
 }
 
+// What another Deplo set on the domain beyond its route; nothing for a platform that has no such rules.
+export function domainRules(
+  d: MappedDomain,
+): Pick<
+  DomainPatch,
+  "middlewares" | "corsOrigins" | "securityHeaders" | "proxied"
+> {
+  const r = d.rules;
+  if (!r) return {};
+  return {
+    ...(r.middlewares ? { middlewares: r.middlewares } : {}),
+    ...(r.corsOrigins ? { corsOrigins: r.corsOrigins } : {}),
+    ...(r.securityHeaders !== undefined
+      ? { securityHeaders: r.securityHeaders }
+      : {}),
+    ...(r.proxied !== undefined ? { proxied: r.proxied } : {}),
+  };
+}
+
 async function addExtraDomain(
   appId: string,
   d: MappedDomain,
@@ -42,6 +62,7 @@ async function addExtraDomain(
       certProvider: d.certProvider,
       entrypoint: d.entrypoint,
       service: d.service ?? undefined,
+      ...domainRules(d),
     });
     return true;
   } catch (e) {
@@ -90,13 +111,14 @@ export async function rehostAppDomains(
         notes,
       );
       rehosted.set(primary.host, row.name);
+      noteLeftRules(primary, row.name, notes);
       rehostNotes.push(
         primary.generated
           ? `${primary.host} was {panel}'s own temporary address, so this app answers on ${row.name} here - same port, same route.`
           : `${primary.host} could not be taken, so the app answers on ${row.name} instead.`,
       );
     } else if (row) {
-      const patch: DomainPatch = {};
+      const patch: DomainPatch = domainRules(primary);
       const tls = temporaryAddressTls(row.name, primary);
       if (row.certProvider !== tls.certProvider)
         patch.certProvider = tls.certProvider;
@@ -138,6 +160,8 @@ export async function rehostAppDomains(
       for (const [source, host] of landed)
         if (!rehosted.has(source)) {
           rehosted.set(source, host);
+          const from = toRehost.find((d) => d.host === source);
+          if (from) noteLeftRules(from, host, notes);
           rehostNotes.push(
             wasThrowaway.has(source)
               ? `${source} was {panel}'s own temporary address, so it comes across as ${host} here - same port, same route.`

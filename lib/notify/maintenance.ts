@@ -32,10 +32,12 @@ import {
 } from "./dispatch";
 import { allTeamIds } from "./server-teams";
 import type { GitProviderId } from "../types/git";
+import { instanceFrozen } from "../data/deplo-move/freeze";
 
 const CERT_WARN_DAYS = 21;
 
 export async function runMaintenanceSweep(): Promise<void> {
+  if (await instanceFrozen()) return;
   await settle("Deplo update", checkDeploUpdate);
   await settle("certificates", checkCustomCertificates);
   await settle("domain dns", sweepDomainDns);

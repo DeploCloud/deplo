@@ -168,6 +168,23 @@ export async function sendRequest(
   throw new PanelUnreachableError(describeTransportError(last, baseUrl, panel));
 }
 
+// One attempt and no deadline of its own: a retry would resend a copy that may run for hours.
+export async function openStream(
+  baseUrl: string,
+  url: string,
+  init: RequestInit,
+  panel: PanelIdentity,
+): Promise<Response> {
+  try {
+    const res = await doFetch(url, init);
+    refuseGateway(res, baseUrl);
+    return res;
+  } catch (e) {
+    if (e instanceof PanelUnreachableError) throw e;
+    throw new PanelUnreachableError(describeTransportError(e, baseUrl, panel));
+  }
+}
+
 export function normalizeSourceBaseUrl(raw: string): string {
   const trimmed = raw.trim();
   const withScheme = /^https?:\/\//i.test(trimmed)

@@ -11,6 +11,9 @@ export const UNREACHABLE_SOURCE_HOST =
 
 export const UNREACHABLE_SOURCE_AGENT = `Deplo cannot reach the agent on the machine this service's data is on, so nothing was stopped and no data was copied. Installing the agent is outbound and works behind any firewall; reading a volume is Deplo dialing that machine back, INBOUND. ${AGENT_PORT_NOTICE} Then check the machine's address under Servers and run the copy again.`;
 
+export const UNREACHABLE_SOURCE_PANEL =
+  "{panel} could not reach the server this service runs on, so nothing was stopped and no data was copied. Check that server is online over there, then run the copy again.";
+
 export function missingVolumeMessage(
   name: string,
   serviceName: string,

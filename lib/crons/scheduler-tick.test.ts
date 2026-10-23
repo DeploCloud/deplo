@@ -21,6 +21,14 @@ import {
   __stopCronScheduler,
 } from "./scheduler";
 import * as lease from "../backups/lease";
+import { deploMoves } from "../db/schema/control-plane/deplo-move";
+import { invalidateFrozen } from "../data/deplo-move/freeze";
+import {
+  invalidateSchedulesPaused,
+  resumeMoveSchedules,
+} from "../data/deplo-move/schedules";
+import { runCronJobNow } from "../data/crons/runs";
+import { runWithIdentity } from "../auth/request-context";
 
 let db: TestDb;
 let pg: PGlite;
@@ -116,4 +124,67 @@ test("a run in flight does not starve the next minute under overlap=skip", async
   assert.equal(runs.length, 2);
   assert.equal(runs[1].status, "running", "the finished run blocks nothing");
   assert.equal(agent.started.length, 2);
+});
+
+test("a Deplo frozen by a move fires nothing until it thaws", async () => {
+  await seedCronJob(db, { id: "cron_1" });
+  await db.insert(deploMoves).values({
+    id: "dmv_1",
+    side: "target",
+    state: "copying",
+    startedBy: "user_1",
+    createdAt: T0.toISOString(),
+    updatedAt: T0.toISOString(),
+  });
+  invalidateFrozen();
+  try {
+    await runCronSchedulerTick(T0);
+    assert.equal((await runsOf(db, "cron_1")).length, 0);
+    assert.equal(agent.started.length, 0);
+  } finally {
+    await db.delete(deploMoves);
+    invalidateFrozen();
+  }
+  await runCronSchedulerTick(T0);
+  assert.equal((await runsOf(db, "cron_1")).length, 1, "thawed, it fires");
+});
+
+test("after a Deplo move, no schedule fires until an admin turns them on", async () => {
+  await seedCronJob(db, { id: "cron_1" });
+  await db.insert(deploMoves).values({
+    id: "dmv_1",
+    side: "target",
+    state: "deploying",
+    schedulesPaused: true,
+    startedBy: "user_1",
+    createdAt: T0.toISOString(),
+    updatedAt: T0.toISOString(),
+  });
+  invalidateSchedulesPaused();
+  const asOwner = <T>(fn: () => Promise<T>) =>
+    runWithIdentity({ userId: USER_1, teamId: TEAM_A }, fn);
+  try {
+    await runCronSchedulerTick(T0);
+    assert.equal((await runsOf(db, "cron_1")).length, 0, "the due one waits");
+
+    const manual = await asOwner(() => runCronJobNow("cron_1"));
+    assert.equal(manual.trigger, "manual", "Run now still runs");
+    agent.settleAll({ exitCode: 0 });
+    await runCronSchedulerTick(at(5_000));
+    assert.equal((await runsOf(db, "cron_1"))[0].status, "succeeded");
+
+    await asOwner(() => resumeMoveSchedules());
+    await runCronSchedulerTick(at(60_000));
+    const runs = await runsOf(db, "cron_1");
+    assert.equal(runs.length, 2, "on again, the next minute fires");
+    assert.equal(runs[1].trigger, "schedule");
+    assert.equal(
+      runs[1].scheduledFor,
+      at(60_000).toISOString(),
+      "the paused minute is not replayed",
+    );
+  } finally {
+    await db.delete(deploMoves);
+    invalidateSchedulesPaused();
+  }
 });

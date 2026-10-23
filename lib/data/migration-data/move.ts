@@ -16,7 +16,6 @@ import {
   reachesWholeTeam,
   requireCapability,
 } from "../../membership";
-import { connectAgent } from "../../infra/agent-client/connect";
 import { publishDatabaseChanged } from "../../graphql/pubsub";
 
 import { sourceClient, StopAcceptedError } from "../../migration/source";
@@ -30,13 +29,11 @@ import {
   pairVolumes,
 } from "../../migration/map/volume-pairing";
 
-import { sourceAgentReachable } from "../agent-reach";
 import { requireAppCapability } from "../node-access";
 import { isCopyAborted, stopStackOn, type OnBytes } from "../volume-migration";
 import { recordActivity } from "../activity";
 import { clearDataCopyError, markDataCopyFailed } from "../data-copy";
 import { runAsMigration } from "../migration-guard";
-import { getServerById } from "../servers/roster";
 import {
   assertImportGate,
   credentialFor,
@@ -49,7 +46,7 @@ import {
   refreshCounts,
 } from "../migration-import/run-report";
 
-import { UNREACHABLE_SOURCE_AGENT, unfilledStackBinds } from "./copy-notes";
+import { unfilledStackBinds } from "./copy-notes";
 import {
   copyBindMounts,
   copyPairedVolumes,
@@ -60,11 +57,9 @@ import {
 import { startAndVerifyDatabase, waitForProvision } from "./database-verify";
 import { hostPathOwners } from "./host-path-clashes";
 import { landedFor, runTargets, type Landed } from "./landed-targets";
-import {
-  recordSourceStopped,
-  resolveSourceServer,
-  volumesOnHost,
-} from "./source-cutover";
+import { restoreDumpInto } from "./live-copy";
+import { recordSourceStopped } from "./source-cutover";
+import { sourceDataHost } from "./source-data-host";
 import { sourceServices, type SourceService } from "./source-services";
 
 export interface MoveInput extends ConnectInput {
@@ -72,6 +67,8 @@ export interface MoveInput extends ConnectInput {
   sourceKind: string;
   sourceId: string;
   onBytes?: OnBytes;
+  // Copy without stopping the source; the switch-over is left to the user.
+  liveCopy?: boolean;
 }
 
 export interface DataMoveResult {
@@ -88,27 +85,6 @@ class TargetWouldNotStop extends Error {
 }
 
 const inFlightCopies = new Map<string, AbortController>();
-
-async function connectBoth(sourceServerId: string, targetServerId: string) {
-  const source = await connectAgent(sourceServerId);
-  try {
-    const dest =
-      sourceServerId === targetServerId
-        ? source
-        : await connectAgent(targetServerId);
-    return {
-      source,
-      dest,
-      close: () => {
-        source.close();
-        if (dest !== source) dest.close();
-      },
-    };
-  } catch (e) {
-    source.close();
-    throw e;
-  }
-}
 
 export function abortRunCopy(runId: string): void {
   inFlightCopies.get(runId)?.abort();
@@ -246,7 +222,7 @@ async function runMoveMigrationServiceData(
     await requireCapability("restore_backups");
   }
 
-  const sourceServerId = await resolveSourceServer(c, teamId, svc.serverId);
+  const host = await sourceDataHost(c, teamId, svc);
 
   const state = await sourceClient(c).serviceRuntime(svc);
   const paired = pairVolumes(state.volumes, landed.volumes, {
@@ -279,11 +255,8 @@ async function runMoveMigrationServiceData(
         `${m.hostPath} is mounted at ${m.mountPath} on {panel}, but nothing of ${landed.targetName} mounts that path here - what is in it was not copied.`,
       );
   notes.push(...unfilledStackBinds(landed, binds));
-  const sourceHostsNothing = Boolean(
-    (await getServerById(sourceServerId))?.importOnly,
-  );
   const mayCopyHostPaths =
-    (binds.every((b) => b.stackRelative) && sourceHostsNothing) ||
+    (binds.every((b) => b.stackRelative) && host.hostsNothing) ||
     ((await isInstanceAdmin()) && (await canMountHostVolumes()));
 
   if (paired.value.length === 0 && binds.length === 0) {
@@ -309,18 +282,18 @@ async function runMoveMigrationServiceData(
   }
 
   // Asked BEFORE the stopService below, which cannot be taken back.
-  if (!(await sourceAgentReachable(sourceServerId))) {
+  if (!(await host.reachable())) {
     return refuse({
-      message: UNREACHABLE_SOURCE_AGENT,
+      message: host.unreachable,
       reason: `Deplo could not reach the machine ${svc.name}'s data is on, so it was never copied`,
-      note: UNREACHABLE_SOURCE_AGENT,
+      note: host.unreachable,
       sourceGone: true,
     });
   }
 
   if (state.running && (binds.length === 0 || !mayCopyHostPaths)) {
     const wanted = paired.value.map((p) => p.sourceVolume);
-    const present = await volumesOnHost(sourceServerId, wanted);
+    const present = await host.volumesPresent(wanted);
     if (present && wanted.length > 0 && !wanted.some((n) => present.has(n))) {
       const message = `${svc.name} is running on {panel}, but none of the volumes it names (${wanted.join(", ")}) are on the machine {panel} says it runs on - so its data is somewhere else. Nothing was stopped and nothing was copied. Correct that machine's address under the Connect step and run the copy again.`;
       return refuse({
@@ -339,6 +312,51 @@ async function runMoveMigrationServiceData(
         message: `${landed.targetName} is still being created, so its data was not copied. Run the copy again once it is up.`,
         reason: `${landed.targetName} was still being created when the migration reached it, so its data was never copied`,
       });
+  }
+
+  const live = input.liveCopy === true;
+  if (live && landed.targetKind === "database") {
+    const exportDump = sourceClient(c).dataExport?.exportDump;
+    if (!exportDump)
+      return refuse({
+        message: `Only another Deplo can hand over ${svc.name} without stopping it, so its data was not copied. Run the copy again with the source stopped.`,
+        reason: `${svc.name} could not be copied without stopping it on ${panel}`,
+      });
+    const tally = newCopyTally();
+    const aborter = new AbortController();
+    inFlightCopies.set(input.runId, aborter);
+    try {
+      const restored = await restoreDumpInto(
+        landed,
+        teamId,
+        (recipient) => exportDump(svc, recipient),
+        { onBytes: input.onBytes, signal: aborter.signal },
+      );
+      if (restored.ok) {
+        tally.moved++;
+        notes.push(
+          `${landed.targetName} holds a snapshot of ${svc.name} taken while it kept running on {panel}. Anything written there after the copy is not here.`,
+        );
+      } else {
+        tally.failed++;
+        tally.lost.push(restored.message);
+        notes.push(blocker(`${svc.name}: ${restored.message}`));
+      }
+    } finally {
+      inFlightCopies.delete(input.runId);
+    }
+    return settle({
+      input,
+      teamId,
+      panel,
+      path,
+      svc,
+      landed,
+      state,
+      notes,
+      tally,
+      live,
+    });
   }
 
   let stoppedThere = false;
@@ -360,8 +378,10 @@ async function runMoveMigrationServiceData(
     }
   };
   try {
-    await sourceClient(c).stopService(input.sourceKind, input.sourceId);
-    stoppedThere = true;
+    if (!live) {
+      await sourceClient(c).stopService(input.sourceKind, input.sourceId);
+      stoppedThere = true;
+    }
   } catch (e) {
     const why = e instanceof Error ? e.message : `${panel} refused`;
     if (state.running) {
@@ -394,7 +414,7 @@ async function runMoveMigrationServiceData(
     });
   };
 
-  let connection: Awaited<ReturnType<typeof connectBoth>>;
+  let connection: Awaited<ReturnType<typeof host.connect>>;
   try {
     if (stoppedThere)
       await recordSourceStopped(input.runId, input.sourceId, input.sourceKind);
@@ -407,7 +427,7 @@ async function runMoveMigrationServiceData(
       }
       await recordStoppedForCopy(landed, teamId);
     }
-    connection = await connectBoth(sourceServerId, landed.targetServerId);
+    connection = await host.connect(landed.targetServerId);
   } catch (e) {
     return giveUp(
       e instanceof TargetWouldNotStop
@@ -429,7 +449,8 @@ async function runMoveMigrationServiceData(
     svc,
     landed,
     running: state.running,
-    sourceServerId,
+    live,
+    sourceServerId: host.serverId ?? "",
     source,
     dest,
     signal: aborter.signal,
@@ -470,6 +491,7 @@ async function runMoveMigrationServiceData(
     state,
     notes,
     tally,
+    live,
   });
 }
 
@@ -483,8 +505,10 @@ async function settle(o: {
   state: { running: boolean };
   notes: Note[];
   tally: CopyTally;
+  live: boolean;
 }): Promise<DataMoveResult> {
-  const { input, teamId, panel, path, svc, landed, state, notes, tally } = o;
+  const { input, teamId, panel, path, svc, landed, state, notes, tally, live } =
+    o;
   const saidHere = (text: string) => withPanel(text, panel);
   if (
     landed.targetKind === "database" &&
@@ -517,7 +541,13 @@ async function settle(o: {
     await markDataCopyFailed(marker, tally.lost.join(" | "));
   else if (tally.failed === 0) await clearDataCopyError(marker);
 
-  if (tally.moved > 0 && landed.targetKind === "app")
+  if (tally.moved > 0 && live)
+    notes.push(
+      landed.targetKind === "app"
+        ? `${svc.name} still serves on {panel}, and ${landed.targetName} here is a copy of it. Press Deploy to start the copy, and move the domains over when you want the traffic to follow.`
+        : `${svc.name} still serves on {panel}. Point your apps at ${landed.targetName} when you switch over.`,
+    );
+  else if (tally.moved > 0 && landed.targetKind === "app")
     notes.push(
       `${landed.targetName} is stopped on both sides. Press Deploy when the traffic should follow the data.`,
     );

@@ -5,6 +5,7 @@ export const START = /* GraphQL */ `
     $targets: [MigrationRunTargetInput!]!
     $servers: [MigrationServerChoiceInput!]
     $queued: [MigrationQueuedTeamInput!]
+    $liveCopy: Boolean
   ) {
     startMigration(
       input: $input
@@ -12,6 +13,7 @@ export const START = /* GraphQL */ `
       targets: $targets
       servers: $servers
       queued: $queued
+      liveCopy: $liveCopy
     )
   }
 `;
