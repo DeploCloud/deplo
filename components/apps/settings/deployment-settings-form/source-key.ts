@@ -10,7 +10,6 @@ export type SourceKeyInput = {
   dockerImage: string;
   ghSelection: GithubSelection | null;
   compose: string;
-  gitOptions: GitDeployOptionsValue;
 };
 
 export function normalizedGitOptions(o: GitDeployOptionsValue) {
@@ -22,7 +21,6 @@ export function normalizedGitOptions(o: GitDeployOptionsValue) {
 }
 
 export function computeSourceKey(s: SourceKeyInput): string {
-  const usesRepo = s.source === "git" || s.source === "github";
   return JSON.stringify({
     source: s.source,
     git:
@@ -43,6 +41,5 @@ export function computeSourceKey(s: SourceKeyInput): string {
           }
         : null,
     compose: s.source === "compose" ? s.compose : null,
-    gitOptions: usesRepo ? normalizedGitOptions(s.gitOptions) : null,
   });
 }

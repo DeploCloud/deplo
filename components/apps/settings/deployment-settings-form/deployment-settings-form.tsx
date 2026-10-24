@@ -2,7 +2,7 @@
 
 import { UnsavedChangesGuard } from "@/components/apps/unsaved-changes-guard";
 import { BuildOutputCard } from "@/components/apps/settings/build-output-card";
-import { AutoDeployCard } from "./auto-deploy-card";
+import { ReleasesCard } from "./releases-card";
 import { DeploySourceCard } from "./deploy-source-card";
 import {
   useDeploymentSettings,
@@ -31,7 +31,13 @@ export function DeploymentSettingsForm(props: DeploymentSettingsProps) {
           />
         )}
 
-        {settings.autoDeployPossible && <AutoDeployCard settings={settings} />}
+        {(settings.autoDeployPossible || props.rollbackKeep != null) && (
+          <ReleasesCard
+            settings={settings}
+            appId={props.appId}
+            rollbackKeep={props.rollbackKeep}
+          />
+        )}
       </div>
 
       <UnsavedChangesGuard when={settings.overallDirty} />

@@ -28,7 +28,7 @@ import { methodChoice } from "@/lib/apps/build-method";
 import { usesPastedCompose } from "@/lib/utils";
 import { useOptimisticValue } from "@/components/shared/use-optimistic-value";
 import { gqlAction } from "@/lib/graphql-client";
-import { computeSourceKey } from "./source-key";
+import { computeSourceKey, normalizedGitOptions } from "./source-key";
 
 export type DeploymentSettingsProps = {
   appId: string;
@@ -53,6 +53,8 @@ export type DeploymentSettingsProps = {
   cloneRefusal: string | null;
   connectionAccess: AccessRequirement[];
   canManageGit: boolean;
+  // Builds kept for an instant rollback; null when the app builds no image of its own.
+  rollbackKeep: number | null;
 };
 
 export type DeploymentSettings = ReturnType<typeof useDeploymentSettings>;
@@ -159,9 +161,8 @@ export function useDeploymentSettings({
         dockerImage,
         ghSelection,
         compose,
-        gitOptions,
       }),
-    [source, gitValue, dockerImage, ghSelection, compose, gitOptions],
+    [source, gitValue, dockerImage, ghSelection, compose],
   );
   const [savedSourceKey, setSavedSourceKey] = React.useState(currentSourceKey);
   const ghBaselinedRef = React.useRef(
@@ -178,6 +179,13 @@ export function useDeploymentSettings({
     source === "github" && !ghSelection
       ? false
       : currentSourceKey !== savedSourceKey;
+
+  // The trigger saves with the source but lives in the Releases card, so it is dirty on its own.
+  const currentTriggerKey = JSON.stringify(normalizedGitOptions(gitOptions));
+  const [savedTriggerKey, setSavedTriggerKey] =
+    React.useState(currentTriggerKey);
+  const triggerDirty =
+    repoConfigVisible && currentTriggerKey !== savedTriggerKey;
 
   const currentBuildKey = React.useMemo(
     () =>
@@ -210,11 +218,12 @@ export function useDeploymentSettings({
 
   const overallDirty =
     sourceDirty ||
+    triggerDirty ||
     (buildCardVisible && buildDirty) ||
     (rootCardVisible && rootDirty);
 
   function saveSource() {
-    if (!sourceDirty) {
+    if (!sourceDirty && !triggerDirty) {
       if (rootCardVisible && rootDirty) saveRootDir();
       return;
     }
@@ -283,6 +292,7 @@ export function useDeploymentSettings({
       }
     }
     const committedSourceKey = currentSourceKey;
+    const committedTriggerKey = currentTriggerKey;
     const committedRootKey = currentRootKey;
     startTransition(async () => {
       const res = await gqlAction(
@@ -302,6 +312,7 @@ export function useDeploymentSettings({
         return;
       }
       setSavedSourceKey(committedSourceKey);
+      setSavedTriggerKey(committedTriggerKey);
       if (rootCardVisible && rootDirty) {
         const rootRes = await gqlAction(
           `mutation($id: String!, $build: BuildConfigInput!) { updateAppBuild(id: $id, build: $build) { id } }`,
@@ -444,6 +455,7 @@ export function useDeploymentSettings({
     autoDeployPossible,
     autoDeployBranch,
     sourceDirty,
+    triggerDirty,
     buildDirty,
     deploySourceCardDirty,
     overallDirty,

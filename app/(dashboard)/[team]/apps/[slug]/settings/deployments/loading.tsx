@@ -78,13 +78,26 @@ export default function Loading() {
         </Card>
 
         <Card>
-          <CardHeader className="flex-row items-center justify-between space-y-0">
-            <Skeleton className="h-5 w-36" />
-            <Skeleton className="h-5 w-9 rounded-full" />
+          <CardHeader>
+            <Skeleton className="h-5 w-28" />
           </CardHeader>
-          <CardContent>
-            <Skeleton className="h-12 w-full rounded-lg" />
-          </CardContent>
+          <div className="divide-y divide-border border-t border-border">
+            {["w-9", "w-4", "w-36"].map((control, i) => (
+              <div
+                key={i}
+                className="flex items-center justify-between gap-4 px-6 py-4"
+              >
+                <div className="space-y-1.5">
+                  <Skeleton className="h-4 w-28" />
+                  <Skeleton className="h-3 w-64" />
+                </div>
+                <Skeleton className={`h-5 ${control} rounded-md`} />
+              </div>
+            ))}
+          </div>
+          <CardFooter className="justify-end border-t border-border pt-4">
+            <Skeleton className="h-9 w-20 rounded-md" />
+          </CardFooter>
         </Card>
       </div>
     </section>

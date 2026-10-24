@@ -15,7 +15,6 @@ import { hasAppCapability } from "@/lib/data/node-access";
 import { redactComposeForDisplay } from "@/lib/deploy/compose-redact";
 import { SettingsSection } from "@/components/apps/settings/settings-shared";
 import { DeploymentSettingsForm } from "@/components/apps/settings/deployment-settings-form/deployment-settings-form";
-import { RollbackSettingsForm } from "@/components/apps/settings/rollback-settings-form";
 import { CapabilityFieldset } from "@/components/apps/app-capabilities";
 import { appBuildsItsOwnImage } from "@/lib/utils";
 import type { GitProviderId } from "@/lib/types/git";
@@ -51,8 +50,6 @@ export default async function AppDeploymentSettingsPage(
     project.repo ? repoCloneRefusal(project.repo) : null,
     hasCapability("manage_git"),
   ]);
-
-  const canRollBack = appBuildsItsOwnImage(project);
 
   return (
     <section className="space-y-4">
@@ -101,18 +98,15 @@ export default async function AppDeploymentSettingsPage(
           repoAccess={repoAccess}
           cloneRefusal={cloneRefusal}
           canManageGit={canManageGit}
+          rollbackKeep={
+            appBuildsItsOwnImage(project) ? project.rollbackKeep : null
+          }
           connectionAccess={
             project.repo?.connectionId
               ? requiredAccess(project.repo.provider as GitProviderId)
               : []
           }
         />
-        {canRollBack && (
-          <RollbackSettingsForm
-            appId={project.id}
-            rollbackKeep={project.rollbackKeep}
-          />
-        )}
       </CapabilityFieldset>
     </section>
   );
