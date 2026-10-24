@@ -321,7 +321,7 @@ export function GitSourcePicker({
                 info="The branch Deplo clones and deploys."
                 docs="deploy.fromGit"
               >
-                Production Branch
+                Production branch
               </FieldLabel>
               <Input
                 id={branchFieldId}

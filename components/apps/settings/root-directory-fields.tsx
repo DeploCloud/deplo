@@ -9,31 +9,11 @@ export function RootDirectoryFields({
   build,
   onBuildChange,
   disabled,
-  bare = false,
 }: {
   build: BuildConfig;
   onBuildChange: (next: BuildConfig) => void;
   disabled?: boolean;
-  bare?: boolean;
 }) {
-  const field = (
-    <div className="relative w-full">
-      <FolderTree className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
-      <Input
-        id="root-directory"
-        value={build.rootDirectory}
-        onChange={(e) =>
-          onBuildChange({ ...build, rootDirectory: e.target.value })
-        }
-        placeholder="./"
-        disabled={disabled}
-        className="pl-9 font-mono text-sm"
-      />
-    </div>
-  );
-
-  if (bare) return field;
-
   return (
     <div className="space-y-2">
       <FieldLabel
@@ -41,9 +21,21 @@ export function RootDirectoryFields({
         info='Sub-folder to build from, e.g. "apps/web" in a monorepo. Leave as ./ to build from the repository root'
         docs="build.fields"
       >
-        Root Directory
+        Root directory
       </FieldLabel>
-      {field}
+      <div className="relative w-full">
+        <FolderTree className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
+        <Input
+          id="root-directory"
+          value={build.rootDirectory}
+          onChange={(e) =>
+            onBuildChange({ ...build, rootDirectory: e.target.value })
+          }
+          placeholder="./"
+          disabled={disabled}
+          className="pl-9 font-mono text-sm"
+        />
+      </div>
     </div>
   );
 }

@@ -3,7 +3,10 @@
 import * as React from "react";
 import { Input } from "@/components/ui/input";
 import { FieldLabel, InfoTip } from "@/components/ui/info-tip";
-import { BuildMethodFields } from "@/components/apps/build-method-fields";
+import {
+  BuildMethodFields,
+  RailpackOptions,
+} from "@/components/apps/build-method-fields";
 import { NodeVersionInput } from "@/components/apps/node-version-input";
 import {
   buildsWithRailpack,
@@ -56,6 +59,12 @@ export function BuildConfigFields({
     <div className="space-y-5">
       <FieldGroup title="Build method" first>
         <BuildMethodFields
+          method={method}
+          settings={build.methodSettings}
+          onMethodChange={(m) => setBuild((b) => withMethodChoice(b, m))}
+          onSettingsChange={patchMethodSettings}
+        />
+        <RailpackOptions
           method={method}
           settings={build.methodSettings}
           onMethodChange={(m) => setBuild((b) => withMethodChoice(b, m))}

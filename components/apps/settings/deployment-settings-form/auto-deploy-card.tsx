@@ -1,8 +1,8 @@
 "use client";
 
+import { GitCommitHorizontal } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { InfoTip } from "@/components/ui/info-tip";
-import { SettingRow } from "@/components/shared/setting-row";
 import { SettingsDrawer } from "@/components/shared/settings-drawer";
 import { Switch } from "@/components/ui/switch";
 import {
@@ -21,40 +21,38 @@ export function AutoDeployCard({ settings }: { settings: DeploymentSettings }) {
     gitOptions,
     setGitOptions,
   } = settings;
+  const onTag = gitOptions.triggerType === "tag";
 
   return (
     <Card>
-      <CardHeader>
+      <CardHeader className="flex-row items-center justify-between gap-4 space-y-0">
         <CardTitle className="flex w-fit items-center gap-2 text-base">
+          <GitCommitHorizontal className="size-4 text-muted-foreground" />
           Deploy on push
           <InfoTip
-            content={`Runs a deploy on every push to ${autoDeployBranch}.`}
+            content={
+              onTag
+                ? "Runs a deploy on every new tag."
+                : `Runs a deploy on every push to ${autoDeployBranch}.`
+            }
             docs="releases.autoDeploy"
           />
         </CardTitle>
+        <Switch
+          checked={autoDeploy}
+          onCheckedChange={toggleAuto}
+          disabled={pending}
+          aria-label="Deploy on push"
+        />
       </CardHeader>
-      <CardContent className="space-y-3">
-        <SettingRow
-          label="Deploy on push"
-          info={`Runs a deploy on every push to ${autoDeployBranch}.`}
-          docs="releases.autoDeploy"
-        >
-          <Switch
-            checked={autoDeploy}
-            onCheckedChange={toggleAuto}
-            disabled={pending}
-            aria-label="Deploy on push"
-          />
-        </SettingRow>
 
-        {repoConfigVisible && (
+      {repoConfigVisible && (
+        <CardContent>
           <SettingsDrawer
             title="Trigger"
             summary={
               <>
-                {gitOptions.triggerType === "tag"
-                  ? "On new tag"
-                  : "On push to branch"}
+                {onTag ? "On new tag" : "On push to branch"}
                 {watchPathsToArray(gitOptions.watchPaths).length > 0 &&
                   " · path-filtered"}
                 {gitOptions.submodules && " · submodules"}
@@ -67,8 +65,8 @@ export function AutoDeployCard({ settings }: { settings: DeploymentSettings }) {
               disabled={pending}
             />
           </SettingsDrawer>
-        )}
-      </CardContent>
+        </CardContent>
+      )}
     </Card>
   );
 }

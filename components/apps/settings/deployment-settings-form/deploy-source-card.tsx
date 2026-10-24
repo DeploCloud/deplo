@@ -1,6 +1,6 @@
 "use client";
 
-import { Save, FileText, Rocket } from "lucide-react";
+import { Code, Save, FileText, Rocket } from "lucide-react";
 import {
   Card,
   CardContent,
@@ -28,7 +28,7 @@ import { GitAccessNotice } from "@/components/shared/git-access-notice";
 import type { DeploySource } from "@/lib/types/app";
 import { AnimatedHeight } from "@/components/shared/animated-height";
 import { SOURCE_TABS } from "@/components/apps/source-tabs";
-import { AdditionalOptionsDrawer } from "./additional-options-drawer";
+import { RootDirectoryFields } from "@/components/apps/settings/root-directory-fields";
 import type {
   DeploymentSettings,
   DeploymentSettingsProps,
@@ -74,9 +74,10 @@ export function DeploySourceCard({
     <Card>
       <CardHeader>
         <CardTitle className="flex w-fit items-center gap-2 text-base">
-          Deploy Source
+          <Code className="size-4 text-muted-foreground" />
+          Source
           <InfoTip
-            content="Change how this app is deployed and which server runs it."
+            content="Where Deplo gets the code or the image this app runs."
             docs="build.settings"
           />
         </CardTitle>
@@ -244,7 +245,13 @@ export function DeploySourceCard({
           )}
 
           {settings.rootCardVisible && (
-            <AdditionalOptionsDrawer settings={settings} />
+            <div className="grid gap-4 sm:grid-cols-2">
+              <RootDirectoryFields
+                build={settings.build}
+                onBuildChange={settings.setBuild}
+                disabled={pending}
+              />
+            </div>
           )}
         </AnimatedHeight>
       </CardContent>

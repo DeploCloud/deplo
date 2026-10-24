@@ -55,47 +55,35 @@ export default function Loading() {
 
         <Card>
           <CardHeader>
-            <Skeleton className="h-5 w-44" />
-            <Skeleton className="h-4 w-80" />
+            <Skeleton className="h-5 w-24" />
           </CardHeader>
-          <CardContent>
-            <div className="space-y-6">
-              <div className="space-y-2">
-                <Skeleton className="h-4 w-28" />
-                <div className="grid gap-2 sm:grid-cols-2">
-                  {Array.from({ length: 4 }).map((_, i) => (
-                    <Skeleton key={i} className="h-16 rounded-lg" />
-                  ))}
-                </div>
-              </div>
-              <div className="grid gap-4 border-t border-border pt-4 sm:grid-cols-2">
-                {Array.from({ length: 2 }).map((_, i) => (
-                  <div key={i} className="space-y-2">
-                    <Skeleton className="h-4 w-28" />
-                    <Skeleton className="h-9 w-full rounded-md" />
-                  </div>
-                ))}
-              </div>
+          <CardContent className="space-y-4">
+            <div className="space-y-2">
+              <Skeleton className="h-11 w-full rounded-lg" />
+              <Skeleton className="h-3 w-96" />
             </div>
+            <div className="grid gap-4 sm:grid-cols-2">
+              {Array.from({ length: 2 }).map((_, i) => (
+                <div key={i} className="space-y-2">
+                  <Skeleton className="h-4 w-24" />
+                  <Skeleton className="h-9 w-full rounded-md" />
+                </div>
+              ))}
+            </div>
+            <Skeleton className="h-12 w-full rounded-lg" />
           </CardContent>
           <CardFooter className="justify-end border-t border-border pt-4">
-            <Skeleton className="h-8 w-40 rounded-md" />
+            <Skeleton className="h-9 w-40 rounded-md" />
           </CardFooter>
         </Card>
 
         <Card>
-          <CardHeader>
-            <Skeleton className="h-5 w-40" />
-            <Skeleton className="h-4 w-72" />
+          <CardHeader className="flex-row items-center justify-between space-y-0">
+            <Skeleton className="h-5 w-36" />
+            <Skeleton className="h-5 w-9 rounded-full" />
           </CardHeader>
           <CardContent>
-            <div className="flex items-center justify-between rounded-lg border border-border p-3">
-              <div className="space-y-1.5">
-                <Skeleton className="h-4 w-28" />
-                <Skeleton className="h-3 w-72" />
-              </div>
-              <Skeleton className="h-5 w-9 rounded-full" />
-            </div>
+            <Skeleton className="h-12 w-full rounded-lg" />
           </CardContent>
         </Card>
       </div>

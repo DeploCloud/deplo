@@ -316,7 +316,7 @@ preset to pick, no mutation that writes it, and it changes nothing about how the
 built. Every deploy re-derives it from the App's `package.json` + root config files (read
 over the GitHub API for a repo, off the extracted tree for an upload) and overwrites, so it
 follows the source instead of drifting from it, and clears itself when it no longer applies.
-It exists **only under Railpack** (and _Detect automatically_, which ends on Railpack when the
+It exists **only under Railpack** (and _Automatic_, which ends on Railpack when the
 source holds no Dockerfile or Compose file), the one gate the deploy hook, the API and every
 screen share (`supportsFrameworkDetection`): with a Dockerfile or a Compose file the user has
 already spelled the build out, so naming a framework there would be a label that changes nothing. The one thing derived FROM it is the App's default

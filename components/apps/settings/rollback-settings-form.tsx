@@ -13,8 +13,7 @@ import {
 } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { InfoTip } from "@/components/ui/info-tip";
-import { SettingRow } from "@/components/shared/setting-row";
+import { FieldLabel, InfoTip } from "@/components/ui/info-tip";
 import { DirtyHint } from "@/components/apps/settings/settings-shared";
 import { UnsavedChangesGuard } from "@/components/apps/unsaved-changes-guard";
 import { gqlAction } from "@/lib/graphql-client";
@@ -74,13 +73,15 @@ export function RollbackSettingsForm({
           </CardTitle>
         </CardHeader>
 
-        <CardContent>
-          <SettingRow
-            label="Keep"
-            htmlFor="rollback-keep"
-            info="Kept rollbacks are instant. Older ones from a repository are rebuilt from their commit, which takes a few minutes."
-            docs="releases.rollbackRetention"
-          >
+        <CardContent className="grid gap-4 sm:grid-cols-2">
+          <div className="space-y-2">
+            <FieldLabel
+              htmlFor="rollback-keep"
+              info="Kept rollbacks are instant. Older ones from a repository are rebuilt from their commit, which takes a few minutes."
+              docs="releases.rollbackRetention"
+            >
+              Keep
+            </FieldLabel>
             <div className="relative w-full">
               <Input
                 id="rollback-keep"
@@ -99,7 +100,7 @@ export function RollbackSettingsForm({
                 {parsed === 1 ? "rollback" : "rollbacks"}
               </span>
             </div>
-          </SettingRow>
+          </div>
         </CardContent>
 
         <CardFooter className="justify-between border-t border-border pt-4">

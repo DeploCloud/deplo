@@ -140,14 +140,6 @@ export function useDeploymentSettings({
 
   const rootCardVisible = buildCardVisible && repoConfigVisible;
 
-  const closedSummary =
-    rootCardVisible &&
-    build.rootDirectory &&
-    build.rootDirectory !== "./" &&
-    build.rootDirectory !== "."
-      ? `Root: ${build.rootDirectory}`
-      : "";
-
   const gitConnection =
     connections.find((c) => c.id === gitValue.connectionId) ?? null;
   const autoDeployPossible =
@@ -449,7 +441,6 @@ export function useDeploymentSettings({
     buildCardVisible,
     repoConfigVisible,
     rootCardVisible,
-    closedSummary,
     autoDeployPossible,
     autoDeployBranch,
     sourceDirty,
