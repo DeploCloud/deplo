@@ -29,7 +29,7 @@ export async function listAllServers(): Promise<Server[]> {
   const rows = await getDb()
     .select()
     .from(serversTable)
-    .orderBy(asc(serversTable.createdAt));
+    .orderBy(asc(serversTable.createdAt), asc(serversTable.id));
   return rows.map(assembleServer);
 }
 
@@ -86,7 +86,7 @@ export async function listServersForTeam(teamId: string): Promise<Server[]> {
         inArray(serversTable.id, grantedToTeam),
       ),
     )
-    .orderBy(asc(serversTable.createdAt));
+    .orderBy(asc(serversTable.createdAt), asc(serversTable.id));
   return rows.map(assembleServer);
 }
 

@@ -200,3 +200,12 @@ test("only an instance admin sees which other teams share a server", async () =>
     "a team's own member never reads the other tenant",
   );
 });
+
+test("servers created in the same instant list in one fixed order", async () => {
+  await seedServer(db, "srv_z");
+  await seedServer(db, "srv_m");
+  assert.deepEqual(
+    (await listServersForTeam(TEAM_A)).map((s) => s.id),
+    [SERVER_1, "srv_m", "srv_z"],
+  );
+});
