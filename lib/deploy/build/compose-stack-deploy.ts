@@ -120,10 +120,11 @@ async function prepareComposeStack(opts: ComposeStackOpts): Promise<{
   return { stackYaml, filesDir };
 }
 
+// `failure` is logged only when nothing else said why: the agent's own reason is already in the log.
 async function finishComposeStack(
   opts: ComposeStackOpts & { serverId: string },
   running: boolean,
-  failure = "Stack did not reach a running state",
+  failure: string | null = "Stack did not reach a running state",
 ): Promise<void> {
   const { depId, project, domain, environment, started, target } = opts;
   const buildDurationMs = Date.now() - started;
@@ -163,7 +164,7 @@ async function finishComposeStack(
         { status: "error" },
       )
     )
-      log(depId, "error", failure);
+      if (failure) log(depId, "error", failure);
   }
 }
 
@@ -199,7 +200,7 @@ export async function deployComposeStackViaAgent(
     preview: opts.preview,
   });
 
-  const { outcome } = await tryAgent({
+  const { outcome, error } = await tryAgent({
     depId,
     serverId,
     project: {
@@ -224,7 +225,7 @@ export async function deployComposeStackViaAgent(
     forceRecreate: opts.forceRecreate,
   });
 
-  await finishComposeStack(opts, outcome === "agent");
+  await finishComposeStack(opts, outcome === "agent", error ? null : undefined);
 }
 
 // The second leg of a stack read from the source: the agent already read the file at this commit.
@@ -314,7 +315,11 @@ export async function deploySourceComposeStack(
     agentDeployId: `${depId}-stack`,
     forceRecreate: opts.forceRecreate,
   });
-  await finishComposeStack(stackOpts, attempt.outcome === "agent");
+  await finishComposeStack(
+    stackOpts,
+    attempt.outcome === "agent",
+    attempt.error ? null : undefined,
+  );
   const service = routes[0]?.service ?? undefined;
   return {
     deployed: attempt.outcome === "agent",

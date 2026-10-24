@@ -1,6 +1,6 @@
 import "server-only";
 
-import { access } from "node:fs/promises";
+import { access, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import {
   SourceKind,
@@ -28,6 +28,7 @@ import { getDb } from "../db/client";
 import { appVolumes as appVolumesTable } from "../db/schema/control-plane/apps";
 import { tarDir, tarDirChunks } from "./context-tar";
 import { buildConfigFor, normalizeBuildConfig } from "../frameworks";
+import { composeBuildsFromSource } from "./build/source-compose";
 import type { BuildConfig } from "../types/build";
 import type { LogLevel } from "../types/deployment";
 
@@ -131,6 +132,8 @@ export interface AgentDeploySink {
 export interface AgentDeployResult {
   ready: boolean;
   commitSha: string;
+  // The agent's own reason for a failure, already in the log.
+  error?: string;
   // The app listened here instead of the checked port.
   observedPort?: number;
   builtWith?: string;
@@ -473,6 +476,7 @@ function handleEvent(
     return {
       ready: ev.result.ready,
       commitSha: ev.result.commitSha || "",
+      error: ev.result.error || undefined,
       observedPort: ev.result.observedPort || undefined,
       builtWith: ev.result.builtWith || undefined,
       sourceCompose: ev.result.sourceCompose,
@@ -645,12 +649,19 @@ export async function resolveUploadMethod(
 ): Promise<BuildConfig> {
   const b = normalizeBuildConfig(build);
   if (!b.methodAuto) return b;
-  const resolved = (await fileExists(join(buildDir, "Dockerfile")))
-    ? "dockerfile"
-    : (await findComposeFile(buildDir, b.methodSettings.composeFile))
-      ? "compose"
-      : "railpack";
-  return { ...b, buildMethod: resolved, methodAuto: false };
+  if (await fileExists(join(buildDir, "Dockerfile")))
+    return { ...b, buildMethod: "dockerfile", methodAuto: false };
+  const compose = await findComposeFile(buildDir, b.methodSettings.composeFile);
+  const builds =
+    compose != null &&
+    composeBuildsFromSource(
+      await readFile(join(buildDir, compose), "utf8").catch(() => ""),
+    );
+  return {
+    ...b,
+    buildMethod: builds ? "compose" : "railpack",
+    methodAuto: false,
+  };
 }
 
 export async function findComposeFile(

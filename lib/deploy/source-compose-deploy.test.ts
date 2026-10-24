@@ -194,7 +194,7 @@ test("a compose file that reaches the server is refused before anything runs", a
     listeningPorts: [],
     sourceCompose: {
       path: "compose.yaml",
-      content: "services:\n  web:\n    image: x\n    privileged: true\n",
+      content: "services:\n  web:\n    build: .\n    privileged: true\n",
     },
   });
   await runDeploymentGuarded("dpl_1");
@@ -243,4 +243,46 @@ test("a port the app really listens on is adopted, with its domains", async () =
   assert.equal(dom.port, 8080);
   assert.equal(sent[0].ready?.port, 3000);
   assert.equal(sent[0].ready?.portRequired, true);
+});
+
+test("a compose file of images only falls back to Railpack under Detect automatically", async () => {
+  answer = (req) =>
+    req.buildSpec?.autoMethod
+      ? {
+          ready: false,
+          error: "",
+          commitSha: SHA,
+          observedPort: 0,
+          builtWith: "",
+          listeningPorts: [],
+          sourceCompose: {
+            path: "docker-compose.yml",
+            content: "services:\n  mysql:\n    image: mysql:9\n",
+          },
+        }
+      : {
+          ready: true,
+          error: "",
+          commitSha: SHA,
+          observedPort: 0,
+          builtWith: "",
+          listeningPorts: [3000],
+        };
+  await runDeploymentGuarded("dpl_1");
+  assert.equal(sent.length, 2);
+  const [, railpack] = sent;
+  assert.equal(railpack.buildKind, BuildKind.BUILD_KIND_RAILPACK);
+  assert.equal(railpack.buildSpec?.autoMethod, false);
+  assert.equal(railpack.git?.commit, SHA);
+  assert.notEqual(railpack.deployId, sent[0].deployId);
+  const dep = (
+    await db.select().from(deployments).where(eq(deployments.id, "dpl_1"))
+  )[0];
+  assert.equal(dep.status, "ready");
+  const build = (
+    await db.select().from(appBuild).where(eq(appBuild.appId, "prj_1"))
+  )[0];
+  assert.equal(build.buildMethod, "railpack");
+  const app = (await db.select().from(apps).where(eq(apps.id, "prj_1")))[0];
+  assert.equal(app.compose, null, "no stack was stored");
 });

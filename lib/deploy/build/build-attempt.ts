@@ -66,6 +66,7 @@ export async function consumeCacheClear(appId: string): Promise<void> {
 interface AgentAttempt {
   outcome: "agent" | "failed";
   commitSha: string;
+  error?: string;
   observedPort?: number;
   builtWith?: string;
   // The source turned out to carry a compose file: nothing was built or started.
@@ -358,6 +359,7 @@ export async function tryAgent(opts: {
       return {
         outcome: result.ready ? "agent" : "failed",
         commitSha: result.commitSha || builtCommitSha,
+        error: result.error,
         observedPort: result.observedPort,
         builtWith: result.builtWith ?? builtWith,
         sourceCompose: result.sourceCompose,

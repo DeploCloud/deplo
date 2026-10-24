@@ -4,6 +4,7 @@ import assert from "node:assert/strict";
 import yaml from "../../yaml";
 import {
   anchorSourcePaths,
+  composeBuildsFromSource,
   prepareSourceCompose,
   sourceComposeDir,
 } from "./source-compose";
@@ -177,5 +178,39 @@ test("an env_file inside a folder another service writes is refused, unless that
       `services:\n  web:\n    image: x\n    volumes: ["./config:/etc/app:ro", { type: bind, source: ./data, target: /d }]\n    env_file: config/web.env\n`,
       opts,
     ),
+  );
+});
+
+test("only a compose file that builds the repository's code counts for Detect automatically", () => {
+  assert.equal(
+    composeBuildsFromSource(
+      `services:\n  web:\n    build: .\n  db:\n    image: postgres:16\n`,
+    ),
+    true,
+  );
+  assert.equal(
+    composeBuildsFromSource(
+      `services:\n  api:\n    build: { context: ./api }\n`,
+    ),
+    true,
+  );
+  // A dev database file, or the project's published image, deploys none of this code.
+  assert.equal(
+    composeBuildsFromSource(
+      `services:\n  mysql:\n    image: mysql:9\n  postgres:\n    image: postgres:17\n`,
+    ),
+    false,
+  );
+  assert.equal(
+    composeBuildsFromSource(
+      `services:\n  app:\n    image: louislam/uptime-kuma:2\n`,
+    ),
+    false,
+  );
+  assert.equal(
+    composeBuildsFromSource(
+      `services:\n  app:\n    build: "https://github.com/acme/app.git#main"\n`,
+    ),
+    false,
   );
 });

@@ -137,7 +137,20 @@ test("an upload on Detect automatically: Dockerfile, then a compose file, then R
       "railpack",
     );
 
-    await writeFile(join(dir, "docker-compose.yml"), "services: {}\n");
+    // A compose file of images only builds none of this code: still Railpack.
+    await writeFile(
+      join(dir, "docker-compose.yml"),
+      "services:\n  db:\n    image: postgres:16\n",
+    );
+    assert.equal(
+      (await resolveUploadMethod(dir, auto)).buildMethod,
+      "railpack",
+    );
+
+    await writeFile(
+      join(dir, "docker-compose.yml"),
+      "services:\n  web:\n    build: .\n",
+    );
     const compose = await resolveUploadMethod(dir, auto);
     assert.equal(compose.buildMethod, "compose");
     assert.equal(

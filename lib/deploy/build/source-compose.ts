@@ -81,7 +81,7 @@ export function prepareSourceCompose(
           ]),
         ];
       notes.push(
-        `Service ${name}: its published ports are not opened on the server; its domain reaches it instead.`,
+        `Service ${name}: its published ports stay closed on the server; the app's domain is how the stack is reached.`,
       );
     }
     if (svc.env_file != null)
@@ -239,6 +239,26 @@ function optionalEnvFiles(name: string, raw: unknown): Rec[] {
     return { ...(isRec(entry) ? entry : {}), path, required: false };
   });
 }
+
+// A compose file that only runs images (a dev database, an official image) deploys none of the repository's code.
+export function composeBuildsFromSource(raw: string): boolean {
+  let doc: Rec;
+  try {
+    doc = (yaml.load(raw) as Rec) ?? {};
+  } catch {
+    return true;
+  }
+  const services = isRec(doc.services) ? Object.values(doc.services) : [];
+  return services.some((svc) => {
+    if (!isRec(svc) || svc.build == null) return false;
+    const context = isRec(svc.build) ? svc.build.context : svc.build;
+    return typeof context !== "string" || !isRemoteRef(context);
+  });
+}
+
+export const composeOnlyRunsImages = (path: string) =>
+  `${path} builds nothing from this repository (it only runs images), so Railpack builds the app instead. ` +
+  "Pick Docker Compose in Settings -> Build & output to deploy that file as it is.";
 
 // The working copy the agent keeps for this app (the agent's <stack dir>/<slug>.src).
 export function sourceComposeDir(deployKey: string, subdir: string): string {

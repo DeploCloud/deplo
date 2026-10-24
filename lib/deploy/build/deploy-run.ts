@@ -24,6 +24,10 @@ import {
 } from "../../data/apps/build-outcome";
 import type { SourceCompose } from "../../agent/gen/agent";
 import { findComposeFile, resolveUploadMethod } from "../agent-deploy";
+import {
+  composeBuildsFromSource,
+  composeOnlyRunsImages,
+} from "./source-compose";
 import { readFile } from "node:fs/promises";
 import { publishAppChanged } from "../../graphql/pubsub";
 import { nowIso } from "../../ids";
@@ -419,6 +423,13 @@ async function runDeployment(depId: string): Promise<void> {
         await deployStackFrom(found, { kind: "upload", buildDir });
         return;
       }
+      if (method.methodAuto && build.buildMethod === "railpack") {
+        const compose = await findComposeFile(
+          buildDir,
+          project.build.methodSettings.composeFile,
+        );
+        if (compose) log(depId, "info", composeOnlyRunsImages(compose));
+      }
       if (method.methodAuto && build.buildMethod === "dockerfile")
         log(
           depId,
@@ -568,36 +579,44 @@ async function runDeployment(depId: string): Promise<void> {
             ? `git fetch ${forkUrl ?? repo.url} (${pin.slice(0, 7)}) [on agent]`
             : `git clone ${forkUrl ?? repo.url} (${dep.branch}) [on agent]`,
         );
-        const attempt = await tryAgent({
-          depId,
-          serverId,
-          project: agentProject,
-          imageRef,
-          composeYaml,
-          network,
-          env,
-          plan: {
-            kind: "git",
-            url: cloneUrl,
-            branch: dep.branch,
-            commit: pin || undefined,
-            subdir: project.build.rootDirectory ?? "",
-            build: normalizeBuildConfig(project.build),
-          },
-          noCache,
-          forceRecreate,
-          forkPreview: Boolean(forkUrl),
-          ready,
-          // A fork is a stranger's code: its build never borrows the team's GitHub identity.
-          githubToken:
-            usesRailpack && !forkUrl
-              ? ((await buildMetadataToken(
-                  project.teamId,
-                  repo.installationId ?? null,
-                )) ?? undefined)
-              : undefined,
-          ...buildServerOpts,
-        });
+        const githubToken =
+          usesRailpack && !forkUrl
+            ? ((await buildMetadataToken(
+                project.teamId,
+                repo.installationId ?? null,
+              )) ?? undefined)
+            : undefined;
+        const gitLeg = (
+          build: typeof project.build,
+          commit: string,
+          agentDeployId?: string,
+        ) =>
+          tryAgent({
+            depId,
+            serverId,
+            project: agentProject,
+            imageRef,
+            composeYaml,
+            network,
+            env,
+            plan: {
+              kind: "git",
+              url: cloneUrl,
+              branch: dep.branch,
+              commit: commit || undefined,
+              subdir: project.build.rootDirectory ?? "",
+              build: normalizeBuildConfig(build),
+            },
+            noCache,
+            forceRecreate,
+            forkPreview: Boolean(forkUrl),
+            ready,
+            // A fork is a stranger's code: its build never borrows the team's GitHub identity.
+            githubToken,
+            agentDeployId,
+            ...buildServerOpts,
+          });
+        let attempt = await gitLeg(project.build, pin);
         if (attempt.commitSha) {
           commitSha = attempt.commitSha;
           await setDep(depId, { commitSha });
@@ -618,6 +637,19 @@ async function runDeployment(depId: string): Promise<void> {
               "The fork's branch moved past the reviewed commit.",
             );
           }
+        }
+        // Detect automatically takes a compose file only when it builds this repository's code.
+        if (
+          attempt.sourceCompose &&
+          method.methodAuto &&
+          !composeBuildsFromSource(attempt.sourceCompose.content)
+        ) {
+          log(depId, "info", composeOnlyRunsImages(attempt.sourceCompose.path));
+          attempt = await gitLeg(
+            { ...project.build, buildMethod: "railpack", methodAuto: false },
+            attempt.commitSha || pin,
+            `${depId}-railpack`,
+          );
         }
         if (attempt.sourceCompose) {
           agentOutcome = "stack";
