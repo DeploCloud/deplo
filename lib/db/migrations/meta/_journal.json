@@ -1282,6 +1282,13 @@
       "when": 1792830025599,
       "tag": "0182_restore_between_deplo",
       "breakpoints": true
+    },
+    {
+      "idx": 183,
+      "version": "7",
+      "when": 1792830025600,
+      "tag": "0183_normalize_app_names",
+      "breakpoints": true
     }
   ]
 }
