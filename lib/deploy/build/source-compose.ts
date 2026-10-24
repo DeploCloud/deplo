@@ -100,7 +100,61 @@ export function prepareSourceCompose(
           `${key.slice(0, -1)} \`${name}\` reads a file outside the repository.`,
         );
   }
+  refuseSwappableEnvFiles(services);
   return { yaml: yaml.dump(doc, { lineWidth: -1, noRefs: true }), notes };
+}
+
+// Folders of the checkout a service mounts writable, as "a/b" ("" for the whole checkout).
+export function writableSourceBinds(
+  services: Rec,
+): { service: string; folder: string }[] {
+  const out: { service: string; folder: string }[] = [];
+  for (const [service, svc] of Object.entries(services)) {
+    if (!isRec(svc) || !Array.isArray(svc.volumes)) continue;
+    for (const v of svc.volumes) {
+      let source: string | null = null;
+      let readOnly = false;
+      if (typeof v === "string") {
+        const parts = v.split(":");
+        if (parts.length < 2) continue;
+        source = parts[0];
+        readOnly = parts.slice(2).join(":").split(",").includes("ro");
+      } else if (isRec(v) && typeof v.source === "string") {
+        source = v.source;
+        readOnly = v.read_only === true;
+      }
+      if (!source || readOnly || !/^\.(\/|$)/.test(source)) continue;
+      out.push({ service, folder: checkoutRel(source) });
+    }
+  }
+  return out;
+}
+
+const checkoutRel = (p: string) => {
+  const n = posix.normalize(p.trim());
+  return n === "." ? "" : n.replace(/^\.\//, "").replace(/\/+$/, "");
+};
+
+// compose reads env_file on the server at every start: one inside a folder a container can write could become a link.
+function refuseSwappableEnvFiles(services: Rec): void {
+  const binds = writableSourceBinds(services);
+  for (const [name, svc] of Object.entries(services)) {
+    if (!isRec(svc) || !Array.isArray(svc.env_file)) continue;
+    for (const e of svc.env_file) {
+      const file = checkoutRel(isRec(e) ? String(e.path ?? "") : String(e));
+      const bind = binds.find(
+        (b) =>
+          b.folder === "" ||
+          file === b.folder ||
+          file.startsWith(`${b.folder}/`),
+      );
+      if (bind)
+        refuse(
+          `service \`${name}\` reads env_file \`${file}\` from \`./${bind.folder}\`, which service \`${bind.service}\` mounts writable, ` +
+            "so a container could swap it for a link. Mount that folder read-only (:ro), or keep the env file outside it.",
+        );
+    }
+  }
 }
 
 function prepareBuild(

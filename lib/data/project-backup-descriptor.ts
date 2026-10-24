@@ -3,7 +3,9 @@ import "server-only";
 import yaml from "../yaml";
 
 import { decryptSecretOrThrow } from "../crypto";
-import { hostVolumeName, usesComposeStack } from "../utils";
+import { hostVolumeName, usesComposeStack, usesPastedCompose } from "../utils";
+import { writableSourceBinds } from "../deploy/build/source-compose";
+import { servicesOf } from "../deploy/compose-lint/document";
 import { composeOwnVolumeKeys } from "../deploy/compose-lint/volumes";
 import { resolveEnvEntries } from "../deploy/env-resolve";
 import { loadEnvVarsForApp } from "./app-graph-load";
@@ -180,6 +182,12 @@ export function appMoveLeftBehind(
   const out = (project.volumes ?? [])
     .filter((v) => v.type === "host" && v.hostPath)
     .map((v) => `host path ${v.hostPath}`);
+  // A stack built from its source keeps ./ folders in the server's copy of the repository, which a move does not carry.
+  if (usesComposeStack(project) && !usesPastedCompose(project))
+    for (const { folder } of writableSourceBinds(
+      servicesOf(project.compose) ?? {},
+    ))
+      out.push(`folder ./${folder} of the repository's copy on that server`);
   let doc: unknown;
   try {
     doc = yaml.load(renderedYaml);

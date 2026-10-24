@@ -162,3 +162,20 @@ services:
     "/data/stacks/shop.src/apps/web/secret.txt",
   );
 });
+
+test("an env_file inside a folder another service writes is refused, unless that folder is read-only", () => {
+  refused(
+    `services:\n  web:\n    build: .\n    volumes: [".:/app"]\n  worker:\n    image: x\n    env_file: .env\n`,
+    /reads env_file `.env` from `.\/`, which service `web` mounts writable/,
+  );
+  refused(
+    `services:\n  db:\n    image: x\n    volumes: ["./config:/etc/app"]\n    env_file: config/db.env\n`,
+    /from `.\/config`, which service `db` mounts writable/,
+  );
+  assert.doesNotThrow(() =>
+    prepareSourceCompose(
+      `services:\n  web:\n    image: x\n    volumes: ["./config:/etc/app:ro", { type: bind, source: ./data, target: /d }]\n    env_file: config/web.env\n`,
+      opts,
+    ),
+  );
+});
