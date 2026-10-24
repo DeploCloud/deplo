@@ -38,6 +38,17 @@ const COMPOSE = `services:
 let db: TestDb;
 let pg: PGlite;
 let sent: DeployRequest[] = [];
+const CAPS = [
+  "deploy.network",
+  "git.commit",
+  "git.submodules",
+  "deploy.railpack",
+  "deploy.compose.multi",
+  "deploy.compose.source",
+  "build.auto-method",
+  "deploy.ready-check",
+];
+let caps = CAPS;
 let answer: (req: DeployRequest) => DeployEvent["result"];
 const realFetch = globalThis.fetch;
 
@@ -53,15 +64,7 @@ const fakeAgent = () =>
             contractVersion: ContractVersion.CONTRACT_VERSION_V1,
             dockerAvailable: true,
             agentVersion: "9.9.9",
-            capabilities: [
-              "deploy.network",
-              "git.commit",
-              "deploy.railpack",
-              "deploy.compose.multi",
-              "deploy.compose.source",
-              "build.auto-method",
-              "deploy.ready-check",
-            ],
+            capabilities: caps,
           });
         if (prop === "deploy")
           return async function* (req: DeployRequest) {
@@ -90,6 +93,7 @@ after(async () => {
 
 beforeEach(async () => {
   sent = [];
+  caps = CAPS;
   await pg.exec(`${TRUNCATE_PROJECT_GRAPH}
     truncate table users, teams restart identity cascade;`);
   await seedIdentity(db, {
@@ -400,4 +404,58 @@ test("a stack that fails is not stored as the app's stack", async () => {
     !logs.some((l) => /Stack did not reach a running state/.test(l)),
     "the agent's reason is the last word",
   );
+});
+
+test("the app's submodules setting reaches the agent on both legs of a stack", async () => {
+  await db
+    .update(apps)
+    .set({ repoSubmodules: true })
+    .where(eq(apps.id, "prj_1"));
+  answer = (req) =>
+    req.buildKind === BuildKind.BUILD_KIND_COMPOSE
+      ? {
+          ready: true,
+          error: "",
+          commitSha: SHA,
+          observedPort: 0,
+          builtWith: "",
+          listeningPorts: [],
+        }
+      : {
+          ready: false,
+          error: "",
+          commitSha: SHA,
+          observedPort: 0,
+          builtWith: "",
+          listeningPorts: [],
+          sourceCompose: { path: "docker-compose.yml", content: COMPOSE },
+        };
+  await runDeploymentGuarded("dpl_1");
+  assert.equal(sent.length, 2);
+  assert.equal(sent[0].git?.submodules, true);
+  assert.equal(sent[1].git?.submodules, true);
+});
+
+test("an agent too old for submodules builds without them and says so", async () => {
+  caps = CAPS.filter((c) => c !== "git.submodules");
+  await db
+    .update(apps)
+    .set({ repoSubmodules: true })
+    .where(eq(apps.id, "prj_1"));
+  answer = () => ({
+    ready: true,
+    error: "",
+    commitSha: SHA,
+    observedPort: 0,
+    builtWith: "",
+    listeningPorts: [3000],
+  });
+  await runDeploymentGuarded("dpl_1");
+  assert.equal(sent[0].git?.submodules, false);
+  const logs = (
+    await pg.query<{ text: string }>(
+      "select text from deployment_logs order by id",
+    )
+  ).rows.map((r) => r.text);
+  assert.ok(logs.some((l) => /too old to check out git submodules/.test(l)));
 });

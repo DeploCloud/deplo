@@ -85,7 +85,8 @@ export function GitDeployOptions({
             <>
               Clones nested submodule repos too (
               <code className="font-mono">git clone --recurse-submodules</code>)
-              so their code is there at build time. Leave off if yours has none
+              from the same git server, so their code is there at build time.
+              Leave off if yours has none
             </>
           }
           docs="releases.submodules"

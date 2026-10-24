@@ -619,6 +619,7 @@ async function runDeployment(depId: string): Promise<void> {
               branch: dep.branch,
               commit: commit || undefined,
               subdir: project.build.rootDirectory ?? "",
+              submodules: Boolean(repo.submodules),
               build: normalizeBuildConfig(build),
             },
             noCache,
@@ -672,6 +673,7 @@ async function runDeployment(depId: string): Promise<void> {
             url: cloneUrl,
             commit: attempt.commitSha || pin,
             subdir: project.build.rootDirectory ?? "",
+            submodules: Boolean(repo.submodules),
           });
           break;
         }

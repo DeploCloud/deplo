@@ -608,6 +608,11 @@ export interface GitSource {
    * was pruned). Advertised as `git.commit` in Hello; an older agent ignores it.
    */
   commit: string;
+  /**
+   * Also check out the repository's git submodules, recursively, only from the
+   * repository's own host. Advertised as `git.submodules`; an older agent ignores it.
+   */
+  submodules: boolean;
 }
 
 export interface DockerfileBuild {
@@ -3813,7 +3818,7 @@ export const BuildSpec: MessageFns<BuildSpec> = {
 };
 
 function createBaseGitSource(): GitSource {
-  return { url: "", branch: "", token: "", subdir: "", commit: "" };
+  return { url: "", branch: "", token: "", subdir: "", commit: "", submodules: false };
 }
 
 export const GitSource: MessageFns<GitSource> = {
@@ -3832,6 +3837,9 @@ export const GitSource: MessageFns<GitSource> = {
     }
     if (message.commit !== "") {
       writer.uint32(42).string(message.commit);
+    }
+    if (message.submodules !== false) {
+      writer.uint32(48).bool(message.submodules);
     }
     return writer;
   },
@@ -3889,6 +3897,14 @@ export const GitSource: MessageFns<GitSource> = {
             message.commit = reader.string();
             continue;
           }
+          case 6: {
+            if (tag !== 48) {
+              break;
+            }
+
+            message.submodules = reader.bool();
+            continue;
+          }
         }
         if ((tag & 7) === 4 || tag === 0) {
           break;
@@ -3908,6 +3924,7 @@ export const GitSource: MessageFns<GitSource> = {
       token: isSet(object.token) ? globalThis.String(object.token) : "",
       subdir: isSet(object.subdir) ? globalThis.String(object.subdir) : "",
       commit: isSet(object.commit) ? globalThis.String(object.commit) : "",
+      submodules: isSet(object.submodules) ? globalThis.Boolean(object.submodules) : false,
     };
   },
 
@@ -3928,6 +3945,9 @@ export const GitSource: MessageFns<GitSource> = {
     if (message.commit !== "") {
       obj.commit = message.commit;
     }
+    if (message.submodules !== false) {
+      obj.submodules = message.submodules;
+    }
     return obj;
   },
 
@@ -3941,6 +3961,7 @@ export const GitSource: MessageFns<GitSource> = {
     message.token = object.token ?? "";
     message.subdir = object.subdir ?? "";
     message.commit = object.commit ?? "";
+    message.submodules = object.submodules ?? false;
     return message;
   },
 };

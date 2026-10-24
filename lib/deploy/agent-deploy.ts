@@ -50,6 +50,7 @@ export type AgentBuildPlan =
       // A full SHA to build instead of the branch tip (a rollback that rebuilds).
       commit?: string;
       subdir: string;
+      submodules?: boolean;
       build: BuildConfig;
     }
   | {
@@ -60,7 +61,13 @@ export type AgentBuildPlan =
       // The compose file the source carries, built and brought up from its checkout.
       kind: "source-compose";
       source:
-        | { kind: "git"; url: string; commit: string; subdir: string }
+        | {
+            kind: "git";
+            url: string;
+            commit: string;
+            subdir: string;
+            submodules?: boolean;
+          }
         | { kind: "upload"; buildDir: string };
       composeFile: string;
     };
@@ -577,6 +584,7 @@ export async function buildDeployRequest(opts: {
         commit: opts.plan.commit ?? "",
         subdir: opts.plan.subdir,
         token: "",
+        submodules: opts.plan.submodules ?? false,
       },
     };
   }
@@ -600,6 +608,7 @@ export async function buildDeployRequest(opts: {
               commit: source.commit,
               subdir: source.subdir,
               token: "",
+              submodules: source.submodules ?? false,
             },
           }
         : { sourceKind: SourceKind.SOURCE_KIND_UPLOAD }),
@@ -692,6 +701,14 @@ function applyAgentFeatures(
     capabilities.includes("build.github-token")
   )
     req.githubToken = opts.githubToken;
+  if (req.git?.submodules && !capabilities.includes("git.submodules")) {
+    req.git.submodules = false;
+    sink.log(
+      "warn",
+      "This server's agent is too old to check out git submodules, so this build has none. " +
+        "Update the agent (reissue the install command from the server's actions menu).",
+    );
+  }
   if (
     req.buildSpec?.autoMethod &&
     !capabilities.includes("build.auto-method")
