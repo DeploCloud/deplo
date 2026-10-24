@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 
 import type { PGlite } from "@electric-sql/pglite";
 
+import journal from "./migrations/meta/_journal.json";
 import { makeTestDb, type TestDb } from "./test-harness";
 
 let db: TestDb;
@@ -221,4 +222,12 @@ test("schema: the append-only tables carry a bigint identity seq", async () => {
       where table_schema='public' and table_name='deployment_logs' and column_name='id'`,
   );
   assert.equal(logs.rows[0]?.is_identity, "YES");
+});
+
+// Drizzle's migrator skips every entry not newer than the last one applied.
+test("schema: migration journal timestamps strictly increase", () => {
+  journal.entries.slice(1).forEach((entry, i) => {
+    const prev = journal.entries[i];
+    assert.ok(entry.when > prev.when, `${entry.tag} is not after ${prev.tag}`);
+  });
 });
