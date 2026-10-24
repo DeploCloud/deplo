@@ -1,6 +1,7 @@
 import { ALL_CAPABILITIES, type Capability } from "./types/identity";
 
-export type TokenPresetId = "readonly" | "ci" | "mcp" | "automation" | "root";
+export type TokenPresetId =
+  "readonly" | "ci" | "mcp" | "automation" | "agent" | "root";
 
 export interface TokenPreset {
   id: TokenPresetId;
@@ -51,6 +52,25 @@ export const TOKEN_PRESETS: TokenPreset[] = [
       "configure_apps",
       "manage_domains",
       "manage_env",
+      "view_logs",
+    ],
+  },
+  {
+    id: "agent",
+    name: "Agent setup",
+    description:
+      "What an agent needs to move your projects in: creates projects, apps and databases, uses your Git connections, and ships.",
+    capabilities: [
+      "view",
+      "create_apps",
+      "deploy_apps",
+      "control_apps",
+      "configure_apps",
+      "manage_domains",
+      "manage_env",
+      "create_projects",
+      "create_databases",
+      "manage_git",
       "view_logs",
     ],
   },

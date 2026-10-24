@@ -7,7 +7,7 @@ import { toast } from "sonner";
 import { WizardStepper } from "@/components/shared/wizard-stepper";
 import type { ScopeSelection } from "@/components/settings/tokens/scope-picker/selection";
 import { gqlAction } from "@/lib/graphql-client";
-import { TOKEN_PRESETS } from "@/lib/token-presets";
+import { TOKEN_PRESETS, tokenPreset } from "@/lib/token-presets";
 import type { Capability } from "@/lib/types/identity";
 import type { ScopeTreeTeam } from "@/lib/data/tokens/scope-tree";
 import { AGENTS, type AgentId } from "../agents";
@@ -69,6 +69,7 @@ export function ConnectWizard({
       onRestart={() => {
         setSearchParam("step", null);
         setSearchParam("agent", null);
+        setSearchParam("preset", null);
         setRunId((n) => n + 1);
       }}
       onRefresh={() => router.refresh()}
@@ -111,7 +112,14 @@ function WizardRun({
   const [name, setName] = React.useState(
     () => AGENTS.find((a) => a.id === agentId)?.label ?? "",
   );
-  const [caps, setCaps] = React.useState<Capability[]>(MCP_PRESET.capabilities);
+  const presetParam = useInitialParam("preset");
+  // A link may preselect a template, never Root access.
+  const [caps, setCaps] = React.useState<Capability[]>(() => {
+    const linked = tokenPreset(presetParam ?? "");
+    return linked && linked.id !== "root"
+      ? linked.capabilities
+      : MCP_PRESET.capabilities;
+  });
   const [expiry, setExpiry] = React.useState("90");
   const [scope, setScope] = React.useState<ScopeSelection>({
     teamIds: [],
