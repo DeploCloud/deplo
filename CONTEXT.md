@@ -325,8 +325,9 @@ Angular's 4200), applied while the user is creating the App and theirs to overri
 moment they touch the field. Catalog (ids, names, ports, signals) in
 [`lib/apps/framework-catalog.ts`](lib/apps/framework-catalog.ts), the pure rules in
 [`framework-detect.ts`](lib/apps/framework-detect.ts), the source reads in
-[`framework-source.ts`](lib/apps/framework-source.ts), and the marks - inlined, never a
-CDN, because a self-hosted Deplo may have no internet - in
+[`framework-source.ts`](lib/apps/framework-source.ts), and the marks - each brand's own
+full-colour logo, served by Deplo itself from `public/frameworks/` and never a CDN, because a
+Deplo may have no internet - in
 [`components/shared/framework-icons.tsx`](components/shared/framework-icons.tsx).
 _Avoid_: framework **preset** (the user-picked kind was removed on purpose - the builders
 detect the stack), calling it a build method (that is the separate `buildMethod` axis),
