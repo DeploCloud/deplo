@@ -3,10 +3,10 @@
 import * as React from "react";
 import { useRouter } from "@/lib/nav";
 import { toast } from "sonner";
-import { Save, Terminal } from "lucide-react";
+import { Flag, Save, Terminal } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { InfoTip } from "@/components/ui/info-tip";
+import { FeatureRow } from "@/components/apps/settings/settings-shared";
 import {
   composeUpCommandPreview,
   parseComposeUpArgs,
@@ -65,69 +65,58 @@ export function ComposeArgsPanel({
   }
 
   return (
-    <form
-      onSubmit={save}
-      className="space-y-3 rounded-lg border border-border p-3"
-    >
-      <div className="space-y-0.5">
-        <p className="flex items-center gap-1.5 text-sm font-medium">
-          Extra compose flags
-          <InfoTip
-            content={
-              <>
-                Deplo builds the command that starts your app. These flags are
-                added to the end of it - the project, the stack file and the
-                env-file stay Deplo&apos;s, so a flag here can never point the
-                command at another app. Applied on every deploy and every
-                routing change.
-              </>
-            }
-            docs="compose.flags"
-          />
-        </p>
-        <p className="text-xs text-muted-foreground">
-          Add flags to the command that brings this app up, like{" "}
-          <code className="font-mono text-[0.7rem]">--wait</code>. Leave empty
-          for the default.
-        </p>
-      </div>
+    <form onSubmit={save}>
+      <FeatureRow
+        icon={Flag}
+        title="Extra compose flags"
+        info="Added to the end of the command Deplo runs. The project and its files stay Deplo's, so a flag can never point it at another app."
+        docs="compose.flags"
+        description={
+          <>
+            Add flags to the command that brings this app up, like{" "}
+            <code className="font-mono text-[0.7rem]">--wait</code>. Leave empty
+            for the default.
+          </>
+        }
+      >
+        <div className="mt-4 space-y-3">
+          <div className="flex items-center gap-2">
+            <Input
+              value={text}
+              onChange={(e) => setText(e.target.value)}
+              placeholder="--wait"
+              spellCheck={false}
+              autoComplete="off"
+              aria-label="Extra compose flags"
+              aria-invalid={error != null}
+              className="font-mono text-xs"
+            />
+            <Button
+              type="submit"
+              variant="outline"
+              disabled={pending || !dirty || error != null}
+            >
+              <Save className="size-4" />
+              Save
+            </Button>
+          </div>
 
-      <div className="flex items-center gap-2">
-        <Input
-          value={text}
-          onChange={(e) => setText(e.target.value)}
-          placeholder="--wait"
-          spellCheck={false}
-          autoComplete="off"
-          aria-label="Extra compose flags"
-          aria-invalid={error != null}
-          className="font-mono text-xs"
-        />
-        <Button
-          type="submit"
-          size="sm"
-          variant="outline"
-          disabled={pending || !dirty || error != null}
-        >
-          <Save className="size-4" />
-          Save
-        </Button>
-      </div>
+          <div className="overflow-x-auto rounded-md border border-border bg-surface px-3 py-2">
+            <code className="flex items-baseline gap-1.5 font-mono text-[0.7rem] leading-relaxed whitespace-pre">
+              <Terminal
+                aria-hidden
+                className="size-3 shrink-0 translate-y-px text-muted-foreground/70"
+              />
+              <span className="text-muted-foreground/70">{base}</span>
+              {yours && (
+                <span className="font-medium text-foreground">{yours}</span>
+              )}
+            </code>
+          </div>
 
-      <div className="overflow-x-auto rounded-md border border-border bg-surface px-3 py-2">
-        <code className="flex items-baseline gap-1.5 font-mono text-[0.7rem] leading-relaxed whitespace-pre">
-          <Terminal
-            aria-hidden
-            className="size-3 shrink-0 translate-y-px text-muted-foreground/70"
-          />
-          <span className="text-muted-foreground/70">{base}</span>
-          {yours && (
-            <span className="font-medium text-foreground">{yours}</span>
-          )}
-        </code>
-      </div>
-
-      {error && <p className="text-xs text-destructive">{error}</p>}
+          {error && <p className="text-xs text-destructive">{error}</p>}
+        </div>
+      </FeatureRow>
 
       <UnsavedChangesGuard when={dirty} />
     </form>

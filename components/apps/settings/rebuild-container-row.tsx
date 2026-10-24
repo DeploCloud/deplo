@@ -4,15 +4,8 @@ import * as React from "react";
 import { useRouter } from "@/lib/nav";
 import { toast } from "sonner";
 import { Hammer } from "lucide-react";
-import {
-  Card,
-  CardDescription,
-  CardFooter,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { InfoTip } from "@/components/ui/info-tip";
+import { FeatureRow } from "@/components/apps/settings/settings-shared";
 import { gqlAction } from "@/lib/graphql-client";
 import { CapabilityTip, useAppCan } from "@/components/apps/app-capabilities";
 import type { DeploySource } from "@/lib/types/app";
@@ -29,7 +22,7 @@ const REBUILD_TIP: Record<DeploySource, string> = {
     "Pulls every service's image again and replaces every container, for a stack that looks stuck.",
 };
 
-export function RebuildContainerCard({
+export function RebuildContainerRow({
   appId,
   slug,
   source,
@@ -65,19 +58,13 @@ export function RebuildContainerCard({
   }
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="flex w-fit items-center gap-2 text-base">
-          <Hammer className="size-4 text-muted-foreground" />
-          Rebuild container
-          <InfoTip content={REBUILD_TIP[source]} docs="deploy.trace" />
-        </CardTitle>
-        <CardDescription>
-          Volumes, domains and data are untouched, and the current container
-          keeps serving until the new build is ready.
-        </CardDescription>
-      </CardHeader>
-      <CardFooter className="justify-end">
+    <FeatureRow
+      icon={Hammer}
+      title="Rebuild container"
+      info={REBUILD_TIP[source]}
+      docs="deploy.trace"
+      description="Volumes, domains and data are untouched, and the current container keeps serving until the new build is ready."
+      control={
         <CapabilityTip cap="deploy_apps">
           <Button
             size="sm"
@@ -89,7 +76,7 @@ export function RebuildContainerCard({
             {pending ? "Starting rebuild" : "Rebuild container"}
           </Button>
         </CapabilityTip>
-      </CardFooter>
-    </Card>
+      }
+    />
   );
 }

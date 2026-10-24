@@ -12,6 +12,7 @@ import { ConfirmAction } from "@/components/shared/confirm-action";
 import { CapabilityTip } from "@/components/apps/app-capabilities";
 import { gqlAction } from "@/lib/graphql-client";
 import { DocsLink } from "@/components/ui/docs-link";
+import { FeatureRow } from "@/components/apps/settings/settings-shared";
 
 const SET_ENABLED = /* GraphQL */ `
   mutation ($appId: String!, $enabled: Boolean!) {
@@ -50,19 +51,13 @@ export function ConsoleSettingsForm({
   }
 
   return (
-    <div id="console" className="scroll-mt-20 rounded-lg border p-4">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="min-w-56 flex-1 space-y-1">
-          <p className="flex items-center gap-2 text-sm font-medium">
-            <SquareTerminal className="size-4 text-muted-foreground" />
-            Console
-          </p>
-          <p className="text-sm text-muted-foreground">
-            Open a terminal inside the running container, as its own user and
-            with no sandbox. No SSH needed.
-          </p>
-        </div>
-        <div className="flex items-center gap-3">
+    <FeatureRow
+      id="console"
+      icon={SquareTerminal}
+      title="Console"
+      description="Open a terminal inside the running container, as its own user and with no sandbox. No SSH needed."
+      control={
+        <>
           {enabled &&
             (canConsole ? (
               <Button asChild size="sm" variant="outline">
@@ -81,9 +76,9 @@ export function ConsoleSettingsForm({
             disabled={pending}
             aria-label="Console"
           />
-        </div>
-      </div>
-
+        </>
+      }
+    >
       <ConfirmAction
         open={confirmOn}
         onOpenChange={setConfirmOn}
@@ -108,6 +103,6 @@ export function ConsoleSettingsForm({
         }}
         successMessage="Console is on"
       />
-    </div>
+    </FeatureRow>
   );
 }

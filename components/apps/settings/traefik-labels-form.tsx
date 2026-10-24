@@ -4,7 +4,17 @@ import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { useGraphqlMutation } from "@/lib/use-graphql";
 import type { TraefikLabel } from "@/lib/deploy/traefik-overrides";
+import { Save, Tags } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import {
+  Card,
+  CardContent,
+  CardFooter,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import { InfoTip } from "@/components/ui/info-tip";
+import { DirtyHint } from "@/components/apps/settings/settings-shared";
 import { Textarea } from "@/components/ui/textarea";
 import { UnsavedChangesGuard } from "@/components/apps/unsaved-changes-guard";
 
@@ -51,35 +61,47 @@ export function TraefikLabelsForm({
   }
 
   return (
-    <form
-      onSubmit={save}
-      className="space-y-3 rounded-lg border border-border p-3"
-    >
-      <label htmlFor="traefik-labels" className="text-sm font-medium">
-        Traefik labels
-      </label>
-      <p className="mt-1 text-xs text-muted-foreground">
-        Override proxy settings with one key=value per line. Complete custom
-        routes replace automatic routes.
-      </p>
-      <Textarea
-        id="traefik-labels"
-        value={text}
-        onChange={(e) => setText(e.target.value)}
-        rows={8}
-        spellCheck={false}
-        className="font-mono text-xs"
-        disabled={pending}
-        placeholder="traefik.enable=true"
-        aria-describedby="traefik-labels-warning"
-      />
-      <p id="traefik-labels-warning" className="text-xs text-warning">
-        These labels can affect other apps on this server. Image labels stay
-        blocked; previews use automatic routing.
-      </p>
-      <Button type="submit" disabled={pending || !dirty} aria-busy={pending}>
-        {pending ? "Saving" : "Save"}
-      </Button>
+    <form onSubmit={save}>
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex w-fit items-center gap-2 text-base">
+            <Tags className="size-4 text-muted-foreground" />
+            <label htmlFor="traefik-labels">Traefik labels</label>
+            <InfoTip
+              content="Override proxy settings with one key=value per line. Complete custom routes replace automatic routes."
+              docs="build.advanced"
+            />
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-2">
+          <Textarea
+            id="traefik-labels"
+            value={text}
+            onChange={(e) => setText(e.target.value)}
+            rows={8}
+            spellCheck={false}
+            className="font-mono text-xs"
+            disabled={pending}
+            placeholder="traefik.enable=true"
+            aria-describedby="traefik-labels-warning"
+          />
+          <p id="traefik-labels-warning" className="text-xs text-warning">
+            These labels can affect other apps on this server. Image labels stay
+            blocked; previews use automatic routing.
+          </p>
+        </CardContent>
+        <CardFooter className="justify-between border-t border-border pt-4">
+          <DirtyHint dirty={dirty} />
+          <Button
+            type="submit"
+            disabled={pending || !dirty}
+            aria-busy={pending}
+          >
+            <Save className="size-4" />
+            {pending ? "Saving" : "Save"}
+          </Button>
+        </CardFooter>
+      </Card>
       <UnsavedChangesGuard when={dirty} />
     </form>
   );

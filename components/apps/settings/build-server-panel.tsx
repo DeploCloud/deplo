@@ -3,8 +3,10 @@
 import * as React from "react";
 import { useRouter } from "@/lib/nav";
 import { toast } from "sonner";
+import { Server } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
 import { InfoTip } from "@/components/ui/info-tip";
+import { FeatureRow } from "@/components/apps/settings/settings-shared";
 import {
   Select,
   SelectContent,
@@ -115,34 +117,22 @@ export function BuildServerPanel({
     value !== SELF && (value !== AUTOMATIC || autoWouldUse);
 
   return (
-    <div className="rounded-lg border border-border p-3">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="space-y-0.5">
-          <p className="flex items-center gap-1.5 text-sm font-medium">
-            Build on
-            <BetaChip />
-            <InfoTip
-              content={
-                <>
-                  Which server compiles this app. Building somewhere else keeps
-                  the server that runs it free of the load, and the finished
-                  image is copied over. Only servers with the same CPU
-                  architecture can build for this one.
-                </>
-              }
-              docs="build.serversHowItWorks"
-            />
-          </p>
-          <p className="text-xs text-muted-foreground">
-            {value === SELF
-              ? `Always builds on ${serverName}, where it runs.`
-              : value === AUTOMATIC
-                ? autoWouldUse
-                  ? "Uses a build server automatically."
-                  : `No build server in this fleet yet, so it builds on ${serverName}.`
-                : `Builds on ${others.find((c) => c.id === value)?.name ?? value}, then runs on ${serverName}.`}
-          </p>
-        </div>
+    <FeatureRow
+      icon={Server}
+      title="Build on"
+      badge={<BetaChip />}
+      info="Building on another server keeps the one that runs the app free of the load. Only a server with the same CPU architecture can build for it."
+      docs="build.serversHowItWorks"
+      description={
+        value === SELF
+          ? `Always builds on ${serverName}, where it runs.`
+          : value === AUTOMATIC
+            ? autoWouldUse
+              ? "Uses a build server automatically."
+              : `No build server in this fleet yet, so it builds on ${serverName}.`
+            : `Builds on ${others.find((c) => c.id === value)?.name ?? value}, then runs on ${serverName}.`
+      }
+      control={
         <Select value={value} onValueChange={pick} disabled={saving}>
           <SelectTrigger className="w-full shrink-0 sm:w-56">
             <SelectValue />
@@ -166,10 +156,10 @@ export function BuildServerPanel({
             ))}
           </SelectContent>
         </Select>
-      </div>
-
+      }
+    >
       {buildsElsewhere && (
-        <div className="mt-3 flex items-center justify-between gap-3 border-t border-border pt-3">
+        <div className="mt-4 flex items-center justify-between gap-3 rounded-lg bg-surface px-3 py-2.5">
           <div className="space-y-0.5">
             <p className="flex items-center gap-1.5 text-sm font-medium">
               Build somewhere else if that server is down
@@ -197,6 +187,6 @@ export function BuildServerPanel({
           />
         </div>
       )}
-    </div>
+    </FeatureRow>
   );
 }

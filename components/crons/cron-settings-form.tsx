@@ -5,7 +5,8 @@ import { useRouter } from "@/lib/nav";
 import { toast } from "sonner";
 import { Timer } from "lucide-react";
 
-import { Badge } from "@/components/ui/badge";
+import { BetaChip } from "@/components/shared/beta-chip";
+import { FeatureRow } from "@/components/apps/settings/settings-shared";
 import { Switch } from "@/components/ui/switch";
 import { gqlAction } from "@/lib/graphql-client";
 
@@ -55,35 +56,33 @@ export function CronSettingsForm({
   const noun = targetKind === "app" ? "this app" : "this database";
 
   return (
-    <div id="cron-jobs" className="scroll-mt-20 rounded-lg border p-4">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="min-w-56 flex-1 space-y-1">
-          <p className="flex items-center gap-2 text-sm font-medium">
-            <Timer className="size-4 text-muted-foreground" />
-            Cron jobs
-            <Badge variant="info" className="text-[10px] font-normal">
-              Beta
-            </Badge>
-          </p>
-          <p className="text-sm text-muted-foreground">
-            Run a command inside {noun}&apos;s container on a schedule, as the
-            container&apos;s own user and with no sandbox.
-          </p>
-        </div>
+    <FeatureRow
+      id="cron-jobs"
+      icon={Timer}
+      title="Cron jobs"
+      badge={<BetaChip />}
+      description={
+        <>
+          Run a command inside {noun}&apos;s container on a schedule, as the
+          container&apos;s own user and with no sandbox.
+        </>
+      }
+      control={
         <Switch
           checked={enabled}
           onCheckedChange={apply}
           disabled={pending}
           aria-label="Cron jobs"
         />
-      </div>
+      }
+    >
       {!enabled && jobCount > 0 && (
-        <p className="mt-3 text-sm text-muted-foreground">
+        <p className="mt-2 text-xs text-muted-foreground">
           {jobCount === 1
             ? "1 job is kept and will not run until this is back on."
             : `${jobCount} jobs are kept and will not run until this is back on.`}
         </p>
       )}
-    </div>
+    </FeatureRow>
   );
 }

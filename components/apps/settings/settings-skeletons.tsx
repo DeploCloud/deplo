@@ -99,14 +99,14 @@ export function FeatureRowSkeleton({
   children: React.ReactNode;
 }) {
   return (
-    <div className="rounded-lg border border-border p-4">
+    <div className="border-t border-border px-6 py-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="min-w-56 flex-1 space-y-1">
           <div className="flex items-center gap-2">
             {icon && <Skeleton className="size-4 rounded" />}
             <TextLine type={P_SM} className={title} />
           </div>
-          <TextLine type={P_SM} className={cn("max-w-full", description)} />
+          <TextLine type="text-xs" className={cn("max-w-full", description)} />
         </div>
         <div className="flex items-center gap-3">{children}</div>
       </div>

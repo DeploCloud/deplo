@@ -1,16 +1,12 @@
 "use client";
 
 import { useRouter } from "@/lib/nav";
-import { ArrowLeftRight, Trash2 } from "lucide-react";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { ArrowLeftRight, Trash2, TriangleAlert } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { InfoTip } from "@/components/ui/info-tip";
+import {
+  FeatureRow,
+  RowsCard,
+} from "@/components/apps/settings/settings-shared";
 import { DeleteWithArtifacts } from "@/components/shared/delete-with-artifacts";
 import { TransferTeamDialog } from "@/components/apps/settings/transfer-team-dialog";
 import { gqlAction } from "@/lib/graphql-client";
@@ -27,30 +23,19 @@ export function DangerSettings({
   const canMove = useAppCan("move_apps");
   const canDelete = useAppCan("delete_apps");
   return (
-    <Card className="border-destructive/40">
-      <CardHeader>
-        <CardTitle className="flex w-fit items-center gap-2 text-base text-destructive">
-          Danger Zone
-          <InfoTip
-            content="Hand this app to another team, or permanently delete it and all of its data."
-            docs="team.overview"
-          />
-        </CardTitle>
-        <CardDescription>
-          These actions take the app away from this team. Each asks you to type
-          the app name first.
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="space-y-3">
-        <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-destructive/30 p-4">
-          <div className="min-w-56 flex-1 space-y-1">
-            <p className="text-sm font-medium">Transfer to another team</p>
-            <p className="text-sm text-muted-foreground">
-              Hand this app to another team. It keeps running; this team loses
-              access.
-            </p>
-          </div>
-          {canMove ? (
+    <RowsCard
+      icon={TriangleAlert}
+      title="Danger zone"
+      info="Hand this app to another team, or permanently delete it and all of its data. Each asks you to type the app name first."
+      docs="team.overview"
+      danger
+    >
+      <FeatureRow
+        icon={ArrowLeftRight}
+        title="Transfer to another team"
+        description="Hand this app to another team. It keeps running; this team loses access."
+        control={
+          canMove ? (
             <TransferTeamDialog
               appId={appId}
               appName={name}
@@ -68,23 +53,20 @@ export function DangerSettings({
                 Transfer
               </Button>
             </CapabilityTip>
-          )}
-        </div>
-
-        <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-destructive/30 p-4">
-          <div className="min-w-56 flex-1 space-y-1">
-            <p className="text-sm font-medium">Delete app</p>
-            <p className="text-sm text-muted-foreground">
-              Permanently remove the app, its deployments, domains and
-              environment variables. This cannot be undone.
-            </p>
-          </div>
-          {canDelete ? (
+          )
+        }
+      />
+      <FeatureRow
+        icon={Trash2}
+        title="Delete app"
+        description="Permanently remove the app, its deployments, domains and environment variables. This cannot be undone."
+        control={
+          canDelete ? (
             <DeleteWithArtifacts
               trigger={
                 <Button variant="destructive" size="sm">
                   <Trash2 className="size-4" />
-                  Delete App
+                  Delete app
                 </Button>
               }
               targetName={name}
@@ -108,12 +90,12 @@ export function DangerSettings({
             <CapabilityTip cap="delete_apps">
               <Button variant="destructive" size="sm" disabled>
                 <Trash2 className="size-4" />
-                Delete App
+                Delete app
               </Button>
             </CapabilityTip>
-          )}
-        </div>
-      </CardContent>
-    </Card>
+          )
+        }
+      />
+    </RowsCard>
   );
 }

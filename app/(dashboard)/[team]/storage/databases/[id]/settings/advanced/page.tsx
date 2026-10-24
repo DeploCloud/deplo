@@ -1,10 +1,14 @@
 import { notFound } from "next/navigation";
 import Link from "@/components/ui/link";
-import { SlidersHorizontal, SquareTerminal } from "lucide-react";
+import { SlidersHorizontal, Sparkles, SquareTerminal } from "lucide-react";
 import { getDatabase } from "@/lib/data/databases/rows";
 import { hasCapability } from "@/lib/membership";
 import { listDatabaseCronJobs } from "@/lib/data/crons/listing";
-import { SettingsSection } from "@/components/apps/settings/settings-shared";
+import {
+  FeatureRow,
+  RowsCard,
+  SettingsSection,
+} from "@/components/apps/settings/settings-shared";
 import { DatabaseImageSettings } from "@/components/storage/database-image-settings";
 import { DatabaseConfigFiles } from "@/components/storage/database-config-files";
 import { DB_DATA_DIRS } from "@/lib/deploy/database-compose";
@@ -12,13 +16,6 @@ import { DatabaseDanger } from "@/components/storage/database-danger";
 import { CronSettingsForm } from "@/components/crons/cron-settings-form";
 import { RestartLoopForm } from "@/components/apps/settings/restart-loop-form";
 import { Button } from "@/components/ui/button";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
 
 export const metadata = { title: "Advanced" };
 
@@ -44,52 +41,49 @@ export default async function DatabaseAdvancedSettingsPage(
         info="Turn on the advanced features, override the engine image or command, rebuild the database from scratch, or delete it."
       />
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">Advanced features</CardTitle>
-          <CardDescription>
-            Powerful extras, off the everyday path until you need them.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-3">
-          {canConsole && (
-            <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border p-4">
-              <div className="min-w-56 flex-1 space-y-1">
-                <p className="flex items-center gap-2 text-sm font-medium">
-                  <SquareTerminal className="size-4 text-muted-foreground" />
-                  Console
-                </p>
-                <p className="text-sm text-muted-foreground">
-                  Open a terminal in the database&apos;s container and run{" "}
-                  <span className="font-mono">psql</span>,{" "}
-                  <span className="font-mono">redis-cli</span> or any other
-                  client. No SSH needed.
-                </p>
-              </div>
+      <RowsCard
+        icon={Sparkles}
+        title="Features"
+        info="Powerful extras, off the everyday path until you need them."
+        docs="databases.settings"
+      >
+        {canConsole && (
+          <FeatureRow
+            icon={SquareTerminal}
+            title="Console"
+            description={
+              <>
+                Open a terminal in the database&apos;s container and run{" "}
+                <span className="font-mono">psql</span>,{" "}
+                <span className="font-mono">redis-cli</span> or any other
+                client. No SSH needed.
+              </>
+            }
+            control={
               <Button asChild size="sm" variant="outline">
                 <Link href={`/storage/databases/${id}/console`}>
                   Open console
                 </Link>
               </Button>
-            </div>
-          )}
+            }
+          />
+        )}
 
-          {cron && (
-            <CronSettingsForm
-              targetKind="database"
-              targetId={db.id}
-              enabled={cron.enabled}
-              jobCount={cron.jobs.length}
-            />
-          )}
-
-          <RestartLoopForm
+        {cron && (
+          <CronSettingsForm
             targetKind="database"
             targetId={db.id}
-            enabled={db.restartLoopGuard}
+            enabled={cron.enabled}
+            jobCount={cron.jobs.length}
           />
-        </CardContent>
-      </Card>
+        )}
+
+        <RestartLoopForm
+          targetKind="database"
+          targetId={db.id}
+          enabled={db.restartLoopGuard}
+        />
+      </RowsCard>
 
       <DatabaseImageSettings db={db} />
       <DatabaseConfigFiles db={db} dataDir={DB_DATA_DIRS[db.type]} />

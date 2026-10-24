@@ -2,16 +2,19 @@ import { TraefikLabelsForm } from "@/components/apps/settings/traefik-labels-for
 import { getAppTraefikLabels } from "@/lib/data/apps/traefik-labels";
 import { canConfigureTraefik } from "@/lib/membership";
 import { notFound } from "next/navigation";
-import { SlidersHorizontal } from "lucide-react";
+import { Hammer, SlidersHorizontal, Sparkles } from "lucide-react";
 import { getAppBySlug } from "@/lib/data/apps/listing";
 import { deployHookUrlMasked } from "@/lib/data/deploy-hook";
 import { listBuildServerChoices } from "@/lib/data/servers/roster";
 import { hasAppCapability } from "@/lib/data/node-access";
 import { canExposePorts } from "@/lib/membership";
 import { listAppCronJobs } from "@/lib/data/crons/listing";
-import { SettingsSection } from "@/components/apps/settings/settings-shared";
+import {
+  RowsCard,
+  SettingsSection,
+} from "@/components/apps/settings/settings-shared";
 import { DangerSettings } from "@/components/apps/settings/danger-settings";
-import { RebuildContainerCard } from "@/components/apps/settings/rebuild-container-card";
+import { RebuildContainerRow } from "@/components/apps/settings/rebuild-container-row";
 import { ConsoleSettingsForm } from "@/components/apps/settings/console-settings-form";
 import { HealthCheckForm } from "@/components/apps/settings/health-check-form";
 import { RestartLoopForm } from "@/components/apps/settings/restart-loop-form";
@@ -24,13 +27,6 @@ import { DeployHookPanel } from "@/components/apps/settings/deploy-hook-panel";
 import { CapabilityFieldset } from "@/components/apps/app-capabilities";
 import { providerFor } from "@/lib/git/providers/registry";
 import { appBuildsItsOwnImage, usesComposeStack } from "@/lib/utils";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
 
 export const metadata = { title: "Advanced" };
 
@@ -75,121 +71,113 @@ export default async function AppAdvancedSettingsPage(
         info="Turn on the advanced features, rebuild the container from scratch, hand the app to another team, or permanently delete it."
       />
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">Advanced features</CardTitle>
-          <CardDescription>
-            Powerful extras, off the everyday path until you need them.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-3">
+      <RowsCard
+        icon={Sparkles}
+        title="Features"
+        info="Powerful extras, off the everyday path until you need them."
+        docs="build.advanced"
+      >
+        <CapabilityFieldset cap="configure_apps">
+          <ConsoleSettingsForm
+            appId={project.id}
+            slug={slug}
+            enabled={project.consoleEnabled}
+            canConsole={canConsole}
+          />
+        </CapabilityFieldset>
+
+        <CapabilityFieldset cap="manage_crons">
+          <CronSettingsForm
+            targetKind="app"
+            targetId={project.id}
+            enabled={cron?.enabled ?? project.cronEnabled}
+            jobCount={cron?.jobs.length ?? 0}
+          />
+        </CapabilityFieldset>
+
+        {project.source !== "compose" && (
           <CapabilityFieldset cap="configure_apps">
-            <ConsoleSettingsForm
+            <HealthCheckForm
               appId={project.id}
-              slug={slug}
-              enabled={project.consoleEnabled}
-              canConsole={canConsole}
+              healthCheck={project.healthCheck}
             />
           </CapabilityFieldset>
+        )}
 
-          <CapabilityFieldset cap="manage_crons">
-            <CronSettingsForm
-              targetKind="app"
-              targetId={project.id}
-              enabled={cron?.enabled ?? project.cronEnabled}
-              jobCount={cron?.jobs.length ?? 0}
-            />
-          </CapabilityFieldset>
+        <CapabilityFieldset cap="configure_apps">
+          <RestartLoopForm
+            targetKind="app"
+            targetId={project.id}
+            enabled={project.restartLoopGuard}
+          />
+        </CapabilityFieldset>
 
-          {project.source !== "compose" && (
-            <CapabilityFieldset cap="configure_apps">
-              <HealthCheckForm
-                appId={project.id}
-                healthCheck={project.healthCheck}
-              />
-            </CapabilityFieldset>
-          )}
-
+        {project.source !== "compose" && (
           <CapabilityFieldset cap="configure_apps">
-            <RestartLoopForm
-              targetKind="app"
-              targetId={project.id}
-              enabled={project.restartLoopGuard}
-            />
-          </CapabilityFieldset>
-
-          {project.source !== "compose" && (
-            <CapabilityFieldset cap="configure_apps">
-              <PublishedPortsForm
-                appId={project.id}
-                ports={project.ports ?? []}
-                canExposePorts={mayExposePorts}
-              />
-            </CapabilityFieldset>
-          )}
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">Build &amp; triggers</CardTitle>
-          <CardDescription>
-            How builds reuse their cache, where they run, and what can start one
-            from outside Deplo.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-3">
-          <CapabilityFieldset cap="configure_apps">
-            {buildsOwnImage && (
-              <BuildCachePanel
-                appId={project.id}
-                buildCache={project.build.buildCache}
-                clearPending={project.build.buildCacheClearPending}
-              />
-            )}
-            {buildsOwnImage && (
-              <BuildServerPanel
-                appId={project.id}
-                serverId={project.serverId}
-                serverName={
-                  buildServerChoices.find((c) => c.id === project.serverId)
-                    ?.name ?? "its own server"
-                }
-                serverArch={
-                  buildServerChoices.find((c) => c.id === project.serverId)
-                    ?.hostArch ?? ""
-                }
-                buildServerId={project.buildServerId ?? null}
-                buildFallback={project.buildFallback}
-                choices={buildServerChoices}
-              />
-            )}
-            <ComposeArgsPanel
+            <PublishedPortsForm
               appId={project.id}
-              slug={slug}
-              value={project.composeUpArgs}
-              usesEnvFile={isComposeStack}
+              ports={project.ports ?? []}
+              canExposePorts={mayExposePorts}
             />
-            {hookUrl && (
-              <DeployHookPanel
-                appId={project.id}
-                enabled={project.deployHookEnabled}
-                maskedUrl={hookUrl}
-              />
-            )}
           </CapabilityFieldset>
-        </CardContent>
-      </Card>
+        )}
+      </RowsCard>
+
+      <RowsCard
+        icon={Hammer}
+        title="Build & triggers"
+        info="How builds reuse their cache, where they run, and what can start one from outside Deplo."
+        docs="build.cache"
+      >
+        <CapabilityFieldset cap="configure_apps">
+          {buildsOwnImage && (
+            <BuildCachePanel
+              appId={project.id}
+              buildCache={project.build.buildCache}
+              clearPending={project.build.buildCacheClearPending}
+            />
+          )}
+          {buildsOwnImage && (
+            <BuildServerPanel
+              appId={project.id}
+              serverId={project.serverId}
+              serverName={
+                buildServerChoices.find((c) => c.id === project.serverId)
+                  ?.name ?? "its own server"
+              }
+              serverArch={
+                buildServerChoices.find((c) => c.id === project.serverId)
+                  ?.hostArch ?? ""
+              }
+              buildServerId={project.buildServerId ?? null}
+              buildFallback={project.buildFallback}
+              choices={buildServerChoices}
+            />
+          )}
+          <ComposeArgsPanel
+            appId={project.id}
+            slug={slug}
+            value={project.composeUpArgs}
+            usesEnvFile={isComposeStack}
+          />
+          {hookUrl && (
+            <DeployHookPanel
+              appId={project.id}
+              enabled={project.deployHookEnabled}
+              maskedUrl={hookUrl}
+            />
+          )}
+        </CapabilityFieldset>
+        <RebuildContainerRow
+          appId={project.id}
+          slug={slug}
+          source={project.source}
+        />
+      </RowsCard>
 
       {traefikLabels && (
         <TraefikLabelsForm appId={project.id} labels={traefikLabels} />
       )}
-
-      <RebuildContainerCard
-        appId={project.id}
-        slug={slug}
-        source={project.source}
-      />
 
       <DangerSettings appId={project.id} name={project.name} />
     </section>

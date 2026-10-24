@@ -10,6 +10,7 @@ import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { FieldLabel } from "@/components/ui/info-tip";
 import { DocsLink } from "@/components/ui/docs-link";
+import { FeatureRow } from "@/components/apps/settings/settings-shared";
 import {
   Select,
   SelectContent,
@@ -71,18 +72,17 @@ export function HealthCheckForm({
   }
 
   return (
-    <div id="health-check" className="scroll-mt-20 rounded-lg border p-4">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="min-w-56 flex-1 space-y-1">
-          <p className="flex items-center gap-2 text-sm font-medium">
-            <HeartPulse className="size-4 text-muted-foreground" />
-            Health check
-          </p>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Ask the app whether it is really working, not just running.{" "}
-            <DocsLink topic="health.overview" />
-          </p>
-        </div>
+    <FeatureRow
+      id="health-check"
+      icon={HeartPulse}
+      title="Health check"
+      description={
+        <>
+          Ask the app whether it is really working, not just running.{" "}
+          <DocsLink topic="health.overview" />
+        </>
+      }
+      control={
         <Switch
           id="health-check-enabled"
           checked={form.enabled}
@@ -93,11 +93,11 @@ export function HealthCheckForm({
             if (!v) save(next);
           }}
         />
-      </div>
-
+      }
+    >
       {form.enabled && (
         <form
-          className="mt-4 grid gap-4 border-t pt-4"
+          className="mt-4 grid gap-4"
           onSubmit={(e) => {
             e.preventDefault();
             save(form);
@@ -225,6 +225,6 @@ export function HealthCheckForm({
           </div>
         </form>
       )}
-    </div>
+    </FeatureRow>
   );
 }

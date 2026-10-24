@@ -3,10 +3,17 @@
 import * as React from "react";
 import Link from "@/components/ui/link";
 import { toast } from "sonner";
-import { Check, Copy, Loader2, RefreshCw, ShieldCheck } from "lucide-react";
+import {
+  Check,
+  Copy,
+  Loader2,
+  RefreshCw,
+  ShieldCheck,
+  Webhook,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
-import { InfoTip } from "@/components/ui/info-tip";
+import { FeatureRow } from "@/components/apps/settings/settings-shared";
 import { SimpleTooltip } from "@/components/ui/tooltip";
 import { RevealChip } from "@/components/shared/reveal-chip";
 import { CommandLine } from "@/components/shared/code-block";
@@ -72,100 +79,88 @@ export function DeployHookPanel({
   }
 
   return (
-    <div className="space-y-3 rounded-lg border border-border p-3">
-      <div className="flex items-start justify-between gap-4">
-        <div className="space-y-0.5">
-          <p className="flex items-center gap-1.5 text-sm font-medium">
-            Deploy hook
-            <InfoTip
-              content={
-                <>
-                  A URL that deploys this app when something POSTs to it - a
-                  webhook from your git provider, a CI job, a script. The call
-                  also has to carry an API token, so the URL on its own
-                  can&apos;t deploy anything.
-                </>
-              }
-              docs="releases.deployHook"
-            />
-          </p>
-          <p className="text-xs text-muted-foreground">
-            POST to this URL to deploy the app. Turn it off and every call is
-            refused.
-          </p>
-        </div>
+    <FeatureRow
+      icon={Webhook}
+      title="Deploy hook"
+      info="Deploys this app when a git webhook, a CI job or a script calls it. The call also needs an API token, so the URL alone deploys nothing."
+      docs="releases.deployHook"
+      description="POST to this URL to deploy the app. Turn it off and every call is refused."
+      control={
         <Switch
           checked={enabled}
           onCheckedChange={toggle}
           aria-label="Deploy hook"
         />
-      </div>
-
-      <div className="flex min-w-0 items-center gap-1.5">
-        <RevealChip
-          className="min-w-0 flex-1"
-          placeholder={maskedUrl}
-          placeholderClassName="text-muted-foreground/70"
-          value={url}
-          revealed={revealed}
-          pending={pending}
-          onToggle={() => {
-            if (revealed) {
-              setRevealed(false);
-              return;
+      }
+    >
+      <div className="mt-4 space-y-3">
+        <div className="flex min-w-0 items-center gap-1.5">
+          <RevealChip
+            className="min-w-0 flex-1"
+            placeholder={maskedUrl}
+            placeholderClassName="text-muted-foreground/70"
+            value={url}
+            revealed={revealed}
+            pending={pending}
+            onToggle={() => {
+              if (revealed) {
+                setRevealed(false);
+                return;
+              }
+              void resolve().then((v) => {
+                if (v !== null) setRevealed(true);
+              });
+            }}
+            labels={{
+              reveal: "Reveal deploy hook URL",
+              hide: "Hide deploy hook URL",
+            }}
+          />
+          <CopyResolved resolve={resolve} />
+          <ConfirmAction
+            title="Rotate the deploy hook URL?"
+            description="The current URL stops working immediately."
+            consequence="Anything already using it - a git webhook, a CI job - has to be updated with the new one."
+            confirmLabel="Rotate URL"
+            successMessage="Deploy hook rotated"
+            onConfirm={rotate}
+            trigger={
+              <Button
+                variant="outline"
+                size="icon-sm"
+                className="size-7 shrink-0"
+                aria-label="Rotate deploy hook URL"
+                title="Rotate deploy hook URL"
+              >
+                <RefreshCw className="size-3.5" />
+              </Button>
             }
-            void resolve().then((v) => {
-              if (v !== null) setRevealed(true);
-            });
-          }}
-          labels={{
-            reveal: "Reveal deploy hook URL",
-            hide: "Hide deploy hook URL",
-          }}
-        />
-        <CopyResolved resolve={resolve} />
-        <ConfirmAction
-          title="Rotate the deploy hook URL?"
-          description="The current URL stops working immediately."
-          consequence="Anything already using it - a git webhook, a CI job - has to be updated with the new one."
-          confirmLabel="Rotate URL"
-          successMessage="Deploy hook rotated"
-          onConfirm={rotate}
-          trigger={
-            <Button
-              variant="outline"
-              size="icon-sm"
-              className="size-7 shrink-0"
-              aria-label="Rotate deploy hook URL"
-              title="Rotate deploy hook URL"
+          />
+        </div>
+
+        {revealed && url && (
+          <CommandLine
+            command={`curl -X POST -H "Authorization: Bearer deplo_your_token" ${url}`}
+          />
+        )}
+
+        <p className="flex items-start gap-1.5 text-xs text-muted-foreground">
+          <ShieldCheck className="mt-px size-3.5 shrink-0" />
+          <span>
+            Calls need an API token that holds <strong>Deploy apps</strong>.
+            Create one in{" "}
+            <Link
+              href="/settings/tokens"
+              className="underline underline-offset-2 hover:text-foreground"
             >
-              <RefreshCw className="size-3.5" />
-            </Button>
-          }
-        />
+              API tokens
+            </Link>{" "}
+            - the <strong>Deploy hook &amp; CI</strong> template is exactly
+            this.
+          </span>
+        </p>
       </div>
-
-      {revealed && url && (
-        <CommandLine
-          command={`curl -X POST -H "Authorization: Bearer deplo_your_token" ${url}`}
-        />
-      )}
-
-      <p className="flex items-start gap-1.5 text-xs text-muted-foreground">
-        <ShieldCheck className="mt-px size-3.5 shrink-0" />
-        <span>
-          Calls need an API token that holds <strong>Deploy apps</strong>.
-          Create one in{" "}
-          <Link
-            href="/settings/tokens"
-            className="underline underline-offset-2 hover:text-foreground"
-          >
-            API tokens
-          </Link>{" "}
-          - the <strong>Deploy hook &amp; CI</strong> template is exactly this.
-        </span>
-      </p>
-    </div>
+    </FeatureRow>
   );
 }
 

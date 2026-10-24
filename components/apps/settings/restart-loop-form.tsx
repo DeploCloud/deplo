@@ -6,7 +6,7 @@ import { toast } from "sonner";
 import { RotateCw } from "lucide-react";
 
 import { Switch } from "@/components/ui/switch";
-import { InfoTip } from "@/components/ui/info-tip";
+import { FeatureRow } from "@/components/apps/settings/settings-shared";
 import { gqlAction } from "@/lib/graphql-client";
 
 const SET_APP = /* GraphQL */ `
@@ -61,28 +61,21 @@ export function RestartLoopForm({
   }
 
   return (
-    <div id="restart-loop" className="scroll-mt-20 rounded-lg border p-4">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="min-w-56 flex-1 space-y-1">
-          <p className="flex items-center gap-2 text-sm font-medium">
-            <RotateCw className="size-4 text-muted-foreground" />
-            Restart loop protection
-            <InfoTip
-              content="A container that crashes and restarts forever burns the server's CPU and fills its disk with logs."
-              docs="logs.overview"
-            />
-          </p>
-          <p className="text-sm text-muted-foreground">
-            Stops the container after 10 restarts in 30 minutes.
-          </p>
-        </div>
+    <FeatureRow
+      id="restart-loop"
+      icon={RotateCw}
+      title="Restart loop protection"
+      info="A container that crashes and restarts forever burns the server's CPU and fills its disk with logs."
+      docs="logs.overview"
+      description="Stops the container after 10 restarts in 30 minutes."
+      control={
         <Switch
           checked={enabled}
           onCheckedChange={apply}
           disabled={pending}
           aria-label="Restart loop protection"
         />
-      </div>
-    </div>
+      }
+    />
   );
 }

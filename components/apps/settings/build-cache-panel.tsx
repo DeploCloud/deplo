@@ -3,10 +3,10 @@
 import * as React from "react";
 import { useRouter } from "@/lib/nav";
 import { toast } from "sonner";
-import { Eraser } from "lucide-react";
+import { Eraser, Layers } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
-import { InfoTip } from "@/components/ui/info-tip";
+import { FeatureRow } from "@/components/apps/settings/settings-shared";
 import { SimpleTooltip } from "@/components/ui/tooltip";
 import { gqlAction } from "@/lib/graphql-client";
 
@@ -60,57 +60,47 @@ export function BuildCachePanel({
   }
 
   return (
-    <div className="flex items-center justify-between gap-4 rounded-lg border border-border p-3">
-      <div className="space-y-0.5">
-        <p className="flex items-center gap-1.5 text-sm font-medium">
-          Build cache
-          <InfoTip
+    <FeatureRow
+      icon={Layers}
+      title="Build cache"
+      info="Reuses what the last build produced, so a deploy that changes nothing takes seconds. Off, every deploy pulls fresh dependencies and is slower."
+      docs="build.cache"
+      description={
+        pending
+          ? "Cleared - the next deployment builds from scratch, then caches again."
+          : "Reuse the layers from this app's last build. Off rebuilds everything, on every deploy."
+      }
+      control={
+        <>
+          <SimpleTooltip
             content={
-              <>
-                Deplo reuses the Docker layers your last build produced on this
-                app&apos;s server, so a deploy that changes nothing takes
-                seconds instead of minutes. Turn it off when a build must pull
-                fresh dependencies every time - it makes every deploy slower.
-              </>
+              !enabled
+                ? "Not needed while the build cache is off - every build already starts from scratch."
+                : pending
+                  ? "Already armed. The next deployment builds from scratch."
+                  : "The next deployment builds from scratch, then caches again. Only this app is affected - the server's cache is shared, so nothing is deleted from it."
             }
-            docs="build.cache"
+          >
+            <span className="inline-flex">
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={clear}
+                disabled={saving || !enabled || pending}
+              >
+                <Eraser className="size-4" />
+                {pending ? "Cleared" : "Clear cache"}
+              </Button>
+            </span>
+          </SimpleTooltip>
+          <Switch
+            checked={enabled}
+            onCheckedChange={toggle}
+            disabled={saving}
+            aria-label="Build cache"
           />
-        </p>
-        <p className="text-xs text-muted-foreground">
-          {pending
-            ? "Cleared - the next deployment builds from scratch, then caches again."
-            : "Reuse the layers from this app's last build. Off rebuilds everything, on every deploy."}
-        </p>
-      </div>
-      <div className="flex shrink-0 items-center gap-3">
-        <SimpleTooltip
-          content={
-            !enabled
-              ? "Not needed while the build cache is off - every build already starts from scratch."
-              : pending
-                ? "Already armed. The next deployment builds from scratch."
-                : "The next deployment builds from scratch, then caches again. Only this app is affected - the server's cache is shared, so nothing is deleted from it."
-          }
-        >
-          <span className="inline-flex">
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={clear}
-              disabled={saving || !enabled || pending}
-            >
-              <Eraser className="size-4" />
-              {pending ? "Cleared" : "Clear cache"}
-            </Button>
-          </span>
-        </SimpleTooltip>
-        <Switch
-          checked={enabled}
-          onCheckedChange={toggle}
-          disabled={saving}
-          aria-label="Build cache"
-        />
-      </div>
-    </div>
+        </>
+      }
+    />
   );
 }

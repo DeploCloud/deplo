@@ -19,7 +19,7 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { InfoTip } from "@/components/ui/info-tip";
+import { FeatureRow } from "@/components/apps/settings/settings-shared";
 import { gqlAction } from "@/lib/graphql-client";
 import {
   MAX_PORT,
@@ -105,6 +105,7 @@ export function PublishedPortsForm({
     <Button
       type="button"
       variant="outline"
+      size="sm"
       disabled={pending || !canExposePorts || full}
       onClick={() =>
         setRows((r) => [
@@ -123,23 +124,15 @@ export function PublishedPortsForm({
   );
 
   return (
-    <div id="published-ports" className="scroll-mt-20 rounded-lg border p-4">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="min-w-56 flex-1">
-          <p className="flex items-center gap-2 text-sm font-medium">
-            <Cable className="size-4 text-muted-foreground" />
-            Published ports
-            <InfoTip
-              content="A port of the server bound straight to a port of the container. No certificate and no proxy: use a domain whenever the app speaks HTTP."
-              docs="ports.published"
-            />
-          </p>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Reach this app on a port of the server, for anything that is not a
-            website.
-          </p>
-        </div>
-        {canExposePorts ? (
+    <FeatureRow
+      id="published-ports"
+      icon={Cable}
+      title="Published ports"
+      info="A port of the server bound straight to a port of the container. No certificate and no proxy: use a domain whenever the app speaks HTTP."
+      docs="ports.published"
+      description="Reach this app on a port of the server, for anything that is not a website."
+      control={
+        canExposePorts ? (
           addButton
         ) : (
           <Tooltip>
@@ -150,12 +143,12 @@ export function PublishedPortsForm({
               You don&apos;t have permission to publish ports
             </TooltipContent>
           </Tooltip>
-        )}
-      </div>
-
+        )
+      }
+    >
       {rows.length > 0 && (
         <form
-          className="mt-4 grid gap-3 border-t pt-4"
+          className="mt-4 grid gap-3"
           onSubmit={(e) => {
             e.preventDefault();
             save();
@@ -275,6 +268,6 @@ export function PublishedPortsForm({
           </div>
         </form>
       )}
-    </div>
+    </FeatureRow>
   );
 }
