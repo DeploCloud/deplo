@@ -66,3 +66,7 @@ inj-scratch.ts
 
 # Bundled break-glass CLI (`bun run build:recover`), built into the image
 /dist/
+
+# simple-workflow plugin artifacts (local-only; delete entries to share via git)
+.simple-workflow/
+.simple-workflow
