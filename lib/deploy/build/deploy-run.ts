@@ -16,11 +16,19 @@ import {
 import { normalizeBuildConfig } from "../../frameworks";
 import { forkCloneUrl, resolveCloneUrl } from "../../git/clone-url";
 import { repoCloneRefusal } from "../../git/repo-access";
-import { publicBranchHead } from "../../github/app";
+import { buildMetadataToken, publicBranchHead } from "../../github/app";
+import {
+  adoptObservedPort,
+  recordResolvedMethod,
+  recordSourceCompose,
+} from "../../data/apps/build-outcome";
+import type { SourceCompose } from "../../agent/gen/agent";
+import { findComposeFile, resolveUploadMethod } from "../agent-deploy";
+import { readFile } from "node:fs/promises";
 import { publishAppChanged } from "../../graphql/pubsub";
 import { nowIso } from "../../ids";
 import type { CertProvider } from "../../types/domain";
-import { usesComposeStack } from "../../utils";
+import { usesPastedCompose } from "../../utils";
 import { deployImageRef, isOwnImage, stackName } from "../deploy-key";
 import { planDeploySource, resolveBuildDir, type SourcePlan } from "../source";
 import { extractArchive } from "../upload";
@@ -41,7 +49,12 @@ import {
   tryAgent,
 } from "./build-attempt";
 import { renderDeployStack } from "./compose-render";
-import { deployComposeStackViaAgent } from "./compose-stack-deploy";
+import {
+  deployComposeStackViaAgent,
+  deploySourceComposeStack,
+} from "./compose-stack-deploy";
+import { readyCheckFor } from "./ready-check";
+import { rerouteApp } from "./reroute";
 import type { PreviewEnvContext } from "./deploy-env";
 import { previewRouteTarget, routableForDeploy } from "./deploy-routes";
 import { applyDomainEditsMadeDuringBuild } from "./domain-edits-during-build";
@@ -92,6 +105,23 @@ async function loadPreviewForDeploy(previewId: string): Promise<{
   const row = rows[0];
   if (!row) return null;
   return { ...row, certProvider: row.certProvider as CertProvider };
+}
+
+const MAX_SOURCE_COMPOSE_BYTES = 512 * 1024;
+
+async function readUploadCompose(
+  buildDir: string,
+  preferred?: string | null,
+): Promise<SourceCompose> {
+  const path = await findComposeFile(buildDir, preferred);
+  if (!path)
+    throw new Error(
+      `No ${preferred?.trim() || "docker-compose.yml"} in the uploaded files.`,
+    );
+  const content = await readFile(join(buildDir, path), "utf8");
+  if (Buffer.byteLength(content) > MAX_SOURCE_COMPOSE_BYTES)
+    throw new Error(`${path} is larger than 512 KB.`);
+  return { path, content };
 }
 
 export async function runDeploymentGuarded(depId: string): Promise<void> {
@@ -171,7 +201,8 @@ async function runDeployment(depId: string): Promise<void> {
     const forceRecreate = dep.forceRecreate;
 
     const hasCompose = Boolean(project.compose && project.compose.trim());
-    const useCompose = usesComposeStack(project);
+    // A stack read from the app's own source goes through the git/upload path below, which reads it again.
+    const useCompose = usesPastedCompose(project);
     if (useCompose && dep.rollbackOf) {
       log(
         depId,
@@ -220,7 +251,8 @@ async function runDeployment(depId: string): Promise<void> {
 
     let imageRef: string;
     let commitSha = "";
-    let agentOutcome: "agent" | "failed" | null = null;
+    // "stack": the source's compose file was deployed, and that path committed the outcome itself.
+    let agentOutcome: "agent" | "failed" | "stack" | null = null;
     const serverId = runServerId;
     const agentProject = {
       id: project.id,
@@ -235,11 +267,22 @@ async function runDeployment(depId: string): Promise<void> {
     const rebuildCommit =
       dep.rollbackOf && !instantRollback ? dep.commitSha : "";
 
-    const buildServerOpts = await resolveBuildServerOpts(
-      project,
-      serverId,
-      instantRollback,
-    );
+    const method = normalizeBuildConfig(project.build);
+    const stackFromSource =
+      method.buildMethod === "compose" && !method.methodAuto;
+    const buildServerOpts = stackFromSource
+      ? {
+          builders: [],
+          localAllowed: true,
+          targetServerName: "",
+          planLines: [],
+        }
+      : await resolveBuildServerOpts(project, serverId, instantRollback);
+    const ready = readyCheckFor({
+      routes: routeDomains,
+      appPort: preview?.port ?? project.build.port,
+    });
+    const usesRailpack = method.methodAuto || method.buildMethod === "railpack";
 
     if (
       !(await assertBuildMethodCapability({
@@ -254,6 +297,90 @@ async function runDeployment(depId: string): Promise<void> {
       }))
     )
       return;
+
+    let observedPort: number | undefined;
+    // The source carried a compose file: the stack deploy commits its own outcome.
+    const deployStackFrom = async (
+      found: SourceCompose,
+      source: Parameters<typeof deploySourceComposeStack>[0]["source"],
+    ): Promise<void> => {
+      if (preview) {
+        log(
+          depId,
+          "error",
+          "Preview environments are not available yet for an app deployed from its Docker Compose file.",
+        );
+        await commitOutcome(
+          depId,
+          target,
+          { status: "error", buildDurationMs: Date.now() - started },
+          { status: "error" },
+        );
+        return;
+      }
+      // A stack has no single image: a rollback to this deployment rebuilds its commit instead.
+      await setDep(depId, { imageRef: null });
+      if (method.methodAuto) {
+        log(
+          depId,
+          "info",
+          `Found ${found.path}: deploying it as a stack (Detect automatically).`,
+        );
+        await recordResolvedMethod(project.id, "compose");
+      }
+      const outcome = await deploySourceComposeStack({
+        depId,
+        project,
+        name,
+        deployKey,
+        trackingId,
+        target,
+        domain,
+        forceRecreate,
+        domains: routeDomains.map((d) => d.name),
+        domainRoutes: routeDomains,
+        environment: dep.environment,
+        preview: previewCtx,
+        started,
+        serverId,
+        rawCompose: found.content,
+        composeFile: found.path,
+        source,
+        subdir: project.build.rootDirectory ?? "",
+        tag: depId
+          .replace(/[^a-zA-Z0-9]/g, "")
+          .slice(-12)
+          .toLowerCase(),
+      });
+      if (outcome.deployed && outcome.observedPort)
+        await adoptPort(outcome.observedPort, outcome.service ?? null);
+    };
+    const adoptPort = async (to: number, service: string | null) => {
+      const from = service ? (routeDomains[0]?.port ?? ready.port) : ready.port;
+      if (preview || !to || to === from) return;
+      log(
+        depId,
+        "info",
+        `Your app listens on port ${to}, not ${from}: Deplo now sends its traffic to ${to}.`,
+      );
+      await adoptObservedPort(project.id, { from, to, service });
+      await rerouteApp(project.id).catch((e) =>
+        log(
+          depId,
+          "warn",
+          `Could not re-route to port ${to} yet: ${e instanceof Error ? e.message : String(e)}`,
+        ),
+      );
+    };
+    // Detect automatically settled on a single image: a stack it built before is gone.
+    const settleSingleImage = async (builtWith?: string) => {
+      if (!method.methodAuto) return;
+      await recordResolvedMethod(
+        project.id,
+        builtWith === "dockerfile" ? "dockerfile" : "railpack",
+      );
+      if (hasCompose) await recordSourceCompose(project.id, null);
+    };
 
     const renderStack = (image: string) =>
       renderDeployStack({
@@ -281,10 +408,27 @@ async function runDeployment(depId: string): Promise<void> {
         failOnMissing: treeOpts.failOnMissing,
         notFoundMessage: treeOpts.notFoundMessage,
       });
+      // The upload is here already, so Detect automatically reads its files before anything is sent.
+      const build = await resolveUploadMethod(buildDir, project.build);
+      if (build.buildMethod === "compose") {
+        const found = await readUploadCompose(
+          buildDir,
+          build.methodSettings.composeFile,
+        );
+        agentOutcome = "stack";
+        await deployStackFrom(found, { kind: "upload", buildDir });
+        return;
+      }
+      if (method.methodAuto && build.buildMethod === "dockerfile")
+        log(
+          depId,
+          "info",
+          "Found a Dockerfile: building it (Detect automatically).",
+        );
       const { composeYaml, env, network } = await renderStack(
         treeOpts.imageRef,
       );
-      const { outcome } = await tryAgent({
+      const attempt = await tryAgent({
         depId,
         serverId,
         project: agentProject,
@@ -292,16 +436,20 @@ async function runDeployment(depId: string): Promise<void> {
         composeYaml,
         network,
         env,
-        plan: {
-          kind: "dockerfile",
-          buildDir,
-          build: normalizeBuildConfig(project.build),
-        },
+        plan: { kind: "dockerfile", buildDir, build },
         noCache,
         forceRecreate,
+        ready,
+        githubToken:
+          build.buildMethod === "railpack"
+            ? ((await buildMetadataToken(project.teamId)) ?? undefined)
+            : undefined,
         ...buildServerOpts,
       });
-      agentOutcome = outcome === "agent" ? "agent" : "failed";
+      agentOutcome = attempt.outcome === "agent" ? "agent" : "failed";
+      observedPort = attempt.observedPort;
+      if (attempt.outcome === "agent")
+        await settleSingleImage(build.buildMethod);
     };
 
     if (!canRecognizeFramework(project)) void setFramework(project.id, null);
@@ -342,6 +490,7 @@ async function runDeployment(depId: string): Promise<void> {
           env,
           plan: { kind: "image", image: imageRef, pull: false },
           forceRecreate,
+          ready,
         });
         agentOutcome = outcome === "agent" ? "agent" : "failed";
         break;
@@ -359,12 +508,17 @@ async function runDeployment(depId: string): Promise<void> {
           env,
           plan: { kind: "image", image: plan.image, pull: true },
           forceRecreate,
+          ready,
         });
         agentOutcome = outcome === "agent" ? "agent" : "failed";
         break;
       }
       case "git": {
         const repo = plan.repo;
+        if (preview && stackFromSource)
+          throw new Error(
+            "Preview environments are not available yet for an app deployed from its Docker Compose file.",
+          );
         autoDetectRepoLogo(
           project.id,
           project.logo,
@@ -403,7 +557,10 @@ async function runDeployment(depId: string): Promise<void> {
         }
         imageRef = deployImageRef(deployKey, depId);
         await setDep(depId, { imageRef });
-        const { composeYaml, env, network } = await renderStack(imageRef);
+        const rendered = await renderStack(imageRef);
+        // An explicit compose method first only reads the file at this commit: there is no image stack yet.
+        const composeYaml = stackFromSource ? "" : rendered.composeYaml;
+        const { env, network } = rendered;
         log(
           depId,
           "command",
@@ -430,6 +587,15 @@ async function runDeployment(depId: string): Promise<void> {
           noCache,
           forceRecreate,
           forkPreview: Boolean(forkUrl),
+          ready,
+          // A fork is a stranger's code: its build never borrows the team's GitHub identity.
+          githubToken:
+            usesRailpack && !forkUrl
+              ? ((await buildMetadataToken(
+                  project.teamId,
+                  repo.installationId ?? null,
+                )) ?? undefined)
+              : undefined,
           ...buildServerOpts,
         });
         if (attempt.commitSha) {
@@ -453,7 +619,20 @@ async function runDeployment(depId: string): Promise<void> {
             );
           }
         }
+        if (attempt.sourceCompose) {
+          agentOutcome = "stack";
+          await deployStackFrom(attempt.sourceCompose, {
+            kind: "git",
+            url: cloneUrl,
+            commit: attempt.commitSha || pin,
+            subdir: project.build.rootDirectory ?? "",
+          });
+          break;
+        }
         agentOutcome = attempt.outcome === "agent" ? "agent" : "failed";
+        observedPort = attempt.observedPort;
+        if (attempt.outcome === "agent")
+          await settleSingleImage(attempt.builtWith);
         break;
       }
       case "upload": {
@@ -494,6 +673,7 @@ async function runDeployment(depId: string): Promise<void> {
         throw new Error("Nothing to deploy: no Docker image or repository set");
     }
 
+    if (agentOutcome === "stack") return;
     const buildDurationMs = Date.now() - started;
     if (agentOutcome === "agent") {
       const applied = await commitOutcome(
@@ -521,6 +701,7 @@ async function runDeployment(depId: string): Promise<void> {
             ? `Deployment ready at ${dep.url}`
             : "Deployment ready (no domain - add one to route traffic)",
         );
+        if (observedPort) await adoptPort(observedPort, null);
         if (dep.environment === "production") {
           await settleMove(depId, project.id, serverId);
         }

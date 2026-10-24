@@ -7,7 +7,7 @@ import { primaryDomainName } from "../../data/domains/primary-domain";
 import { withKeyedLock } from "../../data/keyed-mutex";
 import { connectAgent } from "../../infra/agent-client/connect";
 import type { AppStatus } from "../../types/app";
-import { mapLimit, usesComposeStack } from "../../utils";
+import { mapLimit, usesComposeStack, usesPastedCompose } from "../../utils";
 import { ensureFileBinds } from "../agent-deploy";
 import { parseComposeUpArgs } from "../compose-args";
 import { buildComposeStack } from "../compose-stack/render";
@@ -16,6 +16,7 @@ import { fileBindsUnderFilesDir } from "../file-binds";
 import { deployNetwork, explainNetworkError } from "../network";
 import { renderCompose } from "./compose-render";
 import { composeFilesDir, takenNamesForApp } from "./compose-stack-deploy";
+import { anchorSourcePaths, sourceComposeDir } from "./source-compose";
 import { appEnv, appEnvKeys } from "./deploy-env";
 import { routableForDeploy } from "./deploy-routes";
 import { owningServerIdForDeployKey } from "./stack-lifecycle";
@@ -69,9 +70,18 @@ async function rerouteAppLocked(
     let rendered: string;
     let mounts: { path: string; content: string }[] = [];
     if (useCompose && hasCompose) {
+      // A stack read from the app's source runs from the agent's working copy of it.
+      const sourceDir = !usesPastedCompose(project)
+        ? sourceComposeDir(
+            deployKey,
+            project.repo ? project.build.rootDirectory : "",
+          )
+        : null;
       rendered = buildComposeStack({
         ...(await appTraefikOverrides(appId)),
-        compose: project.compose ?? "",
+        compose: sourceDir
+          ? anchorSourcePaths(project.compose ?? "", sourceDir)
+          : (project.compose ?? ""),
         name,
         onWarn: (message) => console.warn(`[deplo] ${appId}: ${message}`),
         takenNames: await takenNamesForApp(project, appId),
@@ -79,7 +89,7 @@ async function rerouteAppLocked(
         deployKey,
         appId,
         domainRoutes: routes,
-        filesDir: composeFilesDir(deployKey),
+        filesDir: sourceDir ?? composeFilesDir(deployKey),
         basicAuthUsers: await basicAuthUsersValue(appId),
         // Omitting these would silently unmount storage: a compose stack is re-rendered, not read back.
         envKeys: await appEnvKeys(appId),

@@ -11,7 +11,19 @@ import type { DeploymentEnvironment } from "../../types/deployment";
 import { buildComposeStack } from "../compose-stack/render";
 import { stackFilesDir } from "../deploy-key";
 import { deployNetwork } from "../network";
+import type { AgentBuildPlan } from "../agent-deploy";
+import { detectDefaultApp } from "../compose-lint/routing";
+import {
+  recordSourceCompose,
+  routeDomainsToService,
+} from "../../data/apps/build-outcome";
 import { tryAgent } from "./build-attempt";
+import { readyCheckFor } from "./ready-check";
+import {
+  anchorSourcePaths,
+  prepareSourceCompose,
+  sourceComposeDir,
+} from "./source-compose";
 import { appEnv, appEnvKeys, type PreviewEnvContext } from "./deploy-env";
 import {
   commitOutcome,
@@ -37,6 +49,8 @@ export interface ComposeStackApp {
 
 export interface ComposeStackOpts {
   depId: string;
+  // Set for a stack read from the app's own source: its paths live in the agent's working copy.
+  sourceDir?: string;
   project: ComposeStackApp;
   name: string;
   deployKey: string;
@@ -77,7 +91,7 @@ async function prepareComposeStack(opts: ComposeStackOpts): Promise<{
 }> {
   const { project, name, deployKey, trackingId, domainRoutes } = opts;
 
-  const filesDir = composeFilesDir(deployKey);
+  const filesDir = opts.sourceDir ?? composeFilesDir(deployKey);
   const basicAuthUsers = await basicAuthUsersValue(project.id);
   const envKeys = await appEnvKeys(project.id, opts.environment, {
     preview: opts.preview,
@@ -85,7 +99,9 @@ async function prepareComposeStack(opts: ComposeStackOpts): Promise<{
   const takenNames = await takenNamesForApp(project, project.id);
   const stackYaml = buildComposeStack({
     ...(await appTraefikOverrides(project.id, Boolean(opts.preview))),
-    compose: project.compose ?? "",
+    compose: opts.sourceDir
+      ? anchorSourcePaths(project.compose ?? "", opts.sourceDir)
+      : (project.compose ?? ""),
     name,
     deployKey,
     takenNames,
@@ -107,6 +123,7 @@ async function prepareComposeStack(opts: ComposeStackOpts): Promise<{
 async function finishComposeStack(
   opts: ComposeStackOpts & { serverId: string },
   running: boolean,
+  failure = "Stack did not reach a running state",
 ): Promise<void> {
   const { depId, project, domain, environment, started, target } = opts;
   const buildDurationMs = Date.now() - started;
@@ -146,7 +163,7 @@ async function finishComposeStack(
         { status: "error" },
       )
     )
-      log(depId, "error", "Stack did not reach a running state");
+      log(depId, "error", failure);
   }
 }
 
@@ -199,8 +216,108 @@ export async function deployComposeStackViaAgent(
       mounts: opts.preview?.isFork ? [] : (project.mounts ?? []),
     },
     readyTimeoutMs: 90_000,
+    ready: readyCheckFor({
+      routes: opts.domainRoutes,
+      stack: true,
+      compose: project.compose,
+    }),
     forceRecreate: opts.forceRecreate,
   });
 
   await finishComposeStack(opts, outcome === "agent");
+}
+
+// The second leg of a stack read from the source: the agent already read the file at this commit.
+export async function deploySourceComposeStack(
+  opts: ComposeStackOpts & {
+    serverId: string;
+    rawCompose: string;
+    composeFile: string;
+    source: Extract<AgentBuildPlan, { kind: "source-compose" }>["source"];
+    subdir: string;
+    tag: string;
+  },
+): Promise<{ deployed: boolean; observedPort?: number; service?: string }> {
+  const { depId, project, deployKey, serverId } = opts;
+  log(
+    depId,
+    "info",
+    `Deploying ${opts.composeFile} from the repository as a stack`,
+  );
+  let stored: string;
+  try {
+    const prepared = prepareSourceCompose(opts.rawCompose, {
+      deployKey,
+      tag: opts.tag,
+    });
+    for (const note of prepared.notes) log(depId, "info", note);
+    stored = prepared.yaml;
+  } catch (e) {
+    await finishComposeStack(
+      opts,
+      false,
+      e instanceof Error ? e.message : String(e),
+    );
+    return { deployed: false };
+  }
+  if (!opts.preview) await recordSourceCompose(project.id, stored);
+  const primary = detectDefaultApp(stored);
+  let routes = opts.domainRoutes;
+  if (primary) {
+    if (!opts.preview)
+      await routeDomainsToService(project.id, primary.service, primary.port);
+    routes = routes.map((r) =>
+      r.service
+        ? r
+        : { ...r, service: primary.service, port: r.port ?? primary.port },
+    );
+  } else if (routes.length > 0) {
+    log(
+      depId,
+      "warn",
+      "No service in the compose file lists a port (`ports:` or `expose:`), so its domain answers nothing. " +
+        'Add `expose: ["3000"]` to the service that serves the app.',
+    );
+  }
+  const stackOpts = {
+    ...opts,
+    project: { ...project, compose: stored },
+    domainRoutes: routes,
+    domains: routes.map((r) => r.name),
+    sourceDir: sourceComposeDir(
+      deployKey,
+      opts.source.kind === "git" ? opts.subdir : "",
+    ),
+  };
+  const { stackYaml } = await prepareComposeStack(stackOpts);
+  const env = await appEnv(project.id, opts.environment, {
+    preview: opts.preview,
+  });
+  const attempt = await tryAgent({
+    depId,
+    serverId,
+    project: {
+      id: project.id,
+      deployKey,
+      composeUpArgs: project.composeUpArgs ?? null,
+    },
+    imageRef: "",
+    composeYaml: stackYaml,
+    network: deployNetwork(project, opts.preview ? deployKey : null),
+    env,
+    plan: {
+      kind: "source-compose",
+      source: opts.source,
+      composeFile: opts.composeFile,
+    },
+    ready: readyCheckFor({ routes, stack: true }),
+    forceRecreate: opts.forceRecreate,
+  });
+  await finishComposeStack(stackOpts, attempt.outcome === "agent");
+  const service = routes[0]?.service ?? undefined;
+  return {
+    deployed: attempt.outcome === "agent",
+    observedPort: attempt.observedPort,
+    service,
+  };
 }

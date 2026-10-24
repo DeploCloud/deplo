@@ -8,6 +8,7 @@ import type { BuildConfig } from "../types/build";
 function baseBuild(overrides: Partial<BuildConfig> = {}): BuildConfig {
   return {
     buildMethod: "dockerfile",
+    methodAuto: false,
     methodSettings: {},
     rootDirectory: "",
     includeFilesOutsideRoot: true,
@@ -116,70 +117,121 @@ test("compose plan with no mounts sends an empty mounts list", async () => {
   assert.deepEqual(req.mounts, []);
 });
 
-test("git plan with a heavy method → its BuildKind + a BuildSpec, no dockerfile", async () => {
+const gitOf = (build: BuildConfig) => ({
+  kind: "git" as const,
+  url: "https://x@github.com/o/r.git",
+  branch: "main",
+  subdir: "",
+  build,
+});
+
+test("git plan with Railpack → BUILD_KIND_RAILPACK + a BuildSpec, no dockerfile", async () => {
+  const req = await buildDeployRequest({
+    ...base,
+    plan: gitOf(
+      baseBuild({ buildMethod: "railpack", installCommand: "npm ci" }),
+    ),
+  });
+  assert.equal(req.sourceKind, SourceKind.SOURCE_KIND_GIT);
+  assert.equal(req.buildKind, BuildKind.BUILD_KIND_RAILPACK);
+  assert.equal(req.dockerfile, undefined);
+  assert.equal(req.buildSpec?.method, "railpack");
+  assert.equal(req.buildSpec?.installCommand, "npm ci");
+  assert.equal(req.buildSpec?.autoMethod, false);
+  // Railpack picks its own Node unless the app pins one.
+  assert.equal(req.buildSpec?.runtimeVersion, "");
+  assert.equal(req.buildSpec?.runtimeLanguage, "");
+});
+
+test("Detect automatically asks the agent to prefer the repository's Dockerfile or compose file", async () => {
+  const req = await buildDeployRequest({
+    ...base,
+    plan: gitOf(
+      baseBuild({
+        buildMethod: "railpack",
+        methodAuto: true,
+        methodSettings: { composeFile: "deploy/compose.yaml" },
+      }),
+    ),
+  });
+  assert.equal(req.buildKind, BuildKind.BUILD_KIND_RAILPACK);
+  assert.equal(req.buildSpec?.autoMethod, true);
+  assert.equal(req.buildSpec?.method, "auto");
+  assert.equal(req.buildSpec?.composeFile, "deploy/compose.yaml");
+});
+
+test("an explicit Dockerfile wins even when the last auto deploy resolved something else", async () => {
+  const req = await buildDeployRequest({
+    ...base,
+    plan: gitOf(
+      baseBuild({
+        buildMethod: "dockerfile",
+        methodSettings: {
+          dockerfilePath: "ops/Dockerfile",
+          dockerBuildStage: "prod",
+        },
+      }),
+    ),
+  });
+  assert.equal(req.buildKind, BuildKind.BUILD_KIND_DOCKERFILE);
+  assert.equal(req.dockerfile?.dockerfilePath, "ops/Dockerfile");
+  assert.equal(req.dockerfile?.targetStage, "prod");
+  assert.equal(req.dockerfile?.generated, false);
+});
+
+test("an explicit compose method first only reads the file (BUILD_KIND_COMPOSE, empty stack)", async () => {
+  const req = await buildDeployRequest({
+    ...base,
+    composeYaml: "",
+    plan: gitOf(
+      baseBuild({
+        buildMethod: "compose",
+        methodSettings: { composeFile: "docker-compose.prod.yml" },
+      }),
+    ),
+  });
+  assert.equal(req.sourceKind, SourceKind.SOURCE_KIND_GIT);
+  assert.equal(req.buildKind, BuildKind.BUILD_KIND_COMPOSE);
+  assert.equal(req.composeYaml, "");
+  assert.equal(req.buildSpec?.composeFile, "docker-compose.prod.yml");
+});
+
+test("the compose leg deploys the rendered stack from the commit it was read at", async () => {
   const req = await buildDeployRequest({
     ...base,
     plan: {
-      kind: "git",
-      url: "https://x@github.com/o/r.git",
-      branch: "main",
-      subdir: "",
-      build: baseBuild({ buildMethod: "nixpacks", installCommand: "npm ci" }),
+      kind: "source-compose",
+      source: {
+        kind: "git",
+        url: "https://x@github.com/o/r.git",
+        commit: "a".repeat(40),
+        subdir: "apps/web",
+      },
+      composeFile: "compose.yaml",
     },
   });
   assert.equal(req.sourceKind, SourceKind.SOURCE_KIND_GIT);
-  assert.equal(req.buildKind, BuildKind.BUILD_KIND_NIXPACKS);
-  assert.equal(
-    req.dockerfile,
-    undefined,
-    "heavy method does not send a dockerfile descriptor",
-  );
-  assert.equal(req.buildSpec?.method, "nixpacks");
-  assert.equal(req.buildSpec?.installCommand, "npm ci");
-  assert.equal(req.buildSpec?.runtimeVersion, "24");
-  assert.equal(req.buildSpec?.runtimeLanguage, "node");
+  assert.equal(req.buildKind, BuildKind.BUILD_KIND_COMPOSE);
+  assert.equal(req.composeYaml, base.composeYaml);
+  assert.equal(req.git?.commit, "a".repeat(40));
+  assert.equal(req.git?.subdir, "apps/web");
+  assert.equal(req.buildSpec?.method, "compose");
+  assert.equal(req.buildSpec?.composeFile, "compose.yaml");
+  assert.deepEqual(req.composeUpArgs, ["--pull", "always"]);
 });
 
-test("git plan with a legacy/auto method embeds the env NAMES (not values) in the generated Dockerfile", async () => {
+test("a static site is a Railpack build with its output folder", async () => {
   const req = await buildDeployRequest({
     ...base,
-    plan: {
-      kind: "git",
-      url: "https://x@github.com/o/r.git",
-      branch: "main",
-      subdir: "",
-      build: baseBuild({ buildMethod: "auto" as BuildConfig["buildMethod"] }),
-    },
-  });
-  assert.equal(req.buildKind, BuildKind.BUILD_KIND_DOCKERFILE);
-  assert.equal(req.dockerfile?.generated, true);
-  const body = req.dockerfile?.generatedDockerfile ?? "";
-  assert.match(body, /ARG API_KEY\n/);
-  assert.ok(!body.includes("ENV API_KEY"), body);
-  assert.match(body, /ARG PORT\n/);
-  assert.ok(
-    !body.includes("secret"),
-    "env VALUE must not be baked into the Dockerfile",
-  );
-});
-
-test("git plan with the static method → BUILD_KIND_STATIC + a BuildSpec", async () => {
-  const req = await buildDeployRequest({
-    ...base,
-    plan: {
-      kind: "git",
-      url: "https://x@github.com/o/r.git",
-      branch: "main",
-      subdir: "",
-      build: baseBuild({
-        buildMethod: "static",
+    plan: gitOf(
+      baseBuild({
+        buildMethod: "railpack",
         outputDirectory: "dist",
         methodSettings: { staticSinglePageApp: true },
       }),
-    },
+    ),
   });
-  assert.equal(req.buildKind, BuildKind.BUILD_KIND_STATIC);
-  assert.equal(req.buildSpec?.method, "static");
+  assert.equal(req.buildKind, BuildKind.BUILD_KIND_RAILPACK);
   assert.equal(req.buildSpec?.outputDirectory, "dist");
   assert.equal(req.buildSpec?.staticSinglePageApp, true);
 });

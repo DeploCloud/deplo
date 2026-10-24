@@ -4,13 +4,15 @@ import type { EnvironmentKind } from "../types/team";
 import type { EnvPair, SharedRef } from "./map/env";
 import type { Note } from "./note";
 
+// The source panel's own names; mapBuildSettings turns them into a Deplo build method.
 export type SourceBuildType =
   | "dockerfile"
   | "heroku_buildpacks"
   | "paketo_buildpacks"
   | "nixpacks"
   | "static"
-  | "railpack";
+  | "railpack"
+  | "compose";
 
 export type SourceOrigin =
   "docker" | "git" | "github" | "gitlab" | "bitbucket" | "gitea" | "drop";
@@ -195,7 +197,6 @@ export interface SourceApplication {
   dockerBuildStage?: string | null;
   publishDirectory?: string | null;
   isStaticSpa?: boolean | null;
-  railpackVersion?: string | null;
   repository?: string | null;
   owner?: string | null;
   branch?: string | null;

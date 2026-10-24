@@ -388,6 +388,52 @@ test("build settings and resources travel in Deplo's own shape", () => {
   assert.deepEqual(app.nativeResources, { memoryMb: 512, pidsLimit: 100 });
 });
 
+test("an older Deplo's Nixpacks app lands on Railpack, still serving its folder", () => {
+  const old = exportApp().build;
+  const x = deploExport({
+    apps: [
+      exportApp({
+        build: {
+          ...old,
+          buildMethod: "nixpacks" as never,
+          methodSettings: {
+            ...old.methodSettings,
+            nixpacksPublishDirectory: "public",
+            railpackVersion: "0.15.4",
+          } as never,
+        },
+      }),
+    ],
+  });
+  const native = (sourceApplication(x, x.apps[0]) as SourceApplication)
+    .nativeBuild!;
+  assert.equal(native.buildMethod, "railpack");
+  assert.equal(native.outputDirectory, "public");
+  assert.deepEqual(native.methodSettings, old.methodSettings);
+});
+
+test("a newer Deplo's own build method and its Detect automatically travel as they are", () => {
+  const x = deploExport({
+    apps: [
+      exportApp({
+        build: {
+          ...exportApp().build,
+          buildMethod: "compose",
+          methodAuto: true,
+          methodSettings: { composeFile: "deploy/compose.yaml" },
+        },
+      }),
+    ],
+  });
+  const native = (sourceApplication(x, x.apps[0]) as SourceApplication)
+    .nativeBuild!;
+  assert.equal(native.buildMethod, "compose");
+  assert.equal(native.methodAuto, true);
+  assert.deepEqual(native.methodSettings, {
+    composeFile: "deploy/compose.yaml",
+  });
+});
+
 test("a host the old Deplo minted is not claimed as somebody's domain", () => {
   const x = deploExport({
     apps: [

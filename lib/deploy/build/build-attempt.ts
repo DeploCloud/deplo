@@ -19,6 +19,7 @@ import { agentPreflight } from "../../infra/agent-client/preflight";
 import type { App } from "../../types/app";
 import type { LogLine } from "../../types/deployment";
 import { formatBytes } from "../../utils";
+import type { ReadyCheck, SourceCompose } from "../../agent/gen/agent";
 import {
   agentCapabilityForMethod,
   runAgentDeploy,
@@ -65,6 +66,10 @@ export async function consumeCacheClear(appId: string): Promise<void> {
 interface AgentAttempt {
   outcome: "agent" | "failed";
   commitSha: string;
+  observedPort?: number;
+  builtWith?: string;
+  // The source turned out to carry a compose file: nothing was built or started.
+  sourceCompose?: SourceCompose;
 }
 
 function planBuilds(plan: AgentBuildPlan): boolean {
@@ -131,16 +136,20 @@ async function buildOnBuildServer(opts: {
   forkPreview?: boolean;
   plan: AgentBuildPlan;
   noCache?: boolean;
+  githubToken?: string;
   sink: (level: LogLine["level"], text: string) => void;
 }): Promise<{
-  outcome: "built" | "fallback" | "failed";
+  outcome: "built" | "fallback" | "failed" | "compose";
   commitSha: string;
   builtOn?: string;
+  builtWith?: string;
+  sourceCompose?: SourceCompose;
 }> {
   const targetName = opts.targetServerName ?? "the app's server";
 
   let builder: { id: string; name: string } | null = null;
   let commitSha = "";
+  let builtWith: string | undefined;
   for (const [i, candidate] of opts.builders.entries()) {
     try {
       const built = await runAgentDeploy({
@@ -155,12 +164,21 @@ async function buildOnBuildServer(opts: {
         plan: opts.plan,
         forkPreview: opts.forkPreview,
         noCache: opts.noCache,
+        githubToken: opts.githubToken,
         buildOnly: true,
         sink: { log: opts.sink },
       });
+      // A stack builds where it runs: the compose leg goes to the app's own server.
+      if (built.sourceCompose)
+        return {
+          outcome: "compose",
+          commitSha: built.commitSha,
+          sourceCompose: built.sourceCompose,
+        };
       if (!built.ready)
         return { outcome: "failed", commitSha: built.commitSha };
       commitSha = built.commitSha;
+      builtWith = built.builtWith;
       builder = candidate;
       break;
     } catch (e) {
@@ -196,7 +214,7 @@ async function buildOnBuildServer(opts: {
       "info",
       `Copied ${formatBytes(bytes)} from ${builder.name} to ${targetName}`,
     );
-    return { outcome: "built", commitSha, builtOn: builder.id };
+    return { outcome: "built", commitSha, builtOn: builder.id, builtWith };
   } catch (e) {
     console.error(
       `[deplo] image copy ${builder.id} -> ${opts.serverId} failed:`,
@@ -251,6 +269,8 @@ export async function tryAgent(opts: {
   localAllowed?: boolean;
   planLines?: { level: LogLine["level"]; text: string }[];
   forkPreview?: boolean;
+  ready?: ReadyCheck;
+  githubToken?: string;
 }): Promise<AgentAttempt> {
   return withKeyedLock(`app-lifecycle:${opts.project.id}`, async () => {
     const stillExists = await getDb()
@@ -276,6 +296,7 @@ export async function tryAgent(opts: {
     );
     let plan = opts.plan;
     let builtCommitSha = "";
+    let builtWith: string | undefined;
     try {
       const builders = (opts.builders ?? []).filter(
         (b) => b.id !== opts.serverId,
@@ -298,15 +319,22 @@ export async function tryAgent(opts: {
         });
         if (leg.outcome === "failed")
           return { outcome: "failed", commitSha: leg.commitSha };
+        if (leg.outcome === "compose")
+          return {
+            outcome: "failed",
+            commitSha: leg.commitSha,
+            sourceCompose: leg.sourceCompose,
+          };
         if (leg.outcome === "built") {
           builtCommitSha = leg.commitSha;
+          builtWith = leg.builtWith;
           if (leg.builtOn)
             await setDep(opts.depId, { buildServerId: leg.builtOn });
           plan = { kind: "image", image: opts.imageRef, pull: false };
         }
       }
 
-      const { ready, commitSha } = await runAgentDeploy({
+      const result = await runAgentDeploy({
         serverId: opts.serverId,
         deployId: opts.depId,
         slug: opts.project.deployKey,
@@ -321,11 +349,16 @@ export async function tryAgent(opts: {
         noCache: opts.noCache,
         forceRecreate: opts.forceRecreate,
         composeUpArgs: parseComposeUpArgs(opts.project.composeUpArgs),
+        ready: opts.ready,
+        githubToken: opts.githubToken,
         sink: { log: (level, text) => log(opts.depId, level, text) },
       });
       return {
-        outcome: ready ? "agent" : "failed",
-        commitSha: commitSha || builtCommitSha,
+        outcome: result.ready ? "agent" : "failed",
+        commitSha: result.commitSha || builtCommitSha,
+        observedPort: result.observedPort,
+        builtWith: result.builtWith ?? builtWith,
+        sourceCompose: result.sourceCompose,
       };
     } catch (e) {
       if (agentIsDown(e)) {

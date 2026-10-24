@@ -7,6 +7,7 @@ import {
   coolifyPorts,
 } from "./applications";
 import { APP } from "./map-test-helpers";
+import { mapBuildSettings } from "../../map/app-settings";
 
 test("coolifyPorts reads a mapping list", () => {
   assert.deepEqual(
@@ -113,6 +114,28 @@ test("a publish directory only means static when the app is static", () => {
     { serverId: "srv-1", environmentId: "2" },
   );
   assert.equal(site.publishDirectory, "/dist");
+});
+
+test("a static site and a static Nixpacks app build with Railpack, serving the same folder", () => {
+  for (const row of [
+    { ...APP, build_pack: "static", publish_directory: "/dist" },
+    { ...APP, publish_directory: "/dist", settings: { is_static: true } },
+  ]) {
+    const { value } = mapBuildSettings(
+      coolifyApplication(
+        { ...row, settings: { ...row.settings, is_spa: true } },
+        { serverId: "srv-1", environmentId: "2" },
+      ),
+    );
+    assert.equal(value.buildMethod, "railpack");
+    assert.equal(value.outputDirectory, "/dist");
+    assert.equal(value.methodSettings?.staticSinglePageApp, true);
+  }
+});
+
+test("a build pack Deplo does not know builds with Railpack", () => {
+  const a = coolifyApplication({ ...APP, build_pack: "heroku" });
+  assert.equal(mapBuildSettings(a).value.buildMethod, "railpack");
 });
 
 test("Coolify's build-step overrides come across", () => {

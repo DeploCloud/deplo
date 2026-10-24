@@ -325,7 +325,7 @@ scripts/gen-schema.ts`. Both halves of that prefix are load-bearing: the shim
     `.../logs` (SSE), `.../attach`, `databases/[id]/logs` (SSE), `databases/[id]/attach` (SSE
     siblings of the app routes - reuse `lib/logs/session.ts` + `lib/attach/session.ts`),
     `backups/[runId]/download`, `backups/restore-upload`, `node-versions`,
-    `railpack-versions`, `database-versions`, `registry/images`, `github/callback|setup`.
+    `database-versions`, `registry/images`, `github/callback|setup`.
   - **A signature or a URL token, never a cookie**: `github/webhook` (HMAC over the body),
     `git/webhook/[token]` (the URL token names the provider - sniffing headers would let the
     caller pick the verification rule), `agent/bootstrap` (one-shot enrollment token),

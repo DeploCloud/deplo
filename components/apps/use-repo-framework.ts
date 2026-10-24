@@ -3,7 +3,7 @@
 import * as React from "react";
 import { gql } from "@/lib/graphql-client";
 import { supportsFrameworkDetection } from "@/lib/apps/framework-catalog";
-import type { BuildMethod } from "@/lib/types/build";
+import type { BuildMethodChoice } from "@/lib/apps/build-method";
 
 export interface RecognizedFramework {
   id: string;
@@ -35,7 +35,7 @@ export interface RepoFrameworkInput {
   url?: string | null;
   branch?: string | null;
   installationId?: string | null;
-  buildMethod: BuildMethod;
+  buildMethod: BuildMethodChoice;
   rootDirectory?: string | null;
 }
 

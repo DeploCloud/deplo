@@ -5,6 +5,7 @@ import * as React from "react";
 import type { GithubSelection } from "@/components/apps/github-repo-picker";
 import type { GitSourceValue } from "@/components/apps/git-source-picker";
 import { useRepoFramework } from "@/components/apps/use-repo-framework";
+import { methodChoice } from "@/lib/apps/build-method";
 import { buildConfigFor } from "@/lib/frameworks";
 import type { DeploySource } from "@/lib/types/app";
 import type { BuildConfig } from "@/lib/types/build";
@@ -22,7 +23,9 @@ export function useBuildConfig({
   ghSelection: GithubSelection | null;
   gitValue: GitSourceValue;
 }) {
-  const [draftBuild, setDraftBuild] = React.useState(() => buildConfigFor());
+  const [draftBuild, setDraftBuild] = React.useState(() =>
+    buildConfigFor({ methodAuto: true }),
+  );
   const [portTouched, setPortTouched] = React.useState(false);
   const [imagePort, setImagePort] = React.useState<number | null>(null);
   const [outputTouched, setOutputTouched] = React.useState(false);
@@ -55,7 +58,7 @@ export function useBuildConfig({
     url: detectRepo?.url,
     branch: detectRepo?.branch,
     installationId: detectRepo?.installationId,
-    buildMethod: draftBuild.buildMethod,
+    buildMethod: methodChoice(draftBuild),
     rootDirectory: draftBuild.rootDirectory,
   });
 

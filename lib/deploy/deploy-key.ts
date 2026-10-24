@@ -17,6 +17,11 @@ export function stackFilesDir(deployKey: string): string {
   return `${dataDir()}/stacks/files/${deployKey}`;
 }
 
+// The working copy a stack built from its source's compose file runs from.
+export function stackSourceDir(deployKey: string): string {
+  return `${dataDir()}/stacks/${deployKey}.src`;
+}
+
 export function deployImageRef(
   deployKey: string,
   deploymentId: string,

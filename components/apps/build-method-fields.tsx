@@ -1,14 +1,7 @@
 "use client";
 
 import * as React from "react";
-import {
-  FileCode2,
-  Boxes,
-  Layers,
-  FileText,
-  RotateCcw,
-  Wand2,
-} from "lucide-react";
+import { Boxes, FileCode2, Layers, RotateCcw, Wand2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { FieldLabel } from "@/components/ui/info-tip";
@@ -21,18 +14,21 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { RailpackVersionInput } from "@/components/apps/railpack-version-input";
 import { FrameworkIcon } from "@/components/shared/framework-icons";
 import {
   FRAMEWORKS,
   frameworkById,
   supportsFrameworkDetection,
 } from "@/lib/apps/framework-catalog";
+import {
+  buildsWithRailpack,
+  type BuildMethodChoice,
+} from "@/lib/apps/build-method";
 import { cn } from "@/lib/utils";
 import type { BuildMethod, BuildMethodSettings } from "@/lib/types/build";
 
 interface MethodMeta {
-  id: BuildMethod;
+  id: BuildMethodChoice;
   name: string;
   icon: React.ComponentType<{ className?: string }>;
   blurb: string;
@@ -40,16 +36,17 @@ interface MethodMeta {
 
 export const BUILD_METHODS: MethodMeta[] = [
   {
+    id: "auto",
+    name: "Detect automatically",
+    icon: Wand2,
+    blurb:
+      "Your Dockerfile, else your Docker Compose file, else Railpack. Checked on every deploy.",
+  },
+  {
     id: "railpack",
     name: "Railpack",
     icon: Layers,
     blurb: "Zero-config builder that detects and builds your app.",
-  },
-  {
-    id: "nixpacks",
-    name: "Nixpacks",
-    icon: Boxes,
-    blurb: "The older zero-config builder. Serves fewer static sites.",
   },
   {
     id: "dockerfile",
@@ -58,26 +55,32 @@ export const BUILD_METHODS: MethodMeta[] = [
     blurb: "Build straight from a Dockerfile in your repository.",
   },
   {
-    id: "static",
-    name: "Static",
-    icon: FileText,
-    blurb: "Serve a directory of files as a static site behind nginx.",
+    id: "compose",
+    name: "Docker Compose",
+    icon: Boxes,
+    blurb:
+      "Build and run the services in your repository's Docker Compose file.",
   },
 ];
+
+const methodName = (id: BuildMethodChoice) =>
+  BUILD_METHODS.find((m) => m.id === id)?.name ?? id;
 
 export function BuildMethodFields({
   method,
   settings,
   onMethodChange,
   onSettingsChange,
+  lastBuiltWith,
   framework,
   detectedFramework,
   onFrameworkChange,
 }: {
-  method: BuildMethod;
+  method: BuildMethodChoice;
   settings: BuildMethodSettings;
-  onMethodChange: (m: BuildMethod) => void;
+  onMethodChange: (m: BuildMethodChoice) => void;
   onSettingsChange: (patch: Partial<BuildMethodSettings>) => void;
+  lastBuiltWith?: BuildMethod | null;
   framework?: string | null;
   detectedFramework?: string | null;
   onFrameworkChange?: (id: string | null) => void;
@@ -95,6 +98,11 @@ export function BuildMethodFields({
             meta={m}
             selected={m.id === method}
             onSelect={() => onMethodChange(m.id)}
+            note={
+              m.id === "auto" && lastBuiltWith
+                ? `Last deploy: ${methodName(lastBuiltWith)}`
+                : null
+            }
           />
         ))}
       </div>
@@ -115,10 +123,12 @@ function MethodCard({
   meta,
   selected,
   onSelect,
+  note,
 }: {
   meta: MethodMeta;
   selected: boolean;
   onSelect: () => void;
+  note: string | null;
 }) {
   const Icon = meta.icon;
   return (
@@ -150,6 +160,7 @@ function MethodCard({
         <span className="mt-0.5 block text-xs leading-snug text-muted-foreground">
           {meta.blurb}
         </span>
+        {note && <span className="mt-1.5 block text-xs">{note}</span>}
       </span>
       <span
         aria-hidden
@@ -172,14 +183,18 @@ function MethodSettings({
   detectedFramework,
   onFrameworkChange,
 }: {
-  method: BuildMethod;
+  method: BuildMethodChoice;
   settings: BuildMethodSettings;
   onSettingsChange: (patch: Partial<BuildMethodSettings>) => void;
   framework?: string | null;
   detectedFramework?: string | null;
   onFrameworkChange?: (id: string | null) => void;
 }) {
-  const meta = BUILD_METHODS.find((m) => m.id === method);
+  const railpack = buildsWithRailpack(method);
+  // Detect automatically has no options of its own; the Railpack ones are what it builds with.
+  const meta = BUILD_METHODS.find(
+    (m) => m.id === (railpack ? "railpack" : method),
+  );
   if (!meta) return null;
   const Icon = meta.icon;
   return (
@@ -225,37 +240,18 @@ function MethodSettings({
           </>
         )}
 
-        {method === "railpack" && (
-          <div className="space-y-2">
-            <FieldLabel
-              info={
-                <>
-                  Builder version, kept in sync with the railpack releases. Pick{" "}
-                  <code className="font-mono">latest</code> or a specific tag.
-                </>
-              }
-              docs="build.methods"
-            >
-              Railpack version
-            </FieldLabel>
-            <RailpackVersionInput
-              value={settings.railpackVersion ?? ""}
-              onChange={(v) => onSettingsChange({ railpackVersion: v })}
-            />
-          </div>
-        )}
-
-        {method === "nixpacks" && (
+        {method === "compose" && (
           <TextField
-            label="Publish directory"
-            placeholder="(auto)"
-            value={settings.nixpacksPublishDirectory ?? ""}
-            onChange={(v) => onSettingsChange({ nixpacksPublishDirectory: v })}
-            help="After the build finishes, serve just this directory as a static site through NGINX - handy when your build emits static assets to publish. Leave blank to run the app normally."
+            label="Compose file"
+            placeholder="docker-compose.yml"
+            value={settings.composeFile ?? ""}
+            onChange={(v) => onSettingsChange({ composeFile: v })}
+            help="Path inside the repository. Leave it empty and Deplo looks for compose.yaml, compose.yml, docker-compose.yaml or docker-compose.yml."
+            className="sm:col-span-2"
           />
         )}
 
-        {method === "static" && (
+        {railpack && (
           <label className="flex cursor-pointer items-start gap-3 sm:col-span-2">
             <Checkbox
               checked={settings.staticSinglePageApp ?? false}
@@ -269,8 +265,8 @@ function MethodSettings({
                 Single-page application
               </span>
               <span className="mt-1 block text-xs text-muted-foreground">
-                Route unknown paths to index.html so client-side routing works
-                (history-API fallback).
+                Send every unknown path to index.html, so client-side routing
+                works.
               </span>
             </span>
           </label>

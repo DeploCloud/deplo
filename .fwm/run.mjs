@@ -68,7 +68,6 @@ async function createOne(e, opts) {
     settings: {
       dockerfilePath: "Dockerfile",
       dockerContextPath: ".",
-      railpackVersion: "latest",
       staticSinglePageApp: false,
     },
     installCommand: null,
@@ -151,7 +150,7 @@ async function httpOnce(url) {
 }
 
 const [, , cmd, arg, ...flags] = process.argv;
-const method = flags.includes("--nixpacks") ? "nixpacks" : "railpack";
+const method = "railpack";
 const legacy = flags.includes("--legacy");
 const prefix = flags.find((f) => f.startsWith("--prefix="))?.slice(9) ?? "";
 const OUT = `/root/projects/deplo/.fwm/results-${method}${legacy ? "-legacy" : ""}.json`;

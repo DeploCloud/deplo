@@ -203,9 +203,11 @@ export const APPS_CONFIG: McpToolDef[] = [
     input: z.object({
       appId,
       buildMethod: z
-        .string()
+        .enum(["auto", "railpack", "dockerfile", "compose"])
         .optional()
-        .describe("e.g. nixpacks, railpack, dockerfile."),
+        .describe(
+          "auto: Deplo picks on every deploy - the Dockerfile, else the Compose file, else Railpack.",
+        ),
       buildCommand: z.string().optional(),
       installCommand: z.string().optional(),
       startCommand: z.string().optional(),

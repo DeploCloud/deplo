@@ -181,11 +181,11 @@ test("a hostile or malformed package.json is survivable, never thrown", () => {
   );
 });
 
-test("recognition applies to the auto-detecting builders only", () => {
-  assert.equal(supportsFrameworkDetection("nixpacks"), true);
+test("recognition applies to Railpack, and to Detect automatically, which ends on it", () => {
   assert.equal(supportsFrameworkDetection("railpack"), true);
+  assert.equal(supportsFrameworkDetection("auto"), true);
   assert.equal(supportsFrameworkDetection("dockerfile"), false);
-  assert.equal(supportsFrameworkDetection("static"), false);
+  assert.equal(supportsFrameworkDetection("compose"), false);
 });
 
 test("a user's correction outranks detection, and only when it's set", () => {

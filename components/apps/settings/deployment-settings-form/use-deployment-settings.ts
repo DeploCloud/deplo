@@ -21,10 +21,11 @@ import type {
   GitWebhookStatus,
 } from "@/lib/data/git-connections";
 import type { DeploySource } from "@/lib/types/app";
-import type { BuildConfig, GitRepo } from "@/lib/types/build";
+import type { BuildConfig, BuildMethod, GitRepo } from "@/lib/types/build";
 import type { GitProviderChoice } from "@/lib/types/git";
 import { deploySourceEnumName } from "@/lib/types/app";
-import { usesComposeStack } from "@/lib/utils";
+import { methodChoice } from "@/lib/apps/build-method";
+import { usesPastedCompose } from "@/lib/utils";
 import { useOptimisticValue } from "@/components/shared/use-optimistic-value";
 import { gqlAction } from "@/lib/graphql-client";
 import { computeSourceKey } from "./source-key";
@@ -33,6 +34,8 @@ export type DeploymentSettingsProps = {
   appId: string;
   slug: string;
   build: BuildConfig;
+  // What Detect automatically resolved to on the last deploy; null before one, or when a method is picked.
+  lastBuiltWith: BuildMethod | null;
   framework: string | null;
   frameworkOverride: string | null;
   autoDeploy: boolean;
@@ -80,7 +83,7 @@ export function useDeploymentSettings({
   const [composeDiags, setComposeDiags] = React.useState<LintDiagnostic[]>([]);
 
   const [source, setSource] = React.useState<DeploySource>(
-    usesComposeStack({
+    usesPastedCompose({
       source: initialSource,
       compose: initialCompose,
       repo: initialRepo,
@@ -119,7 +122,8 @@ export function useDeploymentSettings({
   const usesGithubApp = source === "github";
   const usesGitUrl = source === "git";
 
-  const isComposeStack = usesComposeStack({
+  // A git or upload app that deploys its own compose file keeps its build card.
+  const pastedCompose = usesPastedCompose({
     source,
     compose,
     repo: usesGithubApp
@@ -129,7 +133,7 @@ export function useDeploymentSettings({
         : null,
     dockerImage: dockerImage.trim() || null,
   });
-  const buildCardVisible = !isComposeStack && source !== "docker-image";
+  const buildCardVisible = !pastedCompose && source !== "docker-image";
 
   const repoConfigVisible =
     usesGitUrl || (usesGithubApp && installations.length > 0);
@@ -186,7 +190,7 @@ export function useDeploymentSettings({
   const currentBuildKey = React.useMemo(
     () =>
       JSON.stringify({
-        buildMethod: build.buildMethod,
+        method: methodChoice(build),
         methodSettings: build.methodSettings,
         installCommand: build.installCommand,
         buildCommand: build.buildCommand,
@@ -379,7 +383,7 @@ export function useDeploymentSettings({
         {
           id: appId,
           build: {
-            buildMethod: build.buildMethod,
+            buildMethod: methodChoice(build),
             settings: build.methodSettings,
             installCommand: build.installCommand,
             buildCommand: build.buildCommand,

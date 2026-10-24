@@ -228,6 +228,20 @@ async function imagePortFor(
   return await imageExposedPort(image).catch(() => null);
 }
 
+// A new app that builds and names no method lets Deplo pick it on every deploy.
+function newAppBuild(
+  input: Pick<CreateAppInput, "source" | "build">,
+  imagePort: number | null,
+): BuildConfig {
+  const build = buildConfigFor(
+    imagePort ? { ...input.build, port: imagePort } : input.build,
+  );
+  const builds = ["github", "git", "upload"].includes(input.source);
+  const named =
+    input.build?.buildMethod != null || input.build?.methodAuto != null;
+  return builds && !named ? { ...build, methodAuto: true } : build;
+}
+
 export async function createApp(input: CreateAppInput): Promise<AppSummary> {
   const { membership, userId } = await requireMembership();
   input = { ...input, name: cleanAppName(input.name) };
@@ -387,9 +401,7 @@ export async function createApp(input: CreateAppInput): Promise<AppSummary> {
     upload: null,
     compose: input.compose ?? null,
     mounts: input.mounts?.length ? input.mounts : null,
-    build: buildConfigFor(
-      imagePort ? { ...input.build, port: imagePort } : input.build,
-    ),
+    build: newAppBuild(input, imagePort),
     productionUrl: null,
     status: isUpload ? "idle" : "queued",
     previewEnabled: false,
@@ -530,7 +542,9 @@ export async function createApp(input: CreateAppInput): Promise<AppSummary> {
       (input.build?.port != null || imagePort != null));
   const wantsAddress = input.compose ? detected != null : imageIsWeb;
 
-  if (!input.noAutoDomain && (input.autoDomain || wantsAddress))
+  // An empty autoDomain is a caller asking for none, as an importer's noAutoDomain is.
+  const noAutoDomain = input.noAutoDomain || input.autoDomain === "";
+  if (!noAutoDomain && (input.autoDomain || wantsAddress))
     await ensureAutoDomain(project.id, {
       slug,
       ip,

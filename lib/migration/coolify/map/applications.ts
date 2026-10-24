@@ -85,7 +85,7 @@ export function coolifyApplication(
     env: extras.env ?? null,
     icon: null,
     sourceType,
-    buildType: BUILD_PACK[row.build_pack ?? ""] ?? "nixpacks",
+    buildType: BUILD_PACK[row.build_pack ?? ""] ?? "railpack",
     applicationStatus: row.status ?? null,
     watchPaths: (row.watch_paths ?? "")
       .split("\n")

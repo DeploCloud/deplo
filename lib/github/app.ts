@@ -178,6 +178,58 @@ export async function getInstallationToken(
   return json.token;
 }
 
+// For a builder's version lookups on public repos: scoped to metadata, a leaked copy reads nothing private.
+export async function buildMetadataToken(
+  teamId: string,
+  installationId?: string | null,
+): Promise<string | null> {
+  try {
+    const id = installationId || (await firstTeamInstallationId(teamId));
+    if (!id) return null;
+    const key = `metadata:${id}`;
+    const cached = tokenCache.get(key);
+    if (cached && cached.expiresAt - 5 * 60_000 > Date.now())
+      return cached.token;
+    const found = await findInstallation(id);
+    if (!found) return null;
+    const res = await fetch(
+      `${API}/app/installations/${found.install.installationId}/access_tokens`,
+      {
+        method: "POST",
+        headers: {
+          Accept: "application/vnd.github+json",
+          "X-GitHub-Api-Version": "2022-11-28",
+          "User-Agent": UA,
+          Authorization: `Bearer ${appJwt(found.app)}`,
+        },
+        body: JSON.stringify({ permissions: { metadata: "read" } }),
+      },
+    );
+    if (!res.ok) return null;
+    const json = (await res.json()) as { token: string; expires_at: string };
+    tokenCache.set(key, {
+      token: json.token,
+      expiresAt: new Date(json.expires_at).getTime(),
+    });
+    return json.token;
+  } catch {
+    return null;
+  }
+}
+
+async function firstTeamInstallationId(teamId: string): Promise<string | null> {
+  const rows = await getDb()
+    .select({ id: githubInstallationTable.id })
+    .from(githubInstallationTable)
+    .innerJoin(
+      githubAppsTable,
+      eq(githubAppsTable.id, githubInstallationTable.appId),
+    )
+    .where(eq(githubAppsTable.teamId, teamId))
+    .limit(1);
+  return rows[0]?.id ?? null;
+}
+
 export interface GithubRepoSummary {
   fullName: string;
   name: string;

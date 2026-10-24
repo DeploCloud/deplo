@@ -232,6 +232,7 @@ async function main() {
     buildOnly: false,
     registryAuth: [],
     filesBindSources: [],
+    githubToken: "",
   })) {
     if (ev.seq) lastSeq = Number(ev.seq);
     if (ev.log) process.stdout.write(`  [${ev.log.level}] ${ev.log.text}\n`);
@@ -308,6 +309,7 @@ async function main() {
     buildOnly: false,
     registryAuth: [],
     filesBindSources: [],
+    githubToken: "",
   })) {
     if (ev.seq) cursor = Number(ev.seq);
     break;

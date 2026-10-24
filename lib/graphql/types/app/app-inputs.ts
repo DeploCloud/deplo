@@ -68,7 +68,11 @@ export const BuildConfigInput = builder.inputType("BuildConfigInput", {
   description:
     "Partial build configuration; only the provided fields are changed.",
   fields: (t) => ({
-    buildMethod: t.string({ required: false }),
+    buildMethod: t.string({
+      required: false,
+      description:
+        "auto (Deplo picks: the Dockerfile, else the compose file, else Railpack, on every deploy), railpack, dockerfile or compose.",
+    }),
     rootDir: t.string({ required: false }),
     includeFilesOutsideRoot: t.boolean({ required: false }),
     skipUnchangedDeployments: t.boolean({ required: false }),
@@ -192,7 +196,11 @@ export const CreateAppInputType = builder.inputType("CreateAppInput", {
     composeService: t.string({ required: false }),
     composePort: t.int({ required: false }),
     extraDomains: t.field({ type: [ExtraDomainInput], required: false }),
-    autoDomain: t.string({ required: false }),
+    autoDomain: t.string({
+      required: false,
+      description:
+        "The hostname for the generated address. Empty string: no generated address at all.",
+    }),
     autoDomainPath: t.string({ required: false }),
     mounts: t.field({ type: [MountInput], required: false }),
     folderId: t.string({ required: false }),

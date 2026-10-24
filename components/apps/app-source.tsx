@@ -1,7 +1,7 @@
 import * as React from "react";
 import { GitBranch, Layers, Container, Package } from "lucide-react";
 import { GitHubIcon } from "@/components/shared/brand-icons";
-import { usesComposeStack } from "@/lib/utils";
+import { usesPastedCompose } from "@/lib/utils";
 import type { GitRepo } from "@/lib/types/build";
 
 export type AppSourceLike = {
@@ -18,7 +18,8 @@ export interface AppSourceDescriptor {
 }
 
 export function describeAppSource(project: AppSourceLike): AppSourceDescriptor {
-  if (usesComposeStack(project)) {
+  // A repo that deploys its own compose file is still described by its repo.
+  if (usesPastedCompose(project)) {
     return { Icon: Layers, label: "Compose", isGit: false };
   }
   if (project.repo) {

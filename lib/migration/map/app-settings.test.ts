@@ -5,25 +5,19 @@ import { MAX_LOGO_STRING_LEN } from "../../apps/logo-shared";
 import { mapBuildSettings, mapLogo, mapPorts } from "./app-settings";
 import { app } from "./map-test-helpers";
 
-test("mapBuildSettings maps each build pack Deplo has", () => {
-  for (const [dokploy, Deplo] of [
+test("mapBuildSettings keeps a Dockerfile, and lands every other builder on Railpack", () => {
+  for (const [source, deplo] of [
     ["dockerfile", "dockerfile"],
-    ["nixpacks", "nixpacks"],
+    ["compose", "compose"],
     ["railpack", "railpack"],
-    ["static", "static"],
+    ["nixpacks", "railpack"],
+    ["static", "railpack"],
+    ["heroku_buildpacks", "railpack"],
+    ["paketo_buildpacks", "railpack"],
   ] as const) {
-    const { value, notes } = mapBuildSettings(app({ buildType: dokploy }));
-    assert.equal(value.buildMethod, Deplo);
+    const { value, notes } = mapBuildSettings(app({ buildType: source }));
+    assert.equal(value.buildMethod, deplo, source);
     assert.deepEqual(notes, []);
-  }
-});
-
-test("mapBuildSettings falls back to nixpacks for the buildpack families, with a note", () => {
-  for (const buildType of ["heroku_buildpacks", "paketo_buildpacks"] as const) {
-    const { value, notes } = mapBuildSettings(app({ buildType }));
-    assert.equal(value.buildMethod, "nixpacks");
-    assert.equal(notes.length, 1);
-    assert.match(notes[0], /Set to Nixpacks/);
   }
 });
 
@@ -45,18 +39,38 @@ test("mapBuildSettings carries the dockerfile settings and the build path", () =
   });
 });
 
-test("mapBuildSettings sends publishDirectory to the field the builder reads", () => {
+test("a folder the panel served arrives as Railpack's output directory", () => {
   const asStatic = mapBuildSettings(
     app({ buildType: "static", publishDirectory: "dist", isStaticSpa: true }),
   ).value;
+  assert.equal(asStatic.buildMethod, "railpack");
   assert.equal(asStatic.outputDirectory, "dist");
   assert.equal(asStatic.methodSettings?.staticSinglePageApp, true);
 
   const asNixpacks = mapBuildSettings(
     app({ buildType: "nixpacks", publishDirectory: "public" }),
   ).value;
-  assert.equal(asNixpacks.outputDirectory, undefined);
-  assert.equal(asNixpacks.methodSettings?.nixpacksPublishDirectory, "public");
+  assert.equal(asNixpacks.buildMethod, "railpack");
+  assert.equal(asNixpacks.outputDirectory, "public");
+  assert.equal(asNixpacks.methodSettings, undefined);
+});
+
+test("a publish directory a builder never read stays behind", () => {
+  for (const buildType of [
+    "railpack",
+    "dockerfile",
+    "heroku_buildpacks",
+  ] as const) {
+    const { value } = mapBuildSettings(
+      app({ buildType, publishDirectory: "dist", isStaticSpa: true }),
+    );
+    assert.equal(value.outputDirectory, undefined, buildType);
+    assert.equal(
+      value.methodSettings?.staticSinglePageApp,
+      undefined,
+      buildType,
+    );
+  }
 });
 
 test("mapBuildSettings ignores the settings the chosen builder never reads", () => {
@@ -65,17 +79,10 @@ test("mapBuildSettings ignores the settings the chosen builder never reads", () 
       buildType: "nixpacks",
       dockerfile: "Dockerfile",
       dockerContextPath: ".",
-      railpackVersion: "0.15.4",
     }),
   );
-  assert.equal(value.buildMethod, "nixpacks");
+  assert.equal(value.buildMethod, "railpack");
   assert.equal(value.methodSettings, undefined);
-
-  assert.equal(
-    mapBuildSettings(app({ buildType: "railpack", railpackVersion: "0.15.4" }))
-      .value.methodSettings?.railpackVersion,
-    "0.15.4",
-  );
 });
 
 test("mapBuildSettings notes replicas, which Deplo does not scale", () => {

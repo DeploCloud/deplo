@@ -113,9 +113,9 @@ export const AppRef = builder.objectRef<AppSummary>("App").implement({
       description:
         "The JavaScript framework backing this app " +
         '("nextjs", "astro", "nestjs", …), or null when none was found or the ' +
-        "app doesn't build with one of the auto-detecting builders (Nixpacks / " +
-        "Railpack). Detected on every deploy, unless setAppFramework has " +
-        "corrected it - in which case that choice is what this returns.",
+        "app doesn't build with Railpack. Detected on every deploy, unless " +
+        "setAppFramework has corrected it - in which case that choice is what " +
+        "this returns.",
       resolve: (p) => effectiveFramework(p),
     }),
     frameworkDetected: t.exposeString("framework", {

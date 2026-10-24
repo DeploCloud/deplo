@@ -59,7 +59,7 @@ for (const l of logs) {
   if (
     /#\d+ .*(DONE \d|CACHED)/.test(t) ||
     /exporting layers|unpacking to|naming to/.test(t) ||
-    /^(git clone|docker |nixpacks |railpack |buildctl)/.test(t) ||
+    /^(git clone|docker |railpack |buildctl)/.test(t) ||
     /Checked out|Waiting for|Deployment ready|error/i.test(t)
   ) {
     console.log(

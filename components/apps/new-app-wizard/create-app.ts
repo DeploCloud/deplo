@@ -15,6 +15,7 @@ import {
   type LintDiagnostic,
 } from "@/lib/deploy/compose-lint/lint";
 import type { ComposeRouteCandidate } from "@/lib/deploy/compose-lint/routing";
+import { methodChoice } from "@/lib/apps/build-method";
 import { uploadArchive } from "@/lib/deploy/upload-client";
 import { buildConfigFor } from "@/lib/frameworks";
 import { gqlAction } from "@/lib/graphql-client";
@@ -190,7 +191,7 @@ export function buildCreateAppInput({
     sharedVarIds: sharedIds.length ? sharedIds : null,
     repo,
     build: {
-      buildMethod: payloadBuild.buildMethod,
+      buildMethod: methodChoice(payloadBuild),
       settings: payloadBuild.methodSettings,
       installCommand: payloadBuild.installCommand,
       buildCommand: payloadBuild.buildCommand,

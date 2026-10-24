@@ -154,18 +154,15 @@ export enum BuildKind {
   BUILD_KIND_NONE = 1,
   /** BUILD_KIND_DOCKERFILE - build from a Dockerfile in the context */
   BUILD_KIND_DOCKERFILE = 2,
-  /**
-   * BUILD_KIND_STATIC - The heavy builders. Each reads DeployRequest.build_spec for its method
-   * settings (port, commands, runtime version, per-method knobs). The agent ports
-   * builders.ts byte-for-byte so an image built here matches the old local path.
-   */
-  BUILD_KIND_STATIC = 3,
-  /** BUILD_KIND_NIXPACKS - nixpacks generates a Dockerfile, then docker build */
-  BUILD_KIND_NIXPACKS = 4,
-  /** BUILD_KIND_BUILDPACKS - Cloud Native Buildpacks via `pack` (heroku|paketo) */
-  BUILD_KIND_BUILDPACKS = 5,
-  /** BUILD_KIND_RAILPACK - railpack plan + buildkitd/buildctl */
+  /** BUILD_KIND_RAILPACK - railpack plan, built by the daemon's BuildKit (build_spec) */
   BUILD_KIND_RAILPACK = 6,
+  /**
+   * BUILD_KIND_COMPOSE - The compose file the source carries (GIT or UPLOAD). With compose_yaml empty the agent
+   * only reads that file and returns it as DeployResult.source_compose; with compose_yaml
+   * (the control plane's render of it) it builds the services from the checkout and brings
+   * the stack up there. Advertised as `deploy.compose.source`.
+   */
+  BUILD_KIND_COMPOSE = 7,
   UNRECOGNIZED = -1,
 }
 
@@ -180,18 +177,12 @@ export function buildKindFromJSON(object: any): BuildKind {
     case 2:
     case "BUILD_KIND_DOCKERFILE":
       return BuildKind.BUILD_KIND_DOCKERFILE;
-    case 3:
-    case "BUILD_KIND_STATIC":
-      return BuildKind.BUILD_KIND_STATIC;
-    case 4:
-    case "BUILD_KIND_NIXPACKS":
-      return BuildKind.BUILD_KIND_NIXPACKS;
-    case 5:
-    case "BUILD_KIND_BUILDPACKS":
-      return BuildKind.BUILD_KIND_BUILDPACKS;
     case 6:
     case "BUILD_KIND_RAILPACK":
       return BuildKind.BUILD_KIND_RAILPACK;
+    case 7:
+    case "BUILD_KIND_COMPOSE":
+      return BuildKind.BUILD_KIND_COMPOSE;
     case -1:
     case "UNRECOGNIZED":
     default:
@@ -207,14 +198,10 @@ export function buildKindToJSON(object: BuildKind): string {
       return "BUILD_KIND_NONE";
     case BuildKind.BUILD_KIND_DOCKERFILE:
       return "BUILD_KIND_DOCKERFILE";
-    case BuildKind.BUILD_KIND_STATIC:
-      return "BUILD_KIND_STATIC";
-    case BuildKind.BUILD_KIND_NIXPACKS:
-      return "BUILD_KIND_NIXPACKS";
-    case BuildKind.BUILD_KIND_BUILDPACKS:
-      return "BUILD_KIND_BUILDPACKS";
     case BuildKind.BUILD_KIND_RAILPACK:
       return "BUILD_KIND_RAILPACK";
+    case BuildKind.BUILD_KIND_COMPOSE:
+      return "BUILD_KIND_COMPOSE";
     case BuildKind.UNRECOGNIZED:
     default:
       return "UNRECOGNIZED";
@@ -542,21 +529,14 @@ export interface HostMetrics {
   memCache: number;
 }
 
-/**
- * The build method's settings for a heavy BuildKind (STATIC/NIXPACKS/BUILDPACKS/
- * RAILPACK).
- */
+/** The build method's settings for BUILD_KIND_RAILPACK and BUILD_KIND_COMPOSE. */
 export interface BuildSpec {
   /**
-   * The build method name, for logs + the buildpacks flavor select
-   * ("nixpacks"|"heroku"|"paketo"|"railpack"|"static"). The agent dispatches on
-   * build_kind, not this string; it is the human label + the heroku/paketo split.
+   * The build method name, for logs ("railpack"|"dockerfile"|"compose"). The agent
+   * dispatches on build_kind, not this string.
    */
   method: string;
-  /**
-   * The container port the app listens on (drives PORT/--build-arg PORT and the
-   * nginx `listen`). 0 => the method's default (nginx 80).
-   */
+  /** The container port the app listens on. 0 => none set. */
   port: number;
   /**
    * Build commands (empty => the method's own default / detection). Mirror
@@ -566,8 +546,8 @@ export interface BuildSpec {
   buildCommand: string;
   startCommand: string;
   /**
-   * The static method's output dir to serve (BuildConfig.outputDirectory). Empty
-   * => ".".
+   * The folder the build outputs, served as a static site (BuildConfig.outputDirectory).
+   * Empty => the builder decides.
    */
   outputDirectory: string;
   /**
@@ -575,30 +555,9 @@ export interface BuildSpec {
    * Empty => the method's default.
    */
   runtimeVersion: string;
-  /**
-   * The framework's runtime language, resolved control-plane-side via
-   * runtimeFor(framework).language ("node"|"python"|…|"none").
-   */
+  /** The runtime language runtime_version is for ("node"|...). Empty with no version. */
   runtimeLanguage: string;
-  /**
-   * nixpacks: the dir the build publishes/serves; non-empty switches nixpacks to
-   * the nginx-wrap static path (methodSettings.nixpacksPublishDirectory).
-   */
-  nixpacksPublishDirectory: string;
-  /**
-   * heroku: builder image version ("22"|"24"|"26"); maps to heroku/builder:<v>.
-   * Empty => "24". Ignored for paketo (methodSettings.herokuVersion).
-   */
-  herokuVersion: string;
-  /**
-   * railpack: CLI/frontend version pin ("latest" or "0.27.2"); empty => latest
-   * (methodSettings.railpackVersion).
-   */
-  railpackVersion: string;
-  /**
-   * static / nixpacks-static: serve as an SPA (history-API fallback to
-   * index.html) (methodSettings.staticSinglePageApp).
-   */
+  /** Serve the output folder as a single-page app (unknown paths get index.html). */
   staticSinglePageApp: boolean;
   /**
    * Run NO install / build step, as opposed to letting the method detect one.
@@ -609,6 +568,17 @@ export interface BuildSpec {
    */
   skipInstall: boolean;
   skipBuild: boolean;
+  /**
+   * Detect automatically (BUILD_KIND_RAILPACK only): a Dockerfile in the build dir is
+   * built instead, else a compose file is returned as source_compose, else Railpack.
+   * DeployResult.built_with says which. Advertised as `build.auto-method`.
+   */
+  autoMethod: boolean;
+  /**
+   * The compose file, relative to the build dir. Empty => the first of compose.yaml,
+   * compose.yml, docker-compose.yaml, docker-compose.yml.
+   */
+  composeFile: string;
 }
 
 /**
@@ -749,17 +719,13 @@ export interface DeployRequest {
    * workspace root (SOURCE_KIND_DEV_WORKSPACE, Part D).
    */
   devWorkspaceSubdir: string;
-  /**
-   * The heavy build method's settings - present iff build_kind is STATIC / NIXPACKS /
-   * BUILDPACKS / RAILPACK.
-   */
+  /** The build method's settings - present iff build_kind is RAILPACK or COMPOSE. */
   buildSpec?:
     | BuildSpec
     | undefined;
   /**
    * Build this deploy WITHOUT the host's layer cache: every `docker build` runs with
-   * --no-cache, and nixpacks is left on its default (per-build-dir) cache key so its
-   * BuildKit cache mounts start empty too.
+   * --no-cache.
    */
   noBuildCache: boolean;
   /**
@@ -797,11 +763,40 @@ export interface DeployRequest {
    * to bring the stack up when one resolves (through links) outside that directory.
    */
   filesBindSources: string[];
+  /**
+   * When the stack counts as up. Unset => the old rule (the container reports running).
+   * Advertised as `deploy.ready-check`.
+   */
+  ready?:
+    | ReadyCheck
+    | undefined;
+  /**
+   * A GitHub token limited to public metadata, for the builder's own version lookups
+   * (railpack prepare reads GITHUB_TOKEN). Empty => none. It reaches the host-side
+   * prepare only: never the build, the image or a log. Advertised as `build.github-token`.
+   */
+  githubToken: string;
 }
 
 export interface DeployRequest_EnvEntry {
   key: string;
   value: string;
+}
+
+/**
+ * When a deploy counts as up: every container stays running (no restart, no exit) for a
+ * settle window, and the app listens on `port` from outside its container.
+ */
+export interface ReadyCheck {
+  /** The port the app should listen on (the routed one). 0 => no port is checked. */
+  port: number;
+  /**
+   * True when the app has a domain, so a process that never listens is a failed deploy.
+   * False: a stable process is enough (a background worker), the port is only observed.
+   */
+  portRequired: boolean;
+  /** Compose stacks: the service `port` belongs to. Empty => the app's single container. */
+  service: string;
 }
 
 /** One event in the deploy stream. Exactly one of the oneof arms is set. */
@@ -858,6 +853,31 @@ export interface DeployResult {
    * the control plane writes it back to the Deployment row.
    */
   commitSha: string;
+  /**
+   * The port the app listened on when it was not ReadyCheck.port, so the control plane
+   * routes to it instead. 0 => it was (or no check ran).
+   */
+  observedPort: number;
+  /** What built the image when build_spec.auto_method was set: "dockerfile" | "railpack". */
+  builtWith: string;
+  /**
+   * Set INSTEAD of a build when the method is (or resolved to) compose and compose_yaml
+   * was empty: the compose file found at commit_sha. ready is false and error empty; the
+   * control plane renders it and deploys BUILD_KIND_COMPOSE pinned to that commit.
+   */
+  sourceCompose?:
+    | SourceCompose
+    | undefined;
+  /** The ports the checked container listened on from outside it, for the log. */
+  listeningPorts: number[];
+}
+
+/** A compose file read from the app's source. */
+export interface SourceCompose {
+  /** Relative to the build dir. */
+  path: string;
+  /** The file's text (at most 512 KiB). */
+  content: string;
 }
 
 export interface StackRef {
@@ -3483,12 +3503,11 @@ function createBaseBuildSpec(): BuildSpec {
     outputDirectory: "",
     runtimeVersion: "",
     runtimeLanguage: "",
-    nixpacksPublishDirectory: "",
-    herokuVersion: "",
-    railpackVersion: "",
     staticSinglePageApp: false,
     skipInstall: false,
     skipBuild: false,
+    autoMethod: false,
+    composeFile: "",
   };
 }
 
@@ -3518,15 +3537,6 @@ export const BuildSpec: MessageFns<BuildSpec> = {
     if (message.runtimeLanguage !== "") {
       writer.uint32(66).string(message.runtimeLanguage);
     }
-    if (message.nixpacksPublishDirectory !== "") {
-      writer.uint32(74).string(message.nixpacksPublishDirectory);
-    }
-    if (message.herokuVersion !== "") {
-      writer.uint32(82).string(message.herokuVersion);
-    }
-    if (message.railpackVersion !== "") {
-      writer.uint32(90).string(message.railpackVersion);
-    }
     if (message.staticSinglePageApp !== false) {
       writer.uint32(96).bool(message.staticSinglePageApp);
     }
@@ -3535,6 +3545,12 @@ export const BuildSpec: MessageFns<BuildSpec> = {
     }
     if (message.skipBuild !== false) {
       writer.uint32(112).bool(message.skipBuild);
+    }
+    if (message.autoMethod !== false) {
+      writer.uint32(120).bool(message.autoMethod);
+    }
+    if (message.composeFile !== "") {
+      writer.uint32(130).string(message.composeFile);
     }
     return writer;
   },
@@ -3616,30 +3632,6 @@ export const BuildSpec: MessageFns<BuildSpec> = {
             message.runtimeLanguage = reader.string();
             continue;
           }
-          case 9: {
-            if (tag !== 74) {
-              break;
-            }
-
-            message.nixpacksPublishDirectory = reader.string();
-            continue;
-          }
-          case 10: {
-            if (tag !== 82) {
-              break;
-            }
-
-            message.herokuVersion = reader.string();
-            continue;
-          }
-          case 11: {
-            if (tag !== 90) {
-              break;
-            }
-
-            message.railpackVersion = reader.string();
-            continue;
-          }
           case 12: {
             if (tag !== 96) {
               break;
@@ -3662,6 +3654,22 @@ export const BuildSpec: MessageFns<BuildSpec> = {
             }
 
             message.skipBuild = reader.bool();
+            continue;
+          }
+          case 15: {
+            if (tag !== 120) {
+              break;
+            }
+
+            message.autoMethod = reader.bool();
+            continue;
+          }
+          case 16: {
+            if (tag !== 130) {
+              break;
+            }
+
+            message.composeFile = reader.string();
             continue;
           }
         }
@@ -3710,21 +3718,6 @@ export const BuildSpec: MessageFns<BuildSpec> = {
         : isSet(object.runtime_language)
         ? globalThis.String(object.runtime_language)
         : "",
-      nixpacksPublishDirectory: isSet(object.nixpacksPublishDirectory)
-        ? globalThis.String(object.nixpacksPublishDirectory)
-        : isSet(object.nixpacks_publish_directory)
-        ? globalThis.String(object.nixpacks_publish_directory)
-        : "",
-      herokuVersion: isSet(object.herokuVersion)
-        ? globalThis.String(object.herokuVersion)
-        : isSet(object.heroku_version)
-        ? globalThis.String(object.heroku_version)
-        : "",
-      railpackVersion: isSet(object.railpackVersion)
-        ? globalThis.String(object.railpackVersion)
-        : isSet(object.railpack_version)
-        ? globalThis.String(object.railpack_version)
-        : "",
       staticSinglePageApp: isSet(object.staticSinglePageApp)
         ? globalThis.Boolean(object.staticSinglePageApp)
         : isSet(object.static_single_page_app)
@@ -3740,6 +3733,16 @@ export const BuildSpec: MessageFns<BuildSpec> = {
         : isSet(object.skip_build)
         ? globalThis.Boolean(object.skip_build)
         : false,
+      autoMethod: isSet(object.autoMethod)
+        ? globalThis.Boolean(object.autoMethod)
+        : isSet(object.auto_method)
+        ? globalThis.Boolean(object.auto_method)
+        : false,
+      composeFile: isSet(object.composeFile)
+        ? globalThis.String(object.composeFile)
+        : isSet(object.compose_file)
+        ? globalThis.String(object.compose_file)
+        : "",
     };
   },
 
@@ -3769,15 +3772,6 @@ export const BuildSpec: MessageFns<BuildSpec> = {
     if (message.runtimeLanguage !== "") {
       obj.runtimeLanguage = message.runtimeLanguage;
     }
-    if (message.nixpacksPublishDirectory !== "") {
-      obj.nixpacksPublishDirectory = message.nixpacksPublishDirectory;
-    }
-    if (message.herokuVersion !== "") {
-      obj.herokuVersion = message.herokuVersion;
-    }
-    if (message.railpackVersion !== "") {
-      obj.railpackVersion = message.railpackVersion;
-    }
     if (message.staticSinglePageApp !== false) {
       obj.staticSinglePageApp = message.staticSinglePageApp;
     }
@@ -3786,6 +3780,12 @@ export const BuildSpec: MessageFns<BuildSpec> = {
     }
     if (message.skipBuild !== false) {
       obj.skipBuild = message.skipBuild;
+    }
+    if (message.autoMethod !== false) {
+      obj.autoMethod = message.autoMethod;
+    }
+    if (message.composeFile !== "") {
+      obj.composeFile = message.composeFile;
     }
     return obj;
   },
@@ -3803,12 +3803,11 @@ export const BuildSpec: MessageFns<BuildSpec> = {
     message.outputDirectory = object.outputDirectory ?? "";
     message.runtimeVersion = object.runtimeVersion ?? "";
     message.runtimeLanguage = object.runtimeLanguage ?? "";
-    message.nixpacksPublishDirectory = object.nixpacksPublishDirectory ?? "";
-    message.herokuVersion = object.herokuVersion ?? "";
-    message.railpackVersion = object.railpackVersion ?? "";
     message.staticSinglePageApp = object.staticSinglePageApp ?? false;
     message.skipInstall = object.skipInstall ?? false;
     message.skipBuild = object.skipBuild ?? false;
+    message.autoMethod = object.autoMethod ?? false;
+    message.composeFile = object.composeFile ?? "";
     return message;
   },
 };
@@ -4306,6 +4305,8 @@ function createBaseDeployRequest(): DeployRequest {
     registryAuth: [],
     network: "",
     filesBindSources: [],
+    ready: undefined,
+    githubToken: "",
   };
 }
 
@@ -4379,6 +4380,12 @@ export const DeployRequest: MessageFns<DeployRequest> = {
     }
     for (const v of message.filesBindSources) {
       writer.uint32(186).string(v!);
+    }
+    if (message.ready !== undefined) {
+      ReadyCheck.encode(message.ready, writer.uint32(194).fork()).join();
+    }
+    if (message.githubToken !== "") {
+      writer.uint32(202).string(message.githubToken);
     }
     return writer;
   },
@@ -4583,6 +4590,22 @@ export const DeployRequest: MessageFns<DeployRequest> = {
             message.filesBindSources.push(reader.string());
             continue;
           }
+          case 24: {
+            if (tag !== 194) {
+              break;
+            }
+
+            message.ready = ReadyCheck.decode(reader, reader.uint32());
+            continue;
+          }
+          case 25: {
+            if (tag !== 202) {
+              break;
+            }
+
+            message.githubToken = reader.string();
+            continue;
+          }
         }
         if ((tag & 7) === 4 || tag === 0) {
           break;
@@ -4703,6 +4726,12 @@ export const DeployRequest: MessageFns<DeployRequest> = {
         : globalThis.Array.isArray(object?.files_bind_sources)
         ? object.files_bind_sources.map((e: any) => globalThis.String(e))
         : [],
+      ready: isSet(object.ready) ? ReadyCheck.fromJSON(object.ready) : undefined,
+      githubToken: isSet(object.githubToken)
+        ? globalThis.String(object.githubToken)
+        : isSet(object.github_token)
+        ? globalThis.String(object.github_token)
+        : "",
     };
   },
 
@@ -4783,6 +4812,12 @@ export const DeployRequest: MessageFns<DeployRequest> = {
     if (message.filesBindSources?.length) {
       obj.filesBindSources = message.filesBindSources;
     }
+    if (message.ready !== undefined) {
+      obj.ready = ReadyCheck.toJSON(message.ready);
+    }
+    if (message.githubToken !== "") {
+      obj.githubToken = message.githubToken;
+    }
     return obj;
   },
 
@@ -4826,6 +4861,10 @@ export const DeployRequest: MessageFns<DeployRequest> = {
     message.registryAuth = object.registryAuth?.map((e) => RegistryAuth.fromPartial(e)) || [];
     message.network = object.network ?? "";
     message.filesBindSources = object.filesBindSources?.map((e) => e) || [];
+    message.ready = (object.ready !== undefined && object.ready !== null)
+      ? ReadyCheck.fromPartial(object.ready)
+      : undefined;
+    message.githubToken = object.githubToken ?? "";
     return message;
   },
 };
@@ -4911,6 +4950,111 @@ export const DeployRequest_EnvEntry: MessageFns<DeployRequest_EnvEntry> = {
     const message = createBaseDeployRequest_EnvEntry();
     message.key = object.key ?? "";
     message.value = object.value ?? "";
+    return message;
+  },
+};
+
+function createBaseReadyCheck(): ReadyCheck {
+  return { port: 0, portRequired: false, service: "" };
+}
+
+export const ReadyCheck: MessageFns<ReadyCheck> = {
+  encode(message: ReadyCheck, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.port !== 0) {
+      writer.uint32(8).int32(message.port);
+    }
+    if (message.portRequired !== false) {
+      writer.uint32(16).bool(message.portRequired);
+    }
+    if (message.service !== "") {
+      writer.uint32(26).string(message.service);
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): ReadyCheck {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const previousRecursionDepth = (reader as any).__tsProtoDecodeDepth ?? 0;
+    if (previousRecursionDepth >= 100) {
+      throw new globalThis.Error("protobuf decode recursion limit exceeded");
+    }
+    (reader as any).__tsProtoDecodeDepth = previousRecursionDepth + 1;
+    try {
+      const end = length === undefined ? reader.len : reader.pos + length;
+      const message = createBaseReadyCheck();
+      while (reader.pos < end) {
+        const tag = reader.uint32();
+        switch (tag >>> 3) {
+          case 1: {
+            if (tag !== 8) {
+              break;
+            }
+
+            message.port = reader.int32();
+            continue;
+          }
+          case 2: {
+            if (tag !== 16) {
+              break;
+            }
+
+            message.portRequired = reader.bool();
+            continue;
+          }
+          case 3: {
+            if (tag !== 26) {
+              break;
+            }
+
+            message.service = reader.string();
+            continue;
+          }
+        }
+        if ((tag & 7) === 4 || tag === 0) {
+          break;
+        }
+        reader.skip(tag & 7);
+      }
+      return message;
+    } finally {
+      (reader as any).__tsProtoDecodeDepth = previousRecursionDepth;
+    }
+  },
+
+  fromJSON(object: any): ReadyCheck {
+    return {
+      port: isSet(object.port) ? globalThis.Number(object.port) : 0,
+      portRequired: isSet(object.portRequired)
+        ? globalThis.Boolean(object.portRequired)
+        : isSet(object.port_required)
+        ? globalThis.Boolean(object.port_required)
+        : false,
+      service: isSet(object.service) ? globalThis.String(object.service) : "",
+    };
+  },
+
+  toJSON(message: ReadyCheck): unknown {
+    const obj: any = {};
+    if (message.port !== 0) {
+      obj.port = Math.round(message.port);
+    }
+    if (message.portRequired !== false) {
+      obj.portRequired = message.portRequired;
+    }
+    if (message.service !== "") {
+      obj.service = message.service;
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<ReadyCheck>, I>>(base?: I): ReadyCheck {
+    return ReadyCheck.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<ReadyCheck>, I>>(object: I): ReadyCheck {
+    const message = createBaseReadyCheck();
+    message.port = object.port ?? 0;
+    message.portRequired = object.portRequired ?? false;
+    message.service = object.service ?? "";
     return message;
   },
 };
@@ -5373,7 +5517,15 @@ export const PhaseChange: MessageFns<PhaseChange> = {
 };
 
 function createBaseDeployResult(): DeployResult {
-  return { ready: false, error: "", commitSha: "" };
+  return {
+    ready: false,
+    error: "",
+    commitSha: "",
+    observedPort: 0,
+    builtWith: "",
+    sourceCompose: undefined,
+    listeningPorts: [],
+  };
 }
 
 export const DeployResult: MessageFns<DeployResult> = {
@@ -5386,6 +5538,22 @@ export const DeployResult: MessageFns<DeployResult> = {
     }
     if (message.commitSha !== "") {
       writer.uint32(26).string(message.commitSha);
+    }
+    if (message.observedPort !== 0) {
+      writer.uint32(32).int32(message.observedPort);
+    }
+    if (message.builtWith !== "") {
+      writer.uint32(42).string(message.builtWith);
+    }
+    if (message.sourceCompose !== undefined) {
+      SourceCompose.encode(message.sourceCompose, writer.uint32(50).fork()).join();
+    }
+    if (message.listeningPorts.length !== 0) {
+      writer.uint32(58).fork();
+      for (const v of message.listeningPorts) {
+        writer.int32(v);
+      }
+      writer.join();
     }
     return writer;
   },
@@ -5427,6 +5595,48 @@ export const DeployResult: MessageFns<DeployResult> = {
             message.commitSha = reader.string();
             continue;
           }
+          case 4: {
+            if (tag !== 32) {
+              break;
+            }
+
+            message.observedPort = reader.int32();
+            continue;
+          }
+          case 5: {
+            if (tag !== 42) {
+              break;
+            }
+
+            message.builtWith = reader.string();
+            continue;
+          }
+          case 6: {
+            if (tag !== 50) {
+              break;
+            }
+
+            message.sourceCompose = SourceCompose.decode(reader, reader.uint32());
+            continue;
+          }
+          case 7: {
+            if (tag === 56) {
+              message.listeningPorts.push(reader.int32());
+
+              continue;
+            }
+
+            if (tag === 58) {
+              const end2 = reader.uint32() + reader.pos;
+              while (reader.pos < end2) {
+                message.listeningPorts.push(reader.int32());
+              }
+
+              continue;
+            }
+
+            break;
+          }
         }
         if ((tag & 7) === 4 || tag === 0) {
           break;
@@ -5448,6 +5658,26 @@ export const DeployResult: MessageFns<DeployResult> = {
         : isSet(object.commit_sha)
         ? globalThis.String(object.commit_sha)
         : "",
+      observedPort: isSet(object.observedPort)
+        ? globalThis.Number(object.observedPort)
+        : isSet(object.observed_port)
+        ? globalThis.Number(object.observed_port)
+        : 0,
+      builtWith: isSet(object.builtWith)
+        ? globalThis.String(object.builtWith)
+        : isSet(object.built_with)
+        ? globalThis.String(object.built_with)
+        : "",
+      sourceCompose: isSet(object.sourceCompose)
+        ? SourceCompose.fromJSON(object.sourceCompose)
+        : isSet(object.source_compose)
+        ? SourceCompose.fromJSON(object.source_compose)
+        : undefined,
+      listeningPorts: globalThis.Array.isArray(object?.listeningPorts)
+        ? object.listeningPorts.map((e: any) => globalThis.Number(e))
+        : globalThis.Array.isArray(object?.listening_ports)
+        ? object.listening_ports.map((e: any) => globalThis.Number(e))
+        : [],
     };
   },
 
@@ -5462,6 +5692,18 @@ export const DeployResult: MessageFns<DeployResult> = {
     if (message.commitSha !== "") {
       obj.commitSha = message.commitSha;
     }
+    if (message.observedPort !== 0) {
+      obj.observedPort = Math.round(message.observedPort);
+    }
+    if (message.builtWith !== "") {
+      obj.builtWith = message.builtWith;
+    }
+    if (message.sourceCompose !== undefined) {
+      obj.sourceCompose = SourceCompose.toJSON(message.sourceCompose);
+    }
+    if (message.listeningPorts?.length) {
+      obj.listeningPorts = message.listeningPorts.map((e) => Math.round(e));
+    }
     return obj;
   },
 
@@ -5473,6 +5715,97 @@ export const DeployResult: MessageFns<DeployResult> = {
     message.ready = object.ready ?? false;
     message.error = object.error ?? "";
     message.commitSha = object.commitSha ?? "";
+    message.observedPort = object.observedPort ?? 0;
+    message.builtWith = object.builtWith ?? "";
+    message.sourceCompose = (object.sourceCompose !== undefined && object.sourceCompose !== null)
+      ? SourceCompose.fromPartial(object.sourceCompose)
+      : undefined;
+    message.listeningPorts = object.listeningPorts?.map((e) => e) || [];
+    return message;
+  },
+};
+
+function createBaseSourceCompose(): SourceCompose {
+  return { path: "", content: "" };
+}
+
+export const SourceCompose: MessageFns<SourceCompose> = {
+  encode(message: SourceCompose, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.path !== "") {
+      writer.uint32(10).string(message.path);
+    }
+    if (message.content !== "") {
+      writer.uint32(18).string(message.content);
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): SourceCompose {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const previousRecursionDepth = (reader as any).__tsProtoDecodeDepth ?? 0;
+    if (previousRecursionDepth >= 100) {
+      throw new globalThis.Error("protobuf decode recursion limit exceeded");
+    }
+    (reader as any).__tsProtoDecodeDepth = previousRecursionDepth + 1;
+    try {
+      const end = length === undefined ? reader.len : reader.pos + length;
+      const message = createBaseSourceCompose();
+      while (reader.pos < end) {
+        const tag = reader.uint32();
+        switch (tag >>> 3) {
+          case 1: {
+            if (tag !== 10) {
+              break;
+            }
+
+            message.path = reader.string();
+            continue;
+          }
+          case 2: {
+            if (tag !== 18) {
+              break;
+            }
+
+            message.content = reader.string();
+            continue;
+          }
+        }
+        if ((tag & 7) === 4 || tag === 0) {
+          break;
+        }
+        reader.skip(tag & 7);
+      }
+      return message;
+    } finally {
+      (reader as any).__tsProtoDecodeDepth = previousRecursionDepth;
+    }
+  },
+
+  fromJSON(object: any): SourceCompose {
+    return {
+      path: isSet(object.path) ? globalThis.String(object.path) : "",
+      content: isSet(object.content) ? globalThis.String(object.content) : "",
+    };
+  },
+
+  toJSON(message: SourceCompose): unknown {
+    const obj: any = {};
+    if (message.path !== "") {
+      obj.path = message.path;
+    }
+    if (message.content !== "") {
+      obj.content = message.content;
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<SourceCompose>, I>>(base?: I): SourceCompose {
+    return SourceCompose.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<SourceCompose>, I>>(object: I): SourceCompose {
+    const message = createBaseSourceCompose();
+    message.path = object.path ?? "";
+    message.content = object.content ?? "";
     return message;
   },
 };

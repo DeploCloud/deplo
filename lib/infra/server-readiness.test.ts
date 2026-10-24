@@ -28,9 +28,7 @@ const ALL_CAPS = [
   "deploy.image",
   "deploy.compose.single",
   "deploy.compose.multi",
-  "deploy.static",
-  "deploy.nixpacks",
-  "deploy.buildpacks",
+  "deploy.compose.source",
   "deploy.railpack",
   "metrics",
   "container-stats",
@@ -420,23 +418,46 @@ test("CheckPort unsupported → both port rows skip, and a skip NEVER moves the 
   );
 });
 
-test("an agent missing deploy.nixpacks warns on THAT row only", () => {
-  const caps = ALL_CAPS.filter((c) => c !== "deploy.nixpacks");
+test("an agent missing deploy.compose.source warns on THAT row only", () => {
+  const caps = ALL_CAPS.filter((c) => c !== "deploy.compose.source");
   const r = classifyServerReadiness(
     probe({ hello: hello({ capabilities: caps }) }),
   );
-  assert.equal(byId(r, "build.nixpacks").severity, "warn");
-  assert.equal(
-    byId(r, "build.nixpacks").detail,
-    READINESS_DETAILS.buildMissing("Nixpacks"),
-  );
-  assert.equal(byId(r, "build.nixpacks").hint, READINESS_HINTS.updateAgent);
+  const row = byId(r, "build.compose-source");
+  assert.equal(row.severity, "warn");
+  assert.equal(row.detail, READINESS_DETAILS.buildMissing("Docker Compose"));
+  assert.equal(row.hint, READINESS_HINTS.updateAgent);
   const others = r.checks.filter(
-    (c) => c.group === "build" && c.id !== "build.nixpacks",
+    (c) => c.group === "build" && c.id !== "build.compose-source",
   );
   assert.equal(others.length, BUILD_METHODS.length - 1);
   assert.ok(others.every((c) => c.severity === "pass"));
   assert.equal(r.verdict, "degraded");
+});
+
+test("an older agent that still offers the retired builders gets no row for them", () => {
+  const r = classifyServerReadiness(
+    probe({
+      hello: hello({
+        capabilities: [
+          ...ALL_CAPS,
+          "deploy.static",
+          "deploy.nixpacks",
+          "deploy.buildpacks",
+        ],
+      }),
+    }),
+  );
+  assert.deepEqual(
+    r.checks.filter((c) => c.group === "build").map((c) => c.label),
+    [
+      "Dockerfile",
+      "Prebuilt image",
+      "Compose stack",
+      "Docker Compose",
+      "Railpack",
+    ],
+  );
 });
 
 test("an agent with NO capability list gets one honest skip, not seven fabricated warns", () => {

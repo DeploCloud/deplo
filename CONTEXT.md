@@ -316,10 +316,10 @@ preset to pick, no mutation that writes it, and it changes nothing about how the
 built. Every deploy re-derives it from the App's `package.json` + root config files (read
 over the GitHub API for a repo, off the extracted tree for an upload) and overwrites, so it
 follows the source instead of drifting from it, and clears itself when it no longer applies.
-It exists **only under the auto-detecting builders** (Nixpacks / Railpack), the one gate the
-deploy hook, the API and every screen share (`supportsFrameworkDetection`): with a Dockerfile
-or the static builder the user has already spelled the build out, so naming a framework there
-would be a label that changes nothing. The one thing derived FROM it is the App's default
+It exists **only under Railpack** (and _Detect automatically_, which ends on Railpack when the
+source holds no Dockerfile or Compose file), the one gate the deploy hook, the API and every
+screen share (`supportsFrameworkDetection`): with a Dockerfile or a Compose file the user has
+already spelled the build out, so naming a framework there would be a label that changes nothing. The one thing derived FROM it is the App's default
 container **Port** - the port that framework's production server actually binds (Vite's 4173,
 Angular's 4200), applied while the user is creating the App and theirs to override from the
 moment they touch the field. Catalog (ids, names, ports, signals) in
@@ -478,7 +478,7 @@ agent too old to bind-test ports degrades to a skipped row, never a faked pass).
 **NOT a sixth `ServerStatus`**, is **never persisted**, and **nothing gates on it** - the deploy
 gate is and stays the mandatory live Hello pre-flight (ADR-0006), and `servers.status` stays the
 health prober's alone. Its discipline is **honesty**: a Hello flag proves the agent _knows how to
-run_ Nixpacks, not that the nixpacks binary is on the host (it is fetched on the first build),
+run_ Railpack, not that its images are on the host (they are pulled on the first build),
 and Docker being unreachable forces the agent's Traefik answer false, so that row is **skipped**,
 not warned. Classified by [`lib/infra/server-readiness/classify.ts`](lib/infra/server-readiness/classify.ts)
 (pure), orchestrated by [`lib/data/server-readiness.ts`](lib/data/server-readiness.ts)
@@ -618,8 +618,8 @@ format error` long after the deploy reported success. The deploy occupies the
 is proven end to end against two real hosts (`scripts/buildserver-e2e.mts`), but the
 path through the dashboard has fewer real fleets behind it than the rest of the product.
 Nothing gets a build server by accident - an instance admin has to mark a host for it.
-_Avoid_: builder (that is the **build method**'s job - Nixpacks, Railpack, a
-Dockerfile), CI server / runner (nothing here runs a pipeline), worker, node, "remote
+_Avoid_: builder (that is the **build method**'s job - Railpack, a Dockerfile, a
+Compose file), CI server / runner (nothing here runs a pipeline), worker, node, "remote
 build" (the build is not remote from anywhere; it is simply on another server).
 
 **Build cache**:

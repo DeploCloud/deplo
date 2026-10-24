@@ -21,6 +21,7 @@ export function DeploymentSettingsForm(props: DeploymentSettingsProps) {
           <BuildOutputCard
             build={settings.build}
             onBuildChange={settings.setBuild}
+            lastBuiltWith={props.lastBuiltWith}
             framework={settings.frameworkOverride ?? props.framework}
             detectedFramework={props.framework}
             onFrameworkChange={settings.setFrameworkOverride}

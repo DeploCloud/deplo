@@ -66,6 +66,11 @@ export default async function AppDeploymentSettingsPage(
           appId={project.id}
           slug={project.slug}
           build={project.build}
+          lastBuiltWith={
+            project.build.methodAuto && project.latestDeployment
+              ? project.build.buildMethod
+              : null
+          }
           framework={project.framework}
           frameworkOverride={project.frameworkOverride}
           autoDeploy={project.autoDeploy}

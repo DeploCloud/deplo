@@ -202,7 +202,7 @@ type App {
   folderId: ID
 
   """
-  The JavaScript framework backing this app ("nextjs", "astro", "nestjs", …), or null when none was found or the app doesn't build with one of the auto-detecting builders (Nixpacks / Railpack). Detected on every deploy, unless setAppFramework has corrected it - in which case that choice is what this returns.
+  The JavaScript framework backing this app ("nextjs", "astro", "nestjs", …), or null when none was found or the app doesn't build with Railpack. Detected on every deploy, unless setAppFramework has corrected it - in which case that choice is what this returns.
   """
   framework: String
 
@@ -696,6 +696,10 @@ input BuildConfigInput {
   """
   buildCache: Boolean
   buildCommand: String
+
+  """
+  auto (Deplo picks: the Dockerfile, else the compose file, else Railpack, on every deploy), railpack, dockerfile or compose.
+  """
   buildMethod: String
   includeFilesOutsideRoot: Boolean
   installCommand: String
@@ -1010,6 +1014,10 @@ input CreateAppFromTemplateInput {
 
 input CreateAppInput {
   autoDeploy: Boolean
+
+  """
+  The hostname for the generated address. Empty string: no generated address at all.
+  """
   autoDomain: String
   autoDomainPath: String
   build: BuildConfigInput
@@ -4945,13 +4953,15 @@ type Query {
   destinationTestReport(id: String!): S3TestReport
 
   """
-  Read a GitHub repository before an app exists for it - the framework and the build command the new-app wizard prefills while you pick a repo. Null when there is nothing to read at all: a build method other than Nixpacks / Railpack (the only ones this applies to), a repository Deplo can't read, or one with neither a framework nor a script. Reads only; the app's first deploy re-derives and stores the framework.
+  Read a GitHub repository before an app exists for it - the framework and the build command the new-app wizard prefills while you pick a repo. Null when there is nothing to read at all: a build method other than Railpack or auto (the only ones this applies to), a repository Deplo can't read, or one with neither a framework nor a script. Reads only; the app's first deploy re-derives and stores the framework.
   """
   detectRepoFramework(
     """Branch to read; empty ⇒ the repository's default branch."""
     branch: String
 
-    """The build method the app will use, e.g. "nixpacks"."""
+    """
+    The build method the app will use: "auto", "railpack", "dockerfile" or "compose".
+    """
     buildMethod: String!
 
     """
@@ -6005,7 +6015,7 @@ type ServerReadinessCheck {
   """What to do about it. Null on a `pass` row."""
   hint: String
 
-  """Stable row id, e.g. "docker.available" or "build.nixpacks"."""
+  """Stable row id, e.g. "docker.available" or "build.railpack"."""
   id: String
   label: String
   severity: ServerReadinessSeverity

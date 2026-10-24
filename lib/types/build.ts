@@ -14,19 +14,20 @@ export interface GitRepo {
   submodules?: boolean;
 }
 
-export type BuildMethod = "dockerfile" | "railpack" | "nixpacks" | "static";
+export type BuildMethod = "railpack" | "dockerfile" | "compose";
 
 export interface BuildMethodSettings {
   dockerfilePath?: string;
   dockerContextPath?: string;
   dockerBuildStage?: string;
-  railpackVersion?: string;
-  nixpacksPublishDirectory?: string;
+  composeFile?: string;
   staticSinglePageApp?: boolean;
 }
 
 export interface BuildConfig {
+  // With methodAuto, buildMethod is what the last deploy resolved: a Dockerfile, then a compose file, then Railpack.
   buildMethod: BuildMethod;
+  methodAuto: boolean;
   methodSettings: BuildMethodSettings;
   rootDirectory: string;
   includeFilesOutsideRoot: boolean;

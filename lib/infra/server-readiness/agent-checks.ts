@@ -35,25 +35,11 @@ export const BUILD_METHODS: readonly BuildMethodSpec[] = [
     supported: "The agent supports multi-service Compose stacks.",
   },
   {
-    id: "build.static",
-    capability: "deploy.static",
-    label: "Static site",
+    id: "build.compose-source",
+    capability: "deploy.compose.source",
+    label: "Docker Compose",
     supported:
-      "The agent supports static-site builds. The nginx and Node images it needs are pulled from the registry on the first build, nothing is installed on the host.",
-  },
-  {
-    id: "build.nixpacks",
-    capability: "deploy.nixpacks",
-    label: "Nixpacks",
-    supported:
-      "The agent supports Nixpacks builds. The nixpacks binary itself is downloaded to the host on the first Nixpacks build - Deplo cannot verify from here that it is already there.",
-  },
-  {
-    id: "build.buildpacks",
-    capability: "deploy.buildpacks",
-    label: "Buildpacks",
-    supported:
-      "The agent supports Cloud Native Buildpacks. pack and the builder images run in containers, pulled on the first build - nothing is installed on the host.",
+      "The agent supports building and running the Docker Compose file in your repository.",
   },
   {
     id: "build.railpack",

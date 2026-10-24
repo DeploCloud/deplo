@@ -15,7 +15,7 @@ export const DOCS = {
   "deploy.button": "guides/deploy/deploy-button",
 
   "build.settings": "guides/releases/build-settings",
-  "build.methods": "guides/releases/build-settings#the-four-build-methods",
+  "build.methods": "guides/releases/build-settings#build-methods",
   "build.fields": "guides/releases/build-settings#the-fields",
   "build.port":
     "guides/releases/build-settings#the-port-is-the-one-people-get-wrong",

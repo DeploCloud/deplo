@@ -1289,6 +1289,20 @@
       "when": 1792830025600,
       "tag": "0183_normalize_app_names",
       "breakpoints": true
+    },
+    {
+      "idx": 184,
+      "version": "7",
+      "when": 1792837387061,
+      "tag": "0184_build_methods_railpack",
+      "breakpoints": true
+    },
+    {
+      "idx": 185,
+      "version": "7",
+      "when": 1792837403474,
+      "tag": "0185_drop_retired_build_settings",
+      "breakpoints": true
     }
   ]
 }

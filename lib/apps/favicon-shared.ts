@@ -1,5 +1,5 @@
 import { MAX_LOGO_BYTES } from "./logo-shared";
-import { usesComposeStack } from "../utils";
+import { usesPastedCompose } from "../utils";
 
 const EXT_MIME: Record<string, string> = {
   svg: "image/svg+xml",
@@ -44,7 +44,8 @@ export function faviconSourceKind(app: {
   } | null;
   dockerImage: string | null;
 }): FaviconSourceKind {
-  if (usesComposeStack({ ...app, repo: app.repo ?? null })) return "app-files";
+  // A stack read from a repository still has the repository to look in.
+  if (usesPastedCompose({ ...app, repo: app.repo ?? null })) return "app-files";
   if (app.repo?.connectionId) return "connection";
   if (isGithubRepo(app.repo)) return "github";
   if (app.source === "upload") return "upload";

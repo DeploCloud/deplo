@@ -10,6 +10,8 @@ import {
   type DeployEvent,
   type RegistryAuth,
   type BuildSpec,
+  type ReadyCheck,
+  type SourceCompose,
 } from "../agent/gen/agent";
 import { explainNetworkError } from "./network";
 import { status as GrpcStatus } from "@grpc/grpc-js";
@@ -21,18 +23,12 @@ import { stackFilesDir } from "./deploy-key";
 import { fileBindsUnderFilesDir, filesBindSources } from "./file-binds";
 import { composeDeployArgs } from "./compose-args";
 import { loadRegistryAuthsForApp } from "../data/registries";
-import { cleanToolVersion } from "../data/app-graph-rows/build";
 import { and, eq } from "drizzle-orm";
 import { getDb } from "../db/client";
 import { appVolumes as appVolumesTable } from "../db/schema/control-plane/apps";
-import { generateDockerfile } from "./dockerfile";
 import { tarDir, tarDirChunks } from "./context-tar";
-import {
-  normalizeBuildConfig,
-  DEFAULT_NODE_MAJOR,
-  usesDefaultNodeMajor,
-} from "../frameworks";
-import type { BuildConfig, BuildMethod } from "../types/build";
+import { buildConfigFor, normalizeBuildConfig } from "../frameworks";
+import type { BuildConfig } from "../types/build";
 import type { LogLevel } from "../types/deployment";
 
 export type AgentBuildPlan =
@@ -58,6 +54,14 @@ export type AgentBuildPlan =
   | {
       kind: "compose";
       mounts: { filePath: string; content: string }[];
+    }
+  | {
+      // The compose file the source carries, built and brought up from its checkout.
+      kind: "source-compose";
+      source:
+        | { kind: "git"; url: string; commit: string; subdir: string }
+        | { kind: "upload"; buildDir: string };
+      composeFile: string;
     };
 
 export function agentCanHandle(build: BuildConfig | null): boolean {
@@ -66,41 +70,22 @@ export function agentCanHandle(build: BuildConfig | null): boolean {
   return true;
 }
 
-const HEAVY_METHOD: Record<
-  string,
-  { kind: BuildKind; capability: string } | undefined
-> = {
-  static: { kind: BuildKind.BUILD_KIND_STATIC, capability: "deploy.static" },
-  nixpacks: {
-    kind: BuildKind.BUILD_KIND_NIXPACKS,
-    capability: "deploy.nixpacks",
-  },
-  railpack: {
-    kind: BuildKind.BUILD_KIND_RAILPACK,
-    capability: "deploy.railpack",
-  },
-};
-
+// Detect automatically falls back to Railpack, so an agent without auto detection still builds it.
 export function agentCapabilityForMethod(
   build: BuildConfig | null,
 ): string | null {
   if (!build) return null;
-  return (
-    HEAVY_METHOD[normalizeBuildConfig(build).buildMethod]?.capability ?? null
-  );
-}
-
-function heavyBuildKind(method: BuildMethod): BuildKind | null {
-  return HEAVY_METHOD[method]?.kind ?? null;
+  const b = normalizeBuildConfig(build);
+  if (b.methodAuto || b.buildMethod === "railpack") return "deploy.railpack";
+  if (b.buildMethod === "compose") return "deploy.compose.source";
+  return null;
 }
 
 export function buildSpecFor(build: BuildConfig): BuildSpec {
   const b = normalizeBuildConfig(build);
-  const pinned = (b.runtimeVersion ?? "").trim();
-  const runtimeVersion =
-    pinned || (usesDefaultNodeMajor(b.buildMethod) ? DEFAULT_NODE_MAJOR : "");
+  const runtimeVersion = (b.runtimeVersion ?? "").trim();
   return {
-    method: b.buildMethod,
+    method: b.methodAuto ? "auto" : b.buildMethod,
     port: b.port ?? 0,
     installCommand: b.installCommand ?? "",
     buildCommand: b.buildCommand ?? "",
@@ -111,11 +96,9 @@ export function buildSpecFor(build: BuildConfig): BuildSpec {
     skipBuild: b.buildCommand === "",
     runtimeVersion,
     runtimeLanguage: runtimeVersion ? "node" : "",
-    nixpacksPublishDirectory:
-      b.methodSettings.nixpacksPublishDirectory?.trim() ?? "",
-    herokuVersion: "",
-    railpackVersion: cleanToolVersion(b.methodSettings.railpackVersion) ?? "",
     staticSinglePageApp: b.methodSettings.staticSinglePageApp ?? false,
+    autoMethod: b.methodAuto,
+    composeFile: b.methodSettings.composeFile?.trim() ?? "",
   };
 }
 
@@ -148,6 +131,12 @@ export interface AgentDeploySink {
 export interface AgentDeployResult {
   ready: boolean;
   commitSha: string;
+  // The app listened here instead of the checked port.
+  observedPort?: number;
+  builtWith?: string;
+  // The compose file the source turned out to carry: render it and deploy it as a stack.
+  sourceCompose?: SourceCompose;
+  listeningPorts?: number[];
 }
 
 export async function fileVolumePathsForApp(appId: string): Promise<string[]> {
@@ -231,6 +220,8 @@ export async function runAgentDeploy(opts: {
   composeUpArgs?: string[];
   buildOnly?: boolean;
   forkPreview?: boolean;
+  ready?: ReadyCheck;
+  githubToken?: string;
   sink: AgentDeploySink;
 }): Promise<AgentDeployResult> {
   const hello = await agentPreflight(opts.serverId);
@@ -297,6 +288,7 @@ export async function runAgentDeploy(opts: {
       ? []
       : await loadRegistryAuthsForApp(opts.appId),
   });
+  applyAgentFeatures(req, opts, hello.capabilities, opts.sink);
   if (
     req.composeUpArgs.length &&
     !hello.capabilities.includes("deploy.compose-args")
@@ -420,12 +412,18 @@ export function openDeployStream(
   plan: AgentBuildPlan,
   capabilities: readonly string[],
 ): AsyncGenerator<DeployEvent, void, unknown> {
-  if (plan.kind !== "dockerfile") return conn.deploy(req);
+  const buildDir =
+    plan.kind === "dockerfile"
+      ? plan.buildDir
+      : plan.kind === "source-compose" && plan.source.kind === "upload"
+        ? plan.source.buildDir
+        : null;
+  if (!buildDir) return conn.deploy(req);
   if (capabilities.includes("deploy.context_stream")) {
-    return conn.deployStream(req, tarDirChunks(plan.buildDir));
+    return conn.deployStream(req, tarDirChunks(buildDir));
   }
   return (async function* () {
-    yield* conn.deploy({ ...req, contextTar: await tarDir(plan.buildDir) });
+    yield* conn.deploy({ ...req, contextTar: await tarDir(buildDir) });
   })();
 }
 
@@ -449,11 +447,7 @@ async function consumeStream(
     if (seq && seq <= cursor.seq) continue;
     if (seq) cursor.seq = seq;
     const terminal = handleEvent(ev, sink);
-    if (terminal !== undefined) {
-      return {
-        terminal: { ready: terminal.ready, commitSha: terminal.commitSha },
-      };
-    }
+    if (terminal !== undefined) return { terminal };
   }
   return { terminal: null };
 }
@@ -463,7 +457,7 @@ export class AgentUnavailableError extends Error {}
 function handleEvent(
   ev: DeployEvent,
   sink: AgentDeploySink,
-): { ready: boolean; commitSha: string } | undefined {
+): AgentDeployResult | undefined {
   if (ev.log) {
     sink.log(coerceLevel(ev.log.level), ev.log.text);
     return undefined;
@@ -476,7 +470,14 @@ function handleEvent(
     if (!ev.result.ready && ev.result.error) {
       sink.log("error", explainNetworkError(ev.result.error));
     }
-    return { ready: ev.result.ready, commitSha: ev.result.commitSha || "" };
+    return {
+      ready: ev.result.ready,
+      commitSha: ev.result.commitSha || "",
+      observedPort: ev.result.observedPort || undefined,
+      builtWith: ev.result.builtWith || undefined,
+      sourceCompose: ev.result.sourceCompose,
+      listeningPorts: ev.result.listeningPorts,
+    };
   }
   return undefined;
 }
@@ -535,6 +536,8 @@ export async function buildDeployRequest(opts: {
       opts.composeYaml,
       stackFilesDir(opts.slug),
     ),
+    ready: undefined,
+    githubToken: "",
   };
 
   if (opts.plan.kind === "compose") {
@@ -563,7 +566,7 @@ export async function buildDeployRequest(opts: {
     return {
       ...base,
       sourceKind: SourceKind.SOURCE_KIND_GIT,
-      ...noProbeBuildFields(opts.plan.build, opts.env),
+      ...buildFieldsFor(opts.plan.build),
       git: {
         url: opts.plan.url,
         branch: opts.plan.branch,
@@ -574,73 +577,125 @@ export async function buildDeployRequest(opts: {
     };
   }
 
-  const { buildDir, build } = opts.plan;
-  const normalized = normalizeBuildConfig(build);
-
-  const heavyKind = heavyBuildKind(normalized.buildMethod);
-  if (heavyKind !== null) {
+  if (opts.plan.kind === "source-compose") {
+    const { source, composeFile } = opts.plan;
     return {
       ...base,
-      sourceKind: SourceKind.SOURCE_KIND_UPLOAD,
-      buildKind: heavyKind,
-      buildSpec: buildSpecFor(normalized),
+      buildKind: BuildKind.BUILD_KIND_COMPOSE,
+      buildSpec: {
+        ...buildSpecFor(buildConfigFor({ buildMethod: "compose" })),
+        composeFile,
+      },
+      composeUpArgs: composeDeployArgs(opts.composeUpArgs ?? []),
+      ...(source.kind === "git"
+        ? {
+            sourceKind: SourceKind.SOURCE_KIND_GIT,
+            git: {
+              url: source.url,
+              branch: "",
+              commit: source.commit,
+              subdir: source.subdir,
+              token: "",
+            },
+          }
+        : { sourceKind: SourceKind.SOURCE_KIND_UPLOAD }),
     };
   }
 
-  let dockerfile;
-  if (normalized.buildMethod === "dockerfile") {
-    dockerfile = explicitDockerfileDescriptor(normalized);
-  } else {
-    const hasDockerfile = await fileExists(join(buildDir, "Dockerfile"));
-    dockerfile = hasDockerfile
-      ? {
-          dockerfilePath: "Dockerfile",
-          contextPath: ".",
-          targetStage: "",
-          generated: false,
-          generatedDockerfile: "",
-        }
-      : {
-          dockerfilePath: "",
-          contextPath: ".",
-          targetStage: "",
-          generated: true,
-          generatedDockerfile: generateDockerfile(
-            normalized,
-            Object.keys(opts.env),
-          ),
-        };
-  }
-
+  // An upload's method is resolved against its own files before the build.
+  const { buildDir, build } = opts.plan;
+  const normalized = await resolveUploadMethod(buildDir, build);
   return {
     ...base,
     sourceKind: SourceKind.SOURCE_KIND_UPLOAD,
-    buildKind: BuildKind.BUILD_KIND_DOCKERFILE,
-    dockerfile,
+    ...buildFieldsFor(normalized),
   };
 }
 
-function noProbeBuildFields(
-  build: BuildConfig,
-  env: Record<string, string>,
-): Partial<DeployRequest> {
-  const normalized = normalizeBuildConfig(build);
-  const heavyKind = heavyBuildKind(normalized.buildMethod);
-  if (heavyKind !== null) {
-    return { buildKind: heavyKind, buildSpec: buildSpecFor(normalized) };
-  }
-  const dockerfile =
-    normalized.buildMethod === "dockerfile"
-      ? explicitDockerfileDescriptor(normalized)
-      : {
-          dockerfilePath: "",
-          contextPath: ".",
-          targetStage: "",
-          generated: true,
-          generatedDockerfile: generateDockerfile(normalized, Object.keys(env)),
-        };
-  return { buildKind: BuildKind.BUILD_KIND_DOCKERFILE, dockerfile };
+function buildFieldsFor(build: BuildConfig): Partial<DeployRequest> {
+  const b = normalizeBuildConfig(build);
+  if (b.buildMethod === "dockerfile" && !b.methodAuto)
+    return {
+      buildKind: BuildKind.BUILD_KIND_DOCKERFILE,
+      dockerfile: explicitDockerfileDescriptor(b),
+    };
+  // With composeYaml empty this only reads the compose file: the stack is rendered from it next.
+  if (b.buildMethod === "compose" && !b.methodAuto)
+    return {
+      buildKind: BuildKind.BUILD_KIND_COMPOSE,
+      buildSpec: buildSpecFor(b),
+    };
+  return {
+    buildKind: BuildKind.BUILD_KIND_RAILPACK,
+    buildSpec: buildSpecFor(b),
+  };
 }
+
+export const COMPOSE_FILE_NAMES = [
+  "compose.yaml",
+  "compose.yml",
+  "docker-compose.yaml",
+  "docker-compose.yml",
+];
+
+// Detect automatically for an upload, the same order the agent applies to a clone.
+export async function resolveUploadMethod(
+  buildDir: string,
+  build: BuildConfig,
+): Promise<BuildConfig> {
+  const b = normalizeBuildConfig(build);
+  if (!b.methodAuto) return b;
+  const resolved = (await fileExists(join(buildDir, "Dockerfile")))
+    ? "dockerfile"
+    : (await findComposeFile(buildDir, b.methodSettings.composeFile))
+      ? "compose"
+      : "railpack";
+  return { ...b, buildMethod: resolved, methodAuto: false };
+}
+
+export async function findComposeFile(
+  buildDir: string,
+  preferred?: string | null,
+): Promise<string | null> {
+  for (const name of preferred?.trim()
+    ? [preferred.trim()]
+    : COMPOSE_FILE_NAMES)
+    if (await fileExists(join(buildDir, name))) return name;
+  return null;
+}
+
+// Each new behaviour is the agent's to honour: an older one gets the request it understands.
+function applyAgentFeatures(
+  req: DeployRequest,
+  opts: { ready?: ReadyCheck; githubToken?: string },
+  capabilities: readonly string[],
+  sink: AgentDeploySink,
+): void {
+  if (opts.ready && capabilities.includes("deploy.ready-check")) {
+    req.ready = opts.ready;
+    req.readyTimeoutMs = Math.max(req.readyTimeoutMs, READY_CHECK_TIMEOUT_MS);
+  }
+  if (
+    opts.githubToken &&
+    req.buildKind === BuildKind.BUILD_KIND_RAILPACK &&
+    capabilities.includes("build.github-token")
+  )
+    req.githubToken = opts.githubToken;
+  if (
+    req.buildSpec?.autoMethod &&
+    !capabilities.includes("build.auto-method")
+  ) {
+    req.buildSpec.autoMethod = false;
+    sink.log(
+      "warn",
+      "This server's agent is too old to look for a Dockerfile or a Compose file, so this " +
+        "build uses Railpack. Update the agent (reissue the install command from the server's actions menu).",
+    );
+  }
+}
+
+// Long enough for a JVM or a Rails boot; a crash ends the wait at once.
+const READY_CHECK_TIMEOUT_MS = 180_000;
 
 async function fileExists(p: string): Promise<boolean> {
   try {

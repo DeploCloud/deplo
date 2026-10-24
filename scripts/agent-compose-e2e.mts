@@ -111,6 +111,7 @@ networks:
         buildOnly: false,
         registryAuth: [],
         filesBindSources: [],
+        githubToken: "",
       })) {
         if (ev.log) console.log(`  [${ev.log.level}] ${ev.log.text}`);
         if (ev.result) {

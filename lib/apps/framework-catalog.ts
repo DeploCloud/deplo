@@ -1,4 +1,4 @@
-import type { BuildMethod } from "../types/build";
+import { buildsWithRailpack, type BuildMethodChoice } from "./build-method";
 
 export type FrameworkId =
   | "nextjs"
@@ -252,6 +252,6 @@ export function effectiveFramework(app: {
   return app.frameworkOverride ?? app.framework;
 }
 
-export function supportsFrameworkDetection(method: BuildMethod): boolean {
-  return method === "nixpacks" || method === "railpack";
+export function supportsFrameworkDetection(method: BuildMethodChoice): boolean {
+  return buildsWithRailpack(method);
 }

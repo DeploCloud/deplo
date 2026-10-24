@@ -4,7 +4,11 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { buildSchema, execute, parse, validate } from "graphql";
 
-import { UPDATE_SOURCE, updateSourceVariables } from "./apps-configure";
+import {
+  APPS_CONFIG,
+  UPDATE_SOURCE,
+  updateSourceVariables,
+} from "./apps-configure";
 import type { GitRepo } from "../../types/build";
 
 const repo: GitRepo = {
@@ -108,4 +112,14 @@ test("the merged variables coerce against the schema", async () => {
     coercion.map((e) => e.message),
     [],
   );
+});
+
+test("update_app_build offers the live build methods and no retired one", () => {
+  const input = APPS_CONFIG.find((t) => t.name === "update_app_build")!.input;
+  const takes = (buildMethod: string) =>
+    input.safeParse({ appId: "prj_1", buildMethod }).success;
+  for (const m of ["auto", "railpack", "dockerfile", "compose"])
+    assert.equal(takes(m), true, m);
+  for (const m of ["nixpacks", "static", "heroku"])
+    assert.equal(takes(m), false, m);
 });

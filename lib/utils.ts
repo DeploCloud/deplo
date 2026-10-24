@@ -189,12 +189,15 @@ function githubRepoSlug(repo: {
   return m ? clean(m[1]) : null;
 }
 
-export function usesComposeStack(project: {
+type StackShape = {
   source: string;
   compose: string | null;
   repo: unknown | null;
   dockerImage: string | null;
-}): boolean {
+};
+
+// A stack whose YAML Deplo keeps as it was written: pasted, from a template or an import.
+export function usesPastedCompose(project: StackShape): boolean {
   const hasCompose = Boolean(project.compose && project.compose.trim());
   return (
     project.source === "compose" ||
@@ -205,13 +208,20 @@ export function usesComposeStack(project: {
   );
 }
 
+// Also a git or upload app whose last deploy ran the compose file its source carries.
+export function usesComposeStack(project: StackShape): boolean {
+  const hasCompose = Boolean(project.compose && project.compose.trim());
+  return usesPastedCompose(project) || (hasCompose && !project.dockerImage);
+}
+
 export function appBuildsItsOwnImage(project: {
   source: string;
   compose: string | null;
   repo: unknown | null;
   dockerImage: string | null;
 }): boolean {
-  if (usesComposeStack(project)) return false;
+  // A git or upload app that deploys its own compose file still builds from its source.
+  if (usesPastedCompose(project)) return false;
   return (
     project.source === "github" ||
     project.source === "git" ||

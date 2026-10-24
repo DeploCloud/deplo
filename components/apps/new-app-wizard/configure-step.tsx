@@ -13,6 +13,7 @@ import type { RecognizedFramework } from "@/components/apps/use-repo-framework";
 import { CommandField } from "@/components/apps/wizard/command-field";
 import { WizardCard } from "@/components/apps/wizard/wizard-card";
 import { Switch } from "@/components/ui/switch";
+import { buildsWithRailpack, methodChoice } from "@/lib/apps/build-method";
 import type { DeploySource } from "@/lib/types/app";
 import type { BuildConfig } from "@/lib/types/build";
 
@@ -84,24 +85,28 @@ export function ConfigureStep({
         )
       )}
 
-      <CommandField
-        id="build-command"
-        label="Build command"
-        info="Run to compile the app. Leave it empty and the builder works it out."
-        value={build.buildCommand ?? ""}
-        onChange={(v) => onBuildChange({ ...build, buildCommand: v })}
-        detected={prefilledBuild}
-        placeholder="Detected at build time"
-      />
-      <CommandField
-        id="start-command"
-        label="Deploy command"
-        info="Run to start the container. Leave it empty and the builder works it out."
-        value={build.startCommand ?? ""}
-        onChange={(v) => onBuildChange({ ...build, startCommand: v })}
-        detected={prefilledStart}
-        placeholder="Detected at build time"
-      />
+      {buildsWithRailpack(methodChoice(build)) && (
+        <>
+          <CommandField
+            id="build-command"
+            label="Build command"
+            info="Run to compile the app. Leave it empty and the builder works it out."
+            value={build.buildCommand ?? ""}
+            onChange={(v) => onBuildChange({ ...build, buildCommand: v })}
+            detected={prefilledBuild}
+            placeholder="Detected at build time"
+          />
+          <CommandField
+            id="start-command"
+            label="Deploy command"
+            info="Run to start the container. Leave it empty and the builder works it out."
+            value={build.startCommand ?? ""}
+            onChange={(v) => onBuildChange({ ...build, startCommand: v })}
+            detected={prefilledStart}
+            placeholder="Detected at build time"
+          />
+        </>
+      )}
 
       <div className="flex items-center justify-between rounded-lg border border-border p-3">
         <div className="flex items-center gap-2">

@@ -126,6 +126,19 @@ test("an app that is not a compose stack declares nothing", () => {
     composeDeclaredMounts({
       slug: "site",
       source: "github",
+      compose: null,
+      repo: { owner: "acme", name: "site" },
+      dockerImage: null,
+    }),
+    [],
+  );
+});
+
+test("a repository app that deployed its own compose file declares that stack's storage", () => {
+  assert.deepEqual(
+    composeDeclaredMounts({
+      slug: "site",
+      source: "github",
       compose: `services:
   app:
     image: nginx
@@ -137,6 +150,6 @@ volumes:
       repo: { owner: "acme", name: "site" },
       dockerImage: null,
     }),
-    [],
+    [{ kind: "named", source: "db_data", mountPath: "/var/lib/mysql" }],
   );
 });

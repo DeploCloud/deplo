@@ -1,5 +1,10 @@
 import { DB_REPOS } from "../../databases/images";
-import type { BuildConfig, GitRepo } from "../../types/build";
+import { normalizeBuildMethod } from "../../frameworks";
+import type {
+  BuildConfig,
+  BuildMethodSettings,
+  GitRepo,
+} from "../../types/build";
 import type { EnvironmentKind } from "../../types/team";
 import type { EnvPair, SharedRef } from "../map/env";
 import { blocker, type Note } from "../note";
@@ -531,9 +536,7 @@ export function sourceApplication(
       ? { notes: [] }
       : gitCredentialOf(x, a.repo);
   notes.push(...git.notes);
-  // A pending cache clear is this host's housekeeping, not a setting.
-  const build: Partial<BuildConfig> = { ...a.build };
-  delete build.buildCacheClearPending;
+  const build = liveBuild(a.build);
   return {
     ...common,
     ...origin,
@@ -546,10 +549,8 @@ export function sourceApplication(
     dockerfile: m.dockerfilePath ?? null,
     dockerContextPath: m.dockerContextPath ?? null,
     dockerBuildStage: m.dockerBuildStage ?? null,
-    railpackVersion: m.railpackVersion ?? null,
     isStaticSpa: m.staticSinglePageApp ?? null,
-    publishDirectory:
-      a.build.outputDirectory ?? m.nixpacksPublishDirectory ?? null,
+    publishDirectory: build.outputDirectory ?? null,
     buildPath: a.build.rootDirectory || null,
     installCommand: a.build.installCommand,
     buildCommand: a.build.buildCommand,
@@ -571,6 +572,31 @@ export function sourceApplication(
     nativeBuild: build,
     nativeResources: a.resources,
   } satisfies SourceApplication;
+}
+
+type RetiredSettings = {
+  railpackVersion?: string;
+  nixpacksPublishDirectory?: string;
+};
+
+// An older Deplo still sends the builders Railpack replaced; the folder a Nixpacks app served stays served.
+function liveBuild(b: BuildConfig): Partial<BuildConfig> {
+  const methodSettings: BuildMethodSettings & RetiredSettings = {
+    ...b.methodSettings,
+  };
+  const publish = methodSettings.nixpacksPublishDirectory?.trim();
+  delete methodSettings.railpackVersion;
+  delete methodSettings.nixpacksPublishDirectory;
+  const build: Partial<BuildConfig> = {
+    ...b,
+    buildMethod: normalizeBuildMethod(b.buildMethod) ?? "railpack",
+    methodSettings,
+  };
+  if ((b.buildMethod as string) === "nixpacks" && publish && !b.outputDirectory)
+    build.outputDirectory = publish;
+  // A pending cache clear is this host's housekeeping, not a setting.
+  delete build.buildCacheClearPending;
+  return build;
 }
 
 export function sourceDatabase(

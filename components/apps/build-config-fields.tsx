@@ -5,12 +5,12 @@ import { Input } from "@/components/ui/input";
 import { FieldLabel, InfoTip } from "@/components/ui/info-tip";
 import { BuildMethodFields } from "@/components/apps/build-method-fields";
 import { NodeVersionInput } from "@/components/apps/node-version-input";
-import { DEFAULT_NODE_MAJOR, usesDefaultNodeMajor } from "@/lib/frameworks";
-import type {
-  BuildConfig,
-  BuildMethod,
-  BuildMethodSettings,
-} from "@/lib/types/build";
+import {
+  buildsWithRailpack,
+  methodChoice,
+  withMethodChoice,
+} from "@/lib/apps/build-method";
+import type { BuildConfig, BuildMethodSettings } from "@/lib/types/build";
 
 export function BuildConfigFields({
   build,
@@ -25,10 +25,6 @@ export function BuildConfigFields({
     onBuildChange(updater(build));
   }
 
-  function setBuildMethod(method: BuildMethod) {
-    setBuild((b) => ({ ...b, buildMethod: method }));
-  }
-
   function patchMethodSettings(patch: Partial<BuildMethodSettings>) {
     setBuild((b) => ({
       ...b,
@@ -36,13 +32,10 @@ export function BuildConfigFields({
     }));
   }
 
-  const method = build.buildMethod;
-  const showBuildCommand =
-    method === "nixpacks" || method === "railpack" || method === "static";
-  const showStartCommand = method === "nixpacks" || method === "railpack";
-  const showNodeVersion =
-    method === "nixpacks" || method === "railpack" || method === "static";
-  const showCommands = commands && (showBuildCommand || showStartCommand);
+  const method = methodChoice(build);
+  const railpack = buildsWithRailpack(method);
+  // A compose stack's port is the routed service's, not one for the whole app.
+  const showPort = method !== "compose";
 
   const [portDraft, setPortDraft] = React.useState<string | null>(null);
   const portText = portDraft ?? String(build.port);
@@ -63,108 +56,98 @@ export function BuildConfigFields({
     <div className="space-y-5">
       <FieldGroup title="Build method" first>
         <BuildMethodFields
-          method={build.buildMethod}
+          method={method}
           settings={build.methodSettings}
-          onMethodChange={setBuildMethod}
+          onMethodChange={(m) => setBuild((b) => withMethodChoice(b, m))}
           onSettingsChange={patchMethodSettings}
         />
       </FieldGroup>
 
-      {showCommands && (
+      {commands && railpack && (
         <FieldGroup
           title="Commands"
           hint="Leave blank to let the builder work them out from your code."
         >
           <div className="grid gap-4 sm:grid-cols-2">
-            {showBuildCommand && (
+            <div className="space-y-2">
+              <FieldLabel
+                info="Overrides the command that builds your app. Leave blank to let the builder detect it."
+                docs="build.fields"
+              >
+                Build command
+              </FieldLabel>
+              <Input
+                className="font-mono text-xs"
+                placeholder="(auto-detected)"
+                value={build.buildCommand ?? ""}
+                onChange={(e) =>
+                  setBuild((b) => ({ ...b, buildCommand: e.target.value }))
+                }
+              />
+            </div>
+
+            <div className="space-y-2">
+              <FieldLabel
+                info="Overrides the command that starts your app inside the container."
+                docs="build.fields"
+              >
+                Start command
+              </FieldLabel>
+              <Input
+                className="font-mono text-xs"
+                placeholder="(auto-detected)"
+                value={build.startCommand ?? ""}
+                onChange={(e) =>
+                  setBuild((b) => ({ ...b, startCommand: e.target.value }))
+                }
+              />
+            </div>
+          </div>
+        </FieldGroup>
+      )}
+
+      {(railpack || showPort) && (
+        <FieldGroup title="Runtime">
+          <div className="grid gap-4 sm:grid-cols-2">
+            {railpack && (
               <div className="space-y-2">
                 <FieldLabel
-                  info="Overrides the command that builds your app. Leave blank to let the builder detect it."
+                  info="Pins the Node.js major, kept in sync with the real Node releases. Leave blank to read it from your project."
                   docs="build.fields"
                 >
-                  Build command
+                  Node.js version
                 </FieldLabel>
-                <Input
-                  className="font-mono text-xs"
-                  placeholder="(auto-detected)"
-                  value={build.buildCommand ?? ""}
-                  onChange={(e) =>
-                    setBuild((b) => ({ ...b, buildCommand: e.target.value }))
+                <NodeVersionInput
+                  value={build.runtimeVersion}
+                  onChange={(v) =>
+                    setBuild((b) => ({ ...b, runtimeVersion: v }))
                   }
+                  placeholder="Default (auto-detect)"
                 />
               </div>
             )}
 
-            {showStartCommand && (
+            {showPort && (
               <div className="space-y-2">
                 <FieldLabel
-                  info="Overrides the command that starts your app inside the container."
-                  docs="build.fields"
+                  info="The port your app listens on inside the container (Traefik routes here)."
+                  docs="build.port"
                 >
-                  Start command
+                  Container port
                 </FieldLabel>
                 <Input
-                  className="font-mono text-xs"
-                  placeholder="(auto-detected)"
-                  value={build.startCommand ?? ""}
-                  onChange={(e) =>
-                    setBuild((b) => ({ ...b, startCommand: e.target.value }))
-                  }
+                  type="number"
+                  inputMode="numeric"
+                  min={1}
+                  value={portText}
+                  onChange={(e) => onPortChange(e.target.value)}
+                  onBlur={onPortBlur}
                 />
               </div>
             )}
           </div>
         </FieldGroup>
       )}
-
-      <FieldGroup title="Runtime">
-        <div className="grid gap-4 sm:grid-cols-2">
-          {showNodeVersion && (
-            <div className="space-y-2">
-              <FieldLabel
-                info={
-                  <>
-                    Pins the Node.js major, kept in sync with the real Node
-                    releases.
-                    {usesDefaultNodeMajor(method)
-                      ? ` Leave blank to use the default (Node ${DEFAULT_NODE_MAJOR}).`
-                      : " Leave blank to auto-detect from your project."}
-                  </>
-                }
-                docs="build.fields"
-              >
-                Node.js version
-              </FieldLabel>
-              <NodeVersionInput
-                value={build.runtimeVersion}
-                onChange={(v) => setBuild((b) => ({ ...b, runtimeVersion: v }))}
-                placeholder={
-                  usesDefaultNodeMajor(method)
-                    ? `Default (Node ${DEFAULT_NODE_MAJOR})`
-                    : "Default (auto-detect)"
-                }
-              />
-            </div>
-          )}
-
-          <div className="space-y-2">
-            <FieldLabel
-              info="The port your app listens on inside the container (Traefik routes here)."
-              docs="build.port"
-            >
-              Container port
-            </FieldLabel>
-            <Input
-              type="number"
-              inputMode="numeric"
-              min={1}
-              value={portText}
-              onChange={(e) => onPortChange(e.target.value)}
-              onBlur={onPortBlur}
-            />
-          </div>
-        </div>
-      </FieldGroup>
     </div>
   );
 }

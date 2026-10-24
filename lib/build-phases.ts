@@ -25,6 +25,7 @@ function phaseForCommand(text: string): BuildPhaseKey | null {
   if (t.startsWith("git clone ")) return "clone";
   if (t.startsWith("extract ")) return "extract";
   if (t.startsWith("docker pull ")) return "pull";
+  // "nixpacks " still splits the log of a deploy from before Railpack replaced it.
   if (t.startsWith("nixpacks ") || t.startsWith("railpack ")) return "prepare";
   if (t.startsWith("docker build")) return "build";
   if (t.startsWith("docker compose ")) return "deploy";

@@ -62,9 +62,19 @@ test("appTypeLabel names the App kind, tracking usesComposeStack", () => {
     appTypeLabel({ ...base, source: "docker-image", dockerImage: "nginx" }),
     "Application",
   );
+  // An upload or a repository whose last deploy ran its own compose file is a stack.
   assert.equal(
     appTypeLabel({ ...base, source: "upload", compose: "services: {}" }),
-    "Application",
+    "Compose app",
+  );
+  assert.equal(
+    appTypeLabel({
+      ...base,
+      source: "github",
+      repo: {},
+      compose: "services: {}",
+    }),
+    "Compose app",
   );
   assert.equal(appTypeLabel({ ...base, source: "compose" }), "Compose app");
   assert.equal(

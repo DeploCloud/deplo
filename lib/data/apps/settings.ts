@@ -21,6 +21,7 @@ import {
   detectRepoFramework,
   type RepoBuildHints,
 } from "../../apps/framework-source";
+import { normalizeBuildMethod } from "../../frameworks";
 import { DEFAULT_ROLLBACK_KEEP, MAX_ROLLBACK_KEEP } from "../../types/app";
 import { healthCheckToRow } from "../app-graph-rows/health-check";
 import { requireAppCapability } from "../node-access";
@@ -31,7 +32,6 @@ import { syncAppWebhook } from "../git-connections";
 import { publishAppChanged } from "../../graphql/pubsub";
 import { cleanAppName } from "./create";
 import type { UploadArchive } from "../../types/app";
-import type { BuildMethod } from "../../types/build";
 import type { HealthCheck } from "../../types/container";
 
 export async function updateAppOwned(
@@ -154,11 +154,13 @@ export async function previewRepoFramework(input: {
   url?: string | null;
   branch?: string | null;
   installationId?: string | null;
-  buildMethod: BuildMethod;
+  buildMethod: string;
   rootDirectory?: string | null;
 }): Promise<RepoBuildHints> {
   await requireCapability("create_apps");
-  if (!supportsFrameworkDetection(input.buildMethod))
+  const raw = input.buildMethod.trim().toLowerCase();
+  const method = raw === "auto" ? raw : normalizeBuildMethod(raw);
+  if (!method || !supportsFrameworkDetection(method))
     return {
       framework: null,
       staticOutput: null,

@@ -67,12 +67,6 @@ ENV DEPLO_DATA_DIR=/data
 # in an internet-facing container for no one to use but an attacker.
 RUN apk add --no-cache git curl bash tar unzip
 
-# Nixpacks build method: the control plane runs the host `nixpacks` binary to
-# generate a Dockerfile (the daemon-free step), then builds it over the socket.
-# Other build methods (buildpacks, railpack) run entirely in helper containers.
-RUN curl -sSL https://nixpacks.com/install.sh | bash \
- && nixpacks --version
-
 RUN addgroup -g 1001 -S nodejs \
  && adduser -S deplo -u 1001 \
  && mkdir -p /data && chown deplo:nodejs /data

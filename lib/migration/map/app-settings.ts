@@ -11,7 +11,11 @@ import type {
   PublishedPort,
   ResourceLimits,
 } from "../../types/container";
-import type { SourceApplication, SourceCompose } from "../model";
+import type {
+  SourceApplication,
+  SourceBuildType,
+  SourceCompose,
+} from "../model";
 
 import { type Mapped, truncate } from "./source-platform";
 
@@ -19,27 +23,17 @@ export type ResourceInput = {
   [K in keyof ResourceLimits]?: ResourceLimits[K] | null;
 };
 
-const BUILD_METHOD: Record<string, BuildMethod> = {
+// Every other builder (Nixpacks, a static site, the buildpack families) arrives as Railpack.
+const BUILD_METHOD: Partial<Record<SourceBuildType, BuildMethod>> = {
   dockerfile: "dockerfile",
-  nixpacks: "nixpacks",
-  railpack: "railpack",
-  static: "static",
-  heroku_buildpacks: "nixpacks",
-  paketo_buildpacks: "nixpacks",
+  compose: "compose",
 };
 
 export function mapBuildSettings(
   app: SourceApplication,
 ): Mapped<Partial<BuildConfig>> {
   const notes: string[] = [];
-  const buildMethod = BUILD_METHOD[app.buildType] ?? "nixpacks";
-  if (
-    app.buildType === "heroku_buildpacks" ||
-    app.buildType === "paketo_buildpacks"
-  )
-    notes.push(
-      `Built with ${app.buildType.replace("_", " ")} on {panel}. Set to Nixpacks - check the build.`,
-    );
+  const buildMethod = BUILD_METHOD[app.buildType] ?? "railpack";
 
   const build: Partial<BuildConfig> = { buildMethod };
   const methodSettings: BuildConfig["methodSettings"] = {};
@@ -52,15 +46,12 @@ export function mapBuildSettings(
     if (app.dockerBuildStage?.trim())
       methodSettings.dockerBuildStage = app.dockerBuildStage.trim();
   }
-  if (buildMethod === "railpack" && app.railpackVersion?.trim())
-    methodSettings.railpackVersion = app.railpackVersion.trim();
 
+  // Only a static site and Nixpacks served a folder; anywhere else the value is one its builder never read.
   const publish = app.publishDirectory?.trim();
-  if (buildMethod === "static") {
+  if (app.buildType === "static" || (app.buildType === "nixpacks" && publish)) {
     if (publish) build.outputDirectory = publish;
     if (app.isStaticSpa) methodSettings.staticSinglePageApp = true;
-  } else if (buildMethod === "nixpacks" && publish) {
-    methodSettings.nixpacksPublishDirectory = publish;
   }
   if (Object.keys(methodSettings).length > 0)
     build.methodSettings = methodSettings;

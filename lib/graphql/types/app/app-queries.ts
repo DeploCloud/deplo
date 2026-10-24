@@ -21,7 +21,6 @@ import {
   listDeployments,
   getDeployment,
 } from "@/lib/data/deployments/deployment-queries";
-import type { BuildMethod } from "@/lib/types/build";
 
 const ComposeNameClashesInputType = builder.inputType(
   "ComposeNameClashesInput",
@@ -257,7 +256,7 @@ builder.queryFields((t) => ({
       "Read a GitHub repository before an app exists for it - the framework " +
       "and the build command the new-app wizard prefills while you pick a repo. " +
       "Null when there is nothing to read at all: a build method other than " +
-      "Nixpacks / Railpack (the only ones this applies to), a repository Deplo " +
+      "Railpack or auto (the only ones this applies to), a repository Deplo " +
       "can't read, or one with neither a framework nor a script. Reads only; " +
       "the app's first deploy re-derives and stores the framework.",
     args: {
@@ -281,7 +280,8 @@ builder.queryFields((t) => ({
       }),
       buildMethod: t.arg.string({
         required: true,
-        description: 'The build method the app will use, e.g. "nixpacks".',
+        description:
+          'The build method the app will use: "auto", "railpack", "dockerfile" or "compose".',
       }),
       rootDirectory: t.arg.string({
         required: false,
@@ -294,7 +294,7 @@ builder.queryFields((t) => ({
         url: args.url,
         branch: args.branch,
         installationId: args.installationId,
-        buildMethod: args.buildMethod as BuildMethod,
+        buildMethod: args.buildMethod,
         rootDirectory: args.rootDirectory,
       });
       const framework = frameworkById(hints.framework);

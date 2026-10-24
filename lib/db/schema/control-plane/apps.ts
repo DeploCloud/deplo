@@ -175,6 +175,7 @@ export const appBuild = pgTable("app_build", {
     .primaryKey()
     .references(() => apps.id, { onDelete: "cascade" }),
   buildMethod: text("build_method").notNull(),
+  buildMethodAuto: boolean("build_method_auto").notNull().default(false),
   rootDirectory: text("root_directory").notNull(),
   includeFilesOutsideRoot: boolean("include_files_outside_root")
     .notNull()
@@ -201,8 +202,7 @@ export const appBuildMethodSettings = pgTable("app_build_method_settings", {
   dockerfilePath: text("dockerfile_path"),
   dockerContextPath: text("docker_context_path"),
   dockerBuildStage: text("docker_build_stage"),
-  railpackVersion: text("railpack_version"),
-  nixpacksPublishDirectory: text("nixpacks_publish_directory"),
+  composeFile: text("compose_file"),
   staticSinglePageApp: boolean("static_single_page_app"),
 });
 

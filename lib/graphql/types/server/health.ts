@@ -44,7 +44,7 @@ const ServerReadinessCheckRef = builder
     fields: (t) => ({
       id: t.exposeString("id", {
         description:
-          'Stable row id, e.g. "docker.available" or "build.nixpacks".',
+          'Stable row id, e.g. "docker.available" or "build.railpack".',
       }),
       group: t.field({
         type: ServerReadinessGroupEnum,

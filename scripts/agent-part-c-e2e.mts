@@ -105,6 +105,7 @@ networks:
         buildOnly: false,
         registryAuth: [],
         filesBindSources: [],
+        githubToken: "",
       })) {
         if (ev.result && !ev.result.ready)
           throw new Error("deploy failed: " + ev.result.error);

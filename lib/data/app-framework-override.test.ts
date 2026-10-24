@@ -17,7 +17,7 @@ import {
   seedApp,
   TRUNCATE_PROJECT_GRAPH,
 } from "./app-graph-test-helpers";
-import { setAppFramework } from "./apps/settings";
+import { previewRepoFramework, setAppFramework } from "./apps/settings";
 import { loadAppGraph } from "./app-graph-load";
 import { effectiveFramework } from "../apps/framework-catalog";
 
@@ -102,4 +102,31 @@ test("another team's app cannot be corrected", async () => {
     /not found/i,
   );
   assert.equal((await loadAppGraph("prj_other"))?.frameworkOverride, null);
+});
+
+test("the wizard reads a repository for Railpack and Detect automatically, never for a Dockerfile or Compose app", async () => {
+  const realFetch = globalThis.fetch;
+  const asked: string[] = [];
+  globalThis.fetch = (async (url: string | URL) => {
+    asked.push(String(url));
+    return new Response("{}", { status: 404 });
+  }) as typeof fetch;
+  try {
+    for (const [buildMethod, reads] of [
+      ["auto", true],
+      ["railpack", true],
+      ["nixpacks", true],
+      ["dockerfile", false],
+      ["compose", false],
+      ["buildah", false],
+    ] as const) {
+      asked.length = 0;
+      await asUser1(() =>
+        previewRepoFramework({ repo: "acme/web", buildMethod }),
+      );
+      assert.equal(asked.length > 0, reads, buildMethod);
+    }
+  } finally {
+    globalThis.fetch = realFetch;
+  }
 });

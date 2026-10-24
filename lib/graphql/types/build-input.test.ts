@@ -15,15 +15,50 @@ test("remapBuildInput re-keys outputDir → outputDirectory", () => {
   assert.ok(!("outputDir" in out), "the stale outputDir key must not survive");
 });
 
-test("remapBuildInput re-keys settings → methodSettings", () => {
-  const out = remapBuildInput({ settings: { publishDir: "build" } });
-  assert.deepEqual(out.methodSettings, { publishDir: "build" });
+test("remapBuildInput re-keys settings → methodSettings, keeping only live keys", () => {
+  const out = remapBuildInput({
+    settings: {
+      composeFile: "deploy/compose.yaml",
+      railpackVersion: "0.35.0",
+      nixpacksPublishDirectory: "build",
+    },
+  });
+  assert.deepEqual(out.methodSettings, { composeFile: "deploy/compose.yaml" });
   assert.ok(!("settings" in out), "the stale settings key must not survive");
+});
+
+test("remapBuildInput maps a method name onto the live builders", () => {
+  assert.deepEqual(remapBuildInput({ buildMethod: "dockerfile" }), {
+    buildMethod: "dockerfile",
+    methodAuto: false,
+  });
+  assert.deepEqual(remapBuildInput({ buildMethod: "Compose" }), {
+    buildMethod: "compose",
+    methodAuto: false,
+  });
+  for (const retired of ["nixpacks", "static", "heroku", "paketo"])
+    assert.deepEqual(remapBuildInput({ buildMethod: retired }), {
+      buildMethod: "railpack",
+      methodAuto: false,
+    });
+});
+
+test("remapBuildInput reads auto as Detect automatically, keeping the resolved method", () => {
+  assert.deepEqual(remapBuildInput({ buildMethod: "auto" }), {
+    methodAuto: true,
+  });
+});
+
+test("remapBuildInput refuses a method Deplo never had", () => {
+  assert.throws(
+    () => remapBuildInput({ buildMethod: "buildah" }),
+    /Unknown build method "buildah"/,
+  );
 });
 
 test("remapBuildInput passes matching fields through untouched", () => {
   const out = remapBuildInput({
-    buildMethod: "nixpacks",
+    buildMethod: "railpack",
     installCommand: "npm i",
     buildCommand: "npm run build",
     startCommand: "npm start",
@@ -31,7 +66,8 @@ test("remapBuildInput passes matching fields through untouched", () => {
     port: 3000,
   });
   assert.deepEqual(out, {
-    buildMethod: "nixpacks",
+    buildMethod: "railpack",
+    methodAuto: false,
     installCommand: "npm i",
     buildCommand: "npm run build",
     startCommand: "npm start",
@@ -55,7 +91,7 @@ test("remapBuildInput keeps an explicit empty-string edit (clearing a field)", (
 
 test("remapBuildInput end-to-end: the merge persists the edited rootDirectory", () => {
   const existing = {
-    buildMethod: "nixpacks",
+    buildMethod: "railpack",
     methodSettings: {},
     rootDirectory: "./",
     installCommand: null,
@@ -66,7 +102,7 @@ test("remapBuildInput end-to-end: the merge persists the edited rootDirectory", 
     port: 3000,
   };
   const remapped = remapBuildInput({
-    buildMethod: "nixpacks",
+    buildMethod: "railpack",
     settings: {},
     installCommand: "npm i",
     buildCommand: "npm run build",
