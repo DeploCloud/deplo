@@ -241,7 +241,7 @@ export function SidebarNav({
                     className={cn(
                       "group relative z-10 flex cursor-pointer items-center gap-2.5 rounded-md text-sm transition-colors",
                       collapsed ? "h-9 w-9 justify-center" : "px-3 py-2",
-                      heading && "justify-center font-medium",
+                      heading && "justify-center",
                       active || heading
                         ? "text-foreground"
                         : "text-muted-foreground",
