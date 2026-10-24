@@ -11,7 +11,7 @@ import {
 } from "lucide-react";
 import { DeploLogo } from "@/components/logo";
 import { sidebarMenuFor } from "@/components/layout/nav-config/active-route";
-import { SidebarNav } from "./sidebar-nav";
+import { SidebarNav, SubmenuChevron } from "./sidebar-nav";
 import { SidebarTips } from "./sidebar-tips";
 import { useSidebar } from "./sidebar-state";
 import { Button } from "@/components/ui/button";
@@ -143,6 +143,7 @@ export function Sidebar({
                   >
                     <Settings className="size-4 shrink-0 group-hover:text-foreground" />
                     Settings
+                    <SubmenuChevron />
                   </Link>
                 </TooltipTrigger>
                 <TooltipContent side="right">Settings</TooltipContent>

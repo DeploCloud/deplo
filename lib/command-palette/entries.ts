@@ -58,11 +58,13 @@ function fromSections(
   group: (section: NavSection) => string,
   idPrefix = "nav",
 ): Entry[] {
-  return sections.flatMap((section) =>
-    section.items
-      .filter((item) => !item.back && !item.disabledReason)
-      .map((item) => toEntry(item, group(section), idPrefix)),
-  );
+  return sections
+    .filter((section) => !section.backLink)
+    .flatMap((section) =>
+      section.items
+        .filter((item) => !item.back && !item.disabledReason)
+        .map((item) => toEntry(item, group(section), idPrefix)),
+    );
 }
 
 function byDestination(entries: Entry[]): Entry[] {

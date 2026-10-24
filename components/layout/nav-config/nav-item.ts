@@ -13,6 +13,8 @@ export interface NavItem {
     | { kind: "app"; logo: string | null }
     | { kind: "database"; logo: string | null; type: DatabaseType };
   back?: boolean;
+  // Opens a sidebar of its own, so it carries a chevron.
+  submenu?: boolean;
   requires?: string;
   requiresAny?: string[];
   requiresAdmin?: boolean;
@@ -35,7 +37,7 @@ export interface NavSection {
   title?: string;
   items: NavItem[];
   iconless?: boolean;
-  /** A lone "Back to …" link: the section after it needs no divider. */
+  /** The back link heading a sidebar, labelled with that sidebar's name. */
   backLink?: boolean;
 }
 

@@ -3,7 +3,7 @@
 import * as React from "react";
 import Link, { useLinkStatus } from "@/components/ui/link";
 import { useFlatPathname } from "@/lib/nav";
-import { Loader2 } from "lucide-react";
+import { ChevronRight, Loader2 } from "lucide-react";
 import { sidebarMenuFor } from "./nav-config/active-route";
 import { appNav, appSettingsNav } from "./nav-config/app-nav";
 import { databaseNav, databaseSettingsNav } from "./nav-config/database-nav";
@@ -194,6 +194,8 @@ export function SidebarNav({
             const active = isActive(item.href, item.exact);
             const Icon = item.icon;
             const showIcon = !section.iconless || collapsed;
+            // The back link heads its sidebar: its name centred, the arrow pinned left.
+            const heading = section.backLink && !collapsed;
             if (item.disabledReason) {
               return (
                 <Tooltip key={item.href} delayDuration={collapsed ? 0 : 400}>
@@ -239,13 +241,24 @@ export function SidebarNav({
                     className={cn(
                       "group relative z-10 flex cursor-pointer items-center gap-2.5 rounded-md text-sm transition-colors",
                       collapsed ? "h-9 w-9 justify-center" : "px-3 py-2",
-                      active
+                      heading && "justify-center font-medium",
+                      active || heading
                         ? "text-foreground"
-                        : "text-muted-foreground hover:bg-surface hover:text-foreground focus-visible:bg-surface",
+                        : "text-muted-foreground",
+                      !active &&
+                        "hover:bg-surface hover:text-foreground focus-visible:bg-surface",
                     )}
                   >
-                    {showIcon && <NavIcon item={item} active={active} />}
+                    {showIcon &&
+                      (heading ? (
+                        <span className="absolute left-3 flex">
+                          <NavIcon item={item} active={active} />
+                        </span>
+                      ) : (
+                        <NavIcon item={item} active={active} />
+                      ))}
                     {!collapsed && item.label}
+                    {!collapsed && item.submenu && <SubmenuChevron />}
                     {!showIcon && <NavPending />}
                     {updateTip &&
                       (collapsed ? (
@@ -280,6 +293,12 @@ export function SidebarNav({
         </div>
       ))}
     </nav>
+  );
+}
+
+export function SubmenuChevron() {
+  return (
+    <ChevronRight className="ml-auto size-4 shrink-0 text-muted-foreground group-hover:text-foreground" />
   );
 }
 
