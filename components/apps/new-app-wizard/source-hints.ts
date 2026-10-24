@@ -35,6 +35,27 @@ export function nameFromImage(ref: string): string {
   return lastSegment.split(":")[0] ?? "";
 }
 
+const ACRONYMS = new Set(
+  "ai api aws cd cdn ci cli cms crm css csv db dns gcp html http https id json jwt llm mcp ml os pdf pwa qa rss s3 sdk seo smtp sql ssh ssl sso tls ui url ux vpn xml".split(
+    " ",
+  ),
+);
+
+// "owner/fenix-ui" -> "Fenix UI". Only separators turn into spaces, so the slug stays the repo's.
+export function nameFromRepo(repo: string): string {
+  return (repo.split("/").pop() ?? "")
+    .split(/[-_\s]+/)
+    .filter(Boolean)
+    .map((w) =>
+      ACRONYMS.has(w.toLowerCase())
+        ? w.toUpperCase()
+        : /[A-Z]/.test(w)
+          ? w
+          : w[0].toUpperCase() + w.slice(1),
+    )
+    .join(" ");
+}
+
 export function nameFromArchive(filename: string): string {
   const ext = archiveExt(filename);
   return ext ? filename.slice(0, -ext.length) : filename;

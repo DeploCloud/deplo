@@ -16,7 +16,7 @@ import type { GithubInstallationDTO } from "@/lib/data/github";
 import type { DeploySource } from "@/lib/types/app";
 import type { GitProviderChoice } from "@/lib/types/git";
 
-import { nameFromArchive, nameFromImage } from "./source-hints";
+import { nameFromArchive, nameFromImage, nameFromRepo } from "./source-hints";
 
 export function SourceFields({
   source,
@@ -61,7 +61,7 @@ export function SourceFields({
           onUsePublicUrl={() => setSource("git")}
           onChange={(sel) => {
             setGhSelection(sel);
-            if (sel) suggestName(sel.fullName.split("/")[1] ?? "");
+            if (sel) suggestName(nameFromRepo(sel.fullName));
           }}
         />
       )}

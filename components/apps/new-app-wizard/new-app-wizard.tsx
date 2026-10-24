@@ -64,7 +64,12 @@ import {
 } from "./create-app";
 import { DetailsStep } from "./details-step";
 import { SourceFields } from "./source-fields";
-import { nameFromArchive, parseRepo, templateTitle } from "./source-hints";
+import {
+  nameFromArchive,
+  nameFromRepo,
+  parseRepo,
+  templateTitle,
+} from "./source-hints";
 import { useBuildConfig } from "./use-build-config";
 import type {
   CreateAppVariables,
@@ -188,7 +193,7 @@ export function NewAppWizard({
 
   function onGitChange(value: GitSourceValue) {
     setGitValue(value);
-    if (value.repo) suggestName(value.repo.split("/").pop() ?? "");
+    if (value.repo) suggestName(nameFromRepo(value.repo));
   }
 
   function onComposeSaved(next: string, diagnostics: LintDiagnostic[]) {
