@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 
 import yaml from "../../yaml";
 import {
+  autoComposeSkip,
   anchorSourcePaths,
   composeBuildsFromSource,
   prepareSourceCompose,
@@ -250,5 +251,41 @@ test("an anchor bomb is refused before it is stored", () => {
   assert.throws(
     () => prepareSourceCompose(big, opts),
     /docker-compose from your repository/,
+  );
+});
+
+test("Detect automatically passes over a compose file it could not deploy, and says why", () => {
+  assert.equal(
+    autoComposeSkip("compose.yaml", `services:\n  web:\n    build: .\n`),
+    null,
+  );
+  assert.match(
+    autoComposeSkip(
+      "compose.yaml",
+      `services:\n  db:\n    image: postgres\n`,
+    ) ?? "",
+    /builds nothing from this repository/,
+  );
+  const refused = autoComposeSkip(
+    "docker-compose.yml",
+    `services:\n  app:\n    build: .\n    extra_hosts: ["host.docker.internal:host-gateway"]\n`,
+  );
+  assert.match(
+    refused ?? "",
+    /can't be deployed from the repository \(it reaches outside its containers/,
+  );
+  assert.match(refused ?? "", /Railpack builds the app instead/);
+});
+
+test("a refused key that is not a path is not answered with a path", () => {
+  assert.throws(
+    () =>
+      prepareSourceCompose(
+        `services:\n  app:\n    build: .\n    extra_hosts: ["h:host-gateway"]\n`,
+        opts,
+      ),
+    (e: Error) =>
+      /remove that, or paste the file/.test(e.message) &&
+      !/\.\/data/.test(e.message),
   );
 });

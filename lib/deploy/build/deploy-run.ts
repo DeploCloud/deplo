@@ -24,10 +24,7 @@ import {
 } from "../../data/apps/build-outcome";
 import type { SourceCompose } from "../../agent/gen/agent";
 import { findComposeFile, resolveUploadMethod } from "../agent-deploy";
-import {
-  composeBuildsFromSource,
-  composeOnlyRunsImages,
-} from "./source-compose";
+import { autoComposeSkip, composeOnlyRunsImages } from "./source-compose";
 import { readFile } from "node:fs/promises";
 import { publishAppChanged } from "../../graphql/pubsub";
 import { nowIso } from "../../ids";
@@ -439,7 +436,15 @@ async function runDeployment(depId: string): Promise<void> {
           buildDir,
           project.build.methodSettings.composeFile,
         );
-        if (compose) log(depId, "info", composeOnlyRunsImages(compose));
+        if (compose)
+          log(
+            depId,
+            "info",
+            autoComposeSkip(
+              compose,
+              await readFile(join(buildDir, compose), "utf8").catch(() => ""),
+            ) ?? composeOnlyRunsImages(compose),
+          );
       }
       if (method.methodAuto && build.buildMethod === "dockerfile")
         log(
@@ -654,12 +659,15 @@ async function runDeployment(depId: string): Promise<void> {
           }
         }
         // Detect automatically takes a compose file only when it builds this repository's code.
-        if (
-          attempt.sourceCompose &&
-          method.methodAuto &&
-          !composeBuildsFromSource(attempt.sourceCompose.content)
-        ) {
-          log(depId, "info", composeOnlyRunsImages(attempt.sourceCompose.path));
+        const skip =
+          attempt.sourceCompose && method.methodAuto
+            ? autoComposeSkip(
+                attempt.sourceCompose.path,
+                attempt.sourceCompose.content,
+              )
+            : null;
+        if (skip) {
+          log(depId, "info", skip);
           attempt = await gitLeg(
             { ...project.build, buildMethod: "railpack", methodAuto: false },
             attempt.commitSha || pin,

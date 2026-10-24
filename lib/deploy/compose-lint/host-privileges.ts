@@ -205,10 +205,11 @@ export function composeHostPrivilegeKeys(composeYaml: string): string[] {
   return [...out];
 }
 
+export const HOST_BIND = "a bind mount of a folder on the server";
+
 export function composeHostReach(composeYaml: string): string[] {
   const out: string[] = [];
-  if (composeHasHostBindMount(composeYaml))
-    out.push("a bind mount of a folder on the server");
+  if (composeHasHostBindMount(composeYaml)) out.push(HOST_BIND);
   const keys = composeHostPrivilegeKeys(composeYaml);
   if (keys.length > 0) out.push(keys.map((k) => `\`${k}\``).join(", "));
   if (composeMountsForeignStorage(composeYaml))

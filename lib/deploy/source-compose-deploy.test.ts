@@ -188,7 +188,11 @@ test("a repository's compose file is read, then deployed as a stack under its ow
   assert.equal(dom.service, "web");
 });
 
-test("a compose file that reaches the server is refused before anything runs", async () => {
+test("an explicit Compose app whose file reaches the server is refused before anything runs", async () => {
+  await db
+    .update(appBuild)
+    .set({ buildMethodAuto: false, buildMethod: "compose" })
+    .where(eq(appBuild.appId, "prj_1"));
   answer = () => ({
     ready: false,
     error: "",
@@ -458,4 +462,48 @@ test("an agent too old for submodules builds without them and says so", async ()
     )
   ).rows.map((r) => r.text);
   assert.ok(logs.some((l) => /too old to check out git submodules/.test(l)));
+});
+
+test("a compose file Detect automatically could not deploy falls back to Railpack and says why", async () => {
+  answer = (req) =>
+    req.buildSpec?.autoMethod
+      ? {
+          ready: false,
+          error: "",
+          commitSha: SHA,
+          observedPort: 0,
+          builtWith: "",
+          listeningPorts: [],
+          sourceCompose: {
+            path: "docker-compose.yml",
+            content:
+              'services:\n  app:\n    build: .\n    extra_hosts: ["host.docker.internal:host-gateway"]\n',
+          },
+        }
+      : {
+          ready: true,
+          error: "",
+          commitSha: SHA,
+          observedPort: 0,
+          builtWith: "",
+          listeningPorts: [3000],
+        };
+  await runDeploymentGuarded("dpl_1");
+  assert.equal(sent.length, 2);
+  assert.equal(sent[1].buildKind, BuildKind.BUILD_KIND_RAILPACK);
+  assert.notEqual(sent[1].deployId, sent[0].deployId);
+  const dep = (
+    await db.select().from(deployments).where(eq(deployments.id, "dpl_1"))
+  )[0];
+  assert.equal(dep.status, "ready");
+  const logs = (
+    await pg.query<{ text: string }>(
+      "select text from deployment_logs order by id",
+    )
+  ).rows.map((r) => r.text);
+  assert.ok(
+    logs.some((l) =>
+      /docker-compose\.yml can't be deployed from the repository/.test(l),
+    ),
+  );
 });

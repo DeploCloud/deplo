@@ -5,6 +5,7 @@ import { posix } from "node:path";
 import yaml from "../../yaml";
 import { assertComposeWithinLimits } from "../compose-lint/document";
 import {
+  HOST_BIND,
   composeHostReach,
   composeUsesExternalMerge,
 } from "../compose-lint/host-privileges";
@@ -68,7 +69,9 @@ export function prepareSourceCompose(
   if (reach.length > 0)
     refuse(
       `it reaches outside its containers (${reach.join("; ")}). A compose file read from a repository never may: ` +
-        "use paths inside the repository (./data), or paste the file as a Docker Compose app.",
+        (reach.includes(HOST_BIND)
+          ? "use paths inside the repository (./data), or paste the file as a Docker Compose app."
+          : "remove that, or paste the file as a Docker Compose app."),
     );
 
   const notes: string[] = [];
@@ -293,6 +296,23 @@ export function composeBuildsFromSource(raw: string): boolean {
     const context = isRec(svc.build) ? svc.build.context : svc.build;
     return typeof context !== "string" || !isRemoteRef(context);
   });
+}
+
+// Why Detect automatically passes over a compose file it found, or null when it deploys that file.
+export function autoComposeSkip(path: string, content: string): string | null {
+  if (!composeBuildsFromSource(content)) return composeOnlyRunsImages(path);
+  try {
+    prepareSourceCompose(content, { deployKey: "auto", tag: "auto" });
+    return null;
+  } catch (e) {
+    const why = (e instanceof Error ? e.message : String(e))
+      .replace(/^docker-compose from your repository: /, "")
+      .split(". ")[0];
+    return (
+      `${path} can't be deployed from the repository (${why}), so Railpack builds the app instead. ` +
+      "Pick Docker Compose in Settings -> Build & output to deploy that file and see why."
+    );
+  }
 }
 
 export const composeOnlyRunsImages = (path: string) =>

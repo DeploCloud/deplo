@@ -28,7 +28,7 @@ import { getDb } from "../db/client";
 import { appVolumes as appVolumesTable } from "../db/schema/control-plane/apps";
 import { tarDir, tarDirChunks } from "./context-tar";
 import { buildConfigFor, normalizeBuildConfig } from "../frameworks";
-import { composeBuildsFromSource } from "./build/source-compose";
+import { autoComposeSkip } from "./build/source-compose";
 import type { BuildConfig } from "../types/build";
 import type { LogLevel } from "../types/deployment";
 
@@ -661,14 +661,15 @@ export async function resolveUploadMethod(
   if (await fileExists(join(buildDir, "Dockerfile")))
     return { ...b, buildMethod: "dockerfile", methodAuto: false };
   const compose = await findComposeFile(buildDir, b.methodSettings.composeFile);
-  const builds =
+  const deployable =
     compose != null &&
-    composeBuildsFromSource(
+    autoComposeSkip(
+      compose,
       await readFile(join(buildDir, compose), "utf8").catch(() => ""),
-    );
+    ) == null;
   return {
     ...b,
-    buildMethod: builds ? "compose" : "railpack",
+    buildMethod: deployable ? "compose" : "railpack",
     methodAuto: false,
   };
 }
