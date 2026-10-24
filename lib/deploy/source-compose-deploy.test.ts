@@ -507,3 +507,44 @@ test("a compose file Detect automatically could not deploy falls back to Railpac
     ),
   );
 });
+
+test("a compose file of images only is named as the app when Railpack then finds no code", async () => {
+  answer = (req) =>
+    req.buildSpec?.autoMethod
+      ? {
+          ready: false,
+          error: "",
+          commitSha: SHA,
+          observedPort: 0,
+          builtWith: "",
+          listeningPorts: [],
+          sourceCompose: {
+            path: "compose.yml",
+            content:
+              "services:\n  plausible:\n    image: ghcr.io/plausible/community-edition:v3\n",
+          },
+        }
+      : {
+          ready: false,
+          error:
+            "Railpack could not determine how to build the app. Railpack does not recognise this folder: set the Root directory, or add a Dockerfile.",
+          commitSha: SHA,
+          observedPort: 0,
+          builtWith: "",
+          listeningPorts: [],
+        };
+  await runDeploymentGuarded("dpl_1");
+  const logs = (
+    await pg.query<{ level: string; text: string }>(
+      "select level, text from deployment_logs order by id",
+    )
+  ).rows;
+  assert.ok(
+    logs.some(
+      (l) =>
+        l.level === "error" &&
+        /compose\.yml is the app here/.test(l.text) &&
+        /Pick Docker Compose/.test(l.text),
+    ),
+  );
+});

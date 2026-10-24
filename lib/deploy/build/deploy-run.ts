@@ -24,7 +24,11 @@ import {
 } from "../../data/apps/build-outcome";
 import type { SourceCompose } from "../../agent/gen/agent";
 import { findComposeFile, resolveUploadMethod } from "../agent-deploy";
-import { autoComposeSkip, composeOnlyRunsImages } from "./source-compose";
+import {
+  autoComposeSkip,
+  composeBuildsFromSource,
+  composeOnlyRunsImages,
+} from "./source-compose";
 import { readFile } from "node:fs/promises";
 import { publishAppChanged } from "../../graphql/pubsub";
 import { nowIso } from "../../ids";
@@ -431,20 +435,23 @@ async function runDeployment(depId: string): Promise<void> {
         await deployStackFrom(found, { kind: "upload", buildDir });
         return;
       }
+      let skipped: { path: string; content: string } | null = null;
       if (method.methodAuto && build.buildMethod === "railpack") {
         const compose = await findComposeFile(
           buildDir,
           project.build.methodSettings.composeFile,
         );
-        if (compose)
+        if (compose) {
+          const content = await readFile(join(buildDir, compose), "utf8").catch(
+            () => "",
+          );
+          skipped = { path: compose, content };
           log(
             depId,
             "info",
-            autoComposeSkip(
-              compose,
-              await readFile(join(buildDir, compose), "utf8").catch(() => ""),
-            ) ?? composeOnlyRunsImages(compose),
+            autoComposeSkip(compose, content) ?? composeOnlyRunsImages(compose),
           );
+        }
       }
       if (method.methodAuto && build.buildMethod === "dockerfile")
         log(
@@ -477,6 +484,23 @@ async function runDeployment(depId: string): Promise<void> {
       observedPort = attempt.observedPort;
       if (attempt.outcome === "agent")
         await settleSingleImage(build.buildMethod);
+      else if (skipped) noCodeButCompose(skipped, attempt.error);
+    };
+    // Railpack found nothing to build where a compose file of ready-made images is the app itself.
+    const noCodeButCompose = (
+      file: { path: string; content: string },
+      error?: string,
+    ) => {
+      if (
+        /could not determine how to build/i.test(error ?? "") &&
+        !composeBuildsFromSource(file.content)
+      )
+        log(
+          depId,
+          "error",
+          `${file.path} is the app here: it runs ready-made images and leaves Railpack no code to build. ` +
+            "Pick Docker Compose in Settings -> Build & output to deploy it.",
+        );
     };
 
     if (!canRecognizeFramework(project)) void setFramework(project.id, null);
@@ -666,13 +690,16 @@ async function runDeployment(depId: string): Promise<void> {
                 attempt.sourceCompose.content,
               )
             : null;
-        if (skip) {
+        if (skip && attempt.sourceCompose) {
+          const skipped = attempt.sourceCompose;
           log(depId, "info", skip);
           attempt = await gitLeg(
             { ...project.build, buildMethod: "railpack", methodAuto: false },
             attempt.commitSha || pin,
             `${depId}-railpack`,
           );
+          if (attempt.outcome !== "agent")
+            noCodeButCompose(skipped, attempt.error);
         }
         if (attempt.sourceCompose) {
           agentOutcome = "stack";
