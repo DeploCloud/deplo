@@ -8,22 +8,17 @@ import { FieldLabel } from "@/components/ui/info-tip";
 import type { DocsTopic } from "@/lib/docs";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import {
   SegmentedTabsList,
   SegmentedTabsTrigger,
   Tabs,
 } from "@/components/ui/tabs";
+import { Combobox } from "@/components/shared/combobox";
 import { FrameworkIcon } from "@/components/shared/framework-icons";
 import {
   FRAMEWORKS,
   frameworkById,
   supportsFrameworkDetection,
+  type FrameworkId,
 } from "@/lib/apps/framework-catalog";
 import {
   buildsWithRailpack,
@@ -238,9 +233,17 @@ function CheckField({
 
 const AUTO = "__auto";
 
-const FRAMEWORK_CHOICES = [...FRAMEWORKS].sort((a, b) =>
-  a.name.localeCompare(b.name),
-);
+const FRAMEWORK_CHOICES = [
+  { id: AUTO, name: "Detect automatically" },
+  ...[...FRAMEWORKS].sort((a, b) => a.name.localeCompare(b.name)),
+];
+
+const frameworkMark = (id: string) =>
+  id === AUTO ? (
+    <Wand2 className="size-4 text-muted-foreground" />
+  ) : (
+    <FrameworkIcon id={id as FrameworkId} className="size-4" />
+  );
 
 function FrameworkField({
   framework,
@@ -257,36 +260,34 @@ function FrameworkField({
   return (
     <div className="space-y-2">
       <FieldLabel
+        htmlFor="framework"
         info="Detected on every deploy. Pick one only if Deplo got it wrong: it also sets the port."
         docs="build.methods"
       >
         Framework
       </FieldLabel>
       <div className="flex items-center gap-2">
-        <Select
-          value={framework ?? AUTO}
-          onValueChange={(v) => onChange(v === AUTO ? null : v)}
-        >
-          <SelectTrigger className="min-w-0 flex-1">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value={AUTO}>
-              <span className="flex items-center gap-2">
-                <Wand2 className="size-4 text-muted-foreground" />
-                Detect automatically
+        <div className="min-w-0 flex-1">
+          <Combobox
+            id="framework"
+            items={FRAMEWORK_CHOICES}
+            value={framework ?? AUTO}
+            onChange={(id) => onChange(id === AUTO ? null : id)}
+            getKey={(f) => f.id}
+            matches={(f, q) => f.name.toLowerCase().includes(q)}
+            displayValue={(f) => f.name}
+            renderLeading={(f) => frameworkMark(f.id)}
+            renderOption={(f) => (
+              <span className="flex items-center gap-2 text-sm">
+                {frameworkMark(f.id)}
+                {f.name}
               </span>
-            </SelectItem>
-            {FRAMEWORK_CHOICES.map((f) => (
-              <SelectItem key={f.id} value={f.id}>
-                <span className="flex items-center gap-2">
-                  <FrameworkIcon id={f.id} className="size-4" />
-                  {f.name}
-                </span>
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+            )}
+            placeholder="Detect automatically"
+            searchPlaceholder="Search frameworks"
+            emptyLabel={() => "No framework matches that"}
+          />
+        </div>
         {overridden && (
           <Button
             type="button"
