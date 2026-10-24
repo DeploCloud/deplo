@@ -138,6 +138,7 @@ async function buildOnBuildServer(opts: {
   plan: AgentBuildPlan;
   noCache?: boolean;
   githubToken?: string;
+  agentDeployId?: string;
   sink: (level: LogLine["level"], text: string) => void;
 }): Promise<{
   outcome: "built" | "fallback" | "failed" | "compose";
@@ -155,7 +156,7 @@ async function buildOnBuildServer(opts: {
     try {
       const built = await runAgentDeploy({
         serverId: candidate.id,
-        deployId: opts.depId,
+        deployId: opts.agentDeployId ?? opts.depId,
         slug: opts.project.deployKey,
         appId: opts.project.id,
         imageRef: opts.imageRef,

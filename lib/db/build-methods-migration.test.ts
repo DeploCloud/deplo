@@ -47,6 +47,12 @@ test("0184 moves every retired builder onto Railpack and keeps what it served", 
       );
     }
     await seedApp(db, { id: "app_git_stale", compose: "services: {}" });
+    // A legacy pasted stack stored with a git source and no repository: still a stack.
+    await seedApp(db, {
+      id: "app_git_pasted",
+      repo: null,
+      compose: "services:\n  web:\n    image: nginx\n",
+    });
     await seedApp(db, {
       id: "app_compose",
       source: "compose",
@@ -81,7 +87,7 @@ test("0184 moves every retired builder onto Railpack and keeps what it served", 
     const compose = Object.fromEntries(
       (
         await pg.query<{ id: string; compose: string | null }>(
-          "select id, compose from apps where id in ('app_git_stale', 'app_compose')",
+          "select id, compose from apps where id in ('app_git_stale', 'app_compose', 'app_git_pasted')",
         )
       ).rows.map((r) => [r.id, r.compose]),
     );
@@ -91,6 +97,10 @@ test("0184 moves every retired builder onto Railpack and keeps what it served", 
       "a git app's unread compose column is cleared",
     );
     assert.ok(compose.app_compose, "a compose app keeps its stack");
+    assert.ok(
+      compose.app_git_pasted,
+      "a git row with no repository keeps its pasted stack",
+    );
 
     const auto = await pg.query<{ n: number }>(
       "select count(*)::int as n from app_build where build_method_auto",

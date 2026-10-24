@@ -105,6 +105,8 @@ export async function setAppUpload(
   const user = (await getCurrentUser())!;
   await updateAppOwned(id, membership.teamId, {
     source: "upload",
+    // A stack the old source carried is re-read from the new archive on the next deploy.
+    compose: null,
     uploadId: upload.id,
     uploadFilename: upload.filename,
     uploadPath: upload.path,

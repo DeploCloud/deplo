@@ -286,3 +286,118 @@ test("a compose file of images only falls back to Railpack under Detect automati
   const app = (await db.select().from(apps).where(eq(apps.id, "prj_1")))[0];
   assert.equal(app.compose, null, "no stack was stored");
 });
+
+test("a repository's traefik labels never route, even when an admin saved labels for the app", async () => {
+  await db
+    .update(apps)
+    .set({ traefikLabelsBy: USER_1 })
+    .where(eq(apps.id, "prj_1"));
+  answer = (req) =>
+    req.buildKind === BuildKind.BUILD_KIND_COMPOSE
+      ? {
+          ready: true,
+          error: "",
+          commitSha: SHA,
+          observedPort: 0,
+          builtWith: "",
+          listeningPorts: [],
+        }
+      : {
+          ready: false,
+          error: "",
+          commitSha: SHA,
+          observedPort: 0,
+          builtWith: "",
+          listeningPorts: [],
+          sourceCompose: {
+            path: "compose.yaml",
+            content:
+              'services:\n  web:\n    build: .\n    expose: ["3000"]\n    labels:\n      - traefik.http.routers.evil.rule=Host(`victim.example.com`)\n',
+          },
+        };
+  await runDeploymentGuarded("dpl_1");
+  assert.equal(sent.length, 2);
+  assert.doesNotMatch(sent[1].composeYaml, /victim\.example\.com/);
+});
+
+test("a stack's real port is adopted from the port its check used", async () => {
+  answer = (req) =>
+    req.buildKind === BuildKind.BUILD_KIND_COMPOSE
+      ? {
+          ready: true,
+          error: "",
+          commitSha: SHA,
+          observedPort: 8080,
+          builtWith: "",
+          listeningPorts: [8080],
+        }
+      : {
+          ready: false,
+          error: "",
+          commitSha: SHA,
+          observedPort: 0,
+          builtWith: "",
+          listeningPorts: [],
+          sourceCompose: { path: "docker-compose.yml", content: COMPOSE },
+        };
+  await runDeploymentGuarded("dpl_1");
+  const dom = (
+    await db.select().from(domains).where(eq(domains.id, "dom_1"))
+  )[0];
+  assert.equal(dom.service, "web");
+  assert.equal(dom.port, 8080);
+});
+
+test("a single-image deploy drops the stack a source deployed before", async () => {
+  await db.update(apps).set({ compose: COMPOSE }).where(eq(apps.id, "prj_1"));
+  await db
+    .update(appBuild)
+    .set({ buildMethodAuto: false, buildMethod: "railpack" })
+    .where(eq(appBuild.appId, "prj_1"));
+  answer = () => ({
+    ready: true,
+    error: "",
+    commitSha: SHA,
+    observedPort: 0,
+    builtWith: "",
+    listeningPorts: [3000],
+  });
+  await runDeploymentGuarded("dpl_1");
+  const app = (await db.select().from(apps).where(eq(apps.id, "prj_1")))[0];
+  assert.equal(app.compose, null);
+});
+
+test("a stack that fails is not stored as the app's stack", async () => {
+  answer = (req) =>
+    req.buildKind === BuildKind.BUILD_KIND_COMPOSE
+      ? {
+          ready: false,
+          error: "Service web keeps restarting (exit code 1)",
+          commitSha: SHA,
+          observedPort: 0,
+          builtWith: "",
+          listeningPorts: [],
+        }
+      : {
+          ready: false,
+          error: "",
+          commitSha: SHA,
+          observedPort: 0,
+          builtWith: "",
+          listeningPorts: [],
+          sourceCompose: { path: "docker-compose.yml", content: COMPOSE },
+        };
+  await runDeploymentGuarded("dpl_1");
+  const app = (await db.select().from(apps).where(eq(apps.id, "prj_1")))[0];
+  assert.equal(app.compose, null);
+  const logs = (
+    await pg.query<{ text: string }>(
+      "select text from deployment_logs order by id",
+    )
+  ).rows.map((r) => r.text);
+  assert.ok(logs.some((l) => /keeps restarting/.test(l)));
+  assert.ok(
+    !logs.some((l) => /Stack did not reach a running state/.test(l)),
+    "the agent's reason is the last word",
+  );
+});

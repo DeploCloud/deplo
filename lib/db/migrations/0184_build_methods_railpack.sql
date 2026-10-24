@@ -7,5 +7,6 @@ WHERE s."app_id" = "app_build"."app_id" AND "app_build"."build_method" = 'nixpac
 	AND coalesce(trim(s."nixpacks_publish_directory"), '') <> '' AND "app_build"."output_directory" IS NULL;--> statement-breakpoint
 UPDATE "app_build" SET "build_method" = 'railpack' WHERE "build_method" IN ('nixpacks', 'static', 'heroku', 'paketo');
 --> statement-breakpoint
--- A git or upload app's compose column now means "the stack its source carries"; it was never read for one before.
-UPDATE "apps" SET "compose" = NULL WHERE "source" IN ('github', 'git', 'upload') AND "compose" IS NOT NULL;
+-- A repository or upload app's compose column now means "the stack its source carries". It was never read for
+-- one before; a github/git row with no repository kept its YAML as a pasted stack and is left alone.
+UPDATE "apps" SET "compose" = NULL WHERE "compose" IS NOT NULL AND ("source" = 'upload' OR ("source" IN ('github', 'git') AND "repo_url" IS NOT NULL));

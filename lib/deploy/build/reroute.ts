@@ -79,6 +79,8 @@ async function rerouteAppLocked(
         : null;
       rendered = buildComposeStack({
         ...(await appTraefikOverrides(appId)),
+        // A stack read from the repository never routes by its own traefik labels.
+        ...(sourceDir ? { allowTraefikLabels: false } : {}),
         compose: sourceDir
           ? anchorSourcePaths(project.compose ?? "", sourceDir)
           : (project.compose ?? ""),

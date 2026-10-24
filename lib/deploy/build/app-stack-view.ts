@@ -9,12 +9,13 @@ import {
   type RoutableDomain,
 } from "../../data/domains/routes";
 import { connectAgent } from "../../infra/agent-client/connect";
-import { usesComposeStack } from "../../utils";
+import { usesComposeStack, usesPastedCompose } from "../../utils";
 import { buildComposeStack } from "../compose-stack/render";
 import { stackName } from "../deploy-key";
 import { deployNetwork } from "../network";
 import { composeFilesDir, takenNamesForApp } from "./compose-stack-deploy";
 import { appEnvKeys } from "./deploy-env";
+import { anchorSourcePaths, sourceComposeDir } from "./source-compose";
 import { owningServerIdForDeployKey } from "./stack-lifecycle";
 
 export async function renderAppStack(appId: string): Promise<string | null> {
@@ -31,16 +32,26 @@ export async function renderAppStack(appId: string): Promise<string | null> {
       : (await loadDomainsForApp(appId))
           .sort((a, b) => Number(b.primary) - Number(a.primary))
           .map((d) => defaultRoute(d.name, d.service ?? null, d.port ?? null));
+    // Rendered the way the deploy renders it, so a repository stack shows its working copy's paths.
+    const sourceDir = usesPastedCompose(project)
+      ? null
+      : sourceComposeDir(
+          deployKey,
+          project.repo ? project.build.rootDirectory : "",
+        );
     return buildComposeStack({
       ...(await appTraefikOverrides(appId)),
-      compose: project.compose ?? "",
+      ...(sourceDir ? { allowTraefikLabels: false } : {}),
+      compose: sourceDir
+        ? anchorSourcePaths(project.compose ?? "", sourceDir)
+        : (project.compose ?? ""),
       name,
       deployKey,
       appId,
       network: deployNetwork(project),
       domainRoutes,
       takenNames: await takenNamesForApp(project, appId),
-      filesDir: composeFilesDir(deployKey),
+      filesDir: sourceDir ?? composeFilesDir(deployKey),
       basicAuthUsers: await basicAuthUsersValue(appId),
       envKeys: await appEnvKeys(appId),
       resources: project.resources,

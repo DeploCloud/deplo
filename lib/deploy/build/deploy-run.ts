@@ -357,33 +357,44 @@ async function runDeployment(depId: string): Promise<void> {
           .toLowerCase(),
       });
       if (outcome.deployed && outcome.observedPort)
-        await adoptPort(outcome.observedPort, outcome.service ?? null);
+        await adoptPort(
+          outcome.observedPort,
+          outcome.service ?? null,
+          outcome.checkedPort,
+        );
     };
-    const adoptPort = async (to: number, service: string | null) => {
-      const from = service ? (routeDomains[0]?.port ?? ready.port) : ready.port;
+    // Runs after the deploy is committed ready, so nothing here may throw past it.
+    const adoptPort = async (
+      to: number,
+      service: string | null,
+      from = ready.port,
+    ) => {
       if (preview || !to || to === from) return;
       log(
         depId,
         "info",
         `Your app listens on port ${to}, not ${from}: Deplo now sends its traffic to ${to}.`,
       );
-      await adoptObservedPort(project.id, { from, to, service });
-      await rerouteApp(project.id).catch((e) =>
+      try {
+        await adoptObservedPort(project.id, { from, to, service });
+        await rerouteApp(project.id);
+      } catch (e) {
         log(
           depId,
           "warn",
-          `Could not re-route to port ${to} yet: ${e instanceof Error ? e.message : String(e)}`,
-        ),
-      );
+          `Could not move the domain to port ${to} yet: ${e instanceof Error ? e.message : String(e)}`,
+        );
+      }
     };
-    // Detect automatically settled on a single image: a stack it built before is gone.
+    // A single image runs now: a stack read from the source before is gone, whatever the method.
     const settleSingleImage = async (builtWith?: string) => {
+      if (hasCompose && !useCompose)
+        await recordSourceCompose(project.id, null);
       if (!method.methodAuto) return;
       await recordResolvedMethod(
         project.id,
         builtWith === "dockerfile" ? "dockerfile" : "railpack",
       );
-      if (hasCompose) await recordSourceCompose(project.id, null);
     };
 
     const renderStack = (image: string) =>
@@ -504,6 +515,9 @@ async function runDeployment(depId: string): Promise<void> {
           ready,
         });
         agentOutcome = outcome === "agent" ? "agent" : "failed";
+        // The image runs again, so a stack read from the source since then no longer does.
+        if (outcome === "agent" && hasCompose && !useCompose)
+          await recordSourceCompose(project.id, null);
         break;
       }
       case "docker-image": {

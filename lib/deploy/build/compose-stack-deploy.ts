@@ -99,6 +99,8 @@ async function prepareComposeStack(opts: ComposeStackOpts): Promise<{
   const takenNames = await takenNamesForApp(project, project.id);
   const stackYaml = buildComposeStack({
     ...(await appTraefikOverrides(project.id, Boolean(opts.preview))),
+    // The repository's YAML is anyone-who-can-push's: its traefik labels never route.
+    ...(opts.sourceDir ? { allowTraefikLabels: false } : {}),
     compose: opts.sourceDir
       ? anchorSourcePaths(project.compose ?? "", opts.sourceDir)
       : (project.compose ?? ""),
@@ -238,8 +240,23 @@ export async function deploySourceComposeStack(
     subdir: string;
     tag: string;
   },
-): Promise<{ deployed: boolean; observedPort?: number; service?: string }> {
+): Promise<{
+  deployed: boolean;
+  observedPort?: number;
+  checkedPort?: number;
+  service?: string;
+}> {
   const { depId, project, deployKey, serverId } = opts;
+  const hello = await agentPreflight(serverId).catch(() => null);
+  if (hello && !hello.capabilities.includes("deploy.compose.source")) {
+    await finishComposeStack(
+      opts,
+      false,
+      "This server's agent is too old to deploy a Compose file from the app's source. " +
+        "Update the agent (reissue the install command from the server's actions menu).",
+    );
+    return { deployed: false };
+  }
   log(
     depId,
     "info",
@@ -261,12 +278,9 @@ export async function deploySourceComposeStack(
     );
     return { deployed: false };
   }
-  if (!opts.preview) await recordSourceCompose(project.id, stored);
   const primary = detectDefaultApp(stored);
   let routes = opts.domainRoutes;
   if (primary) {
-    if (!opts.preview)
-      await routeDomainsToService(project.id, primary.service, primary.port);
     routes = routes.map((r) =>
       r.service
         ? r
@@ -291,6 +305,7 @@ export async function deploySourceComposeStack(
     ),
   };
   const { stackYaml } = await prepareComposeStack(stackOpts);
+  const ready = readyCheckFor({ routes, stack: true, compose: stored });
   const env = await appEnv(project.id, opts.environment, {
     preview: opts.preview,
   });
@@ -311,19 +326,25 @@ export async function deploySourceComposeStack(
       source: opts.source,
       composeFile: opts.composeFile,
     },
-    ready: readyCheckFor({ routes, stack: true }),
+    ready,
     agentDeployId: `${depId}-stack`,
     forceRecreate: opts.forceRecreate,
   });
+  // Stored only once it runs: a stale stack here is what a later reroute would bring back.
+  if (attempt.outcome === "agent" && !opts.preview) {
+    await recordSourceCompose(project.id, stored);
+    if (primary)
+      await routeDomainsToService(project.id, primary.service, primary.port);
+  }
   await finishComposeStack(
     stackOpts,
     attempt.outcome === "agent",
     attempt.error ? null : undefined,
   );
-  const service = routes[0]?.service ?? undefined;
   return {
     deployed: attempt.outcome === "agent",
     observedPort: attempt.observedPort,
-    service,
+    checkedPort: ready.port,
+    service: ready.service || undefined,
   };
 }

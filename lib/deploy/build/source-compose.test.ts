@@ -115,7 +115,7 @@ test("a build may not read or reach outside the repository", () => {
   refused(`include: [other.yml]\nservices:\n  a:\n    image: x\n`, /include/);
   refused(
     `services:\n  a:\n    extends: { file: base.yml, service: web }\n`,
-    /extends another file/,
+    /`extends` reads another file/,
   );
   refused(`services: {}\n`, /no services/);
   refused(`services: [\n`, /not valid YAML/);
@@ -212,5 +212,43 @@ test("only a compose file that builds the repository's code counts for Detect au
       `services:\n  app:\n    build: "https://github.com/acme/app.git#main"\n`,
     ),
     false,
+  );
+});
+
+test("a label_file is refused: its labels would reach the proxy unread", () => {
+  refused(
+    `services:\n  web:\n    build: .\n    label_file: ./labels\n`,
+    /`label_file` reads another file/,
+  );
+});
+
+test("traefik labels written in the repository are dropped, other labels stay", () => {
+  const out = prepareSourceCompose(
+    `services:
+  web:
+    build: .
+    labels:
+      - "traefik.http.routers.x.rule=Host(\`victim.example.com\`)"
+      - "com.acme.team=shop"
+  api:
+    build: ./api
+    labels:
+      traefik.enable: "true"
+      com.acme.tier: api
+`,
+    opts,
+  );
+  const doc = yaml.load(out.yaml) as Rec;
+  assert.deepEqual(doc.services.web.labels, ["com.acme.team=shop"]);
+  assert.deepEqual(doc.services.api.labels, { "com.acme.tier": "api" });
+  assert.ok(out.notes.some((n) => /traefik labels are ignored/.test(n)));
+});
+
+test("an anchor bomb is refused before it is stored", () => {
+  const svc = Array.from({ length: 60 }, (_, i) => `  s${i}: *x`).join("\n");
+  const big = `x: &x\n  image: nginx\n  environment: [${Array.from({ length: 400 }, (_, i) => `"K${i}=v"`).join(",")}]\nservices:\n${svc}\n`;
+  assert.throws(
+    () => prepareSourceCompose(big, opts),
+    /docker-compose from your repository/,
   );
 });

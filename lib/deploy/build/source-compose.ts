@@ -3,7 +3,11 @@ import "server-only";
 import { posix } from "node:path";
 
 import yaml from "../../yaml";
-import { composeHostReach } from "../compose-lint/host-privileges";
+import { assertComposeWithinLimits } from "../compose-lint/document";
+import {
+  composeHostReach,
+  composeUsesExternalMerge,
+} from "../compose-lint/host-privileges";
 import { stackSourceDir } from "../deploy-key";
 
 type Rec = Record<string, unknown>;
@@ -40,6 +44,11 @@ export function prepareSourceCompose(
   raw: string,
   opts: { deployKey: string; tag: string },
 ): SourceComposeResult {
+  try {
+    assertComposeWithinLimits(raw);
+  } catch (e) {
+    refuse(e instanceof Error ? e.message : String(e));
+  }
   let doc: Rec;
   try {
     doc = (yaml.load(raw) as Rec) ?? {};
@@ -48,9 +57,11 @@ export function prepareSourceCompose(
   }
   if (!isRec(doc) || !isRec(doc.services) || !Object.keys(doc.services).length)
     refuse("it has no services to deploy.");
-  if (doc.include != null)
+  // Each of these reads another file at start, past every check below (label_file can carry proxy routes).
+  const merged = composeUsesExternalMerge(raw);
+  if (merged)
     refuse(
-      "`include:` pulls in other files, which Deplo does not follow. Put those services in this file.",
+      `\`${merged}\` reads another file when the stack starts, which Deplo does not follow. Put that content in this file.`,
     );
 
   const reach = composeHostReach(raw);
@@ -64,6 +75,10 @@ export function prepareSourceCompose(
   const services = doc.services as Rec;
   for (const [name, svc] of Object.entries(services)) {
     if (!isRec(svc)) continue;
+    if (dropTraefikLabels(svc))
+      notes.push(
+        `Service ${name}: its traefik labels are ignored; Deplo routes the app's domains itself.`,
+      );
     const ext = svc.extends;
     if (isRec(ext) && ext.file != null)
       refuse(
@@ -101,7 +116,31 @@ export function prepareSourceCompose(
         );
   }
   refuseSwappableEnvFiles(services);
-  return { yaml: yaml.dump(doc, { lineWidth: -1, noRefs: true }), notes };
+  const stored = yaml.dump(doc, { lineWidth: -1, noRefs: true });
+  try {
+    assertComposeWithinLimits(stored);
+  } catch (e) {
+    refuse(e instanceof Error ? e.message : String(e));
+  }
+  return { yaml: stored, notes };
+}
+
+// Whoever pushes to the repository must not write proxy routes: a host rule could claim another team's name.
+function dropTraefikLabels(svc: Rec): boolean {
+  const isTraefik = (k: string) =>
+    k.trim().toLowerCase().startsWith("traefik.");
+  const labels = svc.labels;
+  if (Array.isArray(labels)) {
+    const kept = labels.filter((l) => !isTraefik(String(l).split("=")[0]));
+    svc.labels = kept;
+    return kept.length !== labels.length;
+  }
+  if (isRec(labels)) {
+    const keys = Object.keys(labels).filter(isTraefik);
+    for (const k of keys) delete labels[k];
+    return keys.length > 0;
+  }
+  return false;
 }
 
 // Folders of the checkout a service mounts writable, as "a/b" ("" for the whole checkout).

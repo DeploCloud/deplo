@@ -246,6 +246,12 @@ async function writeAppSource(
               : null,
             repoSubmodules: repo?.submodules ?? false,
             dockerImage: input.dockerImage,
+            // Leaving a pasted stack for a repository or an upload: that YAML must not pass for the source's own.
+            ...(input.compose == null &&
+            input.source !== "compose" &&
+            p.source === "compose"
+              ? { compose: null }
+              : {}),
             ...(input.compose != null
               ? {
                   compose: input.compose,
