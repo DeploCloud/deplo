@@ -75,7 +75,7 @@ function failure(message: string) {
   };
 }
 
-const instructions = `Deplo is a self-hosted deploy platform: it turns repositories, Docker images and Compose files into containers fronted by Traefik, on servers this instance manages.
+const instructions = `Deplo is a deploy platform that runs on servers its users choose: it turns repositories, Docker images and Compose files into containers fronted by Traefik, on servers this instance manages.
 
 Its vocabulary, which the tools use literally:
 - App: the deployable unit. Never call it a service or a project.

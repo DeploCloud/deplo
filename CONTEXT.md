@@ -1,7 +1,7 @@
 # Deplo
 
-Self-hosted deploy platform: turns repositories and templates into Docker stacks
-fronted by Traefik on a single host. This glossary fixes the language the codebase
+Deploy platform that runs on a machine its users choose: turns repositories and templates into
+Docker stacks fronted by Traefik. This glossary fixes the language the codebase
 and docs use; it is not a spec.
 
 ## Language
