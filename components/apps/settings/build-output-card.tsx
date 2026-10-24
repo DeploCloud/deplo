@@ -12,6 +12,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { FieldLabel, InfoTip } from "@/components/ui/info-tip";
+import { AnimatedHeight } from "@/components/shared/animated-height";
 import { SettingsDrawer } from "@/components/shared/settings-drawer";
 import {
   BuildMethodFields,
@@ -121,113 +122,115 @@ export function BuildOutputCard({
         </CardTitle>
       </CardHeader>
 
-      <CardContent className="space-y-4">
-        <BuildMethodFields
-          method={method}
-          settings={build.methodSettings}
-          onMethodChange={onMethodChange}
-          onSettingsChange={onSettingsChange}
-          lastBuiltWith={lastBuiltWith}
-          framework={framework}
-          detectedFramework={detectedFramework}
-          onFrameworkChange={pickFramework}
-        >
-          {showPort && (
-            <div className="space-y-2">
-              <FieldLabel
-                htmlFor="container-port"
-                info="The port your app listens on. Deplo sends its traffic there."
-                docs="build.port"
-              >
-                Port
-              </FieldLabel>
-              <Input
-                id="container-port"
-                type="number"
-                min={1}
-                className="w-full [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
-                value={portText}
-                disabled={pending}
-                onChange={(e) => onPortChange(e.target.value)}
-                onBlur={() => setPortDraft(null)}
-              />
-            </div>
-          )}
-        </BuildMethodFields>
-
-        {railpack && (
-          <SettingsDrawer
-            title="Advanced"
-            summary={
-              overrides.length > 0
-                ? overrides.join(" · ")
-                : "Commands detected from your code"
-            }
+      <CardContent>
+        <AnimatedHeight className="space-y-4" scroll={false}>
+          <BuildMethodFields
+            method={method}
+            settings={build.methodSettings}
+            onMethodChange={onMethodChange}
+            onSettingsChange={onSettingsChange}
+            lastBuiltWith={lastBuiltWith}
+            framework={framework}
+            detectedFramework={detectedFramework}
+            onFrameworkChange={pickFramework}
           >
-            <div className="grid gap-4 sm:grid-cols-2">
-              <TextField
-                label="Install command"
-                placeholder="npm ci"
-                value={build.installCommand ?? ""}
-                disabled={pending}
-                onChange={(v) => setCommand("installCommand", v)}
-                help="Overrides how dependencies are installed before the build."
-                docs="build.fields"
-              />
-              <TextField
-                label="Build command"
-                placeholder="npm run build"
-                value={build.buildCommand ?? ""}
-                disabled={pending}
-                onChange={(v) => setCommand("buildCommand", v)}
-                help="Overrides the command that builds your app."
-                docs="build.fields"
-              />
-              <TextField
-                label="Start command"
-                placeholder="npm run start"
-                value={build.startCommand ?? ""}
-                disabled={pending}
-                onChange={(v) => setCommand("startCommand", v)}
-                help="Overrides the command that starts your app."
-                docs="build.fields"
-              />
-              <TextField
-                label="Output directory"
-                placeholder="dist"
-                value={build.outputDirectory ?? ""}
-                disabled={pending}
-                onChange={(v) => setCommand("outputDirectory", v)}
-                help="Serves this folder as a static site. Leave it empty for an app that runs its own server."
-                docs="build.fields"
-              />
+            {showPort && (
               <div className="space-y-2">
                 <FieldLabel
-                  htmlFor="node-version"
-                  info="Pins the Node.js major. Empty reads it from your project."
-                  docs="build.fields"
+                  htmlFor="container-port"
+                  info="The port your app listens on. Deplo sends its traffic there."
+                  docs="build.port"
                 >
-                  Node.js version
+                  Port
                 </FieldLabel>
-                <NodeVersionInput
-                  id="node-version"
-                  className="w-full"
-                  value={build.runtimeVersion ?? ""}
-                  onChange={(v) =>
-                    setBuild((b) => ({ ...b, runtimeVersion: v }))
-                  }
-                  placeholder="read from your project"
+                <Input
+                  id="container-port"
+                  type="number"
+                  min={1}
+                  className="w-full [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+                  value={portText}
+                  disabled={pending}
+                  onChange={(e) => onPortChange(e.target.value)}
+                  onBlur={() => setPortDraft(null)}
                 />
               </div>
-            </div>
-            <RailpackOptions
-              method={method}
-              settings={build.methodSettings}
-              onMethodChange={onMethodChange}
-              onSettingsChange={onSettingsChange}
-            />
-          </SettingsDrawer>
-        )}
+            )}
+          </BuildMethodFields>
+
+          {railpack && (
+            <SettingsDrawer
+              title="Advanced"
+              summary={
+                overrides.length > 0
+                  ? overrides.join(" · ")
+                  : "Commands detected from your code"
+              }
+            >
+              <div className="grid gap-4 sm:grid-cols-2">
+                <TextField
+                  label="Install command"
+                  placeholder="npm ci"
+                  value={build.installCommand ?? ""}
+                  disabled={pending}
+                  onChange={(v) => setCommand("installCommand", v)}
+                  help="Overrides how dependencies are installed before the build."
+                  docs="build.fields"
+                />
+                <TextField
+                  label="Build command"
+                  placeholder="npm run build"
+                  value={build.buildCommand ?? ""}
+                  disabled={pending}
+                  onChange={(v) => setCommand("buildCommand", v)}
+                  help="Overrides the command that builds your app."
+                  docs="build.fields"
+                />
+                <TextField
+                  label="Start command"
+                  placeholder="npm run start"
+                  value={build.startCommand ?? ""}
+                  disabled={pending}
+                  onChange={(v) => setCommand("startCommand", v)}
+                  help="Overrides the command that starts your app."
+                  docs="build.fields"
+                />
+                <TextField
+                  label="Output directory"
+                  placeholder="dist"
+                  value={build.outputDirectory ?? ""}
+                  disabled={pending}
+                  onChange={(v) => setCommand("outputDirectory", v)}
+                  help="Serves this folder as a static site. Leave it empty for an app that runs its own server."
+                  docs="build.fields"
+                />
+                <div className="space-y-2">
+                  <FieldLabel
+                    htmlFor="node-version"
+                    info="Pins the Node.js major. Empty reads it from your project."
+                    docs="build.fields"
+                  >
+                    Node.js version
+                  </FieldLabel>
+                  <NodeVersionInput
+                    id="node-version"
+                    className="w-full"
+                    value={build.runtimeVersion ?? ""}
+                    onChange={(v) =>
+                      setBuild((b) => ({ ...b, runtimeVersion: v }))
+                    }
+                    placeholder="read from your project"
+                  />
+                </div>
+              </div>
+              <RailpackOptions
+                method={method}
+                settings={build.methodSettings}
+                onMethodChange={onMethodChange}
+                onSettingsChange={onSettingsChange}
+              />
+            </SettingsDrawer>
+          )}
+        </AnimatedHeight>
       </CardContent>
 
       <CardFooter className="justify-between border-t border-border pt-4">
