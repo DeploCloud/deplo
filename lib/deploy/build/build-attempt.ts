@@ -271,6 +271,8 @@ export async function tryAgent(opts: {
   forkPreview?: boolean;
   ready?: ReadyCheck;
   githubToken?: string;
+  // The agent replays a deploy id it has already run, so a second leg of one deployment needs its own.
+  agentDeployId?: string;
 }): Promise<AgentAttempt> {
   return withKeyedLock(`app-lifecycle:${opts.project.id}`, async () => {
     const stillExists = await getDb()
@@ -336,7 +338,7 @@ export async function tryAgent(opts: {
 
       const result = await runAgentDeploy({
         serverId: opts.serverId,
-        deployId: opts.depId,
+        deployId: opts.agentDeployId ?? opts.depId,
         slug: opts.project.deployKey,
         appId: opts.project.id,
         imageRef: opts.imageRef,

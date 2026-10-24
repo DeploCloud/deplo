@@ -311,6 +311,7 @@ export async function deploySourceComposeStack(
       composeFile: opts.composeFile,
     },
     ready: readyCheckFor({ routes, stack: true }),
+    agentDeployId: `${depId}-stack`,
     forceRecreate: opts.forceRecreate,
   });
   await finishComposeStack(stackOpts, attempt.outcome === "agent");
