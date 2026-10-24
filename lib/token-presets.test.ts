@@ -73,3 +73,13 @@ test("tokenPreset resolves a known id and refuses an unknown one", () => {
   assert.equal(tokenPreset("mcp")?.name, "MCP & AI agents");
   assert.equal(tokenPreset("nope"), null);
 });
+
+test("Agent setup is App automation plus what a first setup creates", () => {
+  const automation = tokenPreset("automation")!.capabilities;
+  const agent = new Set(tokenPreset("agent")!.capabilities);
+  assert.ok(automation.every((c) => agent.has(c)));
+  assert.deepEqual(
+    [...agent].filter((c) => !automation.includes(c)),
+    ["create_projects", "create_databases", "manage_git"],
+  );
+});

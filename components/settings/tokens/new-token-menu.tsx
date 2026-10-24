@@ -10,6 +10,7 @@ import {
   Rocket,
   Bot,
   Workflow,
+  WandSparkles,
   type LucideIcon,
 } from "lucide-react";
 import {
@@ -28,6 +29,7 @@ export const TOKEN_PRESET_ICON: Record<TokenPresetId, LucideIcon> = {
   ci: Rocket,
   mcp: Bot,
   automation: Workflow,
+  agent: WandSparkles,
   root: ShieldAlert,
 };
 
