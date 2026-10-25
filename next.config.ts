@@ -26,7 +26,7 @@ const nextConfig: NextConfig = {
   poweredByHeader: false,
   reactStrictMode: true,
   allowedDevOrigins: devOrigins(),
-  serverExternalPackages: ["pg", "better-auth", "nodemailer", "web-push"],
+  serverExternalPackages: ["pg", "better-auth", "nodemailer", "web-push", "ws"],
   outputFileTracingIncludes: {
     "/[team]/templates": [
       "./node_modules/@img/sharp-linuxmusl-x64/**",
