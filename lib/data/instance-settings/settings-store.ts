@@ -278,8 +278,10 @@ async function instanceOwnerName(): Promise<string | null> {
   return rows[0]?.name ?? null;
 }
 
+// A row added by a name says nothing about the machine's address: the machine's own does.
 export function reachableHostIp(host: { ip?: string } | null): string | null {
-  const candidate = canonicalHost(host?.ip?.trim() || instanceHost());
+  const own = canonicalHost(host?.ip?.trim());
+  const candidate = isWildcardIp(own) ? own : canonicalHost(instanceHost());
   if (!isWildcardIp(candidate)) return null;
   return isLoopbackIp(candidate) ? null : candidate;
 }

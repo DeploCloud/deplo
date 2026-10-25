@@ -10,6 +10,7 @@ import { instanceSettings } from "../../db/schema/control-plane/instance";
 import { deploMoves } from "../../db/schema/control-plane/deplo-move";
 import { invalidateFrozen } from "../deplo-move/freeze";
 import { withPanelRoute } from "../../deploy/traefik-stack";
+import { __setRunsInContainerForTest } from "../../deploy/domains";
 import { forgetRoutedFallback } from "../instance-settings/panel-fallback";
 import type { HelloResponse } from "../../agent/gen/agent";
 import { __setAgentConnectorForTest } from "../../infra/agent-client/connect";
@@ -174,6 +175,49 @@ test("the panel's own server links over loopback and is never sent a public addr
   assert.deepEqual(sent.get("srv_panel"), [
     { primary: "http://127.0.0.1:3001", fallback: "" },
     { primary: "http://127.0.0.1:3001", fallback: "" },
+  ]);
+});
+
+test("a new panel domain leaves the panel's own server on loopback", async () => {
+  await seedServerRow(db, { id: "srv_panel", ip: HOST_IP, host: HOST_IP });
+  const sent = linkingAgents();
+  const old = { primary: "https://old.example.com", fallback: "" };
+  await agentHelloSeen("srv_panel", hello(old));
+  process.env.DEPLO_PUBLIC_URL = "https://new.example.com";
+  await agentHelloSeen("srv_panel", hello(old));
+  const loopback = { primary: "http://127.0.0.1:3001", fallback: "" };
+  assert.deepEqual(sent.get("srv_panel"), [loopback, loopback]);
+});
+
+test("a server added by the panel's domain links through it, before and after the domain changes", async () => {
+  // That name is the panel's, not proof of this machine: the domain can move.
+  await seedServerRow(db, {
+    id: "srv_named",
+    ip: "panel.example.com",
+    host: "panel.example.com",
+  });
+  const sent = linkingAgents();
+  const old = { primary: "https://old.example.com", fallback: "" };
+  await agentHelloSeen("srv_named", hello(old));
+  process.env.DEPLO_PUBLIC_URL = "https://new.example.com";
+  await agentHelloSeen("srv_named", hello(old));
+  assert.deepEqual(sent.get("srv_named"), [
+    { primary: PANEL, fallback: FALLBACK },
+    { primary: "https://new.example.com", fallback: FALLBACK },
+  ]);
+});
+
+test("a panel in a container with no link port on the host sends its own server the public pair", async (t) => {
+  __setRunsInContainerForTest(true);
+  t.after(() => __setRunsInContainerForTest());
+  await seedServerRow(db, { id: "srv_panel", ip: HOST_IP, host: HOST_IP });
+  const sent = linkingAgents();
+  await agentHelloSeen(
+    "srv_panel",
+    hello({ primary: "http://127.0.0.1:3000", fallback: "" }),
+  );
+  assert.deepEqual(sent.get("srv_panel"), [
+    { primary: PANEL, fallback: FALLBACK },
   ]);
 });
 

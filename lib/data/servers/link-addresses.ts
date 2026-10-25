@@ -1,7 +1,6 @@
 import "server-only";
 
 import type { HelloResponse, LinkAddresses } from "../../agent/gen/agent";
-import { isDeploHostServer } from "../../deploy/domains";
 import { onAgentHello } from "../../infra/agent-client/channel-pool";
 import { connectAgent } from "../../infra/agent-client/connect";
 import { AGENT_LINK_CAPABILITY } from "../../infra/agent-client/hello-capabilities";
@@ -13,7 +12,7 @@ import { instanceFrozen } from "../deplo-move/freeze";
 import { panelFallbackUrl } from "../instance-settings/panel-fallback";
 import { loadSettings } from "../instance-settings/settings-store";
 import { takeoverAwaitsCutover } from "../takeover";
-import { agentLinkUrl } from "./panel-address";
+import { agentLinkUrl, linksOverLoopback } from "./panel-address";
 import { getServerById, listAllServers } from "./roster";
 
 /** What a change to the panel's address is about to make true, before the settings say so. */
@@ -67,7 +66,7 @@ export async function wantedLinkAddresses(
 ): Promise<LinkAddresses | null> {
   // No request: the address an agent keeps never depends on who asked.
   const linkUrl = await agentLinkUrl(server, new Headers());
-  if (isDeploHostServer(server)) return { primary: linkUrl, fallback: "" };
+  if (linksOverLoopback(server)) return { primary: linkUrl, fallback: "" };
   const primary = sync.pending?.url ?? linkUrl;
   if (primary === PUBLIC_URL_PLACEHOLDER) return null;
   // Until the cutover only the other platform's proxy reaches the panel, through the side door it enrolled on.

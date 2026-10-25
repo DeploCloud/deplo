@@ -10,6 +10,7 @@ import { __setTestDb, __resetTestDb } from "../db/client";
 import { servers as serversTable } from "../db/schema/control-plane/servers";
 import { POST as bootstrapRoute } from "@/app/api/agent/bootstrap/route";
 import { mintBootstrap, verifyResponse } from "../agent/bootstrap";
+import { __setRunsInContainerForTest } from "../deploy/domains";
 import { serverToRow } from "./infra-rows";
 import { completeBootstrap } from "./servers/agent-handshake";
 import { getServerById } from "./servers/roster";
@@ -183,4 +184,23 @@ test("every other server is told to link to the panel's public address", async (
     (await callHome("198.51.100.9")).linkUrl,
     "https://deplo.example.com",
   );
+});
+
+test("a server named by the panel's domain links through it, whatever machine that domain is on", async () => {
+  process.env.DEPLO_SERVER_IP = SELF;
+  process.env.DEPLO_PUBLIC_URL = "https://deplo.example.com";
+  process.env.DEPLO_LINK_PORT = "3102";
+  assert.equal(
+    (await callHome("deplo.example.com")).linkUrl,
+    "https://deplo.example.com",
+  );
+});
+
+test("a panel in a container with no link port on the host never sends loopback", async (t) => {
+  __setRunsInContainerForTest(true);
+  t.after(() => __setRunsInContainerForTest());
+  process.env.DEPLO_SERVER_IP = SELF;
+  process.env.DEPLO_PUBLIC_URL = "https://deplo.example.com";
+  delete process.env.DEPLO_LINK_PORT;
+  assert.equal((await callHome(SELF)).linkUrl, "https://deplo.example.com");
 });

@@ -75,3 +75,15 @@ write_panel_compose`);
   assert.ok(environment.includes("DEPLO_LINK_PORT=3102"), String(environment));
   assert.ok(ports.includes("127.0.0.1:3102:3001"), String(ports));
 });
+
+test("a Compose install publishes only its agent link, on loopback, and tells the panel where", async () => {
+  const compose = yaml.load(await readFile("docker-compose.yml", "utf8")) as {
+    services: { deplo: { environment: string[]; ports: string[] } };
+  };
+  const { environment, ports } = compose.services.deplo;
+  assert.deepEqual(ports, ["127.0.0.1:${DEPLO_LINK_PORT:-3101}:3001"]);
+  assert.ok(
+    environment.includes("DEPLO_LINK_PORT=${DEPLO_LINK_PORT:-3101}"),
+    String(environment),
+  );
+});
