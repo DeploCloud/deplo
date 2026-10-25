@@ -242,11 +242,9 @@ export function SidebarNav({
                       "group relative z-10 flex cursor-pointer items-center gap-2.5 rounded-md text-sm transition-colors",
                       collapsed ? "h-9 w-9 justify-center" : "px-3 py-2",
                       heading && "justify-center",
-                      active || heading
+                      active
                         ? "text-foreground"
-                        : "text-muted-foreground",
-                      !active &&
-                        "hover:bg-surface hover:text-foreground focus-visible:bg-surface",
+                        : "text-muted-foreground hover:bg-surface hover:text-foreground focus-visible:bg-surface",
                     )}
                   >
                     {showIcon &&
