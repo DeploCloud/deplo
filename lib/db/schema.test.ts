@@ -88,6 +88,7 @@ const CONTROL_PLANE = [
   "app_mounts",
   "deployments",
   "deployment_logs",
+  "deployment_screenshots",
   "app_previews",
   "app_preview_env_vars",
   "pending_teardowns",
