@@ -62,3 +62,6 @@ export const HOST_ADDRESSES_CAPABILITY = "host.addresses";
 
 // Without it the agent ignores files_bind_sources and mounts a link out of the app's files as-is.
 export const FILES_BIND_CHECK_CAPABILITY = "deploy.files-bind-check";
+
+// The agent links to the panel (ADR-0038), and with it Hello's link_addresses and SetLinkAddresses.
+export const AGENT_LINK_CAPABILITY = "agent-link";

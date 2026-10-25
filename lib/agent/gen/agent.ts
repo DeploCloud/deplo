@@ -566,6 +566,17 @@ export interface HelloResponse {
    * with the "host.addresses" capability: an older agent leaves it empty.
    */
   publicAddresses: string[];
+  /**
+   * The panel addresses this agent links to, as it keeps them. Trusted only with the
+   * "agent-link" capability, and unset on an agent that cannot link.
+   */
+  linkAddresses?: LinkAddresses | undefined;
+}
+
+/** The panel addresses an agent links to: a primary and, while the panel keeps one, its fallback. */
+export interface LinkAddresses {
+  primary: string;
+  fallback: string;
 }
 
 export interface MetricsRequest {
@@ -2959,6 +2970,7 @@ function createBaseHelloResponse(): HelloResponse {
     traefikRunning: false,
     hostArch: "",
     publicAddresses: [],
+    linkAddresses: undefined,
   };
 }
 
@@ -2987,6 +2999,9 @@ export const HelloResponse: MessageFns<HelloResponse> = {
     }
     for (const v of message.publicAddresses) {
       writer.uint32(66).string(v!);
+    }
+    if (message.linkAddresses !== undefined) {
+      LinkAddresses.encode(message.linkAddresses, writer.uint32(74).fork()).join();
     }
     return writer;
   },
@@ -3068,6 +3083,14 @@ export const HelloResponse: MessageFns<HelloResponse> = {
             message.publicAddresses.push(reader.string());
             continue;
           }
+          case 9: {
+            if (tag !== 74) {
+              break;
+            }
+
+            message.linkAddresses = LinkAddresses.decode(reader, reader.uint32());
+            continue;
+          }
         }
         if ((tag & 7) === 4 || tag === 0) {
           break;
@@ -3120,6 +3143,11 @@ export const HelloResponse: MessageFns<HelloResponse> = {
         : globalThis.Array.isArray(object?.public_addresses)
         ? object.public_addresses.map((e: any) => globalThis.String(e))
         : [],
+      linkAddresses: isSet(object.linkAddresses)
+        ? LinkAddresses.fromJSON(object.linkAddresses)
+        : isSet(object.link_addresses)
+        ? LinkAddresses.fromJSON(object.link_addresses)
+        : undefined,
     };
   },
 
@@ -3149,6 +3177,9 @@ export const HelloResponse: MessageFns<HelloResponse> = {
     if (message.publicAddresses?.length) {
       obj.publicAddresses = message.publicAddresses;
     }
+    if (message.linkAddresses !== undefined) {
+      obj.linkAddresses = LinkAddresses.toJSON(message.linkAddresses);
+    }
     return obj;
   },
 
@@ -3165,6 +3196,94 @@ export const HelloResponse: MessageFns<HelloResponse> = {
     message.traefikRunning = object.traefikRunning ?? false;
     message.hostArch = object.hostArch ?? "";
     message.publicAddresses = object.publicAddresses?.map((e) => e) || [];
+    message.linkAddresses = (object.linkAddresses !== undefined && object.linkAddresses !== null)
+      ? LinkAddresses.fromPartial(object.linkAddresses)
+      : undefined;
+    return message;
+  },
+};
+
+function createBaseLinkAddresses(): LinkAddresses {
+  return { primary: "", fallback: "" };
+}
+
+export const LinkAddresses: MessageFns<LinkAddresses> = {
+  encode(message: LinkAddresses, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.primary !== "") {
+      writer.uint32(10).string(message.primary);
+    }
+    if (message.fallback !== "") {
+      writer.uint32(18).string(message.fallback);
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): LinkAddresses {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const previousRecursionDepth = (reader as any).__tsProtoDecodeDepth ?? 0;
+    if (previousRecursionDepth >= 100) {
+      throw new globalThis.Error("protobuf decode recursion limit exceeded");
+    }
+    (reader as any).__tsProtoDecodeDepth = previousRecursionDepth + 1;
+    try {
+      const end = length === undefined ? reader.len : reader.pos + length;
+      const message = createBaseLinkAddresses();
+      while (reader.pos < end) {
+        const tag = reader.uint32();
+        switch (tag >>> 3) {
+          case 1: {
+            if (tag !== 10) {
+              break;
+            }
+
+            message.primary = reader.string();
+            continue;
+          }
+          case 2: {
+            if (tag !== 18) {
+              break;
+            }
+
+            message.fallback = reader.string();
+            continue;
+          }
+        }
+        if ((tag & 7) === 4 || tag === 0) {
+          break;
+        }
+        reader.skip(tag & 7);
+      }
+      return message;
+    } finally {
+      (reader as any).__tsProtoDecodeDepth = previousRecursionDepth;
+    }
+  },
+
+  fromJSON(object: any): LinkAddresses {
+    return {
+      primary: isSet(object.primary) ? globalThis.String(object.primary) : "",
+      fallback: isSet(object.fallback) ? globalThis.String(object.fallback) : "",
+    };
+  },
+
+  toJSON(message: LinkAddresses): unknown {
+    const obj: any = {};
+    if (message.primary !== "") {
+      obj.primary = message.primary;
+    }
+    if (message.fallback !== "") {
+      obj.fallback = message.fallback;
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<LinkAddresses>, I>>(base?: I): LinkAddresses {
+    return LinkAddresses.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<LinkAddresses>, I>>(object: I): LinkAddresses {
+    const message = createBaseLinkAddresses();
+    message.primary = object.primary ?? "";
+    message.fallback = object.fallback ?? "";
     return message;
   },
 };
@@ -20707,6 +20826,19 @@ export const AgentService = {
       Buffer.from(InventoryImageResponse.encode(value).finish()),
     responseDeserialize: (value: Buffer): InventoryImageResponse => InventoryImageResponse.decode(value),
   },
+  /**
+   * Replace the panel addresses this agent links to (ADR-0038): it keeps exactly this pair,
+   * an empty fallback dropped, and dials it from its next link on. Advertised as `agent-link`.
+   */
+  setLinkAddresses: {
+    path: "/deplo.agent.v1.Agent/SetLinkAddresses" as const,
+    requestStream: false as const,
+    responseStream: false as const,
+    requestSerialize: (value: LinkAddresses): Buffer => Buffer.from(LinkAddresses.encode(value).finish()),
+    requestDeserialize: (value: Buffer): LinkAddresses => LinkAddresses.decode(value),
+    responseSerialize: (value: LinkAddresses): Buffer => Buffer.from(LinkAddresses.encode(value).finish()),
+    responseDeserialize: (value: Buffer): LinkAddresses => LinkAddresses.decode(value),
+  },
 } as const;
 
 export interface AgentServer extends UntypedServiceImplementation {
@@ -21007,6 +21139,11 @@ export interface AgentServer extends UntypedServiceImplementation {
    * time and never during a deploy. Advertised as `image-inventory`.
    */
   inventoryImage: handleUnaryCall<InventoryImageRequest, InventoryImageResponse>;
+  /**
+   * Replace the panel addresses this agent links to (ADR-0038): it keeps exactly this pair,
+   * an empty fallback dropped, and dials it from its next link on. Advertised as `agent-link`.
+   */
+  setLinkAddresses: handleUnaryCall<LinkAddresses, LinkAddresses>;
 }
 
 export interface AgentClient extends Client {
@@ -22111,6 +22248,25 @@ export interface AgentClient extends Client {
     metadata: Metadata,
     options: Partial<CallOptions>,
     callback: (error: ServiceError | null, response: InventoryImageResponse) => void,
+  ): ClientUnaryCall;
+  /**
+   * Replace the panel addresses this agent links to (ADR-0038): it keeps exactly this pair,
+   * an empty fallback dropped, and dials it from its next link on. Advertised as `agent-link`.
+   */
+  setLinkAddresses(
+    request: LinkAddresses,
+    callback: (error: ServiceError | null, response: LinkAddresses) => void,
+  ): ClientUnaryCall;
+  setLinkAddresses(
+    request: LinkAddresses,
+    metadata: Metadata,
+    callback: (error: ServiceError | null, response: LinkAddresses) => void,
+  ): ClientUnaryCall;
+  setLinkAddresses(
+    request: LinkAddresses,
+    metadata: Metadata,
+    options: Partial<CallOptions>,
+    callback: (error: ServiceError | null, response: LinkAddresses) => void,
   ): ClientUnaryCall;
 }
 

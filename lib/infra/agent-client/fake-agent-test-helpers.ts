@@ -15,6 +15,7 @@ import {
   HelloResponse,
   StackResult,
   type FollowLogsRequest,
+  type LinkAddresses,
   type LogChunk,
   type MetricsSample,
   type MetricsStreamRequest,
@@ -45,6 +46,8 @@ export interface FakeAgent {
   refuse(on: boolean): void;
   /** The open connections went stale: the next bytes on each are answered with a reset. */
   goStale(): void;
+  /** Every pair of panel addresses the control plane sent it, oldest first. */
+  sentPairs(): LinkAddresses[];
   /** Links in to the door on 127.0.0.1 and serves on the link, as the real agent does. */
   link(
     doorPort: number,
@@ -71,8 +74,12 @@ export async function startFakeAgent(
     version?: string;
     dockerAvailable?: boolean;
     capabilities?: string[];
+    /** The pair it keeps and reports in Hello; none at all when unset. */
+    linkAddresses?: LinkAddresses;
   } = {},
 ): Promise<FakeAgent> {
+  let pair = opts.linkAddresses;
+  const sentPairs: LinkAddresses[] = [];
   const streams = new Set<ServerWritableStream<FollowLogsRequest, LogChunk>>();
   const telemetry = new Set<
     ServerWritableStream<MetricsStreamRequest, MetricsSample>
@@ -103,8 +110,17 @@ export async function startFakeAgent(
               ...(opts.capabilities ?? []),
             ],
             hostArch: "amd64",
+            linkAddresses: pair,
           }),
         );
+      },
+      setLinkAddresses(
+        call: { request: LinkAddresses },
+        cb: (e: null, r: LinkAddresses) => void,
+      ) {
+        pair = { ...call.request };
+        sentPairs.push(pair);
+        cb(null, pair);
       },
       followLogs(call: ServerWritableStream<FollowLogsRequest, LogChunk>) {
         streams.add(call);
@@ -209,6 +225,7 @@ export async function startFakeAgent(
       return agent.fingerprint;
     },
     connections: () => ({ opened, open: open.size }),
+    sentPairs: () => [...sentPairs],
     log(line) {
       for (const s of streams) s.write({ data: Buffer.from(line) } as LogChunk);
     },

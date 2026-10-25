@@ -2,6 +2,7 @@ import "server-only";
 
 import { connectivityState } from "@grpc/grpc-js";
 
+import type { HelloResponse } from "../../agent/gen/agent";
 import { LINK_WAIT_MS } from "../agent-link/protocol";
 import {
   currentLink,
@@ -115,6 +116,18 @@ async function linkFor(
   throw new AgentOfflineError(serverId);
 }
 
+type HelloListener = (serverId: string, hello: HelloResponse) => void;
+// On globalThis like the link registry: one set per process, whichever bundle subscribed.
+const HELLO_KEY = Symbol.for("deplo.agent-client.hello-listeners");
+const slot = globalThis as unknown as { [HELLO_KEY]?: Set<HelloListener> };
+const helloListeners: Set<HelloListener> = (slot[HELLO_KEY] ??= new Set());
+
+/** Every Hello an agent answers, direct or over its link: each call to a server starts with one. */
+export function onAgentHello(listener: HelloListener): () => void {
+  helloListeners.add(listener);
+  return () => helloListeners.delete(listener);
+}
+
 // Hello is the liveness call: one that cannot get through retires the channel, so the next call dials afresh.
 function proving(
   serverId: string,
@@ -127,6 +140,13 @@ function proving(
       try {
         const answer = await channel.hello(timeoutMs);
         shared.proven = true;
+        for (const listener of [...helloListeners]) {
+          try {
+            listener(serverId, answer);
+          } catch (err) {
+            console.error("[deplo] agent Hello listener failed:", err);
+          }
+        }
         return answer;
       } catch (e) {
         if (e instanceof AgentUnreachableError) retire(serverId, shared);

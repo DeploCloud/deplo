@@ -27,6 +27,7 @@ import type {
   RestartControlPlaneResponse,
   UpdateControlPlaneRequest,
   UpdateControlPlaneResponse,
+  LinkAddresses,
 } from "../../agent/gen/agent";
 export type {
   HostInfoResponse,
@@ -215,6 +216,8 @@ export interface AgentConnection {
     binaries: Record<string, { url: string; sha256: string }>,
   ): Promise<{ version: string; restarting: boolean }>;
   selfUninstall(deadlineMs?: number): Promise<string[]>;
+  /** Replaces the panel addresses the agent links to; it answers with the pair it kept. */
+  setLinkAddresses(pair: LinkAddresses): Promise<LinkAddresses>;
   dockerCleanup(req: DockerCleanupRequest): Promise<DockerCleanupResponse>;
 
   hostInfo(req: HostInfoRequest): Promise<HostInfoResponse>;

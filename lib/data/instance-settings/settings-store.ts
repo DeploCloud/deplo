@@ -28,7 +28,6 @@ import {
   isDeploHostServer,
   isLoopbackIp,
   isWildcardIp,
-  panelFallbackHost,
 } from "../../deploy/domains";
 import { canonicalHost } from "../../host-address";
 import { DEPLO_VERSION } from "../../version";
@@ -294,10 +293,12 @@ export async function getInstanceSettings(): Promise<InstanceSettings> {
     usageReportState(),
   ]);
   const hostIp = reachableHostIp(host);
+  const url = panelUrl ?? (await instancePublicBaseUrl());
+  const { panelFallbackUrl } = await import("./panel-fallback");
 
   return {
-    panelUrl: panelUrl ?? (await instancePublicBaseUrl()),
-    panelFallbackUrl: hostIp ? `https://${panelFallbackHost(hostIp)}` : null,
+    panelUrl: url,
+    panelFallbackUrl: await panelFallbackUrl(url),
     panelFallbackDisabled,
     deploHostIp: hostIp,
     panelUrlSource: panelUrl

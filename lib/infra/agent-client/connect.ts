@@ -50,17 +50,20 @@ function connectionOn(channel: AgentChannel): AgentConnection {
   };
 }
 
-let connector: ((serverId: string) => Promise<AgentConnection>) | null = null;
+let connector: ((serverId: string) => Promise<AgentConnection | null>) | null =
+  null;
 
+/** Stands in for every agent; a server it answers null for is reached for real. */
 export function __setAgentConnectorForTest(
-  fn?: (serverId: string) => Promise<AgentConnection>,
+  fn?: (serverId: string) => Promise<AgentConnection | null>,
 ): void {
   connector = fn ?? null;
 }
 
 // The sole entry to a host (ADR-0006): an unreachable agent throws, there is no in-process fallback.
 export async function connectAgent(serverId: string): Promise<AgentConnection> {
-  if (connector) return connector(serverId);
+  const stub = await connector?.(serverId);
+  if (stub) return stub;
   const address = await resolveAddress(serverId);
   const started = Date.now();
   const gate = (channel: AgentChannel) =>
@@ -85,7 +88,8 @@ export async function connectAgent(serverId: string): Promise<AgentConnection> {
 
 /** Past the minimum-agent gate: Hello, SelfUpdate, the health probe and a Deplo update only (ADR-0037). */
 export async function openAgent(serverId: string): Promise<AgentConnection> {
-  if (connector) return connector(serverId);
+  const stub = await connector?.(serverId);
+  if (stub) return stub;
   const address = await resolveAddress(serverId);
   return connectionOn((await leaseChannel(serverId, address)).channel);
 }

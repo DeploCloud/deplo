@@ -25,14 +25,8 @@ import { passkey, session } from "../../db/schema/auth";
 import { nowIso } from "../../ids";
 import { requireInstanceAdmin } from "../../membership";
 import { passkeyRelyingParty } from "../../public-url";
-import { panelFallbackHost } from "../../deploy/domains";
-import { panelRoute } from "../../deploy/traefik-stack";
-import {
-  deploHostServer,
-  instancePublicBaseUrl,
-  loadSettings,
-  reachableHostIp,
-} from "./settings-store";
+import { panelFallbackUrl } from "./panel-fallback";
+import { instancePublicBaseUrl, loadSettings } from "./settings-store";
 import { hostOf, normalizePanelUrl, schemeOf } from "./panel-address";
 
 export type PanelAddressImpact = {
@@ -80,12 +74,9 @@ export async function getPanelAddressImpact(
     gitConnections: 0,
     githubApps: 0,
   };
-  const host = await deploHostServer();
-  const hostIp = reachableHostIp(host);
-  base.panelFallbackUrl =
-    hostIp && !(await loadSettings()).panelFallbackDisabled
-      ? `https://${(await routedFallbackHost(host?.id)) ?? panelFallbackHost(hostIp)}`
-      : null;
+  base.panelFallbackUrl = (await loadSettings()).panelFallbackDisabled
+    ? null
+    : await panelFallbackUrl(currentUrl);
   if (!base.hostChanges && !base.schemeChanges) return base;
 
   const db = getDb();
@@ -177,16 +168,4 @@ export async function passkeysBoundToThisAddress(): Promise<number> {
     .from(passkey)
     .where(eq(passkey.rpId, rp.rpId));
   return Number(row?.n ?? 0);
-}
-
-// The host that answers today: an install born before deplo.site keeps its own.
-async function routedFallbackHost(serverId?: string): Promise<string | null> {
-  if (!serverId) return null;
-  try {
-    const { fetchHostInfo } = await import("../../infra/agent-client/host-ops");
-    const yaml = (await fetchHostInfo(serverId)).traefikComposeYaml;
-    return yaml ? (panelRoute(yaml)?.fallbackDomain ?? null) : null;
-  } catch {
-    return null;
-  }
 }

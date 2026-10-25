@@ -16,6 +16,16 @@ export async function register(): Promise<void> {
   } catch (e) {
     console.error("[deplo] server status could not follow agent links:", e);
   }
+  try {
+    const { startLinkAddressSync } =
+      await import("./lib/data/servers/link-addresses");
+    startLinkAddressSync();
+  } catch (e) {
+    console.error(
+      "[deplo] agents could not be kept on the panel's addresses:",
+      e,
+    );
+  }
   // Early, so servers relink while the jobs below make their first calls (ADR-0038).
   try {
     const { startAgentLinkListener } =

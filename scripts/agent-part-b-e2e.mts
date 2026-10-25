@@ -6,6 +6,7 @@ import { createHash } from "node:crypto";
 import { createServer } from "node:http";
 import {
   chmodSync,
+  mkdirSync,
   mkdtempSync,
   readFileSync,
   writeFileSync,
@@ -538,6 +539,8 @@ async function linkMain() {
       );
     }
 
+    await linkAddressesE2e(door, agents);
+
     const fill = await sh("docker", [
       "run",
       "--rm",
@@ -573,6 +576,92 @@ async function linkMain() {
     home.close();
     for (const { dir } of agents) rmSync(dir, { recursive: true, force: true });
     rmSync(guardDir, { recursive: true, force: true });
+  }
+}
+
+// The panel names both addresses (#118): a replaced pair is dialed next, primary then fallback.
+async function linkAddressesE2e(
+  door: number,
+  agents: { id: string; dir: string }[],
+) {
+  const { connectAgent } = await import("../lib/infra/agent-client/connect");
+  const { currentLink } = await import("../lib/infra/agent-link/registry");
+  const { withPanelRoute } = await import("../lib/deploy/traefik-stack");
+  const { startLinkAddressSync, stopLinkAddressSync } =
+    await import("../lib/data/servers/link-addresses");
+  const remote = agents.find((a) => a.id === "srv-e2e-remote")!;
+  const self = agents.find((a) => a.id === "srv-e2e-self")!;
+  const helloPair = async (id: string) => {
+    const conn = await connectAgent(id);
+    try {
+      return (await conn.hello()).linkAddresses;
+    } finally {
+      conn.close();
+    }
+  };
+  const same = (a: unknown, b: unknown) =>
+    JSON.stringify(a) === JSON.stringify(b);
+  const until = async (what: string, ok: () => Promise<boolean> | boolean) => {
+    for (const end = Date.now() + 20_000; !(await ok()); await sleep(100))
+      if (Date.now() > end) throw new Error(`never: ${what}`);
+  };
+
+  // Nothing listens on the discard port: only the fallback can bring the link back.
+  const viaFallback = {
+    primary: "http://127.0.0.1:9",
+    fallback: `http://127.0.0.1:${door}`,
+  };
+  const before = currentLink(remote.id);
+  const conn = await connectAgent(remote.id);
+  const kept = await conn.setLinkAddresses(viaFallback);
+  conn.close();
+  if (!same(kept, viaFallback)) throw new Error(`kept ${JSON.stringify(kept)}`);
+  if (!same(await helloPair(remote.id), viaFallback))
+    throw new Error("Hello does not report the new pair");
+  const saved = JSON.parse(
+    readFileSync(join(remote.dir, "link-addresses.json"), "utf8"),
+  );
+  if (!same(saved, viaFallback))
+    throw new Error(`saved ${JSON.stringify(saved)}`);
+  if (currentLink(remote.id) !== before)
+    throw new Error("a new pair ended the open link");
+  before!.close(1001, "e2e: the panel restarts");
+  await until("a link through the fallback", () => {
+    const now = currentLink(remote.id);
+    return !!now && now !== before;
+  });
+  console.log(
+    `== srv-e2e-remote: took a new pair over its link, kept the link, relinked through the fallback ✓`,
+  );
+
+  // Agent 0's proxy routes the panel and a fallback name; the panel reads it there, over agent 0's link.
+  const stack = withPanelRoute("services:\n  traefik:\n    image: traefik\n", {
+    domain: "localhost",
+    fallbackDomain: "127.0.0.1",
+    https: false,
+    certResolver: null,
+    target: "http://deplo:3000",
+  });
+  mkdirSync(join(self.dir, "traefik"), { recursive: true });
+  writeFileSync(join(self.dir, "traefik", "docker-compose.yml"), stack);
+  const selfPair = await helloPair(self.id);
+  startLinkAddressSync();
+  try {
+    const wanted = {
+      primary: `http://localhost:${door}`,
+      fallback: `http://127.0.0.1:${door}`,
+    };
+    await helloPair(remote.id); // any Hello the panel sees
+    await until("the panel's pair on the remote server", async () =>
+      same(await helloPair(remote.id), wanted),
+    );
+    if (!same(await helloPair(self.id), selfPair))
+      throw new Error("the panel's own server was sent another pair");
+    console.log(
+      `== srv-e2e-remote: the panel sent ${wanted.primary} + ${wanted.fallback}; agent 0 kept ${selfPair?.primary} alone ✓`,
+    );
+  } finally {
+    await stopLinkAddressSync();
   }
 }
 

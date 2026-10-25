@@ -25,6 +25,7 @@ import {
   checkPanelDns,
 } from "./instance-settings/panel-address";
 import { getPanelAddressImpact } from "./instance-settings/panel-address-impact";
+import { forgetRoutedFallback } from "./instance-settings/panel-fallback";
 import {
   dismissNetworkIsolationNotice,
   networkSweepFailures,
@@ -599,8 +600,10 @@ async function withSelfServer<T>(
   process.env.DEPLO_SERVER_IP = HOST_IP;
   await pg.exec(TRUNCATE_INFRA);
   await seedServerRow(db, { id: "srv_panel", ip: HOST_IP, host: HOST_IP });
+  forgetRoutedFallback();
   t.after(() => {
     __setAgentConnectorForTest();
+    forgetRoutedFallback();
     if (prevIp === undefined) delete process.env.DEPLO_SERVER_IP;
     else process.env.DEPLO_SERVER_IP = prevIp;
   });
@@ -641,7 +644,8 @@ test("the backup address goes off, and stays off when the scheme moves", async (
     const on = await asUser(ADMIN, () => setPanelFallback(true));
     assert.equal(on.panelFallbackDisabled, false);
     assert.equal(panelRoute(host.yaml)?.fallbackDomain, MINTED);
-    assert.equal(on.panelFallbackUrl, `https://${MINTED}`);
+    // It answers where the panel does, which is plain http since the switch above.
+    assert.equal(on.panelFallbackUrl, `http://${MINTED}`);
   });
 });
 
