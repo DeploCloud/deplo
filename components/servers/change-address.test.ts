@@ -44,7 +44,7 @@ test("a linked server's address dialog has no agent port and promises no check",
   assert.ok(html.includes('id="server-address"'));
   assert.ok(!html.includes('id="server-agent-port"'));
   assert.doesNotMatch(html, /Agent port/);
-  assert.doesNotMatch(html, /checks that the agent answers/);
+  assert.doesNotMatch(html, /checks that the server agent answers/);
   assert.doesNotMatch(html, /Save anyway/);
   assert.match(html, /Address is already in use/);
   assert.doesNotMatch(html, PORT_WORDS);
@@ -57,7 +57,7 @@ test("a server Deplo still dials keeps its agent port and the Save anyway escape
     refusal: "This server is unreachable.",
   });
   assert.ok(html.includes('id="server-agent-port"'));
-  assert.match(html, /checks that the agent answers/);
+  assert.match(html, /checks that the server agent answers/);
   assert.match(html, /Save anyway/);
   assert.doesNotMatch(html, PORT_WORDS);
 });

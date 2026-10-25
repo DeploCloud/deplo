@@ -76,7 +76,7 @@ export function ChangeAddress({ server }: { server: ServerSummary }) {
           <p className="mt-1 text-sm text-muted-foreground">
             {server.agentPort === null
               ? "Where this server’s apps are reached. Change it when the machine got a new IP or you moved it."
-              : "Where Deplo reaches this server’s agent. Change it when the host got a new IP or you moved it."}
+              : "Where Deplo reaches the server agent on this machine. Change it when the host got a new IP or you moved it."}
           </p>
         </div>
         <Button variant="outline" onClick={openDialog} disabled={pending}>
@@ -141,7 +141,7 @@ export function ChangeAddressForm({
         <DialogTitle>Change address for {server.name}?</DialogTitle>
         <DialogDescription>
           {dialed
-            ? "Deplo checks that the agent answers at the new address before saving. Apps and databases on the server are not touched."
+            ? "Deplo checks that the server agent answers at the new address before saving. Apps and databases on the server are not touched."
             : "Apps and databases on the server are not touched."}
         </DialogDescription>
       </DialogHeader>
@@ -172,7 +172,7 @@ export function ChangeAddressForm({
         <div className="grid gap-2">
           <FieldLabel
             htmlFor="server-agent-port"
-            info="Where Deplo connects to this server's agent. Change it only if you moved the agent."
+            info="Where Deplo connects to the server agent on this machine. Change it only if you moved the server agent."
             docs="servers.address"
           >
             Agent port
