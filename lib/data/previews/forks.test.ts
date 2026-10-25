@@ -2,7 +2,10 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { eq } from "drizzle-orm";
 
-import { apps as appsTable } from "../../db/schema/control-plane/apps";
+import {
+  appBuild as appBuildTable,
+  apps as appsTable,
+} from "../../db/schema/control-plane/apps";
 import {
   appPreviews as appPreviewsTable,
   deployments as deploymentsTable,
@@ -95,6 +98,28 @@ test("a fork is refused while the compose hands values out inline", async () => 
     { actor: "mallory" },
   );
   assert.equal(ok.refusal, undefined);
+});
+
+test("a fork is not refused for inline values of a stack read from the repository", async () => {
+  await seedPreviewApp(h.db, "prj_1", { slug: "blog", forkPolicy: "allow" });
+  await h.db
+    .update(appsTable)
+    .set({
+      compose:
+        "services:\n  web:\n    image: nginx\n    environment:\n      - NODE_ENV=production\n",
+    })
+    .where(eq(appsTable.id, "prj_1"));
+  await h.db
+    .update(appBuildTable)
+    .set({ buildMethod: "compose" })
+    .where(eq(appBuildTable.appId, "prj_1"));
+  const res = await openOrSyncPreview(
+    "prj_1",
+    { ...PR, isFork: true, headRepo: "mallory/blog" },
+    { actor: "mallory" },
+  );
+  assert.equal(res.refusal, undefined);
+  assert.ok(res.deploymentId);
 });
 
 test("fork policy `deny` records nothing at all", async () => {

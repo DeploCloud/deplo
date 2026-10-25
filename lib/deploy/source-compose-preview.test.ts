@@ -16,8 +16,13 @@ import {
   TRUNCATE_PROJECT_GRAPH,
 } from "../data/app-graph-test-helpers";
 import { appBuild, apps } from "../db/schema/control-plane/apps";
-import { deployments } from "../db/schema/control-plane/deployments";
+import {
+  appPreviews,
+  deployments,
+} from "../db/schema/control-plane/deployments";
 import { domains } from "../db/schema/control-plane/domains";
+import { registries } from "../db/schema/control-plane/integrations";
+import { encryptSecret } from "../crypto";
 import {
   BuildKind,
   ContractVersion,
@@ -28,6 +33,13 @@ import { runDeploymentGuarded } from "./build/deploy-run";
 
 const SHA = "c".repeat(40);
 const PROD_STACK = "services:\n  web:\n    image: deplo/shop-web:prod\n";
+const COMPOSE = `services:
+  web:
+    build: ./web
+    expose: ["3000"]
+  cache:
+    image: redis:7-alpine
+`;
 let db: TestDb;
 let pg: PGlite;
 let sent: DeployRequest[] = [];
@@ -159,4 +171,91 @@ test("a preview that builds a single image leaves the app's stack and method alo
   assert.equal((await appRow()).compose, PROD_STACK);
   assert.equal((await buildRow()).buildMethod, "compose");
   assert.equal(sent[0].buildKind, BuildKind.BUILD_KIND_RAILPACK);
+});
+
+// The first leg reads the pull request's compose file, the second brings it up.
+const stackLegs = (req: DeployRequest) =>
+  req.buildKind === BuildKind.BUILD_KIND_COMPOSE && req.composeYaml
+    ? result({ ready: true })
+    : result({
+        sourceCompose: { path: "docker-compose.yml", content: COMPOSE },
+      });
+
+const seedRegistry = () =>
+  db.insert(registries).values({
+    id: "reg_1",
+    teamId: TEAM_A,
+    name: "Private",
+    type: "generic",
+    registryUrl: "registry.acme.test",
+    username: "ci",
+    passwordEnc: encryptSecret("hunter2"),
+    createdAt: "2026-10-24T00:00:00.000Z",
+  });
+
+test("a preview deploys the pull request's compose file as its own stack", async () => {
+  await db.update(apps).set({ compose: null }).where(eq(apps.id, "prj_1"));
+  await db
+    .update(appBuild)
+    .set({ buildMethod: "railpack" })
+    .where(eq(appBuild.appId, "prj_1"));
+  await db
+    .update(domains)
+    .set({ service: null })
+    .where(eq(domains.id, "dom_1"));
+  await seedRegistry();
+  answer = stackLegs;
+  await runDeploymentGuarded("dpl_1");
+
+  assert.equal((await depRow()).status, "ready");
+  assert.equal(sent.length, 2);
+  const stack = sent[1];
+  assert.equal(stack.buildKind, BuildKind.BUILD_KIND_COMPOSE);
+  assert.equal(stack.slug, "shop__pr-7");
+  assert.equal(stack.network, "deplo-preview-shop__pr-7");
+  assert.match(stack.composeYaml, /\/data\/stacks\/shop__pr-7\.src\/web/);
+  assert.match(stack.composeYaml, /shop-pr-7\.example\.test/);
+  assert.doesNotMatch(stack.composeYaml, /shop\.example\.com/);
+  assert.equal(stack.ready?.service, "web");
+  assert.equal(stack.registryAuth.length, 1, "a member's pull request pulls");
+
+  assert.equal((await appRow()).compose, null, "production stores no stack");
+  assert.equal((await buildRow()).buildMethod, "railpack");
+  const dom = (
+    await db.select().from(domains).where(eq(domains.id, "dom_1"))
+  )[0];
+  assert.equal(dom.service, null, "production's domain is not rerouted");
+});
+
+test("a preview of an app set to Docker Compose deploys its stack", async () => {
+  await db
+    .update(appBuild)
+    .set({ buildMethodAuto: false })
+    .where(eq(appBuild.appId, "prj_1"));
+  answer = stackLegs;
+  await runDeploymentGuarded("dpl_1");
+  assert.equal((await depRow()).status, "ready");
+  assert.equal(sent.length, 2);
+  assert.equal(sent[0].buildKind, BuildKind.BUILD_KIND_COMPOSE);
+  assert.equal(sent[1].network, "deplo-preview-shop__pr-7");
+  assert.equal((await appRow()).compose, PROD_STACK);
+});
+
+test("a fork's stack pulls with no registry credential of the team", async () => {
+  await seedRegistry();
+  await db
+    .update(appPreviews)
+    .set({
+      isFork: true,
+      headCloneUrl: "https://github.com/mallory/shop.git",
+      approvedSha: SHA,
+    })
+    .where(eq(appPreviews.id, "prv_1"));
+  answer = stackLegs;
+  await runDeploymentGuarded("dpl_1");
+  assert.equal((await depRow()).status, "ready");
+  assert.equal(sent.length, 2);
+  assert.equal(sent[1].git?.url, "https://github.com/mallory/shop.git");
+  assert.deepEqual(sent[0].registryAuth, []);
+  assert.deepEqual(sent[1].registryAuth, []);
 });

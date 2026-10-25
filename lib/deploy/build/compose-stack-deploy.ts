@@ -326,6 +326,7 @@ export async function deploySourceComposeStack(
       source: opts.source,
       composeFile: opts.composeFile,
     },
+    forkPreview: Boolean(opts.preview?.isFork),
     ready,
     agentDeployId: `${depId}-stack`,
     forceRecreate: opts.forceRecreate,

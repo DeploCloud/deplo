@@ -310,20 +310,6 @@ async function runDeployment(depId: string): Promise<void> {
       found: SourceCompose,
       source: Parameters<typeof deploySourceComposeStack>[0]["source"],
     ): Promise<void> => {
-      if (preview) {
-        log(
-          depId,
-          "error",
-          "Preview environments are not available yet for an app deployed from its Docker Compose file.",
-        );
-        await commitOutcome(
-          depId,
-          target,
-          { status: "error", buildDurationMs: Date.now() - started },
-          { status: "error" },
-        );
-        return;
-      }
       // A stack has no single image: a rollback to this deployment rebuilds its commit instead.
       await setDep(depId, { imageRef: null });
       if (method.methodAuto) {
@@ -332,7 +318,7 @@ async function runDeployment(depId: string): Promise<void> {
           "info",
           `Found ${found.path}: deploying it as a stack (Detect automatically).`,
         );
-        await recordResolvedMethod(project.id, "compose");
+        if (!preview) await recordResolvedMethod(project.id, "compose");
       }
       const outcome = await deploySourceComposeStack({
         depId,
@@ -574,10 +560,6 @@ async function runDeployment(depId: string): Promise<void> {
       }
       case "git": {
         const repo = plan.repo;
-        if (preview && stackFromSource)
-          throw new Error(
-            "Preview environments are not available yet for an app deployed from its Docker Compose file.",
-          );
         autoDetectRepoLogo(
           project.id,
           project.logo,

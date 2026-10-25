@@ -4,6 +4,7 @@ import { and, eq } from "drizzle-orm";
 
 import { getDb } from "../../db/client";
 import {
+  appBuild as appBuildTable,
   appVolumes as appVolumesTable,
   apps as appsTable,
 } from "../../db/schema/control-plane/apps";
@@ -59,11 +60,17 @@ export async function forkRefusal(
 ): Promise<PreviewRefusal | null> {
   if (await appReachesHost(appId)) return { kind: "fork-host-reach" };
   const [app] = await getDb()
-    .select({ compose: appsTable.compose })
+    .select({ compose: appsTable.compose, method: appBuildTable.buildMethod })
     .from(appsTable)
+    .leftJoin(appBuildTable, eq(appBuildTable.appId, appsTable.id))
     .where(eq(appsTable.id, appId))
     .limit(1);
-  if (app?.compose && composeHasInlineEnvValues(app.compose))
+  // A stack read from the repository runs the fork's own file, whose values are in git already.
+  if (
+    app?.compose &&
+    app.method !== "compose" &&
+    composeHasInlineEnvValues(app.compose)
+  )
     return { kind: "fork-inline-env" };
   return null;
 }
