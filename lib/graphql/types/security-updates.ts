@@ -108,6 +108,10 @@ const SecuritySubjectRef = builder
       kind: t.exposeString("kind", { description: "`app` or `database`." }),
       id: t.exposeID("id"),
       name: t.exposeString("name"),
+      slug: t.exposeString("slug", {
+        nullable: true,
+        description: "The app's slug, for its address; null for a database.",
+      }),
       count: t.exposeInt("count"),
       exploited: t.exposeInt("exploited"),
     }),

@@ -21,7 +21,9 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { EmptyState } from "@/components/shared/empty-state";
 import { AppsGrid } from "@/components/apps/apps-grid/apps-grid";
-import { SecurityFilterChip } from "@/components/security-updates/security-filter-chip";
+import { SecurityOverviewNotice } from "@/components/security-updates/security-overview-notice";
+import { databaseSecurityCounts } from "@/lib/data/security-updates/read";
+import { securitySubjects } from "@/lib/security-updates/subjects";
 import { FolderTrail } from "@/components/apps/apps-grid/folder-trail";
 import { ArchiveDropZone } from "@/components/apps/archive-drop-zone";
 import { AppsGraphic } from "@/components/apps/apps-graphic";
@@ -99,6 +101,11 @@ export default async function OverviewPage(props: PageProps<"/[team]">) {
     welcomePending(),
   ]);
   const activityDatabases = teamWideReach ? await listDatabases() : [];
+  const securityList = securitySubjects(
+    services,
+    activityDatabases,
+    await databaseSecurityCounts(activityDatabases.map((d) => d.id)),
+  );
   const networkSweepFailed = await networkSweepFailures();
   const canManageOrder = isAdmin || canManageTeam;
   const noCreateAppsNote =
@@ -151,7 +158,6 @@ export default async function OverviewPage(props: PageProps<"/[team]">) {
         ? []
         : folders.filter((f) => (f.parentId ?? null) === null);
   const visibleProjects = flat || openFolder || openProject ? [] : projects;
-  const appsNeedingUpdate = services.filter(needsUpdate).length;
 
   const enrichedFolders = await Promise.all(
     visibleFolders.map(async (f) => ({
@@ -285,6 +291,12 @@ export default async function OverviewPage(props: PageProps<"/[team]">) {
           }
         />
 
+        <SecurityOverviewNotice
+          subjects={securityList}
+          filterActive={needsSecurity}
+          view={view}
+        />
+
         {isAdmin && <NetworkSweepNotice failed={networkSweepFailed} />}
 
         <AppSearch
@@ -311,12 +323,6 @@ export default async function OverviewPage(props: PageProps<"/[team]">) {
               />
             ) : undefined
           }
-        />
-
-        <SecurityFilterChip
-          active={needsSecurity}
-          count={appsNeedingUpdate}
-          view={view}
         />
 
         {nothingToShow ? (

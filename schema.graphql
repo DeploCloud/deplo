@@ -5800,6 +5800,9 @@ type SecuritySubject {
   """`app` or `database`."""
   kind: String
   name: String
+
+  """The app's slug, for its address; null for a database."""
+  slug: String
 }
 
 """One known vulnerability in a package an app or database runs."""
