@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { Box, Database, ShieldAlert, X } from "lucide-react";
+import { ShieldAlert, X } from "lucide-react";
 
 import Link from "@/components/ui/link";
 import { Button } from "@/components/ui/button";
@@ -19,6 +19,7 @@ import {
   type SecuritySubject,
 } from "@/lib/security-updates/subjects";
 import { cn, plural } from "@/lib/utils";
+import { SubjectLogo } from "./subject-logo";
 
 const QUERY = /* GraphQL */ `
   query SecurityAlertPill {
@@ -27,6 +28,9 @@ const QUERY = /* GraphQL */ `
       id
       name
       slug
+      logo
+      logoTone
+      databaseType
       count
       exploited
     }
@@ -81,10 +85,10 @@ export function SecurityAlertPill({ teamId }: { teamId: string }) {
   return (
     <div
       className={cn(
-        "flex h-8 items-center rounded-full border",
+        "flex h-7 items-center rounded-md text-xs font-medium",
         attacked
-          ? "border-destructive/50 bg-destructive-wash-strong"
-          : "border-warning/50 bg-warning-wash-strong",
+          ? "bg-destructive-wash-strong text-destructive"
+          : "bg-warning-wash-strong text-warning",
       )}
     >
       <Popover open={open} onOpenChange={setOpen}>
@@ -92,14 +96,9 @@ export function SecurityAlertPill({ teamId }: { teamId: string }) {
           <button
             type="button"
             aria-label={title}
-            className="flex h-full items-center gap-1.5 rounded-l-full pr-1.5 pl-3 text-xs font-medium"
+            className="flex h-full items-center gap-1.5 rounded-l-md pr-1 pl-2"
           >
-            <ShieldAlert
-              className={cn(
-                "size-4",
-                attacked ? "text-destructive" : "text-warning",
-              )}
-            />
+            <ShieldAlert className="size-3.5" />
             <span className="hidden lg:inline">{title}</span>
             <span className="lg:hidden">{subjects.length}</span>
           </button>
@@ -120,11 +119,7 @@ export function SecurityAlertPill({ teamId }: { teamId: string }) {
                   onClick={() => setOpen(false)}
                   className="flex items-center gap-2 px-4 py-2 text-sm hover:bg-surface"
                 >
-                  {s.kind === "app" ? (
-                    <Box className="size-4 shrink-0 text-muted-foreground" />
-                  ) : (
-                    <Database className="size-4 shrink-0 text-muted-foreground" />
-                  )}
+                  <SubjectLogo subject={s} size={22} />
                   <span className="min-w-0 flex-1 truncate">{s.name}</span>
                   <span className="shrink-0 text-xs text-muted-foreground">
                     {plural(s.count, "update", "updates")}
@@ -152,7 +147,7 @@ export function SecurityAlertPill({ teamId }: { teamId: string }) {
         type="button"
         aria-label="Dismiss"
         onClick={dismiss}
-        className="flex h-full items-center rounded-r-full pr-2.5 pl-1 text-muted-foreground hover:text-foreground"
+        className="flex h-full items-center rounded-r-md pr-2 pl-1"
       >
         <X className="size-3.5" />
       </button>

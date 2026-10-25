@@ -15,17 +15,21 @@ const subjects = securitySubjects(
       id: "a1",
       name: "web",
       slug: "web",
+      logo: null,
+      logoTone: null,
       securityUpdates: { count: 2, exploited: 0 },
     },
     {
       id: "a2",
       name: "blog",
       slug: "blog",
+      logo: null,
+      logoTone: null,
       securityUpdates: { count: 1, exploited: 1 },
     },
-    { id: "a3", name: "clean", slug: "clean" },
+    { id: "a3", name: "clean", slug: "clean", logo: null, logoTone: null },
   ],
-  [{ id: "db1", name: "main" }],
+  [{ id: "db1", name: "main", type: "postgres", logo: null }],
   new Map([["db1", { count: 3, exploited: 0 }]]),
 );
 
@@ -36,6 +40,11 @@ test("securitySubjects: only what needs updates, attacks first", () => {
   );
   assert.equal(subjectHref(subjects[0]), "/apps/blog");
   assert.equal(subjectHref(subjects[1]), "/storage/databases/db1");
+  assert.equal(
+    subjects[1].databaseType,
+    "postgres",
+    "the engine draws its logo",
+  );
 });
 
 test("the copy counts apps and databases in plain words", () => {

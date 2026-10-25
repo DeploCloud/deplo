@@ -1,8 +1,9 @@
-import { Box, Database, ShieldAlert } from "lucide-react";
+import { ShieldAlert } from "lucide-react";
 
 import Link from "@/components/ui/link";
 import { Button } from "@/components/ui/button";
 import { DocsLink } from "@/components/ui/docs-link";
+import { SubjectLogo } from "./subject-logo";
 import {
   exploitedLine,
   subjectHref,
@@ -68,13 +69,9 @@ export function SecurityOverviewNotice({
               <li key={`${s.kind}:${s.id}`}>
                 <Link
                   href={subjectHref(s)}
-                  className="inline-flex items-center gap-1.5 rounded-md border border-border bg-background px-2.5 py-1 text-xs hover:bg-surface"
+                  className="inline-flex items-center gap-1.5 rounded-md border border-border bg-background py-1 pr-2.5 pl-1.5 text-xs hover:bg-surface"
                 >
-                  {s.kind === "app" ? (
-                    <Box className="size-3.5 text-muted-foreground" />
-                  ) : (
-                    <Database className="size-3.5 text-muted-foreground" />
-                  )}
+                  <SubjectLogo subject={s} size={18} />
                   <span className="font-medium">{s.name}</span>
                   <span className="text-muted-foreground">
                     {plural(s.count, "update", "updates")}

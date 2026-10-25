@@ -1,9 +1,12 @@
+import type { DatabaseType } from "../types/database";
 import { plural } from "../utils";
 
 export interface SecurityCount {
   count: number;
   exploited: number;
 }
+
+type LogoTone = "dark" | "light" | null;
 
 // An app or database with security updates to apply, as the Overview and the topbar list it.
 export interface SecuritySubject extends SecurityCount {
@@ -12,6 +15,9 @@ export interface SecuritySubject extends SecurityCount {
   name: string;
   // The app's slug for its link; null for a database.
   slug: string | null;
+  logo: string | null;
+  logoTone: LogoTone;
+  databaseType: DatabaseType | null;
 }
 
 export function securitySubjects(
@@ -19,9 +25,16 @@ export function securitySubjects(
     id: string;
     name: string;
     slug: string;
+    logo: string | null;
+    logoTone: LogoTone;
     securityUpdates?: SecurityCount;
   }[],
-  databases: { id: string; name: string }[],
+  databases: {
+    id: string;
+    name: string;
+    type: DatabaseType;
+    logo: string | null;
+  }[],
   databaseCounts: ReadonlyMap<string, SecurityCount>,
 ): SecuritySubject[] {
   const out: SecuritySubject[] = [];
@@ -32,12 +45,24 @@ export function securitySubjects(
         id: a.id,
         name: a.name,
         slug: a.slug,
+        logo: a.logo,
+        logoTone: a.logoTone,
+        databaseType: null,
         ...a.securityUpdates,
       });
   for (const d of databases) {
     const c = databaseCounts.get(d.id);
     if (c?.count)
-      out.push({ kind: "database", id: d.id, name: d.name, slug: null, ...c });
+      out.push({
+        kind: "database",
+        id: d.id,
+        name: d.name,
+        slug: null,
+        logo: d.logo,
+        logoTone: null,
+        databaseType: d.type,
+        ...c,
+      });
   }
   return out.sort(
     (a, b) =>

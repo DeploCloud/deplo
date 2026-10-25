@@ -1,4 +1,5 @@
 import { builder } from "../builder";
+import { DatabaseTypeEnum } from "./enums";
 import {
   appSecurityUpdates,
   databaseSecurityUpdates,
@@ -111,6 +112,13 @@ const SecuritySubjectRef = builder
       slug: t.exposeString("slug", {
         nullable: true,
         description: "The app's slug, for its address; null for a database.",
+      }),
+      logo: t.exposeString("logo", { nullable: true }),
+      logoTone: t.exposeString("logoTone", { nullable: true }),
+      databaseType: t.field({
+        type: DatabaseTypeEnum,
+        nullable: true,
+        resolve: (s) => s.databaseType,
       }),
       count: t.exposeInt("count"),
       exploited: t.exposeInt("exploited"),

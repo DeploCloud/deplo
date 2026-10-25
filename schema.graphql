@@ -5794,11 +5794,14 @@ enum SecurityLevel {
 """An app or database with security updates to apply."""
 type SecuritySubject {
   count: Int
+  databaseType: DatabaseType
   exploited: Int
   id: ID
 
   """`app` or `database`."""
   kind: String
+  logo: String
+  logoTone: String
   name: String
 
   """The app's slug, for its address; null for a database."""
