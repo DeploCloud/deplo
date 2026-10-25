@@ -2,7 +2,7 @@ import { test, before, after, beforeEach, afterEach } from "node:test";
 import assert from "node:assert/strict";
 
 import type { PGlite } from "@electric-sql/pglite";
-import { graphql } from "graphql";
+import { graphql, type GraphQLObjectType } from "graphql";
 
 import { makeTestDb, type TestDb } from "../db/test-harness";
 import { __setTestDb, __resetTestDb } from "../db/client";
@@ -98,11 +98,11 @@ async function linkIn(): Promise<FakeLink> {
   return link;
 }
 
-function linkedField(): Promise<unknown> {
+function agentPortField(): Promise<unknown> {
   return asAdmin(async () => {
     const res = await graphql({
       schema,
-      source: `{ server(id: "${SERVER}") { linked } }`,
+      source: `{ server(id: "${SERVER}") { agentPort } }`,
       contextValue: {
         viewer: await getCurrentUser(),
         teamId: await getActiveTeamId(),
@@ -112,7 +112,7 @@ function linkedField(): Promise<unknown> {
       } satisfies GraphQLContext,
     });
     assert.equal(res.errors, undefined);
-    return (res.data?.server as { linked: unknown }).linked;
+    return (res.data?.server as { agentPort: unknown }).agentPort;
   });
 }
 
@@ -159,10 +159,15 @@ test("moments after Deplo starts, a server on its way back is saved once it link
   assert.equal((await asAdmin(() => getServerById(SERVER)))?.ip, "localhost");
 });
 
-test("the API says whether a server links in", async () => {
-  assert.equal(await linkedField(), false);
+test("the API gives a server that links in no agent port, and names no link of its own", async () => {
+  assert.equal(await agentPortField(), agent.port);
   await linkIn();
-  assert.equal(await linkedField(), true);
+  assert.equal(await agentPortField(), null);
+  const fields = (schema.getType("Server") as GraphQLObjectType).getFields();
+  assert.ok(
+    !("linked" in fields),
+    "how a server is reached stays out of the API",
+  );
 });
 
 test("a linked server's agent port is left alone, and Activity names the address only", async () => {

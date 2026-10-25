@@ -9,8 +9,8 @@ import {
 } from "@/lib/deploy/domains";
 import { serverAddressChoices } from "@/lib/data/servers/addresses";
 import {
+  dialedAgentPort,
   serverAgentUpdate,
-  serverLinksIn,
 } from "@/lib/data/servers/agent-maintenance";
 import type { AgentUpdateDTO } from "@/lib/data/servers/agent-update-state";
 import {
@@ -156,13 +156,8 @@ export const ServerRef = builder.objectRef<Server>("Server").implement({
     agentPort: t.int({
       nullable: true,
       description:
-        "Where Deplo connects to an agent that does not link in yet. Unused once `linked` is true.",
-      resolve: (s) => s.agent?.port ?? null,
-    }),
-    linked: t.boolean({
-      description:
-        "Whether this server's agent links in to Deplo, so Deplo never connects to its address: changing the address saves without contacting the server. Read live; false for a few seconds after Deplo starts, until the server links again.",
-      resolve: (s) => serverLinksIn(s.id),
+        "The port Deplo connects to this server's agent on. Null when Deplo connects to none: the agent links in to Deplo, so a new address saves without contacting the server, or no agent has called home yet. Read live, so for a few seconds after Deplo starts a server that links in may still show its old port.",
+      resolve: (s) => dialedAgentPort(s),
     }),
     agentVersion: t.string({
       nullable: true,

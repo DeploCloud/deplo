@@ -14,14 +14,10 @@ const PORT_WORDS = /9443|firewall|inbound|outbound/i;
 
 function form(over: Partial<ChangeAddressFormProps> = {}): string {
   const props: ChangeAddressFormProps = {
-    server: {
-      name: "eu-1",
-      agentPort: 9443,
-      linked: true,
-      isDeploHost: false,
-    },
+    // A server that links in has no agent port: Deplo dials none.
+    server: { name: "eu-1", agentPort: null, isDeploHost: false },
     address: "203.0.113.7",
-    port: "9443",
+    port: "",
     onAddressChange: () => {},
     onPortChange: () => {},
     refusal: null,
@@ -56,12 +52,7 @@ test("a linked server's address dialog has no agent port and promises no check",
 
 test("a server Deplo still dials keeps its agent port and the Save anyway escape", () => {
   const html = form({
-    server: {
-      name: "eu-1",
-      agentPort: 9555,
-      linked: false,
-      isDeploHost: false,
-    },
+    server: { name: "eu-1", agentPort: 9555, isDeploHost: false },
     port: "9555",
     refusal: "This server is unreachable.",
   });

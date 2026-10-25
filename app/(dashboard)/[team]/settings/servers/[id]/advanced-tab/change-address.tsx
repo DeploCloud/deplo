@@ -46,7 +46,10 @@ export function ChangeAddress({ server }: { server: ServerSummary }) {
         {
           id: server.id,
           address: address.trim(),
-          agentPort: !server.linked && port.trim() ? Number(port.trim()) : null,
+          agentPort:
+            server.agentPort !== null && port.trim()
+              ? Number(port.trim())
+              : null,
           force,
         },
       );
@@ -71,7 +74,7 @@ export function ChangeAddress({ server }: { server: ServerSummary }) {
             <BetaChip />
           </div>
           <p className="mt-1 text-sm text-muted-foreground">
-            {server.linked
+            {server.agentPort === null
               ? "Where this server’s apps are reached. Change it when the machine got a new IP or you moved it."
               : "Where Deplo reaches this server’s agent. Change it when the host got a new IP or you moved it."}
           </p>
@@ -102,7 +105,7 @@ export function ChangeAddress({ server }: { server: ServerSummary }) {
 }
 
 export interface ChangeAddressFormProps {
-  server: Pick<ServerSummary, "name" | "agentPort" | "linked" | "isDeploHost">;
+  server: Pick<ServerSummary, "name" | "agentPort" | "isDeploHost">;
   address: string;
   onAddressChange: (value: string) => void;
   port: string;
@@ -113,7 +116,7 @@ export interface ChangeAddressFormProps {
   onCancel: () => void;
 }
 
-// A linked server is never dialed (ADR-0040): no agent port, no check, nothing to force.
+// A server with no agent port is never dialed (ADR-0040): no check, nothing to force.
 export function ChangeAddressForm({
   server,
   address,
@@ -125,7 +128,7 @@ export function ChangeAddressForm({
   onSave,
   onCancel,
 }: ChangeAddressFormProps) {
-  const dialed = !server.linked;
+  const dialed = server.agentPort !== null;
   return (
     <form
       className="grid gap-4"
@@ -165,7 +168,7 @@ export function ChangeAddressForm({
           autoFocus
         />
       </div>
-      {dialed && server.agentPort !== null && (
+      {dialed && (
         <div className="grid gap-2">
           <FieldLabel
             htmlFor="server-agent-port"

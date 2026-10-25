@@ -105,14 +105,14 @@ export async function updateServerAddress(
   return { warning };
 }
 
-/** Whether this server's agent links in to Deplo, so Deplo never connects to its address. */
-export function serverLinksIn(serverId: string): boolean {
-  return hasLinked(serverId);
+/** The port Deplo dials this server's agent on; null when it dials none, because the agent links in or never called home. */
+export function dialedAgentPort(server: Server): number | null {
+  return server.agent && !hasLinked(server.id) ? server.agent.port : null;
 }
 
 // Moments after Deplo starts, a server that stopped listening may not have linked back yet.
 async function linksIn(serverId: string): Promise<boolean> {
-  if (serverLinksIn(serverId)) return true;
+  if (hasLinked(serverId)) return true;
   if (!linksSettling()) return false;
   return (await waitForLink(serverId, LINK_WAIT_MS)) !== null;
 }

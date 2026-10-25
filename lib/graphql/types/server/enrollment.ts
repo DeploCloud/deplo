@@ -128,14 +128,14 @@ builder.mutationFields((t) => ({
     nullable: true,
     authScopes: { instanceAdmin: true },
     description:
-      "Change a server's address - where its apps are reached, and the migration verb for a host whose IP changed. A server whose agent links in (`Server.linked`) is saved without Deplo contacting it. Any other server's agent must answer at the new address (same pinned certificate) before anything is saved, unless `force`. Returns a warning to surface, or null.",
+      "Change a server's address - where its apps are reached, and the migration verb for a host whose IP changed. A server whose agent links in (`Server.agentPort` is null) is saved without Deplo contacting it. Any other server's agent must answer at the new address (same pinned certificate) before anything is saved, unless `force`. Returns a warning to surface, or null.",
     args: {
       id: t.arg.string({ required: true }),
       address: t.arg.string({ required: true }),
       agentPort: t.arg.int({
         required: false,
         description:
-          "Only for a server whose agent does not link in yet; ignored once `Server.linked` is true.",
+          "Only for a server whose agent does not link in yet; ignored while `Server.agentPort` is null.",
       }),
       force: t.arg.boolean({ required: false }),
       keepHost: t.arg.boolean({
