@@ -140,6 +140,7 @@ export function stackRpc(
                 mounts: req.mounts,
                 network: req.network,
                 composeUpArgs: req.composeUpArgs ?? [],
+                pullImages: false,
                 filesBindSources: filesBindSources(
                   req.composeYaml,
                   stackFilesDir(req.slug),

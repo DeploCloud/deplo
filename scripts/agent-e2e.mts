@@ -98,6 +98,7 @@ networks:
       registryAuth: [],
       filesBindSources: [],
       githubToken: "",
+      pullBaseImages: false,
     })) {
       if (ev.log) console.log(`  [${ev.log.level}] ${ev.log.text}`);
       if (ev.phase) console.log(`  -- phase ${ev.phase.phase}`);

@@ -426,6 +426,84 @@ export function cleanupScopeToJSON(object: CleanupScope): string {
   }
 }
 
+export enum InventoryStatus {
+  INVENTORY_STATUS_UNSPECIFIED = 0,
+  INVENTORY_STATUS_OK = 1,
+  /** INVENTORY_STATUS_BUSY - Another inventory or a deploy is running on this host: ask again later. */
+  INVENTORY_STATUS_BUSY = 2,
+  INVENTORY_STATUS_SKIPPED_LOW_DISK = 3,
+  INVENTORY_STATUS_SKIPPED_LOW_MEMORY = 4,
+  /** INVENTORY_STATUS_TOO_LARGE - The reader hit its memory cap. */
+  INVENTORY_STATUS_TOO_LARGE = 5,
+  INVENTORY_STATUS_TIMED_OUT = 6,
+  /** INVENTORY_STATUS_UNSUPPORTED - This host cannot cap the reader's memory (no systemd), so it never runs here. */
+  INVENTORY_STATUS_UNSUPPORTED = 7,
+  INVENTORY_STATUS_FAILED = 8,
+  UNRECOGNIZED = -1,
+}
+
+export function inventoryStatusFromJSON(object: any): InventoryStatus {
+  switch (object) {
+    case 0:
+    case "INVENTORY_STATUS_UNSPECIFIED":
+      return InventoryStatus.INVENTORY_STATUS_UNSPECIFIED;
+    case 1:
+    case "INVENTORY_STATUS_OK":
+      return InventoryStatus.INVENTORY_STATUS_OK;
+    case 2:
+    case "INVENTORY_STATUS_BUSY":
+      return InventoryStatus.INVENTORY_STATUS_BUSY;
+    case 3:
+    case "INVENTORY_STATUS_SKIPPED_LOW_DISK":
+      return InventoryStatus.INVENTORY_STATUS_SKIPPED_LOW_DISK;
+    case 4:
+    case "INVENTORY_STATUS_SKIPPED_LOW_MEMORY":
+      return InventoryStatus.INVENTORY_STATUS_SKIPPED_LOW_MEMORY;
+    case 5:
+    case "INVENTORY_STATUS_TOO_LARGE":
+      return InventoryStatus.INVENTORY_STATUS_TOO_LARGE;
+    case 6:
+    case "INVENTORY_STATUS_TIMED_OUT":
+      return InventoryStatus.INVENTORY_STATUS_TIMED_OUT;
+    case 7:
+    case "INVENTORY_STATUS_UNSUPPORTED":
+      return InventoryStatus.INVENTORY_STATUS_UNSUPPORTED;
+    case 8:
+    case "INVENTORY_STATUS_FAILED":
+      return InventoryStatus.INVENTORY_STATUS_FAILED;
+    case -1:
+    case "UNRECOGNIZED":
+    default:
+      return InventoryStatus.UNRECOGNIZED;
+  }
+}
+
+export function inventoryStatusToJSON(object: InventoryStatus): string {
+  switch (object) {
+    case InventoryStatus.INVENTORY_STATUS_UNSPECIFIED:
+      return "INVENTORY_STATUS_UNSPECIFIED";
+    case InventoryStatus.INVENTORY_STATUS_OK:
+      return "INVENTORY_STATUS_OK";
+    case InventoryStatus.INVENTORY_STATUS_BUSY:
+      return "INVENTORY_STATUS_BUSY";
+    case InventoryStatus.INVENTORY_STATUS_SKIPPED_LOW_DISK:
+      return "INVENTORY_STATUS_SKIPPED_LOW_DISK";
+    case InventoryStatus.INVENTORY_STATUS_SKIPPED_LOW_MEMORY:
+      return "INVENTORY_STATUS_SKIPPED_LOW_MEMORY";
+    case InventoryStatus.INVENTORY_STATUS_TOO_LARGE:
+      return "INVENTORY_STATUS_TOO_LARGE";
+    case InventoryStatus.INVENTORY_STATUS_TIMED_OUT:
+      return "INVENTORY_STATUS_TIMED_OUT";
+    case InventoryStatus.INVENTORY_STATUS_UNSUPPORTED:
+      return "INVENTORY_STATUS_UNSUPPORTED";
+    case InventoryStatus.INVENTORY_STATUS_FAILED:
+      return "INVENTORY_STATUS_FAILED";
+    case InventoryStatus.UNRECOGNIZED:
+    default:
+      return "UNRECOGNIZED";
+  }
+}
+
 export interface RenewalCSRRequest {
 }
 
@@ -781,6 +859,11 @@ export interface DeployRequest {
    * prepare only: never the build, the image or a log. Advertised as `build.github-token`.
    */
   githubToken: string;
+  /**
+   * Fetch a Dockerfile's base images again instead of reusing the copies on this host, for
+   * a rebuild that has to pick up a fixed base. Advertised as `deploy.pull-base`.
+   */
+  pullBaseImages: boolean;
 }
 
 export interface DeployRequest_EnvEntry {
@@ -1127,6 +1210,11 @@ export interface RerouteRequest {
   network: string;
   /** Same contract as DeployRequest.files_bind_sources. */
   filesBindSources: string[];
+  /**
+   * Pull every image again before `up`, so a moved tag (a patch release) is picked up.
+   * Unset keeps pulling only the missing ones. Advertised as `reroute.pull`.
+   */
+  pullImages: boolean;
 }
 
 export interface RerouteRequest_EnvEntry {
@@ -2497,6 +2585,57 @@ export interface UpdateControlPlaneResponse {
   error: string;
   /** Where the run is transcribed on the host, for an update that did not take. */
   logPath: string;
+}
+
+export interface ListWorkloadImagesRequest {
+}
+
+export interface WorkloadImage {
+  /** The container's deplo.project label: an app, preview or database id. */
+  projectId: string;
+  /** The deplo.app label, set on a preview's containers only. */
+  appId: string;
+  /** The compose service, empty for a container outside compose. */
+  service: string;
+  /** The image the container was created from, as written (Config.Image). */
+  imageRef: string;
+  /** The image's local id, the key InventoryImage takes. */
+  imageId: string;
+  /** The repo@digest entries the image is known by in its registries. */
+  repoDigests: string[];
+  running: boolean;
+}
+
+export interface ListWorkloadImagesResponse {
+  images: WorkloadImage[];
+}
+
+export interface InventoryImageRequest {
+  imageId: string;
+}
+
+export interface ImagePackage {
+  /** Package URL as the reader wrote it, qualifiers included (distro, upstream). */
+  purl: string;
+  name: string;
+  version: string;
+  /** The reader's package type (deb, apk, npm, python, go-module, ...). */
+  type: string;
+  /** Where the package was found inside the image. */
+  location: string;
+}
+
+export interface InventoryImageResponse {
+  status: InventoryStatus;
+  error: string;
+  /** The image's os-release ID and VERSION_ID ("debian", "12.13"). */
+  distroId: string;
+  distroVersion: string;
+  /** The image's Config.WorkingDir, which tells an app's own code from its base image. */
+  workingDir: string;
+  packages: ImagePackage[];
+  scannerVersion: string;
+  durationMs: number;
 }
 
 function createBaseRenewalCSRRequest(): RenewalCSRRequest {
@@ -4328,6 +4467,7 @@ function createBaseDeployRequest(): DeployRequest {
     filesBindSources: [],
     ready: undefined,
     githubToken: "",
+    pullBaseImages: false,
   };
 }
 
@@ -4407,6 +4547,9 @@ export const DeployRequest: MessageFns<DeployRequest> = {
     }
     if (message.githubToken !== "") {
       writer.uint32(202).string(message.githubToken);
+    }
+    if (message.pullBaseImages !== false) {
+      writer.uint32(208).bool(message.pullBaseImages);
     }
     return writer;
   },
@@ -4627,6 +4770,14 @@ export const DeployRequest: MessageFns<DeployRequest> = {
             message.githubToken = reader.string();
             continue;
           }
+          case 26: {
+            if (tag !== 208) {
+              break;
+            }
+
+            message.pullBaseImages = reader.bool();
+            continue;
+          }
         }
         if ((tag & 7) === 4 || tag === 0) {
           break;
@@ -4753,6 +4904,11 @@ export const DeployRequest: MessageFns<DeployRequest> = {
         : isSet(object.github_token)
         ? globalThis.String(object.github_token)
         : "",
+      pullBaseImages: isSet(object.pullBaseImages)
+        ? globalThis.Boolean(object.pullBaseImages)
+        : isSet(object.pull_base_images)
+        ? globalThis.Boolean(object.pull_base_images)
+        : false,
     };
   },
 
@@ -4839,6 +4995,9 @@ export const DeployRequest: MessageFns<DeployRequest> = {
     if (message.githubToken !== "") {
       obj.githubToken = message.githubToken;
     }
+    if (message.pullBaseImages !== false) {
+      obj.pullBaseImages = message.pullBaseImages;
+    }
     return obj;
   },
 
@@ -4886,6 +5045,7 @@ export const DeployRequest: MessageFns<DeployRequest> = {
       ? ReadyCheck.fromPartial(object.ready)
       : undefined;
     message.githubToken = object.githubToken ?? "";
+    message.pullBaseImages = object.pullBaseImages ?? false;
     return message;
   },
 };
@@ -7399,7 +7559,16 @@ export const ImageChunk_Header: MessageFns<ImageChunk_Header> = {
 };
 
 function createBaseRerouteRequest(): RerouteRequest {
-  return { slug: "", composeYaml: "", env: {}, mounts: [], composeUpArgs: [], network: "", filesBindSources: [] };
+  return {
+    slug: "",
+    composeYaml: "",
+    env: {},
+    mounts: [],
+    composeUpArgs: [],
+    network: "",
+    filesBindSources: [],
+    pullImages: false,
+  };
 }
 
 export const RerouteRequest: MessageFns<RerouteRequest> = {
@@ -7424,6 +7593,9 @@ export const RerouteRequest: MessageFns<RerouteRequest> = {
     }
     for (const v of message.filesBindSources) {
       writer.uint32(58).string(v!);
+    }
+    if (message.pullImages !== false) {
+      writer.uint32(64).bool(message.pullImages);
     }
     return writer;
   },
@@ -7500,6 +7672,14 @@ export const RerouteRequest: MessageFns<RerouteRequest> = {
             message.filesBindSources.push(reader.string());
             continue;
           }
+          case 8: {
+            if (tag !== 64) {
+              break;
+            }
+
+            message.pullImages = reader.bool();
+            continue;
+          }
         }
         if ((tag & 7) === 4 || tag === 0) {
           break;
@@ -7546,6 +7726,11 @@ export const RerouteRequest: MessageFns<RerouteRequest> = {
         : globalThis.Array.isArray(object?.files_bind_sources)
         ? object.files_bind_sources.map((e: any) => globalThis.String(e))
         : [],
+      pullImages: isSet(object.pullImages)
+        ? globalThis.Boolean(object.pullImages)
+        : isSet(object.pull_images)
+        ? globalThis.Boolean(object.pull_images)
+        : false,
     };
   },
 
@@ -7578,6 +7763,9 @@ export const RerouteRequest: MessageFns<RerouteRequest> = {
     if (message.filesBindSources?.length) {
       obj.filesBindSources = message.filesBindSources;
     }
+    if (message.pullImages !== false) {
+      obj.pullImages = message.pullImages;
+    }
     return obj;
   },
 
@@ -7601,6 +7789,7 @@ export const RerouteRequest: MessageFns<RerouteRequest> = {
     message.composeUpArgs = object.composeUpArgs?.map((e) => e) || [];
     message.network = object.network ?? "";
     message.filesBindSources = object.filesBindSources?.map((e) => e) || [];
+    message.pullImages = object.pullImages ?? false;
     return message;
   },
 };
@@ -18925,6 +19114,730 @@ export const UpdateControlPlaneResponse: MessageFns<UpdateControlPlaneResponse> 
   },
 };
 
+function createBaseListWorkloadImagesRequest(): ListWorkloadImagesRequest {
+  return {};
+}
+
+export const ListWorkloadImagesRequest: MessageFns<ListWorkloadImagesRequest> = {
+  encode(_: ListWorkloadImagesRequest, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): ListWorkloadImagesRequest {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const previousRecursionDepth = (reader as any).__tsProtoDecodeDepth ?? 0;
+    if (previousRecursionDepth >= 100) {
+      throw new globalThis.Error("protobuf decode recursion limit exceeded");
+    }
+    (reader as any).__tsProtoDecodeDepth = previousRecursionDepth + 1;
+    try {
+      const end = length === undefined ? reader.len : reader.pos + length;
+      const message = createBaseListWorkloadImagesRequest();
+      while (reader.pos < end) {
+        const tag = reader.uint32();
+        switch (tag >>> 3) {
+        }
+        if ((tag & 7) === 4 || tag === 0) {
+          break;
+        }
+        reader.skip(tag & 7);
+      }
+      return message;
+    } finally {
+      (reader as any).__tsProtoDecodeDepth = previousRecursionDepth;
+    }
+  },
+
+  fromJSON(_: any): ListWorkloadImagesRequest {
+    return {};
+  },
+
+  toJSON(_: ListWorkloadImagesRequest): unknown {
+    const obj: any = {};
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<ListWorkloadImagesRequest>, I>>(base?: I): ListWorkloadImagesRequest {
+    return ListWorkloadImagesRequest.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<ListWorkloadImagesRequest>, I>>(_: I): ListWorkloadImagesRequest {
+    const message = createBaseListWorkloadImagesRequest();
+    return message;
+  },
+};
+
+function createBaseWorkloadImage(): WorkloadImage {
+  return { projectId: "", appId: "", service: "", imageRef: "", imageId: "", repoDigests: [], running: false };
+}
+
+export const WorkloadImage: MessageFns<WorkloadImage> = {
+  encode(message: WorkloadImage, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.projectId !== "") {
+      writer.uint32(10).string(message.projectId);
+    }
+    if (message.appId !== "") {
+      writer.uint32(18).string(message.appId);
+    }
+    if (message.service !== "") {
+      writer.uint32(26).string(message.service);
+    }
+    if (message.imageRef !== "") {
+      writer.uint32(34).string(message.imageRef);
+    }
+    if (message.imageId !== "") {
+      writer.uint32(42).string(message.imageId);
+    }
+    for (const v of message.repoDigests) {
+      writer.uint32(50).string(v!);
+    }
+    if (message.running !== false) {
+      writer.uint32(56).bool(message.running);
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): WorkloadImage {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const previousRecursionDepth = (reader as any).__tsProtoDecodeDepth ?? 0;
+    if (previousRecursionDepth >= 100) {
+      throw new globalThis.Error("protobuf decode recursion limit exceeded");
+    }
+    (reader as any).__tsProtoDecodeDepth = previousRecursionDepth + 1;
+    try {
+      const end = length === undefined ? reader.len : reader.pos + length;
+      const message = createBaseWorkloadImage();
+      while (reader.pos < end) {
+        const tag = reader.uint32();
+        switch (tag >>> 3) {
+          case 1: {
+            if (tag !== 10) {
+              break;
+            }
+
+            message.projectId = reader.string();
+            continue;
+          }
+          case 2: {
+            if (tag !== 18) {
+              break;
+            }
+
+            message.appId = reader.string();
+            continue;
+          }
+          case 3: {
+            if (tag !== 26) {
+              break;
+            }
+
+            message.service = reader.string();
+            continue;
+          }
+          case 4: {
+            if (tag !== 34) {
+              break;
+            }
+
+            message.imageRef = reader.string();
+            continue;
+          }
+          case 5: {
+            if (tag !== 42) {
+              break;
+            }
+
+            message.imageId = reader.string();
+            continue;
+          }
+          case 6: {
+            if (tag !== 50) {
+              break;
+            }
+
+            message.repoDigests.push(reader.string());
+            continue;
+          }
+          case 7: {
+            if (tag !== 56) {
+              break;
+            }
+
+            message.running = reader.bool();
+            continue;
+          }
+        }
+        if ((tag & 7) === 4 || tag === 0) {
+          break;
+        }
+        reader.skip(tag & 7);
+      }
+      return message;
+    } finally {
+      (reader as any).__tsProtoDecodeDepth = previousRecursionDepth;
+    }
+  },
+
+  fromJSON(object: any): WorkloadImage {
+    return {
+      projectId: isSet(object.projectId)
+        ? globalThis.String(object.projectId)
+        : isSet(object.project_id)
+        ? globalThis.String(object.project_id)
+        : "",
+      appId: isSet(object.appId)
+        ? globalThis.String(object.appId)
+        : isSet(object.app_id)
+        ? globalThis.String(object.app_id)
+        : "",
+      service: isSet(object.service) ? globalThis.String(object.service) : "",
+      imageRef: isSet(object.imageRef)
+        ? globalThis.String(object.imageRef)
+        : isSet(object.image_ref)
+        ? globalThis.String(object.image_ref)
+        : "",
+      imageId: isSet(object.imageId)
+        ? globalThis.String(object.imageId)
+        : isSet(object.image_id)
+        ? globalThis.String(object.image_id)
+        : "",
+      repoDigests: globalThis.Array.isArray(object?.repoDigests)
+        ? object.repoDigests.map((e: any) => globalThis.String(e))
+        : globalThis.Array.isArray(object?.repo_digests)
+        ? object.repo_digests.map((e: any) => globalThis.String(e))
+        : [],
+      running: isSet(object.running) ? globalThis.Boolean(object.running) : false,
+    };
+  },
+
+  toJSON(message: WorkloadImage): unknown {
+    const obj: any = {};
+    if (message.projectId !== "") {
+      obj.projectId = message.projectId;
+    }
+    if (message.appId !== "") {
+      obj.appId = message.appId;
+    }
+    if (message.service !== "") {
+      obj.service = message.service;
+    }
+    if (message.imageRef !== "") {
+      obj.imageRef = message.imageRef;
+    }
+    if (message.imageId !== "") {
+      obj.imageId = message.imageId;
+    }
+    if (message.repoDigests?.length) {
+      obj.repoDigests = message.repoDigests;
+    }
+    if (message.running !== false) {
+      obj.running = message.running;
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<WorkloadImage>, I>>(base?: I): WorkloadImage {
+    return WorkloadImage.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<WorkloadImage>, I>>(object: I): WorkloadImage {
+    const message = createBaseWorkloadImage();
+    message.projectId = object.projectId ?? "";
+    message.appId = object.appId ?? "";
+    message.service = object.service ?? "";
+    message.imageRef = object.imageRef ?? "";
+    message.imageId = object.imageId ?? "";
+    message.repoDigests = object.repoDigests?.map((e) => e) || [];
+    message.running = object.running ?? false;
+    return message;
+  },
+};
+
+function createBaseListWorkloadImagesResponse(): ListWorkloadImagesResponse {
+  return { images: [] };
+}
+
+export const ListWorkloadImagesResponse: MessageFns<ListWorkloadImagesResponse> = {
+  encode(message: ListWorkloadImagesResponse, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    for (const v of message.images) {
+      WorkloadImage.encode(v!, writer.uint32(10).fork()).join();
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): ListWorkloadImagesResponse {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const previousRecursionDepth = (reader as any).__tsProtoDecodeDepth ?? 0;
+    if (previousRecursionDepth >= 100) {
+      throw new globalThis.Error("protobuf decode recursion limit exceeded");
+    }
+    (reader as any).__tsProtoDecodeDepth = previousRecursionDepth + 1;
+    try {
+      const end = length === undefined ? reader.len : reader.pos + length;
+      const message = createBaseListWorkloadImagesResponse();
+      while (reader.pos < end) {
+        const tag = reader.uint32();
+        switch (tag >>> 3) {
+          case 1: {
+            if (tag !== 10) {
+              break;
+            }
+
+            message.images.push(WorkloadImage.decode(reader, reader.uint32()));
+            continue;
+          }
+        }
+        if ((tag & 7) === 4 || tag === 0) {
+          break;
+        }
+        reader.skip(tag & 7);
+      }
+      return message;
+    } finally {
+      (reader as any).__tsProtoDecodeDepth = previousRecursionDepth;
+    }
+  },
+
+  fromJSON(object: any): ListWorkloadImagesResponse {
+    return {
+      images: globalThis.Array.isArray(object?.images) ? object.images.map((e: any) => WorkloadImage.fromJSON(e)) : [],
+    };
+  },
+
+  toJSON(message: ListWorkloadImagesResponse): unknown {
+    const obj: any = {};
+    if (message.images?.length) {
+      obj.images = message.images.map((e) => WorkloadImage.toJSON(e));
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<ListWorkloadImagesResponse>, I>>(base?: I): ListWorkloadImagesResponse {
+    return ListWorkloadImagesResponse.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<ListWorkloadImagesResponse>, I>>(object: I): ListWorkloadImagesResponse {
+    const message = createBaseListWorkloadImagesResponse();
+    message.images = object.images?.map((e) => WorkloadImage.fromPartial(e)) || [];
+    return message;
+  },
+};
+
+function createBaseInventoryImageRequest(): InventoryImageRequest {
+  return { imageId: "" };
+}
+
+export const InventoryImageRequest: MessageFns<InventoryImageRequest> = {
+  encode(message: InventoryImageRequest, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.imageId !== "") {
+      writer.uint32(10).string(message.imageId);
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): InventoryImageRequest {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const previousRecursionDepth = (reader as any).__tsProtoDecodeDepth ?? 0;
+    if (previousRecursionDepth >= 100) {
+      throw new globalThis.Error("protobuf decode recursion limit exceeded");
+    }
+    (reader as any).__tsProtoDecodeDepth = previousRecursionDepth + 1;
+    try {
+      const end = length === undefined ? reader.len : reader.pos + length;
+      const message = createBaseInventoryImageRequest();
+      while (reader.pos < end) {
+        const tag = reader.uint32();
+        switch (tag >>> 3) {
+          case 1: {
+            if (tag !== 10) {
+              break;
+            }
+
+            message.imageId = reader.string();
+            continue;
+          }
+        }
+        if ((tag & 7) === 4 || tag === 0) {
+          break;
+        }
+        reader.skip(tag & 7);
+      }
+      return message;
+    } finally {
+      (reader as any).__tsProtoDecodeDepth = previousRecursionDepth;
+    }
+  },
+
+  fromJSON(object: any): InventoryImageRequest {
+    return {
+      imageId: isSet(object.imageId)
+        ? globalThis.String(object.imageId)
+        : isSet(object.image_id)
+        ? globalThis.String(object.image_id)
+        : "",
+    };
+  },
+
+  toJSON(message: InventoryImageRequest): unknown {
+    const obj: any = {};
+    if (message.imageId !== "") {
+      obj.imageId = message.imageId;
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<InventoryImageRequest>, I>>(base?: I): InventoryImageRequest {
+    return InventoryImageRequest.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<InventoryImageRequest>, I>>(object: I): InventoryImageRequest {
+    const message = createBaseInventoryImageRequest();
+    message.imageId = object.imageId ?? "";
+    return message;
+  },
+};
+
+function createBaseImagePackage(): ImagePackage {
+  return { purl: "", name: "", version: "", type: "", location: "" };
+}
+
+export const ImagePackage: MessageFns<ImagePackage> = {
+  encode(message: ImagePackage, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.purl !== "") {
+      writer.uint32(10).string(message.purl);
+    }
+    if (message.name !== "") {
+      writer.uint32(18).string(message.name);
+    }
+    if (message.version !== "") {
+      writer.uint32(26).string(message.version);
+    }
+    if (message.type !== "") {
+      writer.uint32(34).string(message.type);
+    }
+    if (message.location !== "") {
+      writer.uint32(42).string(message.location);
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): ImagePackage {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const previousRecursionDepth = (reader as any).__tsProtoDecodeDepth ?? 0;
+    if (previousRecursionDepth >= 100) {
+      throw new globalThis.Error("protobuf decode recursion limit exceeded");
+    }
+    (reader as any).__tsProtoDecodeDepth = previousRecursionDepth + 1;
+    try {
+      const end = length === undefined ? reader.len : reader.pos + length;
+      const message = createBaseImagePackage();
+      while (reader.pos < end) {
+        const tag = reader.uint32();
+        switch (tag >>> 3) {
+          case 1: {
+            if (tag !== 10) {
+              break;
+            }
+
+            message.purl = reader.string();
+            continue;
+          }
+          case 2: {
+            if (tag !== 18) {
+              break;
+            }
+
+            message.name = reader.string();
+            continue;
+          }
+          case 3: {
+            if (tag !== 26) {
+              break;
+            }
+
+            message.version = reader.string();
+            continue;
+          }
+          case 4: {
+            if (tag !== 34) {
+              break;
+            }
+
+            message.type = reader.string();
+            continue;
+          }
+          case 5: {
+            if (tag !== 42) {
+              break;
+            }
+
+            message.location = reader.string();
+            continue;
+          }
+        }
+        if ((tag & 7) === 4 || tag === 0) {
+          break;
+        }
+        reader.skip(tag & 7);
+      }
+      return message;
+    } finally {
+      (reader as any).__tsProtoDecodeDepth = previousRecursionDepth;
+    }
+  },
+
+  fromJSON(object: any): ImagePackage {
+    return {
+      purl: isSet(object.purl) ? globalThis.String(object.purl) : "",
+      name: isSet(object.name) ? globalThis.String(object.name) : "",
+      version: isSet(object.version) ? globalThis.String(object.version) : "",
+      type: isSet(object.type) ? globalThis.String(object.type) : "",
+      location: isSet(object.location) ? globalThis.String(object.location) : "",
+    };
+  },
+
+  toJSON(message: ImagePackage): unknown {
+    const obj: any = {};
+    if (message.purl !== "") {
+      obj.purl = message.purl;
+    }
+    if (message.name !== "") {
+      obj.name = message.name;
+    }
+    if (message.version !== "") {
+      obj.version = message.version;
+    }
+    if (message.type !== "") {
+      obj.type = message.type;
+    }
+    if (message.location !== "") {
+      obj.location = message.location;
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<ImagePackage>, I>>(base?: I): ImagePackage {
+    return ImagePackage.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<ImagePackage>, I>>(object: I): ImagePackage {
+    const message = createBaseImagePackage();
+    message.purl = object.purl ?? "";
+    message.name = object.name ?? "";
+    message.version = object.version ?? "";
+    message.type = object.type ?? "";
+    message.location = object.location ?? "";
+    return message;
+  },
+};
+
+function createBaseInventoryImageResponse(): InventoryImageResponse {
+  return {
+    status: 0,
+    error: "",
+    distroId: "",
+    distroVersion: "",
+    workingDir: "",
+    packages: [],
+    scannerVersion: "",
+    durationMs: 0,
+  };
+}
+
+export const InventoryImageResponse: MessageFns<InventoryImageResponse> = {
+  encode(message: InventoryImageResponse, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.status !== 0) {
+      writer.uint32(8).int32(message.status);
+    }
+    if (message.error !== "") {
+      writer.uint32(18).string(message.error);
+    }
+    if (message.distroId !== "") {
+      writer.uint32(26).string(message.distroId);
+    }
+    if (message.distroVersion !== "") {
+      writer.uint32(34).string(message.distroVersion);
+    }
+    if (message.workingDir !== "") {
+      writer.uint32(42).string(message.workingDir);
+    }
+    for (const v of message.packages) {
+      ImagePackage.encode(v!, writer.uint32(50).fork()).join();
+    }
+    if (message.scannerVersion !== "") {
+      writer.uint32(58).string(message.scannerVersion);
+    }
+    if (message.durationMs !== 0) {
+      writer.uint32(64).int64(message.durationMs);
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): InventoryImageResponse {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const previousRecursionDepth = (reader as any).__tsProtoDecodeDepth ?? 0;
+    if (previousRecursionDepth >= 100) {
+      throw new globalThis.Error("protobuf decode recursion limit exceeded");
+    }
+    (reader as any).__tsProtoDecodeDepth = previousRecursionDepth + 1;
+    try {
+      const end = length === undefined ? reader.len : reader.pos + length;
+      const message = createBaseInventoryImageResponse();
+      while (reader.pos < end) {
+        const tag = reader.uint32();
+        switch (tag >>> 3) {
+          case 1: {
+            if (tag !== 8) {
+              break;
+            }
+
+            message.status = reader.int32() as any;
+            continue;
+          }
+          case 2: {
+            if (tag !== 18) {
+              break;
+            }
+
+            message.error = reader.string();
+            continue;
+          }
+          case 3: {
+            if (tag !== 26) {
+              break;
+            }
+
+            message.distroId = reader.string();
+            continue;
+          }
+          case 4: {
+            if (tag !== 34) {
+              break;
+            }
+
+            message.distroVersion = reader.string();
+            continue;
+          }
+          case 5: {
+            if (tag !== 42) {
+              break;
+            }
+
+            message.workingDir = reader.string();
+            continue;
+          }
+          case 6: {
+            if (tag !== 50) {
+              break;
+            }
+
+            message.packages.push(ImagePackage.decode(reader, reader.uint32()));
+            continue;
+          }
+          case 7: {
+            if (tag !== 58) {
+              break;
+            }
+
+            message.scannerVersion = reader.string();
+            continue;
+          }
+          case 8: {
+            if (tag !== 64) {
+              break;
+            }
+
+            message.durationMs = longToNumber(reader.int64());
+            continue;
+          }
+        }
+        if ((tag & 7) === 4 || tag === 0) {
+          break;
+        }
+        reader.skip(tag & 7);
+      }
+      return message;
+    } finally {
+      (reader as any).__tsProtoDecodeDepth = previousRecursionDepth;
+    }
+  },
+
+  fromJSON(object: any): InventoryImageResponse {
+    return {
+      status: isSet(object.status) ? inventoryStatusFromJSON(object.status) : 0,
+      error: isSet(object.error) ? globalThis.String(object.error) : "",
+      distroId: isSet(object.distroId)
+        ? globalThis.String(object.distroId)
+        : isSet(object.distro_id)
+        ? globalThis.String(object.distro_id)
+        : "",
+      distroVersion: isSet(object.distroVersion)
+        ? globalThis.String(object.distroVersion)
+        : isSet(object.distro_version)
+        ? globalThis.String(object.distro_version)
+        : "",
+      workingDir: isSet(object.workingDir)
+        ? globalThis.String(object.workingDir)
+        : isSet(object.working_dir)
+        ? globalThis.String(object.working_dir)
+        : "",
+      packages: globalThis.Array.isArray(object?.packages)
+        ? object.packages.map((e: any) => ImagePackage.fromJSON(e))
+        : [],
+      scannerVersion: isSet(object.scannerVersion)
+        ? globalThis.String(object.scannerVersion)
+        : isSet(object.scanner_version)
+        ? globalThis.String(object.scanner_version)
+        : "",
+      durationMs: isSet(object.durationMs)
+        ? globalThis.Number(object.durationMs)
+        : isSet(object.duration_ms)
+        ? globalThis.Number(object.duration_ms)
+        : 0,
+    };
+  },
+
+  toJSON(message: InventoryImageResponse): unknown {
+    const obj: any = {};
+    if (message.status !== 0) {
+      obj.status = inventoryStatusToJSON(message.status);
+    }
+    if (message.error !== "") {
+      obj.error = message.error;
+    }
+    if (message.distroId !== "") {
+      obj.distroId = message.distroId;
+    }
+    if (message.distroVersion !== "") {
+      obj.distroVersion = message.distroVersion;
+    }
+    if (message.workingDir !== "") {
+      obj.workingDir = message.workingDir;
+    }
+    if (message.packages?.length) {
+      obj.packages = message.packages.map((e) => ImagePackage.toJSON(e));
+    }
+    if (message.scannerVersion !== "") {
+      obj.scannerVersion = message.scannerVersion;
+    }
+    if (message.durationMs !== 0) {
+      obj.durationMs = Math.round(message.durationMs);
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<InventoryImageResponse>, I>>(base?: I): InventoryImageResponse {
+    return InventoryImageResponse.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<InventoryImageResponse>, I>>(object: I): InventoryImageResponse {
+    const message = createBaseInventoryImageResponse();
+    message.status = object.status ?? 0;
+    message.error = object.error ?? "";
+    message.distroId = object.distroId ?? "";
+    message.distroVersion = object.distroVersion ?? "";
+    message.workingDir = object.workingDir ?? "";
+    message.packages = object.packages?.map((e) => ImagePackage.fromPartial(e)) || [];
+    message.scannerVersion = object.scannerVersion ?? "";
+    message.durationMs = object.durationMs ?? 0;
+    return message;
+  },
+};
+
 export type AgentService = typeof AgentService;
 export const AgentService = {
   /**
@@ -19764,6 +20677,36 @@ export const AgentService = {
       Buffer.from(UpdateControlPlaneResponse.encode(value).finish()),
     responseDeserialize: (value: Buffer): UpdateControlPlaneResponse => UpdateControlPlaneResponse.decode(value),
   },
+  /**
+   * The image behind every container Deplo manages on this host, running or stopped:
+   * what the control plane checks for security updates. Advertised as `image-inventory`.
+   */
+  listWorkloadImages: {
+    path: "/deplo.agent.v1.Agent/ListWorkloadImages" as const,
+    requestStream: false as const,
+    responseStream: false as const,
+    requestSerialize: (value: ListWorkloadImagesRequest): Buffer =>
+      Buffer.from(ListWorkloadImagesRequest.encode(value).finish()),
+    requestDeserialize: (value: Buffer): ListWorkloadImagesRequest => ListWorkloadImagesRequest.decode(value),
+    responseSerialize: (value: ListWorkloadImagesResponse): Buffer =>
+      Buffer.from(ListWorkloadImagesResponse.encode(value).finish()),
+    responseDeserialize: (value: Buffer): ListWorkloadImagesResponse => ListWorkloadImagesResponse.decode(value),
+  },
+  /**
+   * The package list inside one of those images, read under a memory cap, one image at a
+   * time and never during a deploy. Advertised as `image-inventory`.
+   */
+  inventoryImage: {
+    path: "/deplo.agent.v1.Agent/InventoryImage" as const,
+    requestStream: false as const,
+    responseStream: false as const,
+    requestSerialize: (value: InventoryImageRequest): Buffer =>
+      Buffer.from(InventoryImageRequest.encode(value).finish()),
+    requestDeserialize: (value: Buffer): InventoryImageRequest => InventoryImageRequest.decode(value),
+    responseSerialize: (value: InventoryImageResponse): Buffer =>
+      Buffer.from(InventoryImageResponse.encode(value).finish()),
+    responseDeserialize: (value: Buffer): InventoryImageResponse => InventoryImageResponse.decode(value),
+  },
 } as const;
 
 export interface AgentServer extends UntypedServiceImplementation {
@@ -20054,6 +20997,16 @@ export interface AgentServer extends UntypedServiceImplementation {
    * fetches the script itself: nothing about WHAT runs comes from the caller.
    */
   updateControlPlane: handleUnaryCall<UpdateControlPlaneRequest, UpdateControlPlaneResponse>;
+  /**
+   * The image behind every container Deplo manages on this host, running or stopped:
+   * what the control plane checks for security updates. Advertised as `image-inventory`.
+   */
+  listWorkloadImages: handleUnaryCall<ListWorkloadImagesRequest, ListWorkloadImagesResponse>;
+  /**
+   * The package list inside one of those images, read under a memory cap, one image at a
+   * time and never during a deploy. Advertised as `image-inventory`.
+   */
+  inventoryImage: handleUnaryCall<InventoryImageRequest, InventoryImageResponse>;
 }
 
 export interface AgentClient extends Client {
@@ -21120,6 +22073,44 @@ export interface AgentClient extends Client {
     metadata: Metadata,
     options: Partial<CallOptions>,
     callback: (error: ServiceError | null, response: UpdateControlPlaneResponse) => void,
+  ): ClientUnaryCall;
+  /**
+   * The image behind every container Deplo manages on this host, running or stopped:
+   * what the control plane checks for security updates. Advertised as `image-inventory`.
+   */
+  listWorkloadImages(
+    request: ListWorkloadImagesRequest,
+    callback: (error: ServiceError | null, response: ListWorkloadImagesResponse) => void,
+  ): ClientUnaryCall;
+  listWorkloadImages(
+    request: ListWorkloadImagesRequest,
+    metadata: Metadata,
+    callback: (error: ServiceError | null, response: ListWorkloadImagesResponse) => void,
+  ): ClientUnaryCall;
+  listWorkloadImages(
+    request: ListWorkloadImagesRequest,
+    metadata: Metadata,
+    options: Partial<CallOptions>,
+    callback: (error: ServiceError | null, response: ListWorkloadImagesResponse) => void,
+  ): ClientUnaryCall;
+  /**
+   * The package list inside one of those images, read under a memory cap, one image at a
+   * time and never during a deploy. Advertised as `image-inventory`.
+   */
+  inventoryImage(
+    request: InventoryImageRequest,
+    callback: (error: ServiceError | null, response: InventoryImageResponse) => void,
+  ): ClientUnaryCall;
+  inventoryImage(
+    request: InventoryImageRequest,
+    metadata: Metadata,
+    callback: (error: ServiceError | null, response: InventoryImageResponse) => void,
+  ): ClientUnaryCall;
+  inventoryImage(
+    request: InventoryImageRequest,
+    metadata: Metadata,
+    options: Partial<CallOptions>,
+    callback: (error: ServiceError | null, response: InventoryImageResponse) => void,
   ): ClientUnaryCall;
 }
 

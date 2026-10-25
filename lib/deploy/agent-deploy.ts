@@ -549,6 +549,7 @@ export async function buildDeployRequest(opts: {
     ),
     ready: undefined,
     githubToken: "",
+    pullBaseImages: false,
   };
 
   if (opts.plan.kind === "compose") {

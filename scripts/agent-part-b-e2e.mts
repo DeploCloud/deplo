@@ -234,6 +234,7 @@ async function main() {
     registryAuth: [],
     filesBindSources: [],
     githubToken: "",
+    pullBaseImages: false,
   })) {
     if (ev.seq) lastSeq = Number(ev.seq);
     if (ev.log) process.stdout.write(`  [${ev.log.level}] ${ev.log.text}\n`);
@@ -312,6 +313,7 @@ async function main() {
     registryAuth: [],
     filesBindSources: [],
     githubToken: "",
+    pullBaseImages: false,
   })) {
     if (ev.seq) cursor = Number(ev.seq);
     break;
