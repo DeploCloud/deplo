@@ -40,7 +40,8 @@ const DEP = "dpl_live";
 const OLD = "dpl_old";
 const LIGHT = Buffer.from("RIFF0000WEBPlight");
 
-let respond: () => CaptureScreenshotResponse;
+let respond: () =>
+  CaptureScreenshotResponse | Promise<CaptureScreenshotResponse>;
 
 const as = <T>(userId: string, teamId: string, fn: () => Promise<T>) =>
   runWithIdentity({ userId, teamId }, fn);
@@ -178,6 +179,21 @@ test("a failed retake says why and keeps the previous picture", async () => {
     .from(deploymentScreenshots)
     .where(eq(deploymentScreenshots.deploymentId, DEP));
   assert.ok(row, "the old picture stays");
+});
+
+test("a server with no room says so in words, not as a gRPC code", async () => {
+  respond = () =>
+    Promise.reject(
+      Object.assign(new Error("8 RESOURCE_EXHAUSTED: busy"), {
+        code: 8,
+        details:
+          "This server is busy right now, so the picture waits for the next deploy.",
+      }),
+    );
+  await assert.rejects(
+    as(OWNER, TEAM_A, () => retakeDeploymentScreenshot(DEP)),
+    (e: Error) => e.message.startsWith("This server is busy right now"),
+  );
 });
 
 test("turning screenshots off deletes every saved one", async () => {

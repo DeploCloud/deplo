@@ -157,6 +157,9 @@ export async function retakeDeploymentScreenshot(id: string): Promise<void> {
       throw new Error(
         "The app's server is not answering, so no screenshot could be taken.",
       );
+    // The agent words its refusals for people (a busy server, no disk); show them without the gRPC prefix.
+    const details = (e as { details?: unknown }).details;
+    if (typeof details === "string" && details) throw new Error(details);
     throw e;
   }
   if (res.kind !== "stored") throw new Error(refusal(res));
