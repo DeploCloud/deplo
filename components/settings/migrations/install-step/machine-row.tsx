@@ -131,9 +131,6 @@ export function MachineRow({
           <p className="text-xs text-destructive">
             {AGENT_UNREACHABLE} {LINK_OFFLINE_MESSAGE}
           </p>
-          {!bad.message.includes(LINK_OFFLINE_MESSAGE) && (
-            <p className="text-xs text-muted-foreground">{bad.message}</p>
-          )}
           <CommandLine command={p.installCommand} truncate />
           {canAddServers ? (
             <AddressForm

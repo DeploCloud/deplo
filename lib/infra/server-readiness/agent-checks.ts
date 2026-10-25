@@ -78,8 +78,8 @@ export function helloFailure(err: unknown): ReadinessCheck {
     if (err.trust)
       return row(READINESS_MESSAGES.untrusted, READINESS_HINTS.reissue);
     return err.code === GrpcStatus.DEADLINE_EXCEEDED
-      ? row(READINESS_MESSAGES.timedOut, READINESS_HINTS.agentLogs)
-      : row(READINESS_MESSAGES.refused, READINESS_HINTS.agentLogs);
+      ? row(READINESS_MESSAGES.timedOut, READINESS_HINTS.offline)
+      : row(READINESS_MESSAGES.offline, READINESS_HINTS.offline);
   }
   return row(READINESS_MESSAGES.agentError, READINESS_HINTS.agentLogs);
 }

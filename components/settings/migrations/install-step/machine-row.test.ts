@@ -57,18 +57,23 @@ function offline(message: string, m: Partial<PlanServer> = {}): string {
   );
 }
 
-test("a machine that cannot connect is told to check it is on and online, never a port", () => {
+test("a machine that cannot connect is told to check it is on and online, and nothing else", () => {
   for (const html of [
-    offline(HEALTH_MESSAGES.refused),
-    offline(HEALTH_MESSAGES.linkDown),
-    offline(HEALTH_MESSAGES.timedOut, { cloudflare: true }),
+    offline(HEALTH_MESSAGES.offline),
+    // What an older check stored, until the next one replaces it.
+    offline(
+      "The agent did not answer (connection refused). Is it running on the host?",
+    ),
+    offline("The agent did not answer within the health-check deadline.", {
+      cloudflare: true,
+    }),
   ]) {
-    assert.ok(html.includes(HEALTH_MESSAGES.linkDown), html);
-    assert.doesNotMatch(html, /9443|firewall|inbound|outbound/i);
+    assert.ok(html.includes(HEALTH_MESSAGES.offline), html);
+    assert.doesNotMatch(html, /did not answer|9443|firewall|inbound|outbound/i);
   }
 });
 
 test("the check-the-machine sentence is said once", () => {
-  const html = offline(HEALTH_MESSAGES.linkDown);
-  assert.equal(html.split(HEALTH_MESSAGES.linkDown).length - 1, 1, html);
+  const html = offline(HEALTH_MESSAGES.offline);
+  assert.equal(html.split(HEALTH_MESSAGES.offline).length - 1, 1, html);
 });

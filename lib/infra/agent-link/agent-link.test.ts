@@ -252,7 +252,7 @@ test("a call fails as offline when the link stays away for about 10 s", async ()
     assert.ok(e instanceof AgentUnreachableError);
     assert.equal(
       unreachableMessage(e),
-      `This server is offline. ${HEALTH_MESSAGES.linkDown}`,
+      `This server is offline. ${HEALTH_MESSAGES.offline}`,
     );
     return true;
   });

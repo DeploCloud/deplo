@@ -13,6 +13,7 @@ import {
   HEALTH_MESSAGES,
 } from "./server-health";
 import { ContractVersion, type HelloResponse } from "../agent/gen/agent";
+import { LINK_OFFLINE_MESSAGE } from "../agent-reachability";
 
 function hello(over: Partial<HelloResponse> = {}): HelloResponse {
   return {
@@ -52,24 +53,16 @@ test("an unsupported contract version is `error` - the box is up, its agent is w
   assert.equal(h.message, HEALTH_MESSAGES.contract);
 });
 
-test("connection refused is offline", () => {
-  const err = new AgentUnreachableError(
-    "no connection",
-    GrpcStatus.UNAVAILABLE,
-  );
-  const h = classifyServerHealth(null, err);
-  assert.equal(h.status, "offline");
-  assert.equal(h.message, HEALTH_MESSAGES.refused);
-});
-
-test("a deadline overrun is offline, and says so specifically", () => {
-  const err = new AgentUnreachableError(
-    "deadline",
-    GrpcStatus.DEADLINE_EXCEEDED,
-  );
-  const h = classifyServerHealth(null, err);
-  assert.equal(h.status, "offline");
-  assert.equal(h.message, HEALTH_MESSAGES.timedOut);
+test("a server that does not answer is offline, and says only what to check", () => {
+  for (const err of [
+    new AgentUnreachableError("no connection", GrpcStatus.UNAVAILABLE),
+    new AgentUnreachableError("deadline", GrpcStatus.DEADLINE_EXCEEDED),
+    new AgentOfflineError("srv_1"),
+  ]) {
+    const h = classifyServerHealth(null, err);
+    assert.equal(h.status, "offline");
+    assert.equal(h.message, LINK_OFFLINE_MESSAGE, err.message);
+  }
 });
 
 test("a cert-pin mismatch is `error`, NEVER offline - the peer answered, it just isn't ours", () => {
@@ -151,15 +144,14 @@ test("only a transport failure is worth a confirming retry", () => {
   assert.equal(isRetryableProbeFailure(new Error("app error")), false);
 });
 
-test("a dead host is named as unreachable, not masked into a generic failure", () => {
+test("a dead host is named as offline, with what to check and not where it was dialed", () => {
   const msg = unreachableMessage(
     new AgentUnreachableError(
       "14 UNAVAILABLE: connect ECONNREFUSED 10.4.2.9:9443",
       GrpcStatus.UNAVAILABLE,
     ),
   );
-  assert.match(msg ?? "", /unreachable/i);
-  assert.doesNotMatch(msg ?? "", /10\.4\.2\.9|9443/, "leaked the dial address");
+  assert.equal(msg, `This server is offline. ${LINK_OFFLINE_MESSAGE}`);
 });
 
 test("a timeout, a trust failure and an expired certificate each get their own words", () => {
@@ -196,7 +188,7 @@ test("our own throw sites keep their copy, and other errors are left alone", () 
 });
 
 test("a linked server that is offline is told in plain words: the machine, on, the internet", () => {
-  const sentence = HEALTH_MESSAGES.linkDown;
+  const sentence = HEALTH_MESSAGES.offline;
   assert.match(sentence, /machine is on and connected to the internet/);
   assert.doesNotMatch(sentence, /9443|port|firewall|inbound|outbound|agent/i);
 });
@@ -206,10 +198,10 @@ test("a call that found no link fails as offline, in the same plain words", () =
   assert.ok(offline instanceof AgentUnreachableError, "callers still see it");
   assert.deepEqual(classifyServerHealth(null, offline), {
     status: "offline",
-    message: HEALTH_MESSAGES.linkDown,
+    message: HEALTH_MESSAGES.offline,
   });
   const told = unreachableMessage(offline) ?? "";
   assert.match(told, /offline/);
-  assert.ok(told.endsWith(HEALTH_MESSAGES.linkDown), told);
+  assert.ok(told.endsWith(HEALTH_MESSAGES.offline), told);
   assert.doesNotMatch(told, /srv_9f2c|agent/i, "no internal id or jargon");
 });

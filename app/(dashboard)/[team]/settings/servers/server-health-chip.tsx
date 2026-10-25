@@ -34,15 +34,11 @@ const VARIANTS: Record<
   provisioning: "warning",
 };
 
-/** A fresh observation's tooltip. Every offline server says what to check, however it is reached. */
+/** A fresh observation's tooltip. Every offline server says what to check, and only that. */
 export function healthTip(state: ServerHealthState): string {
-  const remedy =
-    state.status === "offline" && state.message !== LINK_OFFLINE_MESSAGE;
-  return [
-    state.message,
-    remedy ? LINK_OFFLINE_MESSAGE : null,
-    `Checked ${timeAgo(state.checkedAt!)}`,
-  ]
+  const message =
+    state.status === "offline" ? LINK_OFFLINE_MESSAGE : state.message;
+  return [message, `Checked ${timeAgo(state.checkedAt!)}`]
     .filter(Boolean)
     .join(" · ");
 }

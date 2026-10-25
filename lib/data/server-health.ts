@@ -329,7 +329,7 @@ export async function checkAllServerHealth(
 
 const LINK_OFFLINE: ServerHealth = {
   status: "offline",
-  message: HEALTH_MESSAGES.linkDown,
+  message: HEALTH_MESSAGES.offline,
 };
 
 interface LinkWatch {

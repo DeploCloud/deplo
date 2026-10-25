@@ -1,3 +1,5 @@
+import { LINK_OFFLINE_MESSAGE } from "../../agent-reachability";
+
 export const READINESS_MESSAGES = {
   notProvisioned:
     "No agent has been provisioned for this server yet - nothing has called home, so there is nothing on the host to check.",
@@ -7,8 +9,7 @@ export const READINESS_MESSAGES = {
     "The agent speaks an unsupported protocol version, so nothing else it reports can be trusted.",
   agentError:
     "The agent answered with an error. Check the agent's logs on the host.",
-  refused:
-    "The agent did not answer (connection refused). Is it running on the host?",
+  offline: "This server is offline.",
   timedOut: "The agent did not answer within the readiness check's deadline.",
   featuresUnknown:
     "This agent does not report which features it supports - it predates the feature list.",
@@ -33,6 +34,7 @@ export const READINESS_HINTS = {
     "Reissue the install command for this server (Server actions → Reissue install command) and run it on the host.",
   agentLogs:
     "Check that the machine is on and connected to the internet, and that the deplo-agent service is running on it.",
+  offline: LINK_OFFLINE_MESSAGE,
   updateAgent:
     "Update the agent on this server (Server actions → Update agent), then run this check again.",
   startDocker:

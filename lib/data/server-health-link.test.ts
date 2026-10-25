@@ -147,7 +147,7 @@ test(
     );
     const waited = performance.now() - started;
     assert.ok(waited > 9_500 && waited < 12_000, `offline after ${waited} ms`);
-    assert.equal((await shown()).message, HEALTH_MESSAGES.linkDown);
+    assert.equal((await shown()).message, HEALTH_MESSAGES.offline);
     assert.equal(agent.connections().opened, 0, "nothing dialed the agent");
   },
 );
@@ -274,7 +274,7 @@ test("checking a server whose link stayed away shows it offline at once, without
   const s = await check();
   assert.ok(s.took < 1_500, `the check took ${s.took} ms`);
   assert.equal(s.status, "offline");
-  assert.equal(s.statusMessage, HEALTH_MESSAGES.linkDown);
+  assert.equal(s.statusMessage, HEALTH_MESSAGES.offline);
   assert.ok(s.statusCheckedAt! > AGED, "a fresh observation");
   assert.equal(agent.connections().opened, 0, "nothing dialed the agent");
 });
@@ -307,7 +307,7 @@ test("once links have settled, a server that never linked is checked as today: d
   const down = await check();
   assert.ok(down.took < 3_000, `the check took ${down.took} ms`);
   assert.equal(down.status, "offline");
-  assert.equal(down.statusMessage, HEALTH_MESSAGES.refused);
+  assert.equal(down.statusMessage, HEALTH_MESSAGES.offline);
 });
 
 test("right after the panel starts, a server that stopped listening and has not relinked yet is not shown offline", async () => {

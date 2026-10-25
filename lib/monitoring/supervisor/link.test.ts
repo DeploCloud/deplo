@@ -160,7 +160,7 @@ test("a link that stays away shows the server offline with the link's own words"
   await new Promise((r) => setTimeout(r, 1_500));
   const now = await shown();
   assert.equal(now.status, "offline");
-  assert.equal(now.message, HEALTH_MESSAGES.linkDown);
+  assert.equal(now.message, HEALTH_MESSAGES.offline);
 });
 
 test("right after the panel starts, a server whose stream finds its port closed is not shown offline until links settle", async (t) => {
@@ -182,5 +182,5 @@ test("right after the panel starts, a server whose stream finds its port closed 
     async () => (await shown()).status === "offline",
     "offline once the panel has settled",
   );
-  assert.equal((await shown()).message, HEALTH_MESSAGES.refused);
+  assert.equal((await shown()).message, HEALTH_MESSAGES.offline);
 });
