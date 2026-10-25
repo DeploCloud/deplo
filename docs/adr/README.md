@@ -45,6 +45,7 @@ repository root.
 | [0036](0036-custom-traefik-labels.md)                                                     | Custom Traefik labels require an instance-wide grant                                                                        |
 | [0037](0037-a-panel-pins-its-agent.md)                                                    | A panel pins its agent: one version installed, a floor below which a server is unusable                                     |
 | [0038](0038-security-updates-are-matched-in-the-control-plane.md)                         | Security updates: the agent reads each image's packages, the control plane matches them against OSV                         |
+| [0039](0039-the-screenshot-browser-has-no-network.md)                                     | Deployment screenshots: a browser with no network on the app's server, whose only way out is the agent's vetted proxy       |
 
 ## Amended or superseded
 

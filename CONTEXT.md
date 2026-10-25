@@ -537,6 +537,14 @@ Deplo BUILDS records the tag it rendered (`deployments.image_ref`,
 is what makes a **Rollback** possible.
 _Avoid_: build (the build is one phase of a deployment), release.
 
+**Deployment screenshot**:
+The light and dark picture of a live **Deployment** that Deplo takes when it turns Ready and
+shows on the App's page (ADR-0039). Only a page that loaded correctly is kept; anything else
+leaves the page as it was. Kept for the production Deployment plus the 20 newest others,
+taken again only for the Deployment its address serves today, off per App in advanced
+settings (which deletes them).
+_Avoid_: preview (that is a **pull request preview**), thumbnail, snapshot.
+
 **Rollback**:
 Putting an App back on a previous **Deployment** by re-running the image that build left
 on the owning **server** - no clone, no build, no pull, so it lands in seconds. It is a
