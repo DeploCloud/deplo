@@ -504,6 +504,65 @@ export function inventoryStatusToJSON(object: InventoryStatus): string {
   }
 }
 
+export enum CaptureOutcome {
+  CAPTURE_OUTCOME_UNSPECIFIED = 0,
+  CAPTURE_OUTCOME_OK = 1,
+  /** CAPTURE_OUTCOME_HTTP_ERROR - The page answered with a status outside 2xx (http_status says which). */
+  CAPTURE_OUTCOME_HTTP_ERROR = 2,
+  /** CAPTURE_OUTCOME_BLANK - The page rendered as one flat colour. */
+  CAPTURE_OUTCOME_BLANK = 3,
+  CAPTURE_OUTCOME_UNREACHABLE = 4,
+  CAPTURE_OUTCOME_TIMEOUT = 5,
+  UNRECOGNIZED = -1,
+}
+
+export function captureOutcomeFromJSON(object: any): CaptureOutcome {
+  switch (object) {
+    case 0:
+    case "CAPTURE_OUTCOME_UNSPECIFIED":
+      return CaptureOutcome.CAPTURE_OUTCOME_UNSPECIFIED;
+    case 1:
+    case "CAPTURE_OUTCOME_OK":
+      return CaptureOutcome.CAPTURE_OUTCOME_OK;
+    case 2:
+    case "CAPTURE_OUTCOME_HTTP_ERROR":
+      return CaptureOutcome.CAPTURE_OUTCOME_HTTP_ERROR;
+    case 3:
+    case "CAPTURE_OUTCOME_BLANK":
+      return CaptureOutcome.CAPTURE_OUTCOME_BLANK;
+    case 4:
+    case "CAPTURE_OUTCOME_UNREACHABLE":
+      return CaptureOutcome.CAPTURE_OUTCOME_UNREACHABLE;
+    case 5:
+    case "CAPTURE_OUTCOME_TIMEOUT":
+      return CaptureOutcome.CAPTURE_OUTCOME_TIMEOUT;
+    case -1:
+    case "UNRECOGNIZED":
+    default:
+      return CaptureOutcome.UNRECOGNIZED;
+  }
+}
+
+export function captureOutcomeToJSON(object: CaptureOutcome): string {
+  switch (object) {
+    case CaptureOutcome.CAPTURE_OUTCOME_UNSPECIFIED:
+      return "CAPTURE_OUTCOME_UNSPECIFIED";
+    case CaptureOutcome.CAPTURE_OUTCOME_OK:
+      return "CAPTURE_OUTCOME_OK";
+    case CaptureOutcome.CAPTURE_OUTCOME_HTTP_ERROR:
+      return "CAPTURE_OUTCOME_HTTP_ERROR";
+    case CaptureOutcome.CAPTURE_OUTCOME_BLANK:
+      return "CAPTURE_OUTCOME_BLANK";
+    case CaptureOutcome.CAPTURE_OUTCOME_UNREACHABLE:
+      return "CAPTURE_OUTCOME_UNREACHABLE";
+    case CaptureOutcome.CAPTURE_OUTCOME_TIMEOUT:
+      return "CAPTURE_OUTCOME_TIMEOUT";
+    case CaptureOutcome.UNRECOGNIZED:
+    default:
+      return "UNRECOGNIZED";
+  }
+}
+
 export interface RenewalCSRRequest {
 }
 
@@ -2660,6 +2719,29 @@ export interface InventoryImageResponse {
   packages: ImagePackage[];
   scannerVersion: string;
   durationMs: number;
+}
+
+export interface CaptureScreenshotRequest {
+  /**
+   * http(s)://host[/path] of the deployment. Its host is always dialed at this server's own
+   * proxy, never through DNS.
+   */
+  url: string;
+  /** Answered only to a challenge from the url's own host. Empty = never authenticate. */
+  basicAuthUsername: string;
+  basicAuthPassword: string;
+}
+
+export interface CaptureScreenshotResponse {
+  outcome: CaptureOutcome;
+  /** The status of the page itself, after redirects. 0 when it never answered. */
+  httpStatus: number;
+  /** WebP, 960x600. Set only on OK. */
+  lightWebp: Uint8Array;
+  /** Empty when the page looks the same in the dark. */
+  darkWebp: Uint8Array;
+  /** Why it was not OK, for logs. */
+  detail: string;
 }
 
 function createBaseRenewalCSRRequest(): RenewalCSRRequest {
@@ -20091,6 +20173,260 @@ export const InventoryImageResponse: MessageFns<InventoryImageResponse> = {
   },
 };
 
+function createBaseCaptureScreenshotRequest(): CaptureScreenshotRequest {
+  return { url: "", basicAuthUsername: "", basicAuthPassword: "" };
+}
+
+export const CaptureScreenshotRequest: MessageFns<CaptureScreenshotRequest> = {
+  encode(message: CaptureScreenshotRequest, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.url !== "") {
+      writer.uint32(10).string(message.url);
+    }
+    if (message.basicAuthUsername !== "") {
+      writer.uint32(18).string(message.basicAuthUsername);
+    }
+    if (message.basicAuthPassword !== "") {
+      writer.uint32(26).string(message.basicAuthPassword);
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): CaptureScreenshotRequest {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const previousRecursionDepth = (reader as any).__tsProtoDecodeDepth ?? 0;
+    if (previousRecursionDepth >= 100) {
+      throw new globalThis.Error("protobuf decode recursion limit exceeded");
+    }
+    (reader as any).__tsProtoDecodeDepth = previousRecursionDepth + 1;
+    try {
+      const end = length === undefined ? reader.len : reader.pos + length;
+      const message = createBaseCaptureScreenshotRequest();
+      while (reader.pos < end) {
+        const tag = reader.uint32();
+        switch (tag >>> 3) {
+          case 1: {
+            if (tag !== 10) {
+              break;
+            }
+
+            message.url = reader.string();
+            continue;
+          }
+          case 2: {
+            if (tag !== 18) {
+              break;
+            }
+
+            message.basicAuthUsername = reader.string();
+            continue;
+          }
+          case 3: {
+            if (tag !== 26) {
+              break;
+            }
+
+            message.basicAuthPassword = reader.string();
+            continue;
+          }
+        }
+        if ((tag & 7) === 4 || tag === 0) {
+          break;
+        }
+        reader.skip(tag & 7);
+      }
+      return message;
+    } finally {
+      (reader as any).__tsProtoDecodeDepth = previousRecursionDepth;
+    }
+  },
+
+  fromJSON(object: any): CaptureScreenshotRequest {
+    return {
+      url: isSet(object.url) ? globalThis.String(object.url) : "",
+      basicAuthUsername: isSet(object.basicAuthUsername)
+        ? globalThis.String(object.basicAuthUsername)
+        : isSet(object.basic_auth_username)
+        ? globalThis.String(object.basic_auth_username)
+        : "",
+      basicAuthPassword: isSet(object.basicAuthPassword)
+        ? globalThis.String(object.basicAuthPassword)
+        : isSet(object.basic_auth_password)
+        ? globalThis.String(object.basic_auth_password)
+        : "",
+    };
+  },
+
+  toJSON(message: CaptureScreenshotRequest): unknown {
+    const obj: any = {};
+    if (message.url !== "") {
+      obj.url = message.url;
+    }
+    if (message.basicAuthUsername !== "") {
+      obj.basicAuthUsername = message.basicAuthUsername;
+    }
+    if (message.basicAuthPassword !== "") {
+      obj.basicAuthPassword = message.basicAuthPassword;
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<CaptureScreenshotRequest>, I>>(base?: I): CaptureScreenshotRequest {
+    return CaptureScreenshotRequest.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<CaptureScreenshotRequest>, I>>(object: I): CaptureScreenshotRequest {
+    const message = createBaseCaptureScreenshotRequest();
+    message.url = object.url ?? "";
+    message.basicAuthUsername = object.basicAuthUsername ?? "";
+    message.basicAuthPassword = object.basicAuthPassword ?? "";
+    return message;
+  },
+};
+
+function createBaseCaptureScreenshotResponse(): CaptureScreenshotResponse {
+  return { outcome: 0, httpStatus: 0, lightWebp: new Uint8Array(0), darkWebp: new Uint8Array(0), detail: "" };
+}
+
+export const CaptureScreenshotResponse: MessageFns<CaptureScreenshotResponse> = {
+  encode(message: CaptureScreenshotResponse, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.outcome !== 0) {
+      writer.uint32(8).int32(message.outcome);
+    }
+    if (message.httpStatus !== 0) {
+      writer.uint32(16).int32(message.httpStatus);
+    }
+    if (message.lightWebp.length !== 0) {
+      writer.uint32(26).bytes(message.lightWebp);
+    }
+    if (message.darkWebp.length !== 0) {
+      writer.uint32(34).bytes(message.darkWebp);
+    }
+    if (message.detail !== "") {
+      writer.uint32(42).string(message.detail);
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): CaptureScreenshotResponse {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const previousRecursionDepth = (reader as any).__tsProtoDecodeDepth ?? 0;
+    if (previousRecursionDepth >= 100) {
+      throw new globalThis.Error("protobuf decode recursion limit exceeded");
+    }
+    (reader as any).__tsProtoDecodeDepth = previousRecursionDepth + 1;
+    try {
+      const end = length === undefined ? reader.len : reader.pos + length;
+      const message = createBaseCaptureScreenshotResponse();
+      while (reader.pos < end) {
+        const tag = reader.uint32();
+        switch (tag >>> 3) {
+          case 1: {
+            if (tag !== 8) {
+              break;
+            }
+
+            message.outcome = reader.int32() as any;
+            continue;
+          }
+          case 2: {
+            if (tag !== 16) {
+              break;
+            }
+
+            message.httpStatus = reader.int32();
+            continue;
+          }
+          case 3: {
+            if (tag !== 26) {
+              break;
+            }
+
+            message.lightWebp = reader.bytes();
+            continue;
+          }
+          case 4: {
+            if (tag !== 34) {
+              break;
+            }
+
+            message.darkWebp = reader.bytes();
+            continue;
+          }
+          case 5: {
+            if (tag !== 42) {
+              break;
+            }
+
+            message.detail = reader.string();
+            continue;
+          }
+        }
+        if ((tag & 7) === 4 || tag === 0) {
+          break;
+        }
+        reader.skip(tag & 7);
+      }
+      return message;
+    } finally {
+      (reader as any).__tsProtoDecodeDepth = previousRecursionDepth;
+    }
+  },
+
+  fromJSON(object: any): CaptureScreenshotResponse {
+    return {
+      outcome: isSet(object.outcome) ? captureOutcomeFromJSON(object.outcome) : 0,
+      httpStatus: isSet(object.httpStatus)
+        ? globalThis.Number(object.httpStatus)
+        : isSet(object.http_status)
+        ? globalThis.Number(object.http_status)
+        : 0,
+      lightWebp: isSet(object.lightWebp)
+        ? bytesFromBase64(object.lightWebp)
+        : isSet(object.light_webp)
+        ? bytesFromBase64(object.light_webp)
+        : new Uint8Array(0),
+      darkWebp: isSet(object.darkWebp)
+        ? bytesFromBase64(object.darkWebp)
+        : isSet(object.dark_webp)
+        ? bytesFromBase64(object.dark_webp)
+        : new Uint8Array(0),
+      detail: isSet(object.detail) ? globalThis.String(object.detail) : "",
+    };
+  },
+
+  toJSON(message: CaptureScreenshotResponse): unknown {
+    const obj: any = {};
+    if (message.outcome !== 0) {
+      obj.outcome = captureOutcomeToJSON(message.outcome);
+    }
+    if (message.httpStatus !== 0) {
+      obj.httpStatus = Math.round(message.httpStatus);
+    }
+    if (message.lightWebp.length !== 0) {
+      obj.lightWebp = base64FromBytes(message.lightWebp);
+    }
+    if (message.darkWebp.length !== 0) {
+      obj.darkWebp = base64FromBytes(message.darkWebp);
+    }
+    if (message.detail !== "") {
+      obj.detail = message.detail;
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<CaptureScreenshotResponse>, I>>(base?: I): CaptureScreenshotResponse {
+    return CaptureScreenshotResponse.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<CaptureScreenshotResponse>, I>>(object: I): CaptureScreenshotResponse {
+    const message = createBaseCaptureScreenshotResponse();
+    message.outcome = object.outcome ?? 0;
+    message.httpStatus = object.httpStatus ?? 0;
+    message.lightWebp = object.lightWebp ?? new Uint8Array(0);
+    message.darkWebp = object.darkWebp ?? new Uint8Array(0);
+    message.detail = object.detail ?? "";
+    return message;
+  },
+};
+
 export type AgentService = typeof AgentService;
 export const AgentService = {
   /**
@@ -20987,6 +21323,21 @@ export const AgentService = {
       Buffer.from(StopListeningResponse.encode(value).finish()),
     responseDeserialize: (value: Buffer): StopListeningResponse => StopListeningResponse.decode(value),
   },
+  /**
+   * Opens a deployment in a throwaway browser that has no network of its own and returns
+   * a light and a dark picture of it. Advertised as `screenshot`.
+   */
+  captureScreenshot: {
+    path: "/deplo.agent.v1.Agent/CaptureScreenshot" as const,
+    requestStream: false as const,
+    responseStream: false as const,
+    requestSerialize: (value: CaptureScreenshotRequest): Buffer =>
+      Buffer.from(CaptureScreenshotRequest.encode(value).finish()),
+    requestDeserialize: (value: Buffer): CaptureScreenshotRequest => CaptureScreenshotRequest.decode(value),
+    responseSerialize: (value: CaptureScreenshotResponse): Buffer =>
+      Buffer.from(CaptureScreenshotResponse.encode(value).finish()),
+    responseDeserialize: (value: Buffer): CaptureScreenshotResponse => CaptureScreenshotResponse.decode(value),
+  },
 } as const;
 
 export interface AgentServer extends UntypedServiceImplementation {
@@ -21297,6 +21648,11 @@ export interface AgentServer extends UntypedServiceImplementation {
    * the link only, and kept across restarts. Advertised as `agent-link`.
    */
   stopListening: handleUnaryCall<StopListeningRequest, StopListeningResponse>;
+  /**
+   * Opens a deployment in a throwaway browser that has no network of its own and returns
+   * a light and a dark picture of it. Advertised as `screenshot`.
+   */
+  captureScreenshot: handleUnaryCall<CaptureScreenshotRequest, CaptureScreenshotResponse>;
 }
 
 export interface AgentClient extends Client {
@@ -22439,6 +22795,25 @@ export interface AgentClient extends Client {
     metadata: Metadata,
     options: Partial<CallOptions>,
     callback: (error: ServiceError | null, response: StopListeningResponse) => void,
+  ): ClientUnaryCall;
+  /**
+   * Opens a deployment in a throwaway browser that has no network of its own and returns
+   * a light and a dark picture of it. Advertised as `screenshot`.
+   */
+  captureScreenshot(
+    request: CaptureScreenshotRequest,
+    callback: (error: ServiceError | null, response: CaptureScreenshotResponse) => void,
+  ): ClientUnaryCall;
+  captureScreenshot(
+    request: CaptureScreenshotRequest,
+    metadata: Metadata,
+    callback: (error: ServiceError | null, response: CaptureScreenshotResponse) => void,
+  ): ClientUnaryCall;
+  captureScreenshot(
+    request: CaptureScreenshotRequest,
+    metadata: Metadata,
+    options: Partial<CallOptions>,
+    callback: (error: ServiceError | null, response: CaptureScreenshotResponse) => void,
   ): ClientUnaryCall;
 }
 

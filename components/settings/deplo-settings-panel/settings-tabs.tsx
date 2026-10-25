@@ -28,6 +28,8 @@ import { LogsRetentionCard } from "@/components/settings/logs-retention-card";
 import { GravatarCard } from "@/components/settings/gravatar-card";
 import { CanaryReleasesCard } from "@/components/settings/canary-releases-card";
 import { UsageReportCard } from "@/components/settings/usage-report-card";
+import { SecurityUpdatesCard } from "@/components/settings/security-updates-card";
+import type { SecurityUpdatesStatus } from "@/lib/data/security-updates/settings";
 import {
   InstanceOwnerCard,
   type OwnerCandidate,
@@ -50,8 +52,10 @@ export function DeploSettingsPanel({
   fleet,
   hosts,
   canary: canarySeed,
+  security,
 }: {
   canary: boolean;
+  security: SecurityUpdatesStatus;
   settings: InstanceSettings;
   viewerIsOwner: boolean;
   viewerTwoFactorEnabled: boolean;
@@ -135,6 +139,7 @@ export function DeploSettingsPanel({
           <PanelHttpCard />
         </SettingGroup>
         <SettingGroup icon={ShieldCheck} title="Privacy">
+          <SecurityUpdatesCard status={security} />
           <UsageReportCard
             enabled={settings.usageReportsEnabled}
             forcedOff={settings.usageReportsForcedOff}

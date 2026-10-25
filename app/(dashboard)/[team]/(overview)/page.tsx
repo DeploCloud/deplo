@@ -21,6 +21,9 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { EmptyState } from "@/components/shared/empty-state";
 import { AppsGrid } from "@/components/apps/apps-grid/apps-grid";
+import { SecurityOverviewNotice } from "@/components/security-updates/security-overview-notice";
+import { databaseSecurityCounts } from "@/lib/data/security-updates/read";
+import { securitySubjects } from "@/lib/security-updates/subjects";
 import { FolderTrail } from "@/components/apps/apps-grid/folder-trail";
 import { ArchiveDropZone } from "@/components/apps/archive-drop-zone";
 import { AppsGraphic } from "@/components/apps/apps-graphic";
@@ -52,7 +55,10 @@ export default async function OverviewPage(props: PageProps<"/[team]">) {
     env: envParam,
     welcome,
     takeover: takeoverParam,
+    needs,
   } = await props.searchParams;
+  const needsSecurity =
+    (Array.isArray(needs) ? needs[0] : needs) === "security";
   const takenOverFrom = Array.isArray(takeoverParam)
     ? takeoverParam[0]
     : takeoverParam;
@@ -95,18 +101,23 @@ export default async function OverviewPage(props: PageProps<"/[team]">) {
     welcomePending(),
   ]);
   const activityDatabases = teamWideReach ? await listDatabases() : [];
+  const securityList = securitySubjects(
+    services,
+    activityDatabases,
+    await databaseSecurityCounts(activityDatabases.map((d) => d.id)),
+  );
   const networkSweepFailed = await networkSweepFailures();
   const canManageOrder = isAdmin || canManageTeam;
   const noCreateAppsNote =
     "You don't have permission to create apps. Ask a team admin for the “Create apps” permission.";
   const canManageAllFolders = canManageOrder;
 
+  // Like a search, the security filter flattens the grid to the apps it names.
+  const flat = Boolean(query) || needsSecurity;
   const openFolder =
-    !query && folderId
-      ? (folders.find((f) => f.id === folderId) ?? null)
-      : null;
+    !flat && folderId ? (folders.find((f) => f.id === folderId) ?? null) : null;
   const openProject =
-    !query && !openFolder && projectId
+    !flat && !openFolder && projectId
       ? (projects.find((p) => p.id === projectId) ?? null)
       : null;
 
@@ -123,8 +134,12 @@ export default async function OverviewPage(props: PageProps<"/[team]">) {
     Boolean(p.repo?.repo.toLowerCase().includes(query)) ||
     Boolean(p.productionUrl?.toLowerCase().includes(query));
 
-  const visibleApps = query
-    ? services.filter(matches)
+  const needsUpdate = (p: (typeof services)[number]) =>
+    (p.securityUpdates?.count ?? 0) > 0;
+  const visibleApps = flat
+    ? services.filter(
+        (p) => (!query || matches(p)) && (!needsSecurity || needsUpdate(p)),
+      )
     : openFolder
       ? services.filter((p) => p.folderId === openFolder.id)
       : openProject
@@ -135,14 +150,14 @@ export default async function OverviewPage(props: PageProps<"/[team]">) {
               (p.environmentId ?? defaultEnv?.id) === selectedEnv?.id,
           )
         : services.filter((p) => !p.folderId && !p.projectId);
-  const visibleFolders = query
+  const visibleFolders = flat
     ? []
     : openFolder
       ? folders.filter((f) => (f.parentId ?? null) === openFolder.id)
       : openProject
         ? []
         : folders.filter((f) => (f.parentId ?? null) === null);
-  const visibleProjects = query || openFolder || openProject ? [] : projects;
+  const visibleProjects = flat || openFolder || openProject ? [] : projects;
 
   const enrichedFolders = await Promise.all(
     visibleFolders.map(async (f) => ({
@@ -198,6 +213,7 @@ export default async function OverviewPage(props: PageProps<"/[team]">) {
   const gridKey = [
     view,
     query,
+    needsSecurity ? "needs-security" : "",
     openFolder?.id ?? "",
     openProject?.id ?? "",
     selectedEnv?.id ?? "",
@@ -275,6 +291,12 @@ export default async function OverviewPage(props: PageProps<"/[team]">) {
           }
         />
 
+        <SecurityOverviewNotice
+          subjects={securityList}
+          filterActive={needsSecurity}
+          view={view}
+        />
+
         {isAdmin && <NetworkSweepNotice failed={networkSweepFailed} />}
 
         <AppSearch
@@ -283,6 +305,7 @@ export default async function OverviewPage(props: PageProps<"/[team]">) {
           initialFolder={openFolder?.id ?? ""}
           initialProject={openProject?.id ?? ""}
           initialEnv={openProject && selectedEnv ? selectedEnv.id : ""}
+          initialNeeds={needsSecurity ? "security" : ""}
           environmentSwitcher={
             openProject && selectedEnv ? (
               <EnvironmentSwitcher
@@ -303,11 +326,19 @@ export default async function OverviewPage(props: PageProps<"/[team]">) {
         />
 
         {nothingToShow ? (
-          query ? (
+          query || needsSecurity ? (
             <EmptyState
               icon={Rocket}
-              title="No apps match your search"
-              description="Try a different search, or clear it to see everything."
+              title={
+                query
+                  ? "No apps match your search"
+                  : "No app needs a security update"
+              }
+              description={
+                query
+                  ? "Try a different search, or clear it to see everything."
+                  : "Everything Deplo checked is up to date."
+              }
             />
           ) : openFolder ? (
             <div className="space-y-6">

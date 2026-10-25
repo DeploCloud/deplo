@@ -9,10 +9,7 @@ import { loadAppGraph, loadDeployment } from "../../data/app-graph-load";
 import { finalizeDeploymentLogs } from "../../data/deployment-logs";
 import { primaryDomainName } from "../../data/domains/primary-domain";
 import { getDb } from "../../db/client";
-import {
-  deployments as deploymentsTable,
-  appPreviews as appPreviewsTable,
-} from "../../db/schema/control-plane/deployments";
+import { deployments as deploymentsTable } from "../../db/schema/control-plane/deployments";
 import { normalizeBuildConfig } from "../../frameworks";
 import { forkCloneUrl, resolveCloneUrl } from "../../git/clone-url";
 import { repoCloneRefusal } from "../../git/repo-access";
@@ -32,7 +29,6 @@ import {
 import { readFile } from "node:fs/promises";
 import { publishAppChanged } from "../../graphql/pubsub";
 import { nowIso } from "../../ids";
-import type { CertProvider } from "../../types/domain";
 import { usesPastedCompose } from "../../utils";
 import { deployImageRef, isOwnImage, stackName } from "../deploy-key";
 import { deploImageClaim, deploImageMessage } from "../deplo-image";
@@ -71,64 +67,15 @@ import {
   setDeployState,
   settleIfCanceled,
   settleMove,
-  sweepAfterDeploy,
+  afterDeployReady,
   targetFor,
 } from "./deployment-state";
 import { destroyStack } from "./stack-lifecycle";
-
-function forkFullName(cloneUrl: string): string {
-  try {
-    return new URL(cloneUrl).pathname.replace(/^\/+/, "").replace(/\.git$/, "");
-  } catch {
-    return "";
-  }
-}
-
-async function loadPreviewForDeploy(previewId: string): Promise<{
-  id: string;
-  host: string;
-  certProvider: CertProvider;
-  prNumber: number;
-  isFork: boolean;
-  headCloneUrl: string;
-  approvedSha: string | null;
-  port: number | null;
-} | null> {
-  const rows = await getDb()
-    .select({
-      id: appPreviewsTable.id,
-      host: appPreviewsTable.host,
-      certProvider: appPreviewsTable.certProvider,
-      prNumber: appPreviewsTable.prNumber,
-      isFork: appPreviewsTable.isFork,
-      headCloneUrl: appPreviewsTable.headCloneUrl,
-      approvedSha: appPreviewsTable.approvedSha,
-      port: appPreviewsTable.port,
-    })
-    .from(appPreviewsTable)
-    .where(eq(appPreviewsTable.id, previewId))
-    .limit(1);
-  const row = rows[0];
-  if (!row) return null;
-  return { ...row, certProvider: row.certProvider as CertProvider };
-}
-
-const MAX_SOURCE_COMPOSE_BYTES = 512 * 1024;
-
-async function readUploadCompose(
-  buildDir: string,
-  preferred?: string | null,
-): Promise<SourceCompose> {
-  const path = await findComposeFile(buildDir, preferred);
-  if (!path)
-    throw new Error(
-      `No ${preferred?.trim() || "docker-compose.yml"} in the uploaded files.`,
-    );
-  const content = await readFile(join(buildDir, path), "utf8");
-  if (Buffer.byteLength(content) > MAX_SOURCE_COMPOSE_BYTES)
-    throw new Error(`${path} is larger than 512 KB.`);
-  return { path, content };
-}
+import {
+  forkFullName,
+  loadPreviewForDeploy,
+  readUploadCompose,
+} from "./deploy-run-inputs";
 
 export async function runDeploymentGuarded(depId: string): Promise<void> {
   try {
@@ -205,6 +152,7 @@ async function runDeployment(depId: string): Promise<void> {
     // Nothing host-local happens here: every build method runs on the agent (ADR-0006).
     const { noCache, reason: noCacheReason } = noCacheForDeploy(project.build);
     const forceRecreate = dep.forceRecreate;
+    const pullBase = dep.pullBase;
 
     const hasCompose = Boolean(project.compose && project.compose.trim());
     // A stack read from the app's own source goes through the git/upload path below, which reads it again.
@@ -329,6 +277,7 @@ async function runDeployment(depId: string): Promise<void> {
         target,
         domain,
         forceRecreate,
+        pullBase,
         domains: routeDomains.map((d) => d.name),
         domainRoutes: routeDomains,
         environment: dep.environment,
@@ -461,6 +410,7 @@ async function runDeployment(depId: string): Promise<void> {
         env,
         plan: { kind: "dockerfile", buildDir, build },
         noCache,
+        pullBase,
         forceRecreate,
         ready,
         githubToken:
@@ -639,6 +589,7 @@ async function runDeployment(depId: string): Promise<void> {
               build: normalizeBuildConfig(build),
             },
             noCache,
+            pullBase,
             forceRecreate,
             forkPreview: Boolean(forkUrl),
             ready,
@@ -775,7 +726,7 @@ async function runDeployment(depId: string): Promise<void> {
         if (dep.environment === "production") {
           await settleMove(depId, project.id, serverId);
         }
-        sweepAfterDeploy(depId, serverId);
+        afterDeployReady(depId, serverId);
       }
     } else {
       await commitOutcome(

@@ -6,6 +6,7 @@ import { LINK_WAIT_MS } from "../agent-link/protocol";
 import { linksSettling, waitForLink } from "../agent-link/registry";
 import { agentSelfRpc } from "./agent-self-rpc";
 import { backupRpc } from "./backup-rpc";
+import { captureRpc } from "./capture-rpc";
 import type { AgentConnection } from "./connection";
 import { consoleRpc } from "./console-rpc";
 import { cronRpc } from "./cron-rpc";
@@ -14,6 +15,7 @@ import { HELLO_TIMEOUT_MS } from "./deadlines";
 import { AgentUnreachableError, assertAgentUsable } from "./errors";
 import { filesRpc } from "./files-rpc";
 import { hostRpc } from "./host-rpc";
+import { inventoryRpc } from "./inventory-rpc";
 import { metricsRpc } from "./metrics-rpc";
 import { leaseChannel } from "./channel-pool";
 import {
@@ -40,6 +42,8 @@ function connectionOn(channel: AgentChannel): AgentConnection {
     ...agentSelfRpc(channel),
     ...dataCopyRpc(channel),
     ...hostRpc(channel),
+    ...inventoryRpc(channel),
+    ...captureRpc(channel),
     ...backupRpc(channel),
     ...consoleRpc(channel),
     ...cronRpc(channel),

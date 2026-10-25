@@ -45,6 +45,7 @@ import { DatabaseLogo } from "./database-logo";
 import { DB_NAMES } from "./db-engines";
 import type { DatabaseDTO } from "@/lib/data/databases/rows";
 import type { EnvironmentOption } from "./environment-combobox";
+import { SecurityShield } from "@/components/security-updates/security-shield";
 
 export function DatabaseCard({
   db,
@@ -188,6 +189,7 @@ function DatabaseCardGrid({
               </p>
             </div>
           </div>
+          {db.securityUpdates && <SecurityShield {...db.securityUpdates} />}
           <CardActions
             environments={environments}
             canConfigure={canConfigure}
@@ -261,6 +263,7 @@ function DatabaseCardList({
           <span className="max-w-32 truncate">{serverName ?? "—"}</span>
         </span>
       </div>
+      {db.securityUpdates && <SecurityShield {...db.securityUpdates} />}
       <CardActions
         environments={environments}
         canConfigure={canConfigure}

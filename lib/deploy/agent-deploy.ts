@@ -18,7 +18,10 @@ import { status as GrpcStatus } from "@grpc/grpc-js";
 import { connectAgent } from "../infra/agent-client/connect";
 import type { AgentConnection } from "../infra/agent-client/connection";
 import { agentPreflight } from "../infra/agent-client/preflight";
-import { FILES_BIND_CHECK_CAPABILITY } from "../infra/agent-client/hello-capabilities";
+import {
+  DEPLOY_PULL_BASE_CAPABILITY,
+  FILES_BIND_CHECK_CAPABILITY,
+} from "../infra/agent-client/hello-capabilities";
 import { stackFilesDir } from "./deploy-key";
 import { fileBindsUnderFilesDir, filesBindSources } from "./file-binds";
 import { composeDeployArgs } from "./compose-args";
@@ -226,6 +229,7 @@ export async function runAgentDeploy(opts: {
   plan: AgentBuildPlan;
   readyTimeoutMs?: number;
   noCache?: boolean;
+  pullBase?: boolean;
   forceRecreate?: boolean;
   composeUpArgs?: string[];
   buildOnly?: boolean;
@@ -263,6 +267,16 @@ export async function runAgentDeploy(opts: {
       "warn",
       "This server's agent is too old to skip the build cache - this build may reuse " +
         "cached layers. Update the agent (reissue the install command from the server's actions menu).",
+    );
+  }
+  if (
+    opts.pullBase &&
+    !hello.capabilities.includes(DEPLOY_PULL_BASE_CAPABILITY)
+  ) {
+    opts.sink.log(
+      "warn",
+      "This server's agent is too old to fetch a fresh base image - this build may reuse " +
+        "the copy already on the server. Deplo updates the agent on its own.",
     );
   }
   if (
@@ -516,6 +530,7 @@ export async function buildDeployRequest(opts: {
   plan: AgentBuildPlan;
   readyTimeoutMs?: number;
   noCache?: boolean;
+  pullBase?: boolean;
   forceRecreate?: boolean;
   composeUpArgs?: string[];
   buildOnly?: boolean;
@@ -549,7 +564,7 @@ export async function buildDeployRequest(opts: {
     ),
     ready: undefined,
     githubToken: "",
-    pullBaseImages: false,
+    pullBaseImages: opts.pullBase ?? false,
   };
 
   if (opts.plan.kind === "compose") {

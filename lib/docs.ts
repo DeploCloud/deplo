@@ -9,10 +9,15 @@ export const DOCS = {
   "deploy.sources": "guides/deploy",
   "deploy.trace": "concepts/what-happens-on-a-deploy",
   "deploy.queue": "concepts/what-happens-on-a-deploy#it-waits-for-a-slot",
+  "deploy.screenshot": "concepts/what-happens-on-a-deploy#a-picture-is-taken",
   "deploy.fromGit": "guides/deploy/from-git",
   "deploy.dockerImage": "guides/deploy/docker-image",
   "deploy.fromTemplate": "guides/deploy/from-template",
   "deploy.button": "guides/deploy/deploy-button",
+
+  "security.updates": "guides/observability/security-updates",
+  "security.updatesPrivacy":
+    "guides/observability/security-updates#what-deplo-sends",
 
   "build.settings": "guides/releases/build-settings",
   "build.methods": "guides/releases/build-settings#build-methods",

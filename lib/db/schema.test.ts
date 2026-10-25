@@ -88,6 +88,7 @@ const CONTROL_PLANE = [
   "app_mounts",
   "deployments",
   "deployment_logs",
+  "deployment_screenshots",
   "app_previews",
   "app_preview_env_vars",
   "pending_teardowns",
@@ -131,6 +132,13 @@ const CONTROL_PLANE = [
   "deplo_move_servers",
   "deplo_move_workloads",
   "deplo_move_pauses",
+  "image_inventories",
+  "image_inventory_packages",
+  "workload_images",
+  "osv_affected",
+  "kev_cves",
+  "security_findings",
+  "security_ignores",
 ] as const;
 
 async function publicTables(): Promise<Set<string>> {

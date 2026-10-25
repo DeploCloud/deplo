@@ -90,3 +90,10 @@ test("a deployment of another app is refused", async () => {
   );
   assert.equal(await countOf("prj_web"), 0);
 });
+
+test("a rebuild for a fixed base image asks the agent to fetch it again", async () => {
+  const dep = await as(() => redeploy("prj_web", null, { pullBase: true }));
+  assert.equal(dep.pullBase, true);
+  assert.equal(dep.commitMessage, "Rebuild on a fresh base image");
+  assert.equal((await as(() => redeploy("prj_web"))).pullBase, false);
+});

@@ -15,6 +15,8 @@ export const PREVIEW_REAPER_LEASE = "preview-reaper";
 
 export const CRON_SCHEDULER_LEASE = "cron-scheduler";
 
+export const SECURITY_UPDATES_LEASE = "security-updates";
+
 export interface LeaseRow {
   owner: string;
   heartbeatAt: Date;

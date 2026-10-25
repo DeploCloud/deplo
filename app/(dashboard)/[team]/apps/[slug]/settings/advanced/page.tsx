@@ -18,6 +18,7 @@ import { RebuildContainerRow } from "@/components/apps/settings/rebuild-containe
 import { ConsoleSettingsForm } from "@/components/apps/settings/console-settings-form";
 import { HealthCheckForm } from "@/components/apps/settings/health-check-form";
 import { RestartLoopForm } from "@/components/apps/settings/restart-loop-form";
+import { ScreenshotsForm } from "@/components/apps/settings/screenshots-form";
 import { PublishedPortsForm } from "@/components/apps/settings/published-ports-form";
 import { CronSettingsForm } from "@/components/crons/cron-settings-form";
 import { BuildCachePanel } from "@/components/apps/settings/build-cache-panel";
@@ -109,6 +110,13 @@ export default async function AppAdvancedSettingsPage(
             targetKind="app"
             targetId={project.id}
             enabled={project.restartLoopGuard}
+          />
+        </CapabilityFieldset>
+
+        <CapabilityFieldset cap="configure_apps">
+          <ScreenshotsForm
+            appId={project.id}
+            enabled={project.screenshotsEnabled}
           />
         </CapabilityFieldset>
 

@@ -6,6 +6,7 @@ import {
   getQueuePosition,
 } from "@/lib/data/deployments/build-progress";
 import { rollbackModeFor } from "@/lib/data/deployments/rollback";
+import { screenshotCapturedAt } from "@/lib/data/deployments/screenshot";
 import type { Deployment, LogLine } from "@/lib/types/deployment";
 
 const LogLineRef = builder.objectRef<LogLine>("LogLine").implement({
@@ -112,6 +113,14 @@ export const DeploymentRef = builder
           after == null
             ? getLogs(d.id).then((lines) => lines.slice(-5000))
             : getLogs(d.id, after).then((lines) => lines.slice(0, 5000)),
+      }),
+      screenshotAt: t.field({
+        type: "String",
+        nullable: true,
+        description:
+          "When Deplo last took this deployment's picture, or null when it has " +
+          "none (still building, the site failed to load, or screenshots are off).",
+        resolve: (d) => screenshotCapturedAt(d.id),
       }),
       queuePosition: t.field({
         type: "Int",

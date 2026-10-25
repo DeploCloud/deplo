@@ -177,6 +177,11 @@ export const AppRef = builder.objectRef<AppSummary>("App").implement({
         "Whether Deplo stops this app's container once it has restarted 10 " +
         "times in half an hour. On by default; off lets it keep crashing.",
     }),
+    screenshotsEnabled: t.exposeBoolean("screenshotsEnabled", {
+      description:
+        "Whether Deplo takes a light and a dark picture of the site after " +
+        "each deploy. On by default; off deletes the saved pictures.",
+    }),
     restartLoopStoppedAt: t.exposeString("restartLoopStoppedAt", {
       nullable: true,
       description:

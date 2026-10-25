@@ -16,6 +16,7 @@ import { dispatchAlert } from "../../notify/dispatch";
 import type { Deployment, LogLine } from "../../types/deployment";
 import { formatBytes } from "../../utils";
 import { syncPreviewComment } from "../preview-comment";
+import { captureAfterReady } from "./screenshot";
 import { destroyStack } from "./stack-lifecycle";
 
 export function log(
@@ -278,8 +279,9 @@ export async function commitOutcome(
   return true;
 }
 
-// Off the queue lane on purpose: a sweep can take minutes, and the next deploy must not wait on it.
-export function sweepAfterDeploy(depId: string, serverId: string): void {
+// Off the queue lane on purpose: a sweep or a screenshot takes long, and the next deploy must not wait on it.
+export function afterDeployReady(depId: string, serverId: string): void {
+  captureAfterReady(depId);
   void sweepSupersededAppImages(serverId).then((freed) => {
     if (freed <= 0) return;
     log(

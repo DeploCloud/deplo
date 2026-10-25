@@ -13,6 +13,7 @@ import { DatabaseRelabelNotice } from "@/components/storage/database-health-stat
 import { DataCopyNotice } from "@/components/shared/data-copy-notice";
 import type { ContainerMetrics } from "@/lib/data/container-metrics";
 import type { DatabaseDTO } from "@/lib/data/databases/rows";
+import { SecurityUpdatesNotice } from "@/components/security-updates/security-updates-notice";
 
 export default async function DatabaseOverviewPage(
   props: PageProps<"/[team]/storage/databases/[id]">,
@@ -53,6 +54,9 @@ export default async function DatabaseOverviewPage(
         canAccept={can.has("control_databases")}
       />
       <DatabaseRelabelNotice id={db.id} status={db.status} />
+      <Suspense fallback={null}>
+        <SecurityUpdatesNotice kind="database" id={db.id} name={db.name} />
+      </Suspense>
       <DatabaseOverview
         environmentLabel={environmentLabel}
         environments={environments}

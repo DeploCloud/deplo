@@ -63,5 +63,16 @@ export const HOST_ADDRESSES_CAPABILITY = "host.addresses";
 // Without it the agent ignores files_bind_sources and mounts a link out of the app's files as-is.
 export const FILES_BIND_CHECK_CAPABILITY = "deploy.files-bind-check";
 
+// ADR-0038: ListWorkloadImages + InventoryImage, the package read behind Security updates.
+export const IMAGE_INVENTORY_CAPABILITY = "image-inventory";
+
+export const DEPLOY_PULL_BASE_CAPABILITY = "deploy.pull-base";
+
+// Without it a reroute pulls only missing images, so a database Update would change nothing.
+export const REROUTE_PULL_CAPABILITY = "reroute.pull";
+
+// CaptureScreenshot: the deployment screenshot browser (ADR-0039).
+export const SCREENSHOT_CAPABILITY = "screenshot";
+
 // The agent links to the panel (ADR-0038), and with it Hello's link_addresses and SetLinkAddresses.
 export const AGENT_LINK_CAPABILITY = "agent-link";

@@ -29,7 +29,7 @@ import {
   commitOutcome,
   log,
   settleMove,
-  sweepAfterDeploy,
+  afterDeployReady,
   type DeployTarget,
 } from "./deployment-state";
 
@@ -63,6 +63,7 @@ export interface ComposeStackOpts {
   environment: DeploymentEnvironment;
   started: number;
   forceRecreate: boolean;
+  pullBase?: boolean;
 }
 
 export function composeFilesDir(deployKey: string): string {
@@ -155,7 +156,7 @@ async function finishComposeStack(
       if (environment === "production") {
         await settleMove(depId, project.id, opts.serverId);
       }
-      sweepAfterDeploy(depId, opts.serverId);
+      afterDeployReady(depId, opts.serverId);
     }
   } else {
     if (
@@ -330,6 +331,7 @@ export async function deploySourceComposeStack(
     ready,
     agentDeployId: `${depId}-stack`,
     forceRecreate: opts.forceRecreate,
+    pullBase: opts.pullBase,
   });
   // Stored only once it runs: a stale stack here is what a later reroute would bring back.
   if (attempt.outcome === "agent" && !opts.preview) {

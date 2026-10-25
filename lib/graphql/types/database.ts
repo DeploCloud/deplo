@@ -424,10 +424,14 @@ builder.mutationFields((t) => ({
       "Re-render the database's compose from its current settings (resource " +
       "limits, image/command overrides, exposure) and reroute it on its server. " +
       "The container is recreated only when its config actually changed; the " +
-      "data volume is always preserved.",
-    args: { id: t.arg.string({ required: true }) },
-    resolve: async (_r, { id }) => {
-      await redeployDatabase(id);
+      "data volume is always preserved. `pull` pulls the same image tag again " +
+      "first, which is how a database picks up a security fix in its image.",
+    args: {
+      id: t.arg.string({ required: true }),
+      pull: t.arg.boolean({ required: false }),
+    },
+    resolve: async (_r, { id, pull }) => {
+      await redeployDatabase(id, { pull: pull ?? false });
       return reloadDatabase(id);
     },
   }),

@@ -259,6 +259,9 @@ test("every branch of a merged tool coerces its variables", async () => {
     ["update_server", { serverId: "srv_1", deployConcurrency: 2 }],
     ["update_server", { serverId: "srv_1", timezone: "Europe/Rome" }],
     ["update_server", { serverId: "srv_1", buildFallback: true }],
+    ["list_security_updates", {}],
+    ["list_security_updates", { appId: "prj_1" }],
+    ["list_security_updates", { databaseId: "db_1" }],
   ];
 
   for (const [name, args] of cases) {

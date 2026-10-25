@@ -15,17 +15,27 @@ export function RedeployButton({
   slug,
   variant = "outline",
   size = "sm",
+  label: asked,
+  pendingLabel,
+  hint,
+  pullBase = false,
 }: {
   appId: string;
   slug: string;
   variant?: "outline" | "default" | "secondary";
   size?: "sm" | "default";
+  // A redeploy offered for a specific reason ("Update") names itself after it.
+  label?: string;
+  pendingLabel?: string;
+  hint?: string;
+  // Fetch the Dockerfile's base images again: a Rebuild for a fixed base image.
+  pullBase?: boolean;
 }) {
   const [pending, startTransition] = React.useTransition();
   const router = useRouter();
   const can = useAppCan("deploy_apps");
   const first = useNeverDeployed();
-  const label = first ? "Deploy" : "Redeploy";
+  const label = first ? "Deploy" : (asked ?? "Redeploy");
   const Icon = first ? Rocket : RotateCw;
 
   function redeploy() {
@@ -34,8 +44,8 @@ export function RedeployButton({
         { redeploy: { id: string | null } | null },
         { id: string | null } | null
       >(
-        `mutation($appId: String!) { redeploy(appId: $appId) { id } }`,
-        { appId },
+        `mutation($appId: String!, $pullBase: Boolean) { redeploy(appId: $appId, pullBase: $pullBase) { id } }`,
+        { appId, pullBase },
         (d) => d.redeploy,
       );
       if (res.ok) {
@@ -65,7 +75,7 @@ export function RedeployButton({
       content={
         first
           ? "Build and start this app for the first time"
-          : "Deploy the latest version of this app again"
+          : (hint ?? "Deploy the latest version of this app again")
       }
     >
       <Button
@@ -79,7 +89,11 @@ export function RedeployButton({
         ) : (
           <Icon className="size-4" />
         )}
-        {pending ? (first ? "Deploying" : "Redeploying") : label}
+        {pending
+          ? first
+            ? "Deploying"
+            : (pendingLabel ?? "Redeploying")
+          : label}
       </Button>
     </SimpleTooltip>
   );

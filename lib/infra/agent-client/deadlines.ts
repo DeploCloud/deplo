@@ -29,3 +29,10 @@ export const HOSTOPS_DEADLINE_MS = 20_000;
 export const CONTROL_PLANE_UPDATE_DEADLINE_MS = 60_000;
 export const TRAEFIK_DEADLINE_MS = 200_000;
 export const VOLUME_USAGE_TIMEOUT_MS = 70_000;
+export const INVENTORY_LIST_DEADLINE_MS = 60_000;
+// The agent stops its own read at 10 minutes; the margin covers the save before it.
+export const INVENTORY_DEADLINE_MS = 15 * 60_000;
+// The agent gives the pull itself 10 minutes before `up`.
+export const REROUTE_PULL_DEADLINE_MS = 12 * 60_000;
+// Covers the first download of the browser and waiting behind another capture on the host.
+export const CAPTURE_SCREENSHOT_DEADLINE_MS = 5 * 60_000;

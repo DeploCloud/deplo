@@ -32,6 +32,7 @@ import {
   setAppFramework,
   setAppComposeUpArgs,
   setAppRestartLoopGuard,
+  setAppScreenshots,
 } from "@/lib/data/apps/settings";
 import { moveAppToServer, updateAppSource } from "@/lib/data/apps/source";
 import { setAppVolumes } from "@/lib/data/apps/volumes";
@@ -334,6 +335,21 @@ builder.mutationFields((t) => ({
     },
     resolve: async (_r, { id, value }) => {
       await setAppRestartLoopGuard(id, value);
+      return reloadApp(id);
+    },
+  }),
+  setAppScreenshots: t.field({
+    type: AppRef,
+    authScopes: { capability: "configure_apps" },
+    description:
+      "Turn deployment screenshots on or off for one app. Off stops taking " +
+      "them and deletes every saved one; on takes the next at the next deploy.",
+    args: {
+      id: t.arg.string({ required: true }),
+      value: t.arg.boolean({ required: true }),
+    },
+    resolve: async (_r, { id, value }) => {
+      await setAppScreenshots(id, value);
       return reloadApp(id);
     },
   }),

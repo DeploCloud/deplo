@@ -14,6 +14,7 @@ export function AppSearch({
   initialFolder = "",
   initialProject = "",
   initialEnv = "",
+  initialNeeds = "",
   environmentSwitcher,
 }: {
   initialQuery: string;
@@ -21,6 +22,8 @@ export function AppSearch({
   initialFolder?: string;
   initialProject?: string;
   initialEnv?: string;
+  // An Overview filter that rides along with the search ("security").
+  initialNeeds?: string;
   environmentSwitcher?: React.ReactNode;
 }) {
   const router = useRouter();
@@ -36,11 +39,12 @@ export function AppSearch({
         params.set("project", initialProject);
         if (initialEnv) params.set("env", initialEnv);
       }
+      if (initialNeeds) params.set("needs", initialNeeds);
       if (nextView === "list") params.set("view", "list");
       const qs = params.toString();
       return qs ? `/?${qs}` : "/";
     },
-    [initialFolder, initialProject, initialEnv],
+    [initialFolder, initialProject, initialEnv, initialNeeds],
   );
 
   // `view` via ref: a stale closure must not clobber a view chosen mid-debounce.

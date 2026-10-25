@@ -124,6 +124,15 @@ Any instance admin may turn it off at any time; off means nothing is sent. An in
 force it off, and the switch then shows as disabled with that reason.
 _Avoid_: telemetry (in anything a person reads), tracking, opt-out.
 
+**Security update**:
+A known security flaw in what the team chose, with a fix it can apply: a dependency of the app's
+own code (update it), or the software an image ships (update to a newer build or version). A
+system package, the build runtime or a binary inside a dependency is never one. One update is one
+package of the app's, or one image, however many advisories that closes. Only "Used in attacks" and
+"Critical" are counted and alerted; "Important" is listed in the details
+([ADR-0038](docs/adr/0038-security-updates-are-matched-in-the-control-plane.md)).
+_Avoid_: vulnerability or CVE (in anything a non-expert reads), scan, security issue.
+
 **Canary release**:
 A pre-release of the next Deplo version, tagged `x.y.z-canary.n`. Off by default; an instance
 admin opts in once (Settings → Deplo → Advanced), and `deplo update` on the host follows the same
@@ -544,6 +553,14 @@ Deplo BUILDS records the tag it rendered (`deployments.image_ref`,
 `deplo/<key>:<first 12 of the row id>`) - unique per deployment, never overwritten, which
 is what makes a **Rollback** possible.
 _Avoid_: build (the build is one phase of a deployment), release.
+
+**Deployment screenshot**:
+The light and dark picture of a live **Deployment** that Deplo takes when it turns Ready and
+shows on the App's page (ADR-0039). Only a page that loaded correctly is kept; anything else
+leaves the page as it was. Kept for the production Deployment plus the 20 newest others,
+taken again only for the Deployment its address serves today, off per App in advanced
+settings (which deletes them).
+_Avoid_: preview (that is a **pull request preview**), thumbnail, snapshot.
 
 **Rollback**:
 Putting an App back on a previous **Deployment** by re-running the image that build left

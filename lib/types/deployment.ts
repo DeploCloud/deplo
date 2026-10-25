@@ -29,6 +29,7 @@ export interface Deployment {
   readyAt: string | null;
   buildDurationMs: number | null;
   forceRecreate: boolean;
+  pullBase: boolean;
   imageRef: string | null;
   rollbackOf: ID | null;
   creator: string;

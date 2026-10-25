@@ -13,6 +13,7 @@ import { Button } from "@/components/ui/button";
 import { DeployPullRequestDialog } from "@/components/apps/previews/deploy-pull-request-dialog";
 import { PreviewsTable } from "@/components/apps/previews/previews-table";
 import { PullRequestGraphic } from "@/components/apps/previews/pull-request-graphic";
+import { previewSecurityCounts } from "@/lib/data/security-updates/read";
 
 export const metadata = { title: "Pull requests" };
 
@@ -35,6 +36,9 @@ export default async function AppPullRequestsPage(
       <DeployPullRequestDialog appId={app.id} repoBranch={view.branch} />
     ) : null;
 
+  const previewSecurity = await previewSecurityCounts(
+    view.previews.map((p) => p.id),
+  );
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between gap-3">
@@ -124,7 +128,10 @@ export default async function AppPullRequestsPage(
         ) : (
           <PreviewsTable
             appSlug={slug}
-            previews={view.previews}
+            previews={view.previews.map((p) => ({
+              ...p,
+              securityUpdates: previewSecurity.get(p.id),
+            }))}
             canDeploy={canDeploy}
             maxActive={view.maxActive}
           />

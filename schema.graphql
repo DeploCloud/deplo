@@ -52,6 +52,7 @@ enum ActivityType {
   project
   s3
   security
+  security_update
   server
 }
 
@@ -253,6 +254,11 @@ type App {
   How many previous deployments this app can be rolled back to (0-20, default 3). Retention: its server keeps this many of the app's images behind the running one. 0 means there is nothing to go back to.
   """
   rollbackKeep: Int
+
+  """
+  Whether Deplo takes a light and a dark picture of the site after each deploy. On by default; off deletes the saved pictures.
+  """
+  screenshotsEnabled: Boolean
   serverId: ID
   slug: String
   source: DeploySource
@@ -772,6 +778,7 @@ enum Capability {
   delete_team
   deploy @deprecated(reason: "Split into finer permissions. Still accepted on input, where it means: create_apps, deploy_apps, rollback_apps, control_apps, configure_apps, delete_apps, move_apps, open_app_console, manage_previews, manage_crons, create_folders, organize_folders, delete_folders, create_projects, organize_projects, delete_projects, manage_environments.")
   deploy_apps
+  ignore_security_updates
   manage_backup_destinations
   manage_backups
   manage_basic_auth
@@ -1899,6 +1906,11 @@ type Deployment {
   Rolling back to this deployment rebuilds its commit, because its image is no longer kept on the server. Takes minutes instead of seconds.
   """
   rollbackRebuilds: Boolean
+
+  """
+  When Deplo last took this deployment's picture, or null when it has none (still building, the site failed to load, or screenshots are off).
+  """
+  screenshotAt: String
 
   """
   When the build was claimed off the queue and started running - the origin `buildDurationMs` is measured from, and what a live build timer counts up from. Null while still queued.
@@ -3660,6 +3672,21 @@ type Mutation {
   identifyMigrationSource(input: MigrationSourceInput!): MigrationSourceTeam
 
   """
+  Set advisories aside on one app or database for 30, 90 (default) or 180 days, with an optional reason. They stay listed but stop counting and alerting until then; a new advisory still shows. Recorded in Activity.
+  """
+  ignoreSecurityUpdate(
+    appId: ID
+    databaseId: ID
+    days: Int
+    reason: String
+
+    """
+    The advisory ids (`vulnId`) to act on: every advisory of one package, usually.
+    """
+    vulnIds: [String!]!
+  ): Boolean
+
+  """
   Bulk-import a .env-style blob. Every line lands as plain, so a key that already exists as a secret is skipped rather than downgraded.
   """
   importEnv(appId: String!, blob: String!, targets: [EnvTarget!]): EnvImportResult
@@ -3779,14 +3806,14 @@ type Mutation {
   rebuildDatabase(id: String!): Database
 
   """
-  Deploy the app again from the latest commit of its branch. With `deploymentId`, the latest commit of that deployment's branch or tag instead. A preview deployment is rebuilt with `redeployPreview`.
+  Deploy the app again from the latest commit of its branch. With `deploymentId`, the latest commit of that deployment's branch or tag instead. A preview deployment is rebuilt with `redeployPreview`. `pullBase` fetches a Dockerfile's base images again instead of reusing the server's copies, which is how a fixed base image is picked up.
   """
-  redeploy(appId: String!, deploymentId: String): Deployment
+  redeploy(appId: String!, deploymentId: String, pullBase: Boolean): Deployment
 
   """
-  Re-render the database's compose from its current settings (resource limits, image/command overrides, exposure) and reroute it on its server. The container is recreated only when its config actually changed; the data volume is always preserved.
+  Re-render the database's compose from its current settings (resource limits, image/command overrides, exposure) and reroute it on its server. The container is recreated only when its config actually changed; the data volume is always preserved. `pull` pulls the same image tag again first, which is how a database picks up a security fix in its image.
   """
-  redeployDatabase(id: String!): Database
+  redeployDatabase(id: String!, pull: Boolean): Database
 
   """Rebuild an existing preview at its current head."""
   redeployPreview(id: ID!): AppPreview
@@ -3974,6 +4001,11 @@ type Mutation {
   resumeMoveSchedules: Boolean
 
   """
+  Take the deployment's light and dark picture again, and wait for it. Only the deployment its address serves today can be taken again. Fails with the reason when the site answers with an error, comes out blank or cannot be reached; the previous picture then stays.
+  """
+  retakeDeploymentScreenshot(deploymentId: String!): Deployment
+
+  """
   Resume a failed move: the copy again if it never landed, else every app or database not copied yet. Public by the move's unguessable id, like its progress page.
   """
   retryDeploMove(id: String!): DeploMoveStatus
@@ -4139,6 +4171,11 @@ type Mutation {
   How many previous deployments this app can be rolled back to (0-20, default 3). It is retention: the app's server keeps this many of its images behind the running one. Takes effect on the next sweep - lowering it removes nothing now, and raising it cannot bring back images already removed.
   """
   setAppRollbackKeep(count: Int!, id: String!): App
+
+  """
+  Turn deployment screenshots on or off for one app. Off stops taking them and deletes every saved one; on takes the next at the next deploy.
+  """
+  setAppScreenshots(id: String!, value: Boolean!): App
   setAppTraefikLabels(id: String!, labels: [TraefikLabelInput!]!): App
 
   """
@@ -4267,6 +4304,11 @@ type Mutation {
   Turn saving server metrics on the control plane on or off. Turning it off also drops the buffered history.
   """
   setSaveMetrics(enabled: Boolean!): MonitoringSettings
+
+  """
+  Turn security update checks on or off for the whole instance. On, Deplo sends OSV.dev the name and version of each package the team's images contain, never an app name or anything that identifies this Deplo. Recorded in Activity.
+  """
+  setSecurityUpdatesEnabled(enabled: Boolean!): SecurityUpdatesStatus
 
   """
   Choose which kind of address (ipv4 | ipv6) the generated .deplo.site names of apps on this server carry; omit the family to go back to automatic. Every generated name already on the server is renamed at once, and the count of apps whose names moved is returned: each answers on its new name after its next deploy. Refused when the server has no address of that kind.
@@ -4438,6 +4480,19 @@ type Mutation {
   Hand the active team to another member, who is put on the Owner role with the whole team in reach as part of the same write. Primary-owner only; requires the caller's password, plus a two-factor code when their account has 2FA on. Returns true.
   """
   transferTeamOwnership(code: String, password: String!, userId: String!): Boolean
+
+  """
+  Count and alert on advisories set aside with ignoreSecurityUpdate again. Recorded in Activity.
+  """
+  unignoreSecurityUpdate(
+    appId: ID
+    databaseId: ID
+
+    """
+    The advisory ids (`vulnId`) to act on: every advisory of one package, usually.
+    """
+    vulnIds: [String!]!
+  ): Boolean
 
   """
   Take Deplo off a MIGRATION SOURCE: uninstall the agent from the host (systemd unit, binary, state dir - never Docker), then forget the server. Only a server whose role is "import" - an ordinary server is removed with removeServer, which is trust revocation and leaves the host alone. `removed: false` means the host still has the agent on it and the server row was KEPT; `uninstallCommand` is returned either way, because an unreachable or de-trusted host will always need the host-side path. A registration whose install command was never run has nothing to uninstall and is simply forgotten.
@@ -5195,6 +5250,17 @@ type Query {
 
   """Search registered users (by username/display name) to add to the team."""
   searchUsers(query: String!): [UserSearchResult!]
+
+  """
+  The security updates of one app (`appId`) or managed database (`databaseId`) in the active team. Null when it is out of reach or the instance turned checks off.
+  """
+  securityUpdates(appId: ID, databaseId: ID): SecurityUpdates
+
+  """
+  Every app and database in the active team with security updates to apply, most urgent first. Empty when the instance turned checks off.
+  """
+  securityUpdatesOverview: [SecuritySubject!]
+  securityUpdatesStatus: SecurityUpdatesStatus
   server(id: String!): Server
 
   """A fresh live metrics snapshot for one server."""
@@ -5706,6 +5772,117 @@ type SearchTemplate {
   logo: String
   name: String
   slug: String
+}
+
+"""
+How the team gets the fix. `code`: update the dependency in the app's own code. `update`: redeploy to pull a newer build of the image. `newer_tag`: move to a newer version of the image. Only these three are returned; `rebuild`, `deplo` and `none` stay for older clients.
+"""
+enum SecurityFix {
+  code
+  deplo
+  newer_tag
+  none
+  rebuild
+  update
+}
+
+"""
+How serious a security update is: `exploited` is on CISA's known-exploited list, `critical` and `high` come from its CVSS score or advisory.
+"""
+enum SecurityLevel {
+  critical
+  exploited
+  high
+}
+
+"""An app or database with security updates to apply."""
+type SecuritySubject {
+  count: Int
+  databaseType: DatabaseType
+  exploited: Int
+  id: ID
+
+  """`app` or `database`."""
+  kind: String
+  logo: String
+  logoTone: String
+  name: String
+
+  """The app's slug, for its address; null for a database."""
+  slug: String
+}
+
+"""One known vulnerability in a package an app or database runs."""
+type SecurityUpdate {
+  """
+  True when it is critical or already used in attacks, in the app's own dependencies or the software its image ships. Only these are counted and alerted.
+  """
+  actionable: Boolean
+  cve: String
+  cvss: Float
+  ecosystem: String
+  fix: SecurityFix
+  fixedVersion: String
+  ignoreReason: String
+
+  """
+  Set aside by the team until `ignoredUntil`: still listed, never counted or alerted.
+  """
+  ignored: Boolean
+  ignoredBy: String
+  ignoredUntil: String
+
+  """
+  The image it was found in. An image's update moves the image as a whole.
+  """
+  imageRef: String
+  installedVersion: String
+  level: SecurityLevel
+  osvUrl: String
+  packageName: String
+
+  """The compose service it was found in; empty for a single-container app."""
+  service: String
+  summary: String
+
+  """The OSV id, for example GHSA-xvch-5gv4-984h or GO-2024-2687."""
+  vulnId: String
+}
+
+"""
+The security updates of one app or database, from the package lists of the images it runs. https://deplo.build/docs/guides/observability/security-updates
+"""
+type SecurityUpdates {
+  """
+  The oldest check behind this answer; null until every image was checked once.
+  """
+  checkedAt: String
+
+  """
+  Critical updates and ones already used in attacks: one per package of the app's own, one per image. Important ones are listed, not counted.
+  """
+  count: Int
+  exploited: Int
+
+  """
+  A newer version of the image on the same line, when the registry lists one.
+  """
+  newerTag: String
+
+  """
+  Why some of its images could not be read: too_large, low_disk, low_memory, timed_out, unsupported or failed.
+  """
+  unreadable: [String!]
+  updates: [SecurityUpdate!]
+}
+
+"""The instance-wide switch and the health of the last checks."""
+type SecurityUpdatesStatus {
+  enabled: Boolean
+
+  """Since when OSV.dev could not be reached; null while checks succeed."""
+  failingSince: String
+  lastCheckedAt: String
 }
 
 """A connected host running deployments (reached via its agent)."""

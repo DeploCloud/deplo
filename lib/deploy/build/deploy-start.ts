@@ -36,6 +36,7 @@ export async function startDeployment(
     commitMessage?: string;
     branch?: string;
     forceRecreate?: boolean;
+    pullBase?: boolean;
     preview?: {
       id: string;
       deployKey: string;
@@ -114,6 +115,7 @@ export async function startDeployment(
     readyAt: null,
     buildDurationMs: null,
     forceRecreate: opts.forceRecreate ?? false,
+    pullBase: opts.pullBase ?? false,
     imageRef: rollback?.imageRef ?? null,
     rollbackOf: rollback?.deploymentId ?? null,
     creator: opts.creator,

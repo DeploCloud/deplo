@@ -265,6 +265,7 @@ export async function tryAgent(opts: {
   plan: AgentBuildPlan;
   readyTimeoutMs?: number;
   noCache?: boolean;
+  pullBase?: boolean;
   forceRecreate?: boolean;
   builders?: { id: string; name: string }[];
   targetServerName?: string;
@@ -351,6 +352,7 @@ export async function tryAgent(opts: {
         forkPreview: opts.forkPreview,
         readyTimeoutMs: opts.readyTimeoutMs ?? 60_000,
         noCache: opts.noCache,
+        pullBase: opts.pullBase,
         forceRecreate: opts.forceRecreate,
         composeUpArgs: parseComposeUpArgs(opts.project.composeUpArgs),
         ready: opts.ready,

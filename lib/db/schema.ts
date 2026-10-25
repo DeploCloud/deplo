@@ -32,6 +32,7 @@ export * from "./schema/control-plane/integrations";
 export * from "./schema/control-plane/migration";
 export * from "./schema/control-plane/notifications";
 export * from "./schema/control-plane/projects";
+export * from "./schema/control-plane/security-updates";
 export * from "./schema/control-plane/servers";
 
 import {
@@ -68,6 +69,7 @@ import * as cpIntegrations from "./schema/control-plane/integrations";
 import * as cpMigration from "./schema/control-plane/migration";
 import * as cpNotifications from "./schema/control-plane/notifications";
 import * as cpProjects from "./schema/control-plane/projects";
+import * as cpSecurityUpdates from "./schema/control-plane/security-updates";
 import * as cpServers from "./schema/control-plane/servers";
 
 // Better Auth resolves a model to schema[modelName], so users backs its user model (ADR-0014).
@@ -104,5 +106,6 @@ export const schema = {
   ...cpMigration,
   ...cpNotifications,
   ...cpProjects,
+  ...cpSecurityUpdates,
   ...cpServers,
 };

@@ -1,0 +1,13 @@
+# ADR-0038: Security updates are matched in the control plane
+
+**Status**: accepted
+
+Deplo checks every image it runs for a team (apps of every source, template apps, managed databases, stopped workloads and pull request previews) against known vulnerabilities, and tells the team what to do in its own words. Deplo's own components are out of scope: their fix is a Deplo release.
+
+**The server agent reads, the control plane judges.** `InventoryImage` reads one image's package list with syft (version and archive checksum pinned in the agent, downloaded at first use), one image at a time, never during a deploy, under a hard cgroup memory cap (`systemd-run`, a quarter of RAM between 512 MB and 2 GB) and a 2x-image free-disk guard. The list is stored per image id (`image_inventories`), so an image is read once. `ListWorkloadImages` says what runs where; both ride the `image-inventory` capability.
+
+**"Periodic" is re-matching, not re-reading.** Images do not change; what is known about them does. A leased scheduler re-matches every stored list against OSV.dev every 6 hours, a new image within about 5 minutes, and refreshes CISA's known-exploited list daily. Only package ecosystem, name and version leave the instance, never an app name, a host or anything that identifies the instance. With no egress the checks fail open: findings stay as they were and the settings line says since when OSV could not be reached. An instance admin can turn the checks off.
+
+**Only what the team chose (narrowed 25 Oct 2026).** A finding is kept only when it sits in the app's own dependencies (a language package under the image's working directory, not a binary another package carries) or in the software a vendor image ships (a language package, never its system packages or a vendor binary's Go toolchain) and a newer build or version of that image exists. System packages, the build runtime and flaws with no fix are not stored: flagging every app for its base image taught teams to ignore the badge. One security update is one package of the app's, or one image, however many advisories that closes. "Used in attacks" (known-exploited) and "Critical" count in the badge, the banner and the alert; "Important" is listed only; anything lower is not stored.
+
+**Alerts are rare on purpose.** `security_update_available` fires once per finding, for running apps and databases only, when a flaw is known-exploited or critical with a fix the team can apply. Deduplication lives in the database (`security_findings.alerted_at`), not the per-process cooldown.

@@ -38,6 +38,8 @@ const REDEPLOY_MESSAGE: Record<DeploySource, string> = {
 export async function redeploy(
   appId: string,
   fromDeploymentId?: string | null,
+  // Rebuild on a freshly fetched base image, for a security update that lives in it.
+  opts: { pullBase?: boolean } = {},
 ): Promise<Deployment> {
   const { membership } = await requireAppCapability(appId, "deploy_apps");
   const user = (await getCurrentUser())!;
@@ -51,8 +53,11 @@ export async function redeploy(
   const depId = await startDeployment(appId, {
     environment: "production",
     creator: user.name,
-    commitMessage: REDEPLOY_MESSAGE[source],
+    commitMessage: opts.pullBase
+      ? "Rebuild on a fresh base image"
+      : REDEPLOY_MESSAGE[source],
     branch: from?.branch || undefined,
+    pullBase: opts.pullBase ?? false,
   });
   return (await loadDeployment(depId))!;
 }

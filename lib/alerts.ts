@@ -34,6 +34,13 @@ export const ALERT_META: Record<AlertKey, AlertMeta> = {
     keywords: "crash loop down restarting unhealthy",
     defaultOn: true,
   },
+  security_update_available: {
+    label: "Security update available",
+    description:
+      "An app or database needs a security fix for a critical flaw, or one already used in attacks.",
+    keywords: "vulnerability cve exploit patch security outdated image",
+    defaultOn: true,
+  },
   app_out_of_memory: {
     label: "App ran out of memory",
     description: "An app used all the memory it may use and was killed.",
@@ -276,7 +283,11 @@ export const ALERT_CATEGORIES: {
     key: "apps",
     label: "Apps",
     description: "How your running apps behave.",
-    alerts: ["app_crash_loop", "app_out_of_memory"],
+    alerts: [
+      "app_crash_loop",
+      "app_out_of_memory",
+      "security_update_available",
+    ],
   },
   {
     key: "crons",

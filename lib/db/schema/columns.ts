@@ -16,3 +16,16 @@ export const isoTimestamptz = customType<{
     return value;
   },
 });
+
+// node-postgres hands back a Buffer and pglite a Uint8Array; both arrive here as a Buffer.
+export const bytea = customType<{
+  data: Buffer;
+  driverData: Buffer | Uint8Array;
+}>({
+  dataType() {
+    return "bytea";
+  },
+  fromDriver(value): Buffer {
+    return Buffer.from(value);
+  },
+});

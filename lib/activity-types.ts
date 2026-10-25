@@ -14,6 +14,7 @@ import {
   Rocket,
   Server,
   Settings,
+  ShieldAlert,
   ShieldCheck,
   Timer,
   Users,
@@ -31,6 +32,13 @@ export const ACTIVITY_TYPES: {
 }[] = [
   { value: "deployment", label: "Deployments", group: "Apps", icon: Rocket },
   { value: "app", label: "Apps", group: "Apps", icon: Box },
+  {
+    value: "security_update",
+    label: "Security updates",
+    group: "Apps",
+    hint: "vulnerabilities cve",
+    icon: ShieldAlert,
+  },
   { value: "project", label: "Projects", group: "Apps", icon: Boxes },
   { value: "domain", label: "Domains", group: "Apps", icon: Globe },
   {

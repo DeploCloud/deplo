@@ -18,6 +18,10 @@ import type {
   RestoreChunk_Header,
   DockerCleanupRequest,
   DockerCleanupResponse,
+  InventoryImageResponse,
+  ListWorkloadImagesResponse,
+  CaptureScreenshotRequest,
+  CaptureScreenshotResponse,
   HostInfoRequest,
   HostInfoResponse,
   SetTimezoneRequest,
@@ -159,6 +163,8 @@ export interface AgentConnection {
     mounts: { path: string; content: string }[];
     network: string;
     composeUpArgs?: string[];
+    // Needs `reroute.pull`; without it the agent pulls only missing images.
+    pullImages?: boolean;
   }): Promise<{ ok: boolean; error: string }>;
   renewalCsr(): Promise<{ csrPem: string }>;
   installRenewedCert(req: {
@@ -221,6 +227,13 @@ export interface AgentConnection {
   /** Closes the agent's own port for good; it takes this over its agent link only (ADR-0038). */
   stopListening(): Promise<void>;
   dockerCleanup(req: DockerCleanupRequest): Promise<DockerCleanupResponse>;
+  // Needs `image-inventory` (ADR-0038).
+  listWorkloadImages(): Promise<ListWorkloadImagesResponse>;
+  inventoryImage(imageId: string): Promise<InventoryImageResponse>;
+  // Needs `screenshot` (ADR-0039).
+  captureScreenshot(
+    req: CaptureScreenshotRequest,
+  ): Promise<CaptureScreenshotResponse>;
 
   hostInfo(req: HostInfoRequest): Promise<HostInfoResponse>;
   setTimezone(req: SetTimezoneRequest): Promise<HostInfoResponse>;

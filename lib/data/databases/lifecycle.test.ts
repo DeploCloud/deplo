@@ -28,6 +28,8 @@ import {
 } from "./lifecycle";
 import { getDatabase } from "./rows";
 import { asUser1, seedBase } from "./databases-test-helpers";
+import { __setAgentConnectorForTest } from "../../infra/agent-client/connect";
+import type { AgentConnection } from "../../infra/agent-client/connection";
 
 let db: TestDb;
 let pg: PGlite;
@@ -174,4 +176,51 @@ test("rebuild/redeploy refuse to render an undecryptable password (no empty-auth
     );
     assert.equal((await getDatabase("db_undec"))!.status, "running");
   });
+});
+
+test("a database Update pulls its image again, and refuses an agent that would ignore it", async () => {
+  await seedDatabase(db, { id: "db_upd", name: "upd" });
+  const sent: { pullImages?: boolean }[] = [];
+  let caps: string[] = [];
+  __setAgentConnectorForTest(
+    async () =>
+      ({
+        hello: async () => ({ capabilities: caps }),
+        reroute: async (req: { pullImages?: boolean }) => {
+          sent.push(req);
+          return { ok: true, error: "" };
+        },
+        close() {},
+      }) as unknown as AgentConnection,
+  );
+  try {
+    await asUser1(async () => {
+      await assert.rejects(
+        redeployDatabase("db_upd", { pull: true }),
+        /too old/,
+      );
+      assert.equal(
+        sent.length,
+        0,
+        "nothing is sent to an agent that cannot pull",
+      );
+      caps = ["reroute.pull"];
+      await redeployDatabase("db_upd", { pull: true });
+      await redeployDatabase("db_upd");
+    });
+    assert.deepEqual(
+      sent.map((r) => r.pullImages),
+      [true, false],
+    );
+    const acts = await db.select().from(activitiesTable);
+    assert.ok(
+      acts.some(
+        (a) =>
+          a.message === "Updated database upd to the latest build of its image",
+      ),
+      acts.map((a) => a.message).join(" | "),
+    );
+  } finally {
+    __setAgentConnectorForTest();
+  }
 });

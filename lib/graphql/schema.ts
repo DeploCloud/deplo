@@ -53,6 +53,7 @@ import "./types/app-files";
 import "./types/registry";
 import "./types/role";
 import "./types/search";
+import "./types/security-updates";
 import "./types/server/certificates";
 import "./types/server/enrollment";
 import "./types/server/health";

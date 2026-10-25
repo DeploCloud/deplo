@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { withTeam } from "@/lib/team-path";
 import { cookies } from "next/headers";
 import { listApps } from "@/lib/data/apps/listing";
+import { screenshotCapturedAt } from "@/lib/data/deployments/screenshot";
 import { listDatabases } from "@/lib/data/databases/rows";
 import { listProjects } from "@/lib/data/projects/read";
 import { listAllEnvironmentsForTeam } from "@/lib/data/environments";
@@ -122,7 +123,10 @@ export default async function LogsPage(props: PageProps<"/[team]/logs">) {
     (a) => a.slug === target.key.slice("app:".length),
   )!;
   const latest = app.latestDeployment;
-  const info = await getLogsInfo(app.id);
+  const [info, latestScreenshotAt] = await Promise.all([
+    getLogsInfo(app.id),
+    latest ? screenshotCapturedAt(latest.id) : null,
+  ]);
 
   const initialLive: LiveApp = {
     id: app.id,
@@ -132,6 +136,7 @@ export default async function LogsPage(props: PageProps<"/[team]/logs">) {
     restartLoopStoppedAt: app.restartLoopStoppedAt ?? null,
     latestDeploymentId: latest?.id ?? null,
     latestDeploymentStatus: latest?.status ?? null,
+    latestScreenshotAt,
   };
 
   return (

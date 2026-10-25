@@ -16,6 +16,7 @@ import { SidebarExpandButton } from "./sidebar";
 import { ThemeToggle } from "./theme-toggle";
 import { MigrationChip } from "./migration-activity";
 import { UpdateChip } from "./update-chip";
+import { SecurityAlertPill } from "@/components/security-updates/security-alert-pill";
 import { UserMenu } from "./user-menu";
 import { openPalette } from "@/components/command-palette/palette-open";
 import { TeamSwitcher } from "./team-switcher";
@@ -112,6 +113,7 @@ export function Topbar({
         </Button>
         <MigrationChip canOpen={isAdmin} />
         <UpdateChip />
+        <SecurityAlertPill teamId={team.id} />
         <ThemeToggle />
         <UserMenu user={user} />
       </div>

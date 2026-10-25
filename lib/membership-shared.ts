@@ -71,6 +71,7 @@ export const PROJECT_SCOPED_CAPABILITIES: Capability[] = [
   "delete_apps",
   "open_app_console",
   "manage_crons",
+  "ignore_security_updates",
   "manage_domains",
   "manage_basic_auth",
   "manage_env",

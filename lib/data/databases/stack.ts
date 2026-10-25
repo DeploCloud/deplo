@@ -56,6 +56,7 @@ export function renderDatabaseStackYaml(
 export function rerouteRequest(
   db: Database,
   composeYaml: string,
+  opts: { pull?: boolean } = {},
 ): {
   slug: string;
   composeYaml: string;
@@ -63,8 +64,10 @@ export function rerouteRequest(
   mounts: { path: string; content: string }[];
   network: string;
   composeUpArgs: string[];
+  pullImages: boolean;
 } {
   return {
+    pullImages: opts.pull ?? false,
     slug: db.host,
     composeYaml,
     env: {},

@@ -73,6 +73,13 @@ export const CAPABILITY_META: Record<Capability, CapabilityMeta> = {
     keywords: "cron schedule scheduled task job timer recurring command",
     sensitive: true,
   },
+  ignore_security_updates: {
+    label: "Ignore security updates",
+    description:
+      "Hide a security update the team decided not to apply, for a while, with a reason.",
+    keywords: "vulnerability cve dismiss snooze accept risk security",
+    sensitive: true,
+  },
 
   manage_domains: {
     label: "Manage domains",
@@ -300,6 +307,7 @@ export const CAPABILITY_CATEGORIES: {
       "open_app_console",
       "manage_previews",
       "manage_crons",
+      "ignore_security_updates",
     ],
   },
   {
@@ -419,7 +427,7 @@ export const LEGACY_CAPABILITY_EXPANSION: Record<string, Capability[]> = {
     "manage_monitoring",
   ],
   manage_members: ["manage_members", "manage_roles"],
-  manage_team: ["manage_team", "delete_team"],
+  manage_team: ["manage_team", "delete_team", "ignore_security_updates"],
   manage_s3: ["manage_backup_destinations"],
 };
 
