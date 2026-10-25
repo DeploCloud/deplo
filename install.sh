@@ -1775,10 +1775,10 @@ DEPLO_EXPOSE="$(panel_ports)"
 # allowed to write - it is how custom certificates are installed.
 #
 # KEEP IN SYNC with `withPanelRoute` in lib/deploy/traefik-stack.ts, which reads
-# and rewrites exactly this shape: it replaces the `deplo-panel` routers (each with
-# its `-link` sibling) and services in place and leaves the rest of the file alone,
-# which is what keeps the fallback router below alive across an edit from the
-# panel (install-script/panel-route.test.ts holds the two together). `priority: 2` keeps a
+# and rewrites exactly this shape (install-script/panel-route.test.ts holds the two
+# together): it replaces the `deplo-panel` routers, each with its `-link` sibling,
+# and the services in place and leaves the rest of the file alone, which is what
+# keeps the fallback router below alive across an edit from the panel. `priority: 2` keeps a
 # Host-only router a true fallback so any more-specific PathPrefix router on the
 # same host (an app's path override, or the reserved /plugins/<slug> route)
 # outranks it - Traefik would otherwise default it to its rule-string length and

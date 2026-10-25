@@ -37,6 +37,8 @@ export async function completeBootstrap(
   const signed = await signBootstrapCsr(call.csrPem, dialHosts);
   const port =
     call.agentPort && call.agentPort > 0 ? call.agentPort : DEFAULT_AGENT_PORT;
+  // Before the token is spent: an answer the agent never gets would leave it nothing to retry with.
+  const linkUrl = await agentLinkUrl(server);
 
   const now = nowIso();
   const won = await getDb()
@@ -59,11 +61,7 @@ export async function completeBootstrap(
   }
   // A new agent identity: whatever held the old certificate is cut off.
   dropAgentChannel(server.id);
-  return {
-    certPem: signed.certPem,
-    caPem: signed.caPem,
-    linkUrl: await agentLinkUrl(server),
-  };
+  return { certPem: signed.certPem, caPem: signed.caPem, linkUrl };
 }
 
 /** The provisioned server pinned to this agent certificate: what an agent link claims to be. */
