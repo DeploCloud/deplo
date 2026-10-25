@@ -11,6 +11,15 @@ import { seedBackup } from "../backup-test-helpers";
 import { asUser1, seedBase } from "./backups-test-helpers";
 import { runBackup, runDatabaseBackup } from "./run-now";
 import { listBackupRuns } from "./run-listing";
+import { status as GrpcStatus } from "@grpc/grpc-js";
+import { LINK_OFFLINE_MESSAGE } from "../../agent-reachability";
+import { __setAgentConnectorForTest } from "../../infra/agent-client/connect";
+import type { AgentConnection } from "../../infra/agent-client/connection";
+import { AgentUnreachableError } from "../../infra/agent-client/errors";
+import {
+  BACKUP_CAPABILITY,
+  BACKUP_ENCRYPT_S3_CAPABILITY,
+} from "../../infra/agent-client/hello-capabilities";
 
 let db: TestDb;
 let pg: PGlite;
@@ -68,5 +77,41 @@ test("runDatabaseBackup records a failed run rather than throwing past the execu
     assert.equal(runs[0]!.status, "failed");
     assert.equal(runs[0]!.backupId, null);
     assert.equal(runs[0]!.databaseId, "db_1");
+  });
+});
+
+test("a backup cut off when its server drops says the server is offline, and runs again", async (t) => {
+  let cut = true;
+  __setAgentConnectorForTest(async () => {
+    const conn = {
+      hello: async () => ({
+        capabilities: [BACKUP_CAPABILITY, BACKUP_ENCRYPT_S3_CAPABILITY],
+      }),
+      async *backup() {
+        if (cut)
+          throw new AgentUnreachableError(
+            "14 UNAVAILABLE: Connection dropped",
+            GrpcStatus.UNAVAILABLE,
+          );
+        yield { result: { ok: true, error: "", sizeBytes: 3, sha256: "" } };
+      },
+      close: () => {},
+    };
+    return conn as unknown as AgentConnection;
+  });
+  t.after(() => __setAgentConnectorForTest());
+  await asUser1(async () => {
+    await runDatabaseBackup("db_1", "s3_1").catch(() => {});
+    const [failed] = await listBackupRuns({ databaseId: "db_1" });
+    assert.equal(failed!.status, "failed");
+    assert.equal(
+      failed!.error,
+      `This server is offline. ${LINK_OFFLINE_MESSAGE}`,
+    );
+
+    cut = false;
+    await runDatabaseBackup("db_1", "s3_1");
+    const runs = await listBackupRuns({ databaseId: "db_1" });
+    assert.deepEqual(runs.map((r) => r.status).sort(), ["failed", "success"]);
   });
 });
