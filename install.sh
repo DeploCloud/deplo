@@ -1754,14 +1754,9 @@ fi
 # The domain and the contact are NOT re-read from .env here: both were resolved
 # above, off the proxy's own file, which is the one actually serving.
 
-# The panel publishes :3000 on 127.0.0.1 ONLY. Never on the server's address: an
-# open port is a login page on the internet with no TLS in front of it, and every
-# password and session cookie it takes crosses the wire in clear. Traefik serves
-# the panel over HTTPS on the host below instead, always. Loopback stays because
-# two things need it: this installer bootstraps the server agent through it, and
-# an SSH tunnel is the way back in when the proxy itself is what broke. The agent
-# link (:3001) is on loopback for this machine's own agent, which never uses its
-# public address; every other server reaches it through Traefik.
+# Loopback ONLY: on the server's address :3000 is a login page with no TLS. It stays for the
+# agent's call-home and an SSH tunnel back in; :3001 is this machine's own agent link (ADR-0040).
+# Everything else reaches the panel through Traefik.
 panel_ports() {
   printf '    ports:\n      - "127.0.0.1:%s:3000"\n      - "127.0.0.1:%s:3001"' "$PANEL_PORT" "$LINK_PORT"
 }

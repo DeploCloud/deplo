@@ -1094,17 +1094,9 @@ plan_listener
 mkdir -p "$AGENT_DATA"
 chmod 700 "$AGENT_DATA"
 
-# Re-provisioning: running this installer means a FRESH bootstrap is intended (you
-# pasted a one-time token from the dashboard). But the agent skips bootstrap when
-# it finds existing mTLS materials on disk, so a reinstall over a previous one
-# (e.g. after removing + re-adding the server) would serve the STALE cert and
-# never call home, and the control plane, which pinned a new fingerprint at
-# re-add - would reject every dial (no metrics, never "online"). Clear the old
-# materials here so the agent genuinely re-bootstraps against the current pin.
-# (A plain `systemctl restart deplo-agent` carries no token through this script,
-# so it still reuses materials and serves straight away, as intended.) The saved
-# link state goes too: the address names the old certificate's panel, and the
-# closed-port marker belongs to a link that is gone.
+# A reinstall means a fresh bootstrap, but the agent skips it while old mTLS materials are on
+# disk and would serve a certificate the panel no longer pins. Clear them and the link state they
+# belonged to; a plain restart of the agent carries no token and keeps everything.
 clear_old_materials() {
   if [ -e "$AGENT_DATA/agent.crt" ] || [ -e "$AGENT_DATA/agent.key" ] || [ -e "$AGENT_DATA/ca.crt" ]; then
     step "Existing agent materials found - clearing them for a fresh bootstrap"
