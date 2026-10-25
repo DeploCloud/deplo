@@ -16,7 +16,7 @@ import {
 import { getCurrentUser } from "../../auth/current-user";
 import { requireActiveTeamId, requireInstanceAdmin } from "../../membership";
 import { newId, nowIso } from "../../ids";
-import { instancePublicBaseUrl } from "../instance-settings/settings-store";
+import { bootstrapBaseUrl } from "./panel-address";
 import { recordActivity } from "../activity";
 import {
   mintBootstrap,
@@ -46,15 +46,6 @@ export interface AddServerInput {
 export interface AddServerResult {
   server: Server;
   installCommand: string;
-}
-
-async function bootstrapBaseUrl(server: {
-  ip?: string;
-  host?: string;
-}): Promise<string> {
-  if (!isDeploHostServer(server)) return instancePublicBaseUrl();
-  const port = Number(process.env.DEPLO_PANEL_PORT?.trim());
-  return `http://127.0.0.1:${Number.isInteger(port) && port > 0 ? port : 3000}`;
 }
 
 export async function addServer(

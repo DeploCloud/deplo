@@ -8,7 +8,8 @@ import { webcrypto } from "node:crypto";
 import { makeTestDb, type TestDb } from "../db/test-harness";
 import { __setTestDb, __resetTestDb } from "../db/client";
 import { servers as serversTable } from "../db/schema/control-plane/servers";
-import { mintBootstrap } from "../agent/bootstrap";
+import { POST as bootstrapRoute } from "@/app/api/agent/bootstrap/route";
+import { mintBootstrap, verifyResponse } from "../agent/bootstrap";
 import { serverToRow } from "./infra-rows";
 import { completeBootstrap } from "./servers/agent-handshake";
 import { getServerById } from "./servers/roster";
@@ -49,15 +50,16 @@ async function makeCsr(): Promise<string> {
 async function seedProvisioning(
   tokenHash: string,
   expiresAt: string,
+  address = "10.0.0.1",
 ): Promise<void> {
   await db.insert(serversTable).values(
     serverToRow({
       id: "srv_p",
       name: "p",
-      host: "10.0.0.1",
+      host: address,
       type: "remote",
       status: "provisioning",
-      ip: "10.0.0.1",
+      ip: address,
       dockerVersion: "",
       traefikEnabled: false,
       cpuCores: 0,
@@ -137,5 +139,48 @@ test("completeBootstrap rejects an already-consumed token (sequential)", async (
       agentPort: 9443,
     }),
     /already been used|already consumed/,
+  );
+});
+
+async function callHome(address: string): Promise<{ linkUrl?: string }> {
+  const { rawToken, stored } = mintBootstrap();
+  await seedProvisioning(stored.tokenHash, stored.expiresAt, address);
+  const res = await bootstrapRoute(
+    new Request("http://127.0.0.1:3000/api/agent/bootstrap", {
+      method: "POST",
+      body: JSON.stringify({ token: rawToken, csrPem: await makeCsr() }),
+    }),
+  );
+  assert.equal(res.status, 200);
+  const raw = await res.text();
+  assert.ok(
+    verifyResponse(rawToken, raw, res.headers.get("x-deplo-bootstrap-mac")!),
+    "the address is signed with the certificate, so nobody on the way can change it",
+  );
+  return JSON.parse(raw) as { linkUrl?: string };
+}
+
+const SELF = "203.0.113.7";
+
+test("the panel's own server is told to link over loopback, on the port the installer published", async () => {
+  process.env.DEPLO_SERVER_IP = SELF;
+  process.env.DEPLO_PUBLIC_URL = "https://deplo.example.com";
+  process.env.DEPLO_LINK_PORT = "3102";
+  assert.equal((await callHome(SELF)).linkUrl, "http://127.0.0.1:3102");
+});
+
+test("with no port declared, the panel's own server links to the listener's own port", async () => {
+  process.env.DEPLO_SERVER_IP = SELF;
+  delete process.env.DEPLO_LINK_PORT;
+  assert.equal((await callHome(SELF)).linkUrl, "http://127.0.0.1:3001");
+});
+
+test("every other server is told to link to the panel's public address", async () => {
+  process.env.DEPLO_SERVER_IP = SELF;
+  process.env.DEPLO_PUBLIC_URL = "https://deplo.example.com";
+  process.env.DEPLO_LINK_PORT = "3102";
+  assert.equal(
+    (await callHome("198.51.100.9")).linkUrl,
+    "https://deplo.example.com",
   );
 });

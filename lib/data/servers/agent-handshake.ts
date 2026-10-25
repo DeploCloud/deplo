@@ -12,6 +12,7 @@ import {
 import { dropAgentChannel } from "../../infra/agent-client/channel-pool";
 import { AGENT_VERSION, agentUpdateAvailable } from "../../version";
 import { agentSeen } from "./agent-update-state";
+import { agentLinkUrl } from "./panel-address";
 import { listAllServers } from "./roster";
 
 export interface BootstrapCallHome {
@@ -24,6 +25,8 @@ export interface BootstrapCallHome {
 export interface BootstrapCompletion {
   certPem: string;
   caPem: string;
+  /** The agent's primary link address: the control plane chooses it (ADR-0038). */
+  linkUrl: string;
 }
 
 export async function completeBootstrap(
@@ -56,7 +59,11 @@ export async function completeBootstrap(
   }
   // A new agent identity: whatever held the old certificate is cut off.
   dropAgentChannel(server.id);
-  return { certPem: signed.certPem, caPem: signed.caPem };
+  return {
+    certPem: signed.certPem,
+    caPem: signed.caPem,
+    linkUrl: await agentLinkUrl(server),
+  };
 }
 
 /** The provisioned server pinned to this agent certificate: what an agent link claims to be. */

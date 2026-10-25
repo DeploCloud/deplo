@@ -8,6 +8,7 @@ import {
   type YAMLMap,
 } from "yaml";
 
+import { LINK_PATH, LINK_PORT } from "../infra/agent-link/protocol";
 import { composeTruthy } from "./compose-lint/document";
 
 export const TRAEFIK_CONTAINER = "deplo-traefik";
@@ -274,6 +275,11 @@ export type PanelRoute = {
 
 const PANEL_PRIORITY = 2;
 
+// Servers link in on the panel's own names only: a bare Path() would take the path from every app (ADR-0038).
+const LINK_SERVICE = "deplo-link";
+const LINK_PRIORITY = 3;
+const linkRouterOf = (router: string) => `${router}-link`;
+
 const REDIRECT_PRIORITY = 1;
 
 // A stopped app takes its own router down with it, and Traefik answers 404 for an
@@ -391,18 +397,26 @@ function panelFile(current: unknown, route: PanelRoute): string {
       ? { tls: route.certResolver ? { certResolver: route.certResolver } : {} }
       : {}),
   });
+  const linkRouter = (host: string) => ({
+    ...router(host),
+    rule: `Host(\`${host}\`) && Path(\`${LINK_PATH}\`)`,
+    service: LINK_SERVICE,
+    priority: LINK_PRIORITY,
+  });
   const write = (doc: Document) => {
-    doc.setIn(
-      ["http", "routers", PANEL_ROUTER],
-      doc.createNode(router(route.domain)),
-    );
+    const routers = ["http", "routers"];
+    doc.setIn([...routers, PANEL_ROUTER], doc.createNode(router(route.domain)));
+    placeAfter(doc, routers, PANEL_ROUTER, {
+      [linkRouterOf(PANEL_ROUTER)]: linkRouter(route.domain),
+    });
     if (route.fallbackDomain && route.fallbackDomain !== route.domain) {
-      doc.setIn(
-        ["http", "routers", PANEL_FALLBACK_ROUTER],
-        doc.createNode(router(route.fallbackDomain)),
-      );
+      placeAfter(doc, routers, linkRouterOf(PANEL_ROUTER), {
+        [PANEL_FALLBACK_ROUTER]: router(route.fallbackDomain),
+        [linkRouterOf(PANEL_FALLBACK_ROUTER)]: linkRouter(route.fallbackDomain),
+      });
     } else {
-      doc.deleteIn(["http", "routers", PANEL_FALLBACK_ROUTER]);
+      doc.deleteIn([...routers, PANEL_FALLBACK_ROUTER]);
+      doc.deleteIn([...routers, linkRouterOf(PANEL_FALLBACK_ROUTER)]);
     }
     // Only on websecure: :80 already redirects everything there, and a second router
     // at the redirect's own priority would be a coin flip between the two.
@@ -430,6 +444,11 @@ function panelFile(current: unknown, route: PanelRoute): string {
         },
       }),
     );
+    placeAfter(doc, ["http", "services"], PANEL_ROUTER, {
+      [LINK_SERVICE]: {
+        loadBalancer: { servers: [{ url: linkTarget(route.target) }] },
+      },
+    });
     return doc.toString({ lineWidth: 0 });
   };
   if (typeof current === "string") {
@@ -441,6 +460,43 @@ function panelFile(current: unknown, route: PanelRoute): string {
     }
   }
   return write(new Document({}));
+}
+
+// Sets each entry, a missing one right after the one before it, so the panel writes the file install.sh does.
+function placeAfter(
+  doc: Document,
+  path: string[],
+  after: string,
+  entries: Record<string, unknown>,
+): void {
+  let prev = after;
+  for (const [key, value] of Object.entries(entries)) {
+    const map = doc.getIn(path, true);
+    if (!isMap(map) || map.has(key)) {
+      doc.setIn([...path, key], doc.createNode(value));
+    } else {
+      const at = map.items.findIndex(
+        (p) => (isScalar(p.key) ? p.key.value : p.key) === prev,
+      );
+      map.items.splice(
+        at < 0 ? map.items.length : at + 1,
+        0,
+        doc.createPair(key, value),
+      );
+    }
+    prev = key;
+  }
+}
+
+// The link listener runs in the panel's own process, so it sits beside wherever the panel is reached.
+function linkTarget(panelTarget: string): string {
+  try {
+    const url = new URL(panelTarget);
+    url.port = String(LINK_PORT);
+    return url.origin;
+  } catch {
+    return `http://deplo:${LINK_PORT}`;
+  }
 }
 
 function withRedirectFallback(doc: Stack, service: YAMLMap): void {

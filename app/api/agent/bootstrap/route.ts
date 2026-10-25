@@ -34,14 +34,14 @@ export async function POST(request: Request) {
     typeof body.advertisedHost === "string" ? body.advertisedHost : undefined;
 
   try {
-    const { certPem, caPem } = await completeBootstrap({
+    const { certPem, caPem, linkUrl } = await completeBootstrap({
       token,
       csrPem,
       agentPort,
       advertisedHost,
     });
-    // The agent recomputes this HMAC and refuses a mismatch, binding the CA it carries to a party that knew the token.
-    const payload = JSON.stringify({ certPem, caPem });
+    // The agent recomputes this HMAC and refuses a mismatch, binding the CA and its link address to a party that knew the token.
+    const payload = JSON.stringify({ certPem, caPem, linkUrl });
     const mac = signResponse(token, payload);
     return new Response(payload, {
       status: 200,

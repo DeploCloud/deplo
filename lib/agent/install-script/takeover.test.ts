@@ -4,6 +4,8 @@ import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
+import * as yaml from "js-yaml";
+
 import { bash, shellFn } from "./install-script-test-helpers";
 
 test("the cutover moves the proxy and leaves the panel's container alone", async () => {
@@ -103,4 +105,38 @@ takeover_unit_install || echo refused
   await rm(dir, { recursive: true, force: true });
   assert.match(out, /^ERR: .*nothing can take the ports later/m);
   assert.match(out, /refused/);
+});
+
+test("the side door in the other platform's proxy lets servers link in too", async () => {
+  for (const entry of ["web", "http"]) {
+    const out = await bash(`set -euo pipefail
+${await shellFn("install.sh", "side_door_config")}
+side_door_config deplo-cb00710b.deplo.site ${entry}
+`);
+    const { http } = yaml.load(out) as {
+      http: {
+        routers: Record<
+          string,
+          { rule: string; entryPoints: string[]; service: string }
+        >;
+        services: Record<
+          string,
+          { loadBalancer: { servers: { url: string }[] } }
+        >;
+      };
+    };
+    const target = (router: string) =>
+      http.services[http.routers[router].service].loadBalancer.servers[0].url;
+    assert.equal(
+      http.routers["deplo-setup"].rule,
+      "Host(`deplo-cb00710b.deplo.site`)",
+    );
+    assert.equal(target("deplo-setup"), "http://deplo:3000");
+    assert.deepEqual(http.routers["deplo-setup-link"], {
+      rule: "Host(`deplo-cb00710b.deplo.site`) && Path(`/api/agent/link`)",
+      entryPoints: [entry],
+      service: "deplo-setup-link",
+    });
+    assert.equal(target("deplo-setup-link"), "http://deplo:3001");
+  }
 });

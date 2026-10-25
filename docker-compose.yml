@@ -46,7 +46,15 @@ services:
       # for a real host exceeds a short PathPrefix router's length and would
       # otherwise SHADOW that path. priority=1 (0 is treated as "unset").
       - "traefik.http.routers.deplo.priority=1"
+      - "traefik.http.routers.deplo.service=deplo"
       - "traefik.http.services.deplo.loadbalancer.server.port=3000"
+      # Servers link in on the same host (ADR-0038), never on a bare path.
+      - "traefik.http.routers.deplo-link.rule=Host(`${DEPLO_DOMAIN}`) && Path(`/api/agent/link`)"
+      - "traefik.http.routers.deplo-link.entrypoints=websecure"
+      - "traefik.http.routers.deplo-link.tls.certresolver=letsencrypt"
+      - "traefik.http.routers.deplo-link.priority=3"
+      - "traefik.http.routers.deplo-link.service=deplo-link"
+      - "traefik.http.services.deplo-link.loadbalancer.server.port=3001"
 
   postgres:
     image: postgres:16-alpine

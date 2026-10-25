@@ -412,12 +412,28 @@ configs:
             priority: 2
             tls:
               certResolver: letsencrypt
+          deplo-panel-link:
+            rule: Host(\`deplo.example.com\`) && Path(\`/api/agent/link\`)
+            entryPoints:
+              - websecure
+            service: deplo-link
+            priority: 3
+            tls:
+              certResolver: letsencrypt
           deplo-panel-fallback:
             rule: Host(\`deplo-cb007109.deplo.site\`)
             entryPoints:
               - websecure
             service: deplo-panel
             priority: 2
+            tls:
+              certResolver: letsencrypt
+          deplo-panel-fallback-link:
+            rule: Host(\`deplo-cb007109.deplo.site\`) && Path(\`/api/agent/link\`)
+            entryPoints:
+              - websecure
+            service: deplo-link
+            priority: 3
             tls:
               certResolver: letsencrypt
           deplo-offline:
@@ -439,6 +455,10 @@ configs:
               servers:
                 - url: http://deplo:3000
               passHostHeader: true
+          deplo-link:
+            loadBalancer:
+              servers:
+                - url: http://deplo:3001
   deplo-default-cert:
     content: |
       tls:
@@ -638,6 +658,117 @@ test("the installer's two-router file survives a panel edit byte for byte", () =
     panelRoute(INSTALLED_WITH_PANEL)!,
   );
   assert.equal(config(out), config(INSTALLED_WITH_PANEL));
+});
+
+const LINK_ON = (host: string) =>
+  `Host(\`${host}\`) && Path(\`/api/agent/link\`)`;
+
+const BEFORE_THE_LINK = INSTALLED_WITH_PANEL.replace(
+  /\n {10}deplo-panel(?:-fallback)?-link:\n(?: {12}.*\n| {14}.*\n)*?(?= {10}deplo-)/g,
+  "\n",
+).replace(/ {10}deplo-link:\n(?: {12,}.*\n)*/, "");
+
+test("servers link in through the panel's own host and its generated name, ahead of the panel", () => {
+  const file = panelFileOf(withPanelRoute(INSTALLED_WITH_PANEL, PANEL_ROUTE));
+  assert.deepEqual(file.http.routers["deplo-panel-link"], {
+    rule: LINK_ON("deplo.example.com"),
+    entryPoints: ["websecure"],
+    service: "deplo-link",
+    priority: 3,
+    tls: { certResolver: "letsencrypt" },
+  });
+  assert.equal(
+    file.http.routers["deplo-panel-fallback-link"].rule,
+    LINK_ON("deplo-cb007109.deplo.site"),
+  );
+  assert.deepEqual(file.http.services["deplo-link"], {
+    loadBalancer: { servers: [{ url: "http://deplo:3001" }] },
+  });
+  for (const [name, router] of Object.entries(file.http.routers))
+    assert.doesNotMatch(
+      String(router.rule),
+      /^Path/,
+      `${name}: a bare path would take /api/agent/link from every app on this proxy`,
+    );
+});
+
+test("a proxy installed before the agent link gets its routes on the next edit", () => {
+  const old = panelFileOf(BEFORE_THE_LINK).http;
+  assert.equal(old.routers["deplo-panel-link"], undefined);
+  assert.equal(old.services["deplo-link"], undefined);
+  assert.equal(old.routers["deplo-offline"].service, "deplo-panel");
+
+  const healed = withPanelRoute(BEFORE_THE_LINK, PANEL_ROUTE);
+  const config = (s: string) =>
+    (parse(s) as Doc & { configs: Record<string, { content: string }> })
+      .configs["deplo-panel"].content;
+  assert.equal(
+    config(healed),
+    config(INSTALLED_WITH_PANEL),
+    "the panel writes what install.sh writes, in the same order",
+  );
+});
+
+test("the link moves with the panel's address and stays on its fallback name", () => {
+  const routers = panelFileOf(
+    withPanelRoute(INSTALLED_WITH_PANEL, {
+      ...PANEL_ROUTE,
+      domain: "new.example.com",
+    }),
+  ).http.routers;
+  assert.equal(routers["deplo-panel-link"].rule, LINK_ON("new.example.com"));
+  assert.equal(
+    routers["deplo-panel-fallback-link"].rule,
+    LINK_ON("deplo-cb007109.deplo.site"),
+  );
+});
+
+test("turning the backup address off takes its link route with it", () => {
+  const off = panelFileOf(
+    withPanelRoute(INSTALLED_WITH_PANEL, {
+      ...PANEL_ROUTE,
+      fallbackDomain: null,
+    }),
+  ).http.routers;
+  assert.equal(off["deplo-panel-fallback-link"], undefined);
+  assert.equal(off["deplo-panel-link"].rule, LINK_ON("deplo.example.com"));
+
+  const same = panelFileOf(
+    withPanelRoute(INSTALLED_WITH_PANEL, {
+      ...PANEL_ROUTE,
+      domain: PANEL_ROUTE.fallbackDomain,
+    }),
+  ).http.routers;
+  assert.equal(same["deplo-panel-fallback-link"], undefined);
+  assert.equal(
+    same["deplo-panel-link"].rule,
+    LINK_ON("deplo-cb007109.deplo.site"),
+  );
+});
+
+test("the link follows the panel onto plain http", () => {
+  const off = panelFileOf(
+    withPanelRoute(INSTALLED_WITH_PANEL, {
+      ...PANEL_ROUTE,
+      https: false,
+      certResolver: null,
+    }),
+  ).http.routers;
+  for (const name of ["deplo-panel-link", "deplo-panel-fallback-link"]) {
+    assert.deepEqual(off[name].entryPoints, ["web"], name);
+    assert.equal(off[name].tls, undefined, name);
+  }
+});
+
+test("the link goes to the listener beside wherever the panel lives", () => {
+  const onHost = INSTALLED_WITH_PANEL.replace(
+    "http://deplo:3000",
+    "http://host.docker.internal:3000",
+  );
+  const out = withPanelRoute(onHost, { ...panelRoute(onHost)!, https: false });
+  assert.deepEqual(panelFileOf(out).http.services["deplo-link"], {
+    loadBalancer: { servers: [{ url: "http://host.docker.internal:3001" }] },
+  });
 });
 
 test("a stopped app's address falls through to a route that says so", () => {

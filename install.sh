@@ -1237,7 +1237,17 @@ if [ -n "$TAKEOVER" ] && [ "$TAKEOVER_PAST" = 0 ]; then
   ok "Deplo waits on :$PANEL_PORT until the takeover" "proxy on $HTTP_PORT/$HTTPS_PORT"
 fi
 
-for p in $HTTP_PORT $HTTPS_PORT $PANEL_PORT; do
+# This machine's own agent links to the panel on this loopback port (ADR-0038) and
+# saves it, so it is chosen once and kept. None of the takeover's panel ports.
+pick_link_port() {
+  local kept; kept="$(state_get link_port || true)"
+  if [ -n "$kept" ]; then printf '%s' "$kept"; return 0; fi
+  first_free_port 3101 3102 3103 3104
+}
+LINK_PORT="$(pick_link_port)"
+LINK_PORT="${LINK_PORT:-3101}"
+
+for p in $HTTP_PORT $HTTPS_PORT $PANEL_PORT $LINK_PORT; do
   PORT_STATE=0
   port_in_use "$p" || PORT_STATE=$?
   case "$PORT_STATE" in
@@ -1249,7 +1259,7 @@ for p in $HTTP_PORT $HTTPS_PORT $PANEL_PORT; do
       else
         HOLDER="$(port_holder "$p")"
         pf_fail "Port $p is already in use${HOLDER:+ by $HOLDER}." \
-          "Deplo needs $HTTP_PORT and $HTTPS_PORT for Traefik and $PANEL_PORT for the dashboard. Free it and re-run."
+          "Deplo needs $HTTP_PORT and $HTTPS_PORT for Traefik and $PANEL_PORT and $LINK_PORT for the dashboard. Free it and re-run."
       fi
       ;;
   esac
@@ -1721,6 +1731,7 @@ trace_on
 # container, where `hostname` answers with a random container id.
 HOST_NAME="$(hostname 2>/dev/null || cat /proc/sys/kernel/hostname 2>/dev/null || echo "")"
 ok "Workspace ready" "secrets in $ENV_FILE"
+state_set link_port "$LINK_PORT"
 
 # The takeover, now that there is a directory to remember it in. The copy of this
 # script is what makes every "re-run it" instruction below true, including from a
@@ -1748,8 +1759,13 @@ fi
 # password and session cookie it takes crosses the wire in clear. Traefik serves
 # the panel over HTTPS on the host below instead, always. Loopback stays because
 # two things need it: this installer bootstraps the server agent through it, and
-# an SSH tunnel is the way back in when the proxy itself is what broke.
-DEPLO_EXPOSE="$(printf '    ports:\n      - "127.0.0.1:%s:3000"' "$PANEL_PORT")"
+# an SSH tunnel is the way back in when the proxy itself is what broke. The agent
+# link (:3001) is on loopback for this machine's own agent, which never uses its
+# public address; every other server reaches it through Traefik.
+panel_ports() {
+  printf '    ports:\n      - "127.0.0.1:%s:3000"\n      - "127.0.0.1:%s:3001"' "$PANEL_PORT" "$LINK_PORT"
+}
+DEPLO_EXPOSE="$(panel_ports)"
 
 # The panel's own route is a Traefik FILE-provider config, not labels on this
 # container - and that difference is the whole point. A container's compose file
@@ -1759,9 +1775,10 @@ DEPLO_EXPOSE="$(printf '    ports:\n      - "127.0.0.1:%s:3000"' "$PANEL_PORT")"
 # allowed to write - it is how custom certificates are installed.
 #
 # KEEP IN SYNC with `withPanelRoute` in lib/deploy/traefik-stack.ts, which reads
-# and rewrites exactly this shape: it replaces the `deplo-panel` router and
-# service in place and leaves the rest of the file alone, which is what keeps the
-# fallback router below alive across an edit from the panel. `priority: 2` keeps a
+# and rewrites exactly this shape: it replaces the `deplo-panel` routers (each with
+# its `-link` sibling) and services in place and leaves the rest of the file alone,
+# which is what keeps the fallback router below alive across an edit from the
+# panel (install-script/panel-route.test.ts holds the two together). `priority: 2` keeps a
 # Host-only router a true fallback so any more-specific PathPrefix router on the
 # same host (an app's path override, or the reserved /plugins/<slug> route)
 # outranks it - Traefik would otherwise default it to its rule-string length and
@@ -1839,6 +1856,9 @@ panel_router() { # $1 router name, $2 host
   # writes, and which an update re-rendering it as websecure took away.
   [ "${PANEL_HTTPS:-true}" = true ] || { tls=''; entry=web; }
   printf '          %s:\n            rule: Host(`%s`)\n            entryPoints:\n              - %s\n            service: deplo-panel\n            priority: 2\n'"$tls" "$1" "$2" "$entry"
+  # Servers link in on this same name (ADR-0038). Never a bare Path(): this proxy
+  # routes every app too, and would take the path from all of them.
+  printf '          %s-link:\n            rule: Host(`%s`) && Path(`/api/agent/link`)\n            entryPoints:\n              - %s\n            service: deplo-link\n            priority: 3\n'"$tls" "$1" "$2" "$entry"
 }
 
 # The certificates the operator installed from the panel live in this same file,
@@ -1873,6 +1893,7 @@ render_traefik_panel_config() {
     [ "$PANEL_HOST" = "$FALLBACK_HOST" ] || panel_router deplo-panel-fallback "$FALLBACK_HOST"
     offline_router
     printf '        services:\n          deplo-panel:\n            loadBalancer:\n              servers:\n                - url: http://deplo:3000\n              passHostHeader: true\n'
+    printf '          deplo-link:\n            loadBalancer:\n              servers:\n                - url: http://deplo:3001\n'
     [ -z "$TRAEFIK_CUSTOM_CERTS" ] || printf '%s\n' "$TRAEFIK_CUSTOM_CERTS"
     printf '%s' "$TRAEFIK_DEFAULT_CERT_CONFIG"
   )"
@@ -1979,12 +2000,14 @@ sed -i '/^$/d' "$TRAEFIK_COMPOSE"
 takeover_repick_ports() {
   [ -n "$TAKEOVER" ] && [ "$TAKEOVER_PAST" = 0 ] || return 0
   local moved=0 p
-  for p in HTTP_PORT HTTPS_PORT PANEL_PORT; do
+  for p in HTTP_PORT HTTPS_PORT PANEL_PORT LINK_PORT; do
     if port_in_use "${!p}" && ! ours_holds_port "${!p}"; then
       case "$p" in
         HTTP_PORT) HTTP_PORT="$(first_free_port 8080 8081 8090)" ;;
         HTTPS_PORT) HTTPS_PORT="$(first_free_port 8443 8444 9443)" ;;
         PANEL_PORT) PANEL_PORT="$(first_free_port 3000 3001 3002 3003)" ;;
+        # Before this machine's agent is installed below, so nothing has saved it yet.
+        LINK_PORT) LINK_PORT="$(first_free_port 3101 3102 3103 3104)" ;;
       esac
       moved=1
     fi
@@ -1994,7 +2017,8 @@ takeover_repick_ports() {
   state_set takeover_panel_port "$PANEL_PORT"
   state_set takeover_http_port "$HTTP_PORT"
   state_set takeover_https_port "$HTTPS_PORT"
-  DEPLO_EXPOSE="$(printf '    ports:\n      - "127.0.0.1:%s:3000"' "$PANEL_PORT")"
+  state_set link_port "$LINK_PORT"
+  DEPLO_EXPOSE="$(panel_ports)"
   render_traefik_panel_config
 }
 takeover_repick_ports
@@ -2101,6 +2125,9 @@ services:
       # its own port map, and it needs it to hand this machine's own agent an
       # address that works before the proxy's ports are Deplo's.
       - DEPLO_PANEL_PORT=$PANEL_PORT
+      # And the host port it publishes the agent link on, which this machine's own
+      # agent links to over loopback.
+      - DEPLO_LINK_PORT=$LINK_PORT
       # Empty on an ordinary install. The panel seeds its takeover state from
       # this once, then owns it - so the cutover clearing it changes nothing.
       - DEPLO_TAKEOVER=$TAKEOVER
@@ -2206,8 +2233,8 @@ spin_run "Starting Postgres and the Deplo control plane" \
 # Over loopback, never the domain: DNS may not point here yet and the certificate
 # may not have issued, while 127.0.0.1 answers from the moment the panel is up.
 # Plain http is fine on it - the bootstrap is HMAC-signed by the token and the
-# packet never leaves the host. Used only to bootstrap; afterwards the panel dials
-# the agent, not the other way round.
+# packet never leaves the host. Used only to bootstrap; afterwards the agent links
+# to the panel on $LINK_PORT, over loopback too.
 AGENT_BOOTSTRAP_URL="http://127.0.0.1:$PANEL_PORT"
 
 wait_for_panel() {
@@ -2410,6 +2437,34 @@ takeover_post() { # $1 state, $2 the reason (failed only)
   done
 }
 
+# The side door's routes: $1 the panel's host, $2 their http entrypoint. Servers
+# added during the takeover link in through it too (ADR-0038).
+side_door_config() {
+  cat <<YAML
+http:
+  routers:
+    deplo-setup:
+      rule: Host(\`$1\`)
+      entryPoints:
+        - $2
+      service: deplo-setup
+    deplo-setup-link:
+      rule: Host(\`$1\`) && Path(\`/api/agent/link\`)
+      entryPoints:
+        - $2
+      service: deplo-setup-link
+  services:
+    deplo-setup:
+      loadBalancer:
+        servers:
+          - url: http://deplo:3000
+    deplo-setup-link:
+      loadBalancer:
+        servers:
+          - url: http://deplo:3001
+YAML
+}
+
 # A route dropped into the other platform's Traefik, which both watch and reload
 # on their own. Additive, and taken away again at the cutover.
 takeover_side_door() {
@@ -2433,20 +2488,7 @@ takeover_side_door() {
   # and a truncate-then-write made the route vanish for a second each time this
   # ran again - which is every start of the worker.
   local tmp; tmp="$(mktemp -p "$dir" .deplo-setup.XXXXXX)"
-  cat > "$tmp" <<YAML
-http:
-  routers:
-    deplo-setup:
-      rule: Host(\`$host\`)
-      entryPoints:
-        - $entry
-      service: deplo-setup
-  services:
-    deplo-setup:
-      loadBalancer:
-        servers:
-          - url: http://deplo:3000
-YAML
+  side_door_config "$host" "$entry" > "$tmp"
   if cmp -s "$tmp" "$dir/deplo-setup.yml" 2>/dev/null; then rm -f "$tmp"
   else chmod 600 "$tmp"; mv -f "$tmp" "$dir/deplo-setup.yml"; fi
   printf 'http://%s' "$host"
