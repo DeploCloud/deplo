@@ -12,8 +12,8 @@ on the deeper docs it links (this file points; it does not restate them).
 - **`docs/agents/`**: `issue-tracker.md`, `triage-labels.md`, `domain.md`, `releasing.md`,
   `fleet-rollout.md`.
 
-**Every count in this file is a snapshot of a moving tree** (45 Capabilities, 109 tables, 186 MCP
-tools, 37 ADRs, the pin list). The rule they carry is the durable part; re-derive the number
+**Every count in this file is a snapshot of a moving tree** (45 Capabilities, 115 tables, 186 MCP
+tools, 38 ADRs, the pin list). The rule they carry is the durable part; re-derive the number
 before you rely on it, and fix the line here when it has moved:
 
 ```sh
@@ -501,7 +501,7 @@ scripts/gen-schema.ts`. Both halves of that prefix are load-bearing: the shim
 ## Persistence, secrets, auth
 
 - **Postgres is the only control-plane store** (`lib/db/pg.ts`, one bounded pool). There is **no
-  JSON/document store** - the old `deplo_state` JSONB was fully normalized into 109 tables (96
+  JSON/document store** - the old `deplo_state` JSONB was fully normalized into 115 tables (102
   under `schema/control-plane/`, plus 12 Better Auth and 1 scheduler); **never add a JSONB
   column** (nested → child table, list → ordered/junction table). The `jsonb` columns in
   `schema/auth.ts` are Better Auth's own and are not a precedent. `*_at` columns use

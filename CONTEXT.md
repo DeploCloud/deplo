@@ -124,6 +124,15 @@ Any instance admin may turn it off at any time; off means nothing is sent. An in
 force it off, and the switch then shows as disabled with that reason.
 _Avoid_: telemetry (in anything a person reads), tracking, opt-out.
 
+**Security update**:
+A package in something an app or database runs that has a known security flaw and a fix the
+team can apply: update a dependency in its own code, rebuild on a newer base image, or update to
+a newer build or version of the image. One update is one package to move, however many
+advisories that closes. A flaw nobody has shipped a fix for is listed as "No fix yet" and never
+counted. Levels, in the team's words: "Used in attacks", "Critical", "Important"
+([ADR-0038](docs/adr/0038-security-updates-are-matched-in-the-control-plane.md)).
+_Avoid_: vulnerability or CVE (in anything a non-expert reads), scan, security issue.
+
 **Canary release**:
 A pre-release of the next Deplo version, tagged `x.y.z-canary.n`. Off by default; an instance
 admin opts in once (Settings → Deplo → Advanced), and `deplo update` on the host follows the same
