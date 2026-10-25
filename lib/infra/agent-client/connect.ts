@@ -4,6 +4,7 @@ import { markServerSeen } from "../../data/servers/agent-handshake";
 import { getServerById } from "../../data/servers/roster";
 import { agentSelfRpc } from "./agent-self-rpc";
 import { backupRpc } from "./backup-rpc";
+import { captureRpc } from "./capture-rpc";
 import type { AgentConnection } from "./connection";
 import { consoleRpc } from "./console-rpc";
 import { cronRpc } from "./cron-rpc";
@@ -34,6 +35,7 @@ export function dial(target: DialTarget): AgentConnection {
     ...dataCopyRpc(channel),
     ...hostRpc(channel),
     ...inventoryRpc(channel),
+    ...captureRpc(channel),
     ...backupRpc(channel),
     ...consoleRpc(channel),
     ...cronRpc(channel),

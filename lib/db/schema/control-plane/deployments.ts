@@ -11,7 +11,7 @@ import {
 } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 
-import { isoTimestamptz } from "../columns";
+import { bytea, isoTimestamptz } from "../columns";
 import { apps } from "./apps";
 import { teams, users } from "./identity";
 import { servers } from "./servers";
@@ -102,6 +102,16 @@ export const deploymentLogs = pgTable(
   },
   (t) => [index("deployment_logs_deployment_idx").on(t.deploymentId, t.id)],
 );
+
+// A deployment's own picture, light and dark (https://deplo.build/docs/guides/deploy/deployments).
+export const deploymentScreenshots = pgTable("deployment_screenshots", {
+  deploymentId: text("deployment_id")
+    .primaryKey()
+    .references(() => deployments.id, { onDelete: "cascade" }),
+  light: bytea("light").notNull(),
+  dark: bytea("dark"),
+  capturedAt: isoTimestamptz("captured_at").notNull(),
+});
 
 export const appPreviews = pgTable(
   "app_previews",

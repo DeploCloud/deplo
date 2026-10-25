@@ -7,7 +7,12 @@ import { appBasicAuthUsers as basicAuthTable } from "../db/schema/control-plane/
 import { getCurrentUser } from "../auth/current-user";
 import { newId, nowIso } from "../ids";
 import { recordActivity } from "./activity";
-import { encryptSecret, decryptSecret, htpasswdLine } from "../crypto";
+import {
+  encryptSecret,
+  decryptSecret,
+  htpasswdLine,
+  tryDecryptSecret,
+} from "../crypto";
 import { assertPasswordNotPwned } from "../pwned-password";
 import { assertPasswordPolicy } from "../password-policy";
 import { appInTeam } from "./app-graph-load";
@@ -243,6 +248,23 @@ export async function basicAuthUsersValue(appId: string): Promise<string> {
     }),
   );
   return lines.join(",");
+}
+
+// Ungated like basicAuthUsersValue: the screenshot browser answers the app's own login with it.
+export async function basicAuthCredentialForCapture(
+  appId: string,
+): Promise<{ username: string; password: string } | null> {
+  const [row] = await getDb()
+    .select()
+    .from(basicAuthTable)
+    .where(eq(basicAuthTable.appId, appId))
+    .orderBy(asc(basicAuthTable.createdAt))
+    .limit(1);
+  if (!row) return null;
+  const password = tryDecryptSecret(row.passwordEnc);
+  return password.ok
+    ? { username: row.username, password: password.value }
+    : null;
 }
 
 export async function appHasBasicAuth(appId: string): Promise<boolean> {

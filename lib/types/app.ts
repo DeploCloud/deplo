@@ -67,6 +67,7 @@ export interface App {
   consoleEnabled: boolean;
   restartLoopGuard: boolean;
   restartLoopStoppedAt?: string | null;
+  screenshotsEnabled: boolean;
   deployHookEnabled: boolean;
   composeUpArgs: string | null;
   rollbackKeep: number;

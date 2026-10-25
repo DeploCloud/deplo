@@ -29,7 +29,7 @@ import {
   commitOutcome,
   log,
   settleMove,
-  sweepAfterDeploy,
+  afterDeployReady,
   type DeployTarget,
 } from "./deployment-state";
 
@@ -156,7 +156,7 @@ async function finishComposeStack(
       if (environment === "production") {
         await settleMove(depId, project.id, opts.serverId);
       }
-      sweepAfterDeploy(depId, opts.serverId);
+      afterDeployReady(depId, opts.serverId);
     }
   } else {
     if (

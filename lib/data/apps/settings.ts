@@ -1,9 +1,13 @@
 import "server-only";
 
-import { and, eq } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 
 import { getDb } from "../../db/client";
 import { apps as appsTable } from "../../db/schema/control-plane/apps";
+import {
+  deploymentScreenshots,
+  deployments as deploymentsTable,
+} from "../../db/schema/control-plane/deployments";
 import { getCurrentUser } from "../../auth/current-user";
 import { nowIso } from "../../ids";
 import { requireCapability } from "../../membership";
@@ -92,6 +96,41 @@ export async function setAppRestartLoopGuard(
   await recordActivity(
     "app",
     `${enabled ? "Turned on" : "Turned off"} restart loop protection for ${rows[0].name}`,
+    user.name,
+    id,
+  );
+}
+
+// Off deletes every saved picture of the app: off means none are kept.
+export async function setAppScreenshots(
+  id: string,
+  enabled: boolean,
+): Promise<void> {
+  const { membership } = await requireAppCapability(id, "configure_apps");
+  const user = (await getCurrentUser())!;
+  const rows = await getDb()
+    .update(appsTable)
+    .set({ screenshotsEnabled: enabled, updatedAt: nowIso() })
+    .where(and(eq(appsTable.id, id), eq(appsTable.teamId, membership.teamId)))
+    .returning({ name: appsTable.name });
+  if (rows.length === 0) throw new Error("App not found");
+  if (!enabled) {
+    await getDb()
+      .delete(deploymentScreenshots)
+      .where(
+        inArray(
+          deploymentScreenshots.deploymentId,
+          getDb()
+            .select({ id: deploymentsTable.id })
+            .from(deploymentsTable)
+            .where(eq(deploymentsTable.appId, id)),
+        ),
+      );
+    publishAppChanged(id);
+  }
+  await recordActivity(
+    "app",
+    `${enabled ? "Turned on" : "Turned off"} screenshots for ${rows[0].name}`,
     user.name,
     id,
   );

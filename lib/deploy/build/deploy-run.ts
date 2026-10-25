@@ -67,7 +67,7 @@ import {
   setDeployState,
   settleIfCanceled,
   settleMove,
-  sweepAfterDeploy,
+  afterDeployReady,
   targetFor,
 } from "./deployment-state";
 import { destroyStack } from "./stack-lifecycle";
@@ -726,7 +726,7 @@ async function runDeployment(depId: string): Promise<void> {
         if (dep.environment === "production") {
           await settleMove(depId, project.id, serverId);
         }
-        sweepAfterDeploy(depId, serverId);
+        afterDeployReady(depId, serverId);
       }
     } else {
       await commitOutcome(

@@ -51,6 +51,28 @@ export const APPS_OPS: McpToolDef[] = [
     `,
   }),
   tool({
+    name: "retake_deployment_screenshot",
+    title: "Retake a deployment's screenshot",
+    description:
+      "Take the live deployment's light and dark picture again and wait for it; fails with the reason when the site does not load.",
+    group: "Apps",
+    requires: "configure_apps",
+    idempotent: true,
+    input: z.object({
+      deploymentId: z
+        .string()
+        .describe("The deployment its address serves today."),
+    }),
+    query: /* GraphQL */ `
+      mutation McpRetakeScreenshot($deploymentId: String!) {
+        retakeDeploymentScreenshot(deploymentId: $deploymentId) {
+          id
+          screenshotAt
+        }
+      }
+    `,
+  }),
+  tool({
     name: "cancel_deployment",
     title: "Cancel a deployment",
     description: "Stop an in-flight build or deploy.",

@@ -12,8 +12,8 @@ on the deeper docs it links (this file points; it does not restate them).
 - **`docs/agents/`**: `issue-tracker.md`, `triage-labels.md`, `domain.md`, `releasing.md`,
   `fleet-rollout.md`.
 
-**Every count in this file is a snapshot of a moving tree** (46 Capabilities, 116 tables, 188 MCP
-tools, 38 ADRs, the pin list). The rule they carry is the durable part; re-derive the number
+**Every count in this file is a snapshot of a moving tree** (46 Capabilities, 117 tables, 189 MCP
+tools, 39 ADRs, the pin list). The rule they carry is the durable part; re-derive the number
 before you rely on it, and fix the line here when it has moved:
 
 ```sh
@@ -190,6 +190,9 @@ route `UI → GraphQL → lib/data/* → connectAgent(serverId) → agent`.
 - **Fails clearly, no in-process fallback**: a mandatory `Hello` pre-flight; an unreachable agent
   is a hard error, never a silent local build. New RPCs are additive (contract stays `V1`); gate
   host features behind Hello `capabilities[]`.
+- **The deployment screenshot browser has no network** (ADR-0039): it runs on the app's server
+  agent in a `--network none` container, and the agent's vetted egress proxy is its only way out.
+  Nothing renders a deployed page from the control plane.
 - **A panel pins its agent** (ADR-0037): `deplo.agent` / `deplo.agentMin` in `package.json`. Deplo
   updates every server to the pin on its own; below `agentMin` a server is **unusable** and
   `connectAgent` refuses it. Only `openAgent` skips that gate, and only Hello, SelfUpdate, the
@@ -325,7 +328,9 @@ scripts/gen-schema.ts`. Both halves of that prefix are load-bearing: the shim
     `.../logs` (SSE), `.../attach`, `databases/[id]/logs` (SSE), `databases/[id]/attach` (SSE
     siblings of the app routes - reuse `lib/logs/session.ts` + `lib/attach/session.ts`),
     `backups/[runId]/download`, `backups/restore-upload`, `node-versions`,
-    `database-versions`, `registry/images`, `github/callback|setup`.
+    `database-versions`, `registry/images`, `github/callback|setup`,
+    `deployments/[id]/screenshot` (run under the deployment's own team, so a tab on another team
+    still loads it).
   - **A signature or a URL token, never a cookie**: `github/webhook` (HMAC over the body),
     `git/webhook/[token]` (the URL token names the provider - sniffing headers would let the
     caller pick the verification rule), `agent/bootstrap` (one-shot enrollment token),
@@ -353,7 +358,7 @@ scripts/gen-schema.ts`. Both halves of that prefix are load-bearing: the shim
     Adding a tool is adding a row; adding an authorization check there is a bug - it belongs in
     `lib/data/*`. Regenerate nothing, but keep `lib/mcp/tools.test.ts` green: it validates every
     document against `schema.graphql`, which is what stops a renamed field from silently
-    breaking all 188 of them (`MCP_TOOLS` in `lib/mcp/tools/catalog.ts`).
+    breaking all 189 of them (`MCP_TOOLS` in `lib/mcp/tools/catalog.ts`).
 
 ## Data & mutations (the security boundary)
 
@@ -501,7 +506,7 @@ scripts/gen-schema.ts`. Both halves of that prefix are load-bearing: the shim
 ## Persistence, secrets, auth
 
 - **Postgres is the only control-plane store** (`lib/db/pg.ts`, one bounded pool). There is **no
-  JSON/document store** - the old `deplo_state` JSONB was fully normalized into 116 tables (103
+  JSON/document store** - the old `deplo_state` JSONB was fully normalized into 117 tables (104
   under `schema/control-plane/`, plus 12 Better Auth and 1 scheduler); **never add a JSONB
   column** (nested → child table, list → ordered/junction table). The `jsonb` columns in
   `schema/auth.ts` are Better Auth's own and are not a precedent. `*_at` columns use

@@ -20,6 +20,8 @@ import type {
   DockerCleanupResponse,
   InventoryImageResponse,
   ListWorkloadImagesResponse,
+  CaptureScreenshotRequest,
+  CaptureScreenshotResponse,
   HostInfoRequest,
   HostInfoResponse,
   SetTimezoneRequest,
@@ -223,6 +225,10 @@ export interface AgentConnection {
   // Needs `image-inventory` (ADR-0038).
   listWorkloadImages(): Promise<ListWorkloadImagesResponse>;
   inventoryImage(imageId: string): Promise<InventoryImageResponse>;
+  // Needs `screenshot` (ADR-0039).
+  captureScreenshot(
+    req: CaptureScreenshotRequest,
+  ): Promise<CaptureScreenshotResponse>;
 
   hostInfo(req: HostInfoRequest): Promise<HostInfoResponse>;
   setTimezone(req: SetTimezoneRequest): Promise<HostInfoResponse>;

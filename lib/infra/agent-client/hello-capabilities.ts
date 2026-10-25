@@ -70,3 +70,6 @@ export const DEPLOY_PULL_BASE_CAPABILITY = "deploy.pull-base";
 
 // Without it a reroute pulls only missing images, so a database Update would change nothing.
 export const REROUTE_PULL_CAPABILITY = "reroute.pull";
+
+// CaptureScreenshot: the deployment screenshot browser (ADR-0039).
+export const SCREENSHOT_CAPABILITY = "screenshot";

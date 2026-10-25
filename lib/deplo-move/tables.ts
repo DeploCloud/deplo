@@ -85,6 +85,8 @@ export const MOVE_TABLES: Readonly<Record<string, TablePolicy>> = {
   deplo_move_workloads: { kind: "local" },
   deplo_moves: { kind: "local" },
   deployment_logs: COPY,
+  // Derived: the next deploy on the new Deplo takes them again.
+  deployment_screenshots: { kind: "skip" },
   deployments: { kind: "copy", nullOnCopy: ["preview_id"] },
   docker_cleanup_excluded_servers: COPY,
   docker_cleanup_policy: COPY,

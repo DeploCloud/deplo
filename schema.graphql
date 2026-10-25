@@ -254,6 +254,11 @@ type App {
   How many previous deployments this app can be rolled back to (0-20, default 3). Retention: its server keeps this many of the app's images behind the running one. 0 means there is nothing to go back to.
   """
   rollbackKeep: Int
+
+  """
+  Whether Deplo takes a light and a dark picture of the site after each deploy. On by default; off deletes the saved pictures.
+  """
+  screenshotsEnabled: Boolean
   serverId: ID
   slug: String
   source: DeploySource
@@ -1901,6 +1906,11 @@ type Deployment {
   Rolling back to this deployment rebuilds its commit, because its image is no longer kept on the server. Takes minutes instead of seconds.
   """
   rollbackRebuilds: Boolean
+
+  """
+  When Deplo last took this deployment's picture, or null when it has none (still building, the site failed to load, or screenshots are off).
+  """
+  screenshotAt: String
 
   """
   When the build was claimed off the queue and started running - the origin `buildDurationMs` is measured from, and what a live build timer counts up from. Null while still queued.
@@ -3991,6 +4001,11 @@ type Mutation {
   resumeMoveSchedules: Boolean
 
   """
+  Take the deployment's light and dark picture again, and wait for it. Only the deployment its address serves today can be taken again. Fails with the reason when the site answers with an error, comes out blank or cannot be reached; the previous picture then stays.
+  """
+  retakeDeploymentScreenshot(deploymentId: String!): Deployment
+
+  """
   Resume a failed move: the copy again if it never landed, else every app or database not copied yet. Public by the move's unguessable id, like its progress page.
   """
   retryDeploMove(id: String!): DeploMoveStatus
@@ -4156,6 +4171,11 @@ type Mutation {
   How many previous deployments this app can be rolled back to (0-20, default 3). It is retention: the app's server keeps this many of its images behind the running one. Takes effect on the next sweep - lowering it removes nothing now, and raising it cannot bring back images already removed.
   """
   setAppRollbackKeep(count: Int!, id: String!): App
+
+  """
+  Turn deployment screenshots on or off for one app. Off stops taking them and deletes every saved one; on takes the next at the next deploy.
+  """
+  setAppScreenshots(id: String!, value: Boolean!): App
   setAppTraefikLabels(id: String!, labels: [TraefikLabelInput!]!): App
 
   """

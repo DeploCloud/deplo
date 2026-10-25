@@ -51,7 +51,7 @@ import {
   effectiveScopes,
 } from "./docker-cleanup/scopes";
 import { __settleCleanupSweeps, runCleanupNow } from "./docker-cleanup/sweep";
-import { sweepAfterDeploy } from "../deploy/build/deployment-state";
+import { afterDeployReady } from "../deploy/build/deployment-state";
 
 let db: TestDb;
 let pg: PGlite;
@@ -545,7 +545,7 @@ test("sweepSupersededAppImages honors the policy's controls and never throws", a
 
 test("the deploy-time sweep runs in the background, off the deploy queue", async () => {
   await seedCleanupPolicy(db, { scopes: ["unused_app_images"] });
-  assert.equal(sweepAfterDeploy("dpl_x", SERVER_1), undefined);
+  assert.equal(afterDeployReady("dpl_x", SERVER_1), undefined);
   assert.deepEqual(serversWithDeploySweepInFlight(), [SERVER_1]);
   while (serversWithDeploySweepInFlight().length > 0)
     await new Promise((r) => setTimeout(r, 10));

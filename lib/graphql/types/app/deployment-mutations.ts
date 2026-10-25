@@ -10,6 +10,8 @@ import {
   deleteAllDeployments,
 } from "@/lib/data/deployments/cancel-and-delete";
 import { rollbackDeployment } from "@/lib/data/deployments/rollback";
+import { getDeployment } from "@/lib/data/deployments/deployment-queries";
+import { retakeDeploymentScreenshot } from "@/lib/data/deployments/screenshot";
 import { redeploy } from "@/lib/data/deployments/stack-actions";
 import { renderAppStack } from "@/lib/deploy/build/app-stack-view";
 import { acceptDataCopyLoss } from "@/lib/data/data-copy";
@@ -77,6 +79,21 @@ builder.mutationFields((t) => ({
       "limits. Returns the new deployment.",
     args: { deploymentId: t.arg.string({ required: true }) },
     resolve: (_r, { deploymentId }) => rollbackDeployment(deploymentId),
+  }),
+  retakeDeploymentScreenshot: t.field({
+    type: DeploymentRef,
+    nullable: true,
+    authScopes: { capability: "configure_apps" },
+    description:
+      "Take the deployment's light and dark picture again, and wait for it. " +
+      "Only the deployment its address serves today can be taken again. " +
+      "Fails with the reason when the site answers with an error, comes out " +
+      "blank or cannot be reached; the previous picture then stays.",
+    args: { deploymentId: t.arg.string({ required: true }) },
+    resolve: async (_r, { deploymentId }) => {
+      await retakeDeploymentScreenshot(deploymentId);
+      return getDeployment(deploymentId);
+    },
   }),
   setAppRollbackKeep: t.field({
     type: AppRef,
