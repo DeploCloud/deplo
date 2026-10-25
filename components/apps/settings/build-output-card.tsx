@@ -106,7 +106,7 @@ export function BuildOutputCard({
     build.outputDirectory && "Output directory",
     build.runtimeVersion && `Node.js ${build.runtimeVersion}`,
     build.methodSettings.staticSinglePageApp && "Single-page application",
-    method === "railpack" && "Always Railpack",
+    method === "railpack" && "Railpack",
   ].filter(Boolean);
 
   return (
