@@ -46,7 +46,7 @@ export function ChangeAddress({ server }: { server: ServerSummary }) {
         {
           id: server.id,
           address: address.trim(),
-          agentPort: port.trim() ? Number(port.trim()) : null,
+          agentPort: !server.linked && port.trim() ? Number(port.trim()) : null,
           force,
         },
       );
@@ -71,8 +71,9 @@ export function ChangeAddress({ server }: { server: ServerSummary }) {
             <BetaChip />
           </div>
           <p className="mt-1 text-sm text-muted-foreground">
-            Where Deplo reaches this server&rsquo;s agent. Change it when the
-            host got a new IP or you moved it.
+            {server.linked
+              ? "Where this server’s apps are reached. Change it when the machine got a new IP or you moved it."
+              : "Where Deplo reaches this server’s agent. Change it when the host got a new IP or you moved it."}
           </p>
         </div>
         <Button variant="outline" onClick={openDialog} disabled={pending}>
@@ -83,94 +84,138 @@ export function ChangeAddress({ server }: { server: ServerSummary }) {
 
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent>
-          <form
-            className="grid gap-4"
-            onSubmit={(e) => {
-              e.preventDefault();
-              save(false);
-            }}
-          >
-            <DialogHeader>
-              <DialogTitle>Change address for {server.name}?</DialogTitle>
-              <DialogDescription>
-                Deplo checks that the agent answers at the new address before
-                saving. Apps and databases on the server are not touched.
-              </DialogDescription>
-            </DialogHeader>
-            {server.isDeploHost && (
-              <p className="text-sm text-destructive">
-                This server runs Deplo itself - a wrong address here cuts this
-                dashboard off from its own host.
-              </p>
-            )}
-            <div className="grid gap-2">
-              <FieldLabel
-                htmlFor="server-address"
-                info="IP or DNS name. App URLs follow it immediately; custom domains keep pointing at the old address until you update their DNS records."
-                docs="servers.address"
-              >
-                Address
-              </FieldLabel>
-              <Input
-                id="server-address"
-                value={address}
-                onChange={(e) => setAddress(e.target.value)}
-                placeholder="203.0.113.7 or server.example.com"
-                autoFocus
-              />
-            </div>
-            {server.agentPort !== null && (
-              <div className="grid gap-2">
-                <FieldLabel
-                  htmlFor="server-agent-port"
-                  info="The port the Deplo agent listens on (default 9443). Change it only if you moved the agent."
-                  docs="servers.address"
-                >
-                  Agent port
-                </FieldLabel>
-                <Input
-                  id="server-agent-port"
-                  inputMode="numeric"
-                  value={port}
-                  onChange={(e) => setPort(e.target.value)}
-                />
-              </div>
-            )}
-            {refusal && (
-              <div className="rounded-md border border-destructive/40 bg-destructive-wash-strong p-3 text-sm">
-                <p>{refusal}</p>
-                <p className="mt-1 text-muted-foreground">
-                  Save anyway if the host is not up at the new address yet -
-                  Deplo keeps checking its health there.
-                </p>
-              </div>
-            )}
-            <DialogFooter>
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => setOpen(false)}
-                disabled={pending}
-              >
-                Cancel
-              </Button>
-              {refusal && (
-                <Button
-                  type="button"
-                  variant="destructive"
-                  onClick={() => save(true)}
-                  disabled={pending || !address.trim()}
-                >
-                  {pending ? "Saving" : "Save anyway"}
-                </Button>
-              )}
-              <Button type="submit" disabled={pending || !address.trim()}>
-                {pending ? "Saving" : "Save"}
-              </Button>
-            </DialogFooter>
-          </form>
+          <ChangeAddressForm
+            server={server}
+            address={address}
+            onAddressChange={setAddress}
+            port={port}
+            onPortChange={setPort}
+            refusal={refusal}
+            pending={pending}
+            onSave={save}
+            onCancel={() => setOpen(false)}
+          />
         </DialogContent>
       </Dialog>
     </>
+  );
+}
+
+export interface ChangeAddressFormProps {
+  server: Pick<ServerSummary, "name" | "agentPort" | "linked" | "isDeploHost">;
+  address: string;
+  onAddressChange: (value: string) => void;
+  port: string;
+  onPortChange: (value: string) => void;
+  refusal: string | null;
+  pending: boolean;
+  onSave: (force: boolean) => void;
+  onCancel: () => void;
+}
+
+// A linked server is never dialed (ADR-0038): no agent port, no check, nothing to force.
+export function ChangeAddressForm({
+  server,
+  address,
+  onAddressChange,
+  port,
+  onPortChange,
+  refusal,
+  pending,
+  onSave,
+  onCancel,
+}: ChangeAddressFormProps) {
+  const dialed = !server.linked;
+  return (
+    <form
+      className="grid gap-4"
+      onSubmit={(e) => {
+        e.preventDefault();
+        onSave(false);
+      }}
+    >
+      <DialogHeader>
+        <DialogTitle>Change address for {server.name}?</DialogTitle>
+        <DialogDescription>
+          {dialed
+            ? "Deplo checks that the agent answers at the new address before saving. Apps and databases on the server are not touched."
+            : "Apps and databases on the server are not touched."}
+        </DialogDescription>
+      </DialogHeader>
+      {server.isDeploHost && (
+        <p className="text-sm text-destructive">
+          {dialed
+            ? "This server runs Deplo itself - a wrong address here cuts this dashboard off from its own host."
+            : "This server runs Deplo itself - a wrong address here breaks the addresses of its apps."}
+        </p>
+      )}
+      <div className="grid gap-2">
+        <FieldLabel
+          htmlFor="server-address"
+          info="IP or DNS name. App URLs follow it immediately; custom domains keep pointing at the old address until you update their DNS records."
+          docs="servers.address"
+        >
+          Address
+        </FieldLabel>
+        <Input
+          id="server-address"
+          value={address}
+          onChange={(e) => onAddressChange(e.target.value)}
+          placeholder="203.0.113.7 or server.example.com"
+          autoFocus
+        />
+      </div>
+      {dialed && server.agentPort !== null && (
+        <div className="grid gap-2">
+          <FieldLabel
+            htmlFor="server-agent-port"
+            info="Where Deplo connects to this server's agent. Change it only if you moved the agent."
+            docs="servers.address"
+          >
+            Agent port
+          </FieldLabel>
+          <Input
+            id="server-agent-port"
+            inputMode="numeric"
+            value={port}
+            onChange={(e) => onPortChange(e.target.value)}
+          />
+        </div>
+      )}
+      {refusal && (
+        <div className="rounded-md border border-destructive/40 bg-destructive-wash-strong p-3 text-sm">
+          <p>{refusal}</p>
+          {dialed && (
+            <p className="mt-1 text-muted-foreground">
+              Save anyway if the host is not up at the new address yet - Deplo
+              keeps checking its health there.
+            </p>
+          )}
+        </div>
+      )}
+      <DialogFooter>
+        <Button
+          type="button"
+          variant="outline"
+          onClick={onCancel}
+          disabled={pending}
+        >
+          Cancel
+        </Button>
+        {dialed && refusal && (
+          <Button
+            type="button"
+            variant="destructive"
+            onClick={() => onSave(true)}
+            disabled={pending || !address.trim()}
+          >
+            {pending ? "Saving" : "Save anyway"}
+          </Button>
+        )}
+        <Button type="submit" disabled={pending || !address.trim()}>
+          {pending ? "Saving" : "Save"}
+        </Button>
+      </DialogFooter>
+    </form>
   );
 }

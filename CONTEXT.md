@@ -390,10 +390,11 @@ of the platform, on its own machine. Platform infrastructure, the moral
 sibling of the local Docker socket, **not an app and not a frontend**. The control plane
 (GraphQL/data/auth, which stays TypeScript) never reaches a remote Docker socket directly; it
 drives each agent over a **versioned gRPC contract** (`proto/agent.proto`) on **mTLS**, the
-_second system boundary_ alongside the GraphQL UI contract. **The host running Deplo is an agent
-too** - installed, bootstrapped, pinned, and dialed over mTLS _exactly_ like a remote (there is no
-in-process "local agent" and no `type: "localhost"`), so every server is one uniform execution path
-parameterised only by which agent. The compose
+_second system boundary_ alongside the GraphQL UI contract, carried by the agent's **agent link**.
+**The host running Deplo is an agent too** - installed, bootstrapped, pinned, and reached over
+mTLS _exactly_ like a remote, its agent link over loopback (there is no in-process "local agent"
+and no `type: "localhost"`), so every server is one uniform execution path parameterised only by
+which agent. The compose
 is rendered control-plane-side and handed to the agent as **opaque YAML**; decrypted env
 crosses the wire per-deploy but the agent **never holds the encryption key**. An agent is born
 by **call-home bootstrap** - the control plane never SSHes in: the operator runs a paste-on-the-
@@ -419,7 +420,7 @@ product entirely**, so the control plane no longer calls that surface - the RPCs
 dormant in the Go binary because the V1 contract is additive-only. The browser GraphQL + SSE contracts
 are unchanged - only the backing is repointed. Every container RPC label-checks
 `deplo.project=<id>` agent-side; the files sandbox is re-enforced agent-side; an agent that is
-unreachable **fails clearly with NO in-process fallback** (no synthetic container, no host metrics,
+**offline** (no agent link) **fails clearly with NO in-process fallback** (no synthetic container, no host metrics,
 no wrong-disk teardown) - this holds for EVERY server, the host running Deplo included. The legacy
 direct-Docker deploy/logs/console/files/metrics path has been **removed entirely**; build methods
 the agent can't run (heavy builders) are a clear deploy error, not a local fallback. Routing changes
@@ -438,28 +439,35 @@ _Avoid_: agent (ambiguous - say "server agent"), node, worker, runner (CI term),
 **Agent link**:
 The lasting connection a **server agent** opens _to_ its control plane after it **calls home**;
 every call the control plane makes to that server rides it, so a server never has to accept an
-incoming connection. Every server has one, the host running Deplo included. A server with no
-agent link past a short grace window is **offline**; every other status still comes from a live
-Hello over the link. Users never see the term: a server is _connected_ or _offline_. _(Decided,
-not built yet: today the control plane still dials each agent.)_
+incoming connection. Every server has one, the host running Deplo included (over loopback). A
+server with no agent link past a short grace window is **offline**; every other status still
+comes from a live Hello over the link. Once its link works, the agent stops listening on its port.
+A server's address stays, for its apps' domains and DNS checks only. Users never see the term: a
+server is _connected_ or _offline_, and no screen mentions a port. An agent too old to link is still
+dialed directly until `agentMin` passes the first linking release
+([ADR-0038](docs/adr/0038-a-server-agent-links-to-its-control-plane.md)).
 _Avoid_: tunnel (reads as public ingress for apps, which this is not), reverse proxy, VPN, socket.
 
 **Server health**:
 A server's **status** is an OBSERVATION, not a lifecycle the control plane drives: the outcome of
 the last live agent **Hello**, stamped with **when** it was observed (`statusCheckedAt`) and, when
 it isn't green, **why** (`statusMessage`, from a closed set of curated strings, never a raw agent
-error, which would leak the pinned fingerprint and the dial address). The five values:
-**provisioning** (no agent has called home yet, never dialed, never demoted), **online** (Hello
-answered, Docker reachable), **warning** (agent up and trusted, but Docker is unreachable, so
-nothing can deploy there), **error** (the peer answered but its agent is wrong - untrusted cert,
-unsupported contract, application error), **offline** (nothing answered, confirmed by a retry).
+error, which would leak the pinned fingerprint and the server's address). The Hello rides the
+server's **agent link**. The five values: **provisioning** (no agent has called home yet, never
+contacted, never demoted), **online** (Hello answered, Docker reachable), **warning** (agent up and
+trusted, but Docker is unreachable, so nothing can deploy there), **error** (the peer answered but
+its agent is wrong - untrusted cert, unsupported contract, application error), **offline** (its
+agent link stayed away past a short grace window - or, for an agent too old to link, nothing
+answered the dial, confirmed by a retry). An offline server's message tells the user to check that
+the machine is on and connected to the internet, never a port.
 The stored value is a **cache the UI must qualify**, never a **gate**: past a staleness window the
 Servers page renders it as _Unknown_ rather than a confident stale green, and **nothing in the
 deploy path consults it** - the gate there is the mandatory live Hello pre-flight
 ([ADR-0006](docs/adr/0006-server-agent-is-a-per-host-go-binary.md)). Probing is throttled and
 watermarked on probe-START time, and an inconclusive probe writes **nothing** (a fabricated
-check is the same lie as a stale badge). Written by the Servers page's on-load sweep, the
-per-server _Check status_ button, and the metrics poll - all through the one recorder
+check is the same lie as a stale badge). Written by the agent link coming up or staying away, the
+Servers page's on-load sweep, the per-server _Check status_ button, and the metrics poll - all
+through the one recorder
 ([`lib/data/server-health.ts`](lib/data/server-health.ts)), classified by
 [`lib/infra/server-health.ts`](lib/infra/server-health.ts).
 _Avoid_: "the server is up/down" (say which of the five), treating **warning** as a soft

@@ -2790,7 +2790,7 @@ type MigrationDataService {
   sourceName: String
 
   """
-  Whether the machine holding this data ANSWERS Deplo right now - a live Hello, not the stored status, which goes green on the agent's outbound call-home and says nothing about the direction a copy needs. False means the copy cannot start at all, and the caller must not begin it: one unreachable machine is one refusal, not one failure per service.
+  Whether the machine holding this data ANSWERS Deplo right now - a live Hello, not the stored status, which can be minutes old. False means the copy cannot start at all, and the caller must not begin it: one unreachable machine is one refusal, not one failure per service.
   """
   sourceReachable: Boolean
   sourceServerId: String
@@ -4222,7 +4222,7 @@ type Mutation {
   setMemberAccess(input: SetMemberAccessInput!): [UserTeamAccess!]
 
   """
-  Point Deplo at where a machine of this panel really is, and remember it for the next attempt. The address is PROVED first - the agent must answer there, over the same pinned certificate - and only then written down, because a remembered address is used automatically and an unproven one would turn a single bad guess into a permanent one. Returns a warning to surface, or null. The source server row is removed at the end of every migration, which is why this is remembered against the SOURCE rather than against that row.
+  Point Deplo at where a machine of this panel really is, and remember it for the next attempt. Unless the machine's agent links in (`Server.linked`), the address is PROVED first - the agent must answer there, over the same pinned certificate - and only then written down, because a remembered address is used automatically and an unproven one would turn a single bad guess into a permanent one. Returns a warning to surface, or null. The source server row is removed at the end of every migration, which is why this is remembered against the SOURCE rather than against that row.
   """
   setMigrationMachineAddress(
     address: String!
@@ -4533,16 +4533,20 @@ type Mutation {
   updateRole(input: UpdateRoleInput!): Boolean
 
   """
-  Rewrite where Deplo dials this server's agent - the migration verb for a host whose IP changed. Unless `force`, the agent must answer at the new address (same pinned certificate) before anything is saved. Returns a warning to surface, or null.
+  Change a server's address - where its apps are reached, and the migration verb for a host whose IP changed. A server whose agent links in (`Server.linked`) is saved without Deplo contacting it. Any other server's agent must answer at the new address (same pinned certificate) before anything is saved, unless `force`. Returns a warning to surface, or null.
   """
   updateServerAddress(
     address: String!
+
+    """
+    Only for a server whose agent does not link in yet; ignored once `Server.linked` is true.
+    """
     agentPort: Int
     force: Boolean
     id: String!
 
     """
-    Write only where Deplo dials, keeping the address the server was registered at. The migration wizard's flag: a panel behind a proxy hands out the proxy's address, and the import still has to recognise the machine by the one it came from.
+    Write only the address in use, keeping the one the server was registered at. The migration wizard's flag: a panel behind a proxy hands out the proxy's address, and the import still has to recognise the machine by the one it came from.
     """
     keepHost: Boolean
   ): String
@@ -5706,6 +5710,9 @@ type SearchTemplate {
 
 """A connected host running deployments (reached via its agent)."""
 type Server {
+  """
+  Where Deplo connects to an agent that does not link in yet. Unused once `linked` is true.
+  """
   agentPort: Int
 
   """
@@ -5772,6 +5779,11 @@ type Server {
 
   """Heartbeat cache (P5) - a hint, not the source of truth."""
   lastSeenAt: String
+
+  """
+  Whether this server's agent links in to Deplo, so Deplo never connects to its address: changing the address saves without contacting the server. Read live; false for a few seconds after Deplo starts, until the server links again.
+  """
+  linked: Boolean
   memoryMb: Int
   name: String
 

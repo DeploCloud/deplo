@@ -165,7 +165,7 @@ export function AddServer({
                 <div className="space-y-2">
                   <FieldLabel
                     htmlFor="srv-host"
-                    info="The address this control plane will reach the agent at, and where deployed apps for this server will be routed."
+                    info="The machine's IP or DNS name. Apps deployed to this server are reached at it."
                     docs="servers.address"
                   >
                     Host or IP

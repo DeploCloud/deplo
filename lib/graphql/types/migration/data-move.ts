@@ -64,7 +64,7 @@ export const DataMoveServiceRef = builder
       }),
       sourceReachable: t.exposeBoolean("sourceReachable", {
         description:
-          "Whether the machine holding this data ANSWERS Deplo right now - a live Hello, not the stored status, which goes green on the agent's outbound call-home and says nothing about the direction a copy needs. False means the copy cannot start at all, and the caller must not begin it: one unreachable machine is one refusal, not one failure per service.",
+          "Whether the machine holding this data ANSWERS Deplo right now - a live Hello, not the stored status, which can be minutes old. False means the copy cannot start at all, and the caller must not begin it: one unreachable machine is one refusal, not one failure per service.",
       }),
       volumes: t.field({
         type: [DataMoveVolumeRef],

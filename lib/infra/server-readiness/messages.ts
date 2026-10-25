@@ -32,7 +32,7 @@ export const READINESS_HINTS = {
   reissue:
     "Reissue the install command for this server (Server actions → Reissue install command) and run it on the host.",
   agentLogs:
-    "Check that the deplo-agent service is running on the host and that this control plane can reach it on its agent port.",
+    "Check that the machine is on and connected to the internet, and that the deplo-agent service is running on it.",
   updateAgent:
     "Update the agent on this server (Server actions → Update agent), then run this check again.",
   startDocker:

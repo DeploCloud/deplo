@@ -26,7 +26,9 @@ export const FLEET: McpToolDef[] = [
     requires: "instanceAdmin",
     input: z.object({
       name: z.string(),
-      host: z.string().describe("IP or hostname Deplo dials."),
+      host: z
+        .string()
+        .describe("The machine's IP or hostname; its apps are reached there."),
       allTeams: z.boolean().optional().describe("Usable by every team."),
       teamIds: z.array(z.string()).optional(),
       buildOnly: z.boolean().optional(),
@@ -64,14 +66,18 @@ export const FLEET: McpToolDef[] = [
     name: "update_server",
     title: "Change a server's address, role, teams or limits",
     description:
-      "Any of: the address Deplo dials, its role, which teams may use it, build fallback, IPv4 or IPv6 for generated names, deploy concurrency, timezone. Canary releases follow set_canary_releases, never one server.",
+      "Any of: the server's address, its role, which teams may use it, build fallback, IPv4 or IPv6 for generated names, deploy concurrency, timezone. Canary releases follow set_canary_releases, never one server.",
     group: "Servers",
     requires: "instanceAdmin",
     idempotent: true,
     input: z.object({
       serverId,
       address: z.string().optional(),
-      agentPort: z.number().int().optional(),
+      agentPort: z
+        .number()
+        .int()
+        .optional()
+        .describe("Only for a server whose agent does not link in yet."),
       role: z.string().optional(),
       allTeams: z.boolean().optional(),
       teamIds: z.array(z.string()).optional(),

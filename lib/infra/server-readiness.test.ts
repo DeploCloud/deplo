@@ -200,6 +200,23 @@ test("an unreachable agent produces ONE failed row, not a wall of grey skips", (
   }
 });
 
+test("an agent that does not answer is a machine to check, never a port to open", () => {
+  for (const helloError of [
+    new AgentUnreachableError("no connection", GrpcStatus.UNAVAILABLE),
+    new AgentUnreachableError("deadline", GrpcStatus.DEADLINE_EXCEEDED),
+  ]) {
+    const row = byId(
+      classifyServerReadiness(probe({ hello: null, helloError })),
+      "agent.hello",
+    );
+    assert.match(row.hint ?? "", /on and connected to the internet/);
+    assert.doesNotMatch(
+      `${row.detail} ${row.hint}`,
+      /\bport\b|9443|firewall|inbound|outbound/i,
+    );
+  }
+});
+
 test("a deadline overrun says so specifically", () => {
   const r = classifyServerReadiness(
     probe({

@@ -15,6 +15,7 @@ const server: ServerSummary = {
   ip: "192.0.2.10",
   host: "main.example",
   agentPort: 9443,
+  linked: true,
   status: "online",
   cpuCores: 8,
   memoryMb: 16384,

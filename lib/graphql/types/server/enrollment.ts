@@ -128,16 +128,20 @@ builder.mutationFields((t) => ({
     nullable: true,
     authScopes: { instanceAdmin: true },
     description:
-      "Rewrite where Deplo dials this server's agent - the migration verb for a host whose IP changed. Unless `force`, the agent must answer at the new address (same pinned certificate) before anything is saved. Returns a warning to surface, or null.",
+      "Change a server's address - where its apps are reached, and the migration verb for a host whose IP changed. A server whose agent links in (`Server.linked`) is saved without Deplo contacting it. Any other server's agent must answer at the new address (same pinned certificate) before anything is saved, unless `force`. Returns a warning to surface, or null.",
     args: {
       id: t.arg.string({ required: true }),
       address: t.arg.string({ required: true }),
-      agentPort: t.arg.int({ required: false }),
+      agentPort: t.arg.int({
+        required: false,
+        description:
+          "Only for a server whose agent does not link in yet; ignored once `Server.linked` is true.",
+      }),
       force: t.arg.boolean({ required: false }),
       keepHost: t.arg.boolean({
         required: false,
         description:
-          "Write only where Deplo dials, keeping the address the server was registered at. The migration wizard's flag: a panel behind a proxy hands out the proxy's address, and the import still has to recognise the machine by the one it came from.",
+          "Write only the address in use, keeping the one the server was registered at. The migration wizard's flag: a panel behind a proxy hands out the proxy's address, and the import still has to recognise the machine by the one it came from.",
       }),
     },
     resolve: async (_r, args) =>

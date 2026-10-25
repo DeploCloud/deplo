@@ -5,10 +5,7 @@ import { CircleHelp, Loader2 } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { StatusDot } from "@/components/shared/status-badge";
-import {
-  AGENT_PORT_NOTICE,
-  LINK_OFFLINE_MESSAGE,
-} from "@/lib/agent-reachability";
+import { LINK_OFFLINE_MESSAGE } from "@/lib/agent-reachability";
 import { SimpleTooltip } from "@/components/ui/tooltip";
 import { timeAgo } from "@/lib/utils";
 import type { ServerStatus } from "@/lib/types/server";
@@ -37,13 +34,13 @@ const VARIANTS: Record<
   provisioning: "warning",
 };
 
-/** A fresh observation's tooltip. A linked server's offline sentence stands alone. */
+/** A fresh observation's tooltip. Every offline server says what to check, however it is reached. */
 export function healthTip(state: ServerHealthState): string {
-  const portNotice =
+  const remedy =
     state.status === "offline" && state.message !== LINK_OFFLINE_MESSAGE;
   return [
     state.message,
-    portNotice ? AGENT_PORT_NOTICE : null,
+    remedy ? LINK_OFFLINE_MESSAGE : null,
     `Checked ${timeAgo(state.checkedAt!)}`,
   ]
     .filter(Boolean)
