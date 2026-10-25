@@ -1,6 +1,7 @@
 import "server-only";
 
 import type { AgentClient, HelloResponse } from "../../agent/gen/agent";
+import { AgentUnreachableError } from "../agent-client/errors";
 import { LINK_CLOSE, LINK_SETTLE_MS } from "./protocol";
 
 /** A verified agent link. Shared across module instances, so it holds no class a caller tests with instanceof. */
@@ -58,6 +59,19 @@ export function hasLinked(serverId: string): boolean {
 export function linksSettling(): boolean {
   const opened = registry.doorOpenedAt;
   return opened !== null && Date.now() - opened < LINK_SETTLE_MS;
+}
+
+/**
+ * Whether to wait for the server's link rather than judge it: it linked since the door opened, or a dial
+ * to it found nobody while links settle after a restart. A trust failure is an answer, never a wait.
+ */
+export function linkMayCome(serverId: string, failedDial?: unknown): boolean {
+  if (registry.seen.has(serverId)) return true;
+  return (
+    failedDial instanceof AgentUnreachableError &&
+    !failedDial.trust &&
+    linksSettling()
+  );
 }
 
 /** The server's link, waiting up to `ms` for one; null when none came. */

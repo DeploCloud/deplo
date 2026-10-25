@@ -3,7 +3,7 @@ import "server-only";
 import { markServerSeen } from "../../data/servers/agent-handshake";
 import { getServerById } from "../../data/servers/roster";
 import { LINK_WAIT_MS } from "../agent-link/protocol";
-import { linksSettling, waitForLink } from "../agent-link/registry";
+import { linkMayCome, waitForLink } from "../agent-link/registry";
 import { agentSelfRpc } from "./agent-self-rpc";
 import { backupRpc } from "./backup-rpc";
 import { captureRpc } from "./capture-rpc";
@@ -80,7 +80,7 @@ export async function connectAgent(serverId: string): Promise<AgentConnection> {
     // A shared connection can die where a fresh dial would not; the failed Hello retired it.
     if (reused) return gate((await leaseChannel(serverId, address)).channel);
     // The panel just started: an agent that stopped listening once it linked is still on its way back.
-    if (linked || e.trust || !linksSettling()) throw e;
+    if (linked || !linkMayCome(serverId, e)) throw e;
     const link = await waitForLink(
       serverId,
       LINK_WAIT_MS - (Date.now() - started),

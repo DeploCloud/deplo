@@ -7,10 +7,7 @@ import {
   markServerSeen,
   observedTraefik,
 } from "../data/servers/agent-handshake";
-import {
-  recordServerHealth,
-  settlingAfterRestart,
-} from "../data/server-health";
+import { recordServerHealth } from "../data/server-health";
 import { classifyServerHealth } from "../infra/server-health";
 import type { AgentConnection } from "../infra/agent-client/connection";
 import {
@@ -19,7 +16,7 @@ import {
   AgentUnreachableError,
 } from "../infra/agent-client/errors";
 import { connectMetricsStreamAgent } from "../infra/agent-client/preflight";
-import { hasLinked } from "../infra/agent-link/registry";
+import { linkMayCome } from "../infra/agent-link/registry";
 import { isMetricsSavingEnabled } from "../data/monitoring-settings";
 import { measureServerForCollector } from "../data/monitoring";
 import { getDb } from "../db/client";
@@ -299,17 +296,10 @@ async function runStreamLoop(
 
       if (!rotation) {
         // An unusable agent is reachable: the health probe owns its status, not this loop.
-        // A linked server is offline only once its link stays away, which server health records.
-        const linkDecides =
-          e instanceof AgentUnreachableError && hasLinked(serverId);
-        // Says nothing yet, so the first failure after the panel settles still gets written.
-        const settling = settlingAfterRestart(e);
-        if (
-          attempt === 0 &&
-          !(e instanceof AgentTooOldError) &&
-          !linkDecides &&
-          !settling
-        ) {
+        // A server whose link may come is judged by server health once it stays away, not here.
+        const undecided =
+          e instanceof AgentUnreachableError && linkMayCome(serverId, e);
+        if (attempt === 0 && !(e instanceof AgentTooOldError) && !undecided) {
           await recordServerHealth(
             serverId,
             classifyServerHealth(null, e),
@@ -317,7 +307,8 @@ async function runStreamLoop(
           ).catch(() => {});
         }
         const delay = backoffFor(attempt);
-        if (!settling) attempt = Math.min(attempt + 1, 16);
+        // Waiting for a link costs no dial, and the first failure after it still gets written.
+        if (!undecided) attempt = Math.min(attempt + 1, 16);
         await sleep(delay, signal);
       }
     } finally {

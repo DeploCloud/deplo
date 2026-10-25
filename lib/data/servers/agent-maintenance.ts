@@ -11,6 +11,7 @@ import { AgentReleaseUnavailableError } from "../../infra/agent-client/errors";
 import { LINK_WAIT_MS } from "../../infra/agent-link/protocol";
 import {
   hasLinked,
+  linkMayCome,
   linksSettling,
   waitForLink,
 } from "../../infra/agent-link/registry";
@@ -110,11 +111,12 @@ export function dialedAgentPort(server: Server): number | null {
   return server.agent && !hasLinked(server.id) ? server.agent.port : null;
 }
 
-// Moments after Deplo starts, a server that stopped listening may not have linked back yet.
+// Never dialed: moments after Deplo starts, one that stopped listening may not have linked back yet.
 async function linksIn(serverId: string): Promise<boolean> {
-  if (hasLinked(serverId)) return true;
-  if (!linksSettling()) return false;
-  return (await waitForLink(serverId, LINK_WAIT_MS)) !== null;
+  if (linkMayCome(serverId)) return true;
+  return (
+    linksSettling() && (await waitForLink(serverId, LINK_WAIT_MS)) !== null
+  );
 }
 
 // A server Deplo still dials: the agent must answer at the new address, unless forced.

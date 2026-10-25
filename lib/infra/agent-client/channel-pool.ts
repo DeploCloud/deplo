@@ -6,7 +6,7 @@ import type { HelloResponse } from "../../agent/gen/agent";
 import { LINK_WAIT_MS } from "../agent-link/protocol";
 import {
   currentLink,
-  hasLinked,
+  linkMayCome,
   revokeAgentLink,
   waitForLink,
   type AgentLink,
@@ -110,7 +110,7 @@ async function linkFor(
     link = undefined;
   }
   if (link) return link;
-  if (!hasLinked(serverId)) return null;
+  if (!linkMayCome(serverId)) return null;
   link = (await waitForLink(serverId, LINK_WAIT_MS)) ?? undefined;
   if (link?.pinnedFingerprint === address.pinnedFingerprint) return link;
   throw new AgentOfflineError(serverId);
