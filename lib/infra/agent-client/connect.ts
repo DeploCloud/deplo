@@ -72,13 +72,17 @@ export async function connectAgent(serverId: string): Promise<AgentConnection> {
   const started = Date.now();
   const gate = (channel: AgentChannel) =>
     gateConnection(connectionOn(channel), address.agentVersion, serverId);
-  const { channel, reused, linked } = await leaseChannel(serverId, address);
+  const { channel, answeredBefore, linked } = await leaseChannel(
+    serverId,
+    address,
+  );
   try {
     return await gate(channel);
   } catch (e) {
     if (!(e instanceof AgentUnreachableError)) throw e;
     // A shared connection can die where a fresh dial would not; the failed Hello retired it.
-    if (reused) return gate((await leaseChannel(serverId, address)).channel);
+    if (answeredBefore)
+      return gate((await leaseChannel(serverId, address)).channel);
     // The panel just started: an agent that stopped listening once it linked is still on its way back.
     if (linked || !linkMayCome(serverId, e)) throw e;
     const link = await waitForLink(

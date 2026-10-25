@@ -24,7 +24,7 @@ import {
 // Far inside the client certificate's 365 days, which every reconnect presents again.
 const MAX_AGE_MS = 24 * 3_600_000;
 
-interface Shared {
+interface PooledChannel {
   key: string;
   openedAt: number;
   /** An agent link's channel: the link owns it, and it ends with the link. */
@@ -32,18 +32,22 @@ interface Shared {
   ready: Promise<AgentChannel>;
   channel?: AgentChannel;
   /** A Hello has come back on it: a failure now may be a dead connection, not a dead agent. */
-  proven: boolean;
+  answered: boolean;
   holders: number;
   retired: boolean;
 }
 
 // One channel per server, shared by every caller. In memory: one control-plane process (ADR-0006).
-const pool = new Map<string, Shared>();
+const pool = new Map<string, PooledChannel>();
 
 export async function leaseChannel(
   serverId: string,
   address: AgentAddress,
-): Promise<{ channel: AgentChannel; reused: boolean; linked: boolean }> {
+): Promise<{
+  channel: AgentChannel;
+  answeredBefore: boolean;
+  linked: boolean;
+}> {
   const link = await linkFor(serverId, address);
   const key = link
     ? `link#${link.id}`
@@ -57,22 +61,22 @@ export async function leaseChannel(
     const opened = link
       ? Promise.resolve(linkChannel(link.client))
       : withClientCert(address).then((target) => openChannel(target));
-    const fresh: Shared = {
+    const fresh: PooledChannel = {
       key,
       openedAt: Date.now(),
       linked: !!link,
       ready: opened.then(
-        (channel) => (fresh.channel = proving(serverId, fresh, channel)),
+        (channel) => (fresh.channel = watchingHello(serverId, fresh, channel)),
       ),
       // The door took the link only after a Hello came back on it.
-      proven: !!link,
+      answered: !!link,
       holders: 0,
       retired: false,
     };
     pool.set(serverId, (shared = fresh));
   }
   const held = shared;
-  const reused = held.proven;
+  const answeredBefore = held.answered;
   held.holders++;
   let channel: AgentChannel;
   try {
@@ -88,7 +92,7 @@ export async function leaseChannel(
     closed = true;
     release(held);
   });
-  return { channel: view, reused, linked: held.linked };
+  return { channel: view, answeredBefore, linked: held.linked };
 }
 
 /** No new call gets this server's channel, which closes once its last caller lets go; its link closes now. */
@@ -129,9 +133,9 @@ export function onAgentHello(listener: HelloListener): () => void {
 }
 
 // Hello is the liveness call: one that cannot get through retires the channel, so the next call dials afresh.
-function proving(
+function watchingHello(
   serverId: string,
-  shared: Shared,
+  shared: PooledChannel,
   channel: AgentChannel,
 ): AgentChannel {
   return {
@@ -139,7 +143,7 @@ function proving(
     async hello(timeoutMs) {
       try {
         const answer = await channel.hello(timeoutMs);
-        shared.proven = true;
+        shared.answered = true;
         for (const listener of [...helloListeners]) {
           try {
             listener(serverId, answer);
@@ -156,12 +160,12 @@ function proving(
   };
 }
 
-function stale(shared: Shared): boolean {
+function stale(shared: PooledChannel): boolean {
   return !shared.linked && Date.now() - shared.openedAt > MAX_AGE_MS;
 }
 
 // A failed connect leaves grpc-js backing off for up to two minutes; a fresh channel dials at once, as before.
-function broken(shared: Shared): boolean {
+function broken(shared: PooledChannel): boolean {
   const state = shared.channel?.client.getChannel().getConnectivityState(false);
   return (
     state === connectivityState.TRANSIENT_FAILURE ||
@@ -169,18 +173,18 @@ function broken(shared: Shared): boolean {
   );
 }
 
-function retire(serverId: string, shared: Shared): void {
+function retire(serverId: string, shared: PooledChannel): void {
   if (pool.get(serverId) === shared) pool.delete(serverId);
   shared.retired = true;
   if (shared.holders === 0) closeShared(shared);
 }
 
-function release(shared: Shared): void {
+function release(shared: PooledChannel): void {
   shared.holders--;
   if (shared.retired && shared.holders === 0) closeShared(shared);
 }
 
-function closeShared(shared: Shared): void {
+function closeShared(shared: PooledChannel): void {
   shared.ready.then(
     (channel) => channel.close(),
     () => {},
