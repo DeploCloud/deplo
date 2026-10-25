@@ -16,6 +16,7 @@ export interface Update {
   ignoreReason: string | null;
   ignoredBy: string | null;
   service: string;
+  imageRef: string;
   osvUrl: string;
 }
 

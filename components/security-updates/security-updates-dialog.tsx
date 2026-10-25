@@ -13,7 +13,7 @@ import {
 import { DocsLink } from "@/components/ui/docs-link";
 import { useRouter } from "@/lib/nav";
 import { gql } from "@/lib/graphql-client";
-import { groupByPackage } from "@/lib/security-updates/group";
+import { groupUpdates } from "@/lib/security-updates/group";
 import { timeAgo } from "@/lib/utils";
 import { AdvisoriesTable } from "./advisories-table";
 import { UNREADABLE } from "./fix-line";
@@ -42,6 +42,7 @@ const QUERY = /* GraphQL */ `
         ignoreReason
         ignoredBy
         service
+        imageRef
         osvUrl
       }
     }
@@ -90,11 +91,12 @@ export function SecurityUpdatesDialog({
     setVersion((v) => v + 1);
     router.refresh();
   };
-  const groups = groupByPackage(answer?.updates ?? []);
+  const groups = groupUpdates(answer?.updates ?? []);
   const isIgnored = (g: (typeof groups)[number]) =>
     g.items.every((u) => u.ignored);
   const toApply = groups.filter((g) => g.actionable && !isIgnored(g));
-  const noFix = groups.filter((g) => !g.actionable && !isIgnored(g));
+  // Important ones: listed for whoever wants them, never counted.
+  const lessUrgent = groups.filter((g) => !g.actionable && !isIgnored(g));
   const ignored = groups.filter(isIgnored);
   // The service is worth naming only when the app runs more than one.
   const manyServices = new Set(answer?.updates.map((u) => u.service)).size > 1;
@@ -145,7 +147,7 @@ export function SecurityUpdatesDialog({
             ) : (
               <>
                 <UpdateList title="To apply" groups={toApply} {...list} />
-                <UpdateList title="No fix yet" groups={noFix} {...list} />
+                <UpdateList title="Less urgent" groups={lessUrgent} {...list} />
                 <UpdateList
                   title={`Ignored (${ignored.length})`}
                   groups={ignored}

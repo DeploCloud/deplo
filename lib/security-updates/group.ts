@@ -1,4 +1,4 @@
-import { isActionable, type FixKind, type Level } from "./fix-kind";
+import type { FixKind, Level } from "./fix-kind";
 
 export interface Groupable {
   service: string;
@@ -8,16 +8,20 @@ export interface Groupable {
   level: string;
   fix: string;
   fixedVersion?: string | null;
+  // isActionable, decided where the whole finding is known.
+  actionable: boolean;
 }
 
-// One security update is one package to move: however many advisories that move closes.
-export interface PackageGroup<T extends Groupable> {
+// One security update is one thing to move: a package of the app's, or a whole image.
+export interface UpdateGroup<T extends Groupable> {
   key: string;
   items: T[];
   level: Level;
   actionable: boolean;
   exploited: boolean;
   fix: FixKind;
+  // An image's update moves the whole image; it has no single version.
+  image: boolean;
   // The highest fixed version among the actionable advisories: the one that closes them all.
   fixedVersion: string | null;
 }
@@ -36,8 +40,17 @@ const FIX_RANK: Record<FixKind, number> = {
   none: 5,
 };
 
-export const packageKey = (f: Groupable) =>
-  `${f.service}\0${f.ecosystem}\0${f.packageName}\0${f.installedVersion}`;
+const isImageFix = (fix: string) => fix === "update" || fix === "newer_tag";
+
+export const unitKey = (
+  f: Pick<
+    Groupable,
+    "service" | "ecosystem" | "packageName" | "installedVersion" | "fix"
+  >,
+) =>
+  isImageFix(f.fix)
+    ? `${f.service}\0image`
+    : `${f.service}\0${f.ecosystem}\0${f.packageName}\0${f.installedVersion}`;
 
 // ponytail: token-wise compare, not each ecosystem's own order (dpkg epochs, PEP 440); fine for display.
 export function compareVersions(a: string, b: string): number {
@@ -55,19 +68,18 @@ export function compareVersions(a: string, b: string): number {
   return 0;
 }
 
-export function groupByPackage<T extends Groupable>(
+export function groupUpdates<T extends Groupable>(
   items: T[],
-): PackageGroup<T>[] {
+): UpdateGroup<T>[] {
   const groups = new Map<string, T[]>();
   for (const f of items) {
-    const k = packageKey(f);
+    const k = unitKey(f);
     groups.set(k, [...(groups.get(k) ?? []), f]);
   }
   return [...groups].map(([key, list]) => {
-    const live = list.filter((f) =>
-      isActionable(f.fix as FixKind, f.level as Level),
-    );
+    const live = list.filter((f) => f.actionable);
     const pick = live.length ? live : list;
+    const image = isImageFix(list[0].fix);
     const fixed = pick
       .map((f) => f.fixedVersion)
       .filter((v): v is string => !!v)
@@ -76,15 +88,16 @@ export function groupByPackage<T extends Groupable>(
     return {
       key,
       items: list,
-      level: list
+      level: pick
         .map((f) => f.level as Level)
         .sort((a, b) => LEVEL_RANK[a] - LEVEL_RANK[b])[0],
       actionable: live.length > 0,
-      exploited: list.some((f) => f.level === "exploited"),
+      exploited: pick.some((f) => f.level === "exploited"),
       fix: pick
         .map((f) => f.fix as FixKind)
         .sort((a, b) => FIX_RANK[a] - FIX_RANK[b])[0],
-      fixedVersion: fixed ?? null,
+      image,
+      fixedVersion: image ? null : (fixed ?? null),
     };
   });
 }
@@ -93,7 +106,7 @@ export function countUpdates(items: Groupable[]): {
   count: number;
   exploited: number;
 } {
-  const live = groupByPackage(items).filter((g) => g.actionable);
+  const live = groupUpdates(items).filter((g) => g.actionable);
   return {
     count: live.length,
     exploited: live.filter((g) => g.exploited).length,

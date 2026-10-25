@@ -5,7 +5,7 @@ import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
 import { gqlAction } from "@/lib/graphql-client";
-import type { PackageGroup } from "@/lib/security-updates/group";
+import type { UpdateGroup } from "@/lib/security-updates/group";
 import { plural } from "@/lib/utils";
 import { fixLine } from "./fix-line";
 import { IgnoreDialog } from "./ignore-dialog";
@@ -22,20 +22,20 @@ export function UpdateList({
   onChanged,
 }: {
   title: string;
-  groups: PackageGroup<Update>[];
+  groups: UpdateGroup<Update>[];
   newerTag: string | null;
   manyServices: boolean;
   subject: Subject;
   canIgnore: boolean;
   onChanged: () => void;
 }) {
-  const [ignoring, setIgnoring] = React.useState<PackageGroup<Update> | null>(
+  const [ignoring, setIgnoring] = React.useState<UpdateGroup<Update> | null>(
     null,
   );
   const [pending, startTransition] = React.useTransition();
   if (groups.length === 0) return null;
 
-  function stopIgnoring(g: PackageGroup<Update>) {
+  function stopIgnoring(g: UpdateGroup<Update>) {
     startTransition(async () => {
       const res = await gqlAction(
         `mutation($appId: ID, $databaseId: ID, $vulnIds: [String!]!) {
@@ -66,7 +66,9 @@ export function UpdateList({
               <SecurityLevelBadge level={g.level} />
               <div className="min-w-0 flex-1 text-sm">
                 <p className="truncate font-mono text-xs">
-                  {u.packageName} {u.installedVersion}
+                  {g.image
+                    ? u.imageRef
+                    : `${u.packageName} ${u.installedVersion}`}
                   {g.fixedVersion ? ` -> ${g.fixedVersion}` : ""}
                   {manyServices && u.service ? (
                     <span className="text-muted-foreground">
@@ -84,8 +86,9 @@ export function UpdateList({
                         packageName: u.packageName,
                         fixedVersion: g.fixedVersion,
                         newerTag,
+                        flaws: g.items.length,
                       })}
-                  {g.items.length > 1
+                  {!g.image && g.items.length > 1
                     ? ` · ${plural(g.items.length, "advisory", "advisories")}`
                     : ""}
                 </p>
@@ -119,7 +122,11 @@ export function UpdateList({
           open
           onOpenChange={(o) => !o && setIgnoring(null)}
           subject={subject}
-          packageName={ignoring.items[0].packageName}
+          packageName={
+            ignoring.image
+              ? ignoring.items[0].imageRef
+              : ignoring.items[0].packageName
+          }
           vulnIds={ignoring.items
             .filter((i) => !i.ignored)
             .map((i) => i.vulnId)}

@@ -28,7 +28,7 @@ const SecurityLevelEnum = builder.enumType("SecurityLevel", {
 
 const SecurityFixEnum = builder.enumType("SecurityFix", {
   description:
-    "How the team gets the fix. `code`: update the dependency in the app's own code. `rebuild`: rebuild on a fresh base image. `update`: redeploy to pull a newer build of the image. `newer_tag`: move to a newer version of the image. `deplo`: comes with a Deplo update. `none`: nobody has shipped a fix yet.",
+    "How the team gets the fix. `code`: update the dependency in the app's own code. `update`: redeploy to pull a newer build of the image. `newer_tag`: move to a newer version of the image. Only these three are returned; `rebuild`, `deplo` and `none` stay for older clients.",
   values: ["code", "rebuild", "update", "newer_tag", "deplo", "none"] as const,
 });
 
@@ -40,7 +40,7 @@ const SecurityUpdateRef = builder
     fields: (t) => ({
       vulnId: t.exposeString("vulnId", {
         description:
-          "The OSV id, for example GHSA-xvch-5gv4-984h or DEBIAN-CVE-2024-5535.",
+          "The OSV id, for example GHSA-xvch-5gv4-984h or GO-2024-2687.",
       }),
       cve: t.exposeString("cve", { nullable: true }),
       level: t.field({ type: SecurityLevelEnum, resolve: (u) => u.level }),
@@ -60,11 +60,15 @@ const SecurityUpdateRef = builder
       ignoredBy: t.exposeString("ignoredBy", { nullable: true }),
       actionable: t.exposeBoolean("actionable", {
         description:
-          "True when the team can act on it now, or it is already used in attacks. Only these are counted and alerted.",
+          "True when it is critical or already used in attacks, in the app's own dependencies or the software its image ships. Only these are counted and alerted.",
       }),
       service: t.exposeString("service", {
         description:
           "The compose service it was found in; empty for a single-container app.",
+      }),
+      imageRef: t.exposeString("imageRef", {
+        description:
+          "The image it was found in. An image's update moves the image as a whole.",
       }),
       osvUrl: t.exposeString("osvUrl"),
     }),
@@ -86,7 +90,8 @@ const SecurityUpdatesRef = builder
           "Why some of its images could not be read: too_large, low_disk, low_memory, timed_out, unsupported or failed.",
       }),
       count: t.exposeInt("count", {
-        description: "Updates the team can act on, or already used in attacks.",
+        description:
+          "Critical updates and ones already used in attacks: one per package of the app's own, one per image. Important ones are listed, not counted.",
       }),
       exploited: t.exposeInt("exploited"),
       newerTag: t.exposeString("newerTag", {

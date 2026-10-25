@@ -8,21 +8,19 @@ test("fixLine: one plain line per way of getting the fix", () => {
     packageName: "minimist",
     fixedVersion: "1.2.6",
     newerTag: null,
+    flaws: 1,
   };
   assert.equal(
     fixLine({ ...base, fix: "code" }),
     "Update minimist to 1.2.6 in your code",
   );
   assert.equal(
-    fixLine({ ...base, fix: "deplo" }),
-    "Deplo will fix this in an update",
+    fixLine({ ...base, fix: "update", flaws: 3 }),
+    "A newer build of this image may fix 3 known flaws: update to get it",
   );
   assert.equal(
     fixLine({ ...base, fix: "newer_tag", newerTag: "1.60.2" }),
-    "Version 1.60.2 is available and may fix it",
+    "Version 1.60.2 is available and may fix 1 known flaw",
   );
-  assert.equal(
-    fixLine({ ...base, fix: "none", fixedVersion: null }),
-    "No fix has been published yet",
-  );
+  assert.equal(fixLine({ ...base, fix: "deplo" }), "", "never shown");
 });

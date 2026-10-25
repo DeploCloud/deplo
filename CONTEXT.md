@@ -125,11 +125,11 @@ force it off, and the switch then shows as disabled with that reason.
 _Avoid_: telemetry (in anything a person reads), tracking, opt-out.
 
 **Security update**:
-A package in something an app or database runs that has a known security flaw and a fix the
-team can apply: update a dependency in its own code, rebuild on a newer base image, or update to
-a newer build or version of the image. One update is one package to move, however many
-advisories that closes. A flaw nobody has shipped a fix for is listed as "No fix yet" and never
-counted. Levels, in the team's words: "Used in attacks", "Critical", "Important"
+A known security flaw in what the team chose, with a fix it can apply: a dependency of the app's
+own code (update it), or the software an image ships (update to a newer build or version). A
+system package, the build runtime or a binary inside a dependency is never one. One update is one
+package of the app's, or one image, however many advisories that closes. Only "Used in attacks" and
+"Critical" are counted and alerted; "Important" is listed in the details
 ([ADR-0038](docs/adr/0038-security-updates-are-matched-in-the-control-plane.md)).
 _Avoid_: vulnerability or CVE (in anything a non-expert reads), scan, security issue.
 

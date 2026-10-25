@@ -1338,6 +1338,13 @@
       "when": 1792955063964,
       "tag": "0190_deployment_screenshots",
       "breakpoints": true
+    },
+    {
+      "idx": 191,
+      "version": "7",
+      "when": 1792963676626,
+      "tag": "0191_security_updates_rescope",
+      "breakpoints": true
     }
   ]
 }

@@ -19,13 +19,12 @@ import { plural } from "../utils";
 import { osvQueryFor, type OsvQuery } from "./ecosystem";
 import {
   fixKind,
+  inScope,
   isActionable,
   levelOf,
-  qualifiesForAlert,
   type FixKind,
-  type Level,
 } from "./fix-kind";
-import { countUpdates, packageKey } from "./group";
+import { countUpdates, unitKey } from "./group";
 import { activeIgnores, ignoreKey } from "./ignored";
 import {
   affectedFor,
@@ -329,7 +328,8 @@ function findingsFor(
         fix,
         firstSeenAt: stamp,
       };
-      const entry = { f, actionable: isActionable(fix, level) };
+      if (!inScope(f)) continue;
+      const entry = { f, actionable: isActionable(f) };
       const key = `${q.ecosystem}\0${q.name}\0${q.version}\0${a.cve ?? hit.id}`;
       const prev = best.get(key);
       if (!prev || better(entry, prev)) best.set(key, entry);
@@ -360,9 +360,10 @@ async function persistFindings(
   readable: boolean,
   stamp: string,
 ): Promise<{ found: number; fixed: number }> {
-  const actionable = (f: Pick<Finding, "fix" | "level">) =>
-    isActionable(f.fix as FixKind, f.level as Level);
-  // Counted per package: one update closes every advisory on it.
+  const actionable = (f: Finding) =>
+    isActionable({ ...f, location: f.location ?? "" });
+  // Counted per update: one move closes every advisory on a package or an image.
+  // A row out of today's scope was never counted, so dropping it is not a fix.
   const before = new Set<string>();
   const after = new Set<string>();
   const remaining = new Set<string>();
@@ -379,14 +380,20 @@ async function persistFindings(
       ]),
     );
     const next = new Map(wanted.map((f) => [fkey(f), f]));
-    for (const f of existing.values())
-      if (actionable(f)) before.add(packageKey(f));
+    // One alert per update: a new advisory on one already alerted stays quiet.
+    const alerted = new Map<string, string>();
+    for (const f of existing.values()) {
+      if (actionable(f)) before.add(unitKey(f));
+      if (f.alertedAt) alerted.set(unitKey(f), f.alertedAt);
+    }
     for (const [k, f] of next) {
-      remaining.add(packageKey(f));
-      if (actionable(f)) after.add(packageKey(f));
+      remaining.add(unitKey(f));
+      if (actionable(f)) after.add(unitKey(f));
       const old = existing.get(k);
       if (!old) {
-        await tx.insert(securityFindings).values(f);
+        await tx
+          .insert(securityFindings)
+          .values({ ...f, alertedAt: alerted.get(unitKey(f)) ?? null });
         continue;
       }
       if (
@@ -407,9 +414,9 @@ async function persistFindings(
     }
     for (const [k, old] of existing) {
       if (next.has(k)) continue;
-      if (failedVulns.has(old.vulnId)) {
-        remaining.add(packageKey(old));
-        if (actionable(old)) after.add(packageKey(old));
+      if (failedVulns.has(old.vulnId) && inScope(old)) {
+        remaining.add(unitKey(old));
+        if (actionable(old)) after.add(unitKey(old));
         continue;
       }
       await tx.delete(securityFindings).where(findingPk(old));
@@ -542,7 +549,7 @@ async function alertNewFindings(now: Date): Promise<void> {
     }
   >();
   for (const r of rows) {
-    if (!qualifiesForAlert(r.f.fix as FixKind, r.f.level as Level)) continue;
+    if (!isActionable(r.f)) continue;
     const id = r.kind === "database" ? r.databaseId : r.appId;
     if (!id || ignores.has(ignoreKey(id, r.f.vulnId))) continue;
     const key = `${r.kind}:${id}`;
@@ -561,7 +568,9 @@ async function alertNewFindings(now: Date): Promise<void> {
   for (const [key, e] of due) {
     const n = names.get(key);
     if (n) {
-      const { count, exploited } = countUpdates(e.findings);
+      const { count, exploited } = countUpdates(
+        e.findings.map((f) => ({ ...f, actionable: true })),
+      );
       dispatchAlert({
         teamId: e.teamId,
         key: "security_update_available",

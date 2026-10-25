@@ -13,11 +13,12 @@ import {
 import { requireActiveTeamId } from "../../membership";
 import { affectedFor } from "../../security-updates/osv";
 import {
+  inScope,
   isActionable,
   type FixKind,
   type Level,
 } from "../../security-updates/fix-kind";
-import { countUpdates } from "../../security-updates/group";
+import { countUpdates, type Groupable } from "../../security-updates/group";
 import { activeIgnores, ignoreKey } from "../../security-updates/ignored";
 import { securityState } from "../../security-updates/state";
 import { getDatabase } from "../databases/rows";
@@ -41,6 +42,8 @@ export interface SecurityUpdate {
   fix: FixKind;
   actionable: boolean;
   service: string;
+  // The image it was found in: an image's update moves it whole.
+  imageRef: string;
   osvUrl: string;
 }
 
@@ -91,7 +94,7 @@ async function subjectUpdates(
     .where(and(eq(workloadImages.teamId, teamId), owner));
   const findings = rows.length
     ? await db
-        .select({ f: securityFindings })
+        .select({ f: securityFindings, imageRef: workloadImages.imageRef })
         .from(securityFindings)
         .innerJoin(
           workloadImages,
@@ -115,35 +118,38 @@ async function subjectUpdates(
   const ignores = await activeIgnores(
     s.kind === "app" ? { appIds: [s.appId] } : { databaseIds: [s.databaseId] },
   );
-  const updates = findings.map(({ f }): SecurityUpdate => {
-    const ig = ignores.get(ignoreKey(subjectId, f.vulnId));
-    const a = affectedFor(
-      osv.filter((o) => o.vulnId === f.vulnId),
-      f.ecosystem,
-      f.packageName,
-    );
-    const level = f.level as Level;
-    const fix = f.fix as FixKind;
-    return {
-      vulnId: f.vulnId,
-      ignored: Boolean(ig),
-      ignoredUntil: ig?.expiresAt ?? null,
-      ignoreReason: ig ? ig.reason : null,
-      ignoredBy: ig?.createdBy ?? null,
-      cve: a?.cve ?? null,
-      level,
-      cvss: a?.cvssTenths != null ? a.cvssTenths / 10 : null,
-      summary: a?.summary ?? "",
-      ecosystem: f.ecosystem,
-      packageName: f.packageName,
-      installedVersion: f.installedVersion,
-      fixedVersion: f.fixedVersion,
-      fix,
-      actionable: isActionable(fix, level),
-      service: f.service,
-      osvUrl: `https://osv.dev/vulnerability/${encodeURIComponent(f.vulnId)}`,
-    };
-  });
+  const updates = findings
+    .filter(({ f }) => inScope(f))
+    .map(({ f, imageRef }): SecurityUpdate => {
+      const ig = ignores.get(ignoreKey(subjectId, f.vulnId));
+      const a = affectedFor(
+        osv.filter((o) => o.vulnId === f.vulnId),
+        f.ecosystem,
+        f.packageName,
+      );
+      const level = f.level as Level;
+      const fix = f.fix as FixKind;
+      return {
+        vulnId: f.vulnId,
+        ignored: Boolean(ig),
+        ignoredUntil: ig?.expiresAt ?? null,
+        ignoreReason: ig ? ig.reason : null,
+        ignoredBy: ig?.createdBy ?? null,
+        cve: a?.cve ?? null,
+        level,
+        cvss: a?.cvssTenths != null ? a.cvssTenths / 10 : null,
+        summary: a?.summary ?? "",
+        ecosystem: f.ecosystem,
+        packageName: f.packageName,
+        installedVersion: f.installedVersion,
+        fixedVersion: f.fixedVersion,
+        fix,
+        actionable: isActionable(f),
+        service: f.service,
+        imageRef,
+        osvUrl: `https://osv.dev/vulnerability/${encodeURIComponent(f.vulnId)}`,
+      };
+    });
   updates.sort(
     (x, y) =>
       Number(y.actionable) - Number(x.actionable) ||
@@ -217,6 +223,7 @@ async function countsBy(
       level: securityFindings.level,
       fix: securityFindings.fix,
       fixedVersion: securityFindings.fixedVersion,
+      location: securityFindings.location,
       vulnId: securityFindings.vulnId,
     })
     .from(securityFindings)
@@ -241,10 +248,13 @@ async function countsBy(
       : await activeIgnores(
           kind === "app" ? { appIds: ids } : { databaseIds: ids },
         );
-  const byId = new Map<string, typeof rows>();
+  const byId = new Map<string, ((typeof rows)[number] & Groupable)[]>();
   for (const r of rows)
-    if (r.id && !ignores.has(ignoreKey(r.id, r.vulnId)))
-      byId.set(r.id, [...(byId.get(r.id) ?? []), r]);
+    if (r.id && inScope(r) && !ignores.has(ignoreKey(r.id, r.vulnId)))
+      byId.set(r.id, [
+        ...(byId.get(r.id) ?? []),
+        { ...r, actionable: isActionable(r) },
+      ]);
   for (const [id, list] of byId) {
     const c = countUpdates(list);
     if (c.count) out.set(id, c);

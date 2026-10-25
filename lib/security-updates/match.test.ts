@@ -42,9 +42,13 @@ let capture: FetchCapture | null = null;
 const WEB_IMAGE = "sha256:" + "1".repeat(64);
 const WEB_IMAGE_2 = "sha256:" + "2".repeat(64);
 const PG_IMAGE = "sha256:" + "3".repeat(64);
+const TOOL_IMAGE = "sha256:" + "4".repeat(64);
+const TOOL_IMAGE_2 = "sha256:" + "5".repeat(64);
 const HOOK = "https://discord.test/hook";
 
 const MINIMIST = "pkg:npm/minimist@1.2.5";
+const NEXT = "pkg:npm/next@16.3.5";
+const AXIOS = "pkg:npm/axios@1.6.0";
 const OPENSSL =
   "pkg:deb/debian/libssl3@3.0.11-1~deb12u2?distro=debian-12.13&upstream=openssl";
 const KERNEL = "pkg:deb/debian/linux-libc-dev@6.1.164-1?upstream=linux";
@@ -103,6 +107,35 @@ const RECORDS: Record<string, unknown> = {
       },
     ],
   },
+  "GHSA-next": {
+    id: "GHSA-next",
+    modified: "m1",
+    database_specific: { severity: "CRITICAL" },
+    affected: [
+      {
+        package: { ecosystem: "npm", name: "next" },
+        ranges: [
+          {
+            type: "SEMVER",
+            events: [{ introduced: "0" }, { fixed: "16.3.6" }],
+          },
+        ],
+      },
+    ],
+  },
+  "GHSA-axios": {
+    id: "GHSA-axios",
+    modified: "m1",
+    database_specific: { severity: "CRITICAL" },
+    affected: [
+      {
+        package: { ecosystem: "npm", name: "axios" },
+        ranges: [
+          { type: "SEMVER", events: [{ introduced: "0" }, { fixed: "1.6.1" }] },
+        ],
+      },
+    ],
+  },
   "DEBIAN-CVE-2024-5535": {
     id: "DEBIAN-CVE-2024-5535",
     modified: "m1",
@@ -141,7 +174,9 @@ function osv(url: string, body: unknown): Response {
           ? { vulns: [{ id: "GHSA-xvch-5gv4-984h", modified: "m1" }] }
           : q.package.name === "openssl"
             ? { vulns: [{ id: "DEBIAN-CVE-2024-5535", modified: "m1" }] }
-            : {},
+            : ["next", "axios"].includes(q.package.name)
+              ? { vulns: [{ id: `GHSA-${q.package.name}`, modified: "m1" }] }
+              : {},
       ),
     });
   }
@@ -263,23 +298,23 @@ test("a full match stores findings with the team's own fix, records Activity and
     .where(eq(securityFindings.workloadId, "prj_web"));
   assert.deepEqual(
     web.map((f) => `${f.packageName}:${f.level}:${f.fix}`).sort(),
-    ["minimist:critical:code", "openssl:critical:rebuild"],
-    "kernel headers are never matched",
+    ["minimist:critical:code"],
+    "only the app's own dependencies: no system packages, no kernel headers",
   );
   const pgFindings = await db
     .select()
     .from(securityFindings)
     .where(eq(securityFindings.workloadId, "db_main"));
   assert.deepEqual(
-    pgFindings.map((f) => f.fix),
-    ["none"],
-    "a vendor image with no newer build has no fix the team can apply",
+    pgFindings,
+    [],
+    "a vendor image's system packages are not the team's",
   );
 
   const acts = await db.select().from(activities);
   assert.deepEqual(acts.map((a) => a.message).sort(), [
-    "Found 2 security updates in prj_idle",
-    "Found 2 security updates in prj_web",
+    "Found 1 security update in prj_idle",
+    "Found 1 security update in prj_web",
   ]);
   await settle();
   assert.equal(
@@ -289,7 +324,7 @@ test("a full match stores findings with the team's own fix, records Activity and
   );
   assert.match(
     JSON.stringify(hookCalls()[0].body),
-    /Security updates for prj_web/,
+    /Security update for prj_web/,
   );
 
   await matchWorkloads("full", new Date("2026-10-25T16:10:00Z"));
@@ -302,16 +337,28 @@ test("a full match stores findings with the team's own fix, records Activity and
   );
 });
 
-test("an exploited flaw alerts even without a fix", async () => {
-  await storeKev(["CVE-2024-5535"]);
-  workloads = [workloads[3]];
+test("an attacked flaw in the app's own dependencies says so in its alert", async () => {
+  await storeKev(["CVE-2021-44906"]);
   await backfill();
   await matchWorkloads("full", new Date("2026-10-25T10:05:00Z"));
-  const [f] = await db.select().from(securityFindings);
+  const [f] = await db
+    .select()
+    .from(securityFindings)
+    .where(eq(securityFindings.workloadId, "prj_web"));
   assert.equal(f.level, "exploited");
   await settle();
   assert.equal(hookCalls().length, 1);
   assert.match(JSON.stringify(hookCalls()[0].body), /already used in attacks/);
+});
+
+test("an attacked flaw in a vendor image's system packages is neither stored nor alerted", async () => {
+  await storeKev(["CVE-2024-5535"]);
+  workloads = [workloads[3]];
+  await backfill();
+  await matchWorkloads("full", new Date("2026-10-25T10:05:00Z"));
+  assert.equal((await db.select().from(securityFindings)).length, 0);
+  await settle();
+  assert.equal(hookCalls().length, 0);
 });
 
 test("OSV down: matching throws and every finding stays as it was", async () => {
@@ -349,10 +396,7 @@ test("a new image without the flaw resolves it on the light pass", async () => {
     .select()
     .from(securityFindings)
     .where(eq(securityFindings.workloadId, "prj_web"));
-  assert.deepEqual(
-    web.map((f) => f.packageName),
-    ["openssl"],
-  );
+  assert.deepEqual(web, [], "openssl is the base system's, not the app's");
   const msgs = (await db.select().from(activities)).map((a) => a.message);
   assert.ok(
     msgs.includes("1 security update in prj_web is fixed"),
@@ -377,4 +421,109 @@ test("an ignored advisory never alerts", async () => {
   await matchWorkloads("full", new Date("2026-10-25T10:05:00Z"));
   await settle();
   assert.equal(hookCalls().length, 0);
+});
+
+test("rows the narrower rules drop go silently: no fixed line, no alert", async () => {
+  await backfill();
+  const old = {
+    serverId: SERVER_1,
+    workloadId: "prj_web",
+    service: "web",
+    installedVersion: "1",
+    firstSeenAt: "2026-10-24T10:00:00.000Z",
+  };
+  await db.insert(securityFindings).values([
+    {
+      ...old,
+      vulnId: "DEBIAN-CVE-1",
+      ecosystem: "Debian:12",
+      packageName: "glibc",
+      fixedVersion: "2",
+      level: "critical",
+      fix: "rebuild",
+      location: "/var/lib/dpkg/status",
+    },
+    {
+      ...old,
+      vulnId: "GHSA-ip",
+      ecosystem: "npm",
+      packageName: "ip-address",
+      fixedVersion: "10.3.1",
+      level: "high",
+      fix: "deplo",
+      location:
+        "/mise/installs/node/24/lib/node_modules/npm/node_modules/ip-address/package.json",
+    },
+  ]);
+  await matchWorkloads("full", new Date("2026-10-25T10:05:00Z"));
+  const web = await db
+    .select()
+    .from(securityFindings)
+    .where(eq(securityFindings.workloadId, "prj_web"));
+  assert.deepEqual(
+    web.map((f) => f.packageName),
+    ["minimist"],
+  );
+  const msgs = (await db.select().from(activities)).map((a) => a.message);
+  assert.ok(
+    msgs.every((m) => !m.includes("fixed")),
+    `dropping a row out of scope is not a fix: ${msgs.join(" | ")}`,
+  );
+});
+
+test("an image's update is one security update, and alerts once however much it moves", async () => {
+  await seedApp(db, { id: "prj_tool", slug: "tool" });
+  workloads = [
+    wl({
+      projectId: "prj_tool",
+      imageRef: "ghcr.io/acme/tool:1",
+      imageId: TOOL_IMAGE,
+    }),
+  ];
+  packagesOf[TOOL_IMAGE] = [
+    { purl: NEXT, location: "/app/node_modules/next/package.json" },
+    { purl: OPENSSL, location: "/var/lib/dpkg/status" },
+  ];
+  await backfill();
+  const newerBuild = {
+    registryStatus: "ok",
+    repoDigest: "sha256:old",
+    registryDigest: "sha256:new",
+  };
+  await db.update(workloadImages).set(newerBuild);
+  await matchWorkloads("full", new Date("2026-10-25T10:05:00Z"));
+  const rows = await db.select().from(securityFindings);
+  assert.deepEqual(
+    rows.map((f) => `${f.packageName}:${f.fix}`),
+    ["next:update"],
+    "the software the image ships, never its system packages",
+  );
+  await settle();
+  assert.equal(hookCalls().length, 1);
+  assert.match(
+    JSON.stringify(hookCalls()[0].body),
+    /1 security update to apply/,
+  );
+
+  workloads = [
+    wl({
+      projectId: "prj_tool",
+      imageRef: "ghcr.io/acme/tool:1",
+      imageId: TOOL_IMAGE_2,
+    }),
+  ];
+  packagesOf[TOOL_IMAGE_2] = [
+    { purl: NEXT, location: "/app/node_modules/next/package.json" },
+    { purl: AXIOS, location: "/app/node_modules/axios/package.json" },
+  ];
+  await backfill(new Date("2026-10-25T11:00:00Z"));
+  await db.update(workloadImages).set(newerBuild);
+  await matchWorkloads("full", new Date("2026-10-25T16:10:00Z"));
+  assert.equal((await db.select().from(securityFindings)).length, 2);
+  await settle();
+  assert.equal(
+    hookCalls().length,
+    1,
+    "the image was already flagged: a second package in it stays quiet",
+  );
 });

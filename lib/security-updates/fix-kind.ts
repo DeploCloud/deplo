@@ -32,8 +32,9 @@ export interface FixInput {
   newerTag: string | null;
 }
 
+// `deplo/<key>:<deployment>`, or a compose `build:` service, named `deplo-<slug>-<service>`.
 export function builtByDeplo(imageRef: string): boolean {
-  return imageRef.startsWith("deplo/");
+  return imageRef.startsWith("deplo/") || /^deplo-[a-z0-9._-]+$/.test(imageRef);
 }
 
 export function fixKind(i: FixInput): FixKind {
@@ -57,19 +58,32 @@ function underDir(location: string, dir: string): boolean {
   return d !== "" && location.startsWith(`${d}/`);
 }
 
-// What the badge counts and an alert may fire for: something the team can act on, or an attack.
-export function isActionable(fix: FixKind, level: Level): boolean {
-  if (level === "exploited") return true;
-  return (
-    fix === "code" ||
-    fix === "rebuild" ||
-    fix === "update" ||
-    fix === "newer_tag"
-  );
+export interface Scoped {
+  fix: string;
+  ecosystem: string;
+  packageName: string;
+  location: string;
 }
 
-export function qualifiesForAlert(fix: FixKind, level: Level): boolean {
-  return (
-    level === "exploited" || (level === "critical" && isActionable(fix, level))
-  );
+// A binary another package carries, like esbuild's Go build inside node_modules.
+function embedded(f: Scoped): boolean {
+  const l = f.location;
+  if (l.includes("/node_modules/")) return f.ecosystem !== "npm";
+  if (l.includes("/site-packages/") || l.includes("/dist-packages/"))
+    return f.ecosystem !== "PyPI";
+  return false;
+}
+
+// Only what the app chose: its own dependencies, or the software an image ships (ADR-0038).
+export function inScope(f: Scoped): boolean {
+  if (embedded(f)) return false;
+  if (f.fix === "code") return true;
+  if (f.fix !== "update" && f.fix !== "newer_tag") return false;
+  if (isDistroEcosystem(f.ecosystem)) return false;
+  return !(f.ecosystem === "Go" && f.packageName === "stdlib");
+}
+
+// What the badge counts and an alert fires for; an Important one is listed only.
+export function isActionable(f: Scoped & { level: string }): boolean {
+  return inScope(f) && f.level !== "high";
 }

@@ -3,9 +3,9 @@ import assert from "node:assert/strict";
 
 import {
   fixKind,
+  inScope,
   isActionable,
   levelOf,
-  qualifiesForAlert,
   type FixInput,
 } from "./fix-kind";
 
@@ -35,6 +35,17 @@ test("fixKind: Deplo-built images", () => {
   );
   assert.equal(fixKind({ ...base, builder: "railpack" }), "code");
   assert.equal(fixKind({ ...base, workingDir: "/" }), "rebuild");
+  const composeBuilt = {
+    ...base,
+    imageRef: "deplo-diun-generator",
+    registryStatus: "private",
+  };
+  assert.equal(
+    fixKind({ ...composeBuilt, location: "/usr/bin/yq", ecosystem: "Go" }),
+    "rebuild",
+    "a compose service Deplo built is the app's, not a private vendor image",
+  );
+  assert.equal(fixKind(composeBuilt), "code");
 });
 
 test("fixKind: a vendor image is fixed only by what its registry has", () => {
@@ -79,12 +90,71 @@ test("levelOf: known-exploited beats any score; medium and below are dropped", (
   assert.equal(levelOf(null, null, kev), null);
 });
 
-test("isActionable / qualifiesForAlert", () => {
-  assert.equal(isActionable("deplo", "critical"), false);
-  assert.equal(isActionable("none", "exploited"), true);
-  assert.equal(isActionable("newer_tag", "high"), true);
-  assert.equal(qualifiesForAlert("code", "critical"), true);
-  assert.equal(qualifiesForAlert("code", "high"), false);
-  assert.equal(qualifiesForAlert("none", "critical"), false);
-  assert.equal(qualifiesForAlert("none", "exploited"), true);
+test("inScope: only the app's own dependencies, or what an image ships", () => {
+  const f = (o: Partial<Parameters<typeof inScope>[0]>) => ({
+    fix: "code",
+    ecosystem: "npm",
+    packageName: "dompurify",
+    location: "/app/node_modules/dompurify/package.json",
+    ...o,
+  });
+  assert.equal(inScope(f({})), true, "a dependency of the app");
+  assert.equal(
+    inScope(
+      f({
+        ecosystem: "Go",
+        packageName: "stdlib",
+        location:
+          "/app/node_modules/drizzle-kit/node_modules/@esbuild/linux-x64/bin/esbuild",
+      }),
+    ),
+    false,
+    "a Go binary another npm package carries",
+  );
+  assert.equal(
+    inScope(f({ ecosystem: "PyPI", location: "/app/node_modules/x/setup.py" })),
+    false,
+  );
+  assert.equal(inScope(f({ fix: "deplo" })), false, "the runtime is Deplo's");
+  assert.equal(inScope(f({ fix: "rebuild" })), false, "the base system");
+  assert.equal(inScope(f({ fix: "none" })), false, "nothing to apply");
+  const image = {
+    fix: "update",
+    location: "/app/node_modules/next/package.json",
+  };
+  assert.equal(inScope(f({ ...image, packageName: "next" })), true);
+  assert.equal(
+    inScope(f({ ...image, ecosystem: "Alpine:v3.21", packageName: "openssl" })),
+    false,
+    "an image's system packages",
+  );
+  assert.equal(
+    inScope(
+      f({
+        fix: "newer_tag",
+        ecosystem: "Go",
+        packageName: "stdlib",
+        location: "/usr/local/bin/gosu",
+      }),
+    ),
+    false,
+    "the Go toolchain inside a vendor binary",
+  );
+});
+
+test("isActionable: critical or attacked, and in scope", () => {
+  const f = {
+    fix: "code",
+    ecosystem: "npm",
+    packageName: "minimist",
+    location: "/app/node_modules/minimist/package.json",
+  };
+  assert.equal(isActionable({ ...f, level: "critical" }), true);
+  assert.equal(isActionable({ ...f, level: "exploited" }), true);
+  assert.equal(isActionable({ ...f, level: "high" }), false, "listed only");
+  assert.equal(
+    isActionable({ ...f, fix: "deplo", level: "exploited" }),
+    false,
+    "out of scope even when attacked",
+  );
 });

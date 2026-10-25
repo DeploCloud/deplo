@@ -5771,7 +5771,7 @@ type SearchTemplate {
 }
 
 """
-How the team gets the fix. `code`: update the dependency in the app's own code. `rebuild`: rebuild on a fresh base image. `update`: redeploy to pull a newer build of the image. `newer_tag`: move to a newer version of the image. `deplo`: comes with a Deplo update. `none`: nobody has shipped a fix yet.
+How the team gets the fix. `code`: update the dependency in the app's own code. `update`: redeploy to pull a newer build of the image. `newer_tag`: move to a newer version of the image. Only these three are returned; `rebuild`, `deplo` and `none` stay for older clients.
 """
 enum SecurityFix {
   code
@@ -5811,7 +5811,7 @@ type SecuritySubject {
 """One known vulnerability in a package an app or database runs."""
 type SecurityUpdate {
   """
-  True when the team can act on it now, or it is already used in attacks. Only these are counted and alerted.
+  True when it is critical or already used in attacks, in the app's own dependencies or the software its image ships. Only these are counted and alerted.
   """
   actionable: Boolean
   cve: String
@@ -5827,6 +5827,11 @@ type SecurityUpdate {
   ignored: Boolean
   ignoredBy: String
   ignoredUntil: String
+
+  """
+  The image it was found in. An image's update moves the image as a whole.
+  """
+  imageRef: String
   installedVersion: String
   level: SecurityLevel
   osvUrl: String
@@ -5836,7 +5841,7 @@ type SecurityUpdate {
   service: String
   summary: String
 
-  """The OSV id, for example GHSA-xvch-5gv4-984h or DEBIAN-CVE-2024-5535."""
+  """The OSV id, for example GHSA-xvch-5gv4-984h or GO-2024-2687."""
   vulnId: String
 }
 
@@ -5849,7 +5854,9 @@ type SecurityUpdates {
   """
   checkedAt: String
 
-  """Updates the team can act on, or already used in attacks."""
+  """
+  Critical updates and ones already used in attacks: one per package of the app's own, one per image. Important ones are listed, not counted.
+  """
   count: Int
   exploited: Int
 

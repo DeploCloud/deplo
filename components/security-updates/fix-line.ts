@@ -1,31 +1,29 @@
 import type { FixKind } from "@/lib/security-updates/fix-kind";
+import { plural } from "@/lib/utils";
 
 export interface FixLineInput {
   fix: FixKind;
   packageName: string;
   fixedVersion: string | null;
   newerTag: string | null;
+  // How many advisories an image's update closes.
+  flaws: number;
 }
 
 // What the team does to get the fix, in one line.
 export function fixLine(u: FixLineInput): string {
+  const flaws = plural(u.flaws, "known flaw", "known flaws");
   switch (u.fix) {
     case "code":
       return `Update ${u.packageName} to ${u.fixedVersion} in your code`;
-    case "rebuild":
-      return "Fixed in a newer base image: rebuild the app to get it";
     case "update":
-      return "A newer build of this image may have it: update to get it";
+      return `A newer build of this image may fix ${flaws}: update to get it`;
     case "newer_tag":
       return u.newerTag
-        ? `Version ${u.newerTag} is available and may fix it`
-        : "A newer version of this image may fix it";
-    case "deplo":
-      return "Deplo will fix this in an update";
-    case "none":
-      return u.fixedVersion
-        ? "Waiting on the image's maintainers to ship the fix"
-        : "No fix has been published yet";
+        ? `Version ${u.newerTag} is available and may fix ${flaws}`
+        : `A newer version of this image may fix ${flaws}`;
+    default:
+      return "";
   }
 }
 

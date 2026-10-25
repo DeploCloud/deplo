@@ -18,7 +18,6 @@ function topAction(
   const live = s.updates.filter((u) => u.actionable && !u.ignored);
   if (live.some((u) => u.fix === "update")) return "update";
   if (kind === "database") return null;
-  if (live.some((u) => u.fix === "rebuild")) return "rebuild";
   if (s.newerTag && live.some((u) => u.fix === "newer_tag")) return "newer_tag";
   return null;
 }

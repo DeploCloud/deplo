@@ -71,17 +71,37 @@ async function seedFindings(appId: string, teamId: string) {
       ...base,
       vulnId: "GHSA-b",
       packageName: "b",
-      fixedVersion: null,
+      fixedVersion: "2",
       level: "high",
-      fix: "none",
+      fix: "code",
     },
     {
       ...base,
       vulnId: "GHSA-c",
       packageName: "c",
-      fixedVersion: null,
+      fixedVersion: "2",
       level: "exploited",
-      fix: "none",
+      fix: "code",
+    },
+    {
+      ...base,
+      vulnId: "DEBIAN-CVE-1",
+      ecosystem: "Debian:12",
+      packageName: "openssl",
+      fixedVersion: "3.0.15",
+      level: "exploited",
+      fix: "rebuild",
+      location: "/var/lib/dpkg/status",
+    },
+    {
+      ...base,
+      vulnId: "GO-1",
+      ecosystem: "Go",
+      packageName: "stdlib",
+      fixedVersion: "1.24.0",
+      level: "critical",
+      fix: "code",
+      location: "/app/node_modules/@esbuild/linux-x64/bin/esbuild",
     },
   ]);
 }
@@ -122,7 +142,7 @@ beforeEach(async () => {
   await seedFindings("prj_web", TEAM_A);
 });
 
-test("the team sees its app's updates, actionable and exploited first, and the count", async () => {
+test("the team sees its own dependencies' updates, counted ones first; Important ones are listed only", async () => {
   const s = await as(OWNER, TEAM_A, () => appSecurityUpdates("prj_web"));
   assert.ok(s);
   assert.deepEqual(

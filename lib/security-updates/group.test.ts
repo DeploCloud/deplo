@@ -1,39 +1,51 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-import { compareVersions, countUpdates, groupByPackage } from "./group";
+import { compareVersions, countUpdates, groupUpdates } from "./group";
 
-const f = (o: Partial<Parameters<typeof groupByPackage>[0][number]>) => ({
+const f = (o: Partial<Parameters<typeof groupUpdates>[0][number]>) => ({
   service: "web",
   ecosystem: "npm",
-  packageName: "n8n",
-  installedVersion: "1.45.0",
+  packageName: "minimist",
+  installedVersion: "1.2.5",
   level: "critical",
-  fix: "update",
-  fixedVersion: "1.123.55",
+  fix: "code",
+  fixedVersion: "1.2.6",
+  actionable: true,
   ...o,
 });
 
 test("many advisories on one package are one security update", () => {
   const items = [
     f({}),
-    f({ fixedVersion: "2.26.2" }),
-    f({ level: "exploited", fixedVersion: "1.120.4" }),
-    f({
-      packageName: "openssl",
-      ecosystem: "Alpine:v3.19",
-      level: "high",
-      fixedVersion: "3.1.6-r0",
-    }),
-    f({ packageName: "zlib", fix: "none", fixedVersion: null, level: "high" }),
+    f({ fixedVersion: "1.2.8" }),
+    f({ level: "exploited", fixedVersion: "1.2.7" }),
+    f({ packageName: "lodash", level: "high", actionable: false }),
   ];
-  const groups = groupByPackage(items);
-  assert.equal(groups.length, 3);
-  const n8n = groups.find((g) => g.items[0].packageName === "n8n")!;
-  assert.equal(n8n.items.length, 3);
-  assert.equal(n8n.level, "exploited");
-  assert.equal(n8n.fixedVersion, "2.26.2", "the version that closes them all");
-  assert.deepEqual(countUpdates(items), { count: 2, exploited: 1 });
+  const groups = groupUpdates(items);
+  assert.equal(groups.length, 2);
+  const minimist = groups.find((g) => g.items[0].packageName === "minimist")!;
+  assert.equal(minimist.items.length, 3);
+  assert.equal(minimist.level, "exploited");
+  assert.equal(
+    minimist.fixedVersion,
+    "1.2.8",
+    "the version that closes them all",
+  );
+  assert.deepEqual(countUpdates(items), { count: 1, exploited: 1 });
+});
+
+test("an image's update is one update, however many packages it moves", () => {
+  const image = { fix: "update", fixedVersion: null };
+  const items = [
+    f({ ...image, packageName: "next", installedVersion: "16.3.5" }),
+    f({ ...image, packageName: "axios", installedVersion: "1.6.0" }),
+    f({ ...image, service: "worker", packageName: "next" }),
+  ];
+  const groups = groupUpdates(items);
+  assert.equal(groups.length, 2, "one per service image");
+  assert.ok(groups.every((g) => g.image && g.fixedVersion === null));
+  assert.deepEqual(countUpdates(items), { count: 2, exploited: 0 });
 });
 
 test("compareVersions orders numbers numerically", () => {
