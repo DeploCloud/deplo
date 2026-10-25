@@ -390,6 +390,8 @@ async function runDeployment(depId: string): Promise<void> {
     };
     // A single image runs now: a stack read from the source before is gone, whatever the method.
     const settleSingleImage = async (builtWith?: string) => {
+      // A preview runs its own stack: what the app records stays production's.
+      if (preview) return;
       if (hasCompose && !useCompose)
         await recordSourceCompose(project.id, null);
       if (!method.methodAuto) return;
