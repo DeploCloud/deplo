@@ -61,9 +61,16 @@ test("an agent from before the link still listens, and still says which firewall
   assert.match(out, /^NOTE ufw allow 9443\/tcp$/m);
 });
 
-test("a reinstall clears the saved link address with the certificates, so it cannot outlive its panel", async () => {
+test("a reinstall clears the saved link state with the certificates, so it cannot outlive its panel", async () => {
   const dir = await mkdtemp(join(tmpdir(), "deplo-agent-data-"));
-  for (const f of ["agent.crt", "agent.key", "ca.crt", "link-addresses.json"])
+  for (const f of [
+    "agent.crt",
+    "agent.key",
+    "ca.crt",
+    "link-addresses.json",
+    // An agent that closed its own port once it linked.
+    "no-listener",
+  ])
     await writeFile(join(dir, f), "old");
   await writeFile(join(dir, "build-cache.salt"), "kept");
   await bash(`set -euo pipefail

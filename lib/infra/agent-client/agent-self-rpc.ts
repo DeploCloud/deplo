@@ -20,6 +20,7 @@ export function agentSelfRpc(
   | "selfUpdate"
   | "selfUninstall"
   | "setLinkAddresses"
+  | "stopListening"
 > {
   const { client } = channel;
   return {
@@ -29,6 +30,9 @@ export function agentSelfRpc(
         pair,
         HELLO_TIMEOUT_MS,
       );
+    },
+    async stopListening() {
+      await unary(client.stopListening.bind(client), {}, HELLO_TIMEOUT_MS);
     },
     renewalCsr() {
       return new Promise<{ csrPem: string }>((resolve, reject) => {

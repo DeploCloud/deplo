@@ -51,6 +51,7 @@ function hello(over: Partial<HelloResponse> = {}): HelloResponse {
     traefikRunning: true,
     hostArch: "amd64",
     publicAddresses: [],
+    listening: false,
     ...over,
   };
 }

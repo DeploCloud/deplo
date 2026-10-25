@@ -1,4 +1,4 @@
-import { test, before, after, beforeEach, afterEach } from "node:test";
+import { test, before, after, beforeEach, afterEach, mock } from "node:test";
 import assert from "node:assert/strict";
 
 import type { PGlite } from "@electric-sql/pglite";
@@ -30,6 +30,7 @@ import {
   startAgentLinkListener,
   stopAgentLinkListener,
 } from "../infra/agent-link/listener";
+import { LINK_SETTLE_MS } from "../infra/agent-link/protocol";
 import { onAgentLink } from "../infra/agent-link/registry";
 import { AGENT_VERSION } from "../version";
 
@@ -293,7 +294,7 @@ test("checking a server whose link just dropped changes nothing until the grace 
   assert.equal(agent.connections().opened, 0, "nothing dialed the agent");
 });
 
-test("a server that never linked is checked as today: dialed, with no wait for a link", async () => {
+test("once links have settled, a server that never linked is checked as today: dialed, with no wait for a link", async (t) => {
   startServerLinkStatus();
   const up = await check();
   assert.equal(up.status, "online");
@@ -301,8 +302,33 @@ test("a server that never linked is checked as today: dialed, with no wait for a
 
   agent.refuse(true);
   await ageObservation();
+  mock.timers.enable({ apis: ["Date"], now: Date.now() + LINK_SETTLE_MS });
+  t.after(() => mock.timers.reset());
   const down = await check();
   assert.ok(down.took < 3_000, `the check took ${down.took} ms`);
   assert.equal(down.status, "offline");
   assert.equal(down.statusMessage, HEALTH_MESSAGES.refused);
+});
+
+test("right after the panel starts, a server that stopped listening and has not relinked yet is not shown offline", async () => {
+  startServerLinkStatus();
+  agent.refuse(true); // it closed its port once it linked, before the panel restarted
+  await ageObservation();
+  const before = await shown();
+
+  const s = await check();
+  assert.ok(s.took < 3_000, `the check took ${s.took} ms`);
+  assert.equal(s.status, "online");
+  assert.deepEqual(
+    await shown(),
+    before,
+    "nothing judged from the refused dial",
+  );
+
+  await linkIn();
+  await until(
+    async () => (await shown()).checkedAt! > before.checkedAt!,
+    "the link's Hello is recorded",
+  );
+  assert.equal((await shown()).status, "online");
 });

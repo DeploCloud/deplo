@@ -21,6 +21,7 @@ import { LINK_WAIT_MS } from "../infra/agent-link/protocol";
 import {
   currentLink,
   hasLinked,
+  linksSettling,
   onAgentLink,
 } from "../infra/agent-link/registry";
 import {
@@ -218,6 +219,8 @@ async function probeServer(
       error = e;
     }
   }
+  // Right after the panel starts, a server that closed its port once it linked is still relinking.
+  if (settlingAfterRestart(error)) return null;
 
   const health = classifyServerHealth(hello, error, {
     storageOnly: server.storageOnly,
@@ -272,6 +275,13 @@ async function probeOverLink(
   if (hello)
     await markServerSeen(server.id, hello.agentVersion, observedTraefik(hello));
   return getServerById(server.id);
+}
+
+/** A failed dial that says nothing yet: the server may have stopped listening and be relinking (ADR-0038). */
+export function settlingAfterRestart(error: unknown): boolean {
+  return (
+    error instanceof AgentUnreachableError && !error.trust && linksSettling()
+  );
 }
 
 async function probeCoalesced(server: Server, force: boolean): Promise<Server> {

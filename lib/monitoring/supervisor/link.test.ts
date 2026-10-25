@@ -1,4 +1,4 @@
-import { test, beforeEach, afterEach } from "node:test";
+import { test, beforeEach, afterEach, mock } from "node:test";
 import assert from "node:assert/strict";
 
 import { seedServerRow } from "../../data/infra-test-helpers";
@@ -13,16 +13,21 @@ import {
   type FakeAgent,
   type FakeLink,
 } from "../../infra/agent-client/fake-agent-test-helpers";
+import { AgentUnreachableError } from "../../infra/agent-client/errors";
 import { METRICS_STREAM_CAPABILITY } from "../../infra/agent-client/hello-capabilities";
 import {
   startAgentLinkListener,
   stopAgentLinkListener,
 } from "../../infra/agent-link/listener";
+import { LINK_SETTLE_MS } from "../../infra/agent-link/protocol";
 import { onAgentLink } from "../../infra/agent-link/registry";
 import { HEALTH_MESSAGES } from "../../infra/server-health";
 import { AGENT_VERSION } from "../../version";
 import { getMetricsHistory } from "../history";
-import { startMetricsStreams } from "../supervisor";
+import {
+  __setMetricsConnectorForTest,
+  startMetricsStreams,
+} from "../supervisor";
 import { frame, setupSupervisor, waitFor } from "./supervisor-test-helpers";
 
 const SERVER = "srv_linked";
@@ -156,4 +161,26 @@ test("a link that stays away shows the server offline with the link's own words"
   const now = await shown();
   assert.equal(now.status, "offline");
   assert.equal(now.message, HEALTH_MESSAGES.linkDown);
+});
+
+test("right after the panel starts, a server whose stream finds its port closed is not shown offline until links settle", async (t) => {
+  let dials = 0;
+  // It stopped listening once it linked, and has not relinked since the panel restarted.
+  __setMetricsConnectorForTest(async () => {
+    dials++;
+    throw new AgentUnreachableError("connect ECONNREFUSED 127.0.0.1:9443", 14);
+  });
+  const before = await shown();
+  startMetricsStreams();
+  await waitFor(() => dials >= 1, "the stream tried the server");
+  await new Promise((r) => setTimeout(r, 200));
+  assert.deepEqual(await shown(), before);
+
+  mock.timers.enable({ apis: ["Date"], now: Date.now() + LINK_SETTLE_MS });
+  t.after(() => mock.timers.reset());
+  await waitFor(
+    async () => (await shown()).status === "offline",
+    "offline once the panel has settled",
+  );
+  assert.equal((await shown()).message, HEALTH_MESSAGES.refused);
 });

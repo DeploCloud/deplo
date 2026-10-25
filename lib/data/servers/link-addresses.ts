@@ -40,11 +40,12 @@ const sync: Sync = (g[KEY] ??= {
   lastError: new Map(),
 });
 
-/** Keeps every linking agent on the panel's pair (ADR-0038). Start it before the link door opens. */
+/** Keeps linking agents on the panel's pair and closes a linked one's port (ADR-0038). Start it before the door opens. */
 export function startLinkAddressSync(): void {
   if (sync.off) return;
+  // Queued even behind a running pass: that pass started before this link was verified.
   const offLink = onAgentLink((e) => {
-    if (e.type === "up") void agentHelloSeen(e.serverId, e.hello);
+    if (e.type === "up" && keepsPair(e.hello)) void queue(e.serverId, e.hello);
   });
   const offHello = onAgentHello((id, hello) => void agentHelloSeen(id, hello));
   sync.off = () => {
@@ -77,13 +78,13 @@ export async function wantedLinkAddresses(
   return { primary, fallback: fallback === primary ? "" : (fallback ?? "") };
 }
 
-/** A Hello the control plane saw: a linking agent whose pair is not the panel's is sent the panel's. */
+/** A Hello the control plane saw: a linking agent is sent the panel's pair, and stops listening once linked. */
 export function agentHelloSeen(
   serverId: string,
   hello: HelloResponse,
 ): Promise<void> {
   if (!keepsPair(hello) || sync.running.has(serverId)) return Promise.resolve();
-  return queue(serverId, hello.linkAddresses);
+  return queue(serverId, hello);
 }
 
 /**
@@ -114,10 +115,10 @@ async function sendToLinkedAgents(): Promise<void> {
   }
 }
 
-// `reported` unset: ask the agent on the connection that sends.
-function queue(serverId: string, reported?: LinkAddresses): Promise<void> {
+// `seen` unset: ask the agent on the connection that sends.
+function queue(serverId: string, seen?: HelloResponse): Promise<void> {
   const run = (sync.running.get(serverId) ?? Promise.resolve())
-    .then(() => reconcile(serverId, reported))
+    .then(() => reconcile(serverId, seen))
     .then(
       () => void sync.lastError.delete(serverId),
       (e: unknown) => {
@@ -136,24 +137,40 @@ function queue(serverId: string, reported?: LinkAddresses): Promise<void> {
   return run;
 }
 
-function reconcile(serverId: string, reported?: LinkAddresses): Promise<void> {
+function reconcile(serverId: string, seen?: HelloResponse): Promise<void> {
   return withoutRequestCache(async () => {
     if (await instanceFrozen()) return;
     const server = await getServerById(serverId);
     if (!server) return;
     const wanted = await wantedLinkAddresses(server);
-    if (!wanted || (reported && samePair(reported, wanted))) return;
+    if (!wanted) return;
+    // Read before connecting: a server seen linked is reached over its link alone, never its port.
+    const linked = currentLink(serverId) !== undefined;
+    if (seen && settled(seen, wanted, linked)) return;
     const conn = await connectAgent(serverId);
     try {
-      if (!reported) {
-        const hello = await conn.hello();
-        if (!keepsPair(hello) || samePair(hello.linkAddresses, wanted)) return;
-      }
-      await conn.setLinkAddresses(wanted);
+      const hello = seen ?? (await conn.hello());
+      if (!keepsPair(hello) || settled(hello, wanted, linked)) return;
+      if (!samePair(hello.linkAddresses, wanted))
+        await conn.setLinkAddresses(wanted);
+      // It keeps the panel's pair and its link is verified: its own port has no use left.
+      if (linked && hello.listening) await conn.stopListening();
     } finally {
       conn.close();
     }
   });
+}
+
+function settled(
+  hello: HelloResponse,
+  wanted: LinkAddresses,
+  linked: boolean,
+): boolean {
+  return (
+    !!hello.linkAddresses &&
+    samePair(hello.linkAddresses, wanted) &&
+    !(linked && hello.listening)
+  );
 }
 
 function keepsPair(

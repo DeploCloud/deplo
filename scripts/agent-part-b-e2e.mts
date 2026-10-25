@@ -453,68 +453,81 @@ async function linkMain() {
   writeFileSync(join(guardDir, "docker"), DOCKER_GUARD(docker));
   chmodSync(join(guardDir, "docker"), 0o755);
   const volume = `agentlink-e2e-${process.pid}`;
-  const agents: { id: string; dir: string; proc: ChildProcess }[] = [];
-  try {
-    for (const [id, ip] of [
-      ["srv-e2e-self", process.env.DEPLO_SERVER_IP],
-      ["srv-e2e-remote", "198.51.100.7"],
-    ]) {
-      const { rawToken, stored } = mintBootstrap();
-      await db.insert(servers).values(
-        serverToRow({
-          id,
-          name: id,
-          host: ip,
-          type: "remote",
-          status: "provisioning",
-          ip,
-          dockerVersion: "",
-          traefikEnabled: false,
-          cpuCores: 0,
-          memoryMb: 0,
-          diskGb: 0,
-          allTeams: true,
-          storageOnly: false,
-          buildOnly: false,
-          buildFallback: null,
-          generatedAddressFamily: null,
-          importOnly: false,
-          uninstallPending: false,
-          uninstallError: "",
-          hostArch: "amd64",
-          deployConcurrency: 1,
-          createdAt: new Date(0).toISOString(),
-          bootstrap: stored,
-        }),
-      );
-      const dir = mkdtempSync(join(tmpdir(), "agentlink-agent-"));
-      // No --addr: a linking agent is installed with none and listens on nothing.
-      const proc = spawn(
-        AGENT_BIN,
-        [
-          "--agent-dir",
-          dir,
-          "--bootstrap-url",
-          `http://127.0.0.1:${homePort}`,
-          "--bootstrap-token",
-          rawToken,
-          "--stack-dir",
-          join(dir, "stacks"),
-          "--build-tmp",
-          join(dir, "tmp"),
-        ],
-        {
-          stdio: ["ignore", "inherit", "inherit"],
-          // Nothing of this process's environment: only the guarded Docker.
-          env: {
-            NODE_ENV: "test",
-            PATH: `${guardDir}:${process.env.PATH}`,
-            HOME: dir,
-          },
+  const agents: E2eAgent[] = [];
+  // Enrolls a server and starts its agent; `extra` flags ride every restart, as a unit's argv does.
+  const enroll = async (id: string, ip: string, extra: string[] = []) => {
+    const { rawToken, stored } = mintBootstrap();
+    await db.insert(servers).values(
+      serverToRow({
+        id,
+        name: id,
+        host: ip,
+        type: "remote",
+        status: "provisioning",
+        ip,
+        dockerVersion: "",
+        traefikEnabled: false,
+        cpuCores: 0,
+        memoryMb: 0,
+        diskGb: 0,
+        allTeams: true,
+        storageOnly: false,
+        buildOnly: false,
+        buildFallback: null,
+        generatedAddressFamily: null,
+        importOnly: false,
+        uninstallPending: false,
+        uninstallError: "",
+        hostArch: "amd64",
+        deployConcurrency: 1,
+        createdAt: new Date(0).toISOString(),
+        bootstrap: stored,
+      }),
+    );
+    const dir = mkdtempSync(join(tmpdir(), "agentlink-agent-"));
+    const argv = [
+      ...extra,
+      "--agent-dir",
+      dir,
+      "--bootstrap-url",
+      `http://127.0.0.1:${homePort}`,
+      "--bootstrap-token",
+      rawToken,
+      "--stack-dir",
+      join(dir, "stacks"),
+      "--build-tmp",
+      join(dir, "tmp"),
+    ];
+    const start = () =>
+      spawn(AGENT_BIN, argv, {
+        stdio: ["ignore", "inherit", "inherit"],
+        // Nothing of this process's environment: only the guarded Docker, and a temp dir that
+        // is not the host's (an agent's start sweeps its own leftovers there).
+        env: {
+          NODE_ENV: "test",
+          PATH: `${guardDir}:${process.env.PATH}`,
+          HOME: dir,
+          TMPDIR: join(dir, "tmp"),
         },
-      );
-      agents.push({ id, dir, proc });
-    }
+      });
+    const agent: E2eAgent = {
+      id,
+      dir,
+      proc: start(),
+      async restart() {
+        const exited = new Promise((r) => agent.proc.once("exit", r));
+        agent.proc.kill("SIGTERM");
+        await exited;
+        agent.proc = start();
+      },
+    };
+    agents.push(agent);
+    return agent;
+  };
+  try {
+    // No --addr: a linking agent is installed with none and listens on nothing.
+    await enroll("srv-e2e-self", process.env.DEPLO_SERVER_IP!);
+    await enroll("srv-e2e-remote", "198.51.100.7");
 
     for (const { id, dir, proc } of agents) {
       if (!(await waitForLink(id, 20_000)))
@@ -524,9 +537,7 @@ async function linkMain() {
       ) as { primary: string };
       if (saved.primary !== want[id])
         throw new Error(`${id} saved ${saved.primary}, want ${want[id]}`);
-      const listening = (await sh("ss", ["-ltnpH"])).out
-        .split("\n")
-        .filter((l) => l.includes(`pid=${proc.pid},`));
+      const listening = await listensOn(proc.pid);
       if (listening.length)
         throw new Error(`${id} listens: ${listening.join("; ")}`);
       const conn = await connectAgent(id);
@@ -540,6 +551,7 @@ async function linkMain() {
     }
 
     await linkAddressesE2e(door, agents);
+    await listenerE2e(enroll);
 
     const fill = await sh("docker", [
       "run",
@@ -576,6 +588,86 @@ async function linkMain() {
     home.close();
     for (const { dir } of agents) rmSync(dir, { recursive: true, force: true });
     rmSync(guardDir, { recursive: true, force: true });
+  }
+}
+
+interface E2eAgent {
+  id: string;
+  dir: string;
+  proc: ChildProcess;
+  /** Stops it and starts it again with the same flags, as systemd or a self-update would. */
+  restart(): Promise<void>;
+}
+
+const listensOn = async (pid: number | undefined) =>
+  (await sh("ss", ["-ltnpH"])).out
+    .split("\n")
+    .filter((l) => l.includes(`pid=${pid},`));
+
+// An agent from before the link (#119): it listens, links, and closes its port once the panel saw the link.
+async function listenerE2e(
+  enroll: (id: string, ip: string, extra: string[]) => Promise<E2eAgent>,
+) {
+  const { connectAgent } = await import("../lib/infra/agent-client/connect");
+  const { currentLink, onAgentLink, waitForLink } =
+    await import("../lib/infra/agent-link/registry");
+  const { startLinkAddressSync, stopLinkAddressSync } =
+    await import("../lib/data/servers/link-addresses");
+  const until = async (what: string, ok: () => Promise<boolean> | boolean) => {
+    for (const end = Date.now() + 20_000; !(await ok()); await sleep(100))
+      if (Date.now() > end) throw new Error(`never: ${what}`);
+  };
+  const listening = async (id: string) => {
+    const conn = await connectAgent(id);
+    try {
+      return (await conn.hello()).listening;
+    } finally {
+      conn.close();
+    }
+  };
+  const free = createServer();
+  await new Promise<void>((r) => free.listen(0, "127.0.0.1", r));
+  const port = (free.address() as { port: number }).port;
+  await new Promise((r) => free.close(r));
+  const id = "srv-e2e-listening";
+
+  const firstLink = new Promise<boolean>((resolve) => {
+    const off = onAgentLink((e) => {
+      if (e.serverId === id && e.type === "up") resolve(e.hello.listening);
+      if (e.serverId === id) off();
+    });
+  });
+  startLinkAddressSync();
+  try {
+    const agent = await enroll(id, "198.51.100.8", [
+      "--addr",
+      `127.0.0.1:${port}`,
+    ]);
+    if (!(await waitForLink(id, 20_000))) throw new Error(`${id} never linked`);
+    if (!(await firstLink)) throw new Error(`${id} linked without listening`);
+    await until("its port closes", async () => {
+      return (await listensOn(agent.proc.pid)).length === 0;
+    });
+    if (await listening(id)) throw new Error(`${id} Hello still listens`);
+    readFileSync(join(agent.dir, "no-listener")); // what a restart reads
+    console.log(
+      `== ${id}: listened on 127.0.0.1:${port}, linked, was told to stop, its socket is gone ✓`,
+    );
+
+    const before = currentLink(id);
+    await agent.restart();
+    await until("a link from the restarted agent", () => {
+      const now = currentLink(id);
+      return !!now && now !== before;
+    });
+    const open = await listensOn(agent.proc.pid);
+    if (open.length) throw new Error(`${id} listens again: ${open.join("; ")}`);
+    if (await listening(id)) throw new Error(`${id} Hello listens again`);
+    console.log(
+      `== ${id}: restarted with --addr 127.0.0.1:${port} again, relinked, still no listener ✓`,
+    );
+  } finally {
+    await stopLinkAddressSync();
   }
 }
 

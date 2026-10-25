@@ -1103,13 +1103,14 @@ chmod 700 "$AGENT_DATA"
 # materials here so the agent genuinely re-bootstraps against the current pin.
 # (A plain `systemctl restart deplo-agent` carries no token through this script,
 # so it still reuses materials and serves straight away, as intended.) The saved
-# link address goes too: it names the panel the old certificate belonged to.
+# link state goes too: the address names the old certificate's panel, and the
+# closed-port marker belongs to a link that is gone.
 clear_old_materials() {
   if [ -e "$AGENT_DATA/agent.crt" ] || [ -e "$AGENT_DATA/agent.key" ] || [ -e "$AGENT_DATA/ca.crt" ]; then
     step "Existing agent materials found - clearing them for a fresh bootstrap"
     systemctl stop deplo-agent >&9 2>&9 || true
     rm -f "$AGENT_DATA/agent.crt" "$AGENT_DATA/agent.key" "$AGENT_DATA/ca.crt" \
-      "$AGENT_DATA/link-addresses.json"
+      "$AGENT_DATA/link-addresses.json" "$AGENT_DATA/no-listener"
     ok "Old materials cleared" "the agent will re-provision with the new token"
   fi
 }

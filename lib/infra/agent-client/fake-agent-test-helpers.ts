@@ -4,6 +4,8 @@ import { webcrypto } from "node:crypto";
 import {
   Server as GrpcServer,
   ServerCredentials,
+  status as GrpcStatus,
+  type ServerUnaryCall,
   type ServerWritableStream,
 } from "@grpc/grpc-js";
 import * as x509 from "@peculiar/x509";
@@ -48,6 +50,8 @@ export interface FakeAgent {
   goStale(): void;
   /** Every pair of panel addresses the control plane sent it, oldest first. */
   sentPairs(): LinkAddresses[];
+  /** Whether its own port still takes connections; StopListening closes it, as the real agent does. */
+  listening(): boolean;
   /** Links in to the door on 127.0.0.1 and serves on the link, as the real agent does. */
   link(
     doorPort: number,
@@ -76,9 +80,20 @@ export async function startFakeAgent(
     capabilities?: string[];
     /** The pair it keeps and reports in Hello; none at all when unset. */
     linkAddresses?: LinkAddresses;
+    /** What SelfUpdate turns it into, without a restart; unset, it does not update. */
+    updatesTo?: {
+      version: string;
+      capabilities: string[];
+      linkAddresses?: LinkAddresses;
+    };
+    /** A door on 127.0.0.1 it links into whenever it holds a panel address and no link. */
+    door?: number;
   } = {},
 ): Promise<FakeAgent> {
   let pair = opts.linkAddresses;
+  let version = opts.version ?? AGENT_VERSION;
+  let capabilities = opts.capabilities ?? [];
+  let listening = true;
   const sentPairs: LinkAddresses[] = [];
   const streams = new Set<ServerWritableStream<FollowLogsRequest, LogChunk>>();
   const telemetry = new Set<
@@ -103,16 +118,43 @@ export async function startFakeAgent(
           null,
           HelloResponse.fromPartial({
             contractVersion: ContractVersion.CONTRACT_VERSION_V1,
-            agentVersion: opts.version ?? AGENT_VERSION,
+            agentVersion: version,
             dockerAvailable: opts.dockerAvailable ?? true,
-            capabilities: [
-              CERT_RENEWAL_CAPABILITY,
-              ...(opts.capabilities ?? []),
-            ],
+            capabilities: [CERT_RENEWAL_CAPABILITY, ...capabilities],
             hostArch: "amd64",
             linkAddresses: pair,
+            listening,
           }),
         );
+      },
+      selfUpdate(
+        _call: unknown,
+        cb: (
+          e: { code: number; details: string } | null,
+          r?: { version: string; restarting: boolean },
+        ) => void,
+      ) {
+        const next = opts.updatesTo;
+        if (!next)
+          return cb({ code: GrpcStatus.UNIMPLEMENTED, details: "no update" });
+        ({ version, capabilities } = next);
+        pair = next.linkAddresses;
+        cb(null, { version, restarting: true });
+        dialDoor();
+      },
+      // The real agent closes its port only when asked over its link: over the port, it cannot tell the link works.
+      stopListening(
+        call: ServerUnaryCall<unknown, unknown>,
+        cb: (e: { code: number; details: string } | null, r?: object) => void,
+      ) {
+        if (call.getPeer() !== "unknown")
+          return cb({
+            code: GrpcStatus.FAILED_PRECONDITION,
+            details: "ask over the agent link",
+          });
+        if (listening) hop.close();
+        listening = false;
+        cb(null, {});
       },
       setLinkAddresses(
         call: { request: LinkAddresses },
@@ -121,6 +163,7 @@ export async function startFakeAgent(
         pair = { ...call.request };
         sentPairs.push(pair);
         cb(null, pair);
+        dialDoor();
       },
       followLogs(call: ServerWritableStream<FollowLogsRequest, LogChunk>) {
         streams.add(call);
@@ -216,7 +259,12 @@ export async function startFakeAgent(
     ),
   );
 
-  return {
+  const dialDoor = () => {
+    if (opts.door === undefined || !pair?.primary || links.size > 0) return;
+    fake.link(opts.door).catch(() => {});
+  };
+
+  const fake: FakeAgent = {
     port,
     get certPem() {
       return agent.certPem;
@@ -226,6 +274,7 @@ export async function startFakeAgent(
     },
     connections: () => ({ opened, open: open.size }),
     sentPairs: () => [...sentPairs],
+    listening: () => listening,
     log(line) {
       for (const s of streams) s.write({ data: Buffer.from(line) } as LogChunk);
     },
@@ -279,6 +328,7 @@ export async function startFakeAgent(
       for (const b of backends) b.forceShutdown();
     },
   };
+  return fake;
 }
 
 /** One upgrade request at the door, written the way anything on the internet could write it. */

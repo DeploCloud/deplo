@@ -67,9 +67,13 @@ afterEach(() => {
 
 type Pair = { primary: string; fallback: string };
 
+// Servers asked to close their own port.
+const stopped: string[] = [];
+
 /** Every server answers with a linking agent; returns the pairs each one was sent. */
 function linkingAgents(panelProxy?: string): Map<string, Pair[]> {
   const sent = new Map<string, Pair[]>();
+  stopped.length = 0;
   __setAgentConnectorForTest(async (serverId) => {
     const conn = {
       hello: async () => hello(undefined, [AGENT_LINK_CAPABILITY, "hostops"]),
@@ -78,6 +82,7 @@ function linkingAgents(panelProxy?: string): Map<string, Pair[]> {
         sent.set(serverId, [...(sent.get(serverId) ?? []), pair]);
         return pair;
       },
+      stopListening: async () => void stopped.push(serverId),
       close: () => {},
     };
     return conn as unknown as AgentConnection;
@@ -99,6 +104,8 @@ function hello(
     hostArch: "amd64",
     publicAddresses: [],
     linkAddresses,
+    // Still on its own port, as every agent that moved from before the link is.
+    listening: true,
   };
 }
 
@@ -132,6 +139,17 @@ test("an agent that already keeps the panel's pair is sent nothing", async () =>
   const sent = linkingAgents();
   await agentHelloSeen(REMOTE, hello({ primary: PANEL, fallback: FALLBACK }));
   assert.equal(sent.size, 0);
+});
+
+test("an agent seen over its own port keeps that port until the panel has seen it link", async () => {
+  const sent = linkingAgents();
+  await agentHelloSeen(
+    REMOTE,
+    hello({ primary: "https://old.example.com", fallback: "" }),
+  );
+  await agentHelloSeen(REMOTE, hello({ primary: PANEL, fallback: FALLBACK }));
+  assert.deepEqual(sent.get(REMOTE), [{ primary: PANEL, fallback: FALLBACK }]);
+  assert.deepEqual(stopped, [], "never asked to stop listening");
 });
 
 test("an agent that does not link is never sent a pair", async () => {

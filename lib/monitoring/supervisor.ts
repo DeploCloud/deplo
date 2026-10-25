@@ -7,7 +7,10 @@ import {
   markServerSeen,
   observedTraefik,
 } from "../data/servers/agent-handshake";
-import { recordServerHealth } from "../data/server-health";
+import {
+  recordServerHealth,
+  settlingAfterRestart,
+} from "../data/server-health";
 import { classifyServerHealth } from "../infra/server-health";
 import type { AgentConnection } from "../infra/agent-client/connection";
 import {
@@ -299,7 +302,14 @@ async function runStreamLoop(
         // A linked server is offline only once its link stays away, which server health records.
         const linkDecides =
           e instanceof AgentUnreachableError && hasLinked(serverId);
-        if (attempt === 0 && !(e instanceof AgentTooOldError) && !linkDecides) {
+        // Says nothing yet, so the first failure after the panel settles still gets written.
+        const settling = settlingAfterRestart(e);
+        if (
+          attempt === 0 &&
+          !(e instanceof AgentTooOldError) &&
+          !linkDecides &&
+          !settling
+        ) {
           await recordServerHealth(
             serverId,
             classifyServerHealth(null, e),
@@ -307,7 +317,7 @@ async function runStreamLoop(
           ).catch(() => {});
         }
         const delay = backoffFor(attempt);
-        attempt = Math.min(attempt + 1, 16);
+        if (!settling) attempt = Math.min(attempt + 1, 16);
         await sleep(delay, signal);
       }
     } finally {
