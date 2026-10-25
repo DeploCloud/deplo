@@ -23,6 +23,7 @@ import {
   rerouteRequest,
   teardownDatabaseStack,
 } from "./stack";
+import { REROUTE_PULL_CAPABILITY } from "../../infra/agent-client/hello-capabilities";
 
 export async function setDatabaseRunning(
   id: string,
@@ -107,7 +108,11 @@ export async function restartDatabase(id: string): Promise<void> {
   );
 }
 
-export async function redeployDatabase(id: string): Promise<void> {
+// `pull` is a security update: the same tag, pulled again for its latest build (ADR-0038).
+export async function redeployDatabase(
+  id: string,
+  opts: { pull?: boolean } = {},
+): Promise<void> {
   const teamId = (await requireCapability("control_databases")).teamId;
   const user = (await getCurrentUser())!;
   let name = "";
@@ -122,7 +127,17 @@ export async function redeployDatabase(id: string): Promise<void> {
     const yaml = renderDatabaseStackYaml(cur, password);
     const conn = await connectAgent(cur.serverId);
     try {
-      const res = await conn.reroute(rerouteRequest(cur, yaml));
+      // A HARD gate: an older agent ignores pull_images and would report an update it never made.
+      if (
+        opts.pull &&
+        !(await conn.hello()).capabilities?.includes(REROUTE_PULL_CAPABILITY)
+      )
+        throw new Error(
+          "This server's agent is too old to update a database image. Deplo updates it on its own; try again in a few minutes.",
+        );
+      const res = await conn.reroute(
+        rerouteRequest(cur, yaml, { pull: opts.pull }),
+      );
       if (!res.ok)
         throw new Error(res.error || "agent failed to redeploy the database");
     } finally {
@@ -136,7 +151,9 @@ export async function redeployDatabase(id: string): Promise<void> {
   });
   await recordActivity(
     "database",
-    `Redeployed database ${name}`,
+    opts.pull
+      ? `Updated database ${name} to the latest build of its image`
+      : `Redeployed database ${name}`,
     user.name,
     null,
     teamId,

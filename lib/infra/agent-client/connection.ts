@@ -160,6 +160,8 @@ export interface AgentConnection {
     mounts: { path: string; content: string }[];
     network: string;
     composeUpArgs?: string[];
+    // Needs `reroute.pull`; without it the agent pulls only missing images.
+    pullImages?: boolean;
   }): Promise<{ ok: boolean; error: string }>;
   renewalCsr(): Promise<{ csrPem: string }>;
   installRenewedCert(req: {

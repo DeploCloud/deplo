@@ -1,0 +1,1 @@
+ALTER TABLE "deployments" ADD COLUMN "pull_base" boolean DEFAULT false NOT NULL;

@@ -152,6 +152,7 @@ async function runDeployment(depId: string): Promise<void> {
     // Nothing host-local happens here: every build method runs on the agent (ADR-0006).
     const { noCache, reason: noCacheReason } = noCacheForDeploy(project.build);
     const forceRecreate = dep.forceRecreate;
+    const pullBase = dep.pullBase;
 
     const hasCompose = Boolean(project.compose && project.compose.trim());
     // A stack read from the app's own source goes through the git/upload path below, which reads it again.
@@ -276,6 +277,7 @@ async function runDeployment(depId: string): Promise<void> {
         target,
         domain,
         forceRecreate,
+        pullBase,
         domains: routeDomains.map((d) => d.name),
         domainRoutes: routeDomains,
         environment: dep.environment,
@@ -408,6 +410,7 @@ async function runDeployment(depId: string): Promise<void> {
         env,
         plan: { kind: "dockerfile", buildDir, build },
         noCache,
+        pullBase,
         forceRecreate,
         ready,
         githubToken:
@@ -586,6 +589,7 @@ async function runDeployment(depId: string): Promise<void> {
               build: normalizeBuildConfig(build),
             },
             noCache,
+            pullBase,
             forceRecreate,
             forkPreview: Boolean(forkUrl),
             ready,

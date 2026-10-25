@@ -18,6 +18,7 @@ export function RedeployButton({
   label: asked,
   pendingLabel,
   hint,
+  pullBase = false,
 }: {
   appId: string;
   slug: string;
@@ -27,6 +28,8 @@ export function RedeployButton({
   label?: string;
   pendingLabel?: string;
   hint?: string;
+  // Fetch the Dockerfile's base images again: a Rebuild for a fixed base image.
+  pullBase?: boolean;
 }) {
   const [pending, startTransition] = React.useTransition();
   const router = useRouter();
@@ -41,8 +44,8 @@ export function RedeployButton({
         { redeploy: { id: string | null } | null },
         { id: string | null } | null
       >(
-        `mutation($appId: String!) { redeploy(appId: $appId) { id } }`,
-        { appId },
+        `mutation($appId: String!, $pullBase: Boolean) { redeploy(appId: $appId, pullBase: $pullBase) { id } }`,
+        { appId, pullBase },
         (d) => d.redeploy,
       );
       if (res.ok) {

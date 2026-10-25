@@ -294,3 +294,17 @@ test("a ROLLBACK runs the host's own image with no build and no pull", async () 
   assert.equal(req.git, undefined);
   assert.equal(req.buildSpec, undefined);
 });
+
+test("pullBase reaches the agent as pull_base_images, and only when asked", async () => {
+  const plain = await buildDeployRequest({
+    ...base,
+    plan: { kind: "compose", mounts: [] },
+  });
+  assert.equal(plain.pullBaseImages, false);
+  const rebuild = await buildDeployRequest({
+    ...base,
+    plan: { kind: "compose", mounts: [] },
+    pullBase: true,
+  });
+  assert.equal(rebuild.pullBaseImages, true);
+});

@@ -178,6 +178,7 @@ export async function seedDeployment(
     appId: opts.appId,
     status: opts.status ?? "ready",
     forceRecreate: false,
+    pullBase: false,
     creatorUserId: opts.creatorUserId ?? null,
     creatorUser: null,
     creatorProvider: opts.creatorProvider ?? null,

@@ -3780,14 +3780,14 @@ type Mutation {
   rebuildDatabase(id: String!): Database
 
   """
-  Deploy the app again from the latest commit of its branch. With `deploymentId`, the latest commit of that deployment's branch or tag instead. A preview deployment is rebuilt with `redeployPreview`.
+  Deploy the app again from the latest commit of its branch. With `deploymentId`, the latest commit of that deployment's branch or tag instead. A preview deployment is rebuilt with `redeployPreview`. `pullBase` fetches a Dockerfile's base images again instead of reusing the server's copies, which is how a fixed base image is picked up.
   """
-  redeploy(appId: String!, deploymentId: String): Deployment
+  redeploy(appId: String!, deploymentId: String, pullBase: Boolean): Deployment
 
   """
-  Re-render the database's compose from its current settings (resource limits, image/command overrides, exposure) and reroute it on its server. The container is recreated only when its config actually changed; the data volume is always preserved.
+  Re-render the database's compose from its current settings (resource limits, image/command overrides, exposure) and reroute it on its server. The container is recreated only when its config actually changed; the data volume is always preserved. `pull` pulls the same image tag again first, which is how a database picks up a security fix in its image.
   """
-  redeployDatabase(id: String!): Database
+  redeployDatabase(id: String!, pull: Boolean): Database
 
   """Rebuild an existing preview at its current head."""
   redeployPreview(id: ID!): AppPreview
@@ -5762,7 +5762,7 @@ type SecurityUpdate {
 }
 
 """
-The security updates of one app or database, from the package lists of the images it runs. https://deplo.build/docs/guides/security-updates
+The security updates of one app or database, from the package lists of the images it runs. https://deplo.build/docs/guides/observability/security-updates
 """
 type SecurityUpdates {
   """

@@ -51,12 +51,16 @@ builder.mutationFields((t) => ({
     description:
       "Deploy the app again from the latest commit of its branch. With " +
       "`deploymentId`, the latest commit of that deployment's branch or tag " +
-      "instead. A preview deployment is rebuilt with `redeployPreview`.",
+      "instead. A preview deployment is rebuilt with `redeployPreview`. " +
+      "`pullBase` fetches a Dockerfile's base images again instead of reusing " +
+      "the server's copies, which is how a fixed base image is picked up.",
     args: {
       appId: t.arg.string({ required: true }),
       deploymentId: t.arg.string({ required: false }),
+      pullBase: t.arg.boolean({ required: false }),
     },
-    resolve: (_r, { appId, deploymentId }) => redeploy(appId, deploymentId),
+    resolve: (_r, { appId, deploymentId, pullBase }) =>
+      redeploy(appId, deploymentId, { pullBase: pullBase ?? false }),
   }),
   rollbackDeployment: t.field({
     type: DeploymentRef,

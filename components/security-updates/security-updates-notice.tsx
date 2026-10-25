@@ -8,9 +8,14 @@ import {
   type BannerProps,
 } from "./security-updates-banner";
 
-function topAction(s: SecurityUpdates): BannerProps["action"] {
+function topAction(
+  s: SecurityUpdates,
+  kind: "app" | "database",
+): BannerProps["action"] {
   const live = s.updates.filter((u) => u.actionable);
   if (live.some((u) => u.fix === "update")) return "update";
+  if (kind === "database") return null;
+  if (live.some((u) => u.fix === "rebuild")) return "rebuild";
   if (s.newerTag && live.some((u) => u.fix === "newer_tag")) return "newer_tag";
   return null;
 }
@@ -31,7 +36,7 @@ export async function SecurityUpdatesNotice(
       name={props.name}
       count={s.count}
       exploited={s.exploited}
-      action={props.kind === "app" ? topAction(s) : null}
+      action={topAction(s, props.kind)}
       newerTag={s.newerTag}
       {...(props.kind === "app"
         ? { appId: props.id, slug: props.slug }

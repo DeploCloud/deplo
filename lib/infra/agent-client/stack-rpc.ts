@@ -10,7 +10,11 @@ import { stackFilesDir } from "../../deploy/deploy-key";
 import { filesBindSources } from "../../deploy/file-binds";
 import { pumpClientStream, streamEvents } from "../stream-events";
 import type { AgentConnection } from "./connection";
-import { DEPLOY_DEADLINE_MS, STACK_DEADLINE_MS } from "./deadlines";
+import {
+  DEPLOY_DEADLINE_MS,
+  REROUTE_PULL_DEADLINE_MS,
+  STACK_DEADLINE_MS,
+} from "./deadlines";
 import { toAgentError } from "./errors";
 import type { AgentChannel } from "./mtls-channel";
 
@@ -128,6 +132,7 @@ export function stackRpc(
       mounts: { path: string; content: string }[];
       network: string;
       composeUpArgs?: string[];
+      pullImages?: boolean;
     }) {
       return assertNetworkCapable(req.network).then(
         () =>
@@ -140,14 +145,21 @@ export function stackRpc(
                 mounts: req.mounts,
                 network: req.network,
                 composeUpArgs: req.composeUpArgs ?? [],
-                pullImages: false,
+                pullImages: req.pullImages ?? false,
                 filesBindSources: filesBindSources(
                   req.composeYaml,
                   stackFilesDir(req.slug),
                 ),
               },
               new Metadata(),
-              { deadline: new Date(Date.now() + STACK_DEADLINE_MS) },
+              {
+                deadline: new Date(
+                  Date.now() +
+                    (req.pullImages
+                      ? REROUTE_PULL_DEADLINE_MS
+                      : STACK_DEADLINE_MS),
+                ),
+              },
               (err, resp) =>
                 err
                   ? reject(toAgentError(err))

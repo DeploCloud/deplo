@@ -56,6 +56,8 @@ export const deployments = pgTable(
     startedAt: isoTimestamptz("started_at"),
     buildDurationMs: bigint("build_duration_ms", { mode: "number" }),
     forceRecreate: boolean("force_recreate").notNull().default(false),
+    // Rebuild: fetch the Dockerfile's base images again (agent `deploy.pull-base`).
+    pullBase: boolean("pull_base").notNull().default(false),
     imageRef: text("image_ref"),
     rollbackOf: text("rollback_of"),
     creator: text("creator").notNull(),

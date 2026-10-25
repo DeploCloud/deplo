@@ -6,6 +6,7 @@ import { ShieldAlert } from "lucide-react";
 import Link from "@/components/ui/link";
 import { Button } from "@/components/ui/button";
 import { RedeployButton } from "@/components/apps/redeploy-button";
+import { UpdateDatabaseButton } from "./update-database-button";
 import { plural } from "@/lib/utils";
 import { SecurityUpdatesDialog } from "./security-updates-dialog";
 
@@ -13,8 +14,8 @@ export interface BannerProps {
   name: string;
   count: number;
   exploited: number;
-  // How the top fix is applied from here: a redeploy, a newer version in settings, or nothing.
-  action: "update" | "newer_tag" | null;
+  // How the top fix is applied from here: a redeploy, a rebuild, a newer version, or nothing.
+  action: "update" | "rebuild" | "newer_tag" | null;
   newerTag: string | null;
   appId?: string;
   slug?: string;
@@ -47,6 +48,17 @@ export function SecurityUpdatesBanner(p: BannerProps) {
             pendingLabel="Updating"
             hint="Redeploy to pull the newer build of the image"
           />
+        ) : p.action === "rebuild" && p.appId && p.slug ? (
+          <RedeployButton
+            appId={p.appId}
+            slug={p.slug}
+            label="Rebuild"
+            pendingLabel="Rebuilding"
+            hint="Rebuild on a freshly fetched base image"
+            pullBase
+          />
+        ) : p.action === "update" && p.databaseId ? (
+          <UpdateDatabaseButton id={p.databaseId} name={p.name} />
         ) : p.action === "newer_tag" && p.slug && p.newerTag ? (
           <Button asChild size="sm" variant="outline">
             <Link href={`/apps/${p.slug}/settings/deployments`}>
