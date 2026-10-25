@@ -7,6 +7,7 @@ import { makeTestDb, type TestDb } from "../../db/test-harness";
 import { __setTestDb, __resetTestDb } from "../../db/client";
 import { runWithIdentity } from "../../auth/request-context";
 import { seedServerRow, TRUNCATE_INFRA } from "../infra-test-helpers";
+import { instanceSettings } from "../../db/schema/control-plane/instance";
 import {
   seedIdentity,
   TEAM_A,
@@ -121,6 +122,41 @@ test("an agent reached over its own port is sent the pair it will link with", as
   conn.close();
   await eventually(() => agent.sentPairs().length > 0);
   assert.deepEqual(agent.sentPairs(), [{ primary: PANEL, fallback: FALLBACK }]);
+});
+
+test("a server enrolled through a takeover's side door is sent the panel's pair when it links after the cutover", async (t) => {
+  await db.insert(instanceSettings).values({
+    id: "default",
+    takeoverPlatform: "dokploy",
+    takeoverState: "done",
+    updatedAt: new Date().toISOString(),
+  });
+  // The cutover moved http to https; the agent follows that redirect to link again.
+  const enrolled = await startFakeAgent({
+    capabilities: [AGENT_LINK_CAPABILITY],
+    linkAddresses: { primary: "http://panel.example.com", fallback: "" },
+  });
+  t.after(async () => {
+    dropAgentChannel("srv_side_door");
+    await enrolled.stop();
+  });
+  await seedServerRow(db, {
+    id: "srv_side_door",
+    ip: "198.51.100.7",
+    host: "198.51.100.7",
+    agent: {
+      port: enrolled.port,
+      certFingerprint: enrolled.fingerprint,
+      certPem: enrolled.certPem,
+      version: AGENT_VERSION,
+    },
+  });
+  await enrolled.link(door);
+  await eventually(() => enrolled.sentPairs().length > 0);
+  assert.deepEqual(enrolled.sentPairs(), [
+    { primary: PANEL, fallback: FALLBACK },
+  ]);
+  await eventually(() => !enrolled.listening());
 });
 
 test("changing the panel's address sends the new pair to a connected agent", async () => {

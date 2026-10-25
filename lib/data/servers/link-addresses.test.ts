@@ -265,19 +265,17 @@ test("a panel that knows no address of its own sends none", async () => {
   assert.equal(sent.size, 0);
 });
 
-test("a server enrolled through a takeover's side door is moved to the panel's address once it is over", async () => {
+test("a server enrolled through a takeover's side door keeps it until the cutover", async () => {
   await db.insert(instanceSettings).values({
     id: "default",
     takeoverPlatform: "dokploy",
     takeoverState: "pending",
     updatedAt: new Date().toISOString(),
   });
-  const sentDoor = { primary: "http://panel.example.com", fallback: "" };
   const sent = linkingAgents();
-  await agentHelloSeen(REMOTE, hello(sentDoor));
+  await agentHelloSeen(
+    REMOTE,
+    hello({ primary: "http://panel.example.com", fallback: "" }),
+  );
   assert.equal(sent.size, 0, "until the cutover the side door is the way in");
-
-  await db.update(instanceSettings).set({ takeoverState: "done" });
-  await agentHelloSeen(REMOTE, hello(sentDoor));
-  assert.deepEqual(sent.get(REMOTE), [{ primary: PANEL, fallback: FALLBACK }]);
 });
