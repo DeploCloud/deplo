@@ -245,13 +245,11 @@ export function DeploySourceCard({
           )}
 
           {settings.rootCardVisible && (
-            <div className="grid gap-4 sm:grid-cols-2">
-              <RootDirectoryFields
-                build={settings.build}
-                onBuildChange={settings.setBuild}
-                disabled={pending}
-              />
-            </div>
+            <RootDirectoryFields
+              build={settings.build}
+              onBuildChange={settings.setBuild}
+              disabled={pending}
+            />
           )}
         </AnimatedHeight>
       </CardContent>

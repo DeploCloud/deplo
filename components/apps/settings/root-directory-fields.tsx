@@ -15,15 +15,20 @@ export function RootDirectoryFields({
   disabled?: boolean;
 }) {
   return (
-    <div className="space-y-2">
-      <FieldLabel
-        htmlFor="root-directory"
-        info='Sub-folder to build from, e.g. "apps/web" in a monorepo. Leave as ./ to build from the repository root'
-        docs="build.fields"
-      >
-        Root directory
-      </FieldLabel>
-      <div className="relative w-full">
+    <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
+      <div className="min-w-0">
+        <FieldLabel
+          htmlFor="root-directory"
+          info='For a monorepo, e.g. "apps/web". Leave ./ to build from the repository root.'
+          docs="build.fields"
+        >
+          Root directory
+        </FieldLabel>
+        <p className="mt-1 text-xs text-muted-foreground">
+          The folder the app is built from.
+        </p>
+      </div>
+      <div className="relative w-full shrink-0 sm:w-56">
         <FolderTree className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
         <Input
           id="root-directory"
