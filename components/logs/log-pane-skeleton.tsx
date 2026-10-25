@@ -21,6 +21,9 @@ const LINES: [string, string][] = [
   ["w-12", "w-11/12"],
 ];
 
+// More rows than the pane is tall; the pane clips them, so it always looks full.
+const ROWS = Array.from({ length: 64 }, (_, i) => LINES[i % LINES.length]);
+
 export function LogPaneSkeleton() {
   return (
     <div
@@ -46,7 +49,7 @@ export function LogPaneSkeleton() {
       </div>
 
       <div className="min-h-0 flex-1 space-y-2 overflow-hidden bg-black/90 p-3">
-        {LINES.map(([pill, msg], i) => (
+        {ROWS.map(([pill, msg], i) => (
           <div key={i} className="flex items-center gap-3">
             <Skeleton shimmer className={`h-4 shrink-0 rounded ${pill}`} />
             <Skeleton shimmer className={`h-4 ${msg}`} />

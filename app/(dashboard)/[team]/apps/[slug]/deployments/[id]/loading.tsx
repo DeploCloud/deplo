@@ -1,5 +1,6 @@
 import { Skeleton } from "@/components/ui/skeleton";
 import { Card, CardContent } from "@/components/ui/card";
+import { LogLines, LogLinesSkeleton } from "@/components/shared/log-line-row";
 
 export default function Loading() {
   return (
@@ -50,7 +51,7 @@ export default function Loading() {
           <Skeleton className="h-6 w-full rounded-md" />
           <Skeleton className="h-2.5 w-28" />
         </div>
-        <div className="mt-4 overflow-hidden rounded-xl border border-border bg-[#0a0a0a]">
+        <div className="mt-4 overflow-hidden rounded-xl border border-border bg-terminal">
           <div className="flex items-center justify-between border-b border-border px-4 py-2">
             <Skeleton className="h-3 w-16" />
             <div className="flex items-center gap-2">
@@ -58,15 +59,9 @@ export default function Loading() {
               <Skeleton className="h-8 w-24 rounded-md" />
             </div>
           </div>
-          <div className="max-h-120 space-y-2 p-4">
-            {Array.from({ length: 12 }).map((_, i) => (
-              <div key={i} className="flex gap-3">
-                <Skeleton shimmer className="h-3 w-14 shrink-0" />
-                <Skeleton shimmer className="h-3 w-12 shrink-0 rounded" />
-                <Skeleton shimmer className="h-3 flex-1" />
-              </div>
-            ))}
-          </div>
+          <LogLines className="h-120 text-xs">
+            <LogLinesSkeleton />
+          </LogLines>
         </div>
       </div>
     </div>

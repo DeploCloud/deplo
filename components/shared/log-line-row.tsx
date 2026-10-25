@@ -197,14 +197,22 @@ const SKELETON_WIDTHS = [
   "w-[29%]",
 ];
 
+// More rows than any pane is tall, clipped, so the skeleton always fills its pane.
+const SKELETON_ROWS = Array.from(
+  { length: 64 },
+  (_, i) => SKELETON_WIDTHS[i % SKELETON_WIDTHS.length],
+);
+
 export function LogLinesSkeleton() {
   return (
-    <div aria-hidden className="space-y-0.5">
-      {SKELETON_WIDTHS.map((width, i) => (
+    <div aria-hidden className="h-full space-y-0.5 overflow-hidden">
+      {SKELETON_ROWS.map((width, i) => (
         <div
           key={i}
           className="flex animate-pulse items-start gap-3 py-px pr-1.5 pl-3"
-          style={{ animationDelay: `${i * 90}ms` }}
+          style={{
+            animationDelay: `${(i % SKELETON_WIDTHS.length) * 90}ms`,
+          }}
         >
           <span className="h-[var(--log-fs)] w-[calc(var(--log-fs)*4)] shrink-0 rounded bg-zinc-800" />
           <span className={cn(CHIP, "shrink-0 rounded bg-zinc-800")} />
