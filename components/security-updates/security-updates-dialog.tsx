@@ -11,34 +11,14 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { DocsLink } from "@/components/ui/docs-link";
+import { useRouter } from "@/lib/nav";
 import { gql } from "@/lib/graphql-client";
-import type { FixKind, Level } from "@/lib/security-updates/fix-kind";
-import {
-  groupByPackage,
-  type PackageGroup,
-} from "@/lib/security-updates/group";
-import { plural, timeAgo } from "@/lib/utils";
-import { SecurityLevelBadge } from "./security-level";
-import { fixLine, UNREADABLE } from "./fix-line";
-
-interface Update {
-  vulnId: string;
-  level: Level;
-  ecosystem: string;
-  packageName: string;
-  installedVersion: string;
-  fixedVersion: string | null;
-  fix: FixKind;
-  actionable: boolean;
-  service: string;
-}
-
-interface Answer {
-  checkedAt: string | null;
-  unreadable: string[];
-  newerTag: string | null;
-  updates: Update[];
-}
+import { groupByPackage } from "@/lib/security-updates/group";
+import { timeAgo } from "@/lib/utils";
+import { AdvisoriesTable } from "./advisories-table";
+import { UNREADABLE } from "./fix-line";
+import type { Answer } from "./types";
+import { UpdateList } from "./update-list";
 
 const QUERY = /* GraphQL */ `
   query ($appId: ID, $databaseId: ID) {
@@ -48,14 +28,21 @@ const QUERY = /* GraphQL */ `
       newerTag
       updates {
         vulnId
+        cve
         level
+        cvss
         ecosystem
         packageName
         installedVersion
         fixedVersion
         fix
         actionable
+        ignored
+        ignoredUntil
+        ignoreReason
+        ignoredBy
         service
+        osvUrl
       }
     }
   }
@@ -67,17 +54,21 @@ export function SecurityUpdatesDialog({
   appId,
   databaseId,
   name,
+  canIgnore = false,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   appId?: string;
   databaseId?: string;
   name: string;
+  canIgnore?: boolean;
 }) {
+  const router = useRouter();
   const [answer, setAnswer] = React.useState<Answer | null | undefined>(
     undefined,
   );
   const [error, setError] = React.useState<string | null>(null);
+  const [version, setVersion] = React.useState(0);
 
   React.useEffect(() => {
     if (!open) return;
@@ -93,13 +84,27 @@ export function SecurityUpdatesDialog({
           setError(e instanceof Error ? e.message : String(e));
       });
     return () => ctrl.abort();
-  }, [open, appId, databaseId]);
+  }, [open, appId, databaseId, version]);
 
+  const changed = () => {
+    setVersion((v) => v + 1);
+    router.refresh();
+  };
   const groups = groupByPackage(answer?.updates ?? []);
+  const isIgnored = (g: (typeof groups)[number]) =>
+    g.items.every((u) => u.ignored);
+  const toApply = groups.filter((g) => g.actionable && !isIgnored(g));
+  const noFix = groups.filter((g) => !g.actionable && !isIgnored(g));
+  const ignored = groups.filter(isIgnored);
   // The service is worth naming only when the app runs more than one.
   const manyServices = new Set(answer?.updates.map((u) => u.service)).size > 1;
-  const toApply = groups.filter((g) => g.actionable);
-  const noFix = groups.filter((g) => !g.actionable);
+  const list = {
+    newerTag: answer?.newerTag ?? null,
+    manyServices,
+    subject: { appId, databaseId },
+    canIgnore,
+    onChanged: changed,
+  };
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -130,7 +135,7 @@ export function SecurityUpdatesDialog({
                 {UNREADABLE[u] ?? UNREADABLE.failed}
               </p>
             ))}
-            {toApply.length === 0 && noFix.length === 0 ? (
+            {groups.length === 0 ? (
               <div className="flex items-center gap-2 text-sm text-[var(--success)]">
                 <CircleCheck className="size-4" />
                 {answer.checkedAt
@@ -139,18 +144,14 @@ export function SecurityUpdatesDialog({
               </div>
             ) : (
               <>
+                <UpdateList title="To apply" groups={toApply} {...list} />
+                <UpdateList title="No fix yet" groups={noFix} {...list} />
                 <UpdateList
-                  title="To apply"
-                  groups={toApply}
-                  newerTag={answer.newerTag}
-                  manyServices={manyServices}
+                  title={`Ignored (${ignored.length})`}
+                  groups={ignored}
+                  {...list}
                 />
-                <UpdateList
-                  title="No fix yet"
-                  groups={noFix}
-                  newerTag={answer.newerTag}
-                  manyServices={manyServices}
-                />
+                <AdvisoriesTable updates={answer.updates} />
                 <p className="text-xs text-muted-foreground">
                   {answer.checkedAt
                     ? `Checked ${timeAgo(answer.checkedAt)}`
@@ -162,59 +163,5 @@ export function SecurityUpdatesDialog({
         )}
       </DialogContent>
     </Dialog>
-  );
-}
-
-function UpdateList({
-  title,
-  groups,
-  newerTag,
-  manyServices,
-}: {
-  title: string;
-  groups: PackageGroup<Update>[];
-  newerTag: string | null;
-  manyServices: boolean;
-}) {
-  if (groups.length === 0) return null;
-  return (
-    <section className="space-y-2">
-      <h3 className="text-xs font-medium text-muted-foreground uppercase">
-        {title}
-      </h3>
-      <ul className="divide-y divide-border rounded-md border border-border bg-card">
-        {groups.map((g) => {
-          const u = g.items[0];
-          return (
-            <li key={g.key} className="flex items-start gap-3 px-3 py-2.5">
-              <SecurityLevelBadge level={g.level} />
-              <div className="min-w-0 text-sm">
-                <p className="truncate font-mono text-xs">
-                  {u.packageName} {u.installedVersion}
-                  {g.fixedVersion ? ` -> ${g.fixedVersion}` : ""}
-                  {manyServices && u.service ? (
-                    <span className="text-muted-foreground">
-                      {" "}
-                      in {u.service}
-                    </span>
-                  ) : null}
-                </p>
-                <p className="mt-1 text-muted-foreground">
-                  {fixLine({
-                    fix: g.fix,
-                    packageName: u.packageName,
-                    fixedVersion: g.fixedVersion,
-                    newerTag,
-                  })}
-                  {g.items.length > 1
-                    ? ` · ${plural(g.items.length, "advisory", "advisories")}`
-                    : ""}
-                </p>
-              </div>
-            </li>
-          );
-        })}
-      </ul>
-    </section>
   );
 }

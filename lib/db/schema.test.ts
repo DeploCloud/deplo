@@ -137,6 +137,7 @@ const CONTROL_PLANE = [
   "osv_affected",
   "kev_cves",
   "security_findings",
+  "security_ignores",
 ] as const;
 
 async function publicTables(): Promise<Set<string>> {

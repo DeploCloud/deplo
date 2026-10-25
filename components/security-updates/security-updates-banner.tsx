@@ -20,6 +20,7 @@ export interface BannerProps {
   appId?: string;
   slug?: string;
   databaseId?: string;
+  canIgnore?: boolean;
 }
 
 export function SecurityUpdatesBanner(p: BannerProps) {
@@ -35,7 +36,9 @@ export function SecurityUpdatesBanner(p: BannerProps) {
           <p className="text-muted-foreground">
             {p.exploited
               ? `${p.exploited === 1 ? "1 is" : `${p.exploited} are`} already being used in attacks.`
-              : "Apply them to close known security flaws."}
+              : p.count === 1
+                ? "Apply it to close a known security flaw."
+                : "Apply them to close known security flaws."}
           </p>
         </div>
       </div>
@@ -76,6 +79,7 @@ export function SecurityUpdatesBanner(p: BannerProps) {
         appId={p.appId}
         databaseId={p.databaseId}
         name={p.name}
+        canIgnore={p.canIgnore}
       />
     </div>
   );

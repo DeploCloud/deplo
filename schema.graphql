@@ -773,6 +773,7 @@ enum Capability {
   delete_team
   deploy @deprecated(reason: "Split into finer permissions. Still accepted on input, where it means: create_apps, deploy_apps, rollback_apps, control_apps, configure_apps, delete_apps, move_apps, open_app_console, manage_previews, manage_crons, create_folders, organize_folders, delete_folders, create_projects, organize_projects, delete_projects, manage_environments.")
   deploy_apps
+  ignore_security_updates
   manage_backup_destinations
   manage_backups
   manage_basic_auth
@@ -3661,6 +3662,21 @@ type Mutation {
   identifyMigrationSource(input: MigrationSourceInput!): MigrationSourceTeam
 
   """
+  Set advisories aside on one app or database for 30, 90 (default) or 180 days, with an optional reason. They stay listed but stop counting and alerting until then; a new advisory still shows. Recorded in Activity.
+  """
+  ignoreSecurityUpdate(
+    appId: ID
+    databaseId: ID
+    days: Int
+    reason: String
+
+    """
+    The advisory ids (`vulnId`) to act on: every advisory of one package, usually.
+    """
+    vulnIds: [String!]!
+  ): Boolean
+
+  """
   Bulk-import a .env-style blob. Every line lands as plain, so a key that already exists as a secret is skipped rather than downgraded.
   """
   importEnv(appId: String!, blob: String!, targets: [EnvTarget!]): EnvImportResult
@@ -4446,6 +4462,19 @@ type Mutation {
   transferTeamOwnership(code: String, password: String!, userId: String!): Boolean
 
   """
+  Count and alert on advisories set aside with ignoreSecurityUpdate again. Recorded in Activity.
+  """
+  unignoreSecurityUpdate(
+    appId: ID
+    databaseId: ID
+
+    """
+    The advisory ids (`vulnId`) to act on: every advisory of one package, usually.
+    """
+    vulnIds: [String!]!
+  ): Boolean
+
+  """
   Take Deplo off a MIGRATION SOURCE: uninstall the agent from the host (systemd unit, binary, state dir - never Docker), then forget the server. Only a server whose role is "import" - an ordinary server is removed with removeServer, which is trust revocation and leaves the host alone. `removed: false` means the host still has the agent on it and the server row was KEPT; `uninstallCommand` is returned either way, because an unreachable or de-trusted host will always need the host-side path. A registration whose install command was never run has nothing to uninstall and is simply forgotten.
   """
   uninstallServerAgent(id: String!): ServerUninstall
@@ -5202,6 +5231,11 @@ type Query {
   The security updates of one app (`appId`) or managed database (`databaseId`) in the active team. Null when it is out of reach or the instance turned checks off.
   """
   securityUpdates(appId: ID, databaseId: ID): SecurityUpdates
+
+  """
+  Every app and database in the active team with security updates to apply, most urgent first. Empty when the instance turned checks off.
+  """
+  securityUpdatesOverview: [SecuritySubject!]
   securityUpdatesStatus: SecurityUpdatesStatus
   server(id: String!): Server
 
@@ -5737,6 +5771,17 @@ enum SecurityLevel {
   high
 }
 
+"""An app or database with security updates to apply."""
+type SecuritySubject {
+  count: Int
+  exploited: Int
+  id: ID
+
+  """`app` or `database`."""
+  kind: String
+  name: String
+}
+
 """One known vulnerability in a package an app or database runs."""
 type SecurityUpdate {
   """
@@ -5748,6 +5793,14 @@ type SecurityUpdate {
   ecosystem: String
   fix: SecurityFix
   fixedVersion: String
+  ignoreReason: String
+
+  """
+  Set aside by the team until `ignoredUntil`: still listed, never counted or alerted.
+  """
+  ignored: Boolean
+  ignoredBy: String
+  ignoredUntil: String
   installedVersion: String
   level: SecurityLevel
   osvUrl: String

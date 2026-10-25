@@ -1317,6 +1317,20 @@
       "when": 1792949747588,
       "tag": "0187_deployments_pull_base",
       "breakpoints": true
+    },
+    {
+      "idx": 188,
+      "version": "7",
+      "when": 1792950077885,
+      "tag": "0188_security_ignores",
+      "breakpoints": true
+    },
+    {
+      "idx": 189,
+      "version": "7",
+      "when": 1792950078668,
+      "tag": "0189_seed_ignore_security_updates",
+      "breakpoints": true
     }
   ]
 }

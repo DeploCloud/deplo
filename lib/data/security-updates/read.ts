@@ -18,12 +18,18 @@ import {
   type Level,
 } from "../../security-updates/fix-kind";
 import { countUpdates } from "../../security-updates/group";
+import { activeIgnores, ignoreKey } from "../../security-updates/ignored";
 import { securityState } from "../../security-updates/state";
 import { getDatabase } from "../databases/rows";
 import { hasAppCapability } from "../node-access";
 
 export interface SecurityUpdate {
   vulnId: string;
+  // Set aside by the team until ignoredUntil: listed, never counted or alerted.
+  ignored: boolean;
+  ignoredUntil: string | null;
+  ignoreReason: string | null;
+  ignoredBy: string | null;
   cve: string | null;
   level: Level;
   cvss: number | null;
@@ -105,7 +111,12 @@ async function subjectUpdates(
         .where(inArray(osvAffected.vulnId, vulnIds))
     : [];
 
+  const subjectId = s.kind === "app" ? s.appId : s.databaseId;
+  const ignores = await activeIgnores(
+    s.kind === "app" ? { appIds: [s.appId] } : { databaseIds: [s.databaseId] },
+  );
   const updates = findings.map(({ f }): SecurityUpdate => {
+    const ig = ignores.get(ignoreKey(subjectId, f.vulnId));
     const a = affectedFor(
       osv.filter((o) => o.vulnId === f.vulnId),
       f.ecosystem,
@@ -115,6 +126,10 @@ async function subjectUpdates(
     const fix = f.fix as FixKind;
     return {
       vulnId: f.vulnId,
+      ignored: Boolean(ig),
+      ignoredUntil: ig?.expiresAt ?? null,
+      ignoreReason: ig ? ig.reason : null,
+      ignoredBy: ig?.createdBy ?? null,
       cve: a?.cve ?? null,
       level,
       cvss: a?.cvssTenths != null ? a.cvssTenths / 10 : null,
@@ -135,7 +150,7 @@ async function subjectUpdates(
       LEVEL_ORDER[x.level] - LEVEL_ORDER[y.level] ||
       x.packageName.localeCompare(y.packageName),
   );
-  const counted = countUpdates(updates);
+  const counted = countUpdates(updates.filter((u) => !u.ignored));
   const checked = rows.map((r) => r.wi.checkedAt);
   return {
     checkedAt:
@@ -202,6 +217,7 @@ async function countsBy(
       level: securityFindings.level,
       fix: securityFindings.fix,
       fixedVersion: securityFindings.fixedVersion,
+      vulnId: securityFindings.vulnId,
     })
     .from(securityFindings)
     .innerJoin(
@@ -219,9 +235,16 @@ async function countsBy(
         inArray(idCol, ids),
       ),
     );
+  const ignores =
+    kind === "preview"
+      ? new Map()
+      : await activeIgnores(
+          kind === "app" ? { appIds: ids } : { databaseIds: ids },
+        );
   const byId = new Map<string, typeof rows>();
   for (const r of rows)
-    if (r.id) byId.set(r.id, [...(byId.get(r.id) ?? []), r]);
+    if (r.id && !ignores.has(ignoreKey(r.id, r.vulnId)))
+      byId.set(r.id, [...(byId.get(r.id) ?? []), r]);
   for (const [id, list] of byId) {
     const c = countUpdates(list);
     if (c.count) out.set(id, c);

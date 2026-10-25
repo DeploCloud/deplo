@@ -26,6 +26,7 @@ import {
   type Level,
 } from "./fix-kind";
 import { countUpdates, packageKey } from "./group";
+import { activeIgnores, ignoreKey } from "./ignored";
 import {
   affectedFor,
   osvAffectedRows,
@@ -520,6 +521,17 @@ async function alertNewFindings(now: Date): Promise<void> {
         inArray(workloadImages.kind, ["app", "database"]),
       ),
     );
+  const ignores = await activeIgnores(
+    {
+      appIds: rows
+        .filter((r) => r.kind === "app")
+        .flatMap((r) => r.appId ?? []),
+      databaseIds: rows
+        .filter((r) => r.kind === "database")
+        .flatMap((r) => r.databaseId ?? []),
+    },
+    now,
+  );
   const due = new Map<
     string,
     {
@@ -532,7 +544,7 @@ async function alertNewFindings(now: Date): Promise<void> {
   for (const r of rows) {
     if (!qualifiesForAlert(r.f.fix as FixKind, r.f.level as Level)) continue;
     const id = r.kind === "database" ? r.databaseId : r.appId;
-    if (!id) continue;
+    if (!id || ignores.has(ignoreKey(id, r.f.vulnId))) continue;
     const key = `${r.kind}:${id}`;
     const e = due.get(key) ?? {
       kind: r.kind,

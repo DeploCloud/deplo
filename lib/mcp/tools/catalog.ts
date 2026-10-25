@@ -23,6 +23,7 @@ import { NOTIFICATIONS } from "./notifications";
 import { ORGANIZATION, STRUCTURE } from "./organization";
 import { PREVIEWS, PREVIEWS_ADMIN } from "./previews";
 import { REGISTRIES_AND_ACCESS } from "./registries-and-access";
+import { SECURITY_UPDATES } from "./security-updates";
 import { SERVERS } from "./servers";
 import { TEAM, TEAM_ADMIN } from "./team";
 import type { McpToolDef } from "./tool-def";
@@ -61,5 +62,6 @@ export const MCP_TOOLS: McpToolDef[] = [
   ...NOTIFICATIONS,
   ...GIT_CONNECTIONS,
   ...INSTANCE,
+  ...SECURITY_UPDATES,
   ...ESCAPE_HATCH,
 ];

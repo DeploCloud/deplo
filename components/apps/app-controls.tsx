@@ -65,6 +65,7 @@ export function AppControls({
   const canMove = useAppCan("move_apps");
   const canDelete = useAppCan("delete_apps");
   const canConfigure = useAppCan("configure_apps");
+  const canIgnore = useAppCan("ignore_security_updates");
 
   const tip = (cap: Capability, can: boolean, text: string) =>
     can ? text : needsCapability(cap);
@@ -266,6 +267,7 @@ export function AppControls({
         onOpenChange={setSecurityOpen}
         appId={appId}
         name={name}
+        canIgnore={canIgnore}
       />
       <TransferTeamDialog
         open={transferOpen}

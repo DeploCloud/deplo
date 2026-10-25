@@ -6,13 +6,14 @@ import {
   index,
   primaryKey,
   foreignKey,
+  unique,
 } from "drizzle-orm/pg-core";
 
 import { isoTimestamptz } from "../columns";
 import { apps } from "./apps";
 import { databases } from "./databases";
 import { appPreviews } from "./deployments";
-import { teams } from "./identity";
+import { teams, users } from "./identity";
 import { servers } from "./servers";
 
 // One package read per image, keyed by its content-addressed id (ADR-0038).
@@ -148,5 +149,33 @@ export const securityFindings = pgTable(
         workloadImages.service,
       ],
     }).onDelete("cascade"),
+  ],
+);
+
+// A team's decision to leave one advisory on an app or database alone until it expires.
+export const securityIgnores = pgTable(
+  "security_ignores",
+  {
+    id: text("id").primaryKey(),
+    teamId: text("team_id")
+      .notNull()
+      .references(() => teams.id, { onDelete: "cascade" }),
+    appId: text("app_id").references(() => apps.id, { onDelete: "cascade" }),
+    databaseId: text("database_id").references(() => databases.id, {
+      onDelete: "cascade",
+    }),
+    vulnId: text("vuln_id").notNull(),
+    reason: text("reason").notNull().default(""),
+    expiresAt: isoTimestamptz("expires_at").notNull(),
+    createdBy: text("created_by").notNull(),
+    createdByUserId: text("created_by_user_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    createdAt: isoTimestamptz("created_at").notNull(),
+  },
+  (t) => [
+    unique("security_ignores_subject_vuln")
+      .on(t.appId, t.databaseId, t.vulnId)
+      .nullsNotDistinct(),
   ],
 );

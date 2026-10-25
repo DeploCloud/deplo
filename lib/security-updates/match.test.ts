@@ -12,6 +12,7 @@ import { appBuild } from "../db/schema/control-plane/apps";
 import {
   imageInventories,
   securityFindings,
+  securityIgnores,
   workloadImages,
 } from "../db/schema/control-plane/security-updates";
 import { makeTestDb, type TestDb } from "../db/test-harness";
@@ -162,7 +163,7 @@ after(async () => {
 beforeEach(async () => {
   await pg.exec(
     `truncate table security_findings, workload_images, image_inventory_packages, image_inventories,
-       osv_affected, kev_cves, activities, notification_alerts, notification_channels,
+       osv_affected, kev_cves, security_ignores, activities, notification_alerts, notification_channels,
        app_previews, apps, databases, servers, users, teams restart identity cascade;`,
   );
   await seedIdentity(db, {
@@ -357,4 +358,23 @@ test("a new image without the flaw resolves it on the light pass", async () => {
     msgs.includes("1 security update in prj_web is fixed"),
     msgs.join(" | "),
   );
+});
+
+test("an ignored advisory never alerts", async () => {
+  const until = "2099-01-01T00:00:00.000Z";
+  await db.insert(securityIgnores).values(
+    ["GHSA-xvch-5gv4-984h", "DEBIAN-CVE-2024-5535"].map((vulnId, i) => ({
+      id: `sig_${i}`,
+      teamId: TEAM_A,
+      appId: "prj_web",
+      vulnId,
+      expiresAt: until,
+      createdBy: USER_1,
+      createdAt: "2026-10-25T09:00:00.000Z",
+    })),
+  );
+  await backfill();
+  await matchWorkloads("full", new Date("2026-10-25T10:05:00Z"));
+  await settle();
+  assert.equal(hookCalls().length, 0);
 });
