@@ -129,6 +129,7 @@ export async function seedApp(db: TestDb, opts: SeedAppOpts): Promise<string> {
     previewEnabled: false,
     cronEnabled: false,
     restartLoopGuard: true,
+    screenshotsEnabled: true,
     consoleEnabled: false,
     autoDeploy: true,
     deployHookEnabled: true,
