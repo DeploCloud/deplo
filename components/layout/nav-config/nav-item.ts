@@ -34,6 +34,7 @@ export function canSee(
 }
 
 export interface NavSection {
+  /** Names the group in the command palette; the sidebar draws a line instead. */
   title?: string;
   items: NavItem[];
   iconless?: boolean;

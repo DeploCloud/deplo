@@ -175,20 +175,8 @@ export function SidebarNav({
             rendered[i - 1]?.backLink && "pt-0.5",
           )}
         >
-          {section.title && !collapsed ? (
-            <div
-              className={cn(
-                "px-3 pb-1 text-[11px] font-medium tracking-wider text-muted-foreground/70 uppercase",
-                i > 0 && "pt-3",
-              )}
-            >
-              {section.title}
-            </div>
-          ) : (
-            i > 0 &&
-            !rendered[i - 1]?.backLink && (
-              <hr className="my-2 border-t border-sidebar-border" />
-            )
+          {i > 0 && !rendered[i - 1]?.backLink && (
+            <hr className="my-2 border-t border-sidebar-border" />
           )}
           {section.items.map((item) => {
             const active = isActive(item.href, item.exact);
