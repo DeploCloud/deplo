@@ -72,7 +72,7 @@ export function consoleRpc(
         try {
           stream.cancel();
         } catch {}
-        client.close();
+        channel.close();
       },
     };
   }
@@ -130,7 +130,7 @@ export function consoleRpc(
         try {
           stream.cancel();
         } catch {}
-        client.close();
+        channel.close();
       },
     };
   }

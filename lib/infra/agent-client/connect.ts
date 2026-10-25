@@ -13,16 +13,22 @@ import { AgentUnreachableError, assertAgentUsable } from "./errors";
 import { filesRpc } from "./files-rpc";
 import { hostRpc } from "./host-rpc";
 import { metricsRpc } from "./metrics-rpc";
+import { leaseChannel } from "./channel-pool";
 import {
   openChannel,
   remoteTarget,
-  resolveTarget,
+  resolveAddress,
+  type AgentChannel,
   type DialTarget,
 } from "./mtls-channel";
 import { stackRpc } from "./stack-rpc";
 
+/** A connection on a channel of its own, closed with it: an override address only. */
 export function dial(target: DialTarget): AgentConnection {
-  const channel = openChannel(target);
+  return connectionOn(openChannel(target));
+}
+
+function connectionOn(channel: AgentChannel): AgentConnection {
   return {
     hello(timeoutMs = HELLO_TIMEOUT_MS) {
       return channel.hello(timeoutMs);
@@ -37,7 +43,7 @@ export function dial(target: DialTarget): AgentConnection {
     ...cronRpc(channel),
     ...filesRpc(channel),
     close() {
-      channel.client.close();
+      channel.close();
     },
   };
 }
@@ -53,14 +59,24 @@ export function __setAgentConnectorForTest(
 // The sole entry to a host (ADR-0006): an unreachable agent throws, there is no in-process fallback.
 export async function connectAgent(serverId: string): Promise<AgentConnection> {
   if (connector) return connector(serverId);
-  const target = await resolveTarget(serverId);
-  return gateConnection(dial(target), target.agentVersion, serverId);
+  const address = await resolveAddress(serverId);
+  const gate = (channel: AgentChannel) =>
+    gateConnection(connectionOn(channel), address.agentVersion, serverId);
+  const { channel, reused } = await leaseChannel(serverId, address);
+  try {
+    return await gate(channel);
+  } catch (e) {
+    // A shared connection can die where a fresh dial would not; the failed Hello retired it.
+    if (!reused || !(e instanceof AgentUnreachableError)) throw e;
+  }
+  return gate((await leaseChannel(serverId, address)).channel);
 }
 
 /** Past the minimum-agent gate: Hello, SelfUpdate, the health probe and a Deplo update only (ADR-0037). */
 export async function openAgent(serverId: string): Promise<AgentConnection> {
   if (connector) return connector(serverId);
-  return dial(await resolveTarget(serverId));
+  const address = await resolveAddress(serverId);
+  return connectionOn((await leaseChannel(serverId, address)).channel);
 }
 
 // Every call is judged on a live Hello; the caller's first hello() reuses it rather than paying twice.
