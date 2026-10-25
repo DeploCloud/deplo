@@ -2,6 +2,8 @@ import "server-only";
 
 import { markServerSeen } from "../../data/servers/agent-handshake";
 import { getServerById } from "../../data/servers/roster";
+import { LINK_WAIT_MS } from "../agent-link/protocol";
+import { linksSettling, waitForLink } from "../agent-link/registry";
 import { agentSelfRpc } from "./agent-self-rpc";
 import { backupRpc } from "./backup-rpc";
 import type { AgentConnection } from "./connection";
@@ -60,14 +62,23 @@ export function __setAgentConnectorForTest(
 export async function connectAgent(serverId: string): Promise<AgentConnection> {
   if (connector) return connector(serverId);
   const address = await resolveAddress(serverId);
+  const started = Date.now();
   const gate = (channel: AgentChannel) =>
     gateConnection(connectionOn(channel), address.agentVersion, serverId);
-  const { channel, reused } = await leaseChannel(serverId, address);
+  const { channel, reused, linked } = await leaseChannel(serverId, address);
   try {
     return await gate(channel);
   } catch (e) {
+    if (!(e instanceof AgentUnreachableError)) throw e;
     // A shared connection can die where a fresh dial would not; the failed Hello retired it.
-    if (!reused || !(e instanceof AgentUnreachableError)) throw e;
+    if (reused) return gate((await leaseChannel(serverId, address)).channel);
+    // The panel just started: an agent that stopped listening once it linked is still on its way back.
+    if (linked || e.trust || !linksSettling()) throw e;
+    const link = await waitForLink(
+      serverId,
+      LINK_WAIT_MS - (Date.now() - started),
+    );
+    if (!link) throw e;
   }
   return gate((await leaseChannel(serverId, address)).channel);
 }

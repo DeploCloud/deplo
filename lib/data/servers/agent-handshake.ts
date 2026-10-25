@@ -1,6 +1,6 @@
 import "server-only";
 
-import { eq, sql } from "drizzle-orm";
+import { and, eq, isNotNull, sql } from "drizzle-orm";
 import { getDb } from "../../db/client";
 import { servers as serversTable } from "../../db/schema/control-plane/servers";
 import { nowIso } from "../../ids";
@@ -9,6 +9,7 @@ import {
   signBootstrapCsr,
   DEFAULT_AGENT_PORT,
 } from "../../agent/bootstrap";
+import { dropAgentChannel } from "../../infra/agent-client/channel-pool";
 import { AGENT_VERSION, agentUpdateAvailable } from "../../version";
 import { agentSeen } from "./agent-update-state";
 import { listAllServers } from "./roster";
@@ -53,7 +54,27 @@ export async function completeBootstrap(
   if (won.length === 0) {
     throw new Error("bootstrap token was already consumed");
   }
+  // A new agent identity: whatever held the old certificate is cut off.
+  dropAgentChannel(server.id);
   return { certPem: signed.certPem, caPem: signed.caPem };
+}
+
+/** The provisioned server pinned to this agent certificate: what an agent link claims to be. */
+export async function serverPinnedTo(
+  fingerprint: string,
+): Promise<{ id: string } | null> {
+  if (!fingerprint) return null;
+  const [row] = await getDb()
+    .select({ id: serversTable.id })
+    .from(serversTable)
+    .where(
+      and(
+        eq(serversTable.agentCertFingerprint, fingerprint),
+        isNotNull(serversTable.agentPort),
+      ),
+    )
+    .limit(1);
+  return row ?? null;
 }
 
 export function observedTraefik(hello: {

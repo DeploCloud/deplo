@@ -2,9 +2,18 @@ import "server-only";
 
 import { connectivityState } from "@grpc/grpc-js";
 
+import { LINK_WAIT_MS } from "../agent-link/protocol";
+import {
+  currentLink,
+  hasLinked,
+  revokeAgentLink,
+  waitForLink,
+  type AgentLink,
+} from "../agent-link/registry";
 import { AgentUnreachableError } from "./errors";
 import {
   callerView,
+  linkChannel,
   openChannel,
   withClientCert,
   type AgentAddress,
@@ -17,6 +26,8 @@ const MAX_AGE_MS = 24 * 3_600_000;
 interface Shared {
   key: string;
   openedAt: number;
+  /** An agent link's channel: the link owns it, and it ends with the link. */
+  linked: boolean;
   ready: Promise<AgentChannel>;
   channel?: AgentChannel;
   /** A Hello has come back on it: a failure now may be a dead connection, not a dead agent. */
@@ -31,21 +42,29 @@ const pool = new Map<string, Shared>();
 export async function leaseChannel(
   serverId: string,
   address: AgentAddress,
-): Promise<{ channel: AgentChannel; reused: boolean }> {
-  const key = `${address.address}|${address.serverName}|${address.pinnedFingerprint}`;
+): Promise<{ channel: AgentChannel; reused: boolean; linked: boolean }> {
+  const link = await linkFor(serverId, address);
+  const key = link
+    ? `link#${link.id}`
+    : `${address.address}|${address.serverName}|${address.pinnedFingerprint}`;
   let shared = pool.get(serverId);
   if (shared && (shared.key !== key || stale(shared) || broken(shared))) {
     retire(serverId, shared);
     shared = undefined;
   }
   if (!shared) {
+    const opened = link
+      ? Promise.resolve(linkChannel(link.client))
+      : withClientCert(address).then((target) => openChannel(target));
     const fresh: Shared = {
       key,
       openedAt: Date.now(),
-      ready: withClientCert(address)
-        .then(openChannel)
-        .then((channel) => (fresh.channel = proving(serverId, fresh, channel))),
-      proven: false,
+      linked: !!link,
+      ready: opened.then(
+        (channel) => (fresh.channel = proving(serverId, fresh, channel)),
+      ),
+      // The door took the link only after a Hello came back on it.
+      proven: !!link,
       holders: 0,
       retired: false,
     };
@@ -68,13 +87,34 @@ export async function leaseChannel(
     closed = true;
     release(held);
   });
-  return { channel: view, reused };
+  return { channel: view, reused, linked: held.linked };
 }
 
-/** No new call gets this server's channel; it closes once its last caller lets go. */
+/** No new call gets this server's channel, which closes once its last caller lets go; its link closes now. */
 export function dropAgentChannel(serverId: string): void {
   const shared = pool.get(serverId);
   if (shared) retire(serverId, shared);
+  revokeAgentLink(serverId);
+}
+
+// A server that linked is reached over its link alone: a missing one is waited for, then it is offline.
+async function linkFor(
+  serverId: string,
+  address: AgentAddress,
+): Promise<AgentLink | null> {
+  let link = currentLink(serverId);
+  if (link && link.pinnedFingerprint !== address.pinnedFingerprint) {
+    // Verified against a certificate Deplo no longer pins.
+    revokeAgentLink(serverId);
+    link = undefined;
+  }
+  if (link) return link;
+  if (!hasLinked(serverId)) return null;
+  link = (await waitForLink(serverId, LINK_WAIT_MS)) ?? undefined;
+  if (link?.pinnedFingerprint === address.pinnedFingerprint) return link;
+  throw new AgentUnreachableError(
+    `server ${serverId} is offline: its agent has not connected for ${LINK_WAIT_MS / 1000} s`,
+  );
 }
 
 // Hello is the liveness call: one that cannot get through retires the channel, so the next call dials afresh.
@@ -99,7 +139,7 @@ function proving(
 }
 
 function stale(shared: Shared): boolean {
-  return Date.now() - shared.openedAt > MAX_AGE_MS;
+  return !shared.linked && Date.now() - shared.openedAt > MAX_AGE_MS;
 }
 
 // A failed connect leaves grpc-js backing off for up to two minutes; a fresh channel dials at once, as before.

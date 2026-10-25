@@ -93,7 +93,14 @@ export interface AgentChannel {
   close(): void;
 }
 
-export function openChannel(target: DialTarget): AgentChannel {
+// grpc-js has no "never": its idle timer is a setTimeout, so this is the longest one Node allows.
+const NEVER_IDLE_MS = 2 ** 31 - 1;
+
+/** `linked`: the channel rides an agent link, whose one connection grpc-js must never close for idleness. */
+export function openChannel(
+  target: DialTarget,
+  opts: { linked?: boolean } = {},
+): AgentChannel {
   const { certPem, keyPem, caPem } = target.clientCreds;
   let trustFailed = false;
   const creds = credentials.createSsl(
@@ -124,6 +131,7 @@ export function openChannel(target: DialTarget): AgentChannel {
     "grpc.keepalive_time_ms": 30_000,
     "grpc.keepalive_timeout_ms": 10_000,
     "grpc.keepalive_permit_without_calls": 0,
+    ...(opts.linked ? { "grpc.client_idle_timeout_ms": NEVER_IDLE_MS } : {}),
   });
 
   const helloError = (err: unknown): Error => {
@@ -137,7 +145,28 @@ export function openChannel(target: DialTarget): AgentChannel {
     return e;
   };
 
-  const sayHello = (timeoutMs = HELLO_TIMEOUT_MS) =>
+  const sayHello = helloOn(client, helloError);
+  return {
+    client,
+    hello: sayHello,
+    assertNetworkCapable: networkGate(sayHello),
+    close: () => client.close(),
+  };
+}
+
+/** A caller's channel over an agent link's client; the link, not the caller, closes it. */
+export function linkChannel(client: GrpcAgentClient): AgentChannel {
+  const sayHello = helloOn(client, toAgentError);
+  return {
+    client,
+    hello: sayHello,
+    assertNetworkCapable: networkGate(sayHello),
+    close: () => {},
+  };
+}
+
+function helloOn(client: GrpcAgentClient, mapError: (err: unknown) => Error) {
+  return (timeoutMs = HELLO_TIMEOUT_MS) =>
     new Promise<HelloResponse>((resolve, reject) => {
       const deadline = new Date(Date.now() + timeoutMs);
       client.hello(
@@ -147,16 +176,9 @@ export function openChannel(target: DialTarget): AgentChannel {
         },
         new Metadata(),
         { deadline },
-        (err, resp) => (err ? reject(helloError(err)) : resolve(resp)),
+        (err, resp) => (err ? reject(mapError(err)) : resolve(resp)),
       );
     });
-
-  return {
-    client,
-    hello: sayHello,
-    assertNetworkCapable: networkGate(sayHello),
-    close: () => client.close(),
-  };
 }
 
 /** One caller's view of a shared channel: its own Hello cache and its own close. */

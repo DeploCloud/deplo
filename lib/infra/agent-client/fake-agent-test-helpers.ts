@@ -7,6 +7,7 @@ import {
   type ServerWritableStream,
 } from "@grpc/grpc-js";
 import * as x509 from "@peculiar/x509";
+import { createWebSocketStream, WebSocket } from "ws";
 
 import {
   AgentService,
@@ -19,6 +20,11 @@ import {
 import { certFingerprint, issueAgentServerCert } from "../../agent/pki";
 import { CERT_RENEWAL_CAPABILITY } from "../../agent/cert-renewal";
 import { AGENT_VERSION } from "../../version";
+import {
+  LINK_CERT_HEADER,
+  LINK_PATH,
+  LINK_SUBPROTOCOL,
+} from "../agent-link/protocol";
 
 x509.cryptoProvider.set(webcrypto as unknown as Crypto);
 
@@ -35,7 +41,24 @@ export interface FakeAgent {
   refuse(on: boolean): void;
   /** The open connections went stale: the next bytes on each are answered with a reset. */
   goStale(): void;
+  /** Links in to the door on 127.0.0.1 and serves on the link, as the real agent does. */
+  link(
+    doorPort: number,
+    opts?: { claim?: string; pingEveryMs?: number },
+  ): Promise<FakeLink>;
   stop(): Promise<void>;
+}
+
+export interface FakeLink {
+  /** The door's answer to the upgrade: 101 when it took the link. */
+  status: number;
+  retryAfter: string | null;
+  /** The code the link ended with. */
+  closed: Promise<number>;
+  /** The agent dies: the connection drops with no close. */
+  drop(): void;
+  /** The agent freezes: it neither reads nor sends, and the connection stays open. */
+  freeze(): void;
 }
 
 // A real gRPC agent with real mTLS on loopback, behind a TCP hop the test can watch and break.
@@ -44,6 +67,8 @@ export async function startFakeAgent(
 ): Promise<FakeAgent> {
   const streams = new Set<ServerWritableStream<FollowLogsRequest, LogChunk>>();
   const backends: GrpcServer[] = [];
+  const links = new Set<FakeLink>();
+  let inject: (link: WebSocket) => void = () => {};
   let backendPort = 0;
   let pendingKeyPem = "";
   const first = await issueAgentServerCert(["127.0.0.1"]);
@@ -103,22 +128,24 @@ export async function startFakeAgent(
         cb(null, StackResult.fromPartial({ ok: true }));
       },
     });
+    const creds = () =>
+      ServerCredentials.createSsl(
+        Buffer.from(first.caPem),
+        [
+          {
+            cert_chain: Buffer.from(certPem),
+            private_key: Buffer.from(keyPem),
+          },
+        ],
+        true,
+      );
     backendPort = await new Promise<number>((resolve, reject) =>
-      server.bindAsync(
-        "127.0.0.1:0",
-        ServerCredentials.createSsl(
-          Buffer.from(first.caPem),
-          [
-            {
-              cert_chain: Buffer.from(certPem),
-              private_key: Buffer.from(keyPem),
-            },
-          ],
-          true,
-        ),
-        (err, port) => (err ? reject(err) : resolve(port)),
+      server.bindAsync("127.0.0.1:0", creds(), (err, port) =>
+        err ? reject(err) : resolve(port),
       ),
     );
+    const injector = server.createConnectionInjector(creds());
+    inject = (ws) => injector.injectConnection(createWebSocketStream(ws));
     backends.push(server);
   };
   await serve(first.certPem, first.keyPem);
@@ -172,13 +199,99 @@ export async function startFakeAgent(
     goStale() {
       for (const state of open.values()) state.stale = true;
     },
+    async link(doorPort, opts = {}) {
+      const { ws, status, retryAfter } = await upgrade(doorPort, {
+        claim: opts.claim ?? agent.fingerprint,
+      });
+      if (!ws) {
+        const refused = Promise.resolve(0);
+        return { status, retryAfter, closed: refused, drop() {}, freeze() {} };
+      }
+      const pinging = opts.pingEveryMs
+        ? setInterval(() => ws.ping(), opts.pingEveryMs)
+        : undefined;
+      const closed = new Promise<number>((r) =>
+        ws.once("close", (code) => {
+          clearInterval(pinging);
+          r(code);
+        }),
+      );
+      const link: FakeLink = {
+        status,
+        retryAfter,
+        closed,
+        drop: () => ws.terminate(),
+        freeze: () => {
+          clearInterval(pinging);
+          ws.pause();
+        },
+      };
+      links.add(link);
+      void closed.then(() => links.delete(link));
+      inject(ws);
+      return link;
+    },
     async stop() {
       for (const s of streams) s.end();
+      for (const link of links) link.drop();
       for (const sock of [...open.keys()]) sock.destroy();
       await new Promise((r) => hop.close(r));
       for (const b of backends) b.forceShutdown();
     },
   };
+}
+
+/** One upgrade request at the door, written the way anything on the internet could write it. */
+export async function knock(
+  doorPort: number,
+  opts: {
+    path?: string;
+    protocol?: string | null;
+    claim?: string | null;
+    forwardedFor?: string;
+  } = {},
+): Promise<{ status: number; retryAfter: string | null }> {
+  const { ws, status, retryAfter } = await upgrade(doorPort, opts);
+  ws?.terminate();
+  return { status, retryAfter };
+}
+
+async function upgrade(
+  doorPort: number,
+  opts: {
+    path?: string;
+    protocol?: string | null;
+    claim?: string | null;
+    forwardedFor?: string;
+  },
+): Promise<{
+  ws: WebSocket | null;
+  status: number;
+  retryAfter: string | null;
+}> {
+  const headers: Record<string, string> = {};
+  if (opts.claim) headers[LINK_CERT_HEADER] = opts.claim;
+  if (opts.forwardedFor) headers["x-forwarded-for"] = opts.forwardedFor;
+  const protocol =
+    opts.protocol === undefined ? LINK_SUBPROTOCOL : opts.protocol;
+  const ws = new WebSocket(
+    `ws://127.0.0.1:${doorPort}${opts.path ?? LINK_PATH}`,
+    protocol ? [protocol] : [],
+    { headers, perMessageDeflate: false },
+  );
+  return new Promise((resolve, reject) => {
+    // Errors after the answer are the link ending, which `closed` reports.
+    ws.on("error", reject);
+    ws.once("open", () => resolve({ ws, status: 101, retryAfter: null }));
+    ws.once("unexpected-response", (req, res) => {
+      req.destroy();
+      resolve({
+        ws: null,
+        status: res.statusCode ?? 0,
+        retryAfter: res.headers["retry-after"] ?? null,
+      });
+    });
+  });
 }
 
 /** Polls until `check` holds; the network settles a tick after the call that caused it. */

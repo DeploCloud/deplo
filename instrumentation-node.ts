@@ -9,6 +9,14 @@ export async function register(): Promise<void> {
     );
     throw e;
   }
+  // Early, so servers relink while the jobs below make their first calls (ADR-0038).
+  try {
+    const { startAgentLinkListener } =
+      await import("./lib/infra/agent-link/listener");
+    await startAgentLinkListener();
+  } catch (e) {
+    console.error("[deplo] agent link listener could not start:", e);
+  }
   try {
     const { hydratePublicBaseUrl } =
       await import("./lib/data/instance-settings/settings-store");
@@ -212,6 +220,9 @@ export async function register(): Promise<void> {
         .catch(() => {});
       void import("./lib/graphql/pubsub")
         .then(({ stopPubSubBridge }) => stopPubSubBridge())
+        .catch(() => {});
+      void import("./lib/infra/agent-link/listener")
+        .then(({ stopAgentLinkListener }) => stopAgentLinkListener())
         .catch(() => {});
     });
   }
