@@ -296,11 +296,11 @@ export async function getInstanceSettings(): Promise<InstanceSettings> {
   ]);
   const hostIp = reachableHostIp(host);
   const url = panelUrl ?? (await instancePublicBaseUrl());
-  const { panelFallbackUrl } = await import("./panel-fallback");
+  const { panelFallbackUrlNow } = await import("./panel-fallback");
 
   return {
     panelUrl: url,
-    panelFallbackUrl: await panelFallbackUrl(url),
+    panelFallbackUrl: await panelFallbackUrlNow(url),
     panelFallbackDisabled,
     deploHostIp: hostIp,
     panelUrlSource: panelUrl

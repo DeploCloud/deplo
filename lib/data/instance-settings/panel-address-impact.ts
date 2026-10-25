@@ -25,7 +25,7 @@ import { passkey, session } from "../../db/schema/auth";
 import { nowIso } from "../../ids";
 import { requireInstanceAdmin } from "../../membership";
 import { passkeyRelyingParty } from "../../public-url";
-import { panelFallbackUrl } from "./panel-fallback";
+import { panelFallbackUrlNow } from "./panel-fallback";
 import { instancePublicBaseUrl, loadSettings } from "./settings-store";
 import { hostOf, normalizePanelUrl, schemeOf } from "./panel-address";
 
@@ -76,7 +76,7 @@ export async function getPanelAddressImpact(
   };
   base.panelFallbackUrl = (await loadSettings()).panelFallbackDisabled
     ? null
-    : await panelFallbackUrl(currentUrl);
+    : await panelFallbackUrlNow(currentUrl);
   if (!base.hostChanges && !base.schemeChanges) return base;
 
   const db = getDb();

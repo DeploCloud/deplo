@@ -682,3 +682,39 @@ test("the generated address cannot be turned off while it IS the address", async
     );
   });
 });
+
+test("the settings never wait on the panel's own server, and show its proxy's name once it has answered", async (t) => {
+  await withSelfServer(t, async () => {
+    let answer = () => {};
+    const answered = new Promise<void>((r) => (answer = r));
+    __setAgentConnectorForTest(async () => {
+      const conn = {
+        hello: async () => ({ capabilities: ["hostops"] }),
+        hostInfo: async () => {
+          await answered;
+          return { traefikComposeYaml: panelStack() };
+        },
+        close: () => {},
+      };
+      return conn as unknown as AgentConnection;
+    });
+    const fallbackHost = async () => {
+      const url = (await asUser(ADMIN, getInstanceSettings)).panelFallbackUrl;
+      return url ? new URL(url).hostname : null;
+    };
+
+    const started = Date.now();
+    assert.equal(await fallbackHost(), MINTED, "the name Deplo derives");
+    assert.ok(Date.now() - started < 1_000, "it did not wait for the proxy");
+
+    answer();
+    const deadline = Date.now() + 5_000;
+    while ((await fallbackHost()) !== FALLBACK && Date.now() < deadline)
+      await new Promise((r) => setTimeout(r, 20));
+    assert.equal(
+      await fallbackHost(),
+      FALLBACK,
+      "then the name the proxy routes",
+    );
+  });
+});
