@@ -38,6 +38,7 @@ import {
   type FakeAgent,
   type FakeLink,
 } from "../agent-client/fake-agent-test-helpers";
+import { HEALTH_MESSAGES, unreachableMessage } from "../server-health";
 import { startAgentLinkListener, stopAgentLinkListener } from "./listener";
 import { LINK_CLOSE, LINK_RATE_LIMIT, LINK_SETTLE_MS } from "./protocol";
 import { onAgentLink } from "./registry";
@@ -247,7 +248,14 @@ test("a call fails as offline when the link stays away for about 10 s", async ()
   await down;
 
   const started = performance.now();
-  await assert.rejects(connectAgent(SERVER), AgentUnreachableError);
+  await assert.rejects(connectAgent(SERVER), (e) => {
+    assert.ok(e instanceof AgentUnreachableError);
+    assert.equal(
+      unreachableMessage(e),
+      `This server is offline. ${HEALTH_MESSAGES.linkDown}`,
+    );
+    return true;
+  });
   const waited = performance.now() - started;
   assert.ok(waited > 9_500 && waited < 12_000, `waited ${waited} ms`);
   assert.equal(agent.connections().opened, 0, "it never dialed the agent");

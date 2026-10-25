@@ -187,7 +187,7 @@ export const ServerRef = builder.objectRef<Server>("Server").implement({
     statusCheckedAt: t.string({
       nullable: true,
       description:
-        "When `status` was last OBSERVED by a live agent Hello probe (ISO), or null if it never has been. Read it WITH `status`: the pair is a timestamped observation, not a standing claim, and a client that shows the status without qualifying its age is showing a value that may be hours old. Never fabricated - a probe that times out or is throttled writes nothing.",
+        "When `status` was last OBSERVED (ISO) - by a live agent Hello, or, for a server whose agent links in, by its link staying away - or null if it never has been. Read it WITH `status`: the pair is a timestamped observation, not a standing claim, and a client that shows the status without qualifying its age is showing a value that may be hours old. Never fabricated - a probe that times out or is throttled writes nothing.",
       resolve: (s) => s.statusCheckedAt ?? null,
     }),
     statusMessage: t.string({

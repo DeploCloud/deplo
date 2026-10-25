@@ -10,7 +10,7 @@ import {
   waitForLink,
   type AgentLink,
 } from "../agent-link/registry";
-import { AgentUnreachableError } from "./errors";
+import { AgentOfflineError, AgentUnreachableError } from "./errors";
 import {
   callerView,
   linkChannel,
@@ -112,9 +112,7 @@ async function linkFor(
   if (!hasLinked(serverId)) return null;
   link = (await waitForLink(serverId, LINK_WAIT_MS)) ?? undefined;
   if (link?.pinnedFingerprint === address.pinnedFingerprint) return link;
-  throw new AgentUnreachableError(
-    `server ${serverId} is offline: its agent has not connected for ${LINK_WAIT_MS / 1000} s`,
-  );
+  throw new AgentOfflineError(serverId);
 }
 
 // Hello is the liveness call: one that cannot get through retires the channel, so the next call dials afresh.

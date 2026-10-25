@@ -9,6 +9,13 @@ export async function register(): Promise<void> {
     );
     throw e;
   }
+  // Before the door opens, so server status hears every link come and go.
+  try {
+    const { startServerLinkStatus } = await import("./lib/data/server-health");
+    startServerLinkStatus();
+  } catch (e) {
+    console.error("[deplo] server status could not follow agent links:", e);
+  }
   // Early, so servers relink while the jobs below make their first calls (ADR-0038).
   try {
     const { startAgentLinkListener } =

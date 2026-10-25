@@ -5,7 +5,10 @@ import { CircleHelp, Loader2 } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { StatusDot } from "@/components/shared/status-badge";
-import { AGENT_PORT_NOTICE } from "@/lib/agent-reachability";
+import {
+  AGENT_PORT_NOTICE,
+  LINK_OFFLINE_MESSAGE,
+} from "@/lib/agent-reachability";
 import { SimpleTooltip } from "@/components/ui/tooltip";
 import { timeAgo } from "@/lib/utils";
 import type { ServerStatus } from "@/lib/types/server";
@@ -33,6 +36,19 @@ const VARIANTS: Record<
   offline: "destructive",
   provisioning: "warning",
 };
+
+/** A fresh observation's tooltip. A linked server's offline sentence stands alone. */
+export function healthTip(state: ServerHealthState): string {
+  const portNotice =
+    state.status === "offline" && state.message !== LINK_OFFLINE_MESSAGE;
+  return [
+    state.message,
+    portNotice ? AGENT_PORT_NOTICE : null,
+    `Checked ${timeAgo(state.checkedAt!)}`,
+  ]
+    .filter(Boolean)
+    .join(" · ");
+}
 
 export function ServerHealthChip({
   serverId,
@@ -76,13 +92,7 @@ export function ServerHealthChip({
     );
   }
 
-  const tip = [
-    state.message,
-    state.status === "offline" ? AGENT_PORT_NOTICE : null,
-    `Checked ${timeAgo(state.checkedAt!)}`,
-  ]
-    .filter(Boolean)
-    .join(" · ");
+  const tip = healthTip(state);
 
   // Online is the resting state: a chip that says "Online" next to a green dot says it twice.
   if (state.status === "online")
