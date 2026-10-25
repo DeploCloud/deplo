@@ -454,7 +454,7 @@ comes from a live Hello over the link. Once its link works, the agent stops list
 A server's address stays, for its apps' domains and DNS checks only. Users never see the term: a
 server is _connected_ or _offline_, and no screen mentions a port. An agent too old to link is still
 dialed directly until `agentMin` passes the first linking release
-([ADR-0038](docs/adr/0038-a-server-agent-links-to-its-control-plane.md)).
+([ADR-0040](docs/adr/0040-a-server-agent-links-to-its-control-plane.md)).
 _Avoid_: tunnel (reads as public ingress for apps, which this is not), reverse proxy, VPN, socket.
 
 **Server health**:

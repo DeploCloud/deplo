@@ -25,7 +25,7 @@ export interface BootstrapCallHome {
 export interface BootstrapCompletion {
   certPem: string;
   caPem: string;
-  /** The agent's primary link address: the control plane chooses it (ADR-0038). */
+  /** The agent's primary link address: the control plane chooses it (ADR-0040). */
   linkUrl: string;
 }
 

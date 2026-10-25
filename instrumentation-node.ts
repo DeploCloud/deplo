@@ -26,7 +26,7 @@ export async function register(): Promise<void> {
       e,
     );
   }
-  // Early, so servers relink while the jobs below make their first calls (ADR-0038).
+  // Early, so servers relink while the jobs below make their first calls (ADR-0040).
   try {
     const { startAgentLinkListener } =
       await import("./lib/infra/agent-link/listener");

@@ -275,7 +275,7 @@ export type PanelRoute = {
 
 const PANEL_PRIORITY = 2;
 
-// Servers link in on the panel's own names only: a bare Path() would take the path from every app (ADR-0038).
+// Servers link in on the panel's own names only: a bare Path() would take the path from every app (ADR-0040).
 const LINK_SERVICE = "deplo-link";
 const LINK_PRIORITY = 3;
 const linkRouterOf = (router: string) => `${router}-link`;

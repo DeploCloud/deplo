@@ -6,7 +6,7 @@ import { join } from "node:path";
 
 import { bash, shellFn } from "./install-script-test-helpers";
 
-// The binary the script just installed: one that links (ADR-0038), or the pinned one before it.
+// The binary the script just installed: one that links (ADR-0040), or the pinned one before it.
 const LINKING_AGENT = `#!/bin/sh\n[ "$1" = --capabilities ] && printf 'deploy.network\\nagent-link\\nhostops\\n' && exit 0\nexit 1\n`;
 const AGENT_BEFORE_THE_LINK = `#!/bin/sh\necho "flag provided but not defined: $1" >&2\necho "Usage of deplo-agent:" >&2\nexit 2\n`;
 const ACTIVE_UFW = `#!/bin/sh\necho "Status: active"\necho "22/tcp  ALLOW  Anywhere"\n`;

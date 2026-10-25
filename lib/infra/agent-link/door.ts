@@ -38,7 +38,7 @@ export interface Door {
   watchdogMs: number;
 }
 
-// The public door decides nothing about trust: it names the claimed server, and the handshake decides (ADR-0038).
+// The public door decides nothing about trust: it names the claimed server, and the handshake decides (ADR-0040).
 export async function knock(
   door: Door,
   req: IncomingMessage,

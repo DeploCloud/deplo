@@ -48,7 +48,7 @@ services:
       - "traefik.http.routers.deplo.priority=1"
       - "traefik.http.routers.deplo.service=deplo"
       - "traefik.http.services.deplo.loadbalancer.server.port=3000"
-      # Servers link in on the same host (ADR-0038), never on a bare path.
+      # Servers link in on the same host (ADR-0040), never on a bare path.
       - "traefik.http.routers.deplo-link.rule=Host(`${DEPLO_DOMAIN}`) && Path(`/api/agent/link`)"
       - "traefik.http.routers.deplo-link.entrypoints=websecure"
       - "traefik.http.routers.deplo-link.tls.certresolver=letsencrypt"

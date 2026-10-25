@@ -245,7 +245,7 @@ async function probeServer(
   return getServerById(server.id);
 }
 
-// A server that links is never dialed: a missing link is offline, Hello over it says the rest (ADR-0038).
+// A server that links is never dialed: a missing link is offline, Hello over it says the rest (ADR-0040).
 async function probeOverLink(
   server: Server,
   link: LinkState,
@@ -277,7 +277,7 @@ async function probeOverLink(
   return getServerById(server.id);
 }
 
-/** A failed dial that says nothing yet: the server may have stopped listening and be relinking (ADR-0038). */
+/** A failed dial that says nothing yet: the server may have stopped listening and be relinking (ADR-0040). */
 export function settlingAfterRestart(error: unknown): boolean {
   return (
     error instanceof AgentUnreachableError && !error.trust && linksSettling()
@@ -347,7 +347,7 @@ const watch: LinkWatch = (slot[WATCH_KEY] ??= {
   gone: new Map(),
 });
 
-/** A linked server's status follows its agent link (ADR-0038). Start it before the link door opens. */
+/** A linked server's status follows its agent link (ADR-0040). Start it before the link door opens. */
 export function startServerLinkStatus(opts: { graceMs?: number } = {}): void {
   if (watch.off) return;
   watch.graceMs = opts.graceMs ?? LINK_WAIT_MS;

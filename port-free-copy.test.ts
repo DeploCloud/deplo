@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { globSync, readFileSync } from "node:fs";
 import ts from "typescript";
 
-// A server connects out to Deplo (ADR-0038): no screen, error or API description asks for a port.
+// A server connects out to Deplo (ADR-0040): no screen, error or API description asks for a port.
 const PORT_WORDS = /\b9443\b|firewall|\binbound\b|\boutbound\b/i;
 
 const NOT_COPY = /\.test\.tsx?$|test-helpers\.tsx?$|^lib\/agent\/gen\//;

@@ -17,7 +17,7 @@ export class AgentUnreachableError extends Error {
   }
 }
 
-/** A server that links, whose link stayed away past the wait (ADR-0038). */
+/** A server that links, whose link stayed away past the wait (ADR-0040). */
 export class AgentOfflineError extends AgentUnreachableError {
   constructor(serverId: string) {
     super(

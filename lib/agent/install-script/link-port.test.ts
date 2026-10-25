@@ -8,7 +8,7 @@ import * as yaml from "js-yaml";
 
 import { bash, shellFn } from "./install-script-test-helpers";
 
-// This machine's own agent links to the panel over loopback (ADR-0038), on a host port the installer picks.
+// This machine's own agent links to the panel over loopback (ADR-0040), on a host port the installer picks.
 const harness = async (body: string) =>
   bash(`set -euo pipefail
 exec 9>/dev/null

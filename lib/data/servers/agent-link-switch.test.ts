@@ -34,7 +34,7 @@ import { seedServerRow, TRUNCATE_INFRA } from "../infra-test-helpers";
 import { rolloutTiming, runAgentRollout } from "./agent-rollout";
 import { startLinkAddressSync, stopLinkAddressSync } from "./link-addresses";
 
-// Servers enrolled before the agent link move over on their own (ADR-0038): real agents, a real door.
+// Servers enrolled before the agent link move over on their own (ADR-0040): real agents, a real door.
 const PANEL = "https://panel.example.com";
 const FALLBACK = "https://deplo-cb00710a.deplo.site";
 const SERVER = "srv_before_the_link";

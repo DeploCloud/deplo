@@ -808,7 +808,7 @@ firewall_fix_command() {
 }
 
 # Asked of the binary just installed, since only it knows. A linking agent connects
-# out to the panel and listens on nothing, so no firewall is in its way (ADR-0038).
+# out to the panel and listens on nothing, so no firewall is in its way (ADR-0040).
 # Read whole, never piped into grep -q: SIGPIPE under pipefail would read as "no".
 plan_listener() {
   AGENT_LINKS=false
@@ -1302,7 +1302,7 @@ else
   DOCKER_UNIT_LINES="# The agent needs the Docker socket to build + run stacks.
 SupplementaryGroups=docker"
 fi
-# No --addr for a linking agent: with none it opens no port at all (ADR-0038).
+# No --addr for a linking agent: with none it opens no port at all (ADR-0040).
 write_agent_unit() {
   local listen=""
   [ "$AGENT_LINKS" = true ] || listen="  --addr 0.0.0.0:$AGENT_PORT \\"$'\n'

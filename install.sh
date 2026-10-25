@@ -1237,7 +1237,7 @@ if [ -n "$TAKEOVER" ] && [ "$TAKEOVER_PAST" = 0 ]; then
   ok "Deplo waits on :$PANEL_PORT until the takeover" "proxy on $HTTP_PORT/$HTTPS_PORT"
 fi
 
-# This machine's own agent links to the panel on this loopback port (ADR-0038) and
+# This machine's own agent links to the panel on this loopback port (ADR-0040) and
 # saves it, so it is chosen once and kept. None of the takeover's panel ports.
 pick_link_port() {
   local kept; kept="$(state_get link_port || true)"
@@ -1856,7 +1856,7 @@ panel_router() { # $1 router name, $2 host
   # writes, and which an update re-rendering it as websecure took away.
   [ "${PANEL_HTTPS:-true}" = true ] || { tls=''; entry=web; }
   printf '          %s:\n            rule: Host(`%s`)\n            entryPoints:\n              - %s\n            service: deplo-panel\n            priority: 2\n'"$tls" "$1" "$2" "$entry"
-  # Servers link in on this same name (ADR-0038). Never a bare Path(): this proxy
+  # Servers link in on this same name (ADR-0040). Never a bare Path(): this proxy
   # routes every app too, and would take the path from all of them.
   printf '          %s-link:\n            rule: Host(`%s`) && Path(`/api/agent/link`)\n            entryPoints:\n              - %s\n            service: deplo-link\n            priority: 3\n'"$tls" "$1" "$2" "$entry"
 }
@@ -2438,7 +2438,7 @@ takeover_post() { # $1 state, $2 the reason (failed only)
 }
 
 # The side door's routes: $1 the panel's host, $2 their http entrypoint. Servers
-# added during the takeover link in through it too (ADR-0038).
+# added during the takeover link in through it too (ADR-0040).
 side_door_config() {
   cat <<YAML
 http:

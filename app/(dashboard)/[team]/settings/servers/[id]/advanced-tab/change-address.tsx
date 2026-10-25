@@ -113,7 +113,7 @@ export interface ChangeAddressFormProps {
   onCancel: () => void;
 }
 
-// A linked server is never dialed (ADR-0038): no agent port, no check, nothing to force.
+// A linked server is never dialed (ADR-0040): no agent port, no check, nothing to force.
 export function ChangeAddressForm({
   server,
   address,

@@ -14,7 +14,7 @@ repository root.
 | #                                                                                         | Decision                                                                                                                                     |
 | ----------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
 | [0005](0005-apps-are-host-managed-containers-not-projects.md)                             | Apps are host-managed containers, not projects. **Superseded in part by 0013**                                                               |
-| [0006](0006-server-agent-is-a-per-host-go-binary.md)                                      | Remote execution is a per-host Go agent; the control plane stays TypeScript and never runs Docker. **The foundational one; amended by 0038** |
+| [0006](0006-server-agent-is-a-per-host-go-binary.md)                                      | Remote execution is a per-host Go agent; the control plane stays TypeScript and never runs Docker. **The foundational one; amended by 0040** |
 | [0007](0007-backups-route-through-the-owning-agent-databases-become-agent-provisioned.md) | Backups route through the owning agent; databases become agent-provisioned                                                                   |
 | [0009](0009-projects-are-advanced-folders-environments-scope-their-contents.md)           | Projects are advanced folders; Environments scope their contents. **Supersedes the containment reading of 0008**                             |
 | [0011](0011-server-removal-is-trust-revocation-not-a-host-uninstall.md)                   | Removing a server is trust revocation, not a host uninstall                                                                                  |
@@ -46,7 +46,7 @@ repository root.
 | [0037](0037-a-panel-pins-its-agent.md)                                                    | A panel pins its agent: one version installed, a floor below which a server is unusable                                                      |
 | [0038](0038-security-updates-are-matched-in-the-control-plane.md)                         | Security updates: the agent reads each image's packages, the control plane matches them against OSV                                          |
 | [0039](0039-the-screenshot-browser-has-no-network.md)                                     | Deployment screenshots: a browser with no network on the app's server, whose only way out is the agent's vetted proxy                        |
-| [0038](0038-a-server-agent-links-to-its-control-plane.md)                                 | A server agent links out to its control plane, and no server accepts an incoming connection. **Amends 0006**                                 |
+| [0040](0040-a-server-agent-links-to-its-control-plane.md)                                 | A server agent links out to its control plane, and no server accepts an incoming connection. **Amends 0006**                                 |
 
 ## Amended or superseded
 

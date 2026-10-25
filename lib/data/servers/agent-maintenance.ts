@@ -68,7 +68,7 @@ export async function updateServerAddress(
     return { warning: null };
   await assertAddressFree(address, server.id);
 
-  // A linked server is never dialed (ADR-0038): its address is for its apps, its port unused.
+  // A linked server is never dialed (ADR-0040): its address is for its apps, its port unused.
   const linked = server.agent?.certFingerprint
     ? await linksIn(server.id)
     : false;

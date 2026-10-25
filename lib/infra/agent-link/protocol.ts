@@ -1,4 +1,4 @@
-// The agent link's door (ADR-0038). The agent's side is deplo-agent internal/link.
+// The agent link's door (ADR-0040). The agent's side is deplo-agent internal/link.
 
 /** The link listener's port inside the panel container; Traefik's `deplo-link` service targets it. */
 export const LINK_PORT = 3001;

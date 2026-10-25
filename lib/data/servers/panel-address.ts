@@ -12,7 +12,7 @@ export async function bootstrapBaseUrl(server: ServerAddress): Promise<string> {
   return `http://127.0.0.1:${hostPort(process.env.DEPLO_PANEL_PORT, 3000)}`;
 }
 
-/** Where a server's agent links (ADR-0038): the panel's own server over loopback, never through its public address. */
+/** Where a server's agent links (ADR-0040): the panel's own server over loopback, never through its public address. */
 export async function agentLinkUrl(
   server: ServerAddress,
   h?: Headers,

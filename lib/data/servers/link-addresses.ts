@@ -40,7 +40,7 @@ const sync: Sync = (g[KEY] ??= {
   lastError: new Map(),
 });
 
-/** Keeps linking agents on the panel's pair and closes a linked one's port (ADR-0038). Start it before the door opens. */
+/** Keeps linking agents on the panel's pair and closes a linked one's port (ADR-0040). Start it before the door opens. */
 export function startLinkAddressSync(): void {
   if (sync.off) return;
   // Queued even behind a running pass: that pass started before this link was verified.

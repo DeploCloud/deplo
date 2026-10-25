@@ -1,6 +1,6 @@
 // node --require ./lib/test/server-only-shim.cjs --import tsx scripts/agent-part-b-e2e.mts [--link]
 // DEPLO_AGENT_BIN names the agent build (a semver VERSION, or the agentMin gate refuses it). --link
-// needs no database and deploys nothing: real agents link into the real door (ADR-0038).
+// needs no database and deploys nothing: real agents link into the real door (ADR-0040).
 import { spawn, type ChildProcess } from "node:child_process";
 import { createHash } from "node:crypto";
 import { createServer } from "node:http";

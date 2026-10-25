@@ -1,4 +1,4 @@
-# ADR-0038: A server agent links to its control plane
+# ADR-0040: A server agent links to its control plane
 
 **Status**: accepted. **Amends [ADR-0006](0006-server-agent-is-a-per-host-go-binary.md)**, decisions 4 and 8.
 

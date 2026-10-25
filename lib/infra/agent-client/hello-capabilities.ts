@@ -74,5 +74,5 @@ export const REROUTE_PULL_CAPABILITY = "reroute.pull";
 // CaptureScreenshot: the deployment screenshot browser (ADR-0039).
 export const SCREENSHOT_CAPABILITY = "screenshot";
 
-// The agent links to the panel (ADR-0038), and with it Hello's link_addresses and SetLinkAddresses.
+// The agent links to the panel (ADR-0040), and with it Hello's link_addresses and SetLinkAddresses.
 export const AGENT_LINK_CAPABILITY = "agent-link";

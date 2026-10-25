@@ -21297,7 +21297,7 @@ export const AgentService = {
     responseDeserialize: (value: Buffer): InventoryImageResponse => InventoryImageResponse.decode(value),
   },
   /**
-   * Replace the panel addresses this agent links to (ADR-0038): it keeps exactly this pair,
+   * Replace the panel addresses this agent links to (ADR-0040): it keeps exactly this pair,
    * an empty fallback dropped, and dials it from its next link on. Advertised as `agent-link`.
    */
   setLinkAddresses: {
@@ -21310,7 +21310,7 @@ export const AgentService = {
     responseDeserialize: (value: Buffer): LinkAddresses => LinkAddresses.decode(value),
   },
   /**
-   * Close this agent's own port for good, once its agent link works (ADR-0038). Taken over
+   * Close this agent's own port for good, once its agent link works (ADR-0040). Taken over
    * the link only, and kept across restarts. Advertised as `agent-link`.
    */
   stopListening: {
@@ -21639,12 +21639,12 @@ export interface AgentServer extends UntypedServiceImplementation {
    */
   inventoryImage: handleUnaryCall<InventoryImageRequest, InventoryImageResponse>;
   /**
-   * Replace the panel addresses this agent links to (ADR-0038): it keeps exactly this pair,
+   * Replace the panel addresses this agent links to (ADR-0040): it keeps exactly this pair,
    * an empty fallback dropped, and dials it from its next link on. Advertised as `agent-link`.
    */
   setLinkAddresses: handleUnaryCall<LinkAddresses, LinkAddresses>;
   /**
-   * Close this agent's own port for good, once its agent link works (ADR-0038). Taken over
+   * Close this agent's own port for good, once its agent link works (ADR-0040). Taken over
    * the link only, and kept across restarts. Advertised as `agent-link`.
    */
   stopListening: handleUnaryCall<StopListeningRequest, StopListeningResponse>;
@@ -22759,7 +22759,7 @@ export interface AgentClient extends Client {
     callback: (error: ServiceError | null, response: InventoryImageResponse) => void,
   ): ClientUnaryCall;
   /**
-   * Replace the panel addresses this agent links to (ADR-0038): it keeps exactly this pair,
+   * Replace the panel addresses this agent links to (ADR-0040): it keeps exactly this pair,
    * an empty fallback dropped, and dials it from its next link on. Advertised as `agent-link`.
    */
   setLinkAddresses(
@@ -22778,7 +22778,7 @@ export interface AgentClient extends Client {
     callback: (error: ServiceError | null, response: LinkAddresses) => void,
   ): ClientUnaryCall;
   /**
-   * Close this agent's own port for good, once its agent link works (ADR-0038). Taken over
+   * Close this agent's own port for good, once its agent link works (ADR-0040). Taken over
    * the link only, and kept across restarts. Advertised as `agent-link`.
    */
   stopListening(
