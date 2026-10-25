@@ -435,6 +435,15 @@ code in its own repo (**DeploCloud/deplo-agent**), contract in
 _Avoid_: agent (ambiguous - say "server agent"), node, worker, runner (CI term), daemon
 (reserve for the Docker daemon it drives), Deplo agent on the remote being a "second Deplo".
 
+**Agent link**:
+The lasting connection a **server agent** opens _to_ its control plane after it **calls home**;
+every call the control plane makes to that server rides it, so a server never has to accept an
+incoming connection. Every server has one, the host running Deplo included. A server with no
+agent link past a short grace window is **offline**; every other status still comes from a live
+Hello over the link. Users never see the term: a server is _connected_ or _offline_. _(Decided,
+not built yet: today the control plane still dials each agent.)_
+_Avoid_: tunnel (reads as public ingress for apps, which this is not), reverse proxy, VPN, socket.
+
 **Server health**:
 A server's **status** is an OBSERVATION, not a lifecycle the control plane drives: the outcome of
 the last live agent **Hello**, stamped with **when** it was observed (`statusCheckedAt`) and, when
