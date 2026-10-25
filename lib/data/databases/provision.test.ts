@@ -66,6 +66,21 @@ test("createDatabase: the password policy is for a chosen password, not an impor
   });
 });
 
+test("createDatabase: a custom image in deplo/ is another app's build, refused", async () => {
+  await asUser1(async () => {
+    await assert.rejects(
+      () =>
+        createDatabase({
+          name: "borrowed",
+          type: "postgres",
+          version: "16",
+          customImage: "deplo/victim:dpl_0a1b2c3d",
+        }),
+      /This database uses `deplo\/victim:dpl_0a1b2c3d`/,
+    );
+  });
+});
+
 test("a database name whose stack is still being torn down on that host is taken", async () => {
   await seedServerRow(db, {
     id: "srv_td",

@@ -1,6 +1,14 @@
 import "server-only";
 
-import { assertComposeWithinLimits } from "../../deploy/compose-lint/document";
+import {
+  assertComposeWithinLimits,
+  servicesOf,
+} from "../../deploy/compose-lint/document";
+import {
+  deploImageClaim,
+  deploImageMessage,
+  serviceDeploImage,
+} from "../../deploy/deplo-image";
 import { composePublishesPorts } from "../../deploy/compose-lint/host-ports";
 import {
   composeHostReach,
@@ -42,6 +50,11 @@ export function assertImageRef(
     throw new Error(
       "Enter a valid image reference (e.g. nginx:1.27 or ghcr.io/org/app@sha256:…).",
     );
+  const claim =
+    source === "docker-image" && dockerImage
+      ? deploImageClaim(dockerImage)
+      : null;
+  if (claim) throw new Error(deploImageMessage(dockerImage!, claim));
 }
 
 export async function assertComposeSavable(
@@ -61,6 +74,15 @@ export async function assertComposeSavable(
     if (claimed) throw new Error(reservedNameMessage(claimed));
     const filled = composeInterpolatedHostname(compose);
     if (filled) throw new Error(interpolatedHostnameMessage(filled));
+    const named = serviceDeploImage(servicesOf(compose) ?? {});
+    if (named)
+      throw new Error(
+        deploImageMessage(
+          named.image,
+          named.claim,
+          `Service \`${named.service}\``,
+        ),
+      );
   }
   return reach;
 }

@@ -5,6 +5,7 @@ import type { ResourceLimits } from "../types/container";
 import type { DatabaseType } from "../types/database";
 import { isOfficialEngineImage } from "../databases/images";
 import { formatHostPort } from "../host-address";
+import { deploImageClaim, deploImageMessage } from "./deplo-image";
 
 export const DB_IMAGES: Record<DatabaseType, (v: string) => string> = {
   postgres: (v) => `postgres:${v}-alpine`,
@@ -101,6 +102,8 @@ export function generateDatabaseCompose(input: {
     version,
     customImage: input.customImage ?? null,
   });
+  const claim = input.customImage?.trim() ? deploImageClaim(image) : null;
+  if (claim) throw new Error(deploImageMessage(image, claim, "This database"));
 
   const customCommand = input.customCommand?.trim();
   const envByType: Record<DatabaseType, string[]> = {

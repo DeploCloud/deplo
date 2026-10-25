@@ -468,6 +468,10 @@ scripts/gen-schema.ts`. Both halves of that prefix are load-bearing: the shim
   purpose - same-origin content under someone else's name. `assertHostnameNotAnotherTeams`
   (lib/data/domains/hostname-claim.ts) is the refusal, on `addDomain` AND on the rename in `updateDomain`. Any new
   writer of `domains.name` needs it too.
+- **`deplo/` is Deplo's image namespace.** Every build is tagged `deplo/<key>:<deployment>` on a shared
+  server, so an image a user writes there (stack service, image app, database) runs another app's build.
+  `deploImageClaim` (lib/deploy/deplo-image.ts) refuses it at save, render and deploy, a namespace filled by
+  a variable included; only the name Deplo gives a service it builds passes. A new image writer needs it too.
 - **Roles are per-team ROWS** (`team_roles`, `lib/data/roles/`), not TS presets: three
   editable/resettable defaults (Owner locked at full access) plus the team's own. A role edit
   re-writes `membership_capabilities` for its members in the same transaction, so **every

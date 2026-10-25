@@ -1,5 +1,6 @@
 import "server-only";
 
+import { deploImageClaim, deploImageMessage } from "../../deploy/deplo-image";
 import type { DatabaseType } from "../../types/database";
 
 export const DEFAULT_PORTS: Record<DatabaseType, number> = {
@@ -61,4 +62,13 @@ export function assertPasswordSafe(password: string): void {
 
 export function isValidImageRef(ref: string): boolean {
   return /^[A-Za-z0-9][A-Za-z0-9._\-/:@]*$/.test(ref);
+}
+
+export function assertCustomImage(ref: string): void {
+  if (!isValidImageRef(ref))
+    throw new Error(
+      "Custom image must be a plain image reference (repo[:tag] or repo@digest) with no spaces or quotes.",
+    );
+  const claim = deploImageClaim(ref);
+  if (claim) throw new Error(deploImageMessage(ref, claim, "This database"));
 }

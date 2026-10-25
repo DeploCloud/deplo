@@ -8,7 +8,9 @@ import {
   composeHostReach,
   composeUsesExternalMerge,
 } from "../../deploy/compose-lint/host-privileges";
+import { servicesOf } from "../../deploy/compose-lint/document";
 import { lintCompose } from "../../deploy/compose-lint/lint";
+import { deploImageMessage, serviceDeploImage } from "../../deploy/deplo-image";
 import {
   composeClaimsReservedName,
   composeInterpolatedHostname,
@@ -70,6 +72,15 @@ export function composeBlockers(
     );
   const filled = composeInterpolatedHostname(compose);
   if (filled) out.push(interpolatedHostnameMessage(filled));
+  const named = serviceDeploImage(servicesOf(compose) ?? {});
+  if (named)
+    out.push(
+      deploImageMessage(
+        named.image,
+        named.claim,
+        `Service \`${named.service}\``,
+      ),
+    );
   if (!grants.mayExposePorts && composePublishesPorts(compose))
     out.push("Publishes host ports, which needs the expose-ports grant.");
   const reach = grants.mayMountHost ? [] : composeHostReach(compose);

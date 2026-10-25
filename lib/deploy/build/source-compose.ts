@@ -10,6 +10,7 @@ import {
   composeUsesExternalMerge,
 } from "../compose-lint/host-privileges";
 import { stackSourceDir } from "../deploy-key";
+import { deploImageClaim, deploImageMessage } from "../deplo-image";
 
 type Rec = Record<string, unknown>;
 
@@ -88,6 +89,11 @@ export function prepareSourceCompose(
         `service \`${name}\` extends another file, which Deplo does not follow.`,
       );
     if (svc.build != null) prepareBuild(name, svc, opts, notes);
+    else if (typeof svc.image === "string") {
+      const claim = deploImageClaim(svc.image);
+      if (claim)
+        refuse(deploImageMessage(svc.image, claim, `service \`${name}\``));
+    }
     if (svc.ports != null) {
       const exposed = containerPorts(svc.ports);
       delete svc.ports;

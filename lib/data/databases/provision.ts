@@ -32,7 +32,7 @@ import {
   cleanDatabaseName,
   databaseSlug,
   defaultUserFor,
-  isValidImageRef,
+  assertCustomImage,
   sanitizeDbIdentifier,
 } from "./validate";
 import { databaseExists, toDTO, type DatabaseDTO } from "./rows";
@@ -62,10 +62,7 @@ export async function createDatabase(input: {
   if (!/^[A-Za-z0-9._-]+$/.test(input.version))
     throw new Error("Version must be a valid image tag.");
   const customImage = input.customImage?.trim() || null;
-  if (customImage && !isValidImageRef(customImage))
-    throw new Error(
-      "Custom image must be a plain image reference (repo[:tag] or repo@digest) with no spaces or quotes.",
-    );
+  if (customImage) assertCustomImage(customImage);
   if (input.password) {
     assertPasswordSafe(input.password);
     if (!input.passwordIsGenerated) {

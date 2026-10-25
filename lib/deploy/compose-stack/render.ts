@@ -10,6 +10,7 @@ import "server-only";
 import yaml from "../../yaml";
 
 import { keepAuthoredEnvText } from "../compose-lint/document";
+import { deploImageMessage, serviceDeploImage } from "../deplo-image";
 import { mergeResourceLimits } from "../resources";
 import { injectAppVolumes, rewriteAppVolumes } from "./app-volumes";
 import { wireDomainRoutes } from "./domain-routers";
@@ -68,6 +69,15 @@ export function buildComposeStack(input: ComposeStackInput): string {
     doc.services,
   );
   doc.services = services;
+  const named = serviceDeploImage(services, `deplo/${deployKey}-`);
+  if (named)
+    throw new Error(
+      deploImageMessage(
+        named.image,
+        named.claim,
+        `Service \`${named.service}\``,
+      ),
+    );
 
   // Stamped on EVERY service, or sidecars are invisible to the container count, console and teardown.
   const tracking = [

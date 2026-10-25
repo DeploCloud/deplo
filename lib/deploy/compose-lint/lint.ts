@@ -1,5 +1,6 @@
 import yaml from "../../yaml";
 
+import { deploImageClaim, deploImageMessage } from "../deplo-image";
 import { interpolates } from "./document";
 import { isValidPortMapping, unboundDnsPort } from "./host-ports";
 import {
@@ -252,6 +253,14 @@ export function lintCompose(source: string): LintDiagnostic[] {
 
     if (hasImage) {
       const image = (svc.image as string).trim();
+      const claim = deploImageClaim(image);
+      if (claim)
+        diags.push({
+          severity: "error",
+          rule: "deplo-image",
+          message: deploImageMessage(image, claim, `Service \`${name}\``),
+          line: lineOfServiceField(lines, svcLine, "image"),
+        });
       if (!hasExplicitTagOrDigest(image)) {
         diags.push({
           severity: "warning",

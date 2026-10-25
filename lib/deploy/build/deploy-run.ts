@@ -35,6 +35,7 @@ import { nowIso } from "../../ids";
 import type { CertProvider } from "../../types/domain";
 import { usesPastedCompose } from "../../utils";
 import { deployImageRef, isOwnImage, stackName } from "../deploy-key";
+import { deploImageClaim, deploImageMessage } from "../deplo-image";
 import { planDeploySource, resolveBuildDir, type SourcePlan } from "../source";
 import { extractArchive } from "../upload";
 import {
@@ -550,6 +551,8 @@ async function runDeployment(depId: string): Promise<void> {
         break;
       }
       case "docker-image": {
+        const claim = deploImageClaim(plan.image);
+        if (claim) throw new Error(deploImageMessage(plan.image, claim));
         imageRef = plan.image;
         const { composeYaml, env, network } = await renderStack(imageRef);
         const { outcome } = await tryAgent({

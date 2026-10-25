@@ -17,7 +17,7 @@ import { publishDatabaseChanged } from "../../graphql/pubsub";
 import {
   cleanDatabaseName,
   isDuplicateNameError,
-  isValidImageRef,
+  assertCustomImage,
 } from "./validate";
 import { loadDatabase, requireDatabase } from "./rows";
 
@@ -181,10 +181,7 @@ export async function updateDatabaseImage(
   const patch: Partial<typeof databasesTable.$inferInsert> = {};
   if (input.customImage !== undefined) {
     const img = input.customImage?.trim() || null;
-    if (img && !isValidImageRef(img))
-      throw new Error(
-        "Custom image must be a plain image reference (repo[:tag] or repo@digest) with no spaces or quotes.",
-      );
+    if (img) assertCustomImage(img);
     patch.customImage = img;
   }
   if (input.customCommand !== undefined) {
