@@ -26,6 +26,7 @@ import { StatusBadge } from "@/components/shared/status-badge";
 import { CommitLink } from "@/components/apps/commit-link";
 import { CommitMessage } from "@/components/apps/commit-message";
 import {
+  cn,
   githubPullRequestUrl,
   gitProfileUrl,
   repoCommitUrl,
@@ -35,6 +36,8 @@ import { BuildDuration } from "@/components/apps/build-duration";
 import { RollbackButton } from "@/components/apps/rollback-deployment";
 import { FirstDeployCelebration } from "@/components/apps/first-deploy-celebration";
 import { TimeAgo } from "@/components/shared/time-ago";
+import { DeploymentCover, WithCover } from "@/components/apps/deployment-cover";
+import { getDeploymentScreenshot } from "@/lib/data/deployments/screenshot";
 
 export const metadata = { title: "Deployment" };
 
@@ -53,6 +56,10 @@ export default async function DeploymentDetailPage(
   const queuePosition = await getQueuePosition(id);
   const prUrl = githubPullRequestUrl(project.repo, deployment.prNumber);
   const firstEver = await isFirstDeployment(deployment);
+  const [shot, canConfigure] = await Promise.all([
+    getDeploymentScreenshot(id),
+    hasAppCapability(project.id, "configure_apps"),
+  ]);
 
   return (
     <div className="space-y-6">
@@ -69,95 +76,116 @@ export default async function DeploymentDetailPage(
       </Button>
 
       <Card>
-        <CardContent className="grid gap-4 p-5 sm:grid-cols-2 lg:grid-cols-4">
-          <Meta label="Status">
-            <StatusBadge status={deployment.status} />
-          </Meta>
-          {deployment.prNumber != null && (
-            <Meta label="Pull request">
-              <span className="flex items-center gap-1.5 text-sm">
-                <GitPullRequest className="size-3.5" />
-                {prUrl ? (
+        <CardContent className="p-5">
+          <WithCover
+            cover={
+              shot && (
+                <DeploymentCover
+                  deploymentId={deployment.id}
+                  href={deployment.url}
+                  lightUrl={shot.lightUrl}
+                  darkUrl={shot.darkUrl}
+                  canRetake={shot.current && canConfigure}
+                />
+              )
+            }
+          >
+            <div
+              className={cn(
+                "grid content-start gap-4 sm:grid-cols-2",
+                !shot && "lg:grid-cols-4",
+              )}
+            >
+              <Meta label="Status">
+                <StatusBadge status={deployment.status} />
+              </Meta>
+              {deployment.prNumber != null && (
+                <Meta label="Pull request">
+                  <span className="flex items-center gap-1.5 text-sm">
+                    <GitPullRequest className="size-3.5" />
+                    {prUrl ? (
+                      <a
+                        href={prUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="hover:underline"
+                      >
+                        #{deployment.prNumber}
+                      </a>
+                    ) : (
+                      <span>#{deployment.prNumber}</span>
+                    )}
+                  </span>
+                </Meta>
+              )}
+              <Meta label="Source">
+                <span className="flex items-center gap-1.5 text-sm">
+                  <GitBranch className="size-3.5" />
+                  {deployment.branch}
+                  <CommitLink
+                    sha={deployment.commitSha}
+                    url={repoCommitUrl(project.repo, deployment.commitSha)}
+                    className="font-mono text-xs text-muted-foreground"
+                  />
+                </span>
+              </Meta>
+              <Meta label="Build time">
+                <span className="flex items-center gap-1.5 text-sm">
+                  <Clock className="size-3.5" />
+                  <BuildDuration
+                    status={deployment.status}
+                    startedAt={deployment.startedAt}
+                    buildDurationMs={deployment.buildDurationMs}
+                  />
+                </span>
+              </Meta>
+              <Meta label="Commit" className="sm:col-span-2">
+                <CommitMessage
+                  message={deployment.commitMessage}
+                  sha={deployment.commitSha}
+                />
+              </Meta>
+              <Meta label="Created">
+                <span className="flex items-center gap-1.5 text-sm">
+                  <span>
+                    <TimeAgo at={deployment.createdAt} live /> by
+                  </span>
+                  <DeploymentCreator
+                    creator={deployment.creator}
+                    creatorUser={deployment.creatorUser}
+                    creatorProvider={deployment.creatorProvider}
+                    creatorUrl={gitProfileUrl(
+                      deployment.creatorProvider,
+                      deployment.creator,
+                      project.repo?.url,
+                    )}
+                  />
+                </span>
+              </Meta>
+              <div className="flex items-end gap-2">
+                {deployment.canRollback && (
+                  <RollbackButton
+                    id={deployment.id}
+                    appSlug={slug}
+                    commitSha={deployment.commitSha}
+                    commitMessage={deployment.commitMessage}
+                    rebuild={deployment.rollbackRebuilds}
+                    can={canRollbackApps}
+                  />
+                )}
+                <Button variant="outline" size="sm" asChild>
                   <a
-                    href={prUrl}
+                    href={deployment.url}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="hover:underline"
                   >
-                    #{deployment.prNumber}
+                    <ExternalLink className="size-4" />
+                    Visit
                   </a>
-                ) : (
-                  <span>#{deployment.prNumber}</span>
-                )}
-              </span>
-            </Meta>
-          )}
-          <Meta label="Source">
-            <span className="flex items-center gap-1.5 text-sm">
-              <GitBranch className="size-3.5" />
-              {deployment.branch}
-              <CommitLink
-                sha={deployment.commitSha}
-                url={repoCommitUrl(project.repo, deployment.commitSha)}
-                className="font-mono text-xs text-muted-foreground"
-              />
-            </span>
-          </Meta>
-          <Meta label="Build time">
-            <span className="flex items-center gap-1.5 text-sm">
-              <Clock className="size-3.5" />
-              <BuildDuration
-                status={deployment.status}
-                startedAt={deployment.startedAt}
-                buildDurationMs={deployment.buildDurationMs}
-              />
-            </span>
-          </Meta>
-          <Meta label="Commit" className="sm:col-span-2">
-            <CommitMessage
-              message={deployment.commitMessage}
-              sha={deployment.commitSha}
-            />
-          </Meta>
-          <Meta label="Created">
-            <span className="flex items-center gap-1.5 text-sm">
-              <span>
-                <TimeAgo at={deployment.createdAt} live /> by
-              </span>
-              <DeploymentCreator
-                creator={deployment.creator}
-                creatorUser={deployment.creatorUser}
-                creatorProvider={deployment.creatorProvider}
-                creatorUrl={gitProfileUrl(
-                  deployment.creatorProvider,
-                  deployment.creator,
-                  project.repo?.url,
-                )}
-              />
-            </span>
-          </Meta>
-          <div className="flex items-end gap-2">
-            {deployment.canRollback && (
-              <RollbackButton
-                id={deployment.id}
-                appSlug={slug}
-                commitSha={deployment.commitSha}
-                commitMessage={deployment.commitMessage}
-                rebuild={deployment.rollbackRebuilds}
-                can={canRollbackApps}
-              />
-            )}
-            <Button variant="outline" size="sm" asChild>
-              <a
-                href={deployment.url}
-                target="_blank"
-                rel="noopener noreferrer"
-              >
-                <ExternalLink className="size-4" />
-                Visit
-              </a>
-            </Button>
-          </div>
+                </Button>
+              </div>
+            </div>
+          </WithCover>
         </CardContent>
       </Card>
 

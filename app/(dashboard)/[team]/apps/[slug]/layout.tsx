@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { getAppBySlug } from "@/lib/data/apps/listing";
 import { appCapabilities } from "@/lib/data/node-access";
 import { rollbackTarget } from "@/lib/data/deployments/rollback";
+import { screenshotCapturedAt } from "@/lib/data/deployments/screenshot";
 import {
   appBuildsItsOwnImage,
   appTypeLabel,
@@ -49,9 +50,12 @@ export default async function AppLayout(
   const project = await getAppBySlug(slug);
   if (!project || project.deletingAt) notFound();
   const buildsOwnImage = appBuildsItsOwnImage(project);
-  const [capabilities, rollback] = await Promise.all([
+  const [capabilities, rollback, latestScreenshotAt] = await Promise.all([
     appCapabilities(project.id),
     buildsOwnImage ? rollbackTarget(project.id) : null,
+    project.latestDeployment
+      ? screenshotCapturedAt(project.latestDeployment.id)
+      : null,
   ]);
 
   const initialLive: LiveApp = {
@@ -62,6 +66,7 @@ export default async function AppLayout(
     restartLoopStoppedAt: project.restartLoopStoppedAt ?? null,
     latestDeploymentId: project.latestDeployment?.id ?? null,
     latestDeploymentStatus: project.latestDeployment?.status ?? null,
+    latestScreenshotAt,
   };
 
   return (

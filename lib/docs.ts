@@ -9,6 +9,7 @@ export const DOCS = {
   "deploy.sources": "guides/deploy",
   "deploy.trace": "concepts/what-happens-on-a-deploy",
   "deploy.queue": "concepts/what-happens-on-a-deploy#it-waits-for-a-slot",
+  "deploy.screenshot": "concepts/what-happens-on-a-deploy#a-picture-is-taken",
   "deploy.fromGit": "guides/deploy/from-git",
   "deploy.dockerImage": "guides/deploy/docker-image",
   "deploy.fromTemplate": "guides/deploy/from-template",

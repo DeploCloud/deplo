@@ -13,6 +13,7 @@ export type LiveApp = {
   productionUrl: string | null;
   latestDeploymentId: string | null;
   latestDeploymentStatus: DeploymentStatus | null;
+  latestScreenshotAt: string | null;
   restartLoopStoppedAt: string | null;
 };
 
@@ -27,6 +28,7 @@ const PROJECT_STATUS_SUBSCRIPTION = /* GraphQL */ `
       latestDeployment {
         id
         status
+        screenshotAt
       }
     }
   }
@@ -39,7 +41,11 @@ type SubResult = {
     status: AppStatus;
     productionUrl: string | null;
     restartLoopStoppedAt: string | null;
-    latestDeployment: { id: string; status: DeploymentStatus } | null;
+    latestDeployment: {
+      id: string;
+      status: DeploymentStatus;
+      screenshotAt: string | null;
+    } | null;
   };
 };
 
@@ -57,7 +63,7 @@ export function AppLiveStatusProvider({
   const router = useRouter();
   // The pages under it are server-rendered: re-read them when the latest deploy moves on.
   const seenDeploy = React.useRef(
-    `${initial.latestDeploymentId}:${initial.latestDeploymentStatus}`,
+    `${initial.latestDeploymentId}:${initial.latestDeploymentStatus}:${initial.latestScreenshotAt}`,
   );
 
   React.useEffect(() => {
@@ -75,8 +81,10 @@ export function AppLiveStatusProvider({
           restartLoopStoppedAt: p.restartLoopStoppedAt,
           latestDeploymentId: p.latestDeployment?.id ?? null,
           latestDeploymentStatus: p.latestDeployment?.status ?? null,
+          latestScreenshotAt: p.latestDeployment?.screenshotAt ?? null,
         });
-        const deploy = `${p.latestDeployment?.id ?? null}:${p.latestDeployment?.status ?? null}`;
+        // A picture lands after Ready, so it is part of what makes the page stale.
+        const deploy = `${p.latestDeployment?.id ?? null}:${p.latestDeployment?.status ?? null}:${p.latestDeployment?.screenshotAt ?? null}`;
         if (deploy !== seenDeploy.current) {
           seenDeploy.current = deploy;
           router.refresh();
