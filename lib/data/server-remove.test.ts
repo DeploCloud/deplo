@@ -33,6 +33,7 @@ before(async () => {
 });
 
 after(async () => {
+  __setAgentConnectorForTest();
   __resetTestDb();
   await pg.close();
 });
