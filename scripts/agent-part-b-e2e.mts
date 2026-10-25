@@ -1,11 +1,23 @@
+// node --require ./lib/test/server-only-shim.cjs --import tsx scripts/agent-part-b-e2e.mts [--link]
+// DEPLO_AGENT_BIN names the agent build (a semver VERSION, or the agentMin gate refuses it). --link
+// needs no database and deploys nothing: real agents link into the real door (ADR-0038).
 import { spawn, type ChildProcess } from "node:child_process";
+import { createHash } from "node:crypto";
 import { createServer } from "node:http";
-import { mkdtempSync, writeFileSync, rmSync } from "node:fs";
+import {
+  chmodSync,
+  mkdtempSync,
+  readFileSync,
+  writeFileSync,
+  rmSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { gunzipSync } from "node:zlib";
 
 process.env.DEPLO_SECRET ||= "part-b-e2e-secret-bbbbbbbbbbbbbbbbbbbb";
-const AGENT_BIN = join(process.cwd(), "agent/bin/deplo-agent");
+const AGENT_BIN =
+  process.env.DEPLO_AGENT_BIN || join(process.cwd(), "agent/bin/deplo-agent");
 const AGENT_ADDR = "127.0.0.1:19553";
 const AGENT_HOST = "127.0.0.1";
 const AGENT_PORT = 19553;
@@ -356,7 +368,218 @@ async function main() {
   process.exit(0);
 }
 
-main().catch((e) => {
-  console.error("\n❌ Part B e2e FAILED:", e);
-  process.exit(1);
-});
+// The host's Docker is shared: an agent here may read, and run a throwaway container on an agentlink-* volume.
+const DOCKER_GUARD = (docker: string) => `#!/bin/sh
+case "$1 $2" in
+  "version "* | "info "* | "inspect "* | "ps "* | "image inspect" | "volume inspect" | "container inspect") exec ${docker} "$@" ;;
+  "run "*) case " $* " in *" --rm "*" -v agentlink-"*) exec ${docker} "$@" ;; esac ;;
+esac
+echo "refused by the agent link e2e: docker $*" >&2
+exit 1
+`;
+
+/** The one file in a tar stream named `name`, or null. */
+function tarEntry(tar: Buffer, name: string): Buffer | null {
+  for (let off = 0; off + 512 <= tar.length;) {
+    const header = tar.subarray(off, off + 512);
+    if (header.every((b) => b === 0)) return null;
+    const field = (from: number, to: number) =>
+      header
+        .subarray(from, to)
+        .toString()
+        .replace(/\0[\s\S]*$/, "")
+        .trim();
+    const size = parseInt(field(124, 136) || "0", 8);
+    if (field(0, 100).replace(/^\.\//, "") === name)
+      return tar.subarray(off + 512, off + 512 + size);
+    off += 512 + Math.ceil(size / 512) * 512;
+  }
+  return null;
+}
+
+async function linkMain() {
+  process.env.NODE_TEST_CONTEXT ||= "agent-link-e2e"; // an in-process database, never a real one
+  process.env.DEPLO_SERVER_IP = "192.0.2.10";
+  const { makeTestDb } = await import("../lib/db/test-harness");
+  const { __setTestDb } = await import("../lib/db/client");
+  const { db } = await makeTestDb();
+  __setTestDb(db);
+
+  const { startAgentLinkListener, stopAgentLinkListener } =
+    await import("../lib/infra/agent-link/listener");
+  const { waitForLink } = await import("../lib/infra/agent-link/registry");
+  const { connectAgent } = await import("../lib/infra/agent-client/connect");
+  const { mintBootstrap } = await import("../lib/agent/bootstrap");
+  const { serverToRow } = await import("../lib/data/infra-rows");
+  const { servers } = await import("../lib/db/schema/control-plane/servers");
+  const { POST: bootstrapRoute } =
+    await import("../app/api/agent/bootstrap/route");
+
+  const { port: door } = await startAgentLinkListener({
+    port: 0,
+    host: "127.0.0.1",
+  });
+  // Agent 0 is handed the loopback port install.sh publishes; any other server the public address,
+  // which Traefik routes to the door. Both are the door here, under two spellings.
+  process.env.DEPLO_LINK_PORT = String(door);
+  process.env.DEPLO_PUBLIC_URL = `http://localhost:${door}`;
+  const want: Record<string, string> = {
+    "srv-e2e-self": `http://127.0.0.1:${door}`,
+    "srv-e2e-remote": `http://localhost:${door}`,
+  };
+
+  // Call home goes to the real route on ANOTHER port, so a link proves the agent kept the address it was handed.
+  const home = createServer((req, res) => {
+    let body = "";
+    req.on("data", (c) => (body += c));
+    req.on("end", async () => {
+      const out = await bootstrapRoute(
+        new Request(`http://127.0.0.1${req.url}`, { method: "POST", body }),
+      );
+      res.writeHead(out.status, Object.fromEntries(out.headers));
+      res.end(await out.text());
+    });
+  });
+  const homePort = await new Promise<number>((resolve) =>
+    home.listen(0, "127.0.0.1", () =>
+      resolve((home.address() as { port: number }).port),
+    ),
+  );
+
+  const docker = (await sh("sh", ["-c", "command -v docker"])).out.trim();
+  if (!docker) throw new Error("no docker on PATH");
+  const guardDir = mkdtempSync(join(tmpdir(), "agentlink-docker-"));
+  writeFileSync(join(guardDir, "docker"), DOCKER_GUARD(docker));
+  chmodSync(join(guardDir, "docker"), 0o755);
+  const volume = `agentlink-e2e-${process.pid}`;
+  const agents: { id: string; dir: string; proc: ChildProcess }[] = [];
+  try {
+    for (const [id, ip] of [
+      ["srv-e2e-self", process.env.DEPLO_SERVER_IP],
+      ["srv-e2e-remote", "198.51.100.7"],
+    ]) {
+      const { rawToken, stored } = mintBootstrap();
+      await db.insert(servers).values(
+        serverToRow({
+          id,
+          name: id,
+          host: ip,
+          type: "remote",
+          status: "provisioning",
+          ip,
+          dockerVersion: "",
+          traefikEnabled: false,
+          cpuCores: 0,
+          memoryMb: 0,
+          diskGb: 0,
+          allTeams: true,
+          storageOnly: false,
+          buildOnly: false,
+          buildFallback: null,
+          generatedAddressFamily: null,
+          importOnly: false,
+          uninstallPending: false,
+          uninstallError: "",
+          hostArch: "amd64",
+          deployConcurrency: 1,
+          createdAt: new Date(0).toISOString(),
+          bootstrap: stored,
+        }),
+      );
+      const dir = mkdtempSync(join(tmpdir(), "agentlink-agent-"));
+      // No --addr: a linking agent is installed with none and listens on nothing.
+      const proc = spawn(
+        AGENT_BIN,
+        [
+          "--agent-dir",
+          dir,
+          "--bootstrap-url",
+          `http://127.0.0.1:${homePort}`,
+          "--bootstrap-token",
+          rawToken,
+          "--stack-dir",
+          join(dir, "stacks"),
+          "--build-tmp",
+          join(dir, "tmp"),
+        ],
+        {
+          stdio: ["ignore", "inherit", "inherit"],
+          // Nothing of this process's environment: only the guarded Docker.
+          env: {
+            NODE_ENV: "test",
+            PATH: `${guardDir}:${process.env.PATH}`,
+            HOME: dir,
+          },
+        },
+      );
+      agents.push({ id, dir, proc });
+    }
+
+    for (const { id, dir, proc } of agents) {
+      if (!(await waitForLink(id, 20_000)))
+        throw new Error(`${id} never linked`);
+      const saved = JSON.parse(
+        readFileSync(join(dir, "link-addresses.json"), "utf8"),
+      ) as { primary: string };
+      if (saved.primary !== want[id])
+        throw new Error(`${id} saved ${saved.primary}, want ${want[id]}`);
+      const listening = (await sh("ss", ["-ltnpH"])).out
+        .split("\n")
+        .filter((l) => l.includes(`pid=${proc.pid},`));
+      if (listening.length)
+        throw new Error(`${id} listens: ${listening.join("; ")}`);
+      const conn = await connectAgent(id);
+      const hello = await conn.hello();
+      conn.close();
+      if (!hello.capabilities.includes("agent-link"))
+        throw new Error(`${id} Hello: ${hello.capabilities.join(",")}`);
+      console.log(
+        `== ${id}: linked to ${saved.primary}, no listener, Hello ${hello.agentVersion} ✓`,
+      );
+    }
+
+    const fill = await sh("docker", [
+      "run",
+      "--rm",
+      "--name",
+      `${volume}-fill`,
+      "-v",
+      `${volume}:/v`,
+      "busybox:1.36",
+      "sh",
+      "-c",
+      "head -c 33554432 /dev/urandom > /v/blob && sha256sum /v/blob",
+    ]);
+    if (fill.code !== 0) throw new Error(`fill ${volume}: ${fill.out}`);
+    const sha = fill.out.trim().split(/\s+/)[0];
+    const started = Date.now();
+    const conn = await connectAgent("srv-e2e-self");
+    const chunks: Buffer[] = [];
+    for await (const chunk of conn.exportVolume(volume)) chunks.push(chunk);
+    conn.close();
+    const gz = Buffer.concat(chunks);
+    const blob = tarEntry(gunzipSync(gz), "blob");
+    const got = blob && createHash("sha256").update(blob).digest("hex");
+    if (got !== sha) throw new Error(`export over the link: ${got} != ${sha}`);
+    const secs = (Date.now() - started) / 1000;
+    console.log(
+      `== volume export over agent 0's link: ${(gz.length / 1048576).toFixed(1)} MiB in ${secs.toFixed(1)} s, byte-identical ✓`,
+    );
+    console.log("\n✅ agent link e2e passed");
+  } finally {
+    for (const { proc } of agents) proc.kill("SIGTERM");
+    await sh("docker", ["volume", "rm", "-f", volume]);
+    await stopAgentLinkListener();
+    home.close();
+    for (const { dir } of agents) rmSync(dir, { recursive: true, force: true });
+    rmSync(guardDir, { recursive: true, force: true });
+  }
+}
+
+(process.argv.includes("--link") ? linkMain() : main()).then(
+  () => process.exit(0),
+  (e) => {
+    console.error("\n❌ Part B e2e FAILED:", e);
+    process.exit(1);
+  },
+);
