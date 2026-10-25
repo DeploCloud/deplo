@@ -14,6 +14,10 @@ export const DOCS = {
   "deploy.fromTemplate": "guides/deploy/from-template",
   "deploy.button": "guides/deploy/deploy-button",
 
+  "security.updates": "guides/observability/security-updates",
+  "security.updatesPrivacy":
+    "guides/observability/security-updates#what-deplo-sends",
+
   "build.settings": "guides/releases/build-settings",
   "build.methods": "guides/releases/build-settings#build-methods",
   "build.fields": "guides/releases/build-settings#the-fields",

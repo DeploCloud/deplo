@@ -15,6 +15,8 @@ export interface AppSummary extends App {
   domainCount: number;
 
   capabilities?: Capability[];
+  // What the card's shield counts (ADR-0038); absent when there is nothing to apply.
+  securityUpdates?: { count: number; exploited: number };
 }
 
 export function reconcileStatus(

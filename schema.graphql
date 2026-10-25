@@ -52,6 +52,7 @@ enum ActivityType {
   project
   s3
   security
+  security_update
   server
 }
 
@@ -4269,6 +4270,11 @@ type Mutation {
   setSaveMetrics(enabled: Boolean!): MonitoringSettings
 
   """
+  Turn security update checks on or off for the whole instance. On, Deplo sends OSV.dev the name and version of each package the team's images contain, never an app name or anything that identifies this Deplo. Recorded in Activity.
+  """
+  setSecurityUpdatesEnabled(enabled: Boolean!): SecurityUpdatesStatus
+
+  """
   Choose which kind of address (ipv4 | ipv6) the generated .deplo.site names of apps on this server carry; omit the family to go back to automatic. Every generated name already on the server is renamed at once, and the count of apps whose names moved is returned: each answers on its new name after its next deploy. Refused when the server has no address of that kind.
   """
   setServerAddressFamily(family: AddressFamily, id: String!): Int
@@ -5191,6 +5197,12 @@ type Query {
 
   """Search registered users (by username/display name) to add to the team."""
   searchUsers(query: String!): [UserSearchResult!]
+
+  """
+  The security updates of one app (`appId`) or managed database (`databaseId`) in the active team. Null when it is out of reach or the instance turned checks off.
+  """
+  securityUpdates(appId: ID, databaseId: ID): SecurityUpdates
+  securityUpdatesStatus: SecurityUpdatesStatus
   server(id: String!): Server
 
   """A fresh live metrics snapshot for one server."""
@@ -5702,6 +5714,85 @@ type SearchTemplate {
   logo: String
   name: String
   slug: String
+}
+
+"""
+How the team gets the fix. `code`: update the dependency in the app's own code. `rebuild`: rebuild on a fresh base image. `update`: redeploy to pull a newer build of the image. `newer_tag`: move to a newer version of the image. `deplo`: comes with a Deplo update. `none`: nobody has shipped a fix yet.
+"""
+enum SecurityFix {
+  code
+  deplo
+  newer_tag
+  none
+  rebuild
+  update
+}
+
+"""
+How serious a security update is: `exploited` is on CISA's known-exploited list, `critical` and `high` come from its CVSS score or advisory.
+"""
+enum SecurityLevel {
+  critical
+  exploited
+  high
+}
+
+"""One known vulnerability in a package an app or database runs."""
+type SecurityUpdate {
+  """
+  True when the team can act on it now, or it is already used in attacks. Only these are counted and alerted.
+  """
+  actionable: Boolean
+  cve: String
+  cvss: Float
+  ecosystem: String
+  fix: SecurityFix
+  fixedVersion: String
+  installedVersion: String
+  level: SecurityLevel
+  osvUrl: String
+  packageName: String
+
+  """The compose service it was found in; empty for a single-container app."""
+  service: String
+  summary: String
+
+  """The OSV id, for example GHSA-xvch-5gv4-984h or DEBIAN-CVE-2024-5535."""
+  vulnId: String
+}
+
+"""
+The security updates of one app or database, from the package lists of the images it runs. https://deplo.build/docs/guides/security-updates
+"""
+type SecurityUpdates {
+  """
+  The oldest check behind this answer; null until every image was checked once.
+  """
+  checkedAt: String
+
+  """Updates the team can act on, or already used in attacks."""
+  count: Int
+  exploited: Int
+
+  """
+  A newer version of the image on the same line, when the registry lists one.
+  """
+  newerTag: String
+
+  """
+  Why some of its images could not be read: too_large, low_disk, low_memory, timed_out, unsupported or failed.
+  """
+  unreadable: [String!]
+  updates: [SecurityUpdate!]
+}
+
+"""The instance-wide switch and the health of the last checks."""
+type SecurityUpdatesStatus {
+  enabled: Boolean
+
+  """Since when OSV.dev could not be reached; null while checks succeed."""
+  failingSince: String
+  lastCheckedAt: String
 }
 
 """A connected host running deployments (reached via its agent)."""

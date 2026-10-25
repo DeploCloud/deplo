@@ -23,6 +23,8 @@ import type { Database, DatabaseMount } from "../../types/database";
 
 export interface DatabaseDTO extends Omit<Database, "connectionStringEnc"> {
   connectionStringMasked: string;
+  // Filled by the Storage page for the card's shield (ADR-0038).
+  securityUpdates?: { count: number; exploited: number };
 }
 
 function maskConnectionString(conn: string): string {

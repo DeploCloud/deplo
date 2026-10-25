@@ -29,3 +29,6 @@ export const HOSTOPS_DEADLINE_MS = 20_000;
 export const CONTROL_PLANE_UPDATE_DEADLINE_MS = 60_000;
 export const TRAEFIK_DEADLINE_MS = 200_000;
 export const VOLUME_USAGE_TIMEOUT_MS = 70_000;
+export const INVENTORY_LIST_DEADLINE_MS = 60_000;
+// The agent stops its own read at 10 minutes; the margin covers the save before it.
+export const INVENTORY_DEADLINE_MS = 15 * 60_000;

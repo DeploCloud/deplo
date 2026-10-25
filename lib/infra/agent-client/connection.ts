@@ -18,6 +18,8 @@ import type {
   RestoreChunk_Header,
   DockerCleanupRequest,
   DockerCleanupResponse,
+  InventoryImageResponse,
+  ListWorkloadImagesResponse,
   HostInfoRequest,
   HostInfoResponse,
   SetTimezoneRequest,
@@ -216,6 +218,9 @@ export interface AgentConnection {
   ): Promise<{ version: string; restarting: boolean }>;
   selfUninstall(deadlineMs?: number): Promise<string[]>;
   dockerCleanup(req: DockerCleanupRequest): Promise<DockerCleanupResponse>;
+  // Needs `image-inventory` (ADR-0038).
+  listWorkloadImages(): Promise<ListWorkloadImagesResponse>;
+  inventoryImage(imageId: string): Promise<InventoryImageResponse>;
 
   hostInfo(req: HostInfoRequest): Promise<HostInfoResponse>;
   setTimezone(req: SetTimezoneRequest): Promise<HostInfoResponse>;

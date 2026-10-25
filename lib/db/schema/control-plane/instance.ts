@@ -38,6 +38,13 @@ export const instanceSettings = pgTable("instance_settings", {
   usageInstanceId: text("usage_instance_id"),
   usageInstanceIdMintedAt: isoTimestamptz("usage_instance_id_minted_at"),
   usageReportSentAt: isoTimestamptz("usage_report_sent_at"),
+  // ADR-0038: the instance switch, and when this machine last matched (or failed to reach OSV).
+  securityUpdatesEnabled: boolean("security_updates_enabled")
+    .notNull()
+    .default(true),
+  securityCheckedAt: isoTimestamptz("security_checked_at"),
+  securityFailingSince: isoTimestamptz("security_failing_since"),
+  kevFetchedAt: isoTimestamptz("kev_fetched_at"),
   updatedAt: isoTimestamptz("updated_at").notNull(),
 });
 

@@ -113,6 +113,9 @@ export const MOVE_TABLES: Readonly<Record<string, TablePolicy>> = {
     },
   },
   github_installation: COPY,
+  // Read again from the new Deplo's own servers (ADR-0038).
+  image_inventories: { kind: "skip" },
+  image_inventory_packages: { kind: "skip" },
   installed_plugins: COPY,
   instance_settings: {
     kind: "copy",
@@ -135,9 +138,13 @@ export const MOVE_TABLES: Readonly<Record<string, TablePolicy>> = {
       "usage_instance_id_minted_at",
       "usage_report_sent_at",
       "welcome_seen_at",
+      "security_checked_at",
+      "security_failing_since",
+      "kev_fetched_at",
     ],
   },
   invite_capabilities: COPY,
+  kev_cves: { kind: "skip" },
   invites: COPY,
   membership_capabilities: COPY,
   memberships: COPY,
@@ -166,6 +173,7 @@ export const MOVE_TABLES: Readonly<Record<string, TablePolicy>> = {
     nullOnCopy: ["session_id"],
   },
   oauth_resource: COPY,
+  osv_affected: { kind: "skip" },
   passkey: COPY,
   // The old Deplo's clean-up of its own servers; this Deplo's queue stays.
   pending_teardowns: { kind: "skip" },
@@ -178,6 +186,7 @@ export const MOVE_TABLES: Readonly<Record<string, TablePolicy>> = {
   registration_links: { kind: "copy", rekey: { token_enc: SECRET } },
   registries: { kind: "copy", rekey: { password_enc: SECRET } },
   scheduler_lease: { kind: "skip" },
+  security_findings: { kind: "skip", clear: true },
   // Updates of this Deplo's own fleet against its own pin.
   server_agent_updates: { kind: "local" },
   // The old Deplo's machines: read for the server map and team access, never inserted.
@@ -205,6 +214,7 @@ export const MOVE_TABLES: Readonly<Record<string, TablePolicy>> = {
   two_factor: { kind: "copy", rekey: { secret: BA, backup_codes: BA } },
   users: COPY,
   verification: { kind: "skip", clear: true },
+  workload_images: { kind: "skip", clear: true },
 };
 
 export interface ForeignKey {

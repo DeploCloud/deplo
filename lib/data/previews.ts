@@ -46,6 +46,8 @@ export type PreviewState =
 
 export interface AppPreviewDTO {
   id: string;
+  // Filled by the pull requests page for the row's shield (ADR-0038).
+  securityUpdates?: { count: number; exploited: number };
   appId: string;
   prNumber: number;
   title: string;

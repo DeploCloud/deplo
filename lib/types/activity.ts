@@ -3,6 +3,7 @@ import type { ID, VarAuthor } from "./identity";
 export type ActivityType =
   | "deployment"
   | "app"
+  | "security_update"
   | "project"
   | "database"
   | "domain"

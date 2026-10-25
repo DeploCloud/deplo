@@ -28,6 +28,7 @@ import {
 } from "../node-access";
 import { summarize, summarizeOne, type AppSummary } from "./summary";
 import type { App } from "../../types/app";
+import { appSecurityCounts } from "../security-updates/read";
 
 async function appOrderRank(teamId: string): Promise<Map<string, number>> {
   const rows = await getDb()
@@ -59,9 +60,16 @@ export async function listApps(query?: string): Promise<AppSummary[]> {
   const hits = query
     ? proj.filter((p) => matchesQuery(query, p.name, p.slug, p.id))
     : proj;
-  const pre = await preloadSummaries(hits);
+  const [pre, security] = await Promise.all([
+    preloadSummaries(hits),
+    appSecurityCounts(hits.map((p) => p.id)),
+  ]);
   return hits
-    .map((p) => ({ ...summarize(p, pre), capabilities: reach.get(p.id) }))
+    .map((p) => ({
+      ...summarize(p, pre),
+      capabilities: reach.get(p.id),
+      securityUpdates: security.get(p.id),
+    }))
     .sort((a, b) => {
       const ra = rank.get(a.id) ?? Infinity;
       const rb = rank.get(b.id) ?? Infinity;

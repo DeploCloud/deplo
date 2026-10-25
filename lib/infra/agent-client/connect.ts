@@ -12,6 +12,7 @@ import { HELLO_TIMEOUT_MS } from "./deadlines";
 import { AgentUnreachableError, assertAgentUsable } from "./errors";
 import { filesRpc } from "./files-rpc";
 import { hostRpc } from "./host-rpc";
+import { inventoryRpc } from "./inventory-rpc";
 import { metricsRpc } from "./metrics-rpc";
 import {
   openChannel,
@@ -32,6 +33,7 @@ export function dial(target: DialTarget): AgentConnection {
     ...agentSelfRpc(channel),
     ...dataCopyRpc(channel),
     ...hostRpc(channel),
+    ...inventoryRpc(channel),
     ...backupRpc(channel),
     ...consoleRpc(channel),
     ...cronRpc(channel),

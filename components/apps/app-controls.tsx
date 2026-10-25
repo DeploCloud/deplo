@@ -15,6 +15,7 @@ import {
   ArrowLeftRight,
   Trash2,
   Pencil,
+  ShieldCheck,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -28,6 +29,7 @@ import { SimpleTooltip } from "@/components/ui/tooltip";
 import { DeleteWithArtifacts } from "@/components/shared/delete-with-artifacts";
 import { RenameDialog } from "@/components/shared/rename-dialog";
 import { TransferTeamDialog } from "@/components/apps/settings/transfer-team-dialog";
+import { SecurityUpdatesDialog } from "@/components/security-updates/security-updates-dialog";
 import { gqlAction } from "@/lib/graphql-client";
 import { useAppLifecycle } from "@/components/apps/app-lifecycle";
 import { needsCapability, useAppCan } from "@/components/apps/app-capabilities";
@@ -55,6 +57,7 @@ export function AppControls({
   const [transferOpen, setTransferOpen] = React.useState(false);
   const [deleteOpen, setDeleteOpen] = React.useState(false);
   const [renameOpen, setRenameOpen] = React.useState(false);
+  const [securityOpen, setSecurityOpen] = React.useState(false);
   const { state, pending, canControl, start, stop, reload } = useAppLifecycle(
     appId,
     serverStatus,
@@ -192,6 +195,15 @@ export function AppControls({
             </SimpleTooltip>
           )}
           <SimpleTooltip
+            content="Known security flaws in what this app runs"
+            side="left"
+          >
+            <DropdownMenuItem onSelect={() => setSecurityOpen(true)}>
+              <ShieldCheck className="size-4" />
+              Security updates
+            </DropdownMenuItem>
+          </SimpleTooltip>
+          <SimpleTooltip
             content={tip(
               "move_apps",
               canMove,
@@ -248,6 +260,12 @@ export function AppControls({
             { id: appId, name: next },
           )
         }
+      />
+      <SecurityUpdatesDialog
+        open={securityOpen}
+        onOpenChange={setSecurityOpen}
+        appId={appId}
+        name={name}
       />
       <TransferTeamDialog
         open={transferOpen}

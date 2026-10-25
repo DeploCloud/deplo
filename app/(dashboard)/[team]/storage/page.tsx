@@ -1,5 +1,6 @@
 import { Database } from "lucide-react";
 import { listDatabases } from "@/lib/data/databases/rows";
+import { databaseSecurityCounts } from "@/lib/data/security-updates/read";
 import { ensureDefaultDestination } from "@/lib/data/destinations/create";
 import {
   destinationWhere,
@@ -109,6 +110,7 @@ export default async function StoragePage(props: PageProps<"/[team]/storage">) {
     hasCapability("restore_backups"),
     isInstanceAdmin(),
   ]);
+  const dbSecurity = await databaseSecurityCounts(databases.map((d) => d.id));
 
   const selfAddrs = deploHostSelfAddresses();
   const dbServers = servers
@@ -221,7 +223,10 @@ export default async function StoragePage(props: PageProps<"/[team]/storage">) {
             >
               <DatabasesGrid
                 key={[...databases.map((d) => d.id)].sort().join(",")}
-                databases={databases}
+                databases={databases.map((d) => ({
+                  ...d,
+                  securityUpdates: dbSecurity.get(d.id),
+                }))}
                 serverNames={serverNames}
                 environments={dbEnvironments}
                 canConfigure={canManageDatabases}

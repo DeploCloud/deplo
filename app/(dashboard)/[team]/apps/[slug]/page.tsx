@@ -1,5 +1,6 @@
 import { Suspense } from "react";
 import { AppDomainNotices } from "@/components/domains/app-domain-notices";
+import { SecurityUpdatesNotice } from "@/components/security-updates/security-updates-notice";
 import Link from "@/components/ui/link";
 import { notFound } from "next/navigation";
 import {
@@ -71,6 +72,15 @@ export default async function AppOverview(
 
       <Suspense fallback={null}>
         <AppDomainNotices app={project} />
+      </Suspense>
+
+      <Suspense fallback={null}>
+        <SecurityUpdatesNotice
+          kind="app"
+          id={project.id}
+          slug={slug}
+          name={project.name}
+        />
       </Suspense>
 
       <Card>

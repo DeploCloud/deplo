@@ -149,6 +149,13 @@ export async function register(): Promise<void> {
     console.error("[deplo] cron scheduler startup failed:", e);
   }
   try {
+    const { startSecurityUpdatesScheduler } =
+      await import("./lib/security-updates/scheduler");
+    startSecurityUpdatesScheduler();
+  } catch (e) {
+    console.error("[deplo] security updates scheduler startup failed:", e);
+  }
+  try {
     const { startMetricsStreams } = await import("./lib/monitoring/supervisor");
     startMetricsStreams();
   } catch (e) {
@@ -204,6 +211,11 @@ export async function register(): Promise<void> {
         .catch(() => {});
       void import("./lib/crons/scheduler")
         .then(({ releaseCronSchedulerLease }) => releaseCronSchedulerLease())
+        .catch(() => {});
+      void import("./lib/security-updates/scheduler")
+        .then(({ releaseSecurityUpdatesLease }) =>
+          releaseSecurityUpdatesLease(),
+        )
         .catch(() => {});
       void import("./lib/data/migration-runner/run-loop")
         .then(({ releaseMigrationRunnerLease }) =>

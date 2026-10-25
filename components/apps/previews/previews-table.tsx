@@ -45,6 +45,7 @@ import { useOptimisticRemove } from "@/components/shared/use-optimistic-remove";
 import { gqlAction } from "@/lib/graphql-client";
 import type { AppPreviewDTO } from "@/lib/data/previews";
 import { gitProfileUrl, timeAgo } from "@/lib/utils";
+import { SecurityShield } from "@/components/security-updates/security-shield";
 
 export function PreviewsTable({
   appSlug,
@@ -131,6 +132,9 @@ export function PreviewsTable({
                         #{p.prNumber}
                       </span>
                       <span className="line-clamp-1">{p.title}</span>
+                      {p.securityUpdates && (
+                        <SecurityShield {...p.securityUpdates} />
+                      )}
                     </a>
                     <p className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
                       <span className="flex items-center gap-1">

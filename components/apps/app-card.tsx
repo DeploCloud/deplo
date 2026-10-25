@@ -50,6 +50,7 @@ import {
 import { gqlAction } from "@/lib/graphql-client";
 import type { AppSummary } from "@/lib/data/apps/summary";
 import type { Capability } from "@/lib/types/identity";
+import { SecurityShield } from "@/components/security-updates/security-shield";
 
 type MenuKit = {
   Item: React.ElementType;
@@ -451,6 +452,9 @@ export function AppCard({
 
   const actions = (
     <div className="pointer-events-auto relative z-10 flex items-center gap-1">
+      {project.securityUpdates && (
+        <SecurityShield {...project.securityUpdates} />
+      )}
       <LiveCardStatusDot project={project} liveState={liveState} />
       <span className="hidden animate-in items-center duration-200 fade-in-0 slide-in-from-right-2 group-hover:flex focus-within:flex">
         {dragHandle}

@@ -131,6 +131,12 @@ const CONTROL_PLANE = [
   "deplo_move_servers",
   "deplo_move_workloads",
   "deplo_move_pauses",
+  "image_inventories",
+  "image_inventory_packages",
+  "workload_images",
+  "osv_affected",
+  "kev_cves",
+  "security_findings",
 ] as const;
 
 async function publicTables(): Promise<Set<string>> {
