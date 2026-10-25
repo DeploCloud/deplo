@@ -3,6 +3,7 @@ import "server-only";
 import { status as GrpcStatus, type ServiceError } from "@grpc/grpc-js";
 
 import { AGENT_TOO_OLD_MESSAGE, agentUsable } from "../../version";
+import { LINK_WAIT_MS } from "../agent-link/protocol";
 
 export { AGENT_TOO_OLD_MESSAGE };
 
@@ -13,6 +14,15 @@ export class AgentUnreachableError extends Error {
     readonly trust?: boolean,
   ) {
     super(message);
+  }
+}
+
+/** A server that links, whose link stayed away past the wait (ADR-0038). */
+export class AgentOfflineError extends AgentUnreachableError {
+  constructor(serverId: string) {
+    super(
+      `server ${serverId} is offline: its agent has not connected for ${LINK_WAIT_MS / 1000} s`,
+    );
   }
 }
 

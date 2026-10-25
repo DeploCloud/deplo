@@ -1,7 +1,11 @@
 import { status as GrpcStatus } from "@grpc/grpc-js";
 
 import { ContractVersion, type HelloResponse } from "../agent/gen/agent";
-import { AgentUnreachableError } from "./agent-client/errors";
+import { LINK_OFFLINE_MESSAGE } from "../agent-reachability";
+import {
+  AgentOfflineError,
+  AgentUnreachableError,
+} from "./agent-client/errors";
 import type { ServerStatus } from "../types/server";
 
 export interface ServerHealth {
@@ -24,6 +28,7 @@ export const HEALTH_MESSAGES = {
   refused:
     "The agent did not answer (connection refused). Is it running on the host?",
   timedOut: "The agent did not answer within the health-check deadline.",
+  linkDown: LINK_OFFLINE_MESSAGE,
 } as const;
 
 const CERT_VALIDITY_RE =
@@ -40,6 +45,8 @@ export function classifyServerHealth(
   err: unknown,
   opts: { storageOnly?: boolean } = {},
 ): ServerHealth {
+  if (err instanceof AgentOfflineError)
+    return { status: "offline", message: HEALTH_MESSAGES.linkDown };
   if (err instanceof AgentUnreachableError) {
     if (err.trust)
       return { status: "error", message: HEALTH_MESSAGES.untrusted };
@@ -67,6 +74,8 @@ export function isRetryableProbeFailure(err: unknown): boolean {
 }
 
 export function unreachableMessage(err: unknown): string | null {
+  if (err instanceof AgentOfflineError)
+    return `This server is offline. ${HEALTH_MESSAGES.linkDown}`;
   if (!(err instanceof AgentUnreachableError)) return null;
   if (err.trust) return HEALTH_MESSAGES.untrusted;
   if (isCertValidityError(err)) return HEALTH_MESSAGES.certExpired;

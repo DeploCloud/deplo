@@ -2,7 +2,10 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { status as GrpcStatus } from "@grpc/grpc-js";
 
-import { AgentUnreachableError } from "./agent-client/errors";
+import {
+  AgentOfflineError,
+  AgentUnreachableError,
+} from "./agent-client/errors";
 import {
   classifyServerHealth,
   isRetryableProbeFailure,
@@ -190,4 +193,23 @@ test("our own throw sites keep their copy, and other errors are left alone", () 
   );
   assert.equal(unreachableMessage(new Error("npm run build exited 1")), null);
   assert.equal(unreachableMessage(null), null);
+});
+
+test("a linked server that is offline is told in plain words: the machine, on, the internet", () => {
+  const sentence = HEALTH_MESSAGES.linkDown;
+  assert.match(sentence, /machine is on and connected to the internet/);
+  assert.doesNotMatch(sentence, /9443|port|firewall|inbound|outbound|agent/i);
+});
+
+test("a call that found no link fails as offline, in the same plain words", () => {
+  const offline = new AgentOfflineError("srv_9f2c");
+  assert.ok(offline instanceof AgentUnreachableError, "callers still see it");
+  assert.deepEqual(classifyServerHealth(null, offline), {
+    status: "offline",
+    message: HEALTH_MESSAGES.linkDown,
+  });
+  const told = unreachableMessage(offline) ?? "";
+  assert.match(told, /offline/);
+  assert.ok(told.endsWith(HEALTH_MESSAGES.linkDown), told);
+  assert.doesNotMatch(told, /srv_9f2c|agent/i, "no internal id or jargon");
 });

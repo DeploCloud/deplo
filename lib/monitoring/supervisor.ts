@@ -16,6 +16,7 @@ import {
   AgentUnreachableError,
 } from "../infra/agent-client/errors";
 import { connectMetricsStreamAgent } from "../infra/agent-client/preflight";
+import { hasLinked } from "../infra/agent-link/registry";
 import { isMetricsSavingEnabled } from "../data/monitoring-settings";
 import { measureServerForCollector } from "../data/monitoring";
 import { getDb } from "../db/client";
@@ -295,7 +296,10 @@ async function runStreamLoop(
 
       if (!rotation) {
         // An unusable agent is reachable: the health probe owns its status, not this loop.
-        if (attempt === 0 && !(e instanceof AgentTooOldError)) {
+        // A linked server is offline only once its link stays away, which server health records.
+        const linkDecides =
+          e instanceof AgentUnreachableError && hasLinked(serverId);
+        if (attempt === 0 && !(e instanceof AgentTooOldError) && !linkDecides) {
           await recordServerHealth(
             serverId,
             classifyServerHealth(null, e),

@@ -16,6 +16,8 @@ import {
   StackResult,
   type FollowLogsRequest,
   type LogChunk,
+  type MetricsSample,
+  type MetricsStreamRequest,
 } from "../../agent/gen/agent";
 import { certFingerprint, issueAgentServerCert } from "../../agent/pki";
 import { CERT_RENEWAL_CAPABILITY } from "../../agent/cert-renewal";
@@ -37,6 +39,8 @@ export interface FakeAgent {
   connections(): { opened: number; open: number };
   /** Sends a line to every log stream a caller holds open. */
   log(line: string): void;
+  /** Sends a frame to every telemetry stream a caller holds open. */
+  sample(frame: MetricsSample): void;
   /** Stops answering: every connection, open or new, is accepted and dropped. */
   refuse(on: boolean): void;
   /** The open connections went stale: the next bytes on each are answered with a reset. */
@@ -63,9 +67,16 @@ export interface FakeLink {
 
 // A real gRPC agent with real mTLS on loopback, behind a TCP hop the test can watch and break.
 export async function startFakeAgent(
-  opts: { version?: string } = {},
+  opts: {
+    version?: string;
+    dockerAvailable?: boolean;
+    capabilities?: string[];
+  } = {},
 ): Promise<FakeAgent> {
   const streams = new Set<ServerWritableStream<FollowLogsRequest, LogChunk>>();
+  const telemetry = new Set<
+    ServerWritableStream<MetricsStreamRequest, MetricsSample>
+  >();
   const backends: GrpcServer[] = [];
   const links = new Set<FakeLink>();
   let inject: (link: WebSocket) => void = () => {};
@@ -86,8 +97,11 @@ export async function startFakeAgent(
           HelloResponse.fromPartial({
             contractVersion: ContractVersion.CONTRACT_VERSION_V1,
             agentVersion: opts.version ?? AGENT_VERSION,
-            dockerAvailable: true,
-            capabilities: [CERT_RENEWAL_CAPABILITY],
+            dockerAvailable: opts.dockerAvailable ?? true,
+            capabilities: [
+              CERT_RENEWAL_CAPABILITY,
+              ...(opts.capabilities ?? []),
+            ],
             hostArch: "amd64",
           }),
         );
@@ -95,6 +109,12 @@ export async function startFakeAgent(
       followLogs(call: ServerWritableStream<FollowLogsRequest, LogChunk>) {
         streams.add(call);
         call.on("cancelled", () => streams.delete(call));
+      },
+      streamMetrics(
+        call: ServerWritableStream<MetricsStreamRequest, MetricsSample>,
+      ) {
+        telemetry.add(call);
+        call.on("cancelled", () => telemetry.delete(call));
       },
       async renewalCsr(
         _call: unknown,
@@ -192,6 +212,9 @@ export async function startFakeAgent(
     log(line) {
       for (const s of streams) s.write({ data: Buffer.from(line) } as LogChunk);
     },
+    sample(frame) {
+      for (const s of telemetry) s.write(frame);
+    },
     refuse(on) {
       refusing = on;
       if (on) for (const sock of [...open.keys()]) sock.destroy();
@@ -232,7 +255,7 @@ export async function startFakeAgent(
       return link;
     },
     async stop() {
-      for (const s of streams) s.end();
+      for (const s of [...streams, ...telemetry]) s.end();
       for (const link of links) link.drop();
       for (const sock of [...open.keys()]) sock.destroy();
       await new Promise((r) => hop.close(r));
