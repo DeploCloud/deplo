@@ -100,6 +100,7 @@ export const MOVE_TABLES: Readonly<Record<string, TablePolicy>> = {
   env_vars: { kind: "copy", rekey: { value_enc: SECRET } },
   environment_grants: COPY,
   environments: COPY,
+  epss_scores: { kind: "skip" },
   folder_grants: COPY,
   folders: { kind: "copy", deferred: ["parent_id"] },
   git_connections: {

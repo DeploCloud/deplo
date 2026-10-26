@@ -6,6 +6,7 @@ import {
   type SecurityUpdate,
   type SecurityUpdates,
 } from "@/lib/data/security-updates/read";
+import type { UpdateGroup } from "@/lib/security-updates/group";
 import {
   ignoreSecurityUpdate,
   unignoreSecurityUpdate,
@@ -58,9 +59,17 @@ const SecurityUpdateRef = builder
       ignoredUntil: t.exposeString("ignoredUntil", { nullable: true }),
       ignoreReason: t.exposeString("ignoreReason", { nullable: true }),
       ignoredBy: t.exposeString("ignoredBy", { nullable: true }),
-      actionable: t.exposeBoolean("actionable", {
+      counted: t.exposeBoolean("counted", {
         description:
-          "True when it is critical or already used in attacks, in the app's own dependencies or the software its image ships. Only these are counted and alerted.",
+          "True when it is critical or already used in attacks, in the app's own dependencies or the software its image ships. Only these count in `count` and send alerts.",
+      }),
+      actionable: t.exposeBoolean("actionable", {
+        deprecationReason: "Use `counted`, which it always equals.",
+      }),
+      epss: t.exposeFloat("epss", {
+        nullable: true,
+        description:
+          "FIRST's EPSS: the chance, from 0 to 1, that its CVE is exploited in the next 30 days. Null when it has no CVE or no score yet.",
       }),
       service: t.exposeString("service", {
         description:
@@ -71,6 +80,47 @@ const SecurityUpdateRef = builder
           "The image it was found in. An image's update moves the image as a whole.",
       }),
       osvUrl: t.exposeString("osvUrl"),
+    }),
+  });
+
+const SecurityUpdateGroupRef = builder
+  .objectRef<UpdateGroup<SecurityUpdate>>("SecurityUpdateGroup")
+  .implement({
+    description:
+      "One security update as the dashboard lists it: a package of the app's own, or a whole image, with every advisory behind it.",
+    fields: (t) => ({
+      key: t.exposeID("key"),
+      image: t.exposeBoolean("image", {
+        description:
+          "True when the update moves a whole image to a newer build or version; `packageName` and `installedVersion` are then null.",
+      }),
+      imageRef: t.string({ resolve: (g) => g.items[0].imageRef }),
+      service: t.string({ resolve: (g) => g.items[0].service }),
+      packageName: t.string({
+        nullable: true,
+        resolve: (g) => (g.image ? null : g.items[0].packageName),
+      }),
+      installedVersion: t.string({
+        nullable: true,
+        resolve: (g) => (g.image ? null : g.items[0].installedVersion),
+      }),
+      fixedVersion: t.exposeString("fixedVersion", {
+        nullable: true,
+        description: "The version that closes every advisory of the package.",
+      }),
+      level: t.field({ type: SecurityLevelEnum, resolve: (g) => g.level }),
+      fix: t.field({ type: SecurityFixEnum, resolve: (g) => g.fix }),
+      counted: t.boolean({
+        description:
+          "True when it counts in `count`: critical or attacked, and not ignored.",
+        resolve: (g) => g.items.some((u) => u.counted && !u.ignored),
+      }),
+      exploited: t.exposeBoolean("exploited"),
+      ignored: t.boolean({ resolve: (g) => g.items.every((u) => u.ignored) }),
+      advisories: t.field({
+        type: [SecurityUpdateRef],
+        resolve: (g) => g.items,
+      }),
     }),
   });
 
@@ -103,8 +153,15 @@ const SecurityUpdatesRef = builder
         description:
           "A newer version of the image on the same line, when the registry lists one.",
       }),
+      groups: t.field({
+        type: [SecurityUpdateGroupRef],
+        description:
+          "One per package of the app's own or per image, the way the dashboard counts them; use these rather than grouping `updates`.",
+        resolve: (s) => s.groups,
+      }),
       updates: t.field({
         type: [SecurityUpdateRef],
+        description: "Every advisory, one row each.",
         resolve: (s) => s.updates,
       }),
     }),

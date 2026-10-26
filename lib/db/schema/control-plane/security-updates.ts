@@ -132,6 +132,15 @@ export const osvRanges = pgTable(
   ],
 );
 
+// FIRST's EPSS: the chance a CVE is exploited in the next 30 days, read once a day.
+export const epssScores = pgTable("epss_scores", {
+  cveId: text("cve_id").primaryKey(),
+  // Both in hundredths of a percent: 1234 is 12.34%.
+  scoreBp: integer("score_bp").notNull(),
+  percentileBp: integer("percentile_bp").notNull(),
+  fetchedAt: isoTimestamptz("fetched_at").notNull(),
+});
+
 // CISA's known-exploited list, replaced whole once a day.
 export const kevCves = pgTable("kev_cves", {
   cveId: text("cve_id").primaryKey(),

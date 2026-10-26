@@ -31,6 +31,8 @@ const QUERY = /* GraphQL */ `
         cve
         level
         cvss
+        epss
+        summary
         ecosystem
         packageName
         installedVersion

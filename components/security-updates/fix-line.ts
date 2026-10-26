@@ -27,6 +27,12 @@ export function fixLine(u: FixLineInput): string {
   }
 }
 
+// "EPSS 12%": the chance it is exploited in the next 30 days, as FIRST scores it.
+export function epssLabel(epss: number | null): string | null {
+  if (epss == null) return null;
+  return epss < 0.01 ? "EPSS <1%" : `EPSS ${Math.round(epss * 100)}%`;
+}
+
 export const UNREADABLE: Record<string, string> = {
   too_large: "An image is too large to check on its server.",
   low_disk: "Its server is too low on disk space to check an image.",

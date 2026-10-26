@@ -11,7 +11,9 @@ import { deployments } from "../../db/schema/control-plane/deployments";
 import { instanceSettings } from "../../db/schema/control-plane/instance";
 import { folders as foldersTable } from "../../db/schema/control-plane/projects";
 import {
+  epssScores,
   imageInventories,
+  osvAffected,
   securityFindings,
   workloadImages,
 } from "../../db/schema/control-plane/security-updates";
@@ -236,4 +238,35 @@ test("an image that changed and was not matched yet is being checked", async () 
   const s = await as(OWNER, TEAM_A, () => appSecurityUpdates("prj_web"));
   assert.equal(s!.checking, true);
   assert.equal(s!.updates.length, 0);
+});
+
+test("groups count once per package with EPSS on each advisory", async () => {
+  await db.insert(osvAffected).values({
+    vulnId: "GHSA-a",
+    ecosystem: "npm",
+    name: "a",
+    cve: "CVE-2026-1",
+    severity: "critical",
+    cvssTenths: 98,
+    summary: "Only with enableJavaScriptEvaluation",
+    modified: "m1",
+    fetchedAt: T0,
+  });
+  await db.insert(epssScores).values({
+    cveId: "CVE-2026-1",
+    scoreBp: 1234,
+    percentileBp: 9900,
+    fetchedAt: T0,
+  });
+  const s = await as(OWNER, TEAM_A, () => appSecurityUpdates("prj_web"));
+  const a = s!.updates.find((u) => u.vulnId === "GHSA-a")!;
+  assert.equal(a.epss, 0.1234);
+  assert.equal(a.summary, "Only with enableJavaScriptEvaluation");
+  assert.equal(a.counted, true);
+  assert.deepEqual(
+    s!.groups
+      .map((g) => `${g.items[0].packageName}:${g.items.some((u) => u.counted)}`)
+      .sort(),
+    ["a:true", "b:false", "c:true"],
+  );
 });

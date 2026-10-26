@@ -138,6 +138,7 @@ const CONTROL_PLANE = [
   "osv_affected",
   "osv_ranges",
   "kev_cves",
+  "epss_scores",
   "security_findings",
   "security_ignores",
 ] as const;

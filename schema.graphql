@@ -5814,13 +5814,20 @@ type SecuritySubject {
 
 """One known vulnerability in a package an app or database runs."""
 type SecurityUpdate {
+  actionable: Boolean @deprecated(reason: "Use `counted`, which it always equals.")
+
   """
-  True when it is critical or already used in attacks, in the app's own dependencies or the software its image ships. Only these are counted and alerted.
+  True when it is critical or already used in attacks, in the app's own dependencies or the software its image ships. Only these count in `count` and send alerts.
   """
-  actionable: Boolean
+  counted: Boolean
   cve: String
   cvss: Float
   ecosystem: String
+
+  """
+  FIRST's EPSS: the chance, from 0 to 1, that its CVE is exploited in the next 30 days. Null when it has no CVE or no score yet.
+  """
+  epss: Float
   fix: SecurityFix
   fixedVersion: String
   ignoreReason: String
@@ -5850,6 +5857,33 @@ type SecurityUpdate {
 }
 
 """
+One security update as the dashboard lists it: a package of the app's own, or a whole image, with every advisory behind it.
+"""
+type SecurityUpdateGroup {
+  advisories: [SecurityUpdate!]
+
+  """True when it counts in `count`: critical or attacked, and not ignored."""
+  counted: Boolean
+  exploited: Boolean
+  fix: SecurityFix
+
+  """The version that closes every advisory of the package."""
+  fixedVersion: String
+  ignored: Boolean
+
+  """
+  True when the update moves a whole image to a newer build or version; `packageName` and `installedVersion` are then null.
+  """
+  image: Boolean
+  imageRef: String
+  installedVersion: String
+  key: ID
+  level: SecurityLevel
+  packageName: String
+  service: String
+}
+
+"""
 The security updates of one app or database, from the package lists of the images it runs. https://deplo.build/docs/guides/observability/security-updates
 """
 type SecurityUpdates {
@@ -5870,6 +5904,11 @@ type SecurityUpdates {
   exploited: Int
 
   """
+  One per package of the app's own or per image, the way the dashboard counts them; use these rather than grouping `updates`.
+  """
+  groups: [SecurityUpdateGroup!]
+
+  """
   A newer version of the image on the same line, when the registry lists one.
   """
   newerTag: String
@@ -5878,6 +5917,8 @@ type SecurityUpdates {
   Why some of its images could not be read: too_large, low_disk, low_memory, timed_out, unsupported or failed.
   """
   unreadable: [String!]
+
+  """Every advisory, one row each."""
   updates: [SecurityUpdate!]
 }
 

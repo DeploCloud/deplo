@@ -12,6 +12,7 @@ import { instanceFrozen } from "../data/deplo-move/freeze";
 import { isTestEnv } from "../db/pg";
 import { schedulesPaused } from "../data/deplo-move/schedules";
 import { listAllServers } from "../data/servers/roster";
+import { refreshEpss } from "./epss";
 import { fetchKevCves } from "./kev";
 import { matchWorkloads, storeKev } from "./match";
 import { OsvUnavailableError } from "./osv";
@@ -72,7 +73,8 @@ export async function runSecurityUpdatesTick(
     await refreshRegistryStates(now);
 
     const full = olderThan(s.checkedAt, FULL_MATCH_EVERY_MS, now);
-    if (full && olderThan(s.kevFetchedAt, KEV_EVERY_MS, now)) {
+    const daily = full && olderThan(s.kevFetchedAt, KEV_EVERY_MS, now);
+    if (daily) {
       try {
         await storeKev(await fetchKevCves());
         await stampSecurityState({ kevFetchedAt: now.toISOString() });
@@ -89,6 +91,13 @@ export async function runSecurityUpdatesTick(
         ...(full ? { checkedAt: now.toISOString() } : {}),
       });
       if (full) await dropUnusedInventories(now);
+      // After the match, so a CVE found in this pass is scored today.
+      if (daily)
+        await refreshEpss(now).catch((e) =>
+          console.warn(
+            `[security-updates] EPSS scores: ${e instanceof Error ? e.message : String(e)}`,
+          ),
+        );
     } catch (e) {
       if (!(e instanceof OsvUnavailableError)) throw e;
       console.warn(`[security-updates] ${e.message}`);

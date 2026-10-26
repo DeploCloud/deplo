@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-import { fixLine } from "./fix-line";
+import { epssLabel, fixLine } from "./fix-line";
 
 test("fixLine: one plain line per way of getting the fix", () => {
   const base = {
@@ -23,4 +23,10 @@ test("fixLine: one plain line per way of getting the fix", () => {
     "Version 1.60.2 is available and may fix 1 known flaw",
   );
   assert.equal(fixLine({ ...base, fix: "deplo" }), "", "never shown");
+});
+
+test("epssLabel: a percentage, and <1% rather than a misleading 0%", () => {
+  assert.equal(epssLabel(0.1234), "EPSS 12%");
+  assert.equal(epssLabel(0.004), "EPSS <1%");
+  assert.equal(epssLabel(null), null);
 });

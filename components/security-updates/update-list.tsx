@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/button";
 import { gqlAction } from "@/lib/graphql-client";
 import type { UpdateGroup } from "@/lib/security-updates/group";
 import { cn, plural } from "@/lib/utils";
-import { AdvisoryList } from "./advisory-list";
+import { AdvisoryContext, AdvisoryList } from "./advisory-list";
 import { fixLine } from "./fix-line";
 import { IgnoreDialog } from "./ignore-dialog";
 import { SecurityLevelBadge } from "./security-level";
@@ -182,7 +182,11 @@ function UpdateRow({
             ? ` · ${plural(g.items.length, "advisory", "advisories")}`
             : ""}
         </p>
-        {single ? null : (
+        {single ? (
+          <div className="mt-1">
+            <AdvisoryContext u={u} />
+          </div>
+        ) : (
           <Collapse open={open} className="pt-2.5">
             <AdvisoryList updates={g.items} byPackage={g.image} />
           </Collapse>

@@ -6,6 +6,7 @@ import { and, eq, inArray, isNotNull, max } from "drizzle-orm";
 import { getDb } from "../../db/client";
 import { deployments } from "../../db/schema/control-plane/deployments";
 import {
+  epssScores,
   imageInventories,
   osvAffected,
   securityFindings,
@@ -19,7 +20,12 @@ import {
   type FixKind,
   type Level,
 } from "../../security-updates/fix-kind";
-import { countUpdates, type Groupable } from "../../security-updates/group";
+import {
+  countUpdates,
+  groupUpdates,
+  type Groupable,
+  type UpdateGroup,
+} from "../../security-updates/group";
 import { activeIgnores, ignoreKey } from "../../security-updates/ignored";
 import { securityState } from "../../security-updates/state";
 import { getDatabase } from "../databases/rows";
@@ -41,7 +47,12 @@ export interface SecurityUpdate {
   installedVersion: string;
   fixedVersion: string | null;
   fix: FixKind;
+  // Critical or attacked, in scope: what the badge counts and alerts fire for.
+  counted: boolean;
+  // Older name for counted, kept for API clients.
   actionable: boolean;
+  // FIRST's chance of exploitation in the next 30 days, 0 to 1; null when unscored.
+  epss: number | null;
   service: string;
   // The image it was found in: an image's update moves it whole.
   imageRef: string;
@@ -59,6 +70,8 @@ export interface SecurityUpdates {
   exploited: number;
   newerTag: string | null;
   updates: SecurityUpdate[];
+  // One per package of the app's, or per image, with its advisories: what the dashboard lists.
+  groups: UpdateGroup<SecurityUpdate>[];
 }
 
 export interface SecurityCount {
@@ -155,6 +168,16 @@ async function subjectUpdates(
   const ignores = await activeIgnores(
     s.kind === "app" ? { appIds: [s.appId] } : { databaseIds: [s.databaseId] },
   );
+  const cves = [...new Set(osv.flatMap((o) => (o.cve ? [o.cve] : [])))];
+  const epss = new Map(
+    (cves.length
+      ? await db
+          .select()
+          .from(epssScores)
+          .where(inArray(epssScores.cveId, cves))
+      : []
+    ).map((e) => [e.cveId, e.scoreBp / 10_000]),
+  );
   const updates = findings
     .filter(({ f }) => inScope(f) && !stale.has(workloadKey(f)))
     .map(({ f, imageRef }): SecurityUpdate => {
@@ -181,7 +204,9 @@ async function subjectUpdates(
         installedVersion: f.installedVersion,
         fixedVersion: f.fixedVersion,
         fix,
+        counted: isActionable(f),
         actionable: isActionable(f),
+        epss: a?.cve ? (epss.get(a.cve) ?? null) : null,
         service: f.service,
         imageRef,
         osvUrl: `https://osv.dev/vulnerability/${encodeURIComponent(f.vulnId)}`,
@@ -212,6 +237,7 @@ async function subjectUpdates(
     exploited: counted.exploited,
     newerTag: rows.find((r) => r.wi.newerTag)?.wi.newerTag ?? null,
     updates,
+    groups: groupUpdates(updates),
   };
 }
 

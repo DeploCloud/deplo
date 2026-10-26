@@ -5,6 +5,8 @@ export interface Update {
   cve: string | null;
   level: Level;
   cvss: number | null;
+  epss: number | null;
+  summary: string;
   ecosystem: string;
   packageName: string;
   installedVersion: string;

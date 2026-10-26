@@ -1,23 +1,31 @@
 import * as z from "zod";
 import { tool, type McpToolDef } from "./tool-def";
 
-const UPDATE_FIELDS = /* GraphQL */ `
-  vulnId
-  cve
-  level
-  cvss
-  summary
-  ecosystem
+// One entry per package or image, the way the dashboard counts them, advisories inside.
+const GROUP_FIELDS = /* GraphQL */ `
+  key
+  image
+  imageRef
+  service
   packageName
   installedVersion
   fixedVersion
+  level
   fix
-  actionable
+  counted
+  exploited
   ignored
-  ignoredUntil
-  ignoreReason
-  service
-  osvUrl
+  advisories {
+    vulnId
+    cve
+    level
+    cvss
+    epss
+    summary
+    ignoredUntil
+    ignoreReason
+    osvUrl
+  }
 `;
 
 const SUBJECT = {
@@ -37,7 +45,7 @@ export const SECURITY_UPDATES: McpToolDef[] = [
     name: "list_security_updates",
     title: "List security updates",
     description:
-      "Known security flaws in what an app or database runs, with how to fix each. With neither id, every app and database of the team that has updates to apply, most urgent first.",
+      "Known security flaws in what an app or database runs: one entry per package or image, with its fix and advisories; only `counted` ones are in `count`. With no id, every app and database with updates.",
     group: "Security",
     requires: "view",
     readOnly: true,
@@ -51,7 +59,7 @@ export const SECURITY_UPDATES: McpToolDef[] = [
     query: /* GraphQL */ `
       query McpListSecurityUpdates($appId: ID, $databaseId: ID, $one: Boolean!) {
         securityUpdates(appId: $appId, databaseId: $databaseId) @include(if: $one) {
-          checkedAt unreadable count exploited newerTag updates { ${UPDATE_FIELDS} }
+          checkedAt checking unreadable count exploited newerTag groups { ${GROUP_FIELDS} }
         }
         securityUpdatesOverview @skip(if: $one) { kind id name count exploited }
       }
@@ -91,6 +99,35 @@ export const SECURITY_UPDATES: McpToolDef[] = [
           vulnIds: $vulnIds
           reason: $reason
           days: $days
+        )
+      }
+    `,
+  }),
+  tool({
+    name: "unignore_security_update",
+    title: "Stop ignoring a security update",
+    description:
+      "Bring ignored advisories of one app or database back at once: they count and alert again. Pass the vulnIds that ignore_security_update set aside.",
+    group: "Security",
+    requires: "ignore_security_updates",
+    idempotent: true,
+    input: z.object({
+      ...SUBJECT,
+      vulnIds: z
+        .array(z.string())
+        .min(1)
+        .describe("vulnId values from list_security_updates."),
+    }),
+    query: /* GraphQL */ `
+      mutation McpUnignoreSecurityUpdate(
+        $appId: ID
+        $databaseId: ID
+        $vulnIds: [String!]!
+      ) {
+        unignoreSecurityUpdate(
+          appId: $appId
+          databaseId: $databaseId
+          vulnIds: $vulnIds
         )
       }
     `,

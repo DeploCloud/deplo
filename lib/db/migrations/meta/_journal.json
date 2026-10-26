@@ -1352,6 +1352,13 @@
       "when": 1793003094680,
       "tag": "0192_osv_ranges",
       "breakpoints": true
+    },
+    {
+      "idx": 193,
+      "version": "7",
+      "when": 1793003507092,
+      "tag": "0193_epss_scores",
+      "breakpoints": true
     }
   ]
 }
