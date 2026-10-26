@@ -1,9 +1,10 @@
 "use client";
 
 import * as React from "react";
-import { ExternalLink } from "lucide-react";
+import { ChevronRight, ExternalLink } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import Link from "@/components/ui/link";
 import {
   Dialog,
   DialogContent,
@@ -56,7 +57,14 @@ export function AboutDialog({
             <Out href={`${GITHUB_URL}/tree/${ref}`} label="GitHub" />
           </Row>
           <Row label="Open source licenses">
-            <Out href="/third-party-notices.txt" label="Third-party notices" />
+            <Link
+              href="/settings/licenses"
+              onClick={() => onOpenChange(false)}
+              className="inline-flex items-center gap-1.5 hover:text-muted-foreground"
+            >
+              Third-party notices
+              <ChevronRight className="size-3.5 text-muted-foreground" />
+            </Link>
           </Row>
         </dl>
         <DialogFooter>

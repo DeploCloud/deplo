@@ -85,6 +85,7 @@ const EXTRA_KEYWORDS: Record<string, string> = {
   "/settings/roles": "permission permissions capability access",
   "/settings/tokens": "apikey bearer cli automation",
   "/settings/migrations": "import migrate move",
+  "/settings/licenses": "open source third party notices attribution oss",
   "/deployments": "rollback release build history",
 };
 

@@ -4,7 +4,11 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
-import { thirdPartyNotices } from "../scripts/third-party-notices.mjs";
+import {
+  collectNotices,
+  githubUrl,
+  renderNotices,
+} from "../scripts/third-party-notices.mjs";
 
 const root = fs.mkdtempSync(path.join(os.tmpdir(), "notices-"));
 
@@ -17,7 +21,7 @@ function pkg(dir: string, json: object, files: Record<string, string> = {}) {
   }
 }
 
-describe("thirdPartyNotices", () => {
+describe("third-party notices", () => {
   after(() => fs.rmSync(root, { recursive: true, force: true }));
 
   pkg(".", {
@@ -44,23 +48,43 @@ describe("thirdPartyNotices", () => {
   pkg("node_modules/b", { name: "b", version: "1.0.0", license: "ISC" });
   pkg("node_modules/tool", { name: "tool", version: "1.0.0", license: "MIT" });
 
-  const out = thirdPartyNotices(root);
+  const notices = collectNotices(root);
+  const names = notices.map((n) => `${n.name}@${n.version}`);
 
-  it("follows dependencies the way Node resolves them", () => {
+  it("follows dependencies the way Node resolves them, and only those", () => {
+    assert.deepEqual(names, ["a@1.0.0", "b@2.0.0"]);
+  });
+
+  it("keeps the license text, or the README's license section", () => {
+    assert.equal(notices[0].text, "a's license");
+    assert.equal(notices[1].text, "## License\n\nb's table");
+    assert.equal(notices[1].github, "https://github.com/acme/b");
+  });
+
+  it("renders the download with every package and its source", () => {
+    const out = renderNotices(notices);
     assert.match(out, /^a@1\.0\.0\nLicense: MIT\n\na's license$/m);
-    assert.match(out, /^b@2\.0\.0\nLicense: LGPL-3\.0$/m);
-    assert.doesNotMatch(out, /b@1\.0\.0/);
+    assert.match(out, /Source: https:\/\/github\.com\/acme\/b\n\n## License/);
   });
 
-  it("falls back to the README's license section", () => {
-    assert.match(
-      out,
-      /Source: https:\/\/github\.com\/acme\/b\n\n## License\n\nb's table\n/,
-    );
-    assert.doesNotMatch(out, /not this/);
-  });
-
-  it("leaves out the app itself and what only builds it", () => {
-    assert.doesNotMatch(out, /^(app|tool)@/m);
+  it("finds the GitHub page behind every way npm spells it", () => {
+    for (const [repo, url] of [
+      ["user/repo", "https://github.com/user/repo"],
+      ["github:user/repo", "https://github.com/user/repo"],
+      [
+        "git+ssh://git@github.com/user/repo.git",
+        "https://github.com/user/repo",
+      ],
+      ["https://github.com/user/repo#readme", "https://github.com/user/repo"],
+      [
+        { url: "git+https://github.com/org/mono.git", directory: "packages/x" },
+        "https://github.com/org/mono/tree/HEAD/packages/x",
+      ],
+      ["git+https://gitlab.com/user/repo.git", null],
+      ["gitlab:user/repo", null],
+      [undefined, null],
+    ] as const) {
+      assert.equal(githubUrl(repo), url, JSON.stringify(repo));
+    }
   });
 });

@@ -20,6 +20,7 @@
 /out/
 # Written by scripts/third-party-notices.mjs at build time.
 /public/third-party-notices.txt
+/public/third-party-notices.json
 
 # production
 /build

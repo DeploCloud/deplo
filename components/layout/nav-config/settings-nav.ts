@@ -11,6 +11,7 @@ import {
   Fingerprint,
   Bot,
   Cable,
+  Scale,
 } from "lucide-react";
 
 import { DeploMark } from "@/components/logo";
@@ -116,6 +117,12 @@ export const SETTINGS_NAV: NavSection[] = [
         icon: Users,
         tooltip: "Instance-wide user administration",
         requiresAdmin: true,
+      },
+      {
+        label: "Licenses",
+        href: "/settings/licenses",
+        icon: Scale,
+        tooltip: "The open source software inside Deplo",
       },
       {
         label: "Deplo",
