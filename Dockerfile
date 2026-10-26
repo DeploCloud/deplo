@@ -39,7 +39,9 @@ ENV NEXT_TELEMETRY_DISABLED=1
 # real values arrive as environment variables at run time.
 ENV DEPLO_DATABASE_URL=postgres://build:build@127.0.0.1:5432/build
 ENV DEPLO_SECRET=build-time-placeholder-not-a-real-secret
-RUN node node_modules/next/dist/bin/next build
+# No .git in the context, so the workflow names the commit the About dialog shows.
+ARG DEPLO_COMMIT=""
+RUN node scripts/third-party-notices.mjs && node node_modules/next/dist/bin/next build
 
 # The break-glass CLI as one bundled file. The runtime image below has no source
 # tree, no bun and no tsx, so `bun run recover` cannot exist there - which left

@@ -18,6 +18,8 @@
 # What a restart renames the old build to before rebuilding.
 /.next.prev-*/
 /out/
+# Written by scripts/third-party-notices.mjs at build time.
+/public/third-party-notices.txt
 
 # production
 /build

@@ -2,6 +2,8 @@ import { deplo as agentPin, version as packageVersion } from "../package.json";
 
 export const DEPLO_VERSION: string = packageVersion;
 export const DEPLO_REPO = "DeploCloud/deplo";
+/** The commit this build came from, inlined by next.config; empty when unknown. */
+export const DEPLO_COMMIT: string = process.env.DEPLO_COMMIT ?? "";
 
 // The one agent this panel installs, and the oldest it still talks to (ADR-0037).
 export const AGENT_VERSION: string = agentPin.agent;

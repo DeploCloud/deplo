@@ -1,5 +1,6 @@
 "use client";
 
+import * as React from "react";
 import Link from "@/components/ui/link";
 import {
   LogOut,
@@ -8,6 +9,7 @@ import {
   KeyRound,
   BookOpen,
   ExternalLink,
+  Info,
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -17,6 +19,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { UserAvatar } from "@/components/shared/user-avatar";
+import { AboutDialog } from "@/components/layout/about-dialog";
 import { DiscordIcon, GitHubIcon } from "@/components/shared/brand-icons";
 import { gqlAction } from "@/lib/graphql-client";
 import { DISCORD_URL, GITHUB_URL } from "@/lib/links";
@@ -36,83 +39,94 @@ const EXTERNAL_LINKS = [
 ];
 
 export function UserMenu({ user }: { user: PublicUser }) {
+  const [aboutOpen, setAboutOpen] = React.useState(false);
   async function handleLogout() {
     await gqlAction(`mutation { logout }`);
     window.location.assign("/login");
   }
 
   return (
-    <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        <button
-          type="button"
-          className="cursor-pointer rounded-full outline-none focus-visible:ring-2 focus-visible:ring-ring"
-          aria-label="Account menu"
-        >
-          <UserAvatar
-            name={user.name}
-            username={user.username}
-            avatarUrl={user.avatarUrl}
-            size="lg"
-          />
-        </button>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="w-64">
-        <DropdownMenuItem asChild className="gap-3 py-2">
-          <Link href="/settings/account" className="cursor-pointer">
+    <>
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <button
+            type="button"
+            className="cursor-pointer rounded-full outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            aria-label="Account menu"
+          >
             <UserAvatar
               name={user.name}
               username={user.username}
               avatarUrl={user.avatarUrl}
-              size="xl"
+              size="lg"
             />
-            <div className="flex min-w-0 flex-col">
-              <span className="truncate text-sm font-medium text-foreground">
-                {user.name || user.username}
-              </span>
-              <span className="truncate text-xs font-normal text-muted-foreground">
-                @{user.username}
-              </span>
-            </div>
-          </Link>
-        </DropdownMenuItem>
-        <DropdownMenuSeparator />
-        {ACCOUNT_LINKS.map(({ href, icon: Icon, label }) => (
-          <DropdownMenuItem key={href} asChild>
-            <Link href={href} className="cursor-pointer">
-              <Icon className="size-4" />
-              {label}
+          </button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end" className="w-64">
+          <DropdownMenuItem asChild className="gap-3 py-2">
+            <Link href="/settings/account" className="cursor-pointer">
+              <UserAvatar
+                name={user.name}
+                username={user.username}
+                avatarUrl={user.avatarUrl}
+                size="xl"
+              />
+              <div className="flex min-w-0 flex-col">
+                <span className="truncate text-sm font-medium text-foreground">
+                  {user.name || user.username}
+                </span>
+                <span className="truncate text-xs font-normal text-muted-foreground">
+                  @{user.username}
+                </span>
+              </div>
             </Link>
           </DropdownMenuItem>
-        ))}
-        <DropdownMenuSeparator />
-        {EXTERNAL_LINKS.map(({ href, icon: Icon, label }) => (
-          <DropdownMenuItem key={href} asChild>
-            <a
-              href={href}
-              target="_blank"
-              rel="noreferrer"
-              className="cursor-pointer"
-            >
-              <Icon className="size-4" />
-              {label}
-              <ExternalLink className="ml-auto size-4 text-muted-foreground" />
-            </a>
+          <DropdownMenuSeparator />
+          {ACCOUNT_LINKS.map(({ href, icon: Icon, label }) => (
+            <DropdownMenuItem key={href} asChild>
+              <Link href={href} className="cursor-pointer">
+                <Icon className="size-4" />
+                {label}
+              </Link>
+            </DropdownMenuItem>
+          ))}
+          <DropdownMenuSeparator />
+          {EXTERNAL_LINKS.map(({ href, icon: Icon, label }) => (
+            <DropdownMenuItem key={href} asChild>
+              <a
+                href={href}
+                target="_blank"
+                rel="noreferrer"
+                className="cursor-pointer"
+              >
+                <Icon className="size-4" />
+                {label}
+                <ExternalLink className="ml-auto size-4 text-muted-foreground" />
+              </a>
+            </DropdownMenuItem>
+          ))}
+          <DropdownMenuItem
+            className="cursor-pointer"
+            onSelect={() => setAboutOpen(true)}
+          >
+            <Info className="size-4" />
+            About Deplo
           </DropdownMenuItem>
-        ))}
-        <DropdownMenuSeparator />
-        <DropdownMenuItem
-          variant="destructive"
-          className="cursor-pointer"
-          onSelect={(e) => {
-            e.preventDefault();
-            void handleLogout();
-          }}
-        >
-          <LogOut className="size-4" />
-          Log out
-        </DropdownMenuItem>
-      </DropdownMenuContent>
-    </DropdownMenu>
+          <DropdownMenuSeparator />
+          <DropdownMenuItem
+            variant="destructive"
+            className="cursor-pointer"
+            onSelect={(e) => {
+              e.preventDefault();
+              void handleLogout();
+            }}
+          >
+            <LogOut className="size-4" />
+            Log out
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+      <AboutDialog open={aboutOpen} onOpenChange={setAboutOpen} />
+    </>
   );
 }

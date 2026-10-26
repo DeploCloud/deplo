@@ -9,8 +9,8 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "next build",
-    "prod": "next build && next start",
+    "build": "node scripts/third-party-notices.mjs && next build",
+    "prod": "bun run build && next start",
     "start": "NODE_OPTIONS=--max-semi-space-size=64 next start",
     "lint": "eslint",
     "build:recover": "node scripts/build-recover.mjs",

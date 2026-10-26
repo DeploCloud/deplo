@@ -1,3 +1,4 @@
+import { execSync } from "node:child_process";
 import type { NextConfig } from "next";
 
 const securityHeaders = [
@@ -21,11 +22,26 @@ function devOrigins(): string[] {
   }
 }
 
+// The image build passes DEPLO_COMMIT; a build from a git checkout reads it itself.
+function buildCommit(): string {
+  if (process.env.DEPLO_COMMIT) return process.env.DEPLO_COMMIT;
+  try {
+    return execSync("git rev-parse HEAD", {
+      stdio: ["ignore", "pipe", "ignore"],
+    })
+      .toString()
+      .trim();
+  } catch {
+    return "";
+  }
+}
+
 const nextConfig: NextConfig = {
   output: "standalone",
   poweredByHeader: false,
   reactStrictMode: true,
   allowedDevOrigins: devOrigins(),
+  env: { DEPLO_COMMIT: buildCommit() },
   serverExternalPackages: [
     "pg",
     "better-auth",

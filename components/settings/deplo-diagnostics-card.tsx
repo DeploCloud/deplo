@@ -5,6 +5,7 @@ import { LifeBuoy } from "lucide-react";
 
 import { SettingItem } from "@/components/settings/deplo-settings-panel/setting-item";
 import { CopyButton } from "@/components/shared/copy-button";
+import { DEPLO_COMMIT } from "@/lib/version";
 
 export interface DiagnosticHost {
   name: string;
@@ -38,6 +39,7 @@ export function DeploDiagnosticsCard({
     const width = Math.max(4, ...hosts.map((h) => h.name.length));
     const lines = [
       `Deplo          ${version}`,
+      `commit         ${DEPLO_COMMIT || "unknown"}`,
       `panel          ${panelUrl} (${panelUrlSource})`,
       `Deplo host     ${deploHostName ?? "not added as a server"}`,
       `expected agent ${expectedAgentVersion}`,

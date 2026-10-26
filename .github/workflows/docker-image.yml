@@ -71,6 +71,7 @@ jobs:
         with:
           context: .
           platforms: ${{ matrix.platform }}
+          build-args: DEPLO_COMMIT=${{ github.sha }}
           outputs: type=image,name=${{ steps.image.outputs.IMAGE }},push-by-digest=true,name-canonical=true,push=true
           cache-from: type=gha,scope=${{ matrix.arch }}
           cache-to: type=gha,mode=max,scope=${{ matrix.arch }}
