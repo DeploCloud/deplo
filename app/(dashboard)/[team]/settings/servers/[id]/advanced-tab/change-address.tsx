@@ -141,7 +141,7 @@ export function ChangeAddressForm({
         <DialogTitle>Change address for {server.name}?</DialogTitle>
         <DialogDescription>
           {dialed
-            ? "Deplo checks that the server agent answers at the new address before saving. Apps and databases on the server are not touched."
+            ? "Deplo checks that the server agent answers at the new address before saving. Apps and databases are not touched."
             : "Apps and databases on the server are not touched."}
         </DialogDescription>
       </DialogHeader>
