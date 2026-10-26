@@ -190,7 +190,7 @@ export function NewRepoCard({
 
   // Dimmed until hovered: a suggestion, not an app the team already has.
   const shell = cn(
-    "group relative border-dashed opacity-50 transition-[opacity,border-color] focus-within:opacity-100 hover:border-primary/50 hover:opacity-100",
+    "group relative border-dashed opacity-80 transition-[opacity,border-color] focus-within:opacity-100 hover:border-primary/50 hover:opacity-100",
     pending && "animate-pulse opacity-100",
   );
 
