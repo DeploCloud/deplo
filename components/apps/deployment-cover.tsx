@@ -80,8 +80,10 @@ export function DeploymentCover({
       </a>
       {canRetake && (
         <Button
-          size="sm"
+          size="icon-sm"
           variant="secondary"
+          aria-label="Retake screenshot"
+          title="Retake screenshot"
           disabled={pending}
           onClick={retake}
           className={cn(
@@ -90,7 +92,6 @@ export function DeploymentCover({
           )}
         >
           <RefreshCw className={cn("size-4", pending && "animate-spin")} />
-          Retake screenshot
         </Button>
       )}
     </div>
