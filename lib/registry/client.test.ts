@@ -1,7 +1,7 @@
 import { test, afterEach } from "node:test";
 import assert from "node:assert/strict";
 
-import { checkRegistryCredential } from "./client";
+import { checkRegistryCredential, listAllTags } from "./client";
 
 const realFetch = globalThis.fetch;
 afterEach(() => {
@@ -88,4 +88,30 @@ test("a private host is never probed", async () => {
   const seen = stub(() => new Response(null, { status: 200 }));
   assert.equal(await checkRegistryCredential("127.0.0.1", "u", "p"), "unknown");
   assert.equal(seen.length, 0);
+});
+
+test("every tag of the repository, page by page, never off the registry's host", async () => {
+  const seen = stub((url) => {
+    if (url.endsWith("/v2/")) return new Response("{}", { status: 200 });
+    if (url.includes("last=b"))
+      return new Response(JSON.stringify({ tags: ["8.5.27"] }), {
+        status: 200,
+        headers: {
+          link: '<https://evil.example/v2/acme/app/tags/list?last=z>; rel="next"',
+        },
+      });
+    return new Response(JSON.stringify({ tags: ["8.3.0", "13.0.1"] }), {
+      status: 200,
+      headers: { link: '</v2/acme/app/tags/list?last=b&n=1000>; rel="next"' },
+    });
+  });
+  assert.deepEqual(await listAllTags(`${HOST}/acme/app:8.3.0`), [
+    "8.3.0",
+    "13.0.1",
+    "8.5.27",
+  ]);
+  assert.ok(
+    seen.every((s) => s.url.startsWith(`https://${HOST}/`)),
+    "a next link to another host is not followed",
+  );
 });
