@@ -82,12 +82,8 @@ export function AgentUpdateStatus({
     });
   }
 
-  const text = agentUpdateText(
-    current,
-    usable,
-    Date.now(),
-    agentLinks(version),
-  );
+  const links = agentLinks(version);
+  const text = agentUpdateText(current, usable, undefined, links);
   if (!text) return null;
   const line = (
     <span
