@@ -7,6 +7,7 @@ import type { PGlite } from "@electric-sql/pglite";
 import * as x509 from "@peculiar/x509";
 import { eq } from "drizzle-orm";
 
+import nextConfig from "../../../next.config";
 import { makeTestDb, type TestDb } from "../../db/test-harness";
 import { __setTestDb, __resetTestDb } from "../../db/client";
 import { servers } from "../../db/schema/control-plane/servers";
@@ -452,4 +453,9 @@ test("an impostor is closed and never displaces the verified link", async (t) =>
   assert.equal(await stillOpen(real), "open");
   assert.equal(await helloOver(), AGENT_VERSION);
   assert.equal(impostor.connections().opened, 0);
+});
+
+// The link's client crosses bundles, and grpc-js checks `instanceof Metadata` on every call.
+test("grpc-js stays one copy per process, outside the server bundle", () => {
+  assert.ok(nextConfig.serverExternalPackages?.includes("@grpc/grpc-js"));
 });

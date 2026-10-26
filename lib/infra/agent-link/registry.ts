@@ -4,7 +4,7 @@ import type { AgentClient, HelloResponse } from "../../agent/gen/agent";
 import { AgentUnreachableError } from "../agent-client/errors";
 import { LINK_CLOSE, LINK_SETTLE_MS } from "./protocol";
 
-/** A verified agent link. Shared across module instances, so it holds no class a caller tests with instanceof. */
+/** A verified agent link, shared across bundles: its grpc-js client needs one grpc-js per process (next.config.ts). */
 export interface AgentLink {
   readonly id: number;
   readonly serverId: string;
