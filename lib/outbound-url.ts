@@ -102,8 +102,9 @@ function isInternalHost(host: string): boolean {
     const n = expandV6(host);
     if (!n) return true;
     if (n.slice(0, 7).every((v) => v === 0) && n[7] <= 1) return true;
-    if ((n[0] & 0xffc0) === 0xfe80) return true;
+    if ((n[0] & 0xff80) === 0xfe80) return true;
     if ((n[0] & 0xfe00) === 0xfc00) return true;
+    if ((n[0] & 0xff00) === 0xff00) return true;
     const v4 = embeddedV4(n);
     return v4 !== null && isInternalHost(v4);
   }
@@ -143,6 +144,8 @@ function embeddedV4(n: number[]): string | null {
     `${hi >> 8}.${hi & 255}.${lo >> 8}.${lo & 255}`;
   const zeroTo = (k: number) => n.slice(0, k).every((v) => v === 0);
   if (zeroTo(5) && n[5] === 0xffff) return v4(n[6], n[7]);
+  if (zeroTo(6) || (zeroTo(4) && n[4] === 0xffff && n[5] === 0))
+    return v4(n[6], n[7]);
   if (n[0] === 0x64 && n[1] === 0xff9b && (n[2] === 0 || n[2] === 1))
     return v4(n[6], n[7]);
   if (n[0] === 0x2002) return v4(n[1], n[2]);

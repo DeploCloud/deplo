@@ -38,6 +38,11 @@ test("embedded-IPv4 forms of an internal address are refused", async () => {
   await refused("https://[0:0:0:0:0:0:0:1]/");
   await refused("https://[fe80::1]/");
   await refused("https://[fd12::1]/");
+  await refused("https://[::127.0.0.1]/");
+  await refused("https://[::7f00:1]/");
+  await refused("https://[::ffff:0:7f00:1]/");
+  await refused("https://[fec0::1]/");
+  await refused("https://[ff02::1]/");
 });
 
 test("a DNS answer in one of those forms is refused too", async () => {
