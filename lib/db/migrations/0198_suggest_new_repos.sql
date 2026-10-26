@@ -1,0 +1,1 @@
+ALTER TABLE "memberships" ADD COLUMN "suggest_new_repos" boolean DEFAULT true NOT NULL;

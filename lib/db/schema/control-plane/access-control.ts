@@ -196,6 +196,7 @@ export const memberships = pgTable(
     granular: boolean("granular").notNull().default(false),
     customCapabilities: boolean("custom_capabilities").notNull().default(false),
     switcherPosition: integer("switcher_position"),
+    suggestNewRepos: boolean("suggest_new_repos").notNull().default(true),
     createdAt: isoTimestamptz("created_at").notNull(),
   },
   (t) => [uniqueIndex("memberships_user_team_uq").on(t.userId, t.teamId)],
