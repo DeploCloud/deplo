@@ -97,8 +97,14 @@ export function SecurityUpdatesDialog({
   const isIgnored = (g: (typeof groups)[number]) =>
     g.items.every((u) => u.ignored);
   const toApply = groups.filter((g) => g.actionable && !isIgnored(g));
-  // Important ones: listed for whoever wants them, never counted.
-  const lessUrgent = groups.filter((g) => !g.actionable && !isIgnored(g));
+  // The newer build was read and still has it.
+  const waiting = groups.filter(
+    (g) => g.fix === "upstream" && !g.actionable && !isIgnored(g),
+  );
+  // Important ones, and newer builds still being read: listed, never counted.
+  const lessUrgent = groups.filter(
+    (g) => !g.actionable && g.fix !== "upstream" && !isIgnored(g),
+  );
   const ignored = groups.filter(isIgnored);
   // The service is worth naming only when the app runs more than one.
   const manyServices = new Set(answer?.updates.map((u) => u.service)).size > 1;
@@ -157,6 +163,11 @@ export function SecurityUpdatesDialog({
             ) : (
               <>
                 <UpdateList title="To apply" groups={toApply} {...list} />
+                <UpdateList
+                  title="Waiting on the image's maintainers"
+                  groups={waiting}
+                  {...list}
+                />
                 <UpdateList title="Less urgent" groups={lessUrgent} {...list} />
                 <UpdateList
                   title={`Ignored (${ignored.length})`}

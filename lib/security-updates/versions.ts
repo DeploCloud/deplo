@@ -56,6 +56,11 @@ function holds(r: AffectedRange, v: string): boolean {
   return true;
 }
 
+// Whether a version sits inside one of an advisory's affected stretches.
+export function affects(ranges: AffectedRange[], version: string): boolean {
+  return ranges.some((r) => holds(r, version));
+}
+
 // The fix on the installed version's own line, so 16.3.5 never gets 15.5.28's fix.
 export function fixedFor(
   ranges: AffectedRange[],

@@ -72,7 +72,13 @@ export const workloadImages = pgTable(
     // The registry's current digest for image_ref's tag, and a newer tag of the same line.
     registryDigest: text("registry_digest"),
     newerTag: text("newer_tag"),
+    newerTagDigest: text("newer_tag_digest"),
     registryCheckedAt: isoTimestamptz("registry_checked_at"),
+    // The newer build last read before offering Update (repository@digest), and how it went.
+    candidateRef: text("candidate_ref"),
+    candidateImageId: text("candidate_image_id"),
+    candidateStatus: text("candidate_status"),
+    candidateCheckedAt: isoTimestamptz("candidate_checked_at"),
     seenAt: isoTimestamptz("seen_at").notNull(),
     // NULL until the image's packages were matched; a new image resets it.
     checkedAt: isoTimestamptz("checked_at"),

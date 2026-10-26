@@ -18,6 +18,7 @@ import type {
   RestoreChunk_Header,
   DockerCleanupRequest,
   DockerCleanupResponse,
+  InventoryCandidateResponse,
   InventoryImageResponse,
   ListWorkloadImagesResponse,
   CaptureScreenshotRequest,
@@ -230,6 +231,11 @@ export interface AgentConnection {
   // Needs `image-inventory` (ADR-0038).
   listWorkloadImages(): Promise<ListWorkloadImagesResponse>;
   inventoryImage(imageId: string): Promise<InventoryImageResponse>;
+  // Needs `image-inventory.candidate`: pulls repository@digest, reads it, removes it if unused.
+  inventoryCandidate(
+    imageRef: string,
+    currentImageId: string,
+  ): Promise<InventoryCandidateResponse>;
   // Needs `screenshot` (ADR-0039).
   captureScreenshot(
     req: CaptureScreenshotRequest,

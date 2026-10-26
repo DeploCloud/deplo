@@ -65,6 +65,8 @@ export const FILES_BIND_CHECK_CAPABILITY = "deploy.files-bind-check";
 
 // ADR-0038: ListWorkloadImages + InventoryImage, the package read behind Security updates.
 export const IMAGE_INVENTORY_CAPABILITY = "image-inventory";
+// InventoryCandidate: a newer build is read before Update is offered.
+export const IMAGE_CANDIDATE_CAPABILITY = "image-inventory.candidate";
 
 export const DEPLOY_PULL_BASE_CAPABILITY = "deploy.pull-base";
 

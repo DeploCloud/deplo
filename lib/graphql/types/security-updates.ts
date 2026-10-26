@@ -29,8 +29,17 @@ const SecurityLevelEnum = builder.enumType("SecurityLevel", {
 
 const SecurityFixEnum = builder.enumType("SecurityFix", {
   description:
-    "How the team gets the fix. `code`: update the dependency in the app's own code. `update`: redeploy to pull a newer build of the image. `newer_tag`: move to a newer version of the image. Only these three are returned; `rebuild`, `deplo` and `none` stay for older clients.",
-  values: ["code", "rebuild", "update", "newer_tag", "deplo", "none"] as const,
+    "How the team gets the fix. `code`: update the dependency in the app's own code. `update`: redeploy to pull the newer build of the image, read and found to have the fix. `newer_tag`: move to the newer version of the image, read likewise. `upstream`: the newer build still has it, so it waits on the image's maintainers. `unverified`: a newer build exists and is not read yet. Only `code`, `update` and `newer_tag` count; `rebuild`, `deplo` and `none` stay for older clients.",
+  values: [
+    "code",
+    "rebuild",
+    "update",
+    "newer_tag",
+    "upstream",
+    "unverified",
+    "deplo",
+    "none",
+  ] as const,
 });
 
 const SecurityUpdateRef = builder

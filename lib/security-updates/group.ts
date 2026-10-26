@@ -37,11 +37,17 @@ const FIX_RANK: Record<FixKind, number> = {
   rebuild: 1,
   update: 2,
   newer_tag: 3,
-  deplo: 4,
-  none: 5,
+  upstream: 4,
+  unverified: 5,
+  deplo: 6,
+  none: 7,
 };
 
-const isImageFix = (fix: string) => fix === "update" || fix === "newer_tag";
+const isImageFix = (fix: string) =>
+  fix === "update" ||
+  fix === "newer_tag" ||
+  fix === "upstream" ||
+  fix === "unverified";
 
 export const unitKey = (
   f: Pick<

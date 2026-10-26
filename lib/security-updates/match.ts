@@ -38,7 +38,8 @@ import {
   type OsvRecord,
   type Severity,
 } from "./osv";
-import { fixedFor, type AffectedRange } from "./versions";
+import { affects, fixedFor, type AffectedRange } from "./versions";
+import { candidateTarget } from "./workloads";
 
 type Workload = typeof workloadImages.$inferSelect;
 type Finding = typeof securityFindings.$inferInsert;
@@ -277,6 +278,8 @@ export async function matchWorkloads(
     perImage.set(imageId, list);
   }
 
+  const candidates = await candidatePackages(rows.map((r) => r.wi));
+
   const qs = [...queries.values()];
   const results = await osvQueryBatch(qs);
   const hitsByQuery = new Map<string, OsvHit[]>();
@@ -303,6 +306,8 @@ export async function matchWorkloads(
             affected,
             kev,
             stamp,
+            candidates.get(`${wi.serverId}\0${wi.workloadId}\0${wi.service}`) ??
+              null,
           )
         : [];
     const diff = await persistFindings(
@@ -343,6 +348,8 @@ function findingsFor(
   affected: Map<string, CachedAffected[]>,
   kev: ReadonlySet<string>,
   stamp: string,
+  // The newer build's versions per package, once read; null until then.
+  candidate: Map<string, string[]> | null,
 ): Finding[] {
   // One finding per package and CVE: distros publish the same flaw under several ids.
   const best = new Map<string, { f: Finding; actionable: boolean }>();
@@ -353,6 +360,12 @@ function findingsFor(
       const level = levelOf(a.severity as Severity | null, a.cve, kev);
       if (!level) continue;
       const fixedVersion = fixedFor(a.ranges, q.version);
+      const later = candidate?.get(`${q.ecosystem}\0${q.name}`) ?? [];
+      const verdict = !candidate
+        ? "unread"
+        : later.includes(q.version) || later.some((v) => affects(a.ranges, v))
+          ? "vulnerable"
+          : "fixed";
       const fix = fixKind({
         imageRef: wi.imageRef,
         builder,
@@ -364,6 +377,7 @@ function findingsFor(
         registryStatus: wi.registryStatus,
         registryDigest: wi.registryDigest,
         newerTag: wi.newerTag,
+        candidate: verdict,
       });
       const f = {
         serverId: wi.serverId,
@@ -394,9 +408,47 @@ const RANK: Record<FixKind, number> = {
   rebuild: 1,
   update: 2,
   newer_tag: 3,
-  deplo: 4,
-  none: 5,
+  upstream: 4,
+  unverified: 5,
+  deplo: 6,
+  none: 7,
 };
+
+// The packages of the newer build read for each workload whose newer build is still that one.
+async function candidatePackages(
+  workloads: Workload[],
+): Promise<Map<string, Map<string, string[]>>> {
+  const byImage = new Map<string, string[]>();
+  for (const w of workloads) {
+    const target = candidateTarget(w);
+    if (!target || w.candidateRef !== target || w.candidateStatus !== "ok")
+      continue;
+    if (!w.candidateImageId) continue;
+    const key = `${w.serverId}\0${w.workloadId}\0${w.service}`;
+    byImage.set(w.candidateImageId, [
+      ...(byImage.get(w.candidateImageId) ?? []),
+      key,
+    ]);
+  }
+  const out = new Map<string, Map<string, string[]>>();
+  if (byImage.size === 0) return out;
+  const pkgs = await getDb()
+    .select()
+    .from(imageInventoryPackages)
+    .where(inArray(imageInventoryPackages.imageId, [...byImage.keys()]));
+  const versions = new Map<string, Map<string, string[]>>();
+  for (const p of pkgs) {
+    const q = osvQueryFor(p.purl, { id: "", version: "" });
+    if (!q) continue;
+    const m = versions.get(p.imageId) ?? new Map<string, string[]>();
+    const k = `${q.ecosystem}\0${q.name}`;
+    m.set(k, [...(m.get(k) ?? []), q.version]);
+    versions.set(p.imageId, m);
+  }
+  for (const [imageId, keys] of byImage)
+    for (const key of keys) out.set(key, versions.get(imageId) ?? new Map());
+  return out;
+}
 type Ranked = { f: Finding; actionable: boolean };
 function better(a: Ranked, b: Ranked) {
   if (a.actionable !== b.actionable) return a.actionable;

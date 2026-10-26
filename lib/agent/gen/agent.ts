@@ -2721,6 +2721,21 @@ export interface InventoryImageResponse {
   durationMs: number;
 }
 
+export interface InventoryCandidateRequest {
+  /** repository@sha256:<64 hex>, the same repository a workload's image comes from. */
+  imageRef: string;
+  /** The image that workload runs now: its size bounds the disk the pull may take. */
+  currentImageId: string;
+}
+
+export interface InventoryCandidateResponse {
+  result?:
+    | InventoryImageResponse
+    | undefined;
+  /** The pulled build's image id, which keys its package list. */
+  imageId: string;
+}
+
 export interface CaptureScreenshotRequest {
   /**
    * http(s)://host[/path] of the deployment. Its host is always dialed at this server's own
@@ -20173,6 +20188,190 @@ export const InventoryImageResponse: MessageFns<InventoryImageResponse> = {
   },
 };
 
+function createBaseInventoryCandidateRequest(): InventoryCandidateRequest {
+  return { imageRef: "", currentImageId: "" };
+}
+
+export const InventoryCandidateRequest: MessageFns<InventoryCandidateRequest> = {
+  encode(message: InventoryCandidateRequest, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.imageRef !== "") {
+      writer.uint32(10).string(message.imageRef);
+    }
+    if (message.currentImageId !== "") {
+      writer.uint32(18).string(message.currentImageId);
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): InventoryCandidateRequest {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const previousRecursionDepth = (reader as any).__tsProtoDecodeDepth ?? 0;
+    if (previousRecursionDepth >= 100) {
+      throw new globalThis.Error("protobuf decode recursion limit exceeded");
+    }
+    (reader as any).__tsProtoDecodeDepth = previousRecursionDepth + 1;
+    try {
+      const end = length === undefined ? reader.len : reader.pos + length;
+      const message = createBaseInventoryCandidateRequest();
+      while (reader.pos < end) {
+        const tag = reader.uint32();
+        switch (tag >>> 3) {
+          case 1: {
+            if (tag !== 10) {
+              break;
+            }
+
+            message.imageRef = reader.string();
+            continue;
+          }
+          case 2: {
+            if (tag !== 18) {
+              break;
+            }
+
+            message.currentImageId = reader.string();
+            continue;
+          }
+        }
+        if ((tag & 7) === 4 || tag === 0) {
+          break;
+        }
+        reader.skip(tag & 7);
+      }
+      return message;
+    } finally {
+      (reader as any).__tsProtoDecodeDepth = previousRecursionDepth;
+    }
+  },
+
+  fromJSON(object: any): InventoryCandidateRequest {
+    return {
+      imageRef: isSet(object.imageRef)
+        ? globalThis.String(object.imageRef)
+        : isSet(object.image_ref)
+        ? globalThis.String(object.image_ref)
+        : "",
+      currentImageId: isSet(object.currentImageId)
+        ? globalThis.String(object.currentImageId)
+        : isSet(object.current_image_id)
+        ? globalThis.String(object.current_image_id)
+        : "",
+    };
+  },
+
+  toJSON(message: InventoryCandidateRequest): unknown {
+    const obj: any = {};
+    if (message.imageRef !== "") {
+      obj.imageRef = message.imageRef;
+    }
+    if (message.currentImageId !== "") {
+      obj.currentImageId = message.currentImageId;
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<InventoryCandidateRequest>, I>>(base?: I): InventoryCandidateRequest {
+    return InventoryCandidateRequest.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<InventoryCandidateRequest>, I>>(object: I): InventoryCandidateRequest {
+    const message = createBaseInventoryCandidateRequest();
+    message.imageRef = object.imageRef ?? "";
+    message.currentImageId = object.currentImageId ?? "";
+    return message;
+  },
+};
+
+function createBaseInventoryCandidateResponse(): InventoryCandidateResponse {
+  return { result: undefined, imageId: "" };
+}
+
+export const InventoryCandidateResponse: MessageFns<InventoryCandidateResponse> = {
+  encode(message: InventoryCandidateResponse, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.result !== undefined) {
+      InventoryImageResponse.encode(message.result, writer.uint32(10).fork()).join();
+    }
+    if (message.imageId !== "") {
+      writer.uint32(18).string(message.imageId);
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): InventoryCandidateResponse {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const previousRecursionDepth = (reader as any).__tsProtoDecodeDepth ?? 0;
+    if (previousRecursionDepth >= 100) {
+      throw new globalThis.Error("protobuf decode recursion limit exceeded");
+    }
+    (reader as any).__tsProtoDecodeDepth = previousRecursionDepth + 1;
+    try {
+      const end = length === undefined ? reader.len : reader.pos + length;
+      const message = createBaseInventoryCandidateResponse();
+      while (reader.pos < end) {
+        const tag = reader.uint32();
+        switch (tag >>> 3) {
+          case 1: {
+            if (tag !== 10) {
+              break;
+            }
+
+            message.result = InventoryImageResponse.decode(reader, reader.uint32());
+            continue;
+          }
+          case 2: {
+            if (tag !== 18) {
+              break;
+            }
+
+            message.imageId = reader.string();
+            continue;
+          }
+        }
+        if ((tag & 7) === 4 || tag === 0) {
+          break;
+        }
+        reader.skip(tag & 7);
+      }
+      return message;
+    } finally {
+      (reader as any).__tsProtoDecodeDepth = previousRecursionDepth;
+    }
+  },
+
+  fromJSON(object: any): InventoryCandidateResponse {
+    return {
+      result: isSet(object.result) ? InventoryImageResponse.fromJSON(object.result) : undefined,
+      imageId: isSet(object.imageId)
+        ? globalThis.String(object.imageId)
+        : isSet(object.image_id)
+        ? globalThis.String(object.image_id)
+        : "",
+    };
+  },
+
+  toJSON(message: InventoryCandidateResponse): unknown {
+    const obj: any = {};
+    if (message.result !== undefined) {
+      obj.result = InventoryImageResponse.toJSON(message.result);
+    }
+    if (message.imageId !== "") {
+      obj.imageId = message.imageId;
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<InventoryCandidateResponse>, I>>(base?: I): InventoryCandidateResponse {
+    return InventoryCandidateResponse.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<InventoryCandidateResponse>, I>>(object: I): InventoryCandidateResponse {
+    const message = createBaseInventoryCandidateResponse();
+    message.result = (object.result !== undefined && object.result !== null)
+      ? InventoryImageResponse.fromPartial(object.result)
+      : undefined;
+    message.imageId = object.imageId ?? "";
+    return message;
+  },
+};
+
 function createBaseCaptureScreenshotRequest(): CaptureScreenshotRequest {
   return { url: "", basicAuthUsername: "", basicAuthPassword: "" };
 }
@@ -21297,6 +21496,22 @@ export const AgentService = {
     responseDeserialize: (value: Buffer): InventoryImageResponse => InventoryImageResponse.decode(value),
   },
   /**
+   * A newer build of an image a workload runs, pulled by digest, read like InventoryImage and
+   * removed again unless something uses it: Update is offered only when it has the fix.
+   * Advertised as `image-inventory.candidate`.
+   */
+  inventoryCandidate: {
+    path: "/deplo.agent.v1.Agent/InventoryCandidate" as const,
+    requestStream: false as const,
+    responseStream: false as const,
+    requestSerialize: (value: InventoryCandidateRequest): Buffer =>
+      Buffer.from(InventoryCandidateRequest.encode(value).finish()),
+    requestDeserialize: (value: Buffer): InventoryCandidateRequest => InventoryCandidateRequest.decode(value),
+    responseSerialize: (value: InventoryCandidateResponse): Buffer =>
+      Buffer.from(InventoryCandidateResponse.encode(value).finish()),
+    responseDeserialize: (value: Buffer): InventoryCandidateResponse => InventoryCandidateResponse.decode(value),
+  },
+  /**
    * Replace the panel addresses this agent links to (ADR-0040): it keeps exactly this pair,
    * an empty fallback dropped, and dials it from its next link on. Advertised as `agent-link`.
    */
@@ -21638,6 +21853,12 @@ export interface AgentServer extends UntypedServiceImplementation {
    * time and never during a deploy. Advertised as `image-inventory`.
    */
   inventoryImage: handleUnaryCall<InventoryImageRequest, InventoryImageResponse>;
+  /**
+   * A newer build of an image a workload runs, pulled by digest, read like InventoryImage and
+   * removed again unless something uses it: Update is offered only when it has the fix.
+   * Advertised as `image-inventory.candidate`.
+   */
+  inventoryCandidate: handleUnaryCall<InventoryCandidateRequest, InventoryCandidateResponse>;
   /**
    * Replace the panel addresses this agent links to (ADR-0040): it keeps exactly this pair,
    * an empty fallback dropped, and dials it from its next link on. Advertised as `agent-link`.
@@ -22757,6 +22978,26 @@ export interface AgentClient extends Client {
     metadata: Metadata,
     options: Partial<CallOptions>,
     callback: (error: ServiceError | null, response: InventoryImageResponse) => void,
+  ): ClientUnaryCall;
+  /**
+   * A newer build of an image a workload runs, pulled by digest, read like InventoryImage and
+   * removed again unless something uses it: Update is offered only when it has the fix.
+   * Advertised as `image-inventory.candidate`.
+   */
+  inventoryCandidate(
+    request: InventoryCandidateRequest,
+    callback: (error: ServiceError | null, response: InventoryCandidateResponse) => void,
+  ): ClientUnaryCall;
+  inventoryCandidate(
+    request: InventoryCandidateRequest,
+    metadata: Metadata,
+    callback: (error: ServiceError | null, response: InventoryCandidateResponse) => void,
+  ): ClientUnaryCall;
+  inventoryCandidate(
+    request: InventoryCandidateRequest,
+    metadata: Metadata,
+    options: Partial<CallOptions>,
+    callback: (error: ServiceError | null, response: InventoryCandidateResponse) => void,
   ): ClientUnaryCall;
   /**
    * Replace the panel addresses this agent links to (ADR-0040): it keeps exactly this pair,

@@ -1359,6 +1359,13 @@
       "when": 1793003507092,
       "tag": "0193_epss_scores",
       "breakpoints": true
+    },
+    {
+      "idx": 194,
+      "version": "7",
+      "when": 1793004344758,
+      "tag": "0194_security_candidates",
+      "breakpoints": true
     }
   ]
 }

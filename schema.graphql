@@ -5775,7 +5775,7 @@ type SearchTemplate {
 }
 
 """
-How the team gets the fix. `code`: update the dependency in the app's own code. `update`: redeploy to pull a newer build of the image. `newer_tag`: move to a newer version of the image. Only these three are returned; `rebuild`, `deplo` and `none` stay for older clients.
+How the team gets the fix. `code`: update the dependency in the app's own code. `update`: redeploy to pull the newer build of the image, read and found to have the fix. `newer_tag`: move to the newer version of the image, read likewise. `upstream`: the newer build still has it, so it waits on the image's maintainers. `unverified`: a newer build exists and is not read yet. Only `code`, `update` and `newer_tag` count; `rebuild`, `deplo` and `none` stay for older clients.
 """
 enum SecurityFix {
   code
@@ -5783,7 +5783,9 @@ enum SecurityFix {
   newer_tag
   none
   rebuild
+  unverified
   update
+  upstream
 }
 
 """

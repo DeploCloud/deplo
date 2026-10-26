@@ -2,7 +2,13 @@ import { checkImageExists, listTags } from "../registry/client";
 import { parseImageRef } from "../registry/image-ref";
 
 export type RegistryState =
-  | { status: "ok"; digest: string; newerTag: string | null }
+  | {
+      status: "ok";
+      digest: string;
+      newerTag: string | null;
+      // What that newer tag points at, so its build can be read before it is offered.
+      newerTagDigest: string | null;
+    }
   | { status: "private" }
   // Offline, rate-limited or gone: the caller keeps what it knew.
   | { status: "unknown" };
@@ -14,14 +20,28 @@ export async function registryState(imageRef: string): Promise<RegistryState> {
   if (head.status === "private") return { status: "private" };
   if (head.status !== "exists" || !head.digest) return { status: "unknown" };
   const tags = await listTags(imageRef, 100).catch(() => []);
+  const newerTag = newerTagOf(
+    parsed.tag,
+    tags.map((t) => t.name),
+  );
+  const newer = newerTag
+    ? await checkImageExists(`${repositoryOf(imageRef)}:${newerTag}`).catch(
+        () => null,
+      )
+    : null;
   return {
     status: "ok",
     digest: head.digest,
-    newerTag: newerTagOf(
-      parsed.tag,
-      tags.map((t) => t.name),
-    ),
+    newerTag,
+    newerTagDigest: newer?.digest ?? null,
   };
+}
+
+// The repository as written, without tag or digest: "crazymax/diun:latest" is "crazymax/diun".
+export function repositoryOf(imageRef: string): string {
+  const name = imageRef.split("@")[0];
+  const colon = name.lastIndexOf(":");
+  return colon > name.lastIndexOf("/") ? name.slice(0, colon) : name;
 }
 
 // The digest an image is known by in the repository its ref names, "" when none matches.

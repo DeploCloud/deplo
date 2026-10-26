@@ -4,6 +4,7 @@ import {
   and,
   desc,
   eq,
+  exists,
   inArray,
   isNull,
   lt,
@@ -22,12 +23,17 @@ import { appPreviews } from "../db/schema/control-plane/deployments";
 import {
   imageInventories,
   imageInventoryPackages,
+  securityFindings,
   workloadImages,
 } from "../db/schema/control-plane/security-updates";
 import { connectAgent } from "../infra/agent-client/connect";
 import type { AgentConnection } from "../infra/agent-client/connection";
-import { IMAGE_INVENTORY_CAPABILITY } from "../infra/agent-client/hello-capabilities";
-import { registryState, repoDigestFor } from "./registry-check";
+import {
+  IMAGE_CANDIDATE_CAPABILITY,
+  IMAGE_INVENTORY_CAPABILITY,
+} from "../infra/agent-client/hello-capabilities";
+import { builtByDeplo } from "./fix-kind";
+import { registryState, repoDigestFor, repositoryOf } from "./registry-check";
 
 // ponytail: a few images per server per tick; a large backfill takes a few ticks, raise if fleets grow.
 export const INVENTORIES_PER_TICK = 3;
@@ -152,6 +158,10 @@ async function upsertWorkloads(
             repoDigest: sql`excluded.repo_digest`,
             seenAt: sql`excluded.seen_at`,
             checkedAt: sql`case when ${workloadImages.imageId} = excluded.image_id then ${workloadImages.checkedAt} else null end`,
+            candidateRef: sql`case when ${workloadImages.imageId} = excluded.image_id then ${workloadImages.candidateRef} else null end`,
+            candidateImageId: sql`case when ${workloadImages.imageId} = excluded.image_id then ${workloadImages.candidateImageId} else null end`,
+            candidateStatus: sql`case when ${workloadImages.imageId} = excluded.image_id then ${workloadImages.candidateStatus} else null end`,
+            candidateCheckedAt: sql`case when ${workloadImages.imageId} = excluded.image_id then ${workloadImages.candidateCheckedAt} else null end`,
             registryCheckedAt: sql`case when ${workloadImages.imageRef} = excluded.image_ref then ${workloadImages.registryCheckedAt} else null end`,
             imageRef: sql`excluded.image_ref`,
             imageId: sql`excluded.image_id`,
@@ -276,6 +286,11 @@ export async function refreshServer(
       await storeInventory(imageId, resp, new Date().toISOString());
       inventoried++;
     }
+    if (
+      hello.capabilities.includes(IMAGE_CANDIDATE_CAPABILITY) &&
+      (await keepGoing())
+    )
+      await readOneCandidate(serverId, conn, now);
     return { reached: true, inventoried };
   } catch (e) {
     console.warn(
@@ -285,6 +300,95 @@ export async function refreshServer(
   } finally {
     conn.close();
   }
+}
+
+// The newer build Update would bring: the same tag's newer digest, else the newer tag's.
+export function candidateTarget(
+  w: Pick<
+    typeof workloadImages.$inferSelect,
+    | "imageRef"
+    | "repoDigest"
+    | "registryStatus"
+    | "registryDigest"
+    | "newerTagDigest"
+  >,
+): string | null {
+  if (builtByDeplo(w.imageRef) || w.registryStatus !== "ok") return null;
+  const repo = repositoryOf(w.imageRef);
+  if (w.registryDigest && w.repoDigest && w.registryDigest !== w.repoDigest)
+    return `${repo}@${w.registryDigest}`;
+  return w.newerTagDigest ? `${repo}@${w.newerTagDigest}` : null;
+}
+
+// ponytail: one pull per server per tick, the first that needs one; a queue if images pile up.
+async function readOneCandidate(
+  serverId: string,
+  conn: AgentConnection,
+  now: Date,
+): Promise<void> {
+  const db = getDb();
+  const retryBefore = now.getTime() - RETRY_FAILED_MS;
+  const rows = await db
+    .select()
+    .from(workloadImages)
+    .where(
+      and(
+        eq(workloadImages.serverId, serverId),
+        eq(workloadImages.running, true),
+        inArray(workloadImages.kind, ["app", "database"]),
+        exists(
+          db
+            .select({ one: sql`1` })
+            .from(securityFindings)
+            .where(
+              and(
+                eq(securityFindings.serverId, workloadImages.serverId),
+                eq(securityFindings.workloadId, workloadImages.workloadId),
+                eq(securityFindings.service, workloadImages.service),
+              ),
+            ),
+        ),
+      ),
+    );
+  const due = rows.find((w) => {
+    const target = candidateTarget(w);
+    if (!target) return false;
+    if (w.candidateRef !== target) return true;
+    // A failed read is tried again a day later; a finished one is kept until the target moves.
+    return (
+      w.candidateStatus !== "ok" &&
+      w.candidateStatus !== "busy" &&
+      (!w.candidateCheckedAt ||
+        new Date(w.candidateCheckedAt).getTime() < retryBefore)
+    );
+  });
+  if (!due) return;
+  const target = candidateTarget(due)!;
+  const resp = await conn.inventoryCandidate(target, due.imageId);
+  const result = resp.result;
+  if (!result || result.status === InventoryStatus.INVENTORY_STATUS_BUSY)
+    return;
+  const stamp = new Date().toISOString();
+  const ok =
+    result.status === InventoryStatus.INVENTORY_STATUS_OK && !!resp.imageId;
+  if (ok) await storeInventory(resp.imageId, result, stamp);
+  await db
+    .update(workloadImages)
+    .set({
+      candidateRef: target,
+      candidateImageId: ok ? resp.imageId : null,
+      candidateStatus: STATUS_TEXT[result.status] ?? "failed",
+      candidateCheckedAt: stamp,
+      // Matched again on this tick's pass, now that the newer build's packages are known.
+      checkedAt: null,
+    })
+    .where(
+      and(
+        eq(workloadImages.serverId, due.serverId),
+        eq(workloadImages.workloadId, due.workloadId),
+        eq(workloadImages.service, due.service),
+      ),
+    );
 }
 
 // ponytail: a week of grace for an image no workload uses any more; tune if storage matters.
@@ -299,7 +403,12 @@ export async function dropUnusedInventories(now: Date): Promise<void> {
           getDb()
             .select({ one: sql`1` })
             .from(workloadImages)
-            .where(eq(workloadImages.imageId, imageInventories.imageId)),
+            .where(
+              or(
+                eq(workloadImages.imageId, imageInventories.imageId),
+                eq(workloadImages.candidateImageId, imageInventories.imageId),
+              ),
+            ),
         ),
       ),
     );
@@ -334,9 +443,15 @@ export async function refreshRegistryStates(now: Date): Promise<void> {
             registryStatus: "ok",
             registryDigest: state.digest,
             newerTag: state.newerTag,
+            newerTagDigest: state.newerTagDigest,
           }
         : state.status === "private"
-          ? { registryStatus: "private", registryDigest: null, newerTag: null }
+          ? {
+              registryStatus: "private",
+              registryDigest: null,
+              newerTag: null,
+              newerTagDigest: null,
+            }
           : {};
     await db
       .update(workloadImages)

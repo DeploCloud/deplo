@@ -44,6 +44,7 @@ const WEB_IMAGE_2 = "sha256:" + "2".repeat(64);
 const PG_IMAGE = "sha256:" + "3".repeat(64);
 const TOOL_IMAGE = "sha256:" + "4".repeat(64);
 const TOOL_IMAGE_2 = "sha256:" + "5".repeat(64);
+const TOOL_CANDIDATE = "sha256:" + "6".repeat(64);
 const HOOK = "https://discord.test/hook";
 
 const MINIMIST = "pkg:npm/minimist@1.2.5";
@@ -55,6 +56,9 @@ const KERNEL = "pkg:deb/debian/linux-libc-dev@6.1.164-1?upstream=linux";
 
 let workloads: WorkloadImage[] = [];
 let packagesOf: Record<string, { purl: string; location: string }[]> = {};
+// What InventoryCandidate finds in a newer build, by the ref it is asked for.
+let candidateRefs: string[] = [];
+let candidatePurls: string[] = [];
 let osvDown = false;
 
 const wl = (o: Partial<WorkloadImage>): WorkloadImage => ({
@@ -69,7 +73,9 @@ const wl = (o: Partial<WorkloadImage>): WorkloadImage => ({
 });
 
 const fakeAgent = {
-  hello: async () => ({ capabilities: ["image-inventory"] }),
+  hello: async () => ({
+    capabilities: ["image-inventory", "image-inventory.candidate"],
+  }),
   listWorkloadImages: async () => ({ images: workloads }),
   inventoryImage: async (imageId: string) => ({
     status: InventoryStatus.INVENTORY_STATUS_OK,
@@ -86,6 +92,28 @@ const fakeAgent = {
       type: "",
     })),
   }),
+  inventoryCandidate: async (imageRef: string) => {
+    candidateRefs.push(imageRef);
+    return {
+      imageId: TOOL_CANDIDATE,
+      result: {
+        status: InventoryStatus.INVENTORY_STATUS_OK,
+        error: "",
+        distroId: "debian",
+        distroVersion: "12.13",
+        workingDir: "/app",
+        scannerVersion: "1.54.1",
+        durationMs: 1,
+        packages: candidatePurls.map((purl) => ({
+          purl,
+          location: "/app/node_modules/x/package.json",
+          name: "",
+          version: "",
+          type: "",
+        })),
+      },
+    };
+  },
   close() {},
 } as unknown as AgentConnection;
 
@@ -262,6 +290,8 @@ beforeEach(async () => {
     [PG_IMAGE]: [{ purl: OPENSSL, location: "/var/lib/dpkg/status" }],
   };
   osvDown = false;
+  candidateRefs = [];
+  candidatePurls = [];
   __setAgentConnectorForTest(async () => fakeAgent);
   capture = captureFetch((url) => osv(url, capture!.calls.at(-1)?.body));
 });
@@ -491,32 +521,56 @@ test("rows the narrower rules drop go silently: no fixed line, no alert", async 
   );
 });
 
-test("an image's update is one security update, and alerts once however much it moves", async () => {
-  await seedApp(db, { id: "prj_tool", slug: "tool" });
+async function seedToolImage(imageId: string, purls: string[]) {
   workloads = [
     wl({
       projectId: "prj_tool",
       imageRef: "ghcr.io/acme/tool:1",
-      imageId: TOOL_IMAGE,
+      imageId,
+      repoDigests: ["ghcr.io/acme/tool@sha256:old"],
     }),
   ];
-  packagesOf[TOOL_IMAGE] = [
-    { purl: NEXT, location: "/app/node_modules/next/package.json" },
-    { purl: OPENSSL, location: "/var/lib/dpkg/status" },
-  ];
-  await backfill();
-  const newerBuild = {
+  packagesOf[imageId] = purls.map((purl) => ({
+    purl,
+    location: `/app/node_modules/${purl.split("/")[1].split("@")[0]}/package.json`,
+  }));
+  await backfill(new Date("2026-10-25T10:00:00Z"));
+  await db.update(workloadImages).set({
     registryStatus: "ok",
-    repoDigest: "sha256:old",
     registryDigest: "sha256:new",
-  };
-  await db.update(workloadImages).set(newerBuild);
+  });
+}
+
+const toolRows = async () =>
+  (await db.select().from(securityFindings))
+    .map((f) => `${f.packageName}:${f.fix}`)
+    .sort();
+
+test("an image's newer build is read before Update: one update, one alert", async () => {
+  await seedApp(db, { id: "prj_tool", slug: "tool" });
+  await seedToolImage(TOOL_IMAGE, [NEXT, OPENSSL]);
   await matchWorkloads("full", new Date("2026-10-25T10:05:00Z"));
+  assert.deepEqual(
+    await toolRows(),
+    ["next:unverified"],
+    "not read yet: listed, not counted",
+  );
+  await settle();
+  assert.equal(hookCalls().length, 0);
+
+  candidatePurls = ["pkg:npm/next@16.3.6"];
+  await refreshServer(SERVER_1, new Date("2026-10-25T10:10:00Z"));
+  assert.deepEqual(
+    candidateRefs,
+    ["ghcr.io/acme/tool@sha256:new"],
+    "pulled by digest",
+  );
+  await matchWorkloads("light", new Date("2026-10-25T10:10:30Z"));
   const rows = await db.select().from(securityFindings);
   assert.deepEqual(
     rows.map((f) => `${f.packageName}:${f.fix}:${f.fixedVersion}`),
     ["next:update:16.3.6"],
-    "the image's software, with the fix on 16.3.5's own line, never 15.5.28",
+    "the newer build has the fix on 16.3.5's own line, never 15.5.28",
   );
   await settle();
   assert.equal(hookCalls().length, 1);
@@ -525,25 +579,39 @@ test("an image's update is one security update, and alerts once however much it 
     /1 security update to apply/,
   );
 
-  workloads = [
-    wl({
-      projectId: "prj_tool",
-      imageRef: "ghcr.io/acme/tool:1",
-      imageId: TOOL_IMAGE_2,
-    }),
-  ];
-  packagesOf[TOOL_IMAGE_2] = [
-    { purl: NEXT, location: "/app/node_modules/next/package.json" },
-    { purl: AXIOS, location: "/app/node_modules/axios/package.json" },
-  ];
-  await backfill(new Date("2026-10-25T11:00:00Z"));
-  await db.update(workloadImages).set(newerBuild);
+  await refreshServer(SERVER_1, new Date("2026-10-25T10:15:00Z"));
+  assert.equal(
+    candidateRefs.length,
+    1,
+    "a build already read is not pulled again",
+  );
+
+  await seedToolImage(TOOL_IMAGE_2, [NEXT, AXIOS]);
+  candidatePurls = ["pkg:npm/next@16.3.6", "pkg:npm/axios@1.6.1"];
   await matchWorkloads("full", new Date("2026-10-25T16:10:00Z"));
-  assert.equal((await db.select().from(securityFindings)).length, 2);
+  await refreshServer(SERVER_1, new Date("2026-10-25T16:15:00Z"));
+  await matchWorkloads("light", new Date("2026-10-25T16:15:30Z"));
+  assert.deepEqual(await toolRows(), ["axios:update", "next:update"]);
   await settle();
   assert.equal(
     hookCalls().length,
     1,
     "the image was already flagged: a second package in it stays quiet",
+  );
+});
+
+test("a newer build that keeps the flaw waits on the maintainers and never counts", async () => {
+  await seedApp(db, { id: "prj_tool", slug: "tool" });
+  await seedToolImage(TOOL_IMAGE, [NEXT]);
+  await matchWorkloads("full", new Date("2026-10-25T10:05:00Z"));
+  candidatePurls = [NEXT];
+  await refreshServer(SERVER_1, new Date("2026-10-25T10:10:00Z"));
+  await matchWorkloads("light", new Date("2026-10-25T10:10:30Z"));
+  assert.deepEqual(await toolRows(), ["next:upstream"]);
+  await settle();
+  assert.equal(
+    hookCalls().length,
+    0,
+    "nothing the team can apply, nothing to alert",
   );
 });

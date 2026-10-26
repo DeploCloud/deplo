@@ -20,6 +20,7 @@ const base: FixInput = {
   registryStatus: null,
   registryDigest: null,
   newerTag: null,
+  candidate: "unread",
 };
 
 test("fixKind: Deplo-built images", () => {
@@ -56,10 +57,22 @@ test("fixKind: a vendor image is fixed only by what its registry has", () => {
     repoDigest: "sha256:old",
   };
   assert.equal(fixKind(vendor), "none");
+  const newerBuild = {
+    ...vendor,
+    registryStatus: "ok",
+    registryDigest: "sha256:new",
+  };
   assert.equal(
-    fixKind({ ...vendor, registryStatus: "ok", registryDigest: "sha256:new" }),
+    fixKind({ ...newerBuild, candidate: "fixed" }),
     "update",
+    "Update only once the newer build was read and has the fix",
   );
+  assert.equal(
+    fixKind({ ...newerBuild, candidate: "vulnerable" }),
+    "upstream",
+    "a newer build that keeps the flaw waits on the maintainers",
+  );
+  assert.equal(fixKind(newerBuild), "unverified", "not read yet");
   assert.equal(
     fixKind({ ...vendor, registryStatus: "ok", registryDigest: "sha256:old" }),
     "none",
@@ -70,6 +83,7 @@ test("fixKind: a vendor image is fixed only by what its registry has", () => {
       registryStatus: "ok",
       registryDigest: "sha256:old",
       newerTag: "16.5-alpine",
+      candidate: "fixed",
     }),
     "newer_tag",
   );
@@ -140,6 +154,19 @@ test("inScope: only the app's own dependencies, or what an image ships", () => {
     false,
     "the Go toolchain inside a vendor binary",
   );
+});
+
+test("isActionable: a newer build counts only once it is known to fix it", () => {
+  const f = {
+    ecosystem: "npm",
+    packageName: "next",
+    location: "/app/node_modules/next/package.json",
+    level: "critical",
+  };
+  assert.equal(isActionable({ ...f, fix: "update" }), true);
+  assert.equal(isActionable({ ...f, fix: "upstream" }), false);
+  assert.equal(isActionable({ ...f, fix: "unverified" }), false);
+  assert.equal(inScope({ ...f, fix: "upstream" }), true, "still listed");
 });
 
 test("isActionable: critical or attacked, and in scope", () => {

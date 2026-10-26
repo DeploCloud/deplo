@@ -5,7 +5,15 @@ export type Level = "exploited" | "critical" | "high";
 
 // How the team gets the fix, judged from their side (see ADR-0038).
 export type FixKind =
-  "code" | "rebuild" | "update" | "newer_tag" | "deplo" | "none";
+  | "code"
+  | "rebuild"
+  | "update"
+  | "newer_tag"
+  // A newer build or tag exists but still has it, or was not read yet: listed, never counted.
+  | "upstream"
+  | "unverified"
+  | "deplo"
+  | "none";
 
 export function levelOf(
   severity: Severity | null,
@@ -30,6 +38,8 @@ export interface FixInput {
   registryStatus: string | null;
   registryDigest: string | null;
   newerTag: string | null;
+  // What the newer build or tag holds for this package, once Deplo has read it.
+  candidate: "fixed" | "vulnerable" | "unread";
 }
 
 // `deplo/<key>:<deployment>`, or a compose `build:` service, named `deplo-<slug>-<service>`.
@@ -48,10 +58,19 @@ export function fixKind(i: FixInput): FixKind {
   // A private image still gets Update: whoever publishes it is on the team.
   if (i.registryStatus === "private") return "update";
   if (i.registryStatus !== "ok") return "none";
-  if (i.repoDigest && i.registryDigest && i.registryDigest !== i.repoDigest)
-    return "update";
-  return i.newerTag ? "newer_tag" : "none";
+  const newer =
+    i.repoDigest && i.registryDigest && i.registryDigest !== i.repoDigest
+      ? "update"
+      : i.newerTag
+        ? "newer_tag"
+        : null;
+  if (!newer) return "none";
+  // Update is offered only when the newer build was read and has the fix.
+  if (i.candidate === "fixed") return newer;
+  return i.candidate === "vulnerable" ? "upstream" : "unverified";
 }
+
+const IMAGE_FIXES = new Set(["update", "newer_tag", "upstream", "unverified"]);
 
 function underDir(location: string, dir: string): boolean {
   const d = dir.replace(/\/+$/, "");
@@ -78,12 +97,14 @@ function embedded(f: Scoped): boolean {
 export function inScope(f: Scoped): boolean {
   if (embedded(f)) return false;
   if (f.fix === "code") return true;
-  if (f.fix !== "update" && f.fix !== "newer_tag") return false;
+  if (!IMAGE_FIXES.has(f.fix)) return false;
   if (isDistroEcosystem(f.ecosystem)) return false;
   return !(f.ecosystem === "Go" && f.packageName === "stdlib");
 }
 
 // What the badge counts and an alert fires for; an Important one is listed only.
 export function isActionable(f: Scoped & { level: string }): boolean {
-  return inScope(f) && f.level !== "high";
+  const applicable =
+    f.fix === "code" || f.fix === "update" || f.fix === "newer_tag";
+  return applicable && inScope(f) && f.level !== "high";
 }

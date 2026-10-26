@@ -17,11 +17,15 @@ export function fixLine(u: FixLineInput): string {
     case "code":
       return `Update ${u.packageName} to ${u.fixedVersion} in your code`;
     case "update":
-      return `A newer build of this image may fix ${flaws}: update to get it`;
+      return `A newer build of this image fixes ${flaws}: update to get it`;
     case "newer_tag":
       return u.newerTag
-        ? `Version ${u.newerTag} is available and may fix ${flaws}`
-        : `A newer version of this image may fix ${flaws}`;
+        ? `Version ${u.newerTag} is available and fixes ${flaws}`
+        : `A newer version of this image fixes ${flaws}`;
+    case "upstream":
+      return `The newer build still has ${u.flaws === 1 ? "it" : "them"}: waiting on the image's maintainers`;
+    case "unverified":
+      return `A newer build is out: Deplo is checking whether it fixes ${flaws}`;
     default:
       return "";
   }

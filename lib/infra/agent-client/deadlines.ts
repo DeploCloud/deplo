@@ -32,6 +32,8 @@ export const VOLUME_USAGE_TIMEOUT_MS = 70_000;
 export const INVENTORY_LIST_DEADLINE_MS = 60_000;
 // The agent stops its own read at 10 minutes; the margin covers the save before it.
 export const INVENTORY_DEADLINE_MS = 15 * 60_000;
+// A newer build is pulled first (up to 10 minutes), then read like any image.
+export const INVENTORY_CANDIDATE_DEADLINE_MS = 25 * 60_000;
 // The agent gives the pull itself 10 minutes before `up`.
 export const REROUTE_PULL_DEADLINE_MS = 12 * 60_000;
 // Covers the first download of the browser and waiting behind another capture on the host.
