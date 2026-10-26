@@ -1,3 +1,4 @@
+import { parseImageRef } from "../registry/image-ref";
 export interface Purl {
   type: string;
   namespace: string;
@@ -66,6 +67,20 @@ export function parsePurl(purl: string): Purl | null {
     version,
     qualifiers,
   };
+}
+
+// A vendor's own Go binary often carries no version; the image's tag is that version (grafana/grafana:8.3.0).
+export function versionFromImageTag(purl: string, imageRef: string): string {
+  const p = parsePurl(purl);
+  if (!p || p.version || p.type !== "golang") return purl;
+  const ref = parseImageRef(imageRef);
+  const tag = ref?.tag.match(/^v?(\d+\.\d+(?:\.\d+)?)$/)?.[1];
+  const repo = ref?.repository.replace(/^library\//, "");
+  if (!tag || !repo || !`${p.namespace}/${p.name}`.endsWith(`/${repo}`))
+    return purl;
+  const cut = purl.search(/[?#]/);
+  const end = cut === -1 ? purl.length : cut;
+  return `${purl.slice(0, end)}@v${tag}${purl.slice(end)}`;
 }
 
 export function isDistroEcosystem(ecosystem: string): boolean {
