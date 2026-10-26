@@ -6,6 +6,7 @@ import {
   acquireLease,
   ownedByDeadLocalProcess,
   releaseLease,
+  stopAcquiringLeases,
   __resetLocalLeases,
   LEASE_STALE_MS,
   type LeaseRow,
@@ -67,6 +68,24 @@ test("in-process: a stale lease is stolen by another owner", async () => {
   assert.equal(await acquireLease("L", "a", NOW), true);
   const later = new Date(NOW.getTime() + LEASE_STALE_MS + 60_000);
   assert.equal(await acquireLease("L", "b", later), true);
+});
+
+test("shutting down: no tick renews a released lease, even one already in flight", async () => {
+  const stopping = Symbol.for("deplo.scheduler.lease.stopping");
+  const g = globalThis as unknown as Record<symbol, unknown>;
+  try {
+    assert.equal(await acquireLease("L", "a", NOW), true);
+    const inFlight = acquireLease("M", "a", NOW);
+    stopAcquiringLeases();
+    await releaseLease("L", "a");
+    assert.equal(await acquireLease("L", "a", NOW), false, "renewed");
+    assert.equal(await inFlight, false, "landed after the release");
+    delete g[stopping];
+    assert.equal(await acquireLease("L", "b", NOW), true);
+    assert.equal(await acquireLease("M", "b", NOW), true, "left held");
+  } finally {
+    delete g[stopping];
+  }
 });
 
 test("ownedByDeadLocalProcess: a dead pid on this host, and nothing else", () => {

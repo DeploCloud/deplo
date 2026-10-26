@@ -99,11 +99,35 @@ async function releasePostgres(name: string, owner: string): Promise<void> {
   );
 }
 
+const STOPPING_KEY = Symbol.for("deplo.scheduler.lease.stopping");
+const gs = globalThis as unknown as { [STOPPING_KEY]?: boolean };
+
+// On shutdown: a tick that renews after the release would hold its lease for 2h.
+export function stopAcquiringLeases(): void {
+  gs[STOPPING_KEY] = true;
+}
+
 export async function acquireLease(
   name: string,
   owner: string,
   now: Date = new Date(),
   staleMs: number = LEASE_STALE_MS,
+): Promise<boolean> {
+  if (gs[STOPPING_KEY]) return false;
+  const held = await acquireNow(name, owner, now, staleMs);
+  // Sent before shutdown began, landed after its release.
+  if (held && gs[STOPPING_KEY]) {
+    await releaseLease(name, owner);
+    return false;
+  }
+  return held;
+}
+
+async function acquireNow(
+  name: string,
+  owner: string,
+  now: Date,
+  staleMs: number,
 ): Promise<boolean> {
   if (!isPostgresEnabled()) return acquireLocal(name, owner, now, staleMs);
   try {
