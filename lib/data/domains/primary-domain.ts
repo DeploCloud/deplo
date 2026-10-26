@@ -26,6 +26,14 @@ export async function primaryDomainRow(appId: string): Promise<Domain | null> {
   );
 }
 
+// Where people reach the app: the primary domain, path prefix included.
+export async function primaryDomainUrl(appId: string): Promise<string | null> {
+  const primary = await primaryDomainRow(appId);
+  return primary
+    ? `${domainScheme(primary)}://${primary.name}${primary.pathPrefix ?? ""}`
+    : null;
+}
+
 export async function primaryDomainApp(appId: string): Promise<string> {
   const domains = await loadDomainsForApp(appId);
   const primary = domains.find((d) => d.primary) ?? domains[0];
@@ -64,19 +72,10 @@ export async function setPrimaryDomain(id: string): Promise<string> {
 }
 
 export async function syncProductionUrl(appId: string): Promise<void> {
-  const domains = await loadDomainsForApp(appId);
-  const primary =
-    domains.find((x) => x.primary) ??
-    domains.find((x) => !x.redirectTo) ??
-    domains[0];
+  const productionUrl = await primaryDomainUrl(appId);
   await getDb()
     .update(appsTable)
-    .set({
-      productionUrl: primary
-        ? `${domainScheme(primary)}://${primary.name}${primary.pathPrefix ?? ""}`
-        : null,
-      updatedAt: nowIso(),
-    })
+    .set({ productionUrl, updatedAt: nowIso() })
     .where(eq(appsTable.id, appId));
 }
 

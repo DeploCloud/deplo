@@ -10,7 +10,10 @@ import {
   appPreviews,
   deploymentScreenshots,
 } from "../../db/schema/control-plane/deployments";
-import { appBasicAuthUsers } from "../../db/schema/control-plane/domains";
+import {
+  appBasicAuthUsers,
+  domains as domainsTable,
+} from "../../db/schema/control-plane/domains";
 import { deploMoves } from "../../db/schema/control-plane/deplo-move";
 import { invalidateFrozen } from "../../data/deplo-move/freeze";
 import {
@@ -103,11 +106,18 @@ beforeEach(async () => {
   await seedDeployment(db, { id: DEP, appId: APP, serverId: SERVER_1 });
   await db
     .update(appsTable)
-    .set({
-      latestDeploymentId: DEP,
-      productionUrl: "https://shop.example.com/store",
-    })
+    .set({ latestDeploymentId: DEP, productionUrl: "https://shop.example.com" })
     .where(eq(appsTable.id, APP));
+  await db.insert(domainsTable).values({
+    id: "dom_shop",
+    appId: APP,
+    name: "shop.example.com",
+    pathPrefix: "/store",
+    isPrimary: true,
+    ssl: true,
+    status: "valid",
+    createdAt: T0,
+  });
 });
 
 const shots = () => db.select().from(deploymentScreenshots);
@@ -119,7 +129,7 @@ test("a live deployment's light and dark pictures are stored", async () => {
   assert.equal(
     calls[0].url,
     "https://shop.example.com/store",
-    "the production URL keeps its path",
+    "the primary domain keeps its path, whatever the app row says at Ready",
   );
   assert.equal(
     calls[0].basicAuthUsername,

@@ -4,6 +4,7 @@ import { and, eq, or, sql } from "drizzle-orm";
 import { CaptureOutcome } from "../../agent/gen/agent";
 import { basicAuthCredentialForCapture } from "../../data/basic-auth";
 import { instanceFrozen } from "../../data/deplo-move/freeze";
+import { primaryDomainUrl } from "../../data/domains/primary-domain";
 import { getDb } from "../../db/client";
 import {
   appEnvironments,
@@ -87,7 +88,6 @@ async function capture(depId: string): Promise<CaptureResult> {
       environment: deployments.environment,
       previewId: deployments.previewId,
       enabled: appsTable.screenshotsEnabled,
-      productionUrl: appsTable.productionUrl,
     })
     .from(deployments)
     .innerJoin(appsTable, eq(appsTable.id, deployments.appId))
@@ -95,11 +95,10 @@ async function capture(depId: string): Promise<CaptureResult> {
     .limit(1);
   if (!dep || !dep.serverId) return skipped("gone");
   if (!dep.enabled) return skipped("off");
-  // The production URL carries a path prefix the deployment's own URL does not.
+  // The primary domain carries the path prefix; the deployment's URL, and the app's at Ready, do not.
   const url =
-    dep.environment === "production" && dep.productionUrl
-      ? dep.productionUrl
-      : dep.url;
+    (dep.environment === "production" && (await primaryDomainUrl(dep.appId))) ||
+    dep.url;
   if (!url) return skipped("no-url");
   if (dep.status !== "ready" || !(await isLiveDeployment(depId)))
     return skipped("not-live");
