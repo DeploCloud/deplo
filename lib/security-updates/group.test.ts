@@ -48,6 +48,19 @@ test("an image's update is one update, however many packages it moves", () => {
   assert.deepEqual(countUpdates(items), { count: 2, exploited: 0 });
 });
 
+test("an image splits what its newer build fixes from what it keeps", () => {
+  const items = [
+    f({ fix: "update", packageName: "next", fixedVersion: null }),
+    f({ fix: "upstream", packageName: "axios", actionable: false }),
+  ];
+  const groups = groupUpdates(items);
+  assert.deepEqual(groups.map((g) => `${g.fix}:${g.items.length}`).sort(), [
+    "update:1",
+    "upstream:1",
+  ]);
+  assert.deepEqual(countUpdates(items), { count: 1, exploited: 0 });
+});
+
 test("packagesOf lists an image's packages once each, in order, with their advisories", () => {
   const items = [
     f({ packageName: "next", installedVersion: "16.3.5" }),

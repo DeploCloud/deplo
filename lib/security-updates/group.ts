@@ -49,6 +49,10 @@ const isImageFix = (fix: string) =>
   fix === "upstream" ||
   fix === "unverified";
 
+// An image is one update per state: what its newer build fixes, what it keeps, what is unread.
+const imageState = (fix: string) =>
+  fix === "upstream" || fix === "unverified" ? fix : "update";
+
 export const unitKey = (
   f: Pick<
     Groupable,
@@ -56,7 +60,7 @@ export const unitKey = (
   >,
 ) =>
   isImageFix(f.fix)
-    ? `${f.service}\0image`
+    ? `${f.service}\0image\0${imageState(f.fix)}`
     : `${f.service}\0${f.ecosystem}\0${f.packageName}\0${f.installedVersion}`;
 
 export function groupUpdates<T extends Groupable>(
