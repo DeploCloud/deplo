@@ -79,3 +79,22 @@ export function bracketHost(host: string): string {
 export function formatHostPort(host: string, port: number | string): string {
   return `${bracketHost(host)}:${port}`;
 }
+
+export interface DnsRecord {
+  type: "A" | "AAAA";
+  value: string;
+}
+
+// What points a name at these addresses: A for an IPv4, AAAA for an IPv6, each address once.
+export function dnsRecordsFor(
+  ...ips: (string | null | undefined)[]
+): DnsRecord[] {
+  const out: DnsRecord[] = [];
+  for (const ip of ips) {
+    const p = parseHostAddress(ip);
+    if (!p || p.kind === "hostname" || out.some((r) => r.value === p.host))
+      continue;
+    out.push({ type: p.kind === "ipv6" ? "AAAA" : "A", value: p.host });
+  }
+  return out;
+}

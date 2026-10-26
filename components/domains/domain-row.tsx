@@ -25,6 +25,7 @@ import { Button } from "@/components/ui/button";
 import { SimpleTooltip } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 import { domainRoutingWarning } from "@/lib/domain-issues";
+import { dnsRecordsFor } from "@/lib/host-address";
 import { DomainNameField } from "./domain-name-field";
 import {
   Dialog,
@@ -115,12 +116,9 @@ export function DomainRow({
   suggestedDomain?: string;
   stray?: StrayRecord | null;
 }) {
-  const records = [
-    serverIp ? { type: "A", ip: serverIp } : null,
-    serverIpv6 ? { type: "AAAA", ip: serverIpv6 } : null,
-  ].filter((r) => r !== null);
+  const records = dnsRecordsFor(serverIp, serverIpv6);
   const strayTarget =
-    (stray && (stray.type === "A" ? serverIp : serverIpv6)) || null;
+    records.find((r) => r.type === stray?.type)?.value ?? null;
   const router = useRouter();
   const canManage = useAppCan("manage_domains");
   const [pending, startTransition] = React.useTransition();
@@ -433,7 +431,7 @@ export function DomainRow({
                     </span>{" "}
                     →
                   </span>
-                  <AddressChip value={records[0].ip} />
+                  <AddressChip value={records[0].value} />
                   {records[1] && (
                     <>
                       <span>
@@ -443,7 +441,7 @@ export function DomainRow({
                         </span>{" "}
                         →
                       </span>
-                      <AddressChip value={records[1].ip} />
+                      <AddressChip value={records[1].value} />
                     </>
                   )}
                   <span>

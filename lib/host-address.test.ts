@@ -4,6 +4,7 @@ import assert from "node:assert/strict";
 import {
   canonicalHost,
   clientKeyAddress,
+  dnsRecordsFor,
   formatHostPort,
   isIpLiteral,
   parseHostAddress,
@@ -83,4 +84,15 @@ test("canonicalHost compares two spellings, and isIpLiteral knows both families"
   assert.equal(isIpLiteral("2001:db8::1"), true);
   assert.equal(isIpLiteral("203.0.113.10"), true);
   assert.equal(isIpLiteral("server.example.com"), false);
+});
+
+test("an IPv6-only server is pointed at with one AAAA, never an A holding an IPv6", () => {
+  assert.deepEqual(dnsRecordsFor("2a12:bec4::2", "2A12:BEC4:0::2"), [
+    { type: "AAAA", value: "2a12:bec4::2" },
+  ]);
+  assert.deepEqual(dnsRecordsFor("203.0.113.7", "2001:db8::1"), [
+    { type: "A", value: "203.0.113.7" },
+    { type: "AAAA", value: "2001:db8::1" },
+  ]);
+  assert.deepEqual(dnsRecordsFor(null, undefined, "server.acme.com"), []);
 });

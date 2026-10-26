@@ -5,6 +5,7 @@ import { useRouter } from "@/lib/nav";
 import { toast } from "sonner";
 import { RefreshCw } from "lucide-react";
 import { gqlAction } from "@/lib/graphql-client";
+import { dnsRecordsFor } from "@/lib/host-address";
 import { useAppCan } from "@/components/apps/app-capabilities";
 import { DomainNoticeContent } from "./domain-notice-content";
 
@@ -27,10 +28,7 @@ export function DomainDnsAutoCheck({
   serverIpv6?: string | null;
   action?: React.ReactNode;
 }) {
-  const records = [
-    serverIp ? { type: "A", ip: serverIp } : null,
-    serverIpv6 ? { type: "AAAA", ip: serverIpv6 } : null,
-  ].filter((r) => r !== null);
+  const records = dnsRecordsFor(serverIp, serverIpv6);
   const router = useRouter();
   const canVerify = useAppCan("manage_domains");
   const [checking, setChecking] = React.useState(false);
@@ -131,7 +129,7 @@ export function DomainDnsAutoCheck({
                   {i > 0 ? ", " : null}
                   {r.type} record →{" "}
                   <code className="rounded bg-muted px-1 py-0.5 font-mono text-foreground">
-                    {r.ip}
+                    {r.value}
                   </code>
                 </React.Fragment>
               ))}

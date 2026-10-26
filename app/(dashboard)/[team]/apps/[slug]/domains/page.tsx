@@ -56,7 +56,7 @@ export default async function AppDomainsPage(
             </p>
             {!serverIp && (
               <p className="mt-1 text-sm text-muted-foreground">
-                No generated address here: Deplo doesn’t know this server’s IPv4
+                No generated address here: Deplo doesn’t know this server’s
                 address.
               </p>
             )}

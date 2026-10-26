@@ -21,6 +21,7 @@ import { RevealChip } from "@/components/shared/reveal-chip";
 import { PanelAddressDialog } from "@/components/settings/panel-address-dialog";
 import { usePanelHttps } from "./panel-http-card";
 import { gqlAction } from "@/lib/graphql-client";
+import { dnsRecordsFor } from "@/lib/host-address";
 import { cn } from "@/lib/utils";
 import type { PanelDns } from "@/lib/data/instance-settings/panel-address";
 import type { InstanceSettings } from "@/lib/data/instance-settings/settings-store";
@@ -195,10 +196,7 @@ function PanelDnsBlock({
     return serverIp || dns.ipv6 ? null : <AddServerHint />;
 
   const off = dns.status === "misconfigured";
-  const records = [
-    serverIp ? { type: "A", value: serverIp } : null,
-    dns.ipv6 ? { type: "AAAA", value: dns.ipv6 } : null,
-  ].filter((r) => r !== null);
+  const records = dnsRecordsFor(serverIp, dns.ipv6);
   return (
     <div>
       <p className="flex flex-wrap items-center gap-1.5 text-sm font-medium">
