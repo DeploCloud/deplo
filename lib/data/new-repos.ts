@@ -58,7 +58,7 @@ export function pickNewRepos(
         isRecent(r.createdAt, now) &&
         !linked.has(repoKey(r.provider, r.fullName)),
     )
-    .sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1))
+    .sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt))
     .slice(0, MAX_CARDS);
 }
 
@@ -163,7 +163,8 @@ export async function listNewRepos(): Promise<NewRepo[]> {
         toRepo: (r) => ({
           ...summaryFields(r),
           provider: c.provider as GitRepo["provider"],
-          url: r.url,
+          // The connection's own host, as the wizard builds it: only that host gets the token on clone.
+          url: `${c.baseUrl.replace(/\/+$/, "")}/${r.fullName}`,
           installationId: null,
           connectionId: c.id,
         }),

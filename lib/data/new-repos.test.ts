@@ -81,6 +81,26 @@ test("the newest three are suggested, newest first", () => {
   );
 });
 
+test("newest first across hosts that write the time in different time zones", () => {
+  const at = (fullName: string, createdAt: string) => ({
+    ...repo(fullName, 1),
+    createdAt,
+  });
+  const picked = pickNewRepos(
+    [
+      at("acme/gitea", "2026-10-26T10:00:00+02:00"),
+      at("acme/github", "2026-10-26T09:00:00Z"),
+      at("acme/bitbucket", "2026-10-26T08:30:00.123456+00:00"),
+    ],
+    new Set(),
+    NOW,
+  );
+  assert.deepEqual(
+    picked.map((r) => r.fullName),
+    ["acme/github", "acme/bitbucket", "acme/gitea"],
+  );
+});
+
 let db: TestDb;
 let pg: PGlite;
 const realFetch = globalThis.fetch;
@@ -153,7 +173,7 @@ function stubGitea(): void {
     name,
     private: true,
     default_branch: "main",
-    html_url: `https://git.acme.com/acme/${name}`,
+    html_url: `https://gitea.internal/acme/${name}`,
     updated_at: yesterday,
     created_at: yesterday,
   });
@@ -194,8 +214,9 @@ test("a new repository with a commit is suggested, an empty one is not", async (
   stubGitea();
   const found = await asUser1(() => listNewRepos());
   assert.deepEqual(
-    found.map((r) => [r.provider, r.fullName, r.connectionId]),
-    [["gitea", "acme/shop", "gitc_pushed"]],
+    found.map((r) => [r.provider, r.fullName, r.connectionId, r.url]),
+    [["gitea", "acme/shop", "gitc_pushed", "https://git.acme.com/acme/shop"]],
+    "the clone URL is on the connection's host, whatever address the host reports",
   );
 });
 
