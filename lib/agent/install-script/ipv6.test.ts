@@ -39,6 +39,8 @@ test("Docker gets IPv6 after the address pools and before the Deplo network exis
       network > ipv6,
       `${file}: the Deplo network is created before Docker has IPv6`,
     );
+    const clat = body.search(/^[ \t]*ensure_clat$/m);
+    assert.ok(clat > ipv6, `${file}: deplo-clat must follow Docker's IPv6`);
     assert.ok(
       moved > network,
       `${file}: existing networks are never moved onto IPv6`,
@@ -81,14 +83,19 @@ test("a string that is not an IPv6 is not given a label", async () => {
   }
 });
 
-async function family(opts: { v4: boolean; v6: boolean; ask?: string }) {
+async function family(opts: {
+  v4: boolean | string;
+  v6: boolean;
+  ask?: string;
+}) {
   const dir = await mkdtemp(join(tmpdir(), "deplo-ip-"));
   const route = (a: string) => `echo "x via y dev eth0 src ${a} uid 0"`;
+  const v4 = opts.v4 === true ? "203.0.113.7" : opts.v4;
   await writeFile(
     join(dir, "ip"),
     `#!/bin/sh
 case "$1" in
-  -4) ${opts.v4 ? route("203.0.113.7") : "exit 2"} ;;
+  -4) ${v4 ? route(v4) : "exit 2"} ;;
   -6) ${opts.v6 ? route("2001:DB8::7") : "exit 2"} ;;
 esac
 `,
@@ -121,6 +128,13 @@ test("IPv4 is the default whenever the server has one, and an IPv6-only one gets
   );
 });
 
+test("deplo-clat's own IPv4 never makes an IPv6-only server look dual-stack", async () => {
+  assert.equal(
+    await family({ v4: "192.0.0.1", v6: true }),
+    "ok ipv6 true [] [2001:db8::7]",
+  );
+});
+
 test("--ipv6 picks IPv6 on a dual-stack server, and a kind the server lacks is refused", async () => {
   assert.equal(
     await family({ v4: true, v6: true, ask: "ipv6" }),
@@ -144,4 +158,91 @@ test("Docker is left alone unless this install serves on IPv6", async () => {
     `set -euo pipefail\nexec 9>/dev/null\n${block}\nIP_FAMILY=ipv4\ndocker() { echo DOCKER "$@"; }\nconfigure_docker_ipv6\nensure_networks_ipv6\necho "[$(ipv6_net_flag)]"`,
   );
   assert.equal(out.trim(), "[]");
+});
+
+async function withStubs(stubs: Record<string, string>) {
+  const dir = await mkdtemp(join(tmpdir(), "deplo-ipv6-"));
+  for (const [name, body] of Object.entries(stubs))
+    await writeFile(join(dir, name), `#!/bin/sh\n${body}\n`, { mode: 0o755 });
+  return dir;
+}
+
+test("router adverts are kept where forwarding would drop them, and only there", async () => {
+  const block = ipv6Block(await read("install.sh"));
+  for (const [before, after, persisted] of [
+    ["1", "2", true],
+    ["0", "0", false],
+  ] as const) {
+    const dir = await withStubs({
+      ip: 'echo "2606:4700:4700::1111 from :: via fe80::1 dev eth0 src 2001:db8::7"',
+    });
+    try {
+      await bash(
+        `mkdir -p ${dir}/conf/eth0 && echo ${before} > ${dir}/conf/eth0/accept_ra`,
+      );
+      await bash(
+        `set -euo pipefail\nexec 9>/dev/null\nIPV6_CONF=${dir}/conf SYSCTL_DIR=${dir}/sysctl\n${block}\nok() { :; }\nkeep_ra_route`,
+        dir,
+      );
+      assert.equal(
+        (await readFile(`${dir}/conf/eth0/accept_ra`, "utf8")).trim(),
+        after,
+      );
+      const file = await readFile(
+        `${dir}/sysctl/60-deplo-ipv6-ra.conf`,
+        "utf8",
+      ).catch(() => null);
+      assert.equal(
+        file,
+        persisted ? "net/ipv6/conf/eth0/accept_ra = 2\n" : null,
+      );
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  }
+});
+
+test("deplo-clat translates to the NAT64 prefix DNS64 names, and to nothing else", async () => {
+  const block = ipv6Block(await read("install.sh"));
+  const script = await bash(
+    `exec 9>/dev/null\n${block}\nclat_script fd12:3456:789a:6464::`,
+  );
+  assert.match(script, /^ULA=fd12:3456:789a:6464::$/m);
+  const cases: [string, string | null][] = [
+    ["2a00:1098:2c::5:c000:aa", "2a00:1098:2c:0:0:5::/96"],
+    ["64:ff9b::c000:aa", "64:ff9b:0:0:0:0::/96"],
+    ["2a01:4f9:c010:3f02:64:0:c000:ab", "2a01:4f9:c010:3f02:64:0::/96"],
+    ["::ffff:192.0.0.170", null],
+    ["2001:db8::1", null],
+    ["", null],
+  ];
+  for (const [answer, prefix] of cases) {
+    const dir = await withStubs({
+      getent: answer ? `echo "${answer} STREAM ipv4only.arpa"` : "exit 2",
+    });
+    try {
+      await writeFile(join(dir, "clat"), script);
+      const out = await bash(`sh ${dir}/clat prefix || echo FAILED`, dir);
+      assert.equal(out.trim(), prefix ?? "FAILED", answer);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  }
+});
+
+test("a server with IPv4 never gets deplo-clat", async () => {
+  const block = ipv6Block(await read("install.sh"));
+  const out = await bash(
+    `set -euo pipefail\nexec 9>/dev/null\n${block}\nIPV6_ONLY=false\ninstall_tayga() { echo TOUCHED; }\nensure_clat\necho done`,
+  );
+  assert.equal(out.trim(), "done");
+});
+
+test("deplo-clat falls back to the prefix it was installed with when DNS64 is gone", async () => {
+  const block = ipv6Block(await read("install.sh"));
+  const script = await bash(
+    `exec 9>/dev/null\n${block}\nclat_script fd12:3456:789a:6464:: 2a00:1098:2b:0:0:1::/96`,
+  );
+  assert.match(script, /^FALLBACK=2a00:1098:2b:0:0:1::\/96$/m);
+  assert.match(script, /prefix="\$\(nat64_prefix \|\| echo "\$FALLBACK"\)"/);
 });

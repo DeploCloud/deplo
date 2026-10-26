@@ -108,3 +108,18 @@ test("never uninstalls Docker or rewrites its configuration", async () => {
   assert.doesNotMatch(script, /(mv|cp|rm)[^\n]*daemon\.json/);
   assert.match(script, /daemon\.json\.deplo-bak/);
 });
+
+test("takes deplo-clat away and puts the DNS resolvers NAT64 replaced back", async () => {
+  const script = await renderUninstallScript();
+
+  assert.match(script, /systemctl disable --now deplo-clat/);
+  assert.match(
+    script,
+    /rm -f \/etc\/systemd\/system\/deplo-clat\.service \/usr\/local\/sbin\/deplo-clat/,
+  );
+  assert.match(
+    script,
+    /rm -f \/etc\/systemd\/resolved\.conf\.d\/deplo-nat64\.conf/,
+  );
+  assert.match(script, /run mv "\$f\.deplo-bak" "\$f"/);
+});

@@ -524,6 +524,35 @@ else
   skip "No agent binary at $AGENT_BIN"
 fi
 
+# Only an IPv6-only server has these: its IPv4 through NAT64, and the DNS64 resolvers.
+if [ -f /etc/systemd/system/deplo-clat.service ]; then
+  step "Removing deplo-clat (IPv4 through NAT64)"
+  run systemctl disable --now deplo-clat
+  run rm -f /etc/systemd/system/deplo-clat.service /usr/local/sbin/deplo-clat
+  run systemctl daemon-reload
+  applied "deplo-clat removed"
+fi
+NAT64_LEFT=false
+for f in /etc/systemd/resolved.conf.d/deplo-nat64.conf /etc/resolvconf/resolv.conf.d/head.deplo-bak \
+  /etc/resolvconf.conf.deplo-bak /etc/resolv.conf.deplo-bak; do
+  { [ -e "$f" ] || [ -L "$f" ]; } && NAT64_LEFT=true
+done
+if [ "$NAT64_LEFT" = true ]; then
+  step "Putting back the DNS resolvers Deplo replaced with NAT64 ones"
+  run rm -f /etc/systemd/resolved.conf.d/deplo-nat64.conf
+  for f in /etc/resolvconf/resolv.conf.d/head /etc/resolvconf.conf /etc/resolv.conf; do
+    { [ -e "$f.deplo-bak" ] || [ -L "$f.deplo-bak" ]; } || continue
+    run rm -f "$f"
+    run mv "$f.deplo-bak" "$f"
+  done
+  if systemctl is-active --quiet systemd-resolved 2>/dev/null; then
+    run systemctl restart systemd-resolved
+  elif command -v resolvconf >/dev/null 2>&1; then
+    run resolvconf -u
+  fi
+  applied "DNS resolvers restored"
+fi
+
 # ==============================================================================
 # 3. Containers Deplo runs on this host
 # ==============================================================================

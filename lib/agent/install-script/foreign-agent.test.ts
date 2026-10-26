@@ -47,3 +47,44 @@ test("a host with no agent passes, and an enrolled one with no record is refused
   assert.equal(await foreignPanel({}), "");
   assert.equal(await foreignPanel({ "ca.crt": "x" }), "an earlier install");
 });
+
+test("two Deplos on IPv6 addresses are told apart past the first colon", async () => {
+  assert.equal(
+    await foreignPanel(
+      { "bootstrap.env": "DEPLO_BOOTSTRAP_URL=https://[2a12:bec4::1]:3000\n" },
+      "https://[2a12:dead::1]/api/agent/bootstrap",
+    ),
+    "[2a12:bec4::1]",
+  );
+  assert.equal(
+    await foreignPanel(
+      { "bootstrap.env": "DEPLO_BOOTSTRAP_URL=https://[2a12:dead::1]:3000\n" },
+      "https://[2a12:dead::1]/api/agent/bootstrap",
+    ),
+    "",
+  );
+});
+
+test("the update knows this host's own agent when it was enrolled at an IPv6 address", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "deplo-agent-env-"));
+  try {
+    const env = join(dir, "bootstrap.env");
+    const fn = (await shellFn("install.sh", "agent_is_ours")).replace(
+      "/var/lib/deplo-agent/bootstrap.env",
+      env,
+    );
+    const ours = async (url: string) => {
+      await writeFile(env, `DEPLO_BOOTSTRAP_URL=${url}\n`);
+      return (
+        await bash(
+          `SERVER_IP=2a12:bec4::2 TARGET_IP= FALLBACK_HOST= PANEL_HOST=\n${fn}\nagent_is_ours && echo yes || echo no`,
+        )
+      ).trim();
+    };
+    assert.equal(await ours("http://[2a12:bec4::2]:3000"), "yes");
+    assert.equal(await ours("http://[2a12:bec4::9]:3000"), "no");
+    assert.equal(await ours("http://127.0.0.1:3000"), "yes");
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});

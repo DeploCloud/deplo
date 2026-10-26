@@ -560,16 +560,17 @@ port_holder() {
 
 # ==== Deplo IPv6 ============================================ KEEP IN SYNC ====
 # Identical in install.sh and install-agent.sh (a test holds them together).
-# A host the internet reaches over IPv6 only needs two things set up, or nothing
-# works: Docker's networks get no way out, and ghcr.io and github.com have no
-# IPv6 address at all - a public NAT64 carries those.
+# An IPv6-only host needs three things set up, or nothing works: Docker's
+# networks get no way out, ghcr.io and github.com have no IPv6 address (a public
+# NAT64 carries them), and an app that dials IPv4 first needs an IPv4 to dial.
 # https://deplo.build/docs/reference/installers/install#ipv6
 
 # The address the kernel answers the internet from, per kind. Only a routable
-# IPv6 (2000::/3) counts: a private or link-local one reaches nobody.
+# IPv6 (2000::/3) counts: a private or link-local one reaches nobody, and
+# 192.0.0.0/24 is deplo-clat's own, not one the internet can reach.
 host_ipv4() {
   ip -4 route get 1.1.1.1 2>/dev/null \
-    | awk '{for (i = 1; i < NF; i++) if ($i == "src") { print $(i + 1); exit }}' || true
+    | awk '{for (i = 1; i < NF; i++) if ($i == "src") { if ($(i + 1) !~ /^192\.0\.0\./) print $(i + 1); exit }}' || true
 }
 
 host_ipv6() {
@@ -619,7 +620,9 @@ write_nat64_dns() {
   for f in $NAT64_FILES; do
     [ -e "$f" ] && [ ! -e "$f.deplo-bak" ] && cp -P "$f" "$f.deplo-bak"
   done
-  if systemctl is-active --quiet systemd-resolved 2>/dev/null; then
+  # resolved only counts when /etc/resolv.conf sends lookups to it; a static file bypasses it.
+  if systemctl is-active --quiet systemd-resolved 2>/dev/null \
+    && case "$(readlink -f /etc/resolv.conf)" in /run/systemd/resolve/*) true ;; *) false ;; esac; then
     mkdir -p /etc/systemd/resolved.conf.d
     printf '[Resolve]\nDNS=%s\nDomains=~.\n' "$NAT64_DNS" >/etc/systemd/resolved.conf.d/deplo-nat64.conf
     systemctl restart systemd-resolved >&9 2>&9
@@ -681,10 +684,26 @@ foreign_running() {
     | grep -cvE '^(deplo|traefik)$' || true
 }
 
+# Forwarding, which IPv6 networks turn on, makes the kernel drop router adverts:
+# a host whose default route comes from them would lose it, and go dark. 2 keeps them.
+IPV6_CONF="${IPV6_CONF:-/proc/sys/net/ipv6/conf}"
+SYSCTL_DIR="${SYSCTL_DIR:-/etc/sysctl.d}"
+keep_ra_route() {
+  local dev
+  dev="$(ip -6 route get 2606:4700:4700::1111 2>/dev/null \
+    | awk '{for (i = 1; i < NF; i++) if ($i == "dev") { print $(i + 1); exit }}' || true)"
+  [ -n "$dev" ] && [ "$(cat "$IPV6_CONF/$dev/accept_ra" 2>/dev/null)" = 1 ] || return 0
+  { echo 2 >"$IPV6_CONF/$dev/accept_ra"; } 2>&9 || true
+  mkdir -p "$SYSCTL_DIR"
+  printf 'net/ipv6/conf/%s/accept_ra = 2\n' "$dev" >"$SYSCTL_DIR/60-deplo-ipv6-ra.conf"
+  ok "Router adverts kept on $dev" "its IPv6 route survives forwarding"
+}
+
 # Docker gives a network IPv6 only when asked. Every network gets a /64 from a
 # private /48, sent out through the host the same way IPv4 is.
 configure_docker_ipv6() {
   [ "$IP_FAMILY" = ipv6 ] || return 0
+  keep_ra_route
   local cfg=/etc/docker/daemon.json tmp major ula running
   if [ -f "$cfg" ] && grep -q '"com.docker.network.enable_ipv6"' "$cfg" 2>/dev/null; then
     ok "Docker networks already get IPv6"
@@ -775,6 +794,147 @@ ensure_networks_ipv6() {
     moved=$((moved + 1))
   done
   [ "$moved" -eq 0 ] || ok "Moved $moved existing $(plural "$moved" network) onto IPv6"
+}
+
+# DNS64 hands out IPv6 for IPv4-only sites, but Java, Ruby and busybox dial the
+# IPv4 first and stop there. deplo-clat gives the host an IPv4 that tayga carries
+# to the same NAT64 (464XLAT), so those reach them too.
+CLAT_BIN="${CLAT_BIN:-/usr/local/sbin/deplo-clat}"
+CLAT_UNIT="${CLAT_UNIT:-/etc/systemd/system/deplo-clat.service}"
+
+install_tayga() {
+  command -v tayga >/dev/null 2>&1 && return 0
+  if command -v apt-get >/dev/null 2>&1; then
+    DEBIAN_FRONTEND=noninteractive apt-get install -y -qq tayga >&9 2>&9 \
+      || { apt-get update -qq >&9 2>&9 && DEBIAN_FRONTEND=noninteractive apt-get install -y -qq tayga >&9 2>&9; }
+  elif command -v dnf >/dev/null 2>&1; then dnf install -y -q tayga >&9 2>&9
+  elif command -v yum >/dev/null 2>&1; then yum install -y -q tayga >&9 2>&9
+  elif command -v zypper >/dev/null 2>&1; then zypper --non-interactive install -y tayga >&9 2>&9
+  elif command -v apk >/dev/null 2>&1; then apk add --no-cache tayga >&9 2>&9
+  fi
+  command -v tayga >/dev/null 2>&1
+}
+
+# The host's private /96 for the translated side, the same on every re-run.
+clat_ula() {
+  local id
+  id="$(sha256sum /etc/machine-id 2>/dev/null | cut -c1-10 || true)"
+  [ -n "$id" ] || id="$(od -An -N5 -tx1 /dev/urandom | tr -d ' \n')"
+  printf 'fd%s:%s:%s:6464::' "${id:0:2}" "${id:2:4}" "${id:6:4}"
+}
+
+clat_script() {
+  sed -e "s/@ULA@/$1/" -e "s|@FALLBACK@|${2:-}|" <<'CLAT'
+#!/bin/sh
+# Written by the Deplo installer: IPv4 for an IPv6-only server, through NAT64.
+# https://deplo.build/docs/reference/installers/install#ipv6
+set -eu
+DEV=deplo-clat
+ULA=@ULA@
+# The prefix found at install: IPv4 keeps working when DNS64 is gone, through A records.
+FALLBACK=@FALLBACK@
+CONF=/run/deplo-clat/tayga.conf
+
+down() {
+  ip link del "$DEV" 2>/dev/null || true
+  ip6tables -t nat -D POSTROUTING -s "${ULA}/96" ! -o "$DEV" -j MASQUERADE 2>/dev/null || true
+  ip6tables -D FORWARD -i "$DEV" -j ACCEPT 2>/dev/null || true
+  ip6tables -D FORWARD -o "$DEV" -m conntrack --ctstate RELATED,ESTABLISHED -j ACCEPT 2>/dev/null || true
+}
+
+# The first 96 bits of what DNS64 makes of ipv4only.arpa (RFC 7050).
+nat64_prefix() {
+  getent ahostsv6 ipv4only.arpa | awk '
+    { n = split(tolower($1), p, "::"); if (n > 2) next
+      nh = p[1] == "" ? 0 : split(p[1], h, ":"); nt = (n < 2 || p[2] == "") ? 0 : split(p[2], t, ":")
+      k = 0; for (i = 1; i <= nh; i++) g[++k] = h[i]
+      for (i = 0; i < 8 - nh - nt; i++) g[++k] = "0"
+      for (i = 1; i <= nt; i++) g[++k] = t[i]
+      if (k == 8 && g[7] ~ /^0*c000$/ && g[8] ~ /^0*a[ab]$/) {
+        printf "%s:%s:%s:%s:%s:%s::/96\n", g[1], g[2], g[3], g[4], g[5], g[6]; found = 1; exit } }
+    END { exit !found }'
+}
+
+run() {
+  down
+  prefix="$(nat64_prefix || echo "$FALLBACK")"
+  [ -n "$prefix" ] || { echo "deplo-clat: DNS64 gave no NAT64 prefix for ipv4only.arpa" >&2; exit 1; }
+  mkdir -p /run/deplo-clat
+  printf 'tun-device %s\nipv4-addr 192.0.0.2\nipv6-addr %s2\nprefix %s\nmap 192.0.0.1 %s1\ndata-dir /run/deplo-clat\n' \
+    "$DEV" "$ULA" "$prefix" "$ULA" >"$CONF"
+  tayga --config "$CONF" --mktun >/dev/null
+  ip link set "$DEV" up
+  ip addr add 192.0.0.1/32 dev "$DEV"
+  # Last resort only: a real IPv4 default route, should one ever appear, wins.
+  ip route add default dev "$DEV" src 192.0.0.1 mtu 1480 metric 4096
+  ip -6 route replace "${ULA}/96" dev "$DEV"
+  sysctl -qw net.ipv4.ip_forward=1 net.ipv6.conf.all.forwarding=1
+  ip6tables -t nat -A POSTROUTING -s "${ULA}/96" ! -o "$DEV" -j MASQUERADE
+  ip6tables -I FORWARD -i "$DEV" -j ACCEPT
+  ip6tables -I FORWARD -o "$DEV" -m conntrack --ctstate RELATED,ESTABLISHED -j ACCEPT
+  echo "deplo-clat: IPv4 through NAT64 $prefix"
+  exec tayga --config "$CONF" --nodetach
+}
+
+case "${1:-run}" in
+  down) down ;;
+  prefix) nat64_prefix ;;
+  *) run ;;
+esac
+CLAT
+}
+
+clat_unit() {
+  cat <<UNIT
+[Unit]
+Description=Deplo: IPv4 for this IPv6-only server, through NAT64
+Wants=network-online.target
+After=network-online.target nss-lookup.target
+
+[Service]
+ExecStart=$CLAT_BIN run
+ExecStopPost=$CLAT_BIN down
+Restart=always
+RestartSec=15
+
+[Install]
+WantedBy=multi-user.target
+UNIT
+}
+
+ensure_clat() {
+  [ "$IPV6_ONLY" = true ] || return 0
+  spin_start "Giving this server IPv4 through NAT64"
+  if ! install_tayga; then
+    spin_err "tayga could not be installed: an app that dials IPv4 first cannot reach IPv4-only sites."
+    return 0
+  fi
+  local script unit ula fallback
+  ula="$(clat_ula)"
+  fallback="$(sed -n 's/^FALLBACK=//p' "$CLAT_BIN" 2>/dev/null || true)"
+  [ -n "$fallback" ] || fallback="$(clat_script "$ula" | sh -s prefix 2>/dev/null || true)"
+  script="$(clat_script "$ula" "$fallback")"
+  unit="$(clat_unit)"
+  if [ "$script" != "$(cat "$CLAT_BIN" 2>/dev/null)" ] || [ "$unit" != "$(cat "$CLAT_UNIT" 2>/dev/null)" ] \
+    || ! systemctl is-active --quiet deplo-clat 2>/dev/null; then
+    mkdir -p "$(dirname "$CLAT_BIN")"
+    printf '%s\n' "$script" >"$CLAT_BIN"
+    chmod 755 "$CLAT_BIN"
+    printf '%s\n' "$unit" >"$CLAT_UNIT"
+    systemctl daemon-reload >&9 2>&9 || true
+    systemctl enable deplo-clat >&9 2>&9 || true
+    systemctl restart deplo-clat >&9 2>&9 || true
+  fi
+  local i=0
+  until curl -4 -sS -o /dev/null --max-time 5 https://github.com </dev/null 2>&9; do
+    i=$((i + 1))
+    if [ "$i" -ge 5 ]; then
+      spin_err "No IPv4 through NAT64: an app that dials IPv4 first may fail. Inspect: journalctl -u deplo-clat"
+      return 0
+    fi
+    sleep 2
+  done
+  spin_ok "IPv4 through NAT64" "apps that dial IPv4 first reach IPv4-only sites"
 }
 # ==== end Deplo IPv6 ==========================================================
 
@@ -1636,6 +1796,7 @@ sys.stdout.write(json.dumps(d, indent=2) + "\n")' "$CFG" "$BASE" "$SIZE" > "$TMP
 
 configure_docker_address_pools
 configure_docker_ipv6
+ensure_clat
 
 # ==============================================================================
 # 2. Workspace, secrets and the platform network
@@ -2316,7 +2477,8 @@ agent_is_ours() {
   local u
   u="$(sed -n 's/^DEPLO_BOOTSTRAP_URL=//p' /var/lib/deplo-agent/bootstrap.env 2>/dev/null | tail -n1)"
   [ -n "$u" ] || return 0
-  u="${u#*://}"; u="${u%%/*}"; u="${u%%:*}"
+  u="${u#*://}"; u="${u%%/*}"
+  case "$u" in \[*) u="${u#\[}"; u="${u%%]*}" ;; *) u="${u%%:*}" ;; esac
   case "$u" in
     127.0.0.1 | localhost | "$SERVER_IP" | "$TARGET_IP" | "$FALLBACK_HOST" | "$PANEL_HOST") return 0 ;;
   esac
