@@ -4,6 +4,7 @@ import { notFound } from "next/navigation";
 
 import { PageHeader } from "@/components/shared/page-header";
 import { Badge } from "@/components/ui/badge";
+import Link from "@/components/ui/link";
 import { DeploSettingsPanel } from "@/components/settings/deplo-settings-panel/settings-tabs";
 import type { Notice } from "@/components/settings/licenses-panel";
 import { getInstanceSettings } from "@/lib/data/instance-settings/settings-store";
@@ -74,7 +75,6 @@ export default async function DeploSettingsPage() {
   return (
     <div className="space-y-3">
       <PageHeader
-        docs="panel.address"
         title="Deplo"
         description={
           <>
@@ -84,6 +84,12 @@ export default async function DeploSettingsPage() {
                 Beta
               </Badge>
             ) : null}
+            <Link
+              href="/settings/deplo?tab=about"
+              className="ml-1.5 font-medium text-foreground underline underline-offset-2 hover:no-underline"
+            >
+              Learn more
+            </Link>
           </>
         }
       />
