@@ -48,7 +48,6 @@ INSTALL_DIR="/usr/local/bin"
 AGENT_BIN="$INSTALL_DIR/deplo-agent"
 AGENT_DATA="/var/lib/deplo-agent"
 UNIT="/etc/systemd/system/deplo-agent.service"
-AGENT_PORT="${DEPLO_AGENT_PORT:-9443}"
 
 # A STORAGE-ONLY host: the agent is installed to hold backups and nothing else.
 # No Docker, no address pools, no Traefik, and no `docker` group on the unit -
@@ -947,43 +946,6 @@ if [ "$IMPORT_ONLY" = "1" ]; then
   [ -z "$FOREIGN_PANEL" ] || pf_fail "This machine already runs Deplo's agent for another Deplo ($FOREIGN_PANEL)." "Move it from that Deplo's own address with one of its API tokens instead - nothing needs installing here."
 fi
 
-# The port the panel dials, for an agent from before the agent link only --------
-# Outbound provisioning succeeds either way, so a blocked port reads as a server
-# that enrolls and then never comes online.
-firewall_fix_command() {
-  # Read once and match WITHOUT a pipe: `grep -q` closes the pipe on its first
-  # hit, the producer dies of SIGPIPE, and under `pipefail` an active firewall
-  # then reads as no firewall at all.
-  local out
-  if command -v ufw >/dev/null 2>&1; then
-    out="$(ufw status 2>/dev/null || true)"
-    if [[ $out =~ (^|$'\n')[Ss]tatus:[[:space:]]+[Aa]ctive ]]; then
-      [[ $out =~ (^|[^0-9])$AGENT_PORT/tcp ]] \
-        || printf 'ufw allow %s/tcp' "$AGENT_PORT"
-      return 0
-    fi
-  fi
-  if command -v firewall-cmd >/dev/null 2>&1 && firewall-cmd --state >/dev/null 2>&1; then
-    out="$(firewall-cmd --list-ports 2>/dev/null || true)"
-    [[ $out =~ (^|[[:space:]])$AGENT_PORT/tcp ]] \
-      || printf 'firewall-cmd --permanent --add-port=%s/tcp && firewall-cmd --reload' "$AGENT_PORT"
-  fi
-}
-
-# Asked of the binary just installed, since only it knows. A linking agent connects
-# out to the panel and listens on nothing, so no firewall is in its way (ADR-0040).
-# Read whole, never piped into grep -q: SIGPIPE under pipefail would read as "no".
-plan_listener() {
-  AGENT_LINKS=false
-  FIREWALL_FIX=""
-  local caps
-  caps="$("$AGENT_BIN" --capabilities 2>/dev/null || true)"
-  case $'\n'"$caps"$'\n' in
-    *$'\n'agent-link$'\n'*) AGENT_LINKS=true ;;
-    *) FIREWALL_FIX="$(firewall_fix_command || true)" ;;
-  esac
-}
-
 blank
 if [ "$PF_FAIL" -gt 0 ]; then
   err "Preflight found $PF_FAIL blocking $(plural "$PF_FAIL" problem) and $PF_WARN $(plural "$PF_WARN" warning)."
@@ -1252,7 +1214,6 @@ fi
 install -m 0755 "$TMP" "$AGENT_BIN"
 rm -f "$TMP"
 spin_ok "Agent v$AGENT_VERSION installed" "checksum verified"
-plan_listener
 
 # 3. Data dir --------------------------------------------------------------
 mkdir -p "$AGENT_DATA"
@@ -1458,10 +1419,8 @@ else
   DOCKER_UNIT_LINES="# The agent needs the Docker socket to build + run stacks.
 SupplementaryGroups=docker"
 fi
-# No --addr for a linking agent: with none it opens no port at all (ADR-0040).
+# No listen address: the agent links out to its panel and opens no port (ADR-0040).
 write_agent_unit() {
-  local listen=""
-  [ "$AGENT_LINKS" = true ] || listen="  --addr 0.0.0.0:$AGENT_PORT \\"$'\n'
   cat > "$UNIT" <<EOF
 [Unit]
 Description=Deplo server agent
@@ -1475,7 +1434,7 @@ Type=simple
 # (a provisioned agent skips bootstrap and needs none of these anyway).
 EnvironmentFile=-$BOOTSTRAP_ENV
 ExecStart=$AGENT_BIN \\
-${listen}  --data-dir / \\
+  --data-dir / \\
   --agent-dir $AGENT_DATA
 Restart=on-failure
 RestartSec=5
@@ -1528,7 +1487,6 @@ systemctl is-active --quiet deplo-agent && AGENT_STATE="running"
 
 print_summary() {
   local agent="v$AGENT_VERSION, $AGENT_STATE"
-  [ "$AGENT_LINKS" = true ] || agent="$agent on port $AGENT_PORT"
   card_open "This host is a Deplo $HOST_ROLE"
   card_kv "Agent" "$agent"
   card_kv "Panel" "$URL"
@@ -1539,15 +1497,8 @@ print_summary() {
   if [ "$AGENT_STATE" != running ]; then
     err "The agent service is not running."
     note "Inspect: journalctl -u deplo-agent -n 50"
-  elif [ -n "$FIREWALL_FIX" ]; then
-    warn "TCP $AGENT_PORT is closed, so Deplo cannot dial this agent."
-    note "Provisioning finishes either way, but the server stays offline until you run:"
-    note "$FIREWALL_FIX"
   elif [ "$PROVISIONED" = true ]; then
     ok "The agent enrolled with $URL."
-    # An agent from before the agent link is still dialed: only Deplo, from outside, can say "online".
-    [ "$AGENT_LINKS" = true ] ||
-      note "Deplo shows this server online once it can reach TCP $AGENT_PORT from outside."
   else
     note "The agent is still calling home to $URL. Watch the dashboard - it will"
     note "switch to 'online' shortly, or say why in journalctl -u deplo-agent."
