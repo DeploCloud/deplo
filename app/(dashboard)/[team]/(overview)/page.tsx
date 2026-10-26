@@ -487,7 +487,7 @@ export default async function OverviewPage(props: PageProps<"/[team]">) {
                 ? environments.map((e) => ({ id: e.id, name: e.name }))
                 : undefined
             }
-            trailing={!flat && !placement ? newRepos() : undefined}
+            leading={!flat && !placement ? newRepos() : undefined}
           />
         )}
       </div>

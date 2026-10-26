@@ -188,9 +188,10 @@ export function NewRepoCard({
     </DropdownMenu>
   );
 
+  // Dimmed until hovered: a suggestion, not an app the team already has.
   const shell = cn(
-    "group relative border-dashed transition-colors hover:border-primary/50",
-    pending && "animate-pulse",
+    "group relative border-dashed opacity-50 transition-[opacity,border-color] focus-within:opacity-100 hover:border-primary/50 hover:opacity-100",
+    pending && "animate-pulse opacity-100",
   );
 
   if (view === "list")

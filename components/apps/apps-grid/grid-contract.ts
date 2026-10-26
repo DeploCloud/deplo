@@ -25,7 +25,7 @@ export interface AppsGridProps {
   canManageAllFolders: boolean;
   canManageProjects: boolean;
   environments?: { id: string; name: string }[];
-  trailing?: ReactNode;
+  leading?: ReactNode;
 }
 
 export type GridProps = AppsGridProps & {

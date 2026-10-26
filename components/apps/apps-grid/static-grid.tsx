@@ -23,7 +23,7 @@ export function StaticGrid({
   liveStates,
   onDeleted,
   onRestored,
-  trailing,
+  leading,
 }: GridProps) {
   return (
     <div className="relative min-h-[40vh] space-y-6">
@@ -57,8 +57,9 @@ export function StaticGrid({
           ))}
         </div>
       )}
-      {(services.length > 0 || trailing) && (
+      {(services.length > 0 || leading) && (
         <div className={cn(gridClass(view), "empty:hidden")}>
+          {leading}
           {services.map((p) => (
             <AppCard
               key={p.id}
@@ -71,7 +72,6 @@ export function StaticGrid({
               onDeleted={() => onDeleted([p.id])}
             />
           ))}
-          {trailing}
         </div>
       )}
     </div>
