@@ -1,12 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-import {
-  compareVersions,
-  countUpdates,
-  groupUpdates,
-  packagesOf,
-} from "./group";
+import { countUpdates, groupUpdates, packagesOf } from "./group";
 
 const f = (o: Partial<Parameters<typeof groupUpdates>[0][number]>) => ({
   service: "web",
@@ -63,10 +58,4 @@ test("packagesOf lists an image's packages once each, in order, with their advis
     packagesOf(items).map((p) => `${p.packageName}:${p.items.length}`),
     ["next:2", "axios:1"],
   );
-});
-
-test("compareVersions orders numbers numerically", () => {
-  assert.ok(compareVersions("1.123.55", "1.45.0") > 0);
-  assert.ok(compareVersions("3.0.15-1~deb12u1", "3.0.9-1~deb12u1") > 0);
-  assert.equal(compareVersions("1.2.3", "1.2.3"), 0);
 });

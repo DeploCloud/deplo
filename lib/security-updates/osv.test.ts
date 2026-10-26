@@ -119,7 +119,9 @@ test("osvAffectedRows: one row per affected package, with fix, CVE and score", (
       vulnId: "DEBIAN-CVE-2024-5535",
       ecosystem: "Debian:12",
       name: "openssl",
-      fixedVersion: "3.0.15-1~deb12u1",
+      ranges: [
+        { introduced: "0", fixed: "3.0.15-1~deb12u1", lastAffected: null },
+      ],
       cve: "CVE-2024-5535",
       severity: "critical",
       cvssTenths: 91,
@@ -127,8 +129,40 @@ test("osvAffectedRows: one row per affected package, with fix, CVE and score", (
       summary: undefined,
     },
   );
-  assert.equal(rows[1].fixedVersion, null);
+  assert.deepEqual(rows[1].ranges, [
+    { introduced: "0", fixed: null, lastAffected: null },
+  ]);
   assert.deepEqual(osvAffectedRows({ ...debianRecord, withdrawn: "x" }), []);
+});
+
+test("osvAffectedRows: a package named once per release line keeps every line", () => {
+  const [row] = osvAffectedRows({
+    id: "GHSA-next",
+    affected: [
+      {
+        package: { ecosystem: "npm", name: "next" },
+        ranges: [
+          {
+            type: "SEMVER",
+            events: [{ introduced: "0" }, { fixed: "15.5.28" }],
+          },
+        ],
+      },
+      {
+        package: { ecosystem: "npm", name: "next" },
+        ranges: [
+          {
+            type: "SEMVER",
+            events: [{ introduced: "16.0.0" }, { fixed: "16.3.6" }],
+          },
+        ],
+      },
+    ],
+  });
+  assert.deepEqual(
+    row.ranges.map((r) => r.fixed),
+    ["15.5.28", "16.3.6"],
+  );
 });
 
 test("recordSeverity: GHSA text, Ubuntu priority, then the CVE fallback", () => {

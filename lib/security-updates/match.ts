@@ -10,13 +10,14 @@ import {
   imageInventoryPackages,
   kevCves,
   osvAffected,
+  osvRanges,
   securityFindings,
   workloadImages,
 } from "../db/schema/control-plane/security-updates";
 import { recordActivity } from "../data/activity";
 import { dispatchAlert } from "../notify/dispatch";
 import { plural } from "../utils";
-import { osvQueryFor, type OsvQuery } from "./ecosystem";
+import { isDistroEcosystem, osvQueryFor, type OsvQuery } from "./ecosystem";
 import {
   fixKind,
   inScope,
@@ -37,10 +38,13 @@ import {
   type OsvRecord,
   type Severity,
 } from "./osv";
+import { fixedFor, type AffectedRange } from "./versions";
 
 type Workload = typeof workloadImages.$inferSelect;
 type Finding = typeof securityFindings.$inferInsert;
-type CachedAffected = typeof osvAffected.$inferSelect;
+type CachedAffected = typeof osvAffected.$inferSelect & {
+  ranges: AffectedRange[];
+};
 
 const FETCH_CONCURRENCY = 6;
 
@@ -121,9 +125,30 @@ async function refreshVulnCache(
       await db.transaction(async (tx) => {
         await tx.delete(osvAffected).where(eq(osvAffected.vulnId, id));
         if (rows.length)
-          await tx
-            .insert(osvAffected)
-            .values(rows.map((r) => ({ ...r, fetchedAt: now })));
+          await tx.insert(osvAffected).values(
+            rows.map((r) => ({
+              vulnId: r.vulnId,
+              ecosystem: r.ecosystem,
+              name: r.name,
+              cve: r.cve,
+              severity: r.severity,
+              cvssTenths: r.cvssTenths,
+              summary: r.summary,
+              modified: r.modified,
+              fetchedAt: now,
+            })),
+          );
+        const ranges = rows.flatMap((r) =>
+          r.ranges.map((g, seq) => ({
+            vulnId: r.vulnId,
+            ecosystem: r.ecosystem,
+            name: r.name,
+            seq,
+            ...g,
+          })),
+        );
+        for (const part of chunks(ranges))
+          await tx.insert(osvRanges).values(part);
       });
     } catch {
       failed.add(id);
@@ -137,11 +162,35 @@ async function cachedAffected(
 ): Promise<Map<string, CachedAffected[]>> {
   const out = new Map<string, CachedAffected[]>();
   for (const part of chunks(ids)) {
-    const rows = await getDb()
-      .select()
-      .from(osvAffected)
-      .where(inArray(osvAffected.vulnId, part));
-    for (const r of rows) out.set(r.vulnId, [...(out.get(r.vulnId) ?? []), r]);
+    const db = getDb();
+    const [rows, ranges] = await Promise.all([
+      db.select().from(osvAffected).where(inArray(osvAffected.vulnId, part)),
+      db
+        .select()
+        .from(osvRanges)
+        .where(inArray(osvRanges.vulnId, part))
+        .orderBy(osvRanges.seq),
+    ]);
+    const byPkg = new Map<string, AffectedRange[]>();
+    for (const g of ranges) {
+      const k = `${g.vulnId}\0${g.ecosystem}\0${g.name}`;
+      byPkg.set(k, [
+        ...(byPkg.get(k) ?? []),
+        {
+          introduced: g.introduced,
+          fixed: g.fixed,
+          lastAffected: g.lastAffected,
+        },
+      ]);
+    }
+    for (const r of rows)
+      out.set(r.vulnId, [
+        ...(out.get(r.vulnId) ?? []),
+        {
+          ...r,
+          ranges: byPkg.get(`${r.vulnId}\0${r.ecosystem}\0${r.name}`) ?? [],
+        },
+      ]);
   }
   return out;
 }
@@ -220,7 +269,8 @@ export async function matchWorkloads(
         pkg.purl,
         distro.get(imageId) ?? { id: "", version: "" },
       );
-      if (!q) continue;
+      // A system package is never the team's (ADR-0038): OSV never hears of it.
+      if (!q || isDistroEcosystem(q.ecosystem)) continue;
       queries.set(qkey(q), q);
       list.push({ pkg, q });
     }
@@ -302,13 +352,14 @@ function findingsFor(
       if (!a) continue;
       const level = levelOf(a.severity as Severity | null, a.cve, kev);
       if (!level) continue;
+      const fixedVersion = fixedFor(a.ranges, q.version);
       const fix = fixKind({
         imageRef: wi.imageRef,
         builder,
         ecosystem: q.ecosystem,
         location: pkg.location,
         workingDir: inv.workingDir,
-        fixedVersion: a.fixedVersion,
+        fixedVersion,
         repoDigest: wi.repoDigest,
         registryStatus: wi.registryStatus,
         registryDigest: wi.registryDigest,
@@ -322,7 +373,7 @@ function findingsFor(
         ecosystem: q.ecosystem,
         packageName: q.name,
         installedVersion: q.version,
-        fixedVersion: a.fixedVersion,
+        fixedVersion,
         location: pkg.location,
         level,
         fix,

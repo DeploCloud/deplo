@@ -176,6 +176,7 @@ export const MOVE_TABLES: Readonly<Record<string, TablePolicy>> = {
   },
   oauth_resource: COPY,
   osv_affected: { kind: "skip" },
+  osv_ranges: { kind: "skip" },
   passkey: COPY,
   // The old Deplo's clean-up of its own servers; this Deplo's queue stays.
   pending_teardowns: { kind: "skip" },

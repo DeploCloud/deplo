@@ -117,7 +117,16 @@ const RECORDS: Record<string, unknown> = {
         ranges: [
           {
             type: "SEMVER",
-            events: [{ introduced: "0" }, { fixed: "16.3.6" }],
+            events: [{ introduced: "0" }, { fixed: "15.5.28" }],
+          },
+        ],
+      },
+      {
+        package: { ecosystem: "npm", name: "next" },
+        ranges: [
+          {
+            type: "SEMVER",
+            events: [{ introduced: "16.0.0" }, { fixed: "16.3.6" }],
           },
         ],
       },
@@ -300,6 +309,17 @@ test("a full match stores findings with the team's own fix, records Activity and
     web.map((f) => `${f.packageName}:${f.level}:${f.fix}`).sort(),
     ["minimist:critical:code"],
     "only the app's own dependencies: no system packages, no kernel headers",
+  );
+  const asked = capture!.calls
+    .filter((c) => c.url.endsWith("/querybatch"))
+    .flatMap(
+      (c) =>
+        (c.body as { queries: { package: { ecosystem: string } }[] }).queries,
+    )
+    .map((q) => q.package.ecosystem);
+  assert.ok(
+    asked.length > 0 && asked.every((e) => !e.startsWith("Debian")),
+    `OSV never hears of a system package: ${asked.join(",")}`,
   );
   const pgFindings = await db
     .select()
@@ -494,9 +514,9 @@ test("an image's update is one security update, and alerts once however much it 
   await matchWorkloads("full", new Date("2026-10-25T10:05:00Z"));
   const rows = await db.select().from(securityFindings);
   assert.deepEqual(
-    rows.map((f) => `${f.packageName}:${f.fix}`),
-    ["next:update"],
-    "the software the image ships, never its system packages",
+    rows.map((f) => `${f.packageName}:${f.fix}:${f.fixedVersion}`),
+    ["next:update:16.3.6"],
+    "the image's software, with the fix on 16.3.5's own line, never 15.5.28",
   );
   await settle();
   assert.equal(hookCalls().length, 1);

@@ -136,6 +136,7 @@ const CONTROL_PLANE = [
   "image_inventory_packages",
   "workload_images",
   "osv_affected",
+  "osv_ranges",
   "kev_cves",
   "security_findings",
   "security_ignores",

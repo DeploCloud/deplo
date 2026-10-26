@@ -1,5 +1,6 @@
 import { cvss3Tenths } from "./cvss";
 import type { OsvQuery } from "./ecosystem";
+import { rangesOf, type AffectedRange } from "./versions";
 
 const OSV_API = "https://api.osv.dev/v1";
 const BATCH = 1000;
@@ -16,7 +17,8 @@ export interface OsvAffectedRow {
   vulnId: string;
   ecosystem: string;
   name: string;
-  fixedVersion: string | null;
+  // Every release line it covers; fixedFor picks the installed one's fix.
+  ranges: AffectedRange[];
   cve: string | null;
   severity: Severity | null;
   cvssTenths: number | null;
@@ -180,24 +182,25 @@ export function osvAffectedRows(
   if (rec.withdrawn) return [];
   const own = recordSeverity(rec);
   const sev = own.severity ? own : fallback;
-  const seen = new Set<string>();
-  const rows: OsvAffectedRow[] = [];
+  const rows = new Map<string, OsvAffectedRow>();
   for (const a of rec.affected ?? []) {
     const ecosystem = a.package?.ecosystem;
     const name = a.package?.name;
-    if (!ecosystem || !name || seen.has(`${ecosystem}\0${name}`)) continue;
-    seen.add(`${ecosystem}\0${name}`);
-    // ponytail: first fixed event wins; per-ecosystem version order when one record spans release lines.
-    const fixed =
-      (a.ranges ?? [])
-        .filter((r) => r.type !== "GIT")
-        .flatMap((r) => r.events ?? [])
-        .find((e) => e.fixed)?.fixed ?? null;
-    rows.push({
+    if (!ecosystem || !name) continue;
+    const ranges = (a.ranges ?? [])
+      .filter((r) => r.type !== "GIT")
+      .flatMap((r) => rangesOf(r.events ?? []));
+    // One package named twice (one entry per release line) keeps every line.
+    const known = rows.get(`${ecosystem}\0${name}`);
+    if (known) {
+      known.ranges.push(...ranges);
+      continue;
+    }
+    rows.set(`${ecosystem}\0${name}`, {
       vulnId: rec.id,
       ecosystem,
       name,
-      fixedVersion: fixed,
+      ranges,
       cve: recordCve(rec),
       severity: sev.severity,
       cvssTenths: sev.cvssTenths,
@@ -205,7 +208,7 @@ export function osvAffectedRows(
       modified: rec.modified ?? "",
     });
   }
-  return rows;
+  return [...rows.values()];
 }
 
 // The affected row a query's ecosystem matches: OSV may qualify it further ("Ubuntu:24.04:LTS").

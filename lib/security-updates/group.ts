@@ -1,4 +1,5 @@
 import type { FixKind, Level } from "./fix-kind";
+import { compareVersions } from "./versions";
 
 export interface Groupable {
   service: string;
@@ -51,22 +52,6 @@ export const unitKey = (
   isImageFix(f.fix)
     ? `${f.service}\0image`
     : `${f.service}\0${f.ecosystem}\0${f.packageName}\0${f.installedVersion}`;
-
-// ponytail: token-wise compare, not each ecosystem's own order (dpkg epochs, PEP 440); fine for display.
-export function compareVersions(a: string, b: string): number {
-  const ta = a.match(/\d+|[^\d]+/g) ?? [];
-  const tb = b.match(/\d+|[^\d]+/g) ?? [];
-  for (let i = 0; i < Math.max(ta.length, tb.length); i++) {
-    const x = ta[i] ?? "";
-    const y = tb[i] ?? "";
-    if (x === y) continue;
-    const nx = /^\d+$/.test(x);
-    const ny = /^\d+$/.test(y);
-    if (nx && ny) return Number(x) - Number(y);
-    return x < y ? -1 : 1;
-  }
-  return 0;
-}
 
 export function groupUpdates<T extends Groupable>(
   items: T[],

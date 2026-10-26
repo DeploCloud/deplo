@@ -91,7 +91,6 @@ export const osvAffected = pgTable(
     vulnId: text("vuln_id").notNull(),
     ecosystem: text("ecosystem").notNull(),
     name: text("name").notNull(),
-    fixedVersion: text("fixed_version"),
     cve: text("cve"),
     // critical | high | medium | low, from the best source OSV has; NULL when it has none.
     severity: text("severity"),
@@ -102,6 +101,35 @@ export const osvAffected = pgTable(
     fetchedAt: isoTimestamptz("fetched_at").notNull(),
   },
   (t) => [primaryKey({ columns: [t.vulnId, t.ecosystem, t.name] })],
+);
+
+// Each release line an advisory covers, so the fix shown is the one on the installed line.
+export const osvRanges = pgTable(
+  "osv_ranges",
+  {
+    vulnId: text("vuln_id").notNull(),
+    ecosystem: text("ecosystem").notNull(),
+    name: text("name").notNull(),
+    seq: integer("seq").notNull(),
+    introduced: text("introduced").notNull(),
+    fixed: text("fixed"),
+    lastAffected: text("last_affected"),
+  },
+  (t) => [
+    primaryKey({
+      name: "osv_ranges_pk",
+      columns: [t.vulnId, t.ecosystem, t.name, t.seq],
+    }),
+    foreignKey({
+      name: "osv_ranges_affected_fk",
+      columns: [t.vulnId, t.ecosystem, t.name],
+      foreignColumns: [
+        osvAffected.vulnId,
+        osvAffected.ecosystem,
+        osvAffected.name,
+      ],
+    }).onDelete("cascade"),
+  ],
 );
 
 // CISA's known-exploited list, replaced whole once a day.

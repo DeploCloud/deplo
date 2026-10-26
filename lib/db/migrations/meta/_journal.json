@@ -1345,6 +1345,13 @@
       "when": 1792963676626,
       "tag": "0191_security_updates_rescope",
       "breakpoints": true
+    },
+    {
+      "idx": 192,
+      "version": "7",
+      "when": 1793003094680,
+      "tag": "0192_osv_ranges",
+      "breakpoints": true
     }
   ]
 }
