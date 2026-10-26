@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import type { FolderCardData } from "../folder-card";
 import type { ProjectCardData } from "../project-container-card";
 import type { AppSummary } from "@/lib/data/apps/summary";
@@ -24,6 +25,7 @@ export interface AppsGridProps {
   canManageAllFolders: boolean;
   canManageProjects: boolean;
   environments?: { id: string; name: string }[];
+  trailing?: ReactNode;
 }
 
 export type GridProps = AppsGridProps & {

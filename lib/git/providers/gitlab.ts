@@ -55,6 +55,7 @@ export const gitlab: GitProviderApi = {
           default_branch: string | null;
           web_url: string;
           last_activity_at: string;
+          created_at: string;
         }[]
       >(
         c,
@@ -69,6 +70,7 @@ export const gitlab: GitProviderApi = {
           defaultBranch: r.default_branch ?? "main",
           url: r.web_url,
           updatedAt: r.last_activity_at,
+          createdAt: r.created_at,
         });
       }
       if (rows.length < PER_PAGE) break;

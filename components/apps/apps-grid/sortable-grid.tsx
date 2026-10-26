@@ -57,6 +57,7 @@ export function SortableGrid({
   liveStates,
   onDeleted,
   onRestored,
+  trailing,
 }: GridProps) {
   const arrangement = useGridArrangement({
     services,
@@ -473,6 +474,7 @@ export function SortableGrid({
                   )}
                 </SortableItem>
               ))}
+              {trailing}
             </div>
           </SortableContext>
         </div>

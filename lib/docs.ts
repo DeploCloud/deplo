@@ -11,6 +11,7 @@ export const DOCS = {
   "deploy.queue": "concepts/what-happens-on-a-deploy#it-waits-for-a-slot",
   "deploy.screenshot": "concepts/what-happens-on-a-deploy#a-picture-is-taken",
   "deploy.fromGit": "guides/deploy/from-git",
+  "deploy.newRepos": "guides/deploy/from-git#new-repositories-on-the-overview",
   "deploy.dockerImage": "guides/deploy/docker-image",
   "deploy.fromTemplate": "guides/deploy/from-template",
   "deploy.button": "guides/deploy/deploy-button",

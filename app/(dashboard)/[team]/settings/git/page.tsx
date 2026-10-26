@@ -5,6 +5,7 @@ import {
   teamUsesPreviews,
 } from "@/lib/data/github";
 import { listGitConnections } from "@/lib/data/git-connections";
+import { suggestNewReposEnabled } from "@/lib/data/new-repos";
 import { PROVIDERS, tokenHelpUrl } from "@/lib/git/providers/registry";
 import { tokenScopesLine } from "@/lib/git/provider-access";
 import type { GitProviderId } from "@/lib/types/git";
@@ -50,6 +51,7 @@ export default async function SettingsGitPage(props: {
       appAccess={appAccess}
       next={next}
       isInstanceAdmin={await isInstanceAdmin()}
+      suggestNewRepos={await suggestNewReposEnabled()}
     />
   );
 }

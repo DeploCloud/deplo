@@ -237,6 +237,7 @@ export interface GithubRepoSummary {
   defaultBranch: string;
   url: string;
   updatedAt: string;
+  createdAt: string;
 }
 
 async function assertInstallationInActiveTeam(
@@ -283,6 +284,7 @@ export async function listInstallationRepos(
         default_branch: string;
         html_url: string;
         updated_at: string;
+        created_at: string;
       }[];
     };
     for (const r of json.repositories) {
@@ -293,6 +295,7 @@ export async function listInstallationRepos(
         defaultBranch: r.default_branch,
         url: r.html_url,
         updatedAt: r.updated_at,
+        createdAt: r.created_at,
       });
     }
     if (json.repositories.length < 100) break;

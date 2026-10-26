@@ -15,6 +15,7 @@ export interface RepoSummary {
   defaultBranch: string;
   url: string;
   updatedAt: string;
+  createdAt: string;
 }
 
 export interface GitAccount {

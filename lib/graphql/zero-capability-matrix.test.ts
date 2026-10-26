@@ -347,7 +347,7 @@ async function snapshotWithout(
   );
 }
 
-const OWN_PREFERENCES_ONLY = ["reorderMyTeams"];
+const OWN_PREFERENCES_ONLY = ["reorderMyTeams", "setSuggestNewRepos"];
 
 test("a member holding no capability can't move a single row", async () => {
   const touched: string[] = [];

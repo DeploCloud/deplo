@@ -4355,6 +4355,11 @@ type Mutation {
   setSharedVarAppLink(appId: String!, linked: Boolean!, varId: String!): Boolean
 
   """
+  Turn the new-repository cards on the Overview on or off, for the caller in the active team only.
+  """
+  setSuggestNewRepos(enabled: Boolean!): Boolean
+
+  """
   Turn anonymous usage statistics on or off for the whole instance. Off takes effect at once - no final report, no goodbye - and clears the instance id, so turning it on again starts a history that cannot be joined to the old one. Recorded in Activity. Has no effect while the install set DO_NOT_TRACK=1.
   """
   setUsageReportsEnabled(enabled: Boolean!): InstanceSettings

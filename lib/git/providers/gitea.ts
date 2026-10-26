@@ -41,6 +41,7 @@ export const gitea: GitProviderApi = {
           default_branch: string;
           html_url: string;
           updated_at: string;
+          created_at: string;
         }[]
       >(c, `/api/v1/user/repos?limit=${PER_PAGE}&page=${page}`, {
         auth: giAuth(c),
@@ -53,6 +54,7 @@ export const gitea: GitProviderApi = {
           defaultBranch: r.default_branch || "main",
           url: r.html_url,
           updatedAt: r.updated_at,
+          createdAt: r.created_at,
         });
       }
       if (rows.length < PER_PAGE) break;

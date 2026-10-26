@@ -10,6 +10,7 @@ import {
   type GitConnectionDTO,
 } from "@/lib/data/git-connections";
 import { assertUser } from "@/lib/auth/current-user";
+import { setSuggestNewRepos } from "@/lib/data/new-repos";
 import { PROVIDERS, tokenHelpUrl } from "@/lib/git/providers/registry";
 import type { RepoSummary } from "@/lib/git/providers/types";
 import { tokenScopesLine } from "@/lib/git/provider-access";
@@ -239,5 +240,13 @@ builder.mutationFields((t) => ({
       "Disconnect a git provider. Returns how many apps were unlinked (their auto-deploy is turned off).",
     args: { id: t.arg.string({ required: true }) },
     resolve: (_r, { id }) => removeGitConnection(id),
+  }),
+  setSuggestNewRepos: t.field({
+    type: "Boolean",
+    authScopes: { loggedIn: true },
+    description:
+      "Turn the new-repository cards on the Overview on or off, for the caller in the active team only.",
+    args: { enabled: t.arg.boolean({ required: true }) },
+    resolve: (_r, { enabled }) => setSuggestNewRepos(enabled),
   }),
 }));

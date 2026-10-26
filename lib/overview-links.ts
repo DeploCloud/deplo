@@ -54,12 +54,14 @@ export function newAppHref(
     template?: string;
     variant?: string;
     source?: string;
+    repo?: string;
+    branch?: string;
+    installation?: string;
+    connection?: string;
   },
 ): string {
   const params = placementParams(p);
-  if (opts?.template) params.set("template", opts.template);
-  if (opts?.variant) params.set("variant", opts.variant);
-  if (opts?.source) params.set("source", opts.source);
+  for (const [k, v] of Object.entries(opts ?? {})) if (v) params.set(k, v);
   const qs = params.toString();
   return qs ? `/new?${qs}` : "/new";
 }

@@ -4,6 +4,7 @@ import { AppCard } from "../app-card";
 import { FolderCard } from "../folder-card";
 import { ProjectContainerCard } from "../project-container-card";
 import { FolderTrail } from "./folder-trail";
+import { cn } from "@/lib/utils";
 import { gridClass, type GridProps } from "./grid-contract";
 
 export function StaticGrid({
@@ -22,6 +23,7 @@ export function StaticGrid({
   liveStates,
   onDeleted,
   onRestored,
+  trailing,
 }: GridProps) {
   return (
     <div className="relative min-h-[40vh] space-y-6">
@@ -55,8 +57,8 @@ export function StaticGrid({
           ))}
         </div>
       )}
-      {services.length > 0 && (
-        <div className={gridClass(view)}>
+      {(services.length > 0 || trailing) && (
+        <div className={cn(gridClass(view), "empty:hidden")}>
           {services.map((p) => (
             <AppCard
               key={p.id}
@@ -69,6 +71,7 @@ export function StaticGrid({
               onDeleted={() => onDeleted([p.id])}
             />
           ))}
+          {trailing}
         </div>
       )}
     </div>

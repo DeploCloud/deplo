@@ -46,6 +46,7 @@ import { GitProviderMark } from "@/components/shared/brand-icons";
 import { useGithubOwnerConnect } from "@/components/apps/github-connect-button";
 import { ConnectGitProviderDialog } from "@/components/settings/git-connect-dialog";
 import { GitGraphic } from "@/components/settings/git-graphic";
+import { NewReposSwitch } from "@/components/settings/new-repos-switch";
 import { GitAccessNotice } from "@/components/shared/git-access-notice";
 import { gqlAction } from "@/lib/graphql-client";
 import { timeAgo } from "@/lib/utils";
@@ -62,6 +63,7 @@ export function GitPanel({
   appAccess,
   next,
   isInstanceAdmin,
+  suggestNewRepos,
 }: {
   githubApps: GithubAppDTO[];
   connections: GitConnectionDTO[];
@@ -69,6 +71,7 @@ export function GitPanel({
   appAccess?: AppAccess;
   next?: string | null;
   isInstanceAdmin: boolean;
+  suggestNewRepos: boolean;
 }) {
   const router = useRouter();
   const [connectProviderId, setConnectProviderId] = React.useState<
@@ -121,6 +124,8 @@ export function GitPanel({
           />
         }
       />
+
+      {!empty && <NewReposSwitch enabled={suggestNewRepos} />}
 
       {empty ? (
         <EmptyState

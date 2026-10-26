@@ -47,6 +47,7 @@ export const bitbucket: GitProviderApi = {
           mainbranch?: { name?: string } | null;
           links?: { html?: { href?: string } };
           updated_on: string;
+          created_on: string;
         }[];
         next?: string;
       }>(
@@ -62,6 +63,7 @@ export const bitbucket: GitProviderApi = {
           defaultBranch: r.mainbranch?.name || "main",
           url: r.links?.html?.href ?? "",
           updatedAt: r.updated_on,
+          createdAt: r.created_on,
         });
       }
       if (!res.next) break;

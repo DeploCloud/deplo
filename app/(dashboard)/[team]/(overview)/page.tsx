@@ -1,3 +1,5 @@
+import { Suspense } from "react";
+import { cn } from "@/lib/utils";
 import Link from "@/components/ui/link";
 import { Plus, Rocket, Folder, Boxes, ArrowUpRight } from "lucide-react";
 import { listApps } from "@/lib/data/apps/listing";
@@ -11,6 +13,7 @@ import {
   hasCapability,
   hasCapabilityAnywhere,
   reachesWholeTeam,
+  requireActiveTeamId,
 } from "@/lib/membership";
 import {
   folderCapabilities,
@@ -21,6 +24,8 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { EmptyState } from "@/components/shared/empty-state";
 import { AppsGrid } from "@/components/apps/apps-grid/apps-grid";
+import { gridClass } from "@/components/apps/apps-grid/grid-contract";
+import { NewRepoCards } from "@/components/apps/new-repo-cards";
 import { SecurityOverviewNotice } from "@/components/security-updates/security-overview-notice";
 import { databaseSecurityCounts } from "@/lib/data/security-updates/read";
 import { securitySubjects } from "@/lib/security-updates/subjects";
@@ -200,6 +205,13 @@ export default async function OverviewPage(props: PageProps<"/[team]">) {
     : openProject
       ? { projectId: openProject.id, environmentId: selectedEnv?.id ?? null }
       : null;
+
+  const teamId = await requireActiveTeamId();
+  const newRepos = (className?: string) => (
+    <Suspense fallback={null}>
+      <NewRepoCards teamId={teamId} view={view} className={className} />
+    </Suspense>
+  );
 
   const allFolders = folders.map((f) => ({ id: f.id, name: f.name }));
   const allAppIds = services.map((p) => p.id);
@@ -409,34 +421,37 @@ export default async function OverviewPage(props: PageProps<"/[team]">) {
               />
             </div>
           ) : (
-            <EmptyState
-              graphic={<AppsGraphic />}
-              title="No apps yet"
-              docs="deploy.sources"
-              description={
-                canDeploy
-                  ? "Import a Git repository or start from a template to deploy your first app."
-                  : noCreateAppsNote
-              }
-              action={
-                canDeploy ? (
-                  <div className="flex gap-2">
-                    <Button asChild>
-                      <Link href={newAppHref(placement)}>
-                        <Plus className="size-4" />
-                        New app
-                      </Link>
-                    </Button>
-                    <Button asChild variant="outline">
-                      <Link href={templatesHref(placement)}>
-                        Browse Templates
-                        <ArrowUpRight className="size-4" />
-                      </Link>
-                    </Button>
-                  </div>
-                ) : undefined
-              }
-            />
+            <div className="space-y-6">
+              {newRepos(cn(gridClass(view), "empty:hidden"))}
+              <EmptyState
+                graphic={<AppsGraphic />}
+                title="No apps yet"
+                docs="deploy.sources"
+                description={
+                  canDeploy
+                    ? "Import a Git repository or start from a template to deploy your first app."
+                    : noCreateAppsNote
+                }
+                action={
+                  canDeploy ? (
+                    <div className="flex gap-2">
+                      <Button asChild>
+                        <Link href={newAppHref(placement)}>
+                          <Plus className="size-4" />
+                          New app
+                        </Link>
+                      </Button>
+                      <Button asChild variant="outline">
+                        <Link href={templatesHref(placement)}>
+                          Browse Templates
+                          <ArrowUpRight className="size-4" />
+                        </Link>
+                      </Button>
+                    </div>
+                  ) : undefined
+                }
+              />
+            </div>
           )
         ) : (
           <AppsGrid
@@ -472,6 +487,7 @@ export default async function OverviewPage(props: PageProps<"/[team]">) {
                 ? environments.map((e) => ({ id: e.id, name: e.name }))
                 : undefined
             }
+            trailing={!flat && !placement ? newRepos() : undefined}
           />
         )}
       </div>
