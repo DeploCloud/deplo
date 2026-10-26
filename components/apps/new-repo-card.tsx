@@ -16,14 +16,13 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { GitProviderMark } from "@/components/shared/brand-icons";
 import { submitCreatedApp } from "@/components/apps/new-app-wizard/create-app";
-import { nameFromRepo } from "@/components/apps/new-app-wizard/source-hints";
+import { newRepoAppInput } from "@/components/apps/new-repo-input";
 import { HOSTS } from "@/lib/git/providers/hosts";
 import { docsUrl } from "@/lib/docs";
 import { newAppHref } from "@/lib/overview-links";
 import { gqlAction } from "@/lib/graphql-client";
 import { useRouter } from "@/lib/nav";
 import { cn, timeAgo } from "@/lib/utils";
-import { deploySourceEnumName } from "@/lib/types/app";
 import type { NewRepo } from "@/lib/data/new-repos";
 import type { GitProviderId } from "@/lib/types/git";
 
@@ -67,26 +66,9 @@ export function NewRepoCard({
       : (HOSTS[repo.provider as GitProviderId]?.label ?? "Git");
 
   function deploy() {
-    const source = repo.installationId ? "github" : "git";
+    const { source, input } = newRepoAppInput(repo);
     startTransition(() =>
-      submitCreatedApp(
-        {
-          name: nameFromRepo(repo.fullName),
-          source: deploySourceEnumName(source),
-          repo: {
-            provider: repo.provider,
-            url: repo.url,
-            repo: repo.fullName,
-            branch: repo.defaultBranch,
-            installationId: repo.installationId,
-            connectionId: repo.connectionId,
-          },
-          folderId: null,
-          projectId: null,
-          environmentId: null,
-        },
-        { router, source, uploadFile: null },
-      ),
+      submitCreatedApp(input, { router, source, uploadFile: null }),
     );
   }
 
