@@ -30,6 +30,7 @@ import { connectAgent } from "../infra/agent-client/connect";
 import type { AgentConnection } from "../infra/agent-client/connection";
 import {
   IMAGE_CANDIDATE_CAPABILITY,
+  IMAGE_DEPS_CAPABILITY,
   IMAGE_INVENTORY_CAPABILITY,
 } from "../infra/agent-client/hello-capabilities";
 import { builtByDeplo } from "./fix-kind";
@@ -183,6 +184,7 @@ async function upsertWorkloads(
 async function imagesToInventory(
   serverId: string,
   now: Date,
+  withDeps: boolean,
 ): Promise<string[]> {
   const retryBefore = new Date(now.getTime() - RETRY_FAILED_MS).toISOString();
   // Newest first: the image a deploy just started is the one someone is waiting on.
@@ -202,6 +204,27 @@ async function imagesToInventory(
             ne(imageInventories.status, "ok"),
             lt(imageInventories.scannedAt, retryBefore),
           ),
+          // An app image read before the agent knew build-only packages is read once more.
+          withDeps
+            ? and(
+                eq(imageInventories.status, "ok"),
+                eq(imageInventories.depsRead, false),
+                exists(
+                  getDb()
+                    .select({ one: sql`1` })
+                    .from(imageInventoryPackages)
+                    .where(
+                      and(
+                        eq(
+                          imageInventoryPackages.imageId,
+                          imageInventories.imageId,
+                        ),
+                        eq(imageInventoryPackages.type, "npm"),
+                      ),
+                    ),
+                ),
+              )
+            : undefined,
         ),
       ),
     )
@@ -215,6 +238,7 @@ async function storeInventory(
   imageId: string,
   resp: Awaited<ReturnType<AgentConnection["inventoryImage"]>>,
   now: string,
+  depsRead: boolean,
 ): Promise<void> {
   const status = STATUS_TEXT[resp.status] ?? "failed";
   const pkgs = new Map<string, typeof imageInventoryPackages.$inferInsert>();
@@ -226,6 +250,8 @@ async function storeInventory(
       type: p.type,
       name: p.name,
       version: p.version,
+      buildOnly: p.buildOnly ?? false,
+      via: (p.via ?? []).join("\t"),
     });
   }
   await getDb().transaction(async (tx) => {
@@ -241,10 +267,16 @@ async function storeInventory(
       workingDir: resp.workingDir,
       scannerVersion: resp.scannerVersion,
       scannedAt: now,
+      depsRead,
     });
     const rows = [...pkgs.values()];
     for (let i = 0; i < rows.length; i += 500)
       await tx.insert(imageInventoryPackages).values(rows.slice(i, i + 500));
+    // A package list read again is matched again on this tick's pass.
+    await tx
+      .update(workloadImages)
+      .set({ checkedAt: null })
+      .where(eq(workloadImages.imageId, imageId));
   });
 }
 
@@ -278,19 +310,20 @@ export async function refreshServer(
       stamp,
     );
 
+    const withDeps = hello.capabilities.includes(IMAGE_DEPS_CAPABILITY);
     let inventoried = 0;
-    for (const imageId of await imagesToInventory(serverId, now)) {
+    for (const imageId of await imagesToInventory(serverId, now, withDeps)) {
       if (!(await keepGoing())) break;
       const resp = await conn.inventoryImage(imageId);
       if (resp.status === InventoryStatus.INVENTORY_STATUS_BUSY) break;
-      await storeInventory(imageId, resp, new Date().toISOString());
+      await storeInventory(imageId, resp, new Date().toISOString(), withDeps);
       inventoried++;
     }
     if (
       hello.capabilities.includes(IMAGE_CANDIDATE_CAPABILITY) &&
       (await keepGoing())
     )
-      await readOneCandidate(serverId, conn, now);
+      await readOneCandidate(serverId, conn, now, withDeps);
     return { reached: true, inventoried };
   } catch (e) {
     console.warn(
@@ -325,6 +358,7 @@ async function readOneCandidate(
   serverId: string,
   conn: AgentConnection,
   now: Date,
+  withDeps: boolean,
 ): Promise<void> {
   const db = getDb();
   const retryBefore = now.getTime() - RETRY_FAILED_MS;
@@ -371,7 +405,7 @@ async function readOneCandidate(
   const stamp = new Date().toISOString();
   const ok =
     result.status === InventoryStatus.INVENTORY_STATUS_OK && !!resp.imageId;
-  if (ok) await storeInventory(resp.imageId, result, stamp);
+  if (ok) await storeInventory(resp.imageId, result, stamp, withDeps);
   await db
     .update(workloadImages)
     .set({

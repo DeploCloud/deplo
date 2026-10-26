@@ -39,8 +39,9 @@ const FIX_RANK: Record<FixKind, number> = {
   newer_tag: 3,
   upstream: 4,
   unverified: 5,
-  deplo: 6,
-  none: 7,
+  build_only: 6,
+  deplo: 7,
+  none: 8,
 };
 
 const isImageFix = (fix: string) =>

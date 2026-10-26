@@ -12,6 +12,8 @@ export type FixKind =
   // A newer build or tag exists but still has it, or was not read yet: listed, never counted.
   | "upstream"
   | "unverified"
+  // Reachable only from the app's devDependencies: listed under Build only, never counted.
+  | "build_only"
   | "deplo"
   | "none";
 
@@ -40,6 +42,7 @@ export interface FixInput {
   newerTag: string | null;
   // What the newer build or tag holds for this package, once Deplo has read it.
   candidate: "fixed" | "vulnerable" | "unread";
+  buildOnly: boolean;
 }
 
 // `deplo/<key>:<deployment>`, or a compose `build:` service, named `deplo-<slug>-<service>`.
@@ -49,6 +52,7 @@ export function builtByDeplo(imageRef: string): boolean {
 
 export function fixKind(i: FixInput): FixKind {
   if (!i.fixedVersion) return "none";
+  if (i.buildOnly) return "build_only";
   if (builtByDeplo(i.imageRef)) {
     const railpack = i.builder === "railpack";
     if (!isDistroEcosystem(i.ecosystem) && underDir(i.location, i.workingDir))
@@ -96,7 +100,7 @@ function embedded(f: Scoped): boolean {
 // Only what the app chose: its own dependencies, or the software an image ships (ADR-0038).
 export function inScope(f: Scoped): boolean {
   if (embedded(f)) return false;
-  if (f.fix === "code") return true;
+  if (f.fix === "code" || f.fix === "build_only") return true;
   if (!IMAGE_FIXES.has(f.fix)) return false;
   if (isDistroEcosystem(f.ecosystem)) return false;
   return !(f.ecosystem === "Go" && f.packageName === "stdlib");

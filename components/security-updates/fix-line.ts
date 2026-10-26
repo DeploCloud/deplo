@@ -8,6 +8,8 @@ export interface FixLineInput {
   newerTag: string | null;
   // How many advisories an image's update closes.
   flaws: number;
+  // Who pulls the package in, parent first; [] when the app depends on it directly.
+  via: string[];
 }
 
 // What the team does to get the fix, in one line.
@@ -15,7 +17,11 @@ export function fixLine(u: FixLineInput): string {
   const flaws = plural(u.flaws, "known flaw", "known flaws");
   switch (u.fix) {
     case "code":
-      return `Update ${u.packageName} to ${u.fixedVersion} in your code`;
+      return u.via.length
+        ? `Pulled in by ${u.via.join(" ← ")}: add an override for ${u.packageName} ${u.fixedVersion}`
+        : `Update ${u.packageName} to ${u.fixedVersion} in your code`;
+    case "build_only":
+      return "Only used to build the app: it never runs";
     case "update":
       return `A newer build of this image fixes ${flaws}: update to get it`;
     case "newer_tag":

@@ -10,6 +10,7 @@ const GROUP_FIELDS = /* GraphQL */ `
   packageName
   installedVersion
   fixedVersion
+  via
   level
   fix
   counted

@@ -378,6 +378,7 @@ function findingsFor(
         registryDigest: wi.registryDigest,
         newerTag: wi.newerTag,
         candidate: verdict,
+        buildOnly: pkg.buildOnly,
       });
       const f = {
         serverId: wi.serverId,
@@ -389,6 +390,7 @@ function findingsFor(
         installedVersion: q.version,
         fixedVersion,
         location: pkg.location,
+        via: pkg.via,
         level,
         fix,
         firstSeenAt: stamp,
@@ -410,8 +412,9 @@ const RANK: Record<FixKind, number> = {
   newer_tag: 3,
   upstream: 4,
   unverified: 5,
-  deplo: 6,
-  none: 7,
+  build_only: 6,
+  deplo: 7,
+  none: 8,
 };
 
 // The packages of the newer build read for each workload whose newer build is still that one.
@@ -503,7 +506,8 @@ async function persistFindings(
         old.level !== f.level ||
         old.fix !== f.fix ||
         old.fixedVersion !== f.fixedVersion ||
-        old.location !== f.location
+        old.location !== f.location ||
+        old.via !== (f.via ?? "")
       )
         await tx
           .update(securityFindings)
@@ -512,6 +516,7 @@ async function persistFindings(
             fix: f.fix,
             fixedVersion: f.fixedVersion,
             location: f.location,
+            via: f.via ?? "",
           })
           .where(findingPk(f));
     }

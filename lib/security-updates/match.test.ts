@@ -55,7 +55,10 @@ const OPENSSL =
 const KERNEL = "pkg:deb/debian/linux-libc-dev@6.1.164-1?upstream=linux";
 
 let workloads: WorkloadImage[] = [];
-let packagesOf: Record<string, { purl: string; location: string }[]> = {};
+let packagesOf: Record<
+  string,
+  { purl: string; location: string; buildOnly?: boolean; via?: string[] }[]
+> = {};
 // What InventoryCandidate finds in a newer build, by the ref it is asked for.
 let candidateRefs: string[] = [];
 let candidatePurls: string[] = [];
@@ -86,6 +89,8 @@ const fakeAgent = {
     scannerVersion: "1.54.1",
     durationMs: 1,
     packages: (packagesOf[imageId] ?? []).map((p) => ({
+      buildOnly: false,
+      via: [],
       ...p,
       name: "",
       version: "",
@@ -613,5 +618,34 @@ test("a newer build that keeps the flaw waits on the maintainers and never count
     hookCalls().length,
     0,
     "nothing the team can apply, nothing to alert",
+  );
+});
+
+test("a package only the build uses is listed, never counted; an indirect one says who pulls it in", async () => {
+  packagesOf[WEB_IMAGE] = [
+    {
+      purl: MINIMIST,
+      location: "/app/node_modules/minimist/package.json",
+      via: ["mkdirp", "mocha-runner"],
+    },
+    {
+      purl: NEXT,
+      location: "/app/node_modules/next/package.json",
+      buildOnly: true,
+    },
+  ];
+  workloads = [wl({ projectId: "prj_web" })];
+  await backfill();
+  await matchWorkloads("full", new Date("2026-10-25T10:05:00Z"));
+  const rows = await db.select().from(securityFindings);
+  assert.deepEqual(
+    rows.map((f) => `${f.packageName}:${f.fix}:${f.via}`).sort(),
+    ["minimist:code:mkdirp\tmocha-runner", "next:build_only:"],
+  );
+  await settle();
+  assert.equal(hookCalls().length, 1, "only the package that runs alerts");
+  assert.match(
+    JSON.stringify(hookCalls()[0].body),
+    /1 security update to apply/,
   );
 });

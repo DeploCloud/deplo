@@ -19,6 +19,7 @@ export interface Update {
   ignoredBy: string | null;
   service: string;
   imageRef: string;
+  via: string[];
   osvUrl: string;
 }
 

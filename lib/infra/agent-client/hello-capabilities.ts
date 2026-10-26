@@ -67,6 +67,8 @@ export const FILES_BIND_CHECK_CAPABILITY = "deploy.files-bind-check";
 export const IMAGE_INVENTORY_CAPABILITY = "image-inventory";
 // InventoryCandidate: a newer build is read before Update is offered.
 export const IMAGE_CANDIDATE_CAPABILITY = "image-inventory.candidate";
+// The package list marks build-only packages and who pulls each in (lockfile graph).
+export const IMAGE_DEPS_CAPABILITY = "image-inventory.deps";
 
 export const DEPLOY_PULL_BASE_CAPABILITY = "deploy.pull-base";
 

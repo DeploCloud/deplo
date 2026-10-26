@@ -177,6 +177,7 @@ function UpdateRow({
                 fixedVersion: g.fixedVersion,
                 newerTag,
                 flaws: g.items.length,
+                via: u.via,
               })}
           {!g.image && !single
             ? ` · ${plural(g.items.length, "advisory", "advisories")}`

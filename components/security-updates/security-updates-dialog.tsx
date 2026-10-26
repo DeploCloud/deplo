@@ -45,6 +45,7 @@ const QUERY = /* GraphQL */ `
         ignoredBy
         service
         imageRef
+        via
         osvUrl
       }
     }
@@ -101,9 +102,17 @@ export function SecurityUpdatesDialog({
   const waiting = groups.filter(
     (g) => g.fix === "upstream" && !g.actionable && !isIgnored(g),
   );
+  // Installed for the build only: never runs, so never counted.
+  const buildOnly = groups.filter(
+    (g) => g.fix === "build_only" && !isIgnored(g),
+  );
   // Important ones, and newer builds still being read: listed, never counted.
   const lessUrgent = groups.filter(
-    (g) => !g.actionable && g.fix !== "upstream" && !isIgnored(g),
+    (g) =>
+      !g.actionable &&
+      g.fix !== "upstream" &&
+      g.fix !== "build_only" &&
+      !isIgnored(g),
   );
   const ignored = groups.filter(isIgnored);
   // The service is worth naming only when the app runs more than one.
@@ -169,6 +178,7 @@ export function SecurityUpdatesDialog({
                   {...list}
                 />
                 <UpdateList title="Less urgent" groups={lessUrgent} {...list} />
+                <UpdateList title="Build only" groups={buildOnly} {...list} />
                 <UpdateList
                   title={`Ignored (${ignored.length})`}
                   groups={ignored}

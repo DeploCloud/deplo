@@ -2706,6 +2706,10 @@ export interface ImagePackage {
   type: string;
   /** Where the package was found inside the image. */
   location: string;
+  /** Reachable only from the app's devDependencies per its lockfile: built with, never run. */
+  buildOnly: boolean;
+  /** Who pulls it in, from its parent up to the app's own dependency; empty for a direct one. */
+  via: string[];
 }
 
 export interface InventoryImageResponse {
@@ -19844,7 +19848,7 @@ export const InventoryImageRequest: MessageFns<InventoryImageRequest> = {
 };
 
 function createBaseImagePackage(): ImagePackage {
-  return { purl: "", name: "", version: "", type: "", location: "" };
+  return { purl: "", name: "", version: "", type: "", location: "", buildOnly: false, via: [] };
 }
 
 export const ImagePackage: MessageFns<ImagePackage> = {
@@ -19863,6 +19867,12 @@ export const ImagePackage: MessageFns<ImagePackage> = {
     }
     if (message.location !== "") {
       writer.uint32(42).string(message.location);
+    }
+    if (message.buildOnly !== false) {
+      writer.uint32(48).bool(message.buildOnly);
+    }
+    for (const v of message.via) {
+      writer.uint32(58).string(v!);
     }
     return writer;
   },
@@ -19920,6 +19930,22 @@ export const ImagePackage: MessageFns<ImagePackage> = {
             message.location = reader.string();
             continue;
           }
+          case 6: {
+            if (tag !== 48) {
+              break;
+            }
+
+            message.buildOnly = reader.bool();
+            continue;
+          }
+          case 7: {
+            if (tag !== 58) {
+              break;
+            }
+
+            message.via.push(reader.string());
+            continue;
+          }
         }
         if ((tag & 7) === 4 || tag === 0) {
           break;
@@ -19939,6 +19965,12 @@ export const ImagePackage: MessageFns<ImagePackage> = {
       version: isSet(object.version) ? globalThis.String(object.version) : "",
       type: isSet(object.type) ? globalThis.String(object.type) : "",
       location: isSet(object.location) ? globalThis.String(object.location) : "",
+      buildOnly: isSet(object.buildOnly)
+        ? globalThis.Boolean(object.buildOnly)
+        : isSet(object.build_only)
+        ? globalThis.Boolean(object.build_only)
+        : false,
+      via: globalThis.Array.isArray(object?.via) ? object.via.map((e: any) => globalThis.String(e)) : [],
     };
   },
 
@@ -19959,6 +19991,12 @@ export const ImagePackage: MessageFns<ImagePackage> = {
     if (message.location !== "") {
       obj.location = message.location;
     }
+    if (message.buildOnly !== false) {
+      obj.buildOnly = message.buildOnly;
+    }
+    if (message.via?.length) {
+      obj.via = message.via;
+    }
     return obj;
   },
 
@@ -19972,6 +20010,8 @@ export const ImagePackage: MessageFns<ImagePackage> = {
     message.version = object.version ?? "";
     message.type = object.type ?? "";
     message.location = object.location ?? "";
+    message.buildOnly = object.buildOnly ?? false;
+    message.via = object.via?.map((e) => e) || [];
     return message;
   },
 };

@@ -9,6 +9,7 @@ test("fixLine: one plain line per way of getting the fix", () => {
     fixedVersion: "1.2.6",
     newerTag: null,
     flaws: 1,
+    via: [] as string[],
   };
   assert.equal(
     fixLine({ ...base, fix: "code" }),
@@ -29,6 +30,20 @@ test("fixLine: one plain line per way of getting the fix", () => {
   assert.equal(
     fixLine({ ...base, fix: "unverified" }),
     "A newer build is out: Deplo is checking whether it fixes 1 known flaw",
+  );
+  assert.equal(
+    fixLine({
+      ...base,
+      packageName: "dompurify",
+      fixedVersion: "3.4.17",
+      fix: "code",
+      via: ["monaco-editor", "@payloadcms/ui"],
+    }),
+    "Pulled in by monaco-editor ← @payloadcms/ui: add an override for dompurify 3.4.17",
+  );
+  assert.equal(
+    fixLine({ ...base, fix: "build_only" }),
+    "Only used to build the app: it never runs",
   );
   assert.equal(fixLine({ ...base, fix: "deplo" }), "", "never shown");
 });

@@ -29,7 +29,7 @@ const SecurityLevelEnum = builder.enumType("SecurityLevel", {
 
 const SecurityFixEnum = builder.enumType("SecurityFix", {
   description:
-    "How the team gets the fix. `code`: update the dependency in the app's own code. `update`: redeploy to pull the newer build of the image, read and found to have the fix. `newer_tag`: move to the newer version of the image, read likewise. `upstream`: the newer build still has it, so it waits on the image's maintainers. `unverified`: a newer build exists and is not read yet. Only `code`, `update` and `newer_tag` count; `rebuild`, `deplo` and `none` stay for older clients.",
+    "How the team gets the fix. `code`: update the dependency in the app's own code. `update`: redeploy to pull the newer build of the image, read and found to have the fix. `newer_tag`: move to the newer version of the image, read likewise. `upstream`: the newer build still has it, so it waits on the image's maintainers. `unverified`: a newer build exists and is not read yet. `build_only`: the package is reachable only from the app's devDependencies, so it never runs. Only `code`, `update` and `newer_tag` count; `rebuild`, `deplo` and `none` stay for older clients.",
   values: [
     "code",
     "rebuild",
@@ -37,6 +37,7 @@ const SecurityFixEnum = builder.enumType("SecurityFix", {
     "newer_tag",
     "upstream",
     "unverified",
+    "build_only",
     "deplo",
     "none",
   ] as const,
@@ -88,6 +89,10 @@ const SecurityUpdateRef = builder
         description:
           "The image it was found in. An image's update moves the image as a whole.",
       }),
+      via: t.exposeStringList("via", {
+        description:
+          "Who pulls the package in, from its parent up to the app's own dependency; empty for a direct one. An indirect one is fixed with an override.",
+      }),
       osvUrl: t.exposeString("osvUrl"),
     }),
   });
@@ -112,6 +117,11 @@ const SecurityUpdateGroupRef = builder
       installedVersion: t.string({
         nullable: true,
         resolve: (g) => (g.image ? null : g.items[0].installedVersion),
+      }),
+      via: t.stringList({
+        description:
+          "Who pulls the package in, parent first; empty for a direct dependency or an image.",
+        resolve: (g) => (g.image ? [] : g.items[0].via),
       }),
       fixedVersion: t.exposeString("fixedVersion", {
         nullable: true,

@@ -21,6 +21,7 @@ const base: FixInput = {
   registryDigest: null,
   newerTag: null,
   candidate: "unread",
+  buildOnly: false,
 };
 
 test("fixKind: Deplo-built images", () => {
@@ -88,6 +89,32 @@ test("fixKind: a vendor image is fixed only by what its registry has", () => {
     "newer_tag",
   );
   assert.equal(fixKind({ ...vendor, registryStatus: "private" }), "update");
+});
+
+test("fixKind: a package only the build uses never counts, wherever it is", () => {
+  assert.equal(fixKind({ ...base, buildOnly: true }), "build_only");
+  assert.equal(
+    fixKind({
+      ...base,
+      imageRef: "ghcr.io/acme/tool:1",
+      registryStatus: "ok",
+      registryDigest: "sha256:new",
+      repoDigest: "sha256:old",
+      candidate: "fixed",
+      buildOnly: true,
+    }),
+    "build_only",
+  );
+  assert.equal(
+    isActionable({
+      fix: "build_only",
+      ecosystem: "npm",
+      packageName: "happy-dom",
+      location: "/app/node_modules/happy-dom/package.json",
+      level: "critical",
+    }),
+    false,
+  );
 });
 
 test("fixKind: without an upstream fix nothing helps", () => {

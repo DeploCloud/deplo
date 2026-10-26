@@ -26,6 +26,8 @@ export const imageInventories = pgTable("image_inventories", {
   workingDir: text("working_dir").notNull().default(""),
   scannerVersion: text("scanner_version").notNull().default(""),
   scannedAt: isoTimestamptz("scanned_at").notNull(),
+  // Read by an agent that marks build-only packages and who pulls each in (`image-inventory.deps`).
+  depsRead: boolean("deps_read").notNull().default(false),
 });
 
 export const imageInventoryPackages = pgTable(
@@ -39,6 +41,10 @@ export const imageInventoryPackages = pgTable(
     type: text("type").notNull(),
     name: text("name").notNull(),
     version: text("version").notNull(),
+    // Reachable only from the app's devDependencies: built with, never run.
+    buildOnly: boolean("build_only").notNull().default(false),
+    // Who pulls it in, parent first up to the app's own dependency, tab-separated; "" when direct.
+    via: text("via").notNull().default(""),
   },
   (t) => [primaryKey({ columns: [t.imageId, t.purl, t.location] })],
 );
@@ -165,6 +171,7 @@ export const securityFindings = pgTable(
     installedVersion: text("installed_version").notNull(),
     fixedVersion: text("fixed_version"),
     location: text("location").notNull().default(""),
+    via: text("via").notNull().default(""),
     level: text("level").notNull(),
     fix: text("fix").notNull(),
     firstSeenAt: isoTimestamptz("first_seen_at").notNull(),

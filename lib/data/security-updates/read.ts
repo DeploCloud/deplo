@@ -56,6 +56,8 @@ export interface SecurityUpdate {
   service: string;
   // The image it was found in: an image's update moves it whole.
   imageRef: string;
+  // Who pulls the package in, parent first up to the app's own dependency; [] when direct.
+  via: string[];
   osvUrl: string;
 }
 
@@ -209,6 +211,7 @@ async function subjectUpdates(
         epss: a?.cve ? (epss.get(a.cve) ?? null) : null,
         service: f.service,
         imageRef,
+        via: f.via ? f.via.split("\t") : [],
         osvUrl: `https://osv.dev/vulnerability/${encodeURIComponent(f.vulnId)}`,
       };
     });

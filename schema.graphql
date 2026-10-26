@@ -5775,9 +5775,10 @@ type SearchTemplate {
 }
 
 """
-How the team gets the fix. `code`: update the dependency in the app's own code. `update`: redeploy to pull the newer build of the image, read and found to have the fix. `newer_tag`: move to the newer version of the image, read likewise. `upstream`: the newer build still has it, so it waits on the image's maintainers. `unverified`: a newer build exists and is not read yet. Only `code`, `update` and `newer_tag` count; `rebuild`, `deplo` and `none` stay for older clients.
+How the team gets the fix. `code`: update the dependency in the app's own code. `update`: redeploy to pull the newer build of the image, read and found to have the fix. `newer_tag`: move to the newer version of the image, read likewise. `upstream`: the newer build still has it, so it waits on the image's maintainers. `unverified`: a newer build exists and is not read yet. `build_only`: the package is reachable only from the app's devDependencies, so it never runs. Only `code`, `update` and `newer_tag` count; `rebuild`, `deplo` and `none` stay for older clients.
 """
 enum SecurityFix {
+  build_only
   code
   deplo
   newer_tag
@@ -5854,6 +5855,11 @@ type SecurityUpdate {
   service: String
   summary: String
 
+  """
+  Who pulls the package in, from its parent up to the app's own dependency; empty for a direct one. An indirect one is fixed with an override.
+  """
+  via: [String!]
+
   """The OSV id, for example GHSA-xvch-5gv4-984h or GO-2024-2687."""
   vulnId: String
 }
@@ -5883,6 +5889,11 @@ type SecurityUpdateGroup {
   level: SecurityLevel
   packageName: String
   service: String
+
+  """
+  Who pulls the package in, parent first; empty for a direct dependency or an image.
+  """
+  via: [String!]
 }
 
 """
