@@ -173,7 +173,7 @@ lifecycle, backups, backup destinations, volume copy and DB provisioning all
 route `UI → GraphQL → lib/data/* → connectAgent(serverId) → agent`.
 
 - `lib/infra/agent-client/connect.ts` `connectAgent(serverId)` is the sole entry (mTLS, cert-fingerprint
-  pinned at bootstrap), over the server's agent link, or a direct dial until it links (ADR-0040).
+  pinned at bootstrap), over the server's agent link only: nothing dials a server (ADR-0040).
   The Deplo host is itself "agent 0", **no in-process localhost shortcut**; local and remote take
   the identical path.
 - **A backup destination is a bucket OR a server's disk** (ADR-0019). Which agent handles one

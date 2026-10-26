@@ -235,7 +235,7 @@ the **metrics poll** (`lib/data/monitoring.ts`), the **deploy preflight** (`agen
 advertising `metrics-stream`. On a quiet server with
 nobody on Monitoring, a stale badge can persist for a long time.
 
-`markServerSeen` only pins the _version_ when `agent_port is not null` (the `case` wraps just
+`markServerSeen` only pins the _version_ when `agent_cert_fingerprint is not null` (the `case` wraps just
 `agentVersion`), so it is a no-op for the badge on an unprovisioned row, but the rest of the write
 still lands: `lastSeenAt` unconditionally, and `traefikEnabled` / `dockerVersion` / specs whenever
 the caller passes them.
@@ -282,7 +282,7 @@ Do this before moving to the next server - that is the whole point of going one 
    _disappeared_ is a release regression - stop the rollout.
 2. **Status is `online`** on the Servers page (force a check), and `statusMessage` is empty.
 3. **`agent_version` in the DB matches**: see §7 if it does not.
-4. **Metrics flow**: the server card shows CPU/mem/disk, not `—`. This exercises the mTLS dial, the
+4. **Metrics flow**: the server card shows CPU/mem/disk, not `—`. This exercises the agent link, the
    `Metrics` RPC and `markServerSeen` in one shot.
 5. **A real deploy** on that server: redeploy one small App and watch the log stream to completion.
    Streaming is the thing a re-exec breaks, so a deploy that both builds _and_ streams is the
