@@ -5,6 +5,7 @@ import { useSearchParams } from "@/lib/nav";
 import {
   CircleFadingArrowUp,
   Globe,
+  Info,
   LifeBuoy,
   ShieldCheck,
   SlidersHorizontal,
@@ -40,8 +41,10 @@ import { PanelBackupAddressCard } from "./panel-backup-address-card";
 import { PanelHttpCard } from "./panel-http-card";
 import { CertificatesCard } from "./certificates-card";
 import { SettingGroup } from "./setting-item";
+import { DeploAboutTab } from "@/components/settings/deplo-about-tab";
+import type { Notice } from "@/components/settings/licenses-panel";
 
-const TABS = ["general", "updates", "advanced"] as const;
+const TABS = ["general", "updates", "advanced", "about"] as const;
 type TabId = (typeof TABS)[number];
 
 export function DeploSettingsPanel({
@@ -53,7 +56,9 @@ export function DeploSettingsPanel({
   hosts,
   canary: canarySeed,
   security,
+  notices,
 }: {
+  notices: Notice[];
   canary: boolean;
   security: SecurityUpdatesStatus;
   settings: InstanceSettings;
@@ -96,6 +101,10 @@ export function DeploSettingsPanel({
         <UnderlineTabsTrigger value="advanced">
           <SlidersHorizontal className="size-4" />
           Advanced
+        </UnderlineTabsTrigger>
+        <UnderlineTabsTrigger value="about">
+          <Info className="size-4" />
+          About
         </UnderlineTabsTrigger>
       </UnderlineTabsList>
 
@@ -156,6 +165,9 @@ export function DeploSettingsPanel({
             hosts={hosts}
           />
         </SettingGroup>
+      </TabsContent>
+      <TabsContent value="about">
+        <DeploAboutTab notices={notices} />
       </TabsContent>
     </Tabs>
   );

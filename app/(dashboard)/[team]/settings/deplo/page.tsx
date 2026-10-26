@@ -1,8 +1,11 @@
+import { readFile } from "node:fs/promises";
+import path from "node:path";
 import { notFound } from "next/navigation";
 
 import { PageHeader } from "@/components/shared/page-header";
 import { Badge } from "@/components/ui/badge";
 import { DeploSettingsPanel } from "@/components/settings/deplo-settings-panel/settings-tabs";
+import type { Notice } from "@/components/settings/licenses-panel";
 import { getInstanceSettings } from "@/lib/data/instance-settings/settings-store";
 import { viewerIsInstanceOwner } from "@/lib/data/instance-owner";
 import { listAllUsers } from "@/lib/data/members/instance-users";
@@ -16,6 +19,16 @@ import { securityUpdatesStatus } from "@/lib/data/security-updates/settings";
 
 export const metadata = { title: "Settings · Deplo" };
 
+// Written next to the build by scripts/third-party-notices.mjs.
+async function readNotices(): Promise<Notice[]> {
+  try {
+    const file = path.join(process.cwd(), "public", "third-party-notices.json");
+    return JSON.parse(await readFile(file, "utf8"));
+  } catch {
+    return [];
+  }
+}
+
 export default async function DeploSettingsPage() {
   if (!(await isInstanceAdmin())) notFound();
   const [
@@ -27,6 +40,7 @@ export default async function DeploSettingsPage() {
     viewer,
     canary,
     security,
+    notices,
   ] = await Promise.all([
     getInstanceSettings(),
     viewerIsInstanceOwner(),
@@ -36,6 +50,7 @@ export default async function DeploSettingsPage() {
     getCurrentUser(),
     canaryReleasesEnabled(),
     securityUpdatesStatus(),
+    readNotices(),
   ]);
 
   const ownerCandidates = users
@@ -81,6 +96,7 @@ export default async function DeploSettingsPage() {
         hosts={hosts}
         canary={canary}
         security={security}
+        notices={notices}
       />
     </div>
   );

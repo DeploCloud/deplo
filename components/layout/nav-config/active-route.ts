@@ -47,7 +47,6 @@ export const NON_TEAM_SETTINGS_PREFIXES = [
   "/settings/servers",
   "/settings/deplo",
   "/settings/migrations",
-  "/settings/licenses",
 ];
 
 export function isNonTeamSettings(pathname: string): boolean {

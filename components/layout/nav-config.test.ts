@@ -185,7 +185,6 @@ test("System closes on Deplo, wearing the mark", () => {
       "/settings/migrations",
       "/settings/servers",
       "/settings/users",
-      "/settings/licenses",
       "/settings/deplo",
     ],
   );

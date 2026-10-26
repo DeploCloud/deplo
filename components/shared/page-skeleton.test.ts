@@ -38,8 +38,8 @@ test("every settings page has a skeleton of its own", () => {
       .split("/")
       .slice(0, -1);
     const named = dirs.filter((d) => !d.startsWith("("));
-    // `import` only redirects to Migrations; nested editors keep the page they came from.
-    return named.length <= 1 && named[0] !== "import";
+    // `import` and `licenses` only redirect; nested editors keep the page they came from.
+    return named.length <= 1 && !["import", "licenses"].includes(named[0]);
   });
   assert.ok(pages.length >= 14, "the settings pages are found");
   const covered = (page: string) => {
