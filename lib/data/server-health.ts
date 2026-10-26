@@ -4,7 +4,6 @@ import {
   and,
   type AnyColumn,
   eq,
-  inArray,
   isNotNull,
   isNull,
   or,
@@ -12,7 +11,6 @@ import {
 } from "drizzle-orm";
 
 import { getDb } from "../db/client";
-import { deployments as deploymentsTable } from "../db/schema/control-plane/deployments";
 import { servers as serversTable } from "../db/schema/control-plane/servers";
 import { openAgent } from "../infra/agent-client/connect";
 import { HEALTH_HELLO_TIMEOUT_MS } from "../infra/agent-client/deadlines";
@@ -27,7 +25,6 @@ import {
 import {
   classifyServerHealth,
   HEALTH_MESSAGES,
-  isRetryableProbeFailure,
   type ServerHealth,
 } from "../infra/server-health";
 import { requireInstanceAdmin } from "../membership";
@@ -42,15 +39,8 @@ import type { Server } from "../types/server";
 const THROTTLE_MS = 15_000;
 const FORCE_FLOOR_MS = 5_000;
 const PROBE_DEADLINE_MS = 3_500;
-const RETRY_DELAY_MS = 750;
-
-const ACTIVE_DEPLOY_STATES = ["queued", "building"] as const;
 
 const inFlight = new Map<string, Promise<Server | null>>();
-
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
 
 class ProbeTimeout extends Error {}
 
@@ -88,22 +78,6 @@ export async function claimProbe(id: string, force: boolean): Promise<boolean> {
     )
     .returning({ id: serversTable.id });
   return claimed.length > 0;
-}
-
-async function serversDeployingNow(ids: string[]): Promise<Set<string>> {
-  if (ids.length === 0) return new Set();
-  const rows = await getDb()
-    .selectDistinct({ serverId: deploymentsTable.serverId })
-    .from(deploymentsTable)
-    .where(
-      and(
-        inArray(deploymentsTable.serverId, ids),
-        inArray(deploymentsTable.status, [...ACTIVE_DEPLOY_STATES]),
-      ),
-    );
-  return new Set(
-    rows.map((r) => r.serverId).filter((s): s is string => s !== null),
-  );
 }
 
 export async function recordServerHealth(
@@ -175,90 +149,21 @@ function alertServerHealth(
   dispatchServerAlert(id, { ...alert, dedupe, path: "/settings/servers" });
 }
 
+// Never a dial: no link past the grace is offline, and a Hello over the link says the rest (ADR-0040).
 async function probeServer(
   server: Server,
   force: boolean,
 ): Promise<Server | null> {
   if (!(await claimProbe(server.id, force))) return null;
-
   const observedAt = nowIso();
-
-  const dialHello = async (): Promise<HelloResponse> => {
-    // Ungated: health is about reachability, an unusable agent still answers.
-    const conn = await openAgent(server.id);
-    try {
-      return await conn.hello(HEALTH_HELLO_TIMEOUT_MS);
-    } finally {
-      conn.close();
-    }
-  };
-
   const link = linkState(server.id);
-  if (link) return probeOverLink(server, link, dialHello, observedAt);
-
-  let hello: HelloResponse | null = null;
-  let error: unknown = null;
-  try {
-    hello = await withDeadline(dialHello(), PROBE_DEADLINE_MS);
-  } catch (e) {
-    if (e instanceof ProbeTimeout) {
-      console.error(
-        `[deplo] health probe for ${server.name} timed out; leaving status as-is`,
-      );
-      return null;
-    }
-    if (isRetryableProbeFailure(e)) {
-      await sleep(RETRY_DELAY_MS);
-      try {
-        hello = await withDeadline(dialHello(), PROBE_DEADLINE_MS);
-      } catch (retryErr) {
-        if (retryErr instanceof ProbeTimeout) return null;
-        error = retryErr;
-      }
-    } else {
-      error = e;
-    }
-  }
-  // Right after the panel starts, a server that closed its port once it linked is still relinking.
-  if (error && linkMayCome(server.id, error)) return null;
-
-  const health = classifyServerHealth(hello, error, {
-    storageOnly: server.storageOnly,
-  });
-  if (error) {
-    console.error(`[deplo] health probe for ${server.name}: ${String(error)}`);
-  }
-
-  if (
-    health.status === "offline" &&
-    (await serversDeployingNow([server.id])).has(server.id)
-  ) {
-    console.error(
-      `[deplo] health probe for ${server.name} failed while it is deploying; not demoting`,
-    );
-    return null;
-  }
-
-  await recordServerHealth(server.id, health, observedAt);
-  if (hello)
-    await markServerSeen(server.id, hello.agentVersion, observedTraefik(hello));
-  return getServerById(server.id);
-}
-
-// A server that links is never dialed: a missing link is offline, Hello over it says the rest (ADR-0040).
-async function probeOverLink(
-  server: Server,
-  link: LinkState,
-  askHello: () => Promise<HelloResponse>,
-  observedAt: string,
-): Promise<Server | null> {
   // Inside the grace the link may be on its way back; if not, its timer writes offline.
   if (link === "waiting") return null;
   let hello: HelloResponse | null = null;
   let health = LINK_OFFLINE;
   if (link === "linked") {
     try {
-      hello = await withDeadline(askHello(), PROBE_DEADLINE_MS);
+      hello = await withDeadline(askHello(server.id), PROBE_DEADLINE_MS);
       health = classifyServerHealth(hello, null, {
         storageOnly: server.storageOnly,
       });
@@ -275,6 +180,16 @@ async function probeOverLink(
   if (hello)
     await markServerSeen(server.id, hello.agentVersion, observedTraefik(hello));
   return getServerById(server.id);
+}
+
+// Ungated: health is about reachability, an unusable agent still answers.
+async function askHello(serverId: string): Promise<HelloResponse> {
+  const conn = await openAgent(serverId);
+  try {
+    return await conn.hello(HEALTH_HELLO_TIMEOUT_MS);
+  } finally {
+    conn.close();
+  }
 }
 
 async function probeCoalesced(server: Server, force: boolean): Promise<Server> {
@@ -359,14 +274,14 @@ export function stopServerLinkStatus(): void {
 
 type LinkState = "linked" | "waiting" | "offline";
 
-/** How a server that links stands, read without a dial; null for one that never linked. */
-function linkState(serverId: string): LinkState | null {
-  if (!hasLinked(serverId)) return null;
+/** How a server stands, read off its agent link without a dial. */
+function linkState(serverId: string): LinkState {
   if (currentLink(serverId)) return "linked";
   const gone = watch.gone.get(serverId);
-  return gone && Date.now() - gone.since >= watch.graceMs
-    ? "offline"
-    : "waiting";
+  if (gone)
+    return Date.now() - gone.since >= watch.graceMs ? "offline" : "waiting";
+  // Right after the panel starts, the fleet is still relinking.
+  return linkMayCome(serverId) ? "waiting" : "offline";
 }
 
 function linkWentAway(serverId: string): void {

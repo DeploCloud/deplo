@@ -59,10 +59,6 @@ export function classifyServerHealth(
   return { status: "online", message: null };
 }
 
-export function isRetryableProbeFailure(err: unknown): boolean {
-  return err instanceof AgentUnreachableError && !err.trust;
-}
-
 export function unreachableMessage(err: unknown): string | null {
   if (!(err instanceof AgentUnreachableError)) return null;
   if (err.trust) return HEALTH_MESSAGES.untrusted;

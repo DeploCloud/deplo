@@ -294,36 +294,29 @@ test("checking a server whose link just dropped changes nothing until the grace 
   assert.equal(agent.connections().opened, 0, "nothing dialed the agent");
 });
 
-test("once links have settled, a server that never linked is checked as today: dialed, with no wait for a link", async (t) => {
+test("once links have settled, a server that never linked is shown offline at once, without dialing it", async (t) => {
   startServerLinkStatus();
-  const up = await check();
-  assert.equal(up.status, "online");
-  assert.equal(agent.connections().opened, 1, "it was dialed");
-
-  agent.refuse(true);
   await ageObservation();
   mock.timers.enable({ apis: ["Date"], now: Date.now() + LINK_SETTLE_MS });
   t.after(() => mock.timers.reset());
-  const down = await check();
-  assert.ok(down.took < 3_000, `the check took ${down.took} ms`);
-  assert.equal(down.status, "offline");
-  assert.equal(down.statusMessage, HEALTH_MESSAGES.offline);
+
+  const s = await check();
+  assert.ok(s.took < 1_500, `the check took ${s.took} ms`);
+  assert.equal(s.status, "offline");
+  assert.equal(s.statusMessage, HEALTH_MESSAGES.offline);
+  assert.equal(agent.connections().opened, 0, "nothing dialed the agent");
 });
 
-test("right after the panel starts, a server that stopped listening and has not relinked yet is not shown offline", async () => {
+test("right after the panel starts, a server that has not linked yet is not shown offline, nor dialed", async () => {
   startServerLinkStatus();
-  agent.refuse(true); // it closed its port once it linked, before the panel restarted
   await ageObservation();
   const before = await shown();
 
   const s = await check();
-  assert.ok(s.took < 3_000, `the check took ${s.took} ms`);
+  assert.ok(s.took < 1_500, `the check took ${s.took} ms`);
   assert.equal(s.status, "online");
-  assert.deepEqual(
-    await shown(),
-    before,
-    "nothing judged from the refused dial",
-  );
+  assert.deepEqual(await shown(), before, "nothing judged before it linked");
+  assert.equal(agent.connections().opened, 0, "nothing dialed the agent");
 
   await linkIn();
   await until(

@@ -2,8 +2,6 @@ import "server-only";
 
 import { markServerSeen } from "../../data/servers/agent-handshake";
 import { getServerById } from "../../data/servers/roster";
-import { LINK_WAIT_MS } from "../agent-link/protocol";
-import { linkMayCome, waitForLink } from "../agent-link/registry";
 import { agentSelfRpc } from "./agent-self-rpc";
 import { backupRpc } from "./backup-rpc";
 import { captureRpc } from "./capture-rpc";
@@ -18,19 +16,8 @@ import { hostRpc } from "./host-rpc";
 import { inventoryRpc } from "./inventory-rpc";
 import { metricsRpc } from "./metrics-rpc";
 import { leaseChannel } from "./channel-pool";
-import {
-  openChannel,
-  remoteTarget,
-  resolveAddress,
-  type AgentChannel,
-  type DialTarget,
-} from "./mtls-channel";
+import type { AgentChannel } from "./mtls-channel";
 import { stackRpc } from "./stack-rpc";
-
-/** A connection on a channel of its own, closed with it: an override address only. */
-export function dial(target: DialTarget): AgentConnection {
-  return connectionOn(openChannel(target));
-}
 
 function connectionOn(channel: AgentChannel): AgentConnection {
   return {
@@ -64,42 +51,45 @@ export function __setAgentConnectorForTest(
   connector = fn ?? null;
 }
 
-// The sole entry to a host (ADR-0006): an unreachable agent throws, there is no in-process fallback.
+// The sole entry to a host (ADR-0006), over its agent link (ADR-0040): an unreachable agent throws, there is no fallback.
 export async function connectAgent(serverId: string): Promise<AgentConnection> {
   const stub = await connector?.(serverId);
   if (stub) return stub;
-  const address = await resolveAddress(serverId);
-  const started = Date.now();
+  const pin = await agentPin(serverId);
   const gate = (channel: AgentChannel) =>
-    gateConnection(connectionOn(channel), address.agentVersion, serverId);
-  const { channel, answeredBefore, linked } = await leaseChannel(
-    serverId,
-    address,
-  );
+    gateConnection(connectionOn(channel), pin.version, serverId);
+  const channel = await leaseChannel(serverId, pin.fingerprint);
   try {
     return await gate(channel);
   } catch (e) {
     if (!(e instanceof AgentUnreachableError)) throw e;
-    // A shared connection can die where a fresh dial would not; the failed Hello retired it.
-    if (answeredBefore)
-      return gate((await leaseChannel(serverId, address)).channel);
-    // The panel just started: an agent that stopped listening once it linked is still on its way back.
-    if (linked || !linkMayCome(serverId, e)) throw e;
-    const link = await waitForLink(
-      serverId,
-      LINK_WAIT_MS - (Date.now() - started),
-    );
-    if (!link) throw e;
   }
-  return gate((await leaseChannel(serverId, address)).channel);
+  // A link can die before the door hears of it; the failed Hello retired its channel, so this waits for the next link.
+  return gate(await leaseChannel(serverId, pin.fingerprint));
 }
 
 /** Past the minimum-agent gate: Hello, SelfUpdate, the health probe and a Deplo update only (ADR-0037). */
 export async function openAgent(serverId: string): Promise<AgentConnection> {
   const stub = await connector?.(serverId);
   if (stub) return stub;
-  const address = await resolveAddress(serverId);
-  return connectionOn((await leaseChannel(serverId, address)).channel);
+  const pin = await agentPin(serverId);
+  return connectionOn(await leaseChannel(serverId, pin.fingerprint));
+}
+
+// The certificate Deplo pinned when the agent called home: the identity its link must prove.
+async function agentPin(
+  serverId: string,
+): Promise<{ fingerprint: string; version?: string }> {
+  const server = await getServerById(serverId);
+  if (!server) throw new AgentUnreachableError(`server ${serverId} not found`);
+  if (!server.agent?.certFingerprint)
+    throw new AgentUnreachableError(
+      `server ${server.name} is not provisioned (no agent has called home yet)`,
+    );
+  return {
+    fingerprint: server.agent.certFingerprint,
+    version: server.agent.version,
+  };
 }
 
 // Every call is judged on a live Hello; the caller's first hello() reuses it rather than paying twice.
@@ -126,27 +116,4 @@ export async function gateConnection(
     conn.close();
     throw e;
   }
-}
-
-export async function connectAgentAt(
-  serverId: string,
-  overrides: { ip?: string; host?: string; agentPort?: number },
-): Promise<AgentConnection> {
-  const server = await getServerById(serverId);
-  if (!server) throw new AgentUnreachableError(`server ${serverId} not found`);
-  if (!server.agent?.certFingerprint)
-    throw new AgentUnreachableError(
-      `server ${server.name} is not provisioned (no agent has called home yet)`,
-    );
-  return dial(
-    await remoteTarget({
-      ...server,
-      ip: overrides.ip ?? server.ip,
-      host: overrides.host ?? server.host,
-      agent: {
-        ...server.agent,
-        port: overrides.agentPort ?? server.agent.port,
-      },
-    }),
-  );
 }

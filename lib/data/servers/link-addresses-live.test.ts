@@ -116,14 +116,6 @@ test("an agent whose link is verified with another pair is sent the panel's", as
   assert.deepEqual(agent.sentPairs(), [{ primary: PANEL, fallback: FALLBACK }]);
 });
 
-test("an agent reached over its own port is sent the pair it will link with", async () => {
-  const conn = await connectAgent(SERVER);
-  await conn.hello();
-  conn.close();
-  await eventually(() => agent.sentPairs().length > 0);
-  assert.deepEqual(agent.sentPairs(), [{ primary: PANEL, fallback: FALLBACK }]);
-});
-
 test("a server enrolled through a takeover's side door is sent the panel's pair when it links after the cutover", async (t) => {
   await db.insert(instanceSettings).values({
     id: "default",

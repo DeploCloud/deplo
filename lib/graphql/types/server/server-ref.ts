@@ -8,10 +8,7 @@ import {
   isDeploHostServer,
 } from "@/lib/deploy/domains";
 import { serverAddressChoices } from "@/lib/data/servers/addresses";
-import {
-  dialedAgentPort,
-  serverAgentUpdate,
-} from "@/lib/data/servers/agent-maintenance";
+import { serverAgentUpdate } from "@/lib/data/servers/agent-maintenance";
 import type { AgentUpdateDTO } from "@/lib/data/servers/agent-update-state";
 import {
   AGENT_VERSION,
@@ -152,12 +149,6 @@ export const ServerRef = builder.objectRef<Server>("Server").implement({
       description:
         "True once the server's agent has called home and been trusted.",
       resolve: (s) => Boolean(s.agent?.certFingerprint),
-    }),
-    agentPort: t.int({
-      nullable: true,
-      description:
-        "The port Deplo connects to this server's agent on. Null when Deplo connects to none: the agent links in to Deplo, so a new address saves without contacting the server, or no agent has called home yet. Read live, so for a few seconds after Deplo starts a server that links in may still show its old port.",
-      resolve: (s) => dialedAgentPort(s),
     }),
     agentVersion: t.string({
       nullable: true,

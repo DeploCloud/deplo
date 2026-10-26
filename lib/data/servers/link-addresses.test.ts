@@ -136,21 +136,32 @@ test("the fallback an agent is sent is the name the panel's proxy answers on", a
   ]);
 });
 
-test("an agent that already keeps the panel's pair is sent nothing", async () => {
+test("an agent that already keeps the panel's pair and listens nowhere is sent nothing", async () => {
   const sent = linkingAgents();
-  await agentHelloSeen(REMOTE, hello({ primary: PANEL, fallback: FALLBACK }));
+  await agentHelloSeen(REMOTE, {
+    ...hello({ primary: PANEL, fallback: FALLBACK }),
+    listening: false,
+  });
   assert.equal(sent.size, 0);
+  assert.deepEqual(stopped, []);
 });
 
-test("an agent seen over its own port keeps that port until the panel has seen it link", async () => {
+// Every Hello rides the agent's link (ADR-0040): one installed before the link still listens until told.
+test("an agent that still listens is sent the panel's pair, then asked to close its port", async () => {
   const sent = linkingAgents();
   await agentHelloSeen(
     REMOTE,
     hello({ primary: "https://old.example.com", fallback: "" }),
   );
-  await agentHelloSeen(REMOTE, hello({ primary: PANEL, fallback: FALLBACK }));
   assert.deepEqual(sent.get(REMOTE), [{ primary: PANEL, fallback: FALLBACK }]);
-  assert.deepEqual(stopped, [], "never asked to stop listening");
+  assert.deepEqual(stopped, [REMOTE]);
+});
+
+test("an agent that keeps the panel's pair but still listens is only asked to close its port", async () => {
+  const sent = linkingAgents();
+  await agentHelloSeen(REMOTE, hello({ primary: PANEL, fallback: FALLBACK }));
+  assert.equal(sent.size, 0);
+  assert.deepEqual(stopped, [REMOTE]);
 });
 
 test("an agent that does not link is never sent a pair", async () => {

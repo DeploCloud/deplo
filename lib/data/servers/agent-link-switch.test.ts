@@ -26,7 +26,7 @@ import {
   startAgentLinkListener,
   stopAgentLinkListener,
 } from "../../infra/agent-link/listener";
-import { currentLink, onAgentLink } from "../../infra/agent-link/registry";
+import { onAgentLink } from "../../infra/agent-link/registry";
 import { invalidateFrozen } from "../deplo-move/freeze";
 import { forgetRoutedFallback } from "../instance-settings/panel-fallback";
 import { seedIdentity, TEAM_A, USER_1 } from "../identity-test-helpers";
@@ -34,11 +34,10 @@ import { seedServerRow, TRUNCATE_INFRA } from "../infra-test-helpers";
 import { rolloutTiming, runAgentRollout } from "./agent-rollout";
 import { startLinkAddressSync, stopLinkAddressSync } from "./link-addresses";
 
-// Servers enrolled before the agent link move over on their own (ADR-0040): real agents, a real door.
+// Servers enrolled before the agent link close their port on their own (ADR-0040): real agents, a real door.
 const PANEL = "https://panel.example.com";
 const FALLBACK = "https://deplo-cb00710a.deplo.site";
 const SERVER = "srv_before_the_link";
-const BEFORE_THE_LINK = "0.4.0";
 const LINKING = [SELF_UPDATE_CAPABILITY, AGENT_LINK_CAPABILITY];
 
 let db: TestDb;
@@ -99,23 +98,13 @@ afterEach(async () => {
     else process.env[k] = v;
 });
 
-/** An agent from before the link, enrolled over its own port; `reachesPanel` is whether it can link once updated. */
-async function enrolled(
-  opts: { reachesPanel?: boolean; version?: string; caps?: string[] } = {},
-): Promise<FakeAgent> {
+/** An agent installed before the link, updated to a linking release: it still listens on its own port. */
+async function enrolled(): Promise<FakeAgent> {
   agent = await startFakeAgent({
-    version: opts.version ?? BEFORE_THE_LINK,
-    capabilities: opts.caps ?? [SELF_UPDATE_CAPABILITY],
-    linkAddresses: opts.caps
-      ? { primary: PANEL, fallback: FALLBACK }
-      : undefined,
-    updatesTo: {
-      version: AGENT_VERSION,
-      capabilities: LINKING,
-      // It finds no address saved: the panel sends one over its port.
-      linkAddresses: { primary: "", fallback: "" },
-    },
-    door: opts.reachesPanel === false ? undefined : door,
+    version: AGENT_VERSION,
+    capabilities: LINKING,
+    // Its install command's address, all it had saved.
+    linkAddresses: { primary: PANEL, fallback: "" },
   });
   await seedServerRow(db, {
     id: SERVER,
@@ -126,7 +115,7 @@ async function enrolled(
       port: agent.port,
       certFingerprint: agent.fingerprint,
       certPem: agent.certPem,
-      version: opts.version ?? BEFORE_THE_LINK,
+      version: AGENT_VERSION,
     },
   });
   return agent;
@@ -151,37 +140,54 @@ async function hello() {
   }
 }
 
-test("an agent updated to a linking release links and stops listening, with nothing for the user to do", async () => {
-  const a = await enrolled();
+function linkUp(): Promise<void> {
+  return new Promise<void>((resolve) => {
+    const off = onAgentLink((e) => {
+      if (e.serverId === SERVER && e.type === "up") resolve(void off());
+    });
+  });
+}
 
-  await runAgentRollout();
+test("an agent installed before the link links in, then is told over its link to close its port, with nothing for the user to do", async () => {
+  const a = await enrolled();
+  const up = linkUp();
+  await a.link(door);
+  await up;
 
   await eventually(() => !a.listening(), 5_000);
   assert.deepEqual(a.sentPairs(), [{ primary: PANEL, fallback: FALLBACK }]);
-  assert.ok(currentLink(SERVER), "it is linked");
   assert.ok(await refusesConnections(a.port), "its port is closed");
-  const dialed = a.connections().opened;
   const h = await hello();
-  assert.equal(h.agentVersion, AGENT_VERSION);
   assert.equal(h.listening, false);
-  assert.equal(a.connections().opened, dialed, "reached over its link");
-  const log = await db.select({ m: activities.message }).from(activities);
-  assert.ok(log.some((r) => r.m.includes(`Updated the agent on ${SERVER}`)));
+  assert.equal(a.connections().opened, 0, "nothing ever dialed it");
 });
 
-test("an agent that cannot reach the panel keeps its port and is still dialed directly", async () => {
-  const a = await enrolled({ reachesPanel: false });
+test("an agent below the minimum that never linked is never dialed, not even to update it", async () => {
+  agent = await startFakeAgent({
+    version: "0.4.0",
+    capabilities: [SELF_UPDATE_CAPABILITY],
+    updatesTo: { version: AGENT_VERSION, capabilities: LINKING },
+  });
+  await seedServerRow(db, {
+    id: SERVER,
+    name: SERVER,
+    ip: "127.0.0.1",
+    host: "127.0.0.1",
+    agent: {
+      port: agent.port,
+      certFingerprint: agent.fingerprint,
+      certPem: agent.certPem,
+      version: "0.4.0",
+    },
+  });
 
   await runAgentRollout();
-  await eventually(() => a.sentPairs().length > 0);
-  await stopLinkAddressSync(); // everything already on its way has landed
 
-  assert.equal(a.listening(), true);
-  assert.equal(currentLink(SERVER), undefined);
-  const h = await hello();
-  assert.equal(h.agentVersion, AGENT_VERSION);
-  assert.equal(h.listening, true);
-  assert.equal(await refusesConnections(a.port), false);
+  assert.equal(agent.connections().opened, 0, "nothing dialed it");
+  const log = await db.select({ m: activities.message }).from(activities);
+  assert.ok(
+    log.some((r) => r.m.startsWith(`Could not update the agent on ${SERVER}`)),
+  );
 });
 
 test("while a Deplo move has the instance frozen, a linked agent keeps its port until the move is over", async (t) => {
@@ -199,12 +205,8 @@ test("while a Deplo move has the instance frozen, a linked agent keeps its port 
     await pg.exec("delete from deplo_moves");
     invalidateFrozen();
   });
-  const a = await enrolled({ version: AGENT_VERSION, caps: LINKING });
-  const up = new Promise<void>((resolve) => {
-    const off = onAgentLink((e) => {
-      if (e.serverId === SERVER && e.type === "up") resolve(void off());
-    });
-  });
+  const a = await enrolled();
+  const up = linkUp();
   await a.link(door);
   await up;
   await new Promise((r) => setTimeout(r, 300));

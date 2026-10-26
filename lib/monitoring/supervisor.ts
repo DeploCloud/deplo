@@ -298,7 +298,7 @@ async function runStreamLoop(
         // An unusable agent is reachable: the health probe owns its status, not this loop.
         // A server whose link may come is judged by server health once it stays away, not here.
         const undecided =
-          e instanceof AgentUnreachableError && linkMayCome(serverId, e);
+          e instanceof AgentUnreachableError && linkMayCome(serverId);
         if (attempt === 0 && !(e instanceof AgentTooOldError) && !undecided) {
           await recordServerHealth(
             serverId,

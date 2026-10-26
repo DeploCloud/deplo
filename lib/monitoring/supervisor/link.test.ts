@@ -13,7 +13,7 @@ import {
   type FakeAgent,
   type FakeLink,
 } from "../../infra/agent-client/fake-agent-test-helpers";
-import { AgentUnreachableError } from "../../infra/agent-client/errors";
+import { AgentOfflineError } from "../../infra/agent-client/errors";
 import { METRICS_STREAM_CAPABILITY } from "../../infra/agent-client/hello-capabilities";
 import {
   startAgentLinkListener,
@@ -163,12 +163,11 @@ test("a link that stays away shows the server offline with the link's own words"
   assert.equal(now.message, HEALTH_MESSAGES.offline);
 });
 
-test("right after the panel starts, a server whose stream finds its port closed is not shown offline until links settle", async (t) => {
+test("right after the panel starts, a server that has not relinked yet is not shown offline until links settle", async (t) => {
   let dials = 0;
-  // It stopped listening once it linked, and has not relinked since the panel restarted.
   __setMetricsConnectorForTest(async () => {
     dials++;
-    throw new AgentUnreachableError("connect ECONNREFUSED 127.0.0.1:9443", 14);
+    throw new AgentOfflineError(SERVER);
   });
   const before = await shown();
   startMetricsStreams();

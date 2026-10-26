@@ -73,11 +73,6 @@ export const FLEET: McpToolDef[] = [
     input: z.object({
       serverId,
       address: z.string().optional(),
-      agentPort: z
-        .number()
-        .int()
-        .optional()
-        .describe("Only for a server whose agent does not link in yet."),
       role: z.string().optional(),
       allTeams: z.boolean().optional(),
       teamIds: z.array(z.string()).optional(),
@@ -94,7 +89,6 @@ export const FLEET: McpToolDef[] = [
     variables: (a) => ({
       id: a.serverId,
       address: a.address ?? "",
-      agentPort: a.agentPort,
       role: a.role ?? "",
       teams: {
         serverId: a.serverId,
@@ -117,7 +111,6 @@ export const FLEET: McpToolDef[] = [
       mutation McpUpdateServer(
         $id: String!
         $address: String!
-        $agentPort: Int
         $role: String!
         $teams: SetServerTeamsInput!
         $buildFallback: Boolean
@@ -132,7 +125,7 @@ export const FLEET: McpToolDef[] = [
         $setConcurrency: Boolean!
         $setTimezone: Boolean!
       ) {
-        updateServerAddress(id: $id, address: $address, agentPort: $agentPort)
+        updateServerAddress(id: $id, address: $address)
           @include(if: $setAddress)
         setServerRole(id: $id, role: $role) @include(if: $setRole) {
           id

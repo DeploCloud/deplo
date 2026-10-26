@@ -4265,7 +4265,7 @@ type Mutation {
   setMemberAccess(input: SetMemberAccessInput!): [UserTeamAccess!]
 
   """
-  Point Deplo at where a machine of this panel really is, and remember it for the next attempt. Unless the machine's agent links in (its `Server.agentPort` is null), the address is PROVED first - the agent must answer there, over the same pinned certificate - and only then written down, because a remembered address is used automatically and an unproven one would turn a single bad guess into a permanent one. Returns a warning to surface, or null. The source server row is removed at the end of every migration, which is why this is remembered against the SOURCE rather than against that row.
+  Point Deplo at where a machine of this panel really is, and remember it for the next attempt. Its agent links in, so the address is saved without Deplo contacting the machine. Returns null. The source server row is removed at the end of every migration, which is why this is remembered against the SOURCE rather than against that row.
   """
   setMigrationMachineAddress(
     address: String!
@@ -4599,16 +4599,11 @@ type Mutation {
   updateRole(input: UpdateRoleInput!): Boolean
 
   """
-  Change a server's address - where its apps are reached, and the migration verb for a host whose IP changed. A server whose agent links in (`Server.agentPort` is null) is saved without Deplo contacting it. Any other server's agent must answer at the new address (same pinned certificate) before anything is saved, unless `force`. Returns a warning to surface, or null.
+  Change a server's address: where its apps are reached, and the migration verb for a host whose IP changed. Its agent links in, so the change is saved without Deplo contacting the server. Returns null.
   """
   updateServerAddress(
     address: String!
-
-    """
-    Only for a server whose agent does not link in yet; ignored while `Server.agentPort` is null.
-    """
-    agentPort: Int
-    force: Boolean
+    force: Boolean @deprecated(reason: "Ignored: Deplo no longer contacts the server to save its address, so there is nothing to force.")
     id: String!
 
     """
@@ -5983,11 +5978,6 @@ type SecurityUpdatesStatus {
 
 """A connected host running deployments (reached via its agent)."""
 type Server {
-  """
-  The port Deplo connects to this server's agent on. Null when Deplo connects to none: the agent links in to Deplo, so a new address saves without contacting the server, or no agent has called home yet. Read live, so for a few seconds after Deplo starts a server that links in may still show its old port.
-  """
-  agentPort: Int
-
   """
   Deplo's update of this server's agent, while one is in flight or has failed. Null otherwise. Requires instanceAdmin.
   """

@@ -39,7 +39,7 @@ const sync: Sync = (g[KEY] ??= {
   lastError: new Map(),
 });
 
-/** Keeps linking agents on the panel's pair and closes a linked one's port (ADR-0040). Start it before the door opens. */
+/** Keeps every agent on the panel's pair and closes a port one still listens on (ADR-0040). Start it before the door opens. */
 export function startLinkAddressSync(): void {
   if (sync.off) return;
   // Queued even behind a running pass: that pass started before this link was verified.
@@ -77,7 +77,7 @@ export async function wantedLinkAddresses(
   return { primary, fallback: fallback === primary ? "" : (fallback ?? "") };
 }
 
-/** A Hello the control plane saw: a linking agent is sent the panel's pair, and stops listening once linked. */
+/** A Hello the control plane saw over a link: the agent is sent the panel's pair, and told to stop listening. */
 export function agentHelloSeen(
   serverId: string,
   hello: HelloResponse,
@@ -143,32 +143,26 @@ function reconcile(serverId: string, seen?: HelloResponse): Promise<void> {
     if (!server) return;
     const wanted = await wantedLinkAddresses(server);
     if (!wanted) return;
-    // Read before connecting: a server seen linked is reached over its link alone, never its port.
-    const linked = currentLink(serverId) !== undefined;
-    if (seen && settled(seen, wanted, linked)) return;
+    if (seen && settled(seen, wanted)) return;
     const conn = await connectAgent(serverId);
     try {
       const hello = seen ?? (await conn.hello());
-      if (!keepsPair(hello) || settled(hello, wanted, linked)) return;
+      if (!keepsPair(hello) || settled(hello, wanted)) return;
       if (!samePair(hello.linkAddresses, wanted))
         await conn.setLinkAddresses(wanted);
-      // It keeps the panel's pair and its link is verified: its own port has no use left.
-      if (linked && hello.listening) await conn.stopListening();
+      // Asked over its link, as every call is: an agent installed before the link still listens until told.
+      if (hello.listening) await conn.stopListening();
     } finally {
       conn.close();
     }
   });
 }
 
-function settled(
-  hello: HelloResponse,
-  wanted: LinkAddresses,
-  linked: boolean,
-): boolean {
+function settled(hello: HelloResponse, wanted: LinkAddresses): boolean {
   return (
     !!hello.linkAddresses &&
     samePair(hello.linkAddresses, wanted) &&
-    !(linked && hello.listening)
+    !hello.listening
   );
 }
 
