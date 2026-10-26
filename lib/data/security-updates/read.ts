@@ -1,9 +1,10 @@
 import "server-only";
 
 import { cache } from "@/lib/request-cache";
-import { and, eq, inArray } from "drizzle-orm";
+import { and, eq, inArray, isNotNull, max } from "drizzle-orm";
 
 import { getDb } from "../../db/client";
+import { deployments } from "../../db/schema/control-plane/deployments";
 import {
   imageInventories,
   osvAffected,
@@ -50,6 +51,8 @@ export interface SecurityUpdate {
 export interface SecurityUpdates {
   // The oldest check behind this answer; null until every image was matched once.
   checkedAt: string | null;
+  // A deploy went live after the last check: its image is being read, the old one's findings hidden.
+  checking: boolean;
   // Statuses of images Deplo could not read ("too_large", "low_disk", ...).
   unreadable: string[];
   count: number;
@@ -71,6 +74,35 @@ const LEVEL_ORDER: Record<Level, number> = {
 
 type Subject =
   { kind: "app"; appId: string } | { kind: "database"; databaseId: string };
+
+// When each app last went live; a workload listed before that runs an image not read yet.
+async function deployedAt(appIds: string[]): Promise<Map<string, string>> {
+  if (appIds.length === 0) return new Map();
+  const rows = await getDb()
+    .select({ appId: deployments.appId, at: max(deployments.readyAt) })
+    .from(deployments)
+    .where(
+      and(
+        inArray(deployments.appId, appIds),
+        eq(deployments.status, "ready"),
+        isNotNull(deployments.readyAt),
+      ),
+    )
+    .groupBy(deployments.appId);
+  return new Map(rows.flatMap((r) => (r.at ? [[r.appId, r.at]] : [])));
+}
+
+const checking = (
+  wi: { checkedAt: string | null; seenAt: string },
+  liveSince: string | undefined,
+) =>
+  !wi.checkedAt || (!!liveSince && new Date(liveSince) > new Date(wi.seenAt));
+
+const workloadKey = (w: {
+  serverId: string;
+  workloadId: string;
+  service: string;
+}) => `${w.serverId}\0${w.workloadId}\0${w.service}`;
 
 async function subjectUpdates(
   teamId: string,
@@ -115,11 +147,16 @@ async function subjectUpdates(
     : [];
 
   const subjectId = s.kind === "app" ? s.appId : s.databaseId;
+  const liveSince =
+    s.kind === "app" ? (await deployedAt([s.appId])).get(s.appId) : undefined;
+  const stale = new Set(
+    rows.filter((r) => checking(r.wi, liveSince)).map((r) => workloadKey(r.wi)),
+  );
   const ignores = await activeIgnores(
     s.kind === "app" ? { appIds: [s.appId] } : { databaseIds: [s.databaseId] },
   );
   const updates = findings
-    .filter(({ f }) => inScope(f))
+    .filter(({ f }) => inScope(f) && !stale.has(workloadKey(f)))
     .map(({ f, imageRef }): SecurityUpdate => {
       const ig = ignores.get(ignoreKey(subjectId, f.vulnId));
       const a = affectedFor(
@@ -163,6 +200,7 @@ async function subjectUpdates(
       checked.length && checked.every(Boolean)
         ? (checked as string[]).sort()[0]
         : null,
+    checking: stale.size > 0,
     unreadable: [
       ...new Set(
         rows
@@ -225,6 +263,8 @@ async function countsBy(
       fixedVersion: securityFindings.fixedVersion,
       location: securityFindings.location,
       vulnId: securityFindings.vulnId,
+      checkedAt: workloadImages.checkedAt,
+      seenAt: workloadImages.seenAt,
     })
     .from(securityFindings)
     .innerJoin(
@@ -248,9 +288,15 @@ async function countsBy(
       : await activeIgnores(
           kind === "app" ? { appIds: ids } : { databaseIds: ids },
         );
+  const live = kind === "app" ? await deployedAt(ids) : new Map();
   const byId = new Map<string, ((typeof rows)[number] & Groupable)[]>();
   for (const r of rows)
-    if (r.id && inScope(r) && !ignores.has(ignoreKey(r.id, r.vulnId)))
+    if (
+      r.id &&
+      inScope(r) &&
+      !checking(r, live.get(r.id)) &&
+      !ignores.has(ignoreKey(r.id, r.vulnId))
+    )
       byId.set(r.id, [
         ...(byId.get(r.id) ?? []),
         { ...r, actionable: isActionable(r) },

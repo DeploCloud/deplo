@@ -5859,6 +5859,11 @@ type SecurityUpdates {
   checkedAt: String
 
   """
+  A deploy went live after the last check: its image is being read, and the previous image's updates are left out until then.
+  """
+  checking: Boolean
+
+  """
   Critical updates and ones already used in attacks: one per package of the app's own, one per image. Important ones are listed, not counted.
   """
   count: Int

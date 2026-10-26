@@ -7,6 +7,7 @@ import { eq } from "drizzle-orm";
 import { runWithIdentity } from "../../auth/request-context";
 import { __resetTestDb, __setTestDb } from "../../db/client";
 import { apps as appsTable } from "../../db/schema/control-plane/apps";
+import { deployments } from "../../db/schema/control-plane/deployments";
 import { instanceSettings } from "../../db/schema/control-plane/instance";
 import { folders as foldersTable } from "../../db/schema/control-plane/projects";
 import {
@@ -15,7 +16,12 @@ import {
   workloadImages,
 } from "../../db/schema/control-plane/security-updates";
 import { makeTestDb, type TestDb } from "../../db/test-harness";
-import { seedApp, seedServer, SERVER_1 } from "../app-graph-test-helpers";
+import {
+  seedApp,
+  seedDeployment,
+  seedServer,
+  SERVER_1,
+} from "../app-graph-test-helpers";
 import { seedIdentity, TEAM_A, TEAM_B } from "../identity-test-helpers";
 import { appSecurityCounts, appSecurityUpdates } from "./read";
 
@@ -196,4 +202,38 @@ test("with the instance switch off nothing is answered", async () => {
   );
   const counts = await as(OWNER, TEAM_A, () => appSecurityCounts(["prj_web"]));
   assert.equal(counts.size, 0);
+});
+
+test("a deploy that went live after the last check hides the old image's updates", async () => {
+  await seedDeployment(db, { id: "dpl_new", appId: "prj_web" });
+  await db
+    .update(deployments)
+    .set({ readyAt: "2026-01-01T01:00:00.000Z" })
+    .where(eq(deployments.id, "dpl_new"));
+  const s = await as(OWNER, TEAM_A, () => appSecurityUpdates("prj_web"));
+  assert.equal(s!.checking, true);
+  assert.equal(
+    s!.updates.length,
+    0,
+    "the old image's findings are not this deploy's",
+  );
+  assert.equal(s!.count, 0);
+  const counts = await as(OWNER, TEAM_A, () => appSecurityCounts(["prj_web"]));
+  assert.equal(counts.size, 0);
+
+  await db.update(workloadImages).set({ seenAt: "2026-01-01T01:05:00.000Z" });
+  const listed = await as(OWNER, TEAM_A, () => appSecurityUpdates("prj_web"));
+  assert.equal(
+    listed!.checking,
+    false,
+    "listed again, same image: nothing to read",
+  );
+  assert.equal(listed!.count, 2);
+});
+
+test("an image that changed and was not matched yet is being checked", async () => {
+  await db.update(workloadImages).set({ checkedAt: null });
+  const s = await as(OWNER, TEAM_A, () => appSecurityUpdates("prj_web"));
+  assert.equal(s!.checking, true);
+  assert.equal(s!.updates.length, 0);
 });

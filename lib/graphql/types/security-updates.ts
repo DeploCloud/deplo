@@ -85,6 +85,10 @@ const SecurityUpdatesRef = builder
         description:
           "The oldest check behind this answer; null until every image was checked once.",
       }),
+      checking: t.exposeBoolean("checking", {
+        description:
+          "A deploy went live after the last check: its image is being read, and the previous image's updates are left out until then.",
+      }),
       unreadable: t.exposeStringList("unreadable", {
         description:
           "Why some of its images could not be read: too_large, low_disk, low_memory, timed_out, unsupported or failed.",

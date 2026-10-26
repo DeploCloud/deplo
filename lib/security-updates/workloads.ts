@@ -2,10 +2,12 @@ import "server-only";
 
 import {
   and,
+  desc,
   eq,
   inArray,
   isNull,
   lt,
+  max,
   ne,
   notExists,
   or,
@@ -173,8 +175,9 @@ async function imagesToInventory(
   now: Date,
 ): Promise<string[]> {
   const retryBefore = new Date(now.getTime() - RETRY_FAILED_MS).toISOString();
+  // Newest first: the image a deploy just started is the one someone is waiting on.
   const rows = await getDb()
-    .selectDistinct({ imageId: workloadImages.imageId })
+    .select({ imageId: workloadImages.imageId })
     .from(workloadImages)
     .leftJoin(
       imageInventories,
@@ -192,6 +195,8 @@ async function imagesToInventory(
         ),
       ),
     )
+    .groupBy(workloadImages.imageId)
+    .orderBy(desc(max(workloadImages.seenAt)))
     .limit(INVENTORIES_PER_TICK);
   return rows.map((r) => r.imageId);
 }

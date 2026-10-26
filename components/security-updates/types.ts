@@ -22,6 +22,7 @@ export interface Update {
 
 export interface Answer {
   checkedAt: string | null;
+  checking: boolean;
   unreadable: string[];
   newerTag: string | null;
   updates: Update[];

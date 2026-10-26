@@ -248,6 +248,8 @@ export async function commitOutcome(
   );
   if (ok && target.kind !== "preview")
     await clearPendingChangesCoveredBy(target.appId, depId);
+  if (ok)
+    void import("../../security-updates/scheduler").then((m) => m.checkSoon());
   const what =
     target.kind === "preview"
       ? `${target.name} #${target.prNumber}`

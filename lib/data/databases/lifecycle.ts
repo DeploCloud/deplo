@@ -149,6 +149,8 @@ export async function redeployDatabase(
       .where(eq(databasesTable.id, id));
     publishDatabaseChanged(id);
   });
+  if (opts.pull)
+    void import("../../security-updates/scheduler").then((m) => m.checkSoon());
   await recordActivity(
     "database",
     opts.pull

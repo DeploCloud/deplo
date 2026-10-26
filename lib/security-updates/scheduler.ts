@@ -9,6 +9,7 @@ import {
   SECURITY_UPDATES_LEASE,
 } from "../backups/lease";
 import { instanceFrozen } from "../data/deplo-move/freeze";
+import { isTestEnv } from "../db/pg";
 import { schedulesPaused } from "../data/deplo-move/schedules";
 import { listAllServers } from "../data/servers/roster";
 import { fetchKevCves } from "./kev";
@@ -22,6 +23,8 @@ import {
 } from "./workloads";
 
 const TICK_MS = 5 * 60_000;
+// A deploy's containers settle first, then its image is read.
+const SOON_MS = 20_000;
 export const FULL_MATCH_EVERY_MS = 6 * 60 * 60_000;
 const KEV_EVERY_MS = 24 * 60 * 60_000;
 
@@ -29,6 +32,9 @@ interface SchedulerState {
   started: boolean;
   owner: string;
   ticking: boolean;
+  // A checkSoon asked for a tick; one that lands mid-tick runs again after it.
+  wanted: boolean;
+  soon: ReturnType<typeof setTimeout> | null;
 }
 
 const STATE_KEY = Symbol.for("deplo.security-updates.scheduler");
@@ -37,6 +43,8 @@ const state: SchedulerState = (g[STATE_KEY] ??= {
   started: false,
   owner: `${hostname()}:${process.pid}:${randomBytes(4).toString("hex")}`,
   ticking: false,
+  wanted: false,
+  soon: null,
 });
 
 const olderThan = (at: string | null, ms: number, now: Date) =>
@@ -50,6 +58,7 @@ export async function runSecurityUpdatesTick(
   if (await schedulesPaused()) return;
   if (state.ticking) return;
   state.ticking = true;
+  state.wanted = false;
   try {
     if (!(await acquireLease(SECURITY_UPDATES_LEASE, state.owner, now))) return;
     const s = await securityState();
@@ -91,7 +100,21 @@ export async function runSecurityUpdatesTick(
     console.error("[security-updates] tick failed:", e);
   } finally {
     state.ticking = false;
+    if (state.wanted) checkSoon();
   }
+}
+
+// A deploy just went live: read its image now, not at the next tick.
+export function checkSoon(): void {
+  // Tests drive ticks themselves; a stray timer would land in the next file's database.
+  if (isTestEnv()) return;
+  state.wanted = true;
+  if (state.soon) return;
+  state.soon = setTimeout(() => {
+    state.soon = null;
+    void runSecurityUpdatesTick();
+  }, SOON_MS);
+  state.soon.unref?.();
 }
 
 export function startSecurityUpdatesScheduler(): void {

@@ -23,6 +23,7 @@ const QUERY = /* GraphQL */ `
   query ($appId: ID, $databaseId: ID) {
     securityUpdates(appId: $appId, databaseId: $databaseId) {
       checkedAt
+      checking
       unreadable
       newerTag
       updates {
@@ -131,18 +132,26 @@ export function SecurityUpdatesDialog({
           </p>
         ) : (
           <div className="max-h-[60vh] space-y-4 overflow-y-auto">
+            {answer.checking ? (
+              <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                <Loader2 className="size-4 animate-spin" />
+                Checking the new deploy
+              </div>
+            ) : null}
             {answer.unreadable.map((u) => (
               <p key={u} className="text-sm text-muted-foreground">
                 {UNREADABLE[u] ?? UNREADABLE.failed}
               </p>
             ))}
             {groups.length === 0 ? (
-              <div className="flex items-center gap-2 text-sm text-[var(--success)]">
-                <CircleCheck className="size-4" />
-                {answer.checkedAt
-                  ? `Up to date, checked ${timeAgo(answer.checkedAt)}`
-                  : "Not checked yet"}
-              </div>
+              answer.checking ? null : (
+                <div className="flex items-center gap-2 text-sm text-[var(--success)]">
+                  <CircleCheck className="size-4" />
+                  {answer.checkedAt
+                    ? `Up to date, checked ${timeAgo(answer.checkedAt)}`
+                    : "Not checked yet"}
+                </div>
+              )
             ) : (
               <>
                 <UpdateList title="To apply" groups={toApply} {...list} />
