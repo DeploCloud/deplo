@@ -15,7 +15,6 @@ import { useRouter } from "@/lib/nav";
 import { gql } from "@/lib/graphql-client";
 import { groupUpdates } from "@/lib/security-updates/group";
 import { timeAgo } from "@/lib/utils";
-import { AdvisoriesTable } from "./advisories-table";
 import { UNREADABLE } from "./fix-line";
 import type { Answer } from "./types";
 import { UpdateList } from "./update-list";
@@ -153,7 +152,6 @@ export function SecurityUpdatesDialog({
                   groups={ignored}
                   {...list}
                 />
-                <AdvisoriesTable updates={answer.updates} />
                 <p className="text-xs text-muted-foreground">
                   {answer.checkedAt
                     ? `Checked ${timeAgo(answer.checkedAt)}`

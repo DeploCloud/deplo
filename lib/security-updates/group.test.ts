@@ -1,7 +1,12 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-import { compareVersions, countUpdates, groupUpdates } from "./group";
+import {
+  compareVersions,
+  countUpdates,
+  groupUpdates,
+  packagesOf,
+} from "./group";
 
 const f = (o: Partial<Parameters<typeof groupUpdates>[0][number]>) => ({
   service: "web",
@@ -46,6 +51,18 @@ test("an image's update is one update, however many packages it moves", () => {
   assert.equal(groups.length, 2, "one per service image");
   assert.ok(groups.every((g) => g.image && g.fixedVersion === null));
   assert.deepEqual(countUpdates(items), { count: 2, exploited: 0 });
+});
+
+test("packagesOf lists an image's packages once each, in order, with their advisories", () => {
+  const items = [
+    f({ packageName: "next", installedVersion: "16.3.5" }),
+    f({ packageName: "axios", installedVersion: "1.6.0" }),
+    f({ packageName: "next", installedVersion: "16.3.5" }),
+  ];
+  assert.deepEqual(
+    packagesOf(items).map((p) => `${p.packageName}:${p.items.length}`),
+    ["next:2", "axios:1"],
+  );
 });
 
 test("compareVersions orders numbers numerically", () => {

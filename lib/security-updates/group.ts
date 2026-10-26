@@ -102,6 +102,28 @@ export function groupUpdates<T extends Groupable>(
   });
 }
 
+// The packages behind one update, in the order they come, each with its advisories.
+export function packagesOf<
+  T extends Pick<Groupable, "packageName" | "installedVersion">,
+>(items: T[]) {
+  const out = new Map<
+    string,
+    { key: string; packageName: string; installedVersion: string; items: T[] }
+  >();
+  for (const f of items) {
+    const key = `${f.packageName}\0${f.installedVersion}`;
+    const p = out.get(key) ?? {
+      key,
+      packageName: f.packageName,
+      installedVersion: f.installedVersion,
+      items: [],
+    };
+    p.items.push(f);
+    out.set(key, p);
+  }
+  return [...out.values()];
+}
+
 export function countUpdates(items: Groupable[]): {
   count: number;
   exploited: number;
