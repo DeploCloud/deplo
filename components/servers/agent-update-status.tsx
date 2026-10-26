@@ -7,6 +7,7 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { SimpleTooltip } from "@/components/ui/tooltip";
 import { gql, gqlAction } from "@/lib/graphql-client";
+import { agentLinks } from "@/lib/version";
 import type { AgentUpdateDTO } from "@/lib/data/servers/agent-update-state";
 import { agentUpdateText } from "./agent-update-text";
 
@@ -25,11 +26,14 @@ const FIELDS = `
 export function AgentUpdateStatus({
   serverId,
   usable,
+  version,
   update,
   onSettled,
 }: {
   serverId: string;
   usable: boolean;
+  /** The version its agent last reported; null when unknown. */
+  version: string | null;
   update: AgentUpdateDTO | null;
   onSettled?: () => void;
 }) {
@@ -78,7 +82,12 @@ export function AgentUpdateStatus({
     });
   }
 
-  const text = agentUpdateText(current, usable);
+  const text = agentUpdateText(
+    current,
+    usable,
+    Date.now(),
+    agentLinks(version),
+  );
   if (!text) return null;
   const line = (
     <span

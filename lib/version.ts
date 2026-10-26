@@ -8,6 +8,8 @@ export const DEPLO_COMMIT: string = process.env.DEPLO_COMMIT ?? "";
 // The one agent this panel installs, and the oldest it still talks to (ADR-0037).
 export const AGENT_VERSION: string = agentPin.agent;
 export const AGENT_MIN_VERSION: string = agentPin.agentMin;
+/** The first agent release that links (ADR-0040): an older one can never reach this panel, only a reinstall helps. */
+export const AGENT_LINK_VERSION = "0.5.1-canary.10";
 
 export const AGENT_TOO_OLD_MESSAGE =
   "This server is being updated. Deplo retries on its own; an instance admin can retry it now.";
@@ -99,6 +101,11 @@ export function reportedAgentVersion(server: {
   agent?: { version: string };
 }): string | null {
   return server.agent?.version || null;
+}
+
+/** Whether the agent can reach this panel at all; an unknown version may well. */
+export function agentLinks(reported: string | null | undefined): boolean {
+  return !reported || agentUsable(reported, AGENT_LINK_VERSION);
 }
 
 /** Whether this panel talks to an agent at all: parseable and not older than `min`. */

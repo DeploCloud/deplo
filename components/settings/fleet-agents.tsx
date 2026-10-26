@@ -192,6 +192,7 @@ function BehindLine({
         <AgentUpdateStatus
           serverId={server.id}
           usable={server.usable}
+          version={server.version}
           update={server.update}
           onSettled={onSettled}
         />

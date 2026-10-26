@@ -5,7 +5,10 @@ export function agentUpdateText(
   update: AgentUpdateDTO | null,
   usable: boolean,
   now: number = Date.now(),
+  links = true,
 ): string | null {
+  // Too old to link: nothing Deplo does reaches it (ADR-0040).
+  if (!usable && !links) return "Unusable - reinstall its agent";
   const prefix = usable ? "" : "Unusable - ";
   if (!update) return usable ? null : `${prefix}Deplo is updating it`;
   if (update.running) return `${prefix}Updating the agent`;
@@ -16,4 +19,19 @@ export function agentUpdateText(
   return update.failure === "busy"
     ? `${prefix}Waiting for a deploy to finish, ${when}`
     : `${prefix}Update failed, ${when}`;
+}
+
+/** The admin banner's line for the servers this Deplo refuses; one too old to link only comes back reinstalled. */
+export function unusableAgentsMessage(
+  servers: { name: string; links: boolean }[],
+): string {
+  if (servers.length === 1) {
+    const [s] = servers;
+    return s.links
+      ? `${s.name} is unusable until its agent updates.`
+      : `${s.name} is unusable until its agent is reinstalled.`;
+  }
+  return servers.every((s) => s.links)
+    ? `${servers.length} servers are unusable until their agents update.`
+    : `${servers.length} servers are unusable until their agents update or are reinstalled.`;
 }

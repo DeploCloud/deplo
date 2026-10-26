@@ -20,6 +20,7 @@ import {
   AGENT_MIN_VERSION,
   AGENT_VERSION,
   DEPLO_VERSION,
+  agentLinks,
   agentUpdateAvailable,
   agentUsable,
   reportedAgentVersion,
@@ -144,8 +145,10 @@ export async function fleetAgentStatus(): Promise<FleetAgentStatus> {
   };
 }
 
-/** The servers this Deplo refuses until their agent updates, for the admin banner. */
-export async function unusableServerNames(): Promise<string[]> {
+/** The servers this Deplo refuses, for the admin banner; `links` is false for one only a reinstall brings back. */
+export async function unusableServers(): Promise<
+  { name: string; links: boolean }[]
+> {
   await requireInstanceAdmin();
   return (await listAllServers())
     .filter(
@@ -154,7 +157,7 @@ export async function unusableServerNames(): Promise<string[]> {
         Boolean(s.agent?.certFingerprint) &&
         !agentUsable(reportedAgentVersion(s)),
     )
-    .map((s) => s.name);
+    .map((s) => ({ name: s.name, links: agentLinks(reportedAgentVersion(s)) }));
 }
 
 /**
@@ -330,7 +333,10 @@ export function runAgentRollout(): Promise<void> {
 
 async function rolloutPass(): Promise<void> {
   if (await instanceFrozen()) return;
-  const behind = behindServers(await listAllServers());
+  // One too old to link never reaches this panel, so no attempt could (ADR-0040).
+  const behind = behindServers(await listAllServers()).filter((s) =>
+    agentLinks(reportedAgentVersion(s)),
+  );
   const actor = await rolloutActor();
   if (behind.length === 0) {
     if (actor) await writeRolloutState({ agentRolloutBy: null });

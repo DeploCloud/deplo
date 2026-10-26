@@ -161,7 +161,7 @@ test("an agent installed before the link links in, then is told over its link to
   assert.equal(a.connections().opened, 0, "nothing ever dialed it");
 });
 
-test("an agent below the minimum that never linked is never dialed, not even to update it", async () => {
+test("an agent too old to link is never dialed, and the rollout does not pretend to update it", async () => {
   agent = await startFakeAgent({
     version: "0.4.0",
     capabilities: [SELF_UPDATE_CAPABILITY],
@@ -179,13 +179,13 @@ test("an agent below the minimum that never linked is never dialed, not even to 
     },
   });
 
+  const started = performance.now();
   await runAgentRollout();
 
+  assert.ok(performance.now() - started < 5_000, "no wait for a link");
   assert.equal(agent.connections().opened, 0, "nothing dialed it");
   const log = await db.select({ m: activities.message }).from(activities);
-  assert.ok(
-    log.some((r) => r.m.startsWith(`Could not update the agent on ${SERVER}`)),
-  );
+  assert.deepEqual(log, [], "no attempt, so no promise of a retry");
 });
 
 test("while a Deplo move has the instance frozen, a linked agent keeps its port until the move is over", async (t) => {

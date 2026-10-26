@@ -326,6 +326,7 @@ function OverviewTab({
                 <AgentUpdateStatus
                   serverId={server.id}
                   usable={server.agentUsable}
+                  version={server.agentVersion}
                   update={server.agentUpdate}
                   onSettled={() => router.refresh()}
                 />
