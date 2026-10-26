@@ -172,3 +172,9 @@ test("automatic on the Deplo host follows the installer, not the address its row
     delete process.env.DEPLO_SERVER_IPV4;
   }
 });
+
+test("an IPv6-only server's deplo-clat IPv4 never names it", async () => {
+  __setAgentAddressesForTest(async () => ["192.0.0.1", "2001:db8::9"]);
+  assert.deepEqual((await serverAddresses(at("2001:db8::9", true))).v4, []);
+  assert.equal(await serverWildcardIp(at("2001:db8::9", true)), "2001:db8::9");
+});

@@ -131,9 +131,15 @@ export async function serverAddresses(
 ): Promise<ServerAddresses> {
   const v4 = new Set<string>();
   const v6 = new Set<string>();
+  // 192.0.0.0/24 is deplo-clat's IPv4 on an IPv6-only host: nobody reaches the server there.
   const add = (raw: string) => {
     const p = parseHostAddress(raw);
-    if (p?.kind === "ipv4" && !isLoopbackIp(p.host)) v4.add(p.host);
+    if (
+      p?.kind === "ipv4" &&
+      !isLoopbackIp(p.host) &&
+      !p.host.startsWith("192.0.0.")
+    )
+      v4.add(p.host);
     if (p?.kind === "ipv6" && p.host !== "::1") v6.add(p.host);
   };
   let v6Known = false;
