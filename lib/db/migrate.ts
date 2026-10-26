@@ -10,9 +10,34 @@ let applied = false;
 
 const MIGRATION_LOCK_KEY = 0x6465706c6f;
 
+// After a reboot Docker starts the panel beside Postgres, not after it: a database still coming up is a wait.
+const NOT_UP_YET = new Set([
+  "57P03",
+  "ECONNREFUSED",
+  "ENOTFOUND",
+  "EAI_AGAIN",
+  "ECONNRESET",
+  "ETIMEDOUT",
+]);
+
+export async function connectWhenReady<T>(
+  connect: () => Promise<T>,
+  { attempts = 60, delayMs = 1000 } = {},
+): Promise<T> {
+  for (let i = 1; ; i++) {
+    try {
+      return await connect();
+    } catch (e) {
+      const code = (e as { code?: string }).code;
+      if (i >= attempts || !code || !NOT_UP_YET.has(code)) throw e;
+      await new Promise((r) => setTimeout(r, delayMs));
+    }
+  }
+}
+
 export async function runMigrations(): Promise<void> {
   if (applied) return;
-  const client = await getPool().connect();
+  const client = await connectWhenReady(() => getPool().connect());
   try {
     // Drizzle's migrator takes no lock of its own, so two instances would both apply the same DDL.
     await client.query("SELECT pg_advisory_lock($1)", [MIGRATION_LOCK_KEY]);
