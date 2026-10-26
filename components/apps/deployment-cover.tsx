@@ -5,6 +5,11 @@ import { RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { gqlAction } from "@/lib/graphql-client";
 import { useRouter } from "@/lib/nav";
 import { cn } from "@/lib/utils";
@@ -79,20 +84,24 @@ export function DeploymentCover({
         )}
       </a>
       {canRetake && (
-        <Button
-          size="icon-sm"
-          variant="secondary"
-          aria-label="Retake screenshot"
-          title="Retake screenshot"
-          disabled={pending}
-          onClick={retake}
-          className={cn(
-            "absolute top-2 right-2 opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100 [@media(hover:none)]:opacity-100",
-            pending && "opacity-100",
-          )}
-        >
-          <RefreshCw className={cn("size-4", pending && "animate-spin")} />
-        </Button>
+        <Tooltip delayDuration={400}>
+          <TooltipTrigger asChild>
+            <Button
+              size="icon-sm"
+              variant="secondary"
+              aria-label="Retake screenshot"
+              disabled={pending}
+              onClick={retake}
+              className={cn(
+                "absolute top-2 right-2 opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100 [@media(hover:none)]:opacity-100",
+                pending && "opacity-100",
+              )}
+            >
+              <RefreshCw className={cn("size-4", pending && "animate-spin")} />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>Retake screenshot</TooltipContent>
+        </Tooltip>
       )}
     </div>
   );
