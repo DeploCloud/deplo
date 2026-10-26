@@ -118,6 +118,13 @@ function embedded(f: Scoped): boolean {
   return false;
 }
 
+// Where the system's package manager puts language packages (apt's python3-*): system packages.
+const SYSTEM_DIRS = [
+  "/usr/lib/python3/dist-packages/",
+  "/usr/share/rubygems-integration/",
+  "/usr/share/nodejs/",
+];
+
 // The language toolchain itself, never a dependency the app chose.
 function toolchain(f: Scoped): boolean {
   if (f.ecosystem === "Go") return f.packageName === "stdlib";
@@ -130,6 +137,7 @@ function toolchain(f: Scoped): boolean {
 // Only what the app chose: its own dependencies, or the software an image ships (ADR-0038).
 export function inScope(f: Scoped): boolean {
   if (embedded(f) || toolchain(f)) return false;
+  if (SYSTEM_DIRS.some((d) => f.location.startsWith(d))) return false;
   if (f.fix === "code" || f.fix === "build_only") return true;
   if (!IMAGE_FIXES.has(f.fix)) return false;
   return !isDistroEcosystem(f.ecosystem);

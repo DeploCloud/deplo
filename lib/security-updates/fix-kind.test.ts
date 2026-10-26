@@ -252,6 +252,30 @@ test("inScope: only the app's own dependencies, or what an image ships", () => {
   assert.equal(
     inScope(
       f({
+        fix: "upstream",
+        ecosystem: "PyPI",
+        packageName: "pyyaml",
+        location: "/usr/lib/python3/dist-packages/PyYAML-3.13.egg-info",
+      }),
+    ),
+    false,
+    "apt's python3-yaml is a system package",
+  );
+  assert.equal(
+    inScope(
+      f({
+        ecosystem: "PyPI",
+        packageName: "pyyaml",
+        location:
+          "/usr/local/lib/python3.11/dist-packages/pyyaml-5.3.1.dist-info/METADATA",
+      }),
+    ),
+    true,
+    "pip's install on Debian's own Python is the app's",
+  );
+  assert.equal(
+    inScope(
+      f({
         ecosystem: "PyPI",
         packageName: "pyyaml",
         location:
