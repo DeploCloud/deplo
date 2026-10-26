@@ -15,6 +15,7 @@ export type Capability =
   | "manage_previews"
   | "manage_crons"
   | "ignore_security_updates"
+  | "open_security_prs"
   | "manage_domains"
   | "manage_basic_auth"
   | "manage_env"
@@ -63,6 +64,7 @@ export const ALL_CAPABILITIES: Capability[] = [
   "manage_previews",
   "manage_crons",
   "ignore_security_updates",
+  "open_security_prs",
   "manage_domains",
   "manage_basic_auth",
   "manage_env",

@@ -48,6 +48,14 @@ const QUERY = /* GraphQL */ `
         via
         osvUrl
       }
+      canOpenPullRequests
+      groups {
+        key
+        pullRequest {
+          number
+          url
+        }
+      }
     }
   }
 `;
@@ -122,6 +130,10 @@ export function SecurityUpdatesDialog({
     manyServices,
     subject: { appId, databaseId },
     canIgnore,
+    canOpenPullRequests: answer?.canOpenPullRequests ?? false,
+    pullRequests: new Map(
+      answer?.groups.map((g) => [g.key, g.pullRequest]) ?? [],
+    ),
     onChanged: changed,
   };
 

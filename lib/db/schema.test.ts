@@ -141,6 +141,7 @@ const CONTROL_PLANE = [
   "epss_scores",
   "security_findings",
   "security_ignores",
+  "security_pull_requests",
 ] as const;
 
 async function publicTables(): Promise<Set<string>> {

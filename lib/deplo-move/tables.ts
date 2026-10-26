@@ -193,6 +193,7 @@ export const MOVE_TABLES: Readonly<Record<string, TablePolicy>> = {
   security_findings: { kind: "skip", clear: true },
   // A team's decisions, with who made them: they move with the team.
   security_ignores: COPY,
+  security_pull_requests: COPY,
   // Updates of this Deplo's own fleet against its own pin.
   server_agent_updates: { kind: "local" },
   // The old Deplo's machines: read for the server map and team access, never inserted.

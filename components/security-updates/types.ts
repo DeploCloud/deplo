@@ -29,6 +29,11 @@ export interface Answer {
   unreadable: string[];
   newerTag: string | null;
   updates: Update[];
+  canOpenPullRequests: boolean;
+  groups: {
+    key: string;
+    pullRequest: { number: number; url: string } | null;
+  }[];
 }
 
 export type Subject = { appId?: string; databaseId?: string };

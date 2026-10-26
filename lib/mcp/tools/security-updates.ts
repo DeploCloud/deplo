@@ -27,6 +27,10 @@ const GROUP_FIELDS = /* GraphQL */ `
     ignoreReason
     osvUrl
   }
+  pullRequest {
+    number
+    url
+  }
 `;
 
 const SUBJECT = {
@@ -60,7 +64,7 @@ export const SECURITY_UPDATES: McpToolDef[] = [
     query: /* GraphQL */ `
       query McpListSecurityUpdates($appId: ID, $databaseId: ID, $one: Boolean!) {
         securityUpdates(appId: $appId, databaseId: $databaseId) @include(if: $one) {
-          checkedAt checking unreadable count exploited newerTag groups { ${GROUP_FIELDS} }
+          checkedAt checking unreadable count exploited newerTag canOpenPullRequests groups { ${GROUP_FIELDS} }
         }
         securityUpdatesOverview @skip(if: $one) { kind id name count exploited }
       }
@@ -130,6 +134,30 @@ export const SECURITY_UPDATES: McpToolDef[] = [
           databaseId: $databaseId
           vulnIds: $vulnIds
         )
+      }
+    `,
+  }),
+  tool({
+    name: "open_security_pull_request",
+    title: "Open a security pull request",
+    description:
+      "Open a pull request on an app's GitHub repository moving one npm package (a `code` or `build_only` entry) to its `fixedVersion`. Answers `accessUrl` instead when GitHub must first grant Deplo write access.",
+    group: "Security",
+    requires: "open_security_prs",
+    idempotent: true,
+    input: z.object({
+      appId: z.string().describe("The app's id, as returned by list_apps."),
+      packageName: z
+        .string()
+        .describe("packageName from list_security_updates."),
+    }),
+    query: /* GraphQL */ `
+      mutation McpOpenSecurityPullRequest($appId: ID!, $packageName: String!) {
+        openSecurityPullRequest(appId: $appId, packageName: $packageName) {
+          number
+          url
+          accessUrl
+        }
       }
     `,
   }),

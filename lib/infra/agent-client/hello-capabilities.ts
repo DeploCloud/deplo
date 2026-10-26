@@ -69,6 +69,8 @@ export const IMAGE_INVENTORY_CAPABILITY = "image-inventory";
 export const IMAGE_CANDIDATE_CAPABILITY = "image-inventory.candidate";
 // The package list marks build-only packages and who pulls each in (lockfile graph).
 export const IMAGE_DEPS_CAPABILITY = "image-inventory.deps";
+// PreparePackageUpdate: the files behind a security pull request, made in a sealed run.
+export const PACKAGE_UPDATE_CAPABILITY = "packages.update";
 
 export const DEPLOY_PULL_BASE_CAPABILITY = "deploy.pull-base";
 

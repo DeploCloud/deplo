@@ -80,6 +80,12 @@ export const CAPABILITY_META: Record<Capability, CapabilityMeta> = {
     keywords: "vulnerability cve dismiss snooze accept risk security",
     sensitive: true,
   },
+  open_security_prs: {
+    label: "Open security pull requests",
+    description:
+      "Open a pull request on the app's repository that moves a vulnerable dependency to its fixed version.",
+    keywords: "vulnerability cve github dependency upgrade fix security",
+  },
 
   manage_domains: {
     label: "Manage domains",
@@ -308,6 +314,7 @@ export const CAPABILITY_CATEGORIES: {
       "manage_previews",
       "manage_crons",
       "ignore_security_updates",
+      "open_security_prs",
     ],
   },
   {
@@ -398,6 +405,7 @@ export const LEGACY_CAPABILITY_EXPANSION: Record<string, Capability[]> = {
     "open_app_console",
     "manage_previews",
     "manage_crons",
+    "open_security_prs",
     "create_folders",
     "organize_folders",
     "delete_folders",

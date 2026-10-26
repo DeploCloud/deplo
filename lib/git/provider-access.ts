@@ -4,7 +4,7 @@ export interface AccessRequirement {
   key: string;
   label: string;
   unlocks: string;
-  feature: "core" | "previews";
+  feature: "core" | "previews" | "security-prs";
 }
 
 const GITHUB: AccessRequirement[] = [
@@ -37,6 +37,18 @@ const GITHUB: AccessRequirement[] = [
     label: "Subscribe to event: Pull request",
     unlocks: "build a preview when a pull request opens",
     feature: "previews",
+  },
+  {
+    key: "contents:write",
+    label: "Contents: Read and write",
+    unlocks: "push the fix for a vulnerable dependency to a branch",
+    feature: "security-prs",
+  },
+  {
+    key: "pull_requests:write",
+    label: "Pull requests: Read and write",
+    unlocks: "open a pull request with that fix",
+    feature: "security-prs",
   },
 ];
 
@@ -98,17 +110,20 @@ export const PROVIDER_ACCESS: Record<
 
 export function requiredAccess(
   provider: GitProviderId | "github",
-  opts: { previews?: boolean } = {},
+  opts: { previews?: boolean; securityPrs?: boolean } = {},
 ): AccessRequirement[] {
   return (PROVIDER_ACCESS[provider] ?? []).filter(
-    (r) => r.feature === "core" || opts.previews,
+    (r) =>
+      r.feature === "core" ||
+      (r.feature === "previews" && opts.previews) ||
+      (r.feature === "security-prs" && opts.securityPrs),
   );
 }
 
 export function missingAccess(
   provider: GitProviderId | "github",
   granted: ReadonlySet<string> | null,
-  opts: { previews?: boolean } = {},
+  opts: { previews?: boolean; securityPrs?: boolean } = {},
 ): AccessRequirement[] {
   if (!granted) return [];
   return requiredAccess(provider, opts).filter((r) => !granted.has(r.key));

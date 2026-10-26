@@ -1373,6 +1373,27 @@
       "when": 1793009983537,
       "tag": "0195_dependency_paths",
       "breakpoints": true
+    },
+    {
+      "idx": 196,
+      "version": "7",
+      "when": 1793011718650,
+      "tag": "0196_security_pull_requests",
+      "breakpoints": true
+    },
+    {
+      "idx": 197,
+      "version": "7",
+      "when": 1793011719957,
+      "tag": "0197_seed_open_security_prs",
+      "breakpoints": true
+    },
+    {
+      "idx": 198,
+      "version": "7",
+      "when": 1793012359944,
+      "tag": "0198_suggest_new_repos",
+      "breakpoints": true
     }
   ]
 }

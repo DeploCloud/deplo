@@ -19,6 +19,8 @@ import type {
   DockerCleanupRequest,
   DockerCleanupResponse,
   InventoryCandidateResponse,
+  PreparePackageUpdateRequest,
+  PreparePackageUpdateResponse,
   InventoryImageResponse,
   ListWorkloadImagesResponse,
   CaptureScreenshotRequest,
@@ -236,6 +238,10 @@ export interface AgentConnection {
     imageRef: string,
     currentImageId: string,
   ): Promise<InventoryCandidateResponse>;
+  // Needs `packages.update`: moves one npm dependency at a commit, answers the changed files.
+  preparePackageUpdate(
+    req: PreparePackageUpdateRequest,
+  ): Promise<PreparePackageUpdateResponse>;
   // Needs `screenshot` (ADR-0039).
   captureScreenshot(
     req: CaptureScreenshotRequest,
