@@ -13,7 +13,7 @@ on the deeper docs it links (this file points; it does not restate them).
   `fleet-rollout.md`.
 
 **Every count in this file is a snapshot of a moving tree** (46 Capabilities, 117 tables, 189 MCP
-tools, 39 ADRs, the pin list). The rule they carry is the durable part; re-derive the number
+tools, 40 ADRs, the pin list). The rule they carry is the durable part; re-derive the number
 before you rely on it, and fix the line here when it has moved:
 
 ```sh
@@ -164,7 +164,8 @@ deprecation notices. When instinct disagrees with the installed docs, the docs w
 
 - **Control plane** (this repo, TypeScript): UI, GraphQL API, data layer, deploy rendering.
 - **deplo-agent** (Go binary, one per host, separate repo `DeploCloud/deplo-agent`): the ONLY
-  thing that runs `docker` / shell / `fs` on any host. Reached over **gRPC + mTLS**.
+  thing that runs `docker` / shell / `fs` on any host. Reached over **gRPC + mTLS**, inside the
+  **agent link** each server agent opens to the panel (ADR-0040).
 
 **THE RULE (ADR-0006): the control plane NEVER touches a Docker socket or the host directly for
 a per-app / host-coupled action.** Deploy, build, logs, console, metrics, files, stack
@@ -172,8 +173,9 @@ lifecycle, backups, backup destinations, volume copy and DB provisioning all
 route `UI → GraphQL → lib/data/* → connectAgent(serverId) → agent`.
 
 - `lib/infra/agent-client/connect.ts` `connectAgent(serverId)` is the sole entry (mTLS, cert-fingerprint
-  pinned at bootstrap). The Deplo host is itself "agent 0", **no in-process localhost shortcut**;
-  local and remote take the identical path.
+  pinned at bootstrap), over the server's agent link, or a direct dial until it links (ADR-0040).
+  The Deplo host is itself "agent 0", **no in-process localhost shortcut**; local and remote take
+  the identical path.
 - **A backup destination is a bucket OR a server's disk** (ADR-0019). Which agent handles one
   is the single seam `destinationServerId` in `lib/data/destinations/credentials.ts`: the DESTINATION's
   server for `kind: "server"`, the workload's for `s3`. Getting it wrong is silent - retention
@@ -337,6 +339,8 @@ scripts/gen-schema.ts`. Both halves of that prefix are load-bearing: the shim
     `takeover` (Bearer `DEPLO_HOST_BOOTSTRAP_TOKEN`, dialed by the host's takeover unit),
     `deplo-move/[step]` (Bearer move code, bound to the new Deplo that first used it - ADR-0035).
   - **Better Auth's own surface**: `auth/[...all]`, mounted whole and gated shut (see below).
+  - **The agent link's inner mTLS**: `/api/agent/link` (ADR-0040) is not a Next route. The link
+    listener (`lib/infra/agent-link/`) serves it, and the handshake inside the WebSocket decides.
   - **Unauthenticated on purpose**: `health` (liveness, reads nothing), `offline` (the
     page Traefik's last-resort router serves when no app's own router is up: it answers
     503 for a hostname this Deplo holds and 404 for one it does not, and reflects

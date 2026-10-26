@@ -1,7 +1,11 @@
 import { status as GrpcStatus } from "@grpc/grpc-js";
 
 import { ContractVersion, type HelloResponse } from "../agent/gen/agent";
-import { AgentUnreachableError } from "./agent-client/errors";
+import { LINK_OFFLINE_MESSAGE } from "../agent-reachability";
+import {
+  AgentOfflineError,
+  AgentUnreachableError,
+} from "./agent-client/errors";
 import type { ServerStatus } from "../types/server";
 
 export interface ServerHealth {
@@ -21,9 +25,8 @@ export const HEALTH_MESSAGES = {
     "The agent answered with an error. Check the agent's logs on the host.",
   dockerDown:
     "The agent is up but Docker is unreachable - deploys to this server will fail.",
-  refused:
-    "The agent did not answer (connection refused). Is it running on the host?",
-  timedOut: "The agent did not answer within the health-check deadline.",
+  // Every server that does not answer, however Deplo reaches it.
+  offline: LINK_OFFLINE_MESSAGE,
 } as const;
 
 const CERT_VALIDITY_RE =
@@ -45,13 +48,7 @@ export function classifyServerHealth(
       return { status: "error", message: HEALTH_MESSAGES.untrusted };
     if (isCertValidityError(err))
       return { status: "error", message: HEALTH_MESSAGES.certExpired };
-    return {
-      status: "offline",
-      message:
-        err.code === GrpcStatus.DEADLINE_EXCEEDED
-          ? HEALTH_MESSAGES.timedOut
-          : HEALTH_MESSAGES.refused,
-    };
+    return { status: "offline", message: HEALTH_MESSAGES.offline };
   }
   if (err) return { status: "error", message: HEALTH_MESSAGES.agentError };
   if (!hello) return { status: "error", message: HEALTH_MESSAGES.agentError };
@@ -70,8 +67,9 @@ export function unreachableMessage(err: unknown): string | null {
   if (!(err instanceof AgentUnreachableError)) return null;
   if (err.trust) return HEALTH_MESSAGES.untrusted;
   if (isCertValidityError(err)) return HEALTH_MESSAGES.certExpired;
-  if (typeof err.code !== "number") return err.message;
-  return err.code === GrpcStatus.DEADLINE_EXCEEDED
-    ? "This server did not answer in time - it may be overloaded, or unreachable."
-    : "This server is unreachable. Check that the host is up and its Deplo agent is running.";
+  if (err.code === GrpcStatus.DEADLINE_EXCEEDED)
+    return "This server did not answer in time - it may be overloaded, or unreachable.";
+  if (err instanceof AgentOfflineError || typeof err.code === "number")
+    return `This server is offline. ${HEALTH_MESSAGES.offline}`;
+  return err.message;
 }

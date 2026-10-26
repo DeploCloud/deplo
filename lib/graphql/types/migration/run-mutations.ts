@@ -89,7 +89,7 @@ builder.mutationFields((t) => ({
     nullable: true,
     authScopes: { instanceAdmin: true },
     description:
-      "Point Deplo at where a machine of this panel really is, and remember it for the next attempt. The address is PROVED first - the agent must answer there, over the same pinned certificate - and only then written down, because a remembered address is used automatically and an unproven one would turn a single bad guess into a permanent one. Returns a warning to surface, or null. The source server row is removed at the end of every migration, which is why this is remembered against the SOURCE rather than against that row.",
+      "Point Deplo at where a machine of this panel really is, and remember it for the next attempt. Unless the machine's agent links in (its `Server.agentPort` is null), the address is PROVED first - the agent must answer there, over the same pinned certificate - and only then written down, because a remembered address is used automatically and an unproven one would turn a single bad guess into a permanent one. Returns a warning to surface, or null. The source server row is removed at the end of every migration, which is why this is remembered against the SOURCE rather than against that row.",
     args: {
       url: t.arg.string({ required: true }),
       sourceId: t.arg.string({

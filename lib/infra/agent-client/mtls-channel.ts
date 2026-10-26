@@ -25,15 +25,18 @@ import {
 import { NETWORK_CAPABILITY } from "./hello-capabilities";
 import { formatHostPort, isIpLiteral } from "../../host-address";
 
-export interface DialTarget {
+export interface AgentAddress {
   address: string;
   serverName: string;
-  clientCreds: { certPem: string; keyPem: string; caPem: string };
   pinnedFingerprint: string;
   agentVersion?: string;
 }
 
-export async function resolveTarget(serverId: string): Promise<DialTarget> {
+export interface DialTarget extends AgentAddress {
+  clientCreds: { certPem: string; keyPem: string; caPem: string };
+}
+
+export async function resolveAddress(serverId: string): Promise<AgentAddress> {
   const server = await getServerById(serverId);
   if (!server) {
     throw new AgentUnreachableError(`server ${serverId} not found`);
@@ -43,27 +46,39 @@ export async function resolveTarget(serverId: string): Promise<DialTarget> {
       `server ${server.name} is not provisioned (no agent has called home yet)`,
     );
   }
-  return remoteTarget(server);
+  return agentAddress(server);
 }
 
-export async function remoteTarget(server: Server): Promise<DialTarget> {
-  const { issueControlPlaneClientCert, caCertPem } =
-    await import("../../agent/pki");
-  const client = await issueControlPlaneClientCert();
+export function agentAddress(server: Server): AgentAddress {
   const agent = server.agent!;
   const host = server.ip || server.host;
   return {
     address: formatHostPort(host, agent.port),
     // SNI forbids an IP servername: an IP host verifies against the localhost DNS SAN signAgentCsr always adds.
     serverName: isIpLiteral(host) ? "localhost" : host,
+    pinnedFingerprint: agent.certFingerprint,
+    agentVersion: agent.version,
+  };
+}
+
+export async function withClientCert(
+  address: AgentAddress,
+): Promise<DialTarget> {
+  const { issueControlPlaneClientCert, caCertPem } =
+    await import("../../agent/pki");
+  const client = await issueControlPlaneClientCert();
+  return {
+    ...address,
     clientCreds: {
       certPem: client.certPem,
       keyPem: client.keyPem,
       caPem: await caCertPem(),
     },
-    pinnedFingerprint: agent.certFingerprint,
-    agentVersion: agent.version,
   };
+}
+
+export async function remoteTarget(server: Server): Promise<DialTarget> {
+  return withClientCert(agentAddress(server));
 }
 
 function peerFingerprint(cert: PeerCertificate): string {
@@ -74,9 +89,18 @@ export interface AgentChannel {
   client: GrpcAgentClient;
   hello(timeoutMs?: number): Promise<HelloResponse>;
   assertNetworkCapable(network: string): Promise<void>;
+  /** Ends this caller's hold; a shared channel stays up for everyone else. */
+  close(): void;
 }
 
-export function openChannel(target: DialTarget): AgentChannel {
+// grpc-js has no "never": its idle timer is a setTimeout, so this is the longest one Node allows.
+const NEVER_IDLE_MS = 2 ** 31 - 1;
+
+/** `linked`: the channel rides an agent link, whose one connection grpc-js must never close for idleness. */
+export function openChannel(
+  target: DialTarget,
+  opts: { linked?: boolean } = {},
+): AgentChannel {
   const { certPem, keyPem, caPem } = target.clientCreds;
   let trustFailed = false;
   const creds = credentials.createSsl(
@@ -107,6 +131,7 @@ export function openChannel(target: DialTarget): AgentChannel {
     "grpc.keepalive_time_ms": 30_000,
     "grpc.keepalive_timeout_ms": 10_000,
     "grpc.keepalive_permit_without_calls": 0,
+    ...(opts.linked ? { "grpc.client_idle_timeout_ms": NEVER_IDLE_MS } : {}),
   });
 
   const helloError = (err: unknown): Error => {
@@ -120,7 +145,28 @@ export function openChannel(target: DialTarget): AgentChannel {
     return e;
   };
 
-  const sayHello = (timeoutMs = HELLO_TIMEOUT_MS) =>
+  const sayHello = helloOn(client, helloError);
+  return {
+    client,
+    hello: sayHello,
+    assertNetworkCapable: networkGate(sayHello),
+    close: () => client.close(),
+  };
+}
+
+/** A caller's channel over an agent link's client; the link, not the caller, closes it. */
+export function linkChannel(client: GrpcAgentClient): AgentChannel {
+  const sayHello = helloOn(client, toAgentError);
+  return {
+    client,
+    hello: sayHello,
+    assertNetworkCapable: networkGate(sayHello),
+    close: () => {},
+  };
+}
+
+function helloOn(client: GrpcAgentClient, mapError: (err: unknown) => Error) {
+  return (timeoutMs = HELLO_TIMEOUT_MS) =>
     new Promise<HelloResponse>((resolve, reject) => {
       const deadline = new Date(Date.now() + timeoutMs);
       client.hello(
@@ -130,23 +176,36 @@ export function openChannel(target: DialTarget): AgentChannel {
         },
         new Metadata(),
         { deadline },
-        (err, resp) => (err ? reject(helloError(err)) : resolve(resp)),
+        (err, resp) => (err ? reject(mapError(err)) : resolve(resp)),
       );
     });
+}
 
+/** One caller's view of a shared channel: its own Hello cache and its own close. */
+export function callerView(
+  channel: AgentChannel,
+  close: () => void,
+): AgentChannel {
+  return {
+    client: channel.client,
+    hello: channel.hello,
+    assertNetworkCapable: networkGate(channel.hello),
+    close,
+  };
+}
+
+function networkGate(hello: AgentChannel["hello"]) {
   let helloOnce: Promise<HelloResponse> | null = null;
   // ADR-0028: an agent that creates no network fails at compose up in docker's words, naming neither host nor fix.
-  const assertNetworkCapable = async (network: string) => {
+  return async (network: string) => {
     if (!network) return;
-    const hello = await (helloOnce ??= sayHello());
-    if (hello.capabilities?.includes(NETWORK_CAPABILITY)) return;
+    const answer = await (helloOnce ??= hello());
+    if (answer.capabilities?.includes(NETWORK_CAPABILITY)) return;
     throw new AgentNetworkUnsupportedError(
       `The agent on this server is too old to place a stack on its own network. ` +
         `Update it from Servers, then deploy again.`,
     );
   };
-
-  return { client, hello: sayHello, assertNetworkCapable };
 }
 
 export function unary<Req, Resp>(

@@ -15,6 +15,7 @@ import { recordActivity } from "../activity";
 import { dispatchAlert } from "../../notify/dispatch";
 import { BACKUP_RUN_MAX_MS } from "../../infra/agent-client/deadlines";
 import { mapBackupUnsupported } from "../../infra/agent-client/errors";
+import { unreachableMessage } from "../../infra/server-health";
 import {
   destinationServerId,
   getDestinationWithSecretsForTeam,
@@ -178,7 +179,9 @@ export async function executeBackup(
       }
     }
   } catch (e) {
-    failure = (mapBackupUnsupported(e) as Error).message;
+    // A server that dropped away mid-run is offline: say so, never the transport's words.
+    failure =
+      unreachableMessage(e) ?? (mapBackupUnsupported(e) as Error).message;
   } finally {
     backupRunsInFlight.delete(runId);
   }

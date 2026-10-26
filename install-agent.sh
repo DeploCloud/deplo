@@ -784,9 +784,9 @@ if [ "$IMPORT_ONLY" = "1" ]; then
   [ -z "$FOREIGN_PANEL" ] || pf_fail "This machine already runs Deplo's agent for another Deplo ($FOREIGN_PANEL)." "Move it from that Deplo's own address with one of its API tokens instead - nothing needs installing here."
 fi
 
-# The port the panel dials ------------------------------------------------------
+# The port the panel dials, for an agent from before the agent link only --------
 # Outbound provisioning succeeds either way, so a blocked port reads as a server
-# that enrolls and then never comes online. Say it now, not at the end.
+# that enrolls and then never comes online.
 firewall_fix_command() {
   # Read once and match WITHOUT a pipe: `grep -q` closes the pipe on its first
   # hit, the producer dies of SIGPIPE, and under `pipefail` an active firewall
@@ -806,14 +806,20 @@ firewall_fix_command() {
       || printf 'firewall-cmd --permanent --add-port=%s/tcp && firewall-cmd --reload' "$AGENT_PORT"
   fi
 }
-FIREWALL_FIX="$(firewall_fix_command || true)"
-if [ -n "$FIREWALL_FIX" ]; then
-  pf_warn "This host's firewall is blocking TCP $AGENT_PORT, which Deplo dials." "Open it with:  $FIREWALL_FIX"
-else
-  # No ufw and no firewalld is not evidence: a provider's own firewall, a security
-  # group or a CDN in front of this host all sit somewhere this cannot see.
-  ok "No ufw or firewalld rule blocks TCP $AGENT_PORT" "a provider firewall is not visible from here"
-fi
+
+# Asked of the binary just installed, since only it knows. A linking agent connects
+# out to the panel and listens on nothing, so no firewall is in its way (ADR-0040).
+# Read whole, never piped into grep -q: SIGPIPE under pipefail would read as "no".
+plan_listener() {
+  AGENT_LINKS=false
+  FIREWALL_FIX=""
+  local caps
+  caps="$("$AGENT_BIN" --capabilities 2>/dev/null || true)"
+  case $'\n'"$caps"$'\n' in
+    *$'\n'agent-link$'\n'*) AGENT_LINKS=true ;;
+    *) FIREWALL_FIX="$(firewall_fix_command || true)" ;;
+  esac
+}
 
 blank
 if [ "$PF_FAIL" -gt 0 ]; then
@@ -1082,26 +1088,25 @@ fi
 install -m 0755 "$TMP" "$AGENT_BIN"
 rm -f "$TMP"
 spin_ok "Agent v$AGENT_VERSION installed" "checksum verified"
+plan_listener
 
 # 3. Data dir --------------------------------------------------------------
 mkdir -p "$AGENT_DATA"
 chmod 700 "$AGENT_DATA"
 
-# Re-provisioning: running this installer means a FRESH bootstrap is intended (you
-# pasted a one-time token from the dashboard). But the agent skips bootstrap when
-# it finds existing mTLS materials on disk, so a reinstall over a previous one
-# (e.g. after removing + re-adding the server) would serve the STALE cert and
-# never call home, and the control plane, which pinned a new fingerprint at
-# re-add - would reject every dial (no metrics, never "online"). Clear the old
-# materials here so the agent genuinely re-bootstraps against the current pin.
-# (A plain `systemctl restart deplo-agent` carries no token through this script,
-# so it still reuses materials and serves straight away, as intended.)
-if [ -e "$AGENT_DATA/agent.crt" ] || [ -e "$AGENT_DATA/agent.key" ] || [ -e "$AGENT_DATA/ca.crt" ]; then
-  step "Existing agent materials found - clearing them for a fresh bootstrap"
-  systemctl stop deplo-agent >&9 2>&9 || true
-  rm -f "$AGENT_DATA/agent.crt" "$AGENT_DATA/agent.key" "$AGENT_DATA/ca.crt"
-  ok "Old materials cleared" "the agent will re-provision with the new token"
-fi
+# A reinstall means a fresh bootstrap, but the agent skips it while old mTLS materials are on
+# disk and would serve a certificate the panel no longer pins. Clear them and the link state they
+# belonged to; a plain restart of the agent carries no token and keeps everything.
+clear_old_materials() {
+  if [ -e "$AGENT_DATA/agent.crt" ] || [ -e "$AGENT_DATA/agent.key" ] || [ -e "$AGENT_DATA/ca.crt" ]; then
+    step "Existing agent materials found - clearing them for a fresh bootstrap"
+    systemctl stop deplo-agent >&9 2>&9 || true
+    rm -f "$AGENT_DATA/agent.crt" "$AGENT_DATA/agent.key" "$AGENT_DATA/ca.crt" \
+      "$AGENT_DATA/link-addresses.json" "$AGENT_DATA/no-listener"
+    ok "Old materials cleared" "the agent will re-provision with the new token"
+  fi
+}
+clear_old_materials
 
 # 3a-bis. The platform's `deplo` network -------------------------------------
 # NOT where apps go - since ADR-0028 each Environment owns its own network and the
@@ -1289,7 +1294,11 @@ else
   DOCKER_UNIT_LINES="# The agent needs the Docker socket to build + run stacks.
 SupplementaryGroups=docker"
 fi
-cat > "$UNIT" <<EOF
+# No --addr for a linking agent: with none it opens no port at all (ADR-0040).
+write_agent_unit() {
+  local listen=""
+  [ "$AGENT_LINKS" = true ] || listen="  --addr 0.0.0.0:$AGENT_PORT \\"$'\n'
+  cat > "$UNIT" <<EOF
 [Unit]
 Description=Deplo server agent
 After=$UNIT_AFTER
@@ -1302,8 +1311,7 @@ Type=simple
 # (a provisioned agent skips bootstrap and needs none of these anyway).
 EnvironmentFile=-$BOOTSTRAP_ENV
 ExecStart=$AGENT_BIN \\
-  --addr 0.0.0.0:$AGENT_PORT \\
-  --data-dir / \\
+${listen}  --data-dir / \\
   --agent-dir $AGENT_DATA
 Restart=on-failure
 RestartSec=5
@@ -1312,7 +1320,9 @@ $DOCKER_UNIT_LINES
 [Install]
 WantedBy=multi-user.target
 EOF
-chmod 600 "$UNIT"
+  chmod 600 "$UNIT"
+}
+write_agent_unit
 ok "systemd unit written" "$UNIT"
 
 # The backup store the agent owns. Created here rather than lazily so a
@@ -1352,27 +1362,32 @@ fi
 AGENT_STATE="starting"
 systemctl is-active --quiet deplo-agent && AGENT_STATE="running"
 
-card_open "This host is a Deplo $HOST_ROLE"
-card_kv "Agent" "v$AGENT_VERSION, $AGENT_STATE on port $AGENT_PORT"
-card_kv "Panel" "$URL"
-card_kv "State" "$AGENT_DATA"
-card_kv "Logs" "journalctl -u deplo-agent -f"
-card_close
+print_summary() {
+  local agent="v$AGENT_VERSION, $AGENT_STATE"
+  [ "$AGENT_LINKS" = true ] || agent="$agent on port $AGENT_PORT"
+  card_open "This host is a Deplo $HOST_ROLE"
+  card_kv "Agent" "$agent"
+  card_kv "Panel" "$URL"
+  card_kv "State" "$AGENT_DATA"
+  card_kv "Logs" "journalctl -u deplo-agent -f"
+  card_close
 
-if [ "$AGENT_STATE" != running ]; then
-  err "The agent service is not running."
-  note "Inspect: journalctl -u deplo-agent -n 50"
-elif [ -n "$FIREWALL_FIX" ]; then
-  warn "TCP $AGENT_PORT is closed, so Deplo cannot dial this agent."
-  note "Provisioning finishes either way, but the server stays offline until you run:"
-  note "$FIREWALL_FIX"
-elif [ "$PROVISIONED" = true ]; then
-  # Provisioning is OUTBOUND: it proves the agent reached the panel, never that
-  # the panel can dial back. Only Deplo, from outside, can say "online".
-  ok "The agent enrolled with $URL."
-  note "Deplo shows this server online once it can reach TCP $AGENT_PORT from outside."
-else
-  note "The agent is still calling home to $URL. Watch the dashboard - it will"
-  note "switch to 'online' shortly, or say why in journalctl -u deplo-agent."
-fi
-printf '\n'
+  if [ "$AGENT_STATE" != running ]; then
+    err "The agent service is not running."
+    note "Inspect: journalctl -u deplo-agent -n 50"
+  elif [ -n "$FIREWALL_FIX" ]; then
+    warn "TCP $AGENT_PORT is closed, so Deplo cannot dial this agent."
+    note "Provisioning finishes either way, but the server stays offline until you run:"
+    note "$FIREWALL_FIX"
+  elif [ "$PROVISIONED" = true ]; then
+    ok "The agent enrolled with $URL."
+    # An agent from before the agent link is still dialed: only Deplo, from outside, can say "online".
+    [ "$AGENT_LINKS" = true ] ||
+      note "Deplo shows this server online once it can reach TCP $AGENT_PORT from outside."
+  else
+    note "The agent is still calling home to $URL. Watch the dashboard - it will"
+    note "switch to 'online' shortly, or say why in journalctl -u deplo-agent."
+  fi
+  printf '\n'
+}
+print_summary

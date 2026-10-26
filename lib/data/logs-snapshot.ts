@@ -1,6 +1,7 @@
 import "server-only";
 
 import { StringDecoder } from "node:string_decoder";
+import { LINK_OFFLINE_MESSAGE } from "../agent-reachability";
 import { connectAgent } from "../infra/agent-client/connect";
 import { resolveLogsTarget } from "./console";
 import { resolveDatabaseLogsTarget } from "./database-console";
@@ -106,7 +107,7 @@ function logsFailure(reason: string): string {
     case "forbidden":
       return "This token can't read logs (it needs the view_logs capability).";
     case "unreachable":
-      return "The server running this app is unreachable, so its logs can't be read right now.";
+      return `The server running this app is offline, so its logs can't be read right now. ${LINK_OFFLINE_MESSAGE}`;
     case "no-instance":
       return "This app has no container yet - deploy it first.";
     default:

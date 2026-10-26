@@ -8,6 +8,7 @@ import { __setTestDb, __resetTestDb } from "../db/client";
 import { runWithIdentity } from "../auth/request-context";
 import { seedIdentity, TEAM_A, USER_1 } from "./identity-test-helpers";
 import { TRUNCATE_INFRA, seedServerRow } from "./infra-test-helpers";
+import { listActivity } from "./activity";
 import { updateServerAddress } from "./servers/agent-maintenance";
 import { addServer } from "./servers/enrollment";
 import { getServerById } from "./servers/roster";
@@ -133,6 +134,25 @@ test("force skips the probe, writes the row, and keeps trust pinned - with the c
   assert.equal(server?.host, "192.0.2.99");
   assert.equal(server?.agent?.port, 9443);
   assert.equal(server?.agent?.certFingerprint, "sha256:pinned");
+});
+
+test("Activity names the new address, and an agent port only when someone changed it", async () => {
+  await asAdmin(() => updateServerAddress({ id: BARE, address: "192.0.2.20" }));
+  await asAdmin(() =>
+    updateServerAddress({
+      id: PROVISIONED,
+      address: "192.0.2.99",
+      agentPort: 9555,
+      force: true,
+    }),
+  );
+  const messages = (
+    await asAdmin(() => listActivity(10, { types: ["server"] }))
+  ).map((a) => a.message);
+  assert.deepEqual(messages.sort(), [
+    "Changed server bare address to 192.0.2.20",
+    "Changed server provisioned address to 192.0.2.99:9555",
+  ]);
 });
 
 test("keepHost writes only where Deplo dials, leaving the address it was registered at", async () => {

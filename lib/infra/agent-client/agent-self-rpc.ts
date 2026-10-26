@@ -3,21 +3,37 @@ import "server-only";
 import { Metadata } from "@grpc/grpc-js";
 import type { AgentConnection } from "./connection";
 import {
+  HELLO_TIMEOUT_MS,
   SELF_UNINSTALL_TIMEOUT_MS,
   SELF_UPDATE_TIMEOUT_MS,
   STACK_DEADLINE_MS,
 } from "./deadlines";
 import { toAgentError } from "./errors";
-import type { AgentChannel } from "./mtls-channel";
+import { unary, type AgentChannel } from "./mtls-channel";
 
 export function agentSelfRpc(
   channel: AgentChannel,
 ): Pick<
   AgentConnection,
-  "renewalCsr" | "installRenewedCert" | "selfUpdate" | "selfUninstall"
+  | "renewalCsr"
+  | "installRenewedCert"
+  | "selfUpdate"
+  | "selfUninstall"
+  | "setLinkAddresses"
+  | "stopListening"
 > {
   const { client } = channel;
   return {
+    setLinkAddresses(pair) {
+      return unary(
+        client.setLinkAddresses.bind(client),
+        pair,
+        HELLO_TIMEOUT_MS,
+      );
+    },
+    async stopListening() {
+      await unary(client.stopListening.bind(client), {}, HELLO_TIMEOUT_MS);
+    },
     renewalCsr() {
       return new Promise<{ csrPem: string }>((resolve, reject) => {
         client.renewalCsr(

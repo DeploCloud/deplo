@@ -1,5 +1,9 @@
 # The unit of remote execution is a per-host Go agent; the control plane stays TS
 
+- **Amended by [ADR-0040](0040-a-server-agent-links-to-its-control-plane.md)** (2026-10-25):
+  decisions 4 and 8. The agent no longer listens for the control plane; it opens an agent link
+  to it, and every call rides that link.
+
 ## Context
 
 Deplo **models** multiple servers - a project carries a `serverId`, the dashboard has a server

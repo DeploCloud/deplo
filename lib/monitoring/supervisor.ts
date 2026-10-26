@@ -16,6 +16,7 @@ import {
   AgentUnreachableError,
 } from "../infra/agent-client/errors";
 import { connectMetricsStreamAgent } from "../infra/agent-client/preflight";
+import { linkMayCome } from "../infra/agent-link/registry";
 import { isMetricsSavingEnabled } from "../data/monitoring-settings";
 import { measureServerForCollector } from "../data/monitoring";
 import { getDb } from "../db/client";
@@ -295,7 +296,10 @@ async function runStreamLoop(
 
       if (!rotation) {
         // An unusable agent is reachable: the health probe owns its status, not this loop.
-        if (attempt === 0 && !(e instanceof AgentTooOldError)) {
+        // A server whose link may come is judged by server health once it stays away, not here.
+        const undecided =
+          e instanceof AgentUnreachableError && linkMayCome(serverId, e);
+        if (attempt === 0 && !(e instanceof AgentTooOldError) && !undecided) {
           await recordServerHealth(
             serverId,
             classifyServerHealth(null, e),
@@ -303,7 +307,8 @@ async function runStreamLoop(
           ).catch(() => {});
         }
         const delay = backoffFor(attempt);
-        attempt = Math.min(attempt + 1, 16);
+        // Waiting for a link costs no dial, and the first failure after it still gets written.
+        if (!undecided) attempt = Math.min(attempt + 1, 16);
         await sleep(delay, signal);
       }
     } finally {

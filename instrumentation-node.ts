@@ -9,6 +9,31 @@ export async function register(): Promise<void> {
     );
     throw e;
   }
+  // Before the door opens, so server status hears every link come and go.
+  try {
+    const { startServerLinkStatus } = await import("./lib/data/server-health");
+    startServerLinkStatus();
+  } catch (e) {
+    console.error("[deplo] server status could not follow agent links:", e);
+  }
+  try {
+    const { startLinkAddressSync } =
+      await import("./lib/data/servers/link-addresses");
+    startLinkAddressSync();
+  } catch (e) {
+    console.error(
+      "[deplo] agents could not be kept on the panel's addresses:",
+      e,
+    );
+  }
+  // Early, so servers relink while the jobs below make their first calls (ADR-0040).
+  try {
+    const { startAgentLinkListener } =
+      await import("./lib/infra/agent-link/listener");
+    await startAgentLinkListener();
+  } catch (e) {
+    console.error("[deplo] agent link listener could not start:", e);
+  }
   try {
     const { hydratePublicBaseUrl } =
       await import("./lib/data/instance-settings/settings-store");
@@ -224,6 +249,9 @@ export async function register(): Promise<void> {
         .catch(() => {});
       void import("./lib/graphql/pubsub")
         .then(({ stopPubSubBridge }) => stopPubSubBridge())
+        .catch(() => {});
+      void import("./lib/infra/agent-link/listener")
+        .then(({ stopAgentLinkListener }) => stopAgentLinkListener())
         .catch(() => {});
     });
   }

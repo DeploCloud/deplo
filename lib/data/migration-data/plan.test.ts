@@ -153,6 +153,8 @@ test("the plan tells an enrolled-but-unreachable machine apart from a missing on
     bad.every((svc) => svc.notes.some((n) => /cannot reach the agent/.test(n))),
     JSON.stringify(bad.map((s) => s.notes)),
   );
+  for (const n of bad.flatMap((svc) => svc.notes))
+    assert.doesNotMatch(n, /9443|firewall|inbound|outbound/i);
 
   state.unreachableAgents.delete("srv_migration_host");
   const good = await asOwner(() =>

@@ -25,6 +25,7 @@ import {
   checkPanelDns,
 } from "./instance-settings/panel-address";
 import { getPanelAddressImpact } from "./instance-settings/panel-address-impact";
+import { forgetRoutedFallback } from "./instance-settings/panel-fallback";
 import {
   dismissNetworkIsolationNotice,
   networkSweepFailures,
@@ -599,8 +600,10 @@ async function withSelfServer<T>(
   process.env.DEPLO_SERVER_IP = HOST_IP;
   await pg.exec(TRUNCATE_INFRA);
   await seedServerRow(db, { id: "srv_panel", ip: HOST_IP, host: HOST_IP });
+  forgetRoutedFallback();
   t.after(() => {
     __setAgentConnectorForTest();
+    forgetRoutedFallback();
     if (prevIp === undefined) delete process.env.DEPLO_SERVER_IP;
     else process.env.DEPLO_SERVER_IP = prevIp;
   });
@@ -641,7 +644,8 @@ test("the backup address goes off, and stays off when the scheme moves", async (
     const on = await asUser(ADMIN, () => setPanelFallback(true));
     assert.equal(on.panelFallbackDisabled, false);
     assert.equal(panelRoute(host.yaml)?.fallbackDomain, MINTED);
-    assert.equal(on.panelFallbackUrl, `https://${MINTED}`);
+    // It answers where the panel does, which is plain http since the switch above.
+    assert.equal(on.panelFallbackUrl, `http://${MINTED}`);
   });
 });
 
@@ -675,6 +679,42 @@ test("the generated address cannot be turned off while it IS the address", async
     await assert.rejects(
       () => asUser(MEMBER, () => setPanelFallback(false)),
       /admin/i,
+    );
+  });
+});
+
+test("the settings never wait on the panel's own server, and show its proxy's name once it has answered", async (t) => {
+  await withSelfServer(t, async () => {
+    let answer = () => {};
+    const answered = new Promise<void>((r) => (answer = r));
+    __setAgentConnectorForTest(async () => {
+      const conn = {
+        hello: async () => ({ capabilities: ["hostops"] }),
+        hostInfo: async () => {
+          await answered;
+          return { traefikComposeYaml: panelStack() };
+        },
+        close: () => {},
+      };
+      return conn as unknown as AgentConnection;
+    });
+    const fallbackHost = async () => {
+      const url = (await asUser(ADMIN, getInstanceSettings)).panelFallbackUrl;
+      return url ? new URL(url).hostname : null;
+    };
+
+    const started = Date.now();
+    assert.equal(await fallbackHost(), MINTED, "the name Deplo derives");
+    assert.ok(Date.now() - started < 1_000, "it did not wait for the proxy");
+
+    answer();
+    const deadline = Date.now() + 5_000;
+    while ((await fallbackHost()) !== FALLBACK && Date.now() < deadline)
+      await new Promise((r) => setTimeout(r, 20));
+    assert.equal(
+      await fallbackHost(),
+      FALLBACK,
+      "then the name the proxy routes",
     );
   });
 });

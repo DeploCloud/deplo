@@ -9,14 +9,10 @@ import {
 
 import { CommandLine } from "@/components/shared/code-block";
 import { Button } from "@/components/ui/button";
-import { AGENT_PORT_NOTICE } from "@/lib/agent-reachability";
+import { LINK_OFFLINE_MESSAGE } from "@/lib/agent-reachability";
 import type { PlanServer } from "../types";
 import { AddressForm } from "./address-form";
-import {
-  AGENT_UNREACHABLE,
-  CLOUDFLARE_ADDRESS_NOTICE,
-  PANEL_ADDRESS_NOTICE,
-} from "./machine-state";
+import { AGENT_UNREACHABLE } from "./machine-state";
 import type { MachineInstall } from "./use-machine-install";
 
 export function MachineRow({
@@ -133,12 +129,8 @@ export function MachineRow({
       {p && bad && bad.status === "offline" && (
         <div className="space-y-2">
           <p className="text-xs text-destructive">
-            {AGENT_UNREACHABLE}{" "}
-            {m.cloudflare
-              ? CLOUDFLARE_ADDRESS_NOTICE
-              : `${AGENT_PORT_NOTICE} ${PANEL_ADDRESS_NOTICE}`}
+            {AGENT_UNREACHABLE} {LINK_OFFLINE_MESSAGE}
           </p>
-          <p className="text-xs text-muted-foreground">{bad.message}</p>
           <CommandLine command={p.installCommand} truncate />
           {canAddServers ? (
             <AddressForm

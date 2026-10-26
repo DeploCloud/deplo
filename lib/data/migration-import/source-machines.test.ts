@@ -342,7 +342,12 @@ test("a run needs the machines of ITS services to answer, not every machine", as
         asOwner(() =>
           assertMigrationMachinesReady(credential, ["dok-app-api"]),
         ),
-      /eu-1 has no agent/,
+      (e: Error) => {
+        assert.match(e.message, /eu-1 has no agent/);
+        assert.match(e.message, /on and connected to the internet/);
+        assert.doesNotMatch(e.message, /9443|firewall|inbound|outbound/i);
+        return true;
+      },
     );
   } finally {
     __setAgentConnectorForTest();

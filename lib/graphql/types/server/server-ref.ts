@@ -8,7 +8,10 @@ import {
   isDeploHostServer,
 } from "@/lib/deploy/domains";
 import { serverAddressChoices } from "@/lib/data/servers/addresses";
-import { serverAgentUpdate } from "@/lib/data/servers/agent-maintenance";
+import {
+  dialedAgentPort,
+  serverAgentUpdate,
+} from "@/lib/data/servers/agent-maintenance";
 import type { AgentUpdateDTO } from "@/lib/data/servers/agent-update-state";
 import {
   AGENT_VERSION,
@@ -152,7 +155,9 @@ export const ServerRef = builder.objectRef<Server>("Server").implement({
     }),
     agentPort: t.int({
       nullable: true,
-      resolve: (s) => s.agent?.port ?? null,
+      description:
+        "The port Deplo connects to this server's agent on. Null when Deplo connects to none: the agent links in to Deplo, so a new address saves without contacting the server, or no agent has called home yet. Read live, so for a few seconds after Deplo starts a server that links in may still show its old port.",
+      resolve: (s) => dialedAgentPort(s),
     }),
     agentVersion: t.string({
       nullable: true,
@@ -187,7 +192,7 @@ export const ServerRef = builder.objectRef<Server>("Server").implement({
     statusCheckedAt: t.string({
       nullable: true,
       description:
-        "When `status` was last OBSERVED by a live agent Hello probe (ISO), or null if it never has been. Read it WITH `status`: the pair is a timestamped observation, not a standing claim, and a client that shows the status without qualifying its age is showing a value that may be hours old. Never fabricated - a probe that times out or is throttled writes nothing.",
+        "When `status` was last OBSERVED (ISO) - by a live agent Hello, or, for a server whose agent links in, by its link staying away - or null if it never has been. Read it WITH `status`: the pair is a timestamped observation, not a standing claim, and a client that shows the status without qualifying its age is showing a value that may be hours old. Never fabricated - a probe that times out or is throttled writes nothing.",
       resolve: (s) => s.statusCheckedAt ?? null,
     }),
     statusMessage: t.string({

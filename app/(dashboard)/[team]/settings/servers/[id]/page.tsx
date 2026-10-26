@@ -24,7 +24,10 @@ import {
   agentUsable,
   reportedAgentVersion,
 } from "@/lib/version";
-import { serverAgentUpdate } from "@/lib/data/servers/agent-maintenance";
+import {
+  dialedAgentPort,
+  serverAgentUpdate,
+} from "@/lib/data/servers/agent-maintenance";
 import type { TeamOption } from "@/components/servers/server-team-access";
 import {
   ServerHealthProvider,
@@ -136,7 +139,7 @@ export default async function ServerDetailPage(
             name: serverLabel(hydrated),
             ip: hydrated.ip,
             host: hydrated.host,
-            agentPort: hydrated.agent?.port ?? null,
+            agentPort: dialedAgentPort(hydrated),
             status: hydrated.status,
             cpuCores: hydrated.cpuCores,
             memoryMb: hydrated.memoryMb,

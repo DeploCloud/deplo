@@ -8,6 +8,14 @@ import { requireInstanceAdmin } from "../../membership";
 import { DEFAULT_AGENT_PORT } from "../../agent/bootstrap";
 import { resolveAgentRelease } from "../../agent/release";
 import { AgentReleaseUnavailableError } from "../../infra/agent-client/errors";
+import { LINK_WAIT_MS } from "../../infra/agent-link/protocol";
+import {
+  hasLinked,
+  linkMayCome,
+  linksSettling,
+  waitForLink,
+} from "../../infra/agent-link/registry";
+import type { Server } from "../../types/server";
 import {
   AGENT_VERSION,
   agentUpdateAvailable,
@@ -61,69 +69,101 @@ export async function updateServerAddress(
     return { warning: null };
   await assertAddressFree(address, server.id);
 
-  let warning: string | null = null;
-  if (server.agent?.certFingerprint) {
-    const sans = [
-      ...new Set([address, server.ip, server.host].filter(Boolean)),
-    ];
-    try {
-      const { renewAgentCert } = await import("../../agent/cert-renewal");
-      try {
-        await renewAgentCert(server.id, sans, {
-          ip: address,
-          host: address,
-          agentPort: port,
-        });
-      } catch {
-        await renewAgentCert(server.id, sans);
-      }
-    } catch (e) {
-      warning =
-        (input.force
-          ? `The address was saved without checking it (force). `
-          : `The address is saved and Deplo reached the agent there. `) +
-        `One thing did not happen: the certificate's list of names could not be ` +
-        `refreshed (${e instanceof Error ? e.message : String(e)}). That list is ` +
-        `only consulted when this server is dialed by a DNS NAME - an IP verifies ` +
-        `by fingerprint and does not touch it - so switch this server to a name ` +
-        `before the certificate renews and TLS will fail until it does.`;
-    }
-    if (!input.force) {
-      const { connectAgentAt } =
-        await import("../../infra/agent-client/connect");
-      const conn = await connectAgentAt(server.id, {
-        ip: address,
-        host: address,
-        agentPort: port,
-      });
-      try {
-        await conn.hello();
-      } finally {
-        conn.close();
-      }
-    }
-  }
+  // A linked server is never dialed (ADR-0040): its address is for its apps, its port unused.
+  const linked = server.agent?.certFingerprint
+    ? await linksIn(server.id)
+    : false;
+  if (linked && address === server.host && address === server.ip)
+    return { warning: null };
+  const newPort =
+    server.agent && !linked && input.agentPort != null ? input.agentPort : null;
+  const warning =
+    server.agent?.certFingerprint && !linked
+      ? await proveAddress(server, address, port, input.force === true)
+      : null;
 
   const updated = await getDb()
     .update(serversTable)
     .set({
       ...(input.keepHost ? {} : { host: address }),
       ip: address,
-      ...(server.agent && input.agentPort != null
-        ? { agentPort: input.agentPort }
-        : {}),
+      ...(newPort != null ? { agentPort: newPort } : {}),
     })
     .where(eq(serversTable.id, input.id))
     .returning({ id: serversTable.id });
   if (updated.length === 0) throw new Error("Server not found");
   await recordActivity(
     "server",
-    `Changed server ${server.name} address to ${formatHostPort(address, port)}`,
+    `Changed server ${server.name} address to ${
+      newPort != null && newPort !== server.agent?.port
+        ? formatHostPort(address, newPort)
+        : address
+    }`,
     user.name,
     null,
     teamId,
   );
   return { warning };
+}
+
+/** The port Deplo dials this server's agent on; null when it dials none, because the agent links in or never called home. */
+export function dialedAgentPort(server: Server): number | null {
+  return server.agent && !hasLinked(server.id) ? server.agent.port : null;
+}
+
+// Never dialed: moments after Deplo starts, one that stopped listening may not have linked back yet.
+async function linksIn(serverId: string): Promise<boolean> {
+  if (linkMayCome(serverId)) return true;
+  return (
+    linksSettling() && (await waitForLink(serverId, LINK_WAIT_MS)) !== null
+  );
+}
+
+// A server Deplo still dials: the agent must answer at the new address, unless forced.
+async function proveAddress(
+  server: Server,
+  address: string,
+  port: number,
+  force: boolean,
+): Promise<string | null> {
+  let warning: string | null = null;
+  const sans = [...new Set([address, server.ip, server.host].filter(Boolean))];
+  try {
+    const { renewAgentCert } = await import("../../agent/cert-renewal");
+    try {
+      await renewAgentCert(server.id, sans, {
+        ip: address,
+        host: address,
+        agentPort: port,
+      });
+    } catch {
+      await renewAgentCert(server.id, sans);
+    }
+  } catch (e) {
+    warning =
+      (force
+        ? `The address was saved without checking it (force). `
+        : `The address is saved and Deplo reached the agent there. `) +
+      `One thing did not happen: the certificate's list of names could not be ` +
+      `refreshed (${e instanceof Error ? e.message : String(e)}). That list is ` +
+      `only consulted when this server is dialed by a DNS NAME - an IP verifies ` +
+      `by fingerprint and does not touch it - so switch this server to a name ` +
+      `before the certificate renews and TLS will fail until it does.`;
+  }
+  if (!force) {
+    const { connectAgentAt } = await import("../../infra/agent-client/connect");
+    const conn = await connectAgentAt(server.id, {
+      ip: address,
+      host: address,
+      agentPort: port,
+    });
+    try {
+      await conn.hello();
+    } finally {
+      conn.close();
+    }
+  }
+  return warning;
 }
 
 /** Where this server's agent update stands; null when nothing is in flight or failed. */

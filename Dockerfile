@@ -87,6 +87,7 @@ RUN rm -rf /usr/local/lib/node_modules/npm /usr/local/bin/npm /usr/local/bin/npx
 # Still runs as root. It no longer holds a Docker socket, so the original reason
 # is gone; the `deplo` user above is created and ready, but switching to it needs
 # a migration for the /data files existing installs already own as root.
-EXPOSE 3000
+# 3001 is the agent link's door (ADR-0040).
+EXPOSE 3000 3001
 VOLUME ["/data"]
 CMD ["node", "server.js"]

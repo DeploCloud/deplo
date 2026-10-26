@@ -33,6 +33,8 @@ import {
   passkeyLossSuffix,
   passkeysBoundToThisAddress,
 } from "./panel-address-impact";
+import { forgetRoutedFallback, rememberRoutedFallback } from "./panel-fallback";
+import { whilePanelAddressesChange } from "../servers/link-addresses";
 import {
   panelCertificateTrusted,
   probePanel,
@@ -71,10 +73,16 @@ async function applyPanelRoute(
 ): Promise<void> {
   const { applyTraefikConfig } =
     await import("../../infra/agent-client/host-ops");
-  const res = await applyTraefikConfig(hostId, {
-    composeYaml: withPanelRoute(currentYaml, next),
-  });
-  if (!res.ok) throw new Error(res.error || refusal);
+  try {
+    const res = await applyTraefikConfig(hostId, {
+      composeYaml: withPanelRoute(currentYaml, next),
+    });
+    if (!res.ok) throw new Error(res.error || refusal);
+  } catch (e) {
+    forgetRoutedFallback();
+    throw e;
+  }
+  rememberRoutedFallback(next.fallbackDomain);
 }
 
 export async function setPanelUrl(
@@ -96,8 +104,10 @@ export async function setPanelUrl(
       ? await passkeysBoundToThisAddress()
       : 0;
   // The routing moves FIRST and throws if it could not: an address nothing routes to breaks every install command on this page.
-  if (url) await movePanelRoute(url);
-  await rememberPanelUrl(url);
+  await whilePanelAddressesChange({ url: url ?? undefined }, async () => {
+    if (url) await movePanelRoute(url);
+    await rememberPanelUrl(url);
+  });
 
   await recordActivity(
     "instance",
@@ -163,6 +173,7 @@ async function readPanelHttps(): Promise<PanelHttps> {
         unavailable: null,
       };
     }
+    rememberRoutedFallback(route.fallbackDomain);
     return {
       domain: route.domain,
       fallbackDomain: route.fallbackDomain,
@@ -205,17 +216,20 @@ export async function setPanelHttps(enabled: boolean): Promise<PanelHttps> {
       https: enabled,
       certResolver: enabled ? stackCertResolver(info.traefikComposeYaml) : null,
     };
-    await applyPanelRoute(
-      host.id,
-      info.traefikComposeYaml,
-      next,
-      ROUTE_REFUSED,
-    );
+    const url = `${enabled ? "https" : "http"}://${next.domain}`;
+    await whilePanelAddressesChange({ url }, async () => {
+      await applyPanelRoute(
+        host.id,
+        info.traefikComposeYaml,
+        next,
+        ROUTE_REFUSED,
+      );
+      await rememberPanelUrl(url);
+    });
     return next;
   });
 
   if (moved) {
-    await rememberPanelUrl(`${enabled ? "https" : "http"}://${moved.domain}`);
     await recordActivity(
       "instance",
       (enabled
@@ -246,38 +260,40 @@ export async function setPanelFallback(
 
   const { fetchHostInfo, withTraefikStackLock } =
     await import("../../infra/agent-client/host-ops");
-  await withTraefikStackLock(host.id, async () => {
-    const info = await fetchHostInfo(host.id);
-    const current = await currentPanelRoute(info.traefikComposeYaml);
-    if (!enabled && isPanelFallbackHost(current.domain))
-      throw new Error(
-        `${current.domain} is the panel's own address right now. Give the panel a domain first.`,
+  await whilePanelAddressesChange({ fallbackOff: !enabled }, async () => {
+    await withTraefikStackLock(host.id, async () => {
+      const info = await fetchHostInfo(host.id);
+      const current = await currentPanelRoute(info.traefikComposeYaml);
+      if (!enabled && isPanelFallbackHost(current.domain))
+        throw new Error(
+          `${current.domain} is the panel's own address right now. Give the panel a domain first.`,
+        );
+      const next: PanelRoute = {
+        ...current,
+        fallbackDomain: enabled ? panelFallbackHost() : null,
+      };
+      if (next.fallbackDomain === current.fallbackDomain) return;
+      await applyPanelRoute(
+        host.id,
+        info.traefikComposeYaml,
+        next,
+        ROUTE_REFUSED,
       );
-    const next: PanelRoute = {
-      ...current,
-      fallbackDomain: enabled ? panelFallbackHost() : null,
-    };
-    if (next.fallbackDomain === current.fallbackDomain) return;
-    await applyPanelRoute(
-      host.id,
-      info.traefikComposeYaml,
-      next,
-      ROUTE_REFUSED,
-    );
-  });
-
-  const now = nowIso();
-  await getDb()
-    .insert(instanceSettings)
-    .values({
-      id: SETTINGS_ID,
-      panelFallbackDisabled: !enabled,
-      updatedAt: now,
-    })
-    .onConflictDoUpdate({
-      target: instanceSettings.id,
-      set: { panelFallbackDisabled: !enabled, updatedAt: now },
     });
+
+    const now = nowIso();
+    await getDb()
+      .insert(instanceSettings)
+      .values({
+        id: SETTINGS_ID,
+        panelFallbackDisabled: !enabled,
+        updatedAt: now,
+      })
+      .onConflictDoUpdate({
+        target: instanceSettings.id,
+        set: { panelFallbackDisabled: !enabled, updatedAt: now },
+      });
+  });
 
   await recordActivity(
     "instance",

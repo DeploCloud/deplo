@@ -21,8 +21,13 @@ services:
       - DEPLO_SETUP_KEY=${DEPLO_SETUP_KEY:-}
       - DEPLO_PUBLIC_URL=https://${DEPLO_DOMAIN:?set DEPLO_DOMAIN}
       - DEPLO_DATABASE_URL=postgres://deplo:${DEPLO_DB_PASSWORD:?set DEPLO_DB_PASSWORD}@postgres:5432/deplo
-    # NOT published on the host: the panel answers over HTTPS through Traefik and
-    # nowhere else. An open port here is a login page with no TLS in front of it.
+      # The host port below, which this machine's own server agent links to.
+      - DEPLO_LINK_PORT=${DEPLO_LINK_PORT:-3101}
+    # Only the agent link, on loopback: this machine's own agent never goes out and back in.
+    ports:
+      - "127.0.0.1:${DEPLO_LINK_PORT:-3101}:3001"
+    # The panel is NOT published on the host: it answers over HTTPS through Traefik
+    # and nowhere else. An open port here is a login page with no TLS in front of it.
     # NO docker.sock, the same rule install.sh states: the panel is the one
     # container here reachable from the internet, and that mount is root on the
     # box for whoever reaches it. Nothing needs it any more - the last live line
@@ -46,7 +51,15 @@ services:
       # for a real host exceeds a short PathPrefix router's length and would
       # otherwise SHADOW that path. priority=1 (0 is treated as "unset").
       - "traefik.http.routers.deplo.priority=1"
+      - "traefik.http.routers.deplo.service=deplo"
       - "traefik.http.services.deplo.loadbalancer.server.port=3000"
+      # Servers link in on the same host (ADR-0040), never on a bare path.
+      - "traefik.http.routers.deplo-link.rule=Host(`${DEPLO_DOMAIN}`) && Path(`/api/agent/link`)"
+      - "traefik.http.routers.deplo-link.entrypoints=websecure"
+      - "traefik.http.routers.deplo-link.tls.certresolver=letsencrypt"
+      - "traefik.http.routers.deplo-link.priority=3"
+      - "traefik.http.routers.deplo-link.service=deplo-link"
+      - "traefik.http.services.deplo-link.loadbalancer.server.port=3001"
 
   postgres:
     image: postgres:16-alpine

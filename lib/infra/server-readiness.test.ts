@@ -2,7 +2,11 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { status as GrpcStatus } from "@grpc/grpc-js";
 
-import { AgentUnreachableError } from "./agent-client/errors";
+import {
+  AgentOfflineError,
+  AgentUnreachableError,
+} from "./agent-client/errors";
+import { LINK_OFFLINE_MESSAGE } from "../agent-reachability";
 import { BUILD_METHODS } from "./server-readiness/agent-checks";
 import { classifyServerReadiness } from "./server-readiness/classify";
 import {
@@ -51,6 +55,7 @@ function hello(over: Partial<HelloResponse> = {}): HelloResponse {
     traefikRunning: true,
     hostArch: "amd64",
     publicAddresses: [],
+    listening: false,
     ...over,
   };
 }
@@ -189,13 +194,44 @@ test("an unreachable agent produces ONE failed row, not a wall of grey skips", (
   assert.equal(r.verdict, "not_ready");
   assert.equal(countOf(r, "fail"), 1);
   assert.equal(byId(r, "agent.hello").severity, "fail");
-  assert.equal(byId(r, "agent.hello").detail, READINESS_MESSAGES.refused);
+  assert.equal(byId(r, "agent.hello").detail, READINESS_MESSAGES.offline);
   for (const g of ["docker", "routing", "capacity", "build"]) {
     assert.equal(
       r.checks.some((c) => c.group === g),
       false,
       `fabricated a ${g} row for an agent that never answered`,
     );
+  }
+});
+
+test("an agent that does not answer is a machine to check, never a port to open", () => {
+  for (const helloError of [
+    new AgentUnreachableError("no connection", GrpcStatus.UNAVAILABLE),
+    new AgentUnreachableError("deadline", GrpcStatus.DEADLINE_EXCEEDED),
+  ]) {
+    const row = byId(
+      classifyServerReadiness(probe({ hello: null, helloError })),
+      "agent.hello",
+    );
+    assert.match(row.hint ?? "", /on and connected to the internet/);
+    assert.doesNotMatch(
+      `${row.detail} ${row.hint}`,
+      /\bport\b|9443|firewall|inbound|outbound/i,
+    );
+  }
+});
+
+test("an offline server's handshake says it is offline and what to check, nothing more", () => {
+  for (const helloError of [
+    new AgentOfflineError("srv_1"),
+    new AgentUnreachableError("no connection", GrpcStatus.UNAVAILABLE),
+  ]) {
+    const row = byId(
+      classifyServerReadiness(probe({ hello: null, helloError })),
+      "agent.hello",
+    );
+    assert.equal(row.detail, "This server is offline.");
+    assert.equal(row.hint, LINK_OFFLINE_MESSAGE);
   }
 });
 

@@ -16,14 +16,24 @@ import { deployments as deploymentsTable } from "../db/schema/control-plane/depl
 import { servers as serversTable } from "../db/schema/control-plane/servers";
 import { openAgent } from "../infra/agent-client/connect";
 import { HEALTH_HELLO_TIMEOUT_MS } from "../infra/agent-client/deadlines";
+import { AgentUnreachableError } from "../infra/agent-client/errors";
+import { LINK_WAIT_MS } from "../infra/agent-link/protocol";
+import {
+  currentLink,
+  hasLinked,
+  linkMayCome,
+  onAgentLink,
+} from "../infra/agent-link/registry";
 import {
   classifyServerHealth,
+  HEALTH_MESSAGES,
   isRetryableProbeFailure,
   type ServerHealth,
 } from "../infra/server-health";
 import { requireInstanceAdmin } from "../membership";
 import { dispatchServerAlert } from "../notify/dispatch";
 import { nowIso } from "../ids";
+import { instanceFrozen } from "./deplo-move/freeze";
 import { markServerSeen, observedTraefik } from "./servers/agent-handshake";
 import { getServerById, listAllServers } from "./servers/roster";
 import type { HelloResponse } from "../agent/gen/agent";
@@ -183,6 +193,9 @@ async function probeServer(
     }
   };
 
+  const link = linkState(server.id);
+  if (link) return probeOverLink(server, link, dialHello, observedAt);
+
   let hello: HelloResponse | null = null;
   let error: unknown = null;
   try {
@@ -206,6 +219,8 @@ async function probeServer(
       error = e;
     }
   }
+  // Right after the panel starts, a server that closed its port once it linked is still relinking.
+  if (error && linkMayCome(server.id, error)) return null;
 
   const health = classifyServerHealth(hello, error, {
     storageOnly: server.storageOnly,
@@ -224,6 +239,38 @@ async function probeServer(
     return null;
   }
 
+  await recordServerHealth(server.id, health, observedAt);
+  if (hello)
+    await markServerSeen(server.id, hello.agentVersion, observedTraefik(hello));
+  return getServerById(server.id);
+}
+
+// A server that links is never dialed: a missing link is offline, Hello over it says the rest (ADR-0040).
+async function probeOverLink(
+  server: Server,
+  link: LinkState,
+  askHello: () => Promise<HelloResponse>,
+  observedAt: string,
+): Promise<Server | null> {
+  // Inside the grace the link may be on its way back; if not, its timer writes offline.
+  if (link === "waiting") return null;
+  let hello: HelloResponse | null = null;
+  let health = LINK_OFFLINE;
+  if (link === "linked") {
+    try {
+      hello = await withDeadline(askHello(), PROBE_DEADLINE_MS);
+      health = classifyServerHealth(hello, null, {
+        storageOnly: server.storageOnly,
+      });
+    } catch (e) {
+      // Only a missing link means offline: a Hello lost on a live one settles nothing.
+      if (e instanceof ProbeTimeout || e instanceof AgentUnreachableError)
+        return null;
+      console.error(`[deplo] health probe for ${server.name}: ${String(e)}`);
+      health = classifyServerHealth(null, e);
+    }
+  }
+  // No deploy guard: a build streams over the link, so none is running while it is gone.
   await recordServerHealth(server.id, health, observedAt);
   if (hello)
     await markServerSeen(server.id, hello.agentVersion, observedTraefik(hello));
@@ -271,4 +318,86 @@ export async function checkAllServerHealth(
       isProbeable(s) ? probeCoalesced(s, opts.force ?? false) : s,
     ),
   );
+}
+
+const LINK_OFFLINE: ServerHealth = {
+  status: "offline",
+  message: HEALTH_MESSAGES.offline,
+};
+
+interface LinkWatch {
+  off: (() => void) | null;
+  graceMs: number;
+  gone: Map<string, { since: number; timer: ReturnType<typeof setTimeout> }>;
+}
+
+// On globalThis like the registry it listens to: one subscription per process.
+const WATCH_KEY = Symbol.for("deplo.server-health.link-watch");
+const slot = globalThis as unknown as { [WATCH_KEY]?: LinkWatch };
+const watch: LinkWatch = (slot[WATCH_KEY] ??= {
+  off: null,
+  graceMs: LINK_WAIT_MS,
+  gone: new Map(),
+});
+
+/** A linked server's status follows its agent link (ADR-0040). Start it before the link door opens. */
+export function startServerLinkStatus(opts: { graceMs?: number } = {}): void {
+  if (watch.off) return;
+  watch.graceMs = opts.graceMs ?? LINK_WAIT_MS;
+  watch.off = onAgentLink((e) => {
+    if (e.type === "down") return linkWentAway(e.serverId);
+    void linkCameBack(e.serverId, e.hello);
+  });
+}
+
+export function stopServerLinkStatus(): void {
+  watch.off?.();
+  watch.off = null;
+  for (const { timer } of watch.gone.values()) clearTimeout(timer);
+  watch.gone.clear();
+}
+
+type LinkState = "linked" | "waiting" | "offline";
+
+/** How a server that links stands, read without a dial; null for one that never linked. */
+function linkState(serverId: string): LinkState | null {
+  if (!hasLinked(serverId)) return null;
+  if (currentLink(serverId)) return "linked";
+  const gone = watch.gone.get(serverId);
+  return gone && Date.now() - gone.since >= watch.graceMs
+    ? "offline"
+    : "waiting";
+}
+
+function linkWentAway(serverId: string): void {
+  const timer = setTimeout(() => void linkStayedAway(serverId), watch.graceMs);
+  timer.unref();
+  watch.gone.set(serverId, { since: Date.now(), timer });
+}
+
+// Status writes are background work: none while a Deplo move has the instance frozen.
+async function linkStayedAway(serverId: string): Promise<void> {
+  const observedAt = nowIso();
+  if (!hasLinked(serverId) || currentLink(serverId)) return;
+  if (await instanceFrozen()) return;
+  await recordServerHealth(serverId, LINK_OFFLINE, observedAt);
+}
+
+// The door's verifying Hello is the live Hello the probe would ask for.
+async function linkCameBack(
+  serverId: string,
+  hello: HelloResponse,
+): Promise<void> {
+  clearTimeout(watch.gone.get(serverId)?.timer);
+  watch.gone.delete(serverId);
+  const observedAt = nowIso();
+  if (await instanceFrozen()) return;
+  const server = await getServerById(serverId).catch(() => null);
+  if (!server) return;
+  await recordServerHealth(
+    serverId,
+    classifyServerHealth(hello, null, { storageOnly: server.storageOnly }),
+    observedAt,
+  );
+  await markServerSeen(serverId, hello.agentVersion, observedTraefik(hello));
 }

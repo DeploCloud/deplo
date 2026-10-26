@@ -625,6 +625,30 @@ export interface HelloResponse {
    * with the "host.addresses" capability: an older agent leaves it empty.
    */
   publicAddresses: string[];
+  /**
+   * The panel addresses this agent links to, as it keeps them. Trusted only with the
+   * "agent-link" capability, and unset on an agent that cannot link.
+   */
+  linkAddresses?:
+    | LinkAddresses
+    | undefined;
+  /**
+   * Whether this agent still listens on a port of its own, which it stops doing once its
+   * agent link works. Trusted only with the "agent-link" capability.
+   */
+  listening: boolean;
+}
+
+/** The panel addresses an agent links to: a primary and, while the panel keeps one, its fallback. */
+export interface LinkAddresses {
+  primary: string;
+  fallback: string;
+}
+
+export interface StopListeningRequest {
+}
+
+export interface StopListeningResponse {
 }
 
 export interface MetricsRequest {
@@ -3041,6 +3065,8 @@ function createBaseHelloResponse(): HelloResponse {
     traefikRunning: false,
     hostArch: "",
     publicAddresses: [],
+    linkAddresses: undefined,
+    listening: false,
   };
 }
 
@@ -3069,6 +3095,12 @@ export const HelloResponse: MessageFns<HelloResponse> = {
     }
     for (const v of message.publicAddresses) {
       writer.uint32(66).string(v!);
+    }
+    if (message.linkAddresses !== undefined) {
+      LinkAddresses.encode(message.linkAddresses, writer.uint32(74).fork()).join();
+    }
+    if (message.listening !== false) {
+      writer.uint32(80).bool(message.listening);
     }
     return writer;
   },
@@ -3150,6 +3182,22 @@ export const HelloResponse: MessageFns<HelloResponse> = {
             message.publicAddresses.push(reader.string());
             continue;
           }
+          case 9: {
+            if (tag !== 74) {
+              break;
+            }
+
+            message.linkAddresses = LinkAddresses.decode(reader, reader.uint32());
+            continue;
+          }
+          case 10: {
+            if (tag !== 80) {
+              break;
+            }
+
+            message.listening = reader.bool();
+            continue;
+          }
         }
         if ((tag & 7) === 4 || tag === 0) {
           break;
@@ -3202,6 +3250,12 @@ export const HelloResponse: MessageFns<HelloResponse> = {
         : globalThis.Array.isArray(object?.public_addresses)
         ? object.public_addresses.map((e: any) => globalThis.String(e))
         : [],
+      linkAddresses: isSet(object.linkAddresses)
+        ? LinkAddresses.fromJSON(object.linkAddresses)
+        : isSet(object.link_addresses)
+        ? LinkAddresses.fromJSON(object.link_addresses)
+        : undefined,
+      listening: isSet(object.listening) ? globalThis.Boolean(object.listening) : false,
     };
   },
 
@@ -3231,6 +3285,12 @@ export const HelloResponse: MessageFns<HelloResponse> = {
     if (message.publicAddresses?.length) {
       obj.publicAddresses = message.publicAddresses;
     }
+    if (message.linkAddresses !== undefined) {
+      obj.linkAddresses = LinkAddresses.toJSON(message.linkAddresses);
+    }
+    if (message.listening !== false) {
+      obj.listening = message.listening;
+    }
     return obj;
   },
 
@@ -3247,6 +3307,199 @@ export const HelloResponse: MessageFns<HelloResponse> = {
     message.traefikRunning = object.traefikRunning ?? false;
     message.hostArch = object.hostArch ?? "";
     message.publicAddresses = object.publicAddresses?.map((e) => e) || [];
+    message.linkAddresses = (object.linkAddresses !== undefined && object.linkAddresses !== null)
+      ? LinkAddresses.fromPartial(object.linkAddresses)
+      : undefined;
+    message.listening = object.listening ?? false;
+    return message;
+  },
+};
+
+function createBaseLinkAddresses(): LinkAddresses {
+  return { primary: "", fallback: "" };
+}
+
+export const LinkAddresses: MessageFns<LinkAddresses> = {
+  encode(message: LinkAddresses, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.primary !== "") {
+      writer.uint32(10).string(message.primary);
+    }
+    if (message.fallback !== "") {
+      writer.uint32(18).string(message.fallback);
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): LinkAddresses {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const previousRecursionDepth = (reader as any).__tsProtoDecodeDepth ?? 0;
+    if (previousRecursionDepth >= 100) {
+      throw new globalThis.Error("protobuf decode recursion limit exceeded");
+    }
+    (reader as any).__tsProtoDecodeDepth = previousRecursionDepth + 1;
+    try {
+      const end = length === undefined ? reader.len : reader.pos + length;
+      const message = createBaseLinkAddresses();
+      while (reader.pos < end) {
+        const tag = reader.uint32();
+        switch (tag >>> 3) {
+          case 1: {
+            if (tag !== 10) {
+              break;
+            }
+
+            message.primary = reader.string();
+            continue;
+          }
+          case 2: {
+            if (tag !== 18) {
+              break;
+            }
+
+            message.fallback = reader.string();
+            continue;
+          }
+        }
+        if ((tag & 7) === 4 || tag === 0) {
+          break;
+        }
+        reader.skip(tag & 7);
+      }
+      return message;
+    } finally {
+      (reader as any).__tsProtoDecodeDepth = previousRecursionDepth;
+    }
+  },
+
+  fromJSON(object: any): LinkAddresses {
+    return {
+      primary: isSet(object.primary) ? globalThis.String(object.primary) : "",
+      fallback: isSet(object.fallback) ? globalThis.String(object.fallback) : "",
+    };
+  },
+
+  toJSON(message: LinkAddresses): unknown {
+    const obj: any = {};
+    if (message.primary !== "") {
+      obj.primary = message.primary;
+    }
+    if (message.fallback !== "") {
+      obj.fallback = message.fallback;
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<LinkAddresses>, I>>(base?: I): LinkAddresses {
+    return LinkAddresses.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<LinkAddresses>, I>>(object: I): LinkAddresses {
+    const message = createBaseLinkAddresses();
+    message.primary = object.primary ?? "";
+    message.fallback = object.fallback ?? "";
+    return message;
+  },
+};
+
+function createBaseStopListeningRequest(): StopListeningRequest {
+  return {};
+}
+
+export const StopListeningRequest: MessageFns<StopListeningRequest> = {
+  encode(_: StopListeningRequest, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): StopListeningRequest {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const previousRecursionDepth = (reader as any).__tsProtoDecodeDepth ?? 0;
+    if (previousRecursionDepth >= 100) {
+      throw new globalThis.Error("protobuf decode recursion limit exceeded");
+    }
+    (reader as any).__tsProtoDecodeDepth = previousRecursionDepth + 1;
+    try {
+      const end = length === undefined ? reader.len : reader.pos + length;
+      const message = createBaseStopListeningRequest();
+      while (reader.pos < end) {
+        const tag = reader.uint32();
+        switch (tag >>> 3) {
+        }
+        if ((tag & 7) === 4 || tag === 0) {
+          break;
+        }
+        reader.skip(tag & 7);
+      }
+      return message;
+    } finally {
+      (reader as any).__tsProtoDecodeDepth = previousRecursionDepth;
+    }
+  },
+
+  fromJSON(_: any): StopListeningRequest {
+    return {};
+  },
+
+  toJSON(_: StopListeningRequest): unknown {
+    const obj: any = {};
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<StopListeningRequest>, I>>(base?: I): StopListeningRequest {
+    return StopListeningRequest.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<StopListeningRequest>, I>>(_: I): StopListeningRequest {
+    const message = createBaseStopListeningRequest();
+    return message;
+  },
+};
+
+function createBaseStopListeningResponse(): StopListeningResponse {
+  return {};
+}
+
+export const StopListeningResponse: MessageFns<StopListeningResponse> = {
+  encode(_: StopListeningResponse, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): StopListeningResponse {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const previousRecursionDepth = (reader as any).__tsProtoDecodeDepth ?? 0;
+    if (previousRecursionDepth >= 100) {
+      throw new globalThis.Error("protobuf decode recursion limit exceeded");
+    }
+    (reader as any).__tsProtoDecodeDepth = previousRecursionDepth + 1;
+    try {
+      const end = length === undefined ? reader.len : reader.pos + length;
+      const message = createBaseStopListeningResponse();
+      while (reader.pos < end) {
+        const tag = reader.uint32();
+        switch (tag >>> 3) {
+        }
+        if ((tag & 7) === 4 || tag === 0) {
+          break;
+        }
+        reader.skip(tag & 7);
+      }
+      return message;
+    } finally {
+      (reader as any).__tsProtoDecodeDepth = previousRecursionDepth;
+    }
+  },
+
+  fromJSON(_: any): StopListeningResponse {
+    return {};
+  },
+
+  toJSON(_: StopListeningResponse): unknown {
+    const obj: any = {};
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<StopListeningResponse>, I>>(base?: I): StopListeningResponse {
+    return StopListeningResponse.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<StopListeningResponse>, I>>(_: I): StopListeningResponse {
+    const message = createBaseStopListeningResponse();
     return message;
   },
 };
@@ -21044,6 +21297,33 @@ export const AgentService = {
     responseDeserialize: (value: Buffer): InventoryImageResponse => InventoryImageResponse.decode(value),
   },
   /**
+   * Replace the panel addresses this agent links to (ADR-0040): it keeps exactly this pair,
+   * an empty fallback dropped, and dials it from its next link on. Advertised as `agent-link`.
+   */
+  setLinkAddresses: {
+    path: "/deplo.agent.v1.Agent/SetLinkAddresses" as const,
+    requestStream: false as const,
+    responseStream: false as const,
+    requestSerialize: (value: LinkAddresses): Buffer => Buffer.from(LinkAddresses.encode(value).finish()),
+    requestDeserialize: (value: Buffer): LinkAddresses => LinkAddresses.decode(value),
+    responseSerialize: (value: LinkAddresses): Buffer => Buffer.from(LinkAddresses.encode(value).finish()),
+    responseDeserialize: (value: Buffer): LinkAddresses => LinkAddresses.decode(value),
+  },
+  /**
+   * Close this agent's own port for good, once its agent link works (ADR-0040). Taken over
+   * the link only, and kept across restarts. Advertised as `agent-link`.
+   */
+  stopListening: {
+    path: "/deplo.agent.v1.Agent/StopListening" as const,
+    requestStream: false as const,
+    responseStream: false as const,
+    requestSerialize: (value: StopListeningRequest): Buffer => Buffer.from(StopListeningRequest.encode(value).finish()),
+    requestDeserialize: (value: Buffer): StopListeningRequest => StopListeningRequest.decode(value),
+    responseSerialize: (value: StopListeningResponse): Buffer =>
+      Buffer.from(StopListeningResponse.encode(value).finish()),
+    responseDeserialize: (value: Buffer): StopListeningResponse => StopListeningResponse.decode(value),
+  },
+  /**
    * Opens a deployment in a throwaway browser that has no network of its own and returns
    * a light and a dark picture of it. Advertised as `screenshot`.
    */
@@ -21358,6 +21638,16 @@ export interface AgentServer extends UntypedServiceImplementation {
    * time and never during a deploy. Advertised as `image-inventory`.
    */
   inventoryImage: handleUnaryCall<InventoryImageRequest, InventoryImageResponse>;
+  /**
+   * Replace the panel addresses this agent links to (ADR-0040): it keeps exactly this pair,
+   * an empty fallback dropped, and dials it from its next link on. Advertised as `agent-link`.
+   */
+  setLinkAddresses: handleUnaryCall<LinkAddresses, LinkAddresses>;
+  /**
+   * Close this agent's own port for good, once its agent link works (ADR-0040). Taken over
+   * the link only, and kept across restarts. Advertised as `agent-link`.
+   */
+  stopListening: handleUnaryCall<StopListeningRequest, StopListeningResponse>;
   /**
    * Opens a deployment in a throwaway browser that has no network of its own and returns
    * a light and a dark picture of it. Advertised as `screenshot`.
@@ -22467,6 +22757,44 @@ export interface AgentClient extends Client {
     metadata: Metadata,
     options: Partial<CallOptions>,
     callback: (error: ServiceError | null, response: InventoryImageResponse) => void,
+  ): ClientUnaryCall;
+  /**
+   * Replace the panel addresses this agent links to (ADR-0040): it keeps exactly this pair,
+   * an empty fallback dropped, and dials it from its next link on. Advertised as `agent-link`.
+   */
+  setLinkAddresses(
+    request: LinkAddresses,
+    callback: (error: ServiceError | null, response: LinkAddresses) => void,
+  ): ClientUnaryCall;
+  setLinkAddresses(
+    request: LinkAddresses,
+    metadata: Metadata,
+    callback: (error: ServiceError | null, response: LinkAddresses) => void,
+  ): ClientUnaryCall;
+  setLinkAddresses(
+    request: LinkAddresses,
+    metadata: Metadata,
+    options: Partial<CallOptions>,
+    callback: (error: ServiceError | null, response: LinkAddresses) => void,
+  ): ClientUnaryCall;
+  /**
+   * Close this agent's own port for good, once its agent link works (ADR-0040). Taken over
+   * the link only, and kept across restarts. Advertised as `agent-link`.
+   */
+  stopListening(
+    request: StopListeningRequest,
+    callback: (error: ServiceError | null, response: StopListeningResponse) => void,
+  ): ClientUnaryCall;
+  stopListening(
+    request: StopListeningRequest,
+    metadata: Metadata,
+    callback: (error: ServiceError | null, response: StopListeningResponse) => void,
+  ): ClientUnaryCall;
+  stopListening(
+    request: StopListeningRequest,
+    metadata: Metadata,
+    options: Partial<CallOptions>,
+    callback: (error: ServiceError | null, response: StopListeningResponse) => void,
   ): ClientUnaryCall;
   /**
    * Opens a deployment in a throwaway browser that has no network of its own and returns

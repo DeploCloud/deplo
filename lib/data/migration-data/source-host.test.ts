@@ -129,6 +129,11 @@ test("a source that is enrolled but will not answer US stops nothing and copies 
   const items = await db.select().from(itemsTable);
   const failure = items.find((i) => i.outcome === "failed");
   assert.match(failure?.message ?? "", /cannot reach the agent/);
+  assert.match(failure?.message ?? "", /on and connected to the internet/);
+  assert.doesNotMatch(
+    failure?.message ?? "",
+    /9443|firewall|inbound|outbound/i,
+  );
 });
 
 test("a source that dies MID-COPY says so, so the caller can stop the whole run", async () => {

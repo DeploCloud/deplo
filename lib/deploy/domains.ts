@@ -66,12 +66,25 @@ function allNicIpv6(): string[] {
   return addrs;
 }
 
-export function sameMachineHost(): string {
+let containerForTest: boolean | undefined;
+
+/** Whether this process runs in a container, where 127.0.0.1 is its own and not the host's. */
+export function runsInContainer(): boolean {
+  if (containerForTest !== undefined) return containerForTest;
   try {
     readFileSync("/.dockerenv");
+    return true;
   } catch {
-    return "127.0.0.1";
+    return false;
   }
+}
+
+export function __setRunsInContainerForTest(inside?: boolean): void {
+  containerForTest = inside;
+}
+
+export function sameMachineHost(): string {
+  if (!runsInContainer()) return "127.0.0.1";
   try {
     const lines = readFileSync("/proc/net/route", "utf8").split("\n").slice(1);
     for (const line of lines) {
@@ -154,22 +167,32 @@ export function instanceAddresses(): { v4: string | null; v6: string | null } {
 }
 
 export function deploHostSelfAddresses(): Set<string> {
-  const now = Date.now();
-  const key = `${process.env.DEPLO_SERVER_IP}|${process.env.DEPLO_SERVER_IPV4}|${process.env.DEPLO_SERVER_IPV6}|${process.env.DEPLO_PUBLIC_URL}|${publicBaseUrl()}`;
-  if (
-    !selfAddresses ||
-    selfAddresses.key !== key ||
-    now - selfAddresses.at > SELF_ADDRESSES_TTL_MS
-  )
-    selfAddresses = { at: now, key, value: computeSelfAddresses() };
-  return selfAddresses.value;
+  return cachedSelf(true);
+}
+
+/** Only what the Deplo host's machine is, never a name the panel answers on: a domain can move away. */
+export function deploHostMachineAddresses(): Set<string> {
+  return cachedSelf(false);
 }
 
 const SELF_ADDRESSES_TTL_MS = 30_000;
-let selfAddresses: { at: number; key: string; value: Set<string> } | null =
-  null;
+const selfAddresses = new Map<
+  boolean,
+  { at: number; key: string; value: Set<string> }
+>();
 
-function computeSelfAddresses(): Set<string> {
+function cachedSelf(withNames: boolean): Set<string> {
+  const now = Date.now();
+  const key = `${process.env.DEPLO_SERVER_IP}|${process.env.DEPLO_SERVER_IPV4}|${process.env.DEPLO_SERVER_IPV6}|${process.env.DEPLO_PUBLIC_URL}|${publicBaseUrl()}`;
+  const hit = selfAddresses.get(withNames);
+  if (hit && hit.key === key && now - hit.at <= SELF_ADDRESSES_TTL_MS)
+    return hit.value;
+  const value = computeSelfAddresses(withNames);
+  selfAddresses.set(withNames, { at: now, key, value });
+  return value;
+}
+
+function computeSelfAddresses(withNames: boolean): Set<string> {
   const addrs = new Set<string>();
   const add = (v?: string | null) => {
     const s = canonicalHost(v);
@@ -178,7 +201,10 @@ function computeSelfAddresses(): Set<string> {
   add(process.env.DEPLO_SERVER_IP);
   add(process.env.DEPLO_SERVER_IPV4);
   add(process.env.DEPLO_SERVER_IPV6);
-  for (const pub of [process.env.DEPLO_PUBLIC_URL?.trim(), publicBaseUrl()]) {
+  const names = withNames
+    ? [process.env.DEPLO_PUBLIC_URL?.trim(), publicBaseUrl()]
+    : [];
+  for (const pub of names) {
     if (!pub) continue;
     try {
       add(new URL(pub).hostname);

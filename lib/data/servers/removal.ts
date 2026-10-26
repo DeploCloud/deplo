@@ -13,6 +13,7 @@ import { instancePublicBaseUrl } from "../instance-settings/settings-store";
 import { recordActivity } from "../activity";
 import { pendingTeardownsForServer } from "../teardown-queue";
 import { controlPlaneCert, uninstallCommand } from "../../agent/bootstrap";
+import { dropAgentChannel } from "../../infra/agent-client/channel-pool";
 import { getServerById, serverRole } from "./roster";
 
 export interface ServerRemoval {
@@ -127,6 +128,7 @@ async function removeServerRow(
         `${e instanceof Error ? e.message : String(e)}`,
     );
   }
+  dropAgentChannel(id);
   await recordActivity(
     "server",
     `Removed server ${server.name}`,

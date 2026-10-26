@@ -61,6 +61,7 @@ export type ServerSummary = {
   name: string;
   ip: string;
   host: string;
+  /** Null when Deplo dials no port: its agent links in (ADR-0040), so its address is only for its apps. */
   agentPort: number | null;
   status: string;
   cpuCores: number;

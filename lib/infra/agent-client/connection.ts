@@ -31,6 +31,7 @@ import type {
   RestartControlPlaneResponse,
   UpdateControlPlaneRequest,
   UpdateControlPlaneResponse,
+  LinkAddresses,
 } from "../../agent/gen/agent";
 export type {
   HostInfoResponse,
@@ -221,6 +222,10 @@ export interface AgentConnection {
     binaries: Record<string, { url: string; sha256: string }>,
   ): Promise<{ version: string; restarting: boolean }>;
   selfUninstall(deadlineMs?: number): Promise<string[]>;
+  /** Replaces the panel addresses the agent links to; it answers with the pair it kept. */
+  setLinkAddresses(pair: LinkAddresses): Promise<LinkAddresses>;
+  /** Closes the agent's own port for good; it takes this over its agent link only (ADR-0040). */
+  stopListening(): Promise<void>;
   dockerCleanup(req: DockerCleanupRequest): Promise<DockerCleanupResponse>;
   // Needs `image-inventory` (ADR-0038).
   listWorkloadImages(): Promise<ListWorkloadImagesResponse>;

@@ -83,7 +83,7 @@ export async function assertMigrationMachinesReady(
   }
   if (notReady.length > 0)
     throw new Error(
-      `Nothing was started: ${notReady.join(", ")}. Deplo reads a service's data off the machine it runs on, so every machine has to answer first - and answering means Deplo dialing its agent on TCP 9443, INBOUND. Installing the agent is the other direction and works behind any firewall, so open that port on any of them that has one. The wizard's Connect step lists them and re-checks each one.`,
+      `Nothing was started: ${notReady.join(", ")}. Deplo reads a service's data off the machine it runs on, so every machine has to answer first. Check that each one is on and connected to the internet, then open the wizard's Connect step: it lists them and checks each one again.`,
     );
 }
 

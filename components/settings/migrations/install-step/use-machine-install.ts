@@ -366,7 +366,7 @@ export function useMachineInstall({
         return;
       }
       if (!pending[sourceId])
-        toast.success(`${p.name} now answers at ${address}.`);
+        toast.success(`${p.name}'s address is now ${address}.`);
       if (res.data) toast.warning(res.data);
       setEditing((prev) => {
         const next = { ...prev };

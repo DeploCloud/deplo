@@ -2,6 +2,8 @@ import "server-only";
 
 import { markServerSeen } from "../../data/servers/agent-handshake";
 import { getServerById } from "../../data/servers/roster";
+import { LINK_WAIT_MS } from "../agent-link/protocol";
+import { linkMayCome, waitForLink } from "../agent-link/registry";
 import { agentSelfRpc } from "./agent-self-rpc";
 import { backupRpc } from "./backup-rpc";
 import { captureRpc } from "./capture-rpc";
@@ -15,16 +17,22 @@ import { filesRpc } from "./files-rpc";
 import { hostRpc } from "./host-rpc";
 import { inventoryRpc } from "./inventory-rpc";
 import { metricsRpc } from "./metrics-rpc";
+import { leaseChannel } from "./channel-pool";
 import {
   openChannel,
   remoteTarget,
-  resolveTarget,
+  resolveAddress,
+  type AgentChannel,
   type DialTarget,
 } from "./mtls-channel";
 import { stackRpc } from "./stack-rpc";
 
+/** A connection on a channel of its own, closed with it: an override address only. */
 export function dial(target: DialTarget): AgentConnection {
-  const channel = openChannel(target);
+  return connectionOn(openChannel(target));
+}
+
+function connectionOn(channel: AgentChannel): AgentConnection {
   return {
     hello(timeoutMs = HELLO_TIMEOUT_MS) {
       return channel.hello(timeoutMs);
@@ -41,30 +49,57 @@ export function dial(target: DialTarget): AgentConnection {
     ...cronRpc(channel),
     ...filesRpc(channel),
     close() {
-      channel.client.close();
+      channel.close();
     },
   };
 }
 
-let connector: ((serverId: string) => Promise<AgentConnection>) | null = null;
+let connector: ((serverId: string) => Promise<AgentConnection | null>) | null =
+  null;
 
+/** Stands in for every agent; a server it answers null for is reached for real. */
 export function __setAgentConnectorForTest(
-  fn?: (serverId: string) => Promise<AgentConnection>,
+  fn?: (serverId: string) => Promise<AgentConnection | null>,
 ): void {
   connector = fn ?? null;
 }
 
 // The sole entry to a host (ADR-0006): an unreachable agent throws, there is no in-process fallback.
 export async function connectAgent(serverId: string): Promise<AgentConnection> {
-  if (connector) return connector(serverId);
-  const target = await resolveTarget(serverId);
-  return gateConnection(dial(target), target.agentVersion, serverId);
+  const stub = await connector?.(serverId);
+  if (stub) return stub;
+  const address = await resolveAddress(serverId);
+  const started = Date.now();
+  const gate = (channel: AgentChannel) =>
+    gateConnection(connectionOn(channel), address.agentVersion, serverId);
+  const { channel, answeredBefore, linked } = await leaseChannel(
+    serverId,
+    address,
+  );
+  try {
+    return await gate(channel);
+  } catch (e) {
+    if (!(e instanceof AgentUnreachableError)) throw e;
+    // A shared connection can die where a fresh dial would not; the failed Hello retired it.
+    if (answeredBefore)
+      return gate((await leaseChannel(serverId, address)).channel);
+    // The panel just started: an agent that stopped listening once it linked is still on its way back.
+    if (linked || !linkMayCome(serverId, e)) throw e;
+    const link = await waitForLink(
+      serverId,
+      LINK_WAIT_MS - (Date.now() - started),
+    );
+    if (!link) throw e;
+  }
+  return gate((await leaseChannel(serverId, address)).channel);
 }
 
 /** Past the minimum-agent gate: Hello, SelfUpdate, the health probe and a Deplo update only (ADR-0037). */
 export async function openAgent(serverId: string): Promise<AgentConnection> {
-  if (connector) return connector(serverId);
-  return dial(await resolveTarget(serverId));
+  const stub = await connector?.(serverId);
+  if (stub) return stub;
+  const address = await resolveAddress(serverId);
+  return connectionOn((await leaseChannel(serverId, address)).channel);
 }
 
 // Every call is judged on a live Hello; the caller's first hello() reuses it rather than paying twice.

@@ -40,6 +40,7 @@ import {
 } from "@/components/logs/timeline-menu";
 import type { AppRuntimeView } from "@/components/apps/use-app-runtime";
 import type { ConsoleInstance } from "@/lib/data/console";
+import { LINK_OFFLINE_MESSAGE } from "@/lib/agent-reachability";
 import { stripAnsi } from "@/lib/ansi";
 import { mergeLogBurst } from "@/lib/logs/merge";
 import { splitTimestamp } from "@/lib/logs/window";
@@ -56,7 +57,7 @@ import { cn } from "@/lib/utils";
 type Status = "connecting" | "live" | "reattaching" | "ended" | "error";
 
 const FAILURE_TEXT: Record<string, string> = {
-  unreachable: "The server agent is unreachable - the host may be down.",
+  unreachable: `This server is offline. ${LINK_OFFLINE_MESSAGE}`,
   "not-found": "That container no longer exists on the host.",
   denied: "That container does not belong to this app.",
   forbidden: "You no longer have access to these logs.",

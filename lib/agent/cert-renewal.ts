@@ -7,6 +7,7 @@ import { eq, isNotNull } from "drizzle-orm";
 import { getDb } from "../db/client";
 import { servers as serversTable } from "../db/schema/control-plane/servers";
 import { connectAgent, connectAgentAt } from "../infra/agent-client/connect";
+import { dropAgentChannel } from "../infra/agent-client/channel-pool";
 import { dispatchServerAlert } from "../notify/dispatch";
 import { signAgentCsr } from "./pki";
 import { instanceFrozen } from "../data/deplo-move/freeze";
@@ -69,6 +70,7 @@ export async function renewAgentCertIfDue(
         agentCertFingerprint: signed.fingerprint,
       })
       .where(eq(serversTable.id, serverId));
+    dropAgentChannel(serverId);
     return {
       renewed: true,
       reason: `renewed until ${notAfterOf(signed.certPem)}`,
@@ -107,6 +109,7 @@ export async function renewAgentCert(
         agentCertFingerprint: signed.fingerprint,
       })
       .where(eq(serversTable.id, serverId));
+    dropAgentChannel(serverId);
   } finally {
     conn.close();
   }
