@@ -103,6 +103,9 @@ export default async function NewAppPage(props: PageProps<"/[team]/new">) {
   const templateId = one(params.template);
   const variantId = one(params.variant);
   const repoParam = one(params.repo);
+  const branchParam = one(params.branch);
+  const installationParam = one(params.installation);
+  const connectionParam = one(params.connection);
   const sourceParam = one(params.source);
   const composeParam = one(params.compose);
   const presetSource = SOURCES.find((s) => s === sourceParam) ?? null;
@@ -253,6 +256,9 @@ export default async function NewAppPage(props: PageProps<"/[team]/new">) {
               : undefined
         }
         presetRepo={repoParam}
+        presetBranch={branchParam}
+        presetInstallationId={installationParam}
+        presetConnectionId={connectionParam}
         presetName={template?.slug ?? imported?.name}
         presetSource={presetSource}
         placement={placement}

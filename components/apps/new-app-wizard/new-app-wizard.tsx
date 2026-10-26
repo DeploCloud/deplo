@@ -86,6 +86,9 @@ export function NewAppWizard({
   sharedVars,
   template,
   presetRepo,
+  presetBranch,
+  presetInstallationId,
+  presetConnectionId,
   presetName,
   presetSource,
   installations,
@@ -100,6 +103,9 @@ export function NewAppWizard({
   sharedVars: LinkableSharedVar[];
   template?: WizardTemplate;
   presetRepo?: string;
+  presetBranch?: string;
+  presetInstallationId?: string;
+  presetConnectionId?: string;
   presetName?: string;
   presetSource?: DeploySource | null;
   installations: GithubInstallationDTO[];
@@ -116,28 +122,52 @@ export function NewAppWizard({
   const [dropped] = React.useState(peekPendingArchive);
   React.useEffect(() => clearPendingArchive(), []);
 
+  const presetGithub =
+    presetRepo && installations.some((i) => i.id === presetInstallationId)
+      ? presetInstallationId
+      : null;
+  const presetConnection =
+    (presetRepo && connections.find((c) => c.id === presetConnectionId)) ||
+    null;
   const [source, setSource] = React.useState<DeploySource | null>(
     isTemplate
       ? "docker-image"
       : dropped
         ? "upload"
-        : (presetSource ?? (presetRepo ? "git" : null)),
+        : (presetSource ??
+          (presetGithub ? "github" : presetRepo ? "git" : null)),
   );
   const firstStep: Step =
     isTemplate || presetSource || presetRepo || dropped ? "details" : "source";
   const url = useUrlStep<Step>(firstStep);
   const { step, direction, leaving, go } = useStepSwap(firstStep, url);
 
-  const [ghSelection, setGhSelection] = React.useState<GithubSelection | null>(
-    null,
+  const ghPreset: GithubSelection | null =
+    presetGithub && presetRepo
+      ? {
+          installationId: presetGithub,
+          fullName: presetRepo,
+          branch: presetBranch || "main",
+        }
+      : null;
+  const [ghSelection, setGhSelection] = React.useState(ghPreset);
+  const [gitValue, setGitValue] = React.useState<GitSourceValue>(
+    presetConnection && presetRepo
+      ? {
+          provider: presetConnection.provider,
+          url: `${presetConnection.baseUrl.replace(/\/+$/, "")}/${presetRepo}`,
+          repo: presetRepo,
+          branch: presetBranch || "main",
+          connectionId: presetConnection.id,
+        }
+      : {
+          provider: presetRepo ? "github" : "git",
+          url: presetRepo ? `https://github.com/${presetRepo}` : "",
+          repo: presetRepo ?? "",
+          branch: presetBranch || "main",
+          connectionId: null,
+        },
   );
-  const [gitValue, setGitValue] = React.useState<GitSourceValue>({
-    provider: presetRepo ? "github" : "git",
-    url: presetRepo ? `https://github.com/${presetRepo}` : "",
-    repo: presetRepo ?? "",
-    branch: "main",
-    connectionId: null,
-  });
   const [dockerImage, setDockerImage] = React.useState("");
   const [uploadFile, setUploadFile] = React.useState<File | null>(dropped);
   const [compose, setCompose] = React.useState(template?.compose ?? "");
@@ -418,6 +448,7 @@ export function NewAppWizard({
                 isTemplate={isTemplate}
                 installations={installations}
                 setSource={setSource}
+                ghPreset={ghPreset}
                 setGhSelection={setGhSelection}
                 suggestName={suggestName}
                 connections={connections}

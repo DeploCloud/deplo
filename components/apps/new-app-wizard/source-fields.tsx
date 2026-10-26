@@ -23,6 +23,7 @@ export function SourceFields({
   isTemplate,
   installations,
   setSource,
+  ghPreset,
   setGhSelection,
   suggestName,
   connections,
@@ -40,6 +41,7 @@ export function SourceFields({
   isTemplate: boolean;
   installations: GithubInstallationDTO[];
   setSource: (next: DeploySource) => void;
+  ghPreset: GithubSelection | null;
   setGhSelection: (sel: GithubSelection | null) => void;
   suggestName: (suggested: string) => void;
   connections: GitConnectionDTO[];
@@ -58,6 +60,7 @@ export function SourceFields({
       {source === "github" && (
         <GithubRepoPicker
           installations={installations}
+          initial={ghPreset ?? undefined}
           onUsePublicUrl={() => setSource("git")}
           onChange={(sel) => {
             setGhSelection(sel);
@@ -72,6 +75,7 @@ export function SourceFields({
           providers={providers}
           isInstanceAdmin={isInstanceAdmin}
           initial={{
+            connectionId: gitValue.connectionId,
             url: gitValue.url,
             repo: gitValue.repo,
             branch: gitValue.branch,
