@@ -155,7 +155,7 @@ function UpdateRow({
     "inline-flex max-w-full items-center gap-1 font-mono text-xs underline-offset-2 hover:underline";
 
   return (
-    <li className="flex items-start gap-3 px-3 py-2.5">
+    <li className="flex flex-wrap items-start gap-x-3 gap-y-1.5 px-3 py-2.5">
       <SecurityLevelBadge level={g.level} />
       <div className="min-w-0 flex-1 text-sm">
         <p className="flex min-w-0 items-center gap-1">
@@ -217,7 +217,7 @@ function UpdateRow({
           </Collapse>
         )}
       </div>
-      <div className="flex shrink-0 flex-col items-end gap-1 sm:flex-row sm:items-center">
+      <div className="flex w-full shrink-0 justify-end gap-1 sm:w-auto sm:flex-col sm:items-end">
         {action}
       </div>
     </li>
