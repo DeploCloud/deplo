@@ -241,7 +241,21 @@ async function failAttempt(
     failure,
     error,
   );
-  if (firstFailure) {
+  // Too old to link, it never reaches this Deplo (ADR-0040): only a reinstall brings it back.
+  if (firstFailure && !agentLinks(reportedAgentVersion(server))) {
+    await recordActivity(
+      "server",
+      `${server.name} is unusable until its agent is reinstalled: it is too old to connect to this Deplo`,
+      "Deplo",
+    );
+    dispatchServerAlert(server.id, {
+      key: "agent_incompatible",
+      title: `${server.name} is unusable until its agent is reinstalled`,
+      body: "Its agent is too old to connect to this version of Deplo. Reissue its install command and run it on the server.",
+      dedupe: { id: `agent:${server.id}`, state: AGENT_VERSION },
+      path: `/settings/servers/${server.id}`,
+    });
+  } else if (firstFailure) {
     await recordActivity(
       "server",
       `Could not update the agent on ${server.name}: ${error} Deplo retries on its own.`,
@@ -262,7 +276,11 @@ async function failAttempt(
       });
     }
   }
-  if (gaveUp && row.nextRetryAt !== null)
+  if (
+    gaveUp &&
+    row.nextRetryAt !== null &&
+    agentLinks(reportedAgentVersion(server))
+  )
     await recordActivity(
       "server",
       `Stopped retrying the agent update on ${server.name} after 24 hours. An instance admin can retry it.`,
@@ -333,10 +351,7 @@ export function runAgentRollout(): Promise<void> {
 
 async function rolloutPass(): Promise<void> {
   if (await instanceFrozen()) return;
-  // One too old to link never reaches this panel, so no attempt could (ADR-0040).
-  const behind = behindServers(await listAllServers()).filter((s) =>
-    agentLinks(reportedAgentVersion(s)),
-  );
+  const behind = behindServers(await listAllServers());
   const actor = await rolloutActor();
   if (behind.length === 0) {
     if (actor) await writeRolloutState({ agentRolloutBy: null });

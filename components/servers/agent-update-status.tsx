@@ -101,7 +101,7 @@ export function AgentUpdateStatus({
       ) : (
         line
       )}
-      {current?.failed && (
+      {current?.failed && links && (
         <Button
           variant="outline"
           size="sm"
