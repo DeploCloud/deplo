@@ -112,7 +112,6 @@ async function enrolled(): Promise<FakeAgent> {
     ip: "127.0.0.1",
     host: "127.0.0.1",
     agent: {
-      port: agent.port,
       certFingerprint: agent.fingerprint,
       certPem: agent.certPem,
       version: AGENT_VERSION,
@@ -174,7 +173,6 @@ test("an agent below the minimum that never linked is never dialed, not even to 
     ip: "127.0.0.1",
     host: "127.0.0.1",
     agent: {
-      port: agent.port,
       certFingerprint: agent.fingerprint,
       certPem: agent.certPem,
       version: "0.4.0",

@@ -74,7 +74,6 @@ export function serverToRow(s: Server): ServerInsert {
     uninstallError: s.uninstallError,
     hostArch: s.hostArch,
     deployConcurrency: s.deployConcurrency,
-    agentPort: s.agent?.port ?? null,
     agentCertFingerprint: s.agent?.certFingerprint ?? null,
     agentCertPem: s.agent?.certPem ?? null,
     agentVersion: s.agent?.version ?? null,
@@ -117,10 +116,9 @@ export function assembleServer(row: ServerRow): Server {
     deployConcurrency: row.deployConcurrency ?? 1,
     createdAt: row.createdAt,
   };
-  if (row.agentPort !== null) {
+  if (row.agentCertFingerprint !== null) {
     server.agent = {
-      port: row.agentPort,
-      certFingerprint: row.agentCertFingerprint ?? "",
+      certFingerprint: row.agentCertFingerprint,
       certPem: row.agentCertPem ?? "",
       version: row.agentVersion ?? "",
     };

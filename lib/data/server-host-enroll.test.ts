@@ -91,7 +91,6 @@ test("leaves a host that already has an agent alone", async () => {
     host: HOST_IP,
     status: "online",
     agent: {
-      port: 9443,
       certFingerprint: "fp",
       certPem: "pem",
       version: "1.28.0",
@@ -124,7 +123,7 @@ test("does nothing without the installer's environment", async () => {
 test("follows this host to a new address when the one it enrolled at is gone", async () => {
   await ensureDeploHostServer();
   await db.execute(
-    `update servers set status = 'online', agent_port = 9443,
+    `update servers set status = 'online',
        agent_cert_fingerprint = 'fp', bootstrap_used_at = now()`,
   );
   process.env.DEPLO_SERVER_IP = "2001:db8::7";

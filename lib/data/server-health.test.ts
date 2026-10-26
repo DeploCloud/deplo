@@ -24,7 +24,6 @@ let db: TestDb;
 let pg: PGlite;
 
 const agent = (fp: string) => ({
-  port: 9443,
   certFingerprint: fp,
   certPem: "pem",
   version: "1.0",
@@ -174,7 +173,7 @@ test("a trust-revoked server (empty-string fingerprint) is fenced out like an un
   await seedServerRow(db, {
     id: "srv_revoked",
     status: "online",
-    agent: { port: 9443, certFingerprint: "", certPem: "", version: "1.0" },
+    agent: { certFingerprint: "", certPem: "", version: "1.0" },
   });
 
   assert.equal(

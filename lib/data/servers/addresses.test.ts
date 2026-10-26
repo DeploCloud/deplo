@@ -16,7 +16,6 @@ import type { Server } from "../../types/server";
 
 const PANEL_IP = "203.0.113.200";
 const agent = {
-  port: 9443,
   certFingerprint: "pin",
   certPem: "",
   version: "",

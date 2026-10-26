@@ -58,7 +58,6 @@ beforeEach(async () => {
     ip: REMOTE_IP,
     host: REMOTE_IP,
     agent: {
-      port: 9443,
       certFingerprint: "sha256:pinned",
       certPem: "-----BEGIN CERTIFICATE-----",
       version: "1.0.0",
@@ -199,7 +198,6 @@ test("the Deplo-host refusal fires BEFORE any side effect", async () => {
     ip: SELF_IP,
     host: SELF_IP,
     agent: {
-      port: 9443,
       certFingerprint: "sha256:self-pinned",
       certPem: "-----BEGIN CERTIFICATE-----",
       version: "1.0.0",
@@ -272,7 +270,7 @@ async function seedMigrationSource(host = "192.0.2.50") {
   const { servers } = await import("../db/schema/control-plane/servers");
   await db
     .update(servers)
-    .set({ agentCertFingerprint: `sha256:${server.id}`, agentPort: 9443 })
+    .set({ agentCertFingerprint: `sha256:${server.id}` })
     .where(eq(servers.id, server.id));
   return server.id;
 }

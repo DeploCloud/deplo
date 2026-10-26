@@ -68,9 +68,8 @@ export type MoveWorkloadState =
 export interface MoveServerSummary {
   id: string;
   name: string;
-  // The address the agent is dialed at, and its port.
+  // Where its apps are reached.
   address: string;
-  port: number | null;
   role: "workloads" | "storage" | "build" | "import";
   // True when the server holds the old panel itself.
   isPanelHost: boolean;

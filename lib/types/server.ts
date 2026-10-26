@@ -4,7 +4,6 @@ export type ServerStatus =
   "online" | "warning" | "error" | "offline" | "provisioning";
 
 export interface ServerAgent {
-  port: number;
   certFingerprint: string;
   certPem: string;
   version: string;

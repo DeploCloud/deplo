@@ -82,7 +82,6 @@ beforeEach(async () => {
     ip: "127.0.0.1",
     host: "127.0.0.1",
     agent: {
-      port: agent.port,
       certFingerprint: agent.fingerprint,
       certPem: agent.certPem,
       version: AGENT_VERSION,
@@ -137,7 +136,6 @@ test("a server enrolled through a takeover's side door is sent the panel's pair 
     ip: "198.51.100.7",
     host: "198.51.100.7",
     agent: {
-      port: enrolled.port,
       certFingerprint: enrolled.fingerprint,
       certPem: enrolled.certPem,
       version: AGENT_VERSION,

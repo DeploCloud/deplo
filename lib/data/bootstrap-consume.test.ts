@@ -87,18 +87,13 @@ test("completeBootstrap provisions a server and pins its agent cert", async () =
   await seedProvisioning(stored.tokenHash, stored.expiresAt);
   const csrPem = await makeCsr();
 
-  const result = await completeBootstrap({
-    token: rawToken,
-    csrPem,
-    agentPort: 9443,
-  });
+  const result = await completeBootstrap({ token: rawToken, csrPem });
   assert.ok(result.certPem.includes("BEGIN CERTIFICATE"));
   assert.ok(result.caPem.includes("BEGIN CERTIFICATE"));
 
   const srv = (await getServerById("srv_p"))!;
   assert.equal(srv.status, "online");
   assert.ok(srv.agent?.certFingerprint, "cert fingerprint pinned");
-  assert.equal(srv.agent?.port, 9443);
   assert.equal(srv.bootstrap?.usedAt !== null, true, "bootstrap consumed");
 });
 
@@ -108,8 +103,8 @@ test("completeBootstrap is single-use: two concurrent call-homes, exactly one wi
   const [csr1, csr2] = await Promise.all([makeCsr(), makeCsr()]);
 
   const results = await Promise.allSettled([
-    completeBootstrap({ token: rawToken, csrPem: csr1, agentPort: 9443 }),
-    completeBootstrap({ token: rawToken, csrPem: csr2, agentPort: 9443 }),
+    completeBootstrap({ token: rawToken, csrPem: csr1 }),
+    completeBootstrap({ token: rawToken, csrPem: csr2 }),
   ]);
   const fulfilled = results.filter((r) => r.status === "fulfilled");
   const rejected = results.filter((r) => r.status === "rejected");
@@ -128,17 +123,9 @@ test("completeBootstrap is single-use: two concurrent call-homes, exactly one wi
 test("completeBootstrap rejects an already-consumed token (sequential)", async () => {
   const { rawToken, stored } = mintBootstrap();
   await seedProvisioning(stored.tokenHash, stored.expiresAt);
-  await completeBootstrap({
-    token: rawToken,
-    csrPem: await makeCsr(),
-    agentPort: 9443,
-  });
+  await completeBootstrap({ token: rawToken, csrPem: await makeCsr() });
   await assert.rejects(
-    completeBootstrap({
-      token: rawToken,
-      csrPem: await makeCsr(),
-      agentPort: 9443,
-    }),
+    completeBootstrap({ token: rawToken, csrPem: await makeCsr() }),
     /already been used|already consumed/,
   );
 });

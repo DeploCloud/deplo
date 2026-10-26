@@ -26,7 +26,6 @@ export const servers = pgTable(
     cpuCores: integer("cpu_cores").notNull(),
     memoryMb: integer("memory_mb").notNull(),
     diskGb: integer("disk_gb").notNull(),
-    agentPort: integer("agent_port"),
     agentCertFingerprint: text("agent_cert_fingerprint"),
     agentCertPem: text("agent_cert_pem"),
     agentVersion: text("agent_version"),

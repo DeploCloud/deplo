@@ -55,7 +55,6 @@ beforeEach(async () => {
     ip: DEAD_LOCAL,
     host: DEAD_LOCAL,
     agent: {
-      port: 1,
       certFingerprint: "sha256:pinned",
       certPem: "-----BEGIN CERTIFICATE-----",
       version: "1.0.0",

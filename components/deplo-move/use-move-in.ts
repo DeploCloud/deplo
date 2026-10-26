@@ -27,7 +27,6 @@ const CONNECT_DEPLO_MOVE = /* GraphQL */ `
         id
         name
         address
-        port
         role
         isPanelHost
         enrolled

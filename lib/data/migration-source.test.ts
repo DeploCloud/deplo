@@ -64,7 +64,7 @@ async function migrationSource(host = HOST): Promise<string> {
   );
   await db
     .update(serversTable)
-    .set({ agentCertFingerprint: `sha256:${server.id}`, agentPort: 9443 })
+    .set({ agentCertFingerprint: `sha256:${server.id}` })
     .where(eq(serversTable.id, server.id));
   return server.id;
 }

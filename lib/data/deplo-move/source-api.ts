@@ -305,7 +305,6 @@ async function serverSummaries(): Promise<MoveServerSummary[]> {
         id: s.id,
         name: s.name,
         address: s.ip || s.host,
-        port: s.agent?.port ?? null,
         role: roleOf(s),
         isPanelHost: isDeploHostServer(s, self),
         enrolled,

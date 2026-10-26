@@ -1,14 +1,10 @@
 import "server-only";
 
-import { and, eq, isNotNull, sql } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { getDb } from "../../db/client";
 import { servers as serversTable } from "../../db/schema/control-plane/servers";
 import { nowIso } from "../../ids";
-import {
-  findServerForToken,
-  signBootstrapCsr,
-  DEFAULT_AGENT_PORT,
-} from "../../agent/bootstrap";
+import { findServerForToken, signBootstrapCsr } from "../../agent/bootstrap";
 import { dropAgentChannel } from "../../infra/agent-client/channel-pool";
 import { AGENT_VERSION, agentUpdateAvailable } from "../../version";
 import { agentSeen } from "./agent-update-state";
@@ -18,7 +14,6 @@ import { listAllServers } from "./roster";
 export interface BootstrapCallHome {
   token: string;
   csrPem: string;
-  agentPort?: number;
   advertisedHost?: string;
 }
 
@@ -35,8 +30,6 @@ export async function completeBootstrap(
   const server = findServerForToken(await listAllServers(), call.token);
   const dialHosts = [server.ip, server.host].filter(Boolean);
   const signed = await signBootstrapCsr(call.csrPem, dialHosts);
-  const port =
-    call.agentPort && call.agentPort > 0 ? call.agentPort : DEFAULT_AGENT_PORT;
   // Before the token is spent: an answer the agent never gets would leave it nothing to retry with.
   const linkUrl = await agentLinkUrl(server);
 
@@ -45,7 +38,6 @@ export async function completeBootstrap(
     .update(serversTable)
     .set({
       bootstrapUsedAt: now,
-      agentPort: port,
       agentCertFingerprint: signed.fingerprint,
       agentCertPem: signed.certPem,
       agentVersion: "",
@@ -72,12 +64,7 @@ export async function serverPinnedTo(
   const [row] = await getDb()
     .select({ id: serversTable.id })
     .from(serversTable)
-    .where(
-      and(
-        eq(serversTable.agentCertFingerprint, fingerprint),
-        isNotNull(serversTable.agentPort),
-      ),
-    )
+    .where(eq(serversTable.agentCertFingerprint, fingerprint))
     .limit(1);
   return row ?? null;
 }
@@ -100,7 +87,7 @@ export async function markServerSeen(
   try {
     const set: Record<string, unknown> = { lastSeenAt: nowIso() };
     if (agentVersion)
-      set.agentVersion = sql`case when ${serversTable.agentPort} is not null then ${agentVersion} else ${serversTable.agentVersion} end`;
+      set.agentVersion = sql`case when ${serversTable.agentCertFingerprint} is not null then ${agentVersion} else ${serversTable.agentVersion} end`;
     if (typeof traefikRunning === "boolean")
       set.traefikEnabled = traefikRunning;
     if (dockerVersion) set.dockerVersion = dockerVersion;

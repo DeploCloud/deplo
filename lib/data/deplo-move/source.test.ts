@@ -121,7 +121,6 @@ beforeEach(async () => {
     ip: "192.0.2.10",
     host: "192.0.2.10",
     agent: {
-      port: 9443,
       certFingerprint: "fp-old",
       certPem: "-----BEGIN CERTIFICATE-----",
       version: "1.0.0",
@@ -446,7 +445,6 @@ test("the first hello binds the code to that Deplo and describes this one", asyn
     id: SRV,
     name: "web-1",
     address: "192.0.2.10",
-    port: 9443,
     role: "workloads",
     isPanelHost: false,
     enrolled: true,

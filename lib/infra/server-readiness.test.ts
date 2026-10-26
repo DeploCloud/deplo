@@ -110,7 +110,6 @@ function srv(over: Partial<Server> = {}): Server {
     deployConcurrency: 1,
     createdAt: "2026-07-01T00:00:00.000Z",
     agent: {
-      port: 9443,
       certFingerprint: "fp_1",
       certPem: "pem",
       version: "1.1.0",
@@ -167,7 +166,7 @@ test("no agent yet → `provisioning`, and we never pretend to have dialed", () 
 
 test("a trust-revoked server (certFingerprint: '') is fenced exactly like an unprovisioned one", () => {
   const server = srv({
-    agent: { port: 9443, certFingerprint: "", certPem: "", version: "" },
+    agent: { certFingerprint: "", certPem: "", version: "" },
   });
   const r = classifyServerReadiness(probe({ server }));
   assert.equal(r.verdict, "provisioning");

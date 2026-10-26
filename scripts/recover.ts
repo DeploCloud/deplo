@@ -53,10 +53,10 @@ Deplo recover - break-glass account recovery (run on the Deplo host)
       Create the first account with a temporary password read from stdin. The
       owner replaces it on the first sign-in. What install.sh --owner-email runs.
 
-  ${CMD} server-address <server> <address> [agentPort]
-      Rewrite where Deplo dials a server's agent (<server> is its name or id).
-      Direct write, no reachability check - for undoing a mistyped address when
-      the panel itself can no longer fix it.
+  ${CMD} server-address <server> <address>
+      Rewrite where a server's apps are reached (<server> is its name or id).
+      Direct write, no check - for undoing a mistyped address when the panel
+      itself can no longer fix it.
 `.trim();
 
 function fail(message: string): never {
@@ -263,11 +263,7 @@ async function cmdBootstrapOwner(email: string) {
   );
 }
 
-async function cmdServerAddress(
-  handle: string,
-  address?: string,
-  portArg?: string,
-) {
+async function cmdServerAddress(handle: string, address?: string) {
   if (!address) fail(`\`server-address\` needs the new address.\n\n${USAGE}`);
   const rows = await getDb()
     .select({
@@ -275,7 +271,6 @@ async function cmdServerAddress(
       name: serversTable.name,
       host: serversTable.host,
       ip: serversTable.ip,
-      agentPort: serversTable.agentPort,
     })
     .from(serversTable);
   const needle = handle.toLowerCase();
@@ -286,24 +281,11 @@ async function cmdServerAddress(
     fail(
       `No server matches "${handle}". Known: ${rows.map((s) => `${s.name} (${s.id})`).join(", ") || "none"}.`,
     );
-  const port = portArg ? Number(portArg) : null;
-  if (portArg && (!Number.isInteger(port) || port! < 1 || port! > 65535))
-    fail(`"${portArg}" is not a valid port.`);
   await getDb()
     .update(serversTable)
-    .set({
-      host: address,
-      ip: address,
-      ...(port && server.agentPort != null ? { agentPort: port } : {}),
-    })
+    .set({ host: address, ip: address })
     .where(eq(serversTable.id, server.id));
-  console.log(
-    `\n  ${server.name}: ${server.ip} -> ${address}` +
-      (port && server.agentPort != null
-        ? ` (agent port ${server.agentPort} -> ${port})`
-        : "") +
-      `\n`,
-  );
+  console.log(`\n  ${server.name}: ${server.ip} -> ${address}\n`);
 }
 
 async function cmdPanelAddress(arg: string) {
@@ -383,7 +365,7 @@ async function cmdPanelAddress(arg: string) {
 }
 
 async function main() {
-  const [command, handle, extra, extra2] = process.argv.slice(2);
+  const [command, handle, extra] = process.argv.slice(2);
   if (!command || command === "help" || command === "--help")
     return void console.log(`\n${USAGE}\n`);
 
@@ -396,8 +378,7 @@ async function main() {
     fail(
       `\`${command}\` needs ${{ "server-address": "a server", "bootstrap-owner": "an email" }[command] ?? "a username"}.\n\n${USAGE}`,
     );
-  if (command === "server-address")
-    return cmdServerAddress(handle, extra, extra2);
+  if (command === "server-address") return cmdServerAddress(handle, extra);
   if (command === "bootstrap-owner") return cmdBootstrapOwner(handle);
   if (command === "password") return cmdPassword(handle, extra);
   if (command === "owner") return cmdOwner(handle);

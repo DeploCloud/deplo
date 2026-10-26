@@ -26,7 +26,6 @@ const EXPECTED = AGENT_VERSION;
 // servers.cert_fingerprint is unique, so every seeded host needs its own.
 let fingerprints = 0;
 const agentAt = (version: string) => ({
-  port: 9443,
   certFingerprint: `fp${++fingerprints}`,
   certPem: "pem",
   version,

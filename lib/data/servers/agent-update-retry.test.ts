@@ -77,7 +77,6 @@ async function server(
     name: id,
     ip,
     agent: {
-      port: 9443,
       certFingerprint: `fp_${id}`,
       certPem: "pem",
       version,
