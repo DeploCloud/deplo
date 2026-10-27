@@ -23,6 +23,7 @@ import {
   toAgentError,
 } from "./errors";
 import { NETWORK_CAPABILITY } from "./hello-capabilities";
+import { isDeploHostServer } from "../../deploy/domains";
 import { formatHostPort, isIpLiteral } from "../../host-address";
 
 export interface AgentAddress {
@@ -32,6 +33,8 @@ export interface AgentAddress {
   agentVersion?: string;
   /** It has linked before: Deplo never dials it again (ADR-0041). */
   linkedOnce?: boolean;
+  /** The host running Deplo: until it links, its dial also carries Deplo's own update (ADR-0037). */
+  runsDeplo?: boolean;
 }
 
 export interface DialTarget extends AgentAddress {
@@ -61,6 +64,7 @@ export function agentAddress(server: Server): AgentAddress {
     pinnedFingerprint: agent.certFingerprint,
     agentVersion: agent.version,
     linkedOnce: !!server.firstLinkedAt,
+    runsDeplo: isDeploHostServer(server),
   };
 }
 

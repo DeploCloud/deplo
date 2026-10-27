@@ -121,17 +121,17 @@ test("over its dial, a server that never linked takes only the calls that bring 
   assert.equal(agent.connections().opened, 1);
 });
 
+// The fake updates nothing: an answer from it, not a refusal, is what reaching it looks like.
+const reached = (e: unknown) => !(e instanceof AgentNotLinkedError);
+const updateDeplo = (conn: AgentConnection) =>
+  conn.updateControlPlane({ controlPlaneHint: "", version: "1.0.0" });
+
 test("past the minimum-agent gate, the dial still carries only what brings the server over", async () => {
   const conn = await openAgent(SERVER);
   try {
     assert.equal((await conn.hello()).agentVersion, AGENT_VERSION);
-    // The fake updates nothing: an answer from it, not a refusal, is what reaching it looks like.
-    const reached = (e: unknown) => !(e instanceof AgentNotLinkedError);
     await assert.rejects(conn.selfUpdate(AGENT_VERSION, {}), reached);
-    await assert.rejects(
-      conn.updateControlPlane({ controlPlaneHint: "", version: "1.0.0" }),
-      reached,
-    );
+    await assert.rejects(updateDeplo(conn), refused, "not the Deplo host");
     await assert.rejects(conn.metrics(), refused);
     await assert.rejects(conn.selfUninstall(), refused);
     await assert.rejects(
@@ -140,6 +140,30 @@ test("past the minimum-agent gate, the dial still carries only what brings the s
     );
   } finally {
     conn.close();
+  }
+});
+
+test("over its dial, only the host running Deplo also takes Deplo's own update", async (t) => {
+  const prevIp = process.env.DEPLO_SERVER_IP;
+  process.env.DEPLO_SERVER_IP = "127.0.0.1";
+  t.after(() => {
+    if (prevIp === undefined) delete process.env.DEPLO_SERVER_IP;
+    else process.env.DEPLO_SERVER_IP = prevIp;
+  });
+  for (const open of [openAgent, connectAgent]) {
+    const conn = await open(SERVER);
+    try {
+      await assert.rejects(updateDeplo(conn), reached);
+      await assert.rejects(conn.metrics(), refused);
+    } finally {
+      conn.close();
+    }
+  }
+  const at = await connectAgentAt(SERVER, { agentPort: agent.port });
+  try {
+    await assert.rejects(updateDeplo(at), reached);
+  } finally {
+    at.close();
   }
 });
 

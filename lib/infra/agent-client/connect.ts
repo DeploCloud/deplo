@@ -23,6 +23,7 @@ import {
   openChannel,
   remoteTarget,
   resolveAddress,
+  type AgentAddress,
   type AgentChannel,
   type DialTarget,
 } from "./mtls-channel";
@@ -30,16 +31,16 @@ import { stackRpc } from "./stack-rpc";
 
 /** A connection on a channel of its own, closed with it: an override address only. */
 export function dial(target: DialTarget): AgentConnection {
-  return dialOnly(connectionOn(openChannel(target)));
+  return dialOnly(connectionOn(openChannel(target)), target.runsDeplo);
 }
 
 // A link carries every call; a dial only what brings the server onto its link (ADR-0041).
-function connectionFor(leased: {
-  channel: AgentChannel;
-  linked: boolean;
-}): AgentConnection {
+function connectionFor(
+  leased: { channel: AgentChannel; linked: boolean },
+  address: AgentAddress,
+): AgentConnection {
   const conn = connectionOn(leased.channel);
-  return leased.linked ? conn : dialOnly(conn);
+  return leased.linked ? conn : dialOnly(conn, address.runsDeplo);
 }
 
 function connectionOn(channel: AgentChannel): AgentConnection {
@@ -81,7 +82,11 @@ export async function connectAgent(serverId: string): Promise<AgentConnection> {
   const address = await resolveAddress(serverId);
   const started = Date.now();
   const gate = (leased: Awaited<ReturnType<typeof leaseChannel>>) =>
-    gateConnection(connectionFor(leased), address.agentVersion, serverId);
+    gateConnection(
+      connectionFor(leased, address),
+      address.agentVersion,
+      serverId,
+    );
   const first = await leaseChannel(serverId, address);
   try {
     return await gate(first);
@@ -106,7 +111,7 @@ export async function openAgent(serverId: string): Promise<AgentConnection> {
   const stub = await connector?.(serverId);
   if (stub) return stub;
   const address = await resolveAddress(serverId);
-  return connectionFor(await leaseChannel(serverId, address));
+  return connectionFor(await leaseChannel(serverId, address), address);
 }
 
 // Every call is judged on a live Hello; the caller's first hello() reuses it rather than paying twice.

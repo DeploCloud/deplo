@@ -11,13 +11,14 @@ type BringsItOver =
   | "installRenewedCert"
   | "setLinkAddresses"
   | "stopListening"
-  // ADR-0037's way out for the host running Deplo: the Update button.
-  | "updateControlPlane"
   | "close";
 
-type Refused = Exclude<keyof AgentConnection, BringsItOver>;
+// ADR-0037's way out, on the host running Deplo only: the Update button.
+type HostOnly = "updateControlPlane";
 
-type Answer<K extends Refused> =
+type Refused = Exclude<keyof AgentConnection, BringsItOver | HostOnly>;
+
+type Answer<K extends keyof AgentConnection> =
   ReturnType<AgentConnection[K]> extends AsyncGenerator<unknown, void, unknown>
     ? "stream"
     : ReturnType<AgentConnection[K]> extends Promise<unknown>
@@ -84,10 +85,18 @@ const REFUSED: { [K in Refused]: Answer<K> } = {
   deleteFile: "call",
 };
 
+const HOST_ONLY: { [K in HostOnly]: Answer<K> } = {
+  updateControlPlane: "call",
+};
+
 /** The connection a dial gives: every other call fails as the curated "can't connect to Deplo". */
-export function dialOnly(conn: AgentConnection): AgentConnection {
+export function dialOnly(
+  conn: AgentConnection,
+  runsDeplo = false,
+): AgentConnection {
+  const refused = runsDeplo ? REFUSED : { ...REFUSED, ...HOST_ONLY };
   const refusals = Object.fromEntries(
-    Object.entries(REFUSED).map(([name, answer]) => [
+    Object.entries(refused).map(([name, answer]) => [
       name,
       refusal(answer, conn),
     ]),
