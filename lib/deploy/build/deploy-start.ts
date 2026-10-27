@@ -21,7 +21,11 @@ import { branchHead } from "../../github/commits";
 import { githubFullName } from "../../github/repo-id";
 import { newId, nowIso } from "../../ids";
 import { userMayReachHost } from "../../membership";
-import type { Deployment, DeploymentEnvironment } from "../../types/deployment";
+import type {
+  CommitSignature,
+  Deployment,
+  DeploymentEnvironment,
+} from "../../types/deployment";
 import type { CertProvider } from "../../types/domain";
 import { enqueueDeployment } from "../deploy-queue";
 import { domainScheme } from "../domains";
@@ -53,6 +57,7 @@ export async function startDeployment(
       commitSha: string;
       commitMessage: string;
       commitAuthor: string;
+      commitSignature: CommitSignature | null;
       builtAt: string;
     } | null;
   },
@@ -108,6 +113,9 @@ export async function startDeployment(
       head?.message ||
       "Deploy",
     commitAuthor: rollback?.commitAuthor || head?.author || opts.creator,
+    commitSignature: rollback
+      ? rollback.commitSignature
+      : (head?.signature ?? null),
     branch,
     url,
     createdAt: nowIso(),

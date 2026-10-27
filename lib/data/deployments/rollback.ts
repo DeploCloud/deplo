@@ -234,6 +234,7 @@ export async function rollbackDeployment(
       commitSha: dep.commitSha,
       commitMessage: dep.commitMessage,
       commitAuthor: dep.commitAuthor,
+      commitSignature: dep.commitSignature,
       builtAt: dep.readyAt ?? dep.createdAt,
     },
   });

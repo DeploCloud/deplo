@@ -127,7 +127,11 @@ async function seedInstalledRepo(branchStatus: number) {
         {
           commit: {
             sha: "367283e0c1",
-            commit: { message: "fix the header", author: { name: "Ada" } },
+            commit: {
+              message: "fix the header",
+              author: { name: "Ada" },
+              verification: { verified: true, reason: "valid" },
+            },
           },
         },
         { status: branchStatus },
@@ -144,6 +148,7 @@ test("a redeploy shows the commit it builds before the build ends", async () => 
   assert.equal(dep.commitSha, "367283e0c1");
   assert.equal(dep.commitMessage, "Redeploy of latest commit");
   assert.equal(dep.commitAuthor, "Ada");
+  assert.equal(dep.commitSignature, "verified");
 });
 
 test("a failed commit lookup still starts the redeploy", async () => {
@@ -153,4 +158,5 @@ test("a failed commit lookup still starts the redeploy", async () => {
   );
   assert.equal(dep.commitSha, "");
   assert.equal(dep.commitMessage, "Redeploy of latest commit");
+  assert.equal(dep.commitSignature, null);
 });

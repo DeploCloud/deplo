@@ -840,6 +840,11 @@ type CertificateAccount {
   unavailable: String
 }
 
+enum CommitSignature {
+  unverified
+  verified
+}
+
 """
 A service name this stack shares with an app or database already on the destination network, and what the rename would call it.
 """
@@ -1861,6 +1866,11 @@ type Deployment {
   commitAuthor: String
   commitMessage: String
   commitSha: String
+
+  """
+  GitHub's verdict on the commit's signature. Null when it is unsigned, or the repository is not on GitHub.
+  """
+  commitSignature: CommitSignature
   createdAt: String
   creator: String
 

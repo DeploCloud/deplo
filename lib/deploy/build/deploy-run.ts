@@ -14,7 +14,7 @@ import { normalizeBuildConfig } from "../../frameworks";
 import { forkCloneUrl, resolveCloneUrl } from "../../git/clone-url";
 import { repoCloneRefusal } from "../../git/repo-access";
 import { buildMetadataToken } from "../../github/app";
-import { publicBranchHead } from "../../github/commits";
+import { commitSignatureAt, publicBranchHead } from "../../github/commits";
 import {
   adoptObservedPort,
   recordResolvedMethod,
@@ -602,7 +602,13 @@ async function runDeployment(depId: string): Promise<void> {
         let attempt = await gitLeg(project.build, pin);
         if (attempt.commitSha) {
           commitSha = attempt.commitSha;
-          await setDep(depId, { commitSha });
+          await setDep(depId, {
+            commitSha,
+            // A preview starts with no SHA, and a push can land between start and clone.
+            ...(commitSha !== dep.commitSha && {
+              commitSignature: await commitSignatureAt(repo, commitSha),
+            }),
+          });
           if (
             forkUrl &&
             preview?.approvedSha &&

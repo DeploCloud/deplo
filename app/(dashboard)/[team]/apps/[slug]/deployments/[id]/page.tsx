@@ -125,6 +125,7 @@ export default async function DeploymentDetailPage(
                   <CommitLink
                     sha={deployment.commitSha}
                     url={repoCommitUrl(project.repo, deployment.commitSha)}
+                    signature={deployment.commitSignature}
                     className="font-mono text-xs text-muted-foreground"
                   />
                 </span>

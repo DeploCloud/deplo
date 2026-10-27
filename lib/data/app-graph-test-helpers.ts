@@ -168,6 +168,7 @@ export async function seedDeployment(
     imageRef?: string | null;
     rollbackOf?: string | null;
     commitSha?: string;
+    commitSignature?: Deployment["commitSignature"];
     branch?: string;
     buildServerId?: string | null;
     creatorUserId?: string | null;
@@ -192,6 +193,7 @@ export async function seedDeployment(
     commitSha: opts.commitSha ?? "",
     commitMessage: "deploy",
     commitAuthor: "Owner",
+    commitSignature: opts.commitSignature ?? null,
     branch: opts.branch ?? "main",
     url: "https://x",
     createdAt: opts.createdAt ?? T0,

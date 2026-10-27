@@ -159,6 +159,7 @@ export default async function AppOverview(
                           <CommitLink
                             sha={prod.commitSha}
                             url={repoCommitUrl(project.repo, prod.commitSha)}
+                            signature={prod.commitSignature}
                             className="ml-1 font-mono text-xs text-muted-foreground"
                           />
                         </p>
@@ -268,6 +269,7 @@ export default async function AppOverview(
                     <CommitLink
                       sha={d.commitSha}
                       url={d.commitUrl}
+                      signature={d.commitSignature}
                       className="font-mono"
                     />
                     <GitBranch className="size-3" />

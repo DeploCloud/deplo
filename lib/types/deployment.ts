@@ -9,6 +9,9 @@ export type DeploymentStatus =
 
 export type DeploymentEnvironment = "production" | "preview";
 
+// GitHub's verdict; null is unsigned, or a host that does not say.
+export type CommitSignature = "verified" | "unverified";
+
 export interface Deployment {
   id: ID;
   appId: ID;
@@ -22,6 +25,7 @@ export interface Deployment {
   commitSha: string;
   commitMessage: string;
   commitAuthor: string;
+  commitSignature: CommitSignature | null;
   branch: string;
   url: string;
   createdAt: string;

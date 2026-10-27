@@ -60,6 +60,8 @@ export async function setDep(
   if (patch.commitMessage !== undefined)
     set.commitMessage = patch.commitMessage;
   if (patch.commitAuthor !== undefined) set.commitAuthor = patch.commitAuthor;
+  if (patch.commitSignature !== undefined)
+    set.commitSignature = patch.commitSignature;
   if (patch.branch !== undefined) set.branch = patch.branch;
   if (patch.url !== undefined) set.url = patch.url;
   if (patch.startedAt !== undefined) set.startedAt = patch.startedAt;

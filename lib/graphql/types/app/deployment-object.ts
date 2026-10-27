@@ -1,6 +1,10 @@
 import { builder } from "../../builder";
 import { VarAuthorRef } from "../env";
-import { DeploymentStatusEnum, DeploymentEnvironmentEnum } from "../enums";
+import {
+  CommitSignatureEnum,
+  DeploymentStatusEnum,
+  DeploymentEnvironmentEnum,
+} from "../enums";
 import {
   getLogs,
   getQueuePosition,
@@ -50,6 +54,14 @@ export const DeploymentRef = builder
       commitSha: t.exposeString("commitSha"),
       commitMessage: t.exposeString("commitMessage"),
       commitAuthor: t.exposeString("commitAuthor"),
+      commitSignature: t.field({
+        type: CommitSignatureEnum,
+        nullable: true,
+        description:
+          "GitHub's verdict on the commit's signature. Null when it is " +
+          "unsigned, or the repository is not on GitHub.",
+        resolve: (d) => d.commitSignature,
+      }),
       branch: t.exposeString("branch"),
       url: t.exposeString("url"),
       createdAt: t.exposeString("createdAt"),

@@ -24,6 +24,7 @@ import {
 import { newId, nowIso } from "../../ids";
 import { connectAgent } from "../../infra/agent-client/connect";
 import type { Database } from "../../types/database";
+import type { CommitSignature } from "../../types/deployment";
 import { assembleDatabase } from "../backup-rows";
 import { mountsFor } from "../databases/rows";
 import {
@@ -382,6 +383,7 @@ async function rollbackTo(
       commitSha: dep?.commitSha ?? "",
       commitMessage: dep?.commitMessage ?? "Deploy",
       commitAuthor: dep?.commitAuthor ?? creator,
+      commitSignature: (dep?.commitSignature ?? null) as CommitSignature | null,
       builtAt: dep?.readyAt ?? dep?.createdAt ?? nowIso(),
     },
   });

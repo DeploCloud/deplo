@@ -56,6 +56,7 @@ export default async function DeploymentsPage() {
             commitMessage: d.commitMessage,
             commitSha: d.commitSha,
             commitUrl: d.commitUrl,
+            commitSignature: d.commitSignature,
             status: d.status,
             prNumber: d.prNumber,
             previewId: d.previewId,

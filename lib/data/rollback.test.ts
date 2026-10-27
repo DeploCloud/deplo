@@ -27,6 +27,7 @@ import { rollbackDeployment, rollbackTarget } from "./deployments/rollback";
 import { loadDeploymentsForApp } from "./app-graph-load";
 import { getDb } from "../db/client";
 import { apps as appsTable } from "../db/schema/control-plane/apps";
+import { deployments as deploymentsTable } from "../db/schema/control-plane/deployments";
 import { eq } from "drizzle-orm";
 import { readFile } from "node:fs/promises";
 
@@ -211,6 +212,16 @@ test("rolling back re-runs the target's image and records what it went back to",
   assert.equal(dep.imageRef, "deplo/web:dpl_2");
   assert.equal(dep.status, "queued");
   assert.equal(dep.environment, "production");
+});
+
+test("a rollback keeps the signature verdict of the commit it goes back to", async () => {
+  await seedBuilds(3);
+  await db
+    .update(deploymentsTable)
+    .set({ commitSignature: "verified" })
+    .where(eq(deploymentsTable.id, "dpl_2"));
+  const dep = await asUser1(() => rollbackDeployment("dpl_2"));
+  assert.equal(dep.commitSignature, "verified");
 });
 
 test("a queued rollback has not moved the live image yet", async () => {

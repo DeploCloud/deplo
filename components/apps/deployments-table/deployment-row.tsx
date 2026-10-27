@@ -21,7 +21,7 @@ import { DeploymentActions } from "@/components/apps/deployment-actions";
 import { SimpleTooltip } from "@/components/ui/tooltip";
 import { timeAgo } from "@/lib/utils";
 import { IN_PROGRESS } from "./deployment-status";
-import type { DeploymentStatus } from "@/lib/types/deployment";
+import type { CommitSignature, DeploymentStatus } from "@/lib/types/deployment";
 
 const ROW_NAV_EXEMPT =
   'a, button, input, label, select, textarea, [role="checkbox"], [role="menuitem"], [data-no-row-nav]';
@@ -38,6 +38,7 @@ export interface DeploymentRow {
   commitMessage: string;
   commitSha: string;
   commitUrl: string | null;
+  commitSignature?: CommitSignature | null;
   pullRequestUrl?: string | null;
   prNumber?: number | null;
   previewId?: string | null;
@@ -147,6 +148,7 @@ export function DeploymentTableRow({
           <CommitLink
             sha={d.commitSha}
             url={d.commitUrl}
+            signature={d.commitSignature}
             className="font-mono text-xs text-muted-foreground"
           />
           {d.prNumber ? (

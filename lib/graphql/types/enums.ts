@@ -56,6 +56,10 @@ export const DeploymentEnvironmentEnum = builder.enumType(
   { values: ["production", "preview"] as const },
 );
 
+export const CommitSignatureEnum = builder.enumType("CommitSignature", {
+  values: ["verified", "unverified"] as const,
+});
+
 export const EnvTargetEnum = builder.enumType("EnvTarget", {
   values: ["production", "preview"] as const,
 });

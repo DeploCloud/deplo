@@ -50,6 +50,7 @@ export const deployments = pgTable(
     commitSha: text("commit_sha").notNull(),
     commitMessage: text("commit_message").notNull(),
     commitAuthor: text("commit_author").notNull(),
+    commitSignature: text("commit_signature"),
     branch: text("branch").notNull(),
     url: text("url").notNull(),
     readyAt: isoTimestamptz("ready_at"),
