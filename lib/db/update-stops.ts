@@ -50,14 +50,12 @@ export async function neverMigrated(query: RawQuery): Promise<boolean> {
   return Number(r.rows[0]?.n ?? 0) === 0;
 }
 
-/** After a fresh install's first migrations: past this release, so past every stop it knows. */
-export async function passEveryStop(query: RawQuery): Promise<void> {
-  for (const version of new Set([
-    DEPLO_VERSION,
-    REQUIRED_STOP ?? DEPLO_VERSION,
-  ]))
-    await query(
-      "INSERT INTO passed_update_stops (version, passed_at) VALUES ($1, now()) ON CONFLICT (version) DO NOTHING",
-      [version],
-    );
+/** A fresh install is past this release, so past every stop it knows: committed with its first migrations. */
+export function passEveryStopSql(
+  requiredStop: string | null = REQUIRED_STOP,
+): string[] {
+  return [...new Set([DEPLO_VERSION, requiredStop ?? DEPLO_VERSION])].map(
+    (v) =>
+      `INSERT INTO passed_update_stops (version, passed_at) VALUES ('${v.replace(/'/g, "''")}', now()) ON CONFLICT (version) DO NOTHING`,
+  );
 }

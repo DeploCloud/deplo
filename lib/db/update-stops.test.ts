@@ -15,7 +15,7 @@ import { drizzle } from "drizzle-orm/pglite";
 import { migrate } from "drizzle-orm/pglite/migrator";
 
 import { DEPLO_VERSION } from "../version";
-import { migrateOnBoot, type BootStops } from "./migrate";
+import { applyMigrations, migrateOnBoot, type BootStops } from "./migrate";
 import { makeEmptyTestPg } from "./test-harness";
 import { readPassedStops, stopPassed, type RawQuery } from "./update-stops";
 
@@ -73,8 +73,8 @@ function release({ record = true, next = false } = {}): string {
 }
 
 // The migrator as runMigrations wires it, on this release's folder.
-const migrator = (pg: PGlite, folder: string) => () =>
-  migrate(drizzle(pg), { migrationsFolder: folder });
+const migrator = (pg: PGlite, folder: string) => (alsoRun: string[]) =>
+  applyMigrations(drizzle(pg), folder, alsoRun);
 
 async function boot(
   pg: PGlite,
@@ -199,6 +199,29 @@ test("a fresh install of a release that requires a stop starts, on every later b
     for (let n = 0; n < 2; n++) await boot(pg, release({ next: true }), stops);
     assert.deepEqual(lines, []);
     assert.ok((await schemaOf(pg)).includes("public.next_release"));
+  } finally {
+    await pg.close();
+  }
+});
+
+test("a fresh install whose first boot dies right after its migrations still starts the next time", async () => {
+  const pg = await makeEmptyTestPg();
+  try {
+    const folder = release({ next: true });
+    const stops = { requiredStop: STOP, log: () => {} };
+    const migrateAll = migrator(pg, folder);
+    await assert.rejects(
+      migrateOnBoot(
+        (text, params) => pg.query(text, params),
+        async (...args: Parameters<typeof migrateAll>) => {
+          await migrateAll(...args);
+          throw new Error("the container was stopped");
+        },
+        stops,
+      ),
+      /stopped/,
+    );
+    await boot(pg, folder, stops);
   } finally {
     await pg.close();
   }
