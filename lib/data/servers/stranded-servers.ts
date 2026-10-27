@@ -1,17 +1,30 @@
 import "server-only";
 
+import { hasLinked } from "../../infra/agent-link/registry";
 import { requireInstanceAdmin } from "../../membership";
-import { DEPLO_REPO, agentUsable, reportedAgentVersion } from "../../version";
+import {
+  DEPLO_REPO,
+  LINK_ONLY,
+  agentUsable,
+  reportedAgentVersion,
+} from "../../version";
 import { listAllServers } from "./roster";
 
 export interface StrandedServer {
   id: string;
   name: string;
   version: string | null;
+  /** The new Deplo cannot reach it at all: only reinstalling its server agent brings it back. */
+  reinstall: boolean;
 }
 
-/** The agent floor a published Deplo declares, read off its tag without the API budget. */
-export async function targetAgentMin(version: string): Promise<string | null> {
+interface TargetPin {
+  agentMin: string | null;
+  linkOnly: boolean;
+}
+
+/** What a published Deplo declares about its agents, read off its tag without the API budget. */
+async function targetPin(version: string): Promise<TargetPin | null> {
   try {
     const res = await fetch(
       `https://raw.githubusercontent.com/${DEPLO_REPO}/v${version}/package.json`,
@@ -22,28 +35,51 @@ export async function targetAgentMin(version: string): Promise<string | null> {
       },
     );
     if (!res.ok) return null;
-    const min = ((await res.json()) as { deplo?: { agentMin?: unknown } }).deplo
-      ?.agentMin;
-    return typeof min === "string" ? min : null;
+    const pin = (
+      (await res.json()) as {
+        deplo?: { agentMin?: unknown; linkOnly?: unknown };
+      }
+    ).deplo;
+    return {
+      agentMin: typeof pin?.agentMin === "string" ? pin.agentMin : null,
+      linkOnly: pin?.linkOnly === true,
+    };
   } catch {
     return null;
   }
 }
 
-/** Offline servers whose agent the new Deplo refuses: unusable until they come back and update. */
+/** The agent floor a published Deplo declares. */
+export async function targetAgentMin(version: string): Promise<string | null> {
+  return (await targetPin(version))?.agentMin ?? null;
+}
+
+/**
+ * Servers the new Deplo cannot use: offline ones below its floor, and, when it stops
+ * dialing servers, every one that has not linked to this Deplo since it started.
+ */
 export async function strandedByPanelUpdate(
   version: string,
 ): Promise<StrandedServer[]> {
   await requireInstanceAdmin();
-  const min = await targetAgentMin(version);
-  if (!min) return [];
-  return (await listAllServers())
-    .filter(
-      (s) =>
-        !s.importOnly &&
-        Boolean(s.agent?.certFingerprint) &&
-        (s.status === "offline" || s.status === "error") &&
-        !agentUsable(reportedAgentVersion(s), min),
-    )
-    .map((s) => ({ id: s.id, name: s.name, version: reportedAgentVersion(s) }));
+  const target = await targetPin(version);
+  if (!target) return [];
+  const stopsDialing = target.linkOnly && !LINK_ONLY;
+  return (await listAllServers()).flatMap((s) => {
+    if (s.importOnly || !s.agent?.certFingerprint) return [];
+    const unlinked = stopsDialing && !hasLinked(s.id);
+    const belowFloor =
+      target.agentMin !== null &&
+      (s.status === "offline" || s.status === "error") &&
+      !agentUsable(reportedAgentVersion(s), target.agentMin);
+    if (!unlinked && !belowFloor) return [];
+    return [
+      {
+        id: s.id,
+        name: s.name,
+        version: reportedAgentVersion(s),
+        reinstall: unlinked,
+      },
+    ];
+  });
 }

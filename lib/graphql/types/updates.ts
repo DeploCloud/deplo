@@ -23,11 +23,15 @@ const StrandedServerRef = builder
   .objectRef<StrandedServer>("StrandedServer")
   .implement({
     description:
-      "An offline server whose agent the offered Deplo version would refuse.",
+      "A server the offered Deplo version could not use: offline with an agent it would refuse, or not linked to this Deplo when that version reaches servers only over their link.",
     fields: (t) => ({
       id: t.exposeID("id"),
       name: t.exposeString("name"),
       version: t.exposeString("version", { nullable: true }),
+      reinstall: t.exposeBoolean("reinstall", {
+        description:
+          "True when the offered version could not reach it at all: it has not linked to this Deplo since it started, and that version no longer contacts a server any other way. Only reinstalling its server agent would bring it back. False for an offline server that comes back once its server agent updates.",
+      }),
     }),
   });
 
@@ -51,7 +55,7 @@ const UpdateInfoRef = builder.objectRef<UpdateInfo>("UpdateInfo").implement({
       type: [StrandedServerRef],
       authScopes: { instanceAdmin: true },
       description:
-        "Offline servers whose agent is older than the minimum the `latest` Deplo supports. They cannot update while offline, so they stay unusable until they come back and their agent updates. Empty when there is no update or the release does not say.",
+        "Servers the `latest` Deplo could not use. Offline servers whose agent is older than the minimum it supports: they stay unusable until they come back and their server agent updates. And, when `latest` reaches servers only over their link and this Deplo still contacts them directly, every server that has not linked to this Deplo since it started (`reinstall`). Empty when there is no update or the release does not say.",
       resolve: (info) =>
         info.updateAvailable && info.latest
           ? strandedByPanelUpdate(info.latest.replace(/^v/i, ""))

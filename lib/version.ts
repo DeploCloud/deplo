@@ -10,6 +10,9 @@ export const AGENT_VERSION: string = agentPin.agent;
 export const AGENT_MIN_VERSION: string = agentPin.agentMin;
 /** The first agent release that links (ADR-0040): an older one can never reach this panel, only a reinstall helps. */
 export const AGENT_LINK_VERSION = "0.5.1-canary.10";
+// Set from the release that stops dialing servers: it reaches them only over their link (ADR-0040).
+export const LINK_ONLY: boolean =
+  (agentPin as { linkOnly?: unknown }).linkOnly === true;
 
 export const AGENT_TOO_OLD_MESSAGE =
   "This server is being updated. Deplo retries on its own; an instance admin can retry it now.";
