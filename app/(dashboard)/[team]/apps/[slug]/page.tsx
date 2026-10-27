@@ -3,38 +3,22 @@ import { AppDomainNotices } from "@/components/domains/app-domain-notices";
 import { SecurityUpdatesNotice } from "@/components/security-updates/security-updates-notice";
 import Link from "@/components/ui/link";
 import { notFound } from "next/navigation";
-import {
-  GitBranch,
-  GitPullRequest,
-  Clock,
-  ArrowRight,
-  Plus,
-} from "lucide-react";
+import { GitBranch, GitPullRequest, ArrowRight } from "lucide-react";
 import { getAppBySlug } from "@/lib/data/apps/listing";
 import { hasAppCapability } from "@/lib/data/node-access";
 import { DataCopyNotice } from "@/components/shared/data-copy-notice";
-import { DeploymentCreator } from "@/components/apps/deployment-creator";
 import { listDeployments } from "@/lib/data/deployments/deployment-queries";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { StatusBadge, StatusDot } from "@/components/shared/status-badge";
+import { StatusDot } from "@/components/shared/status-badge";
 import { EmptyState } from "@/components/shared/empty-state";
 import { DeploymentGraphic } from "@/components/apps/deployment-graphic";
-import { DeploymentCover, WithCover } from "@/components/apps/deployment-cover";
 import { getAppCoverScreenshot } from "@/lib/data/deployments/screenshot";
-import { describeAppSource } from "@/components/apps/app-source";
+import { ProductionDeploymentCard } from "@/components/apps/production-deployment-card";
 import { RepoLinkNotice } from "@/components/apps/repo-link-notice";
-import { FrameworkBadge } from "@/components/apps/framework-badge";
-import {
-  effectiveFramework,
-  supportsFrameworkDetection,
-} from "@/lib/apps/framework-catalog";
 import { CommitLink } from "@/components/apps/commit-link";
 import {
   formatBuildDuration,
-  gitProfileUrl,
-  repoCommitUrl,
   repoCredentialMissing,
   timeAgoShort,
 } from "@/lib/utils";
@@ -52,7 +36,6 @@ export default async function AppOverview(
   const prod =
     deployments.find((d) => d.id === project.latestDeployment?.id) ??
     project.latestDeployment;
-  const src = describeAppSource(project);
   const [shot, canConfigure] = await Promise.all([
     prod ? getAppCoverScreenshot(project.id) : null,
     hasAppCapability(project.id, "configure_apps"),
@@ -89,144 +72,12 @@ export default async function AppOverview(
         />
       </Suspense>
 
-      <Card>
-        <CardHeader className="flex-row items-center justify-between space-y-0">
-          <CardTitle className="text-base">Production Deployment</CardTitle>
-        </CardHeader>
-        <CardContent>
-          {prod ? (
-            <WithCover
-              cover={
-                shot && (
-                  <DeploymentCover
-                    deploymentId={shot.deploymentId}
-                    href={project.productionUrl || prod.url}
-                    lightUrl={shot.lightUrl}
-                    darkUrl={shot.darkUrl}
-                    canRetake={shot.current && canConfigure}
-                  />
-                )
-              }
-            >
-              <div className="grid gap-6 md:grid-cols-2">
-                <div className="space-y-4">
-                  <div>
-                    <p className="text-xs text-muted-foreground">Domain</p>
-                    {project.productionUrl ? (
-                      <a
-                        href={project.productionUrl}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="cursor-pointer text-sm font-medium hover:underline"
-                      >
-                        {project.productionUrl.replace(/^https?:\/\//, "")}
-                      </a>
-                    ) : (
-                      <p className="text-sm text-muted-foreground">No domain</p>
-                    )}
-                  </div>
-                  <div>
-                    <p className="text-xs text-muted-foreground">Status</p>
-                    <div className="mt-1">
-                      <StatusBadge status={prod.status} />
-                    </div>
-                  </div>
-                  <div>
-                    <p className="text-xs text-muted-foreground">Created</p>
-                    <p className="flex items-center gap-1.5 text-sm">
-                      {timeAgoShort(prod.createdAt)} by
-                      <DeploymentCreator
-                        creator={prod.creator}
-                        creatorUser={prod.creatorUser}
-                        creatorProvider={prod.creatorProvider}
-                        creatorUrl={gitProfileUrl(
-                          prod.creatorProvider,
-                          prod.creator,
-                          project.repo?.url,
-                        )}
-                      />
-                    </p>
-                  </div>
-                </div>
-                <div className="space-y-4">
-                  <div>
-                    <p className="text-xs text-muted-foreground">Source</p>
-                    {src.isGit ? (
-                      <>
-                        <p className="flex items-center gap-1.5 text-sm">
-                          <GitBranch className="size-3.5 shrink-0" />
-                          {prod.branch}
-                          <CommitLink
-                            sha={prod.commitSha}
-                            url={repoCommitUrl(project.repo, prod.commitSha)}
-                            signature={prod.commitSignature}
-                            className="ml-1 font-mono text-xs text-muted-foreground"
-                          />
-                        </p>
-                        <p className="mt-1 line-clamp-1 text-sm text-muted-foreground">
-                          {prod.commitMessage}
-                        </p>
-                      </>
-                    ) : (
-                      <p className="flex items-center gap-1.5 text-sm">
-                        <src.Icon className="size-3.5 shrink-0" />
-                        <span className="min-w-0 truncate">{src.label}</span>
-                      </p>
-                    )}
-                  </div>
-                  {effectiveFramework(project) &&
-                    supportsFrameworkDetection(project.build.buildMethod) && (
-                      <div>
-                        <p className="text-xs text-muted-foreground">
-                          Framework
-                        </p>
-                        <p className="mt-0.5 text-sm">
-                          <FrameworkBadge id={effectiveFramework(project)} />
-                        </p>
-                      </div>
-                    )}
-                  <div>
-                    <p className="text-xs text-muted-foreground">Build time</p>
-                    <p className="flex items-center gap-1.5 text-sm">
-                      <Clock className="size-3.5" />
-                      {formatBuildDuration(prod.buildDurationMs)}
-                      <Link
-                        href={`/apps/${slug}/deployments/${prod.id}`}
-                        className="ml-1 text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
-                      >
-                        Build Logs
-                      </Link>
-                    </p>
-                  </div>
-                  {!project.productionUrl && (
-                    <div className="flex gap-2 pt-1">
-                      <Button size="sm" variant="outline" asChild>
-                        <Link href={`/apps/${slug}/domains`}>
-                          <Plus className="size-4" />
-                          Add domain
-                        </Link>
-                      </Button>
-                    </div>
-                  )}
-                </div>
-              </div>
-            </WithCover>
-          ) : (
-            <div className="space-y-3">
-              <p className="text-sm text-muted-foreground">
-                No production deployment yet.
-              </p>
-              <div>
-                <p className="text-xs text-muted-foreground">Source</p>
-                <p className="mt-1 flex items-center gap-1.5 text-sm">
-                  <src.Icon className="size-3.5 shrink-0" />
-                  <span className="min-w-0 truncate">{src.label}</span>
-                </p>
-              </div>
-            </div>
-          )}
-        </CardContent>
-      </Card>
+      <ProductionDeploymentCard
+        project={project}
+        prod={prod}
+        shot={shot}
+        canConfigure={canConfigure}
+      />
 
       <div id="deployments" className="space-y-3">
         <div className="flex flex-row items-center justify-between">

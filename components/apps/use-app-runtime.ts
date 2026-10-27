@@ -19,6 +19,7 @@ const APP_RUNTIME_QUERY = /* GraphQL */ `
         state
         health
         restartCount
+        startedAtUnix
         running
         exposed
       }

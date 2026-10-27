@@ -13,6 +13,7 @@ export default async function AppLogsPage(
   props: PageProps<"/[team]/apps/[slug]/logs">,
 ) {
   const { slug } = await props.params;
+  const { container } = await props.searchParams;
   const project = await getAppBySlug(slug);
   if (!project) notFound();
 
@@ -40,6 +41,7 @@ export default async function AppLogsPage(
         initialSupportsTimeline={!!info?.supportsTimeline}
         initialLogMaxDays={info?.logMaxDays ?? DEFAULT_LOG_RANGE_DAYS}
         deploymentsHref={`/apps/${project.slug}/deployments`}
+        initialContainer={typeof container === "string" ? container : undefined}
       />
     </div>
   );

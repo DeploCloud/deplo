@@ -97,6 +97,7 @@ export function ContainerLogs({
   toolbar,
   supportsTimeline = false,
   logMaxDays = DEFAULT_LOG_RANGE_DAYS,
+  initialContainer,
 }: {
   appId: string;
   instances: ConsoleInstance[];
@@ -107,9 +108,10 @@ export function ContainerLogs({
   title?: PaneTitle;
   toolbar?: React.ReactNode;
   apiBase?: string;
+  initialContainer?: string;
 }) {
   const [active, setActive] = React.useState<ConsoleInstance>(
-    () => instances[0],
+    () => instances.find((i) => i.name === initialContainer) ?? instances[0],
   );
   const [status, setStatus] = React.useState<Status>("connecting");
   const [timeline, setTimeline] = React.useState<LogTimeline>(() =>
