@@ -22,7 +22,7 @@ interface PooledChannel {
 const pool = new Map<string, PooledChannel>();
 
 /** The server's channel over its agent link; a missing link is waited for, then the server is offline (ADR-0040). */
-export async function leaseChannel(
+export async function serverChannel(
   serverId: string,
   pinnedFingerprint: string,
 ): Promise<AgentChannel> {
@@ -38,8 +38,7 @@ export async function leaseChannel(
     fresh.channel = watchingHello(serverId, fresh, fresh.channel);
     pool.set(serverId, (shared = fresh));
   }
-  // The link, not a caller, closes the channel.
-  return callerView(shared.channel, () => {});
+  return callerView(shared.channel);
 }
 
 /** No new call gets this server's channel, and its link closes now. */

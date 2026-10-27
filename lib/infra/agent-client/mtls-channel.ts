@@ -146,16 +146,13 @@ function helloOn(client: GrpcAgentClient, mapError: (err: unknown) => Error) {
     });
 }
 
-/** One caller's view of a shared channel: its own Hello cache and its own close. */
-export function callerView(
-  channel: AgentChannel,
-  close: () => void,
-): AgentChannel {
+/** One caller's view of a shared channel: its own Hello cache. The link, not the caller, closes it. */
+export function callerView(channel: AgentChannel): AgentChannel {
   return {
     client: channel.client,
     hello: channel.hello,
     assertNetworkCapable: networkGate(channel.hello),
-    close,
+    close: () => {},
   };
 }
 

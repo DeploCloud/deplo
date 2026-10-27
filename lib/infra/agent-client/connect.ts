@@ -15,7 +15,7 @@ import { filesRpc } from "./files-rpc";
 import { hostRpc } from "./host-rpc";
 import { inventoryRpc } from "./inventory-rpc";
 import { metricsRpc } from "./metrics-rpc";
-import { leaseChannel } from "./channel-pool";
+import { serverChannel } from "./channel-pool";
 import type { AgentChannel } from "./mtls-channel";
 import { stackRpc } from "./stack-rpc";
 
@@ -58,14 +58,14 @@ export async function connectAgent(serverId: string): Promise<AgentConnection> {
   const pin = await agentPin(serverId);
   const gate = (channel: AgentChannel) =>
     gateConnection(connectionOn(channel), pin.version, serverId);
-  const channel = await leaseChannel(serverId, pin.fingerprint);
+  const channel = await serverChannel(serverId, pin.fingerprint);
   try {
     return await gate(channel);
   } catch (e) {
     if (!(e instanceof AgentUnreachableError)) throw e;
   }
   // A link can die before the door hears of it; the failed Hello retired its channel, so this waits for the next link.
-  return gate(await leaseChannel(serverId, pin.fingerprint));
+  return gate(await serverChannel(serverId, pin.fingerprint));
 }
 
 /** Past the minimum-agent gate: Hello, SelfUpdate, the health probe and a Deplo update only (ADR-0037). */
@@ -73,7 +73,7 @@ export async function openAgent(serverId: string): Promise<AgentConnection> {
   const stub = await connector?.(serverId);
   if (stub) return stub;
   const pin = await agentPin(serverId);
-  return connectionOn(await leaseChannel(serverId, pin.fingerprint));
+  return connectionOn(await serverChannel(serverId, pin.fingerprint));
 }
 
 // The certificate Deplo pinned when the agent called home: the identity its link must prove.
