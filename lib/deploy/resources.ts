@@ -52,6 +52,15 @@ export function mergeResourceLimits(
   }
 }
 
+// Docker never trims a container's log on its own; `local` also compresses what it rotates out.
+export function defaultLogging(): Record<string, unknown> {
+  return { driver: "local", options: { "max-size": "20m", "max-file": "5" } };
+}
+
+export function mergeLogLimit(svc: Record<string, unknown>): void {
+  if (svc.logging == null) svc.logging = defaultLogging();
+}
+
 function milliToCpuString(milli: number): string {
   return String(milli / 1000);
 }

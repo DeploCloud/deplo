@@ -1,6 +1,7 @@
 import { escapeComposeDollars } from "./compose-stack/compose-read";
 import { deploLabels } from "./compose-stack/service-stamp";
-import { renderResourceLimitsYaml } from "./resources";
+import { renderYamlKeys } from "./health-check";
+import { defaultLogging, renderResourceLimitsYaml } from "./resources";
 import type { ResourceLimits } from "../types/container";
 import type { DatabaseType } from "../types/database";
 import { isOfficialEngineImage } from "../databases/images";
@@ -145,7 +146,9 @@ export function generateDatabaseCompose(input: {
   const labels = deploLabels(databaseId, name)
     .map((l) => `      - ${l}`)
     .join("\n");
-  const resources = renderResourceLimitsYaml(input.resources, 4);
+  const resources =
+    renderResourceLimitsYaml(input.resources, 4) +
+    renderYamlKeys({ logging: defaultLogging() }, 4);
   const configMounts = (input.mounts ?? [])
     .map((m) => {
       const source = `${(input.filesDir ?? "").replace(/\/+$/, "")}/${m.filePath}`;

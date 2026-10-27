@@ -1083,7 +1083,7 @@ fi
 # only a full daemon restart loads new pools. KEEP IN SYNC with install.sh.
 #   1. NEVER hardcode the whole of the 10 range - it swallows the host's own
 #      LAN/VPN and dockerd then refuses to start. Pick a /13 overlapping NO route.
-#   2. NEVER clobber the operator's daemon.json: an existing pool setting wins.
+#   2. NEVER clobber the operator's daemon.json: an existing pool or log setting wins.
 
 # Is the /13 at 10.<$1>.0.0 (second octets $1..$1+7) clear of every 10.x route on
 # this host? Pure awk - no python, jq or ipcalc required on the target.
@@ -1134,13 +1134,15 @@ configure_docker_address_pools() {
 
   TMP="$(mktemp)"
   if [ ! -f "$CFG" ]; then
-    printf '{\n  "default-address-pools": [\n    { "base": "%s", "size": %s }\n  ]\n}\n' \
+    printf '{\n  "default-address-pools": [\n    { "base": "%s", "size": %s }\n  ],\n  "log-driver": "local",\n  "log-opts": { "max-size": "20m", "max-file": "5" }\n}\n' \
       "$BASE" "$SIZE" > "$TMP"
   elif command -v python3 >/dev/null 2>&1; then
     python3 -c 'import json,sys
 cfg, base, size = sys.argv[1], sys.argv[2], int(sys.argv[3])
 with open(cfg) as f: d = json.load(f)
 d["default-address-pools"] = [{"base": base, "size": size}]
+if "log-driver" not in d and "log-opts" not in d:
+    d["log-driver"], d["log-opts"] = "local", {"max-size": "20m", "max-file": "5"}
 sys.stdout.write(json.dumps(d, indent=2) + "\n")' "$CFG" "$BASE" "$SIZE" > "$TMP" 2>/dev/null || {
       err "Could not parse $CFG as JSON, leaving it untouched."
       err "Add manually: \"default-address-pools\": [{\"base\": \"$BASE\", \"size\": $SIZE}]"
@@ -1148,7 +1150,9 @@ sys.stdout.write(json.dumps(d, indent=2) + "\n")' "$CFG" "$BASE" "$SIZE" > "$TMP
     }
   elif command -v jq >/dev/null 2>&1; then
     jq --arg b "$BASE" --argjson s "$SIZE" \
-      '.["default-address-pools"] = [{base: $b, size: $s}]' "$CFG" > "$TMP" 2>/dev/null || {
+      '.["default-address-pools"] = [{base: $b, size: $s}]
+       | if has("log-driver") or has("log-opts") then .
+         else . + {"log-driver": "local", "log-opts": {"max-size": "20m", "max-file": "5"}} end' "$CFG" > "$TMP" 2>/dev/null || {
       err "Could not parse $CFG as JSON, leaving it untouched."
       err "Add manually: \"default-address-pools\": [{\"base\": \"$BASE\", \"size\": $SIZE}]"
       rm -f "$TMP"; return 0
@@ -1338,6 +1342,11 @@ services:
     image: traefik:v3.7
     container_name: deplo-traefik
     restart: unless-stopped
+    logging:
+      driver: local
+      options:
+        max-size: 20m
+        max-file: "5"
     depends_on:
       - deplo-socket-proxy
     command:
@@ -1378,6 +1387,11 @@ services:
   deplo-socket-proxy:
     image: tecnativa/docker-socket-proxy:v0.5.0
     restart: unless-stopped
+    logging:
+      driver: local
+      options:
+        max-size: 20m
+        max-file: "5"
     environment:
       - CONTAINERS=1
       - NETWORKS=1

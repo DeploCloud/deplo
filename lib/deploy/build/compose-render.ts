@@ -18,7 +18,7 @@ import { stackFilesDir } from "../deploy-key";
 import { certResolver } from "../domains";
 import { renderHealthCheckYaml, renderYamlKeys } from "../health-check";
 import { deployNetwork } from "../network";
-import { renderResourceLimitsYaml } from "../resources";
+import { defaultLogging, renderResourceLimitsYaml } from "../resources";
 import { traefikRouterLabels } from "../routing";
 import { appEnv, type PreviewEnvContext } from "./deploy-env";
 
@@ -126,7 +126,9 @@ export function renderCompose(opts: {
         .join("\n") +
       "\n"
     : "";
-  const resourcesYaml = renderResourceLimitsYaml(opts.resources, 4);
+  const resourcesYaml =
+    renderResourceLimitsYaml(opts.resources, 4) +
+    renderYamlKeys({ logging: defaultLogging() }, 4);
   const healthYaml = opts.healthCheckKeys
     ? renderYamlKeys({ healthcheck: opts.healthCheckKeys }, 4)
     : renderHealthCheckYaml(opts.healthCheck, 4);

@@ -11,7 +11,7 @@ import yaml from "../../yaml";
 
 import { keepAuthoredEnvText } from "../compose-lint/document";
 import { deploImageMessage, serviceDeploImage } from "../deplo-image";
-import { mergeResourceLimits } from "../resources";
+import { mergeLogLimit, mergeResourceLimits } from "../resources";
 import { injectAppVolumes, rewriteAppVolumes } from "./app-volumes";
 import { wireDomainRoutes } from "./domain-routers";
 import {
@@ -126,6 +126,7 @@ export function buildComposeStack(input: ComposeStackInput): string {
       mergeBuildLabels(svc as App, serviceName, tracking);
       mergeEnvironment(svc as App, envKeys);
       mergeResourceLimits(svc as App, input.resources);
+      mergeLogLimit(svc as App);
     }
   }
 
