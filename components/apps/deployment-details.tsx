@@ -15,11 +15,12 @@ import {
   Rocket,
   Server,
   SquareTerminal,
+  TriangleAlert,
 } from "lucide-react";
 import Link from "@/components/ui/link";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { StatusDot } from "@/components/shared/status-badge";
+import { StatusBadge, StatusDot } from "@/components/shared/status-badge";
 import { DeploymentCreator } from "@/components/apps/deployment-creator";
 import { CommitLink } from "@/components/apps/commit-link";
 import { FrameworkBadge } from "@/components/apps/framework-badge";
@@ -46,7 +47,7 @@ const STATUS_LABEL: Record<Deployment["status"], string> = {
 export type DeploymentSetting = { label: string; on: boolean; href: string };
 export type DeploymentDomain = { host: string; status: DomainStatus | null };
 
-// A preview's host carries no status; Cloudflare in front of a domain is a working one.
+// A preview's host carries no status; a domain behind Cloudflare or a proxy is a working one.
 export const domainServes = (status: DomainStatus | null) =>
   !status || status === "valid" || status === "cloudflare";
 
@@ -176,7 +177,11 @@ export function DeploymentDetailsCard({
                   rel="noopener noreferrer"
                   className={`${row} w-fit max-w-full font-medium hover:underline`}
                 >
-                  <Globe className={icon} />
+                  {domainServes(first.status) ? (
+                    <Globe className={icon} />
+                  ) : (
+                    <DomainAlert status={first.status} />
+                  )}
                   <span className="truncate">{first.host}</span>
                   {more.length > 0 && (
                     <span className="rounded-full bg-secondary px-1.5 py-0.5 text-[11px] leading-none text-secondary-foreground">
@@ -323,6 +328,51 @@ export function DeploymentSummary({
   );
 }
 
+// The same words the Domains page uses for a domain that does not answer yet.
+const DOMAIN_HINT: Partial<Record<DomainStatus, string>> = {
+  pending: "This domain doesn’t resolve yet.",
+  misconfigured: "This domain’s DNS doesn’t point here.",
+};
+
+function DomainAlert({ status }: { status: DomainStatus | null }) {
+  return (
+    <TriangleAlert
+      className={cn(
+        "size-4 shrink-0",
+        status === "pending" ? "text-[var(--warning)]" : "text-destructive",
+      )}
+    />
+  );
+}
+
+export function DeploymentDomainsMeta({
+  domains,
+}: {
+  domains: DeploymentDomain[];
+}) {
+  const broken = domains.filter((d) => !domainServes(d.status));
+  if (broken.length === 0)
+    return (
+      <>
+        <span className="text-muted-foreground">
+          {domains.length === 1 ? "1 domain" : `${domains.length} domains`}
+        </span>
+        <CircleCheck className="size-5 shrink-0 fill-[var(--info)] text-background" />
+      </>
+    );
+  const worst = broken.find((d) => d.status !== "pending") ?? broken[0]!;
+  return (
+    <>
+      <span className="text-muted-foreground">
+        {broken.length === 1
+          ? "1 needs attention"
+          : `${broken.length} need attention`}
+      </span>
+      <DomainAlert status={worst.status} />
+    </>
+  );
+}
+
 export function DeploymentDomainList({
   slug,
   domains,
@@ -334,29 +384,44 @@ export function DeploymentDomainList({
 }) {
   return (
     <ul className="divide-y divide-border">
-      {domains.map((x) => (
-        <li key={x.host} className="flex items-center gap-2 px-5 py-3 text-sm">
-          {domainServes(x.status) ? (
-            <CircleCheck className="size-4 shrink-0 fill-[var(--success)] text-background" />
-          ) : (
-            <StatusDot status={x.status!} />
-          )}
-          <a
-            href={`https://${x.host}`}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="truncate font-medium hover:underline"
+      {domains.map((x) => {
+        const ok = domainServes(x.status);
+        const hint = x.status && DOMAIN_HINT[x.status];
+        return (
+          <li
+            key={x.host}
+            className="flex items-center gap-2 px-5 py-3 text-sm"
           >
-            {x.host}
-          </a>
-          <Link
-            href={`/apps/${slug}${manageHref}`}
-            className="ml-auto shrink-0 text-muted-foreground hover:text-foreground"
-          >
-            Manage
-          </Link>
-        </li>
-      ))}
+            {ok ? (
+              <CircleCheck className="size-4 shrink-0 fill-[var(--success)] text-background" />
+            ) : (
+              <DomainAlert status={x.status} />
+            )}
+            <a
+              href={`https://${x.host}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="truncate font-medium hover:underline"
+            >
+              {x.host}
+            </a>
+            {!ok && hint && (
+              <span className="hidden truncate text-muted-foreground sm:inline">
+                {hint}
+              </span>
+            )}
+            <span className="ml-auto flex shrink-0 items-center gap-3">
+              {!ok && x.status && <StatusBadge status={x.status} />}
+              <Link
+                href={`/apps/${slug}${manageHref}`}
+                className="text-muted-foreground hover:text-foreground"
+              >
+                Manage
+              </Link>
+            </span>
+          </li>
+        );
+      })}
     </ul>
   );
 }

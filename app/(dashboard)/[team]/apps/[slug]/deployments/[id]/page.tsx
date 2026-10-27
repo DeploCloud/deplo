@@ -1,6 +1,6 @@
 import Link from "@/components/ui/link";
 import { notFound } from "next/navigation";
-import { ArrowLeft, CircleCheck, Lock, TriangleAlert } from "lucide-react";
+import { ArrowLeft, Lock } from "lucide-react";
 import { getAppBySlug } from "@/lib/data/apps/listing";
 import { hasAppCapability } from "@/lib/data/node-access";
 import { EmptyState } from "@/components/shared/empty-state";
@@ -29,8 +29,8 @@ import {
   DeploymentDetailsCard,
   DeploymentDomainList,
   DeploymentShortcuts,
+  DeploymentDomainsMeta,
   DeploymentSummary,
-  domainServes,
   type DeploymentDomain,
 } from "@/components/apps/deployment-details";
 import {
@@ -86,9 +86,9 @@ export default async function DeploymentDetailPage(
             host:
               d.name +
               (d.pathPrefix && d.pathPrefix !== "/" ? d.pathPrefix : ""),
-            status: d.status,
+            // Same reading as the Domains page: a proxy answering for it is not a fault.
+            status: d.proxied && d.status !== "valid" ? "cloudflare" : d.status,
           }));
-  const domainsOk = domains.every((d) => domainServes(d.status));
 
   const settings = [
     ...(source.isGit
@@ -201,18 +201,7 @@ export default async function DeploymentDetailPage(
             />
           )
         }
-        domainsMeta={
-          <>
-            <span className="text-muted-foreground">
-              {domains.length === 1 ? "1 domain" : `${domains.length} domains`}
-            </span>
-            {domainsOk ? (
-              <CircleCheck className="size-5 shrink-0 fill-[var(--info)] text-background" />
-            ) : (
-              <TriangleAlert className="size-5 shrink-0 text-[var(--warning)]" />
-            )}
-          </>
-        }
+        domainsMeta={<DeploymentDomainsMeta domains={domains} />}
       />
 
       <DeploymentShortcuts
