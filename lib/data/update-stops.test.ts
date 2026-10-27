@@ -77,6 +77,8 @@ const json = (body: unknown, status = 200) =>
   });
 
 type Declared = { updateStop?: boolean; requiresStop?: string } | number;
+const STOP: Declared = { updateStop: true };
+const NO_SERVERS = { waitingOn: [], leftBehind: [] };
 
 // A mocked GitHub: the newest stable, the published releases, and what each tag's package.json declares.
 function github(feed: {
@@ -158,7 +160,7 @@ test("Update installs the stop on the machine Deplo runs on, not the newest rele
   const capture = github({
     latest: "99.1.0",
     published: ["99.0.0"],
-    declares: { "99.1.0": { requiresStop: "99.0.0" } },
+    declares: { "99.1.0": { requiresStop: "99.0.0" }, "99.0.0": STOP },
   });
   try {
     const started = await asAdmin(applyDeploUpdate);
@@ -200,7 +202,10 @@ test("a stop older than the release list is still found by its own tag", async (
     latest: "99.0.0",
     published: ["99.1.0-canary.40"],
     listed: Array.from({ length: 20 }, (_, i) => `99.1.0-canary.${40 - i}`),
-    declares: { "99.1.0-canary.40": { requiresStop: "99.0.0" } },
+    declares: {
+      "99.1.0-canary.40": { requiresStop: "99.0.0" },
+      "99.0.0": STOP,
+    },
   });
   try {
     const info = await asAdmin(() => setCanaryReleases(true));
@@ -233,7 +238,7 @@ test("canary releases follow the same rules: a canary can require a canary stop"
 test("a stop that is not published offers nothing rather than the newest", async () => {
   const capture = github({
     latest: "99.1.0",
-    declares: { "99.1.0": { requiresStop: "99.0.0" } },
+    declares: { "99.1.0": { requiresStop: "99.0.0" }, "99.0.0": STOP },
   });
   try {
     const info = await asAdmin(getUpdateInfo);
@@ -242,6 +247,30 @@ test("a stop that is not published offers nothing rather than the newest", async
     assert.match(info.error ?? "", /v99\.0\.0, which is not published/);
   } finally {
     capture.restore();
+  }
+});
+
+test("a required release that is not an update stop offers nothing, since no instance could pass it", async () => {
+  const notAStop = (stop: string) =>
+    github({
+      latest: "99.1.0",
+      published: ["99.0.0"],
+      declares: { "99.1.0": { requiresStop: stop }, "99.0.0": {} },
+    });
+  for (const stop of ["99.0.0", DEPLO_VERSION]) {
+    const capture = notAStop(stop);
+    try {
+      const info = await asAdmin(getUpdateInfo);
+      assert.equal(info.next, null, stop);
+      assert.equal(info.updateAvailable, false, stop);
+      assert.equal(info.stop, null, stop);
+      assert.equal(
+        info.error,
+        `Deplo v99.1.0 has to come after v${stop}, which can't get Deplo ready for it.`,
+      );
+    } finally {
+      capture.restore();
+    }
   }
 });
 
@@ -274,7 +303,7 @@ test("on the stop, the newer release waits for its conditions, then is offered w
   let met = false;
   __setThisReleaseForTest({
     updateStop: true,
-    condition: async () => ({ met }),
+    condition: async () => ({ met, ...NO_SERVERS }),
   });
   const capture = github({
     latest: "99.1.0",
@@ -288,7 +317,7 @@ test("on the stop, the newer release waits for its conditions, then is offered w
     assert.equal(waiting.stop?.version, `v${DEPLO_VERSION}`);
     assert.equal(
       waiting.stop?.reason,
-      `Deplo v99.1.0 becomes available once v${DEPLO_VERSION} has finished getting this instance ready.`,
+      `Deplo v99.1.0 becomes available once v${DEPLO_VERSION} has finished getting ready.`,
     );
 
     met = true;
@@ -314,7 +343,7 @@ test("passing the stop is recorded even before any release requires it", async (
   }
   __setThisReleaseForTest({
     updateStop: true,
-    condition: async () => ({ met: false }),
+    condition: async () => ({ met: false, ...NO_SERVERS }),
   });
   const capture = github({
     latest: "99.1.0",
@@ -358,7 +387,7 @@ test("the update notification names the stop Update installs, and says nothing w
   const capture = github({
     latest: "99.1.0",
     published: ["99.0.0"],
-    declares: { "99.1.0": { requiresStop: "99.0.0" } },
+    declares: { "99.1.0": { requiresStop: "99.0.0" }, "99.0.0": STOP },
   });
   try {
     const alert = deploUpdateAlert(await getUpdateInfo());
@@ -373,7 +402,7 @@ test("the update notification names the stop Update installs, and says nothing w
   }
   __setThisReleaseForTest({
     updateStop: true,
-    condition: async () => ({ met: false }),
+    condition: async () => ({ met: false, ...NO_SERVERS }),
   });
   const waiting = github({
     latest: "99.1.0",
@@ -390,7 +419,7 @@ test("What changed marks only the releases Update brings in, up to the stop", as
   const capture = github({
     latest: "99.1.0",
     published: ["99.0.1", "99.0.0", DEPLO_VERSION],
-    declares: { "99.1.0": { requiresStop: "99.0.0" } },
+    declares: { "99.1.0": { requiresStop: "99.0.0" }, "99.0.0": STOP },
   });
   try {
     const { releases } = await asAdmin(listDeploReleases);

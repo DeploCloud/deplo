@@ -29,6 +29,7 @@ import { recordActivity } from "./activity";
 import {
   decideUpdate,
   passThisStopIfMet,
+  thisStopWaiting,
   type UpdateStopInfo,
 } from "./update-stops/decision";
 
@@ -164,45 +165,58 @@ async function fetchUpdateInfo(init: RequestInit): Promise<UpdateInfo> {
 
   try {
     const passed = await passThisStopIfMet();
-    const found = await fetchNewestRelease(init, canary);
-    if (!found) return base;
-    if ("error" in found) return { ...base, error: found.error };
-    const json = found.release;
-    const tag = typeof json.tag_name === "string" ? json.tag_name : null;
-    if (!tag) return base;
-
-    const newest: UpdateInfo = {
-      ...base,
-      latest: tag,
-      url:
-        typeof json.html_url === "string"
-          ? json.html_url
-          : `https://github.com/${DEPLO_REPO}/releases`,
-      name: typeof json.name === "string" && json.name ? json.name : tag,
-      publishedAt:
-        typeof json.published_at === "string" ? json.published_at : null,
-    };
-    if (!isNewer(tag, found.current)) return newest;
-    const route = await decideUpdate(
-      tag,
-      passed,
-      (v) => releasePublished(v, init),
-      init,
+    const info = await checkReleases(base, passed, init).catch(
+      (e): UpdateInfo => ({ ...base, error: failure(e) }),
     );
-    if (route.error) return { ...newest, error: route.error };
-    return {
-      ...newest,
-      updateAvailable: route.next !== null,
-      next: route.next,
-      nextIsStop: route.next !== null && route.stop?.version === route.next,
-      stop: route.stop,
-    };
+    if (info.next || info.stop) return info;
+    // Until this release's own stop passes, Updates names whom it waits on, newer release or not.
+    return { ...info, stop: await thisStopWaiting(passed) };
   } catch (e) {
-    return {
-      ...base,
-      error: e instanceof Error ? e.message : "Update check failed",
-    };
+    return { ...base, error: failure(e) };
   }
+}
+
+const failure = (e: unknown) =>
+  e instanceof Error ? e.message : "Update check failed";
+
+async function checkReleases(
+  base: UpdateInfo,
+  passed: string[],
+  init: RequestInit,
+): Promise<UpdateInfo> {
+  const found = await fetchNewestRelease(init, base.canary);
+  if (!found) return base;
+  if ("error" in found) return { ...base, error: found.error };
+  const json = found.release;
+  const tag = typeof json.tag_name === "string" ? json.tag_name : null;
+  if (!tag) return base;
+
+  const newest: UpdateInfo = {
+    ...base,
+    latest: tag,
+    url:
+      typeof json.html_url === "string"
+        ? json.html_url
+        : `https://github.com/${DEPLO_REPO}/releases`,
+    name: typeof json.name === "string" && json.name ? json.name : tag,
+    publishedAt:
+      typeof json.published_at === "string" ? json.published_at : null,
+  };
+  if (!isNewer(tag, found.current)) return newest;
+  const route = await decideUpdate(
+    tag,
+    passed,
+    (v) => releasePublished(v, init),
+    init,
+  );
+  if (route.error) return { ...newest, error: route.error };
+  return {
+    ...newest,
+    updateAvailable: route.next !== null,
+    next: route.next,
+    nextIsStop: route.next !== null && route.stop?.version === route.next,
+    stop: route.stop,
+  };
 }
 
 // Ungated: the maintenance sweep asks with no one signed in. GraphQL reads `readUpdateInfo`.

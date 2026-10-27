@@ -127,7 +127,7 @@ const UpdateInfoRef = builder.objectRef<UpdateInfo>("UpdateInfo").implement({
       type: UpdateStopRef,
       nullable: true,
       description:
-        "The update stop between this instance and `latest`, while it has not passed it.",
+        "The update stop between this instance and `latest`, while it has not passed it. Before any newer release requires it, this release itself while it is a stop not passed yet.",
       resolve: (info) => info.stop,
     }),
     url: t.exposeString("url", { nullable: true }),

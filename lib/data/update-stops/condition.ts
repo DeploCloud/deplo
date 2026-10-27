@@ -10,8 +10,8 @@ export interface StopServer {
 export interface StopCondition {
   met: boolean;
   // Enrolled servers that have not connected to Deplo yet, and those an instance admin left behind.
-  waitingOn?: StopServer[];
-  leftBehind?: StopServer[];
+  waitingOn: StopServer[];
+  leftBehind: StopServer[];
 }
 
 /** What must hold before this release counts as passed, when it is an update stop (ADR-0041). */

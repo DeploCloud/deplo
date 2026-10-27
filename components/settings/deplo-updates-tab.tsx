@@ -460,7 +460,7 @@ export function heroState({
     return info.stop.waiting
       ? {
           tone: "busy",
-          title: `Getting ready for Deplo ${info.latest}`,
+          title: "Getting ready for the next update",
           line: info.stop.reason,
         }
       : {

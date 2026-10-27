@@ -58,8 +58,15 @@ export function __resetThisReleaseForTest(): void {
   thisRelease = THIS_RELEASE;
 }
 
+// KEEP IN SYNC with the literal 8 in install.sh's `route_through_stops`.
 const MAX_HOPS = 8;
 const NO_SERVERS = { waitingOn: [], leftBehind: [] };
+
+const failed = (error: string): UpdateRoute => ({
+  next: null,
+  stop: null,
+  error,
+});
 
 /** Records this release as passed the first time its condition holds, once; the record is never cleared. */
 export async function passThisStopIfMet(): Promise<string[]> {
@@ -71,6 +78,27 @@ export async function passThisStopIfMet(): Promise<string[]> {
   return [...passed, r.version];
 }
 
+/** This release while it is an update stop not passed yet, and whom it waits on, before any release requires it too. */
+export async function thisStopWaiting(
+  passed: readonly string[],
+  goal?: string,
+): Promise<UpdateStopInfo | null> {
+  const r = thisRelease;
+  if (!r.updateStop || stopPassed(r.version, passed)) return null;
+  const { waitingOn, leftBehind } = await r.condition();
+  const here = versionTag(r.version);
+  return {
+    version: here,
+    waiting: true,
+    waitingOn,
+    leftBehind,
+    // KEEP IN SYNC with the "becomes available" warning in install.sh's `route_through_stops`.
+    reason: goal
+      ? `Deplo ${goal} becomes available once ${here} has finished getting ready.`
+      : "The next update waits until every server has connected to Deplo.",
+  };
+}
+
 /** What Update installs on the way to `newest`: the newest itself, or the oldest stop it has to come after. */
 export async function decideUpdate(
   newest: string,
@@ -79,15 +107,19 @@ export async function decideUpdate(
   init?: RequestInit,
 ): Promise<UpdateRoute> {
   const goal = versionTag(newest);
+  // A release named as a stop that does not declare itself one could never record a pass.
+  const notAStop = (stop: string) =>
+    failed(
+      `Deplo ${goal} has to come after ${versionTag(stop)}, which can't get Deplo ready for it.`,
+    );
   let target = bareVersion(newest);
   for (let hop = 0; hop < MAX_HOPS; hop++) {
     const declared = await readReleaseDeclaration(target, init);
     if (!declared)
-      return {
-        next: null,
-        stop: null,
-        error: `Couldn't check what Deplo ${versionTag(target)} needs before it installs.`,
-      };
+      return failed(
+        `Couldn't check what Deplo ${versionTag(target)} needs before it installs.`,
+      );
+    if (hop > 0 && !declared.updateStop) return notAStop(target);
     const stop = declared.requiresStop;
     if (!stop || stopPassed(stop, passed)) {
       if (versionTag(target) === goal) return { next: goal, stop: null };
@@ -103,45 +135,28 @@ export async function decideUpdate(
     }
     if (!isNewer(target, stop)) break;
     if (!isNewer(stop, thisRelease.version)) {
-      if (thisRelease.updateStop) {
-        const { waitingOn = [], leftBehind = [] } =
-          await thisRelease.condition();
-        return {
-          next: null,
-          stop: {
-            version: versionTag(thisRelease.version),
-            waiting: true,
-            waitingOn,
-            leftBehind,
-            reason: `Deplo ${goal} becomes available once ${versionTag(thisRelease.version)} has finished getting this instance ready.`,
-          },
-        };
-      }
+      if (thisRelease.updateStop)
+        return { next: null, stop: await thisStopWaiting(passed, goal) };
+      if (!isNewer(thisRelease.version, stop)) return notAStop(stop);
       return {
         next: null,
         stop: {
           version: versionTag(stop),
           waiting: false,
           ...NO_SERVERS,
+          // KEEP IN SYNC with the "skipped" warning in install.sh's `route_through_stops`.
           reason: `Deplo ${goal} has to come after ${versionTag(stop)}, which this instance skipped.`,
         },
       };
     }
     const there = await published(stop);
     if (there !== true)
-      return {
-        next: null,
-        stop: null,
-        error:
-          there === false
-            ? `Deplo ${goal} has to come after ${versionTag(stop)}, which is not published.`
-            : there.error,
-      };
+      return failed(
+        there === false
+          ? `Deplo ${goal} has to come after ${versionTag(stop)}, which is not published.`
+          : there.error,
+      );
     target = stop;
   }
-  return {
-    next: null,
-    stop: null,
-    error: `Deplo ${goal} names an update path Deplo cannot follow.`,
-  };
+  return failed(`Deplo ${goal} names an update path Deplo cannot follow.`);
 }

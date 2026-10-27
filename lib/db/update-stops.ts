@@ -24,7 +24,8 @@ export class UpdateRefusedError extends Error {
 /** Why this release will not start: plain words naming the stop to install first. */
 export function refusalReason(stop: string): string {
   const first = versionTag(stop);
-  return `Deplo ${versionTag(DEPLO_VERSION)} has to come after ${first}. Update to ${first} first and let it finish getting this instance ready.`;
+  // KEEP IN SYNC with the routed warning and note in install.sh's `route_through_stops`.
+  return `Deplo ${versionTag(DEPLO_VERSION)} has to come after ${first}. Update to ${first} first and let it finish getting ready.`;
 }
 
 /** A row passes every stop up to its own version: a stop, a later stop, or a fresh install. */

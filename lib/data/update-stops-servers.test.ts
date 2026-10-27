@@ -127,6 +127,34 @@ test("on the stop, Update names each server still waiting to connect, and offers
   assert.deepEqual(names(info.stop?.waitingOn), ["edge-1"]);
 });
 
+test("before any release requires the stop, Updates still names each server it waits on", async () => {
+  await enrolled("edge-1");
+  const newest = (respond: () => Response) => {
+    github?.restore();
+    github = captureFetch(respond);
+  };
+
+  newest(() => json({ tag_name: `v${DEPLO_VERSION}`, html_url: "latest" }));
+  const info = await asAdmin(getUpdateInfo);
+  assert.equal(info.next, null);
+  assert.equal(info.error, undefined);
+  assert.equal(info.stop?.waiting, true);
+  assert.equal(
+    info.stop?.reason,
+    "The next update waits until every server has connected to Deplo.",
+  );
+  assert.deepEqual(names(info.stop?.waitingOn), ["edge-1"]);
+
+  newest(() => json({ message: "Server Error" }, 503));
+  const offline = await asAdmin(getUpdateInfo);
+  assert.ok(offline.error, "GitHub could not be asked");
+  assert.deepEqual(names(offline.stop?.waitingOn), ["edge-1"]);
+
+  newest(() => json({ tag_name: `v${DEPLO_VERSION}`, html_url: "latest" }));
+  const left = await asAdmin(() => leaveServerBehind("edge-1"));
+  assert.equal(left.stop, null, "passed: nothing left to wait on");
+});
+
 test("the release past the stop is offered the moment the last server connects", async () => {
   await enrolled("edge-1");
   assert.equal((await asAdmin(getUpdateInfo)).next, null);

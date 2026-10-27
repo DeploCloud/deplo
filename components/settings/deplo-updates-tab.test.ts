@@ -99,7 +99,7 @@ test("an update stop is offered as the update, and the line says why", () => {
 
 test("on the stop, the newer release is on its way, ahead of servers catching up", () => {
   const reason =
-    "Deplo v0.7.0 becomes available once v0.6.0 has finished getting this instance ready.";
+    "Deplo v0.7.0 becomes available once v0.6.0 has finished getting ready.";
   const hero = heroState({
     ...base,
     info: info({
@@ -110,7 +110,27 @@ test("on the stop, the newer release is on its way, ahead of servers catching up
   });
   assert.deepEqual(hero, {
     tone: "busy",
-    title: "Getting ready for Deplo v0.7.0",
+    title: "Getting ready for the next update",
+    line: reason,
+  });
+});
+
+test("on the stop before any newer release, the next update is what it gets ready for", () => {
+  const reason =
+    "The next update waits until every server has connected to Deplo.";
+  const hero = heroState({
+    ...base,
+    version: "0.6.0",
+    info: info({
+      current: "0.6.0",
+      latest: "v0.6.0",
+      stop: { version: "v0.6.0", reason, waiting: true },
+    }),
+    fleet: fleet(),
+  });
+  assert.deepEqual(hero, {
+    tone: "busy",
+    title: "Getting ready for the next update",
     line: reason,
   });
 });
@@ -163,7 +183,7 @@ test("a stalled self-update names the log, whatever else is true", () => {
 
 test("an update the installer rolled back is named with its reason", () => {
   const reason =
-    "Deplo v0.7.0 has to come after v0.6.0. Update to v0.6.0 first and let it finish getting this instance ready.";
+    "Deplo v0.7.0 has to come after v0.6.0. Update to v0.6.0 first and let it finish getting ready.";
   const text = (version: string | null) =>
     renderToStaticMarkup(
       createElement(RefusedUpdateNotice, {
@@ -178,7 +198,7 @@ test("an update the installer rolled back is named with its reason", () => {
 const waitingStop = (over = {}) => ({
   version: "v0.6.0",
   reason:
-    "Deplo v0.7.0 becomes available once v0.6.0 has finished getting this instance ready.",
+    "Deplo v0.7.0 becomes available once v0.6.0 has finished getting ready.",
   waiting: true,
   waitingOn: [
     { id: "s1", name: "edge-1" },
