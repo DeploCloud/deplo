@@ -5,7 +5,6 @@ import {
   ExternalLink,
   GitBranch,
   GitCommitHorizontal,
-  Plus,
   RefreshCw,
   ScrollText,
   Server,
@@ -194,8 +193,8 @@ export function ProductionDeploymentCard({
             }
           >
             <div className="grid content-start gap-x-6 gap-y-5 sm:grid-cols-2">
-              <Field label="Domain" wide>
-                {project.productionUrl ? (
+              {project.productionUrl && (
+                <Field label="Domain" wide>
                   <a
                     href={project.productionUrl}
                     target="_blank"
@@ -207,15 +206,8 @@ export function ProductionDeploymentCard({
                     </span>
                     <ArrowUpRight className="size-3.5 shrink-0 text-muted-foreground" />
                   </a>
-                ) : (
-                  <Button size="sm" variant="outline" asChild>
-                    <Link href={`/apps/${slug}/domains`}>
-                      <Plus className="size-4" />
-                      Add domain
-                    </Link>
-                  </Button>
-                )}
-              </Field>
+                </Field>
+              )}
               <Field label="Status">
                 <StatusBadge status={prod.status} />
               </Field>
