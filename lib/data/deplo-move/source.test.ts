@@ -428,7 +428,7 @@ test("the first hello binds the code to that Deplo and describes this one", asyn
   await seedMain();
   const caller = await mint();
   const hello = await moveHello(caller);
-  assert.equal(hello.protocol, 2);
+  assert.equal(hello.protocol, 3);
   assert.equal(hello.schema, schemaTag());
   assert.equal(hello.instance, instanceFingerprint());
   assert.equal(hello.panelUrl, "https://old.example");
