@@ -39,6 +39,8 @@ export const servers = pgTable(
     statusMessage: text("status_message"),
     // Set by the first verified agent link and never cleared: from then on it is never dialed (ADR-0041).
     firstLinkedAt: isoTimestamptz("first_linked_at"),
+    // An instance admin let Deplo pass its update stop without this server: it needs its server agent reinstalled.
+    leftBehindAt: isoTimestamptz("left_behind_at"),
     allTeams: boolean("all_teams").notNull().default(true),
     storageOnly: boolean("storage_only").notNull().default(false),
     buildOnly: boolean("build_only").notNull().default(false),

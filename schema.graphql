@@ -3731,6 +3731,11 @@ type Mutation {
     serviceIds: [String!]
   ): MigrationProjectResult
 
+  """
+  Let the update stop pass without a server that has not connected to Deplo, and return the update decision after it. The server keeps its apps and settings, and needs its server agent reinstalled once Deplo updates past the stop. Refused for the machine Deplo runs on.
+  """
+  leaveServerBehind(id: String!): UpdateInfo
+
   """Sign in with email + password. Sets the session cookie."""
   login(email: String!, password: String!): AuthPayload
 
@@ -6889,6 +6894,11 @@ input UpdateSourceInput {
 A release this instance must install, and whose conditions it must meet, before it can update past it (ADR-0041).
 """
 type UpdateStop {
+  """
+  While `waiting`: each server an instance admin left behind. It keeps its apps and settings, and needs its server agent reinstalled once Deplo updates past the stop.
+  """
+  leftBehind: [UpdateStopServer!]
+
   """One plain sentence saying why Update offers what it does."""
   reason: String
   version: String
@@ -6904,7 +6914,9 @@ type UpdateStop {
   waitingOn: [UpdateStopServer!]
 }
 
-"""A server an update stop names: one it waits on."""
+"""
+A server an update stop names: one it waits on, or one an instance admin left behind.
+"""
 type UpdateStopServer {
   id: ID
   name: String

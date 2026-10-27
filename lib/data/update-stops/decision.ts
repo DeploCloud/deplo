@@ -21,7 +21,9 @@ export interface UpdateStopInfo {
   reason: string;
   // This instance runs the stop and its conditions do not hold yet: Update offers nothing.
   waiting: boolean;
+  // While waiting: who the condition still waits on, and who an instance admin left behind.
   waitingOn: StopServer[];
+  leftBehind: StopServer[];
 }
 
 export interface UpdateRoute {
@@ -55,6 +57,7 @@ export function __resetThisReleaseForTest(): void {
 }
 
 const MAX_HOPS = 8;
+const NO_SERVERS = { waitingOn: [], leftBehind: [] };
 
 const tag = (v: string) => `v${v.replace(/^v/i, "")}`;
 
@@ -93,29 +96,33 @@ export async function decideUpdate(
         stop: {
           version: tag(target),
           waiting: false,
-          waitingOn: [],
+          ...NO_SERVERS,
           reason: `Deplo ${goal} has to come after ${tag(target)}, so Update installs ${tag(target)} first.`,
         },
       };
     }
     if (!isNewer(target, stop)) break;
     if (!isNewer(stop, thisRelease.version)) {
-      if (thisRelease.updateStop)
+      if (thisRelease.updateStop) {
+        const { waitingOn = [], leftBehind = [] } =
+          await thisRelease.condition();
         return {
           next: null,
           stop: {
             version: tag(thisRelease.version),
             waiting: true,
-            waitingOn: (await thisRelease.condition()).waitingOn ?? [],
+            waitingOn,
+            leftBehind,
             reason: `Deplo ${goal} becomes available once ${tag(thisRelease.version)} has finished getting this instance ready.`,
           },
         };
+      }
       return {
         next: null,
         stop: {
           version: tag(stop),
           waiting: false,
-          waitingOn: [],
+          ...NO_SERVERS,
           reason: `Deplo ${goal} has to come after ${tag(stop)}, which this instance skipped.`,
         },
       };

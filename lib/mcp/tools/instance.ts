@@ -38,6 +38,10 @@ export const INSTANCE: McpToolDef[] = [
               id
               name
             }
+            leftBehind {
+              id
+              name
+            }
           }
           publishedAt
           url
@@ -73,10 +77,49 @@ export const INSTANCE: McpToolDef[] = [
               id
               name
             }
+            leftBehind {
+              id
+              name
+            }
           }
           publishedAt
           url
           canary
+          error
+        }
+      }
+    `,
+  }),
+  tool({
+    name: "leave_server_behind",
+    title: "Leave a server behind for an update",
+    description:
+      "Let the update stop pass without a server that has not connected to Deplo. It keeps its apps and settings, but needs its server agent reinstalled once Deplo updates past the stop.",
+    group: "Instance",
+    requires: "instanceAdmin",
+    destructive: true,
+    idempotent: true,
+    input: z.object({ id: serverId }),
+    query: /* GraphQL */ `
+      mutation McpLeaveServerBehind($id: String!) {
+        leaveServerBehind(id: $id) {
+          current
+          latest
+          updateAvailable
+          next
+          stop {
+            version
+            reason
+            waiting
+            waitingOn {
+              id
+              name
+            }
+            leftBehind {
+              id
+              name
+            }
+          }
           error
         }
       }
