@@ -17,6 +17,7 @@ import {
 } from "@/components/ui/dialog";
 import { SimpleTooltip } from "@/components/ui/tooltip";
 import { AppLogo } from "@/components/shared/project-logo";
+import { AnimatedHeight } from "@/components/shared/animated-height";
 import { EmptyState } from "@/components/shared/empty-state";
 import {
   connectedToast,
@@ -152,55 +153,57 @@ export function DatabaseConnectedApps({
               string as a variable.
             </DialogDescription>
           </DialogHeader>
-          <DatabaseLinkForm
-            noun="app"
-            bodyClassName="max-h-[calc(85vh-12rem)] border-t border-border"
-            targets={apps.map((a) => ({
-              id: a.id,
-              name: a.name,
-              logo: <AppLogo logo={a.logo} size={28} />,
-              place: a.place,
-              reach: a.reach,
-              defaultKey: DEFAULT_LINK_KEY[databaseType],
-              takenKeys: a.keys,
-              connectedKeys: connectedKeys(a.id),
-            }))}
-            empty={
-              <EmptyState
-                title="No apps"
-                description="You can't edit the variables of any app in this team."
-                className="py-10"
-              />
-            }
-            onCancel={() => setOpen(false)}
-            onConnect={async (appId, key) => {
-              const res = await gqlAction(
-                /* GraphQL */ `
-                  mutation (
-                    $appId: String!
-                    $databaseId: String!
-                    $key: String!
-                  ) {
-                    connectDatabase(
-                      appId: $appId
-                      databaseId: $databaseId
-                      key: $key
-                    )
-                  }
-                `,
-                { appId, databaseId, key },
-              );
-              if (res.ok) {
-                setOpen(false);
-                connectedToast(
-                  `Connected to ${apps.find((a) => a.id === appId)?.name}`,
-                  appId,
-                );
-                router.refresh();
+          <AnimatedHeight scroll={false}>
+            <DatabaseLinkForm
+              noun="app"
+              bodyClassName="max-h-[calc(85vh-12rem)] border-t border-border"
+              targets={apps.map((a) => ({
+                id: a.id,
+                name: a.name,
+                logo: <AppLogo logo={a.logo} size={28} />,
+                place: a.place,
+                reach: a.reach,
+                defaultKey: DEFAULT_LINK_KEY[databaseType],
+                takenKeys: a.keys,
+                connectedKeys: connectedKeys(a.id),
+              }))}
+              empty={
+                <EmptyState
+                  title="No apps"
+                  description="You can't edit the variables of any app in this team."
+                  className="py-10"
+                />
               }
-              return res;
-            }}
-          />
+              onCancel={() => setOpen(false)}
+              onConnect={async (appId, key) => {
+                const res = await gqlAction(
+                  /* GraphQL */ `
+                    mutation (
+                      $appId: String!
+                      $databaseId: String!
+                      $key: String!
+                    ) {
+                      connectDatabase(
+                        appId: $appId
+                        databaseId: $databaseId
+                        key: $key
+                      )
+                    }
+                  `,
+                  { appId, databaseId, key },
+                );
+                if (res.ok) {
+                  setOpen(false);
+                  connectedToast(
+                    `Connected to ${apps.find((a) => a.id === appId)?.name}`,
+                    appId,
+                  );
+                  router.refresh();
+                }
+                return res;
+              }}
+            />
+          </AnimatedHeight>
         </DialogContent>
       </Dialog>
     </Card>

@@ -94,6 +94,13 @@
   `Button` defaults to `type="button"`, so Cancel never submits by accident; a raw `<button>` you
   add inside a form must spell out `type="button"` itself. Pattern reference:
   `components/apps/create-folder-dialog.tsx`.
+- **A modal never jumps: its height animates.** Content that appears, disappears or arrives
+  after a fetch (a field revealed by a choice, an error, a warning, a step) grows and shrinks the
+  dialog smoothly. A plain `DialogContent` does it on its own (`AnimatedHeight` inside its scroll
+  area), so nothing is needed there. A `selfManaged` dialog wraps the changing part in
+  `AnimatedHeight`, or uses `SlidingPanels`, or has a fixed height - `dialog-height.test.ts` fails
+  on one that does none of them. A nested `AnimatedHeight` steps aside, so wrapping twice is
+  harmless.
 - **A page that is a header plus a tab bar has ONE vertical rhythm: `space-y-3`,
   everywhere.** The page wrapper (`PageHeader` → the tab bar) and the `Tabs` root (tab
   bar → its content) both carry it, so the same three pages cannot drift apart - MCP,
