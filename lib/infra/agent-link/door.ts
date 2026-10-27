@@ -6,7 +6,10 @@ import type { Duplex } from "node:stream";
 
 import type { WebSocket, WebSocketServer } from "ws";
 
-import { serverPinnedTo } from "../../data/servers/agent-handshake";
+import {
+  recordFirstLink,
+  serverPinnedTo,
+} from "../../data/servers/agent-handshake";
 import { clientAddressKey } from "../../http/client-address";
 import { rateLimit } from "../../security";
 import { HELLO_TIMEOUT_MS } from "../agent-client/deadlines";
@@ -115,6 +118,8 @@ async function holdLink(
     // Read before the second look, so a removal that lands after it still refuses this link.
     const generation = linkGeneration(serverId);
     const still = await serverPinnedTo(fingerprint);
+    // Before the link is announced, so whoever hears it come up reads it as linked (ADR-0041).
+    if (still?.id === serverId) await recordFirstLink(serverId);
     if (ws.readyState !== ws.OPEN) return;
     const verified: AgentLink = {
       id,

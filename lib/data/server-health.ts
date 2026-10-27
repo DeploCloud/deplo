@@ -22,6 +22,7 @@ import {
   currentLink,
   hasLinked,
   linkMayCome,
+  linksSettling,
   onAgentLink,
 } from "../infra/agent-link/registry";
 import {
@@ -193,7 +194,7 @@ async function probeServer(
     }
   };
 
-  const link = linkState(server.id);
+  const link = linkState(server);
   if (link) return probeOverLink(server, link, dialHello, observedAt);
 
   let hello: HelloResponse | null = null;
@@ -360,9 +361,13 @@ export function stopServerLinkStatus(): void {
 type LinkState = "linked" | "waiting" | "offline";
 
 /** How a server that links stands, read without a dial; null for one that never linked. */
-function linkState(serverId: string): LinkState | null {
-  if (!hasLinked(serverId)) return null;
+function linkState(server: Server): LinkState | null {
+  const serverId = server.id;
+  const seen = hasLinked(serverId);
+  if (!seen && !server.firstLinkedAt) return null;
   if (currentLink(serverId)) return "linked";
+  // It linked before Deplo started: while links settle, it is on its way back (ADR-0041).
+  if (!seen) return linksSettling() ? "waiting" : "offline";
   const gone = watch.gone.get(serverId);
   return gone && Date.now() - gone.since >= watch.graceMs
     ? "offline"

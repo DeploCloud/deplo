@@ -12,11 +12,16 @@ import { classifyServerHealth } from "../infra/server-health";
 import type { AgentConnection } from "../infra/agent-client/connection";
 import {
   AgentMetricsStreamUnsupportedError,
+  AgentNotLinkedError,
   AgentTooOldError,
   AgentUnreachableError,
 } from "../infra/agent-client/errors";
 import { connectMetricsStreamAgent } from "../infra/agent-client/preflight";
-import { linkMayCome } from "../infra/agent-link/registry";
+import {
+  currentLink,
+  linkMayCome,
+  onAgentLink,
+} from "../infra/agent-link/registry";
 import { isMetricsSavingEnabled } from "../data/monitoring-settings";
 import { measureServerForCollector } from "../data/monitoring";
 import { getDb } from "../db/client";
@@ -288,6 +293,14 @@ async function runStreamLoop(
         return;
       }
 
+      // Its dial carries no telemetry, so another dial settles nothing: wait for its link (ADR-0041).
+      if (e instanceof AgentNotLinkedError) {
+        conn?.close();
+        await linkComesUp(serverId, signal);
+        attempt = 0;
+        continue;
+      }
+
       const lifetime = openedAt === null ? 0 : Date.now() - openedAt;
       const rotation =
         e instanceof AgentUnreachableError &&
@@ -316,6 +329,21 @@ async function runStreamLoop(
       conn?.close();
     }
   }
+}
+
+function linkComesUp(serverId: string, signal: AbortSignal): Promise<void> {
+  return new Promise((resolve) => {
+    const done = () => {
+      off();
+      signal.removeEventListener("abort", done);
+      resolve();
+    };
+    const off = onAgentLink((e) => {
+      if (e.type === "up" && e.serverId === serverId) done();
+    });
+    signal.addEventListener("abort", done, { once: true });
+    if (currentLink(serverId)) done();
+  });
 }
 
 async function runPollLoop(

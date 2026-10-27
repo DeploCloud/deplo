@@ -26,6 +26,17 @@ export class AgentOfflineError extends AgentUnreachableError {
   }
 }
 
+export const AGENT_NOT_LINKED_MESSAGE =
+  "This server can't connect to Deplo yet. Its server agent connects on its own once it is up to date: " +
+  "if it still can't in a few minutes, check that the server is connected to the internet.";
+
+/** A server that has never linked: its dial carries only what brings it onto its link (ADR-0041). */
+export class AgentNotLinkedError extends AgentUnreachableError {
+  constructor() {
+    super(AGENT_NOT_LINKED_MESSAGE);
+  }
+}
+
 export class AgentNetworkUnsupportedError extends Error {}
 
 // An agent below the panel's agentMin: unusable until it updates (ADR-0037).

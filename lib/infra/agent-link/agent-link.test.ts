@@ -400,7 +400,7 @@ test("server status hears a link come up and go down, and nothing for a replacem
   assert.deepEqual(events, [`up ${SERVER}`, `up ${SERVER}`, `down ${SERVER}`]);
 });
 
-test("a server whose agent does not link is dialed directly, as today", async () => {
+test("a server whose agent has never linked is still dialed, for what brings it onto its link", async () => {
   assert.equal(await helloOver(), AGENT_VERSION);
   assert.equal(agent.connections().opened, 1);
 });

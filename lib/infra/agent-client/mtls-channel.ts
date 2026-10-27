@@ -30,6 +30,8 @@ export interface AgentAddress {
   serverName: string;
   pinnedFingerprint: string;
   agentVersion?: string;
+  /** It has linked before: Deplo never dials it again (ADR-0041). */
+  linkedOnce?: boolean;
 }
 
 export interface DialTarget extends AgentAddress {
@@ -58,6 +60,7 @@ export function agentAddress(server: Server): AgentAddress {
     serverName: isIpLiteral(host) ? "localhost" : host,
     pinnedFingerprint: agent.certFingerprint,
     agentVersion: agent.version,
+    linkedOnce: !!server.firstLinkedAt,
   };
 }
 
