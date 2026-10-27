@@ -1,6 +1,6 @@
 import "server-only";
 
-import { DEPLO_REPO } from "../../version";
+import { bareVersion, DEPLO_REPO, versionTag } from "../../version";
 
 /** What a release declares in the `deplo` block of its package.json, beside its agent pin. */
 export interface ReleaseDeclaration {
@@ -19,7 +19,7 @@ export async function readReleaseDeclaration(
 ): Promise<ReleaseDeclaration | null> {
   try {
     const res = await fetch(
-      `https://raw.githubusercontent.com/${DEPLO_REPO}/v${version}/package.json`,
+      `https://raw.githubusercontent.com/${DEPLO_REPO}/${versionTag(version)}/package.json`,
       { signal: AbortSignal.timeout(5000), ...init },
     );
     if (!res.ok) return null;
@@ -28,7 +28,7 @@ export async function readReleaseDeclaration(
         ?.deplo ?? {};
     const stop =
       typeof block.requiresStop === "string"
-        ? block.requiresStop.trim().replace(/^v/i, "")
+        ? bareVersion(block.requiresStop)
         : "";
     return {
       agentMin: typeof block.agentMin === "string" ? block.agentMin : null,

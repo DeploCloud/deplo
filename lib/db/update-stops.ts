@@ -1,6 +1,11 @@
 import "server-only";
 
-import { DEPLO_VERSION, REQUIRED_STOP, versionAtLeast } from "../version";
+import {
+  DEPLO_VERSION,
+  REQUIRED_STOP,
+  versionAtLeast,
+  versionTag,
+} from "../version";
 
 // Raw SQL, so a later release can read the record on this schema before its own migrations run (ADR-0041).
 export type RawQuery = (
@@ -16,11 +21,10 @@ export class UpdateRefusedError extends Error {
   override name = "UpdateRefusedError";
 }
 
-const tag = (v: string) => `v${v.replace(/^v/i, "")}`;
-
 /** Why this release will not start: plain words naming the stop to install first. */
 export function refusalReason(stop: string): string {
-  return `Deplo ${tag(DEPLO_VERSION)} has to come after ${tag(stop)}. Update to ${tag(stop)} first and let it finish getting this instance ready.`;
+  const first = versionTag(stop);
+  return `Deplo ${versionTag(DEPLO_VERSION)} has to come after ${first}. Update to ${first} first and let it finish getting this instance ready.`;
 }
 
 /** A row passes every stop up to its own version: a stop, a later stop, or a fresh install. */

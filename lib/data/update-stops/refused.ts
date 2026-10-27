@@ -5,7 +5,7 @@ import { join } from "node:path";
 
 import { dataDir } from "../../data-dir";
 import { requireInstanceAdmin } from "../../membership";
-import { DEPLO_VERSION, isNewer } from "../../version";
+import { bareVersion, DEPLO_VERSION, isNewer, versionTag } from "../../version";
 
 /** An update the installer rolled back, and why (ADR-0041). */
 export interface RefusedUpdate {
@@ -28,10 +28,10 @@ export async function lastRefusedUpdate(): Promise<RefusedUpdate | null> {
   }
   const reason = fields.get("reason")?.slice(0, 300);
   if (!reason) return null;
-  const version = fields.get("version")?.replace(/^v/i, "") || null;
+  const version = bareVersion(fields.get("version") ?? "") || null;
   if (version && !isNewer(version, DEPLO_VERSION)) return null;
   return {
-    version: version && `v${version}`,
+    version: version && versionTag(version),
     reason,
     at: fields.get("at") || null,
   };

@@ -1,10 +1,12 @@
 import "server-only";
 
 import {
+  bareVersion,
   DEPLO_VERSION,
   REQUIRED_STOP,
   UPDATE_STOP,
   isNewer,
+  versionTag,
 } from "../../version";
 import { instanceFrozen } from "../deplo-move/freeze";
 import {
@@ -59,8 +61,6 @@ export function __resetThisReleaseForTest(): void {
 const MAX_HOPS = 8;
 const NO_SERVERS = { waitingOn: [], leftBehind: [] };
 
-const tag = (v: string) => `v${v.replace(/^v/i, "")}`;
-
 /** Records this release as passed the first time its condition holds, once; the record is never cleared. */
 export async function passThisStopIfMet(): Promise<string[]> {
   const passed = await passedStops();
@@ -78,26 +78,26 @@ export async function decideUpdate(
   published: (version: string) => Promise<boolean | { error: string }>,
   init?: RequestInit,
 ): Promise<UpdateRoute> {
-  const goal = tag(newest);
-  let target = newest.replace(/^v/i, "");
+  const goal = versionTag(newest);
+  let target = bareVersion(newest);
   for (let hop = 0; hop < MAX_HOPS; hop++) {
     const declared = await readReleaseDeclaration(target, init);
     if (!declared)
       return {
         next: null,
         stop: null,
-        error: `Couldn't check what Deplo ${tag(target)} needs before it installs.`,
+        error: `Couldn't check what Deplo ${versionTag(target)} needs before it installs.`,
       };
     const stop = declared.requiresStop;
     if (!stop || stopPassed(stop, passed)) {
-      if (tag(target) === goal) return { next: goal, stop: null };
+      if (versionTag(target) === goal) return { next: goal, stop: null };
       return {
-        next: tag(target),
+        next: versionTag(target),
         stop: {
-          version: tag(target),
+          version: versionTag(target),
           waiting: false,
           ...NO_SERVERS,
-          reason: `Deplo ${goal} has to come after ${tag(target)}, so Update installs ${tag(target)} first.`,
+          reason: `Deplo ${goal} has to come after ${versionTag(target)}, so Update installs ${versionTag(target)} first.`,
         },
       };
     }
@@ -109,21 +109,21 @@ export async function decideUpdate(
         return {
           next: null,
           stop: {
-            version: tag(thisRelease.version),
+            version: versionTag(thisRelease.version),
             waiting: true,
             waitingOn,
             leftBehind,
-            reason: `Deplo ${goal} becomes available once ${tag(thisRelease.version)} has finished getting this instance ready.`,
+            reason: `Deplo ${goal} becomes available once ${versionTag(thisRelease.version)} has finished getting this instance ready.`,
           },
         };
       }
       return {
         next: null,
         stop: {
-          version: tag(stop),
+          version: versionTag(stop),
           waiting: false,
           ...NO_SERVERS,
-          reason: `Deplo ${goal} has to come after ${tag(stop)}, which this instance skipped.`,
+          reason: `Deplo ${goal} has to come after ${versionTag(stop)}, which this instance skipped.`,
         },
       };
     }
@@ -134,7 +134,7 @@ export async function decideUpdate(
         stop: null,
         error:
           there === false
-            ? `Deplo ${goal} has to come after ${tag(stop)}, which is not published.`
+            ? `Deplo ${goal} has to come after ${versionTag(stop)}, which is not published.`
             : there.error,
       };
     target = stop;

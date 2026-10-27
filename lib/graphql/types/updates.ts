@@ -25,6 +25,7 @@ import {
 } from "@/lib/data/updates";
 import type { StopServer } from "@/lib/data/update-stops/condition";
 import { leaveServerBehind } from "@/lib/data/update-stops/leave-behind";
+import { bareVersion } from "@/lib/version";
 
 const StrandedServerRef = builder
   .objectRef<StrandedServer>("StrandedServer")
@@ -144,7 +145,7 @@ const UpdateInfoRef = builder.objectRef<UpdateInfo>("UpdateInfo").implement({
       description:
         "Offline servers whose agent is older than the minimum the `next` Deplo supports. They cannot update while offline, so they stay unusable until they come back and their agent updates. Empty when there is no update or the release does not say.",
       resolve: (info) =>
-        info.next ? strandedByPanelUpdate(info.next.replace(/^v/i, "")) : [],
+        info.next ? strandedByPanelUpdate(bareVersion(info.next)) : [],
     }),
     lastRefusedUpdate: t.field({
       type: RefusedUpdateRef,

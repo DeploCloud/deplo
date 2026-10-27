@@ -6,10 +6,12 @@ import {
   AGENT_VERSION,
   agentUpdateAvailable,
   agentUsable,
+  bareVersion,
   isNewer,
   isPrerelease,
   newestVersion,
   rankedCurrent,
+  versionTag,
 } from "./version";
 
 test("isNewer: strict semver greater-than across each component", () => {
@@ -53,6 +55,13 @@ test("isNewer: a canary sorts before its release and by its own number", () => {
   assert.equal(isNewer("0.3.0-canary.1", "0.2.0"), true);
   assert.equal(isNewer("0.2.1", "0.3.0-canary.1"), false);
   assert.equal(isNewer("0.3.0-canary.1", "0.3.0-canary.1"), false);
+});
+
+test("a version reads the same with or without its tag's v", () => {
+  assert.equal(versionTag("0.6.0"), "v0.6.0");
+  assert.equal(versionTag(" V0.6.0-canary.3 "), "v0.6.0-canary.3");
+  assert.equal(bareVersion("v0.6.0"), "0.6.0");
+  assert.equal(bareVersion("0.6.0"), "0.6.0");
 });
 
 test("isPrerelease and newestVersion", () => {

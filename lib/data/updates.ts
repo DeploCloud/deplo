@@ -8,11 +8,13 @@ import { getDb } from "../db/client";
 import { instanceSettings } from "../db/schema/control-plane/instance";
 import { nowIso } from "../ids";
 import {
+  bareVersion,
   DEPLO_VERSION,
   DEPLO_REPO,
   isNewer,
   newestVersion,
   rankedCurrent,
+  versionTag,
 } from "../version";
 import { canaryReleasesEnabled } from "./release-channel";
 
@@ -84,10 +86,6 @@ interface GitHubRelease {
   prerelease?: boolean;
 }
 
-function normalizeTag(tag: string): string {
-  return tag.trim().replace(/^v/i, "");
-}
-
 function describeFailure(res: Response): string {
   if (res.headers.get("x-ratelimit-remaining") === "0") {
     const reset = Number(res.headers.get("x-ratelimit-reset"));
@@ -140,7 +138,7 @@ async function releasePublished(
   init: RequestInit,
 ): Promise<boolean | { error: string }> {
   const res = await fetch(
-    `https://api.github.com/repos/${DEPLO_REPO}/releases/tags/v${version}`,
+    `https://api.github.com/repos/${DEPLO_REPO}/releases/tags/${versionTag(version)}`,
     { headers: GH_HEADERS, signal: AbortSignal.timeout(TIMEOUT_MS), ...init },
   );
   if (res.status === 404) return false;
@@ -294,7 +292,7 @@ export async function listDeploReleases(): Promise<{
             typeof r.published_at === "string" ? r.published_at : null,
           body: typeof r.body === "string" ? r.body.trim() : "",
           prerelease: r.prerelease === true,
-          current: normalizeTag(tag) === DEPLO_VERSION,
+          current: bareVersion(tag) === DEPLO_VERSION,
           available:
             next !== null && isNewer(tag, current) && !isNewer(tag, next),
         };
@@ -329,7 +327,7 @@ export async function applyDeploUpdate(): Promise<DeploUpdateStarted> {
         info.stop?.reason ||
         `Deplo is already on the newest release (v${info.current}).`,
     );
-  const version = normalizeTag(info.next);
+  const version = bareVersion(info.next);
 
   const server = await deploHostServer();
   if (!server)

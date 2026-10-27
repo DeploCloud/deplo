@@ -12,18 +12,25 @@ export const AGENT_MIN_VERSION: string = agentPin.agentMin;
 // ADR-0041: whether this release is an update stop, and the stop an instance must pass to install it.
 export const UPDATE_STOP: boolean = agentPin.updateStop;
 export const REQUIRED_STOP: string | null =
-  agentPin.requiresStop.trim() || null;
+  bareVersion(agentPin.requiresStop) || null;
 
 export const AGENT_TOO_OLD_MESSAGE =
   "This server is being updated. Deplo retries on its own; an instance admin can retry it now.";
 
+/** A version without its git tag's `v`, as package.json and an image tag spell it. */
+export function bareVersion(v: string): string {
+  return v.trim().replace(/^v/i, "");
+}
+
+/** A version as its git tag spells it: `v1.2.3`. */
+export function versionTag(v: string): string {
+  return `v${bareVersion(v)}`;
+}
+
 type Semver = { core: [number, number, number]; pre: string[] };
 
 function parseSemver(v: string): Semver | null {
-  const m = v
-    .trim()
-    .replace(/^v/i, "")
-    .match(/^(\d+)\.(\d+)\.(\d+)(?:-([0-9A-Za-z.-]+))?/);
+  const m = bareVersion(v).match(/^(\d+)\.(\d+)\.(\d+)(?:-([0-9A-Za-z.-]+))?/);
   if (!m) return null;
   // `git describe` (0.2.0-8-gb39f8a7) is a build AFTER the tag, not a canary of it.
   const pre = m[4] && !/^\d+-g[0-9a-f]{4,}(-dirty)?$/.test(m[4]) ? m[4] : "";
