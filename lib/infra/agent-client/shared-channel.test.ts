@@ -88,26 +88,20 @@ test("calls made at once to a server ride one connection", async () => {
   assert.equal(agent.connections().opened, 1);
 });
 
+// A server that never linked is dialed for Hello and what brings it onto its link only (ADR-0041).
 test("a caller closing its connection leaves the channel to everyone else", async () => {
   const watcher = await connectAgent(SERVER);
   await watcher.hello(); // the gate's answer; every hello after it is live
-  const seen: string[] = [];
-  const logs = watcher.followLogs("app_1", "web", 0);
-  logs.onData((chunk) => seen.push(chunk.toString()));
 
   const quick = await connectAgent(SERVER);
   await quick.hello();
   quick.close();
   const other = await connectAgent(SERVER);
-  other.followLogs("app_1", "web", 0).close();
   other.close();
 
-  agent.log("still here");
-  await eventually(() => seen.includes("still here"));
   assert.equal((await watcher.hello()).agentVersion, AGENT_VERSION);
   await helloOnce();
   assert.deepEqual(agent.connections(), { opened: 1, open: 1 });
-  logs.close();
   watcher.close();
 });
 
@@ -183,11 +177,12 @@ test("a channel never outlives a day, so never its client certificate", async (t
 });
 
 test("an agent back from an outage answers the very next call", async () => {
-  const deploy = await connectAgent(SERVER);
+  const conn = await connectAgent(SERVER);
   agent.refuse(true);
-  await assert.rejects(deploy.inspect("web"), AgentUnreachableError);
-  await assert.rejects(deploy.inspect("web"), AgentUnreachableError);
-  deploy.close();
+  // Renewing its certificate is a call its dial still carries.
+  await assert.rejects(conn.renewalCsr(), AgentUnreachableError);
+  await assert.rejects(conn.renewalCsr(), AgentUnreachableError);
+  conn.close();
 
   agent.refuse(false);
   const probe = await openAgent(SERVER);

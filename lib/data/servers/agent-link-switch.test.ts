@@ -11,8 +11,10 @@ import { deploMoves } from "../../db/schema/control-plane/deplo-move";
 import { __resetReleaseCacheForTests } from "../../agent/release";
 import { AGENT_VERSION } from "../../version";
 import { nowIso } from "../../ids";
+import type { DeployRequest } from "../../agent/gen/agent";
 import { connectAgent } from "../../infra/agent-client/connect";
 import { dropAgentChannel } from "../../infra/agent-client/channel-pool";
+import { AgentNotLinkedError } from "../../infra/agent-client/errors";
 import {
   AGENT_LINK_CAPABILITY,
   SELF_UPDATE_CAPABILITY,
@@ -169,7 +171,7 @@ test("an agent updated to a linking release links and stops listening, with noth
   assert.ok(log.some((r) => r.m.includes(`Updated the agent on ${SERVER}`)));
 });
 
-test("an agent that cannot reach the panel keeps its port and is still dialed directly", async () => {
+test("an agent that cannot reach the panel keeps its port, and its dial carries no deploy", async () => {
   const a = await enrolled({ reachesPanel: false });
 
   await runAgentRollout();
@@ -182,6 +184,15 @@ test("an agent that cannot reach the panel keeps its port and is still dialed di
   assert.equal(h.agentVersion, AGENT_VERSION);
   assert.equal(h.listening, true);
   assert.equal(await refusesConnections(a.port), false);
+  const conn = await connectAgent(SERVER);
+  try {
+    await assert.rejects(
+      conn.deploy({} as DeployRequest).next(),
+      AgentNotLinkedError,
+    );
+  } finally {
+    conn.close();
+  }
 });
 
 test("while a Deplo move has the instance frozen, a linked agent keeps its port until the move is over", async (t) => {

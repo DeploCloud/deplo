@@ -9,6 +9,7 @@ import { backupRpc } from "./backup-rpc";
 import { captureRpc } from "./capture-rpc";
 import type { AgentConnection } from "./connection";
 import { consoleRpc } from "./console-rpc";
+import { dialOnly } from "./dial-only";
 import { cronRpc } from "./cron-rpc";
 import { dataCopyRpc } from "./data-copy-rpc";
 import { HELLO_TIMEOUT_MS } from "./deadlines";
@@ -29,7 +30,16 @@ import { stackRpc } from "./stack-rpc";
 
 /** A connection on a channel of its own, closed with it: an override address only. */
 export function dial(target: DialTarget): AgentConnection {
-  return connectionOn(openChannel(target));
+  return dialOnly(connectionOn(openChannel(target)));
+}
+
+// A link carries every call; a dial only what brings the server onto its link (ADR-0041).
+function connectionFor(leased: {
+  channel: AgentChannel;
+  linked: boolean;
+}): AgentConnection {
+  const conn = connectionOn(leased.channel);
+  return leased.linked ? conn : dialOnly(conn);
 }
 
 function connectionOn(channel: AgentChannel): AgentConnection {
@@ -70,28 +80,25 @@ export async function connectAgent(serverId: string): Promise<AgentConnection> {
   if (stub) return stub;
   const address = await resolveAddress(serverId);
   const started = Date.now();
-  const gate = (channel: AgentChannel) =>
-    gateConnection(connectionOn(channel), address.agentVersion, serverId);
-  const { channel, answeredBefore, linked } = await leaseChannel(
-    serverId,
-    address,
-  );
+  const gate = (leased: Awaited<ReturnType<typeof leaseChannel>>) =>
+    gateConnection(connectionFor(leased), address.agentVersion, serverId);
+  const first = await leaseChannel(serverId, address);
   try {
-    return await gate(channel);
+    return await gate(first);
   } catch (e) {
     if (!(e instanceof AgentUnreachableError)) throw e;
     // A shared connection can die where a fresh dial would not; the failed Hello retired it.
-    if (answeredBefore)
-      return gate((await leaseChannel(serverId, address)).channel);
+    if (first.answeredBefore)
+      return gate(await leaseChannel(serverId, address));
     // The panel just started: an agent that stopped listening once it linked is still on its way back.
-    if (linked || !linkMayCome(serverId, e)) throw e;
+    if (first.linked || !linkMayCome(serverId, e)) throw e;
     const link = await waitForLink(
       serverId,
       LINK_WAIT_MS - (Date.now() - started),
     );
     if (!link) throw e;
   }
-  return gate((await leaseChannel(serverId, address)).channel);
+  return gate(await leaseChannel(serverId, address));
 }
 
 /** Past the minimum-agent gate: Hello, SelfUpdate, the health probe and a Deplo update only (ADR-0037). */
@@ -99,7 +106,7 @@ export async function openAgent(serverId: string): Promise<AgentConnection> {
   const stub = await connector?.(serverId);
   if (stub) return stub;
   const address = await resolveAddress(serverId);
-  return connectionOn((await leaseChannel(serverId, address)).channel);
+  return connectionFor(await leaseChannel(serverId, address));
 }
 
 // Every call is judged on a live Hello; the caller's first hello() reuses it rather than paying twice.
