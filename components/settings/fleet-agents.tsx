@@ -15,6 +15,7 @@ import {
 } from "@/components/ui/dialog";
 import { gqlAction } from "@/lib/graphql-client";
 import type { AgentUpdateDTO } from "@/lib/data/servers/agent-update-state";
+import type { AgentReach } from "@/lib/version";
 import { AgentUpdateStatus } from "@/components/servers/agent-update-status";
 
 export interface FleetSummary {
@@ -25,7 +26,7 @@ export interface FleetSummary {
     id: string;
     name: string;
     version: string | null;
-    usable: boolean;
+    reach: AgentReach;
     update: AgentUpdateDTO | null;
   }[];
   updating: boolean;
@@ -44,7 +45,7 @@ const FLEET_QUERY = /* GraphQL */ `
         id
         name
         version
-        usable
+        reach
         update {
           running
           failed
@@ -191,8 +192,7 @@ function BehindLine({
       <div className="pl-6 empty:hidden">
         <AgentUpdateStatus
           serverId={server.id}
-          usable={server.usable}
-          version={server.version}
+          reach={server.reach}
           update={server.update}
           onSettled={onSettled}
         />

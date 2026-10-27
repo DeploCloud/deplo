@@ -96,6 +96,21 @@ const ChangelogRef = builder
     }),
   });
 
+const AgentReachEnum = builder.enumType("AgentReach", {
+  description: "What this Deplo can do with a server's agent.",
+  values: {
+    usable: { description: "It talks to it." },
+    updatable: {
+      description:
+        "It refuses it until it updates, which Deplo does on its own.",
+    },
+    reinstall: {
+      description:
+        "Too old to link, it never reaches Deplo: only reinstalling its server agent brings it back.",
+    },
+  } as const,
+});
+
 const FleetAgentRef = builder
   .objectRef<FleetAgentStatus["behind"][number]>("FleetAgent")
   .implement({
@@ -108,6 +123,7 @@ const FleetAgentRef = builder
         description:
           "False when the agent is older than `FleetAgents.minimum`: the server refuses everything until it updates.",
       }),
+      reach: t.field({ type: AgentReachEnum, resolve: (a) => a.reach }),
       update: t.field({
         type: AgentUpdateRef,
         nullable: true,

@@ -4,7 +4,7 @@ import { Strip } from "@/components/deplo-move/frozen-banner";
 import { unusableServers } from "@/lib/data/servers/agent-rollout";
 import { unusableAgentsMessage } from "./agent-update-text";
 
-// Instance admins only: the servers this Deplo refuses until their agent updates.
+// Instance admins only: the servers this Deplo refuses until their server agent updates or is reinstalled.
 export async function UnusableAgentsBanner() {
   const servers = await unusableServers();
   if (servers.length === 0) return null;

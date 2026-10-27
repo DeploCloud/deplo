@@ -27,7 +27,7 @@ test("a server Deplo is still updating gets no button", () => {
           id: "s1",
           name: "edge-1",
           version: "0.4.0",
-          usable: true,
+          reach: "usable",
           update: null,
         },
       ],
@@ -47,7 +47,7 @@ test("a failed update shows its state and Retry now; a pause is named", () => {
           name: "edge-2",
           // Below a later minimum, but new enough to link.
           version: "0.5.1",
-          usable: false,
+          reach: "updatable",
           update: {
             running: false,
             failed: true,
@@ -75,7 +75,7 @@ test("an agent too old to link is told to be reinstalled, with no Retry now", ()
           id: "s3",
           name: "edge-3",
           version: "0.4.0",
-          usable: false,
+          reach: "reinstall",
           update: {
             running: false,
             failed: true,
@@ -90,6 +90,6 @@ test("an agent too old to link is told to be reinstalled, with no Retry now", ()
       ],
     }),
   );
-  assert.ok(html.includes("Unusable - reinstall its agent"));
+  assert.ok(html.includes("Unusable - reinstall its server agent"));
   assert.ok(!html.includes("Retry now"));
 });

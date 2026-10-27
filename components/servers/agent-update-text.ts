@@ -1,16 +1,16 @@
 import type { AgentUpdateDTO } from "@/lib/data/servers/agent-update-state";
+import type { AgentReach } from "@/lib/version";
 
 /** One line for where a server's agent update stands; null when there is nothing to say. */
 export function agentUpdateText(
   update: AgentUpdateDTO | null,
-  usable: boolean,
+  reach: AgentReach,
   now: number = Date.now(),
-  links = true,
 ): string | null {
   // Too old to link: nothing Deplo does reaches it (ADR-0040).
-  if (!usable && !links) return "Unusable - reinstall its agent";
-  const prefix = usable ? "" : "Unusable - ";
-  if (!update) return usable ? null : `${prefix}Deplo is updating it`;
+  if (reach === "reinstall") return "Unusable - reinstall its server agent";
+  const prefix = reach === "usable" ? "" : "Unusable - ";
+  if (!update) return prefix ? `${prefix}Deplo is updating it` : null;
   if (update.running) return `${prefix}Updating the agent`;
   if (update.gaveUp) return `${prefix}Update failed (gave up after 24 h)`;
   const left = update.nextRetryAt ? Date.parse(update.nextRetryAt) - now : 0;
@@ -23,15 +23,18 @@ export function agentUpdateText(
 
 /** The admin banner's line for the servers this Deplo refuses; one too old to link only comes back reinstalled. */
 export function unusableAgentsMessage(
-  servers: { name: string; links: boolean }[],
+  servers: { name: string; reach: Exclude<AgentReach, "usable"> }[],
 ): string {
   if (servers.length === 1) {
     const [s] = servers;
-    return s.links
-      ? `${s.name} is unusable until its agent updates.`
-      : `${s.name} is unusable until its agent is reinstalled.`;
+    return s.reach === "updatable"
+      ? `${s.name} is unusable until its server agent updates.`
+      : `${s.name} is unusable until its server agent is reinstalled.`;
   }
-  return servers.every((s) => s.links)
-    ? `${servers.length} servers are unusable until their agents update.`
-    : `${servers.length} servers are unusable until their agents update or are reinstalled.`;
+  const until = servers.every((s) => s.reach === "updatable")
+    ? "update"
+    : servers.every((s) => s.reach === "reinstall")
+      ? "are reinstalled"
+      : "update or are reinstalled";
+  return `${servers.length} servers are unusable until their server agents ${until}.`;
 }

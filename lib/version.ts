@@ -8,7 +8,7 @@ export const DEPLO_COMMIT: string = process.env.DEPLO_COMMIT ?? "";
 // The one agent this panel installs, and the oldest it still talks to (ADR-0037).
 export const AGENT_VERSION: string = agentPin.agent;
 export const AGENT_MIN_VERSION: string = agentPin.agentMin;
-/** The first agent release that links (ADR-0040): an older one can never reach this panel, only a reinstall helps. */
+// The first agent release that links (ADR-0040): a fixed fact, never moved with `agentMin`.
 export const AGENT_LINK_VERSION = "0.5.1-canary.10";
 // Set from the release that stops dialing servers: it reaches them only over their link (ADR-0040).
 export const LINK_ONLY: boolean =
@@ -106,9 +106,19 @@ export function reportedAgentVersion(server: {
   return server.agent?.version || null;
 }
 
-/** Whether the agent can reach this panel at all; an unknown version may well. */
-export function agentLinks(reported: string | null | undefined): boolean {
-  return !reported || agentUsable(reported, AGENT_LINK_VERSION);
+/** What a Deplo with floor `min` can do with a server's agent: use it, update it, or wait for a reinstall. */
+export type AgentReach = "usable" | "updatable" | "reinstall";
+
+export function agentReach(
+  server: { agent?: { version: string } },
+  min: string = AGENT_MIN_VERSION,
+): AgentReach {
+  const reported = reportedAgentVersion(server);
+  if (agentUsable(reported, min)) return "usable";
+  // An unknown version may well link; a known one older than the first linking release never reaches Deplo.
+  return !reported || agentUsable(reported, AGENT_LINK_VERSION)
+    ? "updatable"
+    : "reinstall";
 }
 
 /** Whether this panel talks to an agent at all: parseable and not older than `min`. */

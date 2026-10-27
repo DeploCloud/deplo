@@ -4,8 +4,8 @@ import assert from "node:assert/strict";
 import {
   AGENT_MIN_VERSION,
   AGENT_VERSION,
+  agentReach,
   agentUpdateAvailable,
-  agentLinks,
   agentUsable,
   isNewer,
   isPrerelease,
@@ -111,10 +111,14 @@ test("the pin is usable by its own floor", () => {
   assert.ok(!isNewer(AGENT_MIN_VERSION, AGENT_VERSION));
 });
 
-test("agentLinks: only a known version older than the first linking release cannot reach the panel", () => {
-  assert.equal(agentLinks("0.5.1-canary.10"), true);
-  assert.equal(agentLinks("0.6.0"), true);
-  assert.equal(agentLinks("0.5.1-canary.9"), false);
-  assert.equal(agentLinks("0.4.0"), false);
-  assert.equal(agentLinks(null), true, "unknown: it may well link");
+test("agentReach: usable from the floor, updatable while it links, reinstall-only below the first linking release", () => {
+  const on = (version: string, min?: string) =>
+    agentReach({ agent: { version } }, min);
+  assert.equal(on("0.5.1-canary.10", "0.5.1-canary.10"), "usable");
+  assert.equal(on("0.6.0", "0.5.1-canary.10"), "usable");
+  assert.equal(on("0.5.1-canary.12", "0.6.0"), "updatable");
+  assert.equal(on("0.5.1-canary.9", "0.6.0"), "reinstall");
+  assert.equal(on("0.4.0", "0.4.0"), "usable", "a floor below the link");
+  assert.equal(on("0.4.0"), "reinstall", "this Deplo's own floor");
+  assert.equal(agentReach({}), "updatable", "unknown: it may well link");
 });

@@ -98,6 +98,20 @@ enum AddressFamily {
   ipv6
 }
 
+"""What this Deplo can do with a server's agent."""
+enum AgentReach {
+  """
+  Too old to link, it never reaches Deplo: only reinstalling its server agent brings it back.
+  """
+  reinstall
+
+  """It refuses it until it updates, which Deplo does on its own."""
+  updatable
+
+  """It talks to it."""
+  usable
+}
+
 """
 A PERSONAL API token: it belongs to the person who minted it, and nobody else can list, edit or revoke it. Only the prefix is ever exposed - the raw token is shown once at creation and only its hash is persisted.
 """
@@ -2280,6 +2294,7 @@ input ExtraDomainInput {
 type FleetAgent {
   id: ID
   name: String
+  reach: AgentReach
   update: ServerAgentUpdate
 
   """

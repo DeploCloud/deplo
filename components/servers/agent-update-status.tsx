@@ -7,7 +7,7 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { SimpleTooltip } from "@/components/ui/tooltip";
 import { gql, gqlAction } from "@/lib/graphql-client";
-import { agentLinks } from "@/lib/version";
+import type { AgentReach } from "@/lib/version";
 import type { AgentUpdateDTO } from "@/lib/data/servers/agent-update-state";
 import { agentUpdateText } from "./agent-update-text";
 
@@ -25,15 +25,12 @@ const FIELDS = `
 /** The state line and, only after Deplo's own attempt failed, Retry now. */
 export function AgentUpdateStatus({
   serverId,
-  usable,
-  version,
+  reach,
   update,
   onSettled,
 }: {
   serverId: string;
-  usable: boolean;
-  /** The version its agent last reported; null when unknown. */
-  version: string | null;
+  reach: AgentReach;
   update: AgentUpdateDTO | null;
   onSettled?: () => void;
 }) {
@@ -82,13 +79,14 @@ export function AgentUpdateStatus({
     });
   }
 
-  const links = agentLinks(version);
-  const text = agentUpdateText(current, usable, undefined, links);
+  const text = agentUpdateText(current, reach);
   if (!text) return null;
   const line = (
     <span
       className={
-        usable ? "text-sm text-muted-foreground" : "text-sm text-destructive"
+        reach === "usable"
+          ? "text-sm text-muted-foreground"
+          : "text-sm text-destructive"
       }
     >
       {text}
@@ -101,7 +99,7 @@ export function AgentUpdateStatus({
       ) : (
         line
       )}
-      {current?.failed && links && (
+      {current?.failed && reach !== "reinstall" && (
         <Button
           variant="outline"
           size="sm"

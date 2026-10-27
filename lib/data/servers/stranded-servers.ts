@@ -5,7 +5,7 @@ import { requireInstanceAdmin } from "../../membership";
 import {
   DEPLO_REPO,
   LINK_ONLY,
-  agentUsable,
+  agentReach,
   reportedAgentVersion,
 } from "../../version";
 import { listAllServers } from "./roster";
@@ -68,17 +68,16 @@ export async function strandedByPanelUpdate(
   return (await listAllServers()).flatMap((s) => {
     if (s.importOnly || !s.agent?.certFingerprint) return [];
     const unlinked = stopsDialing && !hasLinked(s.id);
+    const reach = target.agentMin ? agentReach(s, target.agentMin) : "usable";
     const belowFloor =
-      target.agentMin !== null &&
-      (s.status === "offline" || s.status === "error") &&
-      !agentUsable(reportedAgentVersion(s), target.agentMin);
+      (s.status === "offline" || s.status === "error") && reach !== "usable";
     if (!unlinked && !belowFloor) return [];
     return [
       {
         id: s.id,
         name: s.name,
         version: reportedAgentVersion(s),
-        reinstall: unlinked,
+        reinstall: unlinked || (target.linkOnly && reach === "reinstall"),
       },
     ];
   });

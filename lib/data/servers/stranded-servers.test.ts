@@ -103,3 +103,20 @@ test("an update from a Deplo that only links names no server for not linking", a
   const stranded = await asAdmin(() => strandedByPanelUpdate("0.7.0"));
   assert.deepEqual(stranded, []);
 });
+
+test("an offline server too old to link is named for a reinstall, one that links for an update", async () => {
+  body = {
+    deplo: {
+      agent: "0.5.1-canary.20",
+      agentMin: "0.5.1-canary.20",
+      linkOnly: true,
+    },
+  };
+  await seed("srv_lost", "offline", "0.4.0");
+  await seed("srv_behind", "offline", "0.5.1-canary.12");
+  const stranded = await asAdmin(() => strandedByPanelUpdate("0.7.0"));
+  assert.deepEqual(stranded.map((s) => [s.name, s.reinstall]).sort(), [
+    ["srv_behind", false],
+    ["srv_lost", true],
+  ]);
+});

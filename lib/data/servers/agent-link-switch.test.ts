@@ -185,8 +185,8 @@ test("an agent too old to link is never dialed, and nothing promises it an updat
   const log = (await db.select({ m: activities.message }).from(activities))
     .map((r) => r.m)
     .join("\n");
-  assert.match(log, /unusable until its agent is reinstalled/);
-  assert.doesNotMatch(log, /until its agent updates|retries on its own/);
+  assert.match(log, /unusable until its server agent is reinstalled/);
+  assert.doesNotMatch(log, /until its server agent updates|retries on its own/);
 });
 
 test("while a Deplo move has the instance frozen, a linked agent keeps its port until the move is over", async (t) => {

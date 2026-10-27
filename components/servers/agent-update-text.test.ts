@@ -18,34 +18,38 @@ const failed = (patch: Partial<AgentUpdateDTO> = {}): AgentUpdateDTO => ({
 });
 
 test("a usable server with nothing in flight says nothing", () => {
-  assert.equal(agentUpdateText(null, true, NOW), null);
+  assert.equal(agentUpdateText(null, "usable", NOW), null);
 });
 
 test("each state reads as one line, unusable first", () => {
   assert.equal(
-    agentUpdateText(null, false, NOW),
+    agentUpdateText(null, "updatable", NOW),
     "Unusable - Deplo is updating it",
   );
   assert.equal(
-    agentUpdateText(failed(), true, NOW),
+    agentUpdateText(failed(), "usable", NOW),
     "Update failed, retrying in 4 min",
   );
   assert.equal(
-    agentUpdateText(failed({ failure: "busy" }), true, NOW),
+    agentUpdateText(failed({ failure: "busy" }), "usable", NOW),
     "Waiting for a deploy to finish, retrying in 4 min",
   );
   assert.equal(
-    agentUpdateText(failed({ gaveUp: true, nextRetryAt: null }), false, NOW),
+    agentUpdateText(
+      failed({ gaveUp: true, nextRetryAt: null }),
+      "updatable",
+      NOW,
+    ),
     "Unusable - Update failed (gave up after 24 h)",
   );
   assert.equal(
-    agentUpdateText(failed({ running: true }), true, NOW),
+    agentUpdateText(failed({ running: true }), "usable", NOW),
     "Updating the agent",
   );
   assert.equal(
     agentUpdateText(
       failed({ nextRetryAt: new Date(NOW - 1).toISOString() }),
-      true,
+      "usable",
       NOW,
     ),
     "Update failed, retrying now",
@@ -55,28 +59,32 @@ test("each state reads as one line, unusable first", () => {
 // It cannot reach this Deplo at all (ADR-0040), so nothing Deplo does will update it.
 test("an agent too old to link is told to be reinstalled, never promised an update", () => {
   assert.equal(
-    agentUpdateText(null, false, NOW, false),
-    "Unusable - reinstall its agent",
+    agentUpdateText(failed(), "reinstall", NOW),
+    "Unusable - reinstall its server agent",
   );
 });
 
 test("the banner waits for an update only where one can come", () => {
-  const ready = { name: "eu-1", links: true };
-  const stuck = { name: "eu-2", links: false };
+  const ready = { name: "eu-1", reach: "updatable" as const };
+  const stuck = { name: "eu-2", reach: "reinstall" as const };
   assert.equal(
     unusableAgentsMessage([ready]),
-    "eu-1 is unusable until its agent updates.",
+    "eu-1 is unusable until its server agent updates.",
   );
   assert.equal(
     unusableAgentsMessage([stuck]),
-    "eu-2 is unusable until its agent is reinstalled.",
+    "eu-2 is unusable until its server agent is reinstalled.",
   );
   assert.equal(
     unusableAgentsMessage([ready, { ...ready, name: "eu-3" }]),
-    "2 servers are unusable until their agents update.",
+    "2 servers are unusable until their server agents update.",
   );
   assert.equal(
     unusableAgentsMessage([ready, stuck]),
-    "2 servers are unusable until their agents update or are reinstalled.",
+    "2 servers are unusable until their server agents update or are reinstalled.",
+  );
+  assert.equal(
+    unusableAgentsMessage([stuck, { ...stuck, name: "eu-4" }]),
+    "2 servers are unusable until their server agents are reinstalled.",
   );
 });

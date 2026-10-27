@@ -32,7 +32,7 @@ const behind = (failed: boolean) => ({
   id: "s1",
   name: "edge-1",
   version: "0.4.0",
-  usable: true,
+  reach: "usable" as const,
   update: failed
     ? {
         running: false,

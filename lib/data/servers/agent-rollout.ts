@@ -20,10 +20,10 @@ import {
   AGENT_MIN_VERSION,
   AGENT_VERSION,
   DEPLO_VERSION,
-  agentLinks,
+  agentReach,
   agentUpdateAvailable,
-  agentUsable,
   reportedAgentVersion,
+  type AgentReach,
 } from "../../version";
 import type { Server } from "../../types/server";
 import { recordActivity } from "../activity";
@@ -53,6 +53,7 @@ export interface FleetAgent {
   name: string;
   version: string | null;
   usable: boolean;
+  reach: AgentReach;
   update: AgentUpdateDTO | null;
 }
 
@@ -127,11 +128,13 @@ export async function fleetAgentStatus(): Promise<FleetAgentStatus> {
   const behind = behindServers(fleet);
   const rows = behind.map((s) => {
     const row = updates.get(s.id);
+    const reach = agentReach(s);
     return {
       id: s.id,
       name: s.name,
       version: reportedAgentVersion(s),
-      usable: agentUsable(reportedAgentVersion(s)),
+      usable: reach === "usable",
+      reach,
       update: row ? toAgentUpdateDTO(row) : null,
     };
   });
@@ -145,19 +148,17 @@ export async function fleetAgentStatus(): Promise<FleetAgentStatus> {
   };
 }
 
-/** The servers this Deplo refuses, for the admin banner; `links` is false for one only a reinstall brings back. */
+/** The servers this Deplo refuses, for the admin banner. */
 export async function unusableServers(): Promise<
-  { name: string; links: boolean }[]
+  { name: string; reach: Exclude<AgentReach, "usable"> }[]
 > {
   await requireInstanceAdmin();
-  return (await listAllServers())
-    .filter(
-      (s) =>
-        !s.importOnly &&
-        Boolean(s.agent?.certFingerprint) &&
-        !agentUsable(reportedAgentVersion(s)),
-    )
-    .map((s) => ({ name: s.name, links: agentLinks(reportedAgentVersion(s)) }));
+  return (await listAllServers()).flatMap((s) => {
+    const reach = agentReach(s);
+    return !s.importOnly && s.agent?.certFingerprint && reach !== "usable"
+      ? [{ name: s.name, reach }]
+      : [];
+  });
 }
 
 /**
@@ -241,51 +242,49 @@ async function failAttempt(
     failure,
     error,
   );
-  // Too old to link, it never reaches this Deplo (ADR-0040): only a reinstall brings it back.
-  if (firstFailure && !agentLinks(reportedAgentVersion(server))) {
-    await recordActivity(
-      "server",
-      `${server.name} is unusable until its agent is reinstalled: it is too old to connect to this Deplo`,
-      "Deplo",
-    );
-    dispatchServerAlert(server.id, {
-      key: "agent_incompatible",
-      title: `${server.name} is unusable until its agent is reinstalled`,
-      body: "Its agent is too old to connect to this version of Deplo. Reissue its install command and run it on the server.",
-      dedupe: { id: `agent:${server.id}`, state: AGENT_VERSION },
-      path: `/settings/servers/${server.id}`,
-    });
-  } else if (firstFailure) {
+  const reach = agentReach(server);
+  if (firstFailure && reach !== "reinstall")
     await recordActivity(
       "server",
       `Could not update the agent on ${server.name}: ${error} Deplo retries on its own.`,
       actor,
     );
-    if (!agentUsable(reportedAgentVersion(server))) {
-      await recordActivity(
-        "server",
-        `${server.name} is unusable until its agent updates to v${AGENT_VERSION}`,
-        "Deplo",
-      );
-      dispatchServerAlert(server.id, {
-        key: "agent_incompatible",
-        title: `${server.name} is unusable until its agent updates`,
-        body: `Its agent is too old for this version of Deplo, and the update failed: ${error}`,
-        dedupe: { id: `agent:${server.id}`, state: AGENT_VERSION },
-        path: `/settings/servers/${server.id}`,
-      });
-    }
-  }
-  if (
-    gaveUp &&
-    row.nextRetryAt !== null &&
-    agentLinks(reportedAgentVersion(server))
-  )
+  if (firstFailure && reach !== "usable")
+    await reportUnusable(server, reach, error);
+  if (gaveUp && row.nextRetryAt !== null && reach !== "reinstall")
     await recordActivity(
       "server",
       `Stopped retrying the agent update on ${server.name} after 24 hours. An instance admin can retry it.`,
       "Deplo",
     );
+}
+
+// One activity line and one alert; too old to link, it never reaches this Deplo (ADR-0040).
+async function reportUnusable(
+  server: Server,
+  reach: Exclude<AgentReach, "usable">,
+  error: string,
+): Promise<void> {
+  const [state, detail, body] =
+    reach === "reinstall"
+      ? [
+          "is unusable until its server agent is reinstalled",
+          ": it is too old to connect to this Deplo",
+          "Its server agent is too old to connect to this version of Deplo. Reissue its install command and run it on the server.",
+        ]
+      : [
+          "is unusable until its server agent updates",
+          ` to v${AGENT_VERSION}`,
+          `Its server agent is too old for this version of Deplo, and the update failed: ${error}`,
+        ];
+  await recordActivity("server", `${server.name} ${state}${detail}`, "Deplo");
+  dispatchServerAlert(server.id, {
+    key: "agent_incompatible",
+    title: `${server.name} ${state}`,
+    body,
+    dedupe: { id: `agent:${server.id}`, state: AGENT_VERSION },
+    path: `/settings/servers/${server.id}`,
+  });
 }
 
 /** One attempt on a server whose slot is already claimed. Never leaves the slot running. */
