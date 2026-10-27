@@ -4,7 +4,7 @@
   "deplo": {
     "agent": "0.5.1-canary.10",
     "agentMin": "0.5.1-canary.10",
-    "updateStop": false,
+    "updateStop": true,
     "requiresStop": ""
   },
   "license": "AGPL-3.0-only",

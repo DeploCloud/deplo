@@ -7,7 +7,11 @@ import {
   isNewer,
 } from "../../version";
 import { instanceFrozen } from "../deplo-move/freeze";
-import { thisStopsCondition, type StopCondition } from "./condition";
+import {
+  thisStopsCondition,
+  type StopCondition,
+  type StopServer,
+} from "./condition";
 import { readReleaseDeclaration } from "./declaration";
 import { passedStops, recordPassedStop, stopPassed } from "./passed";
 
@@ -17,6 +21,7 @@ export interface UpdateStopInfo {
   reason: string;
   // This instance runs the stop and its conditions do not hold yet: Update offers nothing.
   waiting: boolean;
+  waitingOn: StopServer[];
 }
 
 export interface UpdateRoute {
@@ -88,6 +93,7 @@ export async function decideUpdate(
         stop: {
           version: tag(target),
           waiting: false,
+          waitingOn: [],
           reason: `Deplo ${goal} has to come after ${tag(target)}, so Update installs ${tag(target)} first.`,
         },
       };
@@ -100,6 +106,7 @@ export async function decideUpdate(
           stop: {
             version: tag(thisRelease.version),
             waiting: true,
+            waitingOn: (await thisRelease.condition()).waitingOn ?? [],
             reason: `Deplo ${goal} becomes available once ${tag(thisRelease.version)} has finished getting this instance ready.`,
           },
         };
@@ -108,6 +115,7 @@ export async function decideUpdate(
         stop: {
           version: tag(stop),
           waiting: false,
+          waitingOn: [],
           reason: `Deplo ${goal} has to come after ${tag(stop)}, which this instance skipped.`,
         },
       };

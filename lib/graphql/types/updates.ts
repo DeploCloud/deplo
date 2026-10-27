@@ -19,6 +19,7 @@ import {
   type UpdateInfo,
   type UpdateStopInfo,
 } from "@/lib/data/updates";
+import type { StopServer } from "@/lib/data/update-stops/condition";
 
 const StrandedServerRef = builder
   .objectRef<StrandedServer>("StrandedServer")
@@ -29,6 +30,16 @@ const StrandedServerRef = builder
       id: t.exposeID("id"),
       name: t.exposeString("name"),
       version: t.exposeString("version", { nullable: true }),
+    }),
+  });
+
+const UpdateStopServerRef = builder
+  .objectRef<StopServer>("UpdateStopServer")
+  .implement({
+    description: "A server an update stop names: one it waits on.",
+    fields: (t) => ({
+      id: t.exposeID("id"),
+      name: t.exposeString("name"),
     }),
   });
 
@@ -46,6 +57,12 @@ const UpdateStopRef = builder
       waiting: t.exposeBoolean("waiting", {
         description:
           "This instance runs the stop and its conditions do not hold yet, so Update offers nothing until they do.",
+      }),
+      waitingOn: t.field({
+        type: [UpdateStopServerRef],
+        description:
+          "While `waiting`: each server that has not connected to Deplo yet. The newer release is offered as soon as the last one does.",
+        resolve: (stop) => stop.waitingOn,
       }),
     }),
   });

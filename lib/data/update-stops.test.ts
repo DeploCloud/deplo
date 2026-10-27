@@ -52,7 +52,8 @@ after(async () => {
 });
 
 beforeEach(async () => {
-  __resetThisReleaseForTest();
+  // The running release is not a stop unless a test says so: its own condition is judged elsewhere.
+  __setThisReleaseForTest({ updateStop: false });
   await pg.exec(
     `${TRUNCATE_IDENTITY} truncate table passed_update_stops, servers restart identity cascade;`,
   );

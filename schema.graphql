@@ -6897,6 +6897,17 @@ type UpdateStop {
   This instance runs the stop and its conditions do not hold yet, so Update offers nothing until they do.
   """
   waiting: Boolean
+
+  """
+  While `waiting`: each server that has not connected to Deplo yet. The newer release is offered as soon as the last one does.
+  """
+  waitingOn: [UpdateStopServer!]
+}
+
+"""A server an update stop names: one it waits on."""
+type UpdateStopServer {
+  id: ID
+  name: String
 }
 
 input UpdateTeamInput {

@@ -6,7 +6,7 @@ export const INSTANCE: McpToolDef[] = [
     name: "get_instance",
     title: "Read this Deplo's own settings",
     description:
-      "The panel's address, version, log retention, and what Update installs: the newest release, or an update stop it has to pass first, with the reason.",
+      "The panel's address, version, log retention, and what Update installs: the newest release, or an update stop it has to pass first, with the reason and the servers it waits on.",
     group: "Instance",
     requires: "instanceAdmin",
     readOnly: true,
@@ -34,6 +34,10 @@ export const INSTANCE: McpToolDef[] = [
             version
             reason
             waiting
+            waitingOn {
+              id
+              name
+            }
           }
           publishedAt
           url
@@ -65,6 +69,10 @@ export const INSTANCE: McpToolDef[] = [
             version
             reason
             waiting
+            waitingOn {
+              id
+              name
+            }
           }
           publishedAt
           url
