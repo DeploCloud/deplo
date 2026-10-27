@@ -148,6 +148,12 @@ can update past it. Clicking Update on an instance below a stop installs the sto
 release.
 _Avoid_: upgrade stop, checkpoint, required version, mandatory release.
 
+**Left behind**:
+A server an instance admin let an **update stop** pass without, because it never connected to
+Deplo. It keeps its Apps and settings; once Deplo is past the stop, only reinstalling its server
+agent brings it back. Never undone, and moot the moment the server connects.
+_Avoid_: skipped, abandoned, excluded, ignored.
+
 **Registration link**:
 A single-use link (`/register/<token>`) that lets a NEW person self-register a brand-new
 account **and their own team** - like first-run setup, not a join. Minted by an instance
@@ -474,8 +480,9 @@ _Avoid_: legacy agent, old agent, dial-only agent.
 **Server health**:
 A server's **status** is an OBSERVATION, not a lifecycle the control plane drives: the outcome of
 the last live agent **Hello**, stamped with **when** it was observed (`statusCheckedAt`) and, when
-it isn't green, **why** (`statusMessage`, from a closed set of curated strings, never a raw agent
-error, which would leak the pinned fingerprint and the server's address). The Hello rides the
+it isn't green, **why** (`statusMessage`, a sentence Deplo writes from a curated set, never a raw
+agent error, which would leak the pinned fingerprint and the server's address; the one thing it ever
+fills in is the panel's own hostname, in the warning that a server can't reach Deplo). The Hello rides the
 server's **agent link**. The five values: **provisioning** (no agent has called home yet, never
 contacted, never demoted), **online** (Hello answered, Docker reachable), **warning** (agent up and
 trusted, but nothing can deploy there: Docker is unreachable, or the server answers its dial yet

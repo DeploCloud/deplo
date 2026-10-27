@@ -13,7 +13,7 @@ on the deeper docs it links (this file points; it does not restate them).
   `fleet-rollout.md`.
 
 **Every count in this file is a snapshot of a moving tree** (47 Capabilities, 121 tables, 192 MCP
-tools, 40 ADRs, the pin list). The rule they carry is the durable part; re-derive the number
+tools, 41 ADRs, the pin list). The rule they carry is the durable part; re-derive the number
 before you rely on it, and fix the line here when it has moved:
 
 ```sh
