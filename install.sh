@@ -2164,6 +2164,16 @@ YAML
 sed -i '/^$/d' "$TRAEFIK_COMPOSE"
 }
 
+# A recreated proxy is off every Environment's network, and only a deploy puts it
+# back: until then every app on one answers nothing. The agent's rule, verbatim.
+reconnect_proxy_networks() {
+  local net
+  for net in $(docker network ls --format '{{.Name}}' 2>/dev/null \
+      | grep -E '^deplo-(env|team|preview)-' || true); do
+    docker network connect "$net" deplo-traefik >&9 2>&9 || true
+  done
+}
+
 # The interim ports were picked at preflight and are bound only now, minutes
 # later: the other panel's proxy can have started in between and taken one.
 # Measured: Coolify's proxy comes up on its first deploy and holds 8080.
@@ -2196,6 +2206,7 @@ write_traefik_compose
 TRAEFIK_NOTE="$HTTP_PORT/$HTTPS_PORT, Let's Encrypt for $PANEL_HOST"
 spin_start "Starting Traefik and its socket proxy"
 docker compose -f "$TRAEFIK_COMPOSE" --env-file "$ENV_FILE" up -d >&9 2>&9 </dev/null
+reconnect_proxy_networks
 spin_ok "Traefik running" "$TRAEFIK_NOTE"
 
 # The server agent manages the proxy at $AGENT_DATA/traefik - that is the one
@@ -2853,6 +2864,7 @@ wait_for_proxy() {
 
 takeover_up_stacks() {
   docker compose -f "$TRAEFIK_COMPOSE" --env-file "$ENV_FILE" up -d >&9 2>&9 </dev/null || true
+  reconnect_proxy_networks
   docker compose -f "$DEPLO_DIR/docker-compose.yml" --env-file "$ENV_FILE" up -d >&9 2>&9 </dev/null || true
 }
 
