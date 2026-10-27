@@ -2,6 +2,21 @@ import yaml from "../yaml";
 
 import type { ResourceLimits } from "../types/container";
 
+// Every key resourceLimitsToComposeKeys can write, so a reroute can read them back off a deployed stack.
+export const RESOURCE_COMPOSE_KEYS = [
+  "mem_limit",
+  "mem_reservation",
+  "memswap_limit",
+  "cpus",
+  "cpu_shares",
+  "cpuset",
+  "pids_limit",
+  "shm_size",
+  "storage_opt",
+  "ulimits",
+  "oom_score_adj",
+] as const;
+
 export function resourceLimitsToComposeKeys(
   r: ResourceLimits | null | undefined,
 ): Record<string, unknown> {

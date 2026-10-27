@@ -48,6 +48,7 @@ export function renderCompose(opts: {
   injectPort?: boolean;
   basicAuthUsers?: string;
   resources?: ResourceLimits | null;
+  resourceKeys?: Record<string, unknown> | null;
 }): string {
   const { name, image, port, appId, deployKey, routes } = opts;
   const trackingId = opts.trackingId ?? appId;
@@ -127,7 +128,9 @@ export function renderCompose(opts: {
       "\n"
     : "";
   const resourcesYaml =
-    renderResourceLimitsYaml(opts.resources, 4) +
+    (opts.resourceKeys
+      ? renderYamlKeys(opts.resourceKeys, 4)
+      : renderResourceLimitsYaml(opts.resources, 4)) +
     renderYamlKeys({ logging: defaultLogging() }, 4);
   const healthYaml = opts.healthCheckKeys
     ? renderYamlKeys({ healthcheck: opts.healthCheckKeys }, 4)

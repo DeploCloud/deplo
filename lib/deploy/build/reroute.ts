@@ -23,6 +23,7 @@ import { owningServerIdForDeployKey } from "./stack-lifecycle";
 import {
   parseStackHealthCheck,
   parseStackPorts,
+  parseStackResources,
   readStackEnvFromYaml,
   readStackImageFromYaml,
   readStackVolumesFromYaml,
@@ -93,9 +94,10 @@ async function rerouteAppLocked(
         domainRoutes: routes,
         filesDir: sourceDir ?? composeFilesDir(deployKey),
         basicAuthUsers: await basicAuthUsersValue(appId),
-        // Omitting these would silently unmount storage: a compose stack is re-rendered, not read back.
+        // Omitting these would silently unmount storage or lift limits: a compose stack is re-rendered, not read back.
         envKeys: await appEnvKeys(appId),
         volumes: project.volumes,
+        resources: project.resources,
       });
       mounts = (project.mounts ?? []).map((m) => ({
         path: m.filePath,
@@ -123,6 +125,7 @@ async function rerouteAppLocked(
         volumes,
         ports: parseStackPorts(current.yaml, name),
         healthCheckKeys: parseStackHealthCheck(current.yaml, name),
+        resourceKeys: parseStackResources(current.yaml, name),
       });
     }
 

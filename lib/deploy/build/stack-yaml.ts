@@ -5,6 +5,7 @@ import yaml from "../../yaml";
 import { parseMountPropagation } from "../../apps/volume-model";
 import type { MountPropagation } from "../../types/container";
 import { dataDir } from "../../data-dir";
+import { RESOURCE_COMPOSE_KEYS } from "../resources";
 
 export function readStackImageFromYaml(
   stackYaml: string,
@@ -92,6 +93,26 @@ export function parseStackHealthCheck(
     return hc && typeof hc === "object" && !Array.isArray(hc)
       ? (hc as Record<string, unknown>)
       : null;
+  } catch {
+    return null;
+  }
+}
+
+export function parseStackResources(
+  yamlText: string,
+  service: string,
+): Record<string, unknown> | null {
+  try {
+    const doc = yaml.load(yamlText) as {
+      services?: Record<string, Record<string, unknown>>;
+    } | null;
+    const svc = doc?.services?.[service];
+    if (!svc || typeof svc !== "object") return null;
+    const out: Record<string, unknown> = {};
+    for (const key of Object.keys(svc))
+      if ((RESOURCE_COMPOSE_KEYS as readonly string[]).includes(key))
+        out[key] = svc[key];
+    return Object.keys(out).length > 0 ? out : null;
   } catch {
     return null;
   }
