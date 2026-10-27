@@ -218,41 +218,42 @@ export async function register(): Promise<void> {
       }
     }
   }
+  const { holdExitUntil } = await import("./lib/hold-exit");
+  const { stopAcquiringLeases } = await import("./lib/backups/lease");
   for (const sig of ["SIGTERM", "SIGINT"] as const) {
     process.once(sig, () => {
-      void import("./lib/monitoring/supervisor")
-        .then(({ stopMetricsStreams }) => stopMetricsStreams())
-        .catch(() => {});
-      void import("./lib/backups/scheduler")
-        .then(({ releaseBackupSchedulerLease }) =>
-          releaseBackupSchedulerLease(),
-        )
-        .catch(() => {});
-      void import("./lib/docker-cleanup/scheduler")
-        .then(({ releaseDockerCleanupLease }) => releaseDockerCleanupLease())
-        .catch(() => {});
-      void import("./lib/previews/reaper")
-        .then(({ releasePreviewReaperLease }) => releasePreviewReaperLease())
-        .catch(() => {});
-      void import("./lib/crons/scheduler")
-        .then(({ releaseCronSchedulerLease }) => releaseCronSchedulerLease())
-        .catch(() => {});
-      void import("./lib/security-updates/scheduler")
-        .then(({ releaseSecurityUpdatesLease }) =>
-          releaseSecurityUpdatesLease(),
-        )
-        .catch(() => {});
-      void import("./lib/data/migration-runner/run-loop")
-        .then(({ releaseMigrationRunnerLease }) =>
-          releaseMigrationRunnerLease(),
-        )
-        .catch(() => {});
-      void import("./lib/graphql/pubsub")
-        .then(({ stopPubSubBridge }) => stopPubSubBridge())
-        .catch(() => {});
-      void import("./lib/infra/agent-link/listener")
-        .then(({ stopAgentLinkListener }) => stopAgentLinkListener())
-        .catch(() => {});
+      // A recreated container has a new hostname, so a lease left behind blocks its successor for 2h.
+      stopAcquiringLeases();
+      const done = Promise.allSettled([
+        import("./lib/monitoring/supervisor").then(({ stopMetricsStreams }) =>
+          stopMetricsStreams(),
+        ),
+        import("./lib/backups/scheduler").then(
+          ({ releaseBackupSchedulerLease }) => releaseBackupSchedulerLease(),
+        ),
+        import("./lib/docker-cleanup/scheduler").then(
+          ({ releaseDockerCleanupLease }) => releaseDockerCleanupLease(),
+        ),
+        import("./lib/previews/reaper").then(({ releasePreviewReaperLease }) =>
+          releasePreviewReaperLease(),
+        ),
+        import("./lib/crons/scheduler").then(({ releaseCronSchedulerLease }) =>
+          releaseCronSchedulerLease(),
+        ),
+        import("./lib/security-updates/scheduler").then(
+          ({ releaseSecurityUpdatesLease }) => releaseSecurityUpdatesLease(),
+        ),
+        import("./lib/data/migration-runner/run-loop").then(
+          ({ releaseMigrationRunnerLease }) => releaseMigrationRunnerLease(),
+        ),
+        import("./lib/graphql/pubsub").then(({ stopPubSubBridge }) =>
+          stopPubSubBridge(),
+        ),
+        import("./lib/infra/agent-link/listener").then(
+          ({ stopAgentLinkListener }) => stopAgentLinkListener(),
+        ),
+      ]);
+      holdExitUntil(done, 3000);
     });
   }
 }

@@ -36,7 +36,7 @@ function encodeRepoPath(repository: string): string {
 async function fetchJson<T>(
   url: string,
   init?: RequestInit & { timeoutMs?: number },
-): Promise<{ status: number; body: T | null }> {
+): Promise<{ status: number; body: T | null; link?: string | null }> {
   if (!(await isPublicHttpsUrl(url))) return { status: 0, body: null };
   const ctrl = new AbortController();
   const t = setTimeout(() => ctrl.abort(), init?.timeoutMs ?? DEFAULT_TIMEOUT);
@@ -53,7 +53,7 @@ async function fetchJson<T>(
     if (res.ok) {
       body = (await res.json().catch(() => null)) as T | null;
     }
-    return { status: res.status, body };
+    return { status: res.status, body, link: res.headers.get("link") };
   } catch {
     return { status: 0, body: null };
   } finally {
@@ -251,6 +251,34 @@ async function ociTags(
     tags = tags.filter((t) => t.toLowerCase().includes(f));
   }
   return tags.slice(0, limit).map((name) => ({ name }));
+}
+
+// Every tag the registry holds, page by page, never leaving the registry's own host.
+export async function listAllTags(
+  imageRef: string,
+  maxPages = 20,
+): Promise<string[]> {
+  const parsed = parseImageRef(imageRef);
+  if (!parsed) return [];
+  const host =
+    parsed.registry === DOCKER_HUB_REGISTRY
+      ? "registry-1.docker.io"
+      : parsed.registry;
+  const token = await ociToken(host, parsed.repository);
+  if (token === null) return [];
+  const tags: string[] = [];
+  let path: string | null =
+    `/v2/${encodeRepoPath(parsed.repository)}/tags/list?n=1000`;
+  for (let page = 0; path && page < maxPages; page++) {
+    const res: { body: OciTagsResponse | null; link?: string | null } =
+      await fetchJson<OciTagsResponse>(`https://${host}${path}`, {
+        headers: { Accept: "application/json", ...ociAuthHeaders(token) },
+      });
+    if (!res.body) break;
+    tags.push(...(res.body.tags ?? []));
+    path = res.link?.match(/<(\/v2\/[^>]+)>;\s*rel="next"/)?.[1] ?? null;
+  }
+  return tags;
 }
 
 export async function listTags(

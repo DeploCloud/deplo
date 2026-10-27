@@ -1,6 +1,6 @@
 {
   "name": "deplo",
-  "version": "0.6.0-canary.24",
+  "version": "0.6.0-canary.29",
   "deplo": {
     "agent": "0.5.1-canary.10",
     "agentMin": "0.5.1-canary.10"
@@ -8,7 +8,7 @@
   "license": "AGPL-3.0-only",
   "private": true,
   "scripts": {
-    "dev": "next dev",
+    "dev": "node scripts/third-party-notices.mjs && next dev",
     "build": "node scripts/third-party-notices.mjs && next build",
     "prod": "bun run build && next start",
     "start": "NODE_OPTIONS=--max-semi-space-size=64 next start",

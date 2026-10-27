@@ -113,6 +113,15 @@ function UnderlineTabsList({
     [],
     true,
   );
+  // A link to a later tab must not leave it scrolled out of a narrow bar.
+  React.useEffect(() => {
+    const list = listRef.current;
+    if (!list || !rect) return;
+    const right = rect.left + rect.width;
+    if (right > list.scrollLeft + list.clientWidth)
+      list.scrollLeft = right - list.clientWidth;
+    else if (rect.left < list.scrollLeft) list.scrollLeft = rect.left;
+  }, [rect]);
   return (
     <TabsPrimitive.List
       ref={listRef}

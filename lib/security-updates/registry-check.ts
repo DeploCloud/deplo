@@ -1,4 +1,4 @@
-import { checkImageExists, listTags } from "../registry/client";
+import { checkImageExists, listAllTags } from "../registry/client";
 import { parseImageRef } from "../registry/image-ref";
 
 export type RegistryState =
@@ -19,11 +19,9 @@ export async function registryState(imageRef: string): Promise<RegistryState> {
   const head = await checkImageExists(imageRef);
   if (head.status === "private") return { status: "private" };
   if (head.status !== "exists" || !head.digest) return { status: "unknown" };
-  const tags = await listTags(imageRef, 100).catch(() => []);
-  const newerTag = newerTagOf(
-    parsed.tag,
-    tags.map((t) => t.name),
-  );
+  // All of them: the 100 newest never reach the line an old pinned tag sits on.
+  const tags = await listAllTags(imageRef).catch(() => []);
+  const newerTag = newerTagOf(parsed.tag, tags);
   const newer = newerTag
     ? await checkImageExists(`${repositoryOf(imageRef)}:${newerTag}`).catch(
         () => null,

@@ -17,8 +17,14 @@ import {
 import { recordActivity } from "../data/activity";
 import { dispatchAlert } from "../notify/dispatch";
 import { plural } from "../utils";
-import { isDistroEcosystem, osvQueryFor, type OsvQuery } from "./ecosystem";
 import {
+  isDistroEcosystem,
+  osvQueryFor,
+  versionFromImageTag,
+  type OsvQuery,
+} from "./ecosystem";
+import {
+  builtByDeplo,
   fixKind,
   inScope,
   isActionable,
@@ -255,6 +261,11 @@ export async function matchWorkloads(
       { id: r.inv.distroId, version: r.inv.distroVersion },
     ]),
   );
+  const vendorRef = new Map(
+    rows
+      .filter((r) => !builtByDeplo(r.wi.imageRef))
+      .map((r) => [r.inv.imageId, r.wi.imageRef]),
+  );
   const queries = new Map<string, OsvQuery>();
   const perImage = new Map<
     string,
@@ -266,8 +277,9 @@ export async function matchWorkloads(
       q: OsvQuery;
     }[] = [];
     for (const pkg of pkgs) {
+      const ref = vendorRef.get(imageId);
       const q = osvQueryFor(
-        pkg.purl,
+        ref ? versionFromImageTag(pkg.purl, ref) : pkg.purl,
         distro.get(imageId) ?? { id: "", version: "" },
       );
       // A system package is never the team's (ADR-0038): OSV never hears of it.
@@ -379,6 +391,7 @@ function findingsFor(
         newerTag: wi.newerTag,
         candidate: verdict,
         buildOnly: pkg.buildOnly,
+        database: wi.kind === "database",
       });
       const f = {
         serverId: wi.serverId,

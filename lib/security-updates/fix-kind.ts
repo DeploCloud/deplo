@@ -43,6 +43,8 @@ export interface FixInput {
   // What the newer build or tag holds for this package, once Deplo has read it.
   candidate: "fixed" | "vulnerable" | "unread";
   buildOnly: boolean;
+  // A managed database runs its engine; the language packages beside it belong to bundled tools.
+  database?: boolean;
 }
 
 // `deplo/<key>:<deployment>`, or a compose `build:` service, named `deplo-<slug>-<service>`.
@@ -52,10 +54,16 @@ export function builtByDeplo(imageRef: string): boolean {
 
 export function fixKind(i: FixInput): FixKind {
   if (!i.fixedVersion) return "none";
-  if (i.buildOnly) return "build_only";
+  if (i.database && !isDistroEcosystem(i.ecosystem)) return "none";
+  // A vendor's dev tools are not the team's to change.
+  if (i.buildOnly) return builtByDeplo(i.imageRef) ? "build_only" : "none";
   if (builtByDeplo(i.imageRef)) {
     const railpack = i.builder === "railpack";
-    if (!isDistroEcosystem(i.ecosystem) && underDir(i.location, i.workingDir))
+    if (
+      !isDistroEcosystem(i.ecosystem) &&
+      (underDir(i.location, i.workingDir) ||
+        appInstallRoot(i.ecosystem, i.location))
+    )
       return "code";
     return railpack ? "deplo" : "rebuild";
   }
@@ -81,6 +89,17 @@ function underDir(location: string, dir: string): boolean {
   return d !== "" && location.startsWith(`${d}/`);
 }
 
+// Where a build installs the app's own packages outside its folder: Bundler's gems, a Dockerfile's pip.
+function appInstallRoot(ecosystem: string, location: string): boolean {
+  if (ecosystem === "RubyGems")
+    return location.startsWith("/usr/local/bundle/");
+  if (ecosystem === "PyPI")
+    return /^\/usr\/local\/lib\/python3[.\d]*\/(site|dist)-packages\//.test(
+      location,
+    );
+  return false;
+}
+
 export interface Scoped {
   fix: string;
   ecosystem: string;
@@ -88,22 +107,40 @@ export interface Scoped {
   location: string;
 }
 
-// A binary another package carries, like esbuild's Go build inside node_modules.
+// A binary another package carries, like esbuild's Go build inside node_modules, or a tool's own copy.
 function embedded(f: Scoped): boolean {
   const l = f.location;
+  if (l.includes("/_vendor/")) return true;
+  if (/\/lib\/node_modules\/(npm|corepack)\//.test(l)) return true;
   if (l.includes("/node_modules/")) return f.ecosystem !== "npm";
   if (l.includes("/site-packages/") || l.includes("/dist-packages/"))
     return f.ecosystem !== "PyPI";
   return false;
 }
 
+// Where the system's package manager puts language packages (apt's python3-*): system packages.
+const SYSTEM_DIRS = [
+  "/usr/lib/python3/dist-packages/",
+  "/usr/share/rubygems-integration/",
+  "/usr/share/nodejs/",
+];
+
+// The language toolchain itself, never a dependency the app chose.
+function toolchain(f: Scoped): boolean {
+  if (f.ecosystem === "Go") return f.packageName === "stdlib";
+  return (
+    f.ecosystem === "PyPI" &&
+    ["pip", "setuptools", "wheel"].includes(f.packageName)
+  );
+}
+
 // Only what the app chose: its own dependencies, or the software an image ships (ADR-0038).
 export function inScope(f: Scoped): boolean {
-  if (embedded(f)) return false;
+  if (embedded(f) || toolchain(f)) return false;
+  if (SYSTEM_DIRS.some((d) => f.location.startsWith(d))) return false;
   if (f.fix === "code" || f.fix === "build_only") return true;
   if (!IMAGE_FIXES.has(f.fix)) return false;
-  if (isDistroEcosystem(f.ecosystem)) return false;
-  return !(f.ecosystem === "Go" && f.packageName === "stdlib");
+  return !isDistroEcosystem(f.ecosystem);
 }
 
 // What the badge counts and an alert fires for; an Important one is listed only.

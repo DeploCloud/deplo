@@ -68,8 +68,19 @@ function licenseTexts(dir) {
   return texts.length > 0 ? texts : readmeLicense(dir, files);
 }
 
-/** Every package the root's `dependencies` pull in at run time, with its license text. */
-export function thirdPartyNotices(root) {
+// A GitHub repository page, or null: npm shorthands ("user/repo") are GitHub too.
+export function githubUrl(repository) {
+  const url = typeof repository === "string" ? repository : repository?.url;
+  const m =
+    url?.match(/^(?:github:)?([\w.-]+\/[\w.-]+)$/) ??
+    url?.match(/github\.com[/:]([\w.-]+\/[\w.-]+?)(?:\.git)?(?:[/#].*)?$/i);
+  if (!m) return null;
+  const dir = typeof repository === "object" && repository.directory;
+  return `https://github.com/${m[1]}${dir ? `/tree/HEAD/${dir}` : ""}`;
+}
+
+/** Every package the root's `dependencies` pull in at run time, sorted, with its license text. */
+export function collectNotices(root) {
   const found = new Map();
   const queue = [root];
   while (queue.length > 0) {
@@ -84,38 +95,47 @@ export function thirdPartyNotices(root) {
     }
   }
 
-  const entries = new Map();
+  const notices = new Map();
   for (const [dir, pkg] of found) {
     const id = `${pkg.name}@${pkg.version}`;
-    if (entries.has(id)) continue;
-    const texts = licenseTexts(dir);
-    const source = sourceOf(pkg);
-    entries.set(
-      id,
-      [
-        RULE,
-        id,
-        `License: ${licenseOf(pkg)}`,
-        ...(source ? [`Source: ${source}`] : []),
-        "",
-        texts.length > 0
-          ? texts.join("\n\n")
-          : "No license file ships with this package; its source above carries the license.",
-        "",
-      ].join("\n"),
-    );
+    if (notices.has(id)) continue;
+    notices.set(id, {
+      name: pkg.name,
+      version: pkg.version,
+      license: licenseOf(pkg),
+      source: sourceOf(pkg),
+      github: githubUrl(pkg.repository),
+      text: licenseTexts(dir).join("\n\n"),
+    });
   }
+  return [...notices.keys()].sort().map((id) => notices.get(id));
+}
 
+/** The plain-text download of the same list. */
+export function renderNotices(notices) {
   return [
     "Deplo is licensed under AGPL-3.0-only: https://github.com/DeploCloud/deplo",
     "It includes the open source software below, each under its own license.",
     "",
-    ...[...entries.keys()].sort().map((id) => entries.get(id)),
+    ...notices.map((n) =>
+      [
+        RULE,
+        `${n.name}@${n.version}`,
+        `License: ${n.license}`,
+        ...(n.source ? [`Source: ${n.source}`] : []),
+        "",
+        n.text ||
+          "No license file ships with this package; its source above carries the license.",
+        "",
+      ].join("\n"),
+    ),
   ].join("\n");
 }
 
 if (path.resolve(process.argv[1] ?? "") === fileURLToPath(import.meta.url)) {
   const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-  const out = path.join(root, "public", "third-party-notices.txt");
-  fs.writeFileSync(out, thirdPartyNotices(root));
+  const notices = collectNotices(root);
+  const out = path.join(root, "public", "third-party-notices");
+  fs.writeFileSync(`${out}.txt`, renderNotices(notices));
+  fs.writeFileSync(`${out}.json`, JSON.stringify(notices));
 }

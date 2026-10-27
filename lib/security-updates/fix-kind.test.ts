@@ -103,7 +103,8 @@ test("fixKind: a package only the build uses never counts, wherever it is", () =
       candidate: "fixed",
       buildOnly: true,
     }),
-    "build_only",
+    "none",
+    "a vendor's dev tools are not listed: the team cannot change them",
   );
   assert.equal(
     isActionable({
@@ -115,6 +116,54 @@ test("fixKind: a package only the build uses never counts, wherever it is", () =
     }),
     false,
   );
+});
+
+test("fixKind: the app's packages installed outside its folder are still its own", () => {
+  const railpack = { ...base, builder: "railpack" };
+  assert.equal(
+    fixKind({
+      ...railpack,
+      ecosystem: "RubyGems",
+      location: "/usr/local/bundle/specifications/rack-2.2.3.gemspec",
+    }),
+    "code",
+    "Bundler's gems",
+  );
+  assert.equal(
+    fixKind({
+      ...railpack,
+      ecosystem: "RubyGems",
+      location:
+        "/mise/installs/ruby/3.1.6/lib/ruby/gems/3.1.0/specifications/default/json-2.6.1.gemspec",
+    }),
+    "deplo",
+    "the runtime's default gems",
+  );
+  assert.equal(
+    fixKind({
+      ...base,
+      ecosystem: "PyPI",
+      location:
+        "/usr/local/lib/python3.12/site-packages/pyyaml-5.3.1.dist-info/METADATA",
+    }),
+    "code",
+    "a Dockerfile's pip install",
+  );
+});
+
+test("fixKind: a managed database's language packages belong to its bundled tools", () => {
+  const db: FixInput = {
+    ...base,
+    imageRef: "mysql:8.4",
+    ecosystem: "PyPI",
+    location: "/usr/lib/mysqlsh/lib/python3.13/site-packages/x/METADATA",
+    registryStatus: "ok",
+    repoDigest: "sha256:old",
+    registryDigest: "sha256:new",
+    candidate: "fixed",
+  };
+  assert.equal(fixKind(db), "update", "an app on the same image");
+  assert.equal(fixKind({ ...db, database: true }), "none");
 });
 
 test("fixKind: without an upstream fix nothing helps", () => {
@@ -157,6 +206,85 @@ test("inScope: only the app's own dependencies, or what an image ships", () => {
     false,
   );
   assert.equal(inScope(f({ fix: "deplo" })), false, "the runtime is Deplo's");
+  assert.equal(
+    inScope(
+      f({ ecosystem: "Go", packageName: "stdlib", location: "/app/server" }),
+    ),
+    false,
+    "the Go toolchain the app is built with",
+  );
+  for (const tool of ["pip", "setuptools", "wheel"])
+    assert.equal(
+      inScope(
+        f({
+          ecosystem: "PyPI",
+          packageName: tool,
+          location: `/app/.venv/lib/python3.9/site-packages/${tool}-1.0.dist-info/METADATA`,
+        }),
+      ),
+      false,
+      `${tool} is Python's own tooling`,
+    );
+  assert.equal(
+    inScope(
+      f({
+        ecosystem: "PyPI",
+        packageName: "jaraco-context",
+        location:
+          "/app/.venv/lib/python3.9/site-packages/setuptools/_vendor/jaraco.context-5.3.0.dist-info/METADATA",
+      }),
+    ),
+    false,
+    "a copy a tool carries inside itself",
+  );
+  assert.equal(
+    inScope(
+      f({
+        fix: "unverified",
+        packageName: "undici",
+        location:
+          "/usr/local/lib/node_modules/npm/node_modules/undici/package.json",
+      }),
+    ),
+    false,
+    "npm's own packages in an image",
+  );
+  assert.equal(
+    inScope(
+      f({
+        fix: "upstream",
+        ecosystem: "PyPI",
+        packageName: "pyyaml",
+        location: "/usr/lib/python3/dist-packages/PyYAML-3.13.egg-info",
+      }),
+    ),
+    false,
+    "apt's python3-yaml is a system package",
+  );
+  assert.equal(
+    inScope(
+      f({
+        ecosystem: "PyPI",
+        packageName: "pyyaml",
+        location:
+          "/usr/local/lib/python3.11/dist-packages/pyyaml-5.3.1.dist-info/METADATA",
+      }),
+    ),
+    true,
+    "pip's install on Debian's own Python is the app's",
+  );
+  assert.equal(
+    inScope(
+      f({
+        ecosystem: "PyPI",
+        packageName: "pyyaml",
+        location:
+          "/app/.venv/lib/python3.9/site-packages/pyyaml-5.3.1.dist-info/METADATA",
+      }),
+    ),
+    true,
+    "the app's own Python dependency",
+  );
   assert.equal(inScope(f({ fix: "rebuild" })), false, "the base system");
   assert.equal(inScope(f({ fix: "none" })), false, "nothing to apply");
   const image = {

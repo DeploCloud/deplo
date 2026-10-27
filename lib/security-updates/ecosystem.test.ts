@@ -1,7 +1,12 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-import { isDistroEcosystem, osvQueryFor, parsePurl } from "./ecosystem";
+import {
+  isDistroEcosystem,
+  osvQueryFor,
+  parsePurl,
+  versionFromImageTag,
+} from "./ecosystem";
 
 const debian = { id: "debian", version: "12.13" };
 
@@ -113,4 +118,41 @@ test("isDistroEcosystem", () => {
   assert.equal(isDistroEcosystem("Debian:12"), true);
   assert.equal(isDistroEcosystem("Alpine:v3.21"), true);
   assert.equal(isDistroEcosystem("npm"), false);
+});
+
+test("versionFromImageTag: a vendor's unversioned Go binary takes the image's tag", () => {
+  assert.equal(
+    versionFromImageTag(
+      "pkg:golang/github.com/grafana/grafana",
+      "grafana/grafana:8.3.0",
+    ),
+    "pkg:golang/github.com/grafana/grafana@v8.3.0",
+  );
+  assert.equal(
+    versionFromImageTag(
+      "pkg:golang/github.com/grafana/grafana?type=module",
+      "grafana/grafana:v8.3.0",
+    ),
+    "pkg:golang/github.com/grafana/grafana@v8.3.0?type=module",
+  );
+  const keep = [
+    [
+      "pkg:golang/github.com/grafana/grafana@v8.3.1",
+      "grafana/grafana:8.3.0",
+      "it has its own version",
+    ],
+    [
+      "pkg:golang/github.com/acme/tool",
+      "grafana/grafana:8.3.0",
+      "another module",
+    ],
+    [
+      "pkg:golang/github.com/grafana/grafana",
+      "grafana/grafana:latest",
+      "a tag that is no version",
+    ],
+    ["pkg:npm/grafana", "grafana/grafana:8.3.0", "not a Go binary"],
+  ];
+  for (const [purl, ref, why] of keep)
+    assert.equal(versionFromImageTag(purl, ref), purl, why);
 });
