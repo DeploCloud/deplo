@@ -71,7 +71,11 @@ export async function databaseUsesInTeam(
 
   const [own, shared] = await Promise.all([
     db
-      .select({ appId: envVarsTable.appId, valueEnc: envVarsTable.valueEnc })
+      .select({
+        appId: envVarsTable.appId,
+        valueEnc: envVarsTable.valueEnc,
+        databaseId: envVarsTable.databaseId,
+      })
       .from(envVarsTable)
       .where(inArray(envVarsTable.appId, appIds)),
     db
@@ -86,6 +90,9 @@ export async function databaseUsesInTeam(
       )
       .where(inArray(sharedEnvVarAppsTable.appId, appIds)),
   ]);
+  const connected = new Set(
+    own.map((r) => (r.databaseId ? `${r.appId}:${r.databaseId}` : "")),
+  );
   const text = new Map(apps.map((a) => [a.id, [a.compose ?? ""]]));
   for (const row of [...own, ...shared]) {
     const v = tryDecryptSecret(row.valueEnc);
@@ -96,7 +103,7 @@ export async function databaseUsesInTeam(
   for (const app of apps) {
     const haystack = text.get(app.id)!.join("\n");
     for (const d of dbs)
-      if (mentionsHost(haystack, d.host))
+      if (connected.has(`${app.id}:${d.id}`) || mentionsHost(haystack, d.host))
         uses.push({
           appId: app.id,
           appName: app.name,

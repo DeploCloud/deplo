@@ -293,6 +293,16 @@ input AppEnvInput {
   value: String!
 }
 
+"""An app the viewer may connect a database to."""
+type AppLinkOption {
+  id: ID
+  logo: String
+  name: String
+  place: String
+  reach: DatabaseReach
+  slug: String
+}
+
 """
 An ephemeral deploy of one App for one open pull request, running as its own stack `deplo-<slug>__pr-<n>` with its own URL. Not an App and not an Environment.
 """
@@ -1395,6 +1405,36 @@ type Database {
   version: String
 }
 
+"""A variable of an app whose value comes from this database."""
+type DatabaseAppLink {
+  appId: ID
+  appName: String
+  appSlug: String
+  canManage: Boolean
+
+  """Empty without manage_env on the app."""
+  key: String
+  reach: DatabaseReach
+}
+
+type DatabaseAppLinks {
+  """Apps the viewer may connect it to."""
+  apps: [AppLinkOption!]
+  links: [DatabaseAppLink!]
+}
+
+"""A team database seen from one app, with whether it can be connected."""
+type DatabaseLinkOption {
+  """This app's variables already connected to it."""
+  connectedKeys: [String!]
+  id: ID
+  logo: String
+  name: String
+  place: String
+  reach: DatabaseReach
+  type: DatabaseType
+}
+
 """
 One config file of a database: its name in the stack's files directory, its body, and where it is mounted inside the container.
 """
@@ -1411,6 +1451,17 @@ input DatabaseMountInput {
   content: String!
   filePath: String!
   mountPath: String!
+}
+
+"""
+How an app would reach a database: on its private network, through the database's public address, or not at all (and why).
+"""
+enum DatabaseReach {
+  internal
+  other_environment
+  other_server
+  other_team
+  public
 }
 
 enum DatabaseStatus {
@@ -3434,6 +3485,11 @@ type Mutation {
   confirmTwoFactorEnrolment(code: String!): Boolean
 
   """
+  Give an app a variable whose value is this database's connection string, derived again at every deploy so a password change follows on its own. Replaces a variable of that name. Production only. Needs manage_env and reveal_secrets on the app; refused when the app cannot reach the database.
+  """
+  connectDatabase(appId: String!, databaseId: String!, key: String!): Boolean
+
+  """
   Reach the old Deplo with its move code and preview the move. Changes nothing on either side; only a fresh Deplo can receive one.
   """
   connectDeploMove(
@@ -3616,6 +3672,9 @@ type Mutation {
   Turn two-factor off. Requires the password AND a current code (a recovery code also works).
   """
   disableTwoFactor(code: String!, password: String!): Boolean
+
+  """Delete every variable of the app that comes from this database."""
+  disconnectDatabase(appId: String!, databaseId: String!): Boolean
 
   """
   Stop telling this app that its addresses changed when it was imported: clears `importedFrom` on every one of its domains. Per app on purpose - a migration brings over many, and one blanket dismissal would hide the fact on every app nobody has looked at yet.
@@ -4892,6 +4951,11 @@ type Query {
   """An app's cron jobs, its master switch and its pickable services."""
   appCronJobs(appId: ID!): CronJobsView
 
+  """
+  The team's databases seen from one app, reachable ones first. Empty without manage_env on the app or a role that reaches the whole team.
+  """
+  appDatabaseOptions(appId: String!): [DatabaseLinkOption!]
+
   """A fresh live per-container metrics snapshot for one app."""
   appMetrics(appId: String!): ContainerMetrics
 
@@ -4975,6 +5039,9 @@ type Query {
   """
   dataRecopySource(id: String!, kind: String!): MigrationRecopySource
   database(id: String!): Database
+
+  """Which apps a database is connected to, and which it could be."""
+  databaseAppLinks(databaseId: String!): DatabaseAppLinks
 
   """Attachable container + default target for a database's console."""
   databaseConsoleInfo(databaseId: String!): ConsoleInfo

@@ -13,6 +13,7 @@ import "./types/cleanup";
 import "./types/console";
 import "./types/cron";
 import "./types/database";
+import "./types/database-link";
 import "./types/database-transfer";
 import "./types/deplo-move";
 import "./types/destination";

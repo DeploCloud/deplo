@@ -3,6 +3,7 @@ import "server-only";
 import { eq } from "drizzle-orm";
 import { decryptSecretOrThrow } from "../../crypto";
 import { loadEnvVarsForApp } from "../../data/app-graph-load";
+import { withLinkedValues } from "../../data/database-links";
 import {
   loadAutoInjectedVarsForApp,
   loadSharedVarsForApp,
@@ -40,12 +41,16 @@ async function resolvedEntries(
   target: EnvTarget,
   preview: PreviewEnvContext | null,
 ) {
-  const [vars, sharedVars, autoInjected, previewOverrides] = await Promise.all([
-    loadEnvVarsForApp(appId),
-    loadSharedVarsForApp(appId),
-    loadAutoInjectedVarsForApp(appId),
-    target === "preview" ? loadPreviewEnvOverrides(appId) : Promise.resolve([]),
-  ]);
+  const [linked, sharedVars, autoInjected, previewOverrides] =
+    await Promise.all([
+      loadEnvVarsForApp(appId).then((v) => withLinkedValues(appId, v, target)),
+      loadSharedVarsForApp(appId),
+      loadAutoInjectedVarsForApp(appId),
+      target === "preview"
+        ? loadPreviewEnvOverrides(appId)
+        : Promise.resolve([]),
+    ]);
+  const vars = linked.vars;
   // A fork gets the preview-only overrides and nothing inherited: a plain value is often a credential.
   const dropSecrets = Boolean(preview?.isFork);
   const keep = <T extends { type: EnvEntryType }>(
@@ -57,7 +62,7 @@ async function resolvedEntries(
         ? []
         : list.filter((e) => e.type !== "secret")
       : list;
-  return resolveEnvEntries(
+  const entries = resolveEnvEntries(
     target,
     appId,
     keep(vars),
@@ -65,6 +70,7 @@ async function resolvedEntries(
     keep(autoInjected),
     keep(previewOverrides, false),
   );
+  return { entries, unreachable: linked.unreachable };
 }
 
 export async function appEnv(
@@ -73,7 +79,12 @@ export async function appEnv(
   opts: { preview?: PreviewEnvContext | null } = {},
 ): Promise<Record<string, string>> {
   const preview = opts.preview ?? null;
-  const entries = await resolvedEntries(appId, target, preview);
+  const { entries, unreachable } = await resolvedEntries(
+    appId,
+    target,
+    preview,
+  );
+  if (unreachable.length > 0) throw new Error(unreachable.join("\n"));
   const out: Record<string, string> = preview ? previewEnvExtras(preview) : {};
   for (const e of entries) {
     out[e.key] = decryptSecretOrThrow(e.valueEnc, `The variable ${e.key}`);
@@ -106,7 +117,7 @@ export async function appEnvKeys(
   opts: { preview?: PreviewEnvContext | null } = {},
 ): Promise<string[]> {
   const preview = opts.preview ?? null;
-  const entries = await resolvedEntries(appId, target, preview);
+  const { entries } = await resolvedEntries(appId, target, preview);
   const seen = new Set<string>(
     preview ? Object.keys(previewEnvExtras(preview)) : [],
   );

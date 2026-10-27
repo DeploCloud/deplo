@@ -8,6 +8,7 @@ import { assembleDatabase } from "../backup-rows";
 import { getCurrentUser } from "../../auth/current-user";
 import { requireCapability } from "../../membership";
 import { recordActivity } from "../activity";
+import { markLinkedAppsPending } from "../database-links";
 import { assertNoNameClash, withNetworkLock } from "../name-clash";
 import { environmentInTeam } from "../environments";
 import { mountsFor, requireDatabase } from "./rows";
@@ -53,6 +54,7 @@ export async function moveDatabaseToEnvironment(
     null,
     teamId,
   );
+  await markLinkedAppsPending(id);
 }
 
 export async function reapplyDatabaseNetwork(ids: string[]): Promise<number> {

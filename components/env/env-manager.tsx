@@ -3,7 +3,15 @@
 import * as React from "react";
 import { useRouter } from "@/lib/nav";
 import { toast } from "sonner";
-import { Plus, Trash2, Share2, SearchX, Settings, Unlink } from "lucide-react";
+import {
+  Link2,
+  Plus,
+  Trash2,
+  Share2,
+  SearchX,
+  Settings,
+  Unlink,
+} from "lucide-react";
 import Link from "@/components/ui/link";
 import {
   Table,
@@ -34,6 +42,8 @@ import { EnvGraphic } from "@/components/env/env-graphic";
 import { EnvValueCell } from "@/components/env/env-value-cell";
 import { TimeAgo } from "@/components/shared/time-ago";
 import { EnvVarDialog } from "@/components/env/env-var-dialog";
+import { DatabaseLogo } from "@/components/storage/database-logo";
+import { connectedToast } from "@/components/storage/database-link-form";
 import { EnvAuthorCell } from "@/components/env/env-author-cell";
 import { EnvEditButton } from "@/components/env/env-edit-button";
 import { EnvFilters } from "@/components/env/env-filters/env-filters-toolbar";
@@ -46,7 +56,7 @@ import {
 import { useEnvFilters } from "@/components/env/env-filters/use-env-filters";
 import { gqlAction } from "@/lib/graphql-client";
 import { envNameLooksSensitive } from "@/lib/env-secret-name";
-import type { EnvVarDTO } from "@/lib/types/env";
+import type { EnvDatabaseRef, EnvVarDTO } from "@/lib/types/env";
 import type { AppSharedVarDTO } from "@/lib/data/shared-vars/app-view";
 import type { SharedVarDTO } from "@/lib/data/shared-vars/team-view";
 import type { TeamEnvironment } from "@/lib/data/environments";
@@ -148,6 +158,7 @@ export function EnvManager({
     };
   });
 
+  const deleting = vars.find((v) => v.id === deleteId);
   const hasVars = rows.length > 0;
   const hasMatches = shownRows.length > 0;
 
@@ -237,11 +248,25 @@ export function EnvManager({
                       <EnvSelectionCell id={rowKey(row)} />
                       <TableCell className="font-mono text-xs font-medium">
                         <div className="flex items-center gap-2">
+                          <DatabaseMark row={row} />
                           {row.key}
                           {row.type === "plain" &&
+                            !row.detectedDatabase &&
                             envNameLooksSensitive(row.key) && (
                               <LooksLikeSecretBadge />
                             )}
+                          {row.database && !row.database.reachable && (
+                            <SimpleTooltip
+                              content={`This app cannot reach ${row.database.name}, so its next deploy fails until one of them moves.`}
+                            >
+                              <Badge
+                                variant="outline"
+                                className="text-[10px] font-normal whitespace-nowrap text-destructive"
+                              >
+                                Unreachable
+                              </Badge>
+                            </SimpleTooltip>
+                          )}
                         </div>
                       </TableCell>
                       <TableCell>
@@ -257,22 +282,40 @@ export function EnvManager({
                       </TableCell>
                       <TableCell className="text-right">
                         <div className="flex justify-end gap-1">
+                          {row.detectedDatabase?.reachable && (
+                            <LinkToDatabaseButton
+                              appId={appId}
+                              envKey={row.key}
+                              database={row.detectedDatabase}
+                            />
+                          )}
                           <EnvEditButton
-                            secret={row.type === "secret"}
+                            secret={row.type === "secret" && !row.connected}
+                            label={row.connected ? "Rename" : "Edit"}
                             onClick={() => {
                               setEditing(row);
                               setAddOpen(true);
                             }}
                           />
-                          <Button
-                            variant="ghost"
-                            size="icon-sm"
-                            className="text-muted-foreground hover:text-destructive"
-                            onClick={() => setDeleteId(row.id)}
-                            aria-label="Delete"
+                          <SimpleTooltip
+                            content={row.connected ? "Disconnect" : "Delete"}
                           >
-                            <Trash2 className="size-4" />
-                          </Button>
+                            <Button
+                              variant="ghost"
+                              size="icon-sm"
+                              className="text-muted-foreground hover:text-destructive"
+                              onClick={() => setDeleteId(row.id)}
+                              aria-label={
+                                row.connected ? "Disconnect" : "Delete"
+                              }
+                            >
+                              {row.connected ? (
+                                <Unlink className="size-4" />
+                              ) : (
+                                <Trash2 className="size-4" />
+                              )}
+                            </Button>
+                          </SimpleTooltip>
                         </div>
                       </TableCell>
                     </TableRow>
@@ -357,6 +400,7 @@ export function EnvManager({
         appId={appId}
         editing={editing}
         existingKeys={vars.filter((v) => v.type === "plain").map((v) => v.key)}
+        appKeys={vars.map((v) => v.key)}
         sharedVars={sharedVars}
         canCreateShared={canCreateShared}
         apps={apps}
@@ -367,10 +411,18 @@ export function EnvManager({
       <ConfirmAction
         open={deleteId !== null}
         onOpenChange={(v) => !v && setDeleteId(null)}
-        title="Delete variable?"
-        description="This removes the variable. It will no longer be available to new deployments."
-        confirmLabel="Delete"
-        successMessage="Variable deleted"
+        title={
+          deleting?.connected ? "Disconnect database?" : "Delete variable?"
+        }
+        description={
+          deleting?.connected
+            ? `This removes ${deleting.key}. New deployments no longer get the connection string.`
+            : "This removes the variable. It will no longer be available to new deployments."
+        }
+        confirmLabel={deleting?.connected ? "Disconnect" : "Delete"}
+        successMessage={
+          deleting?.connected ? "Database disconnected" : "Variable deleted"
+        }
         optimistic
         onConfirm={async () => {
           const id = deleteId!;
@@ -457,6 +509,76 @@ function SharedRowActions({
         </Button>
       </SimpleTooltip>
     </div>
+  );
+}
+
+function DatabaseMark({ row }: { row: EnvVarDTO }) {
+  const db = row.database ?? row.detectedDatabase;
+  if (!db) return null;
+  return (
+    <SimpleTooltip
+      content={
+        row.database
+          ? `Comes from ${db.name}`
+          : `Points at ${db.name}. Connect it to follow password changes.`
+      }
+    >
+      <Link
+        href={`/storage/databases/${db.id}`}
+        aria-label={`Open ${db.name}`}
+        className="shrink-0"
+      >
+        <DatabaseLogo type={db.type} logo={db.logo} size={18} />
+      </Link>
+    </SimpleTooltip>
+  );
+}
+
+function LinkToDatabaseButton({
+  appId,
+  envKey,
+  database,
+}: {
+  appId: string;
+  envKey: string;
+  database: EnvDatabaseRef;
+}) {
+  const router = useRouter();
+  const [pending, startTransition] = React.useTransition();
+  return (
+    <SimpleTooltip content={`Connect to ${database.name}`}>
+      <Button
+        variant="ghost"
+        size="icon-sm"
+        disabled={pending}
+        aria-label={`Connect to ${database.name}`}
+        onClick={() =>
+          startTransition(async () => {
+            const res = await gqlAction(
+              /* GraphQL */ `
+                mutation (
+                  $appId: String!
+                  $databaseId: String!
+                  $key: String!
+                ) {
+                  connectDatabase(
+                    appId: $appId
+                    databaseId: $databaseId
+                    key: $key
+                  )
+                }
+              `,
+              { appId, databaseId: database.id, key: envKey },
+            );
+            if (!res.ok) return void toast.error(res.error);
+            connectedToast(`${envKey} now follows ${database.name}`, appId);
+            router.refresh();
+          })
+        }
+      >
+        <Link2 className="size-4" />
+      </Button>
+    </SimpleTooltip>
   );
 }
 

@@ -28,18 +28,29 @@ import {
   appScopeWhere,
 } from "./app-graph-load";
 import { authorOf, loadUserIdentities } from "./user-identity";
+import { envDatabaseRefs } from "./database-links";
 import {
   ALL_ENV_TARGETS,
   sanitizeTargets,
   secretImmutable,
 } from "../types/env";
-import type { EnvTarget, EnvVar, EnvVarDTO } from "../types/env";
+import type {
+  EnvDatabaseRef,
+  EnvTarget,
+  EnvVar,
+  EnvVarDTO,
+} from "../types/env";
 import type { VarAuthor } from "../types/identity";
 
 const MASK = "••••••••••••";
 
-function toDTO(e: EnvVar, authors: Map<string, VarAuthor>): EnvVarDTO {
+function toDTO(
+  e: EnvVar,
+  authors: Map<string, VarAuthor>,
+  refs?: Awaited<ReturnType<typeof envDatabaseRefs>>,
+): EnvVarDTO {
   const isSecret = e.type === "secret";
+  const ref = (m?: Map<string, EnvDatabaseRef>) => m?.get(e.id) ?? null;
   return {
     id: e.id,
     key: e.key,
@@ -47,6 +58,9 @@ function toDTO(e: EnvVar, authors: Map<string, VarAuthor>): EnvVarDTO {
     masked: isSecret,
     targets: e.targets,
     type: e.type,
+    connected: e.databaseId != null,
+    database: ref(refs?.connected),
+    detectedDatabase: ref(refs?.detected),
     createdBy: authorOf(e.createdByUserId, authors),
     updatedBy: authorOf(e.updatedByUserId, authors),
     createdAt: e.createdAt,
@@ -63,8 +77,11 @@ export async function listEnv(appId: string): Promise<EnvVarDTO[]> {
   const vars = (await loadEnvVarsForApp(appId)).sort((a, b) =>
     a.key.localeCompare(b.key),
   );
-  const authors = await loadUserIdentities(authorIds(vars));
-  return vars.map((e) => toDTO(e, authors));
+  const [authors, refs] = await Promise.all([
+    loadUserIdentities(authorIds(vars)),
+    envDatabaseRefs(appId, vars),
+  ]);
+  return vars.map((e) => toDTO(e, authors, refs));
 }
 
 export interface AppEnvGroup {
@@ -196,6 +213,7 @@ export async function upsertEnv(input: {
           valueEnc: encryptSecret(input.value),
           targets: targets ?? [...ALL_ENV_TARGETS],
           type: input.type,
+          databaseId: null,
           createdByUserId: userId,
           updatedByUserId: userId,
           createdAt: nowIso(),
@@ -218,7 +236,8 @@ export async function renameEnv(
   const existing = await loadEnvVar(id);
   if (!existing) throw new Error("Env var not found");
   const { userId } = await requireAppCapability(existing.appId, "manage_env");
-  if (existing.type === "secret")
+  // A connected variable's value is derived, so only its name is the user's.
+  if (existing.type === "secret" && !existing.databaseId)
     throw new Error(secretImmutable(existing.key));
   if (existing.key === newKey) return existing.appId;
   const clash = await getDb()
@@ -319,6 +338,7 @@ export async function setAppEnv(
           .update(envVarsTable)
           .set({
             valueEnc: encryptSecret(value),
+            databaseId: null,
             updatedByUserId: userId,
             updatedAt: nowIso(),
           })
@@ -331,6 +351,7 @@ export async function setAppEnv(
           valueEnc: encryptSecret(value),
           targets,
           type: "plain",
+          databaseId: null,
           createdByUserId: userId,
           updatedByUserId: userId,
           createdAt: nowIso(),

@@ -9,6 +9,7 @@ import { servicesOf } from "../deploy/compose-lint/document";
 import { composeOwnVolumeKeys } from "../deploy/compose-lint/volumes";
 import { resolveEnvEntries } from "../deploy/env-resolve";
 import { loadEnvVarsForApp } from "./app-graph-load";
+import { withLinkedValues } from "./database-links";
 import {
   loadAutoInjectedVarsForApp,
   loadSharedVarsForApp,
@@ -29,8 +30,11 @@ export interface ProjectBackupDescriptor {
 export async function appEnvSnapshot(
   appId: string,
 ): Promise<Record<string, string>> {
-  const [vars, sharedVars, autoInjected] = await Promise.all([
-    loadEnvVarsForApp(appId),
+  // Lenient: an unreachable connection keeps its last value rather than failing the backup.
+  const [{ vars }, sharedVars, autoInjected] = await Promise.all([
+    loadEnvVarsForApp(appId).then((v) =>
+      withLinkedValues(appId, v, "production"),
+    ),
     loadSharedVarsForApp(appId),
     loadAutoInjectedVarsForApp(appId),
   ]);

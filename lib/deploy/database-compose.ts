@@ -4,6 +4,7 @@ import { renderYamlKeys } from "./health-check";
 import { defaultLogging, renderResourceLimitsYaml } from "./resources";
 import type { ResourceLimits } from "../types/container";
 import type { DatabaseType } from "../types/database";
+import type { DatabaseReach } from "../databases/link";
 import { isOfficialEngineImage } from "../databases/images";
 import { formatHostPort } from "../host-address";
 import { deploImageClaim, deploImageMessage } from "./deplo-image";
@@ -221,4 +222,27 @@ export function parseConnectionPassword(conn: string): string {
   } catch {
     return "";
   }
+}
+
+// The stored string is the public one while the database is exposed, the private one otherwise.
+export function linkedConnectionString(
+  db: {
+    type: DatabaseType;
+    username: string;
+    dbName: string;
+    host: string;
+    port: number;
+  },
+  storedConnection: string,
+  reach: DatabaseReach,
+): string {
+  if (reach === "public") return storedConnection;
+  return buildConnectionString({
+    type: db.type,
+    username: db.username,
+    password: parseConnectionPassword(storedConnection),
+    host: db.host,
+    port: db.port,
+    dbName: db.dbName,
+  });
 }

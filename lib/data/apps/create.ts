@@ -438,6 +438,7 @@ export async function createApp(input: CreateAppInput): Promise<AppSummary> {
           ? e.targets
           : (["production", "preview"] as EnvTarget[]),
         type: e.type ?? ("plain" as const),
+        databaseId: null,
         createdByUserId: userId,
         updatedByUserId: userId,
         createdAt: now,

@@ -179,6 +179,8 @@ const NOT_A_CREDENTIAL = new Set([
   "CronRun.command",
   "Database.connectionStringMasked",
   "Database.customCommand",
+  "DatabaseAppLink.key",
+  "DatabaseLinkOption.connectedKeys",
   "Deployment.deployKey",
   "EnvVar.key",
   "GitConnection.tokenExpiresAt",
