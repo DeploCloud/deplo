@@ -9,6 +9,10 @@ import {
   type FleetAgentStatus,
 } from "@/lib/data/servers/agent-rollout";
 import {
+  lastRefusedUpdate,
+  type RefusedUpdate,
+} from "@/lib/data/update-stops/refused";
+import {
   applyDeploUpdate,
   listDeploReleases,
   readUpdateInfo,
@@ -46,6 +50,28 @@ const UpdateStopRef = builder
       waiting: t.exposeBoolean("waiting", {
         description:
           "This instance runs the stop and its conditions do not hold yet, so Update offers nothing until they do.",
+      }),
+    }),
+  });
+
+const RefusedUpdateRef = builder
+  .objectRef<RefusedUpdate>("RefusedUpdate")
+  .implement({
+    description:
+      "An update that did not start, so the installer put the previous version back (ADR-0041).",
+    fields: (t) => ({
+      version: t.exposeString("version", {
+        nullable: true,
+        description:
+          "The version that was rolled back, `v`-prefixed. Null when the installer could not tell.",
+      }),
+      reason: t.exposeString("reason", {
+        description:
+          "One plain sentence: the update stop to install first, or that the new version did not start.",
+      }),
+      at: t.exposeString("at", {
+        nullable: true,
+        description: "When the installer rolled it back (ISO 8601, UTC).",
       }),
     }),
   });
@@ -94,6 +120,14 @@ const UpdateInfoRef = builder.objectRef<UpdateInfo>("UpdateInfo").implement({
         "Offline servers whose agent is older than the minimum the `next` Deplo supports. They cannot update while offline, so they stay unusable until they come back and their agent updates. Empty when there is no update or the release does not say.",
       resolve: (info) =>
         info.next ? strandedByPanelUpdate(info.next.replace(/^v/i, "")) : [],
+    }),
+    lastRefusedUpdate: t.field({
+      type: RefusedUpdateRef,
+      nullable: true,
+      authScopes: { instanceAdmin: true },
+      description:
+        "The last update the installer rolled back, and why. Null once an update succeeds.",
+      resolve: () => lastRefusedUpdate(),
     }),
   }),
 });

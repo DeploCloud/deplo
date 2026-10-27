@@ -35,6 +35,13 @@ type UpdateInfo = {
   canary: boolean;
   error?: string | null;
   strandedServers?: { id: string; name: string; version: string | null }[];
+  lastRefusedUpdate?: RefusedUpdate | null;
+};
+
+type RefusedUpdate = {
+  version: string | null;
+  reason: string;
+  at: string | null;
 };
 
 const UPDATES_QUERY = /* GraphQL */ `
@@ -57,6 +64,11 @@ const UPDATES_QUERY = /* GraphQL */ `
         id
         name
         version
+      }
+      lastRefusedUpdate {
+        version
+        reason
+        at
       }
     }
     deploChangelog {
@@ -103,6 +115,7 @@ export function DeploUpdatesTab({
   const [stalled, setStalled] = React.useState(false);
   const [manual, setManual] = React.useState<string | null>(null);
   const loaded = React.useRef(false);
+  const refusedAt = React.useRef<string | null>(null);
 
   const load = React.useCallback(async () => {
     const res = await gqlAction<UpdatesData, UpdatesData>(UPDATES_QUERY);
@@ -154,21 +167,38 @@ export function DeploUpdatesTab({
     let stop = false;
     const poll = async () => {
       const res = await gqlAction<
-        { instanceSettings: { version: string } },
-        string
+        {
+          instanceSettings: { version: string };
+          updateInfo: { lastRefusedUpdate: { at: string | null } | null };
+        },
+        { version: string; refusedAt: string | null }
       >(
         /* GraphQL */ `
           query RunningVersion {
             instanceSettings {
               version
             }
+            updateInfo {
+              lastRefusedUpdate {
+                at
+              }
+            }
           }
         `,
         undefined,
-        (d) => d.instanceSettings.version,
+        (d) => ({
+          version: d.instanceSettings.version,
+          refusedAt: d.updateInfo?.lastRefusedUpdate?.at ?? null,
+        }),
       );
       if (stop) return;
-      if (res.ok && res.data && res.data !== version) {
+      // Back on a new version, or back on the old one with a new rollback to explain.
+      if (
+        res.ok &&
+        res.data &&
+        (res.data.version !== version ||
+          res.data.refusedAt !== refusedAt.current)
+      ) {
         window.location.reload();
         return;
       }
@@ -188,6 +218,7 @@ export function DeploUpdatesTab({
   async function startUpdate() {
     setManual(null);
     setStalled(false);
+    refusedAt.current = info?.lastRefusedUpdate?.at ?? null;
     const res = await gqlAction<
       { updateDeplo: { version: string; logPath: string } },
       { version: string; logPath: string }
@@ -233,8 +264,12 @@ export function DeploUpdatesTab({
     error: listError,
   });
 
+  const refused = info?.lastRefusedUpdate ?? null;
   const extras =
-    (manual && !updating) || fleet.behind.length > 0 || fleet.pausedBy !== null;
+    (manual && !updating) ||
+    refused !== null ||
+    fleet.behind.length > 0 ||
+    fleet.pausedBy !== null;
 
   return (
     <UpdatesLayout>
@@ -293,6 +328,7 @@ export function DeploUpdatesTab({
         </CardContent>
         {extras && (
           <div className="space-y-3 border-t border-border p-5">
+            {refused && <RefusedUpdateNotice refused={refused} />}
             {manual && !updating && <ManualUpdate />}
             <FleetBehind fleet={fleet} onSettled={refreshFleet} />
           </div>
@@ -469,6 +505,23 @@ function StrandedServers({
         </li>
       ))}
     </ul>
+  );
+}
+
+// Shown until an update succeeds (ADR-0041).
+export function RefusedUpdateNotice({ refused }: { refused: RefusedUpdate }) {
+  return (
+    <div className="flex items-start gap-2 text-sm">
+      <TriangleAlert className="mt-0.5 size-4 shrink-0 text-warning" />
+      <div className="min-w-0">
+        <p className="font-medium">
+          {refused.version
+            ? `The update to Deplo ${refused.version} was rolled back`
+            : "An update was rolled back"}
+        </p>
+        <p className="mt-1 text-muted-foreground">{refused.reason}</p>
+      </div>
+    </div>
   );
 }
 

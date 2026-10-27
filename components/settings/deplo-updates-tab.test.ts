@@ -1,7 +1,9 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
 
-import { heroState } from "./deplo-updates-tab";
+import { heroState, RefusedUpdateNotice } from "./deplo-updates-tab";
 import type { FleetSummary } from "./fleet-agents";
 
 const fleet = (over: Partial<FleetSummary> = {}): FleetSummary => ({
@@ -152,4 +154,18 @@ test("a stalled self-update names the log, whatever else is true", () => {
   });
   assert.equal(hero.tone, "warn");
   assert.match(hero.line, /deplo-update\.log/);
+});
+
+test("an update the installer rolled back is named with its reason", () => {
+  const reason =
+    "Deplo v0.7.0 has to come after v0.6.0. Update to v0.6.0 first and let it finish getting this instance ready.";
+  const text = (version: string | null) =>
+    renderToStaticMarkup(
+      createElement(RefusedUpdateNotice, {
+        refused: { version, reason, at: "2026-10-27T14:00:05Z" },
+      }),
+    ).replace(/<[^>]+>/g, " ");
+  assert.match(text("v0.7.0"), /The update to Deplo v0\.7\.0 was rolled back/);
+  assert.ok(text("v0.7.0").includes(reason));
+  assert.match(text(null), /An update was rolled back/);
 });
