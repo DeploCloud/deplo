@@ -1622,7 +1622,6 @@ type DeploMovePreviewServer {
   """The machine the old Deplo itself runs on."""
   isPanelHost: Boolean
   name: String
-  port: Int
 
   """
   What keeps the move from starting because of this server, in one sentence.
