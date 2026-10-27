@@ -46,4 +46,6 @@ export interface Server {
   lastSeenAt?: string;
   statusCheckedAt?: string;
   statusMessage?: string;
+  /** When its agent first linked; a server that has is never dialed again (ADR-0041). */
+  firstLinkedAt?: string;
 }

@@ -70,9 +70,7 @@ export async function updateServerAddress(
   await assertAddressFree(address, server.id);
 
   // A linked server is never dialed (ADR-0040): its address is for its apps, its port unused.
-  const linked = server.agent?.certFingerprint
-    ? await linksIn(server.id)
-    : false;
+  const linked = server.agent?.certFingerprint ? await linksIn(server) : false;
   if (linked && address === server.host && address === server.ip)
     return { warning: null };
   const newPort =
@@ -108,14 +106,16 @@ export async function updateServerAddress(
 
 /** The port Deplo dials this server's agent on; null when it dials none, because the agent links in or never called home. */
 export function dialedAgentPort(server: Server): number | null {
-  return server.agent && !hasLinked(server.id) ? server.agent.port : null;
+  return server.agent && !server.firstLinkedAt && !hasLinked(server.id)
+    ? server.agent.port
+    : null;
 }
 
 // Never dialed: moments after Deplo starts, one that stopped listening may not have linked back yet.
-async function linksIn(serverId: string): Promise<boolean> {
-  if (linkMayCome(serverId)) return true;
+async function linksIn(server: Server): Promise<boolean> {
+  if (server.firstLinkedAt || linkMayCome(server.id)) return true;
   return (
-    linksSettling() && (await waitForLink(serverId, LINK_WAIT_MS)) !== null
+    linksSettling() && (await waitForLink(server.id, LINK_WAIT_MS)) !== null
   );
 }
 

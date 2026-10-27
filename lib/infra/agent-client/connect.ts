@@ -145,6 +145,10 @@ export async function connectAgentAt(
     throw new AgentUnreachableError(
       `server ${server.name} is not provisioned (no agent has called home yet)`,
     );
+  if (server.firstLinkedAt)
+    throw new AgentUnreachableError(
+      `server ${server.name} connects to Deplo on its own: Deplo never dials it`,
+    );
   return dial(
     await remoteTarget({
       ...server,

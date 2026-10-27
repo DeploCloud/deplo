@@ -1,4 +1,4 @@
-import { test, before, after, beforeEach, afterEach } from "node:test";
+import { test, before, after, beforeEach, afterEach, mock } from "node:test";
 import assert from "node:assert/strict";
 import net from "node:net";
 
@@ -28,6 +28,7 @@ import {
   startAgentLinkListener,
   stopAgentLinkListener,
 } from "../../infra/agent-link/listener";
+import { LINK_SETTLE_MS } from "../../infra/agent-link/protocol";
 import { currentLink, onAgentLink } from "../../infra/agent-link/registry";
 import { invalidateFrozen } from "../deplo-move/freeze";
 import { forgetRoutedFallback } from "../instance-settings/panel-fallback";
@@ -144,6 +145,16 @@ const refusesConnections = (port: number) =>
     sock.once("error", () => resolve(true));
   });
 
+async function relink(a: FakeAgent): Promise<void> {
+  const up = new Promise<void>((resolve) => {
+    const off = onAgentLink((e) => {
+      if (e.serverId === SERVER && e.type === "up") resolve(void off());
+    });
+  });
+  assert.equal((await a.link(door)).status, 101);
+  await up;
+}
+
 async function hello() {
   const conn = await connectAgent(SERVER);
   try {
@@ -153,7 +164,7 @@ async function hello() {
   }
 }
 
-test("an agent updated to a linking release links and stops listening, with nothing for the user to do", async () => {
+test("an agent updated to a linking release links and stops listening, with nothing for the user to do", async (t) => {
   const a = await enrolled();
 
   await runAgentRollout();
@@ -169,6 +180,17 @@ test("an agent updated to a linking release links and stops listening, with noth
   assert.equal(a.connections().opened, dialed, "reached over its link");
   const log = await db.select({ m: activities.message }).from(activities);
   assert.ok(log.some((r) => r.m.includes(`Updated the agent on ${SERVER}`)));
+
+  // Deplo restarts, and links have settled: the server is waited for, never dialed, until it links again.
+  await stopAgentLinkListener();
+  door = (await startAgentLinkListener({ port: 0, host: "127.0.0.1" })).port;
+  mock.timers.enable({ apis: ["Date"], now: Date.now() + LINK_SETTLE_MS });
+  t.after(() => mock.timers.reset());
+  const answer = hello();
+  await new Promise((r) => setTimeout(r, 300));
+  await relink(a);
+  assert.equal((await answer).agentVersion, AGENT_VERSION);
+  assert.equal(a.connections().opened, dialed, "never dialed again");
 });
 
 test("an agent that cannot reach the panel keeps its port, and its dial carries no deploy", async () => {

@@ -9,6 +9,11 @@ import { seedServerRow, TRUNCATE_INFRA } from "../../data/infra-test-helpers";
 import type { DeployRequest } from "../../agent/gen/agent";
 import { AGENT_VERSION } from "../../version";
 import { unreachableMessage } from "../server-health";
+import {
+  startAgentLinkListener,
+  stopAgentLinkListener,
+} from "../agent-link/listener";
+import { onAgentLink } from "../agent-link/registry";
 import { dropAgentChannel } from "./channel-pool";
 import {
   __setAgentConnectorForTest,
@@ -17,7 +22,7 @@ import {
   openAgent,
 } from "./connect";
 import type { AgentConnection } from "./connection";
-import { AgentNotLinkedError } from "./errors";
+import { AgentNotLinkedError, AgentUnreachableError } from "./errors";
 import { startFakeAgent, type FakeAgent } from "./fake-agent-test-helpers";
 
 // A server's first link decides how Deplo may reach it (ADR-0041): real agents, real certificates.
@@ -26,6 +31,7 @@ const SERVER = "srv_first_link";
 let db: TestDb;
 let pg: PGlite;
 let agent: FakeAgent;
+let door: number;
 
 before(async () => {
   ({ db, pg } = await makeTestDb());
@@ -51,12 +57,39 @@ beforeEach(async () => {
       version: AGENT_VERSION,
     },
   });
+  door = (await startAgentLinkListener({ port: 0, host: "127.0.0.1" })).port;
 });
 
 afterEach(async () => {
+  await stopAgentLinkListener();
   dropAgentChannel(SERVER);
   await agent.stop();
 });
+
+async function linkIn(): Promise<void> {
+  const up = new Promise<void>((resolve) => {
+    const off = onAgentLink((e) => {
+      if (e.serverId === SERVER && e.type === "up") resolve(void off());
+    });
+  });
+  assert.equal((await agent.link(door)).status, 101);
+  await up;
+}
+
+/** Deplo stops and starts again: every link ends, and nothing in memory remembers them. */
+async function restart(): Promise<void> {
+  await stopAgentLinkListener();
+  door = (await startAgentLinkListener({ port: 0, host: "127.0.0.1" })).port;
+}
+
+async function helloVia(open: typeof connectAgent): Promise<string> {
+  const conn = await open(SERVER);
+  try {
+    return (await conn.hello()).agentVersion;
+  } finally {
+    conn.close();
+  }
+}
 
 /** What the user reads: plain words, never a port, a link or a shell, and never a bare "agent". */
 function refused(e: unknown): boolean {
@@ -116,6 +149,22 @@ test("an override address dials a server that never linked for what brings it ov
   } finally {
     conn.close();
   }
+});
+
+test("once a server has linked, Deplo never dials it again, even right after a restart", async () => {
+  await linkIn();
+  await restart();
+
+  // Its server agent still listens: only the remembered link keeps Deplo off its port.
+  const calls = Promise.all([helloVia(connectAgent), helloVia(openAgent)]);
+  await new Promise((r) => setTimeout(r, 300));
+  await linkIn();
+  assert.deepEqual(await calls, [AGENT_VERSION, AGENT_VERSION]);
+  assert.equal(agent.connections().opened, 0, "nothing dialed it");
+  await assert.rejects(
+    connectAgentAt(SERVER, { agentPort: agent.port }),
+    AgentUnreachableError,
+  );
 });
 
 test("a stubbed connection is the stub's own, whether or not its server ever linked", async (t) => {

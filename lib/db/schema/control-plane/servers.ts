@@ -37,6 +37,8 @@ export const servers = pgTable(
     statusCheckedAt: isoTimestamptz("status_checked_at"),
     statusProbedAt: isoTimestamptz("status_probed_at"),
     statusMessage: text("status_message"),
+    // Set by the first verified agent link and never cleared: from then on it is never dialed (ADR-0041).
+    firstLinkedAt: isoTimestamptz("first_linked_at"),
     allTeams: boolean("all_teams").notNull().default(true),
     storageOnly: boolean("storage_only").notNull().default(false),
     buildOnly: boolean("build_only").notNull().default(false),
