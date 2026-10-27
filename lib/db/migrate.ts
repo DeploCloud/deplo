@@ -1,11 +1,22 @@
 import "server-only";
 
 import path from "node:path";
-import { migrate } from "drizzle-orm/node-postgres/migrator";
+import { readMigrationFiles } from "drizzle-orm/migrator";
+import { PgDialect, type PgSession } from "drizzle-orm/pg-core";
 
 import { getDb } from "./client";
 import { getPool } from "./pg";
-import { neverMigrated, passEveryStop, type RawQuery } from "./update-stops";
+import { REQUIRED_STOP } from "../version";
+import {
+  neverMigrated,
+  passEveryStopSql,
+  readPassedStops,
+  refusalReason,
+  stopPassed,
+  UPDATE_REFUSED,
+  UpdateRefusedError,
+  type RawQuery,
+} from "./update-stops";
 
 let applied = false;
 
@@ -36,14 +47,43 @@ export async function connectWhenReady<T>(
   }
 }
 
+/** drizzle's migrate(), plus statements that commit in the same transaction as a pending last migration. */
+export async function applyMigrations(
+  db: { _: { session: unknown } },
+  migrationsFolder: string,
+  alsoRun: string[] = [],
+): Promise<void> {
+  const migrations = readMigrationFiles({ migrationsFolder });
+  migrations.at(-1)?.sql.push(...alsoRun);
+  // drizzle's migrate() hands over any database's session; only this signature is typed narrower.
+  const session = db._.session as PgSession;
+  await new PgDialect().migrate(migrations, session, { migrationsFolder });
+}
+
+export interface BootStops {
+  requiredStop?: string | null;
+  log?: (line: string) => void;
+}
+
 // ADR-0041: a fresh install has passed every update stop, and that is only visible before the first migration.
 export async function migrateOnBoot(
   query: RawQuery,
-  migrateAll: () => Promise<void>,
+  migrateAll: (alsoRun: string[]) => Promise<void>,
+  { requiredStop = REQUIRED_STOP, log = console.error }: BootStops = {},
 ): Promise<void> {
   const fresh = await neverMigrated(query);
-  await migrateAll();
-  if (fresh) await passEveryStop(query);
+  // Read on the previous release's schema, before any DDL: refusing leaves the database as it was.
+  if (
+    !fresh &&
+    requiredStop &&
+    !stopPassed(requiredStop, await readPassedStops(query))
+  ) {
+    const reason = refusalReason(requiredStop);
+    log(UPDATE_REFUSED + reason);
+    throw new UpdateRefusedError(reason);
+  }
+  // With the migrations, not after them: a first boot that dies in between must still read as fresh.
+  await migrateAll(fresh ? passEveryStopSql(requiredStop) : []);
 }
 
 export async function runMigrations(): Promise<void> {
@@ -55,15 +95,12 @@ export async function runMigrations(): Promise<void> {
     try {
       await migrateOnBoot(
         (text, params) => client.query(text, params),
-        () =>
-          migrate(getDb(), {
-            migrationsFolder: path.join(
-              process.cwd(),
-              "lib",
-              "db",
-              "migrations",
-            ),
-          }),
+        (alsoRun) =>
+          applyMigrations(
+            getDb(),
+            path.join(process.cwd(), "lib", "db", "migrations"),
+            alsoRun,
+          ),
       );
       applied = true;
     } finally {
