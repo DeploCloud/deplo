@@ -238,8 +238,7 @@ export function EnvManager({
                       <EnvSelectionCell id={rowKey(row)} />
                       <TableCell className="font-mono text-xs font-medium">
                         <div className="flex items-center gap-2">
-                          <DatabaseMark row={row} />
-                          {row.key}
+                          <VariableKey row={row} />
                           {row.type === "plain" &&
                             !row.detectedDatabase &&
                             envNameLooksSensitive(row.key) && (
@@ -484,19 +483,20 @@ function SharedRowActions({
   );
 }
 
-function DatabaseMark({ row }: { row: EnvVarDTO }) {
+// The logo and the name both open the database a value comes from.
+function VariableKey({ row }: { row: EnvVarDTO }) {
   const db = row.database ?? row.detectedDatabase;
-  if (!db) return null;
+  if (!db) return <>{row.key}</>;
   return (
     <SimpleTooltip
       content={row.database ? `Comes from ${db.name}` : `Points at ${db.name}`}
     >
       <Link
         href={`/storage/databases/${db.id}`}
-        aria-label={`Open ${db.name}`}
-        className="shrink-0"
+        className="flex min-w-0 items-center gap-2 hover:underline"
       >
         <DatabaseLogo type={db.type} logo={db.logo} size={18} />
+        {row.key}
       </Link>
     </SimpleTooltip>
   );
