@@ -88,7 +88,6 @@ export function DeploymentSections({
         <DetailRow
           value="logs"
           title="Build Logs"
-          forceMount
           className="p-4"
           meta={
             <>

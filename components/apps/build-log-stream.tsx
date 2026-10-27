@@ -175,18 +175,6 @@ export function BuildLogStream({
     el.scrollTop = el.scrollHeight;
   }, [logs, follow]);
 
-  // A log mounted inside a closed section has no height yet; land at the end once it shows.
-  React.useEffect(() => {
-    const el = scrollRef.current;
-    if (!el || !follow) return;
-    const observer = new ResizeObserver(() => {
-      programmaticScroll.current = true;
-      el.scrollTop = el.scrollHeight;
-    });
-    observer.observe(el);
-    return () => observer.disconnect();
-  }, [follow]);
-
   function onScroll() {
     const el = scrollRef.current;
     if (!el) return;
