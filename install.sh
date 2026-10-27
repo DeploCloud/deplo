@@ -1184,7 +1184,7 @@ route_through_stops() {
     target="$stop"; hops=$((hops + 1))
   done
   [ "$target" != "$goal" ] || return 0
-  # KEEP IN SYNC with `refusalReason` in lib/db/update-stops.ts.
+  # KEEP IN SYNC with the route reason in `decideUpdate` and with `refusalReason` (lib/db/update-stops.ts).
   warn "Deplo v$goal has to come after v$target, so this update installs v$target first."
   note "Update again once v$target has finished getting ready."
   run_stop_installer "$target"

@@ -136,6 +136,7 @@ export async function decideUpdate(
           version: versionTag(target),
           waiting: false,
           ...NO_SERVERS,
+          // KEEP IN SYNC with the routed warning in install.sh's `route_through_stops`.
           reason: `Deplo ${goal} has to come after ${versionTag(target)}, so Update installs ${versionTag(target)} first.`,
         },
       };
