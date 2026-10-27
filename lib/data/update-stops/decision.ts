@@ -78,6 +78,13 @@ export async function passThisStopIfMet(): Promise<string[]> {
   return [...passed, r.version];
 }
 
+/** For a trigger (a first link, a removal, a server left behind): never throws, and the next update check retries. */
+export async function tryPassThisStop(): Promise<void> {
+  await passThisStopIfMet().catch((e) =>
+    console.error("[deplo] could not record the update stop:", e),
+  );
+}
+
 /** This release while it is an update stop not passed yet, and whom it waits on, before any release requires it too. */
 export async function thisStopWaiting(
   passed: readonly string[],

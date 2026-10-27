@@ -8,7 +8,7 @@ import { nowIso } from "../../ids";
 import { recordActivity } from "../activity";
 import { requireAdminServer } from "../servers/roster";
 import { getUpdateInfo, type UpdateInfo } from "../updates";
-import { passThisStopIfMet } from "./decision";
+import { tryPassThisStop } from "./decision";
 
 /** Lets the update stop pass without a server that has not connected (ADR-0041); its apps and settings stay. */
 export async function leaveServerBehind(id: string): Promise<UpdateInfo> {
@@ -43,7 +43,7 @@ export async function leaveServerBehind(id: string): Promise<UpdateInfo> {
       null,
       teamId,
     );
-    await passThisStopIfMet();
+    await tryPassThisStop();
   }
   return getUpdateInfo();
 }

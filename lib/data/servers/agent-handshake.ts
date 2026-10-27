@@ -11,7 +11,7 @@ import {
 } from "../../agent/bootstrap";
 import { dropAgentChannel } from "../../infra/agent-client/channel-pool";
 import { AGENT_VERSION, agentUpdateAvailable } from "../../version";
-import { passThisStopIfMet } from "../update-stops/decision";
+import { tryPassThisStop } from "../update-stops/decision";
 import { agentSeen } from "./agent-update-state";
 import { agentLinkUrl } from "./panel-address";
 import { listAllServers } from "./roster";
@@ -100,10 +100,7 @@ export async function recordFirstLink(serverId: string): Promise<void> {
     console.error(`[deplo] could not record ${serverId}'s first link:`, e);
   }
   // The last server to connect passes this release's update stop now; failing that, the next update check does.
-  if (first)
-    await passThisStopIfMet().catch((e) =>
-      console.error("[deplo] could not record the update stop:", e),
-    );
+  if (first) await tryPassThisStop();
 }
 
 export function observedTraefik(hello: {
