@@ -57,6 +57,8 @@ export function isExcludedDirName(name: string): boolean {
 }
 
 const FAVICON_STEM_RE = /^favicon(?:[-_.].*)?$/;
+// Next.js App Router serves `app/icon.svg` as the site's rel="icon".
+const NEXT_APP_ICON_STEM_RE = /^icon\d*$/;
 
 const EXT_SCORES: Record<string, number> = {
   svg: 40,
@@ -107,7 +109,10 @@ export function scoreFaviconPath(path: string, rootRel = ""): number | null {
   if (extScore === undefined) return null;
 
   const stem = base.slice(0, dot);
-  if (!FAVICON_STEM_RE.test(stem)) return null;
+  const nextAppIcon =
+    segments.at(-2)?.toLowerCase() === "app" &&
+    NEXT_APP_ICON_STEM_RE.test(stem);
+  if (!FAVICON_STEM_RE.test(stem) && !nextAppIcon) return null;
 
   const depthPenalty = Math.min(segments.length - 1, 8);
   const rootSegs = rootRel ? segmentsOf(rootRel) : [];
