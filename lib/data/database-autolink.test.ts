@@ -324,7 +324,7 @@ describe("database auto-link", () => {
       await stored("db_hub", fresh);
       const [linked] = await listEnv("prj_hub");
       await unlinkEnv(linked.id);
-      let [v] = await listEnv("prj_hub");
+      const [v] = await listEnv("prj_hub");
       assert.equal(v.connected, false);
       assert.equal(v.value, fresh);
       assert.equal((await appEnv("prj_hub")).DATABASE_URL, fresh);
