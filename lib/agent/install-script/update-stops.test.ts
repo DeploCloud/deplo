@@ -13,19 +13,25 @@ type Tags = Record<string, string | null>;
 
 const PACKAGE = readFileSync(join(process.cwd(), "package.json"), "utf8");
 
-function packageAt(version: string, requires: string | null): string {
+function packageAt(
+  version: string,
+  requires: string | null,
+  isStop: boolean,
+): string {
   const json = PACKAGE.replace(/"version": "[^"]*"/, `"version": "${version}"`);
   if (requires === null) return json.replace(/\n {2}"deplo": \{[^}]*\},/, "");
-  return json.replace(
-    /"requiresStop": "[^"]*"/,
-    `"requiresStop": "${requires}"`,
-  );
+  return json
+    .replace(/"requiresStop": "[^"]*"/, `"requiresStop": "${requires}"`)
+    .replace(/"updateStop": (true|false)/, `"updateStop": ${isStop}`);
 }
 
-async function fakeGitHub(dir: string, tags: Tags) {
+async function fakeGitHub(dir: string, tags: Tags, stops: string[]) {
   for (const [v, requires] of Object.entries(tags)) {
     await mkdir(join(dir, `v${v}`), { recursive: true });
-    await writeFile(join(dir, `v${v}`, "package.json"), packageAt(v, requires));
+    await writeFile(
+      join(dir, `v${v}`, "package.json"),
+      packageAt(v, requires, stops.includes(v)),
+    );
     await writeFile(
       join(dir, `v${v}`, "install.sh"),
       `echo "the v${v} installer ran: $*"; echo "routed from $DEPLO_ROUTED_FROM"\n`,
@@ -42,12 +48,14 @@ interface Host {
   mode?: "update" | "install";
   env?: string;
   noInstallers?: boolean;
+  // The tags that declare themselves an update stop; the stop alone when left out.
+  isStop?: string[];
 }
 
 async function route(host: Host): Promise<string> {
   const dir = await mkdtemp(join(tmpdir(), "deplo-stops-"));
   try {
-    await fakeGitHub(join(dir, "gh"), host.tags);
+    await fakeGitHub(join(dir, "gh"), host.tags, host.isStop ?? [A]);
     if (host.noInstallers)
       for (const v of Object.keys(host.tags))
         await rm(join(dir, "gh", `v${v}`, "install.sh"));
@@ -64,6 +72,7 @@ async function route(host: Host): Promise<string> {
         "passed_stops",
         "stop_passed",
         "required_stop",
+        "release_is_stop",
         "run_stop_installer",
         "route_through_stops",
       ].map((n) => shellFn("install.sh", n)),
@@ -113,7 +122,7 @@ test("below the stop a version asked for by name requires, the stop's own instal
     out,
     [
       `warn: Deplo v${B} has to come after v${A}, so this update installs v${A} first.`,
-      `note: Update again once v${A} has finished getting this instance ready.`,
+      `note: Update again once v${A} has finished getting ready.`,
       `the v${A} installer ran: --yes --plain --version ${A}`,
       `routed from ${B}`,
       "exit 0",
@@ -170,7 +179,7 @@ test("on the stop before it has passed, nothing is installed and the reason name
   assert.equal(
     out,
     [
-      `warn: Deplo v${B} becomes available once v${A} has finished getting this instance ready.`,
+      `warn: Deplo v${B} becomes available once v${A} has finished getting ready.`,
       "note: Settings > Deplo > Updates shows what it is still waiting on.",
       "exit 1",
       "",
@@ -188,6 +197,25 @@ test("past a stop it never passed, nothing is installed rather than going back t
   assert.equal(
     out,
     `warn: Deplo v${B} has to come after v${A}, which this instance skipped.\nexit 1\n`,
+  );
+});
+
+test("on a patch of the stop, itself a stop, it is getting ready as the panel says, not skipped", async () => {
+  const out = await route({
+    tags: { ...stops, "0.6.1": "" },
+    isStop: [A, "0.6.1"],
+    installed: "0.6.1",
+    passed: ["0.5.0"],
+    version: B,
+  });
+  assert.equal(
+    out,
+    [
+      `warn: Deplo v${B} becomes available once v0.6.1 has finished getting ready.`,
+      "note: Settings > Deplo > Updates shows what it is still waiting on.",
+      "exit 1",
+      "",
+    ].join("\n"),
   );
 });
 

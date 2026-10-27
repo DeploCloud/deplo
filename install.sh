@@ -1138,6 +1138,12 @@ required_stop() {
     | sed -n 's/^ *"requiresStop": *"v\{0,1\}\([0-9][^"]*\)".*/\1/p' | head -n1 || true
 }
 
+# Whether release $1 declares itself an update stop, read off its tag.
+release_is_stop() {
+  [ "$(curl -fsS --max-time 5 "https://raw.githubusercontent.com/DeploCloud/deplo/v$1/package.json" </dev/null 2>&9 \
+    | sed -n 's/^ *"updateStop": *\(true\|false\).*/\1/p' | head -n1 || true)" = true ]
+}
+
 # The stop's own installer installs it, the pairing its release shipped with.
 # When that can't be fetched, this one does.
 run_stop_installer() {
@@ -1159,13 +1165,15 @@ route_through_stops() {
   [ "${DEPLO_SKIP_NET_CHECKS:-0}" != 1 ] || return 0
   case "$goal" in [0-9]*) ;; *) return 0 ;; esac
   current="$(installed_version)"
+  # KEEP IN SYNC with MAX_HOPS in lib/data/update-stops/decision.ts.
   while [ "$hops" -lt 8 ]; do
     stop="$(required_stop "$target")"
     { [ -n "$stop" ] && semver_lt "$stop" "$target" && ! stop_passed "$stop"; } || break
     # Installed but not passed, or skipped: going back to it is never the answer.
+    # KEEP IN SYNC with both reasons in `decideUpdate` (lib/data/update-stops/decision.ts).
     if [ -n "$current" ] && ! semver_lt "$current" "$stop"; then
-      if [ "$current" = "$stop" ]; then
-        warn "Deplo v$goal becomes available once v$stop has finished getting this instance ready."
+      if [ "$current" = "$stop" ] || release_is_stop "$current"; then
+        warn "Deplo v$goal becomes available once v$current has finished getting ready."
         note "Settings > Deplo > Updates shows what it is still waiting on."
       else
         warn "Deplo v$goal has to come after v$stop, which this instance skipped."
@@ -1176,8 +1184,9 @@ route_through_stops() {
     target="$stop"; hops=$((hops + 1))
   done
   [ "$target" != "$goal" ] || return 0
+  # KEEP IN SYNC with `refusalReason` in lib/db/update-stops.ts.
   warn "Deplo v$goal has to come after v$target, so this update installs v$target first."
-  note "Update again once v$target has finished getting this instance ready."
+  note "Update again once v$target has finished getting ready."
   run_stop_installer "$target"
 }
 
