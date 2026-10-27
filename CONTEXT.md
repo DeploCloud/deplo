@@ -142,6 +142,12 @@ version pins its own agent ([ADR-0037](docs/adr/0037-a-panel-pins-its-agent.md))
 _Avoid_: beta (the whole product is in beta), nightly, pre-release (in anything a person reads),
 channel.
 
+**Update stop**:
+A Deplo release that an instance must have installed, and whose conditions it must meet, before it
+can update past it. Clicking Update on an instance below a stop installs the stop, never the newer
+release.
+_Avoid_: upgrade stop, checkpoint, required version, mandatory release.
+
 **Registration link**:
 A single-use link (`/register/<token>`) that lets a NEW person self-register a brand-new
 account **and their own team** - like first-run setup, not a join. Minted by an instance
@@ -455,9 +461,15 @@ A server's address stays, for its apps' domains and DNS checks only. Users never
 server is _connected_ or _offline_, and no screen mentions a port. The link enters the panel by its
 **door**, a reserved path on the panel's public address (loopback for the host running Deplo): the
 door only names the server the agent claims to be, and the mutual-TLS handshake inside the link
-decides. An agent too old to link is still dialed directly until `agentMin` passes the first linking
-release ([ADR-0040](docs/adr/0040-a-server-agent-links-to-its-control-plane.md)).
+decides. A server that has never linked, a **pre-link agent**'s above all, is still dialed directly,
+only to bring it onto its link, until it has linked once, and never after
+([ADR-0040](docs/adr/0040-a-server-agent-links-to-its-control-plane.md)).
 _Avoid_: tunnel (reads as public ingress for apps, which this is not), reverse proxy, VPN, socket.
+
+**Pre-link agent**:
+A **server agent** released before the **agent link** existed, so the control plane can reach it
+only by dialing it. Users never see the term: they see a server agent "too old to connect".
+_Avoid_: legacy agent, old agent, dial-only agent.
 
 **Server health**:
 A server's **status** is an OBSERVATION, not a lifecycle the control plane drives: the outcome of
@@ -466,10 +478,11 @@ it isn't green, **why** (`statusMessage`, from a closed set of curated strings, 
 error, which would leak the pinned fingerprint and the server's address). The Hello rides the
 server's **agent link**. The five values: **provisioning** (no agent has called home yet, never
 contacted, never demoted), **online** (Hello answered, Docker reachable), **warning** (agent up and
-trusted, but Docker is unreachable, so nothing can deploy there), **error** (the peer answered but
-its agent is wrong - untrusted cert, unsupported contract, application error), **offline** (its
-agent link stayed away past a short grace window - or, for an agent too old to link, nothing
-answered the dial, confirmed by a retry). An offline server's message tells the user to check that
+trusted, but nothing can deploy there: Docker is unreachable, or the server answers its dial yet
+never connects back to Deplo), **error** (the peer answered but its agent is wrong - untrusted
+cert, unsupported contract, application error), **offline** (its agent link stayed away past a
+short grace window - or, for a server that has never linked, nothing answered the dial, confirmed
+by a retry). An offline server's message tells the user to check that
 the machine is on and connected to the internet, never a port.
 The stored value is a **cache the UI must qualify**, never a **gate**: past a staleness window the
 Servers page renders it as _Unknown_ rather than a confident stale green, and **nothing in the
@@ -488,7 +501,9 @@ _Avoid_: "the server is up/down" (say which of the five), treating **warning** a
 A provisioned server whose agent is older than the minimum the running Deplo supports
 (`deplo.agentMin` in `package.json`, [ADR-0037](docs/adr/0037-a-panel-pins-its-agent.md)). Deplo
 refuses every call to it except the ones that update it, until its agent updates; its Apps keep
-running. A live verdict from Hello, not a sixth **Server health** status.
+running. A **pre-link agent** that an instance admin left behind at an **update stop** cannot be
+updated any more: only reinstalling its server agent brings it back. A live verdict from Hello, not
+a sixth **Server health** status.
 _Avoid_: outdated (an agent behind the pin but above the minimum is outdated and still usable),
 blocked, broken.
 

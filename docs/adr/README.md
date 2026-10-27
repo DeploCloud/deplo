@@ -46,7 +46,8 @@ repository root.
 | [0037](0037-a-panel-pins-its-agent.md)                                                    | A panel pins its agent: one version installed, a floor below which a server is unusable                                                      |
 | [0038](0038-security-updates-are-matched-in-the-control-plane.md)                         | Security updates: the agent reads each image's packages, the control plane matches them against OSV                                          |
 | [0039](0039-the-screenshot-browser-has-no-network.md)                                     | Deployment screenshots: a browser with no network on the app's server, whose only way out is the agent's vetted proxy                        |
-| [0040](0040-a-server-agent-links-to-its-control-plane.md)                                 | A server agent links out to its control plane, and no server accepts an incoming connection. **Amends 0006**                                 |
+| [0040](0040-a-server-agent-links-to-its-control-plane.md)                                 | A server agent links out to its control plane, and no server accepts an incoming connection. **Amends 0006; amended by 0041**                |
+| [0041](0041-a-release-can-require-an-update-stop.md)                                      | A release can require an update stop; direct dialing stays only to bring a server onto its link. **Amends 0040**                             |
 
 ## Amended or superseded
 
