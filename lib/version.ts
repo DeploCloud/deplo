@@ -9,6 +9,11 @@ export const DEPLO_COMMIT: string = process.env.DEPLO_COMMIT ?? "";
 export const AGENT_VERSION: string = agentPin.agent;
 export const AGENT_MIN_VERSION: string = agentPin.agentMin;
 
+// ADR-0041: whether this release is an update stop, and the stop an instance must pass to install it.
+export const UPDATE_STOP: boolean = agentPin.updateStop;
+export const REQUIRED_STOP: string | null =
+  agentPin.requiresStop.trim() || null;
+
 export const AGENT_TOO_OLD_MESSAGE =
   "This server is being updated. Deplo retries on its own; an instance admin can retry it now.";
 
@@ -99,6 +104,11 @@ export function reportedAgentVersion(server: {
   agent?: { version: string };
 }): string | null {
   return server.agent?.version || null;
+}
+
+/** Parseable and not older than `min`. */
+export function versionAtLeast(version: string, min: string): boolean {
+  return parseSemver(version) !== null && !isNewer(min, version);
 }
 
 /** Whether this panel talks to an agent at all: parseable and not older than `min`. */

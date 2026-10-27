@@ -5,6 +5,7 @@ import { migrate } from "drizzle-orm/node-postgres/migrator";
 
 import { getDb } from "./client";
 import { getPool } from "./pg";
+import { neverMigrated, passEveryStop, type RawQuery } from "./update-stops";
 
 let applied = false;
 
@@ -35,6 +36,16 @@ export async function connectWhenReady<T>(
   }
 }
 
+// ADR-0041: a fresh install has passed every update stop, and that is only visible before the first migration.
+export async function migrateOnBoot(
+  query: RawQuery,
+  migrateAll: () => Promise<void>,
+): Promise<void> {
+  const fresh = await neverMigrated(query);
+  await migrateAll();
+  if (fresh) await passEveryStop(query);
+}
+
 export async function runMigrations(): Promise<void> {
   if (applied) return;
   const client = await connectWhenReady(() => getPool().connect());
@@ -42,9 +53,18 @@ export async function runMigrations(): Promise<void> {
     // Drizzle's migrator takes no lock of its own, so two instances would both apply the same DDL.
     await client.query("SELECT pg_advisory_lock($1)", [MIGRATION_LOCK_KEY]);
     try {
-      await migrate(getDb(), {
-        migrationsFolder: path.join(process.cwd(), "lib", "db", "migrations"),
-      });
+      await migrateOnBoot(
+        (text, params) => client.query(text, params),
+        () =>
+          migrate(getDb(), {
+            migrationsFolder: path.join(
+              process.cwd(),
+              "lib",
+              "db",
+              "migrations",
+            ),
+          }),
+      );
       applied = true;
     } finally {
       await client

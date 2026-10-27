@@ -178,6 +178,8 @@ export const MOVE_TABLES: Readonly<Record<string, TablePolicy>> = {
   oauth_resource: COPY,
   osv_affected: { kind: "skip" },
   osv_ranges: { kind: "skip" },
+  // The update stops this install has passed (ADR-0041); a new Deplo has passed its own.
+  passed_update_stops: { kind: "local" },
   passkey: COPY,
   // The old Deplo's clean-up of its own servers; this Deplo's queue stays.
   pending_teardowns: { kind: "skip" },
