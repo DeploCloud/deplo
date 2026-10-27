@@ -4,6 +4,7 @@ import {
   copyFileSync,
   mkdirSync,
   mkdtempSync,
+  readFileSync,
   rmSync,
   writeFileSync,
 } from "node:fs";
@@ -17,7 +18,12 @@ import { migrate } from "drizzle-orm/pglite/migrator";
 import { DEPLO_VERSION } from "../version";
 import { applyMigrations, migrateOnBoot, type BootStops } from "./migrate";
 import { makeEmptyTestPg } from "./test-harness";
-import { readPassedStops, stopPassed, type RawQuery } from "./update-stops";
+import {
+  readPassedStops,
+  stopPassed,
+  UpdateRefusedError,
+  type RawQuery,
+} from "./update-stops";
 
 const MIG_DIR = path.join(process.cwd(), "lib", "db", "migrations");
 const STOPS = "0200_passed_update_stops";
@@ -151,8 +157,8 @@ test("a release that requires a stop refuses to start before any migration on an
         requiredStop: STOP,
         log: (line) => lines.push(line),
       }),
-      // What the boot hook reads to keep its own failure line out of the log.
-      { name: "UpdateRefusedError" },
+      // What the boot hook matches to keep its own failure line out of the log.
+      UpdateRefusedError,
     );
     assert.deepEqual(await schemaOf(pg), before, "the database is untouched");
     assert.equal(lines.length, 1, "one line says why");
@@ -199,6 +205,24 @@ test("a fresh install of a release that requires a stop starts, on every later b
     for (let n = 0; n < 2; n++) await boot(pg, release({ next: true }), stops);
     assert.deepEqual(lines, []);
     assert.ok((await schemaOf(pg)).includes("public.next_release"));
+  } finally {
+    await pg.close();
+  }
+});
+
+// The real journal, through the same drizzle internals runMigrations uses: a drizzle bump that moves them fails here.
+test("this release's own migrations apply on a fresh database, with the stop record committed alongside", async () => {
+  const pg = await makeEmptyTestPg();
+  try {
+    const query = await boot(pg, MIG_DIR);
+    const journal = JSON.parse(
+      readFileSync(path.join(MIG_DIR, "meta", "_journal.json"), "utf8"),
+    ) as { entries: unknown[] };
+    const applied = await pg.query<{ n: number }>(
+      "SELECT count(*)::int AS n FROM drizzle.__drizzle_migrations",
+    );
+    assert.equal(applied.rows[0].n, journal.entries.length);
+    assert.ok(stopPassed(DEPLO_VERSION, await readPassedStops(query)));
   } finally {
     await pg.close();
   }

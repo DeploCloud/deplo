@@ -47,6 +47,7 @@ export async function connectWhenReady<T>(
   }
 }
 
+// Rests on drizzle-orm's readMigrationFiles and PgDialect.migrate; lib/db/update-stops.test.ts runs it on the real journal.
 /** drizzle's migrate(), plus statements that commit in the same transaction as a pending last migration. */
 export async function applyMigrations(
   db: { _: { session: unknown } },
