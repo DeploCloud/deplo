@@ -41,6 +41,8 @@ set -Eeuo pipefail
 DEPLO_DIR="/opt/deplo"
 ENV_FILE="$DEPLO_DIR/.env"
 STATE_FILE="$DEPLO_DIR/.install-state"
+# Read by the panel as data/refused-update. KEEP IN SYNC with lib/data/update-stops/refused.ts.
+REFUSED_NOTE="$DEPLO_DIR/data/refused-update"
 INSTALLER_URL="https://raw.githubusercontent.com/DeploCloud/deplo/main/install.sh"
 BACKUP_DIR="$DEPLO_DIR/backups"
 TRAEFIK_COMPOSE="$DEPLO_DIR/traefik/docker-compose.yml"
@@ -2508,26 +2510,48 @@ wait_for_panel() {
   return 1
 }
 
-spin_start "Waiting for the control plane to answer"
-if wait_for_panel 60; then
-  spin_ok "Control plane running" "$DEPLO_IMAGE"
+# The new version answers: the next update rolls back to it, and no refused
+# update is left for the panel to show.
+panel_started() {
   state_set image "$DEPLO_IMAGE"
   state_set version "$DEPLO_VERSION"
   state_set installed_at "$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
+  rm -f "$REFUSED_NOTE"
+}
+
+# Back to the image that answered before, the database as it is. Why the new one
+# did not start is read before `up -d` recreates its container, and left for the
+# Updates tab (ADR-0041); a release that refuses to start logs one line saying so.
+roll_back_update() {
+  local reason version="$DEPLO_VERSION"
+  reason="$(docker compose -f "$DEPLO_DIR/docker-compose.yml" --env-file "$ENV_FILE" logs --no-color deplo \
+    </dev/null 2>&1 | tr -d '\r' | sed -n 's/^.*\[deplo\] Update refused: //p' | tail -n1 | cut -c1-300 || true)"
+  case "$version" in [0-9]*) ;; *) version="" ;; esac
+  warn "Rolling back to $PREV_IMAGE"
+  [ -z "$reason" ] || note "$reason"
+  mkdir -p "$(dirname "$REFUSED_NOTE")"
+  printf 'version=%s\nreason=%s\nat=%s\n' "$version" \
+    "${reason:-The new version did not start, so Deplo went back to the one that was running.}" \
+    "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" >"$REFUSED_NOTE"
+  chmod 644 "$REFUSED_NOTE"
+  sed -i "s|^    image: $DEPLO_IMAGE\$|    image: $PREV_IMAGE|" "$DEPLO_DIR/docker-compose.yml"
+  docker compose -f "$DEPLO_DIR/docker-compose.yml" --env-file "$ENV_FILE" up -d >&9 2>&9 || true
+  wait_for_panel 30 || return 1
+  ok "Rolled back - the panel is answering on $PREV_IMAGE again"
+  [ -n "$reason" ] || note "The failed version's logs: docker compose -f $DEPLO_DIR/docker-compose.yml logs deplo"
+  [ -z "$DUMP_PATH" ] || note "Pre-update database dump: $DUMP_PATH"
+}
+
+spin_start "Waiting for the control plane to answer"
+if wait_for_panel 60; then
+  spin_ok "Control plane running" "$DEPLO_IMAGE"
+  panel_started
 else
   spin_err "The control plane did not answer on $AGENT_BOOTSTRAP_URL after 2 minutes"
   # An UPDATE has somewhere to go back to. A first install does not, and pretending
   # otherwise would just hide the logs the operator needs.
   if [ "$MODE" = update ] && [ -n "$PREV_IMAGE" ] && [ "$PREV_IMAGE" != "$DEPLO_IMAGE" ]; then
-    warn "Rolling back to $PREV_IMAGE"
-    sed -i "s|^    image: $DEPLO_IMAGE\$|    image: $PREV_IMAGE|" "$DEPLO_DIR/docker-compose.yml"
-    docker compose -f "$DEPLO_DIR/docker-compose.yml" --env-file "$ENV_FILE" up -d >&9 2>&9 || true
-    if wait_for_panel 30; then
-      ok "Rolled back - the panel is answering on $PREV_IMAGE again"
-      note "The failed version's logs: docker compose -f $DEPLO_DIR/docker-compose.yml logs deplo"
-      [ -n "$DUMP_PATH" ] && note "Pre-update database dump: $DUMP_PATH"
-      exit 1
-    fi
+    roll_back_update && exit 1
     err "The rollback did not come up either."
   fi
   note "Logs: docker compose -f $DEPLO_DIR/docker-compose.yml logs deplo"
