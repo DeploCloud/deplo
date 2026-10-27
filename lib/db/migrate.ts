@@ -5,7 +5,17 @@ import { migrate } from "drizzle-orm/node-postgres/migrator";
 
 import { getDb } from "./client";
 import { getPool } from "./pg";
-import { neverMigrated, passEveryStop, type RawQuery } from "./update-stops";
+import { REQUIRED_STOP } from "../version";
+import {
+  neverMigrated,
+  passEveryStop,
+  readPassedStops,
+  refusalReason,
+  stopPassed,
+  UPDATE_REFUSED,
+  UpdateRefusedError,
+  type RawQuery,
+} from "./update-stops";
 
 let applied = false;
 
@@ -36,12 +46,28 @@ export async function connectWhenReady<T>(
   }
 }
 
+export interface BootStops {
+  requiredStop?: string | null;
+  log?: (line: string) => void;
+}
+
 // ADR-0041: a fresh install has passed every update stop, and that is only visible before the first migration.
 export async function migrateOnBoot(
   query: RawQuery,
   migrateAll: () => Promise<void>,
+  { requiredStop = REQUIRED_STOP, log = console.error }: BootStops = {},
 ): Promise<void> {
   const fresh = await neverMigrated(query);
+  // Read on the previous release's schema, before any DDL: refusing leaves the database as it was.
+  if (
+    !fresh &&
+    requiredStop &&
+    !stopPassed(requiredStop, await readPassedStops(query))
+  ) {
+    const reason = refusalReason(requiredStop);
+    log(UPDATE_REFUSED + reason);
+    throw new UpdateRefusedError(reason);
+  }
   await migrateAll();
   if (fresh) await passEveryStop(query);
 }

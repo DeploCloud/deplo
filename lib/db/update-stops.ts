@@ -8,6 +8,21 @@ export type RawQuery = (
   params?: unknown[],
 ) => Promise<{ rows: Record<string, unknown>[] }>;
 
+// The installer greps a refused boot's log for this prefix and shows the rest of the line as the reason.
+export const UPDATE_REFUSED = "[deplo] Update refused: ";
+
+// instrumentation-node.ts matches the name, so a refusal logs only its own line.
+export class UpdateRefusedError extends Error {
+  override name = "UpdateRefusedError";
+}
+
+const tag = (v: string) => `v${v.replace(/^v/i, "")}`;
+
+/** Why this release will not start: plain words naming the stop to install first. */
+export function refusalReason(stop: string): string {
+  return `Deplo ${tag(DEPLO_VERSION)} has to come after ${tag(stop)}. Update to ${tag(stop)} first and let it finish getting this instance ready.`;
+}
+
 /** A row passes every stop up to its own version: a stop, a later stop, or a fresh install. */
 export function stopPassed(stop: string, passed: readonly string[]): boolean {
   return passed.some((v) => versionAtLeast(v, stop));
