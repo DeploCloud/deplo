@@ -13,7 +13,8 @@ import { deployments as deploymentsTable } from "../../db/schema/control-plane/d
 import { normalizeBuildConfig } from "../../frameworks";
 import { forkCloneUrl, resolveCloneUrl } from "../../git/clone-url";
 import { repoCloneRefusal } from "../../git/repo-access";
-import { buildMetadataToken, publicBranchHead } from "../../github/app";
+import { buildMetadataToken } from "../../github/app";
+import { publicBranchHead } from "../../github/commits";
 import {
   adoptObservedPort,
   recordResolvedMethod,

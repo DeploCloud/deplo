@@ -17,7 +17,7 @@ import {
   appPreviews as appPreviewsTable,
 } from "../../db/schema/control-plane/deployments";
 import { publishAppChanged } from "../../graphql/pubsub";
-import { branchHead } from "../../github/app";
+import { branchHead } from "../../github/commits";
 import { githubFullName } from "../../github/repo-id";
 import { newId, nowIso } from "../../ids";
 import { userMayReachHost } from "../../membership";

@@ -8,10 +8,10 @@ import { githubInstallation } from "../../db/schema/control-plane/integrations";
 import { securityPullRequests } from "../../db/schema/control-plane/security-updates";
 import {
   GithubAccessError,
-  branchHead,
   openPullRequestWithFiles,
   readAppAccess,
 } from "../../github/app";
+import { branchHead } from "../../github/commits";
 import { githubFullName } from "../../github/repo-id";
 import { resolveCloneUrl } from "../../git/clone-url";
 import { connectAgent } from "../../infra/agent-client/connect";
