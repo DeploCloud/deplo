@@ -490,7 +490,10 @@ _Avoid_: "the server is up/down" (say which of the five), treating **warning** a
 A provisioned server whose agent is older than the minimum the running Deplo supports
 (`deplo.agentMin` in `package.json`, [ADR-0037](docs/adr/0037-a-panel-pins-its-agent.md)). Deplo
 refuses every call to it except the ones that update it, until its agent updates; its Apps keep
-running. A live verdict from Hello, not a sixth **Server health** status.
+running. An agent older than the first linking release never reaches Deplo, so nothing can update
+it: only reinstalling its server agent brings the server back
+([ADR-0040](docs/adr/0040-a-server-agent-links-to-its-control-plane.md)). A verdict from the version
+its agent last reported, not a sixth **Server health** status.
 _Avoid_: outdated (an agent behind the pin but above the minimum is outdated and still usable),
 blocked, broken.
 
