@@ -27,6 +27,8 @@ interface Sync {
   running: Map<string, Promise<void>>;
   pending: PanelAddressChange | null;
   lastError: Map<string, string>;
+  /** Since when each agent has held the panel's pair, as far as this process has seen. */
+  held: Map<string, number>;
 }
 
 // On globalThis like the link registry it listens to: one per process.
@@ -37,6 +39,7 @@ const sync: Sync = (g[KEY] ??= {
   running: new Map(),
   pending: null,
   lastError: new Map(),
+  held: new Map(),
 });
 
 /** Keeps linking agents on the panel's pair and closes a linked one's port (ADR-0040). Start it before the door opens. */
@@ -75,6 +78,22 @@ export async function wantedLinkAddresses(
     sync.pending?.fallbackOff ?? (await loadSettings()).panelFallbackDisabled;
   const fallback = off ? null : await panelFallbackUrl(primary);
   return { primary, fallback: fallback === primary ? "" : (fallback ?? "") };
+}
+
+/** Since when this agent has held the panel's pair, counted from its handoff or Deplo first seeing it; null otherwise. */
+export async function panelPairHeldSince(
+  server: Server,
+  hello: HelloResponse,
+): Promise<number | null> {
+  const held = keepsPair(hello) ? hello.linkAddresses : null;
+  const wanted = held && (await wantedLinkAddresses(server));
+  if (!held || !wanted || !samePair(held, wanted)) {
+    sync.held.delete(server.id);
+    return null;
+  }
+  const since = sync.held.get(server.id) ?? Date.now();
+  sync.held.set(server.id, since);
+  return since;
 }
 
 /** A Hello the control plane saw: a linking agent is sent the panel's pair, and stops listening once linked. */
@@ -150,8 +169,10 @@ function reconcile(serverId: string, seen?: HelloResponse): Promise<void> {
     try {
       const hello = seen ?? (await conn.hello());
       if (!keepsPair(hello) || settled(hello, wanted, linked)) return;
-      if (!samePair(hello.linkAddresses, wanted))
+      if (!samePair(hello.linkAddresses, wanted)) {
         await conn.setLinkAddresses(wanted);
+        sync.held.set(serverId, Date.now());
+      }
       // It keeps the panel's pair and its link is verified: its own port has no use left.
       if (linked && hello.listening) await conn.stopListening();
     } finally {

@@ -29,6 +29,12 @@ export const HEALTH_MESSAGES = {
   offline: LINK_OFFLINE_MESSAGE,
 } as const;
 
+/** A server that answers its dial but never links (ADR-0041): curated around the panel's name alone. */
+export function cantReachDeploMessage(panelHost: string | null): string {
+  const at = panelHost ? ` at ${panelHost}` : "";
+  return `This server can't reach Deplo${at}. Check that it's connected to the internet.`;
+}
+
 const CERT_VALIDITY_RE =
   /CERT_HAS_EXPIRED|CERT_NOT_YET_VALID|certificate has expired|certificate is not yet valid/i;
 
