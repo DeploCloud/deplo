@@ -157,11 +157,13 @@ test("without the panel's own machine as a server there is nobody to ask", async
 test("the changelog carries every release's notes whole, and marks the ones still to install", async () => {
   const long = "x".repeat(10_000);
   const body = `Intro.\n\n## What's Changed\n* feat: a by @someone\n\n${long}`;
-  const capture = captureFetch(() =>
-    json([
-      { tag_name: "v99.0.0", html_url: "u1", body },
-      { tag_name: `v${DEPLO_VERSION}`, html_url: "u2", body: "  now  " },
-    ]),
+  const capture = captureFetch((url) =>
+    url.includes("/releases/latest")
+      ? json({ tag_name: "v99.0.0" })
+      : json([
+          { tag_name: "v99.0.0", html_url: "u1", body },
+          { tag_name: `v${DEPLO_VERSION}`, html_url: "u2", body: "  now  " },
+        ]),
   );
   try {
     const { releases } = await asUser(ADMIN, listDeploReleases);

@@ -1,6 +1,6 @@
 {
-  "id": "0c734e13-16f2-4885-a3a4-7a428dd4b218",
-  "prevId": "f191656f-f9c2-418e-bd83-97c1f7d82305",
+  "id": "eb26a9e0-f638-4f4a-846f-f14e9efdf6fe",
+  "prevId": "9c4c9eb1-3bf8-4914-b824-d6c2956a5170",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -10508,6 +10508,31 @@
         },
         "updated_at": {
           "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.passed_update_stops": {
+      "name": "passed_update_stops",
+      "schema": "",
+      "columns": {
+        "version": {
+          "name": "version",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "passed_at": {
+          "name": "passed_at",
           "type": "timestamp with time zone",
           "primaryKey": false,
           "notNull": true

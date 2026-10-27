@@ -40,7 +40,11 @@ the answers. Settle these first - from the request or the tree when they are the
 3. **Does this panel need the newer agent?** Only then does `deplo.agentMin` move, and every server
    below it becomes **unusable** until it updates (ADR-0037). Name the servers that would be
    (Settings → Deplo → Updates, or the `servers` table) in the question.
-4. **Is there an upgrade step or a bad bug to put on top of the notes?** Usually not.
+4. **Is this release an update stop, or does it require one?** (ADR-0041.) `deplo.updateStop`
+   makes it a stop; `deplo.requiresStop` names the stop an instance must have passed, and Update
+   installs that stop first. A stable may only require a published stable stop, and every patch of
+   a stop is declared a stop too.
+5. **Is there an upgrade step or a bad bug to put on top of the notes?** Usually not.
 
 Then run the checks in "How", tag, replace the notes once the image is published, and say what
 happens to the fleet: which version the servers will be updated to, or that the pin did not move.
@@ -174,7 +178,8 @@ needs nothing from the reader gets no note at all.
   server below it is unusable until it updates, so raise it only when the panel really needs the
   newer agent. Ship the agent **first**: `docker-image.yml` refuses to publish a panel whose pin has
   no `checksums.txt` on GitHub. A canary panel may pin an agent canary; a stable panel pins a
-  stable agent.
+  stable agent. The same block carries `updateStop` / `requiresStop` (question 4), one flat line
+  each, because the install script reads them with `sed`.
 - **The fleet only ever moves forward.** Nothing installs an agent older than the one a server
   runs. `docs/agents/fleet-rollout.md` §10 has the rollback options.
 - **The Beta badge** in Settings → Deplo is derived from the version starting with `0.`. Nothing

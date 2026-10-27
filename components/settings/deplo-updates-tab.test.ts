@@ -17,6 +17,9 @@ const info = (over = {}) => ({
   current: "0.4.0",
   latest: null,
   updateAvailable: false,
+  next: null,
+  nextIsStop: false,
+  stop: null,
   publishedAt: null,
   canary: false,
   ...over,
@@ -59,10 +62,68 @@ test("one answer for the panel and the fleet: all current reads up to date", () 
 test("a new version outranks servers still catching up", () => {
   const hero = heroState({
     ...base,
-    info: info({ latest: "v0.5.0", updateAvailable: true }),
+    info: info({ latest: "v0.5.0", next: "v0.5.0", updateAvailable: true }),
     fleet: fleet({ behind: [behind(false)] }),
   });
   assert.equal(hero.title, "Deplo v0.5.0 is available");
+});
+
+const STOP_REASON =
+  "Deplo v0.7.0 has to come after v0.6.0, so Update installs v0.6.0 first.";
+
+test("an update stop is offered as the update, and the line says why", () => {
+  const hero = heroState({
+    ...base,
+    info: info({
+      latest: "v0.7.0",
+      next: "v0.6.0",
+      nextIsStop: true,
+      updateAvailable: true,
+      stop: { version: "v0.6.0", reason: STOP_REASON, waiting: false },
+    }),
+    fleet: fleet(),
+  });
+  assert.deepEqual(hero, {
+    tone: "new",
+    title: "Deplo v0.6.0 is available",
+    line: STOP_REASON,
+  });
+});
+
+test("on the stop, the newer release is on its way, ahead of servers catching up", () => {
+  const reason =
+    "Deplo v0.7.0 becomes available once v0.6.0 has finished getting this instance ready.";
+  const hero = heroState({
+    ...base,
+    info: info({
+      latest: "v0.7.0",
+      stop: { version: "v0.6.0", reason, waiting: true },
+    }),
+    fleet: fleet({ behind: [behind(false)] }),
+  });
+  assert.deepEqual(hero, {
+    tone: "busy",
+    title: "Getting ready for Deplo v0.7.0",
+    line: reason,
+  });
+});
+
+test("an instance past a stop it never passed is told why nothing is offered", () => {
+  const reason =
+    "Deplo v0.7.0 has to come after v0.6.0, which this instance skipped.";
+  const hero = heroState({
+    ...base,
+    info: info({
+      latest: "v0.7.0",
+      stop: { version: "v0.6.0", reason, waiting: false },
+    }),
+    fleet: fleet(),
+  });
+  assert.deepEqual(hero, {
+    tone: "warn",
+    title: "Deplo v0.7.0 can't be installed yet",
+    line: reason,
+  });
 });
 
 test("a server behind is progress; a failed one needs attention", () => {

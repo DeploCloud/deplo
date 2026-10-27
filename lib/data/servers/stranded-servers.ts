@@ -1,7 +1,8 @@
 import "server-only";
 
 import { requireInstanceAdmin } from "../../membership";
-import { DEPLO_REPO, agentUsable, reportedAgentVersion } from "../../version";
+import { agentUsable, reportedAgentVersion } from "../../version";
+import { readReleaseDeclaration } from "../update-stops/declaration";
 import { listAllServers } from "./roster";
 
 export interface StrandedServer {
@@ -10,24 +11,9 @@ export interface StrandedServer {
   version: string | null;
 }
 
-/** The agent floor a published Deplo declares, read off its tag without the API budget. */
+/** The agent floor a published Deplo declares, read off its tag. */
 export async function targetAgentMin(version: string): Promise<string | null> {
-  try {
-    const res = await fetch(
-      `https://raw.githubusercontent.com/${DEPLO_REPO}/v${version}/package.json`,
-      {
-        signal: AbortSignal.timeout(5000),
-        cache: "force-cache",
-        next: { revalidate: 3600 },
-      },
-    );
-    if (!res.ok) return null;
-    const min = ((await res.json()) as { deplo?: { agentMin?: unknown } }).deplo
-      ?.agentMin;
-    return typeof min === "string" ? min : null;
-  } catch {
-    return null;
-  }
+  return (await readReleaseDeclaration(version))?.agentMin ?? null;
 }
 
 /** Offline servers whose agent the new Deplo refuses: unusable until they come back and update. */

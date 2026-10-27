@@ -48,6 +48,12 @@ export const instanceSettings = pgTable("instance_settings", {
   updatedAt: isoTimestamptz("updated_at").notNull(),
 });
 
+// ADR-0041: never cleared, and read with raw SQL by a later release before its migrations run.
+export const passedUpdateStops = pgTable("passed_update_stops", {
+  version: text("version").primaryKey(),
+  passedAt: isoTimestamptz("passed_at").notNull(),
+});
+
 export const rateLimits = pgTable(
   "rate_limits",
   {

@@ -210,7 +210,7 @@ export function SidebarNav({
                 : null;
             const updateTip =
               upstream && item.href === "/settings/deplo"
-                ? `Deplo ${upstream.latest} is available`
+                ? `Deplo ${upstream.next} is available`
                 : null;
             return (
               <Tooltip key={item.href} delayDuration={collapsed ? 0 : 400}>

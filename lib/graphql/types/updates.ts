@@ -10,13 +10,14 @@ import {
 } from "@/lib/data/servers/agent-rollout";
 import {
   applyDeploUpdate,
-  getUpdateInfo,
   listDeploReleases,
+  readUpdateInfo,
   refreshUpdateInfo,
   setCanaryReleases,
   type DeploRelease,
   type DeploUpdateStarted,
   type UpdateInfo,
+  type UpdateStopInfo,
 } from "@/lib/data/updates";
 
 const StrandedServerRef = builder
@@ -31,13 +32,52 @@ const StrandedServerRef = builder
     }),
   });
 
+const UpdateStopRef = builder
+  .objectRef<UpdateStopInfo>("UpdateStop")
+  .implement({
+    description:
+      "A release this instance must install, and whose conditions it must meet, before it can update past it (ADR-0041).",
+    fields: (t) => ({
+      version: t.exposeString("version"),
+      reason: t.exposeString("reason", {
+        description:
+          "One plain sentence saying why Update offers what it does.",
+      }),
+      waiting: t.exposeBoolean("waiting", {
+        description:
+          "This instance runs the stop and its conditions do not hold yet, so Update offers nothing until they do.",
+      }),
+    }),
+  });
+
 const UpdateInfoRef = builder.objectRef<UpdateInfo>("UpdateInfo").implement({
   description:
     "Result of checking the upstream GitHub repository for a newer Deplo release.",
   fields: (t) => ({
     current: t.exposeString("current"),
-    latest: t.exposeString("latest", { nullable: true }),
-    updateAvailable: t.exposeBoolean("updateAvailable"),
+    latest: t.exposeString("latest", {
+      nullable: true,
+      description:
+        "The newest release on this instance's channel. Update may install an update stop before it: see `next`.",
+    }),
+    updateAvailable: t.exposeBoolean("updateAvailable", {
+      description: "Update installs something now: `next` is set.",
+    }),
+    next: t.exposeString("next", {
+      nullable: true,
+      description:
+        "The version Update installs: `latest`, or the update stop this instance has to pass first. Null when there is nothing to install.",
+    }),
+    nextIsStop: t.exposeBoolean("nextIsStop", {
+      description: "`next` is an update stop on the way to `latest`.",
+    }),
+    stop: t.field({
+      type: UpdateStopRef,
+      nullable: true,
+      description:
+        "The update stop between this instance and `latest`, while it has not passed it.",
+      resolve: (info) => info.stop,
+    }),
     url: t.exposeString("url", { nullable: true }),
     name: t.exposeString("name", { nullable: true }),
     publishedAt: t.exposeString("publishedAt", { nullable: true }),
@@ -51,11 +91,9 @@ const UpdateInfoRef = builder.objectRef<UpdateInfo>("UpdateInfo").implement({
       type: [StrandedServerRef],
       authScopes: { instanceAdmin: true },
       description:
-        "Offline servers whose agent is older than the minimum the `latest` Deplo supports. They cannot update while offline, so they stay unusable until they come back and their agent updates. Empty when there is no update or the release does not say.",
+        "Offline servers whose agent is older than the minimum the `next` Deplo supports. They cannot update while offline, so they stay unusable until they come back and their agent updates. Empty when there is no update or the release does not say.",
       resolve: (info) =>
-        info.updateAvailable && info.latest
-          ? strandedByPanelUpdate(info.latest.replace(/^v/i, ""))
-          : [],
+        info.next ? strandedByPanelUpdate(info.next.replace(/^v/i, "")) : [],
     }),
   }),
 });
@@ -74,7 +112,7 @@ const DeploReleaseRef = builder
       current: t.exposeBoolean("current"),
       available: t.exposeBoolean("available", {
         description:
-          "Newer than the running version, so installing an update brings it in.",
+          "Newer than the running version and no newer than `updateInfo.next`, so Update brings it in.",
       }),
     }),
   });
@@ -152,7 +190,7 @@ builder.queryFields((t) => ({
     authScopes: { instanceAdmin: true },
     description:
       "Check the upstream repository for a newer Deplo release; cached for an hour.",
-    resolve: () => getUpdateInfo(),
+    resolve: () => readUpdateInfo(),
   }),
   deploChangelog: t.field({
     type: ChangelogRef,
@@ -179,7 +217,7 @@ builder.mutationFields((t) => ({
     type: UpdateStartedRef,
     authScopes: { instanceAdmin: true },
     description:
-      "Update this instance to the newest release: the agent on the machine Deplo runs on re-runs the installer.",
+      "Update this instance to `updateInfo.next`: the newest release, or the update stop it has to pass first. The server agent on the machine Deplo runs on re-runs the installer.",
     resolve: () => applyDeploUpdate(),
   }),
   setCanaryReleases: t.field({
