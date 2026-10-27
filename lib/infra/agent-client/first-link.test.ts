@@ -13,7 +13,9 @@ import {
   startAgentLinkListener,
   stopAgentLinkListener,
 } from "../agent-link/listener";
-import { onAgentLink } from "../agent-link/registry";
+import { getServerById } from "../../data/servers/roster";
+import { LINK_CLOSE } from "../agent-link/protocol";
+import { doorClosed, doorOpened, onAgentLink } from "../agent-link/registry";
 import { dropAgentChannel } from "./channel-pool";
 import {
   __setAgentConnectorForTest,
@@ -165,6 +167,25 @@ test("once a server has linked, Deplo never dials it again, even right after a r
     connectAgentAt(SERVER, { agentPort: agent.port }),
     AgentUnreachableError,
   );
+});
+
+test("the door stores a server's first link as it admits it, before anyone hears it come up", async () => {
+  // A door that admits nothing more verifies the link, then turns it away.
+  doorClosed();
+  const refused = await agent.link(door);
+  assert.equal(await refused.closed, LINK_CLOSE.revoked);
+  assert.equal((await getServerById(SERVER))?.firstLinkedAt, undefined);
+
+  doorOpened();
+  const seen = new Promise<string | undefined>((resolve) => {
+    const off = onAgentLink((e) => {
+      if (e.serverId !== SERVER || e.type !== "up") return;
+      off();
+      resolve(getServerById(SERVER).then((s) => s?.firstLinkedAt));
+    });
+  });
+  assert.equal((await agent.link(door)).status, 101);
+  assert.ok(await seen, "stored before the link was announced");
 });
 
 test("a stubbed connection is the stub's own, whether or not its server ever linked", async (t) => {

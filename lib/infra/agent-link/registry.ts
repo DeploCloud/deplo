@@ -116,10 +116,16 @@ export function nextLinkId(): number {
   return registry.nextId++;
 }
 
+/** The door is open, and no revocation came after `generation` was read. */
+export function linkAdmissible(serverId: string, generation: number): boolean {
+  return (
+    registry.doorOpenedAt !== null && linkGeneration(serverId) === generation
+  );
+}
+
 /** A verified link takes the server over, unless a revocation came after `generation` was read. */
 export function admitLink(link: AgentLink, generation: number): boolean {
-  if (registry.doorOpenedAt === null) return false;
-  if (linkGeneration(link.serverId) !== generation) return false;
+  if (!linkAdmissible(link.serverId, generation)) return false;
   const old = registry.links.get(link.serverId);
   registry.links.set(link.serverId, link);
   registry.seen.add(link.serverId);

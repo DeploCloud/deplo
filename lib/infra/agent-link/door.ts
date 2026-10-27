@@ -28,6 +28,7 @@ import {
 } from "./protocol";
 import {
   admitLink,
+  linkAdmissible,
   linkEnded,
   linkGeneration,
   nextLinkId,
@@ -118,8 +119,11 @@ async function holdLink(
     // Read before the second look, so a removal that lands after it still refuses this link.
     const generation = linkGeneration(serverId);
     const still = await serverPinnedTo(fingerprint);
-    // Before the link is announced, so whoever hears it come up reads it as linked (ADR-0041).
-    if (still?.id === serverId) await recordFirstLink(serverId);
+    if (ws.readyState !== ws.OPEN) return;
+    if (still?.id !== serverId || !linkAdmissible(serverId, generation))
+      return void ws.close(LINK_CLOSE.revoked, "trust revoked");
+    // As the door admits it, before anyone hears it come up (ADR-0041).
+    await recordFirstLink(serverId);
     if (ws.readyState !== ws.OPEN) return;
     const verified: AgentLink = {
       id,
@@ -134,7 +138,7 @@ async function holdLink(
         bridge.close();
       },
     };
-    if (still?.id !== serverId || !admitLink(verified, generation))
+    if (!admitLink(verified, generation))
       return void ws.close(LINK_CLOSE.revoked, "trust revoked");
     link = verified;
   } catch (e) {
