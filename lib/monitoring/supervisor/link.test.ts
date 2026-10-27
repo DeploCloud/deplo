@@ -1,4 +1,4 @@
-import { test, beforeEach, afterEach, mock } from "node:test";
+import { test, beforeEach, afterEach, mock, type TestContext } from "node:test";
 import assert from "node:assert/strict";
 
 import { seedServerRow } from "../../data/infra-test-helpers";
@@ -8,16 +8,24 @@ import {
   stopServerLinkStatus,
 } from "../../data/server-health";
 import {
+  startLinkAddressSync,
+  stopLinkAddressSync,
+} from "../../data/servers/link-addresses";
+import {
   dropAgentChannel,
   onAgentHello,
 } from "../../infra/agent-client/channel-pool";
+import { openAgent } from "../../infra/agent-client/connect";
 import {
   startFakeAgent,
   type FakeAgent,
   type FakeLink,
 } from "../../infra/agent-client/fake-agent-test-helpers";
 import { AgentUnreachableError } from "../../infra/agent-client/errors";
-import { METRICS_STREAM_CAPABILITY } from "../../infra/agent-client/hello-capabilities";
+import {
+  AGENT_LINK_CAPABILITY,
+  METRICS_STREAM_CAPABILITY,
+} from "../../infra/agent-client/hello-capabilities";
 import {
   startAgentLinkListener,
   stopAgentLinkListener,
@@ -90,8 +98,8 @@ async function streamed(frames: number): Promise<void> {
   }, `${frames} frame(s) recorded`);
 }
 
-async function shown() {
-  const s = (await getServerById(SERVER))!;
+async function shown(serverId = SERVER) {
+  const s = (await getServerById(serverId))!;
   return {
     status: s.status,
     message: s.statusMessage ?? null,
@@ -100,12 +108,15 @@ async function shown() {
 }
 
 /** Every status the server shows until `stop`. */
-function watchStatus(): { seen: string[]; stop: () => Promise<void> } {
+function watchStatus(serverId = SERVER): {
+  seen: string[];
+  stop: () => Promise<void>;
+} {
   const seen: string[] = [];
   let on = true;
   const loop = (async () => {
     while (on) {
-      seen.push((await shown()).status);
+      seen.push((await shown(serverId)).status);
       await new Promise((r) => setTimeout(r, 20));
     }
   })();
@@ -203,4 +214,66 @@ test("right after the panel starts, a server whose stream finds its port closed 
     "offline once the panel has settled",
   );
   assert.equal((await shown()).message, HEALTH_MESSAGES.offline);
+});
+
+const CUT_OFF = "srv_cut_off";
+
+function withEnv(t: TestContext, vars: Record<string, string>): void {
+  for (const [k, v] of Object.entries(vars)) {
+    const was = process.env[k];
+    process.env[k] = v;
+    t.after(() => {
+      if (was === undefined) delete process.env[k];
+      else process.env[k] = was;
+    });
+  }
+}
+
+test("a server that answers its dial but never links gets the probe's warning from its telemetry's Hello, never online", async (t) => {
+  withEnv(t, {
+    DEPLO_PUBLIC_URL: "https://panel.example.com",
+    DEPLO_SERVER_IP: "203.0.113.10",
+  });
+  const cut = await startFakeAgent({
+    capabilities: [METRICS_STREAM_CAPABILITY, AGENT_LINK_CAPABILITY],
+    linkAddresses: { primary: "", fallback: "" },
+  });
+  t.after(async () => {
+    dropAgentChannel(CUT_OFF);
+    await cut.stop();
+  });
+  await seedServerRow(h.db, {
+    id: CUT_OFF,
+    ip: "127.0.0.1",
+    host: "127.0.0.1",
+    status: "offline",
+    agent: {
+      port: cut.port,
+      certFingerprint: cut.fingerprint,
+      certPem: cut.certPem,
+      version: AGENT_VERSION,
+    },
+  });
+  startLinkAddressSync();
+  const conn = await openAgent(CUT_OFF);
+  await conn.hello().finally(() => conn.close());
+  await waitFor(() => cut.sentPairs().length > 0, "handed the address");
+  await stopLinkAddressSync();
+  mock.timers.enable({ apis: ["Date"], now: Date.now() + LINK_SETTLE_MS });
+  t.after(() => mock.timers.reset());
+
+  const watching = watchStatus(CUT_OFF);
+  t.after(watching.stop);
+  startMetricsStreams();
+  await waitFor(
+    async () => (await shown(CUT_OFF)).status === "warning",
+    "the server shows warning",
+  );
+  await new Promise((r) => setTimeout(r, 1_000));
+  await watching.stop();
+  assert.equal(
+    (await shown(CUT_OFF)).message,
+    "This server can't reach Deplo at panel.example.com. Check that it's connected to the internet.",
+  );
+  assert.ok(!watching.seen.includes("online"), watching.seen.join(","));
 });

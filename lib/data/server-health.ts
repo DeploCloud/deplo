@@ -26,6 +26,7 @@ import {
   onAgentLink,
 } from "../infra/agent-link/registry";
 import {
+  cantReachDeploMessage,
   classifyServerHealth,
   HEALTH_MESSAGES,
   isRetryableProbeFailure,
@@ -36,6 +37,8 @@ import { dispatchServerAlert } from "../notify/dispatch";
 import { nowIso } from "../ids";
 import { instanceFrozen } from "./deplo-move/freeze";
 import { markServerSeen, observedTraefik } from "./servers/agent-handshake";
+import { panelPairHeldSince } from "./servers/link-addresses";
+import { panelHostname } from "./servers/panel-address";
 import { getServerById, listAllServers } from "./servers/roster";
 import type { HelloResponse } from "../agent/gen/agent";
 import type { Server } from "../types/server";
@@ -140,6 +143,36 @@ export async function recordServerHealth(
   }
 }
 
+/**
+ * The one verdict on a server's Hello, which every health writer asks; null while it cannot say yet.
+ * One that answers but holds the panel's address past the grace without linking is warning (ADR-0041).
+ */
+export async function healthFromHello(
+  server: Server,
+  hello: HelloResponse,
+): Promise<ServerHealth | null> {
+  const health = classifyServerHealth(hello, null, {
+    storageOnly: server.storageOnly,
+  });
+  if (health.status === "error" || linkedOnce(server)) return health;
+  // A pair Deplo cannot read settles nothing.
+  const since = await panelPairHeldSince(server, hello).catch(() => undefined);
+  if (since === undefined) return null;
+  if (since === null) return health;
+  // Handed it just now, it is dialing in; right after a restart, it may still be backing off.
+  if (linksSettling() || Date.now() - since < LINK_WAIT_MS) return null;
+  const host = await panelHostname().catch(() => null);
+  return { status: "warning", message: cantReachDeploMessage(host) };
+}
+
+function linkedOnce(server: Server): boolean {
+  return (
+    !!server.firstLinkedAt ||
+    hasLinked(server.id) ||
+    currentLink(server.id) !== undefined
+  );
+}
+
 function alertServerHealth(
   id: string,
   name: string,
@@ -223,15 +256,15 @@ async function probeServer(
   // Right after the panel starts, a server that closed its port once it linked is still relinking.
   if (error && linkMayCome(server.id, error)) return null;
 
-  const health = classifyServerHealth(hello, error, {
-    storageOnly: server.storageOnly,
-  });
+  const health = hello
+    ? await healthFromHello(server, hello)
+    : classifyServerHealth(null, error);
   if (error) {
     console.error(`[deplo] health probe for ${server.name}: ${String(error)}`);
   }
 
   if (
-    health.status === "offline" &&
+    health?.status === "offline" &&
     (await serversDeployingNow([server.id])).has(server.id)
   ) {
     console.error(
@@ -240,7 +273,7 @@ async function probeServer(
     return null;
   }
 
-  await recordServerHealth(server.id, health, observedAt);
+  if (health) await recordServerHealth(server.id, health, observedAt);
   if (hello)
     await markServerSeen(server.id, hello.agentVersion, observedTraefik(hello));
   return getServerById(server.id);
@@ -256,13 +289,10 @@ async function probeOverLink(
   // Inside the grace the link may be on its way back; if not, its timer writes offline.
   if (link === "waiting") return null;
   let hello: HelloResponse | null = null;
-  let health = LINK_OFFLINE;
+  let health: ServerHealth | null = LINK_OFFLINE;
   if (link === "linked") {
     try {
       hello = await withDeadline(askHello(), PROBE_DEADLINE_MS);
-      health = classifyServerHealth(hello, null, {
-        storageOnly: server.storageOnly,
-      });
     } catch (e) {
       // Only a missing link means offline: a Hello lost on a live one settles nothing.
       if (e instanceof ProbeTimeout || e instanceof AgentUnreachableError)
@@ -270,9 +300,10 @@ async function probeOverLink(
       console.error(`[deplo] health probe for ${server.name}: ${String(e)}`);
       health = classifyServerHealth(null, e);
     }
+    if (hello) health = await healthFromHello(server, hello);
   }
   // No deploy guard: a build streams over the link, so none is running while it is gone.
-  await recordServerHealth(server.id, health, observedAt);
+  if (health) await recordServerHealth(server.id, health, observedAt);
   if (hello)
     await markServerSeen(server.id, hello.agentVersion, observedTraefik(hello));
   return getServerById(server.id);
@@ -399,10 +430,7 @@ async function linkCameBack(
   if (await instanceFrozen()) return;
   const server = await getServerById(serverId).catch(() => null);
   if (!server) return;
-  await recordServerHealth(
-    serverId,
-    classifyServerHealth(hello, null, { storageOnly: server.storageOnly }),
-    observedAt,
-  );
+  const health = await healthFromHello(server, hello);
+  if (health) await recordServerHealth(serverId, health, observedAt);
   await markServerSeen(serverId, hello.agentVersion, observedTraefik(hello));
 }

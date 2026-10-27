@@ -3,9 +3,11 @@ import "server-only";
 import {
   deploHostMachineAddresses,
   isDeploHostServer,
+  isLoopbackIp,
   runsInContainer,
 } from "../../deploy/domains";
 import { LINK_PORT } from "../../infra/agent-link/protocol";
+import { PUBLIC_URL_PLACEHOLDER } from "../../public-url";
 import { instancePublicBaseUrl } from "../instance-settings/settings-store";
 
 type ServerAddress = { ip?: string; host?: string };
@@ -23,6 +25,19 @@ export async function agentLinkUrl(
 ): Promise<string> {
   if (!linksOverLoopback(server)) return instancePublicBaseUrl(h);
   return `http://127.0.0.1:${loopbackLinkPort()}`;
+}
+
+/** The panel's public name as a person reads it: no scheme, no port, never loopback; null while it has none. */
+export async function panelHostname(): Promise<string | null> {
+  const url = await instancePublicBaseUrl(new Headers());
+  if (url === PUBLIC_URL_PLACEHOLDER) return null;
+  let host: string;
+  try {
+    host = new URL(url).hostname;
+  } catch {
+    return null;
+  }
+  return host === "localhost" || isLoopbackIp(host) ? null : host;
 }
 
 /** Only a server provably on the panel's machine, and only while a port there reaches the door. */
