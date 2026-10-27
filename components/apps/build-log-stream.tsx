@@ -24,7 +24,11 @@ import { isDeploymentLive } from "@/lib/deployment-status";
 import { stripAnsi } from "@/lib/ansi";
 import { levelLabelPadded } from "@/lib/log-levels";
 import { formatClockTime } from "@/lib/utils";
-import type { DeploymentStatus, LogLine } from "@/lib/types/deployment";
+import type {
+  DeploymentStatus,
+  LogLevel,
+  LogLine,
+} from "@/lib/types/deployment";
 
 const POLL_MS = 500;
 const BOTTOM_THRESHOLD = 24;
@@ -62,6 +66,7 @@ export function BuildLogStream({
   initialQueuePosition = null,
   initialStartedAt = null,
   initialBuildDurationMs = null,
+  levelFilter,
 }: {
   deploymentId: string;
   initialLogs: LogLine[];
@@ -69,6 +74,8 @@ export function BuildLogStream({
   initialQueuePosition?: number | null;
   initialStartedAt?: string | null;
   initialBuildDurationMs?: number | null;
+  // A new object sets the Level filter from outside, e.g. a warnings badge.
+  levelFilter?: { levels: LogLevel[] };
 }) {
   const [logs, setLogs] = React.useState<LogLine[]>([]);
   const [status, setStatus] = React.useState<DeploymentStatus>(initialStatus);
@@ -167,6 +174,18 @@ export function BuildLogStream({
     el.scrollTop = el.scrollHeight;
   }, [logs, follow]);
 
+  // A log mounted inside a closed section has no height yet; land at the end once it shows.
+  React.useEffect(() => {
+    const el = scrollRef.current;
+    if (!el || !follow) return;
+    const observer = new ResizeObserver(() => {
+      programmaticScroll.current = true;
+      el.scrollTop = el.scrollHeight;
+    });
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [follow]);
+
   function onScroll() {
     const el = scrollRef.current;
     if (!el) return;
@@ -180,6 +199,12 @@ export function BuildLogStream({
   }
 
   const filters = useLogFilters(logs, BUILD_LEVELS);
+  const [appliedFilter, setAppliedFilter] = React.useState(levelFilter);
+  if (levelFilter !== appliedFilter) {
+    setAppliedFilter(levelFilter);
+    if (levelFilter)
+      filters.setState((s) => ({ ...s, levels: levelFilter.levels }));
+  }
 
   const shown = filters.shown;
   const logText = React.useCallback(

@@ -1,6 +1,6 @@
 import "server-only";
 
-import { and, asc, desc, eq, inArray } from "drizzle-orm";
+import { and, asc, desc, eq, gt, inArray, isNull } from "drizzle-orm";
 
 import { getDb } from "../../db/client";
 import { apps as appsTable } from "../../db/schema/control-plane/apps";
@@ -171,10 +171,15 @@ export async function listDeployments(filter?: {
     });
 }
 
-export async function getDeployment(
-  id: string,
-): Promise<
-  (Deployment & { canRollback: boolean; rollbackRebuilds: boolean }) | null
+export async function getDeployment(id: string): Promise<
+  | (Deployment & {
+      canRollback: boolean;
+      rollbackRebuilds: boolean;
+      live: boolean;
+      serverName: string | null;
+      buildServerName: string | null;
+    })
+  | null
 > {
   const teamId = await requireActiveTeamId();
   const dep = await loadDeployment(id);
@@ -184,12 +189,51 @@ export async function getDeployment(
   if ((await appCapabilities(dep.appId)).length === 0) return null;
   const creators = await loadUserIdentities([dep.creatorUserId]);
   const mode = await rollbackModeFor(dep);
+  const serverIds = [dep.serverId, dep.buildServerId].filter(
+    (s): s is string => !!s,
+  );
+  const names = new Map(
+    serverIds.length === 0
+      ? []
+      : (
+          await getDb()
+            .select({ id: serversTable.id, name: serversTable.name })
+            .from(serversTable)
+            .where(inArray(serversTable.id, serverIds))
+        ).map((s) => [s.id, s.name] as const),
+  );
   return {
     ...dep,
     creatorUser: authorOf(dep.creatorUserId, creators),
     canRollback: mode !== null,
     rollbackRebuilds: mode === "rebuild",
+    live: await isLiveDeployment(dep),
+    serverName: dep.serverId ? (names.get(dep.serverId) ?? null) : null,
+    buildServerName:
+      dep.buildServerId && dep.buildServerId !== dep.serverId
+        ? (names.get(dep.buildServerId) ?? null)
+        : null,
   };
+}
+
+// The one answering on the app's (or its preview's) addresses: ready, and no newer ready build.
+async function isLiveDeployment(dep: Deployment): Promise<boolean> {
+  if (dep.status !== "ready") return false;
+  const newer = await getDb()
+    .select({ id: deploymentsTable.id })
+    .from(deploymentsTable)
+    .where(
+      and(
+        eq(deploymentsTable.appId, dep.appId),
+        dep.previewId
+          ? eq(deploymentsTable.previewId, dep.previewId)
+          : isNull(deploymentsTable.previewId),
+        eq(deploymentsTable.status, "ready"),
+        gt(deploymentsTable.createdAt, dep.createdAt),
+      ),
+    )
+    .limit(1);
+  return newer.length === 0;
 }
 
 export async function isFirstDeployment(dep: Deployment): Promise<boolean> {
