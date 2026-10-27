@@ -6,6 +6,7 @@ import { X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useNestedLayerDismissGuard } from "@/components/ui/use-nested-layer-dismiss-guard";
 import { overlayAutoFocus } from "@/components/ui/overlay-autofocus";
+import { AnimatedHeight } from "@/components/shared/animated-height";
 
 const Dialog = DialogPrimitive.Root;
 const DialogTrigger = DialogPrimitive.Trigger;
@@ -83,8 +84,14 @@ const DialogContent = React.forwardRef<
           {selfManaged ? (
             children
           ) : (
-            <div className="focus-safe-scroll grid min-h-0 grid-cols-[minmax(0,1fr)] gap-4 overflow-y-auto">
-              {children}
+            // A modal never jumps: content that appears or loads grows it smoothly.
+            <div className="focus-safe-scroll grid min-h-0 grid-cols-[minmax(0,1fr)] overflow-y-auto">
+              <AnimatedHeight
+                scroll={false}
+                className="grid grid-cols-[minmax(0,1fr)] gap-4"
+              >
+                {children}
+              </AnimatedHeight>
             </div>
           )}
           {!hideClose && (

@@ -64,6 +64,7 @@ export function LiveLogs({
   initialLogMaxDays,
   deploymentsHref,
   toolbar,
+  initialContainer,
 }: {
   appId: string;
   title?: PaneTitle;
@@ -74,6 +75,7 @@ export function LiveLogs({
   initialLogMaxDays: number;
   deploymentsHref: string;
   toolbar?: React.ReactNode;
+  initialContainer?: string;
 }) {
   const live = useLiveApp();
   const [instances, setInstances] =
@@ -154,6 +156,7 @@ export function LiveLogs({
       toolbar={toolbar}
       supportsTimeline={supportsTimeline}
       logMaxDays={logMaxDays}
+      initialContainer={initialContainer}
     />
   );
 }

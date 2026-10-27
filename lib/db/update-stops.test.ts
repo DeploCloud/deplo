@@ -26,7 +26,7 @@ import {
 } from "./update-stops";
 
 const MIG_DIR = path.join(process.cwd(), "lib", "db", "migrations");
-const STOPS = "0200_passed_update_stops";
+const STOPS = "0202_passed_update_stops";
 const dirs: string[] = [];
 
 after(() => {

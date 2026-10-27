@@ -1,6 +1,6 @@
 {
-  "id": "eb26a9e0-f638-4f4a-846f-f14e9efdf6fe",
-  "prevId": "9c4c9eb1-3bf8-4914-b824-d6c2956a5170",
+  "id": "73a1c42e-c6ad-48ee-995b-045e97cdd758",
+  "prevId": "eea986c6-c3cc-47c8-a1ae-76c2173e7dda",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -9012,6 +9012,19 @@
           "primaryKey": false,
           "notNull": true
         },
+        "database_id": {
+          "name": "database_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "database_unlinked": {
+          "name": "database_unlinked",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
         "created_by_user_id": {
           "name": "created_by_user_id",
           "type": "text",
@@ -9058,6 +9071,21 @@
           "concurrently": false,
           "method": "btree",
           "with": {}
+        },
+        "env_vars_database_idx": {
+          "name": "env_vars_database_idx",
+          "columns": [
+            {
+              "expression": "database_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
         }
       },
       "foreignKeys": {
@@ -9067,6 +9095,19 @@
           "tableTo": "apps",
           "columnsFrom": [
             "app_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "env_vars_database_id_databases_id_fk": {
+          "name": "env_vars_database_id_databases_id_fk",
+          "tableFrom": "env_vars",
+          "tableTo": "databases",
+          "columnsFrom": [
+            "database_id"
           ],
           "columnsTo": [
             "id"
@@ -10508,31 +10549,6 @@
         },
         "updated_at": {
           "name": "updated_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true
-        }
-      },
-      "indexes": {},
-      "foreignKeys": {},
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {},
-      "isRLSEnabled": false
-    },
-    "public.passed_update_stops": {
-      "name": "passed_update_stops",
-      "schema": "",
-      "columns": {
-        "version": {
-          "name": "version",
-          "type": "text",
-          "primaryKey": true,
-          "notNull": true
-        },
-        "passed_at": {
-          "name": "passed_at",
           "type": "timestamp with time zone",
           "primaryKey": false,
           "notNull": true
@@ -14061,12 +14077,6 @@
         "status_message": {
           "name": "status_message",
           "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "first_linked_at": {
-          "name": "first_linked_at",
-          "type": "timestamp with time zone",
           "primaryKey": false,
           "notNull": false
         },

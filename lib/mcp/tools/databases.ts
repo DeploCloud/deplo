@@ -1,5 +1,5 @@
 import * as z from "zod";
-import { databaseId, page, tool, type McpToolDef } from "./tool-def";
+import { appId, databaseId, page, tool, type McpToolDef } from "./tool-def";
 
 const DATABASE_FIELDS = /* GraphQL */ `
   id
@@ -160,6 +160,47 @@ export const DATABASES: McpToolDef[] = [
     query: /* GraphQL */ `
       mutation McpDeleteDatabase($id: String!) {
         deleteDatabase(id: $id)
+      }
+    `,
+  }),
+  tool({
+    name: "connect_database",
+    title: "Connect a database to an app",
+    description:
+      "Give an app a production variable with the database's connection string, re-derived at every deploy. Replaces a variable of that name. Refused when the app cannot reach the database.",
+    group: "Databases",
+    requires: "manage_env",
+    idempotent: true,
+    input: z.object({
+      appId,
+      databaseId,
+      key: z
+        .string()
+        .describe(
+          "Variable name: DATABASE_URL for Postgres/MySQL/MariaDB, MONGODB_URI, REDIS_URL or CLICKHOUSE_URL by convention.",
+        ),
+    }),
+    query: /* GraphQL */ `
+      mutation McpConnectDatabase(
+        $appId: String!
+        $databaseId: String!
+        $key: String!
+      ) {
+        connectDatabase(appId: $appId, databaseId: $databaseId, key: $key)
+      }
+    `,
+  }),
+  tool({
+    name: "disconnect_database",
+    title: "Disconnect a database from an app",
+    description:
+      "Stop the app's variables that come from this database following it. They keep their current value.",
+    group: "Databases",
+    requires: "manage_env",
+    input: z.object({ appId, databaseId }),
+    query: /* GraphQL */ `
+      mutation McpDisconnectDatabase($appId: String!, $databaseId: String!) {
+        disconnectDatabase(appId: $appId, databaseId: $databaseId)
       }
     `,
   }),

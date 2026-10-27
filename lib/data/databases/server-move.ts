@@ -7,6 +7,7 @@ import { databases as databasesTable } from "../../db/schema/control-plane/datab
 import { getCurrentUser } from "../../auth/current-user";
 import { requireCapability, canExposePorts } from "../../membership";
 import { recordActivity } from "../activity";
+import { markLinkedAppsPending } from "../database-links";
 import { encryptSecret } from "../../crypto";
 import { connectAgent } from "../../infra/agent-client/connect";
 import { buildConnectionString } from "../../deploy/database-compose";
@@ -198,4 +199,5 @@ export async function updateDatabase(
     null,
     db.id,
   );
+  await markLinkedAppsPending(db.id);
 }

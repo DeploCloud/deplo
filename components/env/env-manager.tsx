@@ -34,6 +34,7 @@ import { EnvGraphic } from "@/components/env/env-graphic";
 import { EnvValueCell } from "@/components/env/env-value-cell";
 import { TimeAgo } from "@/components/shared/time-ago";
 import { EnvVarDialog } from "@/components/env/env-var-dialog";
+import { DatabaseLogo } from "@/components/storage/database-logo";
 import { EnvAuthorCell } from "@/components/env/env-author-cell";
 import { EnvEditButton } from "@/components/env/env-edit-button";
 import { EnvFilters } from "@/components/env/env-filters/env-filters-toolbar";
@@ -237,11 +238,24 @@ export function EnvManager({
                       <EnvSelectionCell id={rowKey(row)} />
                       <TableCell className="font-mono text-xs font-medium">
                         <div className="flex items-center gap-2">
-                          {row.key}
+                          <VariableKey row={row} />
                           {row.type === "plain" &&
+                            !row.detectedDatabase &&
                             envNameLooksSensitive(row.key) && (
                               <LooksLikeSecretBadge />
                             )}
+                          {row.database && !row.database.reachable && (
+                            <SimpleTooltip
+                              content={`This app cannot reach ${row.database.name}, so its next deploy fails until one of them moves.`}
+                            >
+                              <Badge
+                                variant="outline"
+                                className="text-[10px] font-normal whitespace-nowrap text-destructive"
+                              >
+                                Unreachable
+                              </Badge>
+                            </SimpleTooltip>
+                          )}
                         </div>
                       </TableCell>
                       <TableCell>
@@ -257,8 +271,16 @@ export function EnvManager({
                       </TableCell>
                       <TableCell className="text-right">
                         <div className="flex justify-end gap-1">
+                          {row.connected && (
+                            <UnlinkButton
+                              id={row.id}
+                              envKey={row.key}
+                              database={row.database?.name}
+                            />
+                          )}
                           <EnvEditButton
-                            secret={row.type === "secret"}
+                            secret={row.type === "secret" && !row.connected}
+                            label={row.connected ? "Rename" : "Edit"}
                             onClick={() => {
                               setEditing(row);
                               setAddOpen(true);
@@ -357,6 +379,7 @@ export function EnvManager({
         appId={appId}
         editing={editing}
         existingKeys={vars.filter((v) => v.type === "plain").map((v) => v.key)}
+        appKeys={vars.map((v) => v.key)}
         sharedVars={sharedVars}
         canCreateShared={canCreateShared}
         apps={apps}
@@ -457,6 +480,71 @@ function SharedRowActions({
         </Button>
       </SimpleTooltip>
     </div>
+  );
+}
+
+// The logo and the name both open the database a value comes from.
+function VariableKey({ row }: { row: EnvVarDTO }) {
+  const db = row.database ?? row.detectedDatabase;
+  if (!db) return <>{row.key}</>;
+  return (
+    <SimpleTooltip
+      content={row.database ? `Comes from ${db.name}` : `Points at ${db.name}`}
+    >
+      <Link
+        href={`/storage/databases/${db.id}`}
+        className="flex min-w-0 items-center gap-2 hover:underline"
+      >
+        <DatabaseLogo type={db.type} logo={db.logo} size={18} />
+        {row.key}
+      </Link>
+    </SimpleTooltip>
+  );
+}
+
+// Unlink keeps today's value and stops following; Delete stays its own action.
+function UnlinkButton({
+  id,
+  envKey,
+  database,
+}: {
+  id: string;
+  envKey: string;
+  database?: string;
+}) {
+  const router = useRouter();
+  const [pending, startTransition] = React.useTransition();
+  return (
+    <SimpleTooltip content="Unlink">
+      <Button
+        variant="ghost"
+        size="icon-sm"
+        disabled={pending}
+        aria-label="Unlink"
+        onClick={() =>
+          startTransition(async () => {
+            const res = await gqlAction(
+              /* GraphQL */ `
+                mutation ($id: String!) {
+                  unlinkEnv(id: $id) {
+                    id
+                  }
+                }
+              `,
+              { id },
+            );
+            if (!res.ok) return void toast.error(res.error);
+            toast.success(
+              `${envKey} no longer follows ${database ?? "its database"}`,
+              { description: "It keeps its current value." },
+            );
+            router.refresh();
+          })
+        }
+      >
+        <Unlink className="size-4" />
+      </Button>
+    </SimpleTooltip>
   );
 }
 

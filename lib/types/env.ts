@@ -1,4 +1,5 @@
 import type { ID, VarAuthor } from "./identity";
+import type { DatabaseType } from "./database";
 
 export type EnvTarget = "production" | "preview";
 
@@ -19,10 +20,20 @@ export interface EnvVar {
   valueEnc: string;
   targets: EnvTarget[];
   type: "plain" | "secret";
+  databaseId: ID | null;
+  databaseUnlinked: boolean;
   createdByUserId: ID | null;
   updatedByUserId: ID | null;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface EnvDatabaseRef {
+  id: ID;
+  name: string;
+  type: DatabaseType;
+  logo: string | null;
+  reachable: boolean;
 }
 
 export interface EnvVarDTO {
@@ -32,6 +43,11 @@ export interface EnvVarDTO {
   masked: boolean;
   targets: EnvTarget[];
   type: "plain" | "secret";
+  // The value comes from a connected database; `database` is null when the viewer cannot see databases.
+  connected: boolean;
+  database: EnvDatabaseRef | null;
+  // A hand-written value naming a database's host, offered for "Link to database".
+  detectedDatabase: EnvDatabaseRef | null;
   createdBy: VarAuthor | null;
   updatedBy: VarAuthor | null;
   createdAt: string;

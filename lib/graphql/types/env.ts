@@ -1,5 +1,5 @@
 import { builder } from "../builder";
-import { EnvTargetEnum } from "./enums";
+import { DatabaseTypeEnum, EnvTargetEnum } from "./enums";
 import {
   listEnv,
   listAllAppEnv,
@@ -11,8 +11,10 @@ import {
   makeEnvSecret,
   type AppEnvGroup,
 } from "@/lib/data/env";
+import { unlinkEnv } from "@/lib/data/database-links";
+import type { AutoLink } from "@/lib/data/database-autolink";
 import { dismissPendingChanges } from "@/lib/data/pending-changes";
-import type { EnvVarDTO } from "@/lib/types/env";
+import type { EnvDatabaseRef, EnvVarDTO } from "@/lib/types/env";
 import type { VarAuthor } from "@/lib/types/identity";
 
 export const EnvVarTypeEnum = builder.enumType("EnvVarType", {
@@ -37,6 +39,27 @@ export const VarAuthorRef = builder
     }),
   });
 
+const EnvDatabaseRefRef = builder
+  .objectRef<EnvDatabaseRef>("EnvDatabaseRef")
+  .implement({
+    description: "The managed database a variable's value comes from.",
+    fields: (t) => ({
+      id: t.exposeID("id"),
+      name: t.exposeString("name"),
+      type: t.field({ type: DatabaseTypeEnum, resolve: (d) => d.type }),
+      reachable: t.exposeBoolean("reachable"),
+    }),
+  });
+
+const EnvAutoLinkRef = builder.objectRef<AutoLink>("EnvAutoLink").implement({
+  description:
+    "A variable Deplo connected because its value is a database's connection string.",
+  fields: (t) => ({
+    key: t.exposeString("key"),
+    database: t.exposeString("database"),
+  }),
+});
+
 const EnvVarRef = builder.objectRef<EnvVarDTO>("EnvVar").implement({
   description:
     "A single environment variable. Secret values are masked unless revealed.",
@@ -50,6 +73,17 @@ const EnvVarRef = builder.objectRef<EnvVarDTO>("EnvVar").implement({
       resolve: (e) => e.targets,
     }),
     type: t.field({ type: EnvVarTypeEnum, resolve: (e) => e.type }),
+    connected: t.exposeBoolean("connected", {
+      description:
+        "The value comes from a managed database and is derived again at every deploy.",
+    }),
+    database: t.field({
+      type: EnvDatabaseRefRef,
+      nullable: true,
+      description:
+        "The connected database; null when not connected or the viewer cannot see databases.",
+      resolve: (e) => e.database,
+    }),
     createdBy: t.field({
       type: VarAuthorRef,
       nullable: true,
@@ -92,7 +126,11 @@ const AppEnvGroupRef = builder.objectRef<AppEnvGroup>("AppEnvGroup").implement({
 });
 
 const EnvImportResultRef = builder
-  .objectRef<{ added: number; skippedSecrets: number }>("EnvImportResult")
+  .objectRef<{
+    added: number;
+    skippedSecrets: number;
+    autoLinked: AutoLink[];
+  }>("EnvImportResult")
   .implement({
     description:
       "What a .env import wrote, and what it deliberately left alone.",
@@ -103,6 +141,12 @@ const EnvImportResultRef = builder
       skippedSecrets: t.exposeInt("skippedSecrets", {
         description:
           "Lines whose key already exists as a secret. A secret cannot be edited, so those were left untouched.",
+      }),
+      autoLinked: t.field({
+        type: [EnvAutoLinkRef],
+        description:
+          "Lines whose value is a database's connection string, now connected to it.",
+        resolve: (r) => r.autoLinked,
       }),
     }),
   });
@@ -193,6 +237,19 @@ builder.mutationFields((t) => ({
     resolve: async (_r, { appId }) => {
       await dismissPendingChanges(appId);
       return true;
+    },
+  }),
+  unlinkEnv: t.field({
+    type: EnvVarRef,
+    authScopes: { capability: "manage_env" },
+    description:
+      "Stop a variable following its database. It keeps the value it resolves to now, and Deplo never connects it again on its own.",
+    args: { id: t.arg.string({ required: true }) },
+    resolve: async (_r, { id }) => {
+      const appId = await unlinkEnv(id);
+      const found = (await listEnv(appId)).find((e) => e.id === id);
+      if (!found) throw new Error("Env var not found");
+      return found;
     },
   }),
   deleteEnv: t.field({

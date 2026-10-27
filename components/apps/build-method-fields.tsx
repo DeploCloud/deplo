@@ -21,6 +21,7 @@ import {
   type FrameworkId,
 } from "@/lib/apps/framework-catalog";
 import {
+  BUILD_METHOD_NAMES,
   buildsWithRailpack,
   type BuildMethodChoice,
 } from "@/lib/apps/build-method";
@@ -33,12 +34,6 @@ const METHOD_TABS = [
   { id: "dockerfile", name: "Dockerfile", icon: FileCode2 },
   { id: "compose", name: "Compose", icon: Boxes },
 ] as const;
-
-const METHOD_NAMES: Record<BuildMethod, string> = {
-  railpack: "Railpack",
-  dockerfile: "Dockerfile",
-  compose: "Docker Compose",
-};
 
 const METHOD_LINES: Record<BuildMethodChoice, string> = {
   auto: "Uses your Dockerfile or Compose file if you have one, otherwise builds your code directly.",
@@ -154,7 +149,7 @@ export function BuildMethodFields({
               {" "}
               Last deploy:{" "}
               <span className="text-foreground">
-                {METHOD_NAMES[lastBuiltWith]}
+                {BUILD_METHOD_NAMES[lastBuiltWith]}
               </span>
               .
             </>

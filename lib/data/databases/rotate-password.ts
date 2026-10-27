@@ -7,6 +7,7 @@ import { databases as databasesTable } from "../../db/schema/control-plane/datab
 import { getCurrentUser } from "../../auth/current-user";
 import { requireCapability } from "../../membership";
 import { recordActivity } from "../activity";
+import { markLinkedAppsPending } from "../database-links";
 import { encryptSecret, decryptSecret, randomToken } from "../../crypto";
 import { connectAgent } from "../../infra/agent-client/connect";
 import {
@@ -172,5 +173,6 @@ export async function rotateDatabasePassword(
     null,
     id,
   );
+  await markLinkedAppsPending(id);
   return newConn;
 }

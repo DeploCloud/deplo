@@ -25,12 +25,29 @@ test("scoreFaviconPath: ONLY files named `favicon` are candidates", () => {
   assert.notEqual(scoreFaviconPath("public/favicon-32x32.png"), null);
   assert.equal(scoreFaviconPath("logo.svg"), null);
   assert.equal(scoreFaviconPath("public/logo.png"), null);
-  assert.equal(scoreFaviconPath("app/icon.svg"), null);
   assert.equal(scoreFaviconPath("public/icon-512.png"), null);
   assert.equal(scoreFaviconPath("apple-touch-icon.png"), null);
   assert.equal(scoreFaviconPath("android-chrome-192x192.png"), null);
   assert.equal(scoreFaviconPath("public/hero-banner.png"), null);
   assert.equal(scoreFaviconPath("src/index.ts"), null);
+});
+
+test("scoreFaviconPath: a Next.js app/icon file is the site's favicon", () => {
+  assert.notEqual(scoreFaviconPath("app/icon.svg"), null);
+  assert.notEqual(scoreFaviconPath("src/app/icon.png"), null);
+  assert.notEqual(scoreFaviconPath("apps/web/app/icon1.png"), null);
+  assert.equal(scoreFaviconPath("app/apple-icon.png"), null);
+  assert.equal(scoreFaviconPath("app/dashboard/icon.png"), null);
+  assert.equal(scoreFaviconPath("components/icon.svg"), null);
+  assert.equal(scoreFaviconPath("public/icons/icon.svg"), null);
+  assert.equal(
+    pickBestFavicon([
+      { path: "app/apple-icon.png", size: 3192 },
+      { path: "app/icon.svg", size: 351 },
+      { path: "public/icons/icon-192.png", size: 3563 },
+    ])?.path,
+    "app/icon.svg",
+  );
 });
 
 test("scoreFaviconPath: rejects favicons under excluded directories", () => {
@@ -107,7 +124,7 @@ test("pickBestFavicon: returns null when there is no favicon", () => {
   assert.equal(
     pickBestFavicon([
       { path: "public/logo.svg", size: 100 },
-      { path: "app/icon.svg", size: 100 },
+      { path: "components/icon.svg", size: 100 },
       { path: "src/index.ts", size: 100 },
       { path: "README.md", size: 100 },
     ]),

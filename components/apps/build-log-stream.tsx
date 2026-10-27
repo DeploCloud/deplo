@@ -3,13 +3,14 @@
 import * as React from "react";
 import { useRouter } from "@/lib/nav";
 import { toast } from "sonner";
-import { Ban, Clock, FileSearch } from "lucide-react";
+import { Ban, Clock } from "lucide-react";
 import { gql, gqlAction } from "@/lib/graphql-client";
 import { Button } from "@/components/ui/button";
 import { CopyButton } from "@/components/shared/copy-button";
 import { DownloadButton } from "@/components/shared/download-button";
 import {
   LogLines,
+  LogLinesNoMatch,
   LogLinesSkeleton,
   LogRow,
 } from "@/components/shared/log-line-row";
@@ -24,7 +25,11 @@ import { isDeploymentLive } from "@/lib/deployment-status";
 import { stripAnsi } from "@/lib/ansi";
 import { levelLabelPadded } from "@/lib/log-levels";
 import { formatClockTime } from "@/lib/utils";
-import type { DeploymentStatus, LogLine } from "@/lib/types/deployment";
+import type {
+  DeploymentStatus,
+  LogLevel,
+  LogLine,
+} from "@/lib/types/deployment";
 
 const POLL_MS = 500;
 const BOTTOM_THRESHOLD = 24;
@@ -62,6 +67,7 @@ export function BuildLogStream({
   initialQueuePosition = null,
   initialStartedAt = null,
   initialBuildDurationMs = null,
+  levelFilter,
 }: {
   deploymentId: string;
   initialLogs: LogLine[];
@@ -69,6 +75,8 @@ export function BuildLogStream({
   initialQueuePosition?: number | null;
   initialStartedAt?: string | null;
   initialBuildDurationMs?: number | null;
+  // A new object sets the Level filter from outside, e.g. a warnings badge.
+  levelFilter?: { levels: LogLevel[] };
 }) {
   const [logs, setLogs] = React.useState<LogLine[]>([]);
   const [status, setStatus] = React.useState<DeploymentStatus>(initialStatus);
@@ -180,6 +188,12 @@ export function BuildLogStream({
   }
 
   const filters = useLogFilters(logs, BUILD_LEVELS);
+  const [appliedFilter, setAppliedFilter] = React.useState(levelFilter);
+  if (levelFilter !== appliedFilter) {
+    setAppliedFilter(levelFilter);
+    if (levelFilter)
+      filters.setState((s) => ({ ...s, levels: levelFilter.levels }));
+  }
 
   const shown = filters.shown;
   const logText = React.useCallback(
@@ -267,12 +281,7 @@ export function BuildLogStream({
           {logs.length === 0 && live ? <LogLinesSkeleton /> : null}
 
           {logs.length > 0 && filters.shown.length === 0 ? (
-            <div className="flex flex-col items-center justify-center gap-2 py-16 text-center">
-              <FileSearch className="size-5 text-zinc-500" />
-              <p className="text-[11px] text-zinc-500">
-                No log lines match your filters.
-              </p>
-            </div>
+            <LogLinesNoMatch />
           ) : null}
         </LogLines>
       </div>

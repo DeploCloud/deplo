@@ -12,6 +12,7 @@ import {
   Info,
   Search,
   Check,
+  Database,
 } from "lucide-react";
 import {
   Dialog,
@@ -56,6 +57,7 @@ import type {
   TeamRef,
 } from "@/components/env/shared-var-wizard/types";
 import { SharedVarWizardBody } from "@/components/env/shared-var-wizard/wizard-body";
+import { DatabaseTab } from "@/components/env/database-tab";
 import type { EnvVarDTO } from "@/lib/types/env";
 import type { AppSharedVarDTO } from "@/lib/data/shared-vars/app-view";
 import type { TeamEnvironment } from "@/lib/data/environments";
@@ -68,6 +70,7 @@ export function EnvVarDialog({
   appId,
   editing,
   existingKeys = [],
+  appKeys = [],
   sharedVars,
   canCreateShared = false,
   apps = [],
@@ -80,6 +83,8 @@ export function EnvVarDialog({
   appId: string;
   editing: EnvVarDTO | null;
   existingKeys?: string[];
+  // Every key on the app, secrets included: a connection may replace any of them.
+  appKeys?: string[];
   sharedVars?: LinkableSharedVar[];
   canCreateShared?: boolean;
   apps?: AppRef[];
@@ -87,7 +92,7 @@ export function EnvVarDialog({
   environments?: TeamEnvironment[];
   teams?: TeamRef[];
 }) {
-  if (editing?.type === "secret") return null;
+  if (editing?.type === "secret" && !editing.connected) return null;
   if (editing) {
     return (
       <EditForm
@@ -104,6 +109,7 @@ export function EnvVarDialog({
       onOpenChange={onOpenChange}
       appId={appId}
       existingKeys={existingKeys}
+      appKeys={appKeys}
       sharedVars={sharedVars}
       canCreateShared={canCreateShared}
       apps={apps}
@@ -157,9 +163,16 @@ function EditForm({
           return;
         }
       }
+      if (editing.connected) {
+        toast.success("Variable renamed");
+        router.refresh();
+        return;
+      }
       // No `targets`: the server defaults every variable to every runtime.
-      const res = await gqlAction<{ upsertEnv: { id: string } }>(
-        `mutation($input: UpsertEnvInput!) { upsertEnv(input: $input) { id } }`,
+      const res = await gqlAction<{ upsertEnv: SavedVar }>(
+        `mutation($input: UpsertEnvInput!) {
+          upsertEnv(input: $input) { key connected database { name } }
+        }`,
         {
           input: {
             appId,
@@ -169,7 +182,7 @@ function EditForm({
           },
         },
       );
-      if (res.ok) toast.success("Variable updated");
+      if (res.ok) savedToast("Variable updated", linkedOf(res.data?.upsertEnv));
       else {
         onOpenChange(true);
         toast.error(res.error);
@@ -182,9 +195,13 @@ function EditForm({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Edit variable</DialogTitle>
+          <DialogTitle>
+            {editing.connected ? "Rename variable" : "Edit variable"}
+          </DialogTitle>
           <DialogDescription>
-            Update this variable&apos;s name or value.
+            {editing.connected
+              ? "Its value comes from the connected database."
+              : "Update this variable's name or value."}
           </DialogDescription>
         </DialogHeader>
         <form className="grid gap-4" onSubmit={onSubmit}>
@@ -215,17 +232,21 @@ function EditForm({
                 </p>
               )}
             </div>
-            <div className="space-y-2">
-              <Label>Value</Label>
-              <Textarea
-                value={value}
-                onChange={(e) => setValue(e.target.value)}
-                placeholder="Enter a new value"
-                rows={3}
-                autoFocus
-              />
-            </div>
-            <SecretRow secret={secret} onChange={setSecret} />
+            {!editing.connected && (
+              <>
+                <div className="space-y-2">
+                  <Label>Value</Label>
+                  <Textarea
+                    value={value}
+                    onChange={(e) => setValue(e.target.value)}
+                    placeholder="Enter a new value"
+                    rows={3}
+                    autoFocus
+                  />
+                </div>
+                <SecretRow secret={secret} onChange={setSecret} />
+              </>
+            )}
           </div>
           <DialogFooter>
             <Button
@@ -246,7 +267,33 @@ function EditForm({
   );
 }
 
-const ADD_TABS = ["standalone", "shared"] as const;
+type AutoLinked = { key: string; database: string };
+type SavedVar = {
+  key: string;
+  connected: boolean;
+  database: { name: string } | null;
+};
+
+const linkedOf = (v?: SavedVar): AutoLinked[] =>
+  v?.connected
+    ? [{ key: v.key, database: v.database?.name ?? "its database" }]
+    : [];
+
+// A value that is a database's connection string is connected on save: say so.
+function savedToast(done: string, linked: AutoLinked[]) {
+  toast.success(
+    done,
+    linked.length > 0
+      ? {
+          description: linked
+            .map((l) => `${l.key} now follows ${l.database}`)
+            .join(", "),
+        }
+      : undefined,
+  );
+}
+
+const ADD_TABS = ["standalone", "shared", "database"] as const;
 type AddTab = (typeof ADD_TABS)[number];
 
 const ADD_PANELS = [...ADD_TABS, "new-shared"] as const;
@@ -255,6 +302,7 @@ type AddPanel = (typeof ADD_PANELS)[number];
 const PANEL_LABEL: Record<AddPanel, string> = {
   standalone: "Standalone",
   shared: "Shared",
+  database: "Database",
   "new-shared": "New shared variable",
 };
 
@@ -263,6 +311,7 @@ function AddDialog({
   onOpenChange,
   appId,
   existingKeys,
+  appKeys,
   sharedVars,
   canCreateShared,
   apps,
@@ -274,6 +323,7 @@ function AddDialog({
   onOpenChange: (v: boolean) => void;
   appId: string;
   existingKeys: string[];
+  appKeys: string[];
   sharedVars?: LinkableSharedVar[];
   canCreateShared: boolean;
   apps: AppRef[];
@@ -294,7 +344,7 @@ function AddDialog({
         <DialogHeader className="px-6 pt-6 pb-4">
           <DialogTitle>Add environment variables</DialogTitle>
           <DialogDescription>
-            Add variables to this app, or link existing shared variables.
+            Add variables to this app, link shared ones, or connect a database.
           </DialogDescription>
         </DialogHeader>
 
@@ -324,6 +374,10 @@ function AddDialog({
                   <Share2 />
                   Shared
                 </SegmentedTabsTrigger>
+                <SegmentedTabsTrigger value="database">
+                  <Database />
+                  Database
+                </SegmentedTabsTrigger>
               </SegmentedTabsList>
             )}
           </div>
@@ -347,6 +401,13 @@ function AddDialog({
                   canCreate={canCreateShared}
                   onCreate={() => setCreating(true)}
                   onClose={() => onOpenChange(false)}
+                />
+              ) : p === "database" ? (
+                <DatabaseTab
+                  appId={appId}
+                  appKeys={appKeys}
+                  active={panel === "database"}
+                  onDone={() => onOpenChange(false)}
                 />
               ) : (
                 canCreateShared && (
@@ -405,8 +466,10 @@ function StandaloneTab({
     onDone();
     void (async () => {
       if (filled.length === 1) {
-        const res = await gqlAction<{ upsertEnv: { id: string } }>(
-          `mutation($input: UpsertEnvInput!) { upsertEnv(input: $input) { id } }`,
+        const res = await gqlAction<{ upsertEnv: SavedVar }>(
+          `mutation($input: UpsertEnvInput!) {
+            upsertEnv(input: $input) { key connected database { name } }
+          }`,
           {
             input: {
               appId,
@@ -416,26 +479,33 @@ function StandaloneTab({
             },
           },
         );
-        if (res.ok) toast.success("Variable added");
+        if (res.ok) savedToast("Variable added", linkedOf(res.data?.upsertEnv));
         else toast.error(res.error);
         router.refresh();
         return;
       }
       const blob = filled.map((r) => `${r.key.trim()}=${r.value}`).join("\n");
-      type ImportResult = { added: number; skippedSecrets: number };
+      type ImportResult = {
+        added: number;
+        skippedSecrets: number;
+        autoLinked: AutoLinked[];
+      };
       const res = await gqlAction<{ importEnv: ImportResult }, ImportResult>(
         `mutation($appId: String!, $blob: String!) {
-          importEnv(appId: $appId, blob: $blob) { added skippedSecrets }
+          importEnv(appId: $appId, blob: $blob) {
+            added skippedSecrets autoLinked { key database }
+          }
         }`,
         { appId, blob },
         (d) => d.importEnv,
       );
       if (res.ok && res.data != null) {
-        const { added, skippedSecrets } = res.data;
-        toast.success(
+        const { added, skippedSecrets, autoLinked } = res.data;
+        savedToast(
           skippedSecrets > 0
             ? `Added ${added} variable(s), ${skippedSecrets} secret(s) skipped`
             : `Added ${added} variable(s)`,
+          autoLinked,
         );
       } else if (!res.ok) {
         toast.error(res.error);

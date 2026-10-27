@@ -1,9 +1,11 @@
 import * as React from "react";
 import { DatabaseConnectionCard } from "@/components/storage/database-connection-card";
+import { DatabaseConnectedApps } from "@/components/storage/database-connected-apps";
 import { DatabaseHealthStat } from "@/components/storage/database-health-stat";
 import { BackupsStat } from "@/components/storage/database-stats";
 import type { DatabaseBackupSummary } from "@/lib/data/backups/run-listing";
 import type { DatabaseDTO } from "@/lib/data/databases/rows";
+import type { listDatabaseAppLinks } from "@/lib/data/database-links";
 import type { EnvironmentOption } from "./environment-combobox";
 
 export function DatabaseOverview({
@@ -18,8 +20,10 @@ export function DatabaseOverview({
   dataStat,
   environmentLabel,
   environments,
+  appLinks,
 }: {
   db: DatabaseDTO;
+  appLinks: Awaited<ReturnType<typeof listDatabaseAppLinks>>;
   serverName: string;
   serverHost: string;
   environmentLabel?: string | null;
@@ -43,6 +47,16 @@ export function DatabaseOverview({
         environmentLabel={environmentLabel}
         environments={environments ?? []}
       />
+
+      {appLinks && (
+        <DatabaseConnectedApps
+          databaseId={db.id}
+          databaseName={db.name}
+          databaseType={db.type}
+          links={appLinks.links}
+          apps={appLinks.apps}
+        />
+      )}
 
       <div className="grid gap-4 sm:grid-cols-3">
         <DatabaseHealthStat id={db.id} status={db.status} />

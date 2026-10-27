@@ -9,6 +9,7 @@ import {
 
 import { isoTimestamptz } from "../columns";
 import { apps } from "./apps";
+import { databases } from "./databases";
 import { teams, users } from "./identity";
 import { environments, projects } from "./projects";
 
@@ -22,6 +23,12 @@ export const envVars = pgTable(
     key: text("key").notNull(),
     valueEnc: text("value_enc").notNull(),
     type: text("type").notNull(),
+    // A connected database: the value is derived from it at every deploy.
+    databaseId: text("database_id").references(() => databases.id, {
+      onDelete: "cascade",
+    }),
+    // Unlink was chosen: auto-link never reattaches it.
+    databaseUnlinked: boolean("database_unlinked").notNull().default(false),
     createdByUserId: text("created_by_user_id").references(() => users.id, {
       onDelete: "set null",
     }),
@@ -31,7 +38,10 @@ export const envVars = pgTable(
     createdAt: isoTimestamptz("created_at").notNull(),
     updatedAt: isoTimestamptz("updated_at").notNull(),
   },
-  (t) => [uniqueIndex("env_vars_app_key_uq").on(t.appId, t.key)],
+  (t) => [
+    uniqueIndex("env_vars_app_key_uq").on(t.appId, t.key),
+    index("env_vars_database_idx").on(t.databaseId),
+  ],
 );
 
 export const appPreviewEnvVars = pgTable(

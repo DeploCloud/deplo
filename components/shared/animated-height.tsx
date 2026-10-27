@@ -6,6 +6,9 @@ import { cn } from "@/lib/utils";
 
 const TRANSITION_MS = 300;
 
+// Inside another AnimatedHeight (every plain dialog has one) the outer one already animates.
+const Animated = React.createContext(false);
+
 export function AnimatedHeight({
   children,
   className,
@@ -15,6 +18,7 @@ export function AnimatedHeight({
   className?: string;
   scroll?: boolean;
 }) {
+  const nested = React.useContext(Animated);
   const [el, setEl] = React.useState<HTMLDivElement | null>(null);
   const [height, setHeight] = React.useState<number>();
   const measured = React.useRef<number>(undefined);
@@ -42,6 +46,8 @@ export function AnimatedHeight({
     return () => ro.disconnect();
   }, [el, scroll]);
 
+  if (nested) return <div className={className}>{children}</div>;
+
   return (
     <div
       className={cn(
@@ -56,7 +62,7 @@ export function AnimatedHeight({
       onTransitionEnd={(e) => e.propertyName === "height" && setGrowing(false)}
     >
       <div ref={setEl} className={className}>
-        {children}
+        <Animated.Provider value>{children}</Animated.Provider>
       </div>
     </div>
   );

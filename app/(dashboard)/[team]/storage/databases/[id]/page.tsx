@@ -7,6 +7,7 @@ import { getDatabaseMetrics } from "@/lib/data/container-metrics";
 import { getServerById } from "@/lib/data/servers/roster";
 import { canExposePorts, currentCapabilities } from "@/lib/membership";
 import { listAllEnvironmentsForTeam } from "@/lib/data/environments";
+import { listDatabaseAppLinks } from "@/lib/data/database-links";
 import { DatabaseOverview } from "@/components/storage/database-overview";
 import { DataStat } from "@/components/storage/database-stats";
 import { DatabaseRelabelNotice } from "@/components/storage/database-health-stat";
@@ -22,13 +23,15 @@ export default async function DatabaseOverviewPage(
   const db = await getDatabase(id);
   if (!db) notFound();
 
-  const [server, caps, mayExposePorts, backups, metrics] = await Promise.all([
-    getServerById(db.serverId),
-    currentCapabilities(),
-    canExposePorts(),
-    getDatabaseBackupSummary(db.id),
-    getDatabaseMetrics(db.id),
-  ]);
+  const [server, caps, mayExposePorts, backups, metrics, appLinks] =
+    await Promise.all([
+      getServerById(db.serverId),
+      currentCapabilities(),
+      canExposePorts(),
+      getDatabaseBackupSummary(db.id),
+      getDatabaseMetrics(db.id),
+      listDatabaseAppLinks(db.id),
+    ]);
   const can = new Set(caps);
   const allEnvs = await listAllEnvironmentsForTeam();
   const env = db.environmentId
@@ -68,6 +71,7 @@ export default async function DatabaseOverviewPage(
         canExposePorts={mayExposePorts}
         canViewBackups={can.has("manage_backups")}
         backups={backups}
+        appLinks={appLinks}
         dataStat={
           <Suspense
             fallback={

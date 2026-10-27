@@ -8,7 +8,6 @@ import {
   Pause,
   Play,
   Trash2,
-  FileSearch,
   PlugZap,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -22,7 +21,11 @@ import {
 import { SimpleTooltip } from "@/components/ui/tooltip";
 import { CopyButton } from "@/components/shared/copy-button";
 import { DownloadButton } from "@/components/shared/download-button";
-import { LogLines, LogRow } from "@/components/shared/log-line-row";
+import {
+  LogLines,
+  LogLinesNoMatch,
+  LogRow,
+} from "@/components/shared/log-line-row";
 import { LogsDisplayMenu } from "@/components/shared/logs-display";
 import {
   LogSearch,
@@ -97,6 +100,7 @@ export function ContainerLogs({
   toolbar,
   supportsTimeline = false,
   logMaxDays = DEFAULT_LOG_RANGE_DAYS,
+  initialContainer,
 }: {
   appId: string;
   instances: ConsoleInstance[];
@@ -107,9 +111,10 @@ export function ContainerLogs({
   title?: PaneTitle;
   toolbar?: React.ReactNode;
   apiBase?: string;
+  initialContainer?: string;
 }) {
   const [active, setActive] = React.useState<ConsoleInstance>(
-    () => instances[0],
+    () => instances.find((i) => i.name === initialContainer) ?? instances[0],
   );
   const [status, setStatus] = React.useState<Status>("connecting");
   const [timeline, setTimeline] = React.useState<LogTimeline>(() =>
@@ -542,12 +547,7 @@ export function ContainerLogs({
         ))}
 
         {lines.length > 0 && filters.shown.length === 0 ? (
-          <div className="flex flex-col items-center justify-center gap-2 py-16 text-center">
-            <FileSearch className="size-5 text-zinc-500" />
-            <p className="text-[11px] text-zinc-500">
-              No log lines match your filters.
-            </p>
-          </div>
+          <LogLinesNoMatch />
         ) : null}
 
         {status === "connecting" && !output ? (
