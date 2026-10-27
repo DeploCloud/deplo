@@ -7,10 +7,12 @@ import {
   agentUpdateAvailable,
   agentUsable,
   bareVersion,
+  DEPLO_VERSION,
   isNewer,
   isPrerelease,
   newestVersion,
   rankedCurrent,
+  REQUIRED_STOP,
   versionTag,
 } from "./version";
 
@@ -117,4 +119,16 @@ test("agentUsable: the floor is inclusive, newer is fine, unparseable is not", (
 test("the pin is usable by its own floor", () => {
   assert.ok(agentUsable(AGENT_VERSION));
   assert.ok(!isNewer(AGENT_MIN_VERSION, AGENT_VERSION));
+});
+
+// ADR-0041: a stop is a stable release before any stable release requires it. The tag workflow checks it is published.
+test("this release only requires an earlier stop, and a stable one when it is stable itself", () => {
+  const stop = REQUIRED_STOP;
+  if (!stop) return;
+  assert.ok(isNewer(DEPLO_VERSION, stop), `v${stop} comes after this release`);
+  if (!isPrerelease(DEPLO_VERSION))
+    assert.ok(
+      !isPrerelease(stop),
+      `stable v${DEPLO_VERSION} requires v${stop}`,
+    );
 });

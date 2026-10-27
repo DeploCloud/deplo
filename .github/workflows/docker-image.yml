@@ -26,6 +26,20 @@ jobs:
           pin=$(node -p 'require("./package.json").deplo.agent')
           curl -fsSL -o /dev/null "https://github.com/DeploCloud/deplo-agent/releases/download/v${pin}/checksums.txt" \
             || { echo "::error::deplo-agent v${pin} (package.json deplo.agent) has no checksums.txt - publish the agent first"; exit 1; }
+      # A required stop no instance can install or pass would strand every instance below it (ADR-0041).
+      - name: The required update stop is a published stop
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          stop=$(node -p 'require("./package.json").deplo.requiresStop || ""')
+          [ -n "$stop" ] || exit 0
+          fail() { echo "::error::deplo.requiresStop v${stop} $1"; exit 1; }
+          [[ "$GITHUB_REF_NAME" == *-* || "$stop" != *-* ]] || fail "is a canary, and a stable release requires a stable stop"
+          [ "$(gh release view "v${stop}" --repo "$GITHUB_REPOSITORY" --json isDraft --jq .isDraft)" = false ] \
+            || fail "is not a published release"
+          curl -fsSL "https://raw.githubusercontent.com/${GITHUB_REPOSITORY}/v${stop}/package.json" \
+            | node -e 'process.exit(JSON.parse(require("fs").readFileSync(0, "utf8")).deplo?.updateStop === true ? 0 : 1)' \
+            || fail 'does not declare "updateStop": true'
 
   # One runner per architecture, not QEMU on one: an emulated `next build` takes
   # the release from 5 minutes to ~40 and crashes on its own schedule. GitHub's
