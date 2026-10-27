@@ -1,3 +1,4 @@
+import { FileSearch } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { parseAnsi } from "@/lib/ansi";
 import {
@@ -96,12 +97,24 @@ export function LogLines({
   return (
     <div
       className={cn(
-        "space-y-0.5 overflow-y-auto bg-terminal p-3 font-mono text-[length:var(--log-fs)] leading-[var(--log-lh)]",
+        "relative space-y-0.5 overflow-y-auto bg-terminal p-3 font-mono text-[length:var(--log-fs)] leading-[var(--log-lh)]",
         className,
       )}
       {...rest}
     >
       {children}
+    </div>
+  );
+}
+
+// Covers the pane, so the message sits in its middle at any pane height.
+export function LogLinesNoMatch() {
+  return (
+    <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 text-center">
+      <FileSearch className="size-5 text-zinc-500" />
+      <p className="text-[11px] text-zinc-500">
+        No log lines match your filters.
+      </p>
     </div>
   );
 }

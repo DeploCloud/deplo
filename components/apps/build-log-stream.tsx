@@ -3,13 +3,14 @@
 import * as React from "react";
 import { useRouter } from "@/lib/nav";
 import { toast } from "sonner";
-import { Ban, Clock, FileSearch } from "lucide-react";
+import { Ban, Clock } from "lucide-react";
 import { gql, gqlAction } from "@/lib/graphql-client";
 import { Button } from "@/components/ui/button";
 import { CopyButton } from "@/components/shared/copy-button";
 import { DownloadButton } from "@/components/shared/download-button";
 import {
   LogLines,
+  LogLinesNoMatch,
   LogLinesSkeleton,
   LogRow,
 } from "@/components/shared/log-line-row";
@@ -292,12 +293,7 @@ export function BuildLogStream({
           {logs.length === 0 && live ? <LogLinesSkeleton /> : null}
 
           {logs.length > 0 && filters.shown.length === 0 ? (
-            <div className="flex flex-col items-center justify-center gap-2 py-16 text-center">
-              <FileSearch className="size-5 text-zinc-500" />
-              <p className="text-[11px] text-zinc-500">
-                No log lines match your filters.
-              </p>
-            </div>
+            <LogLinesNoMatch />
           ) : null}
         </LogLines>
       </div>
