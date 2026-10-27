@@ -4,6 +4,7 @@ import * as React from "react";
 import {
   CheckCircle2,
   CircleFadingArrowUp,
+  Hourglass,
   Loader2,
   RefreshCw,
   TriangleAlert,
@@ -12,6 +13,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { InfoTip } from "@/components/ui/info-tip";
+import Link from "@/components/ui/link";
 import { Skeleton, TextLine } from "@/components/ui/skeleton";
 import { CommandLine } from "@/components/shared/code-block";
 import { ConfirmAction } from "@/components/shared/confirm-action";
@@ -30,12 +32,22 @@ type UpdateInfo = {
   updateAvailable: boolean;
   next: string | null;
   nextIsStop: boolean;
-  stop: { version: string; reason: string; waiting: boolean } | null;
+  stop: UpdateStop | null;
   publishedAt: string | null;
   canary: boolean;
   error?: string | null;
   strandedServers?: { id: string; name: string; version: string | null }[];
   lastRefusedUpdate?: RefusedUpdate | null;
+};
+
+type StopServer = { id: string; name: string };
+
+type UpdateStop = {
+  version: string;
+  reason: string;
+  waiting: boolean;
+  waitingOn?: StopServer[];
+  leftBehind?: StopServer[];
 };
 
 type RefusedUpdate = {
@@ -56,6 +68,14 @@ const UPDATES_QUERY = /* GraphQL */ `
         version
         reason
         waiting
+        waitingOn {
+          id
+          name
+        }
+        leftBehind {
+          id
+          name
+        }
       }
       publishedAt
       canary
@@ -128,6 +148,14 @@ export function DeploUpdatesTab({
     setReleases(res.data?.deploChangelog?.releases ?? []);
     setListError(res.data?.deploChangelog?.error ?? null);
   }, []);
+
+  // On the stop, the newer release is offered by itself as soon as the last server connects.
+  const waiting = Boolean(info?.stop?.waiting);
+  React.useEffect(() => {
+    if (!active || !waiting || updating) return;
+    const timer = setInterval(() => void load(), WAITING_POLL_MS);
+    return () => clearInterval(timer);
+  }, [active, waiting, updating, load]);
 
   // The Advanced tab flips canary; the next visit here reads the versions it now offers.
   React.useEffect(() => {
@@ -265,9 +293,11 @@ export function DeploUpdatesTab({
   });
 
   const refused = info?.lastRefusedUpdate ?? null;
+  const stop = info?.stop ?? null;
   const extras =
     (manual && !updating) ||
     refused !== null ||
+    (stop !== null && stopListsServers(stop)) ||
     fleet.behind.length > 0 ||
     fleet.pausedBy !== null;
 
@@ -329,6 +359,7 @@ export function DeploUpdatesTab({
         {extras && (
           <div className="space-y-3 border-t border-border p-5">
             {refused && <RefusedUpdateNotice refused={refused} />}
+            {stop && <StopServers stop={stop} onLeft={load} />}
             {manual && !updating && <ManualUpdate />}
             <FleetBehind fleet={fleet} onSettled={refreshFleet} />
           </div>
@@ -356,6 +387,7 @@ function UpdatesLayout({ children }: { children: React.ReactNode }) {
 }
 
 const UPDATE_TIMEOUT_MS = 10 * 60_000;
+const WAITING_POLL_MS = 15_000;
 
 const STATUS_ROW =
   "flex flex-col gap-3 p-5 sm:flex-row sm:items-center sm:justify-between";
@@ -505,6 +537,93 @@ function StrandedServers({
         </li>
       ))}
     </ul>
+  );
+}
+
+const stopListsServers = (stop: UpdateStop) =>
+  stop.waiting &&
+  (stop.waitingOn?.length ?? 0) + (stop.leftBehind?.length ?? 0) > 0;
+
+// What the update stop still waits on: an instance admin can leave a server behind (ADR-0041).
+export function StopServers({
+  stop,
+  onLeft,
+}: {
+  stop: UpdateStop;
+  onLeft: () => void;
+}) {
+  if (!stopListsServers(stop)) return null;
+  return (
+    <ul className="space-y-2 text-sm">
+      {stop.waitingOn?.map((s) => (
+        <li key={s.id} className="flex items-start justify-between gap-3">
+          <span className="flex min-w-0 items-start gap-1.5">
+            <Hourglass className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
+            <span>
+              <strong>{s.name}</strong> hasn&apos;t connected to Deplo yet.
+              Check that it&apos;s turned on and connected to the internet.
+            </span>
+          </span>
+          <LeaveBehind server={s} onLeft={onLeft} />
+        </li>
+      ))}
+      {stop.leftBehind?.map((s) => (
+        <li key={s.id} className="flex items-start gap-1.5">
+          <TriangleAlert className="mt-0.5 size-4 shrink-0 text-warning" />
+          <span>
+            <strong>{s.name}</strong> was left behind: it needs its server agent
+            reinstalled after the update.{" "}
+            <Link
+              href={`/settings/servers/${s.id}`}
+              className="text-foreground underline underline-offset-4"
+            >
+              Manage
+            </Link>
+          </span>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+function LeaveBehind({
+  server,
+  onLeft,
+}: {
+  server: StopServer;
+  onLeft: () => void;
+}) {
+  return (
+    <ConfirmAction
+      title={`Leave ${server.name} behind?`}
+      description={
+        <>
+          Deplo stops waiting for <strong>{server.name}</strong> to connect. Its
+          apps and settings stay in Deplo.
+        </>
+      }
+      consequence={`After the update, ${server.name} won't work until its server agent is reinstalled.`}
+      confirmLabel="Leave behind"
+      trigger={
+        <Button variant="outline" size="sm" className="shrink-0">
+          Leave behind
+        </Button>
+      }
+      onConfirm={async () => {
+        const res = await gqlAction(
+          /* GraphQL */ `
+            mutation LeaveServerBehind($id: String!) {
+              leaveServerBehind(id: $id) {
+                next
+              }
+            }
+          `,
+          { id: server.id },
+        );
+        if (res.ok) onLeft();
+        return res;
+      }}
+    />
   );
 }
 
