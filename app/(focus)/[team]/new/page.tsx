@@ -2,7 +2,11 @@ import Link from "@/components/ui/link";
 import { cn } from "@/lib/utils";
 import { Lock, CloudOff, X } from "lucide-react";
 
-import { hasCapabilityAnywhere, isInstanceAdmin } from "@/lib/membership";
+import {
+  hasCapabilityAnywhere,
+  isInstanceAdmin,
+  requireActiveTeamId,
+} from "@/lib/membership";
 import { DeploLogo } from "@/components/logo";
 import { EmptyState } from "@/components/shared/empty-state";
 import { Button } from "@/components/ui/button";
@@ -14,6 +18,9 @@ import {
 } from "@/lib/data/servers/roster";
 import { listGithubInstallations } from "@/lib/data/github";
 import { listGitConnections } from "@/lib/data/git-connections";
+import { listNewRepos } from "@/lib/data/new-repos";
+import { WizardCard } from "@/components/apps/wizard/wizard-card";
+import { NewRepoList } from "@/components/apps/new-repo-list";
 import { gitProviderChoices } from "@/lib/git/provider-choices";
 import { listSharedVars } from "@/lib/data/shared-vars/team-view";
 import { resolveOverviewPlacement } from "@/lib/data/placement";
@@ -109,6 +116,24 @@ export default async function NewAppPage(props: PageProps<"/[team]/new">) {
   const sourceParam = one(params.source);
   const composeParam = one(params.compose);
   const presetSource = SOURCES.find((s) => s === sourceParam) ?? null;
+  const detected = one(params.detected) === "1";
+
+  if (detected && !repoParam) {
+    const [repos, teamId] = await Promise.all([
+      listNewRepos().catch(() => []),
+      requireActiveTeamId(),
+    ]);
+    return (
+      <FocusFrame exitHref={placementHref(placement)}>
+        <WizardCard
+          title="Import a new repository"
+          description="Pick one to set it up. Deplo builds it and puts it online."
+        >
+          <NewRepoList repos={repos} teamId={teamId} />
+        </WizardCard>
+      </FocusFrame>
+    );
+  }
 
   const template =
     templateId && variantId
@@ -263,6 +288,7 @@ export default async function NewAppPage(props: PageProps<"/[team]/new">) {
         presetSource={presetSource}
         placement={placement}
         exitHref={exitHref}
+        backHref={detected && repoParam ? "/new?detected=1" : undefined}
       />
     </FocusFrame>
   );

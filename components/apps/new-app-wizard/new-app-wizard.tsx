@@ -97,6 +97,7 @@ export function NewAppWizard({
   isInstanceAdmin,
   placement,
   exitHref,
+  backHref,
 }: {
   servers: WizardServer[];
   buildServers: WizardBuildServer[];
@@ -114,6 +115,8 @@ export function NewAppWizard({
   isInstanceAdmin: boolean;
   placement?: WizardPlacement | null;
   exitHref: string;
+  /** Where Back leads from the first step, when the wizard was opened from a list. */
+  backHref?: string;
 }) {
   const router = useRouter();
   const [pending, startTransition] = React.useTransition();
@@ -271,8 +274,8 @@ export function NewAppWizard({
       : !name.trim();
 
   function onBack() {
-    if (isTemplate) {
-      router.push(exitHref);
+    if (isTemplate || (backHref && step === "details")) {
+      router.push(backHref ?? exitHref);
       return;
     }
     go(step === "configure" ? "details" : "source", "back");

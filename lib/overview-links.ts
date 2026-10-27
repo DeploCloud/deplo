@@ -58,6 +58,7 @@ export function newAppHref(
     branch?: string;
     installation?: string;
     connection?: string;
+    detected?: string;
   },
 ): string {
   const params = placementParams(p);

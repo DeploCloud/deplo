@@ -12,13 +12,6 @@ export async function NewRepoCards({
 }) {
   const repos = await listNewRepos().catch(() => []);
   if (repos.length === 0) return null;
-  const cards = repos.map((repo) => (
-    <NewRepoCard
-      key={`${repo.provider}:${repo.fullName}`}
-      repo={repo}
-      teamId={teamId}
-      view={view}
-    />
-  ));
-  return className ? <div className={className}>{cards}</div> : cards;
+  const card = <NewRepoCard repos={repos} teamId={teamId} view={view} />;
+  return className ? <div className={className}>{card}</div> : card;
 }
