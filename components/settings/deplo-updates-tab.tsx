@@ -31,7 +31,12 @@ type UpdateInfo = {
   publishedAt: string | null;
   canary: boolean;
   error?: string | null;
-  strandedServers?: { id: string; name: string; version: string | null }[];
+  strandedServers?: {
+    id: string;
+    name: string;
+    version: string | null;
+    reinstall: boolean;
+  }[];
 };
 
 const UPDATES_QUERY = /* GraphQL */ `
@@ -47,6 +52,7 @@ const UPDATES_QUERY = /* GraphQL */ `
         id
         name
         version
+        reinstall
       }
     }
     deploChangelog {
@@ -424,7 +430,7 @@ export function UpdatesSkeleton() {
   );
 }
 
-// Offline servers the new version refuses: they cannot update until they come back.
+// Servers the new version cannot use: offline below its floor, or never linked once it stops dialing.
 function StrandedServers({
   servers,
 }: {
@@ -436,11 +442,18 @@ function StrandedServers({
       {servers.map((s) => (
         <li key={s.id} className="flex items-start gap-1.5">
           <TriangleAlert className="mt-0.5 size-4 shrink-0 text-[var(--warning)]" />
-          <span>
-            <strong>{s.name}</strong> is offline on{" "}
-            {s.version ? `v${s.version}` : "an unknown agent"} and will be
-            unusable until its agent updates.
-          </span>
+          {s.reinstall ? (
+            <span>
+              <strong>{s.name}</strong> has not connected back to Deplo yet and
+              would be unusable until its server agent is reinstalled.
+            </span>
+          ) : (
+            <span>
+              <strong>{s.name}</strong> is offline on{" "}
+              {s.version ? `v${s.version}` : "an unknown agent"} and will be
+              unusable until its server agent updates.
+            </span>
+          )}
         </li>
       ))}
     </ul>

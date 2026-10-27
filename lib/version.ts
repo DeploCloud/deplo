@@ -8,6 +8,9 @@ export const DEPLO_COMMIT: string = process.env.DEPLO_COMMIT ?? "";
 // The one agent this panel installs, and the oldest it still talks to (ADR-0037).
 export const AGENT_VERSION: string = agentPin.agent;
 export const AGENT_MIN_VERSION: string = agentPin.agentMin;
+// Set from the release that stops dialing servers: it reaches them only over their link (ADR-0040).
+export const LINK_ONLY: boolean =
+  (agentPin as { linkOnly?: unknown }).linkOnly === true;
 
 export const AGENT_TOO_OLD_MESSAGE =
   "This server is being updated. Deplo retries on its own; an instance admin can retry it now.";
