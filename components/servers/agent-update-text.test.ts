@@ -56,6 +56,14 @@ test("each state reads as one line, unusable first", () => {
   );
 });
 
+test("before the clock is read, a pending retry has no countdown yet", () => {
+  assert.equal(agentUpdateText(failed(), "usable", null), "Update failed");
+  assert.equal(
+    agentUpdateText(failed({ nextRetryAt: null }), "usable", null),
+    "Update failed, retrying now",
+  );
+});
+
 // It cannot reach this Deplo at all (ADR-0040), so nothing Deplo does will update it.
 test("an agent too old to link is told to be reinstalled, never promised an update", () => {
   assert.equal(

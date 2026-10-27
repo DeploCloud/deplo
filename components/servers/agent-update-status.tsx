@@ -44,6 +44,18 @@ export function AgentUpdateStatus({
 
   const watching = Boolean(current && !current.gaveUp);
   const running = Boolean(current?.running);
+  // Read on a timer after mount, never in render: the server's render and the browser's match.
+  const [now, setNow] = React.useState<number | null>(null);
+  React.useEffect(() => {
+    if (!watching) return;
+    const tick = () => setNow(Date.now());
+    const first = setTimeout(tick);
+    const every = setInterval(tick, 15_000);
+    return () => {
+      clearTimeout(first);
+      clearInterval(every);
+    };
+  }, [watching]);
   React.useEffect(() => {
     if (!watching) return;
     const timer = setInterval(
@@ -79,7 +91,7 @@ export function AgentUpdateStatus({
     });
   }
 
-  const text = agentUpdateText(current, reach);
+  const text = agentUpdateText(current, reach, now);
   if (!text) return null;
   const line = (
     <span
