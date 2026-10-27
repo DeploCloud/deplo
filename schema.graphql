@@ -2298,7 +2298,7 @@ type FleetAgent {
   update: ServerAgentUpdate
 
   """
-  False when the agent is older than `FleetAgents.minimum`: the server refuses everything until it updates.
+  False when the agent is older than `FleetAgents.minimum`: the server refuses everything until it updates, or, too old to link, until it is reinstalled (`reach`).
   """
   usable: Boolean
   version: String
@@ -2314,7 +2314,7 @@ type FleetAgents {
   expected: String
 
   """
-  The oldest agent this Deplo still talks to. Older is unusable until it updates.
+  The oldest agent this Deplo still talks to. An older one is unusable until it updates, or, too old to link, until its server agent is reinstalled.
   """
   minimum: String
 
@@ -2952,7 +2952,7 @@ One machine behind the source instance. The FIRST entry is always the host the s
 """
 type MigrationPlanServer {
   """
-  That address resolves into Cloudflare's proxy ranges, so it answers as the proxy: no agent can ever be dialled on it, and the machine's own IP has to be given instead.
+  That address resolves into Cloudflare's proxy ranges, so it names the proxy rather than the machine. A server's address is where its apps' domains point, so the machine's own IP has to be given instead.
   """
   cloudflare: Boolean
 
@@ -3420,7 +3420,7 @@ type Mutation {
   checkServerHostInfo(id: String!): ServerHostInfo
 
   """
-  Check whether ONE server's installation is complete enough to run deployments, right now. Dials the agent (Hello), bind-tests host ports 80 and 443, and reads host metrics, then reports what it found: the agent's handshake/protocol/version and which build methods and platform features it supports, whether Docker answers, whether a Traefik container is running and holds the web ports, disk headroom, and this server's team access and deploy concurrency. Never persisted - it does not touch `status`, so it can neither create nor cure a stale badge. Degrades honestly: an agent too old to bind-test ports reports those rows as skipped, never as a pass.
+  Check whether ONE server's installation is complete enough to run deployments, right now. Calls its agent over the agent link (Hello), bind-tests host ports 80 and 443, and reads host metrics, then reports what it found: the agent's handshake/protocol/version and which build methods and platform features it supports, whether Docker answers, whether a Traefik container is running and holds the web ports, disk headroom, and this server's team access and deploy concurrency. Never persisted - it does not touch `status`, so it can neither create nor cure a stale badge. Degrades honestly: an agent too old to bind-test ports reports those rows as skipped, never as a pass.
   """
   checkServerReadiness(id: String!): ServerReadinessReport
 
@@ -3801,7 +3801,7 @@ type Mutation {
   panelDns: PanelDns
 
   """
-  Read how the panel is served off the proxy that publishes it, live. A mutation despite writing nothing, for the same reason serverCertificateAccounts is one: it dials a server.
+  Read how the panel is served off the proxy that publishes it, live. A mutation despite writing nothing, for the same reason serverCertificateAccounts is one: it calls a server agent.
   """
   panelHttps: PanelHttps
 
@@ -5998,7 +5998,7 @@ type Server {
   agentUpdate: ServerAgentUpdate
 
   """
-  Whether this Deplo talks to the server's agent at all. False when the agent is older than the minimum this version of Deplo supports: everything on the server is refused until the agent updates, though its apps keep running. True while it is not provisioned yet.
+  Whether this Deplo talks to the server's agent at all. False when the agent is older than the minimum this version of Deplo supports: everything on the server is refused until the agent updates, or, too old to link, until it is reinstalled, though its apps keep running. True while it is not provisioned yet.
   """
   agentUsable: Boolean
 
@@ -6577,7 +6577,7 @@ type StrandedServer {
   name: String
 
   """
-  True when the offered version could not reach it at all: it has not linked to this Deplo since it started, and that version no longer contacts a server any other way. Only reinstalling its server agent would bring it back. False for an offline server that comes back once its server agent updates.
+  True when the offered version could never reach it: its agent is too old to link, or it has not linked to this Deplo since it started and that version contacts servers no other way. Only reinstalling its server agent brings it back. False for an offline server that comes back once its server agent updates.
   """
   reinstall: Boolean
   version: String
@@ -6833,7 +6833,7 @@ type UpdateInfo {
   publishedAt: String
 
   """
-  Servers the `latest` Deplo could not use. Offline servers whose agent is older than the minimum it supports: they stay unusable until they come back and their server agent updates. And, when `latest` reaches servers only over their link and this Deplo still contacts them directly, every server that has not linked to this Deplo since it started (`reinstall`). Empty when there is no update or the release does not say.
+  Servers the `latest` Deplo could not use. Offline servers whose agent is older than the minimum it supports: they stay unusable until they come back and their server agent updates, or, too old to link, is reinstalled. And, when `latest` reaches servers only over their link and this Deplo still contacts them directly, every server that has not linked to this Deplo since it started (`reinstall`). Empty when there is no update or the release does not say.
   """
   strandedServers: [StrandedServer!]
   updateAvailable: Boolean

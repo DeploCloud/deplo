@@ -128,7 +128,7 @@ builder.mutationFields((t) => ({
     type: ServerReadinessReportRef,
     authScopes: { instanceAdmin: true },
     description:
-      "Check whether ONE server's installation is complete enough to run deployments, right now. Dials the agent (Hello), bind-tests host ports 80 and 443, and reads host metrics, then reports what it found: the agent's handshake/protocol/version and which build methods and platform features it supports, whether Docker answers, whether a Traefik container is running and holds the web ports, disk headroom, and this server's team access and deploy concurrency. Never persisted - it does not touch `status`, so it can neither create nor cure a stale badge. Degrades honestly: an agent too old to bind-test ports reports those rows as skipped, never as a pass.",
+      "Check whether ONE server's installation is complete enough to run deployments, right now. Calls its agent over the agent link (Hello), bind-tests host ports 80 and 443, and reads host metrics, then reports what it found: the agent's handshake/protocol/version and which build methods and platform features it supports, whether Docker answers, whether a Traefik container is running and holds the web ports, disk headroom, and this server's team access and deploy concurrency. Never persisted - it does not touch `status`, so it can neither create nor cure a stale badge. Degrades honestly: an agent too old to bind-test ports reports those rows as skipped, never as a pass.",
     args: { id: t.arg.string({ required: true }) },
     resolve: (_r, { id }) => checkServerReadiness(id),
   }),

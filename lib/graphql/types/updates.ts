@@ -30,7 +30,7 @@ const StrandedServerRef = builder
       version: t.exposeString("version", { nullable: true }),
       reinstall: t.exposeBoolean("reinstall", {
         description:
-          "True when the offered version could not reach it at all: it has not linked to this Deplo since it started, and that version no longer contacts a server any other way. Only reinstalling its server agent would bring it back. False for an offline server that comes back once its server agent updates.",
+          "True when the offered version could never reach it: its agent is too old to link, or it has not linked to this Deplo since it started and that version contacts servers no other way. Only reinstalling its server agent brings it back. False for an offline server that comes back once its server agent updates.",
       }),
     }),
   });
@@ -55,7 +55,7 @@ const UpdateInfoRef = builder.objectRef<UpdateInfo>("UpdateInfo").implement({
       type: [StrandedServerRef],
       authScopes: { instanceAdmin: true },
       description:
-        "Servers the `latest` Deplo could not use. Offline servers whose agent is older than the minimum it supports: they stay unusable until they come back and their server agent updates. And, when `latest` reaches servers only over their link and this Deplo still contacts them directly, every server that has not linked to this Deplo since it started (`reinstall`). Empty when there is no update or the release does not say.",
+        "Servers the `latest` Deplo could not use. Offline servers whose agent is older than the minimum it supports: they stay unusable until they come back and their server agent updates, or, too old to link, is reinstalled. And, when `latest` reaches servers only over their link and this Deplo still contacts them directly, every server that has not linked to this Deplo since it started (`reinstall`). Empty when there is no update or the release does not say.",
       resolve: (info) =>
         info.updateAvailable && info.latest
           ? strandedByPanelUpdate(info.latest.replace(/^v/i, ""))
@@ -121,7 +121,7 @@ const FleetAgentRef = builder
       version: t.exposeString("version", { nullable: true }),
       usable: t.exposeBoolean("usable", {
         description:
-          "False when the agent is older than `FleetAgents.minimum`: the server refuses everything until it updates.",
+          "False when the agent is older than `FleetAgents.minimum`: the server refuses everything until it updates, or, too old to link, until it is reinstalled (`reach`).",
       }),
       reach: t.field({ type: AgentReachEnum, resolve: (a) => a.reach }),
       update: t.field({
@@ -143,7 +143,7 @@ const FleetAgentsRef = builder
       }),
       minimum: t.exposeString("minimum", {
         description:
-          "The oldest agent this Deplo still talks to. Older is unusable until it updates.",
+          "The oldest agent this Deplo still talks to. An older one is unusable until it updates, or, too old to link, until its server agent is reinstalled.",
       }),
       total: t.exposeInt("total"),
       behind: t.field({ type: [FleetAgentRef], resolve: (f) => f.behind }),

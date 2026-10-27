@@ -258,7 +258,7 @@ builder.mutationFields((t) => ({
     type: PanelHttpsRef,
     authScopes: { instanceAdmin: true },
     description:
-      "Read how the panel is served off the proxy that publishes it, live. A mutation despite writing nothing, for the same reason serverCertificateAccounts is one: it dials a server.",
+      "Read how the panel is served off the proxy that publishes it, live. A mutation despite writing nothing, for the same reason serverCertificateAccounts is one: it calls a server agent.",
     resolve: () => getPanelHttps(),
   }),
   setPanelHttps: t.field({

@@ -103,7 +103,7 @@ export const PlanServerRef = builder
       ipAddress: t.exposeString("ipAddress", { nullable: true }),
       cloudflare: t.exposeBoolean("cloudflare", {
         description:
-          "That address resolves into Cloudflare's proxy ranges, so it answers as the proxy: no agent can ever be dialled on it, and the machine's own IP has to be given instead.",
+          "That address resolves into Cloudflare's proxy ranges, so it names the proxy rather than the machine. A server's address is where its apps' domains point, so the machine's own IP has to be given instead.",
       }),
       deploServerId: t.exposeString("deploServerId", {
         nullable: true,

@@ -139,9 +139,9 @@ export const ALERT_META: Record<AlertKey, AlertMeta> = {
     defaultOn: true,
   },
   agent_incompatible: {
-    label: "Server unusable until it updates",
+    label: "Server unusable",
     description:
-      "A server is too far behind this version of Deplo, and updating it failed.",
+      "A server agent is too old for this version of Deplo, and Deplo could not update it.",
     keywords: "agent version old update retry blocked",
     defaultOn: true,
   },
