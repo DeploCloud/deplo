@@ -1,4 +1,12 @@
-import { test, before, after, beforeEach, afterEach, mock } from "node:test";
+import {
+  test,
+  before,
+  after,
+  beforeEach,
+  afterEach,
+  mock,
+  type TestContext,
+} from "node:test";
 import assert from "node:assert/strict";
 
 import type { PGlite } from "@electric-sql/pglite";
@@ -15,12 +23,17 @@ import { seedIdentity, TEAM_A, USER_1 } from "./identity-test-helpers";
 import { TRUNCATE_INFRA, seedServerRow } from "./infra-test-helpers";
 import { getServerById } from "./servers/roster";
 import {
+  startLinkAddressSync,
+  stopLinkAddressSync,
+} from "./servers/link-addresses";
+import {
   checkServerHealth,
   startServerLinkStatus,
   stopServerLinkStatus,
 } from "./server-health";
 import { HEALTH_MESSAGES } from "../infra/server-health";
 import { dropAgentChannel } from "../infra/agent-client/channel-pool";
+import { AGENT_LINK_CAPABILITY } from "../infra/agent-client/hello-capabilities";
 import {
   startFakeAgent,
   type FakeAgent,
@@ -30,7 +43,7 @@ import {
   startAgentLinkListener,
   stopAgentLinkListener,
 } from "../infra/agent-link/listener";
-import { LINK_SETTLE_MS } from "../infra/agent-link/protocol";
+import { LINK_SETTLE_MS, LINK_WAIT_MS } from "../infra/agent-link/protocol";
 import { onAgentLink } from "../infra/agent-link/registry";
 import { AGENT_VERSION } from "../version";
 
@@ -331,4 +344,154 @@ test("right after the panel starts, a server that stopped listening and has not 
     "the link's Hello is recorded",
   );
   assert.equal((await shown()).status, "online");
+});
+
+test("after a restart, a check never dials a server that linked once: nothing changes while links settle, then it is offline", async (t) => {
+  await linkIn();
+  await stopAgentLinkListener();
+  door = (await startAgentLinkListener({ port: 0, host: "127.0.0.1" })).port;
+  await ageObservation();
+  const before = await shown();
+
+  const settling = await check();
+  assert.ok(settling.took < 1_500, `the check took ${settling.took} ms`);
+  assert.deepEqual(await shown(), before);
+
+  mock.timers.enable({ apis: ["Date"], now: Date.now() + LINK_SETTLE_MS });
+  t.after(() => mock.timers.reset());
+  const settled = await check();
+  assert.ok(settled.took < 1_500, `the check took ${settled.took} ms`);
+  assert.equal(settled.status, "offline");
+  assert.equal(settled.statusMessage, HEALTH_MESSAGES.offline);
+  assert.equal(agent.connections().opened, 0, "nothing dialed it");
+});
+
+const CUT_OFF = "srv_cut_off";
+const PANEL = "https://panel.example.com:8443";
+const CANT_REACH =
+  "This server can't reach Deplo at panel.example.com. Check that it's connected to the internet.";
+
+function withEnv(t: TestContext, vars: Record<string, string>): void {
+  for (const [k, v] of Object.entries(vars)) {
+    const was = process.env[k];
+    process.env[k] = v;
+    t.after(() => {
+      if (was === undefined) delete process.env[k];
+      else process.env[k] = was;
+    });
+  }
+}
+
+/** An up-to-date agent on a machine that cannot reach the panel: it answers its dial, and never links. */
+async function cutOff(
+  t: TestContext,
+  env: Record<string, string> = {},
+): Promise<FakeAgent> {
+  withEnv(t, {
+    DEPLO_PUBLIC_URL: PANEL,
+    DEPLO_SERVER_IP: "203.0.113.10",
+    ...env,
+  });
+  const a = await startFakeAgent({
+    capabilities: [AGENT_LINK_CAPABILITY],
+    linkAddresses: { primary: "", fallback: "" },
+  });
+  t.after(async () => {
+    dropAgentChannel(CUT_OFF);
+    await a.stop();
+  });
+  await seedAgentServer(CUT_OFF, a);
+  return a;
+}
+
+// Any Hello the panel sees hands a linking agent the panel's address, as at boot.
+async function handOver(a: FakeAgent): Promise<void> {
+  startLinkAddressSync();
+  await check(CUT_OFF);
+  await until(async () => a.sentPairs().length > 0, "handed the address");
+  await stopLinkAddressSync();
+}
+
+test("a server handed the panel's address that never links shows warning once the grace is over, naming the panel without its port", async (t) => {
+  const a = await cutOff(t);
+  mock.timers.enable({ apis: ["Date"], now: Date.now() + LINK_SETTLE_MS });
+  t.after(() => mock.timers.reset());
+  await handOver(a);
+
+  await ageObservation(CUT_OFF);
+  const before = await shown(CUT_OFF);
+  await check(CUT_OFF);
+  assert.deepEqual(await shown(CUT_OFF), before, "judged inside the grace");
+
+  mock.timers.tick(LINK_WAIT_MS);
+  await ageObservation(CUT_OFF);
+  const s = await check(CUT_OFF);
+  assert.equal(s.status, "warning");
+  assert.equal(s.statusMessage, CANT_REACH);
+});
+
+test("a server that could not reach Deplo shows online as soon as it links", async (t) => {
+  const a = await cutOff(t);
+  mock.timers.enable({ apis: ["Date"], now: Date.now() + LINK_SETTLE_MS });
+  t.after(() => mock.timers.reset());
+  await handOver(a);
+  mock.timers.tick(LINK_WAIT_MS);
+  await ageObservation(CUT_OFF);
+  assert.equal((await check(CUT_OFF)).status, "warning");
+
+  startServerLinkStatus();
+  await linkIn(a, CUT_OFF);
+  await until(async () => (await shown(CUT_OFF)).status === "online", "online");
+  assert.equal((await shown(CUT_OFF)).message, null);
+});
+
+test("right after the panel restarts, a server holding its address is not judged until links settle", async (t) => {
+  const a = await cutOff(t);
+  await handOver(a);
+  mock.timers.enable({ apis: ["Date"], now: Date.now() + LINK_WAIT_MS });
+  t.after(() => mock.timers.reset());
+  await stopAgentLinkListener();
+  door = (await startAgentLinkListener({ port: 0, host: "127.0.0.1" })).port;
+
+  await ageObservation(CUT_OFF);
+  const before = await shown(CUT_OFF);
+  await check(CUT_OFF);
+  assert.deepEqual(await shown(CUT_OFF), before, "judged while links settle");
+
+  mock.timers.tick(LINK_SETTLE_MS);
+  await ageObservation(CUT_OFF);
+  const s = await check(CUT_OFF);
+  assert.equal(s.status, "warning");
+  assert.equal(s.statusMessage, CANT_REACH);
+});
+
+test("the host running Deplo, which links over loopback, names the panel's public address too", async (t) => {
+  const a = await cutOff(t, {
+    DEPLO_SERVER_IP: "127.0.0.1",
+    DEPLO_LINK_PORT: "3901",
+  });
+  mock.timers.enable({ apis: ["Date"], now: Date.now() + LINK_SETTLE_MS });
+  t.after(() => mock.timers.reset());
+  await handOver(a);
+  assert.equal(a.sentPairs()[0].primary, "http://127.0.0.1:3901");
+
+  mock.timers.tick(LINK_WAIT_MS);
+  await ageObservation(CUT_OFF);
+  const s = await check(CUT_OFF);
+  assert.equal(s.status, "warning");
+  assert.equal(s.statusMessage, CANT_REACH);
+});
+
+test("a server holding the panel's address that stops answering its dial is offline, not warning", async (t) => {
+  const a = await cutOff(t);
+  mock.timers.enable({ apis: ["Date"], now: Date.now() + LINK_SETTLE_MS });
+  t.after(() => mock.timers.reset());
+  await handOver(a);
+  mock.timers.tick(LINK_WAIT_MS);
+
+  a.refuse(true);
+  await ageObservation(CUT_OFF);
+  const s = await check(CUT_OFF);
+  assert.equal(s.status, "offline");
+  assert.equal(s.statusMessage, HEALTH_MESSAGES.offline);
 });

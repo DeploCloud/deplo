@@ -21,7 +21,7 @@ import {
 } from "../git/provider-access";
 import { sweepDomainDns } from "../data/domains/dns-check";
 import { describeStackCertificates } from "../data/server-certificates";
-import { getUpdateInfo } from "../data/updates";
+import { getUpdateInfo, type UpdateInfo } from "../data/updates";
 import { sweepFinishedMigrationMarks } from "../data/migration-import/run-report";
 import { autoLinkAllEnv } from "../data/database-autolink";
 import { sendUsageReport } from "../usage-report/send";
@@ -85,18 +85,27 @@ async function settle(what: string, fn: () => Promise<void>): Promise<void> {
   }
 }
 
+/** Names what Update installs, which is an update stop when the newest release needs one first. */
+export function deploUpdateAlert(info: UpdateInfo) {
+  if (!info.next) return null;
+  return {
+    key: "deplo_update_available" as const,
+    dedupe: { id: "deplo-update", state: info.next },
+    title: `Deplo ${info.next} is available`,
+    body:
+      info.nextIsStop && info.stop
+        ? info.stop.reason
+        : `This instance is on ${info.current}.`,
+    path: "/settings/deplo?tab=updates",
+  };
+}
+
 async function checkDeploUpdate(): Promise<void> {
-  const info = await getUpdateInfo();
-  if (!info.updateAvailable || !info.latest) return;
+  const alert = deploUpdateAlert(await getUpdateInfo());
+  if (!alert) return;
   const teams = await allTeamIds();
   if (teams.length === 0) return;
-  await dispatchToTeams(teams, {
-    key: "deplo_update_available",
-    dedupe: { id: "deplo-update", state: info.latest },
-    title: `Deplo ${info.latest} is available`,
-    body: `This instance is on ${info.current}.`,
-    path: "/settings/deplo?tab=updates",
-  });
+  await dispatchToTeams(teams, alert);
 }
 
 async function checkCustomCertificates(): Promise<void> {

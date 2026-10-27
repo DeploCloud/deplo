@@ -1,7 +1,14 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
 
-import { heroState } from "./deplo-updates-tab";
+import { renderServerView } from "@/components/servers/server-test-helpers";
+import {
+  heroState,
+  RefusedUpdateNotice,
+  StopServers,
+} from "./deplo-updates-tab";
 import type { FleetSummary } from "./fleet-agents";
 
 const fleet = (over: Partial<FleetSummary> = {}): FleetSummary => ({
@@ -17,6 +24,9 @@ const info = (over = {}) => ({
   current: "0.4.0",
   latest: null,
   updateAvailable: false,
+  next: null,
+  nextIsStop: false,
+  stop: null,
   publishedAt: null,
   canary: false,
   ...over,
@@ -59,10 +69,88 @@ test("one answer for the panel and the fleet: all current reads up to date", () 
 test("a new version outranks servers still catching up", () => {
   const hero = heroState({
     ...base,
-    info: info({ latest: "v0.5.0", updateAvailable: true }),
+    info: info({ latest: "v0.5.0", next: "v0.5.0", updateAvailable: true }),
     fleet: fleet({ behind: [behind(false)] }),
   });
   assert.equal(hero.title, "Deplo v0.5.0 is available");
+});
+
+const STOP_REASON =
+  "Deplo v0.7.0 has to come after v0.6.0, so Update installs v0.6.0 first.";
+
+test("an update stop is offered as the update, and the line says why", () => {
+  const hero = heroState({
+    ...base,
+    info: info({
+      latest: "v0.7.0",
+      next: "v0.6.0",
+      nextIsStop: true,
+      updateAvailable: true,
+      stop: { version: "v0.6.0", reason: STOP_REASON, waiting: false },
+    }),
+    fleet: fleet(),
+  });
+  assert.deepEqual(hero, {
+    tone: "new",
+    title: "Deplo v0.6.0 is available",
+    line: STOP_REASON,
+  });
+});
+
+test("on the stop, the newer release is on its way, ahead of servers catching up", () => {
+  const reason =
+    "Deplo v0.7.0 becomes available once v0.6.0 has finished getting ready.";
+  const hero = heroState({
+    ...base,
+    info: info({
+      latest: "v0.7.0",
+      stop: { version: "v0.6.0", reason, waiting: true },
+    }),
+    fleet: fleet({ behind: [behind(false)] }),
+  });
+  assert.deepEqual(hero, {
+    tone: "busy",
+    title: "Getting ready for the next update",
+    line: reason,
+  });
+});
+
+test("on the stop before any newer release, the next update is what it gets ready for", () => {
+  const reason =
+    "The next update waits until every server has connected to Deplo.";
+  const hero = heroState({
+    ...base,
+    version: "0.6.0",
+    info: info({
+      current: "0.6.0",
+      latest: "v0.6.0",
+      stop: { version: "v0.6.0", reason, waiting: true },
+    }),
+    fleet: fleet(),
+  });
+  assert.deepEqual(hero, {
+    tone: "busy",
+    title: "Getting ready for the next update",
+    line: reason,
+  });
+});
+
+test("an instance past a stop it never passed is told why nothing is offered", () => {
+  const reason =
+    "Deplo v0.7.0 has to come after v0.6.0, which this instance skipped.";
+  const hero = heroState({
+    ...base,
+    info: info({
+      latest: "v0.7.0",
+      stop: { version: "v0.6.0", reason, waiting: false },
+    }),
+    fleet: fleet(),
+  });
+  assert.deepEqual(hero, {
+    tone: "warn",
+    title: "Deplo v0.7.0 can't be installed yet",
+    line: reason,
+  });
 });
 
 test("a server behind is progress; a failed one needs attention", () => {
@@ -91,4 +179,52 @@ test("a stalled self-update names the log, whatever else is true", () => {
   });
   assert.equal(hero.tone, "warn");
   assert.match(hero.line, /deplo-update\.log/);
+});
+
+test("an update the installer rolled back is named with its reason", () => {
+  const reason =
+    "Deplo v0.7.0 has to come after v0.6.0. Update to v0.6.0 first and let it finish getting ready.";
+  const text = (version: string | null) =>
+    renderToStaticMarkup(
+      createElement(RefusedUpdateNotice, {
+        refused: { version, reason, at: "2026-10-27T14:00:05Z" },
+      }),
+    ).replace(/<[^>]+>/g, " ");
+  assert.match(text("v0.7.0"), /The update to Deplo v0\.7\.0 was rolled back/);
+  assert.ok(text("v0.7.0").includes(reason));
+  assert.match(text(null), /An update was rolled back/);
+});
+
+const waitingStop = (over = {}) => ({
+  version: "v0.6.0",
+  reason:
+    "Deplo v0.7.0 becomes available once v0.6.0 has finished getting ready.",
+  waiting: true,
+  waitingOn: [
+    { id: "s1", name: "edge-1" },
+    { id: "s2", name: "edge-2" },
+  ],
+  leftBehind: [{ id: "s3", name: "old-box" }],
+  ...over,
+});
+const stopText = (stop: ReturnType<typeof waitingStop>) =>
+  renderServerView(createElement(StopServers, { stop, onLeft() {} }))
+    .replace(/<[^>]+>/g, "")
+    .replace(/&#x27;/g, "'");
+
+test("on the stop, each server still waiting to connect is named, with a way to leave it behind", () => {
+  const text = stopText(waitingStop());
+  assert.match(text, /edge-1 hasn't connected to Deplo yet/);
+  assert.match(text, /edge-2 hasn't connected to Deplo yet/);
+  assert.equal(text.match(/Leave behind/g)?.length, 2);
+  assert.match(
+    text,
+    /old-box was left behind: it needs its server agent reinstalled after the update/,
+  );
+  assert.doesNotMatch(text, /\bagent\b(?<!server agent)/);
+});
+
+test("nothing is listed once the stop no longer waits", () => {
+  assert.equal(stopText(waitingStop({ waiting: false })), "");
+  assert.equal(stopText(waitingStop({ waitingOn: [], leftBehind: [] })), "");
 });

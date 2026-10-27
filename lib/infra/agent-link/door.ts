@@ -6,7 +6,10 @@ import type { Duplex } from "node:stream";
 
 import type { WebSocket, WebSocketServer } from "ws";
 
-import { serverPinnedTo } from "../../data/servers/agent-handshake";
+import {
+  recordFirstLink,
+  serverPinnedTo,
+} from "../../data/servers/agent-handshake";
 import { clientAddressKey } from "../../http/client-address";
 import { rateLimit } from "../../security";
 import { HELLO_TIMEOUT_MS } from "../agent-client/deadlines";
@@ -25,6 +28,7 @@ import {
 } from "./protocol";
 import {
   admitLink,
+  linkAdmissible,
   linkEnded,
   linkGeneration,
   nextLinkId,
@@ -116,6 +120,11 @@ async function holdLink(
     const generation = linkGeneration(serverId);
     const still = await serverPinnedTo(fingerprint);
     if (ws.readyState !== ws.OPEN) return;
+    if (still?.id !== serverId || !linkAdmissible(serverId, generation))
+      return void ws.close(LINK_CLOSE.revoked, "trust revoked");
+    // As the door admits it, before anyone hears it come up (ADR-0041).
+    await recordFirstLink(serverId);
+    if (ws.readyState !== ws.OPEN) return;
     const verified: AgentLink = {
       id,
       serverId,
@@ -129,7 +138,7 @@ async function holdLink(
         bridge.close();
       },
     };
-    if (still?.id !== serverId || !admitLink(verified, generation))
+    if (!admitLink(verified, generation))
       return void ws.close(LINK_CLOSE.revoked, "trust revoked");
     link = verified;
   } catch (e) {

@@ -53,8 +53,8 @@ export function InstallCommand({ server }: { server: ServerSummary }) {
           </CardTitle>
           <p className="mt-1 text-sm text-muted-foreground">
             {server.provisioning
-              ? "This server is still waiting for its agent. Run the command on the box to finish setting it up."
-              : "Mint a fresh one-time setup command, for reinstalling the agent on this box."}
+              ? "This server is still waiting for its server agent. Run the command on the server to finish setting it up."
+              : "Get a new one-time command that reinstalls the server agent on this server."}
           </p>
         </CardHeader>
         <CardContent>
@@ -88,8 +88,8 @@ export function InstallCommand({ server }: { server: ServerSummary }) {
           <DialogHeader>
             <DialogTitle>Install command for {server.name}</DialogTitle>
             <DialogDescription>
-              Run this once on the server. It installs Docker and the Deplo
-              agent, which <strong>calls home to finish provisioning</strong>.
+              Run this once on the server. It installs the server agent, which{" "}
+              <strong>connects to Deplo on its own</strong>.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-2">

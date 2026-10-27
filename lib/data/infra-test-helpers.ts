@@ -50,6 +50,8 @@ export function makeServer(opts: Partial<Server> & { id: string }): Server {
     lastSeenAt: opts.lastSeenAt,
     statusCheckedAt: opts.statusCheckedAt,
     statusMessage: opts.statusMessage,
+    firstLinkedAt: opts.firstLinkedAt,
+    leftBehindAt: opts.leftBehindAt,
   };
 }
 

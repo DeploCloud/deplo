@@ -4,6 +4,7 @@ import * as React from "react";
 import {
   CheckCircle2,
   CircleFadingArrowUp,
+  Hourglass,
   Loader2,
   RefreshCw,
   TriangleAlert,
@@ -12,6 +13,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { InfoTip } from "@/components/ui/info-tip";
+import Link from "@/components/ui/link";
 import { Skeleton, TextLine } from "@/components/ui/skeleton";
 import { CommandLine } from "@/components/shared/code-block";
 import { ConfirmAction } from "@/components/shared/confirm-action";
@@ -28,10 +30,30 @@ type UpdateInfo = {
   current: string;
   latest: string | null;
   updateAvailable: boolean;
+  next: string | null;
+  nextIsStop: boolean;
+  stop: UpdateStop | null;
   publishedAt: string | null;
   canary: boolean;
   error?: string | null;
   strandedServers?: { id: string; name: string; version: string | null }[];
+  lastRefusedUpdate?: RefusedUpdate | null;
+};
+
+type StopServer = { id: string; name: string };
+
+type UpdateStop = {
+  version: string;
+  reason: string;
+  waiting: boolean;
+  waitingOn?: StopServer[];
+  leftBehind?: StopServer[];
+};
+
+type RefusedUpdate = {
+  version: string | null;
+  reason: string;
+  at: string | null;
 };
 
 const UPDATES_QUERY = /* GraphQL */ `
@@ -40,6 +62,21 @@ const UPDATES_QUERY = /* GraphQL */ `
       current
       latest
       updateAvailable
+      next
+      nextIsStop
+      stop {
+        version
+        reason
+        waiting
+        waitingOn {
+          id
+          name
+        }
+        leftBehind {
+          id
+          name
+        }
+      }
       publishedAt
       canary
       error
@@ -47,6 +84,11 @@ const UPDATES_QUERY = /* GraphQL */ `
         id
         name
         version
+      }
+      lastRefusedUpdate {
+        version
+        reason
+        at
       }
     }
     deploChangelog {
@@ -93,6 +135,7 @@ export function DeploUpdatesTab({
   const [stalled, setStalled] = React.useState(false);
   const [manual, setManual] = React.useState<string | null>(null);
   const loaded = React.useRef(false);
+  const refusedAt = React.useRef<string | null>(null);
 
   const load = React.useCallback(async () => {
     const res = await gqlAction<UpdatesData, UpdatesData>(UPDATES_QUERY);
@@ -105,6 +148,14 @@ export function DeploUpdatesTab({
     setReleases(res.data?.deploChangelog?.releases ?? []);
     setListError(res.data?.deploChangelog?.error ?? null);
   }, []);
+
+  // On the stop, the newer release is offered by itself as soon as the last server connects.
+  const waiting = Boolean(info?.stop?.waiting);
+  React.useEffect(() => {
+    if (!active || !waiting || updating) return;
+    const timer = setInterval(() => void load(), WAITING_POLL_MS);
+    return () => clearInterval(timer);
+  }, [active, waiting, updating, load]);
 
   // The Advanced tab flips canary; the next visit here reads the versions it now offers.
   React.useEffect(() => {
@@ -144,21 +195,38 @@ export function DeploUpdatesTab({
     let stop = false;
     const poll = async () => {
       const res = await gqlAction<
-        { instanceSettings: { version: string } },
-        string
+        {
+          instanceSettings: { version: string };
+          updateInfo: { lastRefusedUpdate: { at: string | null } | null };
+        },
+        { version: string; refusedAt: string | null }
       >(
         /* GraphQL */ `
           query RunningVersion {
             instanceSettings {
               version
             }
+            updateInfo {
+              lastRefusedUpdate {
+                at
+              }
+            }
           }
         `,
         undefined,
-        (d) => d.instanceSettings.version,
+        (d) => ({
+          version: d.instanceSettings.version,
+          refusedAt: d.updateInfo?.lastRefusedUpdate?.at ?? null,
+        }),
       );
       if (stop) return;
-      if (res.ok && res.data && res.data !== version) {
+      // Back on a new version, or back on the old one with a new rollback to explain.
+      if (
+        res.ok &&
+        res.data &&
+        (res.data.version !== version ||
+          res.data.refusedAt !== refusedAt.current)
+      ) {
         window.location.reload();
         return;
       }
@@ -178,6 +246,7 @@ export function DeploUpdatesTab({
   async function startUpdate() {
     setManual(null);
     setStalled(false);
+    refusedAt.current = info?.lastRefusedUpdate?.at ?? null;
     const res = await gqlAction<
       { updateDeplo: { version: string; logPath: string } },
       { version: string; logPath: string }
@@ -223,8 +292,14 @@ export function DeploUpdatesTab({
     error: listError,
   });
 
+  const refused = info?.lastRefusedUpdate ?? null;
+  const stop = info?.stop ?? null;
   const extras =
-    (manual && !updating) || fleet.behind.length > 0 || fleet.pausedBy !== null;
+    (manual && !updating) ||
+    refused !== null ||
+    (stop !== null && stopListsServers(stop)) ||
+    fleet.behind.length > 0 ||
+    fleet.pausedBy !== null;
 
   return (
     <UpdatesLayout>
@@ -248,13 +323,13 @@ export function DeploUpdatesTab({
           </div>
           {(!updating || stalled) && (
             <div className="flex shrink-0 flex-wrap items-center gap-2">
-              {info?.updateAvailable && info.latest && (
+              {info?.updateAvailable && info.next && (
                 <ConfirmAction
                   variant="default"
                   title={
                     fleet.total > 0
-                      ? `Update Deplo to ${info.latest}, then its ${fleet.total} server${fleet.total === 1 ? "" : "s"}?`
-                      : `Update Deplo to ${info.latest}?`
+                      ? `Update Deplo to ${info.next}, then its ${fleet.total} server${fleet.total === 1 ? "" : "s"}?`
+                      : `Update Deplo to ${info.next}?`
                   }
                   description={
                     <>
@@ -283,6 +358,8 @@ export function DeploUpdatesTab({
         </CardContent>
         {extras && (
           <div className="space-y-3 border-t border-border p-5">
+            {refused && <RefusedUpdateNotice refused={refused} />}
+            {stop && <StopServers stop={stop} onLeft={load} />}
             {manual && !updating && <ManualUpdate />}
             <FleetBehind fleet={fleet} onSettled={refreshFleet} />
           </div>
@@ -310,6 +387,7 @@ function UpdatesLayout({ children }: { children: React.ReactNode }) {
 }
 
 const UPDATE_TIMEOUT_MS = 10 * 60_000;
+const WAITING_POLL_MS = 15_000;
 
 const STATUS_ROW =
   "flex flex-col gap-3 p-5 sm:flex-row sm:items-center sm:justify-between";
@@ -369,12 +447,27 @@ export function heroState({
       title: "Couldn't check for updates",
       line: info?.error ?? error ?? "The release history did not load.",
     };
-  if (info.updateAvailable && info.latest)
+  if (info.updateAvailable && info.next)
     return {
       tone: "new",
-      title: `Deplo ${info.latest} is available`,
-      line: `You're on v${version}.`,
+      title: `Deplo ${info.next} is available`,
+      line:
+        info.nextIsStop && info.stop
+          ? info.stop.reason
+          : `You're on v${version}.`,
     };
+  if (info.stop)
+    return info.stop.waiting
+      ? {
+          tone: "busy",
+          title: "Getting ready for the next update",
+          line: info.stop.reason,
+        }
+      : {
+          tone: "warn",
+          title: `Deplo ${info.latest} can't be installed yet`,
+          line: info.stop.reason,
+        };
   if (fleet.behind.length > 0) {
     const stuck =
       fleet.pausedBy !== null || fleet.behind.some((s) => s.update?.failed);
@@ -437,13 +530,117 @@ function StrandedServers({
         <li key={s.id} className="flex items-start gap-1.5">
           <TriangleAlert className="mt-0.5 size-4 shrink-0 text-[var(--warning)]" />
           <span>
-            <strong>{s.name}</strong> is offline on{" "}
-            {s.version ? `v${s.version}` : "an unknown agent"} and will be
-            unusable until its agent updates.
+            <strong>{s.name}</strong> is offline
+            {s.version ? ` on server agent v${s.version}` : ""} and will be
+            unusable until its server agent updates.
           </span>
         </li>
       ))}
     </ul>
+  );
+}
+
+const stopListsServers = (stop: UpdateStop) =>
+  stop.waiting &&
+  (stop.waitingOn?.length ?? 0) + (stop.leftBehind?.length ?? 0) > 0;
+
+// What the update stop still waits on: an instance admin can leave a server behind (ADR-0041).
+export function StopServers({
+  stop,
+  onLeft,
+}: {
+  stop: UpdateStop;
+  onLeft: () => void;
+}) {
+  if (!stopListsServers(stop)) return null;
+  return (
+    <ul className="space-y-2 text-sm">
+      {stop.waitingOn?.map((s) => (
+        <li key={s.id} className="flex items-start justify-between gap-3">
+          <span className="flex min-w-0 items-start gap-1.5">
+            <Hourglass className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
+            <span>
+              <strong>{s.name}</strong> hasn&apos;t connected to Deplo yet.
+              Check that it&apos;s turned on and connected to the internet.
+            </span>
+          </span>
+          <LeaveBehind server={s} onLeft={onLeft} />
+        </li>
+      ))}
+      {stop.leftBehind?.map((s) => (
+        <li key={s.id} className="flex items-start gap-1.5">
+          <TriangleAlert className="mt-0.5 size-4 shrink-0 text-warning" />
+          <span>
+            <strong>{s.name}</strong> was left behind: it needs its server agent
+            reinstalled after the update.{" "}
+            <Link
+              href={`/settings/servers/${s.id}`}
+              className="text-foreground underline underline-offset-4"
+            >
+              Manage
+            </Link>
+          </span>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+function LeaveBehind({
+  server,
+  onLeft,
+}: {
+  server: StopServer;
+  onLeft: () => void;
+}) {
+  return (
+    <ConfirmAction
+      title={`Leave ${server.name} behind?`}
+      description={
+        <>
+          Deplo stops waiting for <strong>{server.name}</strong> to connect. Its
+          apps and settings stay in Deplo.
+        </>
+      }
+      consequence={`After the update, ${server.name} won't work until its server agent is reinstalled.`}
+      confirmLabel="Leave behind"
+      trigger={
+        <Button variant="outline" size="sm" className="shrink-0">
+          Leave behind
+        </Button>
+      }
+      onConfirm={async () => {
+        const res = await gqlAction(
+          /* GraphQL */ `
+            mutation LeaveServerBehind($id: String!) {
+              leaveServerBehind(id: $id) {
+                next
+              }
+            }
+          `,
+          { id: server.id },
+        );
+        if (res.ok) onLeft();
+        return res;
+      }}
+    />
+  );
+}
+
+// Shown until an update succeeds (ADR-0041).
+export function RefusedUpdateNotice({ refused }: { refused: RefusedUpdate }) {
+  return (
+    <div className="flex items-start gap-2 text-sm">
+      <TriangleAlert className="mt-0.5 size-4 shrink-0 text-warning" />
+      <div className="min-w-0">
+        <p className="font-medium">
+          {refused.version
+            ? `The update to Deplo ${refused.version} was rolled back`
+            : "An update was rolled back"}
+        </p>
+        <p className="mt-1 text-muted-foreground">{refused.reason}</p>
+      </div>
+    </div>
   );
 }
 

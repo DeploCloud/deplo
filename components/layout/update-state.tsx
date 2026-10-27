@@ -4,8 +4,9 @@ import * as React from "react";
 
 import { gqlAction } from "@/lib/graphql-client";
 
+// What Update installs: the newest release, or an update stop before it.
 export interface UpstreamUpdate {
-  latest: string;
+  next: string;
   current: string;
 }
 
@@ -15,7 +16,7 @@ const UPDATE_QUERY = /* GraphQL */ `
   query UpstreamUpdate {
     updateInfo {
       updateAvailable
-      latest
+      next
       current
     }
   }
@@ -23,7 +24,7 @@ const UPDATE_QUERY = /* GraphQL */ `
 
 type Info = {
   updateAvailable: boolean;
-  latest: string | null;
+  next: string | null;
   current: string;
 };
 
@@ -46,8 +47,8 @@ export function UpdateProvider({
     ).then((res) => {
       if (!active || !res.ok || !res.data) return;
       const d = res.data;
-      if (!d.updateAvailable || !d.latest) return;
-      setUpdate({ latest: d.latest, current: d.current });
+      if (!d.updateAvailable || !d.next) return;
+      setUpdate({ next: d.next, current: d.current });
     });
     return () => {
       active = false;

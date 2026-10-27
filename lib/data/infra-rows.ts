@@ -49,6 +49,8 @@ const SERVER_FIELDS = {
   lastSeenAt: true,
   statusCheckedAt: true,
   statusMessage: true,
+  firstLinkedAt: true,
+  leftBehindAt: true,
 } satisfies Record<keyof Server, true>;
 void SERVER_FIELDS;
 
@@ -84,6 +86,8 @@ export function serverToRow(s: Server): ServerInsert {
     lastSeenAt: s.lastSeenAt ?? null,
     statusCheckedAt: s.statusCheckedAt ?? null,
     statusMessage: s.statusMessage ?? null,
+    firstLinkedAt: s.firstLinkedAt ?? null,
+    leftBehindAt: s.leftBehindAt ?? null,
     createdAt: s.createdAt,
   };
 }
@@ -136,6 +140,8 @@ export function assembleServer(row: ServerRow): Server {
   if (row.statusCheckedAt !== null)
     server.statusCheckedAt = row.statusCheckedAt;
   if (row.statusMessage !== null) server.statusMessage = row.statusMessage;
+  if (row.firstLinkedAt !== null) server.firstLinkedAt = row.firstLinkedAt;
+  if (row.leftBehindAt !== null) server.leftBehindAt = row.leftBehindAt;
   return server;
 }
 

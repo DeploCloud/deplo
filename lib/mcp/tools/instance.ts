@@ -6,7 +6,7 @@ export const INSTANCE: McpToolDef[] = [
     name: "get_instance",
     title: "Read this Deplo's own settings",
     description:
-      "The panel's address, version, log retention, and whether an update is available.",
+      "The panel's address, version, log retention, and what Update installs: the newest release, or an update stop it has to pass first, with why and the servers it waits on. Also the last update rolled back, and why.",
     group: "Instance",
     requires: "instanceAdmin",
     readOnly: true,
@@ -28,11 +28,31 @@ export const INSTANCE: McpToolDef[] = [
           current
           latest
           updateAvailable
+          next
+          nextIsStop
+          stop {
+            version
+            reason
+            waiting
+            waitingOn {
+              id
+              name
+            }
+            leftBehind {
+              id
+              name
+            }
+          }
           publishedAt
           url
           checkedAt
           canary
           error
+          lastRefusedUpdate {
+            version
+            reason
+            at
+          }
         }
       }
     `,
@@ -40,7 +60,8 @@ export const INSTANCE: McpToolDef[] = [
   tool({
     name: "check_for_updates",
     title: "Check for a Deplo update",
-    description: "Look up the newest Deplo release right now.",
+    description:
+      "Look up the newest Deplo release right now, and what Update installs on the way to it.",
     group: "Instance",
     requires: "instanceAdmin",
     idempotent: true,
@@ -51,9 +72,60 @@ export const INSTANCE: McpToolDef[] = [
           current
           latest
           updateAvailable
+          next
+          nextIsStop
+          stop {
+            version
+            reason
+            waiting
+            waitingOn {
+              id
+              name
+            }
+            leftBehind {
+              id
+              name
+            }
+          }
           publishedAt
           url
           canary
+          error
+        }
+      }
+    `,
+  }),
+  tool({
+    name: "leave_server_behind",
+    title: "Leave a server behind for an update",
+    description:
+      "Let the update stop pass without a server that has not connected to Deplo. It keeps its apps and settings, but needs its server agent reinstalled once Deplo updates past the stop.",
+    group: "Instance",
+    requires: "instanceAdmin",
+    destructive: true,
+    idempotent: true,
+    input: z.object({ id: serverId }),
+    query: /* GraphQL */ `
+      mutation McpLeaveServerBehind($id: String!) {
+        leaveServerBehind(id: $id) {
+          current
+          latest
+          updateAvailable
+          next
+          stop {
+            version
+            reason
+            waiting
+            waitingOn {
+              id
+              name
+            }
+            leftBehind {
+              id
+              name
+            }
+          }
+          error
         }
       }
     `,

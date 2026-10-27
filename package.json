@@ -3,7 +3,9 @@
   "version": "0.6.0-canary.38",
   "deplo": {
     "agent": "0.5.1-canary.10",
-    "agentMin": "0.4.0"
+    "agentMin": "0.5.1-canary.10",
+    "updateStop": true,
+    "requiresStop": ""
   },
   "license": "AGPL-3.0-only",
   "private": true,

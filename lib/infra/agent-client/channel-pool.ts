@@ -102,7 +102,7 @@ export function dropAgentChannel(serverId: string): void {
   revokeAgentLink(serverId);
 }
 
-// A server that linked is reached over its link alone: a missing one is waited for, then it is offline.
+// A server that ever linked is reached over its link alone: a missing one is waited for, then it is offline.
 async function linkFor(
   serverId: string,
   address: AgentAddress,
@@ -114,7 +114,7 @@ async function linkFor(
     link = undefined;
   }
   if (link) return link;
-  if (!linkMayCome(serverId)) return null;
+  if (!address.linkedOnce && !linkMayCome(serverId)) return null;
   link = (await waitForLink(serverId, LINK_WAIT_MS)) ?? undefined;
   if (link?.pinnedFingerprint === address.pinnedFingerprint) return link;
   throw new AgentOfflineError(serverId);

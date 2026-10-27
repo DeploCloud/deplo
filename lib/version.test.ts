@@ -6,10 +6,14 @@ import {
   AGENT_VERSION,
   agentUpdateAvailable,
   agentUsable,
+  bareVersion,
+  DEPLO_VERSION,
   isNewer,
   isPrerelease,
   newestVersion,
   rankedCurrent,
+  REQUIRED_STOP,
+  versionTag,
 } from "./version";
 
 test("isNewer: strict semver greater-than across each component", () => {
@@ -53,6 +57,13 @@ test("isNewer: a canary sorts before its release and by its own number", () => {
   assert.equal(isNewer("0.3.0-canary.1", "0.2.0"), true);
   assert.equal(isNewer("0.2.1", "0.3.0-canary.1"), false);
   assert.equal(isNewer("0.3.0-canary.1", "0.3.0-canary.1"), false);
+});
+
+test("a version reads the same with or without its tag's v", () => {
+  assert.equal(versionTag("0.6.0"), "v0.6.0");
+  assert.equal(versionTag(" V0.6.0-canary.3 "), "v0.6.0-canary.3");
+  assert.equal(bareVersion("v0.6.0"), "0.6.0");
+  assert.equal(bareVersion("0.6.0"), "0.6.0");
 });
 
 test("isPrerelease and newestVersion", () => {
@@ -108,4 +119,16 @@ test("agentUsable: the floor is inclusive, newer is fine, unparseable is not", (
 test("the pin is usable by its own floor", () => {
   assert.ok(agentUsable(AGENT_VERSION));
   assert.ok(!isNewer(AGENT_MIN_VERSION, AGENT_VERSION));
+});
+
+// ADR-0041: a stop is a stable release before any stable release requires it. The tag workflow checks it is published.
+test("this release only requires an earlier stop, and a stable one when it is stable itself", () => {
+  const stop = REQUIRED_STOP;
+  if (!stop) return;
+  assert.ok(isNewer(DEPLO_VERSION, stop), `v${stop} comes after this release`);
+  if (!isPrerelease(DEPLO_VERSION))
+    assert.ok(
+      !isPrerelease(stop),
+      `stable v${DEPLO_VERSION} requires v${stop}`,
+    );
 });

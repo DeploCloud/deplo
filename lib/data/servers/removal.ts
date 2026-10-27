@@ -11,6 +11,7 @@ import { getCurrentUser } from "../../auth/current-user";
 import { requireActiveTeamId, requireInstanceAdmin } from "../../membership";
 import { instancePublicBaseUrl } from "../instance-settings/settings-store";
 import { recordActivity } from "../activity";
+import { tryPassThisStop } from "../update-stops/decision";
 import { pendingTeardownsForServer } from "../teardown-queue";
 import { controlPlaneCert, uninstallCommand } from "../../agent/bootstrap";
 import { dropAgentChannel } from "../../infra/agent-client/channel-pool";
@@ -129,6 +130,8 @@ async function removeServerRow(
     );
   }
   dropAgentChannel(id);
+  // It may have been the last server this release's update stop waited on.
+  await tryPassThisStop();
   await recordActivity(
     "server",
     `Removed server ${server.name}`,

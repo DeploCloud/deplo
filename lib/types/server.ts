@@ -46,4 +46,8 @@ export interface Server {
   lastSeenAt?: string;
   statusCheckedAt?: string;
   statusMessage?: string;
+  /** When its agent first linked; a server that has is never dialed again (ADR-0041). */
+  firstLinkedAt?: string;
+  /** When an instance admin let the update stop pass without it; it needs its server agent reinstalled. */
+  leftBehindAt?: string;
 }

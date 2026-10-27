@@ -1,6 +1,6 @@
 # ADR-0040: A server agent links to its control plane
 
-**Status**: accepted. **Amends [ADR-0006](0006-server-agent-is-a-per-host-go-binary.md)**, decisions 4 and 8.
+**Status**: accepted. **Amends [ADR-0006](0006-server-agent-is-a-per-host-go-binary.md)**, decisions 4 and 8. **Amended by [ADR-0041](0041-a-release-can-require-an-update-stop.md)**: direct dialing is deleted by the release after an update stop, not when `agentMin` passes the first linking release.
 
 The control plane used to dial every server agent on TCP 9443. That meant every server had to accept an incoming connection, and Deplo told its users to open a firewall port. The core mission forbids requiring that knowledge, and behind a home or office router or a carrier-shared address the port cannot be opened at all. Installing an agent already worked anywhere, because it calls home. Only the calls that came after needed a way in.
 

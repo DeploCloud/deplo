@@ -9,15 +9,23 @@ import {
   type FleetAgentStatus,
 } from "@/lib/data/servers/agent-rollout";
 import {
+  lastRefusedUpdate,
+  type RefusedUpdate,
+} from "@/lib/data/update-stops/refused";
+import {
   applyDeploUpdate,
-  getUpdateInfo,
   listDeploReleases,
+  readUpdateInfo,
   refreshUpdateInfo,
   setCanaryReleases,
   type DeploRelease,
   type DeploUpdateStarted,
   type UpdateInfo,
+  type UpdateStopInfo,
 } from "@/lib/data/updates";
+import type { StopServer } from "@/lib/data/update-stops/condition";
+import { leaveServerBehind } from "@/lib/data/update-stops/leave-behind";
+import { bareVersion } from "@/lib/version";
 
 const StrandedServerRef = builder
   .objectRef<StrandedServer>("StrandedServer")
@@ -31,13 +39,97 @@ const StrandedServerRef = builder
     }),
   });
 
+const UpdateStopServerRef = builder
+  .objectRef<StopServer>("UpdateStopServer")
+  .implement({
+    description:
+      "A server an update stop names: one it waits on, or one an instance admin left behind.",
+    fields: (t) => ({
+      id: t.exposeID("id"),
+      name: t.exposeString("name"),
+    }),
+  });
+
+const UpdateStopRef = builder
+  .objectRef<UpdateStopInfo>("UpdateStop")
+  .implement({
+    description:
+      "A release this instance must install, and whose conditions it must meet, before it can update past it (ADR-0041).",
+    fields: (t) => ({
+      version: t.exposeString("version"),
+      reason: t.exposeString("reason", {
+        description:
+          "One plain sentence saying why Update offers what it does.",
+      }),
+      waiting: t.exposeBoolean("waiting", {
+        description:
+          "This instance runs the stop and its conditions do not hold yet, so Update offers nothing until they do.",
+      }),
+      waitingOn: t.field({
+        type: [UpdateStopServerRef],
+        description:
+          "While `waiting`: each server that has not connected to Deplo yet. The newer release is offered as soon as the last one does.",
+        resolve: (stop) => stop.waitingOn,
+      }),
+      leftBehind: t.field({
+        type: [UpdateStopServerRef],
+        description:
+          "While `waiting`: each server an instance admin left behind. It keeps its apps and settings, and needs its server agent reinstalled once Deplo updates past the stop.",
+        resolve: (stop) => stop.leftBehind,
+      }),
+    }),
+  });
+
+const RefusedUpdateRef = builder
+  .objectRef<RefusedUpdate>("RefusedUpdate")
+  .implement({
+    description:
+      "An update that did not start, so the installer put the previous version back (ADR-0041).",
+    fields: (t) => ({
+      version: t.exposeString("version", {
+        nullable: true,
+        description:
+          "The version that was rolled back, `v`-prefixed. Null when the installer could not tell.",
+      }),
+      reason: t.exposeString("reason", {
+        description:
+          "One plain sentence: the update stop to install first, or that the new version did not start.",
+      }),
+      at: t.exposeString("at", {
+        nullable: true,
+        description: "When the installer rolled it back (ISO 8601, UTC).",
+      }),
+    }),
+  });
+
 const UpdateInfoRef = builder.objectRef<UpdateInfo>("UpdateInfo").implement({
   description:
     "Result of checking the upstream GitHub repository for a newer Deplo release.",
   fields: (t) => ({
     current: t.exposeString("current"),
-    latest: t.exposeString("latest", { nullable: true }),
-    updateAvailable: t.exposeBoolean("updateAvailable"),
+    latest: t.exposeString("latest", {
+      nullable: true,
+      description:
+        "The newest release on this instance's channel. Update may install an update stop before it: see `next`.",
+    }),
+    updateAvailable: t.exposeBoolean("updateAvailable", {
+      description: "Update installs something now: `next` is set.",
+    }),
+    next: t.exposeString("next", {
+      nullable: true,
+      description:
+        "The version Update installs: `latest`, or the update stop this instance has to pass first. Null when there is nothing to install.",
+    }),
+    nextIsStop: t.exposeBoolean("nextIsStop", {
+      description: "`next` is an update stop on the way to `latest`.",
+    }),
+    stop: t.field({
+      type: UpdateStopRef,
+      nullable: true,
+      description:
+        "The update stop between this instance and `latest`, while it has not passed it. Before any newer release requires it, this release itself while it is a stop not passed yet.",
+      resolve: (info) => info.stop,
+    }),
     url: t.exposeString("url", { nullable: true }),
     name: t.exposeString("name", { nullable: true }),
     publishedAt: t.exposeString("publishedAt", { nullable: true }),
@@ -51,11 +143,17 @@ const UpdateInfoRef = builder.objectRef<UpdateInfo>("UpdateInfo").implement({
       type: [StrandedServerRef],
       authScopes: { instanceAdmin: true },
       description:
-        "Offline servers whose agent is older than the minimum the `latest` Deplo supports. They cannot update while offline, so they stay unusable until they come back and their agent updates. Empty when there is no update or the release does not say.",
+        "Offline servers whose agent is older than the minimum the `next` Deplo supports. They cannot update while offline, so they stay unusable until they come back and their agent updates. Empty when there is no update or the release does not say.",
       resolve: (info) =>
-        info.updateAvailable && info.latest
-          ? strandedByPanelUpdate(info.latest.replace(/^v/i, ""))
-          : [],
+        info.next ? strandedByPanelUpdate(bareVersion(info.next)) : [],
+    }),
+    lastRefusedUpdate: t.field({
+      type: RefusedUpdateRef,
+      nullable: true,
+      authScopes: { instanceAdmin: true },
+      description:
+        "The last update the installer rolled back, and why. Null once an update succeeds.",
+      resolve: () => lastRefusedUpdate(),
     }),
   }),
 });
@@ -74,7 +172,7 @@ const DeploReleaseRef = builder
       current: t.exposeBoolean("current"),
       available: t.exposeBoolean("available", {
         description:
-          "Newer than the running version, so installing an update brings it in.",
+          "Newer than the running version and no newer than `updateInfo.next`, so Update brings it in.",
       }),
     }),
   });
@@ -152,7 +250,7 @@ builder.queryFields((t) => ({
     authScopes: { instanceAdmin: true },
     description:
       "Check the upstream repository for a newer Deplo release; cached for an hour.",
-    resolve: () => getUpdateInfo(),
+    resolve: () => readUpdateInfo(),
   }),
   deploChangelog: t.field({
     type: ChangelogRef,
@@ -179,7 +277,7 @@ builder.mutationFields((t) => ({
     type: UpdateStartedRef,
     authScopes: { instanceAdmin: true },
     description:
-      "Update this instance to the newest release: the agent on the machine Deplo runs on re-runs the installer.",
+      "Update this instance to `updateInfo.next`: the newest release, or the update stop it has to pass first. The server agent on the machine Deplo runs on re-runs the installer.",
     resolve: () => applyDeploUpdate(),
   }),
   setCanaryReleases: t.field({
@@ -189,6 +287,14 @@ builder.mutationFields((t) => ({
       "Offer canary (pre-release) versions of Deplo as updates, or go back to stable ones. Server agents follow the agent version the installed Deplo is pinned to, never this switch. Installs nothing: a newer version shows up as an update, and turning it off never downgrades anything already on a canary.",
     args: { enabled: t.arg.boolean({ required: true }) },
     resolve: (_r, { enabled }) => setCanaryReleases(enabled),
+  }),
+  leaveServerBehind: t.field({
+    type: UpdateInfoRef,
+    authScopes: { instanceAdmin: true },
+    description:
+      "Let the update stop pass without a server that has not connected to Deplo, and return the update decision after it. The server keeps its apps and settings, and needs its server agent reinstalled once Deplo updates past the stop. Refused for the machine Deplo runs on.",
+    args: { id: t.arg.string({ required: true }) },
+    resolve: (_r, { id }) => leaveServerBehind(id),
   }),
   checkForUpdates: t.field({
     type: UpdateInfoRef,

@@ -1877,7 +1877,9 @@ enum DeploMoveWorkloadState {
 
 """One published release of Deplo, as the changelog renders it."""
 type DeploRelease {
-  """Newer than the running version, so installing an update brings it in."""
+  """
+  Newer than the running version and no newer than `updateInfo.next`, so Update brings it in.
+  """
   available: Boolean
   body: String
   current: Boolean
@@ -3820,6 +3822,11 @@ type Mutation {
     serviceIds: [String!]
   ): MigrationProjectResult
 
+  """
+  Let the update stop pass without a server that has not connected to Deplo, and return the update decision after it. The server keeps its apps and settings, and needs its server agent reinstalled once Deplo updates past the stop. Refused for the machine Deplo runs on.
+  """
+  leaveServerBehind(id: String!): UpdateInfo
+
   """Sign in with email + password. Sets the session cookie."""
   login(email: String!, password: String!): AuthPayload
 
@@ -4664,7 +4671,7 @@ type Mutation {
   updateDatabaseResources(id: String!, limits: ResourceLimitsInput!): Database
 
   """
-  Update this instance to the newest release: the agent on the machine Deplo runs on re-runs the installer.
+  Update this instance to `updateInfo.next`: the newest release, or the update stop it has to pass first. The server agent on the machine Deplo runs on re-runs the installer.
   """
   updateDeplo: DeploUpdateStarted
 
@@ -5533,6 +5540,24 @@ type RecoveryKey {
   Where the artifacts this key opens are stored, in one line. It goes into the key file, because whoever reads that file has lost the instance that knew the bucket or the folder.
   """
   where: String
+}
+
+"""
+An update that did not start, so the installer put the previous version back (ADR-0041).
+"""
+type RefusedUpdate {
+  """When the installer rolled it back (ISO 8601, UTC)."""
+  at: String
+
+  """
+  One plain sentence: the update stop to install first, or that the new version did not start.
+  """
+  reason: String
+
+  """
+  The version that was rolled back, `v`-prefixed. Null when the installer could not tell.
+  """
+  version: String
 }
 
 """A single-use link to register a new account."""
@@ -6931,14 +6956,38 @@ type UpdateInfo {
   checkedAt: String
   current: String
   error: String
+
+  """
+  The last update the installer rolled back, and why. Null once an update succeeds.
+  """
+  lastRefusedUpdate: RefusedUpdate
+
+  """
+  The newest release on this instance's channel. Update may install an update stop before it: see `next`.
+  """
   latest: String
   name: String
+
+  """
+  The version Update installs: `latest`, or the update stop this instance has to pass first. Null when there is nothing to install.
+  """
+  next: String
+
+  """`next` is an update stop on the way to `latest`."""
+  nextIsStop: Boolean
   publishedAt: String
 
   """
-  Offline servers whose agent is older than the minimum the `latest` Deplo supports. They cannot update while offline, so they stay unusable until they come back and their agent updates. Empty when there is no update or the release does not say.
+  The update stop between this instance and `latest`, while it has not passed it. Before any newer release requires it, this release itself while it is a stop not passed yet.
+  """
+  stop: UpdateStop
+
+  """
+  Offline servers whose agent is older than the minimum the `next` Deplo supports. They cannot update while offline, so they stay unusable until they come back and their agent updates. Empty when there is no update or the release does not say.
   """
   strandedServers: [StrandedServer!]
+
+  """Update installs something now: `next` is set."""
   updateAvailable: Boolean
   url: String
 }
@@ -6966,6 +7015,38 @@ input UpdateSourceInput {
   repo: GitRepoInput
   serverId: String
   source: DeploySource!
+}
+
+"""
+A release this instance must install, and whose conditions it must meet, before it can update past it (ADR-0041).
+"""
+type UpdateStop {
+  """
+  While `waiting`: each server an instance admin left behind. It keeps its apps and settings, and needs its server agent reinstalled once Deplo updates past the stop.
+  """
+  leftBehind: [UpdateStopServer!]
+
+  """One plain sentence saying why Update offers what it does."""
+  reason: String
+  version: String
+
+  """
+  This instance runs the stop and its conditions do not hold yet, so Update offers nothing until they do.
+  """
+  waiting: Boolean
+
+  """
+  While `waiting`: each server that has not connected to Deplo yet. The newer release is offered as soon as the last one does.
+  """
+  waitingOn: [UpdateStopServer!]
+}
+
+"""
+A server an update stop names: one it waits on, or one an instance admin left behind.
+"""
+type UpdateStopServer {
+  id: ID
+  name: String
 }
 
 input UpdateTeamInput {

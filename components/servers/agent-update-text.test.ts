@@ -40,7 +40,7 @@ test("each state reads as one line, unusable first", () => {
   );
   assert.equal(
     agentUpdateText(failed({ running: true }), true, NOW),
-    "Updating the agent",
+    "Updating the server agent",
   );
   assert.equal(
     agentUpdateText(

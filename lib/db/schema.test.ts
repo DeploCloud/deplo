@@ -71,6 +71,7 @@ const CONTROL_PLANE = [
   "docker_cleanup_run_items",
   "monitoring_settings",
   "instance_settings",
+  "passed_update_stops",
   "migration_runs",
   "migration_run_db_hosts",
   "migration_run_items",
