@@ -8,7 +8,7 @@ export function agentUpdateText(
 ): string | null {
   const prefix = usable ? "" : "Unusable - ";
   if (!update) return usable ? null : `${prefix}Deplo is updating it`;
-  if (update.running) return `${prefix}Updating the agent`;
+  if (update.running) return `${prefix}Updating the server agent`;
   if (update.gaveUp) return `${prefix}Update failed (gave up after 24 h)`;
   const left = update.nextRetryAt ? Date.parse(update.nextRetryAt) - now : 0;
   const when =
