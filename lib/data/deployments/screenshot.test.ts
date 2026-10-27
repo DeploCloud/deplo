@@ -23,6 +23,7 @@ import {
 } from "../app-graph-test-helpers";
 import { setAppScreenshots } from "../apps/settings";
 import {
+  getAppCoverScreenshot,
   getDeploymentScreenshot,
   readDeploymentScreenshotImage,
   retakeDeploymentScreenshot,
@@ -136,6 +137,48 @@ test("a picture is visible at the view floor, and to nobody outside the team", a
   // The image route runs under the deployment's own team; a stranger is refused there too.
   await assert.rejects(
     as(STRANGER, TEAM_A, () => readDeploymentScreenshotImage(DEP, "light")),
+  );
+});
+
+test("a redeploy keeps the last production picture until its own lands", async () => {
+  await seedDeployment(db, {
+    id: "dpl_next",
+    appId: APP,
+    status: "building",
+    createdAt: "2026-01-03T00:00:00.000Z",
+  });
+  await seedDeployment(db, {
+    id: "dpl_pr",
+    appId: APP,
+    environment: "preview",
+    createdAt: "2026-01-04T00:00:00.000Z",
+  });
+  await db
+    .update(appsTable)
+    .set({ latestDeploymentId: "dpl_next" })
+    .where(eq(appsTable.id, APP));
+  await db.insert(deploymentScreenshots).values({
+    deploymentId: "dpl_pr",
+    light: LIGHT,
+    dark: null,
+    capturedAt: T0,
+  });
+  const during = await as(VIEWER, TEAM_A, () => getAppCoverScreenshot(APP));
+  assert.equal(during?.deploymentId, DEP);
+  assert.equal(during?.current, false, "no retake while the next one builds");
+
+  await db.insert(deploymentScreenshots).values({
+    deploymentId: "dpl_next",
+    light: LIGHT,
+    dark: null,
+    capturedAt: T0,
+  });
+  const after = await as(VIEWER, TEAM_A, () => getAppCoverScreenshot(APP));
+  assert.equal(after?.deploymentId, "dpl_next");
+  assert.equal(after?.current, true);
+  assert.equal(
+    await as(STRANGER, TEAM_B, () => getAppCoverScreenshot(APP)),
+    null,
   );
 });
 

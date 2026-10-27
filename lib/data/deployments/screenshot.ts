@@ -1,6 +1,6 @@
 import "server-only";
 
-import { eq, sql } from "drizzle-orm";
+import { and, desc, eq, sql } from "drizzle-orm";
 import { cache } from "react";
 
 import { CaptureOutcome } from "../../agent/gen/agent";
@@ -25,6 +25,7 @@ import { appCapabilities, requireAppCapability } from "../node-access";
 export type ScreenshotTheme = "light" | "dark";
 
 export interface DeploymentScreenshot {
+  deploymentId: string;
   capturedAt: string;
   lightUrl: string;
   darkUrl: string | null;
@@ -74,6 +75,7 @@ export const getDeploymentScreenshot = cache(
     if (!row) return null;
     const base = `/api/deployments/${id}/screenshot?v=${Date.parse(row.capturedAt)}`;
     return {
+      deploymentId: id,
       capturedAt: row.capturedAt,
       lightUrl: `${base}&theme=light`,
       darkUrl: row.hasDark ? `${base}&theme=dark` : null,
@@ -81,6 +83,28 @@ export const getDeploymentScreenshot = cache(
     };
   },
 );
+
+// The newest production picture: a redeploy keeps the last one up until its own lands.
+export async function getAppCoverScreenshot(
+  appId: string,
+): Promise<DeploymentScreenshot | null> {
+  const [row] = await getDb()
+    .select({ id: deployments.id })
+    .from(deploymentScreenshots)
+    .innerJoin(
+      deployments,
+      eq(deployments.id, deploymentScreenshots.deploymentId),
+    )
+    .where(
+      and(
+        eq(deployments.appId, appId),
+        eq(deployments.environment, "production"),
+      ),
+    )
+    .orderBy(desc(deployments.createdAt), desc(deployments.seq))
+    .limit(1);
+  return row ? getDeploymentScreenshot(row.id) : null;
+}
 
 // For a Deployment that was already authorized: the parent object is the gate.
 export async function screenshotCapturedAt(id: string): Promise<string | null> {

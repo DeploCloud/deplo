@@ -22,7 +22,7 @@ import { StatusBadge, StatusDot } from "@/components/shared/status-badge";
 import { EmptyState } from "@/components/shared/empty-state";
 import { DeploymentGraphic } from "@/components/apps/deployment-graphic";
 import { DeploymentCover, WithCover } from "@/components/apps/deployment-cover";
-import { getDeploymentScreenshot } from "@/lib/data/deployments/screenshot";
+import { getAppCoverScreenshot } from "@/lib/data/deployments/screenshot";
 import { describeAppSource } from "@/components/apps/app-source";
 import { RepoLinkNotice } from "@/components/apps/repo-link-notice";
 import { FrameworkBadge } from "@/components/apps/framework-badge";
@@ -54,7 +54,7 @@ export default async function AppOverview(
     project.latestDeployment;
   const src = describeAppSource(project);
   const [shot, canConfigure] = await Promise.all([
-    prod ? getDeploymentScreenshot(prod.id) : null,
+    prod ? getAppCoverScreenshot(project.id) : null,
     hasAppCapability(project.id, "configure_apps"),
   ]);
 
@@ -99,7 +99,7 @@ export default async function AppOverview(
               cover={
                 shot && (
                   <DeploymentCover
-                    deploymentId={prod.id}
+                    deploymentId={shot.deploymentId}
                     href={project.productionUrl || prod.url}
                     lightUrl={shot.lightUrl}
                     darkUrl={shot.darkUrl}
