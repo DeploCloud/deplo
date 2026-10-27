@@ -721,8 +721,12 @@ An app variable whose value is a **Database**'s connection string, re-derived at
 (`env_vars.database_id`), so a password rotation or a new public address needs no edit. The
 private address when the app shares the database's network and server, the public one when it
 does not and the database is exposed; otherwise the deploy fails, naming the variable.
-Production only. Connecting needs `manage_env` and `reveal_secrets` on the app.
-_Avoid_: link (that is a **Shared variable**'s opt-in), binding, attachment.
+**Connect** is production only and needs `manage_env` and `reveal_secrets` on the app. A value
+saved as exactly that string connects on its own (**auto-link**), keeping its type and
+environments; **Unlink** keeps today's value and stops auto-link ever reattaching it
+(`env_vars.database_unlinked`).
+_Avoid_: "link" as the noun for it (a **Shared variable**'s opt-in is the link), binding,
+attachment.
 
 **Backup destination**:
 Where a team's **backup runs** write their artifacts. Exactly two **kinds**, and the word

@@ -23,6 +23,7 @@ import { sweepDomainDns } from "../data/domains/dns-check";
 import { describeStackCertificates } from "../data/server-certificates";
 import { getUpdateInfo } from "../data/updates";
 import { sweepFinishedMigrationMarks } from "../data/migration-import/run-report";
+import { autoLinkAllEnv } from "../data/database-autolink";
 import { sendUsageReport } from "../usage-report/send";
 import { connectAgent } from "../infra/agent-client/connect";
 import {
@@ -45,6 +46,7 @@ export async function runMaintenanceSweep(): Promise<void> {
   await settle("github app access", checkGithubAppAccess);
   await settle("rate limits", sweepRateLimits);
   await settle("migration marks", sweepFinishedMigrationMarks);
+  await settle("database links", autoLinkAllEnv);
   await settle("oauth clients", sweepAbandonedOauthClients);
   await settle("expired challenges", sweepExpiredVerifications);
   await settle("usage report", async () => {

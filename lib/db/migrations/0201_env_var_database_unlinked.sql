@@ -1,0 +1,1 @@
+ALTER TABLE "env_vars" ADD COLUMN "database_unlinked" boolean DEFAULT false NOT NULL;

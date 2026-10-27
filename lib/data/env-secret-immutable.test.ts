@@ -134,7 +134,7 @@ test("importEnv skips a key that is already a secret, and counts it", async () =
   const res = await as1(() =>
     importEnv(APP, "API_KEY=leaked\nPORT=3000\nDEBUG=1"),
   );
-  assert.deepEqual(res, { added: 2, skippedSecrets: 1 });
+  assert.deepEqual(res, { added: 2, skippedSecrets: 1, autoLinked: [] });
   const list = await as1(() => listEnv(APP));
   assert.deepEqual(list.map((v) => v.key).sort(), ["API_KEY", "DEBUG", "PORT"]);
   const secret = list.find((v) => v.key === "API_KEY")!;

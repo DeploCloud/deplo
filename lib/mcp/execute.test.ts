@@ -181,6 +181,7 @@ const NOT_A_CREDENTIAL = new Set([
   "Database.customCommand",
   "DatabaseAppLink.key",
   "DatabaseLinkOption.connectedKeys",
+  "EnvAutoLink.key",
   "Deployment.deployKey",
   "EnvVar.key",
   "GitConnection.tokenExpiresAt",

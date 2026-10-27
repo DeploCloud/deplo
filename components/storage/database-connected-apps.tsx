@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import { Plus, Unlink } from "lucide-react";
+import { toast } from "sonner";
 import { useRouter } from "@/lib/nav";
 import Link from "@/components/ui/link";
 import { Badge } from "@/components/ui/badge";
@@ -16,7 +17,6 @@ import {
 } from "@/components/ui/dialog";
 import { SimpleTooltip } from "@/components/ui/tooltip";
 import { AppLogo } from "@/components/shared/project-logo";
-import { ConfirmAction } from "@/components/shared/confirm-action";
 import { EmptyState } from "@/components/shared/empty-state";
 import {
   connectedToast,
@@ -42,7 +42,26 @@ export function DatabaseConnectedApps({
 }) {
   const router = useRouter();
   const [open, setOpen] = React.useState(false);
-  const [removing, setRemoving] = React.useState<DatabaseAppLink | null>(null);
+  const [unlinking, startUnlink] = React.useTransition();
+
+  // Unlink keeps each variable's current value, so it needs no confirmation.
+  function unlink(link: DatabaseAppLink) {
+    startUnlink(async () => {
+      const res = await gqlAction(
+        /* GraphQL */ `
+          mutation ($appId: String!, $databaseId: String!) {
+            disconnectDatabase(appId: $appId, databaseId: $databaseId)
+          }
+        `,
+        { appId: link.appId, databaseId },
+      );
+      if (!res.ok) return void toast.error(res.error);
+      toast.success(`${link.appName} no longer follows ${databaseName}`, {
+        description: "Its variables keep their current value.",
+      });
+      router.refresh();
+    });
+  }
 
   const byApp = new Map<string, DatabaseAppLink[]>();
   for (const l of links) byApp.set(l.appId, [...(byApp.get(l.appId) ?? []), l]);
@@ -101,13 +120,14 @@ export function DatabaseConnectedApps({
                     </SimpleTooltip>
                   )}
                   {first.canManage && (
-                    <SimpleTooltip content="Disconnect">
+                    <SimpleTooltip content="Unlink">
                       <Button
                         variant="ghost"
                         size="icon-sm"
-                        aria-label={`Disconnect ${first.appName}`}
-                        className="text-muted-foreground hover:text-destructive"
-                        onClick={() => setRemoving(first)}
+                        aria-label={`Unlink ${first.appName}`}
+                        disabled={unlinking}
+                        className="text-muted-foreground hover:text-foreground"
+                        onClick={() => unlink(first)}
                       >
                         <Unlink className="size-4" />
                       </Button>
@@ -183,31 +203,6 @@ export function DatabaseConnectedApps({
           />
         </DialogContent>
       </Dialog>
-
-      <ConfirmAction
-        open={removing !== null}
-        onOpenChange={(v) => !v && setRemoving(null)}
-        title="Disconnect app?"
-        description={
-          removing
-            ? `${removing.appName} loses ${connectedKeys(removing.appId).join(", ")} on its next deploy.`
-            : ""
-        }
-        confirmLabel="Disconnect"
-        successMessage="App disconnected"
-        onConfirm={async () => {
-          const res = await gqlAction(
-            /* GraphQL */ `
-              mutation ($appId: String!, $databaseId: String!) {
-                disconnectDatabase(appId: $appId, databaseId: $databaseId)
-              }
-            `,
-            { appId: removing!.appId, databaseId },
-          );
-          if (res.ok) router.refresh();
-          return res;
-        }}
-      />
     </Card>
   );
 }

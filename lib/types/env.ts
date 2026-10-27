@@ -21,6 +21,7 @@ export interface EnvVar {
   targets: EnvTarget[];
   type: "plain" | "secret";
   databaseId: ID | null;
+  databaseUnlinked: boolean;
   createdByUserId: ID | null;
   updatedByUserId: ID | null;
   createdAt: string;

@@ -246,3 +246,16 @@ export function linkedConnectionString(
     dbName: db.dbName,
   });
 }
+
+// What Deplo shows for a database, so what a person copies: the private string and the stored one.
+export function exactConnectionStrings(
+  db: Parameters<typeof linkedConnectionString>[0],
+  storedConnection: string,
+): string[] {
+  return [
+    ...new Set([
+      linkedConnectionString(db, storedConnection, "internal"),
+      storedConnection,
+    ]),
+  ];
+}

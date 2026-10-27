@@ -29,7 +29,12 @@ import {
 } from "../databases/link";
 import { linkedConnectionString } from "../deploy/database-compose";
 import { recordActivity } from "./activity";
-import { insertEnvVars, appScopeWhere } from "./app-graph-load";
+import {
+  insertEnvVars,
+  appScopeWhere,
+  loadEnvVar,
+  loadEnvVarsForApp,
+} from "./app-graph-load";
 import { mentionsHost } from "./database-usage";
 import { loadDatabase } from "./databases/rows";
 import { markPendingChanges } from "./pending-changes";
@@ -96,6 +101,10 @@ const placedDatabases = () =>
       type: databasesTable.type,
       logo: databasesTable.logo,
       host: databasesTable.host,
+      port: databasesTable.port,
+      username: databasesTable.username,
+      dbName: databasesTable.dbName,
+      connectionStringEnc: databasesTable.connectionStringEnc,
       teamId: databasesTable.teamId,
       environmentId: databasesTable.environmentId,
       serverId: databasesTable.serverId,
@@ -304,6 +313,7 @@ export async function connectDatabase(input: {
           targets: LINK_TARGETS,
           type: "secret",
           databaseId: db.id,
+          databaseUnlinked: false,
           createdByUserId: userId,
           updatedByUserId: userId,
           createdAt: nowIso(),
@@ -318,6 +328,7 @@ export async function connectDatabase(input: {
         valueEnc,
         type: "secret",
         databaseId: db.id,
+        databaseUnlinked: false,
         updatedByUserId: userId,
         updatedAt: nowIso(),
       })
@@ -344,31 +355,58 @@ export async function connectDatabase(input: {
   );
 }
 
+// Unlink keeps the value the app gets today; only the following stops.
+export async function unlinkEnv(id: string): Promise<string> {
+  const e = await loadEnvVar(id);
+  if (!e?.databaseId) throw new Error("This variable is not connected");
+  await unlinkVars(e.appId, [e]);
+  return e.appId;
+}
+
 export async function disconnectDatabase(input: {
   appId: string;
   databaseId: string;
 }): Promise<void> {
-  const { teamId } = await requireAppCapability(input.appId, "manage_env");
-  const removed = await getDb()
-    .delete(envVarsTable)
-    .where(
-      and(
-        eq(envVarsTable.appId, input.appId),
-        eq(envVarsTable.databaseId, input.databaseId),
-      ),
-    )
-    .returning({ key: envVarsTable.key });
-  if (removed.length === 0) throw new Error("This database is not connected");
-  await markPendingChanges([input.appId]);
+  await requireAppCapability(input.appId, "manage_env");
+  const vars = (await loadEnvVarsForApp(input.appId)).filter(
+    (v) => v.databaseId === input.databaseId,
+  );
+  if (vars.length === 0) throw new Error("This database is not connected");
+  await unlinkVars(input.appId, vars);
+}
+
+async function unlinkVars(appId: string, vars: EnvVar[]): Promise<void> {
+  const { teamId, userId } = await requireAppCapability(appId, "manage_env");
+  const databaseId = vars[0]!.databaseId!;
+  const [{ vars: live }, [db]] = await Promise.all([
+    withLinkedValues(appId, vars, "any"),
+    getDb()
+      .select({ name: databasesTable.name })
+      .from(databasesTable)
+      .where(eq(databasesTable.id, databaseId)),
+  ]);
+  await getDb().transaction(async (tx) => {
+    for (const v of live)
+      await tx
+        .update(envVarsTable)
+        .set({
+          valueEnc: v.valueEnc,
+          databaseId: null,
+          databaseUnlinked: true,
+          updatedByUserId: userId,
+          updatedAt: nowIso(),
+        })
+        .where(and(eq(envVarsTable.id, v.id), eq(envVarsTable.appId, appId)));
+  });
   const user = (await getCurrentUser())!;
   await recordActivity(
     "env",
-    `Disconnected a database (${removed.map((r) => r.key).join(", ")})`,
+    `${vars.map((v) => v.key).join(", ")} no longer ${vars.length === 1 ? "follows" : "follow"} ${db?.name ?? "its database"}`,
     user.name,
-    input.appId,
+    appId,
     teamId,
     null,
-    input.databaseId,
+    databaseId,
   );
 }
 
@@ -379,17 +417,20 @@ export async function envDatabaseRefs(
 ): Promise<{
   connected: Map<string, EnvDatabaseRef>;
   detected: Map<string, EnvDatabaseRef>;
+  // The value a connected variable resolves to now, for showing a plain one.
+  live: Map<string, string>;
 }> {
   const connected = new Map<string, EnvDatabaseRef>();
   const detected = new Map<string, EnvDatabaseRef>();
+  const live = new Map<string, string>();
   if (vars.length === 0 || !(await reachesWholeTeam()))
-    return { connected, detected };
+    return { connected, detected, live };
   const teamId = await requireActiveTeamId();
   const [app, dbs] = await Promise.all([
     appPlacement(appId, teamId),
     placedDatabases().where(eq(databasesTable.teamId, teamId)),
   ]);
-  if (!app || dbs.length === 0) return { connected, detected };
+  if (!app || dbs.length === 0) return { connected, detected, live };
   const refs = new Map(
     dbs.map((d) => [
       d.id,
@@ -405,7 +446,20 @@ export async function envDatabaseRefs(
   for (const v of vars) {
     if (v.databaseId) {
       const ref = refs.get(v.databaseId);
-      if (ref) connected.set(v.id, ref);
+      const db = dbs.find((d) => d.id === v.databaseId);
+      if (!ref || !db) continue;
+      connected.set(v.id, ref);
+      const stored = tryDecryptSecret(db.connectionStringEnc);
+      const reach = databaseReach(app, db);
+      if (stored.ok && reachable(reach))
+        live.set(
+          v.id,
+          linkedConnectionString(
+            { ...db, type: db.type as DatabaseType },
+            stored.value,
+            reach,
+          ),
+        );
       continue;
     }
     const value = tryDecryptSecret(v.valueEnc);
@@ -413,16 +467,17 @@ export async function envDatabaseRefs(
     const hit = dbs.find((d) => mentionsHost(value.value, d.host));
     if (hit) detected.set(v.id, refs.get(hit.id)!);
   }
-  return { connected, detected };
+  return { connected, detected, live };
 }
 
 // Re-derived at every deploy, so a rotated password or a new exposure needs no re-connect.
 export async function withLinkedValues(
   appId: string,
   vars: EnvVar[],
-  target: EnvTarget,
+  target: EnvTarget | "any",
 ): Promise<{ vars: EnvVar[]; unreachable: string[] }> {
-  const linked = vars.filter((v) => v.databaseId && v.targets.includes(target));
+  const wanted = (v: EnvVar) => target === "any" || v.targets.includes(target);
+  const linked = vars.filter((v) => v.databaseId && wanted(v));
   if (linked.length === 0) return { vars, unreachable: [] };
   const [[app], dbs] = await Promise.all([
     getDb()
@@ -448,7 +503,7 @@ export async function withLinkedValues(
   const unreachable: string[] = [];
   const resolved = vars.map((v) => {
     const db = v.databaseId ? byId.get(v.databaseId) : undefined;
-    if (!db || !app || !v.targets.includes(target)) return v;
+    if (!db || !app || !wanted(v)) return v;
     const reach = databaseReach(app, db);
     if (!reachable(reach)) {
       unreachable.push(unreachableMessage(v.key, db.name, reach));

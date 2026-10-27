@@ -27,6 +27,8 @@ export const envVars = pgTable(
     databaseId: text("database_id").references(() => databases.id, {
       onDelete: "cascade",
     }),
+    // Unlink was chosen: auto-link never reattaches it.
+    databaseUnlinked: boolean("database_unlinked").notNull().default(false),
     createdByUserId: text("created_by_user_id").references(() => users.id, {
       onDelete: "set null",
     }),

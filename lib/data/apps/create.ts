@@ -39,6 +39,7 @@ import { DEFAULT_ROLLBACK_KEEP } from "../../types/app";
 import { encryptSecret } from "../../crypto";
 import type { EnvEntryType } from "../../deploy/env-resolve";
 import { recordActivity } from "../activity";
+import { autoLinkAppEnv } from "../database-autolink";
 import { setSharedVarAppLink } from "../shared-vars/app-links";
 import { imageExposedPort } from "../../registry/client";
 import { isDatastoreImage } from "../../databases/images";
@@ -439,6 +440,7 @@ export async function createApp(input: CreateAppInput): Promise<AppSummary> {
           : (["production", "preview"] as EnvTarget[]),
         type: e.type ?? ("plain" as const),
         databaseId: null,
+        databaseUnlinked: false,
         createdByUserId: userId,
         updatedByUserId: userId,
         createdAt: now,
@@ -504,6 +506,7 @@ export async function createApp(input: CreateAppInput): Promise<AppSummary> {
   );
   for (const note of renameNotes)
     await recordActivity("app", note, user.name, project.id);
+  if (appEnvVars.length > 0) await autoLinkAppEnv(project.id);
   if (!input.noWebhook) await syncAppWebhook(project.repo).catch(() => {});
 
   const ip = serverIp;

@@ -130,7 +130,8 @@ builder.mutationFields((t) => ({
     type: "Boolean",
     authScopes: { capability: "manage_env" },
     description:
-      "Delete every variable of the app that comes from this database.",
+      "Stop every variable of the app that comes from this database following it. " +
+      "They keep the value they resolve to now.",
     args: {
       appId: t.arg.string({ required: true }),
       databaseId: t.arg.string({ required: true }),

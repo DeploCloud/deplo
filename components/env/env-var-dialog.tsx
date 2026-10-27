@@ -169,8 +169,10 @@ function EditForm({
         return;
       }
       // No `targets`: the server defaults every variable to every runtime.
-      const res = await gqlAction<{ upsertEnv: { id: string } }>(
-        `mutation($input: UpsertEnvInput!) { upsertEnv(input: $input) { id } }`,
+      const res = await gqlAction<{ upsertEnv: SavedVar }>(
+        `mutation($input: UpsertEnvInput!) {
+          upsertEnv(input: $input) { key connected database { name } }
+        }`,
         {
           input: {
             appId,
@@ -180,7 +182,7 @@ function EditForm({
           },
         },
       );
-      if (res.ok) toast.success("Variable updated");
+      if (res.ok) savedToast("Variable updated", linkedOf(res.data?.upsertEnv));
       else {
         onOpenChange(true);
         toast.error(res.error);
@@ -262,6 +264,32 @@ function EditForm({
         </form>
       </DialogContent>
     </Dialog>
+  );
+}
+
+type AutoLinked = { key: string; database: string };
+type SavedVar = {
+  key: string;
+  connected: boolean;
+  database: { name: string } | null;
+};
+
+const linkedOf = (v?: SavedVar): AutoLinked[] =>
+  v?.connected
+    ? [{ key: v.key, database: v.database?.name ?? "its database" }]
+    : [];
+
+// A value that is a database's connection string is connected on save: say so.
+function savedToast(done: string, linked: AutoLinked[]) {
+  toast.success(
+    done,
+    linked.length > 0
+      ? {
+          description: linked
+            .map((l) => `${l.key} now follows ${l.database}`)
+            .join(", "),
+        }
+      : undefined,
   );
 }
 
@@ -438,8 +466,10 @@ function StandaloneTab({
     onDone();
     void (async () => {
       if (filled.length === 1) {
-        const res = await gqlAction<{ upsertEnv: { id: string } }>(
-          `mutation($input: UpsertEnvInput!) { upsertEnv(input: $input) { id } }`,
+        const res = await gqlAction<{ upsertEnv: SavedVar }>(
+          `mutation($input: UpsertEnvInput!) {
+            upsertEnv(input: $input) { key connected database { name } }
+          }`,
           {
             input: {
               appId,
@@ -449,26 +479,33 @@ function StandaloneTab({
             },
           },
         );
-        if (res.ok) toast.success("Variable added");
+        if (res.ok) savedToast("Variable added", linkedOf(res.data?.upsertEnv));
         else toast.error(res.error);
         router.refresh();
         return;
       }
       const blob = filled.map((r) => `${r.key.trim()}=${r.value}`).join("\n");
-      type ImportResult = { added: number; skippedSecrets: number };
+      type ImportResult = {
+        added: number;
+        skippedSecrets: number;
+        autoLinked: AutoLinked[];
+      };
       const res = await gqlAction<{ importEnv: ImportResult }, ImportResult>(
         `mutation($appId: String!, $blob: String!) {
-          importEnv(appId: $appId, blob: $blob) { added skippedSecrets }
+          importEnv(appId: $appId, blob: $blob) {
+            added skippedSecrets autoLinked { key database }
+          }
         }`,
         { appId, blob },
         (d) => d.importEnv,
       );
       if (res.ok && res.data != null) {
-        const { added, skippedSecrets } = res.data;
-        toast.success(
+        const { added, skippedSecrets, autoLinked } = res.data;
+        savedToast(
           skippedSecrets > 0
             ? `Added ${added} variable(s), ${skippedSecrets} secret(s) skipped`
             : `Added ${added} variable(s)`,
+          autoLinked,
         );
       } else if (!res.ok) {
         toast.error(res.error);

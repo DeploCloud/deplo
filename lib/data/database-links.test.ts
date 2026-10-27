@@ -157,7 +157,7 @@ describe("database links", () => {
     );
   });
 
-  test("a hand-written value is recognised, linking replaces it, and the name stays editable", async () => {
+  test("a hand-written value is recognised, connecting replaces it, and disconnecting keeps the value", async () => {
     await asOwner(async () => {
       await upsertEnv({
         appId: "prj_hub",
@@ -186,7 +186,13 @@ describe("database links", () => {
       );
 
       await disconnectDatabase({ appId: "prj_hub", databaseId: "db_hub" });
-      assert.deepEqual(await listEnv("prj_hub"), []);
+      [v] = await listEnv("prj_hub");
+      assert.equal(v.key, "PRIMARY_DB");
+      assert.equal(v.connected, false);
+      assert.equal(
+        (await appEnv("prj_hub")).PRIMARY_DB,
+        "postgres://app:pw@db-ia-hub:5432/db-ia-hub",
+      );
     });
   });
 

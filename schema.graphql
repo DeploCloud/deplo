@@ -2253,6 +2253,22 @@ enum DomainWwwRedirect {
   toThis
 }
 
+"""
+A variable Deplo connected because its value is a database's connection string.
+"""
+type EnvAutoLink {
+  database: String
+  key: String
+}
+
+"""The managed database a variable's value comes from."""
+type EnvDatabaseRef {
+  id: ID
+  name: String
+  reachable: Boolean
+  type: DatabaseType
+}
+
 input EnvEntryInput {
   key: String!
   value: String!
@@ -2262,6 +2278,11 @@ input EnvEntryInput {
 type EnvImportResult {
   """Variables created or updated."""
   added: Int
+
+  """
+  Lines whose value is a database's connection string, now connected to it.
+  """
+  autoLinked: [EnvAutoLink!]
 
   """
   Lines whose key already exists as a secret. A secret cannot be edited, so those were left untouched.
@@ -2278,8 +2299,17 @@ enum EnvTarget {
 A single environment variable. Secret values are masked unless revealed.
 """
 type EnvVar {
+  """
+  The value comes from a managed database and is derived again at every deploy.
+  """
+  connected: Boolean
   createdAt: String
   createdBy: VarAuthor
+
+  """
+  The connected database; null when not connected or the viewer cannot see databases.
+  """
+  database: EnvDatabaseRef
   id: ID
   isMasked: Boolean
   key: String
@@ -3673,7 +3703,9 @@ type Mutation {
   """
   disableTwoFactor(code: String!, password: String!): Boolean
 
-  """Delete every variable of the app that comes from this database."""
+  """
+  Stop every variable of the app that comes from this database following it. They keep the value they resolve to now.
+  """
   disconnectDatabase(appId: String!, databaseId: String!): Boolean
 
   """
@@ -4578,6 +4610,11 @@ type Mutation {
   Take Deplo off a MIGRATION SOURCE: uninstall the agent from the host (systemd unit, binary, state dir - never Docker), then forget the server. Only a server whose role is "import" - an ordinary server is removed with removeServer, which is trust revocation and leaves the host alone. `removed: false` means the host still has the agent on it and the server row was KEPT; `uninstallCommand` is returned either way, because an unreachable or de-trusted host will always need the host-side path. A registration whose install command was never run has nothing to uninstall and is simply forgotten.
   """
   uninstallServerAgent(id: String!): ServerUninstall
+
+  """
+  Stop a variable following its database. It keeps the value it resolves to now, and Deplo never connects it again on its own.
+  """
+  unlinkEnv(id: String!): EnvVar
 
   """Forget this browser's push registration."""
   unsubscribeWebPush(endpoint: String!): Boolean

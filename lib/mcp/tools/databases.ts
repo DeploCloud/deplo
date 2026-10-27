@@ -194,10 +194,9 @@ export const DATABASES: McpToolDef[] = [
     name: "disconnect_database",
     title: "Disconnect a database from an app",
     description:
-      "Delete the app's variables that come from this database. Takes effect on the next deploy.",
+      "Stop the app's variables that come from this database following it. They keep their current value.",
     group: "Databases",
     requires: "manage_env",
-    destructive: true,
     input: z.object({ appId, databaseId }),
     query: /* GraphQL */ `
       mutation McpDisconnectDatabase($appId: String!, $databaseId: String!) {

@@ -29,6 +29,7 @@ import {
 } from "./app-graph-load";
 import { authorOf, loadUserIdentities } from "./user-identity";
 import { envDatabaseRefs } from "./database-links";
+import { autoLinkAppEnv, type AutoLink } from "./database-autolink";
 import {
   ALL_ENV_TARGETS,
   sanitizeTargets,
@@ -54,7 +55,9 @@ function toDTO(
   return {
     id: e.id,
     key: e.key,
-    value: isSecret ? MASK : decryptSecret(e.valueEnc),
+    value: isSecret
+      ? MASK
+      : (refs?.live.get(e.id) ?? decryptSecret(e.valueEnc)),
     masked: isSecret,
     targets: e.targets,
     type: e.type,
@@ -169,7 +172,7 @@ export async function upsertEnv(input: {
   value: string;
   targets?: EnvTarget[];
   type: "plain" | "secret";
-}): Promise<void> {
+}): Promise<AutoLink[]> {
   const { userId } = await requireAppCapability(input.appId, "manage_env");
   const user = (await getCurrentUser())!;
   const key = input.key.trim();
@@ -192,6 +195,7 @@ export async function upsertEnv(input: {
         .set({
           valueEnc: encryptSecret(input.value),
           type: input.type,
+          databaseId: null,
           updatedByUserId: userId,
           updatedAt: nowIso(),
         })
@@ -214,6 +218,7 @@ export async function upsertEnv(input: {
           targets: targets ?? [...ALL_ENV_TARGETS],
           type: input.type,
           databaseId: null,
+          databaseUnlinked: false,
           createdByUserId: userId,
           updatedByUserId: userId,
           createdAt: nowIso(),
@@ -224,6 +229,7 @@ export async function upsertEnv(input: {
   });
   await markPendingChanges([input.appId]);
   await recordActivity("env", `Updated env var ${key}`, user.name, input.appId);
+  return autoLinkAppEnv(input.appId);
 }
 
 export async function renameEnv(
@@ -269,7 +275,7 @@ export async function importEnv(
   appId: string,
   blob: string,
   targets?: EnvTarget[],
-): Promise<{ added: number; skippedSecrets: number }> {
+): Promise<{ added: number; skippedSecrets: number; autoLinked: AutoLink[] }> {
   await requireAppCapability(appId, "manage_env");
   const secretKeys = new Set(
     (
@@ -283,6 +289,7 @@ export async function importEnv(
   );
   let added = 0;
   let skippedSecrets = 0;
+  const autoLinked: AutoLink[] = [];
   const lines = blob.split("\n");
   for (const raw of lines) {
     const line = raw.trim();
@@ -301,10 +308,12 @@ export async function importEnv(
       skippedSecrets++;
       continue;
     }
-    await upsertEnv({ appId, key, value, targets, type: "plain" });
+    autoLinked.push(
+      ...(await upsertEnv({ appId, key, value, targets, type: "plain" })),
+    );
     added++;
   }
-  return { added, skippedSecrets };
+  return { added, skippedSecrets, autoLinked };
 }
 
 export async function setAppEnv(
@@ -352,6 +361,7 @@ export async function setAppEnv(
           targets,
           type: "plain",
           databaseId: null,
+          databaseUnlinked: false,
           createdByUserId: userId,
           updatedByUserId: userId,
           createdAt: nowIso(),
@@ -371,6 +381,7 @@ export async function setAppEnv(
     user.name,
     appId,
   );
+  await autoLinkAppEnv(appId);
   return wanted.size;
 }
 
