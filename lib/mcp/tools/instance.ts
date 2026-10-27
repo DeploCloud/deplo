@@ -6,7 +6,7 @@ export const INSTANCE: McpToolDef[] = [
     name: "get_instance",
     title: "Read this Deplo's own settings",
     description:
-      "The panel's address, version, log retention, and what Update installs: the newest release, or an update stop it has to pass first, with the reason and the servers it waits on.",
+      "The panel's address, version, log retention, and what Update installs: the newest release, or an update stop it has to pass first, with the reason and the servers it waits on. Also the last update that was rolled back, and why.",
     group: "Instance",
     requires: "instanceAdmin",
     readOnly: true,
@@ -48,6 +48,11 @@ export const INSTANCE: McpToolDef[] = [
           checkedAt
           canary
           error
+          lastRefusedUpdate {
+            version
+            reason
+            at
+          }
         }
       }
     `,

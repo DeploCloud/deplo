@@ -5438,6 +5438,24 @@ type RecoveryKey {
   where: String
 }
 
+"""
+An update that did not start, so the installer put the previous version back (ADR-0041).
+"""
+type RefusedUpdate {
+  """When the installer rolled it back (ISO 8601, UTC)."""
+  at: String
+
+  """
+  One plain sentence: the update stop to install first, or that the new version did not start.
+  """
+  reason: String
+
+  """
+  The version that was rolled back, `v`-prefixed. Null when the installer could not tell.
+  """
+  version: String
+}
+
 """A single-use link to register a new account."""
 type RegistrationLink {
   """
@@ -6834,6 +6852,11 @@ type UpdateInfo {
   checkedAt: String
   current: String
   error: String
+
+  """
+  The last update the installer rolled back, and why. Null once an update succeeds.
+  """
+  lastRefusedUpdate: RefusedUpdate
 
   """
   The newest release on this instance's channel. Update may install an update stop before it: see `next`.
