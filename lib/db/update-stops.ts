@@ -16,7 +16,7 @@ export type RawQuery = (
 // The installer greps a refused boot's log for this prefix and shows the rest of the line as the reason.
 export const UPDATE_REFUSED = "[deplo] Update refused: ";
 
-// instrumentation-node.ts matches the name, so a refusal logs only its own line.
+// instrumentation-node.ts adds no line of its own for it: the refusal already logged one.
 export class UpdateRefusedError extends Error {
   override name = "UpdateRefusedError";
 }

@@ -1,10 +1,12 @@
+import { UpdateRefusedError } from "./lib/db/update-stops";
+
 export async function register(): Promise<void> {
   try {
     const { runMigrations } = await import("./lib/db/migrate");
     await runMigrations();
   } catch (e) {
     // A refused update has already logged the one line the installer reads (ADR-0041).
-    if ((e as Error | undefined)?.name !== "UpdateRefusedError")
+    if (!(e instanceof UpdateRefusedError))
       console.error(
         "[deplo] DB migration failed at boot - refusing to serve on an out-of-date schema:",
         e,
