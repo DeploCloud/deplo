@@ -633,8 +633,8 @@ export interface HelloResponse {
     | LinkAddresses
     | undefined;
   /**
-   * Whether this agent still listens on a port of its own, which it stops doing once its
-   * agent link works. Trusted only with the "agent-link" capability.
+   * Kept in V1: true only on an older agent still listening on a port of its own. An agent since
+   * the link-only release never listens and leaves it unset. Trusted only with "agent-link".
    */
   listening: boolean;
 }
@@ -21930,8 +21930,8 @@ export const AgentService = {
     responseDeserialize: (value: Buffer): LinkAddresses => LinkAddresses.decode(value),
   },
   /**
-   * Close this agent's own port for good, once its agent link works (ADR-0040). Taken over
-   * the link only, and kept across restarts. Advertised as `agent-link`.
+   * Kept in V1 for agents that had a port of their own (ADR-0040). An agent since the link-only
+   * release never listens, so this is a no-op that succeeds. Advertised as `agent-link`.
    */
   stopListening: {
     path: "/deplo.agent.v1.Agent/StopListening" as const,
@@ -22276,8 +22276,8 @@ export interface AgentServer extends UntypedServiceImplementation {
    */
   setLinkAddresses: handleUnaryCall<LinkAddresses, LinkAddresses>;
   /**
-   * Close this agent's own port for good, once its agent link works (ADR-0040). Taken over
-   * the link only, and kept across restarts. Advertised as `agent-link`.
+   * Kept in V1 for agents that had a port of their own (ADR-0040). An agent since the link-only
+   * release never listens, so this is a no-op that succeeds. Advertised as `agent-link`.
    */
   stopListening: handleUnaryCall<StopListeningRequest, StopListeningResponse>;
   /**
@@ -23450,8 +23450,8 @@ export interface AgentClient extends Client {
     callback: (error: ServiceError | null, response: LinkAddresses) => void,
   ): ClientUnaryCall;
   /**
-   * Close this agent's own port for good, once its agent link works (ADR-0040). Taken over
-   * the link only, and kept across restarts. Advertised as `agent-link`.
+   * Kept in V1 for agents that had a port of their own (ADR-0040). An agent since the link-only
+   * release never listens, so this is a no-op that succeeds. Advertised as `agent-link`.
    */
   stopListening(
     request: StopListeningRequest,
