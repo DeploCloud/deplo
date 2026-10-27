@@ -8,6 +8,21 @@ export type RawQuery = (
   params?: unknown[],
 ) => Promise<{ rows: Record<string, unknown>[] }>;
 
+// The installer greps a refused boot's log for this prefix and shows the rest of the line as the reason.
+export const UPDATE_REFUSED = "[deplo] Update refused: ";
+
+// instrumentation-node.ts matches the name, so a refusal logs only its own line.
+export class UpdateRefusedError extends Error {
+  override name = "UpdateRefusedError";
+}
+
+const tag = (v: string) => `v${v.replace(/^v/i, "")}`;
+
+/** Why this release will not start: plain words naming the stop to install first. */
+export function refusalReason(stop: string): string {
+  return `Deplo ${tag(DEPLO_VERSION)} has to come after ${tag(stop)}. Update to ${tag(stop)} first and let it finish getting this instance ready.`;
+}
+
 /** A row passes every stop up to its own version: a stop, a later stop, or a fresh install. */
 export function stopPassed(stop: string, passed: readonly string[]): boolean {
   return passed.some((v) => versionAtLeast(v, stop));
@@ -35,14 +50,12 @@ export async function neverMigrated(query: RawQuery): Promise<boolean> {
   return Number(r.rows[0]?.n ?? 0) === 0;
 }
 
-/** After a fresh install's first migrations: past this release, so past every stop it knows. */
-export async function passEveryStop(query: RawQuery): Promise<void> {
-  for (const version of new Set([
-    DEPLO_VERSION,
-    REQUIRED_STOP ?? DEPLO_VERSION,
-  ]))
-    await query(
-      "INSERT INTO passed_update_stops (version, passed_at) VALUES ($1, now()) ON CONFLICT (version) DO NOTHING",
-      [version],
-    );
+/** A fresh install is past this release, so past every stop it knows: committed with its first migrations. */
+export function passEveryStopSql(
+  requiredStop: string | null = REQUIRED_STOP,
+): string[] {
+  return [...new Set([DEPLO_VERSION, requiredStop ?? DEPLO_VERSION])].map(
+    (v) =>
+      `INSERT INTO passed_update_stops (version, passed_at) VALUES ('${v.replace(/'/g, "''")}', now()) ON CONFLICT (version) DO NOTHING`,
+  );
 }

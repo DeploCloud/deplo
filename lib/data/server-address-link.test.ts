@@ -170,6 +170,22 @@ test("the API gives a server that links in no agent port, and names no link of i
   );
 });
 
+test("after Deplo restarts, a server that linked once still shows no agent port, and its address is saved without a dial", async () => {
+  await linkIn();
+  await stopAgentLinkListener();
+  door = (await startAgentLinkListener({ port: 0, host: "127.0.0.1" })).port;
+
+  assert.equal(await agentPortField(), null);
+  const started = Date.now();
+  const { warning } = await asAdmin(() =>
+    updateServerAddress({ id: SERVER, address: "localhost" }),
+  );
+  assert.equal(warning, null);
+  assert.ok(Date.now() - started < 2_000, "it did not wait for the link");
+  assert.equal(agent.connections().opened, 0, "nothing dialed it");
+  assert.equal((await asAdmin(() => getServerById(SERVER)))?.ip, "localhost");
+});
+
 test("a linked server's agent port is left alone, and Activity names the address only", async () => {
   await linkIn();
   await asAdmin(() =>

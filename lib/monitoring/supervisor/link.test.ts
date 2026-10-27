@@ -7,7 +7,10 @@ import {
   startServerLinkStatus,
   stopServerLinkStatus,
 } from "../../data/server-health";
-import { dropAgentChannel } from "../../infra/agent-client/channel-pool";
+import {
+  dropAgentChannel,
+  onAgentHello,
+} from "../../infra/agent-client/channel-pool";
 import {
   startFakeAgent,
   type FakeAgent,
@@ -121,6 +124,23 @@ test("a linked server's telemetry streams over its link", async () => {
 
   await streamed(1);
   assert.equal(agent.connections().opened, 0, "nothing dialed the agent");
+});
+
+test("a server that never linked is asked once, then its telemetry waits for its link instead of dialing again", async (t) => {
+  let hellos = 0;
+  t.after(onAgentHello((id) => void (id === SERVER && hellos++)));
+  const watching = watchStatus();
+  t.after(watching.stop);
+  startMetricsStreams();
+  await waitFor(() => hellos >= 1, "the stream asked the server");
+  await new Promise((r) => setTimeout(r, 2_500));
+  assert.equal(hellos, 1, "asked again over its dial");
+  assert.equal(agent.connections().opened, 1);
+
+  await linkIn();
+  await streamed(1);
+  await watching.stop();
+  assert.ok(!watching.seen.includes("offline"), watching.seen.join(","));
 });
 
 test("a link that drops and comes back never shows the server offline, and its telemetry and health resume", async () => {

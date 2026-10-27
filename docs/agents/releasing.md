@@ -42,8 +42,9 @@ the answers. Settle these first - from the request or the tree when they are the
    (Settings → Deplo → Updates, or the `servers` table) in the question.
 4. **Is this release an update stop, or does it require one?** (ADR-0041.) `deplo.updateStop`
    makes it a stop; `deplo.requiresStop` names the stop an instance must have passed, and Update
-   installs that stop first. A stable may only require a published stable stop, and every patch of
-   a stop is declared a stop too.
+   installs that stop first. The release itself refuses to start, before any migration, on an
+   instance that has not passed it. A stable may only require a published stable stop, and every
+   patch of a stop is declared a stop too.
 5. **Is there an upgrade step or a bad bug to put on top of the notes?** Usually not.
 
 Then run the checks in "How", tag, replace the notes once the image is published, and say what

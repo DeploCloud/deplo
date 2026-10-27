@@ -332,3 +332,23 @@ test("right after the panel starts, a server that stopped listening and has not 
   );
   assert.equal((await shown()).status, "online");
 });
+
+test("after a restart, a check never dials a server that linked once: nothing changes while links settle, then it is offline", async (t) => {
+  await linkIn();
+  await stopAgentLinkListener();
+  door = (await startAgentLinkListener({ port: 0, host: "127.0.0.1" })).port;
+  await ageObservation();
+  const before = await shown();
+
+  const settling = await check();
+  assert.ok(settling.took < 1_500, `the check took ${settling.took} ms`);
+  assert.deepEqual(await shown(), before);
+
+  mock.timers.enable({ apis: ["Date"], now: Date.now() + LINK_SETTLE_MS });
+  t.after(() => mock.timers.reset());
+  const settled = await check();
+  assert.ok(settled.took < 1_500, `the check took ${settled.took} ms`);
+  assert.equal(settled.status, "offline");
+  assert.equal(settled.statusMessage, HEALTH_MESSAGES.offline);
+  assert.equal(agent.connections().opened, 0, "nothing dialed it");
+});

@@ -3,10 +3,12 @@ export async function register(): Promise<void> {
     const { runMigrations } = await import("./lib/db/migrate");
     await runMigrations();
   } catch (e) {
-    console.error(
-      "[deplo] DB migration failed at boot - refusing to serve on an out-of-date schema:",
-      e,
-    );
+    // A refused update has already logged the one line the installer reads (ADR-0041).
+    if ((e as Error | undefined)?.name !== "UpdateRefusedError")
+      console.error(
+        "[deplo] DB migration failed at boot - refusing to serve on an out-of-date schema:",
+        e,
+      );
     throw e;
   }
   // Before the door opens, so server status hears every link come and go.

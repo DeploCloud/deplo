@@ -1,6 +1,6 @@
 import "server-only";
 
-import { and, eq, isNotNull, sql } from "drizzle-orm";
+import { and, eq, isNotNull, isNull, sql } from "drizzle-orm";
 import { getDb } from "../../db/client";
 import { servers as serversTable } from "../../db/schema/control-plane/servers";
 import { nowIso } from "../../ids";
@@ -80,6 +80,21 @@ export async function serverPinnedTo(
     )
     .limit(1);
   return row ?? null;
+}
+
+/** Its first verified link, kept for good; a Deplo move never inserts servers, so the freeze does not apply. */
+export async function recordFirstLink(serverId: string): Promise<void> {
+  try {
+    await getDb()
+      .update(serversTable)
+      .set({ firstLinkedAt: nowIso() })
+      .where(
+        and(eq(serversTable.id, serverId), isNull(serversTable.firstLinkedAt)),
+      );
+  } catch (e) {
+    // The next link it opens records it.
+    console.error(`[deplo] could not record ${serverId}'s first link:`, e);
+  }
 }
 
 export function observedTraefik(hello: {
