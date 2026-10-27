@@ -4,8 +4,6 @@ import { revalidateTag } from "next/cache";
 
 import { hostname } from "node:os";
 
-import { eq } from "drizzle-orm";
-
 import { getDb } from "../db/client";
 import { instanceSettings } from "../db/schema/control-plane/instance";
 import { nowIso } from "../ids";
@@ -26,11 +24,22 @@ import {
   SETTINGS_ID,
 } from "./instance-settings/settings-store";
 import { recordActivity } from "./activity";
+import {
+  decideUpdate,
+  passThisStopIfMet,
+  type UpdateStopInfo,
+} from "./update-stops/decision";
+
+export type { UpdateStopInfo };
 
 export interface UpdateInfo {
   current: string;
   latest: string | null;
+  // Update installs `next`: the newest release, or an update stop it has to come after (ADR-0041).
   updateAvailable: boolean;
+  next: string | null;
+  nextIsStop: boolean;
+  stop: UpdateStopInfo | null;
   url: string | null;
   name: string | null;
   publishedAt: string | null;
@@ -125,12 +134,29 @@ async function fetchNewestRelease(
   return { release, current: rankedCurrent(DEPLO_VERSION, tags) };
 }
 
+// A stop can be older than the 20 releases the list carries, so it is looked up by its tag.
+async function releasePublished(
+  version: string,
+  init: RequestInit,
+): Promise<boolean | { error: string }> {
+  const res = await fetch(
+    `https://api.github.com/repos/${DEPLO_REPO}/releases/tags/v${version}`,
+    { headers: GH_HEADERS, signal: AbortSignal.timeout(TIMEOUT_MS), ...init },
+  );
+  if (res.status === 404) return false;
+  if (!res.ok) return { error: describeFailure(res) };
+  return true;
+}
+
 async function fetchUpdateInfo(init: RequestInit): Promise<UpdateInfo> {
   const canary = await canaryReleasesEnabled();
   const base: UpdateInfo = {
     current: DEPLO_VERSION,
     latest: null,
     updateAvailable: false,
+    next: null,
+    nextIsStop: false,
+    stop: null,
     url: null,
     name: null,
     publishedAt: null,
@@ -139,6 +165,7 @@ async function fetchUpdateInfo(init: RequestInit): Promise<UpdateInfo> {
   };
 
   try {
+    const passed = await passThisStopIfMet();
     const found = await fetchNewestRelease(init, canary);
     if (!found) return base;
     if ("error" in found) return { ...base, error: found.error };
@@ -146,10 +173,9 @@ async function fetchUpdateInfo(init: RequestInit): Promise<UpdateInfo> {
     const tag = typeof json.tag_name === "string" ? json.tag_name : null;
     if (!tag) return base;
 
-    return {
+    const newest: UpdateInfo = {
       ...base,
       latest: tag,
-      updateAvailable: isNewer(tag, found.current),
       url:
         typeof json.html_url === "string"
           ? json.html_url
@@ -157,6 +183,21 @@ async function fetchUpdateInfo(init: RequestInit): Promise<UpdateInfo> {
       name: typeof json.name === "string" && json.name ? json.name : tag,
       publishedAt:
         typeof json.published_at === "string" ? json.published_at : null,
+    };
+    if (!isNewer(tag, found.current)) return newest;
+    const route = await decideUpdate(
+      tag,
+      passed,
+      (v) => releasePublished(v, init),
+      init,
+    );
+    if (route.error) return { ...newest, error: route.error };
+    return {
+      ...newest,
+      updateAvailable: route.next !== null,
+      next: route.next,
+      nextIsStop: route.next !== null && route.stop?.version === route.next,
+      stop: route.stop,
     };
   } catch (e) {
     return {
@@ -166,8 +207,14 @@ async function fetchUpdateInfo(init: RequestInit): Promise<UpdateInfo> {
   }
 }
 
+// Ungated: the maintenance sweep asks with no one signed in. GraphQL reads `readUpdateInfo`.
 export async function getUpdateInfo(): Promise<UpdateInfo> {
   return fetchUpdateInfo(CACHED);
+}
+
+export async function readUpdateInfo(): Promise<UpdateInfo> {
+  await requireInstanceAdmin();
+  return getUpdateInfo();
 }
 
 export async function refreshUpdateInfo(): Promise<UpdateInfo> {
@@ -229,6 +276,8 @@ export async function listDeploReleases(): Promise<{
         typeof r.tag_name === "string" ? [r.tag_name] : [],
       ),
     );
+    // Only what Update brings in: up to `next`, which is an update stop when one comes first.
+    const { next } = await getUpdateInfo();
     const releases = listed
       .map((r) => {
         const tag = typeof r.tag_name === "string" ? r.tag_name.trim() : "";
@@ -246,7 +295,8 @@ export async function listDeploReleases(): Promise<{
           body: typeof r.body === "string" ? r.body.trim() : "",
           prerelease: r.prerelease === true,
           current: normalizeTag(tag) === DEPLO_VERSION,
-          available: isNewer(tag, current),
+          available:
+            next !== null && isNewer(tag, current) && !isNewer(tag, next),
         };
       })
       .filter((r): r is DeploRelease => r !== null)
@@ -273,12 +323,13 @@ export async function applyDeploUpdate(): Promise<DeploUpdateStarted> {
   const user = (await getCurrentUser())!;
 
   const info = await getUpdateInfo();
-  if (!info.updateAvailable || !info.latest)
+  if (!info.next)
     throw new Error(
       info.error ||
+        info.stop?.reason ||
         `Deplo is already on the newest release (v${info.current}).`,
     );
-  const version = normalizeTag(info.latest);
+  const version = normalizeTag(info.next);
 
   const server = await deploHostServer();
   if (!server)

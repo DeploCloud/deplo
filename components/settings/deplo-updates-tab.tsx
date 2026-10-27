@@ -28,6 +28,9 @@ type UpdateInfo = {
   current: string;
   latest: string | null;
   updateAvailable: boolean;
+  next: string | null;
+  nextIsStop: boolean;
+  stop: { version: string; reason: string; waiting: boolean } | null;
   publishedAt: string | null;
   canary: boolean;
   error?: string | null;
@@ -40,6 +43,13 @@ const UPDATES_QUERY = /* GraphQL */ `
       current
       latest
       updateAvailable
+      next
+      nextIsStop
+      stop {
+        version
+        reason
+        waiting
+      }
       publishedAt
       canary
       error
@@ -248,13 +258,13 @@ export function DeploUpdatesTab({
           </div>
           {(!updating || stalled) && (
             <div className="flex shrink-0 flex-wrap items-center gap-2">
-              {info?.updateAvailable && info.latest && (
+              {info?.updateAvailable && info.next && (
                 <ConfirmAction
                   variant="default"
                   title={
                     fleet.total > 0
-                      ? `Update Deplo to ${info.latest}, then its ${fleet.total} server${fleet.total === 1 ? "" : "s"}?`
-                      : `Update Deplo to ${info.latest}?`
+                      ? `Update Deplo to ${info.next}, then its ${fleet.total} server${fleet.total === 1 ? "" : "s"}?`
+                      : `Update Deplo to ${info.next}?`
                   }
                   description={
                     <>
@@ -369,12 +379,27 @@ export function heroState({
       title: "Couldn't check for updates",
       line: info?.error ?? error ?? "The release history did not load.",
     };
-  if (info.updateAvailable && info.latest)
+  if (info.updateAvailable && info.next)
     return {
       tone: "new",
-      title: `Deplo ${info.latest} is available`,
-      line: `You're on v${version}.`,
+      title: `Deplo ${info.next} is available`,
+      line:
+        info.nextIsStop && info.stop
+          ? info.stop.reason
+          : `You're on v${version}.`,
     };
+  if (info.stop)
+    return info.stop.waiting
+      ? {
+          tone: "busy",
+          title: `Getting ready for Deplo ${info.latest}`,
+          line: info.stop.reason,
+        }
+      : {
+          tone: "warn",
+          title: `Deplo ${info.latest} can't be installed yet`,
+          line: info.stop.reason,
+        };
   if (fleet.behind.length > 0) {
     const stuck =
       fleet.pausedBy !== null || fleet.behind.some((s) => s.update?.failed);
@@ -437,9 +462,9 @@ function StrandedServers({
         <li key={s.id} className="flex items-start gap-1.5">
           <TriangleAlert className="mt-0.5 size-4 shrink-0 text-[var(--warning)]" />
           <span>
-            <strong>{s.name}</strong> is offline on{" "}
-            {s.version ? `v${s.version}` : "an unknown agent"} and will be
-            unusable until its agent updates.
+            <strong>{s.name}</strong> is offline
+            {s.version ? ` on server agent v${s.version}` : ""} and will be
+            unusable until its server agent updates.
           </span>
         </li>
       ))}

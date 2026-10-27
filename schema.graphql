@@ -1826,7 +1826,9 @@ enum DeploMoveWorkloadState {
 
 """One published release of Deplo, as the changelog renders it."""
 type DeploRelease {
-  """Newer than the running version, so installing an update brings it in."""
+  """
+  Newer than the running version and no newer than `updateInfo.next`, so Update brings it in.
+  """
   available: Boolean
   body: String
   current: Boolean
@@ -4568,7 +4570,7 @@ type Mutation {
   updateDatabaseResources(id: String!, limits: ResourceLimitsInput!): Database
 
   """
-  Update this instance to the newest release: the agent on the machine Deplo runs on re-runs the installer.
+  Update this instance to `updateInfo.next`: the newest release, or the update stop it has to pass first. The server agent on the machine Deplo runs on re-runs the installer.
   """
   updateDeplo: DeploUpdateStarted
 
@@ -6827,14 +6829,33 @@ type UpdateInfo {
   checkedAt: String
   current: String
   error: String
+
+  """
+  The newest release on this instance's channel. Update may install an update stop before it: see `next`.
+  """
   latest: String
   name: String
+
+  """
+  The version Update installs: `latest`, or the update stop this instance has to pass first. Null when there is nothing to install.
+  """
+  next: String
+
+  """`next` is an update stop on the way to `latest`."""
+  nextIsStop: Boolean
   publishedAt: String
 
   """
-  Offline servers whose agent is older than the minimum the `latest` Deplo supports. They cannot update while offline, so they stay unusable until they come back and their agent updates. Empty when there is no update or the release does not say.
+  The update stop between this instance and `latest`, while it has not passed it.
+  """
+  stop: UpdateStop
+
+  """
+  Offline servers whose agent is older than the minimum the `next` Deplo supports. They cannot update while offline, so they stay unusable until they come back and their agent updates. Empty when there is no update or the release does not say.
   """
   strandedServers: [StrandedServer!]
+
+  """Update installs something now: `next` is set."""
   updateAvailable: Boolean
   url: String
 }
@@ -6862,6 +6883,20 @@ input UpdateSourceInput {
   repo: GitRepoInput
   serverId: String
   source: DeploySource!
+}
+
+"""
+A release this instance must install, and whose conditions it must meet, before it can update past it (ADR-0041).
+"""
+type UpdateStop {
+  """One plain sentence saying why Update offers what it does."""
+  reason: String
+  version: String
+
+  """
+  This instance runs the stop and its conditions do not hold yet, so Update offers nothing until they do.
+  """
+  waiting: Boolean
 }
 
 input UpdateTeamInput {

@@ -6,7 +6,7 @@ export const INSTANCE: McpToolDef[] = [
     name: "get_instance",
     title: "Read this Deplo's own settings",
     description:
-      "The panel's address, version, log retention, and whether an update is available.",
+      "The panel's address, version, log retention, and what Update installs: the newest release, or an update stop it has to pass first, with the reason.",
     group: "Instance",
     requires: "instanceAdmin",
     readOnly: true,
@@ -28,6 +28,13 @@ export const INSTANCE: McpToolDef[] = [
           current
           latest
           updateAvailable
+          next
+          nextIsStop
+          stop {
+            version
+            reason
+            waiting
+          }
           publishedAt
           url
           checkedAt
@@ -40,7 +47,8 @@ export const INSTANCE: McpToolDef[] = [
   tool({
     name: "check_for_updates",
     title: "Check for a Deplo update",
-    description: "Look up the newest Deplo release right now.",
+    description:
+      "Look up the newest Deplo release right now, and what Update installs on the way to it.",
     group: "Instance",
     requires: "instanceAdmin",
     idempotent: true,
@@ -51,9 +59,17 @@ export const INSTANCE: McpToolDef[] = [
           current
           latest
           updateAvailable
+          next
+          nextIsStop
+          stop {
+            version
+            reason
+            waiting
+          }
           publishedAt
           url
           canary
+          error
         }
       }
     `,
