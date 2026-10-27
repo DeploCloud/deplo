@@ -2,12 +2,12 @@ import "server-only";
 
 import { status as GrpcStatus } from "@grpc/grpc-js";
 
-import { listAllServers } from "../data/servers/roster";
+import { getServerById, listAllServers } from "../data/servers/roster";
 import {
   markServerSeen,
   observedTraefik,
 } from "../data/servers/agent-handshake";
-import { recordServerHealth } from "../data/server-health";
+import { healthFromHello, recordServerHealth } from "../data/server-health";
 import { classifyServerHealth } from "../infra/server-health";
 import type { AgentConnection } from "../infra/agent-client/connection";
 import {
@@ -200,7 +200,6 @@ export function sleep(ms: number, signal: AbortSignal): Promise<void> {
 async function runStreamLoop(
   serverId: string,
   serverName: string,
-  storageOnly: boolean,
   signal: AbortSignal,
 ): Promise<void> {
   let attempt = 0;
@@ -225,7 +224,9 @@ async function runStreamLoop(
         serverName,
       };
 
-      const connHealth = classifyServerHealth(hello, null, { storageOnly });
+      // The probe's verdict: one that answers here yet never links must not read as online.
+      const server = await getServerById(serverId).catch(() => null);
+      const connHealth = server && (await healthFromHello(server, hello));
 
       await markServerSeen(
         serverId,
@@ -237,7 +238,12 @@ async function runStreamLoop(
       );
       let lastHealthWriteAt = Date.now();
       let lastStatusReconcileAt = 0;
-      await recordServerHealth(serverId, connHealth, new Date().toISOString());
+      if (connHealth)
+        await recordServerHealth(
+          serverId,
+          connHealth,
+          new Date().toISOString(),
+        );
 
       for await (const frame of conn.streamMetrics({
         dataDir: "",
@@ -253,11 +259,12 @@ async function runStreamLoop(
         const now = Date.now();
         if (now - lastHealthWriteAt >= HEALTH_WRITE_MS) {
           lastHealthWriteAt = now;
-          await recordServerHealth(
-            serverId,
-            connHealth,
-            new Date(now).toISOString(),
-          );
+          if (connHealth)
+            await recordServerHealth(
+              serverId,
+              connHealth,
+              new Date(now).toISOString(),
+            );
           const cap = frame.host;
           if (cap && cap.cpuCores > 0) {
             await markServerSeen(serverId, undefined, undefined, {
@@ -397,7 +404,7 @@ export async function reconcileMetricsStreams(): Promise<void> {
     entry.loop = (
       mode === "poll"
         ? runPollLoop(s.id, abort.signal)
-        : runStreamLoop(s.id, s.name, s.storageOnly, abort.signal)
+        : runStreamLoop(s.id, s.name, abort.signal)
     ).catch((e) => {
       console.warn(
         `[monitoring] stream loop for ${s.name} exited: ${e instanceof Error ? e.message : String(e)}`,
