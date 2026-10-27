@@ -74,24 +74,31 @@ export function linkMayCome(serverId: string, failedDial?: unknown): boolean {
   );
 }
 
-/** The server's link, waiting up to `ms` for one; null when none came. */
+/** The server's link, waiting up to `ms` (Infinity: no limit) for one; null when none came or `signal` aborted. */
 export function waitForLink(
   serverId: string,
   ms: number,
+  signal?: AbortSignal,
 ): Promise<AgentLink | null> {
   const now = registry.links.get(serverId);
   if (now) return Promise.resolve(now);
-  if (ms <= 0 || registry.doorOpenedAt === null) return Promise.resolve(null);
+  if (ms <= 0 || registry.doorOpenedAt === null || signal?.aborted)
+    return Promise.resolve(null);
   return new Promise((resolve) => {
     const waiting = registry.waiters.get(serverId) ?? new Set();
     registry.waiters.set(serverId, waiting);
     const done = (link: AgentLink | null) => {
       clearTimeout(timer);
+      signal?.removeEventListener("abort", abort);
       waiting.delete(done);
       if (waiting.size === 0) registry.waiters.delete(serverId);
       resolve(link);
     };
-    const timer = setTimeout(() => done(null), ms);
+    const abort = () => done(null);
+    const timer = Number.isFinite(ms)
+      ? setTimeout(() => done(null), ms)
+      : undefined;
+    signal?.addEventListener("abort", abort, { once: true });
     waiting.add(done);
   });
 }

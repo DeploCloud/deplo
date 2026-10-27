@@ -17,11 +17,7 @@ import {
   AgentUnreachableError,
 } from "../infra/agent-client/errors";
 import { connectMetricsStreamAgent } from "../infra/agent-client/preflight";
-import {
-  currentLink,
-  linkMayCome,
-  onAgentLink,
-} from "../infra/agent-link/registry";
+import { linkMayCome, waitForLink } from "../infra/agent-link/registry";
 import { isMetricsSavingEnabled } from "../data/monitoring-settings";
 import { measureServerForCollector } from "../data/monitoring";
 import { getDb } from "../db/client";
@@ -303,7 +299,9 @@ async function runStreamLoop(
       // Its dial carries no telemetry, so another dial settles nothing: wait for its link (ADR-0041).
       if (e instanceof AgentNotLinkedError) {
         conn?.close();
-        await linkComesUp(serverId, signal);
+        // With the door shut no link can come: back off as after any failed dial.
+        if (!(await waitForLink(serverId, Infinity, signal)))
+          await sleep(RECONNECT_BACKOFF_CAP_MS, signal);
         attempt = 0;
         continue;
       }
@@ -336,21 +334,6 @@ async function runStreamLoop(
       conn?.close();
     }
   }
-}
-
-function linkComesUp(serverId: string, signal: AbortSignal): Promise<void> {
-  return new Promise((resolve) => {
-    const done = () => {
-      off();
-      signal.removeEventListener("abort", done);
-      resolve();
-    };
-    const off = onAgentLink((e) => {
-      if (e.type === "up" && e.serverId === serverId) done();
-    });
-    signal.addEventListener("abort", done, { once: true });
-    if (currentLink(serverId)) done();
-  });
 }
 
 async function runPollLoop(
