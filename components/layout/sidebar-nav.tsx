@@ -182,8 +182,6 @@ export function SidebarNav({
             const active = isActive(item.href, item.exact);
             const Icon = item.icon;
             const showIcon = !section.iconless || collapsed;
-            // The back link heads its sidebar: its name centred, the arrow pinned left.
-            const heading = section.backLink && !collapsed;
             if (item.disabledReason) {
               return (
                 <Tooltip key={item.href} delayDuration={collapsed ? 0 : 400}>
@@ -229,20 +227,12 @@ export function SidebarNav({
                     className={cn(
                       "group relative z-10 flex cursor-pointer items-center gap-2.5 rounded-md text-sm transition-colors",
                       collapsed ? "h-9 w-9 justify-center" : "px-3 py-2",
-                      heading && "justify-center",
                       active
                         ? "text-foreground"
                         : "text-muted-foreground hover:bg-surface hover:text-foreground focus-visible:bg-surface",
                     )}
                   >
-                    {showIcon &&
-                      (heading ? (
-                        <span className="absolute left-3 flex">
-                          <NavIcon item={item} active={active} />
-                        </span>
-                      ) : (
-                        <NavIcon item={item} active={active} />
-                      ))}
+                    {showIcon && <NavIcon item={item} active={active} />}
                     {!collapsed && item.label}
                     {!collapsed && item.submenu && <SubmenuChevron />}
                     {!showIcon && <NavPending />}

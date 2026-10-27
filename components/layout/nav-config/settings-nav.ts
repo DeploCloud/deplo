@@ -18,7 +18,7 @@ import { DeploMark } from "@/components/logo";
 import { backSection, type NavSection } from "./nav-item";
 
 export const SETTINGS_NAV: NavSection[] = [
-  backSection("Settings", "/", "Return to the dashboard", true),
+  backSection("Back to dashboard", "/", "Return to the dashboard", true),
   {
     title: "Team",
     items: [

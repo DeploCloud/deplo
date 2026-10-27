@@ -38,7 +38,7 @@ export interface NavSection {
   title?: string;
   items: NavItem[];
   iconless?: boolean;
-  /** The back link heading a sidebar, labelled with that sidebar's name. */
+  /** A lone "Back to …" link: the section after it needs no divider. */
   backLink?: boolean;
 }
 

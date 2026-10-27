@@ -123,13 +123,16 @@ export function appNav(slug: string, f: AppNavFlags): NavSection[] {
     },
   ];
 
-  return [backSection("App", "/", "Return to all apps", true), { items }];
+  return [
+    backSection("Back to apps", "/", "Return to all apps", true),
+    { items },
+  ];
 }
 
 export function appSettingsNav(slug: string, isGithubApp = true): NavSection[] {
   const base = `/apps/${slug}/settings`;
   return [
-    backSection("Settings", `/apps/${slug}`, "Return to the app overview"),
+    backSection("Back to app", `/apps/${slug}`, "Return to the app overview"),
     {
       iconless: true,
       items: [

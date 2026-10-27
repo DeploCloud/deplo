@@ -32,7 +32,7 @@ export function databaseNav(
   const on = (seg: string) => onSubRoute(f.pathname, base, seg);
   const onConsole = on("/console");
   return [
-    backSection("Storage", "/storage", "Return to storage", true),
+    backSection("Back to storage", "/storage", "Return to storage", true),
     {
       items: [
         {
@@ -107,7 +107,7 @@ export function databaseSettingsNav(id: string): NavSection[] {
   const base = `/storage/databases/${id}/settings`;
   return [
     backSection(
-      "Settings",
+      "Back to database",
       `/storage/databases/${id}`,
       "Return to the database overview",
     ),
