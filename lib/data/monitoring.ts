@@ -4,8 +4,7 @@ import { getServer, listServers } from "./servers/roster";
 import { hasCapability, requireCapability } from "../membership";
 import { connectAgent } from "../infra/agent-client/connect";
 import { markServerSeen, observedTraefik } from "./servers/agent-handshake";
-import { recordServerHealth } from "./server-health";
-import { classifyServerHealth } from "../infra/server-health";
+import { healthFromHello, recordServerHealth } from "./server-health";
 import { reportedAgentVersion } from "../version";
 import { AGENT_VERSION } from "../version";
 import { nowIso } from "../ids";
@@ -103,11 +102,8 @@ async function measureRemote(
         hello.dockerVersion,
         hello.hostArch,
       );
-      await recordServerHealth(
-        server.id,
-        classifyServerHealth(hello, null, { storageOnly: server.storageOnly }),
-        observedAt,
-      );
+      const health = await healthFromHello(server, hello);
+      if (health) await recordServerHealth(server.id, health, observedAt);
     } catch {}
     return {
       serverId: server.id,
