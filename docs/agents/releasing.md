@@ -169,12 +169,13 @@ needs nothing from the reader gets no note at all.
   on the **0.x line too** since 24 Aug 2026, when its 1.x numbering was reset alongside the control
   plane. The same two buckets apply.
 - **Each panel version pins its agent** ([ADR-0037](../adr/0037-a-panel-pins-its-agent.md)):
-  `"deplo": { "agent", "agentMin" }` in `package.json`, moved in its own `chore(agent):` commit.
+  `"deplo": { "agent", "agentMin", "linkOnly" }` in `package.json`, moved in its own `chore(agent):` commit.
   `agent` is what every server gets; `agentMin` is the oldest this panel still talks to, and a
   server below it is unusable until it updates, so raise it only when the panel really needs the
   newer agent. Ship the agent **first**: `docker-image.yml` refuses to publish a panel whose pin has
   no `checksums.txt` on GitHub. A canary panel may pin an agent canary; a stable panel pins a
-  stable agent.
+  stable agent. `linkOnly: true` marks a panel that dials no server (ADR-0040) and never goes
+  back: a Deplo that still dials reads it off the new tag to name servers that have not linked.
 - **The fleet only ever moves forward.** Nothing installs an agent older than the one a server
   runs. `docs/agents/fleet-rollout.md` §10 has the rollback options.
 - **The Beta badge** in Settings → Deplo is derived from the version starting with `0.`. Nothing
