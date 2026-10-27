@@ -1,6 +1,7 @@
-// node --require ./lib/test/server-only-shim.cjs --import tsx scripts/agent-part-b-e2e.mts [--link [--traefik] [--idle[=ms]]]
+// node --require ./lib/test/server-only-shim.cjs --import tsx scripts/agent-part-b-e2e.mts [--link [--traefik] [--idle[=ms]] | --stop]
 // DEPLO_AGENT_BIN names the agent build (a semver VERSION, or the agentMin gate refuses it). --link
 // needs no database and deploys nothing: real agents link into the real door (ADR-0040).
+// --stop: DEPLO_AGENT_BIN is a PRE-LINK build; it runs no Docker and needs only GitHub (ADR-0041).
 import { spawn, type ChildProcess } from "node:child_process";
 import { createHash } from "node:crypto";
 import { createServer } from "node:http";
@@ -1009,7 +1010,194 @@ async function linkAddressesE2e(
   }
 }
 
-(process.argv.includes("--link") ? linkMain() : main()).then(
+// --stop: on the first update stop (ADR-0041), a real pre-link agent is updated over its dial to the
+// pinned agent (fetched from its GitHub release), links, and closes its port. No Docker: its docker refuses.
+async function stopMain() {
+  process.env.NODE_TEST_CONTEXT ||= "update-stop-e2e"; // an in-process database, never a real one
+  process.env.DEPLO_SERVER_IP = "192.0.2.10";
+  const { makeTestDb } = await import("../lib/db/test-harness");
+  const { __setTestDb } = await import("../lib/db/client");
+  const { db } = await makeTestDb();
+  __setTestDb(db);
+
+  const { startAgentLinkListener, stopAgentLinkListener } =
+    await import("../lib/infra/agent-link/listener");
+  const { waitForLink } = await import("../lib/infra/agent-link/registry");
+  const { openAgent } = await import("../lib/infra/agent-client/connect");
+  const { selfUpdateServerAgent } =
+    await import("../lib/infra/agent-client/agent-lifecycle");
+  const { startLinkAddressSync, stopLinkAddressSync } =
+    await import("../lib/data/servers/link-addresses");
+  const { getServerById } = await import("../lib/data/servers/roster");
+  const { thisStopsCondition } =
+    await import("../lib/data/update-stops/condition");
+  const { passThisStopIfMet } =
+    await import("../lib/data/update-stops/decision");
+  const { mintBootstrap } = await import("../lib/agent/bootstrap");
+  const { serverToRow } = await import("../lib/data/infra-rows");
+  const { servers } = await import("../lib/db/schema/control-plane/servers");
+  const { AGENT_VERSION, DEPLO_VERSION, UPDATE_STOP } =
+    await import("../lib/version");
+  const { eq } = await import("drizzle-orm");
+  const { POST: bootstrapRoute } =
+    await import("../app/api/agent/bootstrap/route");
+  if (!UPDATE_STOP) throw new Error(`v${DEPLO_VERSION} is not an update stop`);
+
+  const { port: door } = await startAgentLinkListener({
+    port: 0,
+    host: "127.0.0.1",
+  });
+  process.env.DEPLO_PUBLIC_URL = `http://localhost:${door}`;
+  const home = createServer((req, res) => {
+    let body = "";
+    req.on("data", (c) => (body += c));
+    req.on("end", async () => {
+      const out = await bootstrapRoute(
+        new Request(`http://127.0.0.1${req.url}`, { method: "POST", body }),
+      );
+      res.writeHead(out.status, Object.fromEntries(out.headers));
+      res.end(await out.text());
+    });
+  });
+  const homePort = await new Promise<number>((resolve) =>
+    home.listen(0, "127.0.0.1", () =>
+      resolve((home.address() as { port: number }).port),
+    ),
+  );
+
+  const id = "srv-e2e-prelink";
+  const dir = mkdtempSync(join(tmpdir(), "update-stop-agent-"));
+  // Self-update swaps the binary in place: a copy, so the build it came from stays as it was.
+  const bin = join(dir, "deplo-agent");
+  writeFileSync(bin, readFileSync(AGENT_BIN));
+  chmodSync(bin, 0o755);
+  mkdirSync(join(dir, "fake-bin"));
+  writeFileSync(
+    join(dir, "fake-bin", "docker"),
+    `#!/bin/sh\necho "refused by the update stop e2e: docker $*" >&2\nexit 1\n`,
+  );
+  chmodSync(join(dir, "fake-bin", "docker"), 0o755);
+  const port = await freePort();
+  const { rawToken, stored } = mintBootstrap();
+  await db.insert(servers).values(
+    serverToRow({
+      id,
+      name: id,
+      host: "127.0.0.1",
+      type: "remote",
+      status: "provisioning",
+      ip: "127.0.0.1",
+      dockerVersion: "",
+      traefikEnabled: false,
+      cpuCores: 0,
+      memoryMb: 0,
+      diskGb: 0,
+      allTeams: true,
+      storageOnly: false,
+      buildOnly: false,
+      buildFallback: null,
+      generatedAddressFamily: null,
+      importOnly: false,
+      uninstallPending: false,
+      uninstallError: "",
+      hostArch: "amd64",
+      deployConcurrency: 1,
+      createdAt: new Date(0).toISOString(),
+      bootstrap: stored,
+    }),
+  );
+  const agent = spawn(
+    bin,
+    [
+      "--addr",
+      `127.0.0.1:${port}`,
+      "--agent-dir",
+      join(dir, "agent"),
+      "--bootstrap-url",
+      `http://127.0.0.1:${homePort}`,
+      "--bootstrap-token",
+      rawToken,
+      "--stack-dir",
+      join(dir, "stacks"),
+      "--build-tmp",
+      join(dir, "tmp"),
+      "--data-dir",
+      dir,
+    ],
+    {
+      stdio: ["ignore", "inherit", "inherit"],
+      env: {
+        NODE_ENV: "test",
+        PATH: `${join(dir, "fake-bin")}:${process.env.PATH}`,
+        HOME: dir,
+        TMPDIR: join(dir, "tmp"),
+      },
+    },
+  );
+  const until = async (what: string, ok: () => Promise<boolean>) => {
+    for (const end = Date.now() + 60_000; !(await ok()); await sleep(250))
+      if (Date.now() > end) throw new Error(`never: ${what}`);
+  };
+  const hello = async () => {
+    const conn = await openAgent(id);
+    try {
+      return await conn.hello();
+    } finally {
+      conn.close();
+    }
+  };
+  const waitingOnIt = async () =>
+    (await thisStopsCondition()).waitingOn.some((s) => s.id === id);
+  startLinkAddressSync();
+  try {
+    await until("the pre-link agent enrolls", async () => {
+      const s = await getServerById(id);
+      return !!s?.agent?.certFingerprint;
+    });
+    await db.update(servers).set({ agentPort: port }).where(eq(servers.id, id));
+    const before = await hello();
+    if (before.capabilities.includes("agent-link"))
+      throw new Error(`${id} already links: not a pre-link agent`);
+    if (!(await waitingOnIt()))
+      throw new Error("the stop is not waiting on it");
+    console.log(
+      `== ${id}: pre-link agent ${before.agentVersion || "(no version)"} on 127.0.0.1:${port}, the stop waits on it ✓`,
+    );
+
+    const updated = await selfUpdateServerAgent(id);
+    console.log(`== ${id}: updating over its dial to ${updated.version}`);
+    await until("the pinned agent answers its dial", async () => {
+      const now = await hello().catch(() => null);
+      return now?.agentVersion === AGENT_VERSION;
+    });
+    if (!(await waitForLink(id, 60_000))) throw new Error(`${id} never linked`);
+    await until("its port closes", async () => {
+      return (await listensOn(agent.pid)).length === 0;
+    });
+    if (!(await getServerById(id))?.firstLinkedAt)
+      throw new Error("its first link was not stored");
+    if (await waitingOnIt()) throw new Error("the stop still waits on it");
+    if (!(await passThisStopIfMet()).includes(DEPLO_VERSION))
+      throw new Error(`v${DEPLO_VERSION} was not recorded as passed`);
+    console.log(
+      `== ${id}: on ${AGENT_VERSION}, linked, its port is closed, and v${DEPLO_VERSION} passed its stop ✓`,
+    );
+    console.log("\n✅ update stop e2e passed");
+  } finally {
+    agent.kill("SIGTERM");
+    await stopLinkAddressSync();
+    await stopAgentLinkListener();
+    home.close();
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
+
+(process.argv.includes("--stop")
+  ? stopMain()
+  : process.argv.includes("--link")
+    ? linkMain()
+    : main()
+).then(
   () => process.exit(0),
   (e) => {
     console.error("\n❌ Part B e2e FAILED:", e);
