@@ -51,6 +51,7 @@ import { gqlAction } from "@/lib/graphql-client";
 import type { AppSummary } from "@/lib/data/apps/summary";
 import type { Capability } from "@/lib/types/identity";
 import { SecurityShield } from "@/components/security-updates/security-shield";
+import { useAction } from "@/lib/use-graphql";
 
 type MenuKit = {
   Item: React.ElementType;
@@ -123,7 +124,7 @@ export function AppCard({
   onMoveFailed?: () => void;
 }) {
   const router = useRouter();
-  const [pending, startTransition] = React.useTransition();
+  const [pending, startAction] = useAction();
   const [confirmOpen, setConfirmOpen] = React.useState(false);
   const [renameOpen, setRenameOpen] = React.useState(false);
   const dep = project.latestDeployment;
@@ -142,7 +143,7 @@ export function AppCard({
   const href = `/apps/${project.slug}`;
 
   function redeploy() {
-    startTransition(async () => {
+    startAction(async () => {
       const res = await gqlAction<
         { redeploy: { id: string | null } | null },
         { id: string | null } | null
@@ -165,7 +166,7 @@ export function AppCard({
   }
 
   function act(mutation: string, success: string) {
-    startTransition(async () => {
+    startAction(async () => {
       const res = await gqlAction(mutation, { id: project.id });
       if (res.ok) {
         toast.success(success);
@@ -175,7 +176,7 @@ export function AppCard({
   }
 
   function reload() {
-    startTransition(async () => {
+    startAction(async () => {
       const res = await gqlAction<{ reloadApp: string | null }, string>(
         `mutation($id: String!) { reloadApp(id: $id) }`,
         { id: project.id },
@@ -198,7 +199,7 @@ export function AppCard({
 
   function moveTo(folderId: string | null) {
     onMoved?.();
-    startTransition(async () => {
+    startAction(async () => {
       const res = await gqlAction(
         `mutation($appId: ID!, $folderId: ID) { moveAppToFolder(appId: $appId, folderId: $folderId) }`,
         { appId: project.id, folderId },
@@ -215,7 +216,7 @@ export function AppCard({
 
   function moveToEnvironment(environmentId: string | null) {
     onMoved?.();
-    startTransition(async () => {
+    startAction(async () => {
       const res = environmentId
         ? await gqlAction(
             `mutation($appId: ID!, $environmentId: ID!) { moveAppToEnvironment(appId: $appId, environmentId: $environmentId) }`,

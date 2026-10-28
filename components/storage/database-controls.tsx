@@ -9,6 +9,7 @@ import { SimpleTooltip } from "@/components/ui/tooltip";
 import { gqlAction } from "@/lib/graphql-client";
 import { useLiveDatabaseStatus } from "@/components/storage/database-live-status";
 import type { DatabaseStatus } from "@/lib/types/database";
+import { useAction } from "@/lib/use-graphql";
 
 export function DatabaseControls({
   id,
@@ -18,13 +19,13 @@ export function DatabaseControls({
   status: DatabaseStatus;
 }) {
   const router = useRouter();
-  const [, startTransition] = React.useTransition();
+  const [, startAction] = useAction();
   const status = useLiveDatabaseStatus(serverStatus);
   const provisioning = status === "provisioning";
   const running = status === "running";
 
   function act(mutation: string, success: string) {
-    startTransition(async () => {
+    startAction(async () => {
       const res = await gqlAction(mutation, { id });
       if (res.ok) {
         toast.success(success);

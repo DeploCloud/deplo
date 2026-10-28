@@ -27,6 +27,7 @@ import { ConfirmAction } from "@/components/shared/confirm-action";
 import { RollbackDialog } from "@/components/apps/rollback-deployment";
 import { gqlAction } from "@/lib/graphql-client";
 import type { DeploymentStatus } from "@/lib/types/deployment";
+import { useAction } from "@/lib/use-graphql";
 
 export function DeploymentActions({
   id,
@@ -66,7 +67,7 @@ export function DeploymentActions({
   onRestored?: () => void;
 }) {
   const router = useRouter();
-  const [pending, startTransition] = React.useTransition();
+  const [pending, startAction] = useAction();
   const [deleteOpen, setDeleteOpen] = React.useState(false);
   const [rollbackOpen, setRollbackOpen] = React.useState(false);
 
@@ -75,7 +76,7 @@ export function DeploymentActions({
   const isTerminal = !canCancel;
 
   function redeploy() {
-    startTransition(async () => {
+    startAction(async () => {
       const res = previewId
         ? await gqlAction<
             { redeployPreview: { latestDeploymentId: string | null } },
@@ -105,7 +106,7 @@ export function DeploymentActions({
   }
 
   function cancel() {
-    startTransition(async () => {
+    startAction(async () => {
       const res = await gqlAction<{ cancelDeployment: boolean }, boolean>(
         `mutation ($id: String!) { cancelDeployment(id: $id) }`,
         { id },

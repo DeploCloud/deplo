@@ -13,6 +13,7 @@ import {
 } from "@/components/apps/app-live-status";
 import { CapabilityTip, useAppCan } from "@/components/apps/app-capabilities";
 import type { AppStatus } from "@/lib/types/app";
+import { useAction } from "@/lib/use-graphql";
 
 export type AppLifecycleState =
   | "never-deployed"
@@ -25,7 +26,7 @@ export type AppLifecycleState =
 // One state and one set of mutations for both presentations: the header buttons and the kebab.
 export function useAppLifecycle(appId: string, serverStatus: AppStatus) {
   const router = useRouter();
-  const [pending, startTransition] = React.useTransition();
+  const [pending, startAction] = useAction();
   const status = useLiveStatus(serverStatus);
   const neverDeployed = useNeverDeployed();
   const canControl = useAppCan("control_apps");
@@ -41,7 +42,7 @@ export function useAppLifecycle(appId: string, serverStatus: AppStatus) {
           : "running";
 
   function act(mutation: string, success: string) {
-    startTransition(async () => {
+    startAction(async () => {
       const res = await gqlAction(mutation, { id: appId });
       if (res.ok) {
         toast.success(success);
@@ -53,7 +54,7 @@ export function useAppLifecycle(appId: string, serverStatus: AppStatus) {
   }
 
   function reload() {
-    startTransition(async () => {
+    startAction(async () => {
       const res = await gqlAction<{ reloadApp: string | null }, string>(
         `mutation($id: String!) { reloadApp(id: $id) }`,
         { id: appId },

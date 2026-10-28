@@ -18,6 +18,7 @@ import { Label } from "@/components/ui/label";
 import { CopyButton } from "@/components/shared/copy-button";
 import type { ActionResult } from "@/lib/result";
 import { cn } from "@/lib/utils";
+import { useAction } from "@/lib/use-graphql";
 
 export function ConfirmAction({
   trigger,
@@ -53,7 +54,7 @@ export function ConfirmAction({
   const [internalOpen, setInternalOpen] = React.useState(false);
   const isControlled = controlledOpen !== undefined;
   const open = isControlled ? controlledOpen : internalOpen;
-  const [pending, startTransition] = React.useTransition();
+  const [pending, startAction] = useAction();
   const [typed, setTyped] = React.useState("");
   const confirmInputId = React.useId();
 
@@ -86,7 +87,7 @@ export function ConfirmAction({
         .catch((e: unknown) => toast.error((e as Error).message));
       return;
     }
-    startTransition(async () => {
+    startAction(async () => {
       const res = await onConfirm();
       if (res.ok) {
         if (successMessage) toast.success(successMessage);

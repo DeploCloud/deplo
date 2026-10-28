@@ -19,6 +19,7 @@ import type { LogNotice } from "@/components/logs/log-notice";
 import { RESTART_LOOP_THRESHOLD } from "@/lib/monitoring/restart-loop";
 import { PaneTitleLink, type PaneTitle } from "@/components/shared/pane-title";
 import type { ConsoleInstance } from "@/lib/data/console";
+import { useAction } from "@/lib/use-graphql";
 
 const LOGS_INFO_QUERY = /* GraphQL */ `
   query LogsInfo($appId: String!) {
@@ -163,14 +164,14 @@ export function LiveLogs({
 
 function StartAfterLoopButton({ appId }: { appId: string }) {
   const router = useRouter();
-  const [pending, startTransition] = React.useTransition();
+  const [pending, startAction] = useAction();
   return (
     <Button
       size="sm"
       variant="outline"
       disabled={pending}
       onClick={() =>
-        startTransition(async () => {
+        startAction(async () => {
           const res = await gqlAction(
             /* GraphQL */ `
               mutation ($id: String!) {
