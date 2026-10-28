@@ -34,6 +34,8 @@ export interface ComposeStackInput {
   resources?: ResourceLimits | null;
   volumes?: VolumeMount[] | null;
   network: string;
+  /** The server's Docker Engine version, which decides the healthcheck keys it can take. */
+  dockerVersion?: string;
   onWarn?: (message: string) => void;
   takenNames?: readonly string[];
 }

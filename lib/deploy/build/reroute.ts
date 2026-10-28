@@ -29,6 +29,7 @@ import {
   readStackVolumesFromYaml,
 } from "./stack-yaml";
 import { isPausedForMove } from "../../data/deplo-move/source-guard";
+import { getServerById } from "../../data/servers/roster";
 
 const DEFERS_REROUTE = new Set<AppStatus>([
   "idle",
@@ -89,6 +90,7 @@ async function rerouteAppLocked(
         onWarn: (message) => console.warn(`[deplo] ${appId}: ${message}`),
         takenNames: await takenNamesForApp(project, appId),
         network: deployNetwork(project),
+        dockerVersion: (await getServerById(serverId))?.dockerVersion,
         deployKey,
         appId,
         domainRoutes: routes,

@@ -12,6 +12,10 @@ import yaml from "../../yaml";
 import { keepAuthoredEnvText } from "../compose-lint/document";
 import { deploImageMessage, serviceDeploImage } from "../deplo-image";
 import { mergeLogLimit, mergeResourceLimits } from "../resources";
+import {
+  keepHealthIntervalWhileStarting,
+  supportsHealthStartInterval,
+} from "../health-check";
 import { injectAppVolumes, rewriteAppVolumes } from "./app-volumes";
 import { wireDomainRoutes } from "./domain-routers";
 import {
@@ -86,6 +90,7 @@ export function buildComposeStack(input: ComposeStackInput): string {
   ];
   // Off by default: an image's own `traefik.*` labels ride in, and Traefik reads the container.
   const containerLabels = [...tracking, "traefik.enable=false"];
+  const startInterval = supportsHealthStartInterval(input.dockerVersion);
   const ownMiddlewares = new Map<string, string[]>();
   const customLabels = new Map<string, TraefikLabel[]>();
   for (const [serviceName, svc] of Object.entries(services)) {
@@ -127,6 +132,7 @@ export function buildComposeStack(input: ComposeStackInput): string {
       mergeEnvironment(svc as App, envKeys);
       mergeResourceLimits(svc as App, input.resources);
       mergeLogLimit(svc as App);
+      if (startInterval) keepHealthIntervalWhileStarting(svc as App);
     }
   }
 

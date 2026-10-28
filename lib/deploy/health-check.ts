@@ -26,6 +26,48 @@ export function healthCheckToComposeKeys(
   };
 }
 
+const DOCKER_START_INTERVAL_MS = 5_000;
+const DURATION_PART = /(\d+(?:\.\d+)?)(ns|us|µs|ms|s|m|h)/g;
+const UNIT_MS: Record<string, number> = {
+  ns: 1e-6,
+  us: 1e-3,
+  µs: 1e-3,
+  ms: 1,
+  s: 1_000,
+  m: 60_000,
+  h: 3_600_000,
+};
+
+function durationMs(value: unknown): number | null {
+  if (
+    typeof value !== "string" ||
+    !/^((\d+(\.\d+)?)(ns|us|µs|ms|s|m|h))+$/.test(value.trim())
+  )
+    return null;
+  let ms = 0;
+  for (const [, n, unit] of value.trim().matchAll(DURATION_PART))
+    ms += Number(n) * UNIT_MS[unit];
+  return ms;
+}
+
+/** `healthcheck.start_interval` reaches the container from Docker Engine 25 on. */
+export function supportsHealthStartInterval(dockerVersion?: string): boolean {
+  return Number(dockerVersion?.split(".")[0]) >= 25;
+}
+
+// Docker probes every 5s during start_period whatever `interval` says, and a
+// `service_healthy` dependent waits on that probe: keep the interval the stack asked for.
+export function keepHealthIntervalWhileStarting(
+  svc: Record<string, unknown>,
+): void {
+  const hc = svc.healthcheck as Record<string, unknown> | undefined;
+  if (!hc || typeof hc !== "object" || hc.disable === true) return;
+  if (hc.start_interval !== undefined || hc.start_period === undefined) return;
+  const interval = durationMs(hc.interval);
+  if (interval !== null && interval > 0 && interval < DOCKER_START_INTERVAL_MS)
+    hc.start_interval = hc.interval;
+}
+
 export function renderYamlKeys(
   keys: Record<string, unknown>,
   indent: number,

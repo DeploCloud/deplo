@@ -4,6 +4,7 @@ import "server-only";
 import { basicAuthUsersValue } from "../../data/basic-auth";
 import type { RoutableDomain } from "../../data/domains/routes";
 import { namesTakenOnNetwork } from "../../data/name-clash";
+import { getServerById } from "../../data/servers/roster";
 import { nowIso } from "../../ids";
 import { agentPreflight } from "../../infra/agent-client/preflight";
 import type { ResourceLimits, VolumeMount } from "../../types/container";
@@ -86,7 +87,9 @@ export async function takenNamesForApp(
   ];
 }
 
-async function prepareComposeStack(opts: ComposeStackOpts): Promise<{
+async function prepareComposeStack(
+  opts: ComposeStackOpts & { serverId: string },
+): Promise<{
   stackYaml: string;
   filesDir: string;
 }> {
@@ -119,6 +122,7 @@ async function prepareComposeStack(opts: ComposeStackOpts): Promise<{
     resources: project.resources,
     volumes: project.volumes,
     network: deployNetwork(project, opts.preview ? deployKey : null),
+    dockerVersion: (await getServerById(opts.serverId))?.dockerVersion,
   });
   return { stackYaml, filesDir };
 }

@@ -8,6 +8,7 @@ import {
   routableRoutes,
   type RoutableDomain,
 } from "../../data/domains/routes";
+import { getServerById } from "../../data/servers/roster";
 import { connectAgent } from "../../infra/agent-client/connect";
 import { usesComposeStack, usesPastedCompose } from "../../utils";
 import { buildComposeStack } from "../compose-stack/render";
@@ -49,6 +50,7 @@ export async function renderAppStack(appId: string): Promise<string | null> {
       deployKey,
       appId,
       network: deployNetwork(project),
+      dockerVersion: (await getServerById(project.serverId))?.dockerVersion,
       domainRoutes,
       takenNames: await takenNamesForApp(project, appId),
       filesDir: sourceDir ?? composeFilesDir(deployKey),
