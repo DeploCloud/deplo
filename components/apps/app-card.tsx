@@ -132,7 +132,10 @@ export function AppCard({
   const nonGit = project.repo ? null : describeAppSource(project);
 
   const stopped = project.status === "idle";
-  const stopping = project.status === "stopping";
+  const transition =
+    project.status === "starting" || project.status === "stopping"
+      ? project.status
+      : null;
   const neverDeployed = stopped && !dep;
   const restoring = project.status === "restoring";
 
@@ -256,14 +259,14 @@ export function AppCard({
             Restoring
           </K.Item>
         </SimpleTooltip>
-      ) : stopping ? (
+      ) : transition ? (
         <SimpleTooltip
-          content="The container is currently stopping"
+          content={`The container is currently ${transition}`}
           side="left"
         >
           <K.Item disabled>
             <Loader2 className="size-4 animate-spin" />
-            Stopping
+            {transition === "starting" ? "Starting" : "Stopping"}
           </K.Item>
         </SimpleTooltip>
       ) : stopped ? (

@@ -203,6 +203,7 @@ export async function restartServerWorkloads(
 
 const LEAVE_ALONE_APP_STATUSES: ReadonlySet<string> = new Set<AppStatus>([
   "idle",
+  "starting",
   "stopping",
   "building",
   "queued",

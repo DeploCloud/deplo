@@ -98,6 +98,7 @@ test("statuses the host cannot contradict pass through untouched", () => {
   assert.equal(displayStatus("building", none), "building");
   assert.equal(displayStatus("queued", none), "queued");
   assert.equal(displayStatus("idle", none), "idle");
+  assert.equal(displayStatus("starting", none), "starting");
   assert.equal(displayStatus("stopping", none), "stopping");
   assert.equal(displayStatus("error", none), "error");
 });

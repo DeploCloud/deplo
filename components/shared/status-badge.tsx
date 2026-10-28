@@ -14,6 +14,7 @@ type AnyStatus =
   | DestinationStatus
   | "active"
   | "idle"
+  | "starting"
   | "stopping"
   | "restoring"
   | "success"
@@ -37,6 +38,7 @@ const COLORS: Record<string, string> = {
   success: "bg-[var(--success)]",
   building: "bg-[var(--warning)]",
   queued: "bg-[var(--warning)]",
+  starting: "bg-[var(--warning)]",
   stopping: "bg-[var(--warning)]",
   restoring: "bg-[var(--warning)]",
   provisioning: "bg-[var(--warning)]",
@@ -64,6 +66,7 @@ const PULSE = new Set([
   "building",
   "queued",
   "provisioning",
+  "starting",
   "stopping",
   "restoring",
   "restarting",
@@ -82,6 +85,7 @@ const VARIANTS: Record<
   success: "success",
   building: "warning",
   queued: "warning",
+  starting: "warning",
   stopping: "warning",
   restoring: "warning",
   provisioning: "warning",

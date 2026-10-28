@@ -461,6 +461,7 @@ enum AppStatus {
   idle
   queued
   restoring
+  starting
   stopping
 }
 

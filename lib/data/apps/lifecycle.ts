@@ -71,7 +71,7 @@ export async function startApp(id: string): Promise<void> {
     .update(appsTable)
     .set({ restartLoopStoppedAt: null })
     .where(eq(appsTable.id, id));
-  await setAppStatus(id, "active");
+  await setAppStatus(id, "starting");
   try {
     // compose start starts what it FINDS, on the network it was created with, so a moved stack must be re-rendered.
     if ((await rerouteApp(id)) !== "rerouted")
@@ -82,6 +82,7 @@ export async function startApp(id: string): Promise<void> {
       `The stack on ${project.name}'s server was not started: ${errMsg(e)}`,
     );
   }
+  await setAppStatus(id, "active");
   await recordActivity("app", `Started ${project.name}`, user.name, id);
 }
 

@@ -14,6 +14,7 @@ export type AppStatus =
   | "error"
   | "queued"
   | "idle"
+  | "starting"
   | "stopping"
   | "restoring";
 

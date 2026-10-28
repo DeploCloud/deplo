@@ -6,7 +6,7 @@ import type { App, AppStatus } from "../../types/app";
 import type { Deployment } from "../../types/deployment";
 import type { Capability } from "../../types/identity";
 
-const STOPPING_STALE_MS = 90_000;
+const LIFECYCLE_STALE_MS = 90_000;
 
 const RESTORING_STALE_MS = RESTORE_RUN_MAX_MS;
 
@@ -26,7 +26,10 @@ export function reconcileStatus(
 ): AppStatus {
   const age = now - new Date(updatedAt).getTime();
   if (status === "stopping")
-    return age > STOPPING_STALE_MS ? "idle" : "stopping";
+    return age > LIFECYCLE_STALE_MS ? "idle" : "stopping";
+  // Past the cap the runtime check says whether it really came up.
+  if (status === "starting")
+    return age > LIFECYCLE_STALE_MS ? "active" : "starting";
   if (status === "restoring")
     return age > RESTORING_STALE_MS ? "error" : "restoring";
   return status;

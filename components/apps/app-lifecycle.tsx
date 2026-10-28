@@ -15,7 +15,12 @@ import { CapabilityTip, useAppCan } from "@/components/apps/app-capabilities";
 import type { AppStatus } from "@/lib/types/app";
 
 export type AppLifecycleState =
-  "never-deployed" | "restoring" | "stopping" | "stopped" | "running";
+  | "never-deployed"
+  | "restoring"
+  | "starting"
+  | "stopping"
+  | "stopped"
+  | "running";
 
 // One state and one set of mutations for both presentations: the header buttons and the kebab.
 export function useAppLifecycle(appId: string, serverStatus: AppStatus) {
@@ -29,8 +34,8 @@ export function useAppLifecycle(appId: string, serverStatus: AppStatus) {
     ? "never-deployed"
     : status === "restoring"
       ? "restoring"
-      : status === "stopping"
-        ? "stopping"
+      : status === "starting" || status === "stopping"
+        ? status
         : status === "idle"
           ? "stopped"
           : "running";
@@ -122,6 +127,8 @@ export function AppLifecycleButtons({
         label="Restoring"
         tip="A backup is being restored into this app"
       />
+    ) : state === "starting" ? (
+      <BusyButton label="Starting" tip="The container is currently starting" />
     ) : state === "stopping" ? (
       <BusyButton label="Stopping" tip="The container is currently stopping" />
     ) : !canControl ? (

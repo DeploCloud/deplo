@@ -28,6 +28,14 @@ test("reconcileStatus: exactly at the threshold is still 'stopping'", () => {
   assert.equal(reconcileStatus("stopping", at(90_000), NOW), "stopping");
 });
 
+test("reconcileStatus: a fresh 'starting' stays 'starting'", () => {
+  assert.equal(reconcileStatus("starting", at(5_000), NOW), "starting");
+});
+
+test("reconcileStatus: a stale 'starting' falls back to 'active'", () => {
+  assert.equal(reconcileStatus("starting", at(120_000), NOW), "active");
+});
+
 test("reconcileStatus: a fresh 'restoring' stays 'restoring'", () => {
   assert.equal(reconcileStatus("restoring", at(60 * 60_000), NOW), "restoring");
 });

@@ -113,14 +113,14 @@ export function AppControls({
                     Restoring
                   </DropdownMenuItem>
                 </SimpleTooltip>
-              ) : state === "stopping" ? (
+              ) : state === "starting" || state === "stopping" ? (
                 <SimpleTooltip
-                  content="The container is currently stopping"
+                  content={`The container is currently ${state}`}
                   side="left"
                 >
                   <DropdownMenuItem disabled>
                     <Loader2 className="size-4 animate-spin" />
-                    Stopping
+                    {state === "starting" ? "Starting" : "Stopping"}
                   </DropdownMenuItem>
                 </SimpleTooltip>
               ) : state === "stopped" ? (

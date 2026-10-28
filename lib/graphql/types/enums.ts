@@ -32,6 +32,7 @@ export const AppStatusEnum = builder.enumType("AppStatus", {
     "error",
     "queued",
     "idle",
+    "starting",
     "stopping",
     "restoring",
   ] as const,
