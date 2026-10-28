@@ -173,10 +173,15 @@ export async function renderDeployStack(opts: {
 }): Promise<{
   composeYaml: string;
   env: Record<string, string>;
+  // A single image's agent request carries only build input: what runs is in composeYaml.
+  buildEnv: Record<string, string>;
   network: string;
 }> {
   const { project, preview, deployKey } = opts;
-  const env = await appEnv(project.id, opts.environment, { preview });
+  const [env, buildEnv] = await Promise.all([
+    appEnv(project.id, opts.environment, { preview }),
+    appEnv(project.id, opts.environment, { preview, forBuild: true }),
+  ]);
   const basicAuthUsers = await basicAuthUsersValue(project.id);
   const network = deployNetwork(project, preview ? deployKey : null);
   const composeYaml = renderCompose({
@@ -198,5 +203,5 @@ export async function renderDeployStack(opts: {
     resources: project.resources,
     healthCheck: project.healthCheck,
   });
-  return { composeYaml, env, network };
+  return { composeYaml, env, buildEnv, network };
 }

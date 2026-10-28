@@ -483,6 +483,7 @@ export async function withLinkedValues(
   appId: string,
   vars: EnvVar[],
   target: EnvTarget | "any",
+  forBuild = false,
 ): Promise<{ vars: EnvVar[]; unreachable: string[] }> {
   const wanted = (v: EnvVar) => target === "any" || v.targets.includes(target);
   const linked = vars.filter((v) => v.databaseId && wanted(v));
@@ -521,13 +522,18 @@ export async function withLinkedValues(
       db.connectionStringEnc,
       `The password of ${db.name}`,
     );
+    // A build runs off the app's network, where only an exposed database answers.
+    const at =
+      forBuild && db.exposedPublicly && db.exposedPort != null
+        ? "public"
+        : reach;
     return {
       ...v,
       valueEnc: encryptSecret(
         linkedConnectionString(
           { ...db, type: db.type as DatabaseType },
           stored,
-          reach,
+          at,
           written(v),
         ),
       ),

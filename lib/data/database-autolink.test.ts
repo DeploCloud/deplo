@@ -249,6 +249,38 @@ describe("database auto-link", () => {
     });
   });
 
+  test("a build reads an exposed database at its public address, the app at its private one", async () => {
+    await asOwner(() =>
+      upsertEnv({
+        appId: "prj_hub",
+        key: "DATABASE_URL",
+        value: HUB.replace(/^postgres:/, "postgresql:"),
+        type: "plain",
+      }),
+    );
+    const build = () =>
+      asOwner(
+        async () =>
+          (await appEnv("prj_hub", "production", { forBuild: true }))
+            .DATABASE_URL,
+      );
+    assert.equal(await build(), HUB.replace(/^postgres:/, "postgresql:"));
+
+    await db
+      .update(databasesTable)
+      .set({ exposedPublicly: true, exposedPort: 15432 })
+      .where(eq(databasesTable.id, "db_hub"));
+    await stored("db_hub", HUB_PUBLIC);
+    assert.equal(
+      await build(),
+      HUB_PUBLIC.replace(/^postgres:/, "postgresql:"),
+    );
+    assert.equal(
+      await asOwner(async () => (await appEnv("prj_hub")).DATABASE_URL),
+      HUB.replace(/^postgres:/, "postgresql:"),
+    );
+  });
+
   for (const [name, value, detected] of [
     ["extra parameters", `${HUB}?sslmode=disable`, true],
     [

@@ -398,7 +398,7 @@ async function runDeployment(depId: string): Promise<void> {
           "info",
           "Found a Dockerfile: building it (Detect automatically).",
         );
-      const { composeYaml, env, network } = await renderStack(
+      const { composeYaml, env, buildEnv, network } = await renderStack(
         treeOpts.imageRef,
       );
       const attempt = await tryAgent({
@@ -409,6 +409,7 @@ async function runDeployment(depId: string): Promise<void> {
         composeYaml,
         network,
         env,
+        buildEnv,
         plan: { kind: "dockerfile", buildDir, build },
         noCache,
         pullBase,
@@ -553,6 +554,7 @@ async function runDeployment(depId: string): Promise<void> {
         // An explicit compose method first only reads the file at this commit: there is no image stack yet.
         const composeYaml = stackFromSource ? "" : rendered.composeYaml;
         const { env, network } = rendered;
+        const buildEnv = stackFromSource ? undefined : rendered.buildEnv;
         log(
           depId,
           "command",
@@ -580,6 +582,7 @@ async function runDeployment(depId: string): Promise<void> {
             composeYaml,
             network,
             env,
+            buildEnv,
             plan: {
               kind: "git",
               url: cloneUrl,

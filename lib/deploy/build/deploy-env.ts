@@ -40,10 +40,13 @@ async function resolvedEntries(
   appId: string,
   target: EnvTarget,
   preview: PreviewEnvContext | null,
+  forBuild = false,
 ) {
   const [linked, sharedVars, autoInjected, previewOverrides] =
     await Promise.all([
-      loadEnvVarsForApp(appId).then((v) => withLinkedValues(appId, v, target)),
+      loadEnvVarsForApp(appId).then((v) =>
+        withLinkedValues(appId, v, target, forBuild),
+      ),
       loadSharedVarsForApp(appId),
       loadAutoInjectedVarsForApp(appId),
       target === "preview"
@@ -73,16 +76,18 @@ async function resolvedEntries(
   return { entries, unreachable: linked.unreachable };
 }
 
+// `forBuild`: what the build step reads, which differs only for a connected database (withLinkedValues).
 export async function appEnv(
   appId: string,
   target: EnvTarget = "production",
-  opts: { preview?: PreviewEnvContext | null } = {},
+  opts: { preview?: PreviewEnvContext | null; forBuild?: boolean } = {},
 ): Promise<Record<string, string>> {
   const preview = opts.preview ?? null;
   const { entries, unreachable } = await resolvedEntries(
     appId,
     target,
     preview,
+    opts.forBuild,
   );
   if (unreachable.length > 0) throw new Error(unreachable.join("\n"));
   const out: Record<string, string> = preview ? previewEnvExtras(preview) : {};

@@ -262,6 +262,8 @@ export async function tryAgent(opts: {
   composeYaml: string;
   network: string;
   env: Record<string, string>;
+  // What the agent receives in place of env: a single image builds with it (renderDeployStack).
+  buildEnv?: Record<string, string>;
   plan: AgentBuildPlan;
   readyTimeoutMs?: number;
   noCache?: boolean;
@@ -317,6 +319,7 @@ export async function tryAgent(opts: {
         await setDep(opts.depId, { buildServerId: builders[0]!.id });
         const leg = await buildOnBuildServer({
           ...opts,
+          env: opts.buildEnv ?? opts.env,
           builders,
           localAllowed: opts.localAllowed !== false,
           sink: (level: LogLine["level"], text: string) =>
@@ -347,7 +350,7 @@ export async function tryAgent(opts: {
         imageRef: opts.imageRef,
         composeYaml: opts.composeYaml,
         network: opts.network,
-        env: opts.env,
+        env: opts.buildEnv ?? opts.env,
         plan,
         forkPreview: opts.forkPreview,
         readyTimeoutMs: opts.readyTimeoutMs ?? 60_000,
