@@ -41,8 +41,8 @@
   only in the manual.
 - **The label names the thing; the tooltip carries the WHY.** Not "the tooltip carries everything":
   a tooltip does not exist on touch and screen readers lose it, and every major design system says
-  so out loud - Vercel's own guidelines are "inline help first; tooltips last resort", Geist forbids
-  wrapping a labelled input in one, Primer calls them "the last resort". So: the **label** is the
+  so out loud: inline help first, never a tooltip around a labelled input, tooltips as the last
+  resort. So: the **label** is the
   noun. The **tooltip** (`FieldLabel info=` / `InfoTip`) carries the constraint, the limit or the
   reason - never a restatement of the label, never a description of an interaction. A **consequence
   of what you are about to do** stays VISIBLE (changing the server copies the data; this command

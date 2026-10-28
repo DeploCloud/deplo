@@ -94,7 +94,7 @@ CREATE TABLE "app_previews" (
 );
 --> statement-breakpoint
 -- Preview-only environment variable OVERRIDES (advanced). A preview inherits the
--- App's variables verbatim by default - the Vercel behaviour, and the one that
+-- App's variables verbatim by default - the cloud platforms' behaviour, and the one that
 -- needs no configuration. This table is the escape hatch for the one case that
 -- genuinely matters: pointing a preview at a scratch database instead of the
 -- production one.

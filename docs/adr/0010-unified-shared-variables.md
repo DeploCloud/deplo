@@ -27,7 +27,7 @@ five tabs on `/variables` and a dedicated "Shared groups" button on every app:
 Three of these are really "one variable, shared to several apps," modelled three
 different ways - confusing to use and to reason about. Product direction: collapse the
 surface to **App** and **Shared**, and give a shared variable a small, explicit sharing
-model matching Vercel / Railway / Cloudflare.
+model matching the big cloud platforms.
 
 ## Decision
 

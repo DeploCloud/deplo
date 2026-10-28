@@ -11,7 +11,7 @@ Amends [ADR-0012](./0012-shared-variables-are-opt-in-per-app.md) on one point (D
 
 Deplo could deploy an App from GitHub and redeploy it on every push, but there was no way to
 see a pull request running before it merged. The open-source competitors all ship this; it is
-the loudest gap in the competitive analysis and the feature that makes "self-hosted Vercel"
+the loudest gap in the competitive analysis and the feature that makes the cloud experience on your own machine
 credible rather than aspirational.
 
 This decision was made once already. The feature shipped on 2026-08-01 and was withdrawn the

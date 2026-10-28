@@ -20,7 +20,7 @@ Measured against the core mission it does not hold up _yet_:
 
 - **It was a settings surface on the first-run path.** A nav entry every `manage_infra` holder
   sees, leading to a page whose only content was one plugin from one repository. First launch is
-  supposed to sell the price difference against Vercel/Railway, not open with an extension store.
+  supposed to sell the price difference against the cloud platforms, not open with an extension store.
 - **Nobody was going to install it.** One plugin, and one aimed at a narrow audience (people
   driving their deploy platform from an LLM client). "a competitor has a marketplace too" is an
   argument against shipping ours, not for it.

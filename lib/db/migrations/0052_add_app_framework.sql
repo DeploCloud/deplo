@@ -1,6 +1,6 @@
 -- An app remembers which JavaScript framework Deplo recognised in its source.
 --
--- Vercel-style recognition: on every deploy that runs one of the auto-detecting
+-- Framework recognition: on every deploy that runs one of the auto-detecting
 -- builders (Nixpacks / Railpack), Deplo reads the app's own package.json + root
 -- config files and names what it found - "nextjs", "astro", "nestjs", … (the ids
 -- in lib/apps/framework-catalog.ts). The UI shows that name with the project's
