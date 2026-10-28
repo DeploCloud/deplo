@@ -13,7 +13,7 @@ import { keepAuthoredEnvText } from "../compose-lint/document";
 import { deploImageMessage, serviceDeploImage } from "../deplo-image";
 import { mergeLogLimit, mergeResourceLimits } from "../resources";
 import {
-  keepHealthIntervalWhileStarting,
+  probeEverySecondWhileStarting,
   supportsHealthStartInterval,
 } from "../health-check";
 import { injectAppVolumes, rewriteAppVolumes } from "./app-volumes";
@@ -132,7 +132,7 @@ export function buildComposeStack(input: ComposeStackInput): string {
       mergeEnvironment(svc as App, envKeys);
       mergeResourceLimits(svc as App, input.resources);
       mergeLogLimit(svc as App);
-      if (startInterval) keepHealthIntervalWhileStarting(svc as App);
+      if (startInterval) probeEverySecondWhileStarting(svc as App);
     }
   }
 

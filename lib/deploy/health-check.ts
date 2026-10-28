@@ -26,7 +26,8 @@ export function healthCheckToComposeKeys(
   };
 }
 
-const DOCKER_START_INTERVAL_MS = 5_000;
+const START_PROBE_MS = 1_000;
+const DURATION = /^(?:\d+(?:\.\d+)?(?:ns|us|µs|ms|s|m|h))+$/;
 const DURATION_PART = /(\d+(?:\.\d+)?)(ns|us|µs|ms|s|m|h)/g;
 const UNIT_MS: Record<string, number> = {
   ns: 1e-6,
@@ -39,11 +40,7 @@ const UNIT_MS: Record<string, number> = {
 };
 
 function durationMs(value: unknown): number | null {
-  if (
-    typeof value !== "string" ||
-    !/^((\d+(\.\d+)?)(ns|us|µs|ms|s|m|h))+$/.test(value.trim())
-  )
-    return null;
+  if (typeof value !== "string" || !DURATION.test(value.trim())) return null;
   let ms = 0;
   for (const [, n, unit] of value.trim().matchAll(DURATION_PART))
     ms += Number(n) * UNIT_MS[unit];
@@ -55,17 +52,19 @@ export function supportsHealthStartInterval(dockerVersion?: string): boolean {
   return Number(dockerVersion?.split(".")[0]) >= 25;
 }
 
-// Docker probes every 5s during start_period whatever `interval` says, and a
-// `service_healthy` dependent waits on that probe: keep the interval the stack asked for.
-export function keepHealthIntervalWhileStarting(
+// Docker probes every 5s during start_period unless told otherwise, and a
+// `service_healthy` dependent waits on that probe. Once healthy, `interval` applies again.
+export function probeEverySecondWhileStarting(
   svc: Record<string, unknown>,
 ): void {
   const hc = svc.healthcheck as Record<string, unknown> | undefined;
   if (!hc || typeof hc !== "object" || hc.disable === true) return;
   if (hc.start_interval !== undefined || hc.start_period === undefined) return;
   const interval = durationMs(hc.interval);
-  if (interval !== null && interval > 0 && interval < DOCKER_START_INTERVAL_MS)
-    hc.start_interval = hc.interval;
+  hc.start_interval =
+    interval !== null && interval > 0 && interval < START_PROBE_MS
+      ? hc.interval
+      : `${START_PROBE_MS / 1_000}s`;
 }
 
 export function renderYamlKeys(
