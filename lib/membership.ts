@@ -90,7 +90,7 @@ export const teamsForUser = cache(async (userId: string): Promise<Team[]> => {
       .from(teamsTable)
       .innerJoin(membershipsTable, eq(membershipsTable.teamId, teamsTable.id))
       .where(eq(membershipsTable.userId, sql.placeholder("userId")))
-      .orderBy(teamsTable.createdAt),
+      .orderBy(teamsTable.createdAt, teamsTable.id),
   ).execute({ userId });
   return rows.map((t) => ({
     id: t.id,
