@@ -202,6 +202,53 @@ describe("database auto-link", () => {
     });
   });
 
+  test("another spelling of the scheme connects and stays the spelling the app gets", async () => {
+    const spelled = (s: string, scheme: string) =>
+      s.replace(/^postgres:/, `${scheme}:`);
+    await db
+      .update(databasesTable)
+      .set({ exposedPublicly: true, exposedPort: 15432 })
+      .where(eq(databasesTable.id, "db_hub"));
+    await stored("db_hub", HUB_PUBLIC);
+    await rawVar("prj_hub", "DATABASE_URI", spelled(HUB_PUBLIC, "postgresql"));
+    await autoLinkAllEnv();
+    assert.equal((await row("prj_hub", "DATABASE_URI")).databaseId, "db_hub");
+    await asOwner(async () => {
+      await upsertEnv({
+        appId: "prj_hub",
+        key: "ASYNC_URL",
+        value: spelled(HUB, "postgresql+asyncpg"),
+        type: "plain",
+      });
+      const fresh = "postgres://app:n3w@203.0.113.10:15432/db-ia-hub";
+      await stored("db_hub", fresh);
+      const env = await appEnv("prj_hub");
+      const private_ = "postgres://app:n3w@db-ia-hub:5432/db-ia-hub";
+      assert.equal(env.DATABASE_URI, spelled(private_, "postgresql"));
+      assert.equal(env.ASYNC_URL, spelled(private_, "postgresql+asyncpg"));
+      const list = await listEnv("prj_hub");
+      assert.ok(list.every((v) => v.connected));
+      assert.equal(
+        list.find((v) => v.key === "DATABASE_URI")?.value,
+        spelled(private_, "postgresql"),
+      );
+
+      await connectDatabase({
+        appId: "prj_hub",
+        databaseId: "db_hub",
+        key: "DATABASE_URI",
+      });
+      await connectDatabase({
+        appId: "prj_hub",
+        databaseId: "db_hub",
+        key: "FRESH_URL",
+      });
+      const after = await appEnv("prj_hub");
+      assert.equal(after.DATABASE_URI, spelled(private_, "postgresql"));
+      assert.equal(after.FRESH_URL, private_);
+    });
+  });
+
   for (const [name, value, detected] of [
     ["extra parameters", `${HUB}?sslmode=disable`, true],
     [

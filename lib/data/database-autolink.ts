@@ -9,7 +9,7 @@ import { envVars as envVarsTable } from "../db/schema/control-plane/env-vars";
 import { getCurrentUser } from "../auth/current-user";
 import { tryDecryptSecret } from "../crypto";
 import { databaseReach, reachable } from "../databases/link";
-import { exactConnectionStrings } from "../deploy/database-compose";
+import { exactConnectionStrings, inSchemeOf } from "../deploy/database-compose";
 import { recordActivity } from "./activity";
 import type { DatabaseType } from "../types/database";
 
@@ -18,7 +18,8 @@ export interface AutoLink {
   database: string;
 }
 
-// Only a value that IS a database's string links: anything else would change what the app gets.
+// Only a value that IS a database's string links (its scheme spelled any way the driver
+// accepts): anything else would change what the app gets.
 const notLinked = () =>
   and(
     isNull(envVarsTable.databaseId),
@@ -78,7 +79,7 @@ async function linkExact(
     const hit = known.find(
       (k) =>
         k.db.teamId === row.teamId &&
-        k.exact.includes(pasted) &&
+        k.exact.some((x) => inSchemeOf(pasted, x) === pasted) &&
         reachable(databaseReach(row, k.db)),
     );
     if (!hit) continue;

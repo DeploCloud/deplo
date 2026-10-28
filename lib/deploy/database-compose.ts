@@ -224,6 +224,25 @@ export function parseConnectionPassword(conn: string): string {
   }
 }
 
+// Spellings an app's driver may insist on: SQLAlchemy refuses postgres://, asyncpg wants postgresql+asyncpg://.
+const SCHEME_ALIASES: Record<string, string[]> = {
+  postgres: ["postgresql"],
+  mysql: ["mariadb"],
+};
+// A +driver suffix, never +srv: that one changes how the host is looked up.
+const SCHEME = /^([a-z][a-z0-9.-]*)(?:\+(?!srv:)[a-z0-9_.-]+)?:\/\//i;
+
+// `conn` spelled with the scheme `written` uses, when both name the same kind of database.
+export function inSchemeOf(written: string, conn: string): string {
+  const w = SCHEME.exec(written.trimStart());
+  const c = SCHEME.exec(conn);
+  if (!w || !c) return conn;
+  const base = w[1]!.toLowerCase();
+  const own = c[1]!.toLowerCase();
+  if (base !== own && !SCHEME_ALIASES[own]?.includes(base)) return conn;
+  return w[0] + conn.slice(c[0].length);
+}
+
 // The stored string is the public one while the database is exposed, the private one otherwise.
 export function linkedConnectionString(
   db: {
@@ -235,16 +254,20 @@ export function linkedConnectionString(
   },
   storedConnection: string,
   reach: DatabaseReach,
+  written = "",
 ): string {
-  if (reach === "public") return storedConnection;
-  return buildConnectionString({
-    type: db.type,
-    username: db.username,
-    password: parseConnectionPassword(storedConnection),
-    host: db.host,
-    port: db.port,
-    dbName: db.dbName,
-  });
+  if (reach === "public") return inSchemeOf(written, storedConnection);
+  return inSchemeOf(
+    written,
+    buildConnectionString({
+      type: db.type,
+      username: db.username,
+      password: parseConnectionPassword(storedConnection),
+      host: db.host,
+      port: db.port,
+      dbName: db.dbName,
+    }),
+  );
 }
 
 // What Deplo shows for a database, so what a person copies: the private string and the stored one.

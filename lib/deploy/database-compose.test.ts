@@ -4,6 +4,7 @@ import assert from "node:assert/strict";
 import {
   generateDatabaseCompose,
   buildConnectionString,
+  inSchemeOf,
   parseConnectionPassword,
 } from "./database-compose";
 import type { DatabaseType } from "../types/database";
@@ -397,6 +398,24 @@ test("parseConnectionPassword: round-trips the embedded password", () => {
     assert.equal(parseConnectionPassword(conn), "p4ss-w0rd_.~", conn);
   }
   assert.equal(parseConnectionPassword("not a url"), "");
+});
+
+test("inSchemeOf: keeps the spelling an app wrote, only for the same kind of database", () => {
+  const pg = "postgres://u:p@h:5432/d";
+  const my = "mysql://u:p@h:3306/d";
+  for (const [written, conn, want] of [
+    ["postgresql://x", pg, "postgresql://u:p@h:5432/d"],
+    ["  postgresql+asyncpg://x", pg, "postgresql+asyncpg://u:p@h:5432/d"],
+    ["POSTGRES://x", pg, "POSTGRES://u:p@h:5432/d"],
+    ["mariadb://x", my, "mariadb://u:p@h:3306/d"],
+    ["mysql+pymysql://x", my, "mysql+pymysql://u:p@h:3306/d"],
+    ["", pg, pg],
+    ["not a url", pg, pg],
+    ["mysql://x", pg, pg],
+    ["rediss://x", "redis://:p@h:6379", "redis://:p@h:6379"],
+    ["mongodb+srv://x", "mongodb://u:p@h:27017/d", "mongodb://u:p@h:27017/d"],
+  ])
+    assert.equal(inSchemeOf(written, conn), want, written);
 });
 
 for (const version of ["15", "16", "17", "18", "19"]) {

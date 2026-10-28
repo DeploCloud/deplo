@@ -89,6 +89,12 @@ export interface DatabaseAppLink {
   reach: DatabaseReach;
 }
 
+// What the variable holds, which carries the scheme its app reads (inSchemeOf).
+function written(v: { valueEnc: string } | undefined): string {
+  const value = v ? tryDecryptSecret(v.valueEnc) : null;
+  return value?.ok ? value.value : "";
+}
+
 function placeLabel(project: string | null, env: string | null): string {
   return project && env ? `${project} / ${env}` : "Top level";
 }
@@ -287,22 +293,23 @@ export async function connectDatabase(input: {
   const reach = databaseReach(app, db);
   if (!reachable(reach))
     throw new Error(unreachableMessage(key, db.name, reach));
-  const valueEnc = encryptSecret(
-    linkedConnectionString(
-      db,
-      decryptSecretOrThrow(db.connectionStringEnc, "The database password"),
-      reach,
-    ),
+  const stored = decryptSecretOrThrow(
+    db.connectionStringEnc,
+    "The database password",
   );
 
   await getDb().transaction(async (tx) => {
     const [existing] = await tx
-      .select({ id: envVarsTable.id })
+      .select({ id: envVarsTable.id, valueEnc: envVarsTable.valueEnc })
       .from(envVarsTable)
       .where(
         and(eq(envVarsTable.appId, input.appId), eq(envVarsTable.key, key)),
       )
       .limit(1);
+    // A replaced variable keeps the scheme its app was reading.
+    const valueEnc = encryptSecret(
+      linkedConnectionString(db, stored, reach, written(existing)),
+    );
     if (!existing) {
       await insertEnvVars(tx, [
         {
@@ -458,6 +465,7 @@ export async function envDatabaseRefs(
             { ...db, type: db.type as DatabaseType },
             stored.value,
             reach,
+            written(v),
           ),
         );
       continue;
@@ -520,6 +528,7 @@ export async function withLinkedValues(
           { ...db, type: db.type as DatabaseType },
           stored,
           reach,
+          written(v),
         ),
       ),
     };
