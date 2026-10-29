@@ -108,7 +108,9 @@ export async function checkPanelDns(): Promise<PanelDns> {
   };
 }
 
-async function panelTargets(deploHostIp: string | null): Promise<DnsTargets> {
+export async function panelTargets(
+  deploHostIp: string | null,
+): Promise<DnsTargets> {
   const self = (await listAllServers()).find((s) => isDeploHostServer(s));
   const known = await serverAddresses(self ?? null);
   if (!deploHostIp) return known;
