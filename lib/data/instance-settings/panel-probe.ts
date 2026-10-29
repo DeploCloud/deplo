@@ -9,6 +9,8 @@ export type PanelReachability = {
   url: string;
   ok: boolean;
   error: string | null;
+  /** The system error behind a failed dial, such as ENOTFOUND. */
+  code?: string;
 };
 
 // The one sanctioned exemption from lib/outbound-url.ts: it dials the panel's own address, so the gate is instance admin here.
@@ -38,7 +40,13 @@ export async function probePanel(url: string): Promise<PanelReachability> {
     return { url, ok: true, error: null };
   } catch (e) {
     const reason = e instanceof Error ? e.message : String(e);
-    return { url, ok: false, error: `${url} did not answer (${reason})` };
+    const code = (e as { code?: unknown } | null)?.code;
+    return {
+      url,
+      ok: false,
+      error: `${url} did not answer (${reason})`,
+      ...(typeof code === "string" ? { code } : {}),
+    };
   }
 }
 

@@ -39,6 +39,7 @@ import type { InstanceSettings } from "@/lib/data/instance-settings/settings-sto
 import { PanelAddressCard, SOURCE_LABEL } from "./panel-address-card";
 import { PanelBackupAddressCard } from "./panel-backup-address-card";
 import { PanelHttpCard } from "./panel-http-card";
+import { PanelTunnelCard } from "./panel-tunnel-card";
 import { CertificatesCard } from "./certificates-card";
 import { SettingGroup } from "./setting-item";
 import { DeploAboutTab } from "@/components/settings/deplo-about-tab";
@@ -146,6 +147,7 @@ export function DeploSettingsPanel({
         <SettingGroup icon={Globe} title="Panel access">
           <PanelBackupAddressCard settings={settings} />
           <PanelHttpCard />
+          <PanelTunnelCard settings={settings} />
         </SettingGroup>
         <SettingGroup icon={ShieldCheck} title="Privacy">
           <SecurityUpdatesCard status={security} />

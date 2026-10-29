@@ -35,6 +35,7 @@ import { serverLabel } from "../../utils";
 import { recordActivity } from "../activity";
 import { instanceOwnerUserId } from "../instance-owner";
 import { gravatarEnabled } from "../../avatar";
+import { panelTunnelHostname } from "./panel-tunnel-store";
 
 export const SETTINGS_ID = "default";
 
@@ -46,6 +47,8 @@ export type InstanceSettings = {
   storedPanelUrl: string | null;
   panelFallbackUrl: string | null;
   panelFallbackDisabled: boolean;
+  /** The address a Cloudflare Tunnel serves the panel on; null while none does. */
+  panelTunnelHostname: string | null;
   deploHostIp: string | null;
   logMaxDays: number;
   gravatarEnabled: boolean;
@@ -289,10 +292,11 @@ export function reachableHostIp(host: { ip?: string } | null): string | null {
 export async function getInstanceSettings(): Promise<InstanceSettings> {
   await requireInstanceAdmin();
   const { panelUrl, logMaxDays, panelFallbackDisabled } = await loadSettings();
-  const [host, ownerName, usage] = await Promise.all([
+  const [host, ownerName, usage, tunnelHostname] = await Promise.all([
     deploHostServer(),
     instanceOwnerName(),
     usageReportState(),
+    panelTunnelHostname(),
   ]);
   const hostIp = reachableHostIp(host);
   const url = panelUrl ?? (await instancePublicBaseUrl());
@@ -302,6 +306,7 @@ export async function getInstanceSettings(): Promise<InstanceSettings> {
     panelUrl: url,
     panelFallbackUrl: await panelFallbackUrlNow(url),
     panelFallbackDisabled,
+    panelTunnelHostname: tunnelHostname,
     deploHostIp: hostIp,
     panelUrlSource: panelUrl
       ? "stored"

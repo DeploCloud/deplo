@@ -24,6 +24,12 @@ import {
   type PanelHttps,
 } from "@/lib/data/instance-settings/panel-route";
 import {
+  disablePanelTunnel,
+  getPanelTunnel,
+  setPanelTunnel,
+  type PanelTunnel,
+} from "@/lib/data/instance-settings/panel-tunnel";
+import {
   getInstanceSettings,
   setGravatarEnabled,
   setLogMaxDays,
@@ -76,6 +82,11 @@ const InstanceSettingsRef = builder
         nullable: true,
         description:
           "The generated address the panel also answers on, over https (https://deplo-<hexip>.deplo.site). On unless an instance admin turned it off: it is the way back in when the panel's domain, its DNS or its certificate stops working, and it resolves to this server with nothing to set up. Null only when Deplo cannot work out an address of its own that anyone else could reach.",
+      }),
+      panelTunnelHostname: t.exposeString("panelTunnelHostname", {
+        nullable: true,
+        description:
+          "The address a Cloudflare Tunnel serves the panel on, or null while none does. While one does, the panel's address and its HTTPS are the tunnel's to change.",
       }),
       panelFallbackDisabled: t.exposeBoolean("panelFallbackDisabled", {
         description:
@@ -238,7 +249,71 @@ const PanelDnsRef = builder.objectRef<PanelDns>("PanelDns").implement({
   }),
 });
 
+const PanelTunnelRef = builder.objectRef<PanelTunnel>("PanelTunnel").implement({
+  description:
+    "The Cloudflare Tunnel the panel can be served through: a connector on the panel's own server dials out to Cloudflare, so no connection has to reach that server from the internet. Deplo creates the tunnel, its routes and its DNS record with an API token it keeps encrypted and never returns.",
+  fields: (t) => ({
+    enabled: t.exposeBoolean("enabled"),
+    hostname: t.exposeString("hostname", { nullable: true }),
+    status: t.exposeString("status", {
+      nullable: true,
+      description:
+        "What Cloudflare says, live: `healthy`, `degraded`, `down`, `inactive` (never connected), or `unknown` when it could not be asked. Null while the tunnel is off.",
+    }),
+    connections: t.exposeInt("connections", {
+      description:
+        "How many connections the connector holds open to Cloudflare.",
+    }),
+    error: t.exposeString("error", {
+      nullable: true,
+      description: "Why Cloudflare could not be asked how the tunnel is doing.",
+    }),
+    unavailable: t.exposeString("unavailable", {
+      nullable: true,
+      description:
+        "Why a tunnel cannot be turned on here: the server running Deplo is not added, or its proxy is not one Deplo installed.",
+    }),
+    backupUrl: t.exposeString("backupUrl", {
+      nullable: true,
+      description:
+        "Where turning the tunnel off moves the panel when no address is given: its backup address, or null while that is off.",
+    }),
+    warning: t.exposeString("warning", {
+      nullable: true,
+      description:
+        "Something the change just made could not finish, such as deleting the old tunnel in Cloudflare.",
+    }),
+  }),
+});
+
 builder.mutationFields((t) => ({
+  panelTunnel: t.field({
+    type: PanelTunnelRef,
+    authScopes: { instanceAdmin: true },
+    description:
+      "Read the panel's Cloudflare Tunnel, asking Cloudflare how it is doing. A mutation despite writing nothing, for the same reason panelHttps is one: it leaves the process.",
+    resolve: () => getPanelTunnel(),
+  }),
+  setPanelTunnel: t.field({
+    type: PanelTunnelRef,
+    authScopes: { instanceAdmin: true },
+    description:
+      "Serve the panel at https://<hostname> through a Cloudflare Tunnel, or move the one it has to a new hostname. Deplo finds the hostname's zone, creates the tunnel with two routes (the panel, and the path its servers link in on), points the hostname at it, runs the connector beside the panel's proxy and moves the panel once the address answers; anything it did is undone if it does not. Refused when the hostname already has DNS records that do not point at this server. The token needs Account, Cloudflare Tunnel, Edit and Zone, DNS, Edit; omit it to reuse the saved one.",
+    args: {
+      hostname: t.arg.string({ required: true }),
+      apiToken: t.arg.string({ required: false }),
+    },
+    resolve: (_r, { hostname, apiToken }) =>
+      setPanelTunnel({ hostname, apiToken }),
+  }),
+  disablePanelTunnel: t.field({
+    type: PanelTunnelRef,
+    authScopes: { instanceAdmin: true },
+    description:
+      "Stop serving the panel through its Cloudflare Tunnel. The panel moves to `url`, or to its backup address when none is given, and the move is undone if that address does not answer. Deplo then deletes the tunnel and its DNS record in Cloudflare; what it could not delete comes back as `warning`.",
+    args: { url: t.arg.string({ required: false }) },
+    resolve: (_r, { url }) => disablePanelTunnel(url ?? null),
+  }),
   setPanelUrl: t.field({
     type: InstanceSettingsRef,
     authScopes: { instanceAdmin: true },
