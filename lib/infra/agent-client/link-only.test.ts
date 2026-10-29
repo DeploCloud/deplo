@@ -54,7 +54,6 @@ async function seed(over: Partial<Server> = {}): Promise<void> {
     ip: "127.0.0.1",
     host: "127.0.0.1",
     agent: {
-      port: agent.port,
       certFingerprint: agent.fingerprint,
       certPem: agent.certPem,
       version: AGENT_VERSION,
@@ -185,7 +184,6 @@ test("a server left behind at the update stop is refused at once, with what brin
 test("a server whose server agent is too old to link is refused the same way", async () => {
   await seed({
     agent: {
-      port: agent.port,
       certFingerprint: agent.fingerprint,
       certPem: agent.certPem,
       version: "0.4.0",

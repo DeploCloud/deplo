@@ -66,7 +66,7 @@ test("an application's volume backup comes across as an app backup on that desti
   const { eq } = await import("drizzle-orm");
   await db
     .update(serversTable)
-    .set({ agentPort: 9443, agentCertFingerprint: "ab".repeat(32) })
+    .set({ agentCertFingerprint: "ab".repeat(32) })
     .where(eq(serversTable.id, SERVER_1));
   const runId = await asOwner(() => beginMigration({ url: URL_BASE }));
   await importProject(runId, "dok-prj-blink");
@@ -145,7 +145,7 @@ test("a database's backup schedule comes across onto the destination that came w
   const { eq } = await import("drizzle-orm");
   await db
     .update(serversTable)
-    .set({ agentPort: 9443, agentCertFingerprint: "ab".repeat(32) })
+    .set({ agentCertFingerprint: "ab".repeat(32) })
     .where(eq(serversTable.id, SERVER_1));
   const runId = await asOwner(() => beginMigration({ url: URL_BASE }));
   await importProject(runId, "dok-prj-blink");
@@ -200,7 +200,7 @@ test("a second pass lands the schedule the first pass had no destination for", a
   const { eq } = await import("drizzle-orm");
   await db
     .update(serversTable)
-    .set({ agentPort: 9443, agentCertFingerprint: "ab".repeat(32) })
+    .set({ agentCertFingerprint: "ab".repeat(32) })
     .where(eq(serversTable.id, SERVER_1));
   const count = async () =>
     (await db.execute("select count(*)::int as n from backups")).rows[0]!.n;

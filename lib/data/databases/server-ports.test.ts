@@ -39,7 +39,6 @@ test("a host port another database has reserved is refused before anything liste
     ip: "10.0.0.7",
     host: "10.0.0.7",
     agent: {
-      port: 9443,
       certFingerprint: "sha256:pinned",
       certPem: "-----BEGIN CERTIFICATE-----",
       version: "1.20.0",
@@ -98,7 +97,6 @@ test("hostPortsInUse reports claimed ports, and says so when it cannot ask", asy
     ip: "10.0.0.8",
     host: "10.0.0.8",
     agent: {
-      port: 9443,
       certFingerprint: "sha256:probe",
       certPem: "-----BEGIN CERTIFICATE-----",
       version: "1.20.0",

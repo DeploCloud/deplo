@@ -99,7 +99,6 @@ const enrolled = (id: string, over: Partial<Server> = {}) =>
     ip: `198.51.100.${++n}`,
     host: `198.51.100.${n}`,
     agent: {
-      port: 9443,
       certFingerprint: `fp_${id}`,
       certPem: "pem",
       version: "0.5.0",

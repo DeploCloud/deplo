@@ -90,7 +90,6 @@ test("completeBootstrap provisions a server and pins its agent cert", async () =
   const result = await completeBootstrap({
     token: rawToken,
     csrPem,
-    agentPort: 9443,
   });
   assert.ok(result.certPem.includes("BEGIN CERTIFICATE"));
   assert.ok(result.caPem.includes("BEGIN CERTIFICATE"));
@@ -98,7 +97,6 @@ test("completeBootstrap provisions a server and pins its agent cert", async () =
   const srv = (await getServerById("srv_p"))!;
   assert.equal(srv.status, "online");
   assert.ok(srv.agent?.certFingerprint, "cert fingerprint pinned");
-  assert.equal(srv.agent?.port, 9443);
   assert.equal(srv.bootstrap?.usedAt !== null, true, "bootstrap consumed");
 });
 
@@ -108,8 +106,8 @@ test("completeBootstrap is single-use: two concurrent call-homes, exactly one wi
   const [csr1, csr2] = await Promise.all([makeCsr(), makeCsr()]);
 
   const results = await Promise.allSettled([
-    completeBootstrap({ token: rawToken, csrPem: csr1, agentPort: 9443 }),
-    completeBootstrap({ token: rawToken, csrPem: csr2, agentPort: 9443 }),
+    completeBootstrap({ token: rawToken, csrPem: csr1 }),
+    completeBootstrap({ token: rawToken, csrPem: csr2 }),
   ]);
   const fulfilled = results.filter((r) => r.status === "fulfilled");
   const rejected = results.filter((r) => r.status === "rejected");
@@ -131,25 +129,30 @@ test("completeBootstrap rejects an already-consumed token (sequential)", async (
   await completeBootstrap({
     token: rawToken,
     csrPem: await makeCsr(),
-    agentPort: 9443,
   });
   await assert.rejects(
     completeBootstrap({
       token: rawToken,
       csrPem: await makeCsr(),
-      agentPort: 9443,
     }),
     /already been used|already consumed/,
   );
 });
 
-async function callHome(address: string): Promise<{ linkUrl?: string }> {
+async function callHome(
+  address: string,
+  extra: Record<string, unknown> = {},
+): Promise<{ linkUrl?: string }> {
   const { rawToken, stored } = mintBootstrap();
   await seedProvisioning(stored.tokenHash, stored.expiresAt, address);
   const res = await bootstrapRoute(
     new Request("http://127.0.0.1:3000/api/agent/bootstrap", {
       method: "POST",
-      body: JSON.stringify({ token: rawToken, csrPem: await makeCsr() }),
+      body: JSON.stringify({
+        token: rawToken,
+        csrPem: await makeCsr(),
+        ...extra,
+      }),
     }),
   );
   assert.equal(res.status, 200);
@@ -162,6 +165,15 @@ async function callHome(address: string): Promise<{ linkUrl?: string }> {
 }
 
 const SELF = "203.0.113.7";
+
+// An install command copied before the link still sends the port it used to open: nothing reads it.
+test("a call-home that still names an agent port enrolls all the same", async () => {
+  process.env.DEPLO_PUBLIC_URL = "https://deplo.example.com";
+  const answer = await callHome("198.51.100.20", { agentPort: 9443 });
+  assert.equal(answer.linkUrl, "https://deplo.example.com");
+  const srv = (await getServerById("srv_p"))!;
+  assert.ok(srv.agent?.certFingerprint, "pinned");
+});
 
 test("the panel's own server is told to link over loopback, on the port the installer published", async () => {
   process.env.DEPLO_SERVER_IP = SELF;

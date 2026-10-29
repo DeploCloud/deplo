@@ -56,7 +56,6 @@ beforeEach(async () => {
     host: "127.0.0.1",
     status: "online",
     agent: {
-      port: agent.port,
       certFingerprint: agent.fingerprint,
       certPem: agent.certPem,
       version: AGENT_VERSION,

@@ -50,7 +50,7 @@ const seed = (id: string, status: "online" | "offline", version: string) =>
     name: id,
     status,
     ip: `10.0.2.${++n}`,
-    agent: { port: 9443, certFingerprint: `fp_${id}`, certPem: "pem", version },
+    agent: { certFingerprint: `fp_${id}`, certPem: "pem", version },
   });
 
 test("the floor is read off the tag's package.json, not the API", async () => {

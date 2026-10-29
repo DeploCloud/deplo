@@ -349,9 +349,7 @@ const STRAY_V6 = "2001:db8::99";
 
 // An agent that lists its addresses is what makes the server's IPv6 known.
 async function agentReportsV6(): Promise<void> {
-  await pg.exec(
-    `update servers set agent_port = 9443, agent_cert_fingerprint = 'fp-v6'`,
-  );
+  await pg.exec(`update servers set agent_cert_fingerprint = 'fp-v6'`);
   __setAgentAddressesForTest(async () => [SERVER_IP, SERVER_V6]);
 }
 

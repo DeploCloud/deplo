@@ -69,7 +69,6 @@ beforeEach(async () => {
     ip: "127.0.0.1",
     host: "127.0.0.1",
     agent: {
-      port: agent.port,
       certFingerprint: agent.fingerprint,
       certPem: agent.certPem,
       version: AGENT_VERSION,
@@ -154,7 +153,6 @@ test("a linked agent below the minimum is refused at the gate, and still reachab
     ip: "127.0.0.1",
     host: "127.0.0.1",
     agent: {
-      port: old.port,
       certFingerprint: old.fingerprint,
       certPem: old.certPem,
       version: AGENT_VERSION,
@@ -184,12 +182,12 @@ test("the door turns away what it cannot trust before any handshake", async () =
 
   await db
     .update(servers)
-    .set({ agentPort: null })
+    .set({ agentCertFingerprint: null })
     .where(eq(servers.id, SERVER));
   assert.equal((await agent.link(door)).status, 404, "never called home");
   await db
     .update(servers)
-    .set({ agentPort: agent.port, agentCertFingerprint: "" })
+    .set({ agentCertFingerprint: "" })
     .where(eq(servers.id, SERVER));
   assert.equal((await agent.link(door)).status, 404, "pin withdrawn");
 });

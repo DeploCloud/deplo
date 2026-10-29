@@ -187,7 +187,6 @@ const PreviewServerRef = builder
       id: t.exposeString("id"),
       name: t.exposeString("name"),
       address: t.exposeString("address"),
-      port: t.exposeInt("port", { nullable: true }),
       role: t.field({ type: DeploMoveServerRoleEnum, resolve: (s) => s.role }),
       isPanelHost: t.exposeBoolean("isPanelHost", {
         description: "The machine the old Deplo itself runs on.",

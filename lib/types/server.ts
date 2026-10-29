@@ -4,7 +4,6 @@ export type ServerStatus =
   "online" | "warning" | "error" | "offline" | "provisioning";
 
 export interface ServerAgent {
-  port: number;
   certFingerprint: string;
   certPem: string;
   version: string;
@@ -46,8 +45,8 @@ export interface Server {
   lastSeenAt?: string;
   statusCheckedAt?: string;
   statusMessage?: string;
-  /** When its agent first linked; a server that has is never dialed again (ADR-0041). */
+  /** When its agent first linked (ADR-0041). */
   firstLinkedAt?: string;
-  /** When an instance admin let the update stop pass without it; it needs its server agent reinstalled. */
+  /** When an instance admin let the update stop pass without it: until it links, only a reinstall brings it back. */
   leftBehindAt?: string;
 }

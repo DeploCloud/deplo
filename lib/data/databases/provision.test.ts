@@ -88,7 +88,6 @@ test("a database name whose stack is still being torn down on that host is taken
     ip: "10.0.0.99",
     host: "10.0.0.99",
     agent: {
-      port: 9443,
       certFingerprint: "sha256:td",
       certPem: "-----BEGIN CERTIFICATE-----",
       version: "1.20.0",
@@ -125,7 +124,6 @@ test("the default database name is a plain identifier, not the hyphenated host",
     ip: "10.0.0.98",
     host: "10.0.0.98",
     agent: {
-      port: 9443,
       certFingerprint: "sha256:ch",
       certPem: "-----BEGIN CERTIFICATE-----",
       version: "1.20.0",

@@ -79,7 +79,6 @@ async function seedAgentServer(id: string, a: FakeAgent): Promise<void> {
     host: "127.0.0.1",
     status: "online",
     agent: {
-      port: a.port,
       certFingerprint: a.fingerprint,
       certPem: a.certPem,
       version: AGENT_VERSION,

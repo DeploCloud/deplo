@@ -9,7 +9,6 @@ export async function POST(request: Request) {
   let body: {
     token?: unknown;
     csrPem?: unknown;
-    agentPort?: unknown;
     advertisedHost?: unknown;
   };
   const raw = await readTextCapped(request);
@@ -28,8 +27,6 @@ export async function POST(request: Request) {
       { status: 400 },
     );
   }
-  const agentPort =
-    typeof body.agentPort === "number" ? body.agentPort : undefined;
   const advertisedHost =
     typeof body.advertisedHost === "string" ? body.advertisedHost : undefined;
 
@@ -37,7 +34,6 @@ export async function POST(request: Request) {
     const { certPem, caPem, linkUrl } = await completeBootstrap({
       token,
       csrPem,
-      agentPort,
       advertisedHost,
     });
     // The agent recomputes this HMAC and refuses a mismatch, binding the CA and its link address to a party that knew the token.

@@ -152,7 +152,6 @@ async function main() {
       deployConcurrency: 1,
       createdAt: new Date(0).toISOString(),
       agent: {
-        port: AGENT_PORT,
         certFingerprint: pinnedFingerprint,
         certPem: "",
         version: "",
@@ -1154,7 +1153,6 @@ async function stopMain() {
       const s = await getServerById(id);
       return !!s?.agent?.certFingerprint;
     });
-    await db.update(servers).set({ agentPort: port }).where(eq(servers.id, id));
     const before = await hello();
     if (before.capabilities.includes("agent-link"))
       throw new Error(`${id} already links: not a pre-link agent`);

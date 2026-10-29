@@ -26,7 +26,6 @@ export const servers = pgTable(
     cpuCores: integer("cpu_cores").notNull(),
     memoryMb: integer("memory_mb").notNull(),
     diskGb: integer("disk_gb").notNull(),
-    agentPort: integer("agent_port"),
     agentCertFingerprint: text("agent_cert_fingerprint"),
     agentCertPem: text("agent_cert_pem"),
     agentVersion: text("agent_version"),
@@ -37,7 +36,7 @@ export const servers = pgTable(
     statusCheckedAt: isoTimestamptz("status_checked_at"),
     statusProbedAt: isoTimestamptz("status_probed_at"),
     statusMessage: text("status_message"),
-    // Set by the first verified agent link and never cleared: from then on it is never dialed (ADR-0041).
+    // Set by the first verified agent link and never cleared (ADR-0041).
     firstLinkedAt: isoTimestamptz("first_linked_at"),
     // An instance admin let Deplo pass its update stop without this server: it needs its server agent reinstalled.
     leftBehindAt: isoTimestamptz("left_behind_at"),

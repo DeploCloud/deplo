@@ -13,8 +13,6 @@ import type { Server } from "../types/server";
 import { PUBLIC_URL_PLACEHOLDER } from "../public-url";
 import { isTestEnv } from "../db/pg";
 
-export const DEFAULT_AGENT_PORT = 9443;
-
 const BOOTSTRAP_TTL_MS = 60 * 60_000;
 
 export interface MintedBootstrap {

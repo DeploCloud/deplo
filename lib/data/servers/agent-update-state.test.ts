@@ -42,7 +42,6 @@ beforeEach(async () => {
   await seedServerRow(db, {
     id: ID,
     agent: {
-      port: 9443,
       certFingerprint: "fp",
       certPem: "pem",
       version: "0.1.0",
