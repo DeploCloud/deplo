@@ -2,6 +2,7 @@ import { test, before, after, beforeEach } from "node:test";
 import assert from "node:assert/strict";
 
 import type { PGlite } from "@electric-sql/pglite";
+import type { GraphQLObjectType } from "graphql";
 
 import { makeTestDb, type TestDb } from "../db/test-harness";
 import { __setTestDb, __resetTestDb } from "../db/client";
@@ -14,6 +15,7 @@ import { __setAgentConnectorForTest } from "../infra/agent-client/connect";
 import { CONTROL_PLANE_UPDATE_CAPABILITY } from "../infra/agent-client/hello-capabilities";
 import { deploUpdateAlert } from "../notify/maintenance";
 import { DEPLO_VERSION } from "../version";
+import { schema } from "../graphql/schema";
 import {
   seedIdentity,
   TRUNCATE_IDENTITY,
@@ -78,7 +80,6 @@ const json = (body: unknown, status = 200) =>
 
 type Declared = { updateStop?: boolean; requiresStop?: string } | number;
 const STOP: Declared = { updateStop: true };
-const NO_SERVERS = { waitingOn: [], leftBehind: [] };
 
 // A mocked GitHub: the newest stable, the published releases, and what each tag's package.json declares.
 function github(feed: {
@@ -303,7 +304,7 @@ test("on the stop, the newer release waits for its conditions, then is offered w
   let met = false;
   __setThisReleaseForTest({
     updateStop: true,
-    condition: async () => ({ met, ...NO_SERVERS }),
+    condition: async () => ({ met }),
   });
   const capture = github({
     latest: "99.1.0",
@@ -343,7 +344,7 @@ test("passing the stop is recorded even before any release requires it", async (
   }
   __setThisReleaseForTest({
     updateStop: true,
-    condition: async () => ({ met: false, ...NO_SERVERS }),
+    condition: async () => ({ met: false }),
   });
   const capture = github({
     latest: "99.1.0",
@@ -402,7 +403,7 @@ test("the update notification names the stop Update installs, and says nothing w
   }
   __setThisReleaseForTest({
     updateStop: true,
-    condition: async () => ({ met: false, ...NO_SERVERS }),
+    condition: async () => ({ met: false }),
   });
   const waiting = github({
     latest: "99.1.0",
@@ -435,4 +436,14 @@ test("What changed marks only the releases Update brings in, up to the stop", as
   } finally {
     capture.restore();
   }
+});
+
+// Past the first stop nothing waits on a server, so nothing is offered to do about one (ADR-0041).
+test("an update stop names no server, and nothing offers to leave one behind", () => {
+  const stop = (schema.getType("UpdateStop") as GraphQLObjectType).getFields();
+  assert.deepEqual(Object.keys(stop).sort(), ["reason", "version", "waiting"]);
+  assert.equal(
+    schema.getMutationType()!.getFields().leaveServerBehind,
+    undefined,
+  );
 });

@@ -9,11 +9,7 @@ import {
   versionTag,
 } from "../../version";
 import { instanceFrozen } from "../deplo-move/freeze";
-import {
-  thisStopsCondition,
-  type StopCondition,
-  type StopServer,
-} from "./condition";
+import { thisStopsCondition, type StopCondition } from "./condition";
 import { readReleaseDeclaration } from "./declaration";
 import { passedStops, recordPassedStop, stopPassed } from "./passed";
 
@@ -23,9 +19,6 @@ export interface UpdateStopInfo {
   reason: string;
   // This instance runs the stop and its conditions do not hold yet: Update offers nothing.
   waiting: boolean;
-  // While waiting: who the condition still waits on, and who an instance admin left behind.
-  waitingOn: StopServer[];
-  leftBehind: StopServer[];
 }
 
 export interface UpdateRoute {
@@ -60,7 +53,6 @@ export function __resetThisReleaseForTest(): void {
 
 // KEEP IN SYNC with the literal 8 in install.sh's `route_through_stops`.
 const MAX_HOPS = 8;
-const NO_SERVERS = { waitingOn: [], leftBehind: [] };
 
 const failed = (error: string): UpdateRoute => ({
   next: null,
@@ -78,31 +70,21 @@ export async function passThisStopIfMet(): Promise<string[]> {
   return [...passed, r.version];
 }
 
-/** For a trigger (a first link, a removal, a server left behind): never throws, and the next update check retries. */
-export async function tryPassThisStop(): Promise<void> {
-  await passThisStopIfMet().catch((e) =>
-    console.error("[deplo] could not record the update stop:", e),
-  );
-}
-
-/** This release while it is an update stop not passed yet, and whom it waits on, before any release requires it too. */
+/** This release while it is an update stop not passed yet, before any release requires it too. */
 export async function thisStopWaiting(
   passed: readonly string[],
   goal?: string,
 ): Promise<UpdateStopInfo | null> {
   const r = thisRelease;
   if (!r.updateStop || stopPassed(r.version, passed)) return null;
-  const { waitingOn, leftBehind } = await r.condition();
   const here = versionTag(r.version);
   return {
     version: here,
     waiting: true,
-    waitingOn,
-    leftBehind,
     // KEEP IN SYNC with the "becomes available" warning in install.sh's `route_through_stops`.
     reason: goal
       ? `Deplo ${goal} becomes available once ${here} has finished getting ready.`
-      : "The next update waits until every server has connected to Deplo.",
+      : `The next update waits until ${here} has finished getting ready.`,
   };
 }
 
@@ -135,7 +117,6 @@ export async function decideUpdate(
         stop: {
           version: versionTag(target),
           waiting: false,
-          ...NO_SERVERS,
           // KEEP IN SYNC with the routed warning in install.sh's `route_through_stops`.
           reason: `Deplo ${goal} has to come after ${versionTag(target)}, so Update installs ${versionTag(target)} first.`,
         },
@@ -151,7 +132,6 @@ export async function decideUpdate(
         stop: {
           version: versionTag(stop),
           waiting: false,
-          ...NO_SERVERS,
           // KEEP IN SYNC with the "skipped" warning in install.sh's `route_through_stops`.
           reason: `Deplo ${goal} has to come after ${versionTag(stop)}, which this instance skipped.`,
         },
