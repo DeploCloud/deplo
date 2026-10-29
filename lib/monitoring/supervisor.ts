@@ -12,12 +12,11 @@ import { classifyServerHealth } from "../infra/server-health";
 import type { AgentConnection } from "../infra/agent-client/connection";
 import {
   AgentMetricsStreamUnsupportedError,
-  AgentNotLinkedError,
   AgentTooOldError,
   AgentUnreachableError,
 } from "../infra/agent-client/errors";
 import { connectMetricsStreamAgent } from "../infra/agent-client/preflight";
-import { linkMayCome, waitForLink } from "../infra/agent-link/registry";
+import { linkMayCome } from "../infra/agent-link/registry";
 import { isMetricsSavingEnabled } from "../data/monitoring-settings";
 import { measureServerForCollector } from "../data/monitoring";
 import { getDb } from "../db/client";
@@ -220,9 +219,9 @@ async function runStreamLoop(
         serverName,
       };
 
-      // The probe's verdict: one that answers here yet never links must not read as online.
+      // The probe's verdict, so a storage-only server's missing Docker reads the same everywhere.
       const server = await getServerById(serverId).catch(() => null);
-      const connHealth = server && (await healthFromHello(server, hello));
+      const connHealth = server && healthFromHello(server, hello);
 
       await markServerSeen(
         serverId,
@@ -296,16 +295,6 @@ async function runStreamLoop(
         return;
       }
 
-      // Its dial carries no telemetry, so another dial settles nothing: wait for its link (ADR-0041).
-      if (e instanceof AgentNotLinkedError) {
-        conn?.close();
-        // With the door shut no link can come: back off as after any failed dial.
-        if (!(await waitForLink(serverId, Infinity, signal)))
-          await sleep(RECONNECT_BACKOFF_CAP_MS, signal);
-        attempt = 0;
-        continue;
-      }
-
       const lifetime = openedAt === null ? 0 : Date.now() - openedAt;
       const rotation =
         e instanceof AgentUnreachableError &&
@@ -316,7 +305,7 @@ async function runStreamLoop(
         // An unusable agent is reachable: the health probe owns its status, not this loop.
         // A server whose link may come is judged by server health once it stays away, not here.
         const undecided =
-          e instanceof AgentUnreachableError && linkMayCome(serverId, e);
+          e instanceof AgentUnreachableError && linkMayCome(serverId);
         if (attempt === 0 && !(e instanceof AgentTooOldError) && !undecided) {
           await recordServerHealth(
             serverId,

@@ -2,6 +2,7 @@ import { test, before, after, beforeEach } from "node:test";
 import assert from "node:assert/strict";
 
 import type { PGlite } from "@electric-sql/pglite";
+import type { GraphQLObjectType } from "graphql";
 
 import { makeTestDb, type TestDb } from "../db/test-harness";
 import { __setTestDb, __resetTestDb } from "../db/client";
@@ -12,6 +13,7 @@ import { listActivity } from "./activity";
 import { updateServerAddress } from "./servers/agent-maintenance";
 import { addServer } from "./servers/enrollment";
 import { getServerById } from "./servers/roster";
+import { schema } from "../graphql/schema";
 
 process.env.DEPLO_SECRET = "test-secret-for-server-address-aaaaaaaa";
 
@@ -20,6 +22,7 @@ let pg: PGlite;
 
 const PROVISIONED = "srv_addr_prov";
 const BARE = "srv_addr_bare";
+// Nothing answers there, and no link comes: the address must save all the same.
 const DEAD_LOCAL = "127.0.0.1";
 
 before(async () => {
@@ -79,83 +82,58 @@ test("refuses a caller who is not instance admin", async () => {
   assert.equal((await asAdmin(() => getServerById(BARE)))?.ip, "192.0.2.10");
 });
 
-test("refuses a blank address and an out-of-range port", async () => {
+test("refuses a blank address", async () => {
   await assert.rejects(
     () => asAdmin(() => updateServerAddress({ id: BARE, address: "   " })),
     /Address is required/,
   );
-  await assert.rejects(
-    () =>
-      asAdmin(() =>
-        updateServerAddress({
-          id: BARE,
-          address: "192.0.2.20",
-          agentPort: 70000,
-        }),
-      ),
-    /Agent port/,
-  );
 });
 
-test("an unprovisioned server needs no probe: both columns follow the address", async () => {
-  const { warning } = await asAdmin(() =>
-    updateServerAddress({ id: BARE, address: "192.0.2.20" }),
-  );
-  assert.equal(warning, null);
+test("an unprovisioned server: both columns follow the address", async () => {
+  await asAdmin(() => updateServerAddress({ id: BARE, address: "192.0.2.20" }));
   const server = await asAdmin(() => getServerById(BARE));
   assert.equal(server?.ip, "192.0.2.20");
   assert.equal(server?.host, "192.0.2.20");
 });
 
-test("verify-first: an unanswered probe refuses and writes NOTHING", async () => {
-  await assert.rejects(() =>
-    asAdmin(() =>
-      updateServerAddress({ id: PROVISIONED, address: "127.0.0.2" }),
-    ),
+test("a provisioned server's new address is saved at once, without Deplo contacting it", async () => {
+  const started = Date.now();
+  await asAdmin(() =>
+    updateServerAddress({ id: PROVISIONED, address: "192.0.2.99" }),
   );
-  const server = await asAdmin(() => getServerById(PROVISIONED));
-  assert.equal(server?.ip, DEAD_LOCAL);
-  assert.equal(server?.host, DEAD_LOCAL);
-  assert.equal(server?.agent?.port, 1);
-});
-
-test("force skips the probe, writes the row, and keeps trust pinned - with the cert warning", async () => {
-  const { warning } = await asAdmin(() =>
-    updateServerAddress({
-      id: PROVISIONED,
-      address: "192.0.2.99",
-      agentPort: 9443,
-      force: true,
-    }),
-  );
-  assert.match(warning ?? "", /certificate/i);
+  assert.ok(Date.now() - started < 2_000, "it waited for nothing");
   const server = await asAdmin(() => getServerById(PROVISIONED));
   assert.equal(server?.ip, "192.0.2.99");
   assert.equal(server?.host, "192.0.2.99");
-  assert.equal(server?.agent?.port, 9443);
-  assert.equal(server?.agent?.certFingerprint, "sha256:pinned");
+  assert.equal(server?.agent?.certFingerprint, "sha256:pinned", "trust kept");
 });
 
-test("Activity names the new address, and an agent port only when someone changed it", async () => {
+test("Activity names the new address", async () => {
   await asAdmin(() => updateServerAddress({ id: BARE, address: "192.0.2.20" }));
   await asAdmin(() =>
-    updateServerAddress({
-      id: PROVISIONED,
-      address: "192.0.2.99",
-      agentPort: 9555,
-      force: true,
-    }),
+    updateServerAddress({ id: PROVISIONED, address: "192.0.2.99" }),
   );
   const messages = (
     await asAdmin(() => listActivity(10, { types: ["server"] }))
   ).map((a) => a.message);
   assert.deepEqual(messages.sort(), [
     "Changed server bare address to 192.0.2.20",
-    "Changed server provisioned address to 192.0.2.99:9555",
+    "Changed server provisioned address to 192.0.2.99",
   ]);
 });
 
-test("keepHost writes only where Deplo dials, leaving the address it was registered at", async () => {
+test("the API names no agent port and no link: a server's address is all it keeps", () => {
+  const server = (schema.getType("Server") as GraphQLObjectType).getFields();
+  assert.ok(!("agentPort" in server));
+  assert.ok(!("linked" in server), "how a server is reached stays out of it");
+  const change = schema.getMutationType()!.getFields().updateServerAddress;
+  assert.deepEqual(
+    change.args.map((a) => a.name).filter((n) => /port/i.test(n)),
+    [],
+  );
+});
+
+test("keepHost writes only the address in use, leaving the one it was registered at", async () => {
   await asAdmin(() =>
     updateServerAddress({ id: BARE, address: "192.0.2.20", keepHost: true }),
   );
@@ -164,11 +142,11 @@ test("keepHost writes only where Deplo dials, leaving the address it was registe
   assert.equal(server?.host, "192.0.2.10");
 });
 
-test("an unchanged address is a no-op - no probe, no error, even on a dead host", async () => {
-  const { warning } = await asAdmin(() =>
-    updateServerAddress({ id: PROVISIONED, address: DEAD_LOCAL, agentPort: 1 }),
+test("an unchanged address is a no-op", async () => {
+  await asAdmin(() =>
+    updateServerAddress({ id: PROVISIONED, address: DEAD_LOCAL }),
   );
-  assert.equal(warning, null);
+  assert.deepEqual(await asAdmin(() => listActivity(10)), []);
 });
 
 test("every spelling of an IPv6 address is stored one way, on add and on change", async () => {

@@ -1,4 +1,4 @@
-import { test, beforeEach, afterEach, mock, type TestContext } from "node:test";
+import { test, beforeEach, afterEach, mock } from "node:test";
 import assert from "node:assert/strict";
 
 import { seedServerRow } from "../../data/infra-test-helpers";
@@ -8,24 +8,16 @@ import {
   stopServerLinkStatus,
 } from "../../data/server-health";
 import {
-  startLinkAddressSync,
-  stopLinkAddressSync,
-} from "../../data/servers/link-addresses";
-import {
   dropAgentChannel,
   onAgentHello,
 } from "../../infra/agent-client/channel-pool";
-import { openAgent } from "../../infra/agent-client/connect";
 import {
   startFakeAgent,
   type FakeAgent,
   type FakeLink,
 } from "../../infra/agent-client/fake-agent-test-helpers";
-import { AgentUnreachableError } from "../../infra/agent-client/errors";
-import {
-  AGENT_LINK_CAPABILITY,
-  METRICS_STREAM_CAPABILITY,
-} from "../../infra/agent-client/hello-capabilities";
+import { AgentOfflineError } from "../../infra/agent-client/errors";
+import { METRICS_STREAM_CAPABILITY } from "../../infra/agent-client/hello-capabilities";
 import {
   startAgentLinkListener,
   stopAgentLinkListener,
@@ -137,16 +129,15 @@ test("a linked server's telemetry streams over its link", async () => {
   assert.equal(agent.connections().opened, 0, "nothing dialed the agent");
 });
 
-test("a server that never linked is asked once, then its telemetry waits for its link instead of dialing again", async (t) => {
+test("a server that has not linked yet streams once its link comes, and is never dialed meanwhile", async (t) => {
   let hellos = 0;
   t.after(onAgentHello((id) => void (id === SERVER && hellos++)));
   const watching = watchStatus();
   t.after(watching.stop);
   startMetricsStreams();
-  await waitFor(() => hellos >= 1, "the stream asked the server");
-  await new Promise((r) => setTimeout(r, 2_500));
-  assert.equal(hellos, 1, "asked again over its dial");
-  assert.equal(agent.connections().opened, 1);
+  await new Promise((r) => setTimeout(r, 1_500));
+  assert.equal(hellos, 0, "nothing reached it without a link");
+  assert.equal(agent.connections().opened, 0, "nothing dialed it");
 
   await linkIn();
   await streamed(1);
@@ -194,16 +185,16 @@ test("a link that stays away shows the server offline with the link's own words"
   assert.equal(now.message, HEALTH_MESSAGES.offline);
 });
 
-test("right after the panel starts, a server whose stream finds its port closed is not shown offline until links settle", async (t) => {
-  let dials = 0;
-  // It stopped listening once it linked, and has not relinked since the panel restarted.
+test("right after the panel starts, a server whose link has not come back is not shown offline until links settle", async (t) => {
+  let tries = 0;
+  // It linked before the panel restarted, and has not relinked since.
   __setMetricsConnectorForTest(async () => {
-    dials++;
-    throw new AgentUnreachableError("connect ECONNREFUSED 127.0.0.1:9443", 14);
+    tries++;
+    throw new AgentOfflineError(SERVER);
   });
   const before = await shown();
   startMetricsStreams();
-  await waitFor(() => dials >= 1, "the stream tried the server");
+  await waitFor(() => tries >= 1, "the stream tried the server");
   await new Promise((r) => setTimeout(r, 200));
   assert.deepEqual(await shown(), before);
 
@@ -214,66 +205,4 @@ test("right after the panel starts, a server whose stream finds its port closed 
     "offline once the panel has settled",
   );
   assert.equal((await shown()).message, HEALTH_MESSAGES.offline);
-});
-
-const CUT_OFF = "srv_cut_off";
-
-function withEnv(t: TestContext, vars: Record<string, string>): void {
-  for (const [k, v] of Object.entries(vars)) {
-    const was = process.env[k];
-    process.env[k] = v;
-    t.after(() => {
-      if (was === undefined) delete process.env[k];
-      else process.env[k] = was;
-    });
-  }
-}
-
-test("a server that answers its dial but never links gets the probe's warning from its telemetry's Hello, never online", async (t) => {
-  withEnv(t, {
-    DEPLO_PUBLIC_URL: "https://panel.example.com",
-    DEPLO_SERVER_IP: "203.0.113.10",
-  });
-  const cut = await startFakeAgent({
-    capabilities: [METRICS_STREAM_CAPABILITY, AGENT_LINK_CAPABILITY],
-    linkAddresses: { primary: "", fallback: "" },
-  });
-  t.after(async () => {
-    dropAgentChannel(CUT_OFF);
-    await cut.stop();
-  });
-  await seedServerRow(h.db, {
-    id: CUT_OFF,
-    ip: "127.0.0.1",
-    host: "127.0.0.1",
-    status: "offline",
-    agent: {
-      port: cut.port,
-      certFingerprint: cut.fingerprint,
-      certPem: cut.certPem,
-      version: AGENT_VERSION,
-    },
-  });
-  startLinkAddressSync();
-  const conn = await openAgent(CUT_OFF);
-  await conn.hello().finally(() => conn.close());
-  await waitFor(() => cut.sentPairs().length > 0, "handed the address");
-  await stopLinkAddressSync();
-  mock.timers.enable({ apis: ["Date"], now: Date.now() + LINK_SETTLE_MS });
-  t.after(() => mock.timers.reset());
-
-  const watching = watchStatus(CUT_OFF);
-  t.after(watching.stop);
-  startMetricsStreams();
-  await waitFor(
-    async () => (await shown(CUT_OFF)).status === "warning",
-    "the server shows warning",
-  );
-  await new Promise((r) => setTimeout(r, 1_000));
-  await watching.stop();
-  assert.equal(
-    (await shown(CUT_OFF)).message,
-    "This server can't reach Deplo at panel.example.com. Check that it's connected to the internet.",
-  );
-  assert.ok(!watching.seen.includes("online"), watching.seen.join(","));
 });

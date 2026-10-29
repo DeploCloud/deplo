@@ -119,8 +119,8 @@ export async function setMigrationMachineAddress(input: {
   sourceId: string;
   serverId: string;
   address: string;
-}): Promise<{ warning: string | null }> {
-  const { warning } = await updateServerAddress({
+}): Promise<void> {
+  await updateServerAddress({
     id: input.serverId,
     address: input.address,
     keepHost: true,
@@ -130,7 +130,6 @@ export async function setMigrationMachineAddress(input: {
     input.sourceId,
     input.address,
   );
-  return { warning };
 }
 
 let dnsLookup: (name: string) => Promise<{ address: string }[]> = (name) =>

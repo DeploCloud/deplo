@@ -25,33 +25,21 @@ export function ChangeAddress({ server }: { server: ServerSummary }) {
   const [pending, startTransition] = React.useTransition();
   const [open, setOpen] = React.useState(false);
   const [address, setAddress] = React.useState(server.host);
-  const [port, setPort] = React.useState(
-    server.agentPort ? String(server.agentPort) : "",
-  );
   const [refusal, setRefusal] = React.useState<string | null>(null);
 
   function openDialog() {
     setAddress(server.host);
-    setPort(server.agentPort ? String(server.agentPort) : "");
     setRefusal(null);
     setOpen(true);
   }
 
-  function save(force: boolean) {
+  function save() {
     startTransition(async () => {
       const res = await gqlAction<{ updateServerAddress: string | null }>(
-        `mutation ChangeServerAddress($id: String!, $address: String!, $agentPort: Int, $force: Boolean) {
-          updateServerAddress(id: $id, address: $address, agentPort: $agentPort, force: $force)
+        `mutation ChangeServerAddress($id: String!, $address: String!) {
+          updateServerAddress(id: $id, address: $address)
         }`,
-        {
-          id: server.id,
-          address: address.trim(),
-          agentPort:
-            server.agentPort !== null && port.trim()
-              ? Number(port.trim())
-              : null,
-          force,
-        },
+        { id: server.id, address: address.trim() },
       );
       if (!res.ok) {
         setRefusal(res.error);
@@ -59,8 +47,6 @@ export function ChangeAddress({ server }: { server: ServerSummary }) {
       }
       setOpen(false);
       toast.success("Server address updated");
-      if (res.data?.updateServerAddress)
-        toast.warning(res.data.updateServerAddress);
       router.refresh();
     });
   }
@@ -74,9 +60,8 @@ export function ChangeAddress({ server }: { server: ServerSummary }) {
             <BetaChip />
           </div>
           <p className="mt-1 text-sm text-muted-foreground">
-            {server.agentPort === null
-              ? "Where this server’s apps are reached. Change it when the machine got a new IP or you moved it."
-              : "Where Deplo reaches the server agent on this machine. Change it when the host got a new IP or you moved it."}
+            Where this server’s apps are reached. Change it when the machine got
+            a new IP or you moved it.
           </p>
         </div>
         <Button variant="outline" onClick={openDialog} disabled={pending}>
@@ -91,8 +76,6 @@ export function ChangeAddress({ server }: { server: ServerSummary }) {
             server={server}
             address={address}
             onAddressChange={setAddress}
-            port={port}
-            onPortChange={setPort}
             refusal={refusal}
             pending={pending}
             onSave={save}
@@ -105,51 +88,43 @@ export function ChangeAddress({ server }: { server: ServerSummary }) {
 }
 
 export interface ChangeAddressFormProps {
-  server: Pick<ServerSummary, "name" | "agentPort" | "isDeploHost">;
+  server: Pick<ServerSummary, "name" | "isDeploHost">;
   address: string;
   onAddressChange: (value: string) => void;
-  port: string;
-  onPortChange: (value: string) => void;
   refusal: string | null;
   pending: boolean;
-  onSave: (force: boolean) => void;
+  onSave: () => void;
   onCancel: () => void;
 }
 
-// A server with no agent port is never dialed (ADR-0040): no check, nothing to force.
+// Every server links in (ADR-0040): no check, nothing to force.
 export function ChangeAddressForm({
   server,
   address,
   onAddressChange,
-  port,
-  onPortChange,
   refusal,
   pending,
   onSave,
   onCancel,
 }: ChangeAddressFormProps) {
-  const dialed = server.agentPort !== null;
   return (
     <form
       className="grid gap-4"
       onSubmit={(e) => {
         e.preventDefault();
-        onSave(false);
+        onSave();
       }}
     >
       <DialogHeader>
         <DialogTitle>Change address for {server.name}?</DialogTitle>
         <DialogDescription>
-          {dialed
-            ? "Deplo checks that the server agent answers at the new address before saving. Apps and databases are not touched."
-            : "Apps and databases on the server are not touched."}
+          Apps and databases on the server are not touched.
         </DialogDescription>
       </DialogHeader>
       {server.isDeploHost && (
         <p className="text-sm text-destructive">
-          {dialed
-            ? "This server runs Deplo itself - a wrong address here cuts this dashboard off from its own host."
-            : "This server runs Deplo itself - a wrong address here breaks the addresses of its apps."}
+          This server runs Deplo itself - a wrong address here breaks the
+          addresses of its apps.
         </p>
       )}
       <div className="grid gap-2">
@@ -168,32 +143,9 @@ export function ChangeAddressForm({
           autoFocus
         />
       </div>
-      {dialed && (
-        <div className="grid gap-2">
-          <FieldLabel
-            htmlFor="server-agent-port"
-            info="Where Deplo connects to the server agent on this machine. Change it only if you moved the server agent."
-            docs="servers.address"
-          >
-            Agent port
-          </FieldLabel>
-          <Input
-            id="server-agent-port"
-            inputMode="numeric"
-            value={port}
-            onChange={(e) => onPortChange(e.target.value)}
-          />
-        </div>
-      )}
       {refusal && (
         <div className="rounded-md border border-destructive/40 bg-destructive-wash-strong p-3 text-sm">
           <p>{refusal}</p>
-          {dialed && (
-            <p className="mt-1 text-muted-foreground">
-              Save anyway if the host is not up at the new address yet - Deplo
-              keeps checking its health there.
-            </p>
-          )}
         </div>
       )}
       <DialogFooter>
@@ -205,16 +157,6 @@ export function ChangeAddressForm({
         >
           Cancel
         </Button>
-        {dialed && refusal && (
-          <Button
-            type="button"
-            variant="destructive"
-            onClick={() => onSave(true)}
-            disabled={pending || !address.trim()}
-          >
-            {pending ? "Saving" : "Save anyway"}
-          </Button>
-        )}
         <Button type="submit" disabled={pending || !address.trim()}>
           {pending ? "Saving" : "Save"}
         </Button>
