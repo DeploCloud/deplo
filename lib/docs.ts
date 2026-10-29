@@ -205,6 +205,7 @@ export const DOCS = {
     "operations/panel-address-and-certificates#https-is-not-optional",
   "panel.certEmail":
     "operations/panel-address-and-certificates#the-certificate-account-email",
+  "panel.tunnel": "operations/cloudflare-tunnel",
   "upgrade.overview": "operations/upgrade",
   "upgrade.releases": "operations/upgrade#release-history",
   "deplo.move": "operations/move-deplo",

@@ -17,6 +17,8 @@ import { Input } from "@/components/ui/input";
 import { InfoTip } from "@/components/ui/info-tip";
 import { CopyButton } from "@/components/shared/copy-button";
 import { CloudflareNote } from "@/components/domains/cloudflare-note";
+import { CloudflareIcon } from "@/components/shared/brand-icons";
+import Link from "@/components/ui/link";
 import { RevealChip } from "@/components/shared/reveal-chip";
 import { PanelAddressDialog } from "@/components/settings/panel-address-dialog";
 import { usePanelHttps } from "./panel-http-card";
@@ -59,6 +61,7 @@ export function PanelAddressCard({ settings }: { settings: InstanceSettings }) {
   const host = value.trim();
   const target = host ? `${scheme}://${host}` : "";
   const dirty = target !== current;
+  const tunneled = settings.panelTunnelHostname !== null;
 
   const [dns, setDns] = React.useState<PanelDns | null>(null);
   const checkDns = React.useCallback(async () => {
@@ -72,8 +75,8 @@ export function PanelAddressCard({ settings }: { settings: InstanceSettings }) {
 
   React.useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
-    void checkDns();
-  }, [checkDns]);
+    if (!tunneled) void checkDns();
+  }, [checkDns, tunneled]);
 
   async function save() {
     const res = await gqlAction(
@@ -122,6 +125,7 @@ export function PanelAddressCard({ settings }: { settings: InstanceSettings }) {
               placeholder="deplo.example.com"
               autoComplete="off"
               spellCheck={false}
+              disabled={tunneled}
               className={`w-full font-mono text-sm ${
                 scheme === "https"
                   ? "pl-[calc(0.75rem_+_8ch)]"
@@ -129,12 +133,16 @@ export function PanelAddressCard({ settings }: { settings: InstanceSettings }) {
               }`}
             />
           </div>
-          <Button type="submit" disabled={!dirty || !target}>
+          <Button type="submit" disabled={tunneled || !dirty || !target}>
             Save
           </Button>
         </form>
 
-        <PanelDnsBlock dns={dns} serverIp={settings.deploHostIp} />
+        {tunneled ? (
+          <TunnelNote />
+        ) : (
+          <PanelDnsBlock dns={dns} serverIp={settings.deploHostIp} />
+        )}
 
         <PanelFallbackRow
           url={routedFallbackUrl ?? settings.panelFallbackUrl}
@@ -153,6 +161,22 @@ export function PanelAddressCard({ settings }: { settings: InstanceSettings }) {
         onConfirm={save}
       />
     </Card>
+  );
+}
+
+function TunnelNote() {
+  return (
+    <p className="flex flex-wrap items-center gap-1.5 text-sm text-muted-foreground">
+      <CloudflareIcon className="size-4 text-[#f38020]" />
+      Served through a Cloudflare Tunnel. Change it under{" "}
+      <Link
+        href="/settings/deplo?tab=advanced"
+        className="underline underline-offset-2 hover:text-foreground"
+      >
+        Advanced
+      </Link>
+      .
+    </p>
   );
 }
 

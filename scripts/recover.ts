@@ -11,7 +11,15 @@ import {
 } from "../lib/db/schema/auth";
 import { hashPassword } from "../lib/crypto";
 import { createOwnerWithTemporaryPassword } from "../lib/auth/create-account";
-import { panelRoute, withPanelRoute } from "../lib/deploy/traefik-stack";
+import {
+  panelRoute,
+  stackCertResolver,
+  withPanelRoute,
+} from "../lib/deploy/traefik-stack";
+import {
+  panelTunnelToken,
+  withPanelTunnel,
+} from "../lib/deploy/panel-tunnel-stack";
 import {
   deploHostSelfAddresses,
   isDeploHostServer,
@@ -355,8 +363,20 @@ async function cmdPanelAddress(arg: string) {
     https = parsed.protocol === "https:";
   }
 
+  // A tunnel serves one name only: whatever broke, the address moves off it.
+  const tunneled = panelTunnelToken(yaml) !== null;
   const res = await applyTraefikConfig(server.id, {
-    composeYaml: withPanelRoute(yaml, { ...current, domain, https }),
+    composeYaml: withPanelTunnel(
+      withPanelRoute(yaml, {
+        ...current,
+        domain,
+        https,
+        // The tunnel's route orders no certificate: the address it moves to needs one again.
+        certResolver:
+          tunneled && https ? stackCertResolver(yaml) : current.certResolver,
+      }),
+      null,
+    ),
   });
   if (!res.ok)
     fail(res.error || `The proxy on ${server.name} refused the new address`);
@@ -367,6 +387,12 @@ async function cmdPanelAddress(arg: string) {
     panelUrl: url,
     updatedAt: now,
     ...(generated ? { panelFallbackDisabled: false } : {}),
+    panelTunnelHostname: null,
+    panelTunnelAccountId: null,
+    panelTunnelZoneId: null,
+    panelTunnelId: null,
+    panelTunnelDnsRecordId: null,
+    panelTunnelApiTokenEnc: null,
   };
   await getDb()
     .insert(instanceSettings)
@@ -377,6 +403,10 @@ async function cmdPanelAddress(arg: string) {
     `\n  panel: ${current.domain} -> ${domain} (${https ? "https" : "http"})`,
   );
   if (generated) console.log("  backup address turned back on");
+  if (tunneled)
+    console.log(
+      "  Cloudflare Tunnel turned off: delete the tunnel and its DNS record in Cloudflare",
+    );
   console.log(
     "  Restart Deplo so install commands and links carry the new address.\n",
   );
