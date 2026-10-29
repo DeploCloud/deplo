@@ -150,8 +150,9 @@ _Avoid_: upgrade stop, checkpoint, required version, mandatory release.
 
 **Left behind**:
 A server an instance admin let an **update stop** pass without, because it never connected to
-Deplo. It keeps its Apps and settings; once Deplo is past the stop, only reinstalling its server
-agent brings it back. Never undone, and moot the moment the server connects.
+Deplo. It keeps its Apps and settings; once Deplo is past the stop it is an **unusable server**,
+and only reinstalling its server agent brings it back. Never undone, and moot the moment the server
+connects. Only the first stop offered it: nothing has waited on a server since.
 _Avoid_: skipped, abandoned, excluded, ignored.
 
 **Registration link**:
@@ -462,34 +463,35 @@ The lasting connection a **server agent** opens _to_ its control plane after it 
 every call the control plane makes to that server rides it, so a server never has to accept an
 incoming connection. Every server has one, the host running Deplo included (over loopback). A
 server with no agent link past a short grace window is **offline**; every other status still
-comes from a live Hello over the link. Once its link works, the agent stops listening on its port.
+comes from a live Hello over the link. Nothing else reaches a server: the control plane never
+dials one. An agent installed before the link is told over its link to stop listening, for good,
+and a new one opens no port, so no server of an updated instance keeps a port open.
 A server's address stays, for its apps' domains and DNS checks only. Users never see the term: a
 server is _connected_ or _offline_, and no screen mentions a port. The link enters the panel by its
 **door**, a reserved path on the panel's public address (loopback for the host running Deplo): the
 door only names the server the agent claims to be, and the mutual-TLS handshake inside the link
-decides. A server that has never linked, a **pre-link agent**'s above all, is still dialed directly,
-only to bring it onto its link, until it has linked once, and never after
-([ADR-0040](docs/adr/0040-a-server-agent-links-to-its-control-plane.md)).
+decides. A server that cannot link, a **pre-link agent** or one **left behind**, is an **unusable
+server** ([ADR-0040](docs/adr/0040-a-server-agent-links-to-its-control-plane.md),
+[ADR-0041](docs/adr/0041-a-release-can-require-an-update-stop.md)).
 _Avoid_: tunnel (reads as public ingress for apps, which this is not), reverse proxy, VPN, socket.
 
 **Pre-link agent**:
-A **server agent** released before the **agent link** existed, so the control plane can reach it
-only by dialing it. Users never see the term: they see a server agent "too old to connect".
+A **server agent** released before the **agent link** existed. A Deplo past the first **update
+stop** dials nothing, so it never reaches one: an **unusable server** until its server agent is
+reinstalled. Users never see the term: they see a server agent to reinstall.
 _Avoid_: legacy agent, old agent, dial-only agent.
 
 **Server health**:
 A server's **status** is an OBSERVATION, not a lifecycle the control plane drives: the outcome of
 the last live agent **Hello**, stamped with **when** it was observed (`statusCheckedAt`) and, when
 it isn't green, **why** (`statusMessage`, a sentence Deplo writes from a curated set, never a raw
-agent error, which would leak the pinned fingerprint and the server's address; the one thing it ever
-fills in is the panel's own hostname, in the warning that a server can't reach Deplo). The Hello rides the
+agent error, which would leak the pinned fingerprint and the server's address). The Hello rides the
 server's **agent link**. The five values: **provisioning** (no agent has called home yet, never
 contacted, never demoted), **online** (Hello answered, Docker reachable), **warning** (agent up and
-trusted, but nothing can deploy there: Docker is unreachable, or the server answers its dial yet
-never connects back to Deplo), **error** (the peer answered but its agent is wrong - untrusted
-cert, unsupported contract, application error), **offline** (its agent link stayed away past a
-short grace window - or, for a server that has never linked, nothing answered the dial, confirmed
-by a retry). An offline server's message tells the user to check that
+trusted, but nothing can deploy there: Docker is unreachable), **error** (the peer answered but
+its agent is wrong - untrusted cert, unsupported contract, application error), **offline** (its
+agent link stayed away past a short grace window, or never came once links settled after Deplo
+started; nothing is dialed to find out). An offline server's message tells the user to check that
 the machine is on and connected to the internet, never a port.
 The stored value is a **cache the UI must qualify**, never a **gate**: past a staleness window the
 Servers page renders it as _Unknown_ rather than a confident stale green, and **nothing in the
@@ -508,9 +510,10 @@ _Avoid_: "the server is up/down" (say which of the five), treating **warning** a
 A provisioned server whose agent is older than the minimum the running Deplo supports
 (`deplo.agentMin` in `package.json`, [ADR-0037](docs/adr/0037-a-panel-pins-its-agent.md)). Deplo
 refuses every call to it except the ones that update it, until its agent updates; its Apps keep
-running. A **pre-link agent** that an instance admin left behind at an **update stop** cannot be
-updated any more: only reinstalling its server agent brings it back. A live verdict from Hello, not
-a sixth **Server health** status.
+running. A server that can never link - a **pre-link agent**, or one **left behind** at an **update
+stop** that has not connected since - cannot be updated at all: Deplo refuses it at once, and only
+reinstalling its server agent (the server's Advanced tab) brings it back, with its Apps and
+settings. A live verdict from Hello and the stored record, not a sixth **Server health** status.
 _Avoid_: outdated (an agent behind the pin but above the minimum is outdated and still usable),
 blocked, broken.
 
