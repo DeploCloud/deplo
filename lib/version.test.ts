@@ -121,14 +121,24 @@ test("the pin is usable by its own floor", () => {
   assert.ok(!isNewer(AGENT_MIN_VERSION, AGENT_VERSION));
 });
 
-// ADR-0041: a stop is a stable release before any stable release requires it. The tag workflow checks it is published.
+// ADR-0041: a stop is a stable release before any stable release requires it. The tag workflow checks it is published,
+// which also refuses the stop itself: the two versions match only between the merge and the next version bump.
 test("this release only requires an earlier stop, and a stable one when it is stable itself", () => {
   const stop = REQUIRED_STOP;
   if (!stop) return;
-  assert.ok(isNewer(DEPLO_VERSION, stop), `v${stop} comes after this release`);
+  assert.ok(!isNewer(stop, DEPLO_VERSION), `v${stop} comes after this release`);
   if (!isPrerelease(DEPLO_VERSION))
     assert.ok(
       !isPrerelease(stop),
       `stable v${DEPLO_VERSION} requires v${stop}`,
     );
+});
+
+// Nothing dials a server since v0.6.0, the stop every server linked by (ADR-0041): below it, an instance reaches none.
+test("every release requires the stop that brought every server onto its link", () => {
+  assert.ok(REQUIRED_STOP, "requiresStop is empty");
+  assert.ok(
+    !isNewer("0.6.0", REQUIRED_STOP),
+    `v${REQUIRED_STOP} comes before the stop every server linked by`,
+  );
 });
