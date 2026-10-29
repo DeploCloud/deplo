@@ -14,7 +14,7 @@ let db: TestDb;
 let pg: PGlite;
 let orig: typeof fetch;
 const seen: string[] = [];
-let body: unknown = { deplo: { agent: "0.6.0", agentMin: "0.5.0" } };
+let body: unknown = { deplo: { agent: "0.7.0", agentMin: "0.6.0" } };
 
 before(async () => {
   ({ db, pg } = await makeTestDb());
@@ -54,16 +54,18 @@ const seed = (id: string, status: "online" | "offline", version: string) =>
   });
 
 test("the floor is read off the tag's package.json, not the API", async () => {
-  assert.equal(await targetAgentMin("0.6.0"), "0.5.0");
+  assert.equal(await targetAgentMin("0.6.0"), "0.6.0");
   assert.deepEqual(seen, [
     "https://raw.githubusercontent.com/DeploCloud/deplo/v0.6.0/package.json",
   ]);
 });
 
-test("only offline servers below the new floor are named", async () => {
-  await seed("srv_off_old", "offline", "0.4.0");
-  await seed("srv_off_ok", "offline", "0.5.1");
-  await seed("srv_on_old", "online", "0.4.0");
+test("only offline servers below the new floor are named, not one only a reinstall brings back", async () => {
+  await seed("srv_off_old", "offline", "0.5.1");
+  await seed("srv_off_ok", "offline", "0.6.0");
+  await seed("srv_on_old", "online", "0.5.1");
+  // Too old to connect, it is unusable already: the update changes nothing for it.
+  await seed("srv_off_gone", "offline", "0.4.0");
   const stranded = await runWithIdentity(
     { userId: USER_1, teamId: TEAM_A },
     () => strandedByPanelUpdate("0.6.0"),

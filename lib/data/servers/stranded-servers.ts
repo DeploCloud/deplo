@@ -1,7 +1,7 @@
 import "server-only";
 
 import { requireInstanceAdmin } from "../../membership";
-import { agentUsable, reportedAgentVersion } from "../../version";
+import { agentReach, reportedAgentVersion } from "../../version";
 import { readReleaseDeclaration } from "../update-stops/declaration";
 import { listAllServers } from "./roster";
 
@@ -16,7 +16,7 @@ export async function targetAgentMin(version: string): Promise<string | null> {
   return (await readReleaseDeclaration(version))?.agentMin ?? null;
 }
 
-/** Offline servers whose agent the new Deplo refuses: unusable until they come back and update. */
+/** Offline servers whose agent the new Deplo refuses: unusable until they come back and update. One only a reinstall brings back already is. */
 export async function strandedByPanelUpdate(
   version: string,
 ): Promise<StrandedServer[]> {
@@ -29,7 +29,7 @@ export async function strandedByPanelUpdate(
         !s.importOnly &&
         Boolean(s.agent?.certFingerprint) &&
         (s.status === "offline" || s.status === "error") &&
-        !agentUsable(reportedAgentVersion(s), min),
+        agentReach(s, min) === "updatable",
     )
     .map((s) => ({ id: s.id, name: s.name, version: reportedAgentVersion(s) }));
 }

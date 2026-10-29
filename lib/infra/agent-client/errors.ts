@@ -2,10 +2,11 @@ import "server-only";
 
 import { status as GrpcStatus, type ServiceError } from "@grpc/grpc-js";
 
+import { AGENT_REINSTALL_MESSAGE } from "../../agent-reachability";
 import { AGENT_TOO_OLD_MESSAGE, agentUsable } from "../../version";
 import { LINK_WAIT_MS } from "../agent-link/protocol";
 
-export { AGENT_TOO_OLD_MESSAGE };
+export { AGENT_REINSTALL_MESSAGE, AGENT_TOO_OLD_MESSAGE };
 
 export class AgentUnreachableError extends Error {
   constructor(
@@ -23,6 +24,13 @@ export class AgentOfflineError extends AgentUnreachableError {
     super(
       `server ${serverId} is offline: its agent has not connected for ${LINK_WAIT_MS / 1000} s`,
     );
+  }
+}
+
+/** A server that cannot link, left behind at an update stop or too old to (ADR-0041): only a reinstall helps. */
+export class AgentNeedsReinstallError extends AgentUnreachableError {
+  constructor() {
+    super(AGENT_REINSTALL_MESSAGE);
   }
 }
 

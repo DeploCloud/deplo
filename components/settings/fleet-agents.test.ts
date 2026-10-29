@@ -27,7 +27,7 @@ test("a server Deplo is still updating gets no button", () => {
           id: "s1",
           name: "edge-1",
           version: "0.4.0",
-          usable: true,
+          reach: "usable",
           update: null,
         },
       ],
@@ -46,7 +46,7 @@ test("a failed update shows its state and Retry now; a pause is named", () => {
           id: "s2",
           name: "edge-2",
           version: "0.3.0",
-          usable: false,
+          reach: "updatable",
           update: {
             running: false,
             failed: true,

@@ -4,7 +4,9 @@ import { Package } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { SimpleTooltip } from "@/components/ui/tooltip";
+import { AGENT_REINSTALL_MESSAGE } from "@/lib/agent-reachability";
 import {
+  AGENT_LINK_VERSION,
   AGENT_TOO_OLD_MESSAGE,
   agentUpdateAvailable,
   agentUsable,
@@ -29,8 +31,12 @@ export function AgentVersionBadge({
   }
 
   if (!agentUsable(version)) {
+    // Too old to connect, nothing Deplo does updates it (ADR-0041).
+    const why = agentUsable(version, AGENT_LINK_VERSION)
+      ? AGENT_TOO_OLD_MESSAGE
+      : AGENT_REINSTALL_MESSAGE;
     return (
-      <SimpleTooltip content={AGENT_TOO_OLD_MESSAGE}>
+      <SimpleTooltip content={why}>
         <Badge variant="destructive">
           <Package className="size-3" />
           Agent too old

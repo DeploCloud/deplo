@@ -7,8 +7,10 @@ import { recordActivity } from "../activity";
 import { requireInstanceAdmin } from "../../membership";
 import { resolveAgentRelease } from "../../agent/release";
 import { AgentReleaseUnavailableError } from "../../infra/agent-client/errors";
+import { AGENT_REINSTALL_MESSAGE } from "../../agent-reachability";
 import {
   AGENT_VERSION,
+  agentReach,
   agentUpdateAvailable,
   reportedAgentVersion,
 } from "../../version";
@@ -76,6 +78,8 @@ export async function retryServerAgentUpdate(
     throw new Error(
       "This server is not provisioned yet - finish provisioning before updating its agent",
     );
+  if (agentReach(server) === "reinstall")
+    throw new Error(AGENT_REINSTALL_MESSAGE);
   if (!agentUpdateAvailable(reportedAgentVersion(server), AGENT_VERSION))
     throw new Error(
       `This server already runs agent v${reportedAgentVersion(server)}. Nothing to update.`,

@@ -55,6 +55,7 @@ import { ServerCertificatesTab } from "./certificates-tab";
 import { ServerWorkloads } from "@/components/servers/server-workloads";
 import { AgentUpdateStatus } from "@/components/servers/agent-update-status";
 import type { AgentUpdateDTO } from "@/lib/data/servers/agent-update-state";
+import type { AgentReach } from "@/lib/version";
 
 export type ServerSummary = {
   id: string;
@@ -75,7 +76,7 @@ export type ServerSummary = {
   provisioning: boolean;
   agentVersion: string | null;
   expectedAgentVersion: string;
-  agentUsable: boolean;
+  agentReach: AgentReach;
   agentUpdate: AgentUpdateDTO | null;
 };
 
@@ -325,7 +326,7 @@ function OverviewTab({
               <div className="mt-2 empty:hidden">
                 <AgentUpdateStatus
                   serverId={server.id}
-                  usable={server.agentUsable}
+                  reach={server.agentReach}
                   update={server.agentUpdate}
                   onSettled={() => router.refresh()}
                 />

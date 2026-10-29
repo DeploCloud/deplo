@@ -19,11 +19,7 @@ import {
   isDeploHostServer,
 } from "@/lib/deploy/domains";
 import { serverLabel } from "@/lib/utils";
-import {
-  AGENT_VERSION,
-  agentUsable,
-  reportedAgentVersion,
-} from "@/lib/version";
+import { AGENT_VERSION, agentReach, reportedAgentVersion } from "@/lib/version";
 import { serverAgentUpdate } from "@/lib/data/servers/agent-maintenance";
 import type { TeamOption } from "@/components/servers/server-team-access";
 import {
@@ -150,8 +146,10 @@ export default async function ServerDetailPage(
             provisioning: hydrated.status === "provisioning",
             agentVersion,
             expectedAgentVersion,
-            agentUsable:
-              !hydrated.agent?.certFingerprint || agentUsable(agentVersion),
+            // Nothing to refuse until its agent has enrolled.
+            agentReach: hydrated.agent?.certFingerprint
+              ? agentReach(hydrated)
+              : "usable",
             agentUpdate,
           }}
           teams={teams}

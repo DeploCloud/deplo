@@ -8,6 +8,7 @@ import { __setTestDb, __resetTestDb } from "../../db/client";
 import { seedServerRow, TRUNCATE_INFRA } from "../../data/infra-test-helpers";
 import type { Server } from "../../types/server";
 import { AGENT_VERSION } from "../../version";
+import { unreachableMessage } from "../server-health";
 import {
   startAgentLinkListener,
   stopAgentLinkListener,
@@ -18,7 +19,11 @@ import { doorClosed, doorOpened, onAgentLink } from "../agent-link/registry";
 import { dropAgentChannel } from "./channel-pool";
 import { __setAgentConnectorForTest, connectAgent, openAgent } from "./connect";
 import type { AgentConnection } from "./connection";
-import { AgentOfflineError, AgentUnreachableError } from "./errors";
+import {
+  AgentNeedsReinstallError,
+  AgentOfflineError,
+  AgentUnreachableError,
+} from "./errors";
 import {
   eventually,
   startFakeAgent,
@@ -157,6 +162,49 @@ test("once a server has linked, Deplo waits for it after a restart and never dia
   assert.equal(agent.connections().opened, 0, "nothing dialed it");
 });
 
+/** What the user reads: plain words that point to the reinstall, never a port, a link or a shell. */
+function needsReinstall(e: unknown): boolean {
+  assert.ok(e instanceof AgentNeedsReinstallError, String(e));
+  const shown = unreachableMessage(e) ?? "";
+  assert.match(shown, /server agent is reinstalled/);
+  assert.match(shown, /Advanced/);
+  assert.doesNotMatch(shown, /port|link|shell|ssh|command|firewall/i);
+  assert.doesNotMatch(shown.replace(/server agent/g, ""), /agent/i);
+  return true;
+}
+
+test("a server left behind at the update stop is refused at once, with what brings it back", async () => {
+  await seed({ leftBehindAt: "2026-10-28T00:00:00.000Z" });
+  const started = performance.now();
+  await assert.rejects(connectAgent(SERVER), needsReinstall);
+  await assert.rejects(openAgent(SERVER), needsReinstall);
+  assert.ok(performance.now() - started < 2_000, "no wait for a link");
+  assert.equal(agent.connections().opened, 0);
+});
+
+test("a server whose server agent is too old to link is refused the same way", async () => {
+  await seed({
+    agent: {
+      port: agent.port,
+      certFingerprint: agent.fingerprint,
+      certPem: agent.certPem,
+      version: "0.4.0",
+    },
+  });
+  await assert.rejects(connectAgent(SERVER), needsReinstall);
+  await assert.rejects(openAgent(SERVER), needsReinstall);
+  assert.equal(agent.connections().opened, 0);
+});
+
+test("a server left behind that connects after all is used like any other, its apps and settings kept", async () => {
+  await seed({ leftBehindAt: "2026-10-28T00:00:00.000Z" });
+  await linkIn();
+  assert.equal(await helloVia(connectAgent), AGENT_VERSION);
+  const server = await getServerById(SERVER);
+  assert.ok(server?.firstLinkedAt);
+  assert.equal(server?.leftBehindAt, "2026-10-28T00:00:00.000Z");
+});
+
 test("the door stores a server's first link as it admits it, before anyone hears it come up", async () => {
   await seed();
   // A door that admits nothing more verifies the link, then turns it away.
@@ -177,8 +225,8 @@ test("the door stores a server's first link as it admits it, before anyone hears
   assert.ok(await seen, "stored before the link was announced");
 });
 
-test("a stubbed connection is the stub's own, whether or not its server linked", async (t) => {
-  await seed();
+test("a stubbed connection is the stub's own, whether or not its server could link", async (t) => {
+  await seed({ leftBehindAt: "2026-10-28T00:00:00.000Z" });
   t.after(() => __setAgentConnectorForTest());
   const stub = {
     inspect: async () => ({ exists: true, running: true, state: "running" }),

@@ -98,6 +98,20 @@ enum AddressFamily {
   ipv6
 }
 
+"""What this Deplo can do with a server's agent."""
+enum AgentReach {
+  """
+  The server can never connect: left behind at an update stop, or its agent too old to. Only reinstalling its server agent brings it back.
+  """
+  reinstall
+
+  """It refuses it until it updates, which Deplo does on its own."""
+  updatable
+
+  """It talks to it."""
+  usable
+}
+
 """
 A PERSONAL API token: it belongs to the person who minted it, and nobody else can list, edit or revoke it. Only the prefix is ever exposed - the raw token is shown once at creation and only its hash is persisted.
 """
@@ -2375,10 +2389,13 @@ input ExtraDomainInput {
 type FleetAgent {
   id: ID
   name: String
+
+  """Whether an update can bring it back, or only a reinstall."""
+  reach: AgentReach
   update: ServerAgentUpdate
 
   """
-  False when the agent is older than `FleetAgents.minimum`: the server refuses everything until it updates.
+  False when the agent is older than `FleetAgents.minimum`, or the server can never connect: it refuses everything meanwhile.
   """
   usable: Boolean
   version: String
@@ -6124,7 +6141,7 @@ type Server {
   agentUpdate: ServerAgentUpdate
 
   """
-  Whether this Deplo talks to the server's agent at all. False when the agent is older than the minimum this version of Deplo supports: everything on the server is refused until the agent updates, though its apps keep running. True while it is not provisioned yet.
+  Whether this Deplo talks to the server's agent at all. False when the agent is older than the minimum this version of Deplo supports, which it updates on its own, or when the server can never connect (left behind at an update stop, or its agent too old to), which only reinstalling its server agent fixes. Everything on the server is refused meanwhile, though its apps keep running. True while it is not provisioned yet.
   """
   agentUsable: Boolean
 

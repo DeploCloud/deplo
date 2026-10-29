@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { SimpleTooltip } from "@/components/ui/tooltip";
 import { gql, gqlAction } from "@/lib/graphql-client";
 import type { AgentUpdateDTO } from "@/lib/data/servers/agent-update-state";
+import type { AgentReach } from "@/lib/version";
 import { agentUpdateText } from "./agent-update-text";
 
 const FIELDS = `
@@ -24,12 +25,12 @@ const FIELDS = `
 /** The state line and, only after Deplo's own attempt failed, Retry now. */
 export function AgentUpdateStatus({
   serverId,
-  usable,
+  reach,
   update,
   onSettled,
 }: {
   serverId: string;
-  usable: boolean;
+  reach: AgentReach;
   update: AgentUpdateDTO | null;
   onSettled?: () => void;
 }) {
@@ -78,12 +79,14 @@ export function AgentUpdateStatus({
     });
   }
 
-  const text = agentUpdateText(current, usable);
+  const text = agentUpdateText(current, reach);
   if (!text) return null;
   const line = (
     <span
       className={
-        usable ? "text-sm text-muted-foreground" : "text-sm text-destructive"
+        reach === "usable"
+          ? "text-sm text-muted-foreground"
+          : "text-sm text-destructive"
       }
     >
       {text}
@@ -96,7 +99,7 @@ export function AgentUpdateStatus({
       ) : (
         line
       )}
-      {current?.failed && (
+      {current?.failed && reach !== "reinstall" && (
         <Button
           variant="outline"
           size="sm"

@@ -10,11 +10,7 @@ import {
 import { serverAddressChoices } from "@/lib/data/servers/addresses";
 import { serverAgentUpdate } from "@/lib/data/servers/agent-maintenance";
 import type { AgentUpdateDTO } from "@/lib/data/servers/agent-update-state";
-import {
-  AGENT_VERSION,
-  agentUsable,
-  reportedAgentVersion,
-} from "@/lib/version";
+import { AGENT_VERSION, agentReach, reportedAgentVersion } from "@/lib/version";
 import type { Server } from "@/lib/types/server";
 
 export const ServerStatusEnum = builder.enumType("ServerStatus", {
@@ -163,9 +159,8 @@ export const ServerRef = builder.objectRef<Server>("Server").implement({
     }),
     agentUsable: t.boolean({
       description:
-        "Whether this Deplo talks to the server's agent at all. False when the agent is older than the minimum this version of Deplo supports: everything on the server is refused until the agent updates, though its apps keep running. True while it is not provisioned yet.",
-      resolve: (s) =>
-        !s.agent?.certFingerprint || agentUsable(reportedAgentVersion(s)),
+        "Whether this Deplo talks to the server's agent at all. False when the agent is older than the minimum this version of Deplo supports, which it updates on its own, or when the server can never connect (left behind at an update stop, or its agent too old to), which only reinstalling its server agent fixes. Everything on the server is refused meanwhile, though its apps keep running. True while it is not provisioned yet.",
+      resolve: (s) => !s.agent?.certFingerprint || agentReach(s) === "usable",
     }),
     agentUpdate: t.field({
       type: AgentUpdateRef,

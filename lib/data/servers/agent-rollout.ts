@@ -20,9 +20,10 @@ import {
   AGENT_MIN_VERSION,
   AGENT_VERSION,
   DEPLO_VERSION,
+  agentReach,
   agentUpdateAvailable,
-  agentUsable,
   reportedAgentVersion,
+  type AgentReach,
 } from "../../version";
 import type { Server } from "../../types/server";
 import { recordActivity } from "../activity";
@@ -52,6 +53,7 @@ export interface FleetAgent {
   name: string;
   version: string | null;
   usable: boolean;
+  reach: AgentReach;
   update: AgentUpdateDTO | null;
 }
 
@@ -126,11 +128,13 @@ export async function fleetAgentStatus(): Promise<FleetAgentStatus> {
   const behind = behindServers(fleet);
   const rows = behind.map((s) => {
     const row = updates.get(s.id);
+    const reach = agentReach(s);
     return {
       id: s.id,
       name: s.name,
       version: reportedAgentVersion(s),
-      usable: agentUsable(reportedAgentVersion(s)),
+      usable: reach === "usable",
+      reach,
       update: row ? toAgentUpdateDTO(row) : null,
     };
   });
@@ -139,22 +143,23 @@ export async function fleetAgentStatus(): Promise<FleetAgentStatus> {
     minimum: AGENT_MIN_VERSION,
     total: fleet.length,
     behind: rows,
-    updating: rows.some((b) => !b.update?.gaveUp),
+    // Nothing Deplo does reaches a server only a reinstall brings back.
+    updating: rows.some((b) => b.reach !== "reinstall" && !b.update?.gaveUp),
     pausedBy: pausedBy(behind, updates)?.name ?? null,
   };
 }
 
-/** The servers this Deplo refuses until their agent updates, for the admin banner. */
-export async function unusableServerNames(): Promise<string[]> {
+/** The servers this Deplo refuses, for the admin banner. */
+export async function unusableServers(): Promise<
+  { id: string; name: string; reach: Exclude<AgentReach, "usable"> }[]
+> {
   await requireInstanceAdmin();
-  return (await listAllServers())
-    .filter(
-      (s) =>
-        !s.importOnly &&
-        Boolean(s.agent?.certFingerprint) &&
-        !agentUsable(reportedAgentVersion(s)),
-    )
-    .map((s) => s.name);
+  return (await listAllServers()).flatMap((s) => {
+    const reach = agentReach(s);
+    return !s.importOnly && s.agent?.certFingerprint && reach !== "usable"
+      ? [{ id: s.id, name: s.name, reach }]
+      : [];
+  });
 }
 
 /**
@@ -244,16 +249,16 @@ async function failAttempt(
       `Could not update the agent on ${server.name}: ${error} Deplo retries on its own.`,
       actor,
     );
-    if (!agentUsable(reportedAgentVersion(server))) {
+    if (agentReach(server) !== "usable") {
       await recordActivity(
         "server",
-        `${server.name} is unusable until its agent updates to v${AGENT_VERSION}`,
+        `${server.name} is unusable until its server agent updates to v${AGENT_VERSION}`,
         "Deplo",
       );
       dispatchServerAlert(server.id, {
         key: "agent_incompatible",
-        title: `${server.name} is unusable until its agent updates`,
-        body: `Its agent is too old for this version of Deplo, and the update failed: ${error}`,
+        title: `${server.name} is unusable until its server agent updates`,
+        body: `Its server agent is too old for this version of Deplo, and the update failed: ${error}`,
         dedupe: { id: `agent:${server.id}`, state: AGENT_VERSION },
         path: `/settings/servers/${server.id}`,
       });
@@ -330,7 +335,10 @@ export function runAgentRollout(): Promise<void> {
 
 async function rolloutPass(): Promise<void> {
   if (await instanceFrozen()) return;
-  const behind = behindServers(await listAllServers());
+  // One that cannot link is never reached (ADR-0041): only a reinstall brings it back.
+  const behind = behindServers(await listAllServers()).filter(
+    (s) => agentReach(s) !== "reinstall",
+  );
   const actor = await rolloutActor();
   if (behind.length === 0) {
     if (actor) await writeRolloutState({ agentRolloutBy: null });

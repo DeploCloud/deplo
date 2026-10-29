@@ -10,7 +10,13 @@ import { consoleRpc } from "./console-rpc";
 import { cronRpc } from "./cron-rpc";
 import { dataCopyRpc } from "./data-copy-rpc";
 import { HELLO_TIMEOUT_MS } from "./deadlines";
-import { AgentUnreachableError, assertAgentUsable } from "./errors";
+import { agentReach } from "../../version";
+import { currentLink } from "../agent-link/registry";
+import {
+  AgentNeedsReinstallError,
+  AgentUnreachableError,
+  assertAgentUsable,
+} from "./errors";
 import { filesRpc } from "./files-rpc";
 import { hostRpc } from "./host-rpc";
 import { inventoryRpc } from "./inventory-rpc";
@@ -86,6 +92,9 @@ async function agentPin(
     throw new AgentUnreachableError(
       `server ${server.name} is not provisioned (no agent has called home yet)`,
     );
+  // No link will come: refused now rather than after the wait for one.
+  if (agentReach(server) === "reinstall" && !currentLink(serverId))
+    throw new AgentNeedsReinstallError();
   return {
     fingerprint: server.agent.certFingerprint,
     version: server.agent.version,

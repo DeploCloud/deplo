@@ -25,6 +25,9 @@ import { getAgentUpdate } from "./agent-update-state";
 let db: TestDb;
 let pg: PGlite;
 
+// Behind the pin, and new enough to link: what the rollout can still reach (ADR-0041).
+const BEHIND = "0.5.1-canary.10";
+
 interface FakeAgent {
   version: string;
   reachable: boolean;
@@ -133,8 +136,8 @@ const messages = async () =>
   ).map((r) => `${r.a}: ${r.m}`);
 
 test("an unreachable server fails on its own; the next one is still updated", async () => {
-  await server("srv_dark", "0.4.0", { reachable: false });
-  await server("srv_ok", "0.4.0");
+  await server("srv_dark", BEHIND, { reachable: false });
+  await server("srv_ok", BEHIND);
   await runAgentRollout();
   assert.equal(agents.get("srv_ok")!.version, AGENT_VERSION);
   assert.equal(await getAgentUpdate("srv_ok"), null, "success leaves no row");
@@ -147,9 +150,9 @@ test("an unreachable server fails on its own; the next one is still updated", as
 });
 
 test("a server that does not come back pauses the rest until it recovers", async () => {
-  await server("srv_a", "0.4.0", { comesBack: false });
-  await server("srv_b", "0.4.0");
-  await server("srv_c", "0.4.0");
+  await server("srv_a", BEHIND, { comesBack: false });
+  await server("srv_b", BEHIND);
+  await server("srv_c", BEHIND);
   await runAgentRollout();
   assert.equal(order.length, 1, "the pass stops on the suspect");
   const suspect = order[0];
@@ -170,7 +173,8 @@ test("a server that does not come back pauses the rest until it recovers", async
 });
 
 test("an agent too old to update itself is a failure the button can retry", async () => {
-  await server("srv_old", "0.1.0", { canSelfUpdate: false });
+  // A version Deplo has not heard yet: below the floor as far as it knows, and still able to link.
+  await server("srv_old", "", { canSelfUpdate: false });
   await runAgentRollout();
   const row = (await getAgentUpdate("srv_old"))!;
   assert.equal(row.failure, "error");
@@ -196,7 +200,7 @@ test("an agent too old to update itself is a failure the button can retry", asyn
 });
 
 test("the button is refused before Deplo has failed, and when nothing is behind", async () => {
-  await server("srv_new", "0.4.0");
+  await server("srv_new", BEHIND);
   await assert.rejects(
     asAdmin(() => retryServerAgentUpdate("srv_new")),
     /on its own/,
