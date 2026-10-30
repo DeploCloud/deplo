@@ -118,6 +118,35 @@ export function versionAtLeast(version: string, min: string): boolean {
   return parseSemver(version) !== null && !isNewer(min, version);
 }
 
+// The first agent release that links (ADR-0040): a fixed fact, never moved with `agentMin`.
+export const AGENT_LINK_VERSION = "0.5.1-canary.10";
+
+/** What a Deplo with floor `min` can do with a server's agent: use it, update it, wait for it to connect, or for a reinstall. */
+export type AgentReach = "usable" | "updatable" | "unlinked" | "reinstall";
+
+export function agentReach(
+  server: {
+    agent?: { version: string };
+    leftBehindAt?: string;
+    firstLinkedAt?: string;
+  },
+  min: string = AGENT_MIN_VERSION,
+): AgentReach {
+  const reported = reportedAgentVersion(server);
+  // Nothing dials a server (ADR-0041): one too old to link never reaches Deplo.
+  if (reported && !agentUsable(reported, AGENT_LINK_VERSION))
+    return "reinstall";
+  // Never linked: it comes back once it connects, unless it was left behind on a version Deplo never read.
+  if (!server.firstLinkedAt)
+    return server.leftBehindAt && !reported ? "reinstall" : "unlinked";
+  return agentUsable(reported, min) ? "usable" : "updatable";
+}
+
+/** Whether an update from Deplo reaches the server at all: never one that cannot link, or has not yet. */
+export function updateReaches(reach: AgentReach): boolean {
+  return reach === "usable" || reach === "updatable";
+}
+
 /** Whether this panel talks to an agent at all: parseable and not older than `min`. */
 export function agentUsable(
   reported: string | null | undefined,

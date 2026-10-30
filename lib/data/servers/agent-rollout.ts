@@ -20,9 +20,11 @@ import {
   AGENT_MIN_VERSION,
   AGENT_VERSION,
   DEPLO_VERSION,
+  agentReach,
   agentUpdateAvailable,
-  agentUsable,
   reportedAgentVersion,
+  updateReaches,
+  type AgentReach,
 } from "../../version";
 import type { Server } from "../../types/server";
 import { recordActivity } from "../activity";
@@ -52,6 +54,7 @@ export interface FleetAgent {
   name: string;
   version: string | null;
   usable: boolean;
+  reach: AgentReach;
   update: AgentUpdateDTO | null;
 }
 
@@ -108,11 +111,20 @@ function behindServers(servers: Server[]): Server[] {
   );
 }
 
+// One that cannot link, or has not yet, is brought back by nothing Deplo does (ADR-0041).
+function updatable(s: Server): boolean {
+  return updateReaches(agentReach(s));
+}
+
 function pausedBy(
   behind: Server[],
   updates: Map<string, AgentUpdateRow>,
 ): Server | null {
-  return behind.find((s) => updates.get(s.id)?.failure === "no_return") ?? null;
+  return (
+    behind.find(
+      (s) => updatable(s) && updates.get(s.id)?.failure === "no_return",
+    ) ?? null
+  );
 }
 
 /** The fleet as the Updates tab reads it: who is behind, and where each update stands. */
@@ -126,11 +138,13 @@ export async function fleetAgentStatus(): Promise<FleetAgentStatus> {
   const behind = behindServers(fleet);
   const rows = behind.map((s) => {
     const row = updates.get(s.id);
+    const reach = agentReach(s);
     return {
       id: s.id,
       name: s.name,
       version: reportedAgentVersion(s),
-      usable: agentUsable(reportedAgentVersion(s)),
+      usable: reach === "usable",
+      reach,
       update: row ? toAgentUpdateDTO(row) : null,
     };
   });
@@ -139,22 +153,22 @@ export async function fleetAgentStatus(): Promise<FleetAgentStatus> {
     minimum: AGENT_MIN_VERSION,
     total: fleet.length,
     behind: rows,
-    updating: rows.some((b) => !b.update?.gaveUp),
+    updating: rows.some((b) => updateReaches(b.reach) && !b.update?.gaveUp),
     pausedBy: pausedBy(behind, updates)?.name ?? null,
   };
 }
 
-/** The servers this Deplo refuses until their agent updates, for the admin banner. */
-export async function unusableServerNames(): Promise<string[]> {
+/** The servers this Deplo refuses, for the admin banner. */
+export async function unusableServers(): Promise<
+  { id: string; name: string; reach: Exclude<AgentReach, "usable"> }[]
+> {
   await requireInstanceAdmin();
-  return (await listAllServers())
-    .filter(
-      (s) =>
-        !s.importOnly &&
-        Boolean(s.agent?.certFingerprint) &&
-        !agentUsable(reportedAgentVersion(s)),
-    )
-    .map((s) => s.name);
+  return (await listAllServers()).flatMap((s) => {
+    const reach = agentReach(s);
+    return !s.importOnly && s.agent?.certFingerprint && reach !== "usable"
+      ? [{ id: s.id, name: s.name, reach }]
+      : [];
+  });
 }
 
 /**
@@ -241,19 +255,19 @@ async function failAttempt(
   if (firstFailure) {
     await recordActivity(
       "server",
-      `Could not update the agent on ${server.name}: ${error} Deplo retries on its own.`,
+      `Could not update the server agent on ${server.name}: ${error} Deplo retries on its own.`,
       actor,
     );
-    if (!agentUsable(reportedAgentVersion(server))) {
+    if (agentReach(server) === "updatable") {
       await recordActivity(
         "server",
-        `${server.name} is unusable until its agent updates to v${AGENT_VERSION}`,
+        `${server.name} is unusable until its server agent updates to v${AGENT_VERSION}`,
         "Deplo",
       );
       dispatchServerAlert(server.id, {
         key: "agent_incompatible",
-        title: `${server.name} is unusable until its agent updates`,
-        body: `Its agent is too old for this version of Deplo, and the update failed: ${error}`,
+        title: `${server.name} is unusable until its server agent updates`,
+        body: `Its server agent is too old for this version of Deplo, and the update failed: ${error}`,
         dedupe: { id: `agent:${server.id}`, state: AGENT_VERSION },
         path: `/settings/servers/${server.id}`,
       });
@@ -262,7 +276,7 @@ async function failAttempt(
   if (gaveUp && row.nextRetryAt !== null)
     await recordActivity(
       "server",
-      `Stopped retrying the agent update on ${server.name} after 24 hours. An instance admin can retry it.`,
+      `Stopped retrying the server agent update on ${server.name} after 24 hours. An instance admin can retry it.`,
       "Deplo",
     );
 }
@@ -300,7 +314,7 @@ export async function attemptAgentUpdate(
     if (!version)
       return fail(
         "no_return",
-        "It took the new agent but did not come back on it. The other servers wait until it does.",
+        "It took the new server agent but did not come back on it. The other servers wait until it does.",
       );
     if (agentUpdateAvailable(version, AGENT_VERSION))
       return fail(
@@ -310,7 +324,7 @@ export async function attemptAgentUpdate(
     await clearAgentUpdate(server.id);
     await recordActivity(
       "server",
-      `Updated the agent on ${server.name} to v${version}`,
+      `Updated the server agent on ${server.name} to v${version}`,
       actor,
     );
   } catch (e) {
@@ -330,7 +344,7 @@ export function runAgentRollout(): Promise<void> {
 
 async function rolloutPass(): Promise<void> {
   if (await instanceFrozen()) return;
-  const behind = behindServers(await listAllServers());
+  const behind = behindServers(await listAllServers()).filter(updatable);
   const actor = await rolloutActor();
   if (behind.length === 0) {
     if (actor) await writeRolloutState({ agentRolloutBy: null });

@@ -192,6 +192,16 @@ test("a schema mismatch names the Deplo to update", async () => {
   await assert.rejects(() => connect(), /update this Deplo/);
 });
 
+// Protocol 2 still sent each server's agent port, which nothing reads since agents link in.
+test("an old Deplo on the move protocol before the link is told to update", async () => {
+  old.hello.schema = journal.entries.at(-1)!.tag;
+  old.hello.protocol = 2;
+  await assert.rejects(
+    () => connect(),
+    /The old Deplo runs an older version \(0\.5\.0\): update it/,
+  );
+});
+
 test("the old Deplo's refusal is shown as it said it", async () => {
   old.fail.hello = {
     status: 401,

@@ -98,6 +98,7 @@ test("Monitoring shows the selected server viewer only to instance admins", () =
         ip: "192.0.2.10",
         dockerVersion: "28",
         isDeploHost: false,
+        agentReach: "usable" as const,
       },
     ],
     initialHistory: [],

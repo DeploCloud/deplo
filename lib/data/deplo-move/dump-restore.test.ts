@@ -113,7 +113,6 @@ async function seedOldDeplo(): Promise<void> {
       allTeams: false,
       buildOnly: id === "srv_builder",
       agent: {
-        port: 9443,
         certFingerprint: `sha256:${name}`,
         certPem: "-----BEGIN CERTIFICATE-----",
         version: "1.0.0",
@@ -356,7 +355,6 @@ async function becomeNewDeplo(
       host: ip,
       allTeams: false,
       agent: {
-        port: 9443,
         certFingerprint: print,
         certPem: "-----BEGIN CERTIFICATE-----",
         version: "1.0.0",

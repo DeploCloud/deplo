@@ -21,7 +21,7 @@ before(async () => {
   __setTestDb(db);
   await seedServerRow(db, {
     id: "srv_gate",
-    agent: { port: 9443, certFingerprint: "fp", certPem: "pem", version: "" },
+    agent: { certFingerprint: "fp", certPem: "pem", version: "" },
   });
 });
 

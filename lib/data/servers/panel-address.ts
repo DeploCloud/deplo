@@ -1,5 +1,6 @@
 import "server-only";
 
+import { cantReachDeploMessage } from "../../agent-reachability";
 import {
   deploHostMachineAddresses,
   isDeploHostServer,
@@ -38,6 +39,11 @@ export async function panelHostname(): Promise<string | null> {
     return null;
   }
   return host === "localhost" || isLoopbackIp(host) ? null : host;
+}
+
+/** What a server that hasn't connected to Deplo yet is told to check. */
+export async function unlinkedServerMessage(): Promise<string> {
+  return cantReachDeploMessage(await panelHostname().catch(() => null));
 }
 
 /** Only a server provably on the panel's machine, and only while a port there reaches the door. */

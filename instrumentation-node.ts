@@ -71,6 +71,19 @@ export async function register(): Promise<void> {
   } catch (e) {
     console.error("[deplo] could not register this host as a server:", e);
   }
+  // After this host is a server: a move `deplo recover panel-address` left rides its own link.
+  try {
+    const { applyRecoveredPanelAddress } =
+      await import("./lib/data/instance-settings/panel-route");
+    void applyRecoveredPanelAddress().catch((e) =>
+      console.error(
+        "[deplo] could not move the panel as deplo recover asked; Deplo tries again at its next start:",
+        e,
+      ),
+    );
+  } catch (e) {
+    console.error("[deplo] could not read a move deplo recover asked for:", e);
+  }
   try {
     const { ensureTakeoverFromEnv } = await import("./lib/data/takeover");
     await ensureTakeoverFromEnv();

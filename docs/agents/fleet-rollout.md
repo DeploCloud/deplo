@@ -6,8 +6,12 @@ what breaks if you ignore it.
 
 The agent lives in its own repo (`DeploCloud/deplo-agent`); the control plane never builds it. The
 whole update path is the control plane resolving a **GitHub Release** and telling each **server
-agent** to replace its own binary over the existing pinned-mTLS channel - certificates are never
-reissued, so a server keeps its identity and stays online across the upgrade.
+agent** to replace its own binary over its agent link (ADR-0040), inside the pinned mTLS -
+certificates are never reissued, so a server keeps its identity and stays online across the upgrade.
+
+**Never release a server agent that drops something Deplo 0.3.0 or 0.4.0 relies on**, their direct
+dial above all: those panels roll out the agent repo's Latest release by themselves, so such a
+release would strand every server they manage.
 
 ## 1. The ship path
 
@@ -46,7 +50,7 @@ if it is absent, if the fetch fails, or if it names neither binary. `resolveAgen
 returning `null` means:
 
 - `/install-agent.sh` 503s instead of serving an unverifiable installer (`lib/agent/install-script.ts`),
-- `selfUpdateServerAgent` throws `AgentReleaseUnavailableError` _before_ dialing any agent,
+- `selfUpdateServerAgent` throws `AgentReleaseUnavailableError` _before_ reaching any agent,
 - the automatic rollout claims nothing that pass, so a GitHub outage never spends any server's
   24 hours of retries.
 
@@ -75,6 +79,10 @@ apps.server_id)` - see §5) is a `busy` failure; **no Hello** is `unreachable`; 
 - **A host that took the binary and never came back** is `no_return`: the pass stops, and every
   later pass tries only that server until it recovers. A release that breaks one agent must not
   break four.
+- **A server that can never link** (its agent too old to link, or left behind at the first update
+  stop on a version Deplo never read) is skipped: nothing reaches it, and only reinstalling its
+  server agent brings it back. So is **one that has not linked yet**, which comes back once it
+  connects; neither pauses the rest (`agentReach` in `lib/version.ts`, ADR-0041).
 - **Retries** back off 1, 2, 4 … 60 minutes for 24 hours from the first failure, then stop. A
   server that was `unreachable` when Deplo gave up gets one more attempt the next time a Hello
   sees it (`agentSeen`, called from `markServerSeen`). A Hello on the pin closes the row whatever
@@ -89,7 +97,8 @@ with their update state, and `pausedBy`.
 Both gates apply: `authScopes: { instanceAdmin: true }` at the field and `requireInstanceAdmin()`
 inside. The automatic pass runs with no identity, so it calls the infra seam directly.
 
-**Driving a rollout by hand is still supported**: the scripted path in §6 walks the same order.
+**There is no scripted rollout any more**: a script runs in its own process, which no server links
+to, so it reaches none (§6). The panel's rollout and Retry now are the only paths.
 
 ## 4. Order: canary → the rest → the Deplo host LAST
 
@@ -122,7 +131,7 @@ A snapshot, not a source of truth - the query above is. At the time of writing t
 
 **Why agent 0 goes last.** It runs the control plane itself. A bad agent there takes out the
 _observer_ as well as the observed: the process that would tell you the rollout went wrong, that
-serves the Servers page, that dials the other agents, and that hosts the app you would use to roll
+serves the Servers page, that every other server agent links to, and that hosts the app you would use to roll
 forward. Break a leaf server and you have a healthy control plane and two good agents to compare
 against; break agent 0 first and you are debugging blind, on the box, over SSH - the exact failure
 mode the platform exists to avoid. It is also the biggest blast radius here (10 Apps).
@@ -160,6 +169,11 @@ as all-clear, and the self-update `syscall.Exec`s 750ms later straight through t
 stream this section exists to protect. A safety check that fails open is worse than no check.
 
 ## 6. Scripted updates run under real Node, never Bun
+
+**Historical.** Nothing dials a server since the first update stop (ADR-0041): a server is reached
+only over its link, which ends at the running panel's door, so `scripts/fleet-update*.mts` and the
+`rollout-agent-*.mts` scripts reach no server from their own process. The Bun note still holds for
+the door, which opens the same mTLS inside every link.
 
 Bun's TLS peer-certificate verification rejects the agent certificate's SAN set and hands
 `checkServerIdentity` an **empty** cert object, so the fingerprint pin can never match and every
@@ -235,7 +249,7 @@ the **metrics poll** (`lib/data/monitoring.ts`), the **deploy preflight** (`agen
 advertising `metrics-stream`. On a quiet server with
 nobody on Monitoring, a stale badge can persist for a long time.
 
-`markServerSeen` only pins the _version_ when `agent_port is not null` (the `case` wraps just
+`markServerSeen` only pins the _version_ when `agent_cert_fingerprint is not null` (the `case` wraps just
 `agentVersion`), so it is a no-op for the badge on an unprovisioned row, but the rest of the write
 still lands: `lastSeenAt` unconditionally, and `traefikEnabled` / `dockerVersion` / specs whenever
 the caller passes them.
@@ -282,7 +296,7 @@ Do this before moving to the next server - that is the whole point of going one 
    _disappeared_ is a release regression - stop the rollout.
 2. **Status is `online`** on the Servers page (force a check), and `statusMessage` is empty.
 3. **`agent_version` in the DB matches**: see §7 if it does not.
-4. **Metrics flow**: the server card shows CPU/mem/disk, not `—`. This exercises the mTLS dial, the
+4. **Metrics flow**: the server card shows CPU/mem/disk, not `—`. This exercises the agent link, the
    `Metrics` RPC and `markServerSeen` in one shot.
 5. **A real deploy** on that server: redeploy one small App and watch the log stream to completion.
    Streaming is the thing a re-exec breaks, so a deploy that both builds _and_ streams is the

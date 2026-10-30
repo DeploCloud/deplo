@@ -104,6 +104,8 @@ async function schemaOf(pg: PGlite): Promise<string[]> {
 }
 
 const STOP = "0.5.1-canary.10";
+// The stop itself requires none, whatever this release requires.
+const THE_STOP: BootStops = { requiredStop: null };
 
 test("a database never migrated before has passed every stop up to this release, on every later boot too", async () => {
   const pg = await makeEmptyTestPg();
@@ -137,7 +139,7 @@ test("an instance updated from an older release has passed nothing until a stop 
       [],
       "no record on an older schema reads as none",
     );
-    await boot(pg, release());
+    await boot(pg, release(), THE_STOP);
     assert.deepEqual(await readPassedStops(query), []);
   } finally {
     await pg.close();
@@ -178,7 +180,7 @@ test("on the stop, the release after it refuses until the stop has passed, then 
     await migrate(drizzle(pg), {
       migrationsFolder: release({ record: false }),
     });
-    const query = await boot(pg, release());
+    const query = await boot(pg, release(), THE_STOP);
     const next = release({ next: true });
     const quiet = { requiredStop: STOP, log: () => {} };
     await assert.rejects(boot(pg, next, quiet));

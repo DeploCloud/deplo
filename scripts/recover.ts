@@ -11,7 +11,6 @@ import {
 } from "../lib/db/schema/auth";
 import { hashPassword } from "../lib/crypto";
 import { createOwnerWithTemporaryPassword } from "../lib/auth/create-account";
-import { panelRoute, withPanelRoute } from "../lib/deploy/traefik-stack";
 import {
   deploHostSelfAddresses,
   isDeploHostServer,
@@ -47,16 +46,17 @@ Deplo recover - break-glass account recovery (run on the Deplo host)
       Move the panel's own route onto <address> (a domain, optionally with
       http:// or https://), on the server that runs Deplo. Pass "-" for the
       generated deplo-<hex>.deplo.site address, which also turns the backup address
-      back on. The way back in when the panel's domain is what broke.
+      back on. Deplo makes the move the next time it starts. The way back in
+      when the panel's domain is what broke.
 
   ${CMD} bootstrap-owner <email>
       Create the first account with a temporary password read from stdin. The
       owner replaces it on the first sign-in. What install.sh --owner-email runs.
 
-  ${CMD} server-address <server> <address> [agentPort]
-      Rewrite where Deplo dials a server's agent (<server> is its name or id).
-      Direct write, no reachability check - for undoing a mistyped address when
-      the panel itself can no longer fix it.
+  ${CMD} server-address <server> <address>
+      Rewrite where a server's apps are reached (<server> is its name or id).
+      Direct write, no check - for undoing a mistyped address when the panel
+      itself can no longer fix it.
 `.trim();
 
 function fail(message: string): never {
@@ -263,11 +263,7 @@ async function cmdBootstrapOwner(email: string) {
   );
 }
 
-async function cmdServerAddress(
-  handle: string,
-  address?: string,
-  portArg?: string,
-) {
+async function cmdServerAddress(handle: string, address?: string) {
   if (!address) fail(`\`server-address\` needs the new address.\n\n${USAGE}`);
   const rows = await getDb()
     .select({
@@ -275,7 +271,6 @@ async function cmdServerAddress(
       name: serversTable.name,
       host: serversTable.host,
       ip: serversTable.ip,
-      agentPort: serversTable.agentPort,
     })
     .from(serversTable);
   const needle = handle.toLowerCase();
@@ -286,27 +281,20 @@ async function cmdServerAddress(
     fail(
       `No server matches "${handle}". Known: ${rows.map((s) => `${s.name} (${s.id})`).join(", ") || "none"}.`,
     );
-  const port = portArg ? Number(portArg) : null;
-  if (portArg && (!Number.isInteger(port) || port! < 1 || port! > 65535))
-    fail(`"${portArg}" is not a valid port.`);
   await getDb()
     .update(serversTable)
-    .set({
-      host: address,
-      ip: address,
-      ...(port && server.agentPort != null ? { agentPort: port } : {}),
-    })
+    .set({ host: address, ip: address })
     .where(eq(serversTable.id, server.id));
-  console.log(
-    `\n  ${server.name}: ${server.ip} -> ${address}` +
-      (port && server.agentPort != null
-        ? ` (agent port ${server.agentPort} -> ${port})`
-        : "") +
-      `\n`,
-  );
+  console.log(`\n  ${server.name}: ${server.ip} -> ${address}\n`);
 }
 
-async function cmdPanelAddress(arg: string) {
+/**
+ * Leaves the move for the running panel, which makes it over its own server's link at start
+ * (`applyRecoveredPanelAddress`): no server links to this process, so nothing here reaches one.
+ */
+export async function requestPanelAddress(
+  arg: string,
+): Promise<{ server: string; domain: string; https: boolean | null }> {
   const servers = await getDb()
     .select({
       id: serversTable.id,
@@ -324,19 +312,10 @@ async function cmdPanelAddress(arg: string) {
       `Cannot tell which server runs Deplo. Set DEPLO_SERVER_IP to its address and try again. Known: ${servers.map((s) => s.name).join(", ") || "none"}.`,
     );
 
-  const { fetchHostInfo, applyTraefikConfig } =
-    await import("../lib/infra/agent-client/host-ops");
-  const yaml = (await fetchHostInfo(server.id)).traefikComposeYaml;
-  const current = yaml ? panelRoute(yaml) : null;
-  if (!current)
-    fail(
-      `${server.name} does not publish the panel through a route Deplo manages, so there is nothing here to move.`,
-    );
-
-  const generated = arg === "-";
   let domain: string;
-  let https = current.https;
-  if (generated) {
+  // null: the generated address keeps whatever scheme the proxy serves today.
+  let https: boolean | null = null;
+  if (arg === "-") {
     domain = panelFallbackHost(
       isWildcardIp(server.ip ?? "") ? server.ip : undefined,
     );
@@ -355,35 +334,30 @@ async function cmdPanelAddress(arg: string) {
     https = parsed.protocol === "https:";
   }
 
-  const res = await applyTraefikConfig(server.id, {
-    composeYaml: withPanelRoute(yaml, { ...current, domain, https }),
-  });
-  if (!res.ok)
-    fail(res.error || `The proxy on ${server.name} refused the new address`);
-
-  const url = `${https ? "https" : "http"}://${domain}`;
-  const now = new Date().toISOString();
   const set = {
-    panelUrl: url,
-    updatedAt: now,
-    ...(generated ? { panelFallbackDisabled: false } : {}),
+    panelMoveDomain: domain,
+    panelMoveHttps: https,
+    updatedAt: new Date().toISOString(),
   };
   await getDb()
     .insert(instanceSettings)
     .values({ id: "default", ...set })
     .onConflictDoUpdate({ target: instanceSettings.id, set });
+  return { server: server.id, domain, https };
+}
 
+async function cmdPanelAddress(arg: string) {
+  const { domain, https } = await requestPanelAddress(arg);
+  const scheme = https === null ? "" : ` (${https ? "https" : "http"})`;
+  const restart = CMD.startsWith("deplo ") ? "`deplo restart`" : "a restart";
+  console.log(`\n  panel: moves to ${domain}${scheme}`);
   console.log(
-    `\n  panel: ${current.domain} -> ${domain} (${https ? "https" : "http"})`,
-  );
-  if (generated) console.log("  backup address turned back on");
-  console.log(
-    "  Restart Deplo so install commands and links carry the new address.\n",
+    `  Deplo makes the move as it starts: run ${restart} now, then open the new address.\n`,
   );
 }
 
 async function main() {
-  const [command, handle, extra, extra2] = process.argv.slice(2);
+  const [command, handle, extra] = process.argv.slice(2);
   if (!command || command === "help" || command === "--help")
     return void console.log(`\n${USAGE}\n`);
 
@@ -396,8 +370,7 @@ async function main() {
     fail(
       `\`${command}\` needs ${{ "server-address": "a server", "bootstrap-owner": "an email" }[command] ?? "a username"}.\n\n${USAGE}`,
     );
-  if (command === "server-address")
-    return cmdServerAddress(handle, extra, extra2);
+  if (command === "server-address") return cmdServerAddress(handle, extra);
   if (command === "bootstrap-owner") return cmdBootstrapOwner(handle);
   if (command === "password") return cmdPassword(handle, extra);
   if (command === "owner") return cmdOwner(handle);

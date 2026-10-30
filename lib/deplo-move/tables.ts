@@ -127,6 +127,8 @@ export const MOVE_TABLES: Readonly<Record<string, TablePolicy>> = {
     keepTarget: [
       "panel_url",
       "panel_fallback_disabled",
+      "panel_move_domain",
+      "panel_move_https",
       "booted_version",
       "agent_rollout_by",
       "network_sweep_at",

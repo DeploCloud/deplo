@@ -1436,6 +1436,20 @@
       "when": 1793136387912,
       "tag": "0204_server_left_behind",
       "breakpoints": true
+    },
+    {
+      "idx": 205,
+      "version": "7",
+      "when": 1793303634642,
+      "tag": "0205_server_agent_pin_only",
+      "breakpoints": true
+    },
+    {
+      "idx": 206,
+      "version": "7",
+      "when": 1793354313967,
+      "tag": "0206_panel_move_request",
+      "breakpoints": true
     }
   ]
 }

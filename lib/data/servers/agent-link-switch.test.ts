@@ -1,4 +1,4 @@
-import { test, before, after, beforeEach, afterEach, mock } from "node:test";
+import { test, before, after, beforeEach, afterEach } from "node:test";
 import assert from "node:assert/strict";
 import net from "node:net";
 
@@ -6,15 +6,11 @@ import type { PGlite } from "@electric-sql/pglite";
 
 import { makeTestDb, type TestDb } from "../../db/test-harness";
 import { __setTestDb, __resetTestDb } from "../../db/client";
-import { activities } from "../../db/schema/control-plane/activity";
 import { deploMoves } from "../../db/schema/control-plane/deplo-move";
-import { __resetReleaseCacheForTests } from "../../agent/release";
 import { AGENT_VERSION } from "../../version";
 import { nowIso } from "../../ids";
-import type { DeployRequest } from "../../agent/gen/agent";
 import { connectAgent } from "../../infra/agent-client/connect";
 import { dropAgentChannel } from "../../infra/agent-client/channel-pool";
-import { AgentNotLinkedError } from "../../infra/agent-client/errors";
 import {
   AGENT_LINK_CAPABILITY,
   SELF_UPDATE_CAPABILITY,
@@ -28,20 +24,17 @@ import {
   startAgentLinkListener,
   stopAgentLinkListener,
 } from "../../infra/agent-link/listener";
-import { LINK_SETTLE_MS } from "../../infra/agent-link/protocol";
-import { currentLink, onAgentLink } from "../../infra/agent-link/registry";
+import { onAgentLink } from "../../infra/agent-link/registry";
 import { invalidateFrozen } from "../deplo-move/freeze";
 import { forgetRoutedFallback } from "../instance-settings/panel-fallback";
 import { seedIdentity, TEAM_A, USER_1 } from "../identity-test-helpers";
 import { seedServerRow, TRUNCATE_INFRA } from "../infra-test-helpers";
-import { rolloutTiming, runAgentRollout } from "./agent-rollout";
 import { startLinkAddressSync, stopLinkAddressSync } from "./link-addresses";
 
-// Servers enrolled before the agent link move over on their own (ADR-0040): real agents, a real door.
+// Servers enrolled before the agent link close their port on their own (ADR-0040): real agents, a real door.
 const PANEL = "https://panel.example.com";
 const FALLBACK = "https://deplo-cb00710a.deplo.site";
 const SERVER = "srv_before_the_link";
-const BEFORE_THE_LINK = "0.4.0";
 const LINKING = [SELF_UPDATE_CAPABILITY, AGENT_LINK_CAPABILITY];
 
 let db: TestDb;
@@ -53,23 +46,9 @@ const env: Record<string, string | undefined> = {};
 before(async () => {
   ({ db, pg } = await makeTestDb());
   __setTestDb(db);
-  rolloutTiming.confirmTries = 2;
-  rolloutTiming.confirmDelayMs = 0;
-  (globalThis as Record<symbol, unknown>)[
-    Symbol.for("deplo.agent.release.cache")
-  ] = {
-    value: {
-      at: Date.now(),
-      release: {
-        version: AGENT_VERSION,
-        binaries: { amd64: { url: "https://x/a", sha256: "a" }, arm64: null },
-      },
-    },
-  };
 });
 
 after(async () => {
-  __resetReleaseCacheForTests();
   __resetTestDb();
   await pg.close();
 });
@@ -102,23 +81,13 @@ afterEach(async () => {
     else process.env[k] = v;
 });
 
-/** An agent from before the link, enrolled over its own port; `reachesPanel` is whether it can link once updated. */
-async function enrolled(
-  opts: { reachesPanel?: boolean; version?: string; caps?: string[] } = {},
-): Promise<FakeAgent> {
+/** An agent installed before the link, updated to a linking release: it still listens on its own port. */
+async function enrolled(): Promise<FakeAgent> {
   agent = await startFakeAgent({
-    version: opts.version ?? BEFORE_THE_LINK,
-    capabilities: opts.caps ?? [SELF_UPDATE_CAPABILITY],
-    linkAddresses: opts.caps
-      ? { primary: PANEL, fallback: FALLBACK }
-      : undefined,
-    updatesTo: {
-      version: AGENT_VERSION,
-      capabilities: LINKING,
-      // It finds no address saved: the panel sends one over its port.
-      linkAddresses: { primary: "", fallback: "" },
-    },
-    door: opts.reachesPanel === false ? undefined : door,
+    version: AGENT_VERSION,
+    capabilities: LINKING,
+    // Its install command's address, all it had saved.
+    linkAddresses: { primary: PANEL, fallback: "" },
   });
   await seedServerRow(db, {
     id: SERVER,
@@ -126,10 +95,9 @@ async function enrolled(
     ip: "127.0.0.1",
     host: "127.0.0.1",
     agent: {
-      port: agent.port,
       certFingerprint: agent.fingerprint,
       certPem: agent.certPem,
-      version: opts.version ?? BEFORE_THE_LINK,
+      version: AGENT_VERSION,
     },
   });
   return agent;
@@ -145,16 +113,6 @@ const refusesConnections = (port: number) =>
     sock.once("error", () => resolve(true));
   });
 
-async function relink(a: FakeAgent): Promise<void> {
-  const up = new Promise<void>((resolve) => {
-    const off = onAgentLink((e) => {
-      if (e.serverId === SERVER && e.type === "up") resolve(void off());
-    });
-  });
-  assert.equal((await a.link(door)).status, 101);
-  await up;
-}
-
 async function hello() {
   const conn = await connectAgent(SERVER);
   try {
@@ -164,57 +122,26 @@ async function hello() {
   }
 }
 
-test("an agent updated to a linking release links and stops listening, with nothing for the user to do", async (t) => {
-  const a = await enrolled();
+function linkUp(): Promise<void> {
+  return new Promise<void>((resolve) => {
+    const off = onAgentLink((e) => {
+      if (e.serverId === SERVER && e.type === "up") resolve(void off());
+    });
+  });
+}
 
-  await runAgentRollout();
+test("an agent installed before the link links in, then is told over its link to close its port, with nothing for the user to do", async () => {
+  const a = await enrolled();
+  const up = linkUp();
+  await a.link(door);
+  await up;
 
   await eventually(() => !a.listening(), 5_000);
   assert.deepEqual(a.sentPairs(), [{ primary: PANEL, fallback: FALLBACK }]);
-  assert.ok(currentLink(SERVER), "it is linked");
   assert.ok(await refusesConnections(a.port), "its port is closed");
-  const dialed = a.connections().opened;
   const h = await hello();
-  assert.equal(h.agentVersion, AGENT_VERSION);
   assert.equal(h.listening, false);
-  assert.equal(a.connections().opened, dialed, "reached over its link");
-  const log = await db.select({ m: activities.message }).from(activities);
-  assert.ok(log.some((r) => r.m.includes(`Updated the agent on ${SERVER}`)));
-
-  // Deplo restarts, and links have settled: the server is waited for, never dialed, until it links again.
-  await stopAgentLinkListener();
-  door = (await startAgentLinkListener({ port: 0, host: "127.0.0.1" })).port;
-  mock.timers.enable({ apis: ["Date"], now: Date.now() + LINK_SETTLE_MS });
-  t.after(() => mock.timers.reset());
-  const answer = hello();
-  await new Promise((r) => setTimeout(r, 300));
-  await relink(a);
-  assert.equal((await answer).agentVersion, AGENT_VERSION);
-  assert.equal(a.connections().opened, dialed, "never dialed again");
-});
-
-test("an agent that cannot reach the panel keeps its port, and its dial carries no deploy", async () => {
-  const a = await enrolled({ reachesPanel: false });
-
-  await runAgentRollout();
-  await eventually(() => a.sentPairs().length > 0);
-  await stopLinkAddressSync(); // everything already on its way has landed
-
-  assert.equal(a.listening(), true);
-  assert.equal(currentLink(SERVER), undefined);
-  const h = await hello();
-  assert.equal(h.agentVersion, AGENT_VERSION);
-  assert.equal(h.listening, true);
-  assert.equal(await refusesConnections(a.port), false);
-  const conn = await connectAgent(SERVER);
-  try {
-    await assert.rejects(
-      conn.deploy({} as DeployRequest).next(),
-      AgentNotLinkedError,
-    );
-  } finally {
-    conn.close();
-  }
+  assert.equal(a.connections().opened, 0, "nothing ever dialed it");
 });
 
 test("while a Deplo move has the instance frozen, a linked agent keeps its port until the move is over", async (t) => {
@@ -232,12 +159,8 @@ test("while a Deplo move has the instance frozen, a linked agent keeps its port 
     await pg.exec("delete from deplo_moves");
     invalidateFrozen();
   });
-  const a = await enrolled({ version: AGENT_VERSION, caps: LINKING });
-  const up = new Promise<void>((resolve) => {
-    const off = onAgentLink((e) => {
-      if (e.serverId === SERVER && e.type === "up") resolve(void off());
-    });
-  });
+  const a = await enrolled();
+  const up = linkUp();
   await a.link(door);
   await up;
   await new Promise((r) => setTimeout(r, 300));

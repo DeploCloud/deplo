@@ -16,6 +16,9 @@ export const instanceSettings = pgTable("instance_settings", {
   panelFallbackDisabled: boolean("panel_fallback_disabled")
     .notNull()
     .default(false),
+  // `deplo recover panel-address` leaves the move here for the running panel; null https keeps the route's scheme.
+  panelMoveDomain: text("panel_move_domain"),
+  panelMoveHttps: boolean("panel_move_https"),
   vapidPublicKey: text("vapid_public_key"),
   vapidPrivateKeyEnc: text("vapid_private_key_enc"),
   logMaxDays: integer("log_max_days").notNull().default(7),

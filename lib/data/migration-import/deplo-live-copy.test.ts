@@ -62,7 +62,7 @@ beforeEach(async () => {
   );
   await db
     .update(serversTable)
-    .set({ agentPort: 9443, agentCertFingerprint: "ab".repeat(32) })
+    .set({ agentCertFingerprint: "ab".repeat(32) })
     .where(eq(serversTable.id, SERVER_1));
 });
 

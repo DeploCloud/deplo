@@ -78,7 +78,6 @@ export interface MovePreviewServer {
   id: string;
   name: string;
   address: string;
-  port: number | null;
   role: MoveServerSummary["role"];
   isPanelHost: boolean;
   enrolled: boolean;
@@ -362,7 +361,6 @@ async function inspect(c: moveClient.MoveCredential): Promise<Inspection> {
       id: s.id,
       name: s.name,
       address: s.address,
-      port: s.port,
       role: s.role,
       isPanelHost: s.isPanelHost,
       enrolled: s.enrolled,

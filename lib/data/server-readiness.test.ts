@@ -128,7 +128,7 @@ test("a trust-revoked server (empty-string fingerprint) is fenced exactly like a
   await seedServerRow(db, {
     id: "srv_revoked",
     status: "online",
-    agent: { port: 9443, certFingerprint: "", certPem: "", version: "1.1.0" },
+    agent: { certFingerprint: "", certPem: "", version: "1.1.0" },
   });
 
   const report = await asAdmin(() => checkServerReadiness("srv_revoked"));
@@ -145,7 +145,7 @@ test("a readiness check WRITES NOTHING - status, its timestamps and the heartbea
   await seedServerRow(db, {
     id: "srv_revoked",
     status: "online",
-    agent: { port: 9443, certFingerprint: "", certPem: "", version: "1.1.0" },
+    agent: { certFingerprint: "", certPem: "", version: "1.1.0" },
   });
 
   await asAdmin(() => checkServerReadiness("srv_new"));

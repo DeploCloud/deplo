@@ -10,6 +10,7 @@ import {
 import { Lock } from "lucide-react";
 import { isInstanceAdmin, reachesWholeTeam } from "@/lib/membership";
 import { EmptyState } from "@/components/shared/empty-state";
+import { agentReach } from "@/lib/version";
 import { MonitoringDashboard } from "./monitoring-dashboard";
 
 export const metadata = { title: "Monitoring" };
@@ -46,6 +47,8 @@ export default async function MonitoringPage() {
         ip: s.ip,
         dockerVersion: s.dockerVersion,
         isDeploHost: isDeploHostServer(s, selfAddrs),
+        // Nothing to refuse until its agent has enrolled.
+        agentReach: s.agent?.certFingerprint ? agentReach(s) : "usable",
       }))}
       initialHistory={initialHistory}
       initialFleet={fleet}

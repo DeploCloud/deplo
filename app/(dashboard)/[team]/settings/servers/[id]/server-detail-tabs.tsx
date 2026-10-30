@@ -55,14 +55,13 @@ import { ServerCertificatesTab } from "./certificates-tab";
 import { ServerWorkloads } from "@/components/servers/server-workloads";
 import { AgentUpdateStatus } from "@/components/servers/agent-update-status";
 import type { AgentUpdateDTO } from "@/lib/data/servers/agent-update-state";
+import type { AgentReach } from "@/lib/version";
 
 export type ServerSummary = {
   id: string;
   name: string;
   ip: string;
   host: string;
-  /** Null when Deplo dials no port: its agent links in (ADR-0040), so its address is only for its apps. */
-  agentPort: number | null;
   status: string;
   cpuCores: number;
   memoryMb: number;
@@ -77,7 +76,7 @@ export type ServerSummary = {
   provisioning: boolean;
   agentVersion: string | null;
   expectedAgentVersion: string;
-  agentUsable: boolean;
+  agentReach: AgentReach;
   agentUpdate: AgentUpdateDTO | null;
 };
 
@@ -319,6 +318,7 @@ function OverviewTab({
                 <AgentVersionBadge
                   version={server.agentVersion}
                   expected={server.expectedAgentVersion}
+                  reach={server.agentReach}
                 />
               </div>
               <p className="mt-1 text-sm text-muted-foreground">
@@ -327,7 +327,7 @@ function OverviewTab({
               <div className="mt-2 empty:hidden">
                 <AgentUpdateStatus
                   serverId={server.id}
-                  usable={server.agentUsable}
+                  reach={server.agentReach}
                   update={server.agentUpdate}
                   onSettled={() => router.refresh()}
                 />

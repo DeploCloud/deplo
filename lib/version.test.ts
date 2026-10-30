@@ -4,6 +4,7 @@ import assert from "node:assert/strict";
 import {
   AGENT_MIN_VERSION,
   AGENT_VERSION,
+  agentReach,
   agentUpdateAvailable,
   agentUsable,
   bareVersion,
@@ -116,19 +117,52 @@ test("agentUsable: the floor is inclusive, newer is fine, unparseable is not", (
   assert.equal(agentUsable("dev", "0.4.0"), false);
 });
 
+test("a server that never connected waits for its link, whatever version it last told Deplo", () => {
+  const agent = (version: string) => ({ agent: { version } });
+  const LINKED = { firstLinkedAt: "2026-10-29T00:00:00.000Z" };
+  const LEFT = { leftBehindAt: "2026-10-28T00:00:00.000Z" };
+  // Enrolled, but its link has not come: a proxy or a firewall, never an update.
+  assert.equal(agentReach(agent(""), "0.5.1"), "unlinked");
+  assert.equal(agentReach(agent("0.5.1-canary.10"), "0.5.1"), "unlinked");
+  assert.equal(agentReach(agent("0.5.1"), "0.5.1"), "unlinked");
+  // Left behind on an agent that can link: it comes back once it connects.
+  assert.equal(agentReach({ ...agent("0.5.1"), ...LEFT }, "0.5.1"), "unlinked");
+  // Left behind on a version Deplo never read, or too old to link: only a reinstall.
+  assert.equal(agentReach({ ...agent(""), ...LEFT }, "0.5.1"), "reinstall");
+  assert.equal(agentReach(agent("0.4.0"), "0.5.1"), "reinstall");
+  assert.equal(agentReach({ ...agent("0.4.0"), ...LINKED }), "reinstall");
+  // Linked once: its version alone decides.
+  assert.equal(agentReach({ ...agent("0.5.1"), ...LINKED }, "0.5.1"), "usable");
+  assert.equal(
+    agentReach({ ...agent("0.5.1-canary.10"), ...LINKED }, "0.5.1"),
+    "updatable",
+  );
+  assert.equal(agentReach({ ...agent(""), ...LINKED }, "0.5.1"), "updatable");
+});
+
 test("the pin is usable by its own floor", () => {
   assert.ok(agentUsable(AGENT_VERSION));
   assert.ok(!isNewer(AGENT_MIN_VERSION, AGENT_VERSION));
 });
 
-// ADR-0041: a stop is a stable release before any stable release requires it. The tag workflow checks it is published.
+// ADR-0041: a stop is a stable release before any stable release requires it. The tag workflow checks it is published,
+// which also refuses the stop itself: the two versions match only between the merge and the next version bump.
 test("this release only requires an earlier stop, and a stable one when it is stable itself", () => {
   const stop = REQUIRED_STOP;
   if (!stop) return;
-  assert.ok(isNewer(DEPLO_VERSION, stop), `v${stop} comes after this release`);
+  assert.ok(!isNewer(stop, DEPLO_VERSION), `v${stop} comes after this release`);
   if (!isPrerelease(DEPLO_VERSION))
     assert.ok(
       !isPrerelease(stop),
       `stable v${DEPLO_VERSION} requires v${stop}`,
     );
+});
+
+// Nothing dials a server since v0.6.0, the stop every server linked by (ADR-0041): below it, an instance reaches none.
+test("every release requires the stop that brought every server onto its link", () => {
+  assert.ok(REQUIRED_STOP, "requiresStop is empty");
+  assert.ok(
+    !isNewer("0.6.0", REQUIRED_STOP),
+    `v${REQUIRED_STOP} comes before the stop every server linked by`,
+  );
 });

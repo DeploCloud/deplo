@@ -86,7 +86,7 @@ beforeEach(async () => {
   await seedServer(db);
   await db.execute(
     `update servers set agent_cert_fingerprint = 'sha256:pinned',
-       agent_cert_pem = 'x', agent_port = 9443, agent_version = '1.31.0'
+       agent_cert_pem = 'x', agent_version = '1.31.0'
      where id = '${SERVER_1}'`,
   );
   await db.insert(projectsTable).values({

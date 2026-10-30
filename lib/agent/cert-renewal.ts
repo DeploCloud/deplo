@@ -6,7 +6,7 @@ import { eq, isNotNull } from "drizzle-orm";
 
 import { getDb } from "../db/client";
 import { servers as serversTable } from "../db/schema/control-plane/servers";
-import { connectAgent, connectAgentAt } from "../infra/agent-client/connect";
+import { connectAgent } from "../infra/agent-client/connect";
 import { dropAgentChannel } from "../infra/agent-client/channel-pool";
 import { dispatchServerAlert } from "../notify/dispatch";
 import { signAgentCsr } from "./pki";
@@ -75,41 +75,6 @@ export async function renewAgentCertIfDue(
       renewed: true,
       reason: `renewed until ${notAfterOf(signed.certPem)}`,
     };
-  } finally {
-    conn.close();
-  }
-}
-
-export async function renewAgentCert(
-  serverId: string,
-  dialHosts: string[],
-  at?: { ip?: string; host?: string; agentPort?: number },
-): Promise<void> {
-  const conn = at
-    ? await connectAgentAt(serverId, at)
-    : await connectAgent(serverId);
-  try {
-    const hello = await conn.hello();
-    if (!hello.capabilities?.includes(CERT_RENEWAL_CAPABILITY))
-      throw new Error(
-        "the agent does not support certificate renewal - update it first",
-      );
-    const { csrPem } = await conn.renewalCsr();
-    const signed = await signAgentCsr(csrPem, dialHosts);
-    const res = await conn.installRenewedCert({
-      certPem: signed.certPem,
-      caPem: "",
-    });
-    if (!res.ok)
-      throw new Error(`agent rejected the renewed certificate: ${res.error}`);
-    await getDb()
-      .update(serversTable)
-      .set({
-        agentCertPem: signed.certPem,
-        agentCertFingerprint: signed.fingerprint,
-      })
-      .where(eq(serversTable.id, serverId));
-    dropAgentChannel(serverId);
   } finally {
     conn.close();
   }

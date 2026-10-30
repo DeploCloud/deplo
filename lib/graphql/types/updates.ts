@@ -12,6 +12,7 @@ import {
   lastRefusedUpdate,
   type RefusedUpdate,
 } from "@/lib/data/update-stops/refused";
+import { leaveServerBehind } from "@/lib/data/update-stops/leave-behind";
 import {
   applyDeploUpdate,
   listDeploReleases,
@@ -23,8 +24,6 @@ import {
   type UpdateInfo,
   type UpdateStopInfo,
 } from "@/lib/data/updates";
-import type { StopServer } from "@/lib/data/update-stops/condition";
-import { leaveServerBehind } from "@/lib/data/update-stops/leave-behind";
 import { bareVersion } from "@/lib/version";
 
 const StrandedServerRef = builder
@@ -40,15 +39,18 @@ const StrandedServerRef = builder
   });
 
 const UpdateStopServerRef = builder
-  .objectRef<StopServer>("UpdateStopServer")
+  .objectRef<{ id: string; name: string }>("UpdateStopServer")
   .implement({
     description:
-      "A server an update stop names: one it waits on, or one an instance admin left behind.",
+      "A server an update stop named. No stop names one any more: kept one release for older API clients.",
     fields: (t) => ({
       id: t.exposeID("id"),
       name: t.exposeString("name"),
     }),
   });
+
+const NOTHING_WAITS =
+  "Always empty: no update stop waits on servers any more (ADR-0041). Goes in the next release.";
 
 const UpdateStopRef = builder
   .objectRef<UpdateStopInfo>("UpdateStop")
@@ -67,15 +69,13 @@ const UpdateStopRef = builder
       }),
       waitingOn: t.field({
         type: [UpdateStopServerRef],
-        description:
-          "While `waiting`: each server that has not connected to Deplo yet. The newer release is offered as soon as the last one does.",
-        resolve: (stop) => stop.waitingOn,
+        deprecationReason: NOTHING_WAITS,
+        resolve: () => [],
       }),
       leftBehind: t.field({
         type: [UpdateStopServerRef],
-        description:
-          "While `waiting`: each server an instance admin left behind. It keeps its apps and settings, and needs its server agent reinstalled once Deplo updates past the stop.",
-        resolve: (stop) => stop.leftBehind,
+        deprecationReason: NOTHING_WAITS,
+        resolve: () => [],
       }),
     }),
   });
@@ -190,6 +190,25 @@ const ChangelogRef = builder
     }),
   });
 
+const AgentReachEnum = builder.enumType("AgentReach", {
+  description: "What this Deplo can do with a server's agent.",
+  values: {
+    usable: { description: "It talks to it." },
+    updatable: {
+      description:
+        "It refuses it until it updates, which Deplo does on its own.",
+    },
+    unlinked: {
+      description:
+        "The server enrolled but has not connected to Deplo yet, so nothing reaches it. It comes back by itself once it connects.",
+    },
+    reinstall: {
+      description:
+        "The server can never connect: its agent is too old to, or it was left behind at an update stop on a version Deplo never read. Only reinstalling its server agent brings it back.",
+    },
+  } as const,
+});
+
 const FleetAgentRef = builder
   .objectRef<FleetAgentStatus["behind"][number]>("FleetAgent")
   .implement({
@@ -200,7 +219,13 @@ const FleetAgentRef = builder
       version: t.exposeString("version", { nullable: true }),
       usable: t.exposeBoolean("usable", {
         description:
-          "False when the agent is older than `FleetAgents.minimum`: the server refuses everything until it updates.",
+          "False when the agent is older than `FleetAgents.minimum`, or the server has not connected to Deplo yet or never can: it refuses everything meanwhile.",
+      }),
+      reach: t.field({
+        type: AgentReachEnum,
+        description:
+          "What brings it back: an update from Deplo, the server connecting, or only a reinstall.",
+        resolve: (a) => a.reach,
       }),
       update: t.field({
         type: AgentUpdateRef,
@@ -288,19 +313,21 @@ builder.mutationFields((t) => ({
     args: { enabled: t.arg.boolean({ required: true }) },
     resolve: (_r, { enabled }) => setCanaryReleases(enabled),
   }),
-  leaveServerBehind: t.field({
-    type: UpdateInfoRef,
-    authScopes: { instanceAdmin: true },
-    description:
-      "Let the update stop pass without a server that has not connected to Deplo, and return the update decision after it. The server keeps its apps and settings, and needs its server agent reinstalled once Deplo updates past the stop. Refused for the machine Deplo runs on.",
-    args: { id: t.arg.string({ required: true }) },
-    resolve: (_r, { id }) => leaveServerBehind(id),
-  }),
   checkForUpdates: t.field({
     type: UpdateInfoRef,
     authScopes: { instanceAdmin: true },
     description:
       "Re-run the upstream release check ignoring the cache, and expire the changelog beside it.",
     resolve: () => refreshUpdateInfo(),
+  }),
+  leaveServerBehind: t.field({
+    type: UpdateInfoRef,
+    authScopes: { instanceAdmin: true },
+    description:
+      "Refused: no update stop waits on servers any more, so there is no server to leave behind.",
+    deprecationReason:
+      "Always refused: no update stop waits on servers any more (ADR-0041). Goes in the next release.",
+    args: { id: t.arg.string({ required: true }) },
+    resolve: () => leaveServerBehind(),
   }),
 }));

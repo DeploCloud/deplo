@@ -13,8 +13,6 @@ import {
   ContractVersion,
   type HelloResponse,
 } from "../../agent/gen/agent";
-import { getServerById } from "../../data/servers/roster";
-import type { Server } from "../../types/server";
 import { streamEvents } from "../stream-events";
 import { HELLO_TIMEOUT_MS, STREAM_BYTES_PAUSE_ABOVE } from "./deadlines";
 import {
@@ -23,49 +21,16 @@ import {
   toAgentError,
 } from "./errors";
 import { NETWORK_CAPABILITY } from "./hello-capabilities";
-import { isDeploHostServer } from "../../deploy/domains";
-import { formatHostPort, isIpLiteral } from "../../host-address";
 
+/** Where the door reaches a link's agent: its bridge socket, under the name every agent certificate carries. */
 export interface AgentAddress {
   address: string;
   serverName: string;
   pinnedFingerprint: string;
-  agentVersion?: string;
-  /** It has linked before: Deplo never dials it again (ADR-0041). */
-  linkedOnce?: boolean;
-  /** The host running Deplo: until it links, its dial also carries Deplo's own update (ADR-0037). */
-  runsDeplo?: boolean;
 }
 
 export interface DialTarget extends AgentAddress {
   clientCreds: { certPem: string; keyPem: string; caPem: string };
-}
-
-export async function resolveAddress(serverId: string): Promise<AgentAddress> {
-  const server = await getServerById(serverId);
-  if (!server) {
-    throw new AgentUnreachableError(`server ${serverId} not found`);
-  }
-  if (!server.agent || !server.agent.certFingerprint) {
-    throw new AgentUnreachableError(
-      `server ${server.name} is not provisioned (no agent has called home yet)`,
-    );
-  }
-  return agentAddress(server);
-}
-
-export function agentAddress(server: Server): AgentAddress {
-  const agent = server.agent!;
-  const host = server.ip || server.host;
-  return {
-    address: formatHostPort(host, agent.port),
-    // SNI forbids an IP servername: an IP host verifies against the localhost DNS SAN signAgentCsr always adds.
-    serverName: isIpLiteral(host) ? "localhost" : host,
-    pinnedFingerprint: agent.certFingerprint,
-    agentVersion: agent.version,
-    linkedOnce: !!server.firstLinkedAt,
-    runsDeplo: isDeploHostServer(server),
-  };
 }
 
 export async function withClientCert(
@@ -84,10 +49,6 @@ export async function withClientCert(
   };
 }
 
-export async function remoteTarget(server: Server): Promise<DialTarget> {
-  return withClientCert(agentAddress(server));
-}
-
 function peerFingerprint(cert: PeerCertificate): string {
   return (cert.fingerprint256 ?? "").replace(/:/g, "").toLowerCase();
 }
@@ -103,11 +64,8 @@ export interface AgentChannel {
 // grpc-js has no "never": its idle timer is a setTimeout, so this is the longest one Node allows.
 const NEVER_IDLE_MS = 2 ** 31 - 1;
 
-/** `linked`: the channel rides an agent link, whose one connection grpc-js must never close for idleness. */
-export function openChannel(
-  target: DialTarget,
-  opts: { linked?: boolean } = {},
-): AgentChannel {
+/** An agent link's channel, opened by the door: grpc-js must never close its one connection for idleness. */
+export function openChannel(target: DialTarget): AgentChannel {
   const { certPem, keyPem, caPem } = target.clientCreds;
   let trustFailed = false;
   const creds = credentials.createSsl(
@@ -138,7 +96,7 @@ export function openChannel(
     "grpc.keepalive_time_ms": 30_000,
     "grpc.keepalive_timeout_ms": 10_000,
     "grpc.keepalive_permit_without_calls": 0,
-    ...(opts.linked ? { "grpc.client_idle_timeout_ms": NEVER_IDLE_MS } : {}),
+    "grpc.client_idle_timeout_ms": NEVER_IDLE_MS,
   });
 
   const helloError = (err: unknown): Error => {
@@ -188,16 +146,13 @@ function helloOn(client: GrpcAgentClient, mapError: (err: unknown) => Error) {
     });
 }
 
-/** One caller's view of a shared channel: its own Hello cache and its own close. */
-export function callerView(
-  channel: AgentChannel,
-  close: () => void,
-): AgentChannel {
+/** One caller's view of a shared channel: its own Hello cache. The link, not the caller, closes it. */
+export function callerView(channel: AgentChannel): AgentChannel {
   return {
     client: channel.client,
     hello: channel.hello,
     assertNetworkCapable: networkGate(channel.hello),
-    close,
+    close: () => {},
   };
 }
 

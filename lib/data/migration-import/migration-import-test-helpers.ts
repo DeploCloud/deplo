@@ -383,7 +383,7 @@ export async function seedSource(
   if (withAgent)
     await db
       .update(serversTable)
-      .set({ agentCertFingerprint: `sha256:${server.id}`, agentPort: 9443 })
+      .set({ agentCertFingerprint: `sha256:${server.id}` })
       .where(eq(serversTable.id, server.id));
   return server.id;
 }
@@ -395,7 +395,6 @@ export async function provisionServer1(
   await db
     .update(serversTable)
     .set({
-      agentPort: 9443,
       agentCertFingerprint: "sha256:pinned",
       agentCertPem: "-----BEGIN CERTIFICATE-----",
       agentVersion: "1.27.0",

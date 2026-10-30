@@ -39,13 +39,18 @@ the answers. Settle these first - from the request or the tree when they are the
    panel whose pin is not published.
 3. **Does this panel need the newer agent?** Only then does `deplo.agentMin` move, and every server
    below it becomes **unusable** until it updates (ADR-0037). Name the servers that would be
-   (Settings → Deplo → Updates, or the `servers` table) in the question.
+   (Settings → Deplo → Updates, or the `servers` table) in the question. An agent release must
+   never drop what Deplo 0.3.0/0.4.0 rely on (`docs/agents/fleet-rollout.md`).
 4. **Is this release an update stop, or does it require one?** (ADR-0041.) `deplo.updateStop`
    makes it a stop; `deplo.requiresStop` names the stop an instance must have passed, and Update
    installs that stop first. The release itself refuses to start, before any migration, on an
    instance that has not passed it. A stable may only require a published stable stop, and every
-   patch of a stop is declared a stop too.
+   patch of a stop is declared a stop too. Since v0.6.0 every release requires that stop or a later
+   one: nothing dials a server past it, so `requiresStop` is never emptied (`lib/version.test.ts`).
 5. **Is there an upgrade step or a bad bug to put on top of the notes?** Usually not.
+
+A release's migrations must leave the previous release working: the installer rolls a failed update
+back onto them, so a column goes one release after its last reader (`lib/db/server-agent-pin-migration.test.ts`).
 
 Then run the checks in "How", tag, replace the notes once the image is published, and say what
 happens to the fleet: which version the servers will be updated to, or that the pin did not move.

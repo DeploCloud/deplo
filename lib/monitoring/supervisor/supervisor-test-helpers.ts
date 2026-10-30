@@ -92,7 +92,6 @@ export async function seedEnrolledServer(
       cpuCores: 4,
       memoryMb: 8192,
       diskGb: 100,
-      agentPort: 9443,
       agentCertFingerprint: `fp_${id}`,
       agentCertPem: "pem",
       agentVersion: "1.10.0",

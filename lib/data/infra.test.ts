@@ -64,7 +64,6 @@ test("servers: listServers is creation-ordered; assembleServer rebuilds agent/bo
     id: "srv_b",
     createdAt: "2026-02-02T00:00:00.000Z",
     agent: {
-      port: 9443,
       certFingerprint: "fp",
       certPem: "pem",
       version: "1.0",
@@ -107,7 +106,7 @@ test("servers: markServerSeen updates lastSeenAt + traefik, and pins version onl
   await seedServerRow(db, {
     id: "srv_prov",
     traefikEnabled: false,
-    agent: { port: 9443, certFingerprint: "fp", certPem: "p", version: "1.0" },
+    agent: { certFingerprint: "fp", certPem: "p", version: "1.0" },
   });
   await seedServerRow(db, { id: "srv_unprov", traefikEnabled: false });
 
@@ -152,7 +151,7 @@ test("servers: markServerSeen keeps the last-known traefik flag when nothing was
   await seedServerRow(db, {
     id: "srv_dockerless",
     traefikEnabled: true,
-    agent: { port: 9443, certFingerprint: "fp", certPem: "p", version: "1.0" },
+    agent: { certFingerprint: "fp", certPem: "p", version: "1.0" },
   });
 
   await markServerSeen(

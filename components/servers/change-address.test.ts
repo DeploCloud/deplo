@@ -14,12 +14,9 @@ const PORT_WORDS = /9443|firewall|inbound|outbound/i;
 
 function form(over: Partial<ChangeAddressFormProps> = {}): string {
   const props: ChangeAddressFormProps = {
-    // A server that links in has no agent port: Deplo dials none.
-    server: { name: "eu-1", agentPort: null, isDeploHost: false },
+    server: { name: "eu-1", isDeploHost: false },
     address: "203.0.113.7",
-    port: "",
     onAddressChange: () => {},
-    onPortChange: () => {},
     refusal: null,
     pending: false,
     onSave: () => {},
@@ -39,7 +36,8 @@ function form(over: Partial<ChangeAddressFormProps> = {}): string {
   );
 }
 
-test("a linked server's address dialog has no agent port and promises no check", () => {
+// Every server links in (ADR-0040): Deplo never contacts it to save an address.
+test("the address dialog has no agent port and promises no check", () => {
   const html = form({ refusal: "Address is already in use" });
   assert.ok(html.includes('id="server-address"'));
   assert.ok(!html.includes('id="server-agent-port"'));
@@ -50,14 +48,8 @@ test("a linked server's address dialog has no agent port and promises no check",
   assert.doesNotMatch(html, PORT_WORDS);
 });
 
-test("a server Deplo still dials keeps its agent port and the Save anyway escape", () => {
-  const html = form({
-    server: { name: "eu-1", agentPort: 9555, isDeploHost: false },
-    port: "9555",
-    refusal: "This server is unreachable.",
-  });
-  assert.ok(html.includes('id="server-agent-port"'));
-  assert.match(html, /checks that the server agent answers/);
-  assert.match(html, /Save anyway/);
-  assert.doesNotMatch(html, PORT_WORDS);
+test("on the server that runs Deplo, a wrong address is said to break its apps' addresses", () => {
+  const html = form({ server: { name: "eu-1", isDeploHost: true } });
+  assert.match(html, /breaks the addresses of its apps/);
+  assert.doesNotMatch(html, /cuts this dashboard off/);
 });

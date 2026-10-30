@@ -46,7 +46,6 @@ beforeEach(async () => {
     ip: "192.0.2.10",
     host: "192.0.2.10",
     agent: {
-      port: 9443,
       certFingerprint: "fp",
       certPem: "-----BEGIN CERTIFICATE-----",
       version: "1.0.0",

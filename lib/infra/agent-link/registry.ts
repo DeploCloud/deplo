@@ -1,7 +1,6 @@
 import "server-only";
 
 import type { AgentClient, HelloResponse } from "../../agent/gen/agent";
-import { AgentUnreachableError } from "../agent-client/errors";
 import { LINK_CLOSE, LINK_SETTLE_MS } from "./protocol";
 
 /** A verified agent link, shared across bundles: its grpc-js client needs one grpc-js per process (next.config.ts). */
@@ -55,23 +54,14 @@ export function hasLinked(serverId: string): boolean {
   return registry.seen.has(serverId);
 }
 
-/** The door opened moments ago: a server that has not linked yet may be on its way back. */
-export function linksSettling(): boolean {
+/**
+ * Whether server status waits for this server's link rather than judging it: it linked since the
+ * door opened, or the door opened moments ago and the agent may still be on its way back.
+ */
+export function linkMayCome(serverId: string): boolean {
+  if (registry.seen.has(serverId)) return true;
   const opened = registry.doorOpenedAt;
   return opened !== null && Date.now() - opened < LINK_SETTLE_MS;
-}
-
-/**
- * Whether to wait for the server's link rather than judge it: it linked since the door opened, or a dial
- * to it found nobody while links settle after a restart. A trust failure is an answer, never a wait.
- */
-export function linkMayCome(serverId: string, failedDial?: unknown): boolean {
-  if (registry.seen.has(serverId)) return true;
-  return (
-    failedDial instanceof AgentUnreachableError &&
-    !failedDial.trust &&
-    linksSettling()
-  );
 }
 
 /** The server's link, waiting up to `ms` (Infinity: no limit) for one; null when none came or `signal` aborted. */
