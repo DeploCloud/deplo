@@ -150,9 +150,10 @@ _Avoid_: upgrade stop, checkpoint, required version, mandatory release.
 
 **Left behind**:
 A server an instance admin let an **update stop** pass without, because it never connected to
-Deplo. It keeps its Apps and settings; once Deplo is past the stop it is an **unusable server**,
-and only reinstalling its server agent brings it back. Never undone, and moot the moment the server
-connects. Only the first stop offered it: nothing has waited on a server since.
+Deplo. It keeps its Apps and settings; once Deplo is past the stop it is an **unusable server**
+until it connects, which an agent that can link does by itself. One left behind on a version Deplo
+never read comes back only by reinstalling its server agent. Never undone, and moot the moment the
+server connects. Only the first stop offered it: nothing has waited on a server since.
 _Avoid_: skipped, abandoned, excluded, ignored.
 
 **Registration link**:
@@ -491,8 +492,10 @@ contacted, never demoted), **online** (Hello answered, Docker reachable), **warn
 trusted, but nothing can deploy there: Docker is unreachable), **error** (the peer answered but
 its agent is wrong - untrusted cert, unsupported contract, application error), **offline** (its
 agent link stayed away past a short grace window, or never came once links settled after Deplo
-started; nothing is dialed to find out). An offline server's message tells the user to check that
-the machine is on and connected to the internet, never a port.
+started; nothing is dialed to find out). An offline server's message says what brings it back,
+never a port: check that the machine is on and connected to the internet; for one that has not
+connected since it enrolled, that it can't reach Deplo at the panel's name; for one only a
+reinstall helps, that.
 The stored value is a **cache the UI must qualify**, never a **gate**: past a staleness window the
 Servers page renders it as _Unknown_ rather than a confident stale green, and **nothing in the
 deploy path consults it** - the gate there is the mandatory live Hello pre-flight
@@ -510,8 +513,10 @@ _Avoid_: "the server is up/down" (say which of the five), treating **warning** a
 A provisioned server whose agent is older than the minimum the running Deplo supports
 (`deplo.agentMin` in `package.json`, [ADR-0037](docs/adr/0037-a-panel-pins-its-agent.md)). Deplo
 refuses every call to it except the ones that update it, until its agent updates; its Apps keep
-running. A server that can never link - a **pre-link agent**, or one **left behind** at an **update
-stop** that has not connected since - cannot be updated at all: Deplo refuses it at once, and only
+running. A server enrolled but not connected to Deplo yet (a proxy or firewall in the way) is
+unusable until it connects: nothing reaches it to update it, and it comes back by itself. A server
+that can never link - a **pre-link agent**, or one **left behind** at an **update stop** on a
+version Deplo never read - cannot be updated at all: Deplo refuses it at once, and only
 reinstalling its server agent (the server's Advanced tab) brings it back, with its Apps and
 settings. A live verdict from Hello and the stored record, not a sixth **Server health** status.
 _Avoid_: outdated (an agent behind the pin but above the minimum is outdated and still usable),

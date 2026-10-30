@@ -205,8 +205,9 @@ route `UI → GraphQL → lib/data/* → connectAgent(serverId) → agent`.
   beside the pin. Everything that says what Update installs reads `updateInfo.next` from the one
   decision in `lib/data/update-stops/decision.ts`, never `latest`. Every release requires v0.6.0 or
   a later stop, since nothing dials a server past it: `lib/version.test.ts` fails on an empty one.
-  A server that can never link (left behind there, or too old to) is **unusable** until its server
-  agent is reinstalled: `agentReach` in `lib/version.ts` says so, and `connectAgent` refuses it.
+  A server that can never link (too old to, or left behind there on a version Deplo never read) is
+  **unusable** until its server agent is reinstalled, and one that has not linked yet until it
+  does: `agentReach` in `lib/version.ts` says which, and `connectAgent` refuses only the first.
 - **Don't generalize the exceptions:** installed **Plugins** (ADR-0005) are host-managed containers
   where Deplo _does_ own the socket (`lib/plugins/runtime.ts`) - a Plugin is not an App. That
   code is **dormant**: the feature is deferred (**ADR-0013**), so nothing installs a plugin and

@@ -79,9 +79,10 @@ apps.server_id)` - see §5) is a `busy` failure; **no Hello** is `unreachable`; 
 - **A host that took the binary and never came back** is `no_return`: the pass stops, and every
   later pass tries only that server until it recovers. A release that breaks one agent must not
   break four.
-- **A server that can never link** (left behind at the first update stop, or its agent too old to
-  link) is skipped: nothing reaches it, and only reinstalling its server agent brings it back
-  (`agentReach` in `lib/version.ts`, ADR-0041).
+- **A server that can never link** (its agent too old to link, or left behind at the first update
+  stop on a version Deplo never read) is skipped: nothing reaches it, and only reinstalling its
+  server agent brings it back. So is **one that has not linked yet**, which comes back once it
+  connects; neither pauses the rest (`agentReach` in `lib/version.ts`, ADR-0041).
 - **Retries** back off 1, 2, 4 … 60 minutes for 24 hours from the first failure, then stop. A
   server that was `unreachable` when Deplo gave up gets one more attempt the next time a Hello
   sees it (`agentSeen`, called from `markServerSeen`). A Hello on the pin closes the row whatever
