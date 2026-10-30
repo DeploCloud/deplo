@@ -159,7 +159,7 @@ export const ServerRef = builder.objectRef<Server>("Server").implement({
     }),
     agentUsable: t.boolean({
       description:
-        "Whether this Deplo talks to the server's agent at all. False when the agent is older than the minimum this version of Deplo supports, which it updates on its own, or when the server can never connect (left behind at an update stop, or its agent too old to), which only reinstalling its server agent fixes. Everything on the server is refused meanwhile, though its apps keep running. True while it is not provisioned yet.",
+        "Whether this Deplo talks to the server's agent at all. False when the agent is older than the minimum this version of Deplo supports, which it updates on its own; when the server has not connected to Deplo yet, which it does by itself once it can; or when it can never connect (its agent too old to, or left behind at an update stop on a version Deplo never read), which only reinstalling its server agent fixes. Everything on the server is refused meanwhile, though its apps keep running. True while it is not provisioned yet.",
       resolve: (s) => !s.agent?.certFingerprint || agentReach(s) === "usable",
     }),
     agentUpdate: t.field({

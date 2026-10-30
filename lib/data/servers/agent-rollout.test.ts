@@ -5,6 +5,7 @@ import type { PGlite } from "@electric-sql/pglite";
 
 import { makeTestDb, type TestDb } from "../../db/test-harness";
 import { instanceSettings } from "../../db/schema/control-plane/instance";
+import { serverAgentUpdates } from "../../db/schema/control-plane/servers";
 import { __setTestDb, __resetTestDb } from "../../db/client";
 import { runWithIdentity } from "../../auth/request-context";
 import { seedIdentity, TEAM_A, USER_1 } from "../identity-test-helpers";
@@ -27,6 +28,8 @@ let pg: PGlite;
 
 const SELF_IP = "192.0.2.200";
 const EXPECTED = AGENT_VERSION;
+// Every server of an instance past the first update stop has linked (ADR-0041).
+const LINKED = { firstLinkedAt: "2026-10-29T00:00:00.000Z" };
 
 // servers.cert_fingerprint is unique, so every seeded host needs its own.
 let fingerprints = 0;
@@ -164,12 +167,14 @@ test("the fleet status names the servers behind, and those only a reinstall brin
     name: "neon-s1",
     ip: "10.0.0.9",
     agent: agentAt(EXPECTED),
+    ...LINKED,
   });
   await seedServerRow(db, {
     id: "srv_unknown",
     name: "neon-s3",
     ip: "10.0.0.11",
     agent: agentAt(""),
+    ...LINKED,
   });
   await seedServerRow(db, {
     id: "srv_import",
@@ -194,7 +199,7 @@ test("the fleet status names the servers behind, and those only a reinstall brin
   assert.equal(status.updating, true, "Deplo is on neon-s3");
 });
 
-test("a server too old to link, or left behind, is unusable until its server agent is reinstalled", async () => {
+test("a server too old to link, or left behind on an unknown one, is unusable until its server agent is reinstalled", async () => {
   await seedServerRow(db, {
     id: "srv_old",
     name: "neon-s2",
@@ -205,6 +210,14 @@ test("a server too old to link, or left behind, is unusable until its server age
     id: "srv_left",
     name: "neon-s4",
     ip: "10.0.0.12",
+    agent: agentAt(""),
+    leftBehindAt: "2026-10-28T00:00:00.000Z",
+  });
+  // Left behind on an agent that can link: it comes back by itself once it connects.
+  await seedServerRow(db, {
+    id: "srv_left_linking",
+    name: "neon-s6",
+    ip: "10.0.0.14",
     agent: agentAt(EXPECTED),
     leftBehindAt: "2026-10-28T00:00:00.000Z",
   });
@@ -225,10 +238,92 @@ test("a server too old to link, or left behind, is unusable until its server age
     [
       { id: "srv_old", name: "neon-s2", reach: "reinstall" },
       { id: "srv_left", name: "neon-s4", reach: "reinstall" },
+      { id: "srv_left_linking", name: "neon-s6", reach: "unlinked" },
     ],
   );
   const status = await asAdmin(() => fleetAgentStatus());
   assert.equal(status.updating, false, "nothing Deplo does reaches neon-s2");
+});
+
+const releaseCached = () => {
+  (globalThis as Record<symbol, unknown>)[
+    Symbol.for("deplo.agent.release.cache")
+  ] = {
+    value: {
+      at: Date.now(),
+      release: {
+        version: AGENT_VERSION,
+        binaries: { amd64: { url: "https://x/a", sha256: "a" }, arm64: null },
+      },
+    },
+  };
+};
+
+test("a server that hasn't connected to Deplo yet is left out of the rollout, and promises no update", async (t) => {
+  releaseCached();
+  t.after(() => __resetReleaseCacheForTests());
+  let reached = 0;
+  __setAgentConnectorForTest(async () => {
+    reached++;
+    return null;
+  });
+  t.after(() => __setAgentConnectorForTest());
+  // Enrolled, then blocked on its way to Deplo: no version told yet, or one below the floor.
+  await seedServerRow(db, {
+    id: "srv_new",
+    name: "neon-s7",
+    ip: "10.0.0.15",
+    agent: agentAt(""),
+  });
+  await seedServerRow(db, {
+    id: "srv_new_old",
+    name: "neon-s8",
+    ip: "10.0.0.16",
+    agent: agentAt("0.5.1-canary.10"),
+  });
+
+  await runAgentRollout();
+  assert.equal(reached, 0, "nothing tried to reach them");
+  const status = await asAdmin(() => fleetAgentStatus());
+  assert.deepEqual(
+    status.behind.map((s) => [s.name, s.reach, s.update]),
+    [
+      ["neon-s7", "unlinked", null],
+      ["neon-s8", "unlinked", null],
+    ],
+  );
+  assert.equal(status.updating, false);
+  assert.deepEqual(await asAdmin(() => listActivity(10)), []);
+});
+
+test("an update that never came back pauses nothing once only a reinstall or a connection helps", async () => {
+  const stuck = {
+    status: "failed",
+    failure: "no_return",
+    attempts: 1,
+    targetVersion: AGENT_VERSION,
+    updatedAt: "2026-10-28T00:00:00.000Z",
+  };
+  await seedServerRow(db, {
+    id: "srv_old",
+    name: "neon-s2",
+    ip: "10.0.0.8",
+    agent: agentAt("0.4.0"),
+    ...LINKED,
+  });
+  await seedServerRow(db, {
+    id: "srv_new",
+    name: "neon-s7",
+    ip: "10.0.0.15",
+    agent: agentAt(""),
+  });
+  await db.insert(serverAgentUpdates).values([
+    { serverId: "srv_old", ...stuck },
+    { serverId: "srv_new", ...stuck },
+  ]);
+
+  const status = await asAdmin(() => fleetAgentStatus());
+  assert.equal(status.pausedBy, null);
 });
 
 test("the rollout leaves alone a server only a reinstall brings back, and promises nothing", async (t) => {

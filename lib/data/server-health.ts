@@ -32,6 +32,9 @@ import { dispatchServerAlert } from "../notify/dispatch";
 import { nowIso } from "../ids";
 import { instanceFrozen } from "./deplo-move/freeze";
 import { markServerSeen, observedTraefik } from "./servers/agent-handshake";
+import { unlinkedServerMessage } from "./servers/panel-address";
+import { AGENT_REINSTALL_MESSAGE } from "../agent-reachability";
+import { agentReach } from "../version";
 import { getServerById, listAllServers } from "./servers/roster";
 import type { HelloResponse } from "../agent/gen/agent";
 import type { Server } from "../types/server";
@@ -168,7 +171,7 @@ async function probeServer(
   // Inside the grace the link may be on its way back; if not, its timer writes offline.
   if (link === "waiting") return null;
   let hello: HelloResponse | null = null;
-  let health: ServerHealth = LINK_OFFLINE;
+  let health: ServerHealth = await offlineHealth(server);
   if (link === "linked") {
     try {
       hello = await withDeadline(askHello(server.id), PROBE_DEADLINE_MS);
@@ -245,6 +248,19 @@ const LINK_OFFLINE: ServerHealth = {
   status: "offline",
   message: HEALTH_MESSAGES.offline,
 };
+
+/** What an offline server is told to check: what brings it back, never a machine that is off when it never connected (ADR-0041). */
+export async function offlineAdvice(server: Server): Promise<string> {
+  if (!server.agent?.certFingerprint) return HEALTH_MESSAGES.offline;
+  const reach = agentReach(server);
+  if (reach === "reinstall") return AGENT_REINSTALL_MESSAGE;
+  if (reach === "unlinked") return unlinkedServerMessage();
+  return HEALTH_MESSAGES.offline;
+}
+
+async function offlineHealth(server: Server): Promise<ServerHealth> {
+  return { status: "offline", message: await offlineAdvice(server) };
+}
 
 interface LinkWatch {
   off: (() => void) | null;

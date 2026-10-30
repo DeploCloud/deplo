@@ -44,13 +44,19 @@ afterEach(() => {
 });
 
 let n = 0;
-const seed = (id: string, status: "online" | "offline", version: string) =>
+const seed = (
+  id: string,
+  status: "online" | "offline",
+  version: string,
+  linked = true,
+) =>
   seedServerRow(db, {
     id,
     name: id,
     status,
     ip: `10.0.2.${++n}`,
     agent: { certFingerprint: `fp_${id}`, certPem: "pem", version },
+    firstLinkedAt: linked ? "2026-10-29T00:00:00.000Z" : undefined,
   });
 
 test("the floor is read off the tag's package.json, not the API", async () => {
@@ -64,8 +70,9 @@ test("only offline servers below the new floor are named, not one only a reinsta
   await seed("srv_off_old", "offline", "0.5.1");
   await seed("srv_off_ok", "offline", "0.6.0");
   await seed("srv_on_old", "online", "0.5.1");
-  // Too old to connect, it is unusable already: the update changes nothing for it.
+  // Too old to connect, or never connected: unusable already, the update changes nothing for it.
   await seed("srv_off_gone", "offline", "0.4.0");
+  await seed("srv_off_unlinked", "offline", "0.5.1", false);
   const stranded = await runWithIdentity(
     { userId: USER_1, teamId: TEAM_A },
     () => strandedByPanelUpdate("0.6.0"),

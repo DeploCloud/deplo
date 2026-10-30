@@ -4,6 +4,7 @@ import assert from "node:assert/strict";
 import {
   AGENT_MIN_VERSION,
   AGENT_VERSION,
+  agentReach,
   agentUpdateAvailable,
   agentUsable,
   bareVersion,
@@ -114,6 +115,29 @@ test("agentUsable: the floor is inclusive, newer is fine, unparseable is not", (
   assert.equal(agentUsable("", "0.4.0"), false);
   assert.equal(agentUsable(null, "0.4.0"), false);
   assert.equal(agentUsable("dev", "0.4.0"), false);
+});
+
+test("a server that never connected waits for its link, whatever version it last told Deplo", () => {
+  const agent = (version: string) => ({ agent: { version } });
+  const LINKED = { firstLinkedAt: "2026-10-29T00:00:00.000Z" };
+  const LEFT = { leftBehindAt: "2026-10-28T00:00:00.000Z" };
+  // Enrolled, but its link has not come: a proxy or a firewall, never an update.
+  assert.equal(agentReach(agent(""), "0.5.1"), "unlinked");
+  assert.equal(agentReach(agent("0.5.1-canary.10"), "0.5.1"), "unlinked");
+  assert.equal(agentReach(agent("0.5.1"), "0.5.1"), "unlinked");
+  // Left behind on an agent that can link: it comes back once it connects.
+  assert.equal(agentReach({ ...agent("0.5.1"), ...LEFT }, "0.5.1"), "unlinked");
+  // Left behind on a version Deplo never read, or too old to link: only a reinstall.
+  assert.equal(agentReach({ ...agent(""), ...LEFT }, "0.5.1"), "reinstall");
+  assert.equal(agentReach(agent("0.4.0"), "0.5.1"), "reinstall");
+  assert.equal(agentReach({ ...agent("0.4.0"), ...LINKED }), "reinstall");
+  // Linked once: its version alone decides.
+  assert.equal(agentReach({ ...agent("0.5.1"), ...LINKED }, "0.5.1"), "usable");
+  assert.equal(
+    agentReach({ ...agent("0.5.1-canary.10"), ...LINKED }, "0.5.1"),
+    "updatable",
+  );
+  assert.equal(agentReach({ ...agent(""), ...LINKED }, "0.5.1"), "updatable");
 });
 
 test("the pin is usable by its own floor", () => {

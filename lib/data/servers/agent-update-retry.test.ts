@@ -66,6 +66,7 @@ async function server(
   version: string,
   agent: Partial<FakeAgent> = {},
   ip = `10.0.1.${++fingerprints}`,
+  linked = true,
 ) {
   agents.set(id, {
     version,
@@ -84,6 +85,7 @@ async function server(
       certPem: "pem",
       version,
     },
+    firstLinkedAt: linked ? "2026-10-29T00:00:00.000Z" : undefined,
   });
 }
 
@@ -144,7 +146,9 @@ test("an unreachable server fails on its own; the next one is still updated", as
   assert.equal(dark.failure, "unreachable");
   assert.ok(dark.nextRetryAt);
   assert.ok(
-    (await messages()).some((m) => m.includes("Updated the agent on srv_ok")),
+    (await messages()).some((m) =>
+      m.includes("Updated the server agent on srv_ok"),
+    ),
   );
 });
 
@@ -209,4 +213,21 @@ test("the button is refused before Deplo has failed, and when nothing is behind"
     asAdmin(() => retryServerAgentUpdate("srv_cur")),
     /Nothing to update/,
   );
+});
+
+test("the button is refused for a server that hasn't connected to Deplo yet, and says what to check", async () => {
+  await server("srv_blocked", "", {}, "10.0.1.99", false);
+  await db.insert(serverAgentUpdates).values({
+    serverId: "srv_blocked",
+    status: "failed",
+    failure: "unreachable",
+    attempts: 3,
+    targetVersion: AGENT_VERSION,
+    updatedAt: "2026-10-28T00:00:00.000Z",
+  });
+  await assert.rejects(
+    asAdmin(() => retryServerAgentUpdate("srv_blocked")),
+    /can't reach Deplo/,
+  );
+  assert.equal(agents.get("srv_blocked")!.updates, 0);
 });

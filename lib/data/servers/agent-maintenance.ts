@@ -23,6 +23,7 @@ import {
 } from "./agent-update-state";
 import { assertNotMigrationSource, requireAdminServer } from "./roster";
 import { assertAddressFree } from "./enrollment";
+import { unlinkedServerMessage } from "./panel-address";
 import { HOST_ADDRESS_ERROR, parseHostAddress } from "../../host-address";
 
 export interface UpdateServerAddressInput {
@@ -78,8 +79,9 @@ export async function retryServerAgentUpdate(
     throw new Error(
       "This server is not provisioned yet - finish provisioning before updating its agent",
     );
-  if (agentReach(server) === "reinstall")
-    throw new Error(AGENT_REINSTALL_MESSAGE);
+  const reach = agentReach(server);
+  if (reach === "reinstall") throw new Error(AGENT_REINSTALL_MESSAGE);
+  if (reach === "unlinked") throw new Error(await unlinkedServerMessage());
   if (!agentUpdateAvailable(reportedAgentVersion(server), AGENT_VERSION))
     throw new Error(
       `This server already runs agent v${reportedAgentVersion(server)}. Nothing to update.`,

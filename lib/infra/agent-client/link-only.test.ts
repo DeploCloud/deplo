@@ -172,8 +172,15 @@ function needsReinstall(e: unknown): boolean {
   return true;
 }
 
-test("a server left behind at the update stop is refused at once, with what brings it back", async () => {
-  await seed({ leftBehindAt: "2026-10-28T00:00:00.000Z" });
+test("a server left behind at the update stop on a version Deplo never read is refused at once, with what brings it back", async () => {
+  await seed({
+    leftBehindAt: "2026-10-28T00:00:00.000Z",
+    agent: {
+      certFingerprint: agent.fingerprint,
+      certPem: agent.certPem,
+      version: "",
+    },
+  });
   const started = performance.now();
   await assert.rejects(connectAgent(SERVER), needsReinstall);
   await assert.rejects(openAgent(SERVER), needsReinstall);
@@ -194,10 +201,12 @@ test("a server whose server agent is too old to link is refused the same way", a
   assert.equal(agent.connections().opened, 0);
 });
 
-test("a server left behind that connects after all is used like any other, its apps and settings kept", async () => {
+test("a server left behind on an agent that can link waits for it like any other, and is used once it connects", async () => {
   await seed({ leftBehindAt: "2026-10-28T00:00:00.000Z" });
+  const call = helloVia(connectAgent);
+  await new Promise((r) => setTimeout(r, 300));
   await linkIn();
-  assert.equal(await helloVia(connectAgent), AGENT_VERSION);
+  assert.equal(await call, AGENT_VERSION);
   const server = await getServerById(SERVER);
   assert.ok(server?.firstLinkedAt);
   assert.equal(server?.leftBehindAt, "2026-10-28T00:00:00.000Z");

@@ -20,6 +20,7 @@ import {
   stopServerLinkStatus,
 } from "./server-health";
 import { HEALTH_MESSAGES } from "../infra/server-health";
+import { AGENT_REINSTALL_MESSAGE } from "../agent-reachability";
 import { dropAgentChannel } from "../infra/agent-client/channel-pool";
 import { AGENT_LINK_CAPABILITY } from "../infra/agent-client/hello-capabilities";
 import {
@@ -45,6 +46,11 @@ let door: number;
 before(async () => {
   ({ db, pg } = await makeTestDb());
   __setTestDb(db);
+});
+
+beforeEach(() => {
+  // A port in the panel's address never reaches what a server is told to check.
+  process.env.DEPLO_PUBLIC_URL = "https://panel.example.com:8443";
 });
 
 after(async () => {
@@ -294,7 +300,11 @@ test("checking a server whose link just dropped changes nothing until the grace 
   assert.equal(agent.connections().opened, 0, "nothing dialed the agent");
 });
 
-test("once links have settled, a server that never linked is offline at once, and never dialed", async (t) => {
+// Enrolled, then blocked on its way to Deplo (a proxy, a firewall): never a machine that is off.
+const CANT_REACH =
+  "This server can't reach Deplo at panel.example.com. Check that it's connected to the internet.";
+
+test("once links have settled, a server that never linked is offline at once, says it can't reach Deplo, and is never dialed", async (t) => {
   startServerLinkStatus();
   mock.timers.enable({ apis: ["Date"], now: Date.now() + LINK_SETTLE_MS });
   t.after(() => mock.timers.reset());
@@ -303,8 +313,23 @@ test("once links have settled, a server that never linked is offline at once, an
   const s = await check();
   assert.ok(s.took < 1_500, `the check took ${s.took} ms`);
   assert.equal(s.status, "offline");
-  assert.equal(s.statusMessage, HEALTH_MESSAGES.offline);
+  assert.equal(s.statusMessage, CANT_REACH);
   assert.equal(agent.connections().opened, 0, "nothing dialed it");
+});
+
+test("a server only a reinstall brings back is offline, and says so", async (t) => {
+  await db
+    .update(servers)
+    .set({ agentVersion: "0.4.0" })
+    .where(eq(servers.id, SERVER));
+  startServerLinkStatus();
+  mock.timers.enable({ apis: ["Date"], now: Date.now() + LINK_SETTLE_MS });
+  t.after(() => mock.timers.reset());
+  await ageObservation();
+
+  const s = await check();
+  assert.equal(s.status, "offline");
+  assert.equal(s.statusMessage, AGENT_REINSTALL_MESSAGE);
 });
 
 test("right after the panel starts, a server that has not linked yet is not judged, and its link's Hello is", async () => {
@@ -327,6 +352,7 @@ test("right after the panel starts, a server that has not linked yet is not judg
 
 // The agent still holds the panel's address and answers on its port, as one that can't reach Deplo does.
 test("a server that answers on its own port but never links is offline, never shown as reachable", async (t) => {
+  delete process.env.DEPLO_PUBLIC_URL;
   const a = await startFakeAgent({
     capabilities: [AGENT_LINK_CAPABILITY],
     linkAddresses: { primary: "https://panel.example.com", fallback: "" },
@@ -343,7 +369,11 @@ test("a server that answers on its own port but never links is offline, never sh
 
   const s = await check("srv_cut_off");
   assert.equal(s.status, "offline");
-  assert.equal(s.statusMessage, HEALTH_MESSAGES.offline);
+  // A panel with no public name yet: the message names none, and no port either.
+  assert.equal(
+    s.statusMessage,
+    "This server can't reach Deplo. Check that it's connected to the internet.",
+  );
   assert.equal(a.connections().opened, 0, "nothing dialed it");
 });
 

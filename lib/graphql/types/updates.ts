@@ -173,9 +173,13 @@ const AgentReachEnum = builder.enumType("AgentReach", {
       description:
         "It refuses it until it updates, which Deplo does on its own.",
     },
+    unlinked: {
+      description:
+        "The server enrolled but has not connected to Deplo yet, so nothing reaches it. It comes back by itself once it connects.",
+    },
     reinstall: {
       description:
-        "The server can never connect: left behind at an update stop, or its agent too old to. Only reinstalling its server agent brings it back.",
+        "The server can never connect: its agent is too old to, or it was left behind at an update stop on a version Deplo never read. Only reinstalling its server agent brings it back.",
     },
   } as const,
 });

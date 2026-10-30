@@ -23,6 +23,7 @@ import {
   agentReach,
   agentUpdateAvailable,
   reportedAgentVersion,
+  updateReaches,
   type AgentReach,
 } from "../../version";
 import type { Server } from "../../types/server";
@@ -110,11 +111,20 @@ function behindServers(servers: Server[]): Server[] {
   );
 }
 
+// One that cannot link, or has not yet, is brought back by nothing Deplo does (ADR-0041).
+function updatable(s: Server): boolean {
+  return updateReaches(agentReach(s));
+}
+
 function pausedBy(
   behind: Server[],
   updates: Map<string, AgentUpdateRow>,
 ): Server | null {
-  return behind.find((s) => updates.get(s.id)?.failure === "no_return") ?? null;
+  return (
+    behind.find(
+      (s) => updatable(s) && updates.get(s.id)?.failure === "no_return",
+    ) ?? null
+  );
 }
 
 /** The fleet as the Updates tab reads it: who is behind, and where each update stands. */
@@ -143,8 +153,7 @@ export async function fleetAgentStatus(): Promise<FleetAgentStatus> {
     minimum: AGENT_MIN_VERSION,
     total: fleet.length,
     behind: rows,
-    // Nothing Deplo does reaches a server only a reinstall brings back.
-    updating: rows.some((b) => b.reach !== "reinstall" && !b.update?.gaveUp),
+    updating: rows.some((b) => updateReaches(b.reach) && !b.update?.gaveUp),
     pausedBy: pausedBy(behind, updates)?.name ?? null,
   };
 }
@@ -246,10 +255,10 @@ async function failAttempt(
   if (firstFailure) {
     await recordActivity(
       "server",
-      `Could not update the agent on ${server.name}: ${error} Deplo retries on its own.`,
+      `Could not update the server agent on ${server.name}: ${error} Deplo retries on its own.`,
       actor,
     );
-    if (agentReach(server) !== "usable") {
+    if (agentReach(server) === "updatable") {
       await recordActivity(
         "server",
         `${server.name} is unusable until its server agent updates to v${AGENT_VERSION}`,
@@ -267,7 +276,7 @@ async function failAttempt(
   if (gaveUp && row.nextRetryAt !== null)
     await recordActivity(
       "server",
-      `Stopped retrying the agent update on ${server.name} after 24 hours. An instance admin can retry it.`,
+      `Stopped retrying the server agent update on ${server.name} after 24 hours. An instance admin can retry it.`,
       "Deplo",
     );
 }
@@ -305,7 +314,7 @@ export async function attemptAgentUpdate(
     if (!version)
       return fail(
         "no_return",
-        "It took the new agent but did not come back on it. The other servers wait until it does.",
+        "It took the new server agent but did not come back on it. The other servers wait until it does.",
       );
     if (agentUpdateAvailable(version, AGENT_VERSION))
       return fail(
@@ -315,7 +324,7 @@ export async function attemptAgentUpdate(
     await clearAgentUpdate(server.id);
     await recordActivity(
       "server",
-      `Updated the agent on ${server.name} to v${version}`,
+      `Updated the server agent on ${server.name} to v${version}`,
       actor,
     );
   } catch (e) {
@@ -335,10 +344,7 @@ export function runAgentRollout(): Promise<void> {
 
 async function rolloutPass(): Promise<void> {
   if (await instanceFrozen()) return;
-  // One that cannot link is never reached (ADR-0041): only a reinstall brings it back.
-  const behind = behindServers(await listAllServers()).filter(
-    (s) => agentReach(s) !== "reinstall",
-  );
+  const behind = behindServers(await listAllServers()).filter(updatable);
   const actor = await rolloutActor();
   if (behind.length === 0) {
     if (actor) await writeRolloutState({ agentRolloutBy: null });
