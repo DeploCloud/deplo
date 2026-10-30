@@ -439,11 +439,16 @@ test("What changed marks only the releases Update brings in, up to the stop", as
 });
 
 // Past the first stop nothing waits on a server, so nothing is offered to do about one (ADR-0041).
+// Kept one release, deprecated, for older API clients (lib/data/server-address.test.ts drives them).
 test("an update stop names no server, and nothing offers to leave one behind", () => {
   const stop = (schema.getType("UpdateStop") as GraphQLObjectType).getFields();
-  assert.deepEqual(Object.keys(stop).sort(), ["reason", "version", "waiting"]);
-  assert.equal(
-    schema.getMutationType()!.getFields().leaveServerBehind,
-    undefined,
+  const live = Object.values(stop).filter((f) => !f.deprecationReason);
+  assert.deepEqual(live.map((f) => f.name).sort(), [
+    "reason",
+    "version",
+    "waiting",
+  ]);
+  assert.ok(
+    schema.getMutationType()!.getFields().leaveServerBehind?.deprecationReason,
   );
 });
