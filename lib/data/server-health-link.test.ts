@@ -16,6 +16,7 @@ import { TRUNCATE_INFRA, seedServerRow } from "./infra-test-helpers";
 import { getServerById } from "./servers/roster";
 import {
   checkServerHealth,
+  recordServerHealth,
   startServerLinkStatus,
   stopServerLinkStatus,
 } from "./server-health";
@@ -303,6 +304,10 @@ test("checking a server whose link just dropped changes nothing until the grace 
 // Enrolled, then blocked on its way to Deplo (a proxy, a firewall): never a machine that is off.
 const CANT_REACH =
   "This server can't reach Deplo at panel.example.com. Check that it's connected to the internet.";
+const LINK_DOWN = {
+  status: "offline" as const,
+  message: HEALTH_MESSAGES.offline,
+};
 
 test("once links have settled, a server that never linked is offline at once, says it can't reach Deplo, and is never dialed", async (t) => {
   startServerLinkStatus();
@@ -315,6 +320,27 @@ test("once links have settled, a server that never linked is offline at once, sa
   assert.equal(s.status, "offline");
   assert.equal(s.statusMessage, CANT_REACH);
   assert.equal(agent.connections().opened, 0, "nothing dialed it");
+});
+
+// The metrics supervisor and the link watch write offline too: the recorder words it, not each writer.
+test("an offline verdict from any writer names what brings the server back", async () => {
+  const later = () => new Date(Date.now() + 60_000).toISOString();
+  await recordServerHealth(SERVER, LINK_DOWN, later());
+  assert.equal((await shown()).message, CANT_REACH);
+
+  await db
+    .update(servers)
+    .set({ agentVersion: "0.4.0" })
+    .where(eq(servers.id, SERVER));
+  await recordServerHealth(SERVER, LINK_DOWN, later());
+  assert.equal((await shown()).message, AGENT_REINSTALL_MESSAGE);
+
+  await db
+    .update(servers)
+    .set({ agentVersion: AGENT_VERSION, firstLinkedAt: nowIso() })
+    .where(eq(servers.id, SERVER));
+  await recordServerHealth(SERVER, LINK_DOWN, later());
+  assert.equal((await shown()).message, HEALTH_MESSAGES.offline);
 });
 
 test("a server only a reinstall brings back is offline, and says so", async (t) => {

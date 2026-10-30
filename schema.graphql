@@ -2395,12 +2395,14 @@ type FleetAgent {
   id: ID
   name: String
 
-  """Whether an update can bring it back, or only a reinstall."""
+  """
+  What brings it back: an update from Deplo, the server connecting, or only a reinstall.
+  """
   reach: AgentReach
   update: ServerAgentUpdate
 
   """
-  False when the agent is older than `FleetAgents.minimum`, or the server can never connect: it refuses everything meanwhile.
+  False when the agent is older than `FleetAgents.minimum`, or the server has not connected to Deplo yet or never can: it refuses everything meanwhile.
   """
   usable: Boolean
   version: String

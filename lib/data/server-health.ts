@@ -85,10 +85,16 @@ export async function claimProbe(id: string, force: boolean): Promise<boolean> {
 
 export async function recordServerHealth(
   id: string,
-  health: ServerHealth,
+  verdict: ServerHealth,
   observedAt: string,
 ): Promise<void> {
   try {
+    // Every writer's offline is worded here, by what brings the server back.
+    const server =
+      verdict.status === "offline" ? await getServerById(id) : null;
+    const health = server
+      ? { ...verdict, message: await offlineAdvice(server) }
+      : verdict;
     const written = await getDb()
       .update(serversTable)
       .set({
@@ -171,7 +177,7 @@ async function probeServer(
   // Inside the grace the link may be on its way back; if not, its timer writes offline.
   if (link === "waiting") return null;
   let hello: HelloResponse | null = null;
-  let health: ServerHealth = await offlineHealth(server);
+  let health: ServerHealth = LINK_OFFLINE;
   if (link === "linked") {
     try {
       hello = await withDeadline(askHello(server.id), PROBE_DEADLINE_MS);
@@ -256,10 +262,6 @@ export async function offlineAdvice(server: Server): Promise<string> {
   if (reach === "reinstall") return AGENT_REINSTALL_MESSAGE;
   if (reach === "unlinked") return unlinkedServerMessage();
   return HEALTH_MESSAGES.offline;
-}
-
-async function offlineHealth(server: Server): Promise<ServerHealth> {
-  return { status: "offline", message: await offlineAdvice(server) };
 }
 
 interface LinkWatch {

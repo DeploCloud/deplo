@@ -60,6 +60,8 @@ beforeEach(async () => {
       certPem: agent.certPem,
       version: AGENT_VERSION,
     },
+    // Linked before the panel started, as every server past the first update stop has.
+    firstLinkedAt: "2026-10-29T00:00:00.000Z",
   });
   door = (await startAgentLinkListener({ port: 0, host: "127.0.0.1" })).port;
 });

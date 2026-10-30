@@ -219,12 +219,12 @@ const FleetAgentRef = builder
       version: t.exposeString("version", { nullable: true }),
       usable: t.exposeBoolean("usable", {
         description:
-          "False when the agent is older than `FleetAgents.minimum`, or the server can never connect: it refuses everything meanwhile.",
+          "False when the agent is older than `FleetAgents.minimum`, or the server has not connected to Deplo yet or never can: it refuses everything meanwhile.",
       }),
       reach: t.field({
         type: AgentReachEnum,
         description:
-          "Whether an update can bring it back, or only a reinstall.",
+          "What brings it back: an update from Deplo, the server connecting, or only a reinstall.",
         resolve: (a) => a.reach,
       }),
       update: t.field({

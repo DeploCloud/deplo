@@ -27,7 +27,7 @@ export class AgentOfflineError extends AgentUnreachableError {
   }
 }
 
-/** A server that cannot link, left behind at an update stop or too old to (ADR-0041): only a reinstall helps. */
+/** A server that cannot link, too old to or left behind on a version Deplo never read (ADR-0041): only a reinstall helps. */
 export class AgentNeedsReinstallError extends AgentUnreachableError {
   constructor() {
     super(AGENT_REINSTALL_MESSAGE);

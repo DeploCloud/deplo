@@ -10,7 +10,7 @@ export function cantReachDeploMessage(panelHost: string | null): string {
   return `This server can't reach Deplo${at}. Check that it's connected to the internet.`;
 }
 
-/** A server that can never connect: left behind at an update stop, or its server agent too old to (ADR-0041). */
+/** A server that can never connect: its server agent too old to, or left behind on a version Deplo never read (ADR-0041). */
 export const AGENT_REINSTALL_MESSAGE =
   "This server can't be used until its server agent is reinstalled. " +
   "An instance admin can do it from the server's Advanced tab.";
