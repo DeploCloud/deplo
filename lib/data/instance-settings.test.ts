@@ -37,7 +37,9 @@ import {
   setPanelFallback,
   setPanelHttps,
   setPanelUrl,
+  applyRecoveredPanelAddress,
 } from "./instance-settings/panel-route";
+import { requestPanelAddress } from "../../scripts/recover";
 import {
   getInstanceSettings,
   instancePublicBaseUrl,
@@ -715,6 +717,95 @@ test("the settings never wait on the panel's own server, and show its proxy's na
       await fallbackHost(),
       FALLBACK,
       "then the name the proxy routes",
+    );
+  });
+});
+
+// https://deplo.build/docs/operations/break-glass-recovery: a panel whose address broke still reaches its own server.
+test("`deplo recover panel-address` reaches no server: it leaves the move for the running panel", async (t) => {
+  await withSelfServer(t, async () => {
+    let reached = 0;
+    __setAgentConnectorForTest(async () => {
+      reached++;
+      return null;
+    });
+    const asked = await requestPanelAddress("http://recovered.example.com");
+    assert.deepEqual(asked, {
+      server: "srv_panel",
+      domain: "recovered.example.com",
+      https: false,
+    });
+    assert.equal(reached, 0, "nothing tried to reach a server");
+    const [row] = await db
+      .select({
+        domain: instanceSettings.panelMoveDomain,
+        https: instanceSettings.panelMoveHttps,
+        url: instanceSettings.panelUrl,
+      })
+      .from(instanceSettings);
+    assert.deepEqual(
+      { ...row },
+      { domain: "recovered.example.com", https: false, url: null },
+    );
+  });
+});
+
+test("the running panel makes the move over its own server's link, says so, and forgets the request", async (t) => {
+  await withSelfServer(t, async () => {
+    await pg.exec(`truncate table activities;`);
+    const host = fakeHost(panelStack());
+    await requestPanelAddress("recovered.example.com");
+
+    assert.equal(
+      await applyRecoveredPanelAddress(),
+      "https://recovered.example.com",
+    );
+    const route = panelRoute(host.yaml)!;
+    assert.equal(route.domain, "recovered.example.com");
+    assert.equal(route.https, true);
+    assert.equal(route.fallbackDomain, FALLBACK, "the way back in stays");
+    assert.equal(
+      (await asUser(ADMIN, getInstanceSettings)).panelUrl,
+      "https://recovered.example.com",
+    );
+    const log = await db.select({ m: activities.message }).from(activities);
+    assert.deepEqual(
+      log.map((r) => r.m),
+      [
+        "Moved the panel to https://recovered.example.com, as deplo recover asked",
+      ],
+    );
+
+    const moved = host.yaml;
+    assert.equal(await applyRecoveredPanelAddress(), null, "asked once");
+    assert.equal(host.yaml, moved);
+  });
+});
+
+test("the generated address keeps the scheme the proxy serves, and turns the backup address back on", async (t) => {
+  await withSelfServer(t, async () => {
+    const host = fakeHost(panelStack());
+    await db
+      .insert(instanceSettings)
+      .values({
+        id: "default",
+        panelFallbackDisabled: true,
+        updatedAt: "2026-10-29T00:00:00.000Z",
+      })
+      .onConflictDoUpdate({
+        target: instanceSettings.id,
+        set: { panelFallbackDisabled: true },
+      });
+    const asked = await requestPanelAddress("-");
+    assert.equal(asked.https, null);
+    assert.match(asked.domain, /^deplo-[0-9a-f]+\.deplo\.site$/);
+
+    const url = await applyRecoveredPanelAddress();
+    assert.equal(url, `https://${asked.domain}`);
+    assert.equal(panelRoute(host.yaml)?.domain, asked.domain);
+    assert.equal(
+      (await asUser(ADMIN, getInstanceSettings)).panelFallbackDisabled,
+      false,
     );
   });
 });
