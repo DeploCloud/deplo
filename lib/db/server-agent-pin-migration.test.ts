@@ -12,12 +12,36 @@ import { schema } from "./schema";
 import { __setTestDb, __resetTestDb } from "./client";
 import { getServerById } from "../data/servers/roster";
 
-// Every server links in (ADR-0040): the stored agent port goes, and the pin alone says who enrolled.
+// Every server links in (ADR-0040): the pin alone says who enrolled, and the port stays for a rollback.
 const T0 = "2026-01-01T00:00:00.000Z";
 const MIG_DIR = path.join(process.cwd(), "lib", "db", "migrations");
-const LAST_WITH_PORT = 204;
+// Deplo 0.6.0's last migration: the installer rolls a failed update back onto this database.
+const PREVIOUS_RELEASE_LAST = 204;
 
 let pg: PGlite;
+let previousBefore: Map<string, string | null>;
+
+// How 0.6.0 reads a server's agent: its full row, and an agent only where a port is stored.
+async function readAsPreviousRelease(): Promise<Map<string, string | null>> {
+  const snapshot = JSON.parse(
+    readFileSync(
+      path.join(MIG_DIR, "meta", `0${PREVIOUS_RELEASE_LAST}_snapshot.json`),
+      "utf8",
+    ),
+  );
+  const columns = Object.keys(snapshot.tables["public.servers"].columns);
+  const { rows } = await pg.query<Record<string, unknown>>(
+    `select ${columns.map((c) => `"${c}"`).join(", ")} from servers order by id`,
+  );
+  return new Map(
+    rows.map((r) => [
+      r.id as string,
+      r.agent_port === null
+        ? null
+        : ((r.agent_cert_fingerprint as string | null) ?? ""),
+    ]),
+  );
+}
 
 async function applyFile(file: string): Promise<void> {
   const sql = readFileSync(path.join(MIG_DIR, file), "utf8");
@@ -38,7 +62,7 @@ before(async () => {
     .filter((f) => /^\d{4}_.*\.sql$/.test(f))
     .sort();
   const n = (f: string) => Number(f.slice(0, 4));
-  for (const f of files.filter((f) => n(f) <= LAST_WITH_PORT))
+  for (const f of files.filter((f) => n(f) <= PREVIOUS_RELEASE_LAST))
     await applyFile(f);
 
   const row = (id: string, port: string, fingerprint: string) =>
@@ -55,7 +79,8 @@ before(async () => {
       row("srv_pin_only", "null", "'fp_pin_only'"),
     ].join(",")};`);
 
-  for (const f of files.filter((f) => n(f) > LAST_WITH_PORT))
+  previousBefore = await readAsPreviousRelease();
+  for (const f of files.filter((f) => n(f) > PREVIOUS_RELEASE_LAST))
     await applyFile(f);
   __setTestDb(drizzle(pg, { schema }));
 });
@@ -65,11 +90,17 @@ after(async () => {
   await pg.close();
 });
 
-test("the agent port column is gone", async () => {
+test("the agent port column stays, for a Deplo rolled back to 0.6.0", async () => {
   const { rows } = await pg.query(
     `select 1 from information_schema.columns where table_name = 'servers' and column_name = 'agent_port'`,
   );
-  assert.equal(rows.length, 0);
+  assert.equal(rows.length, 1);
+});
+
+test("a Deplo rolled back to 0.6.0 reads every server's agent as it did", async () => {
+  const after = await readAsPreviousRelease();
+  assert.deepEqual([...after], [...previousBefore]);
+  assert.equal(after.get("srv_enrolled"), "fp_enrolled");
 });
 
 test("every server keeps its agent: enrolled, trust withdrawn, or none yet", async () => {

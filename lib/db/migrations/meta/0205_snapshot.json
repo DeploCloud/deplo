@@ -14039,6 +14039,12 @@
           "primaryKey": false,
           "notNull": true
         },
+        "agent_port": {
+          "name": "agent_port",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
         "agent_cert_fingerprint": {
           "name": "agent_cert_fingerprint",
           "type": "text",
