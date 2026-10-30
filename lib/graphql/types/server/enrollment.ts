@@ -132,6 +132,11 @@ builder.mutationFields((t) => ({
     args: {
       id: t.arg.string({ required: true }),
       address: t.arg.string({ required: true }),
+      agentPort: t.arg.int({
+        required: false,
+        deprecationReason:
+          "Ignored: every server agent links in to Deplo (ADR-0040), so Deplo connects to no port. Goes in the next release.",
+      }),
       force: t.arg.boolean({
         required: false,
         deprecationReason:

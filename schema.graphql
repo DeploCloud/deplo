@@ -1698,6 +1698,7 @@ type DeploMovePreviewServer {
   """The machine the old Deplo itself runs on."""
   isPanelHost: Boolean
   name: String
+  port: Int @deprecated(reason: "Always null: every server agent links in to Deplo (ADR-0040), so Deplo connects to no port. Goes in the next release.")
 
   """
   What keeps the move from starting because of this server, in one sentence.
@@ -3844,6 +3845,11 @@ type Mutation {
     serviceIds: [String!]
   ): MigrationProjectResult
 
+  """
+  Refused: no update stop waits on servers any more, so there is no server to leave behind.
+  """
+  leaveServerBehind(id: String!): UpdateInfo @deprecated(reason: "Always refused: no update stop waits on servers any more (ADR-0041). Goes in the next release.")
+
   """Sign in with email + password. Sets the session cookie."""
   login(email: String!, password: String!): AuthPayload
 
@@ -4733,6 +4739,7 @@ type Mutation {
   """
   updateServerAddress(
     address: String!
+    agentPort: Int @deprecated(reason: "Ignored: every server agent links in to Deplo (ADR-0040), so Deplo connects to no port. Goes in the next release.")
     force: Boolean @deprecated(reason: "Ignored: Deplo no longer contacts the server to save its address, so there is nothing to force.")
     id: String!
 
@@ -6134,6 +6141,9 @@ type SecurityUpdatesStatus {
 
 """A connected host running deployments (reached via its agent)."""
 type Server {
+  """Always null: Deplo connects to no server's agent."""
+  agentPort: Int @deprecated(reason: "Always null: every server agent links in to Deplo (ADR-0040), so Deplo connects to no port. Goes in the next release.")
+
   """
   Deplo's update of this server's agent, while one is in flight or has failed. Null otherwise. Requires instanceAdmin.
   """
@@ -7028,6 +7038,8 @@ input UpdateSourceInput {
 A release this instance must install, and whose conditions it must meet, before it can update past it (ADR-0041).
 """
 type UpdateStop {
+  leftBehind: [UpdateStopServer!] @deprecated(reason: "Always empty: no update stop waits on servers any more (ADR-0041). Goes in the next release.")
+
   """One plain sentence saying why Update offers what it does."""
   reason: String
   version: String
@@ -7036,6 +7048,15 @@ type UpdateStop {
   This instance runs the stop and its conditions do not hold yet, so Update offers nothing until they do.
   """
   waiting: Boolean
+  waitingOn: [UpdateStopServer!] @deprecated(reason: "Always empty: no update stop waits on servers any more (ADR-0041). Goes in the next release.")
+}
+
+"""
+A server an update stop named. No stop names one any more: kept one release for older API clients.
+"""
+type UpdateStopServer {
+  id: ID
+  name: String
 }
 
 input UpdateTeamInput {

@@ -12,6 +12,7 @@ import {
   lastRefusedUpdate,
   type RefusedUpdate,
 } from "@/lib/data/update-stops/refused";
+import { leaveServerBehind } from "@/lib/data/update-stops/leave-behind";
 import {
   applyDeploUpdate,
   listDeploReleases,
@@ -37,6 +38,20 @@ const StrandedServerRef = builder
     }),
   });
 
+const UpdateStopServerRef = builder
+  .objectRef<{ id: string; name: string }>("UpdateStopServer")
+  .implement({
+    description:
+      "A server an update stop named. No stop names one any more: kept one release for older API clients.",
+    fields: (t) => ({
+      id: t.exposeID("id"),
+      name: t.exposeString("name"),
+    }),
+  });
+
+const NOTHING_WAITS =
+  "Always empty: no update stop waits on servers any more (ADR-0041). Goes in the next release.";
+
 const UpdateStopRef = builder
   .objectRef<UpdateStopInfo>("UpdateStop")
   .implement({
@@ -51,6 +66,16 @@ const UpdateStopRef = builder
       waiting: t.exposeBoolean("waiting", {
         description:
           "This instance runs the stop and its conditions do not hold yet, so Update offers nothing until they do.",
+      }),
+      waitingOn: t.field({
+        type: [UpdateStopServerRef],
+        deprecationReason: NOTHING_WAITS,
+        resolve: () => [],
+      }),
+      leftBehind: t.field({
+        type: [UpdateStopServerRef],
+        deprecationReason: NOTHING_WAITS,
+        resolve: () => [],
       }),
     }),
   });
@@ -294,5 +319,15 @@ builder.mutationFields((t) => ({
     description:
       "Re-run the upstream release check ignoring the cache, and expire the changelog beside it.",
     resolve: () => refreshUpdateInfo(),
+  }),
+  leaveServerBehind: t.field({
+    type: UpdateInfoRef,
+    authScopes: { instanceAdmin: true },
+    description:
+      "Refused: no update stop waits on servers any more, so there is no server to leave behind.",
+    deprecationReason:
+      "Always refused: no update stop waits on servers any more (ADR-0041). Goes in the next release.",
+    args: { id: t.arg.string({ required: true }) },
+    resolve: (_r, { id }) => leaveServerBehind(id),
   }),
 }));

@@ -2,11 +2,14 @@ import { test, before, after, beforeEach } from "node:test";
 import assert from "node:assert/strict";
 
 import type { PGlite } from "@electric-sql/pglite";
-import type { GraphQLObjectType } from "graphql";
+import { graphql, type GraphQLObjectType } from "graphql";
 
 import { makeTestDb, type TestDb } from "../db/test-harness";
 import { __setTestDb, __resetTestDb } from "../db/client";
 import { runWithIdentity } from "../auth/request-context";
+import { getCurrentUser } from "../auth/current-user";
+import { getActiveTeamId, reachableCapabilities } from "../membership";
+import type { GraphQLContext } from "../graphql/context";
 import { seedIdentity, TEAM_A, USER_1 } from "./identity-test-helpers";
 import { TRUNCATE_INFRA, seedServerRow } from "./infra-test-helpers";
 import { listActivity } from "./activity";
@@ -121,15 +124,86 @@ test("Activity names the new address", async () => {
   ]);
 });
 
-test("the API names no agent port and no link: a server's address is all it keeps", () => {
+test("the API names no link: a server's address is all it keeps", () => {
   const server = (schema.getType("Server") as GraphQLObjectType).getFields();
-  assert.ok(!("agentPort" in server));
   assert.ok(!("linked" in server), "how a server is reached stays out of it");
-  const change = schema.getMutationType()!.getFields().updateServerAddress;
-  assert.deepEqual(
-    change.args.map((a) => a.name).filter((n) => /port/i.test(n)),
-    [],
+});
+
+async function asClient(
+  userId: string,
+  source: string,
+): Promise<{ data: Record<string, unknown> | null; errors: string[] }> {
+  return runWithIdentity({ userId, teamId: TEAM_A }, async () => {
+    const res = await graphql({
+      schema,
+      source,
+      contextValue: {
+        viewer: await getCurrentUser(),
+        teamId: await getActiveTeamId(),
+        capabilities: await reachableCapabilities(),
+        via: "cookie",
+        identity: null,
+      } satisfies GraphQLContext,
+    });
+    return {
+      data: (res.data as Record<string, unknown> | null) ?? null,
+      errors: (res.errors ?? []).map((e) => e.message),
+    };
+  });
+}
+
+// An API client written against the release before still validates for one release; each field is deprecated.
+test("an older API client's agent port is read as none, and ignored when it sends one", async () => {
+  const read = await asClient(
+    USER_1,
+    `{ server(id: "${PROVISIONED}") { agentPort } }`,
   );
+  assert.deepEqual(read.errors, []);
+  assert.equal((read.data?.server as { agentPort: unknown }).agentPort, null);
+
+  const saved = await asClient(
+    USER_1,
+    `mutation { updateServerAddress(id: "${BARE}", address: "192.0.2.21", agentPort: 9443) }`,
+  );
+  assert.deepEqual(saved.errors, []);
+  assert.equal((await asAdmin(() => getServerById(BARE)))?.ip, "192.0.2.21");
+
+  for (const [type, name] of [
+    ["Server", "agentPort"],
+    ["DeploMovePreviewServer", "port"],
+  ])
+    assert.ok(
+      (schema.getType(type) as GraphQLObjectType).getFields()[name]
+        ?.deprecationReason,
+      `${type}.${name} is deprecated`,
+    );
+  const arg = schema
+    .getMutationType()!
+    .getFields()
+    .updateServerAddress.args.find((a) => a.name === "agentPort");
+  assert.ok(arg?.deprecationReason, "the agentPort argument is deprecated");
+});
+
+test("an older API client's update stop lists are empty, and leaving a server behind is refused in plain words", async () => {
+  const stop = schema.getType("UpdateStop") as GraphQLObjectType;
+  for (const name of ["waitingOn", "leftBehind"])
+    assert.ok(stop.getFields()[name]?.deprecationReason, `${name} deprecated`);
+  const read = await asClient(
+    USER_1,
+    `{ updateInfo { stop { version waitingOn { id name } leftBehind { id name } } } }`,
+  );
+  assert.deepEqual(read.errors, []);
+
+  const leave = schema.getMutationType()!.getFields().leaveServerBehind;
+  assert.ok(leave?.deprecationReason, "leaveServerBehind is deprecated");
+  const LEAVE = `mutation { leaveServerBehind(id: "${PROVISIONED}") { current } }`;
+  const admin = await asClient(USER_1, LEAVE);
+  assert.deepEqual(admin.errors, [
+    "Deplo no longer waits on servers to update, so there is no server to leave behind.",
+  ]);
+  const member = await asClient("user_member", LEAVE);
+  assert.equal(member.errors.length, 1);
+  assert.doesNotMatch(member.errors[0], /no longer waits/);
 });
 
 test("keepHost writes only the address in use, leaving the one it was registered at", async () => {

@@ -146,6 +146,13 @@ export const ServerRef = builder.objectRef<Server>("Server").implement({
         "True once the server's agent has called home and been trusted.",
       resolve: (s) => Boolean(s.agent?.certFingerprint),
     }),
+    agentPort: t.int({
+      nullable: true,
+      description: "Always null: Deplo connects to no server's agent.",
+      deprecationReason:
+        "Always null: every server agent links in to Deplo (ADR-0040), so Deplo connects to no port. Goes in the next release.",
+      resolve: () => null,
+    }),
     agentVersion: t.string({
       nullable: true,
       description:
