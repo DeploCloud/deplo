@@ -328,6 +328,6 @@ builder.mutationFields((t) => ({
     deprecationReason:
       "Always refused: no update stop waits on servers any more (ADR-0041). Goes in the next release.",
     args: { id: t.arg.string({ required: true }) },
-    resolve: (_r, { id }) => leaveServerBehind(id),
+    resolve: () => leaveServerBehind(),
   }),
 }));
