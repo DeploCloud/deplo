@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button";
 import { SimpleTooltip } from "@/components/ui/tooltip";
 import { gql, gqlAction } from "@/lib/graphql-client";
 import type { AgentUpdateDTO } from "@/lib/data/servers/agent-update-state";
-import type { AgentReach } from "@/lib/version";
+import { updateReaches, type AgentReach } from "@/lib/version";
 import { agentUpdateText } from "./agent-update-text";
 
 const FIELDS = `
@@ -99,7 +99,7 @@ export function AgentUpdateStatus({
       ) : (
         line
       )}
-      {current?.failed && reach !== "reinstall" && (
+      {current?.failed && updateReaches(reach) && (
         <Button
           variant="outline"
           size="sm"

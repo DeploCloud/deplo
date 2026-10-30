@@ -4,13 +4,13 @@ import { Strip } from "@/components/deplo-move/frozen-banner";
 import { unusableServers } from "@/lib/data/servers/agent-rollout";
 import { unusableAgentsMessage } from "./agent-update-text";
 
-// Instance admins only: the servers this Deplo refuses until their server agent updates or is reinstalled.
+// Instance admins only: the servers this Deplo refuses until their server agent updates, connects or is reinstalled.
 export async function UnusableAgentsBanner() {
   const servers = await unusableServers();
   if (servers.length === 0) return null;
-  // A reinstall starts on the server's own page; an update is followed on the Updates tab.
-  const reinstall = servers.every((s) => s.reach === "reinstall");
-  const [href, label] = !reinstall
+  // An update is followed on the Updates tab; anything else starts on the server's own page.
+  const updating = servers.some((s) => s.reach === "updatable");
+  const [href, label] = updating
     ? ["/settings/deplo?tab=updates", "Open Updates"]
     : servers.length === 1
       ? [`/settings/servers/${servers[0].id}`, "Open server"]

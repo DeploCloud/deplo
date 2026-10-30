@@ -21,6 +21,7 @@ import {
 import { serverLabel } from "@/lib/utils";
 import { AGENT_VERSION, agentReach, reportedAgentVersion } from "@/lib/version";
 import { serverAgentUpdate } from "@/lib/data/servers/agent-maintenance";
+import { offlineAdvice } from "@/lib/data/server-health";
 import type { TeamOption } from "@/components/servers/server-team-access";
 import {
   ServerHealthProvider,
@@ -50,7 +51,7 @@ export default async function ServerDetailPage(
   if (server.importOnly) notFound();
 
   const expectedAgentVersion = AGENT_VERSION;
-  const [teamIds, teamsRaw, policy, runs, workloads, agentUpdate] =
+  const [teamIds, teamsRaw, policy, runs, workloads, agentUpdate, advice] =
     await Promise.all([
       getServerTeamIds(id),
       listAllTeamsForAdmin(),
@@ -58,6 +59,7 @@ export default async function ServerDetailPage(
       listCleanupRuns({ serverId: id }),
       listServerWorkloads(id),
       serverAgentUpdate(id),
+      offlineAdvice(server),
     ]);
 
   const [hydrated] = await hydrateServerSpecs([server]);
@@ -106,6 +108,7 @@ export default async function ServerDetailPage(
               <ServerHealthChip
                 serverId={server.id}
                 fallback={seed[server.id]}
+                offlineAdvice={advice}
               />
             </span>
             {isDeploHost && (

@@ -318,6 +318,7 @@ function OverviewTab({
                 <AgentVersionBadge
                   version={server.agentVersion}
                   expected={server.expectedAgentVersion}
+                  reach={server.agentReach}
                 />
               </div>
               <p className="mt-1 text-sm text-muted-foreground">

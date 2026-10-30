@@ -65,6 +65,37 @@ test("a server only a reinstall brings back is told so, whatever its update did"
     );
 });
 
+// It never reached Deplo (ADR-0041): a connection brings it back, not an update.
+test("a server that hasn't connected to Deplo yet is told so, whatever its update did", () => {
+  for (const update of [null, failed(), failed({ running: true })])
+    assert.equal(
+      agentUpdateText(update, "unlinked", NOW),
+      "Unusable - it hasn't connected to Deplo yet",
+    );
+});
+
+test("the banner names a server that hasn't connected to Deplo yet as such", () => {
+  const ready = { name: "eu-1", reach: "updatable" as const };
+  const stuck = { name: "eu-2", reach: "reinstall" as const };
+  const blocked = { name: "eu-5", reach: "unlinked" as const };
+  assert.equal(
+    unusableAgentsMessage([blocked]),
+    "eu-5 hasn't connected to Deplo yet.",
+  );
+  assert.equal(
+    unusableAgentsMessage([blocked, { ...blocked, name: "eu-6" }]),
+    "2 servers haven't connected to Deplo yet.",
+  );
+  assert.equal(
+    unusableAgentsMessage([ready, blocked]),
+    "2 servers are unusable until their server agents update or connect to Deplo.",
+  );
+  assert.equal(
+    unusableAgentsMessage([blocked, stuck, ready]),
+    "3 servers are unusable until their server agents update, are reinstalled or connect to Deplo.",
+  );
+});
+
 test("the banner waits for an update only where one can come", () => {
   const ready = { name: "eu-1", reach: "updatable" as const };
   const stuck = { name: "eu-2", reach: "reinstall" as const };

@@ -9,6 +9,8 @@ export function agentUpdateText(
 ): string | null {
   // It never reaches this Deplo (ADR-0041): nothing Deplo does updates it.
   if (reach === "reinstall") return "Unusable - reinstall its server agent";
+  if (reach === "unlinked")
+    return "Unusable - it hasn't connected to Deplo yet";
   const prefix = reach === "usable" ? "" : "Unusable - ";
   if (!update) return prefix ? `${prefix}Deplo is updating it` : null;
   if (update.running) return `${prefix}Updating the server agent`;
@@ -21,20 +23,33 @@ export function agentUpdateText(
     : `${prefix}Update failed, ${when}`;
 }
 
+type Unusable = Exclude<AgentReach, "usable">;
+
+const UNTIL: Record<Unusable, string> = {
+  updatable: "update",
+  reinstall: "are reinstalled",
+  unlinked: "connect to Deplo",
+};
+
 /** The admin banner's line for the servers this Deplo refuses. */
 export function unusableAgentsMessage(
-  servers: { name: string; reach: Exclude<AgentReach, "usable"> }[],
+  servers: { name: string; reach: Unusable }[],
 ): string {
   if (servers.length === 1) {
     const [s] = servers;
-    return s.reach === "updatable"
-      ? `${s.name} is unusable until its server agent updates.`
-      : `${s.name} is unusable until its server agent is reinstalled.`;
+    return {
+      updatable: `${s.name} is unusable until its server agent updates.`,
+      reinstall: `${s.name} is unusable until its server agent is reinstalled.`,
+      unlinked: `${s.name} hasn't connected to Deplo yet.`,
+    }[s.reach];
   }
-  const until = servers.every((s) => s.reach === "updatable")
-    ? "update"
-    : servers.every((s) => s.reach === "reinstall")
-      ? "are reinstalled"
-      : "update or are reinstalled";
-  return `${servers.length} servers are unusable until their server agents ${until}.`;
+  const reaches = (["updatable", "reinstall", "unlinked"] as const).filter(
+    (r) => servers.some((s) => s.reach === r),
+  );
+  if (reaches.length === 1 && reaches[0] === "unlinked")
+    return `${servers.length} servers haven't connected to Deplo yet.`;
+  const until = reaches.map((r) => UNTIL[r]);
+  const last = until.pop()!;
+  const joined = until.length ? `${until.join(", ")} or ${last}` : last;
+  return `${servers.length} servers are unusable until their server agents ${joined}.`;
 }

@@ -3,6 +3,10 @@ import assert from "node:assert/strict";
 
 import { healthTip } from "@/app/(dashboard)/[team]/settings/servers/server-health-chip";
 import { HEALTH_MESSAGES } from "@/lib/infra/server-health";
+import {
+  AGENT_REINSTALL_MESSAGE,
+  cantReachDeploMessage,
+} from "@/lib/agent-reachability";
 
 test("an offline server that links in is told to check the machine, and nothing about ports", () => {
   const tip = healthTip({
@@ -14,6 +18,27 @@ test("an offline server that links in is told to check the machine, and nothing 
   });
   assert.ok(tip.startsWith(HEALTH_MESSAGES.offline), tip);
   assert.doesNotMatch(tip, /9443|port|firewall/i);
+});
+
+// The page passes what the recorder decides (offlineAdvice): never "is the machine on" for a server that never connected.
+test("an offline server only a reinstall or a connection brings back is told so", () => {
+  for (const advice of [
+    AGENT_REINSTALL_MESSAGE,
+    cantReachDeploMessage("panel.example.com"),
+  ]) {
+    const tip = healthTip(
+      {
+        status: "offline",
+        message: "The agent did not answer (connection refused).",
+        checkedAt: new Date().toISOString(),
+        traefikEnabled: true,
+        lastReachedAt: null,
+      },
+      advice,
+    );
+    assert.equal(tip.split(" · ")[0], advice);
+    assert.doesNotMatch(tip, /machine is on/);
+  }
 });
 
 test("an offline server's tip is only what to check, whatever an older check stored", () => {

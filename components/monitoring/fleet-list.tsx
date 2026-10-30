@@ -14,7 +14,9 @@ import {
   AGENT_TOO_OLD_MESSAGE,
   agentUpdateAvailable,
   agentUsable,
+  type AgentReach,
 } from "@/lib/version";
+import { stuckAgentMessage } from "@/lib/agent-reachability";
 
 export interface FleetRow {
   serverId: string;
@@ -70,7 +72,13 @@ export function FleetList({
   onSelect,
   canManageServers,
 }: {
-  servers: { id: string; name: string; status: ServerStatus; ip: string }[];
+  servers: {
+    id: string;
+    name: string;
+    status: ServerStatus;
+    ip: string;
+    agentReach: AgentReach;
+  }[];
   rows: Record<string, FleetRow>;
   selectedId: string;
   onSelect: (id: string) => void;
@@ -154,7 +162,11 @@ export function FleetList({
                   </div>
 
                   {outdated && !agentUsable(row?.agentVersion) ? (
-                    <SimpleTooltip content={AGENT_TOO_OLD_MESSAGE}>
+                    <SimpleTooltip
+                      content={
+                        stuckAgentMessage(s.agentReach) ?? AGENT_TOO_OLD_MESSAGE
+                      }
+                    >
                       <Badge
                         variant="destructive"
                         className="hidden sm:inline-flex"
