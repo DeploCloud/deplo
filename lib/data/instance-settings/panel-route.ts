@@ -36,6 +36,13 @@ import {
   passkeysBoundToThisAddress,
 } from "./panel-address-impact";
 import { forgetRoutedFallback, rememberRoutedFallback } from "./panel-fallback";
+import {
+  TUNNEL_SERVES_PANEL,
+  loadPanelTunnel,
+  panelTunnelHostname,
+  retirePanelTunnel,
+} from "./panel-tunnel-store";
+import { withPanelTunnel } from "../../deploy/panel-tunnel-stack";
 import { whilePanelAddressesChange } from "../servers/link-addresses";
 import { instanceFrozen } from "../deplo-move/freeze";
 import { waitForLink } from "../../infra/agent-link/registry";
@@ -47,9 +54,11 @@ import {
   type PanelReachability,
 } from "./panel-probe";
 
-const NO_DEPLO_HOST =
+export const NO_DEPLO_HOST =
   "The server running Deplo is not added here yet, so Deplo does not manage the panel's own address.";
 const ROUTE_REFUSED = "The proxy on this server refused the change";
+const TUNNEL_HTTPS =
+  "Cloudflare serves the panel's HTTPS through the tunnel, so there is nothing to change here.";
 
 export type PanelHttps = {
   domain: string | null;
@@ -60,13 +69,13 @@ export type PanelHttps = {
   unavailable: string | null;
 };
 
-async function requireDeploHost() {
+export async function requireDeploHost() {
   const host = await deploHostServer();
   if (!host) throw new Error(NO_DEPLO_HOST);
   return host;
 }
 
-async function currentPanelRoute(yaml: string): Promise<PanelRoute> {
+export async function currentPanelRoute(yaml: string): Promise<PanelRoute> {
   return panelRoute(yaml) ?? (await adoptPanelRoute(yaml));
 }
 
@@ -96,6 +105,7 @@ export async function setPanelUrl(
   await requireInstanceAdmin();
   const teamId = await requireActiveTeamId();
   const user = (await getCurrentUser())!;
+  if (await panelTunnelHostname()) throw new Error(TUNNEL_SERVES_PANEL);
 
   const url =
     input === null || input.trim() === ""
@@ -179,6 +189,7 @@ async function readPanelHttps(): Promise<PanelHttps> {
       };
     }
     rememberRoutedFallback(route.fallbackDomain);
+    const tunneled = (await panelTunnelHostname()) !== null;
     return {
       domain: route.domain,
       fallbackDomain: route.fallbackDomain,
@@ -187,7 +198,7 @@ async function readPanelHttps(): Promise<PanelHttps> {
       certificateTrusted: route.https
         ? await panelCertificateTrusted(await instancePublicBaseUrl())
         : null,
-      unavailable: null,
+      unavailable: tunneled ? TUNNEL_HTTPS : null,
     };
   } catch (e) {
     return { ...none, unavailable: e instanceof Error ? e.message : String(e) };
@@ -205,6 +216,7 @@ export async function setPanelHttps(enabled: boolean): Promise<PanelHttps> {
   const user = (await getCurrentUser())!;
 
   const host = await requireDeploHost();
+  if (await panelTunnelHostname()) throw new Error(TUNNEL_HTTPS);
 
   const lostPasskeys = enabled ? 0 : await passkeysBoundToThisAddress();
 
@@ -249,7 +261,9 @@ export async function setPanelHttps(enabled: boolean): Promise<PanelHttps> {
   return readPanelHttps();
 }
 
-async function panelBackupDomain(current: PanelRoute): Promise<string | null> {
+export async function panelBackupDomain(
+  current: PanelRoute,
+): Promise<string | null> {
   if ((await loadSettings()).panelFallbackDisabled) return null;
   return current.fallbackDomain ?? panelFallbackHost();
 }
@@ -393,6 +407,9 @@ export async function applyRecoveredPanelAddress(): Promise<string | null> {
   if (!asked?.domain || (await instanceFrozen())) return null;
   const domain = asked.domain;
   const host = await requireDeploHost();
+  // A tunnel serves one name: a recovery onto any other turns it off.
+  const tunnel = await loadPanelTunnel();
+  const keepsTunnel = tunnel?.hostname === domain;
   // Right after a restart, the host's agent is still on its way back.
   await waitForLink(host.id, LINK_SETTLE_MS);
 
@@ -403,20 +420,21 @@ export async function applyRecoveredPanelAddress(): Promise<string | null> {
     const current = yaml ? panelRoute(yaml) : null;
     // Asked of a panel Deplo does not route: nothing will ever make this move.
     if (!current) return null;
-    const https = asked.https ?? current.https;
+    const https = keepsTunnel || (asked.https ?? current.https);
     const next: PanelRoute = {
       ...current,
       domain,
       https,
-      certResolver: https
-        ? (current.certResolver ?? stackCertResolver(yaml))
-        : null,
+      certResolver:
+        https && !keepsTunnel
+          ? (current.certResolver ?? stackCertResolver(yaml))
+          : null,
     };
     const url = `${https ? "https" : "http"}://${domain}`;
     await whilePanelAddressesChange({ url }, async () => {
       await applyPanelRoute(
         host.id,
-        yaml,
+        tunnel && !keepsTunnel ? withPanelTunnel(yaml, null) : yaml,
         next,
         "The proxy on this server refused the new panel address",
       );
@@ -424,6 +442,7 @@ export async function applyRecoveredPanelAddress(): Promise<string | null> {
     });
     return url;
   });
+  const dropsTunnel = !!url && !!tunnel && !keepsTunnel;
 
   const now = nowIso();
   const set = {
@@ -432,6 +451,16 @@ export async function applyRecoveredPanelAddress(): Promise<string | null> {
     updatedAt: now,
     ...(url && isPanelFallbackHost(domain)
       ? { panelFallbackDisabled: false }
+      : {}),
+    ...(dropsTunnel
+      ? {
+          panelTunnelHostname: null,
+          panelTunnelAccountId: null,
+          panelTunnelZoneId: null,
+          panelTunnelId: null,
+          panelTunnelDnsRecordId: null,
+          panelTunnelApiTokenEnc: null,
+        }
       : {}),
   };
   await getDb()
@@ -444,9 +473,13 @@ export async function applyRecoveredPanelAddress(): Promise<string | null> {
     );
     return null;
   }
+  const left =
+    dropsTunnel && tunnel ? await retirePanelTunnel(tunnel, null) : null;
   await recordActivity(
     "instance",
-    `Moved the panel to ${url}, as deplo recover asked`,
+    `Moved the panel to ${url}, as deplo recover asked` +
+      (dropsTunnel ? ", and turned off its Cloudflare Tunnel" : "") +
+      (left ? ` (${left})` : ""),
     "Deplo",
   );
   return url;

@@ -122,13 +122,22 @@ export const MOVE_TABLES: Readonly<Record<string, TablePolicy>> = {
   installed_plugins: COPY,
   instance_settings: {
     kind: "copy",
-    rekey: { vapid_private_key_enc: SECRET },
+    rekey: {
+      vapid_private_key_enc: SECRET,
+      panel_tunnel_api_token_enc: SECRET,
+    },
     // What describes this machine, this install and its own servers: the old fleet stays with the old Deplo.
     keepTarget: [
       "panel_url",
       "panel_fallback_disabled",
       "panel_move_domain",
       "panel_move_https",
+      "panel_tunnel_hostname",
+      "panel_tunnel_account_id",
+      "panel_tunnel_zone_id",
+      "panel_tunnel_id",
+      "panel_tunnel_dns_record_id",
+      "panel_tunnel_api_token_enc",
       "booted_version",
       "agent_rollout_by",
       "network_sweep_at",

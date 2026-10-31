@@ -19,6 +19,13 @@ export const instanceSettings = pgTable("instance_settings", {
   // `deplo recover panel-address` leaves the move here for the running panel; null https keeps the route's scheme.
   panelMoveDomain: text("panel_move_domain"),
   panelMoveHttps: boolean("panel_move_https"),
+  // The Cloudflare Tunnel the panel is served through; all null while it is off.
+  panelTunnelHostname: text("panel_tunnel_hostname"),
+  panelTunnelAccountId: text("panel_tunnel_account_id"),
+  panelTunnelZoneId: text("panel_tunnel_zone_id"),
+  panelTunnelId: text("panel_tunnel_id"),
+  panelTunnelDnsRecordId: text("panel_tunnel_dns_record_id"),
+  panelTunnelApiTokenEnc: text("panel_tunnel_api_token_enc"),
   vapidPublicKey: text("vapid_public_key"),
   vapidPrivateKeyEnc: text("vapid_private_key_enc"),
   logMaxDays: integer("log_max_days").notNull().default(7),

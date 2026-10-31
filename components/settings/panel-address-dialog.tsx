@@ -114,6 +114,7 @@ export function PanelAddressDialog({
   confirmLabel,
   notes,
   successMessage,
+  unchangedDescription,
   onConfirm,
 }: {
   open: boolean;
@@ -123,6 +124,8 @@ export function PanelAddressDialog({
   confirmLabel: string;
   notes?: ImpactNote[];
   successMessage?: string;
+  /** What to say when the address stays the same but the move still changes something. */
+  unchangedDescription?: string;
   onConfirm: () => Promise<ActionResult<unknown>>;
 }) {
   const [result, setResult] = React.useState<Counted | null>(null);
@@ -200,7 +203,8 @@ export function PanelAddressDialog({
               <DialogTitle>{title}</DialogTitle>
               <DialogDescription className="leading-relaxed">
                 {unchanged
-                  ? "This is the address the panel already answers on, so nothing changes."
+                  ? (unchangedDescription ??
+                    "This is the address the panel already answers on, so nothing changes.")
                   : rows.length > 0
                     ? summarise(rows)
                     : "Everything tied to the old address stops working there."}

@@ -2782,6 +2782,11 @@ type InstanceSettings {
   panelFallbackUrl: String
 
   """
+  The address a Cloudflare Tunnel serves the panel on, or null while none does. While one does, the panel's address and its HTTPS are the tunnel's to change.
+  """
+  panelTunnelHostname: String
+
+  """
   The address Deplo uses for itself right now. Every install command, deploy hook URL and invite link is built from it.
   """
   panelUrl: String
@@ -3726,6 +3731,11 @@ type Mutation {
   detectAppLogo(id: String!): App
 
   """
+  Stop serving the panel through its Cloudflare Tunnel. The panel moves to `url`, or to its backup address when none is given, and the move is undone if that address does not answer. Deplo then deletes the tunnel and its DNS record in Cloudflare; what it could not delete comes back as `warning`.
+  """
+  disablePanelTunnel(url: String): PanelTunnel
+
+  """
   Turn two-factor off. Requires the password AND a current code (a recovery code also works).
   """
   disableTwoFactor(code: String!, password: String!): Boolean
@@ -3923,6 +3933,11 @@ type Mutation {
   Read how the panel is served off the proxy that publishes it, live. A mutation despite writing nothing, for the same reason serverCertificateAccounts is one: it dials a server.
   """
   panelHttps: PanelHttps
+
+  """
+  Read the panel's Cloudflare Tunnel, asking Cloudflare how it is doing. A mutation despite writing nothing, for the same reason panelHttps is one: it leaves the process.
+  """
+  panelTunnel: PanelTunnel
 
   """
   Options for `navigator.credentials.get`. Public: this is the START of a sign-in, so there is no session yet.
@@ -4422,6 +4437,11 @@ type Mutation {
   setPanelHttps(enabled: Boolean!): PanelHttps
 
   """
+  Serve the panel at https://<hostname> through a Cloudflare Tunnel, or move the one it has to a new hostname. Deplo finds the hostname's zone, creates the tunnel with two routes (the panel, and the path its servers link in on), points the hostname at it, runs the connector beside the panel's proxy and moves the panel once the address answers; anything it did is undone if it does not. Refused when the hostname already has DNS records that do not point at this server. The token needs Account, Cloudflare Tunnel, Edit and Zone, DNS, Edit; omit it to reuse the saved one.
+  """
+  setPanelTunnel(apiToken: String, hostname: String!): PanelTunnel
+
+  """
   Set the address this Deplo answers on, or pass no url to fall back to DEPLO_PUBLIC_URL. A bare domain becomes https://. The value is validated as a hostname with no path, no credentials and no shell metacharacters, because it is interpolated into copy-and-run strings such as a server's install command. On a Deplo that publishes itself through its own proxy this MOVES the panel's route too, and puts the old one back if the new address does not answer; DNS still has to point at the server first.
   """
   setPanelUrl(url: String): InstanceSettings
@@ -4905,6 +4925,39 @@ type PanelHttps {
   """
   provider: String
   unavailable: String
+}
+
+"""
+The Cloudflare Tunnel the panel can be served through: a connector on the panel's own server dials out to Cloudflare, so no connection has to reach that server from the internet. Deplo creates the tunnel, its routes and its DNS record with an API token it keeps encrypted and never returns.
+"""
+type PanelTunnel {
+  """
+  Where turning the tunnel off moves the panel when no address is given: its backup address, or null while that is off.
+  """
+  backupUrl: String
+
+  """How many connections the connector holds open to Cloudflare."""
+  connections: Int
+  enabled: Boolean
+
+  """Why Cloudflare could not be asked how the tunnel is doing."""
+  error: String
+  hostname: String
+
+  """
+  What Cloudflare says, live: `healthy`, `degraded`, `down`, `inactive` (never connected), or `unknown` when it could not be asked. Null while the tunnel is off.
+  """
+  status: String
+
+  """
+  Why a tunnel cannot be turned on here: the server running Deplo is not added, or its proxy is not one Deplo installed.
+  """
+  unavailable: String
+
+  """
+  Something the change just made could not finish, such as deleting the old tunnel in Cloudflare.
+  """
+  warning: String
 }
 
 """

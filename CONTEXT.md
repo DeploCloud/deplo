@@ -476,6 +476,15 @@ server** ([ADR-0040](docs/adr/0040-a-server-agent-links-to-its-control-plane.md)
 [ADR-0041](docs/adr/0041-a-release-can-require-an-update-stop.md)).
 _Avoid_: tunnel (reads as public ingress for apps, which this is not), reverse proxy, VPN, socket.
 
+**Cloudflare Tunnel**:
+An optional way in to the panel for a machine that cannot accept incoming connections: a
+connector beside the panel's proxy dials Cloudflare, and Cloudflare serves the panel's address
+over it, certificate included. Deplo creates the tunnel, its routes and its DNS record from an API
+token the admin gives it, under Settings, Deplo, Advanced; it never touches a record that does not
+already point at this machine. While it is on, the panel's address and HTTPS are the tunnel's
+([ADR-0042](docs/adr/0042-the-panel-can-be-served-through-a-cloudflare-tunnel.md)).
+_Avoid_: Argo tunnel (its old name), tunnel alone (the **agent link** is not one).
+
 **Pre-link agent**:
 A **server agent** released before the **agent link** existed. A Deplo past the first **update
 stop** dials nothing, so it never reaches one: an **unusable server** until its server agent is

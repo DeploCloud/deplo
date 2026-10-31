@@ -489,7 +489,7 @@ function placeAfter(
 }
 
 // The link listener runs in the panel's own process, so it sits beside wherever the panel is reached.
-function linkTarget(panelTarget: string): string {
+export function linkTarget(panelTarget: string): string {
   try {
     const url = new URL(panelTarget);
     url.port = String(LINK_PORT);

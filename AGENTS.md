@@ -13,7 +13,7 @@ on the deeper docs it links (this file points; it does not restate them).
   `fleet-rollout.md`.
 
 **Every count in this file is a snapshot of a moving tree** (47 Capabilities, 121 tables, 193 MCP
-tools, 41 ADRs, the pin list). The rule they carry is the durable part; re-derive the number
+tools, 42 ADRs, the pin list). The rule they carry is the durable part; re-derive the number
 before you rely on it, and fix the line here when it has moved:
 
 ```sh
@@ -581,7 +581,8 @@ scripts/gen-schema.ts`. Both halves of that prefix are load-bearing: the shim
   unreachable (a limiter that locks everyone out on a DB blip is worse than one that stops
   counting). `sweepRateLimits` runs in the maintenance sweep. A per-ADDRESS key comes from
   `clientAddress()` (`lib/http/client-address.ts`) and nowhere else: the last `x-forwarded-for` hop
-  (the one Traefik appended), and `cf-connecting-ip` only when that hop is Cloudflare. Every other
+  (the one Traefik appended, or Cloudflare's own through the panel's tunnel, ADR-0042, whose
+  connector skips Traefik for exactly this), and `cf-connecting-ip` only when that hop is Cloudflare. Every other
   forwarded header is the caller's to write.
 - **Better Auth is the live auth path** (ADR-0014, migration 0055): session cookie
   `deplo.session_token` (a real `session` row, `__Secure-` prefixed over https), configured in

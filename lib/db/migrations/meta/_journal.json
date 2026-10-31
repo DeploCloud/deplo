@@ -1450,6 +1450,13 @@
       "when": 1793354313967,
       "tag": "0206_panel_move_request",
       "breakpoints": true
+    },
+    {
+      "idx": 207,
+      "version": "7",
+      "when": 1793473500746,
+      "tag": "0207_panel_tunnel",
+      "breakpoints": true
     }
   ]
 }

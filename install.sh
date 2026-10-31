@@ -1618,6 +1618,12 @@ live_panel_route() { # "<host> <web|websecure>" of the deplo-panel router
     host != "" && /^[[:space:]]*-[[:space:]]*web[[:space:]]*$/ { print host, "web"; exit }
   ' "$TRAEFIK_COMPOSE"
 }
+# The Cloudflare Tunnel connector the panel runs beside its proxy, carried over as it is:
+# nothing here renders it. KEEP IN SYNC with TUNNEL_SERVICE in lib/deploy/panel-tunnel-stack.ts.
+live_tunnel_service() {
+  [ -f "$TRAEFIK_COMPOSE" ] || return 0
+  awk '$0 == "  deplo-tunnel:" { f = 1; print; next } f && !/^    / { exit } f' "$TRAEFIK_COMPOSE"
+}
 live_acme_email() {
   [ -f "$TRAEFIK_COMPOSE" ] || return 0
   sed -n 's/.*--certificatesresolvers\.letsencrypt\.acme\.email=//p' "$TRAEFIK_COMPOSE" | head -1
@@ -1636,6 +1642,7 @@ adopt_live_panel_route() {
     DEPLO_DOMAIN="$(grep '^DEPLO_DOMAIN=' "$ENV_FILE" | cut -d= -f2- || true)"
     return 0
   fi
+  LIVE_PANEL_HOST="$host"
   # A generated host is not a domain: storing it as one would pin the panel to an
   # IP that moves, or to the kind of address this run is moving off.
   is_generated_host "$host" || DEPLO_DOMAIN="$host"
@@ -1643,6 +1650,11 @@ adopt_live_panel_route() {
   [ "$entry" != web ] || PANEL_HTTPS=false
 }
 adopt_live_panel_route
+# The tunnel serves one name: it stays only while the panel stays on it.
+TRAEFIK_TUNNEL_SERVICE=""
+if [ -n "${DEPLO_DOMAIN:-}" ] && [ "$DEPLO_DOMAIN" = "${LIVE_PANEL_HOST:-}" ]; then
+  TRAEFIK_TUNNEL_SERVICE="$(live_tunnel_service)"
+fi
 
 # A bare address reads as a domain to the lexical check below, and no certificate
 # authority issues for one. The generated host is the better answer.
@@ -1653,7 +1665,9 @@ fi
 
 if is_real_domain "${DEPLO_DOMAIN:-}"; then
   DOMAIN_IPS="$(resolve_target "$DEPLO_DOMAIN" | tr '\n' ' ' | sed 's/ *$//' || true)"
-  if [ -z "$DOMAIN_IPS" ]; then
+  if [ -n "$TRAEFIK_TUNNEL_SERVICE" ]; then
+    ok "$DEPLO_DOMAIN $G_ARROW Cloudflare Tunnel"
+  elif [ -z "$DOMAIN_IPS" ]; then
     pf_warn "$DEPLO_DOMAIN does not resolve yet." \
       "Point its $DNS_RECORD record at $TARGET_IP. The dashboard answers on https://$FALLBACK_HOST meanwhile."
   elif printf '%s' " $DOMAIN_IPS " | grep -q " $TARGET_IP "; then
@@ -2105,6 +2119,8 @@ offline_router() {
 panel_router() { # $1 router name, $2 host
   local tls='            tls:\n              certResolver: letsencrypt\n' entry=websecure
   [ "$HTTPS_PORT" = 443 ] || tls='            tls: {}\n'
+  # Only Cloudflare reaches a tunnel's name, and it serves the certificate itself.
+  [ -z "${TRAEFIK_TUNNEL_SERVICE:-}" ] || [ "$1" != deplo-panel ] || tls='            tls: {}\n'
   # No `tls` key at all is what makes a route plain http - the opt-out the panel
   # writes, and which an update re-rendering it as websecure took away.
   [ "${PANEL_HTTPS:-true}" = true ] || { tls=''; entry=web; }
@@ -2240,6 +2256,7 @@ $TRAEFIK_CONFIG_MOUNT
       - /var/run/docker.sock:/var/run/docker.sock:ro
     networks:
       - deplo-socket
+${TRAEFIK_TUNNEL_SERVICE:-}
 $TRAEFIK_PANEL_CONFIG
 networks:
   deplo:
