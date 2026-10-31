@@ -37,6 +37,7 @@ import {
 import { gqlAction } from "@/lib/graphql-client";
 import type { ServerMetrics } from "@/lib/data/monitoring";
 import type { ServerStatus } from "@/lib/types/server";
+import type { AgentReach } from "@/lib/version";
 import { formatBytes, serverLabel } from "@/lib/utils";
 
 interface ServerLite {
@@ -46,6 +47,7 @@ interface ServerLite {
   ip: string;
   dockerVersion: string;
   isDeploHost: boolean;
+  agentReach: AgentReach;
 }
 
 const SERVER_FIELDS = `serverId online ts cpu cpuCores memUsed memTotal memPct

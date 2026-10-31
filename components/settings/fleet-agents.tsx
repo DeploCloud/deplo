@@ -15,6 +15,7 @@ import {
 } from "@/components/ui/dialog";
 import { gqlAction } from "@/lib/graphql-client";
 import type { AgentUpdateDTO } from "@/lib/data/servers/agent-update-state";
+import { updateReaches, type AgentReach } from "@/lib/version";
 import { AgentUpdateStatus } from "@/components/servers/agent-update-status";
 
 export interface FleetSummary {
@@ -25,7 +26,7 @@ export interface FleetSummary {
     id: string;
     name: string;
     version: string | null;
-    usable: boolean;
+    reach: AgentReach;
     update: AgentUpdateDTO | null;
   }[];
   updating: boolean;
@@ -44,7 +45,7 @@ const FLEET_QUERY = /* GraphQL */ `
         id
         name
         version
-        usable
+        reach
         update {
           running
           failed
@@ -127,6 +128,16 @@ export function FleetBehind({
 
 const BEHIND_SHOWN = 3;
 
+/** What Deplo does about the servers behind: an update only reaches one that has linked (ADR-0041). */
+export function behindDescription(behind: { reach: AgentReach }[]): string {
+  const reached = behind.filter((s) => updateReaches(s.reach)).length;
+  if (reached === behind.length)
+    return "Deplo updates each of them on its own, and retries a failed update for 24 hours.";
+  if (reached > 0)
+    return "Deplo updates the servers it can reach on its own, and retries a failed update for 24 hours. Each line says what the others need.";
+  return "Deplo can't reach these servers to update them. Each line says what brings one back.";
+}
+
 function BehindDialog({
   fleet,
   onSettled,
@@ -147,8 +158,7 @@ function BehindDialog({
             {fleet.behind.length} servers are behind v{fleet.expected}
           </DialogTitle>
           <DialogDescription>
-            Deplo updates each of them on its own, and retries a failed update
-            for 24 hours.
+            {behindDescription(fleet.behind)}
           </DialogDescription>
         </DialogHeader>
         <div className="max-h-80 space-y-2 overflow-y-auto">
@@ -168,11 +178,13 @@ function BehindLine({
   server: FleetSummary["behind"][number];
   onSettled: () => void;
 }) {
-  const failed = Boolean(server.update?.failed);
+  // A spinner only where Deplo is at work: nothing it does reaches one that cannot link, or has not yet.
+  const stalled =
+    Boolean(server.update?.failed) || !updateReaches(server.reach);
   return (
     <div className="space-y-1">
       <p className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm">
-        {failed ? (
+        {stalled ? (
           <TriangleAlert className="size-4 text-[var(--warning)]" />
         ) : (
           <Loader2 className="size-4 animate-spin" />
@@ -191,7 +203,7 @@ function BehindLine({
       <div className="pl-6 empty:hidden">
         <AgentUpdateStatus
           serverId={server.id}
-          usable={server.usable}
+          reach={server.reach}
           update={server.update}
           onSettled={onSettled}
         />

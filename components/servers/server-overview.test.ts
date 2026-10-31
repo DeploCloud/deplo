@@ -14,7 +14,6 @@ const server: ServerSummary = {
   name: "Main",
   ip: "192.0.2.10",
   host: "main.example",
-  agentPort: null,
   status: "online",
   cpuCores: 8,
   memoryMb: 16384,
@@ -29,7 +28,7 @@ const server: ServerSummary = {
   provisioning: false,
   agentVersion: "1.0.0",
   expectedAgentVersion: "1.0.0",
-  agentUsable: true,
+  agentReach: "usable",
   agentUpdate: null,
 };
 
@@ -106,7 +105,7 @@ test("no update button while Deplo updates the agent on its own", () => {
 
 test("Retry now appears only after a failed attempt, with the state line", () => {
   const html = render("", {
-    agentUsable: false,
+    agentReach: "updatable",
     agentUpdate: {
       running: false,
       failed: true,

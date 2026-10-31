@@ -187,7 +187,12 @@ const PreviewServerRef = builder
       id: t.exposeString("id"),
       name: t.exposeString("name"),
       address: t.exposeString("address"),
-      port: t.exposeInt("port", { nullable: true }),
+      port: t.int({
+        nullable: true,
+        deprecationReason:
+          "Always null: every server agent links in to Deplo (ADR-0040), so Deplo connects to no port. Goes in the next release.",
+        resolve: () => null,
+      }),
       role: t.field({ type: DeploMoveServerRoleEnum, resolve: (s) => s.role }),
       isPanelHost: t.exposeBoolean("isPanelHost", {
         description: "The machine the old Deplo itself runs on.",

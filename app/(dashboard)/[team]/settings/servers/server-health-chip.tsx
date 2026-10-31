@@ -34,10 +34,12 @@ const VARIANTS: Record<
   provisioning: "warning",
 };
 
-/** A fresh observation's tooltip. Every offline server says what to check, and only that. */
-export function healthTip(state: ServerHealthState): string {
-  const message =
-    state.status === "offline" ? LINK_OFFLINE_MESSAGE : state.message;
+/** A fresh observation's tooltip. Every offline server says what to check, and only that: `offlineAdvice`, from the page. */
+export function healthTip(
+  state: ServerHealthState,
+  offlineAdvice: string = LINK_OFFLINE_MESSAGE,
+): string {
+  const message = state.status === "offline" ? offlineAdvice : state.message;
   return [message, `Checked ${timeAgo(state.checkedAt!)}`]
     .filter(Boolean)
     .join(" · ");
@@ -46,9 +48,11 @@ export function healthTip(state: ServerHealthState): string {
 export function ServerHealthChip({
   serverId,
   fallback,
+  offlineAdvice,
 }: {
   serverId: string;
   fallback: ServerHealthState;
+  offlineAdvice?: string;
 }) {
   const { health, isChecking, now } = useServerHealth();
   const state = health(serverId) ?? fallback;
@@ -85,7 +89,7 @@ export function ServerHealthChip({
     );
   }
 
-  const tip = healthTip(state);
+  const tip = healthTip(state, offlineAdvice);
 
   // Online is the resting state: a chip that says "Online" next to a green dot says it twice.
   if (state.status === "online")

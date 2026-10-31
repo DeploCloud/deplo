@@ -19,15 +19,9 @@ import {
   isDeploHostServer,
 } from "@/lib/deploy/domains";
 import { serverLabel } from "@/lib/utils";
-import {
-  AGENT_VERSION,
-  agentUsable,
-  reportedAgentVersion,
-} from "@/lib/version";
-import {
-  dialedAgentPort,
-  serverAgentUpdate,
-} from "@/lib/data/servers/agent-maintenance";
+import { AGENT_VERSION, agentReach, reportedAgentVersion } from "@/lib/version";
+import { serverAgentUpdate } from "@/lib/data/servers/agent-maintenance";
+import { offlineAdvice } from "@/lib/data/server-health";
 import type { TeamOption } from "@/components/servers/server-team-access";
 import {
   ServerHealthProvider,
@@ -57,7 +51,7 @@ export default async function ServerDetailPage(
   if (server.importOnly) notFound();
 
   const expectedAgentVersion = AGENT_VERSION;
-  const [teamIds, teamsRaw, policy, runs, workloads, agentUpdate] =
+  const [teamIds, teamsRaw, policy, runs, workloads, agentUpdate, advice] =
     await Promise.all([
       getServerTeamIds(id),
       listAllTeamsForAdmin(),
@@ -65,6 +59,7 @@ export default async function ServerDetailPage(
       listCleanupRuns({ serverId: id }),
       listServerWorkloads(id),
       serverAgentUpdate(id),
+      offlineAdvice(server),
     ]);
 
   const [hydrated] = await hydrateServerSpecs([server]);
@@ -113,6 +108,7 @@ export default async function ServerDetailPage(
               <ServerHealthChip
                 serverId={server.id}
                 fallback={seed[server.id]}
+                offlineAdvice={advice}
               />
             </span>
             {isDeploHost && (
@@ -139,7 +135,6 @@ export default async function ServerDetailPage(
             name: serverLabel(hydrated),
             ip: hydrated.ip,
             host: hydrated.host,
-            agentPort: dialedAgentPort(hydrated),
             status: hydrated.status,
             cpuCores: hydrated.cpuCores,
             memoryMb: hydrated.memoryMb,
@@ -154,8 +149,10 @@ export default async function ServerDetailPage(
             provisioning: hydrated.status === "provisioning",
             agentVersion,
             expectedAgentVersion,
-            agentUsable:
-              !hydrated.agent?.certFingerprint || agentUsable(agentVersion),
+            // Nothing to refuse until its agent has enrolled.
+            agentReach: hydrated.agent?.certFingerprint
+              ? agentReach(hydrated)
+              : "usable",
             agentUpdate,
           }}
           teams={teams}

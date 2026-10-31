@@ -31,10 +31,12 @@ import {
   setPanelTunnel,
 } from "./instance-settings/panel-tunnel";
 import {
+  applyRecoveredPanelAddress,
   getPanelHttps,
   setPanelHttps,
   setPanelUrl,
 } from "./instance-settings/panel-route";
+import { requestPanelAddress } from "../../scripts/recover";
 import {
   getInstanceSettings,
   rememberPanelUrl,
@@ -415,4 +417,46 @@ test("a broken saved token still shows the tunnel, and says why its status is mi
   assert.equal(read.enabled, true);
   assert.equal(read.status, "unknown");
   assert.match(read.error ?? "", /refused the API token/);
+});
+
+test("a recovery onto another address turns the tunnel off, in Cloudflare too", async () => {
+  await turnOn();
+  await pg.exec("truncate table activities restart identity cascade;");
+  const asked = await requestPanelAddress("-");
+  const url = await applyRecoveredPanelAddress();
+  assert.equal(url, `https://${asked.domain}`);
+
+  assert.equal(panelTunnelToken(host.yaml), null, "the connector is gone");
+  const route = panelRoute(host.yaml)!;
+  assert.equal(route.domain, asked.domain);
+  assert.equal(route.certResolver, "letsencrypt");
+  assert.equal(cf.tunnels.size, 0);
+  assert.equal(cf.records.size, 0);
+  const settings = await asUser(ADMIN, getInstanceSettings);
+  assert.equal(settings.panelTunnelHostname, null);
+  assert.equal((await settingsRow()).panelTunnelApiTokenEnc, null);
+  const [entry] = await db
+    .select({ message: activities.message })
+    .from(activities);
+  assert.match(
+    entry.message,
+    /as deplo recover asked, and turned off its Cloudflare Tunnel$/,
+  );
+});
+
+test("a recovery onto the tunnel's own address keeps the tunnel", async () => {
+  await turnOn();
+  await requestPanelAddress("deplo.example.com");
+  assert.equal(await applyRecoveredPanelAddress(), "https://deplo.example.com");
+  assert.ok(panelTunnelToken(host.yaml), "the connector stays");
+  assert.equal(
+    panelRoute(host.yaml)?.certResolver,
+    null,
+    "and no certificate is ordered",
+  );
+  assert.equal(cf.tunnels.size, 1);
+  assert.equal(
+    (await asUser(ADMIN, getInstanceSettings)).panelTunnelHostname,
+    "deplo.example.com",
+  );
 });

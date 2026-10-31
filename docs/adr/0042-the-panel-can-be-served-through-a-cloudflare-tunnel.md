@@ -10,7 +10,7 @@ ADR-0040 took the incoming connection off every server except one: the machine r
 
 **The panel's own route stays, without a certificate resolver.** It keeps answering on the tunnel's name, but Let's Encrypt can only reach that name through Cloudflare, so ordering a certificate for it would only fail its challenge. The backup address is unchanged. While the tunnel is on, the panel's address and its HTTPS switch belong to it and refuse a direct change. Turning it off moves the panel to its backup address, or one the admin names, and is undone like any address move if that address does not answer. A failed setup undoes every step it took, in Cloudflare too, and it never deletes a DNS record that does not already point at this machine.
 
-**An update keeps it.** The installer re-renders the proxy stack on every update, so it carries the connector over as it finds it while the panel stays on the tunnel's name. `deplo recover panel-address` removes it, because recovery means getting off an address that stopped working.
+**An update keeps it.** The installer re-renders the proxy stack on every update, so it carries the connector over as it finds it while the panel stays on the tunnel's name. A `deplo recover panel-address` onto any other address turns it off as the panel starts, and deletes it in Cloudflare while the saved token still works, because recovery means getting off an address that stopped working.
 
 ## Considered options
 

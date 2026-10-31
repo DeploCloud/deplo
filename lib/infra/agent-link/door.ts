@@ -114,7 +114,7 @@ async function holdLink(
       serverName: "localhost",
       pinnedFingerprint: fingerprint,
     });
-    channel = openChannel(target, { linked: true });
+    channel = openChannel(target);
     const hello = await channel.hello(HELLO_TIMEOUT_MS);
     // Read before the second look, so a removal that lands after it still refuses this link.
     const generation = linkGeneration(serverId);

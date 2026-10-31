@@ -1,7 +1,6 @@
-import { test, before, after, beforeEach, afterEach, mock } from "node:test";
+import { test, before, after, beforeEach, afterEach } from "node:test";
 import assert from "node:assert/strict";
 import { webcrypto } from "node:crypto";
-import net from "node:net";
 
 import type { PGlite } from "@electric-sql/pglite";
 import * as x509 from "@peculiar/x509";
@@ -23,7 +22,7 @@ import { removeServer } from "../../data/servers/removal";
 import { runWithIdentity } from "../../auth/request-context";
 import type { HelloResponse } from "../../agent/gen/agent";
 import { mintBootstrap } from "../../agent/bootstrap";
-import { renewAgentCert } from "../../agent/cert-renewal";
+import { renewAgentCertIfDue } from "../../agent/cert-renewal";
 import { certFingerprint, issueAgentServerCert } from "../../agent/pki";
 import { AGENT_VERSION } from "../../version";
 import { connectAgent, openAgent } from "../agent-client/connect";
@@ -41,7 +40,7 @@ import {
 } from "../agent-client/fake-agent-test-helpers";
 import { HEALTH_MESSAGES, unreachableMessage } from "../server-health";
 import { startAgentLinkListener, stopAgentLinkListener } from "./listener";
-import { LINK_CLOSE, LINK_RATE_LIMIT, LINK_SETTLE_MS } from "./protocol";
+import { LINK_CLOSE, LINK_RATE_LIMIT } from "./protocol";
 import { onAgentLink } from "./registry";
 
 const SERVER = "srv_linked";
@@ -70,7 +69,6 @@ beforeEach(async () => {
     ip: "127.0.0.1",
     host: "127.0.0.1",
     agent: {
-      port: agent.port,
       certFingerprint: agent.fingerprint,
       certPem: agent.certPem,
       version: AGENT_VERSION,
@@ -108,6 +106,23 @@ async function makeCsr(): Promise<string> {
   return csr.toString("pem");
 }
 
+// A certificate inside the renewal window, so the sweep renews it now.
+async function expiringSoonPem(): Promise<string> {
+  const keys = (await webcrypto.subtle.generateKey({ name: "Ed25519" }, true, [
+    "sign",
+    "verify",
+  ])) as unknown as CryptoKeyPair;
+  const cert = await x509.X509CertificateGenerator.createSelfSigned({
+    serialNumber: "01",
+    name: "CN=deplo-agent",
+    notBefore: new Date(Date.now() - 3_600_000),
+    notAfter: new Date(Date.now() + 24 * 3_600_000),
+    keys,
+    signingAlgorithm: { name: "Ed25519" },
+  });
+  return cert.toString("pem");
+}
+
 function linkDown(serverId = SERVER): Promise<string> {
   return new Promise((resolve) => {
     const off = onAgentLink((e) => {
@@ -138,7 +153,6 @@ test("a linked agent below the minimum is refused at the gate, and still reachab
     ip: "127.0.0.1",
     host: "127.0.0.1",
     agent: {
-      port: old.port,
       certFingerprint: old.fingerprint,
       certPem: old.certPem,
       version: AGENT_VERSION,
@@ -168,12 +182,12 @@ test("the door turns away what it cannot trust before any handshake", async () =
 
   await db
     .update(servers)
-    .set({ agentPort: null })
+    .set({ agentCertFingerprint: null })
     .where(eq(servers.id, SERVER));
   assert.equal((await agent.link(door)).status, 404, "never called home");
   await db
     .update(servers)
-    .set({ agentPort: agent.port, agentCertFingerprint: "" })
+    .set({ agentCertFingerprint: "" })
     .where(eq(servers.id, SERVER));
   assert.equal((await agent.link(door)).status, 404, "pin withdrawn");
 });
@@ -343,8 +357,12 @@ test("a renewed certificate closes the link it verified, and the agent relinks w
   const link = await agent.link(door);
   await up;
   const old = agent.fingerprint;
+  await db
+    .update(servers)
+    .set({ agentCertPem: await expiringSoonPem() })
+    .where(eq(servers.id, SERVER));
 
-  await renewAgentCert(SERVER, ["127.0.0.1"]);
+  assert.equal((await renewAgentCertIfDue(SERVER)).renewed, true);
   assert.equal(await link.closed, LINK_CLOSE.revoked);
   assert.equal((await knock(door, { claim: old })).status, 404);
   up = linkUp();
@@ -400,40 +418,14 @@ test("server status hears a link come up and go down, and nothing for a replacem
   assert.deepEqual(events, [`up ${SERVER}`, `up ${SERVER}`, `down ${SERVER}`]);
 });
 
-test("a server whose agent has never linked is still dialed, for what brings it onto its link", async () => {
-  assert.equal(await helloOver(), AGENT_VERSION);
-  assert.equal(agent.connections().opened, 1);
-});
-
-async function stopListeningDirectly(): Promise<void> {
-  const nobody = net.createServer();
-  await new Promise<void>((r) => nobody.listen(0, "127.0.0.1", r));
-  const { port } = nobody.address() as net.AddressInfo;
-  await new Promise((r) => nobody.close(r));
-  await db
-    .update(servers)
-    .set({ agentPort: port })
-    .where(eq(servers.id, SERVER));
-}
-
-test("right after the panel starts, a server whose agent is relinking is waited for", async () => {
-  await stopListeningDirectly();
+test("right after the panel starts, a server whose agent is relinking is waited for, never dialed", async () => {
   const call = helloOver();
   await new Promise((r) => setTimeout(r, 300));
   const up = linkUp();
   await agent.link(door);
   await up;
   assert.equal(await call, AGENT_VERSION);
-});
-
-test("once the panel has settled, a server that never linked fails at once, as today", async (t) => {
-  await stopListeningDirectly();
-  mock.timers.enable({ apis: ["Date"], now: Date.now() + LINK_SETTLE_MS });
-  t.after(() => mock.timers.reset());
-
-  const started = performance.now();
-  await assert.rejects(connectAgent(SERVER), AgentUnreachableError);
-  assert.ok(performance.now() - started < 3_000);
+  assert.equal(agent.connections().opened, 0);
 });
 
 const stillOpen = (link: FakeLink) =>

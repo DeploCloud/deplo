@@ -6,7 +6,7 @@ export const INSTANCE: McpToolDef[] = [
     name: "get_instance",
     title: "Read this Deplo's own settings",
     description:
-      "The panel's address, version, log retention, and what Update installs: the newest release, or an update stop it has to pass first, with why and the servers it waits on. Also the last update rolled back, and why.",
+      "The panel's address, version, log retention, and what Update installs: the newest release, or an update stop it has to pass first, with why. Also the last update rolled back, and why.",
     group: "Instance",
     requires: "instanceAdmin",
     readOnly: true,
@@ -34,14 +34,6 @@ export const INSTANCE: McpToolDef[] = [
             version
             reason
             waiting
-            waitingOn {
-              id
-              name
-            }
-            leftBehind {
-              id
-              name
-            }
           }
           publishedAt
           url
@@ -78,53 +70,10 @@ export const INSTANCE: McpToolDef[] = [
             version
             reason
             waiting
-            waitingOn {
-              id
-              name
-            }
-            leftBehind {
-              id
-              name
-            }
           }
           publishedAt
           url
           canary
-          error
-        }
-      }
-    `,
-  }),
-  tool({
-    name: "leave_server_behind",
-    title: "Leave a server behind for an update",
-    description:
-      "Let the update stop pass without a server that has not connected to Deplo. It keeps its apps and settings, but needs its server agent reinstalled once Deplo updates past the stop.",
-    group: "Instance",
-    requires: "instanceAdmin",
-    destructive: true,
-    idempotent: true,
-    input: z.object({ id: serverId }),
-    query: /* GraphQL */ `
-      mutation McpLeaveServerBehind($id: String!) {
-        leaveServerBehind(id: $id) {
-          current
-          latest
-          updateAvailable
-          next
-          stop {
-            version
-            reason
-            waiting
-            waitingOn {
-              id
-              name
-            }
-            leftBehind {
-              id
-              name
-            }
-          }
           error
         }
       }

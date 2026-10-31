@@ -2,10 +2,11 @@ import "server-only";
 
 import { status as GrpcStatus, type ServiceError } from "@grpc/grpc-js";
 
+import { AGENT_REINSTALL_MESSAGE } from "../../agent-reachability";
 import { AGENT_TOO_OLD_MESSAGE, agentUsable } from "../../version";
 import { LINK_WAIT_MS } from "../agent-link/protocol";
 
-export { AGENT_TOO_OLD_MESSAGE };
+export { AGENT_REINSTALL_MESSAGE, AGENT_TOO_OLD_MESSAGE };
 
 export class AgentUnreachableError extends Error {
   constructor(
@@ -26,14 +27,10 @@ export class AgentOfflineError extends AgentUnreachableError {
   }
 }
 
-export const AGENT_NOT_LINKED_MESSAGE =
-  "This server can't connect to Deplo yet. Its server agent connects on its own once it is up to date: " +
-  "if it still can't in a few minutes, check that the server is connected to the internet.";
-
-/** A server that has never linked: its dial carries only what brings it onto its link (ADR-0041). */
-export class AgentNotLinkedError extends AgentUnreachableError {
+/** A server that cannot link, too old to or left behind on a version Deplo never read (ADR-0041): only a reinstall helps. */
+export class AgentNeedsReinstallError extends AgentUnreachableError {
   constructor() {
-    super(AGENT_NOT_LINKED_MESSAGE);
+    super(AGENT_REINSTALL_MESSAGE);
   }
 }
 
@@ -52,7 +49,7 @@ export function assertAgentUsable(agentVersion: string): void {
 
 export class AgentUpdateUnsupportedError extends Error {}
 
-// Raised before any agent is dialed, so a GitHub outage never counts against a server.
+// Raised before any agent is reached, so a GitHub outage never counts against a server.
 export class AgentReleaseUnavailableError extends Error {
   constructor() {
     super(

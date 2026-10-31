@@ -59,9 +59,7 @@ export async function seedServer(
       status: "online",
       ip: "10.0.0.1",
       dockerVersion: "27",
-      ...(opts.provisioned
-        ? { agentPort: 9443, agentCertFingerprint: `fp-${id}` }
-        : {}),
+      ...(opts.provisioned ? { agentCertFingerprint: `fp-${id}` } : {}),
       traefikEnabled: true,
       cpuCores: 4,
       memoryMb: 8192,

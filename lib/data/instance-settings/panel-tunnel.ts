@@ -36,6 +36,7 @@ import {
 } from "./panel-route";
 import {
   loadPanelTunnel,
+  retirePanelTunnel,
   savePanelTunnel,
   type StoredPanelTunnel,
 } from "./panel-tunnel-store";
@@ -273,7 +274,7 @@ export async function setPanelTunnel(input: {
     }
   });
 
-  const warning = stored ? await retire(stored, saved) : null;
+  const warning = stored ? await retirePanelTunnel(stored, saved) : null;
   await recordActivity(
     "instance",
     (stored
@@ -346,7 +347,7 @@ export async function disablePanelTunnel(
     });
   });
 
-  const warning = await retire(stored, null);
+  const warning = await retirePanelTunnel(stored, null);
   await recordActivity(
     "instance",
     `Turned off the panel's Cloudflare Tunnel and moved the panel to ${target}` +
@@ -357,26 +358,6 @@ export async function disablePanelTunnel(
     teamId,
   );
   return readPanelTunnel(warning);
-}
-
-// What the old tunnel left behind in Cloudflare once the panel no longer needs it; best effort.
-async function retire(
-  old: StoredPanelTunnel,
-  now: StoredPanelTunnel | null,
-): Promise<string | null> {
-  try {
-    const token = decryptSecretOrThrow(
-      old.apiTokenEnc,
-      "the old Cloudflare API token",
-    );
-    if (old.dnsRecordId && old.dnsRecordId !== now?.dnsRecordId)
-      await cloudflare.deleteDnsRecord(token, old.zoneId, old.dnsRecordId);
-    if (old.tunnelId !== now?.tunnelId)
-      await cloudflare.deleteTunnel(token, old.accountId, old.tunnelId);
-    return null;
-  } catch (e) {
-    return `Cloudflare still has the old tunnel for ${old.hostname}: ${messageOf(e)}. Delete it there.`;
-  }
 }
 
 async function applyStack(hostId: string, composeYaml: string): Promise<void> {

@@ -8,16 +8,9 @@ import {
   isDeploHostServer,
 } from "@/lib/deploy/domains";
 import { serverAddressChoices } from "@/lib/data/servers/addresses";
-import {
-  dialedAgentPort,
-  serverAgentUpdate,
-} from "@/lib/data/servers/agent-maintenance";
+import { serverAgentUpdate } from "@/lib/data/servers/agent-maintenance";
 import type { AgentUpdateDTO } from "@/lib/data/servers/agent-update-state";
-import {
-  AGENT_VERSION,
-  agentUsable,
-  reportedAgentVersion,
-} from "@/lib/version";
+import { AGENT_VERSION, agentReach, reportedAgentVersion } from "@/lib/version";
 import type { Server } from "@/lib/types/server";
 
 export const ServerStatusEnum = builder.enumType("ServerStatus", {
@@ -155,9 +148,10 @@ export const ServerRef = builder.objectRef<Server>("Server").implement({
     }),
     agentPort: t.int({
       nullable: true,
-      description:
-        "The port Deplo connects to this server's agent on. Null when Deplo connects to none: the agent links in to Deplo, so a new address saves without contacting the server, or no agent has called home yet. Read live, so for a few seconds after Deplo starts a server that links in may still show its old port.",
-      resolve: (s) => dialedAgentPort(s),
+      description: "Always null: Deplo connects to no server's agent.",
+      deprecationReason:
+        "Always null: every server agent links in to Deplo (ADR-0040), so Deplo connects to no port. Goes in the next release.",
+      resolve: () => null,
     }),
     agentVersion: t.string({
       nullable: true,
@@ -172,9 +166,8 @@ export const ServerRef = builder.objectRef<Server>("Server").implement({
     }),
     agentUsable: t.boolean({
       description:
-        "Whether this Deplo talks to the server's agent at all. False when the agent is older than the minimum this version of Deplo supports: everything on the server is refused until the agent updates, though its apps keep running. True while it is not provisioned yet.",
-      resolve: (s) =>
-        !s.agent?.certFingerprint || agentUsable(reportedAgentVersion(s)),
+        "Whether this Deplo talks to the server's agent at all. False when the agent is older than the minimum this version of Deplo supports, which it updates on its own; when the server has not connected to Deplo yet, which it does by itself once it can; or when it can never connect (its agent too old to, or left behind at an update stop on a version Deplo never read), which only reinstalling its server agent fixes. Everything on the server is refused meanwhile, though its apps keep running. True while it is not provisioned yet.",
+      resolve: (s) => !s.agent?.certFingerprint || agentReach(s) === "usable",
     }),
     agentUpdate: t.field({
       type: AgentUpdateRef,

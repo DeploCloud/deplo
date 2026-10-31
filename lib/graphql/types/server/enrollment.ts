@@ -128,32 +128,34 @@ builder.mutationFields((t) => ({
     nullable: true,
     authScopes: { instanceAdmin: true },
     description:
-      "Change a server's address - where its apps are reached, and the migration verb for a host whose IP changed. A server whose agent links in (`Server.agentPort` is null) is saved without Deplo contacting it. Any other server's agent must answer at the new address (same pinned certificate) before anything is saved, unless `force`. Returns a warning to surface, or null.",
+      "Change a server's address: where its apps are reached, and the migration verb for a host whose IP changed. Its agent links in, so the change is saved without Deplo contacting the server. Returns null.",
     args: {
       id: t.arg.string({ required: true }),
       address: t.arg.string({ required: true }),
       agentPort: t.arg.int({
         required: false,
-        description:
-          "Only for a server whose agent does not link in yet; ignored while `Server.agentPort` is null.",
+        deprecationReason:
+          "Ignored: every server agent links in to Deplo (ADR-0040), so Deplo connects to no port. Goes in the next release.",
       }),
-      force: t.arg.boolean({ required: false }),
+      force: t.arg.boolean({
+        required: false,
+        deprecationReason:
+          "Ignored: Deplo no longer contacts the server to save its address, so there is nothing to force.",
+      }),
       keepHost: t.arg.boolean({
         required: false,
         description:
           "Write only the address in use, keeping the one the server was registered at. The migration wizard's flag: a panel behind a proxy hands out the proxy's address, and the import still has to recognise the machine by the one it came from.",
       }),
     },
-    resolve: async (_r, args) =>
-      (
-        await updateServerAddress({
-          id: args.id,
-          address: args.address,
-          agentPort: args.agentPort ?? null,
-          force: args.force ?? false,
-          keepHost: args.keepHost ?? false,
-        })
-      ).warning,
+    resolve: async (_r, args) => {
+      await updateServerAddress({
+        id: args.id,
+        address: args.address,
+        keepHost: args.keepHost ?? false,
+      });
+      return null;
+    },
   }),
   removeServer: t.field({
     type: ServerRemovalRef,

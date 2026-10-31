@@ -1,17 +1,12 @@
 import "server-only";
 
-import { and, eq, isNotNull, isNull, sql } from "drizzle-orm";
+import { and, eq, isNull, sql } from "drizzle-orm";
 import { getDb } from "../../db/client";
 import { servers as serversTable } from "../../db/schema/control-plane/servers";
 import { nowIso } from "../../ids";
-import {
-  findServerForToken,
-  signBootstrapCsr,
-  DEFAULT_AGENT_PORT,
-} from "../../agent/bootstrap";
+import { findServerForToken, signBootstrapCsr } from "../../agent/bootstrap";
 import { dropAgentChannel } from "../../infra/agent-client/channel-pool";
 import { AGENT_VERSION, agentUpdateAvailable } from "../../version";
-import { tryPassThisStop } from "../update-stops/decision";
 import { agentSeen } from "./agent-update-state";
 import { agentLinkUrl } from "./panel-address";
 import { listAllServers } from "./roster";
@@ -19,7 +14,6 @@ import { listAllServers } from "./roster";
 export interface BootstrapCallHome {
   token: string;
   csrPem: string;
-  agentPort?: number;
   advertisedHost?: string;
 }
 
@@ -36,8 +30,6 @@ export async function completeBootstrap(
   const server = findServerForToken(await listAllServers(), call.token);
   const dialHosts = [server.ip, server.host].filter(Boolean);
   const signed = await signBootstrapCsr(call.csrPem, dialHosts);
-  const port =
-    call.agentPort && call.agentPort > 0 ? call.agentPort : DEFAULT_AGENT_PORT;
   // Before the token is spent: an answer the agent never gets would leave it nothing to retry with.
   const linkUrl = await agentLinkUrl(server);
 
@@ -46,7 +38,6 @@ export async function completeBootstrap(
     .update(serversTable)
     .set({
       bootstrapUsedAt: now,
-      agentPort: port,
       agentCertFingerprint: signed.fingerprint,
       agentCertPem: signed.certPem,
       agentVersion: "",
@@ -73,34 +64,24 @@ export async function serverPinnedTo(
   const [row] = await getDb()
     .select({ id: serversTable.id })
     .from(serversTable)
-    .where(
-      and(
-        eq(serversTable.agentCertFingerprint, fingerprint),
-        isNotNull(serversTable.agentPort),
-      ),
-    )
+    .where(eq(serversTable.agentCertFingerprint, fingerprint))
     .limit(1);
   return row ?? null;
 }
 
 /** Its first verified link, kept for good; a Deplo move never inserts servers, so the freeze does not apply. */
 export async function recordFirstLink(serverId: string): Promise<void> {
-  let first = false;
   try {
-    const set = await getDb()
+    await getDb()
       .update(serversTable)
       .set({ firstLinkedAt: nowIso() })
       .where(
         and(eq(serversTable.id, serverId), isNull(serversTable.firstLinkedAt)),
-      )
-      .returning({ id: serversTable.id });
-    first = set.length > 0;
+      );
   } catch (e) {
     // The next link it opens records it.
     console.error(`[deplo] could not record ${serverId}'s first link:`, e);
   }
-  // The last server to connect passes this release's update stop now; failing that, the next update check does.
-  if (first) await tryPassThisStop();
 }
 
 export function observedTraefik(hello: {
@@ -121,7 +102,7 @@ export async function markServerSeen(
   try {
     const set: Record<string, unknown> = { lastSeenAt: nowIso() };
     if (agentVersion)
-      set.agentVersion = sql`case when ${serversTable.agentPort} is not null then ${agentVersion} else ${serversTable.agentVersion} end`;
+      set.agentVersion = sql`case when ${serversTable.agentCertFingerprint} is not null then ${agentVersion} else ${serversTable.agentVersion} end`;
     if (typeof traefikRunning === "boolean")
       set.traefikEnabled = traefikRunning;
     if (dockerVersion) set.dockerVersion = dockerVersion;

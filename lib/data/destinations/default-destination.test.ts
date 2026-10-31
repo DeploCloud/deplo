@@ -45,7 +45,6 @@ async function seedBackupCapableServer(): Promise<void> {
     ip: "10.0.0.9",
     host: "10.0.0.9",
     agent: {
-      port: 9443,
       certFingerprint: "sha256:pinned",
       certPem: "-----BEGIN CERTIFICATE-----",
       version: "1.20.0",

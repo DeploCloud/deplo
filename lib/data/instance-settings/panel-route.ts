@@ -1,5 +1,7 @@
 import "server-only";
 
+import { eq } from "drizzle-orm";
+
 import { getDb } from "../../db/client";
 import { instanceSettings } from "../../db/schema/control-plane/instance";
 import { getCurrentUser } from "../../auth/current-user";
@@ -34,8 +36,17 @@ import {
   passkeysBoundToThisAddress,
 } from "./panel-address-impact";
 import { forgetRoutedFallback, rememberRoutedFallback } from "./panel-fallback";
-import { TUNNEL_SERVES_PANEL, panelTunnelHostname } from "./panel-tunnel-store";
+import {
+  TUNNEL_SERVES_PANEL,
+  loadPanelTunnel,
+  panelTunnelHostname,
+  retirePanelTunnel,
+} from "./panel-tunnel-store";
+import { withPanelTunnel } from "../../deploy/panel-tunnel-stack";
 import { whilePanelAddressesChange } from "../servers/link-addresses";
+import { instanceFrozen } from "../deplo-move/freeze";
+import { waitForLink } from "../../infra/agent-link/registry";
+import { LINK_SETTLE_MS } from "../../infra/agent-link/protocol";
 import {
   panelCertificateTrusted,
   probePanel,
@@ -378,6 +389,100 @@ async function movePanelRoute(url: string): Promise<void> {
       probe: () => probeUntilAnswers(url),
     });
   });
+}
+
+/**
+ * The move `deplo recover panel-address` left (scripts/recover.ts), made at start over the link
+ * the Deplo host's agent opens over loopback, which a broken public address never touches.
+ * Returns the panel's new address, or null when nothing was asked.
+ */
+export async function applyRecoveredPanelAddress(): Promise<string | null> {
+  const [asked] = await getDb()
+    .select({
+      domain: instanceSettings.panelMoveDomain,
+      https: instanceSettings.panelMoveHttps,
+    })
+    .from(instanceSettings)
+    .where(eq(instanceSettings.id, SETTINGS_ID));
+  if (!asked?.domain || (await instanceFrozen())) return null;
+  const domain = asked.domain;
+  const host = await requireDeploHost();
+  // A tunnel serves one name: a recovery onto any other turns it off.
+  const tunnel = await loadPanelTunnel();
+  const keepsTunnel = tunnel?.hostname === domain;
+  // Right after a restart, the host's agent is still on its way back.
+  await waitForLink(host.id, LINK_SETTLE_MS);
+
+  const { fetchHostInfo, withTraefikStackLock } =
+    await import("../../infra/agent-client/host-ops");
+  const url = await withTraefikStackLock(host.id, async () => {
+    const yaml = (await fetchHostInfo(host.id)).traefikComposeYaml;
+    const current = yaml ? panelRoute(yaml) : null;
+    // Asked of a panel Deplo does not route: nothing will ever make this move.
+    if (!current) return null;
+    const https = keepsTunnel || (asked.https ?? current.https);
+    const next: PanelRoute = {
+      ...current,
+      domain,
+      https,
+      certResolver:
+        https && !keepsTunnel
+          ? (current.certResolver ?? stackCertResolver(yaml))
+          : null,
+    };
+    const url = `${https ? "https" : "http"}://${domain}`;
+    await whilePanelAddressesChange({ url }, async () => {
+      await applyPanelRoute(
+        host.id,
+        tunnel && !keepsTunnel ? withPanelTunnel(yaml, null) : yaml,
+        next,
+        "The proxy on this server refused the new panel address",
+      );
+      await rememberPanelUrl(url);
+    });
+    return url;
+  });
+  const dropsTunnel = !!url && !!tunnel && !keepsTunnel;
+
+  const now = nowIso();
+  const set = {
+    panelMoveDomain: null,
+    panelMoveHttps: null,
+    updatedAt: now,
+    ...(url && isPanelFallbackHost(domain)
+      ? { panelFallbackDisabled: false }
+      : {}),
+    ...(dropsTunnel
+      ? {
+          panelTunnelHostname: null,
+          panelTunnelAccountId: null,
+          panelTunnelZoneId: null,
+          panelTunnelId: null,
+          panelTunnelDnsRecordId: null,
+          panelTunnelApiTokenEnc: null,
+        }
+      : {}),
+  };
+  await getDb()
+    .update(instanceSettings)
+    .set(set)
+    .where(eq(instanceSettings.id, SETTINGS_ID));
+  if (!url) {
+    console.error(
+      `[deplo] deplo recover asked to move the panel to ${domain}, but ${host.name} does not publish it through a route Deplo manages.`,
+    );
+    return null;
+  }
+  const left =
+    dropsTunnel && tunnel ? await retirePanelTunnel(tunnel, null) : null;
+  await recordActivity(
+    "instance",
+    `Moved the panel to ${url}, as deplo recover asked` +
+      (dropsTunnel ? ", and turned off its Cloudflare Tunnel" : "") +
+      (left ? ` (${left})` : ""),
+    "Deplo",
+  );
+  return url;
 }
 
 export async function moveWithRollback(opts: {

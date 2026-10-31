@@ -3,12 +3,7 @@ import assert from "node:assert/strict";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 
-import { renderServerView } from "@/components/servers/server-test-helpers";
-import {
-  heroState,
-  RefusedUpdateNotice,
-  StopServers,
-} from "./deplo-updates-tab";
+import { heroState, RefusedUpdateNotice } from "./deplo-updates-tab";
 import type { FleetSummary } from "./fleet-agents";
 
 const fleet = (over: Partial<FleetSummary> = {}): FleetSummary => ({
@@ -42,7 +37,7 @@ const behind = (failed: boolean) => ({
   id: "s1",
   name: "edge-1",
   version: "0.4.0",
-  usable: true,
+  reach: "usable" as const,
   update: failed
     ? {
         running: false,
@@ -193,38 +188,4 @@ test("an update the installer rolled back is named with its reason", () => {
   assert.match(text("v0.7.0"), /The update to Deplo v0\.7\.0 was rolled back/);
   assert.ok(text("v0.7.0").includes(reason));
   assert.match(text(null), /An update was rolled back/);
-});
-
-const waitingStop = (over = {}) => ({
-  version: "v0.6.0",
-  reason:
-    "Deplo v0.7.0 becomes available once v0.6.0 has finished getting ready.",
-  waiting: true,
-  waitingOn: [
-    { id: "s1", name: "edge-1" },
-    { id: "s2", name: "edge-2" },
-  ],
-  leftBehind: [{ id: "s3", name: "old-box" }],
-  ...over,
-});
-const stopText = (stop: ReturnType<typeof waitingStop>) =>
-  renderServerView(createElement(StopServers, { stop, onLeft() {} }))
-    .replace(/<[^>]+>/g, "")
-    .replace(/&#x27;/g, "'");
-
-test("on the stop, each server still waiting to connect is named, with a way to leave it behind", () => {
-  const text = stopText(waitingStop());
-  assert.match(text, /edge-1 hasn't connected to Deplo yet/);
-  assert.match(text, /edge-2 hasn't connected to Deplo yet/);
-  assert.equal(text.match(/Leave behind/g)?.length, 2);
-  assert.match(
-    text,
-    /old-box was left behind: it needs its server agent reinstalled after the update/,
-  );
-  assert.doesNotMatch(text, /\bagent\b(?<!server agent)/);
-});
-
-test("nothing is listed once the stop no longer waits", () => {
-  assert.equal(stopText(waitingStop({ waiting: false })), "");
-  assert.equal(stopText(waitingStop({ waitingOn: [], leftBehind: [] })), "");
 });

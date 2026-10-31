@@ -103,7 +103,7 @@ async function seedFleet() {
     host: "203.0.113.10",
     dockerVersion: "27.3.1",
     hostArch: "amd64",
-    agent: { version: "0.4.0", port: 9443, certFingerprint: "fp", certPem: "" },
+    agent: { version: "0.4.0", certFingerprint: "fp", certPem: "" },
   });
   await seedServerRow(db, {
     id: "srv_build",
@@ -115,7 +115,6 @@ async function seedFleet() {
     buildOnly: true,
     agent: {
       version: "0.3.0",
-      port: 9443,
       certFingerprint: "fp2",
       certPem: "",
     },

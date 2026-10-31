@@ -2,10 +2,11 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 
 import { healthTip } from "@/app/(dashboard)/[team]/settings/servers/server-health-chip";
+import { HEALTH_MESSAGES } from "@/lib/infra/server-health";
 import {
+  AGENT_REINSTALL_MESSAGE,
   cantReachDeploMessage,
-  HEALTH_MESSAGES,
-} from "@/lib/infra/server-health";
+} from "@/lib/agent-reachability";
 
 test("an offline server that links in is told to check the machine, and nothing about ports", () => {
   const tip = healthTip({
@@ -17,6 +18,27 @@ test("an offline server that links in is told to check the machine, and nothing 
   });
   assert.ok(tip.startsWith(HEALTH_MESSAGES.offline), tip);
   assert.doesNotMatch(tip, /9443|port|firewall/i);
+});
+
+// The page passes what the recorder decides (offlineAdvice): never "is the machine on" for a server that never connected.
+test("an offline server only a reinstall or a connection brings back is told so", () => {
+  for (const advice of [
+    AGENT_REINSTALL_MESSAGE,
+    cantReachDeploMessage("panel.example.com"),
+  ]) {
+    const tip = healthTip(
+      {
+        status: "offline",
+        message: "The agent did not answer (connection refused).",
+        checkedAt: new Date().toISOString(),
+        traefikEnabled: true,
+        lastReachedAt: null,
+      },
+      advice,
+    );
+    assert.equal(tip.split(" · ")[0], advice);
+    assert.doesNotMatch(tip, /machine is on/);
+  }
 });
 
 test("an offline server's tip is only what to check, whatever an older check stored", () => {
@@ -35,18 +57,4 @@ test("an offline server's tip is only what to check, whatever an older check sto
     assert.equal(tip.split(" · ")[0], HEALTH_MESSAGES.offline, tip);
     assert.doesNotMatch(tip, /did not answer|refused|9443|firewall/i);
   }
-});
-
-test("a server that answers but never links is told it cannot reach Deplo, by the panel's name alone", () => {
-  const tip = healthTip({
-    status: "warning",
-    message: cantReachDeploMessage("panel.example.com"),
-    checkedAt: new Date().toISOString(),
-    traefikEnabled: true,
-    lastReachedAt: null,
-  });
-  assert.equal(
-    tip.split(" · ")[0],
-    "This server can't reach Deplo at panel.example.com. Check that it's connected to the internet.",
-  );
 });

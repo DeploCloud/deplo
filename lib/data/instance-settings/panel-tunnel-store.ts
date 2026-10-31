@@ -2,6 +2,8 @@ import "server-only";
 
 import { eq } from "drizzle-orm";
 
+import * as cloudflare from "../../cloudflare/tunnel-api";
+import { decryptSecretOrThrow } from "../../crypto";
 import { getDb } from "../../db/client";
 import { instanceSettings } from "../../db/schema/control-plane/instance";
 import { nowIso } from "../../ids";
@@ -70,4 +72,25 @@ export async function savePanelTunnel(
     .insert(instanceSettings)
     .values({ id: SETTINGS_ID, ...set })
     .onConflictDoUpdate({ target: instanceSettings.id, set });
+}
+
+// What the old tunnel left behind in Cloudflare once the panel no longer needs it; best effort.
+export async function retirePanelTunnel(
+  old: StoredPanelTunnel,
+  now: StoredPanelTunnel | null,
+): Promise<string | null> {
+  try {
+    const token = decryptSecretOrThrow(
+      old.apiTokenEnc,
+      "the old Cloudflare API token",
+    );
+    if (old.dnsRecordId && old.dnsRecordId !== now?.dnsRecordId)
+      await cloudflare.deleteDnsRecord(token, old.zoneId, old.dnsRecordId);
+    if (old.tunnelId !== now?.tunnelId)
+      await cloudflare.deleteTunnel(token, old.accountId, old.tunnelId);
+    return null;
+  } catch (e) {
+    const reason = e instanceof Error ? e.message : String(e);
+    return `Cloudflare still has the old tunnel for ${old.hostname}: ${reason}. Delete it there.`;
+  }
 }

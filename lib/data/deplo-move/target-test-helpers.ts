@@ -24,7 +24,6 @@ export function summary(
   return {
     name: over.id,
     address: "198.51.100.10",
-    port: 9443,
     role: "workloads",
     isPanelHost: false,
     enrolled: true,

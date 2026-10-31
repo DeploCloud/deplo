@@ -1,5 +1,5 @@
 {
-  "id": "c345b560-1447-44e7-bb08-699590b915fb",
+  "id": "52691263-990a-4077-befb-9899562b4488",
   "prevId": "66cadbbd-2a0c-4716-a19f-bc5e3035ce6f",
   "version": "7",
   "dialect": "postgresql",
@@ -10356,42 +10356,6 @@
           "primaryKey": false,
           "notNull": true,
           "default": false
-        },
-        "panel_tunnel_hostname": {
-          "name": "panel_tunnel_hostname",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "panel_tunnel_account_id": {
-          "name": "panel_tunnel_account_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "panel_tunnel_zone_id": {
-          "name": "panel_tunnel_zone_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "panel_tunnel_id": {
-          "name": "panel_tunnel_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "panel_tunnel_dns_record_id": {
-          "name": "panel_tunnel_dns_record_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "panel_tunnel_api_token_enc": {
-          "name": "panel_tunnel_api_token_enc",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
         },
         "vapid_public_key": {
           "name": "vapid_public_key",

@@ -8,7 +8,6 @@ import {
 } from "./agent-client/errors";
 import {
   classifyServerHealth,
-  isRetryableProbeFailure,
   unreachableMessage,
   HEALTH_MESSAGES,
 } from "./server-health";
@@ -126,22 +125,6 @@ test("the persisted message NEVER leaks the pinned fingerprint or the dial addre
       `message escaped the closed set: ${msg}`,
     );
   }
-});
-
-test("only a transport failure is worth a confirming retry", () => {
-  assert.equal(
-    isRetryableProbeFailure(
-      new AgentUnreachableError("blip", GrpcStatus.UNAVAILABLE),
-    ),
-    true,
-  );
-  assert.equal(
-    isRetryableProbeFailure(
-      new AgentUnreachableError("bad cert", GrpcStatus.UNAVAILABLE, true),
-    ),
-    false,
-  );
-  assert.equal(isRetryableProbeFailure(new Error("app error")), false);
 });
 
 test("a dead host is named as offline, with what to check and not where it was dialed", () => {

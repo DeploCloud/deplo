@@ -39,8 +39,13 @@ import { listAllTeamsForAdmin } from "@/lib/data/teams";
 import { isInstanceAdmin } from "@/lib/membership";
 import { hydrateServerSpecs } from "@/lib/data/monitoring";
 import { serverLabel } from "@/lib/utils";
-import { reportedAgentVersion } from "@/lib/version";
-import { AGENT_VERSION } from "@/lib/version";
+import {
+  AGENT_VERSION,
+  agentReach,
+  reportedAgentVersion,
+  type AgentReach,
+} from "@/lib/version";
+import { offlineAdvice } from "@/lib/data/server-health";
 import type { Server } from "@/lib/types/server";
 import type { TeamOption } from "@/components/servers/server-team-access";
 import { AgentVersionBadge } from "./agent-version-badge";
@@ -138,12 +143,16 @@ function ServerCard({
   accessTeamIds,
   isDeploHost,
   expected,
+  reach,
+  advice,
 }: {
   server: Server;
   specs: Promise<Server>;
   accessTeamIds: string[];
   isDeploHost: boolean;
   expected: string;
+  reach: AgentReach;
+  advice: string;
 }) {
   const agentVersion = reportedAgentVersion(server);
   const accessLabel = server.allTeams
@@ -166,6 +175,7 @@ function ServerCard({
                 traefikEnabled: server.traefikEnabled,
                 lastReachedAt: server.lastSeenAt ?? null,
               }}
+              offlineAdvice={advice}
             />
             {isDeploHost && (
               <Badge
@@ -202,7 +212,11 @@ function ServerCard({
             <span className="font-mono text-muted-foreground">{server.ip}</span>
             <CopyButton value={server.ip} className="size-6" />
           </span>
-          <AgentVersionBadge version={agentVersion} expected={expected} />
+          <AgentVersionBadge
+            version={agentVersion}
+            expected={expected}
+            reach={reach}
+          />
         </div>
         {server.uninstallPending && (
           <p className="text-xs text-muted-foreground">
@@ -233,11 +247,15 @@ function ServerListRow({
   accessTeamIds,
   isDeploHost,
   expected,
+  reach,
+  advice,
 }: {
   server: Server;
   accessTeamIds: string[];
   isDeploHost: boolean;
   expected: string;
+  reach: AgentReach;
+  advice: string;
 }) {
   const health = {
     status: server.status,
@@ -263,7 +281,11 @@ function ServerListRow({
         </span>
       </TableCell>
       <TableCell>
-        <ServerHealthChip serverId={server.id} fallback={health} />
+        <ServerHealthChip
+          serverId={server.id}
+          fallback={health}
+          offlineAdvice={advice}
+        />
       </TableCell>
       <TableCell>
         <ServerUseBadge use={serverUse(server)} />
@@ -279,6 +301,7 @@ function ServerListRow({
         <AgentVersionBadge
           version={reportedAgentVersion(server)}
           expected={expected}
+          reach={reach}
         />
       </TableCell>
       <TableCell className="text-muted-foreground">
@@ -339,6 +362,15 @@ export default async function ServersPage(
       Number(isDeploHostServer(a, selfAddrs)),
   );
 
+  // Nothing to refuse until its agent has enrolled.
+  const reachOf = (s: Server): AgentReach =>
+    s.agent?.certFingerprint ? agentReach(s) : "usable";
+  const advice = new Map(
+    await Promise.all(
+      servers.map(async (s) => [s.id, await offlineAdvice(s)] as const),
+    ),
+  );
+
   const teamRefs = new Map(
     teamsRaw.map((t) => [
       t.id,
@@ -362,6 +394,8 @@ export default async function ServersPage(
         accessTeamIds={serverTeamIds.get(server.id) ?? []}
         isDeploHost={isDeploHostServer(server, selfAddrs)}
         expected={expected}
+        reach={reachOf(server)}
+        advice={advice.get(server.id)!}
       />
     ),
     row: (
@@ -370,6 +404,8 @@ export default async function ServersPage(
         accessTeamIds={serverTeamIds.get(server.id) ?? []}
         isDeploHost={isDeploHostServer(server, selfAddrs)}
         expected={expected}
+        reach={reachOf(server)}
+        advice={advice.get(server.id)!}
       />
     ),
   }));

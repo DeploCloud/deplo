@@ -34,11 +34,11 @@ import {
 x509.cryptoProvider.set(webcrypto as unknown as Crypto);
 
 export interface FakeAgent {
-  /** Where the control plane dials it, on 127.0.0.1. */
+  /** Its own port on 127.0.0.1, as an agent installed before the link keeps until told to close it. */
   port: number;
   certPem: string;
   fingerprint: string;
-  /** TCP connections the control plane opened to it, and how many are still open. */
+  /** TCP connections anything opened to that port, and how many are still open: Deplo should open none. */
   connections(): { opened: number; open: number };
   /** Sends a line to every log stream a caller holds open. */
   log(line: string): void;

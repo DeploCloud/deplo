@@ -12,7 +12,7 @@ on the deeper docs it links (this file points; it does not restate them).
 - **`docs/agents/`**: `issue-tracker.md`, `triage-labels.md`, `domain.md`, `releasing.md`,
   `fleet-rollout.md`.
 
-**Every count in this file is a snapshot of a moving tree** (47 Capabilities, 121 tables, 194 MCP
+**Every count in this file is a snapshot of a moving tree** (47 Capabilities, 121 tables, 193 MCP
 tools, 42 ADRs, the pin list). The rule they carry is the durable part; re-derive the number
 before you rely on it, and fix the line here when it has moved:
 
@@ -173,7 +173,9 @@ lifecycle, backups, backup destinations, volume copy and DB provisioning all
 route `UI → GraphQL → lib/data/* → connectAgent(serverId) → agent`.
 
 - `lib/infra/agent-client/connect.ts` `connectAgent(serverId)` is the sole entry (mTLS, cert-fingerprint
-  pinned at bootstrap), over the server's agent link, or a direct dial until it links (ADR-0040).
+  pinned at bootstrap), over the server's agent link and nothing else (ADR-0040): it waits briefly
+  for a missing link, then the server is offline. Nothing dials a server, and no server of an
+  updated instance keeps a port open.
   The Deplo host is itself "agent 0", **no in-process localhost shortcut**; local and remote take
   the identical path.
 - **A backup destination is a bucket OR a server's disk** (ADR-0019). Which agent handles one
@@ -201,7 +203,11 @@ route `UI → GraphQL → lib/data/* → connectAgent(serverId) → agent`.
   health probe and the Deplo self-update may use it.
 - **A release can require an update stop** (ADR-0041): `deplo.updateStop` / `deplo.requiresStop`
   beside the pin. Everything that says what Update installs reads `updateInfo.next` from the one
-  decision in `lib/data/update-stops/decision.ts`, never `latest`.
+  decision in `lib/data/update-stops/decision.ts`, never `latest`. Every release requires v0.6.0 or
+  a later stop, since nothing dials a server past it: `lib/version.test.ts` fails on an empty one.
+  A server that can never link (too old to, or left behind there on a version Deplo never read) is
+  **unusable** until its server agent is reinstalled, and one that has not linked yet until it
+  does: `agentReach` in `lib/version.ts` says which, and `connectAgent` refuses only the first.
 - **Don't generalize the exceptions:** installed **Plugins** (ADR-0005) are host-managed containers
   where Deplo _does_ own the socket (`lib/plugins/runtime.ts`) - a Plugin is not an App. That
   code is **dormant**: the feature is deferred (**ADR-0013**), so nothing installs a plugin and
@@ -365,7 +371,7 @@ scripts/gen-schema.ts`. Both halves of that prefix are load-bearing: the shim
     Adding a tool is adding a row; adding an authorization check there is a bug - it belongs in
     `lib/data/*`. Regenerate nothing, but keep `lib/mcp/tools.test.ts` green: it validates every
     document against `schema.graphql`, which is what stops a renamed field from silently
-    breaking all 194 of them (`MCP_TOOLS` in `lib/mcp/tools/catalog.ts`).
+    breaking all 193 of them (`MCP_TOOLS` in `lib/mcp/tools/catalog.ts`).
 
 ## Data & mutations (the security boundary)
 

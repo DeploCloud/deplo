@@ -1,5 +1,5 @@
 // The wire between two Deplos during a Deplo move (ADR-0035). Both sides run this file; a change bumps MOVE_PROTOCOL.
-export const MOVE_PROTOCOL = 2;
+export const MOVE_PROTOCOL = 3;
 
 // A move code names itself, so it is never mistaken for an API token (`deplo_`).
 export const MOVE_CODE_PREFIX = "dmove_";
@@ -68,9 +68,8 @@ export type MoveWorkloadState =
 export interface MoveServerSummary {
   id: string;
   name: string;
-  // The address the agent is dialed at, and its port.
+  // Where its apps are reached.
   address: string;
-  port: number | null;
   role: "workloads" | "storage" | "build" | "import";
   // True when the server holds the old panel itself.
   isPanelHost: boolean;

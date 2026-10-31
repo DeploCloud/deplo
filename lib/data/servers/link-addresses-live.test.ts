@@ -82,7 +82,6 @@ beforeEach(async () => {
     ip: "127.0.0.1",
     host: "127.0.0.1",
     agent: {
-      port: agent.port,
       certFingerprint: agent.fingerprint,
       certPem: agent.certPem,
       version: AGENT_VERSION,
@@ -116,14 +115,6 @@ test("an agent whose link is verified with another pair is sent the panel's", as
   assert.deepEqual(agent.sentPairs(), [{ primary: PANEL, fallback: FALLBACK }]);
 });
 
-test("an agent reached over its own port is sent the pair it will link with", async () => {
-  const conn = await connectAgent(SERVER);
-  await conn.hello();
-  conn.close();
-  await eventually(() => agent.sentPairs().length > 0);
-  assert.deepEqual(agent.sentPairs(), [{ primary: PANEL, fallback: FALLBACK }]);
-});
-
 test("a server enrolled through a takeover's side door is sent the panel's pair when it links after the cutover", async (t) => {
   await db.insert(instanceSettings).values({
     id: "default",
@@ -145,7 +136,6 @@ test("a server enrolled through a takeover's side door is sent the panel's pair 
     ip: "198.51.100.7",
     host: "198.51.100.7",
     agent: {
-      port: enrolled.port,
       certFingerprint: enrolled.fingerprint,
       certPem: enrolled.certPem,
       version: AGENT_VERSION,

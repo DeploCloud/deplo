@@ -1440,8 +1440,22 @@
     {
       "idx": 205,
       "version": "7",
-      "when": 1793301170080,
-      "tag": "0205_panel_tunnel",
+      "when": 1793303634642,
+      "tag": "0205_server_agent_pin_only",
+      "breakpoints": true
+    },
+    {
+      "idx": 206,
+      "version": "7",
+      "when": 1793354313967,
+      "tag": "0206_panel_move_request",
+      "breakpoints": true
+    },
+    {
+      "idx": 207,
+      "version": "7",
+      "when": 1793473500746,
+      "tag": "0207_panel_tunnel",
       "breakpoints": true
     }
   ]

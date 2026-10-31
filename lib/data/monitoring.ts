@@ -102,8 +102,11 @@ async function measureRemote(
         hello.dockerVersion,
         hello.hostArch,
       );
-      const health = await healthFromHello(server, hello);
-      if (health) await recordServerHealth(server.id, health, observedAt);
+      await recordServerHealth(
+        server.id,
+        healthFromHello(server, hello),
+        observedAt,
+      );
     } catch {}
     return {
       serverId: server.id,
