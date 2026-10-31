@@ -1,6 +1,6 @@
 {
   "name": "deplo",
-  "version": "0.7.0",
+  "version": "0.8.0-canary.1",
   "deplo": {
     "agent": "0.5.1",
     "agentMin": "0.5.1-canary.10",
