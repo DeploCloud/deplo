@@ -19,6 +19,7 @@ import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { CloudflareIcon } from "@/components/shared/brand-icons";
 import { PanelAddressDialog } from "@/components/settings/panel-address-dialog";
+import { CLOUDFLARE_TOKEN_URL } from "@/lib/cloudflare/token-url";
 import { gqlAction } from "@/lib/graphql-client";
 import type { ActionResult } from "@/lib/result";
 import type { InstanceSettings } from "@/lib/data/instance-settings/settings-store";
@@ -38,14 +39,6 @@ export type PanelTunnel = {
 
 const FIELDS =
   "enabled hostname status connections error unavailable backupUrl warning";
-
-// Prefills the permissions Cloudflare documents keys for; the tunnel one is added by hand.
-const TOKEN_URL = `https://dash.cloudflare.com/profile/api-tokens?permissionGroupKeys=${encodeURIComponent(
-  JSON.stringify([
-    { key: "dns", type: "edit" },
-    { key: "zone", type: "read" },
-  ]),
-)}&accountId=*&zoneId=all&name=${encodeURIComponent("Deplo panel")}`;
 
 type Pending =
   { kind: "on"; host: string; token: string } | { kind: "off"; host: string };
@@ -363,7 +356,7 @@ function TunnelSetupDialog({
               <p className="mt-1 text-xs text-muted-foreground">
                 Needs Cloudflare Tunnel: Edit and DNS: Edit.{" "}
                 <a
-                  href={TOKEN_URL}
+                  href={CLOUDFLARE_TOKEN_URL}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="underline underline-offset-2 hover:text-foreground"
