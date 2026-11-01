@@ -2,7 +2,7 @@ import { isMap, isScalar, isSeq, parseDocument, type Document } from "yaml";
 
 import { LINK_PATH } from "../infra/agent-link/protocol";
 import { defaultLogging } from "./resources";
-import { linkTarget } from "./traefik-stack";
+import { linkTarget, TRAEFIK_CONTAINER } from "./traefik-stack";
 
 // KEEP IN SYNC with install.sh, which carries this service over on an update by its name.
 export const TUNNEL_SERVICE = "deplo-tunnel";
@@ -34,13 +34,49 @@ export function withPanelTunnel(
   currentYaml: string,
   token: string | null,
 ): string {
+  return withTunnelConnector(currentYaml, TUNNEL_SERVICE, token);
+}
+
+const PROXY_TARGET = `http://${TRAEFIK_CONTAINER}:80`;
+
+// An app's tunnel hands every hostname to the server's proxy, which routes it like any other domain.
+export function appTunnelIngress(hostnames: string[]): TunnelIngressRule[] {
+  const unique = [...new Set(hostnames.map((h) => h.toLowerCase()))].sort();
+  return [
+    ...unique.map((hostname) => ({ hostname, service: PROXY_TARGET })),
+    { service: "http_status:404" },
+  ];
+}
+
+// One connector per DNS provider account on a server. KEEP IN SYNC with install.sh, which carries it over by this prefix.
+export function appTunnelService(providerId: string): string {
+  return `deplo-dns-tunnel-${providerId.replace(/[^a-z0-9]/gi, "").toLowerCase()}`;
+}
+
+export function hasTunnelConnector(
+  currentYaml: string,
+  service: string,
+): boolean {
+  try {
+    return parseStack(currentYaml).hasIn(["services", service]);
+  } catch {
+    return false;
+  }
+}
+
+/** The stack with a Cloudflare Tunnel connector named `service`, or without it when `token` is null. */
+export function withTunnelConnector(
+  currentYaml: string,
+  service: string,
+  token: string | null,
+): string {
   const doc = parseStack(currentYaml);
   const services = doc.get("services", true);
   if (!isMap(services))
     throw new Error("This server's proxy configuration has no services in it");
 
   if (token === null) {
-    services.delete(TUNNEL_SERVICE);
+    services.delete(service);
     return doc.toString({ lineWidth: 0 });
   }
   const value = token.trim();
@@ -48,10 +84,10 @@ export function withPanelTunnel(
     throw new Error("Cloudflare returned a tunnel token Deplo cannot use");
 
   services.set(
-    TUNNEL_SERVICE,
+    service,
     doc.createNode({
       image: CLOUDFLARED_IMAGE,
-      container_name: TUNNEL_SERVICE,
+      container_name: service,
       restart: "unless-stopped",
       logging: defaultLogging(),
       command: ["tunnel", "--no-autoupdate", "run"],

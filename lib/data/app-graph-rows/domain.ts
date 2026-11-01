@@ -50,6 +50,7 @@ export function assembleDomain(
     ...(row.stripPrefix != null ? { stripPrefix: row.stripPrefix } : {}),
     ...(row.service != null ? { service: row.service } : {}),
     ...(row.proxied != null ? { proxied: row.proxied } : {}),
+    ...(row.tunnel ? { tunnel: true } : {}),
     ...(row.importedFrom != null ? { importedFrom: row.importedFrom } : {}),
     createdAt: row.createdAt,
   };
@@ -72,6 +73,7 @@ export function domainToRow(d: Domain): DomainInsert {
     stripPrefix: d.stripPrefix ?? null,
     service: d.service ?? null,
     proxied: d.proxied ?? null,
+    tunnel: d.tunnel ? true : null,
     // Left out on a new row, so the column default (on) decides.
     securityHeaders: d.securityHeaders,
     importedFrom: d.importedFrom ?? null,

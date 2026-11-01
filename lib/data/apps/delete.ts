@@ -21,6 +21,7 @@ import { deleteBackupsWithTarget } from "../backups/artifact-delete";
 import { mapLimit } from "../../utils";
 import { errMsg } from "./lifecycle";
 import type { App } from "../../types/app";
+import { deleteReleasedDns, takeAppDns } from "../dns-providers/provision";
 
 // The point of no return: from here every gate refuses the app, and nothing ever clears the stamp.
 async function markAppsDeleting(ids: string[]): Promise<void> {
@@ -73,7 +74,9 @@ async function destroyApp(project: App, actor: string): Promise<void> {
       }).catch(() => {});
     await removeUploads(id).catch(() => {});
 
+    const heldDns = await takeAppDns([id]).catch(() => []);
     await getDb().delete(appsTable).where(eq(appsTable.id, id));
+    await deleteReleasedDns(heldDns).catch(() => null);
     return ok;
   });
   const server = await getServerById(project.serverId);
@@ -165,7 +168,9 @@ async function destroyApps(apps: App[], actor: string): Promise<void> {
           reclaimVolumes: appOwnVolumeNames(project),
         }).catch(() => false);
         await removeUploads(project.id).catch(() => {});
+        const heldDns = await takeAppDns([project.id]).catch(() => []);
         await getDb().delete(appsTable).where(eq(appsTable.id, project.id));
+        await deleteReleasedDns(heldDns).catch(() => null);
         return ok;
       },
     );

@@ -23,6 +23,7 @@ export * from "./schema/control-plane/databases";
 export * from "./schema/control-plane/deplo-move";
 export * from "./schema/control-plane/deployments";
 export * from "./schema/control-plane/display-order";
+export * from "./schema/control-plane/dns-providers";
 export * from "./schema/control-plane/docker-cleanup";
 export * from "./schema/control-plane/domains";
 export * from "./schema/control-plane/env-vars";
@@ -60,6 +61,7 @@ import * as cpDatabases from "./schema/control-plane/databases";
 import * as cpDeploMove from "./schema/control-plane/deplo-move";
 import * as cpDeployments from "./schema/control-plane/deployments";
 import * as cpDisplayOrder from "./schema/control-plane/display-order";
+import * as cpDnsProviders from "./schema/control-plane/dns-providers";
 import * as cpDockerCleanup from "./schema/control-plane/docker-cleanup";
 import * as cpDomains from "./schema/control-plane/domains";
 import * as cpEnvVars from "./schema/control-plane/env-vars";
@@ -97,6 +99,7 @@ export const schema = {
   ...cpDeploMove,
   ...cpDeployments,
   ...cpDisplayOrder,
+  ...cpDnsProviders,
   ...cpDockerCleanup,
   ...cpDomains,
   ...cpEnvVars,

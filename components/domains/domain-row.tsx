@@ -57,7 +57,11 @@ import type { Domain } from "@/lib/types/domain";
 import type { StrayRecord } from "@/lib/deploy/cloudflare";
 import { DocsLink } from "@/components/ui/docs-link";
 
-type Row = Domain & { serviceName: string; appSlug: string };
+type Row = Domain & {
+  serviceName: string;
+  appSlug: string;
+  autoDns?: boolean;
+};
 
 // Keyed here, not in the page: keys don't survive the RSC boundary, so a row could never hide.
 export function DomainRows({
@@ -329,7 +333,15 @@ export function DomainRow({
               <Network className="size-3" />:{domain.port}
             </Badge>
           )}
-          {oneCloudflareChip ? (
+          {domain.tunnel ? (
+            <Badge
+              variant="outline"
+              className="gap-1 border-[#f38020]/40 bg-[#f38020]/15 text-[#f38020]"
+            >
+              <CloudflareIcon className="size-3" />
+              Cloudflare Tunnel
+            </Badge>
+          ) : oneCloudflareChip ? (
             <Badge
               variant="outline"
               className="gap-1 border-[#f38020]/40 bg-[#f38020]/15 text-[#f38020]"
@@ -376,7 +388,7 @@ export function DomainRow({
               </Badge>
             </SimpleTooltip>
           )}
-          {cloudflare && !oneCloudflareChip && (
+          {cloudflare && !oneCloudflareChip && !domain.tunnel && (
             <Badge
               variant="outline"
               className="gap-1 border-[#f38020]/40 bg-[#f38020]/15 text-[#f38020]"
@@ -625,6 +637,7 @@ export function DomainRow({
                   proxied={cloudflareLocked}
                   hostname={name}
                   serverIp={serverIp}
+                  tunnel={domain.tunnel === true}
                 />
               </div>
               <DialogFooter>

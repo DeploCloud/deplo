@@ -232,6 +232,7 @@ export function DomainConfigFields({
   proxied = false,
   hostname,
   serverIp,
+  tunnel = false,
 }: {
   state: DomainConfigState;
   onChange: (next: DomainConfigState) => void;
@@ -240,6 +241,8 @@ export function DomainConfigFields({
   proxied?: boolean;
   serverIp?: string | null;
   hostname?: string;
+  // Served through a Cloudflare Tunnel: Cloudflare owns HTTPS, so none of it is offered.
+  tunnel?: boolean;
 }) {
   const set = <K extends keyof DomainConfigState>(
     key: K,
@@ -266,13 +269,14 @@ export function DomainConfigFields({
 
   const host = (hostname ?? "").trim();
   const counterpart = wwwCounterpart(host);
-  const showWww = counterpart != null && (!hasPath || state.www !== "none");
+  const showWww =
+    !tunnel && counterpart != null && (!hasPath || state.www !== "none");
   const redirectingHost =
     state.www === "toCounterpart" ? host : (counterpart ?? "");
 
   return (
     <>
-      {proxied && <CloudflareNote serverIp={serverIp} />}
+      {proxied && !tunnel && <CloudflareNote serverIp={serverIp} />}
       {isCompose && (
         <div className="space-y-2">
           <FieldLabel
@@ -325,91 +329,95 @@ export function DomainConfigFields({
         />
       </div>
 
-      <FieldGroup icon={Lock} title="HTTPS">
-        <div className="space-y-2">
-          <FieldLabel
-            htmlFor={`${idPrefix}-cert`}
-            info={
-              proxied
-                ? "Cloudflare serves this domain's HTTPS, so its certificate is fixed. Change the domain, or re-check its DNS, to pick another."
-                : "Where this domain's HTTPS certificate comes from. A Cloudflare-proxied domain is set automatically; None serves plain HTTP."
-            }
-            docs="domains.certificates"
-          >
-            Certificate
-          </FieldLabel>
-          <Select
-            value={state.certProvider}
-            disabled={proxied}
-            onValueChange={(v) =>
-              onChange({
-                ...state,
-                certProvider: v as CertProvider,
-                manualEntrypoint: v === "none" ? false : state.manualEntrypoint,
-              })
-            }
-          >
-            <SelectTrigger id={`${idPrefix}-cert`}>
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {CERT_PROVIDERS.map((c) => (
-                <SelectItem key={c.value} value={c.value}>
-                  {c.label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
+      {!tunnel && (
+        <FieldGroup icon={Lock} title="HTTPS">
+          <div className="space-y-2">
+            <FieldLabel
+              htmlFor={`${idPrefix}-cert`}
+              info={
+                proxied
+                  ? "Cloudflare serves this domain's HTTPS, so its certificate is fixed. Change the domain, or re-check its DNS, to pick another."
+                  : "Where this domain's HTTPS certificate comes from. A Cloudflare-proxied domain is set automatically; None serves plain HTTP."
+              }
+              docs="domains.certificates"
+            >
+              Certificate
+            </FieldLabel>
+            <Select
+              value={state.certProvider}
+              disabled={proxied}
+              onValueChange={(v) =>
+                onChange({
+                  ...state,
+                  certProvider: v as CertProvider,
+                  manualEntrypoint:
+                    v === "none" ? false : state.manualEntrypoint,
+                })
+              }
+            >
+              <SelectTrigger id={`${idPrefix}-cert`}>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {CERT_PROVIDERS.map((c) => (
+                  <SelectItem key={c.value} value={c.value}>
+                    {c.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
 
-        <div className="space-y-2">
-          <FieldLabel
-            htmlFor={`${idPrefix}-entrypoint`}
-            info={
-              <>
-                The proxy entrypoint this domain binds to:{" "}
-                <code className="font-mono">websecure</code> (:443) serves
-                HTTPS, <code className="font-mono">web</code> (:80) serves plain
-                HTTP. Leave it Automatic and Deplo follows the certificate. Pick{" "}
-                <code className="font-mono">web</code> only when something in
-                front already terminates TLS, e.g. Cloudflare in Flexible mode.
-              </>
-            }
-            docs="domains.certificates"
-          >
-            Entrypoint
-          </FieldLabel>
-          <Select
-            value={entrypointValue}
-            disabled={noCert}
-            onValueChange={(v) =>
-              v === ENTRYPOINT_AUTO
-                ? onChange({ ...state, manualEntrypoint: false })
-                : onChange({
-                    ...state,
-                    manualEntrypoint: true,
-                    entrypoint: v as DomainEntrypoint,
-                  })
-            }
-          >
-            <SelectTrigger id={`${idPrefix}-entrypoint`}>
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value={ENTRYPOINT_AUTO}>
-                {noCert
-                  ? "Automatic - HTTP on web (:80)"
-                  : "Automatic - HTTPS on websecure (:443)"}
-              </SelectItem>
-              {ENTRYPOINTS.map((e) => (
-                <SelectItem key={e.value} value={e.value}>
-                  {e.label}
+          <div className="space-y-2">
+            <FieldLabel
+              htmlFor={`${idPrefix}-entrypoint`}
+              info={
+                <>
+                  The proxy entrypoint this domain binds to:{" "}
+                  <code className="font-mono">websecure</code> (:443) serves
+                  HTTPS, <code className="font-mono">web</code> (:80) serves
+                  plain HTTP. Leave it Automatic and Deplo follows the
+                  certificate. Pick <code className="font-mono">web</code> only
+                  when something in front already terminates TLS, e.g.
+                  Cloudflare in Flexible mode.
+                </>
+              }
+              docs="domains.certificates"
+            >
+              Entrypoint
+            </FieldLabel>
+            <Select
+              value={entrypointValue}
+              disabled={noCert}
+              onValueChange={(v) =>
+                v === ENTRYPOINT_AUTO
+                  ? onChange({ ...state, manualEntrypoint: false })
+                  : onChange({
+                      ...state,
+                      manualEntrypoint: true,
+                      entrypoint: v as DomainEntrypoint,
+                    })
+              }
+            >
+              <SelectTrigger id={`${idPrefix}-entrypoint`}>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value={ENTRYPOINT_AUTO}>
+                  {noCert
+                    ? "Automatic - HTTP on web (:80)"
+                    : "Automatic - HTTPS on websecure (:443)"}
                 </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-      </FieldGroup>
+                {ENTRYPOINTS.map((e) => (
+                  <SelectItem key={e.value} value={e.value}>
+                    {e.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        </FieldGroup>
+      )}
 
       <Accordion type="single" collapsible className="border-t border-border">
         <AccordionItem value="advanced" className="border-none">
@@ -427,23 +435,25 @@ export function DomainConfigFields({
           </AccordionTrigger>
 
           <AccordionContent className="space-y-6 pt-2 text-foreground">
-            <FieldGroup icon={Waypoints} title="Proxy">
-              <div className="flex items-center justify-between gap-3 rounded-md border border-border px-3 py-2">
-                <FieldLabel
-                  htmlFor={`${idPrefix}-proxied`}
-                  className="cursor-pointer font-normal"
-                  info="Turn this on when a CDN or another proxy answers for this domain. Deplo then routes it without waiting for a DNS check."
-                  docs="domains.dnsStates"
-                >
-                  Behind a proxy
-                </FieldLabel>
-                <Switch
-                  id={`${idPrefix}-proxied`}
-                  checked={state.proxied}
-                  onCheckedChange={(c) => set("proxied", c)}
-                />
-              </div>
-            </FieldGroup>
+            {!tunnel && (
+              <FieldGroup icon={Waypoints} title="Proxy">
+                <div className="flex items-center justify-between gap-3 rounded-md border border-border px-3 py-2">
+                  <FieldLabel
+                    htmlFor={`${idPrefix}-proxied`}
+                    className="cursor-pointer font-normal"
+                    info="Turn this on when a CDN or another proxy answers for this domain. Deplo then routes it without waiting for a DNS check."
+                    docs="domains.dnsStates"
+                  >
+                    Behind a proxy
+                  </FieldLabel>
+                  <Switch
+                    id={`${idPrefix}-proxied`}
+                    checked={state.proxied}
+                    onCheckedChange={(c) => set("proxied", c)}
+                  />
+                </div>
+              </FieldGroup>
+            )}
 
             <FieldGroup icon={ShieldCheck} title="Security">
               <div className="flex items-center justify-between gap-3 rounded-md border border-border px-3 py-2">

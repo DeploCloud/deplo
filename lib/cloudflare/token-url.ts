@@ -5,6 +5,10 @@ export const CLOUDFLARE_TOKEN_PERMISSIONS = [
   { key: "zone", type: "read" },
 ] as const;
 
-export const CLOUDFLARE_TOKEN_URL = `https://dash.cloudflare.com/profile/api-tokens?permissionGroupKeys=${encodeURIComponent(
-  JSON.stringify(CLOUDFLARE_TOKEN_PERMISSIONS),
-)}&accountId=*&zoneId=all&name=${encodeURIComponent("Deplo panel")}`;
+export function cloudflareTokenUrl(name: string): string {
+  return `https://dash.cloudflare.com/profile/api-tokens?permissionGroupKeys=${encodeURIComponent(
+    JSON.stringify(CLOUDFLARE_TOKEN_PERMISSIONS),
+  )}&accountId=*&zoneId=all&name=${encodeURIComponent(name)}`;
+}
+
+export const CLOUDFLARE_TOKEN_URL = cloudflareTokenUrl("Deplo panel");

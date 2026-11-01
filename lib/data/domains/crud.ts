@@ -48,10 +48,22 @@ import {
 } from "./route-config";
 import { syncProductionUrl, successorPrimary } from "./primary-domain";
 import { applyWwwRedirect, repointRedirects } from "./www-pairing";
+import {
+  managedDnsDomainIds,
+  provisionDomainDns,
+  deleteReleasedDns,
+  takeDomainDns,
+  rememberDomainDns,
+  swapDomainDns,
+  undoProvision,
+  type ProvisionedDns,
+} from "../dns-providers/provision";
 
 export async function listDomains(
   appId?: string,
-): Promise<(Domain & { serviceName: string; appSlug: string })[]> {
+): Promise<
+  (Domain & { serviceName: string; appSlug: string; autoDns: boolean })[]
+> {
   const teamId = await requireActiveTeamId();
   const scopedApps = await getDb()
     .select({
@@ -84,11 +96,17 @@ export async function listDomains(
       : []
     : [...teamApps.keys()];
   const domains = await loadDomainsForApps(ids);
+  const managed = await managedDnsDomainIds(domains.map((d) => d.id));
   return domains
     .sort((a, b) => Number(b.primary) - Number(a.primary))
     .map((x) => {
       const p = teamApps.get(x.appId);
-      return { ...x, serviceName: p?.name ?? "", appSlug: p?.slug ?? "" };
+      return {
+        ...x,
+        serviceName: p?.name ?? "",
+        appSlug: p?.slug ?? "",
+        autoDns: managed.has(x.id),
+      };
     });
 }
 
@@ -104,6 +122,7 @@ export interface DomainConfig {
   service?: string;
   www?: WwwRedirect;
   proxied?: boolean;
+  tunnel?: boolean;
 }
 
 export async function addDomain(
@@ -152,9 +171,10 @@ async function addDomainUnlocked(
     );
   await assertHostnameClaimable(clean, membership.teamId);
 
+  const tunnel = config.tunnel === true;
   await assertTeamLetsencryptQuota(
     membership.teamId,
-    config.certProvider ?? "none",
+    tunnel ? "cloudflare" : (config.certProvider ?? "none"),
   );
 
   const service = resolveApp(config.service, project, isCompose);
@@ -166,14 +186,20 @@ async function addDomainUnlocked(
   const existing = await loadDomainsForApp(appId);
   const isFirst = existing.length === 0;
   const sibling = existing.find((d) => d.name === clean && isRoutableDomain(d));
-  const proxied = config.proxied === true;
+  const proxied = config.proxied === true || tunnel;
+  const dns = await provisionDomainDns({
+    appId,
+    hostname: clean,
+    teamId: membership.teamId,
+    userId: user.id,
+    tunnel,
+  });
   const status =
     sibling?.status ??
     (await checkDomainDns(clean, await appServerAddresses(appId)));
-  const certProvider = certProviderForDns(
-    status,
-    config.certProvider ?? "none",
-  );
+  const certProvider = tunnel
+    ? "cloudflare"
+    : certProviderForDns(status, config.certProvider ?? "none");
   const domain: Domain = {
     id: newId("dom"),
     appId,
@@ -182,8 +208,8 @@ async function addDomainUnlocked(
     primary: isFirst,
     redirectTo: null,
     ssl: sibling ? sibling.ssl : isRoutableDomain({ status, proxied }),
-    port: config.port ?? portFor(project),
-    ...(config.entrypoint ? { entrypoint: config.entrypoint } : {}),
+    port: config.port ?? portFor(project!),
+    ...(config.entrypoint && !tunnel ? { entrypoint: config.entrypoint } : {}),
     certProvider,
     ...(middlewares.length ? { middlewares } : {}),
     securityHeaders: config.securityHeaders ?? true,
@@ -192,14 +218,31 @@ async function addDomainUnlocked(
     ...(stripPrefix ? { stripPrefix } : {}),
     ...(service ? { service } : {}),
     ...(proxied ? { proxied: true } : {}),
+    ...(tunnel ? { tunnel: true } : {}),
     createdAt: nowIso(),
   };
-  await insertDomain(getDb(), domain);
-  if (config.www && config.www !== "none")
+  try {
+    await insertDomain(getDb(), domain);
+  } catch (e) {
+    if (dns) await undoProvision(dns);
+    throw e;
+  }
+  if (dns) await rememberDomainDns(domain.id, dns);
+  if (config.www && config.www !== "none" && !tunnel)
     await applyWwwRedirect(domain, config.www, membership.teamId);
   await syncProductionUrl(appId);
-  await recordActivity("domain", `Added domain ${clean}`, user.name, appId);
+  await recordActivity(
+    "domain",
+    `Added domain ${clean}${dnsNote(dns, tunnel)}`,
+    user.name,
+    appId,
+  );
   return domain;
+}
+
+function dnsNote(dns: ProvisionedDns | null, tunnel: boolean): string {
+  if (tunnel) return ", served through a Cloudflare Tunnel";
+  return dns?.created ? " and created its DNS record in Cloudflare" : "";
 }
 
 export interface DomainPatch {
@@ -312,6 +355,27 @@ async function updateDomainUnlocked(
     next.proxied = patch.proxied || undefined;
     next.ssl = isRoutableDomain(next);
   }
+  // A tunnel decides its own HTTPS and proxying; the edit form does not offer them.
+  if (current.tunnel) {
+    next.proxied = true;
+    next.entrypoint = undefined;
+    next.certProvider = current.certProvider;
+  }
+  // An absent provider already reads as letsencrypt, so only a real switch counts against the cap.
+  if (
+    next.certProvider === "letsencrypt" &&
+    (current.certProvider ?? "letsencrypt") !== "letsencrypt"
+  )
+    await assertTeamLetsencryptQuota(membership.teamId, "letsencrypt");
+  const dns = renamed
+    ? await provisionDomainDns({
+        appId: current.appId,
+        hostname: nextName,
+        teamId: membership.teamId,
+        userId: user.id,
+        tunnel: current.tunnel === true,
+      })
+    : null;
   if (renamed) {
     next.status = await checkDomainDns(
       nextName,
@@ -324,14 +388,7 @@ async function updateDomainUnlocked(
     if (!chosen)
       next.certProvider = certProviderForDns(next.status, next.certProvider);
   }
-  // An absent provider already reads as letsencrypt, so only a real switch counts against the cap.
-  if (
-    next.certProvider === "letsencrypt" &&
-    (current.certProvider ?? "letsencrypt") !== "letsencrypt"
-  )
-    await assertTeamLetsencryptQuota(membership.teamId, "letsencrypt");
-
-  await getDb().transaction(async (tx) => {
+  const writeEdit = getDb().transaction(async (tx) => {
     await tx
       .update(domainsTable)
       .set(domainToRow(next))
@@ -349,7 +406,16 @@ async function updateDomainUnlocked(
     if (corsRows.length > 0)
       await tx.insert(domainCorsOriginsTable).values(corsRows);
   });
+  try {
+    await writeEdit;
+  } catch (e) {
+    if (dns) await undoProvision(dns);
+    throw e;
+  }
   const dom = next;
+  const dnsWarning = renamed
+    ? await swapDomainDns(id, current.name, dns)
+    : null;
   if (renamed)
     await repointRedirects(
       dom.appId,
@@ -362,9 +428,9 @@ async function updateDomainUnlocked(
   await syncProductionUrl(dom.appId);
   await recordActivity(
     "domain",
-    renamed
+    (renamed
       ? `Updated domain ${current.name} → ${dom.name}`
-      : `Updated domain ${dom.name}`,
+      : `Updated domain ${dom.name}`) + (dnsWarning ? ` (${dnsWarning})` : ""),
     user.name,
     dom.appId,
   );
@@ -381,6 +447,7 @@ export async function removeDomain(id: string): Promise<string> {
   const orphaned = dependents.filter((d) => d.source === "redirect");
   const freed = dependents.filter((d) => d.source !== "redirect");
   const orphanedIds = new Set(orphaned.map((d) => d.id));
+  const heldDns = await takeDomainDns([dom, ...orphaned].map((d) => d.id));
   const heir = dom.primary
     ? successorPrimary(
         rest.filter(
@@ -408,9 +475,10 @@ export async function removeDomain(id: string): Promise<string> {
         .where(eq(domainsTable.id, heir.id));
   });
   await syncProductionUrl(dom.appId);
+  const dnsWarning = await deleteReleasedDns(heldDns);
   await recordActivity(
     "domain",
-    `Removed domain ${dom.name}`,
+    `Removed domain ${dom.name}` + (dnsWarning ? ` (${dnsWarning})` : ""),
     user.name,
     dom.appId,
   );

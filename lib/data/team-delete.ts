@@ -42,6 +42,7 @@ import {
   type TeardownEntry,
 } from "./teardown-queue";
 import { removeUploads } from "../deploy/upload";
+import { deleteReleasedDns, takeAppDns } from "./dns-providers/provision";
 
 interface DeleteTeamContext {
   userId: string;
@@ -333,7 +334,11 @@ export async function deleteTeam(teamId: string): Promise<void> {
           }),
         )
       ).filter((x): x is NonNullable<typeof x> => x !== null);
+      const heldDns = await takeAppDns(services.map((a) => a.id)).catch(
+        () => [],
+      );
       await db.delete(teamsTable).where(eq(teamsTable.id, ctx.teamId));
+      void deleteReleasedDns(heldDns).catch(() => null);
 
       return {
         services,

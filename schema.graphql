@@ -571,6 +571,11 @@ type AuthPayload {
   viewer: Viewer
 }
 
+type AutoDnsZone {
+  provider: DnsProviderKind
+  zoneName: String
+}
+
 """A scheduled backup of a database or project to a backup destination."""
 type Backup {
   appId: ID
@@ -2053,6 +2058,38 @@ enum DeviceKind {
 }
 
 """
+A DNS provider account the caller connected for automatic DNS. Its API token belongs to the caller and is never returned.
+"""
+type DnsProvider {
+  createdAt: String
+  id: ID
+  provider: DnsProviderKind
+
+  """Whether every member of its teams may use it, not only the caller."""
+  shared: Boolean
+  teams: [DnsProviderTeam!]
+
+  """The domain whose names get their DNS made for them."""
+  zoneName: String
+}
+
+type DnsProviderCheck {
+  """Whether the token may also create Cloudflare Tunnels."""
+  tunnels: Boolean
+  zoneName: String
+}
+
+enum DnsProviderKind {
+  cloudflare
+}
+
+type DnsProviderTeam {
+  id: ID
+  name: String
+  slug: String
+}
+
+"""
 The instance-wide Docker cleanup schedule. One policy, not one per server: a host opts OUT via `excludedServerIds`, so a newly added server cannot silently go un-swept. Until it is saved once it reads as the defaults (ENABLED, daily at 04:00 UTC, every scope), so a fresh install sweeps its hosts without anyone finding this setting first; a saved row (including an explicit disable) always wins.
 """
 type DockerCleanupPolicy {
@@ -2150,6 +2187,11 @@ type Domain {
   appSlug: String
 
   """
+  Deplo created this domain's DNS record through a connected DNS provider, and removes it with the domain.
+  """
+  autoDns: Boolean
+
+  """
   How this domain's TLS certificate is issued. Set to `cloudflare` automatically when a DNS check finds the host proxied and it still had no certificate - Cloudflare already serves it over HTTPS. `custom` serves it over HTTPS from a certificate installed on the owning server (see `addServerCertificate`) and asks no ACME provider for one. Null on rows written before the field existed (they route as `letsencrypt`).
   """
   certProvider: CertProvider
@@ -2196,6 +2238,11 @@ type Domain {
   """
   status: DomainStatus
   stripPrefix: Boolean
+
+  """
+  Served through a Cloudflare Tunnel Deplo runs beside the owning server's proxy: Cloudflare holds the certificate, so HTTPS is not configurable, and the server needs no open port.
+  """
+  tunnel: Boolean
 }
 
 """
@@ -2214,6 +2261,11 @@ input DomainConfigInput {
   securityHeaders: Boolean
   service: String
   stripPrefix: Boolean
+
+  """
+  Serve it through a Cloudflare Tunnel. Needs a domain connected for automatic DNS that covers this name; certProvider, entrypoint, proxied and www are then ignored.
+  """
+  tunnel: Boolean
   www: DomainWwwRedirect
 }
 
@@ -3508,6 +3560,11 @@ type Mutation {
   ): [Server!]
 
   """
+  Check that an API token reaches this domain at the provider, without saving anything.
+  """
+  checkDnsProvider(apiToken: String!, provider: DnsProviderKind!, zone: String!): DnsProviderCheck
+
+  """
   Re-run the upstream release check ignoring the cache, and expire the changelog beside it.
   """
   checkForUpdates: UpdateInfo
@@ -4002,6 +4059,11 @@ type Mutation {
   """
   removeBasicAuthUser(id: String!): Boolean
 
+  """
+  Disconnect a domain from automatic DNS. Its Cloudflare Tunnels are torn down; returns what Deplo could not clean up, or null.
+  """
+  removeDnsProvider(id: String!): String
+
   """Remove the domain so it stops routing. Returns true."""
   removeDomain(id: String!): Boolean
 
@@ -4253,6 +4315,11 @@ type Mutation {
   START a sweep of this server now, with the policy's scopes - whether or not the schedule is enabled, and ignoring the exclusion list (which only governs the scheduled sweep). Returns IMMEDIATELY with the `running` run: the host keeps working in the background, so the caller never waits on a `docker rmi` sweep and closing the page cannot cancel it. Follow it on the `dockerCleanupRuns` subscription (or re-read the query); whatever the host fails at (unreachable, unprovisioned, an agent too old) lands on that run as `failed` with the reason. Only pre-flight problems error here: unknown server, nothing selected to reclaim, or a sweep already running on this host. Allow-listed: it never removes a container, a named volume, or anything a container still uses, so a stopped app and its data survive.
   """
   runDockerCleanupNow(serverId: String!): DockerCleanupRun
+
+  """
+  Connect a domain for automatic DNS in the given teams, or replace the token of one the caller already connected.
+  """
+  saveDnsProvider(apiToken: String!, provider: DnsProviderKind!, shared: Boolean!, teamIds: [String!]!, zone: String!): DnsProvider
 
   """Create a channel (omit id) or replace one. Returns the saved channel."""
   saveNotificationChannel(id: ID, input: JSON!): JSON
@@ -4720,6 +4787,9 @@ type Mutation {
   """
   updateDeplo: DeploUpdateStarted
 
+  """Change which teams may use a connected domain, and who in them."""
+  updateDnsProvider(id: String!, shared: Boolean!, teamIds: [String!]!): DnsProvider
+
   """
   Save the instance-wide cleanup policy. The cron is rejected (not repaired) when it does not parse - an unparseable schedule is a cleanup that silently never runs while the UI says it is enabled. The numeric bounds are clamped instead: there is no dangerous value of 'keep N images', only an unhelpful one.
   """
@@ -5109,6 +5179,11 @@ type Query {
   ): [App!]
 
   """
+  Domains whose names get their DNS created automatically when the caller adds them in the active team: their own, and ones shared with the team.
+  """
+  autoDnsZones: [AutoDnsZone!]
+
+  """
   How many stored backup artifacts (successful runs) one target has. Deleting the target removes them, so this is what that delete takes with it.
   """
   backupArtifactCount(targetId: String!, targetKind: BackupTargetKind!): Int
@@ -5255,6 +5330,14 @@ type Query {
     """Its clone URL, when the caller has one (else derived)."""
     url: String
   ): RecognizedFramework
+
+  """
+  The teams the caller may connect a DNS provider to: where they hold `manage_domains`.
+  """
+  dnsProviderTeamChoices: [DnsProviderTeam!]
+
+  """The DNS provider accounts the caller connected."""
+  dnsProviders: [DnsProvider!]
 
   """
   The instance-wide Docker cleanup policy. Never null: an instance that has never configured cleanup reads as the defaults - enabled, daily, every scope.

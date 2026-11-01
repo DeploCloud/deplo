@@ -123,6 +123,7 @@ export function Topbar({
 
 const SEGMENT_LABELS: Record<string, string> = {
   mcp: "MCP Server",
+  dns: "Automatic DNS",
   tokens: "API tokens",
 };
 

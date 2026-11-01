@@ -211,6 +211,28 @@ export async function register(): Promise<void> {
   } catch (e) {
     console.error("[deplo] Deplo move pause sweep startup failed:", e);
   }
+  // A Deplo update rewrites this host's proxy stack; apps' Cloudflare Tunnel connectors come back here.
+  {
+    const g = globalThis as { __deploTunnelRestore?: boolean };
+    if (!g.__deploTunnelRestore) {
+      g.__deploTunnelRestore = true;
+      const run = async () => {
+        const { instanceFrozen } = await import("./lib/data/deplo-move/freeze");
+        if (await instanceFrozen()) return;
+        const { restoreTunnelConnectors } =
+          await import("./lib/data/dns-providers/tunnels");
+        const n = await restoreTunnelConnectors();
+        if (n > 0)
+          console.log(`[deplo] restored ${n} Cloudflare Tunnel connector(s)`);
+      };
+      const tick = () =>
+        void run().catch((e) =>
+          console.error("[deplo] tunnel connector check failed:", e),
+        );
+      setInterval(tick, 10 * 60 * 1000).unref?.();
+      setTimeout(tick, 60_000).unref?.();
+    }
+  }
   {
     const g = globalThis as { __deploCertSweep?: boolean };
     if (!g.__deploCertSweep) {

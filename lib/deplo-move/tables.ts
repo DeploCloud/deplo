@@ -88,12 +88,17 @@ export const MOVE_TABLES: Readonly<Record<string, TablePolicy>> = {
   // Derived: the next deploy on the new Deplo takes them again.
   deployment_screenshots: { kind: "skip" },
   deployments: { kind: "copy", nullOnCopy: ["preview_id"] },
+  dns_provider_teams: COPY,
+  // A tunnel's connector runs in a server's proxy stack the old Deplo wrote; the new one makes its own.
+  dns_provider_tunnels: { kind: "skip" },
+  dns_providers: { kind: "copy", rekey: { api_token_enc: SECRET } },
   docker_cleanup_excluded_servers: COPY,
   docker_cleanup_policy: COPY,
   docker_cleanup_policy_scopes: COPY,
   docker_cleanup_run_items: COPY,
   docker_cleanup_runs: COPY,
   domain_cors_origins: COPY,
+  domain_dns_records: { kind: "copy", nullOnCopy: ["tunnel_id"] },
   domain_middlewares: COPY,
   domains: COPY,
   env_var_targets: COPY,

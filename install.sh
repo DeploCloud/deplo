@@ -1624,6 +1624,12 @@ live_tunnel_service() {
   [ -f "$TRAEFIK_COMPOSE" ] || return 0
   awk '$0 == "  deplo-tunnel:" { f = 1; print; next } f && !/^    / { exit } f' "$TRAEFIK_COMPOSE"
 }
+# Every app's Cloudflare Tunnel connector, carried over the same way: they serve apps, not the
+# panel, so they always stay. KEEP IN SYNC with appTunnelService in lib/deploy/panel-tunnel-stack.ts.
+live_dns_tunnel_services() {
+  [ -f "$TRAEFIK_COMPOSE" ] || return 0
+  awk '/^  deplo-dns-tunnel-[a-z0-9]+:$/ { f = 1; print; next } f && /^    / { print; next } { f = 0 }' "$TRAEFIK_COMPOSE"
+}
 live_acme_email() {
   [ -f "$TRAEFIK_COMPOSE" ] || return 0
   sed -n 's/.*--certificatesresolvers\.letsencrypt\.acme\.email=//p' "$TRAEFIK_COMPOSE" | head -1
@@ -1650,6 +1656,7 @@ adopt_live_panel_route() {
   [ "$entry" != web ] || PANEL_HTTPS=false
 }
 adopt_live_panel_route
+TRAEFIK_DNS_TUNNEL_SERVICES="$(live_dns_tunnel_services)"
 # The tunnel serves one name: it stays only while the panel stays on it.
 TRAEFIK_TUNNEL_SERVICE=""
 if [ -n "${DEPLO_DOMAIN:-}" ] && [ "$DEPLO_DOMAIN" = "${LIVE_PANEL_HOST:-}" ]; then
@@ -2257,6 +2264,7 @@ $TRAEFIK_CONFIG_MOUNT
     networks:
       - deplo-socket
 ${TRAEFIK_TUNNEL_SERVICE:-}
+${TRAEFIK_DNS_TUNNEL_SERVICES:-}
 $TRAEFIK_PANEL_CONFIG
 networks:
   deplo:
