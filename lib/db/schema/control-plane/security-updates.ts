@@ -229,26 +229,3 @@ export const securityIgnores = pgTable(
       .nullsNotDistinct(),
   ],
 );
-
-// A pull request Deplo opened to move one dependency to its fix, so it is offered once.
-export const securityPullRequests = pgTable(
-  "security_pull_requests",
-  {
-    appId: text("app_id")
-      .notNull()
-      .references(() => apps.id, { onDelete: "cascade" }),
-    teamId: text("team_id")
-      .notNull()
-      .references(() => teams.id, { onDelete: "cascade" }),
-    packageName: text("package_name").notNull(),
-    version: text("version").notNull(),
-    number: integer("number").notNull(),
-    url: text("url").notNull(),
-    createdBy: text("created_by").notNull(),
-    createdByUserId: text("created_by_user_id").references(() => users.id, {
-      onDelete: "set null",
-    }),
-    createdAt: isoTimestamptz("created_at").notNull(),
-  },
-  (t) => [primaryKey({ columns: [t.appId, t.packageName, t.version] })],
-);

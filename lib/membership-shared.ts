@@ -72,7 +72,6 @@ export const PROJECT_SCOPED_CAPABILITIES: Capability[] = [
   "open_app_console",
   "manage_crons",
   "ignore_security_updates",
-  "open_security_prs",
   "manage_domains",
   "manage_basic_auth",
   "manage_env",

@@ -423,7 +423,6 @@ export async function installationCloneUrl(
 export interface GithubAppAccess {
   missingCore: AccessRequirement[];
   missingPreviews: AccessRequirement[];
-  missingSecurityPrs: AccessRequirement[];
   previewReady: boolean;
   settingsUrl: string;
   ownerLogin: string;
@@ -477,13 +476,9 @@ export async function readAppAccess(
     const missingPreviews = missingAccess("github", granted, {
       previews: true,
     }).filter((r) => r.feature === "previews");
-    const missingSecurityPrs = missingAccess("github", granted, {
-      securityPrs: true,
-    }).filter((r) => r.feature === "security-prs");
     const value: GithubAppAccess = {
       missingCore,
       missingPreviews,
-      missingSecurityPrs,
       previewReady: missingCore.length === 0 && missingPreviews.length === 0,
       settingsUrl,
       ownerLogin,
@@ -643,105 +638,4 @@ export async function upsertPullRequestComment(opts: {
     );
     return null;
   }
-}
-
-// Raised when the installation has not accepted a permission the app now asks for.
-export class GithubAccessError extends Error {
-  constructor(readonly settingsUrl: string) {
-    super("GitHub refused: Deplo needs permission to write to this repository");
-  }
-}
-
-function installationSettingsUrl(i: GithubInstallation): string {
-  return i.accountType === "Organization"
-    ? `https://github.com/organizations/${i.accountLogin}/settings/installations/${i.installationId}`
-    : `https://github.com/settings/installations/${i.installationId}`;
-}
-
-// One commit with these files on top of baseCommit, on its own branch, and a pull request for it.
-export async function openPullRequestWithFiles(opts: {
-  installationId: string;
-  fullName: string;
-  base: string;
-  baseCommit: string;
-  branch: string;
-  message: string;
-  title: string;
-  body: string;
-  files: { path: string; content: string }[];
-}): Promise<{ number: number; url: string }> {
-  const { fullName, branch } = opts;
-  if (!OWNER_REPO_RE.test(fullName)) throw new Error("Invalid repository");
-  const token = await getInstallationToken(opts.installationId);
-  const send = async (path: string, method: string, body?: unknown) => {
-    const res = await githubFetch(`/repos/${fullName}${path}`, {
-      token,
-      method,
-      ...(body === undefined
-        ? {}
-        : {
-            headers: { "content-type": "application/json" },
-            body: JSON.stringify(body),
-          }),
-    });
-    if (res.status === 403) {
-      const found = await findInstallation(opts.installationId);
-      throw new GithubAccessError(
-        found
-          ? installationSettingsUrl(found.install)
-          : "https://github.com/settings/installations",
-      );
-    }
-    return res;
-  };
-  const json = async <T>(path: string, method = "GET", body?: unknown) => {
-    const res = await send(path, method, body);
-    if (!res.ok)
-      throw new Error(
-        `GitHub answered ${res.status} to ${method} ${path.split("?")[0]}`,
-      );
-    return (await res.json()) as T;
-  };
-
-  const owner = fullName.split("/")[0];
-  const open = await json<RawPullRequest[]>(
-    `/pulls?state=open&head=${encodeURIComponent(`${owner}:${branch}`)}`,
-  );
-  if (open[0]) return { number: open[0].number, url: open[0].html_url ?? "" };
-  const base = await json<{ tree: { sha: string } }>(
-    `/git/commits/${opts.baseCommit}`,
-  );
-  const tree = await json<{ sha: string }>("/git/trees", "POST", {
-    base_tree: base.tree.sha,
-    tree: opts.files.map((f) => ({
-      path: f.path,
-      mode: "100644",
-      type: "blob",
-      content: f.content,
-    })),
-  });
-  const commit = await json<{ sha: string }>("/git/commits", "POST", {
-    message: opts.message,
-    tree: tree.sha,
-    parents: [opts.baseCommit],
-  });
-  // A branch left by a closed pull request is moved, not refused.
-  const ref = await send("/git/refs", "POST", {
-    ref: `refs/heads/${branch}`,
-    sha: commit.sha,
-  });
-  if (ref.status === 422)
-    await json(`/git/refs/heads/${branch}`, "PATCH", {
-      sha: commit.sha,
-      force: true,
-    });
-  else if (!ref.ok)
-    throw new Error(`GitHub answered ${ref.status} creating ${branch}`);
-  const pr = await json<RawPullRequest>("/pulls", "POST", {
-    title: opts.title,
-    head: branch,
-    base: opts.base,
-    body: opts.body,
-  });
-  return { number: pr.number, url: pr.html_url ?? "" };
 }

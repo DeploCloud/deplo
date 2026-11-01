@@ -3,14 +3,10 @@ import { DatabaseTypeEnum } from "./enums";
 import {
   appSecurityUpdates,
   databaseSecurityUpdates,
-  type SecurityGroup,
   type SecurityUpdate,
   type SecurityUpdates,
 } from "@/lib/data/security-updates/read";
-import {
-  openSecurityPullRequest,
-  type OpenedPullRequest,
-} from "@/lib/data/security-updates/pull-request";
+import type { UpdateGroup } from "@/lib/security-updates/group";
 import {
   ignoreSecurityUpdate,
   unignoreSecurityUpdate,
@@ -101,34 +97,8 @@ const SecurityUpdateRef = builder
     }),
   });
 
-const SecurityPullRequestRef = builder
-  .objectRef<{ number: number; url: string }>("SecurityPullRequest")
-  .implement({
-    description: "A pull request Deplo opened with a dependency's fix.",
-    fields: (t) => ({
-      number: t.exposeInt("number"),
-      url: t.exposeString("url"),
-    }),
-  });
-
-const OpenedSecurityPullRequestRef = builder
-  .objectRef<OpenedPullRequest>("OpenedSecurityPullRequest")
-  .implement({
-    description:
-      "The pull request opened, or, when GitHub has not granted Deplo write access yet, where to grant it.",
-    fields: (t) => ({
-      number: t.exposeInt("number", { nullable: true }),
-      url: t.exposeString("url", { nullable: true }),
-      accessUrl: t.exposeString("accessUrl", {
-        nullable: true,
-        description:
-          "Set instead of a pull request: the GitHub page where Deplo's app is given Contents and Pull requests write access.",
-      }),
-    }),
-  });
-
 const SecurityUpdateGroupRef = builder
-  .objectRef<SecurityGroup>("SecurityUpdateGroup")
+  .objectRef<UpdateGroup<SecurityUpdate>>("SecurityUpdateGroup")
   .implement({
     description:
       "One security update as the dashboard lists it: a package of the app's own, or a whole image, with every advisory behind it.",
@@ -169,13 +139,6 @@ const SecurityUpdateGroupRef = builder
       advisories: t.field({
         type: [SecurityUpdateRef],
         resolve: (g) => g.items,
-      }),
-      pullRequest: t.field({
-        type: SecurityPullRequestRef,
-        nullable: true,
-        description:
-          "The pull request Deplo opened to move this package to `fixedVersion`.",
-        resolve: (g) => g.pullRequest,
       }),
     }),
   });
@@ -219,10 +182,6 @@ const SecurityUpdatesRef = builder
         type: [SecurityUpdateRef],
         description: "Every advisory, one row each.",
         resolve: (s) => s.updates,
-      }),
-      canOpenPullRequests: t.exposeBoolean("canOpenPullRequests", {
-        description:
-          "True for an app deployed from GitHub when the caller holds open_security_prs: openSecurityPullRequest works for its `code` and `build_only` npm packages.",
       }),
     }),
   });
@@ -344,17 +303,6 @@ builder.mutationFields((t) => ({
       });
       return true;
     },
-  }),
-  openSecurityPullRequest: t.field({
-    type: OpenedSecurityPullRequestRef,
-    authScopes: { capability: "open_security_prs" },
-    description:
-      "Open a pull request on an app's GitHub repository that moves one npm package to the version fixing its advisories: the dependency itself when the app lists it, an override when another package pulls it in. The lockfile is regenerated on the app's server with install scripts off. Asking again returns the open pull request. Recorded in Activity.",
-    args: {
-      appId: t.arg.id({ required: true }),
-      packageName: t.arg.string({ required: true }),
-    },
-    resolve: (_r, a) => openSecurityPullRequest(String(a.appId), a.packageName),
   }),
   setSecurityUpdatesEnabled: t.field({
     type: SecurityUpdatesStatusRef,

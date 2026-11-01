@@ -12,7 +12,6 @@ import { cn, plural } from "@/lib/utils";
 import { AdvisoryContext, AdvisoryList } from "./advisory-list";
 import { fixLine } from "./fix-line";
 import { IgnoreDialog } from "./ignore-dialog";
-import { PullRequestButton, type PullRequest } from "./pull-request-button";
 import { SecurityLevelBadge } from "./security-level";
 import type { Subject, Update } from "./types";
 
@@ -23,8 +22,6 @@ export function UpdateList({
   manyServices,
   subject,
   canIgnore,
-  canOpenPullRequests,
-  pullRequests,
   onChanged,
 }: {
   title: string;
@@ -33,8 +30,6 @@ export function UpdateList({
   manyServices: boolean;
   subject: Subject;
   canIgnore: boolean;
-  canOpenPullRequests: boolean;
-  pullRequests: Map<string, PullRequest | null>;
   onChanged: () => void;
 }) {
   const [ignoring, setIgnoring] = React.useState<UpdateGroup<Update> | null>(
@@ -73,36 +68,24 @@ export function UpdateList({
             newerTag={newerTag}
             manyServices={manyServices}
             action={
-              <>
-                {subject.appId && fixableInCode(g) ? (
-                  canOpenPullRequests || pullRequests.get(g.key) ? (
-                    <PullRequestButton
-                      appId={subject.appId}
-                      packageName={g.items[0].packageName}
-                      pullRequest={pullRequests.get(g.key) ?? null}
-                      onOpened={onChanged}
-                    />
-                  ) : null
-                ) : null}
-                {!canIgnore ? null : g.items.every((i) => i.ignored) ? (
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    disabled={pending}
-                    onClick={() => stopIgnoring(g)}
-                  >
-                    Stop ignoring
-                  </Button>
-                ) : (
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    onClick={() => setIgnoring(g)}
-                  >
-                    Ignore
-                  </Button>
-                )}
-              </>
+              !canIgnore ? null : g.items.every((i) => i.ignored) ? (
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  disabled={pending}
+                  onClick={() => stopIgnoring(g)}
+                >
+                  Stop ignoring
+                </Button>
+              ) : (
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => setIgnoring(g)}
+                >
+                  Ignore
+                </Button>
+              )
             }
           />
         ))}
@@ -126,13 +109,6 @@ export function UpdateList({
     </section>
   );
 }
-
-// A package of the app's own npm code, moved by a pull request.
-const fixableInCode = (g: UpdateGroup<Update>) =>
-  (g.fix === "code" || g.fix === "build_only") &&
-  !!g.fixedVersion &&
-  g.items[0].ecosystem === "npm" &&
-  !g.items.every((i) => i.ignored);
 
 // One advisory opens straight on osv.dev; several, or an image's, open a list of their own.
 function UpdateRow({
