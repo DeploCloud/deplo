@@ -25,3 +25,13 @@ test("entrance animations release their fill", () => {
   }
   assert.deepEqual(offenders, [], `use \`backwards\`: ${offenders.join(", ")}`);
 });
+
+test("touch screens cannot select text, but fields stay editable", () => {
+  const touch = css.match(
+    /@media \(hover: none\) and \(pointer: coarse\) \{([\s\S]*?)\n  \}/,
+  )?.[1];
+  assert.ok(touch, "the touch-only selection block is missing");
+  assert.match(touch, /body \{[^}]*user-select: none;/);
+  assert.match(touch, /body \{[^}]*-webkit-touch-callout: none;/);
+  assert.match(touch, /input,\s*textarea,[^{]*\{[^}]*user-select: text;/);
+});

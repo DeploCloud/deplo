@@ -405,6 +405,23 @@ html body[data-scroll-locked] {
   [role="button"]:not([aria-disabled="true"]) {
     cursor: pointer;
   }
+  /* On touch the dashboard reads like an app: no text selection, no long-press
+     copy. Fields stay selectable, or their caret could not be placed. */
+  @media (hover: none) and (pointer: coarse) {
+    body {
+      -webkit-user-select: none;
+      user-select: none;
+      -webkit-touch-callout: none;
+    }
+    input,
+    textarea,
+    [contenteditable]:not([contenteditable="false"]),
+    [contenteditable]:not([contenteditable="false"]) * {
+      -webkit-user-select: text;
+      user-select: text;
+      -webkit-touch-callout: default;
+    }
+  }
 }
 
 @utility container {
