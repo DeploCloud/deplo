@@ -71,6 +71,11 @@ export function fakeCloudflare(seed: Partial<FakeCloudflare> = {}): {
     }
     if (
       (m = path.match(/^\/accounts\/([^/]+)\/cfd_tunnel$/)) &&
+      method === "GET"
+    )
+      return ok([...cf.tunnels.keys()].map((id) => ({ id })));
+    if (
+      (m = path.match(/^\/accounts\/([^/]+)\/cfd_tunnel$/)) &&
       method === "POST"
     ) {
       const id = `tun-${++seq}`;

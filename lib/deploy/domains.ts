@@ -276,7 +276,10 @@ export function domainTlsConfig(domain: {
   name?: string;
   entrypoint?: DomainEntrypoint;
   certProvider?: CertProvider;
+  tunnel?: boolean;
 }): { entrypoint: string; tls: boolean; certResolver: string } {
+  // The tunnel's connector speaks plain HTTP to the proxy; Cloudflare serves the certificate.
+  if (domain.tunnel) return { entrypoint: "web", tls: false, certResolver: "" };
   // A row written before temporaryAddressTls existed: "custom" there only ever served a self-signed certificate.
   if (
     domain.certProvider === "custom" &&

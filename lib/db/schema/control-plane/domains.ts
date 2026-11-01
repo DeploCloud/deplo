@@ -33,6 +33,8 @@ export const domains = pgTable(
     stripPrefix: boolean("strip_prefix"),
     service: text("service"),
     proxied: boolean("proxied"),
+    // Served through a Cloudflare Tunnel: plain HTTP from the connector, Cloudflare holds the certificate.
+    tunnel: boolean("tunnel"),
     securityHeaders: boolean("security_headers").notNull().default(true),
     importedFrom: text("imported_from"),
     createdAt: isoTimestamptz("created_at").notNull(),

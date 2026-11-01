@@ -17,6 +17,7 @@ import "./types/database-link";
 import "./types/database-transfer";
 import "./types/deplo-move";
 import "./types/destination";
+import "./types/dns-provider";
 import "./types/domain";
 import "./types/enums";
 import "./types/env";

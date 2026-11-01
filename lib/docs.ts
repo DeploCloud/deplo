@@ -53,6 +53,7 @@ export const DOCS = {
   "domains.certificates": "guides/networking/domains-and-https#certificates",
   "domains.pathRouting": "guides/networking/domains-and-https#path-routing",
   "domains.redirects": "guides/networking/domains-and-https#redirects",
+  "domains.automaticDns": "guides/networking/automatic-dns",
   "domains.security":
     "guides/networking/domains-and-https#security-headers-and-cors",
   "domains.dnsRecord": "getting-started/add-a-domain#create-an-a-record",

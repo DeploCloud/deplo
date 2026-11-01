@@ -31,7 +31,11 @@ const DomainWwwRedirectEnum = builder.enumType("DomainWwwRedirect", {
   values: ["none", "toThis", "toCounterpart"] as const,
 });
 
-type DomainRow = Domain & { serviceName?: string; appSlug?: string };
+type DomainRow = Domain & {
+  serviceName?: string;
+  appSlug?: string;
+  autoDns?: boolean;
+};
 
 export const DomainRef = builder.objectRef<DomainRow>("Domain").implement({
   description: "A routable hostname attached to an app (Traefik router).",
@@ -86,6 +90,19 @@ export const DomainRef = builder.objectRef<DomainRow>("Domain").implement({
         "its URL https (the proxy terminates TLS). The declared twin of the " +
         "`cloudflare` status, which is detected from Cloudflare's published ranges.",
     }),
+    tunnel: t.boolean({
+      description:
+        "Served through a Cloudflare Tunnel Deplo runs beside the owning " +
+        "server's proxy: Cloudflare holds the certificate, so HTTPS is not " +
+        "configurable, and the server needs no open port.",
+      resolve: (d) => d.tunnel === true,
+    }),
+    autoDns: t.boolean({
+      description:
+        "Deplo created this domain's DNS record through a connected DNS " +
+        "provider, and removes it with the domain.",
+      resolve: (d) => d.autoDns === true,
+    }),
     middlewares: t.exposeStringList("middlewares", { nullable: true }),
     securityHeaders: t.boolean({
       description:
@@ -136,6 +153,13 @@ const DomainConfigInput = builder.inputType("DomainConfigInput", {
     stripPrefix: t.boolean({ required: false }),
     service: t.string({ required: false }),
     proxied: t.boolean({ required: false }),
+    tunnel: t.boolean({
+      required: false,
+      description:
+        "Serve it through a Cloudflare Tunnel. Needs a domain connected for " +
+        "automatic DNS that covers this name; certProvider, entrypoint, " +
+        "proxied and www are then ignored.",
+    }),
     www: t.field({ type: DomainWwwRedirectEnum, required: false }),
   }),
 });
@@ -205,6 +229,7 @@ builder.mutationFields((t) => ({
         stripPrefix: config?.stripPrefix ?? undefined,
         service: config?.service ?? undefined,
         proxied: config?.proxied ?? undefined,
+        tunnel: config?.tunnel ?? undefined,
         www: config?.www ?? undefined,
       };
       const domain = await addDomain(appId, name, cfg);

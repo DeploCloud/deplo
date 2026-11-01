@@ -11,6 +11,7 @@ import {
   Fingerprint,
   Bot,
   Cable,
+  Globe,
 } from "lucide-react";
 
 import { DeploMark } from "@/components/logo";
@@ -67,6 +68,13 @@ export const SETTINGS_NAV: NavSection[] = [
         icon: Bot,
         tooltip: "Connect your AI agents to this team over MCP",
         requiresAny: ["manage_mcp", "manage_team"],
+      },
+      {
+        label: "Automatic DNS",
+        href: "/settings/dns",
+        icon: Globe,
+        tooltip: "Let Deplo create the DNS records of your domains",
+        requires: "manage_domains",
       },
     ],
   },

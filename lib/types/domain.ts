@@ -27,6 +27,7 @@ export interface Domain {
   stripPrefix?: boolean;
   service?: string;
   proxied?: boolean;
+  tunnel?: boolean;
   createdAt: string;
 }
 

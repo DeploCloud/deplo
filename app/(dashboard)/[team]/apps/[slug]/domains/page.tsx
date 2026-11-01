@@ -3,6 +3,7 @@ import { getAppBySlug } from "@/lib/data/apps/listing";
 import { serverIpForApp } from "@/lib/data/servers/roster";
 import { listDomains } from "@/lib/data/domains/crud";
 import { domainDnsHints } from "@/lib/data/domains/dns-check";
+import { autoDnsZones } from "@/lib/data/dns-providers/provision";
 import { productionDomain } from "@/lib/deploy/domains";
 import { composeServiceNames } from "@/lib/deploy/compose-stack/compose-read";
 import { redactComposeForDisplay } from "@/lib/deploy/compose-redact";
@@ -27,10 +28,12 @@ export default async function AppDomainsPage(
   const { slug } = await props.params;
   const project = await getAppBySlug(slug);
   if (!project) notFound();
-  const [domains, serverIp] = await Promise.all([
+  const [domains, serverIp, zones] = await Promise.all([
     listDomains(project.id),
     serverIpForApp(project.id),
+    autoDnsZones(),
   ]);
+  const autoDns = zones.map((z) => z.zoneName);
   const hints = await domainDnsHints(project.id, domains);
   const suggestedDomain = serverIp
     ? productionDomain(project.slug, serverIp)
@@ -69,6 +72,7 @@ export default async function AppDomainsPage(
               defaultPort: project.build.port,
             }}
             suggestedDomain={suggestedDomain}
+            autoDnsZones={autoDns}
           />
         </div>
 

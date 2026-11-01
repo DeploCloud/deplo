@@ -241,6 +241,7 @@ export async function pointAtTunnel(
   name: string,
   tunnelId: string,
   ours: (record: DnsRecord) => boolean,
+  comment = "Deplo panel",
 ): Promise<PointedRecord> {
   const target = `${tunnelId}${TUNNEL_TARGET_SUFFIX}`;
   const existing = await dnsRecords(token, zoneId, name);
@@ -262,13 +263,78 @@ export async function pointAtTunnel(
       content: target,
       proxied: true,
       ttl: 1,
-      comment: "Deplo panel",
+      comment,
     });
     return { id, replaced: existing, created: true };
   } catch (e) {
     await restoreDnsRecords(token, zoneId, existing);
     throw e;
   }
+}
+
+/**
+ * Points `name` straight at a server: an A record, and an AAAA when it has IPv6. Not proxied, so the
+ * server's own certificate check sees it. A record already pointing there is kept and not claimed.
+ */
+export async function pointAtAddress(
+  token: string,
+  zoneId: string,
+  name: string,
+  address: { v4: string | null; v6: string | null },
+  comment: string,
+): Promise<PointedRecord | null> {
+  const existing = await dnsRecords(token, zoneId, name);
+  const wanted = [
+    ...(address.v4 ? [{ type: "A", content: address.v4 }] : []),
+    ...(address.v6 ? [{ type: "AAAA", content: address.v6 }] : []),
+  ];
+  if (wanted.length === 0)
+    throw new Error(
+      "Deplo does not know this server's address, so it cannot create the DNS record",
+    );
+  const routing = existing.filter((r) =>
+    ["A", "AAAA", "CNAME"].includes(r.type),
+  );
+  const foreign = routing.find(
+    (r) => !wanted.some((w) => w.type === r.type && w.content === r.content),
+  );
+  if (foreign)
+    throw new Error(
+      `${name} already has a ${foreign.type} record in Cloudflare (${foreign.content}). Delete it there, or pick another name.`,
+    );
+  if (routing.length > 0) return null;
+  const id = await createDnsRecord(token, zoneId, {
+    type: wanted[0].type,
+    name,
+    content: wanted[0].content,
+    proxied: false,
+    ttl: 1,
+    comment,
+  });
+  return { id, replaced: [], created: true };
+}
+
+/** Whether the token may create Cloudflare Tunnels in this account. */
+export async function canManageTunnels(
+  token: string,
+  accountId: string,
+): Promise<boolean> {
+  try {
+    await cf(token, "GET", `/accounts/${accountId}/cfd_tunnel?per_page=1`);
+    return true;
+  } catch (e) {
+    if (e instanceof CloudflareError && (e.status === 401 || e.status === 403))
+      return false;
+    throw e;
+  }
+}
+
+/** Fails unless the token may read this zone's DNS records. */
+export async function assertDnsAccess(
+  token: string,
+  zoneId: string,
+): Promise<void> {
+  await cf(token, "GET", `/zones/${zoneId}/dns_records?per_page=1`);
 }
 
 export async function restoreDnsRecords(

@@ -25,6 +25,8 @@ import {
 import { usePendingCreate } from "@/components/shared/pending-create";
 import { gqlAction } from "@/lib/graphql-client";
 import { DomainNameField } from "./domain-name-field";
+import { AutoDnsField } from "./auto-dns-field";
+import { coveringZone } from "@/lib/dns-zone";
 import { DocsLink } from "@/components/ui/docs-link";
 
 export interface AddDomainApp {
@@ -37,9 +39,15 @@ export interface AddDomainApp {
 export interface AddDomainProps {
   project: AddDomainApp;
   suggestedDomain?: string;
+  // Domains connected for automatic DNS that the viewer may use in this team.
+  autoDnsZones?: string[];
 }
 
-export function AddDomain({ project, suggestedDomain }: AddDomainProps) {
+export function AddDomain({
+  project,
+  suggestedDomain,
+  autoDnsZones = [],
+}: AddDomainProps) {
   const canManage = useAppCan("manage_domains");
   const [open, setOpen] = React.useState(false);
   const { create } = usePendingCreate();
@@ -47,6 +55,9 @@ export function AddDomain({ project, suggestedDomain }: AddDomainProps) {
   const [config, setConfig] = React.useState<DomainConfigState>(() =>
     initialDomainConfig(undefined, project.defaultPort),
   );
+  const [wantsTunnel, setWantsTunnel] = React.useState(false);
+  const zone = coveringZone(autoDnsZones, name);
+  const tunnel = wantsTunnel && zone !== null;
 
   const services = React.useMemo(
     () => Object.keys(servicesOf(project.compose ?? null) ?? {}),
@@ -56,6 +67,7 @@ export function AddDomain({ project, suggestedDomain }: AddDomainProps) {
   function reset() {
     setName("");
     setConfig(initialDomainConfig(undefined, project.defaultPort));
+    setWantsTunnel(false);
   }
 
   function onSubmit(e: React.FormEvent) {
@@ -73,7 +85,7 @@ export function AddDomain({ project, suggestedDomain }: AddDomainProps) {
       toast.error(resolved.error);
       return;
     }
-    const typed = { name: name.trim(), config };
+    const typed = { name: name.trim(), config, tunnel };
     setOpen(false);
     reset();
     create(
@@ -98,13 +110,24 @@ export function AddDomain({ project, suggestedDomain }: AddDomainProps) {
               service: resolved.service,
               proxied: resolved.proxied,
               www: resolved.www,
+              ...(typed.tunnel ? { tunnel: true } : {}),
             },
           },
         ),
       {
         onSuccess: (data) => {
           const status = data?.addDomain.status;
-          if (resolved.proxied)
+          if (typed.tunnel)
+            toast.success(
+              "Domain added - Cloudflare serves it through a tunnel, HTTPS included",
+            );
+          else if (zone)
+            toast.success(
+              status === "valid"
+                ? "Domain added - Deplo created its DNS record, routing is live"
+                : "Domain added - Deplo created its DNS record in Cloudflare. It verifies automatically.",
+            );
+          else if (resolved.proxied)
             toast.success(
               "Domain added - routed through your proxy. Point the proxy at this server.",
             );
@@ -128,6 +151,7 @@ export function AddDomain({ project, suggestedDomain }: AddDomainProps) {
         onError: () => {
           setName(typed.name);
           setConfig(typed.config);
+          setWantsTunnel(typed.tunnel);
           setOpen(true);
         },
       },
@@ -170,12 +194,21 @@ export function AddDomain({ project, suggestedDomain }: AddDomainProps) {
                 onChange={setName}
                 suggestedDomain={suggestedDomain}
               />
+              {zone && (
+                <AutoDnsField
+                  id="add-domain-tunnel"
+                  zone={zone}
+                  tunnel={tunnel}
+                  onTunnel={setWantsTunnel}
+                />
+              )}
               <DomainConfigFields
                 state={config}
                 onChange={setConfig}
                 services={services}
                 idPrefix="add-domain"
                 hostname={name}
+                tunnel={tunnel}
               />
             </div>
           </AnimatedHeight>

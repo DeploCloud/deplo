@@ -1457,6 +1457,13 @@
       "when": 1793473500746,
       "tag": "0207_panel_tunnel",
       "breakpoints": true
+    },
+    {
+      "idx": 208,
+      "version": "7",
+      "when": 1793527136879,
+      "tag": "0208_automatic_dns",
+      "breakpoints": true
     }
   ]
 }
