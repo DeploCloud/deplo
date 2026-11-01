@@ -4,14 +4,12 @@ import { cache } from "@/lib/request-cache";
 import { and, eq, inArray, isNotNull, max } from "drizzle-orm";
 
 import { getDb } from "../../db/client";
-import { apps } from "../../db/schema/control-plane/apps";
 import { deployments } from "../../db/schema/control-plane/deployments";
 import {
   epssScores,
   imageInventories,
   osvAffected,
   securityFindings,
-  securityPullRequests,
   workloadImages,
 } from "../../db/schema/control-plane/security-updates";
 import { requireActiveTeamId } from "../../membership";
@@ -75,14 +73,7 @@ export interface SecurityUpdates {
   newerTag: string | null;
   updates: SecurityUpdate[];
   // One per package of the app's, or per image, with its advisories: what the dashboard lists.
-  groups: SecurityGroup[];
-  // A GitHub app, and the caller may open a pull request with a dependency's fix.
-  canOpenPullRequests: boolean;
-}
-
-export interface SecurityGroup extends UpdateGroup<SecurityUpdate> {
-  // The pull request Deplo opened for this package's fixed version.
-  pullRequest: { number: number; url: string } | null;
+  groups: UpdateGroup<SecurityUpdate>[];
 }
 
 export interface SecurityCount {
@@ -231,23 +222,6 @@ async function subjectUpdates(
       x.packageName.localeCompare(y.packageName),
   );
   const counted = countUpdates(updates.filter((u) => !u.ignored));
-  const prs = new Map(
-    (s.kind === "app"
-      ? await db
-          .select()
-          .from(securityPullRequests)
-          .where(
-            and(
-              eq(securityPullRequests.teamId, teamId),
-              eq(securityPullRequests.appId, s.appId),
-            ),
-          )
-      : []
-    ).map((r) => [
-      `${r.packageName}\0${r.version}`,
-      { number: r.number, url: r.url },
-    ]),
-  );
   const checked = rows.map((r) => r.wi.checkedAt);
   return {
     checkedAt:
@@ -266,26 +240,8 @@ async function subjectUpdates(
     exploited: counted.exploited,
     newerTag: rows.find((r) => r.wi.newerTag)?.wi.newerTag ?? null,
     updates,
-    groups: groupUpdates(updates).map((g) => ({
-      ...g,
-      pullRequest:
-        prs.get(`${g.items[0].packageName}\0${g.fixedVersion}`) ?? null,
-    })),
-    canOpenPullRequests: false,
+    groups: groupUpdates(updates),
   };
-}
-
-async function canOpenPullRequests(appId: string): Promise<boolean> {
-  const [app] = await getDb()
-    .select({ provider: apps.repoProvider, install: apps.repoInstallationId })
-    .from(apps)
-    .where(eq(apps.id, appId))
-    .limit(1);
-  return (
-    app?.provider === "github" &&
-    !!app.install &&
-    (await hasAppCapability(appId, "open_security_prs"))
-  );
 }
 
 // An app's security updates; null when the app is out of reach or the instance switch is off.
@@ -295,10 +251,7 @@ export const appSecurityUpdates = cache(async function appSecurityUpdates(
   const teamId = await requireActiveTeamId();
   if (!(await securityState()).enabled) return null;
   if (!(await hasAppCapability(appId, "view"))) return null;
-  return {
-    ...(await subjectUpdates(teamId, { kind: "app", appId })),
-    canOpenPullRequests: await canOpenPullRequests(appId),
-  };
+  return subjectUpdates(teamId, { kind: "app", appId });
 });
 
 export const databaseSecurityUpdates = cache(
