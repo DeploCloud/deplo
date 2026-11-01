@@ -224,6 +224,8 @@ export async function createDnsRecord(
   return res.id;
 }
 
+const ROUTING_TYPES = ["A", "AAAA", "CNAME"];
+
 export type PointedRecord = {
   id: string;
   /** What this replaced, so a failed setup can put it back. */
@@ -250,12 +252,14 @@ export async function pointAtTunnel(
   );
   if (kept) return { id: kept.id, replaced: [], created: false };
 
-  const foreign = existing.filter((r) => !ours(r));
+  // Only an address record competes with the CNAME; MX, TXT and the rest stay beside it.
+  const routing = existing.filter((r) => ROUTING_TYPES.includes(r.type));
+  const foreign = routing.filter((r) => !ours(r));
   if (foreign.length > 0)
     throw new Error(
       `${name} already has a ${foreign[0].type} record in Cloudflare (${foreign[0].content}). Pick an address nothing else uses, or delete that record first.`,
     );
-  for (const r of existing) await deleteDnsRecord(token, zoneId, r.id);
+  for (const r of routing) await deleteDnsRecord(token, zoneId, r.id);
   try {
     const id = await createDnsRecord(token, zoneId, {
       type: "CNAME",
@@ -265,9 +269,9 @@ export async function pointAtTunnel(
       ttl: 1,
       comment,
     });
-    return { id, replaced: existing, created: true };
+    return { id, replaced: routing, created: true };
   } catch (e) {
-    await restoreDnsRecords(token, zoneId, existing);
+    await restoreDnsRecords(token, zoneId, routing);
     throw e;
   }
 }
@@ -292,9 +296,7 @@ export async function pointAtAddress(
     throw new Error(
       "Deplo does not know this server's address, so it cannot create the DNS record",
     );
-  const routing = existing.filter((r) =>
-    ["A", "AAAA", "CNAME"].includes(r.type),
-  );
+  const routing = existing.filter((r) => ROUTING_TYPES.includes(r.type));
   const foreign = routing.find(
     (r) => !wanted.some((w) => w.type === r.type && w.content === r.content),
   );
