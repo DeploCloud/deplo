@@ -404,3 +404,20 @@ test("a connector the proxy stack lost comes back on its own", async () => {
     "nothing to do the second time",
   );
 });
+
+test("a tunnel domain is added beside the name's MX record", async () => {
+  await connect();
+  cf.records.set("mx", {
+    id: "mx",
+    zoneId: "zone1",
+    type: "MX",
+    name: "example.com",
+    content: "mail.example.com",
+  });
+  const dom = await as(OWNER, () =>
+    addDomain("prj_1", "example.com", { tunnel: true }),
+  );
+  assert.equal(cf.records.size, 2);
+  await as(OWNER, () => removeDomain(dom.id));
+  assert.deepEqual([...cf.records.keys()], ["mx"], "the MX record stays");
+});

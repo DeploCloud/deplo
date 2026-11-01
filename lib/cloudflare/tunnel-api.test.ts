@@ -176,3 +176,32 @@ test("health reads the status and counts the connections", async () => {
     connections: 1,
   });
 });
+
+test("mail and text records on the name stay beside the tunnel's CNAME", async () => {
+  const cf = setup();
+  cf.records.set("mx", {
+    id: "mx",
+    zoneId: "zone1",
+    type: "MX",
+    name: "example.com",
+    content: "mail.example.com",
+  });
+  cf.records.set("txt", {
+    id: "txt",
+    zoneId: "zone1",
+    type: "TXT",
+    name: "example.com",
+    content: "v=spf1 include:_spf.example.net ~all",
+  });
+  const pointed = await pointAtTunnel(
+    "t",
+    "zone1",
+    "example.com",
+    "tun-9",
+    () => false,
+  );
+  assert.equal(pointed.created, true);
+  assert.deepEqual(pointed.replaced, [], "nothing was replaced");
+  assert.ok(cf.records.has("mx") && cf.records.has("txt"));
+  assert.equal(cf.records.get(pointed.id)!.type, "CNAME");
+});
