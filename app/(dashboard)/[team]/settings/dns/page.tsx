@@ -19,6 +19,7 @@ export default async function DnsSettingsPage() {
   return (
     <div className="space-y-6">
       <PageHeader
+        docs="domains.automaticDns"
         title={
           <span className="flex items-center gap-2">
             Automatic DNS
