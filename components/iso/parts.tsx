@@ -19,6 +19,15 @@ export const DEPLO: Tone = {
   stroke: "#8a8a8a",
 };
 
+// The mark's drawn width and height per step of `size`: its path is 24.58 x 25.12 in a 26 box.
+const MARK_W = 24.583 / 26;
+const MARK_H = 25.116 / 26;
+
+/** The `at` that centres a `size` mark on the left-face point `centre`. */
+export function markAt([x, y, z]: P, size: number): P {
+  return [x - (MARK_W * size) / 2, y, z + (MARK_H * size) / 2];
+}
+
 /** The Deplo mark printed on a left face, `size` steps tall from its top-left corner `at`. */
 export function Mark({
   at,

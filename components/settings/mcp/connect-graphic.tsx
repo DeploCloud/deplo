@@ -14,7 +14,7 @@ import {
   type BoxShape,
   type P,
 } from "@/components/iso/iso";
-import { DEPLO, Mark } from "@/components/iso/parts";
+import { DEPLO, Mark, markAt } from "@/components/iso/parts";
 import { cn } from "@/lib/utils";
 import { AGENTS, type AgentDef, type AgentId } from "./agents";
 
@@ -149,7 +149,7 @@ export function ConnectGraphic({
       ))}
 
       <Box {...CUBE} tone={DEPLO}>
-        <Mark at={[0.6, 2, 1.65]} size={0.8} />
+        <Mark at={markAt([1, 2, 1], 0.8)} size={0.8} />
         <FaceRect
           box={CUBE}
           face="right"
