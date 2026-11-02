@@ -16,7 +16,10 @@ import { SidebarNav, SubmenuChevron } from "./sidebar-nav";
 import { SidebarTips } from "./sidebar-tips";
 import { RAIL_WIDTH, useSidebar } from "./sidebar-state";
 import { Button } from "@/components/ui/button";
-import { SearchTrigger } from "@/components/command-palette/palette-kbd";
+import {
+  PaletteKbd,
+  SearchTrigger,
+} from "@/components/command-palette/palette-kbd";
 import {
   Tooltip,
   TooltipContent,
@@ -105,7 +108,19 @@ export function Sidebar({
         </div>
 
         <div className="px-2 pb-1">
-          <SearchTrigger compact={rail} />
+          {rail ? (
+            <Tooltip delayDuration={tipDelay}>
+              <TooltipTrigger asChild>
+                <SearchTrigger compact />
+              </TooltipTrigger>
+              <TooltipContent side="right">
+                Search
+                <PaletteKbd className="ml-1.5" />
+              </TooltipContent>
+            </Tooltip>
+          ) : (
+            <SearchTrigger />
+          )}
         </div>
 
         <div className="flex-1 overflow-x-hidden overflow-y-auto">

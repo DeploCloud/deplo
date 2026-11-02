@@ -29,26 +29,38 @@ export function PaletteKbd({ className }: { className?: string }) {
   );
 }
 
-export function SearchTrigger({ compact = false }: { compact?: boolean }) {
+// Compact is the icon rail: a 40px cell, like every other rail item.
+export function SearchTrigger({
+  compact = false,
+  onClick,
+  ...props
+}: { compact?: boolean } & React.ComponentProps<"button">) {
   return (
     <button
       type="button"
-      onClick={openPalette}
+      {...props}
+      onClick={(e) => {
+        onClick?.(e);
+        openPalette();
+      }}
       aria-keyshortcuts="Meta+K Control+K"
       aria-label="Search"
-      className="relative flex h-9 w-full cursor-pointer items-center overflow-hidden rounded-md border border-sidebar-border bg-card pr-7 pl-8 text-left text-sm text-muted-foreground shadow-sm transition-colors hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-background focus-visible:outline-none"
+      className={cn(
+        "relative flex h-9 cursor-pointer items-center overflow-hidden rounded-md border border-sidebar-border bg-card text-left text-sm text-muted-foreground shadow-sm transition-colors hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-background focus-visible:outline-none",
+        compact ? "w-10 justify-center" : "w-full pr-7 pl-8",
+      )}
     >
-      <Search className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2" />
-      <span
+      <Search
         className={cn(
-          "transition-opacity duration-100",
-          compact && "opacity-0",
+          "pointer-events-none size-4 shrink-0",
+          !compact && "absolute top-1/2 left-2.5 -translate-y-1/2",
         )}
-      >
-        Search
-      </span>
+      />
       {!compact && (
-        <PaletteKbd className="pointer-events-none absolute top-1/2 right-2 hidden -translate-y-1/2 lg:inline" />
+        <>
+          <span>Search</span>
+          <PaletteKbd className="pointer-events-none absolute top-1/2 right-2 hidden -translate-y-1/2 lg:inline" />
+        </>
       )}
     </button>
   );
