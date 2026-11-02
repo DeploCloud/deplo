@@ -2,16 +2,10 @@
 
 import * as React from "react";
 import { useFlatPathname } from "@/lib/nav";
-import { Menu, Search, Settings } from "lucide-react";
+import { Search, Settings } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import {
-  Sheet,
-  SheetContent,
-  SheetTitle,
-  SheetTrigger,
-} from "@/components/ui/sheet";
-import { DeploLogo } from "@/components/logo";
-import { SidebarNav } from "./sidebar-nav";
+import Link from "@/components/ui/link";
+import { DeploMark } from "@/components/logo";
 import { SidebarExpandButton } from "./sidebar";
 import { ThemeToggle } from "./theme-toggle";
 import { MigrationChip } from "./migration-activity";
@@ -42,34 +36,20 @@ export function Topbar({
   isAdmin?: boolean;
 }) {
   const pathname = useFlatPathname();
-  const [mobileOpen, setMobileOpen] = React.useState(false);
   const hideTeam = isNonTeamSettings(pathname);
 
   return (
     <header className="sticky top-0 z-30 flex h-14 items-center gap-3 border-b border-border bg-background/80 px-4 backdrop-blur-md">
-      <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>
-        <SheetTrigger asChild>
-          <Button
-            variant="ghost"
-            size="icon-sm"
-            className="md:hidden"
-            aria-label="Menu"
-          >
-            <Menu className="size-5" />
-          </Button>
-        </SheetTrigger>
-        <SheetContent side="left" className="w-72 p-0">
-          <SheetTitle className="sr-only">Navigation</SheetTitle>
-          <div className="flex h-14 items-center border-b border-border px-5">
-            <DeploLogo />
-          </div>
-          <SidebarNav
-            onNavigate={() => setMobileOpen(false)}
-            capabilities={capabilities}
-            isAdmin={isAdmin}
-          />
-        </SheetContent>
-      </Sheet>
+      <Link
+        href="/"
+        aria-label="Overview"
+        className="-ml-1 grid size-9 place-items-center text-foreground md:hidden"
+      >
+        <DeploMark size={19} />
+      </Link>
+      <span className="-mx-1 text-xl text-ring md:hidden" aria-hidden>
+        /
+      </span>
 
       <SidebarExpandButton />
 
@@ -114,7 +94,9 @@ export function Topbar({
         <MigrationChip canOpen={isAdmin} />
         <UpdateChip />
         <SecurityAlertPill teamId={team.id} />
-        <ThemeToggle />
+        <span className="hidden md:contents">
+          <ThemeToggle />
+        </span>
         <UserMenu user={user} />
       </div>
     </header>

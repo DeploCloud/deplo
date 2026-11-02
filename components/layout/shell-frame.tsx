@@ -53,9 +53,10 @@ export function ShellFrame({
         <main
           data-selection-region=""
           className={cn(
+            // Below md the floating tab bar covers the bottom, so nothing may end under it.
             full
-              ? "flex min-h-0 flex-1 flex-col overflow-hidden"
-              : "flex-1 px-4 py-6 sm:px-6 lg:px-8",
+              ? "flex min-h-0 flex-1 flex-col overflow-hidden max-md:pb-[calc(max(12px,env(safe-area-inset-bottom))+76px)]"
+              : "flex-1 px-4 py-6 max-md:pb-[calc(max(12px,env(safe-area-inset-bottom))+100px)] sm:px-6 lg:px-8",
             dotted && "deplo-grid-bg",
           )}
         >

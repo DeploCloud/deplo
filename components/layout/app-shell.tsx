@@ -6,6 +6,7 @@ import { ShellFrame } from "./shell-frame";
 import { UpdateProvider } from "./update-state";
 import { NavigationHistoryTracker } from "./navigation-history";
 import { NavProgress } from "./nav-progress";
+import { MobileNav } from "./mobile-nav";
 import { GitConnectToast } from "@/components/shared/git-connect-toast";
 import { DeployActivityProvider } from "./deploy-activity";
 import { MigrationActivityProvider } from "./migration-activity";
@@ -74,6 +75,14 @@ export function AppShell({
             >
               {children}
             </ShellFrame>
+            <MobileNav
+              user={user}
+              team={team}
+              teams={teams}
+              capabilities={capabilities}
+              isAdmin={isAdmin}
+              hasSecondFactor={user.twoFactorEnabled || hasPasskey}
+            />
             <CommandPalette
               userId={user.id}
               team={team}
