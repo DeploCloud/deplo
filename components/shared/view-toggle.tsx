@@ -73,3 +73,40 @@ export function ViewToggle({
     </div>
   );
 }
+
+// The same choice as a labelled full-width pair, for the mobile filters sheet.
+export function ViewChoice({
+  view,
+  onView,
+  gridLabel = "Grid view",
+  listLabel = "List view",
+}: {
+  view: ListView;
+  onView: (v: ListView) => void;
+  gridLabel?: string;
+  listLabel?: string;
+}) {
+  const options = [
+    ["grid", gridLabel, LayoutGrid],
+    ["list", listLabel, List],
+  ] as const;
+  return (
+    <div className="space-y-2">
+      <p className="text-sm font-medium">Layout</p>
+      <div role="group" aria-label="Layout" className="grid grid-cols-2 gap-2">
+        {options.map(([value, label, Icon]) => (
+          <Button
+            key={value}
+            type="button"
+            variant={view === value ? "secondary" : "outline"}
+            aria-pressed={view === value}
+            onClick={() => onView(value)}
+          >
+            <Icon />
+            {label}
+          </Button>
+        ))}
+      </div>
+    </div>
+  );
+}

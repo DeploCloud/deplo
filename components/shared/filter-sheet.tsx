@@ -18,10 +18,12 @@ import {
 export function FilterSheet({
   active,
   onClear,
+  label = "Filters",
   children,
 }: {
   active: number;
   onClear?: () => void;
+  label?: string;
   children: React.ReactNode;
 }) {
   const [open, setOpen] = React.useState(false);
@@ -35,7 +37,7 @@ export function FilterSheet({
         onClick={() => setOpen(true)}
       >
         <SlidersHorizontal />
-        Filters
+        {label}
         {active > 0 && (
           <span className="grid h-5 min-w-5 place-items-center rounded-full bg-primary px-1.5 text-xs text-primary-foreground tabular-nums">
             {active}
@@ -46,7 +48,7 @@ export function FilterSheet({
         {/* No autofocus: a focused field would open its list and the keyboard on arrival. */}
         <DialogContent onOpenAutoFocus={(e) => e.preventDefault()}>
           <DialogHeader>
-            <DialogTitle>Filters</DialogTitle>
+            <DialogTitle>{label}</DialogTitle>
             <DialogDescription>
               {active > 0 ? (
                 <>
