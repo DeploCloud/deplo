@@ -405,15 +405,16 @@ html body[data-scroll-locked] {
   [role="button"]:not([aria-disabled="true"]) {
     cursor: pointer;
   }
-  /* Below md every control answers a 44px finger: an invisible hit area, the drawing unchanged.
-     :where() keeps it weaker than any position utility; a control that draws with ::after opts out. */
+  /* Below md every control and every link outside a sentence answers a 44px finger: an invisible
+     hit area, the drawing unchanged. :where() loses to any position utility; ::after users opt out. */
   @media (max-width: 767.98px) {
     :where(
       button,
       [role="button"],
       [role="switch"],
       [role="checkbox"],
-      [role="tab"]
+      [role="tab"],
+      a[href]:not(p a)
     ):not([class*="after:"]) {
       position: relative;
     }
@@ -422,7 +423,8 @@ html body[data-scroll-locked] {
         [role="button"],
         [role="switch"],
         [role="checkbox"],
-        [role="tab"]
+        [role="tab"],
+        a[href]:not(p a)
       ):not([class*="after:"])::after {
       content: "";
       position: absolute;
@@ -706,5 +708,13 @@ html body[data-scroll-locked] {
   [data-slot="sheet-scrim"],
   [data-slot="dropdown-menu-content"] {
     animation-duration: 1ms !important;
+  }
+}
+
+/* Below md no text is smaller than 12px: the 10px and 11px badges and notes read at 12. */
+@media (max-width: 767.98px) {
+  .text-\[10px\],
+  .text-\[11px\] {
+    font-size: 12px;
   }
 }

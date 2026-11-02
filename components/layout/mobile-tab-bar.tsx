@@ -59,7 +59,7 @@ export function MobileTabBar({
       {MOBILE_TABS.map((tab) => {
         const on = tab.id === active;
         const className = cn(
-          "relative z-10 flex min-w-0 cursor-pointer flex-col items-center justify-center gap-[3px] rounded-full text-[11px] font-medium tracking-tight text-muted-foreground transition-colors duration-300 outline-none focus-visible:ring-2 focus-visible:ring-ring",
+          "relative z-10 flex min-w-0 cursor-pointer flex-col items-center justify-center gap-[3px] rounded-full text-[0.6875rem] font-medium tracking-tight text-muted-foreground transition-colors duration-300 outline-none focus-visible:ring-2 focus-visible:ring-ring min-[360px]:text-xs",
           on && "text-foreground",
         );
         const body = (

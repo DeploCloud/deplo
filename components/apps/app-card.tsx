@@ -543,7 +543,7 @@ export function AppCard({
       rel="noreferrer"
       tabIndex={dragActive ? -1 : undefined}
       className={cn(
-        "relative z-[1] mt-1 inline-block max-w-full truncate align-top text-xs text-muted-foreground hover:text-foreground hover:underline",
+        "relative z-[1] mt-1 inline-block max-w-full truncate align-top text-xs text-muted-foreground hover:text-foreground hover:underline max-md:-my-2 max-md:mt-0 max-md:py-2",
         dragActive ? "pointer-events-none" : "pointer-events-auto",
       )}
     >
