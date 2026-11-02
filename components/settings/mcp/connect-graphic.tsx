@@ -148,16 +148,6 @@ export function ConnectGraphic({
         <AgentTile key={a.id} agent={a} at={SLOTS[i + 1]} active={false} />
       ))}
 
-      <Path
-        points={[CABLE_FROM, CABLE_TO]}
-        stroke={live ? LIVE : "var(--ring)"}
-        strokeWidth={cabled ? 2.5 : 1.5}
-        strokeDasharray={cabled ? "1 1" : "4 4"}
-        pathLength={cabled ? 1 : undefined}
-        className={cn(cabled && "iso-mcp-cable")}
-        style={cabled ? { vectorEffect: "none" } : undefined}
-      />
-
       <Box {...CUBE} tone={DEPLO}>
         <Mark at={[0.6, 2, 1.65]} size={0.8} />
         <FaceRect
@@ -180,6 +170,17 @@ export function ConnectGraphic({
           />
         )}
       </Box>
+
+      {/* In front of the right face, so it is drawn over it and reaches the port. */}
+      <Path
+        points={[CABLE_FROM, CABLE_TO]}
+        stroke={live ? LIVE : "var(--ring)"}
+        strokeWidth={cabled ? 2.5 : 1.5}
+        strokeDasharray={cabled ? "1 1" : "4 4"}
+        pathLength={cabled ? 1 : undefined}
+        className={cn(cabled && "iso-mcp-cable")}
+        style={cabled ? { vectorEffect: "none" } : undefined}
+      />
 
       {live &&
         [0, 1, 2].map((n) => (
