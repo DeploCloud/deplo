@@ -178,7 +178,7 @@ export function DeploymentTableRow({
       </TableCell>
 
       {showApp && (
-        <TableCell className="max-md:order-3 max-md:min-w-0 max-md:text-sm">
+        <TableCell className="max-md:order-3 max-md:min-w-0 max-md:flex-1 max-md:basis-[40%] max-md:text-sm">
           <SimpleTooltip content="Open this deployment's build logs">
             <Link
               href={`/apps/${d.appSlug}/deployments/${d.id}`}

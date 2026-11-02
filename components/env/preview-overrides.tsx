@@ -215,13 +215,15 @@ export function PreviewOverrides({
               removeConsequence="Future previews fall back to the app or shared values. Production is unchanged."
             >
               <div className="rounded-xl border border-border">
-                <Table>
+                <Table className="max-md:[&_td]:px-2 max-md:[&_td>div]:flex-wrap max-md:[&_th]:px-2">
                   <TableHeader>
                     <TableRow>
                       <EnvSelectionHead />
                       <TableHead className="whitespace-nowrap">Key</TableHead>
-                      <TableHead className="w-full">Value</TableHead>
-                      <TableHead className="whitespace-nowrap">
+                      <TableHead className="w-full max-md:w-auto">
+                        Value
+                      </TableHead>
+                      <TableHead className="whitespace-nowrap max-md:hidden">
                         Last modified
                       </TableHead>
                       <TableHead className="text-right whitespace-nowrap">
@@ -248,7 +250,7 @@ export function PreviewOverrides({
                         <TableCell>
                           <EnvValueCell value="" masked />
                         </TableCell>
-                        <TableCell className="text-xs whitespace-nowrap text-muted-foreground">
+                        <TableCell className="text-xs whitespace-nowrap text-muted-foreground max-md:hidden">
                           <TimeAgo at={o.updatedAt} />
                         </TableCell>
                         <TableCell className="text-right">

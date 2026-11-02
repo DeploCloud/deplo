@@ -662,16 +662,16 @@ function AppVarsCard({
       {open && (
         <CardContent id={bodyId}>
           <div className="overflow-hidden rounded-lg border border-border">
-            <Table>
+            <Table className="max-md:[&_td]:px-2 max-md:[&_td>div]:flex-wrap max-md:[&_th]:px-2">
               <TableHeader>
                 <TableRow>
                   <EnvSelectionHead ids={rows.map(rowKey)} />
                   <TableHead className="whitespace-nowrap">Key</TableHead>
-                  <TableHead className="w-full">Value</TableHead>
-                  <TableHead className="whitespace-nowrap">
+                  <TableHead className="w-full max-md:w-auto">Value</TableHead>
+                  <TableHead className="whitespace-nowrap max-md:hidden">
                     Last modified
                   </TableHead>
-                  <TableHead className="whitespace-nowrap">
+                  <TableHead className="whitespace-nowrap max-md:hidden">
                     Modified by
                   </TableHead>
                   <TableHead className="text-right whitespace-nowrap">
@@ -690,10 +690,10 @@ function AppVarsCard({
                       <TableCell>
                         <EnvValueCell value={row.value} masked={row.masked} />
                       </TableCell>
-                      <TableCell className="text-xs whitespace-nowrap text-muted-foreground">
+                      <TableCell className="text-xs whitespace-nowrap text-muted-foreground max-md:hidden">
                         <TimeAgo at={row.updatedAt} />
                       </TableCell>
-                      <TableCell>
+                      <TableCell className="max-md:hidden">
                         <EnvAuthorCell
                           author={row.updatedBy ?? row.createdBy ?? null}
                         />
@@ -734,10 +734,10 @@ function AppVarsCard({
                       <TableCell>
                         <EnvValueCell value={row.value} masked={row.masked} />
                       </TableCell>
-                      <TableCell className="text-xs whitespace-nowrap text-muted-foreground">
+                      <TableCell className="text-xs whitespace-nowrap text-muted-foreground max-md:hidden">
                         <TimeAgo at={row.updatedAt} />
                       </TableCell>
-                      <TableCell>
+                      <TableCell className="max-md:hidden">
                         <EnvAuthorCell author={row.updatedBy ?? null} />
                       </TableCell>
                       <TableCell className="text-right">

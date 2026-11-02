@@ -240,19 +240,19 @@ export function SharedVarsManager({
           />
         ) : (
           <div className="rounded-xl border border-border">
-            <Table>
+            <Table className="max-md:[&_td]:px-2 max-md:[&_td>div]:flex-wrap max-md:[&_th]:px-2">
               <TableHeader>
                 <TableRow>
                   <EnvSelectionHead />
                   <TableHead className="whitespace-nowrap">Key</TableHead>
-                  <TableHead className="w-full">Value</TableHead>
+                  <TableHead className="w-full max-md:w-auto">Value</TableHead>
                   <TableHead className="whitespace-nowrap">
                     Shared with
                   </TableHead>
-                  <TableHead className="whitespace-nowrap">
+                  <TableHead className="whitespace-nowrap max-md:hidden">
                     Last modified
                   </TableHead>
-                  <TableHead className="whitespace-nowrap">
+                  <TableHead className="whitespace-nowrap max-md:hidden">
                     Modified by
                   </TableHead>
                   <TableHead className="text-right whitespace-nowrap">
@@ -292,10 +292,10 @@ export function SharedVarsManager({
                         <SharedWithChips v={v} />
                       </div>
                     </TableCell>
-                    <TableCell className="text-xs whitespace-nowrap text-muted-foreground">
+                    <TableCell className="text-xs whitespace-nowrap text-muted-foreground max-md:hidden">
                       <TimeAgo at={v.updatedAt} />
                     </TableCell>
-                    <TableCell>
+                    <TableCell className="max-md:hidden">
                       <EnvAuthorCell
                         author={v.updatedBy ?? v.createdBy ?? null}
                       />

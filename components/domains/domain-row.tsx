@@ -301,8 +301,8 @@ export function DomainRow({
   }
 
   return (
-    <TableRow>
-      <TableCell>
+    <TableRow className="max-md:flex max-md:flex-wrap max-md:items-center max-md:gap-x-3 max-md:gap-y-2 max-md:px-3 max-md:py-3 max-md:[&>td]:p-0">
+      <TableCell className="max-md:basis-full">
         <div className="flex flex-wrap items-center gap-2">
           <a
             href={`${scheme}://${domain.name}`}
@@ -485,7 +485,7 @@ export function DomainRow({
           )}
       </TableCell>
       {showContainer && (
-        <TableCell className="w-56">
+        <TableCell className="w-56 max-md:basis-full">
           {routingWarning ? (
             <SimpleTooltip content={routingWarning}>
               <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
@@ -534,7 +534,7 @@ export function DomainRow({
           )}
         </span>
       </TableCell>
-      <TableCell className="text-right">
+      <TableCell className="text-right max-md:ml-auto">
         <div className="flex items-center justify-end gap-1">
           {!domain.primary && !domain.redirectTo && (
             <SimpleTooltip content="Make this the canonical host">

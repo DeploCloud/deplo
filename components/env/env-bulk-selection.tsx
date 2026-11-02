@@ -253,7 +253,7 @@ export function EnvSelectionHead({ ids }: { ids?: string[] }) {
   const visible = items.filter((item) => !ids || ids.includes(item.id));
   const count = visible.filter((item) => selected.has(item.id)).length;
   return (
-    <TableHead className="w-10">
+    <TableHead className="w-10 max-md:hidden">
       <Checkbox
         aria-label="Select all variables"
         disabled={pending || visible.length === 0}
@@ -279,7 +279,7 @@ export function EnvSelectionCell({ id }: { id: string }) {
   const { items, selected, pending, toggle } = useSelection();
   const item = items.find((row) => row.id === id);
   return (
-    <TableCell className="w-10">
+    <TableCell className="w-10 max-md:hidden">
       <Checkbox
         aria-label={`Select ${item?.key ?? "variable"}`}
         checked={selected.has(id)}

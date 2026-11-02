@@ -14,8 +14,8 @@ export function DomainTable({
 }: ComponentProps<typeof DomainRows> & { children?: ReactNode }) {
   return (
     <div className="overflow-hidden rounded-xl border border-border">
-      <Table>
-        <TableHeader>
+      <Table className="max-md:block">
+        <TableHeader className="max-md:hidden">
           <TableRow>
             <TableHead>Domain</TableHead>
             {props.showContainer && (
@@ -25,7 +25,7 @@ export function DomainTable({
             <TableHead className="text-right">Actions</TableHead>
           </TableRow>
         </TableHeader>
-        <TableBody>
+        <TableBody className="max-md:block">
           <DomainRows {...props} />
           {children}
         </TableBody>

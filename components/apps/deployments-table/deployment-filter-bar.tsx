@@ -48,9 +48,9 @@ export function DeploymentFilterBar({
   } = filters;
 
   return (
-    <div className="flex min-h-9 flex-wrap items-center gap-2">
+    <div className="flex min-h-9 flex-wrap items-center gap-2 max-md:grid max-md:grid-cols-2">
       {showSearch && (
-        <div className="relative w-full min-w-0 sm:w-64">
+        <div className="relative w-full min-w-0 max-md:col-span-2 sm:w-64">
           <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
           <Input
             value={query}
@@ -61,13 +61,18 @@ export function DeploymentFilterBar({
           />
         </div>
       )}
-      {showNarrowers && <ListFilter className="size-4 text-muted-foreground" />}
+      {showNarrowers && (
+        <ListFilter className="size-4 text-muted-foreground max-md:hidden" />
+      )}
       {showServerFilter && (
         <Select
           value={effectiveServerFilter ?? ALL}
           onValueChange={applyServerFilter}
         >
-          <SelectTrigger className="w-[170px]" aria-label="Filter by server">
+          <SelectTrigger
+            className="w-[170px] max-md:w-full"
+            aria-label="Filter by server"
+          >
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
@@ -85,7 +90,10 @@ export function DeploymentFilterBar({
           value={effectiveAppFilter ?? ALL}
           onValueChange={applyAppFilter}
         >
-          <SelectTrigger className="w-[180px]" aria-label="Filter by app">
+          <SelectTrigger
+            className="w-[180px] max-md:w-full"
+            aria-label="Filter by app"
+          >
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
@@ -103,7 +111,10 @@ export function DeploymentFilterBar({
           value={effectiveStatusFilter ?? ALL}
           onValueChange={applyStatusFilter}
         >
-          <SelectTrigger className="w-[150px]" aria-label="Filter by status">
+          <SelectTrigger
+            className="w-[150px] max-md:w-full"
+            aria-label="Filter by status"
+          >
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
@@ -122,7 +133,7 @@ export function DeploymentFilterBar({
           onValueChange={applyDateFilter}
         >
           <SelectTrigger
-            className="w-[205px]"
+            className="w-[205px] max-md:w-full"
             aria-label="Filter by created date"
           >
             <span className="flex! items-center gap-2">
@@ -148,7 +159,7 @@ export function DeploymentFilterBar({
       {showSort && (
         <div
           className={cn(
-            "flex items-center gap-2",
+            "flex items-center gap-2 max-md:[&>button]:w-full",
             showNarrowers && "sm:ml-auto",
           )}
         >
