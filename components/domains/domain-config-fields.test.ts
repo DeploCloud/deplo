@@ -6,37 +6,32 @@ import { TooltipProvider } from "../ui/tooltip";
 import {
   DomainConfigFields,
   initialDomainConfig,
-  lockCloudflare,
 } from "./domain-config-fields";
 
 const behindCloudflare = {
   certProvider: "letsencrypt",
   status: "cloudflare",
 } as const;
-const direct = { certProvider: "letsencrypt", status: "valid" } as const;
 
-test("a domain behind Cloudflare opens on the Cloudflare certificate", () => {
+test("a domain behind Cloudflare opens on the certificate it has", () => {
   assert.equal(
     initialDomainConfig(behindCloudflare).certProvider,
-    "cloudflare",
+    "letsencrypt",
   );
-  assert.equal(initialDomainConfig(direct).certProvider, "letsencrypt");
-});
-
-test("lockCloudflare overrides the form only while Cloudflare is detected", () => {
-  const state = initialDomainConfig(direct);
-  assert.equal(lockCloudflare(state, true).certProvider, "cloudflare");
-  assert.equal(lockCloudflare(state, false), state);
+  assert.equal(
+    initialDomainConfig({ ...behindCloudflare, certProvider: undefined })
+      .certProvider,
+    "letsencrypt",
+  );
 });
 
 function certTrigger(detected: boolean) {
-  const state = lockCloudflare(initialDomainConfig(direct), detected);
   const html = renderToStaticMarkup(
     createElement(
       TooltipProvider,
       null,
       createElement(DomainConfigFields, {
-        state,
+        state: initialDomainConfig(behindCloudflare),
         onChange() {},
         idPrefix: "t",
         proxied: detected,
@@ -46,7 +41,7 @@ function certTrigger(detected: boolean) {
   return html.match(/<button[^>]*id="t-cert"[^>]*>/)?.[0] ?? "";
 }
 
-test("the certificate select is locked while Cloudflare is detected", () => {
-  assert.match(certTrigger(true), /\sdisabled=""/);
+test("the certificate stays editable while Cloudflare is detected", () => {
+  assert.doesNotMatch(certTrigger(true), /\sdisabled=""/);
   assert.doesNotMatch(certTrigger(false), /\sdisabled=""/);
 });

@@ -12,7 +12,7 @@ import {
 import { getCurrentUser } from "../../auth/current-user";
 import { newId, nowIso } from "../../ids";
 import { requireActiveTeamId } from "../../membership";
-import { certProviderForDns, isRoutableDomain } from "../../deploy/cloudflare";
+import { isRoutableDomain } from "../../deploy/cloudflare";
 import { portFor } from "../../deploy/ports";
 import { usesComposeStack } from "../../utils";
 import { recordActivity } from "../activity";
@@ -39,7 +39,10 @@ import type {
 } from "../../types/domain";
 import { DOMAIN_RE, assertHostnameClaimable } from "./hostname-claim";
 import { appServerAddresses, checkDomainDns } from "./dns-check";
-import { assertTeamLetsencryptQuota } from "./letsencrypt-quota";
+import {
+  assertTeamLetsencryptQuota,
+  certProviderForDnsWithinQuota,
+} from "./letsencrypt-quota";
 import {
   normalizeCorsOrigins,
   normalizeMiddlewares,
@@ -199,7 +202,11 @@ async function addDomainUnlocked(
     (await checkDomainDns(clean, await appServerAddresses(appId)));
   const certProvider = tunnel
     ? "cloudflare"
-    : certProviderForDns(status, config.certProvider ?? "none");
+    : await certProviderForDnsWithinQuota(
+        membership.teamId,
+        status,
+        config.certProvider ?? "none",
+      );
   const domain: Domain = {
     id: newId("dom"),
     appId,
@@ -386,7 +393,11 @@ async function updateDomainUnlocked(
       patch.certProvider !== undefined &&
       patch.certProvider !== current.certProvider;
     if (!chosen)
-      next.certProvider = certProviderForDns(next.status, next.certProvider);
+      next.certProvider = await certProviderForDnsWithinQuota(
+        membership.teamId,
+        next.status,
+        next.certProvider,
+      );
   }
   const writeEdit = getDb().transaction(async (tx) => {
     await tx

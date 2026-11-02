@@ -81,11 +81,7 @@ export function initialDomainConfig(
           : "",
     manualEntrypoint: domain?.entrypoint != null,
     entrypoint: domain?.entrypoint ?? "websecure",
-    certProvider: domain
-      ? domain.status === "cloudflare"
-        ? "cloudflare"
-        : (domain.certProvider ?? "letsencrypt")
-      : "none",
+    certProvider: domain ? (domain.certProvider ?? "letsencrypt") : "none",
     middlewares: (domain?.middlewares ?? []).join(", "),
     securityHeaders: domain ? domain.securityHeaders === true : true,
     corsOrigins: (domain?.corsOrigins ?? []).join(", "),
@@ -95,16 +91,6 @@ export function initialDomainConfig(
     proxied: Boolean(domain?.proxied),
     www,
   };
-}
-
-// While Cloudflare is detected on a domain its certificate is Cloudflare's, whatever the form held.
-export function lockCloudflare(
-  state: DomainConfigState,
-  detected: boolean,
-): DomainConfigState {
-  return detected && state.certProvider !== "cloudflare"
-    ? { ...state, certProvider: "cloudflare" }
-    : state;
 }
 
 export function parseMiddlewares(text: string): string[] {
@@ -336,7 +322,7 @@ export function DomainConfigFields({
               htmlFor={`${idPrefix}-cert`}
               info={
                 proxied
-                  ? "Cloudflare serves this domain's HTTPS, so its certificate is fixed. Change the domain, or re-check its DNS, to pick another."
+                  ? "Deplo matches it to Cloudflare's SSL mode and switches it when the mode changes. Let's Encrypt works with Full and Full (strict)."
                   : "Where this domain's HTTPS certificate comes from. A Cloudflare-proxied domain is set automatically; None serves plain HTTP."
               }
               docs="domains.certificates"
@@ -345,7 +331,6 @@ export function DomainConfigFields({
             </FieldLabel>
             <Select
               value={state.certProvider}
-              disabled={proxied}
               onValueChange={(v) =>
                 onChange({
                   ...state,

@@ -5,10 +5,14 @@ import {
   isCloudflareIp,
   classifyDnsRecords,
   certProviderForDns,
+  certProviderForMode,
+  cloudflareModeFrom,
   isProxiedDomain,
   isRoutableDomain,
   CLOUDFLARE_IPV4_RANGES,
+  type CloudflareMode,
 } from "./cloudflare";
+import type { CertProvider } from "../types/domain";
 
 test("isCloudflareIp: true for addresses inside published IPv4 ranges", () => {
   for (const ip of [
@@ -146,8 +150,66 @@ test("classifyDnsRecords: with no known IPv4, an A record is not judged either w
   });
 });
 
-test("certProviderForDns: a proxied, cert-less domain moves onto cloudflare", () => {
-  assert.equal(certProviderForDns("cloudflare", "none"), "cloudflare");
+test("certProviderForDns: a proxied, cert-less domain moves onto Let's Encrypt", () => {
+  assert.equal(certProviderForDns("cloudflare", "none"), "letsencrypt");
+});
+
+const URL_ = "https://app.acme.com/docs";
+const answer = (
+  status: number,
+  location: string | null = null,
+  offlinePage = false,
+) => ({ status, location, offlinePage });
+
+test("cloudflareModeFrom: a permanent redirect onto the same address is Flexible", () => {
+  assert.equal(cloudflareModeFrom(URL_, answer(301, URL_)), "flexible");
+  assert.equal(cloudflareModeFrom(URL_, answer(308, "/docs")), "flexible");
+});
+
+test("cloudflareModeFrom: an app's own redirects say nothing about the mode", () => {
+  assert.equal(cloudflareModeFrom(URL_, answer(302, URL_)), null);
+  assert.equal(
+    cloudflareModeFrom(URL_, answer(301, "https://app.acme.com/login")),
+    null,
+  );
+  assert.equal(cloudflareModeFrom(URL_, answer(200)), null);
+  assert.equal(cloudflareModeFrom(URL_, answer(403)), null);
+});
+
+test("cloudflareModeFrom: 526 is Full (strict), Deplo's offline page is Full", () => {
+  assert.equal(cloudflareModeFrom(URL_, answer(526)), "strict");
+  assert.equal(cloudflareModeFrom(URL_, answer(503, null, true)), "full");
+});
+
+test("certProviderForMode: only a provider broken under the mode moves", () => {
+  const cases: [
+    CertProvider | undefined,
+    CloudflareMode,
+    string | undefined,
+  ][] = [
+    ["letsencrypt", "flexible", "none"],
+    [undefined, "flexible", "none"],
+    ["cloudflare", "flexible", "none"],
+    ["none", "flexible", "none"],
+    ["cloudflare", "strict", "letsencrypt"],
+    ["none", "strict", "letsencrypt"],
+    ["letsencrypt", "strict", "letsencrypt"],
+    ["none", "full", "letsencrypt"],
+    ["cloudflare", "full", "cloudflare"],
+    [undefined, "full", undefined],
+  ];
+  for (const [current, mode, want] of cases)
+    assert.equal(
+      certProviderForMode(current, mode),
+      want,
+      `${current} ${mode}`,
+    );
+});
+
+test("certProviderForMode: a certificate the user installed is never replaced", () => {
+  for (const mode of ["flexible", "strict", "full"] as const)
+    assert.equal(certProviderForMode("custom", mode), "custom");
+  assert.equal(certProviderForMode("letsencrypt", null), "letsencrypt");
 });
 
 test("certProviderForDns: every other status leaves a cert-less domain alone", () => {

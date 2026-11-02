@@ -159,9 +159,51 @@ export function isRoutableDomain(d: DomainReach): boolean {
   return d.status === "valid" || isProxiedDomain(d);
 }
 
+// Let's Encrypt works under Cloudflare's Full and Full (strict); Flexible is caught by the probe below.
 export function certProviderForDns<T extends CertProvider | undefined>(
   status: DomainStatus,
   current: T,
-): T | "cloudflare" {
-  return status === "cloudflare" && current === "none" ? "cloudflare" : current;
+): T | "letsencrypt" {
+  return status === "cloudflare" && current === "none"
+    ? "letsencrypt"
+    : current;
+}
+
+// How Cloudflare reaches the server, read from one HTTPS request made through it.
+export type CloudflareMode = "flexible" | "strict" | "full";
+
+export const OFFLINE_PAGE_HEADER = "x-deplo-offline";
+
+export interface CloudflareProbeAnswer {
+  status: number;
+  location: string | null;
+  offlinePage: boolean;
+}
+
+export function cloudflareModeFrom(
+  url: string,
+  answer: CloudflareProbeAnswer,
+): CloudflareMode | null {
+  // Flexible dials port 80, and the server sends it straight back to the same https address.
+  if ((answer.status === 301 || answer.status === 308) && answer.location) {
+    const target = new URL(answer.location, url);
+    if (target.href === new URL(url).href) return "flexible";
+  }
+  if (answer.status === 526) return "strict";
+  // Deplo's offline page only answers on port 443, so Cloudflare came in over HTTPS.
+  if (answer.offlinePage) return "full";
+  return null;
+}
+
+// Only a provider that is broken under the mode moves; "custom" is the user's own certificate.
+export function certProviderForMode<T extends CertProvider | undefined>(
+  current: T,
+  mode: CloudflareMode | null,
+): T | "none" | "letsencrypt" {
+  if (mode === null || current === "custom") return current;
+  const provider = current ?? "letsencrypt";
+  if (mode === "flexible") return provider === "none" ? current : "none";
+  if (mode === "strict")
+    return provider === "letsencrypt" ? current : "letsencrypt";
+  return provider === "none" ? "letsencrypt" : current;
 }

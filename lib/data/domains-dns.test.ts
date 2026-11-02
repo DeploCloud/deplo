@@ -37,6 +37,12 @@ import {
 import { eq } from "drizzle-orm";
 import { setPrimaryDomain } from "./domains/primary-domain";
 import { routableRoutes } from "./domains/routes";
+import { sweepCloudflareCertificates } from "./domains/cloudflare-mode";
+import {
+  __resetDnsLookupForTest,
+  __setDnsLookupForTest,
+} from "../outbound-url";
+import { activities as activityTable } from "../db/schema/control-plane/activity";
 
 const SERVER_IP = "10.0.0.1";
 const CLOUDFLARE_IP = "104.16.1.1";
@@ -44,6 +50,13 @@ const ELSEWHERE_IP = "203.0.113.9";
 
 let db: TestDb;
 let pg: PGlite;
+const realFetch = globalThis.fetch;
+let probeAnswer: () => Response = () => new Response("ok");
+
+// What a request through Cloudflare to the domain gets back.
+function answerProbe(status: number, headers: Record<string, string> = {}) {
+  probeAnswer = () => new Response(null, { status, headers });
+}
 
 before(async () => {
   ({ db, pg } = await makeTestDb());
@@ -51,6 +64,8 @@ before(async () => {
 });
 
 after(async () => {
+  globalThis.fetch = realFetch;
+  __resetDnsLookupForTest();
   __resetTestDb();
   __resetDnsResolve4ForTest();
   __resetAgentAddressesForTest();
@@ -65,6 +80,9 @@ beforeEach(async () => {
   });
   await seedServer(db);
   await seedApp(db, { id: "prj_1", status: "active" });
+  probeAnswer = () => new Response("ok");
+  globalThis.fetch = async () => probeAnswer();
+  __setDnsLookupForTest(async () => [{ address: CLOUDFLARE_IP }]);
 });
 
 const asUser1 = <T>(fn: () => Promise<T>): Promise<T> =>
@@ -77,14 +95,14 @@ test("addDomain: a host already pointing at the server is born valid + ssl", asy
   assert.equal(d.ssl, true);
 });
 
-test("addDomain: a Cloudflare-proxied host is born cloudflare + ssl", async () => {
+test("addDomain: a Cloudflare-proxied host is born on Let's Encrypt + ssl", async () => {
   __setDnsResolve4ForTest(async () => [CLOUDFLARE_IP]);
   const d = await asUser1(() => addDomain("prj_1", "cf.example.io", {}));
   assert.equal(d.status, "cloudflare");
   assert.equal(d.ssl, true);
-  assert.equal(d.certProvider, "cloudflare");
+  assert.equal(d.certProvider, "letsencrypt");
   const [row] = await db.select().from(domainsTable);
-  assert.equal(row.certProvider, "cloudflare", "the choice must be persisted");
+  assert.equal(row.certProvider, "letsencrypt", "the choice must be persisted");
 });
 
 test("addDomain: a directly-pointed host stays cert-less (certs remain opt-in)", async () => {
@@ -156,22 +174,57 @@ test("verifyDomain: pending → cloudflare also settles the certificate provider
   __setDnsResolve4ForTest(async () => [CLOUDFLARE_IP]);
   const flipped = await asUser1(() => verifyDomain(d.id));
   assert.equal(flipped.status, "cloudflare");
-  assert.equal(flipped.certProvider, "cloudflare");
+  assert.equal(flipped.certProvider, "letsencrypt");
   assert.equal(flipped.statusChanged, true);
   const [row] = await db.select().from(domainsTable);
-  assert.equal(row.certProvider, "cloudflare");
+  assert.equal(row.certProvider, "letsencrypt");
 
   const again = await asUser1(() => verifyDomain(d.id));
-  assert.equal(again.certProvider, "cloudflare");
+  assert.equal(again.certProvider, "letsencrypt");
   assert.equal(again.statusChanged, false, "a settled re-check is a no-op");
 });
 
-test("verifyDomain: a proxied domain the user moved off Cloudflare is left alone", async () => {
+test("verifyDomain: a working provider behind Cloudflare is left alone", async () => {
   __setDnsResolve4ForTest(async () => [CLOUDFLARE_IP]);
   const d = await asUser1(() => addDomain("prj_1", "own-cert.example.io", {}));
-  await asUser1(() => updateDomain(d.id, { certProvider: "letsencrypt" }));
+  await asUser1(() => updateDomain(d.id, { certProvider: "cloudflare" }));
   const checked = await asUser1(() => verifyDomain(d.id));
   assert.equal(checked.status, "cloudflare");
+  assert.equal(checked.certProvider, "cloudflare");
+  assert.equal(checked.statusChanged, false);
+});
+
+test("verifyDomain: Flexible mode moves a proxied domain off its certificate", async () => {
+  __setDnsResolve4ForTest(async () => [CLOUDFLARE_IP]);
+  const d = await asUser1(() => addDomain("prj_1", "flex.example.io", {}));
+  answerProbe(301, { location: "https://flex.example.io/" });
+  const checked = await asUser1(() => verifyDomain(d.id));
+  assert.equal(checked.certProvider, "none");
+  assert.equal(checked.statusChanged, true, "the route has to be re-applied");
+  const entries = await db
+    .select({ message: activityTable.message, actor: activityTable.actor })
+    .from(activityTable);
+  const entry = entries.find((e) => e.message.startsWith("Switched"));
+  assert.match(entry?.message ?? "", /flex\.example\.io to no certificate/);
+  assert.equal(entry?.actor, "Deplo");
+});
+
+test("verifyDomain: Full (strict) moves Cloudflare's certificate onto Let's Encrypt", async () => {
+  __setDnsResolve4ForTest(async () => [CLOUDFLARE_IP]);
+  const d = await asUser1(() => addDomain("prj_1", "strict.example.io", {}));
+  await asUser1(() => updateDomain(d.id, { certProvider: "cloudflare" }));
+  answerProbe(526);
+  const checked = await asUser1(() => verifyDomain(d.id));
+  assert.equal(checked.certProvider, "letsencrypt");
+});
+
+test("verifyDomain: a probe that fails changes nothing", async () => {
+  __setDnsResolve4ForTest(async () => [CLOUDFLARE_IP]);
+  const d = await asUser1(() => addDomain("prj_1", "down.example.io", {}));
+  globalThis.fetch = async () => {
+    throw new Error("network down");
+  };
+  const checked = await asUser1(() => verifyDomain(d.id));
   assert.equal(checked.certProvider, "letsencrypt");
   assert.equal(checked.statusChanged, false);
 });
@@ -179,11 +232,43 @@ test("verifyDomain: a proxied domain the user moved off Cloudflare is left alone
 test("verifyDomain: un-proxying a domain never strips the certificate it gained", async () => {
   __setDnsResolve4ForTest(async () => [CLOUDFLARE_IP]);
   const d = await asUser1(() => addDomain("prj_1", "grey.example.io", {}));
-  assert.equal(d.certProvider, "cloudflare");
+  assert.equal(d.certProvider, "letsencrypt");
   __setDnsResolve4ForTest(async () => [SERVER_IP]);
   const checked = await asUser1(() => verifyDomain(d.id));
   assert.equal(checked.status, "valid");
-  assert.equal(checked.certProvider, "cloudflare");
+  assert.equal(checked.certProvider, "letsencrypt");
+});
+
+test("sweepCloudflareCertificates: Full mode gives a cert-less proxied domain Let's Encrypt", async () => {
+  __setDnsResolve4ForTest(async () => [CLOUDFLARE_IP]);
+  const d = await asUser1(() => addDomain("prj_1", "full.example.io", {}));
+  await asUser1(() => updateDomain(d.id, { certProvider: "none" }));
+  answerProbe(503, { "x-deplo-offline": "1" });
+  await sweepCloudflareCertificates();
+  const row = await loadDomain(d.id);
+  assert.equal(row?.certProvider, "letsencrypt");
+});
+
+test("sweepCloudflareCertificates: a tunnel domain is never probed", async () => {
+  await db.insert(domainsTable).values({
+    id: "dom_tun",
+    appId: "prj_1",
+    name: "tun.example.io",
+    status: "cloudflare",
+    isPrimary: false,
+    ssl: true,
+    certProvider: "cloudflare",
+    tunnel: true,
+    createdAt: "2026-01-01T00:00:00.000Z",
+  });
+  let probed = false;
+  globalThis.fetch = async () => {
+    probed = true;
+    return new Response(null, { status: 526 });
+  };
+  await sweepCloudflareCertificates();
+  assert.equal(probed, false);
+  assert.equal((await loadDomain("dom_tun"))?.certProvider, "cloudflare");
 });
 
 test("verifyDomain: wrong-address DNS settles misconfigured", async () => {
@@ -213,7 +298,7 @@ test("rename to a pre-pointed host keeps the domain routable (checked at write)"
   assert.equal(renamed.ssl, true);
 });
 
-test("rename onto a proxied host picks up the Cloudflare certificate too", async () => {
+test("rename onto a proxied host picks up a certificate too", async () => {
   __setDnsResolve4ForTest(async () => [SERVER_IP]);
   const d = await asUser1(() => addDomain("prj_1", "plain.example.io", {}));
   assert.equal(d.certProvider, "none");
@@ -225,7 +310,7 @@ test("rename onto a proxied host picks up the Cloudflare certificate too", async
   const rows = await db.select().from(domainsTable);
   const renamed = rows.find((r) => r.id === d.id)!;
   assert.equal(renamed.status, "cloudflare");
-  assert.equal(renamed.certProvider, "cloudflare");
+  assert.equal(renamed.certProvider, "letsencrypt");
 });
 
 test("rename onto a proxied host respects a certificate the user DID change", async () => {

@@ -143,3 +143,15 @@ test("an import at the cap brings its domains across with no certificate", async
   assert.deepEqual(await providerOf("prj_new"), ["none:false"]);
   assert.equal(notes.length, 2);
 });
+
+test("past the cap a Cloudflare-proxied host keeps Cloudflare's certificate", async () => {
+  __setDnsResolve4ForTest(async () => ["104.16.1.1"]);
+  try {
+    const d = await asUser1(() =>
+      addDomain("prj_new", "cf-capped.example.com", {}),
+    );
+    assert.equal(d.certProvider, "cloudflare");
+  } finally {
+    __setDnsResolve4ForTest(async () => [IP]);
+  }
+});

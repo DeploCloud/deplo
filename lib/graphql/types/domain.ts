@@ -72,9 +72,10 @@ export const DomainRef = builder.objectRef<DomainRow>("Domain").implement({
       type: CertProviderEnum,
       nullable: true,
       description:
-        "How this domain's TLS certificate is issued. Set to `cloudflare` " +
-        "automatically when a DNS check finds the host proxied and it still had " +
-        "no certificate - Cloudflare already serves it over HTTPS. `custom` " +
+        "How this domain's TLS certificate is issued. Set to `letsencrypt` " +
+        "automatically when a DNS check finds the host proxied through Cloudflare " +
+        "and it still had no certificate; once proxied, Deplo matches it to " +
+        "Cloudflare's SSL mode (`none` under Flexible). `custom` " +
         "serves it over HTTPS from a certificate installed on the owning server " +
         "(see `addServerCertificate`) and asks no ACME provider for one. Null on " +
         "rows written before the field existed (they route as `letsencrypt`).",
@@ -138,7 +139,7 @@ const DomainConfigInput = builder.inputType("DomainConfigInput", {
   description:
     "Per-domain routing config; an omitted certProvider means no certificate " +
     "(plain HTTP), unless the add-time DNS check finds the host proxied through " +
-    "Cloudflare, then it is stored as `cloudflare`.",
+    "Cloudflare, then it is stored as `letsencrypt`.",
   fields: (t) => ({
     port: t.int({ required: false }),
     entrypoint: t.field({ type: DomainEntrypointEnum, required: false }),
@@ -272,8 +273,8 @@ builder.mutationFields((t) => ({
     authScopes: { capability: "manage_domains" },
     description:
       "Re-check the domain's DNS and (re)issue its certificate. A check that " +
-      "finds the host proxied through Cloudflare also moves a certificate-less " +
-      "domain onto the `cloudflare` provider.",
+      "finds the host proxied through Cloudflare moves a certificate-less domain " +
+      "onto `letsencrypt`; one already proxied is matched to Cloudflare's SSL mode.",
     args: { id: t.arg.string({ required: true }) },
     resolve: async (_r, { id }) => {
       const domain = await verifyDomain(id);

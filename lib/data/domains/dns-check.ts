@@ -8,7 +8,6 @@ import { domains as domainsTable } from "../../db/schema/control-plane/domains";
 import { dispatchAlert } from "../../notify/dispatch";
 import {
   classifyDnsRecords,
-  certProviderForDns,
   isRoutableDomain,
   type DnsTargets,
   type DomainDnsClass,
@@ -20,6 +19,11 @@ import { getServerById } from "../servers/roster";
 import { serverAddresses } from "../servers/addresses";
 import type { Domain } from "../../types/domain";
 import { syncProductionUrl } from "./primary-domain";
+import {
+  certProviderForCloudflare,
+  recordCertificateSwitch,
+} from "./cloudflare-mode";
+import { certProviderForDnsWithinQuota } from "./letsencrypt-quota";
 import { resolveHostIpv4, resolveHostIpv6 } from "./dns-resolve";
 
 export {
@@ -96,14 +100,28 @@ export async function verifyDomain(
 ): Promise<Domain & { statusChanged: boolean }> {
   const dom = await loadDomain(id);
   if (!dom) throw new Error("Not found");
-  await requireAppCapability(dom.appId, "manage_domains");
+  const { membership } = await requireAppCapability(
+    dom.appId,
+    "manage_domains",
+  );
 
   const status = await checkDomainDns(
     dom.name,
     await appServerAddresses(dom.appId),
   );
   const ssl = isRoutableDomain({ status, proxied: dom.proxied });
-  const certProvider = certProviderForDns(status, dom.certProvider);
+  // Already routed behind Cloudflare: what it does to the live route decides, not the DNS alone.
+  const probed =
+    dom.status === "cloudflare" && status === "cloudflare" && !dom.tunnel
+      ? await certProviderForCloudflare(dom, membership.teamId)
+      : null;
+  const certProvider = probed
+    ? probed.certProvider
+    : await certProviderForDnsWithinQuota(
+        membership.teamId,
+        status,
+        dom.certProvider,
+      );
   const providerChanged = certProvider !== dom.certProvider;
   const statusChanged =
     status !== dom.status || ssl !== dom.ssl || providerChanged;
@@ -115,6 +133,14 @@ export async function verifyDomain(
     .returning();
   if (updated.length === 0) throw new Error("Not found");
   if (providerChanged) await syncProductionUrl(dom.appId);
+  if (probed && providerChanged)
+    await recordCertificateSwitch(
+      dom.name,
+      certProvider,
+      probed.mode,
+      "Deplo",
+      dom.appId,
+    );
   return { ...dom, status, ssl, certProvider, statusChanged };
 }
 

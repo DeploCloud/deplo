@@ -5,7 +5,7 @@ import { and, eq } from "drizzle-orm";
 import { getDb } from "../../db/client";
 import { domains as domainsTable } from "../../db/schema/control-plane/domains";
 import { newId, nowIso } from "../../ids";
-import { certProviderForDns, isRoutableDomain } from "../../deploy/cloudflare";
+import { isRoutableDomain } from "../../deploy/cloudflare";
 import { insertDomain, loadDomainsForApp } from "../app-graph-load";
 import {
   wwwCounterpart,
@@ -19,7 +19,10 @@ import {
   hostnameClaimable,
 } from "./hostname-claim";
 import { appServerAddresses, checkDomainDns } from "./dns-check";
-import { assertTeamLetsencryptQuota } from "./letsencrypt-quota";
+import {
+  assertTeamLetsencryptQuota,
+  certProviderForDnsWithinQuota,
+} from "./letsencrypt-quota";
 
 export async function applyWwwRedirect(
   domain: Domain,
@@ -179,7 +182,11 @@ async function insertPairedDomain(
     name,
     await appServerAddresses(from.appId),
   );
-  const certProvider = certProviderForDns(status, from.certProvider ?? "none");
+  const certProvider = await certProviderForDnsWithinQuota(
+    opts.teamId,
+    status,
+    from.certProvider ?? "none",
+  );
   await assertTeamLetsencryptQuota(opts.teamId, certProvider);
   await insertDomain(getDb(), {
     id: newId("dom"),

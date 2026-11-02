@@ -1,4 +1,5 @@
 import { hostnameIsServedHere } from "@/lib/data/domains/hostname-claim";
+import { OFFLINE_PAGE_HEADER } from "@/lib/deploy/cloudflare";
 
 // The proxy's last-resort route: every address Deplo holds lands here when no app's
 // own router is up. https://deplo.build/docs/guides/networking/domains-and-https
@@ -12,6 +13,7 @@ export async function GET(request: Request) {
       "content-type": "text/html; charset=utf-8",
       "cache-control": "no-store",
       "x-robots-tag": "noindex, nofollow",
+      [OFFLINE_PAGE_HEADER]: "1",
       ...(served ? { "retry-after": "30" } : {}),
     },
   });
