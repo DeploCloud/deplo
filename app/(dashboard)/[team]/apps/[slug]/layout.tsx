@@ -74,6 +74,11 @@ export default async function AppLayout(
       <AppCapabilitiesProvider capabilities={capabilities}>
         <DetailFrame
           locked={Boolean(project.migrationRunId)}
+          mobile={{
+            root: `/apps/${slug}`,
+            name: project.name,
+            parent: { href: "/", label: "Overview" },
+          }}
           header={
             <div>
               <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">

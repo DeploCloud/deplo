@@ -108,14 +108,15 @@ export function DeploymentTableRow({
   return (
     <TableRow
       data-state={checked ? "selected" : undefined}
-      className="cursor-pointer"
+      // Below md a row is a two-line card: what and its status, then app, time and actions.
+      className="cursor-pointer max-md:flex max-md:flex-wrap max-md:items-center max-md:gap-x-3 max-md:gap-y-1.5 max-md:px-4 max-md:py-3 max-md:[&>td]:p-0"
       onClick={(e) => onOpen(d, e)}
       onAuxClick={(e) => {
         if (e.button === 1) onOpen(d, e);
       }}
     >
       {canManage && (
-        <TableCell data-no-row-nav>
+        <TableCell data-no-row-nav className="max-md:hidden">
           <SimpleTooltip
             content={
               d.appMigrating
@@ -137,7 +138,7 @@ export function DeploymentTableRow({
         </TableCell>
       )}
 
-      <TableCell className="max-w-[280px]">
+      <TableCell className="max-w-[280px] max-md:order-1 max-md:w-[calc(100%-7rem)] max-md:max-w-none max-md:flex-none">
         <Link
           href={`/apps/${d.appSlug}/deployments/${d.id}`}
           className="block truncate font-medium text-foreground hover:underline focus-visible:underline"
@@ -177,7 +178,7 @@ export function DeploymentTableRow({
       </TableCell>
 
       {showApp && (
-        <TableCell>
+        <TableCell className="max-md:order-3 max-md:min-w-0 max-md:text-sm">
           <SimpleTooltip content="Open this deployment's build logs">
             <Link
               href={`/apps/${d.appSlug}/deployments/${d.id}`}
@@ -191,7 +192,7 @@ export function DeploymentTableRow({
       )}
 
       {showServer && (
-        <TableCell>
+        <TableCell className="max-md:hidden">
           {d.serverName ? (
             <SimpleTooltip
               content={
@@ -211,22 +212,22 @@ export function DeploymentTableRow({
         </TableCell>
       )}
 
-      <TableCell>
+      <TableCell className="max-md:order-2">
         <StatusBadge status={liveStatus} />
       </TableCell>
 
-      <TableCell>
+      <TableCell className="max-md:hidden">
         <span className="flex items-center gap-1.5 text-muted-foreground">
           <GitBranch className="size-3.5 shrink-0" />
           <span className="truncate font-mono text-xs">{d.branch}</span>
         </span>
       </TableCell>
 
-      <TableCell>
-        <p className="whitespace-nowrap text-foreground">
+      <TableCell className="max-md:order-4 max-md:text-sm max-md:text-muted-foreground">
+        <p className="whitespace-nowrap text-foreground max-md:text-muted-foreground">
           {timeAgo(d.createdAt)}
         </p>
-        <p className="flex items-center gap-1.5 truncate text-xs text-muted-foreground">
+        <p className="flex items-center gap-1.5 truncate text-xs text-muted-foreground max-md:hidden">
           <span>by</span>
           <DeploymentCreator
             creator={d.creator}
@@ -238,7 +239,7 @@ export function DeploymentTableRow({
         </p>
       </TableCell>
 
-      <TableCell className="text-right">
+      <TableCell className="text-right max-md:order-5 max-md:ml-auto">
         <DeploymentActions
           id={d.id}
           appId={d.appId}

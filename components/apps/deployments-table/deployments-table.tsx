@@ -255,8 +255,8 @@ export function DeploymentsTable({
       {showFilters && <DeploymentFilterBar filters={filters} />}
 
       <Card className="overflow-hidden p-0">
-        <Table>
-          <TableHeader>
+        <Table className="max-md:block">
+          <TableHeader className="max-md:hidden">
             <TableRow className="hover:bg-transparent">
               {canManage && (
                 <TableHead className="w-10">
@@ -293,7 +293,7 @@ export function DeploymentsTable({
               <TableHead className="w-28 text-right">Actions</TableHead>
             </TableRow>
           </TableHeader>
-          <TableBody>
+          <TableBody className="max-md:block">
             {visible.length === 0 ? (
               <TableRow className="hover:bg-transparent">
                 <TableCell

@@ -63,6 +63,11 @@ export default async function DatabaseLayout(
       />
       <DetailFrame
         locked={Boolean(db.migrationRunId)}
+        mobile={{
+          root: `/storage/databases/${db.id}`,
+          name: db.name,
+          parent: { href: "/storage", label: "Storage" },
+        }}
         header={
           <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
             <div className="flex items-center gap-3">

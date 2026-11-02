@@ -1,14 +1,7 @@
 "use client";
 
 import * as React from "react";
-import {
-  Check,
-  ChevronRight,
-  Fingerprint,
-  KeyRound,
-  Moon,
-  Plus,
-} from "lucide-react";
+import { Check, Fingerprint, KeyRound, Moon, Plus } from "lucide-react";
 import Link from "@/components/ui/link";
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
@@ -18,12 +11,20 @@ import { useTheme } from "@/components/theme-provider";
 import { useFlatPathname, useRouter } from "@/lib/nav";
 import { teamSwitchDestination } from "@/lib/team-switch";
 import { withTeam } from "@/lib/team-path";
-import { cn } from "@/lib/utils";
 import { NAV } from "./nav-config/main-nav";
 import { MOBILE_TABS } from "./nav-config/mobile-tabs";
-import { canSee, type NavItem } from "./nav-config/nav-item";
+import { canSee } from "./nav-config/nav-item";
 import { SETTINGS_NAV } from "./nav-config/settings-nav";
 import { useNavSections } from "./use-nav-sections";
+import {
+  Card,
+  Label,
+  NavRow,
+  PhoneRow,
+  Row,
+  RowIcon,
+  Text,
+} from "./mobile-rows";
 import { PhoneRows } from "./mobile-phone-section";
 import type { PublicUser } from "@/lib/types/identity";
 import type { TeamIdentity, TeamSummary } from "@/lib/types/team";
@@ -200,125 +201,5 @@ export function MobileMorePanel({
 
       <CreateTeamDialog open={createOpen} onOpenChange={setCreateOpen} />
     </nav>
-  );
-}
-
-function Card({
-  className,
-  children,
-}: {
-  className?: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <div
-      className={cn(
-        "divide-y divide-border overflow-hidden rounded-lg border border-border bg-card",
-        className,
-      )}
-    >
-      {children}
-    </div>
-  );
-}
-
-function Label({ children }: { children: React.ReactNode }) {
-  return (
-    <h2 className="mx-0.5 mt-5 mb-2 text-[13px] font-medium text-muted-foreground">
-      {children}
-    </h2>
-  );
-}
-
-const ROW =
-  "flex min-h-14 w-full cursor-pointer items-center gap-3 px-3.5 py-2.5 text-left";
-
-function Row({
-  href,
-  onClick,
-  children,
-}: {
-  href?: string;
-  onClick: () => void;
-  children: React.ReactNode;
-}) {
-  return href ? (
-    <Link href={href} onClick={onClick} className={ROW}>
-      {children}
-      <ChevronRight className="size-[18px] shrink-0 text-ring" />
-    </Link>
-  ) : (
-    <button type="button" onClick={onClick} className={ROW}>
-      {children}
-    </button>
-  );
-}
-
-function NavRow({ item, onClick }: { item: NavItem; onClick: () => void }) {
-  if (item.disabledReason)
-    return (
-      <div
-        aria-disabled="true"
-        className={cn(ROW, "cursor-default text-muted-foreground")}
-      >
-        <RowIcon icon={item.icon} />
-        <Text title={item.label} sub={item.disabledReason} />
-      </div>
-    );
-  return (
-    <Row href={item.href} onClick={onClick}>
-      <RowIcon icon={item.icon} />
-      <Text title={item.label} />
-    </Row>
-  );
-}
-
-function RowIcon({ icon: Icon }: { icon: NavItem["icon"] }) {
-  return (
-    <span className="grid size-8 shrink-0 place-items-center rounded-md bg-accent text-foreground">
-      <Icon className="size-[17px]" />
-    </span>
-  );
-}
-
-function Text({ title, sub }: { title: string; sub?: string }) {
-  return (
-    <span className="flex min-w-0 flex-1 flex-col">
-      <span className="truncate text-[15px] font-medium">{title}</span>
-      {sub && (
-        <span className="truncate text-[13px] text-muted-foreground">
-          {sub}
-        </span>
-      )}
-    </span>
-  );
-}
-
-function PhoneRow({
-  icon,
-  title,
-  sub,
-  trail,
-  onClick,
-}: {
-  icon: NavItem["icon"];
-  title: string;
-  sub?: string;
-  trail?: React.ReactNode;
-  onClick?: () => void;
-}) {
-  const body = (
-    <>
-      <RowIcon icon={icon} />
-      <Text title={title} sub={sub} />
-      {trail}
-    </>
-  );
-  return onClick ? (
-    <button type="button" onClick={onClick} className={ROW}>
-      {body}
-    </button>
-  ) : (
-    <div className={cn(ROW, "cursor-default")}>{body}</div>
   );
 }

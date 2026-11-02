@@ -26,16 +26,24 @@ export function PageHeader({
 }) {
   const Heading = level === "page" ? "h1" : "h2";
   return (
+    // On a phone the action sits beside the title and the description runs full width below.
     <div
       className={cn(
-        "flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between",
+        "grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-1 sm:flex sm:flex-row sm:items-center sm:justify-between sm:gap-3",
         className,
       )}
     >
-      <div className="space-y-1">
-        <Heading className={titleClass[level]}>{title}</Heading>
+      <div className="space-y-1 max-sm:contents">
+        <Heading
+          className={cn(
+            titleClass[level],
+            "max-sm:col-start-1 max-sm:row-start-1",
+          )}
+        >
+          {title}
+        </Heading>
         {(description || docs) && (
-          <p className="text-sm text-muted-foreground">
+          <p className="text-sm text-muted-foreground max-sm:col-span-2 max-sm:row-start-2">
             {description}
             {docs && (
               <DocsLink
@@ -48,7 +56,9 @@ export function PageHeader({
         )}
       </div>
       {actions && (
-        <div className="flex flex-wrap items-center gap-2">{actions}</div>
+        <div className="flex flex-wrap items-center justify-end gap-2 max-sm:col-start-2 max-sm:row-start-1">
+          {actions}
+        </div>
       )}
     </div>
   );
