@@ -132,6 +132,20 @@ export function Sidebar({
             <>
               <Tooltip delayDuration={tipDelay}>
                 <TooltipTrigger asChild>
+                  <Link
+                    href="/settings"
+                    aria-label="Settings"
+                    className={FOOTER_LINK}
+                  >
+                    <Settings className="size-4 shrink-0 group-hover:text-foreground" />
+                    <RailLabel hidden={rail}>Settings</RailLabel>
+                    {!rail && <SubmenuChevron />}
+                  </Link>
+                </TooltipTrigger>
+                <TooltipContent side="right">Settings</TooltipContent>
+              </Tooltip>
+              <Tooltip delayDuration={tipDelay}>
+                <TooltipTrigger asChild>
                   <a
                     href={docsUrl("docs.home")}
                     target="_blank"
@@ -144,20 +158,6 @@ export function Sidebar({
                   </a>
                 </TooltipTrigger>
                 <TooltipContent side="right">Documentation</TooltipContent>
-              </Tooltip>
-              <Tooltip delayDuration={tipDelay}>
-                <TooltipTrigger asChild>
-                  <Link
-                    href="/settings"
-                    aria-label="Settings"
-                    className={FOOTER_LINK}
-                  >
-                    <Settings className="size-4 shrink-0 group-hover:text-foreground" />
-                    <RailLabel hidden={rail}>Settings</RailLabel>
-                    {!rail && <SubmenuChevron />}
-                  </Link>
-                </TooltipTrigger>
-                <TooltipContent side="right">Settings</TooltipContent>
               </Tooltip>
             </>
           )}
