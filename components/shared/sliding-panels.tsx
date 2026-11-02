@@ -2,9 +2,10 @@
 
 import * as React from "react";
 
-export const PANEL_BODY_MAX = "max-h-[calc(85vh-14rem)]";
+export const PANEL_BODY_MAX = "max-h-[calc(var(--sheet-room,85vh)-14rem)]";
 
-export const PANEL_BODY_MAX_NESTED = "max-h-[calc(85vh-18rem)]";
+export const PANEL_BODY_MAX_NESTED =
+  "max-h-[calc(var(--sheet-room,85vh)-18rem)]";
 
 export function SlidingPanels<T extends string>({
   panels,

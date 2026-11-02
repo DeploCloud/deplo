@@ -156,7 +156,7 @@ export function DatabaseConnectedApps({
           <AnimatedHeight scroll={false}>
             <DatabaseLinkForm
               noun="app"
-              bodyClassName="max-h-[calc(85vh-12rem)] border-t border-border"
+              bodyClassName="max-h-[calc(var(--sheet-room,85vh)-12rem)] border-t border-border"
               targets={apps.map((a) => ({
                 id: a.id,
                 name: a.name,

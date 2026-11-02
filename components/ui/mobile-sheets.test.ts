@@ -6,6 +6,7 @@ import { join } from "node:path";
 import {
   bodyDragStarts,
   dragCloses,
+  keyboardInset,
   swallowGhostClick,
 } from "./use-sheet-drag";
 
@@ -97,5 +98,21 @@ describe("mobile sheets", () => {
       g.document = saved.document;
       g.window = saved.window;
     }
+  });
+
+  test("the sheet rides exactly as high as the keyboard reaches", () => {
+    const vv = (height: number, offsetTop = 0) => ({ height, offsetTop });
+    assert.equal(keyboardInset(664, vv(664)), 0, "keyboard down");
+    assert.equal(
+      keyboardInset(664, vv(604)),
+      0,
+      "a toolbar folding is not a keyboard",
+    );
+    assert.equal(keyboardInset(664, vv(328)), 336, "keyboard up");
+    assert.equal(
+      keyboardInset(664, vv(328, 40)),
+      296,
+      "iOS panned the page up",
+    );
   });
 });

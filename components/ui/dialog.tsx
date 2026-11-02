@@ -59,6 +59,8 @@ const DialogContent = React.forwardRef<
     const contentRef = React.useRef<HTMLDivElement | null>(null);
     const sheet = useSheetDrag();
     const sheetRef = sheet.ref;
+    // A flush dialog pads its own sections: the sheet adds only the pill's room and the safe area.
+    const flush = /(^|\s)p-0(\s|$)/.test(className ?? "");
     const setRefs = React.useCallback(
       (node: HTMLDivElement | null) => {
         contentRef.current = node;
@@ -77,7 +79,10 @@ const DialogContent = React.forwardRef<
           className={cn(
             "fixed top-[50%] left-[50%] z-50 grid w-full max-w-lg translate-x-[-50%] translate-y-[-50%] grid-cols-[minmax(0,1fr)] gap-4 rounded-xl border border-border bg-background p-6 shadow-2xl duration-200 data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-95 data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95",
             // Below md every dialog is a bottom sheet: no X, it closes by dragging or on the backdrop.
-            "max-md:top-auto max-md:bottom-0 max-md:left-0 max-md:max-w-none max-md:translate-x-0 max-md:translate-y-0 max-md:rounded-t-3xl max-md:rounded-b-none max-md:border-x-0 max-md:border-b-0 max-md:bg-card max-md:px-6 max-md:pt-[30px] max-md:pb-[calc(env(safe-area-inset-bottom)+24px)] max-md:shadow-[0_-12px_40px_rgb(0_0_0/0.55)]",
+            "max-md:top-auto max-md:bottom-0 max-md:left-0 max-md:max-w-none max-md:translate-x-0 max-md:translate-y-0 max-md:rounded-t-3xl max-md:rounded-b-none max-md:border-x-0 max-md:border-b-0 max-md:bg-card max-md:shadow-[0_-12px_40px_rgb(0_0_0/0.55)]",
+            flush
+              ? "max-md:pt-2 max-md:pb-[env(safe-area-inset-bottom)]"
+              : "max-md:px-5 max-md:pt-[30px] max-md:pb-[calc(env(safe-area-inset-bottom)+16px)]",
             !selfManaged && "max-h-[85dvh] grid-rows-[minmax(0,1fr)]",
             className,
           )}
@@ -138,6 +143,7 @@ const DialogHeader = ({
 }: React.HTMLAttributes<HTMLDivElement>) => (
   <div
     data-sheet-drag
+    data-slot="dialog-header"
     className={cn(
       "flex flex-col space-y-1.5 text-left max-md:touch-none",
       className,
@@ -154,6 +160,7 @@ const DialogFooter = ({
   ...props
 }: React.HTMLAttributes<HTMLDivElement>) => (
   <div
+    data-slot="dialog-footer"
     className={cn(
       "flex flex-col-reverse gap-2 sm:flex-row",
       React.Children.toArray(children).length === 2
@@ -189,6 +196,7 @@ const DialogDescription = React.forwardRef<
 >(({ className, ...props }, ref) => (
   <DialogPrimitive.Description
     ref={ref}
+    data-slot="dialog-description"
     className={cn(
       "text-sm leading-relaxed text-muted-foreground [&_strong]:font-medium [&_strong]:text-foreground",
       className,

@@ -7,6 +7,40 @@ const HANDLE_PX = 30;
 const CLOSE_PX = 80;
 const SLOP_PX = 6;
 const TEXT_FIELD = "input, textarea, select, [contenteditable='true']";
+const KEYBOARD_PX = 150;
+const ROOM_GAP_PX = 12;
+
+/** How far the on-screen keyboard reaches up the layout viewport, or 0 when it is down. */
+export function keyboardInset(
+  innerHeight: number,
+  vv: { height: number; offsetTop: number },
+): number {
+  const covered = innerHeight - vv.height - vv.offsetTop;
+  return innerHeight - vv.height > KEYBOARD_PX ? Math.max(0, covered) : 0;
+}
+
+// Scrolls the field being typed in clear of the pinned title and buttons, inside its own scroller only:
+// scrollIntoView would also move the locked page underneath.
+function keepFieldInView(sheet: HTMLElement) {
+  const field = document.activeElement as HTMLElement | null;
+  if (!field || !sheet.contains(field) || !field.matches(TEXT_FIELD)) return;
+  let box = field.parentElement;
+  while (
+    box &&
+    box !== sheet &&
+    !/(auto|scroll)/.test(getComputedStyle(box).overflowY)
+  )
+    box = box.parentElement;
+  if (!box) return;
+  const pinned = (slot: string) =>
+    box.querySelector<HTMLElement>(`[data-slot="${slot}"]`)?.offsetHeight ?? 0;
+  const f = field.getBoundingClientRect();
+  const b = box.getBoundingClientRect();
+  const top = b.top + pinned("dialog-header") + 8;
+  const bottom = b.bottom - pinned("dialog-footer") - 8;
+  if (f.top < top) box.scrollTop -= top - f.top;
+  else if (f.bottom > bottom) box.scrollTop += f.bottom - bottom;
+}
 
 /** A drag that ends here closes the sheet: far enough down, or flicked. */
 export function dragCloses(dy: number, ms: number): boolean {
@@ -167,7 +201,33 @@ export function useSheetDrag() {
       el.addEventListener("touchend", onEnd);
       el.addEventListener("touchcancel", onCancel);
       el.addEventListener("click", onClick, true);
+      // The sheet rides on the keyboard: the layout viewport keeps its height, the visual one shrinks.
+      const vv = window.visualViewport;
+      const fit = () => {
+        const kb =
+          vv && window.matchMedia(MOBILE).matches
+            ? keyboardInset(window.innerHeight, vv)
+            : 0;
+        if (!kb || !vv) {
+          delete el.dataset.keyboard;
+          el.style.removeProperty("--kb");
+          el.style.removeProperty("--sheet-room");
+          return;
+        }
+        el.dataset.keyboard = "";
+        el.style.setProperty("--kb", `${kb}px`);
+        el.style.setProperty("--sheet-room", `${vv.height - ROOM_GAP_PX}px`);
+        requestAnimationFrame(() => keepFieldInView(el));
+      };
+      const onFocus = () => requestAnimationFrame(() => keepFieldInView(el));
+      vv?.addEventListener("resize", fit);
+      vv?.addEventListener("scroll", fit);
+      el.addEventListener("focusin", onFocus);
+      fit();
       detach.current = () => {
+        vv?.removeEventListener("resize", fit);
+        vv?.removeEventListener("scroll", fit);
+        el.removeEventListener("focusin", onFocus);
         el.removeEventListener("touchstart", onStart);
         el.removeEventListener("touchmove", onMove);
         el.removeEventListener("touchend", onEnd);

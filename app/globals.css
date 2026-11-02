@@ -686,6 +686,32 @@ html body[data-scroll-locked] {
   [data-slot="sheet"] {
     max-height: calc(100dvh - var(--sheet-top-gap)) !important;
   }
+  /* Typing: the sheet rides on the keyboard, keeps its title and buttons, and lets the description go. */
+  [data-slot="sheet"][data-keyboard] {
+    bottom: var(--kb) !important;
+    max-height: var(--sheet-room) !important;
+    padding-bottom: 8px !important;
+  }
+  [data-slot="sheet"][data-keyboard] [data-slot="dialog-description"] {
+    display: none;
+  }
+  /* -0.25rem: a focus-safe-scroll pads its scrollport, and content would show through that strip. */
+  [data-slot="sheet"][data-keyboard] [data-slot="dialog-header"] {
+    position: sticky;
+    top: -0.25rem;
+    z-index: 1;
+    padding-top: 0.25rem;
+    padding-bottom: 8px;
+    background: var(--card);
+  }
+  [data-slot="sheet"][data-keyboard] [data-slot="dialog-footer"] {
+    position: sticky;
+    bottom: -0.25rem;
+    z-index: 1;
+    padding-top: 10px;
+    padding-bottom: 0.25rem;
+    background: var(--card);
+  }
   [data-slot="sheet"][data-state="open"] {
     animation: deplo-sheet-in 420ms cubic-bezier(0.32, 0.72, 0, 1);
   }
