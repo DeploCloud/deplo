@@ -8,7 +8,7 @@ import { useSheetDrag } from "@/components/ui/use-sheet-drag";
 
 // Below md a menu is an action sheet; globals.css pins its popper wrapper to the bottom.
 const ACTION_SHEET =
-  "max-md:max-h-[80dvh] max-md:w-full max-md:min-w-0 max-md:overflow-y-auto max-md:rounded-t-3xl max-md:rounded-b-none max-md:border-x-0 max-md:border-b-0 max-md:bg-card max-md:px-3 max-md:pt-[30px] max-md:pb-[calc(env(safe-area-inset-bottom)+16px)] max-md:shadow-[0_0_0_100vmax_rgb(0_0_0/0.6)] max-md:zoom-in-100 max-md:slide-in-from-bottom";
+  "max-md:max-h-[80dvh] max-md:w-full max-md:min-w-0 max-md:overflow-y-auto max-md:rounded-t-3xl max-md:rounded-b-none max-md:border-x-0 max-md:border-b-0 max-md:bg-card max-md:px-3 max-md:pt-[30px] max-md:pb-[calc(env(safe-area-inset-bottom)+16px)] max-md:shadow-[0_0_0_100vmax_rgb(0_0_0/0.6)]";
 
 function SheetHandle() {
   return (

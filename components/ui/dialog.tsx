@@ -21,6 +21,7 @@ const DialogOverlay = React.forwardRef<
 >(({ className, ...props }, ref) => (
   <DialogPrimitive.Overlay
     ref={ref}
+    data-slot="sheet-scrim"
     className={cn(
       // pointer-events-auto: Radix sets pointer-events:none on <body> while a modal is open and the overlay would INHERIT it.
       // z-[45], never z-50: overlay and content are SEPARATE portals, so a close+reopen can append the
@@ -61,6 +62,7 @@ const DialogContent = React.forwardRef<
       <DialogPortal>
         <DialogOverlay className={overlayClassName} />
         <DialogPrimitive.Content
+          data-slot="sheet"
           ref={(node) => {
             contentRef.current = node;
             if (typeof ref === "function") ref(node);
@@ -69,7 +71,7 @@ const DialogContent = React.forwardRef<
           className={cn(
             "fixed top-[50%] left-[50%] z-50 grid w-full max-w-lg translate-x-[-50%] translate-y-[-50%] grid-cols-[minmax(0,1fr)] gap-4 rounded-xl border border-border bg-background p-6 shadow-2xl duration-200 data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-95 data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95",
             // Below md every dialog is a bottom sheet with a drag pill.
-            "max-md:top-auto max-md:bottom-0 max-md:left-0 max-md:max-w-none max-md:translate-x-0 max-md:translate-y-0 max-md:rounded-t-3xl max-md:rounded-b-none max-md:border-x-0 max-md:border-b-0 max-md:bg-card max-md:px-6 max-md:pt-[30px] max-md:pb-[calc(env(safe-area-inset-bottom)+24px)] max-md:shadow-[0_-12px_40px_rgb(0_0_0/0.55)] max-md:data-[state=closed]:zoom-out-100 max-md:data-[state=closed]:slide-out-to-bottom max-md:data-[state=open]:zoom-in-100 max-md:data-[state=open]:slide-in-from-bottom",
+            "max-md:top-auto max-md:bottom-0 max-md:left-0 max-md:max-w-none max-md:translate-x-0 max-md:translate-y-0 max-md:rounded-t-3xl max-md:rounded-b-none max-md:border-x-0 max-md:border-b-0 max-md:bg-card max-md:px-6 max-md:pt-[30px] max-md:pb-[calc(env(safe-area-inset-bottom)+24px)] max-md:shadow-[0_-12px_40px_rgb(0_0_0/0.55)]",
             !selfManaged &&
               "max-h-[85dvh] grid-rows-[minmax(0,1fr)] max-md:max-h-[calc(100dvh-2.5rem)]",
             className,
