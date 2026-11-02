@@ -405,6 +405,13 @@ html body[data-scroll-locked] {
   [role="button"]:not([aria-disabled="true"]) {
     cursor: pointer;
   }
+  /* Toasts rise above the floating tab bar. */
+  @media (max-width: 767.98px) {
+    :root {
+      --toast-bottom: calc(max(12px, env(safe-area-inset-bottom)) + 76px);
+    }
+  }
+
   /* Below md a dropdown menu is an action sheet: pin Radix's positioned wrapper to the bottom edge. */
   @media (max-width: 767.98px) {
     [data-radix-popper-content-wrapper]:has(

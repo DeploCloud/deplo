@@ -38,6 +38,7 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { gqlAction } from "@/lib/graphql-client";
 import { DEFAULT_ALERTS } from "@/lib/alerts";
+import { registerPush } from "./register-push";
 import { ALL_CHANNELS } from "@/lib/types/notification";
 import { cn } from "@/lib/utils";
 import type {
@@ -464,48 +465,6 @@ export function NotificationsPanel({
       />
     </div>
   );
-}
-
-async function registerPush(vapidPublicKey: string): Promise<boolean> {
-  if (
-    typeof window === "undefined" ||
-    !("serviceWorker" in navigator) ||
-    !("PushManager" in window) ||
-    !window.isSecureContext
-  ) {
-    toast.error("Browser push needs this panel to be served over https");
-    return false;
-  }
-  if ((await Notification.requestPermission()) !== "granted") {
-    toast.error("Your browser blocked notifications for this site");
-    return false;
-  }
-  try {
-    const reg = await navigator.serviceWorker.register("/sw.js");
-    const sub = await reg.pushManager.subscribe({
-      userVisibleOnly: true,
-      applicationServerKey: vapidPublicKey,
-    });
-    const json = sub.toJSON();
-    const res = await gqlAction(
-      `mutation($endpoint: String!, $p256dh: String!, $auth: String!) {
-         subscribeWebPush(endpoint: $endpoint, p256dh: $p256dh, auth: $auth)
-       }`,
-      {
-        endpoint: sub.endpoint,
-        p256dh: json.keys?.p256dh ?? "",
-        auth: json.keys?.auth ?? "",
-      },
-    );
-    if (!res.ok) {
-      toast.error(res.error);
-      return false;
-    }
-    return true;
-  } catch (e) {
-    toast.error(e instanceof Error ? e.message : String(e));
-    return false;
-  }
 }
 
 function KindTile({

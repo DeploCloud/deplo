@@ -2,7 +2,7 @@ import { test, afterEach } from "node:test";
 import assert from "node:assert/strict";
 import { NextRequest } from "next/server";
 
-import { proxy } from "./proxy";
+import { config, proxy } from "./proxy";
 
 const PANEL = "https://deplo.example.com";
 const previous = process.env.DEPLO_PUBLIC_URL;
@@ -109,4 +109,25 @@ test("a Deplo move's progress page opens without a session", () => {
   process.env.DEPLO_PUBLIC_URL = PANEL;
   const res = proxy(new NextRequest(new Request(`${PANEL}/moving/dmv_abc`)));
   assert.equal(res.headers.get("location"), null);
+});
+
+test("the installed app's files skip the sign-in redirect, and nothing else does", () => {
+  const guarded = new RegExp(`^${config.matcher[0].source}$`);
+  for (const file of [
+    "/manifest.webmanifest",
+    "/sw.js",
+    "/offline.html",
+    "/icon-192.png",
+    "/icon-512.png",
+    "/apple-icon.png",
+  ])
+    assert.ok(!guarded.test(file), `${file} must load without a session`);
+  for (const page of [
+    "/acme",
+    "/acme/apps/web",
+    "/sw.jsx",
+    "/icon-192.png.html",
+    "/login",
+  ])
+    assert.ok(guarded.test(page), `${page} must still pass through the proxy`);
 });

@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1, viewport-fit=cover"
+    />
+    <meta name="theme-color" content="#000000" />
+    <title>Offline - Deplo</title>
+    <style>
+      html,
+      body {
+        height: 100%;
+        margin: 0;
+        background: #000;
+        color: #ededed;
+        font-family: ui-sans-serif, system-ui, sans-serif;
+      }
+      main {
+        display: flex;
+        min-height: 100%;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 14px;
+        padding: 24px;
+        box-sizing: border-box;
+        text-align: center;
+      }
+      h1 {
+        margin: 8px 0 0;
+        font-size: 22px;
+        font-weight: 600;
+      }
+      p {
+        max-width: 300px;
+        margin: 0;
+        color: #a1a1aa;
+        font-size: 15px;
+        line-height: 1.45;
+      }
+      button {
+        height: 44px;
+        margin-top: 10px;
+        padding: 0 22px;
+        border: 0;
+        border-radius: 6px;
+        background: #ededed;
+        color: #0a0a0a;
+        font: inherit;
+        font-size: 15px;
+        font-weight: 500;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <svg width="40" height="42" viewBox="0 0 25 26" aria-hidden="true">
+        <path
+          fill="#ededed"
+          d="M6.54199 3.43555H13.7432C19.7299 3.43571 24.5828 8.28959 24.583 14.2764C24.5828 20.2632 19.73 25.116 13.7432 25.1162H2.90234V19.2139H13.2354C15.9625 19.2139 18.1737 17.0035 18.1738 14.2764C18.1736 11.5493 15.9625 9.33789 13.2354 9.33789H2.90234V6.54199H0V0H6.54199V3.43555Z"
+        />
+      </svg>
+      <h1>You are offline</h1>
+      <p>
+        Deplo shows live status, so it needs a connection. Check your network
+        and try again.
+      </p>
+      <button type="button" onclick="location.reload()">Try again</button>
+    </main>
+  </body>
+</html>

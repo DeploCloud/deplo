@@ -27,6 +27,7 @@ import {
   deliveryReason,
   saveNotificationChannel,
   subscribeWebPush,
+  teamPushChannel,
 } from "./notifications";
 
 let db: TestDb;
@@ -449,4 +450,31 @@ test("a delivery failure names its cause, not just 'fetch failed'", () => {
     deliveryReason("not an error"),
     "The channel could not be reached",
   );
+});
+
+test("a member can tell whether the team sends phone alerts, and only for its own team", async () => {
+  await asUser1(async () => {
+    assert.equal(await teamPushChannel(), "none");
+    const push = await saveNotificationChannel(
+      null,
+      draft({ kind: "push", url: "", enabled: false }),
+    );
+    assert.equal(
+      await teamPushChannel(),
+      "off",
+      "a channel turned off is not on",
+    );
+    await saveNotificationChannel(
+      push.id,
+      draft({ kind: "push", url: "", enabled: true }),
+    );
+    assert.equal(await teamPushChannel(), "on");
+  });
+  await runWithIdentity({ userId: USER_2, teamId: TEAM_B }, async () => {
+    assert.equal(
+      await teamPushChannel(),
+      "none",
+      "team A's channel says nothing about team B",
+    );
+  });
 });

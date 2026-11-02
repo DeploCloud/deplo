@@ -110,8 +110,7 @@ export const CHANNEL_BRAND: Record<NotificationChannel, ChannelBrand> = {
   },
   push: {
     label: "Browser push",
-    description: "Desktop notifications on the devices you turn on.",
-    beta: true,
+    description: "Alerts on the phones and browsers you turn on.",
     bg: "#7C3AED",
     fg: "#FFFFFF",
     icon: Bell,

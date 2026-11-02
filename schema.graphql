@@ -5595,6 +5595,11 @@ type Query {
   """
   targetMove: String
 
+  """
+  Whether the active team sends alerts to phones: ON, OFF (a push channel exists but is turned off) or NONE.
+  """
+  teamPushChannel: TeamPushChannel
+
   """Every role of the active team - defaults first, then the team's own."""
   teamRoles: [TeamRole!]
 
@@ -6961,6 +6966,12 @@ type TeamMembership {
 enum TeamPlan {
   enterprise
   pro
+}
+
+enum TeamPushChannel {
+  NONE
+  OFF
+  ON
 }
 
 """

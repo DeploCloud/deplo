@@ -4,6 +4,7 @@ import * as React from "react";
 import { useFlatPathname } from "@/lib/nav";
 import { MobileMorePanel } from "./mobile-more-panel";
 import { MobileTabBar } from "./mobile-tab-bar";
+import { startPwa } from "./pwa";
 import type { PublicUser } from "@/lib/types/identity";
 import type { TeamIdentity, TeamSummary } from "@/lib/types/team";
 
@@ -23,6 +24,7 @@ export function MobileNav(props: {
     setMoreOpen(false);
   }
   const close = React.useCallback(() => setMoreOpen(false), []);
+  React.useEffect(startPwa, []);
 
   return (
     <>

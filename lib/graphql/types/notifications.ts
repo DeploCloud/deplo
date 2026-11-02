@@ -6,8 +6,17 @@ import {
   saveNotificationChannel,
   sendTestNotification,
   subscribeWebPush,
+  teamPushChannel,
   unsubscribeWebPush,
 } from "@/lib/data/notifications";
+
+const TeamPushChannel = builder.enumType("TeamPushChannel", {
+  values: {
+    ON: { value: "on" },
+    OFF: { value: "off" },
+    NONE: { value: "none" },
+  } as const,
+});
 
 builder.queryFields((t) => ({
   notificationChannels: t.field({
@@ -16,6 +25,13 @@ builder.queryFields((t) => ({
     description:
       "The active team's configured channels, each with its own subscribed alerts. Needs `manage_notifications`: a channel carries the webhook URL, which is the credential for the room it posts in, so an API token reads it masked. Saving the mask back keeps the stored URL.",
     resolve: () => listNotificationChannels(),
+  }),
+  teamPushChannel: t.field({
+    type: TeamPushChannel,
+    authScopes: { loggedIn: true },
+    description:
+      "Whether the active team sends alerts to phones: ON, OFF (a push channel exists but is turned off) or NONE.",
+    resolve: () => teamPushChannel(),
   }),
   webPushPublicKey: t.field({
     type: "String",

@@ -24,6 +24,7 @@ import { MOBILE_TABS } from "./nav-config/mobile-tabs";
 import { canSee, type NavItem } from "./nav-config/nav-item";
 import { SETTINGS_NAV } from "./nav-config/settings-nav";
 import { useNavSections } from "./use-nav-sections";
+import { PhoneRows } from "./mobile-phone-section";
 import type { PublicUser } from "@/lib/types/identity";
 import type { TeamIdentity, TeamSummary } from "@/lib/types/team";
 
@@ -176,6 +177,15 @@ export function MobileMorePanel({
         </React.Fragment>
       ))}
 
+      <Label>This phone</Label>
+      <Card>
+        <PhoneRows
+          team={team}
+          canManageAlerts={caps.has("manage_notifications")}
+          Row={PhoneRow}
+        />
+      </Card>
+
       <Label>Appearance</Label>
       <Card>
         <label className="flex min-h-14 cursor-pointer items-center gap-3 px-3.5 py-2.5">
@@ -281,5 +291,34 @@ function Text({ title, sub }: { title: string; sub?: string }) {
         </span>
       )}
     </span>
+  );
+}
+
+function PhoneRow({
+  icon,
+  title,
+  sub,
+  trail,
+  onClick,
+}: {
+  icon: NavItem["icon"];
+  title: string;
+  sub?: string;
+  trail?: React.ReactNode;
+  onClick?: () => void;
+}) {
+  const body = (
+    <>
+      <RowIcon icon={icon} />
+      <Text title={title} sub={sub} />
+      {trail}
+    </>
+  );
+  return onClick ? (
+    <button type="button" onClick={onClick} className={ROW}>
+      {body}
+    </button>
+  ) : (
+    <div className={cn(ROW, "cursor-default")}>{body}</div>
   );
 }

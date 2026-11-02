@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import { cookies } from "next/headers";
 import "./globals.css";
@@ -22,7 +22,8 @@ export const metadata: Metadata = {
     default: "Overview - Deplo",
     template: "%s - Deplo",
   },
-  icons: { icon: "/favicon.ico" },
+  icons: { icon: "/favicon.ico", apple: "/apple-icon.png" },
+  appleWebApp: { capable: true, title: "Deplo", statusBarStyle: "black" },
   robots: {
     index: false,
     follow: false,
@@ -33,6 +34,12 @@ export const metadata: Metadata = {
       noimageindex: true,
     },
   },
+};
+
+// cover: the installed app draws to the screen edge, and the tab bar keeps clear of the home indicator.
+export const viewport: Viewport = {
+  viewportFit: "cover",
+  themeColor: "#000000",
 };
 
 export default async function RootLayout({
@@ -53,7 +60,11 @@ export default async function RootLayout({
         <ThemeProvider defaultTheme={theme}>
           <TooltipProvider delayDuration={200}>
             {children}
-            <Toaster position="bottom-right" />
+            <Toaster
+              position="bottom-right"
+              offset={{ bottom: "var(--toast-bottom, 24px)" }}
+              mobileOffset={{ bottom: "var(--toast-bottom, 16px)" }}
+            />
             <ServerConnectionGuard />
           </TooltipProvider>
         </ThemeProvider>

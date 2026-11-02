@@ -469,6 +469,22 @@ export function deliveryReason(e: unknown): string {
   return seen.join(" - ") || "The channel could not be reached";
 }
 
+// Any member may know whether the team sends phone alerts; the channel itself stays behind manage_notifications.
+export async function teamPushChannel(): Promise<"on" | "off" | "none"> {
+  const teamId = await requireActiveTeamId();
+  const rows = await getDb()
+    .select({ enabled: notificationChannels.enabled })
+    .from(notificationChannels)
+    .where(
+      and(
+        eq(notificationChannels.teamId, teamId),
+        eq(notificationChannels.kind, "push"),
+      ),
+    );
+  if (rows.length === 0) return "none";
+  return rows.some((r) => r.enabled) ? "on" : "off";
+}
+
 export async function getWebPushPublicKey(): Promise<string> {
   await assertUser();
   return ensureVapidKeys();

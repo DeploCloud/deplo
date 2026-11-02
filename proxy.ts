@@ -126,11 +126,12 @@ export function proxy(request: NextRequest) {
   return response;
 }
 
+// The installed app's files load with no session: browsers fetch the manifest and the worker without cookies.
 export const config = {
   matcher: [
     {
       source:
-        "/((?!api|\\.well-known|_next/static|_next/image|favicon.ico|robots.txt|install|uninstall).*)",
+        "/((?!api|\\.well-known|_next/static|_next/image|favicon.ico|robots.txt|install|uninstall|manifest\\.webmanifest$|sw\\.js$|offline\\.html$|icon-(?:192|512)\\.png$|apple-icon\\.png$|logomark\\.svg$).*)",
     },
   ],
 };
