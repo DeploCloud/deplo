@@ -11,7 +11,6 @@ import {
   Fingerprint,
   Bot,
   Cable,
-  Globe,
 } from "lucide-react";
 
 import { DeploMark } from "@/components/logo";
@@ -62,20 +61,6 @@ export const SETTINGS_NAV: NavSection[] = [
         icon: GitBranch,
         tooltip: "Connected git providers",
       },
-      {
-        label: "MCP Server",
-        href: "/settings/mcp",
-        icon: Bot,
-        tooltip: "Connect your AI agents to this team over MCP",
-        requiresAny: ["manage_mcp", "manage_team"],
-      },
-      {
-        label: "Automatic DNS",
-        href: "/settings/dns",
-        icon: Globe,
-        tooltip: "Let Deplo create the DNS records of your domains",
-        requires: "manage_domains",
-      },
     ],
   },
   {
@@ -86,6 +71,13 @@ export const SETTINGS_NAV: NavSection[] = [
         href: "/settings/account",
         icon: User,
         tooltip: "Your personal account",
+      },
+      {
+        label: "AI agents",
+        href: "/settings/agents",
+        icon: Bot,
+        tooltip: "Connect your own AI agents to Deplo over MCP",
+        requires: "manage_mcp",
       },
       {
         label: "Security",

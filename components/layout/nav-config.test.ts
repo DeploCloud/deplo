@@ -135,20 +135,20 @@ test("a database gets Cron jobs on the same rule", () => {
   );
 });
 
-test("MCP Server is offered to either capability that opens half of it", () => {
-  const mcp = SETTINGS_NAV.flatMap((s) => s.items).find(
-    (i) => i.href === "/settings/mcp",
-  );
-  assert.ok(mcp, "the MCP Server entry disappeared");
-  assert.equal(
-    mcp.requires,
-    undefined,
-    "a single `requires` locks one of them out",
-  );
-  assert.deepEqual(mcp.requiresAny?.slice().sort(), [
-    "manage_mcp",
-    "manage_team",
+test("AI agents is personal: it follows Account, and the team keeps only its switch", () => {
+  const section = (title: string) =>
+    SETTINGS_NAV.find((s) => s.title === title)?.items.map((i) => i.href) ?? [];
+  assert.deepEqual(section("Account").slice(0, 2), [
+    "/settings/account",
+    "/settings/agents",
   ]);
+  const team = section("Team");
+  for (const gone of ["/settings/mcp", "/settings/dns"])
+    assert.ok(!team.includes(gone), `${gone} lives in General now`);
+  const agents = SETTINGS_NAV.flatMap((s) => s.items).find(
+    (i) => i.href === "/settings/agents",
+  );
+  assert.equal(agents?.requires, "manage_mcp");
 });
 
 test("the Console chip follows the app's own switch, not just a running container", () => {

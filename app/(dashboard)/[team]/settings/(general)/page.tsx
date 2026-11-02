@@ -6,12 +6,20 @@ import {
   membersWithoutTwoFactor,
 } from "@/lib/data/teams";
 import { listMembers } from "@/lib/data/members/roster";
+import { getMcpSettings } from "@/lib/data/mcp-settings";
+import { countTeamMcpAgents } from "@/lib/data/mcp-clients";
+import {
+  dnsProviderTeamChoices,
+  listMyDnsProviders,
+} from "@/lib/data/dns-providers/store";
 import { canDeleteTeam } from "@/lib/data/team-delete";
 import { PageHeader } from "@/components/shared/page-header";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { InfoTip } from "@/components/ui/info-tip";
 import { TeamForm } from "@/components/settings/team-form";
 import { TeamSecurityCard } from "@/components/settings/team-security-card";
+import { TeamAgentsCard } from "@/components/settings/team-agents-card";
+import { TeamDnsCard } from "@/components/settings/dns/team-dns-card";
 import { TeamDangerZone } from "@/components/settings/team-danger-zone";
 import { EmptyState } from "@/components/shared/empty-state";
 import { Lock } from "lucide-react";
@@ -25,8 +33,23 @@ export default async function SettingsGeneralPage() {
     hasCapability("manage_team"),
     getCurrentUser(),
   ]);
-  const [settings, deletion, twoFactor] = wholeTeam
-    ? await Promise.all([getTeam(), canDeleteTeam(), membersWithoutTwoFactor()])
+  const [settings, deletion, twoFactor, extras] = wholeTeam
+    ? await Promise.all([
+        getTeam(),
+        canDeleteTeam(),
+        membersWithoutTwoFactor(),
+        Promise.all([
+          getMcpSettings(),
+          countTeamMcpAgents(),
+          listMyDnsProviders(),
+          dnsProviderTeamChoices(),
+        ]).then(([mcp, agents, dns, dnsTeams]) => ({
+          mcp,
+          agents,
+          dns,
+          dnsTeams,
+        })),
+      ])
     : [
         null,
         {
@@ -36,6 +59,7 @@ export default async function SettingsGeneralPage() {
           sharedVarsOtherTeamsUse: 0,
         },
         { without: 0, total: 0 },
+        null,
       ];
 
   const canTransfer =
@@ -59,9 +83,9 @@ export default async function SettingsGeneralPage() {
         description="Your workspace details."
       />
 
-      {settings ? (
-        <div className="grid gap-4 lg:grid-cols-2">
-          <Card>
+      {settings && extras ? (
+        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+          <Card className="flex flex-col">
             <CardHeader>
               <CardTitle className="flex w-fit items-center gap-2 text-base">
                 Team
@@ -71,7 +95,7 @@ export default async function SettingsGeneralPage() {
                 />
               </CardTitle>
             </CardHeader>
-            <CardContent className="space-y-4">
+            <CardContent className="flex flex-1 flex-col">
               <TeamForm
                 name={team.name}
                 avatarUrl={team.avatarUrl}
@@ -87,8 +111,20 @@ export default async function SettingsGeneralPage() {
             total={twoFactor.total}
           />
 
+          <TeamAgentsCard
+            enabled={extras.mcp.enabled}
+            canManage={canManageTeam}
+            agents={extras.agents}
+          />
+
+          <TeamDnsCard
+            providers={extras.dns}
+            teams={extras.dnsTeams}
+            activeTeamId={team.id}
+          />
+
           {(deletion.allowed || canTransfer) && (
-            <div className="lg:col-span-2">
+            <div className="md:col-span-2 xl:col-span-3">
               <TeamDangerZone
                 teamId={team.id}
                 teamName={team.name}

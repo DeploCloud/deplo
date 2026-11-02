@@ -68,8 +68,7 @@ export function TeamSecurityCard({
               Require two-factor authentication
             </p>
             <p className="text-xs text-muted-foreground">
-              Members without it cannot use this team, through the dashboard or
-              the API, until they turn it on.
+              Members without it can&apos;t use this team.
             </p>
           </div>
           <Switch
@@ -84,10 +83,9 @@ export function TeamSecurityCard({
             <AlertTriangle className="size-5 shrink-0 text-[var(--warning)]" />
             <p className="text-sm">
               {without} of {total} member{total === 1 ? "" : "s"}{" "}
-              {without === 1 ? "does" : "do"} not have it yet
               {on
-                ? " and cannot use this team right now."
-                : " and will be asked to set it up."}
+                ? "can't use this team until they set it up."
+                : `${without === 1 ? "doesn't" : "don't"} have it yet.`}
             </p>
           </div>
         )}

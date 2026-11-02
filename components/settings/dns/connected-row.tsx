@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { toast } from "sonner";
-import { Loader2, Pencil, Plus, Unplug } from "lucide-react";
+import { Loader2, Pencil, Unplug } from "lucide-react";
 
 import { useRouter } from "@/lib/nav";
 import { gqlAction } from "@/lib/graphql-client";
@@ -18,7 +18,6 @@ import {
 } from "@/components/ui/dialog";
 import { ConfirmAction } from "@/components/shared/confirm-action";
 import { RowActions } from "@/components/shared/row-actions";
-import { ConnectWizard } from "./connect-wizard";
 import { DNS_PROVIDER_META, ProviderMark } from "./provider-mark";
 import { TeamAccess, type DnsTeam } from "./team-access";
 
@@ -30,53 +29,7 @@ export interface ConnectedDns {
   teams: DnsTeam[];
 }
 
-export function DnsSettings({
-  providers,
-  teams,
-  activeTeamId,
-}: {
-  providers: ConnectedDns[];
-  teams: DnsTeam[];
-  activeTeamId: string;
-}) {
-  const router = useRouter();
-  const [adding, setAdding] = React.useState(providers.length === 0);
-  const [runId, setRunId] = React.useState(0);
-
-  if (adding || providers.length === 0)
-    return (
-      <ConnectWizard
-        key={runId}
-        teams={teams}
-        activeTeamId={activeTeamId}
-        onCancel={providers.length > 0 ? () => setAdding(false) : undefined}
-        onDone={() => {
-          setAdding(false);
-          setRunId((n) => n + 1);
-          router.refresh();
-        }}
-      />
-    );
-
-  return (
-    <div className="max-w-2xl space-y-4">
-      <div className="flex items-center justify-between gap-3">
-        <h2 className="text-sm font-medium">Your domains</h2>
-        <Button size="sm" onClick={() => setAdding(true)}>
-          <Plus className="size-4" />
-          Connect a domain
-        </Button>
-      </div>
-      <ul className="divide-y divide-border rounded-xl border border-border">
-        {providers.map((p) => (
-          <ConnectedRow key={p.id} provider={p} teams={teams} />
-        ))}
-      </ul>
-    </div>
-  );
-}
-
-function ConnectedRow({
+export function ConnectedRow({
   provider,
   teams,
 }: {

@@ -7,7 +7,12 @@ const AGENTS = ["w-14", "w-16", "w-24", "w-14", "w-16", "w-20"];
 
 export default function Loading() {
   return (
-    <div className="space-y-6" role="status" aria-busy aria-label="Loading MCP">
+    <div
+      className="space-y-6"
+      role="status"
+      aria-busy
+      aria-label="Loading AI agents"
+    >
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="space-y-1">
           <div className={`flex items-center gap-2 ${titleClass.page}`}>
@@ -19,10 +24,7 @@ export default function Loading() {
             className="w-[30rem] max-w-full"
           />
         </div>
-        <div className="flex items-center gap-1">
-          <TextLine type="text-sm" className="w-36" />
-          <Skeleton className="size-8" />
-        </div>
+        <TextLine type="text-sm" className="w-36" />
       </div>
 
       <div className="grid gap-8 xl:grid-cols-[minmax(0,1fr)_clamp(24rem,30vw,36rem)] xl:gap-12">

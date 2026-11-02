@@ -352,7 +352,7 @@ test("the team kill switch refuses with the sentence that names the setting", as
   ]);
   const res = await mcp(raw);
   assert.equal(res.status, 403);
-  assert.match(String(res.body.error), /Settings → MCP Server/);
+  assert.match(String(res.body.error), /Settings → General/);
 });
 
 async function mcpStampOf(tokenId: string, tries = 40) {

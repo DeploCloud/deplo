@@ -1,6 +1,6 @@
 import "server-only";
 
-import { and, desc, eq, inArray } from "drizzle-orm";
+import { and, desc, eq, inArray, isNotNull, or } from "drizzle-orm";
 import { getDb } from "../db/client";
 import { memberships as membershipsTable } from "../db/schema/control-plane/access-control";
 import { apiTokens } from "../db/schema/control-plane/api-tokens";
@@ -119,7 +119,7 @@ async function assertMayConnect(teamId: string, userId: string): Promise<void> {
   )[0];
   if (!row?.enabled)
     throw new Error(
-      "One of those teams has turned off MCP access. An admin can switch it back on under Settings → MCP Server.",
+      "One of those teams has turned off MCP access. An admin can switch it back on under Settings → General.",
     );
 }
 
@@ -310,26 +310,68 @@ export async function listMyMcpAgents(): Promise<MyMcpAgentDTO[]> {
     .map((t) => t.id);
   if (ids.length === 0) return [];
   const rows = await getDb()
-    .select({
-      id: apiTokens.id,
-      name: apiTokens.name,
-      agent: apiTokens.mcpAgent,
-      lastUsedAt: apiTokens.lastUsedAt,
-      mcpLastUsedAt: apiTokens.mcpLastUsedAt,
-      expiresAt: apiTokens.expiresAt,
-      oauthClientId: apiTokens.oauthClientId,
-    })
+    .select(AGENT_COLUMNS)
     .from(apiTokens)
     .where(and(inArray(apiTokens.id, ids), eq(apiTokens.userId, userId)))
     .orderBy(desc(apiTokens.createdAt));
-  return rows.map((r) => ({
+  return rows.map(toAgentDTO);
+}
+
+// Every agent the caller connected, whatever teams it reaches: the account page belongs to no team.
+export async function listAllMyMcpAgents(): Promise<MyMcpAgentDTO[]> {
+  const { id: userId } = await assertUser();
+  const rows = await getDb()
+    .select(AGENT_COLUMNS)
+    .from(apiTokens)
+    .where(
+      and(
+        eq(apiTokens.userId, userId),
+        or(
+          isNotNull(apiTokens.oauthClientId),
+          isNotNull(apiTokens.mcpLastUsedAt),
+        ),
+      ),
+    )
+    .orderBy(desc(apiTokens.createdAt));
+  const now = Date.now();
+  return rows
+    .filter((r) => !(r.expiresAt && Date.parse(r.expiresAt) <= now))
+    .map(toAgentDTO);
+}
+
+// How many agents, everyone's, reach the active team: a number, never whose.
+export async function countTeamMcpAgents(): Promise<number> {
+  const teamId = await requireActiveTeamId();
+  return (await tokensReaching(teamId)).filter((t) => t.mcp).length;
+}
+
+const AGENT_COLUMNS = {
+  id: apiTokens.id,
+  name: apiTokens.name,
+  agent: apiTokens.mcpAgent,
+  lastUsedAt: apiTokens.lastUsedAt,
+  mcpLastUsedAt: apiTokens.mcpLastUsedAt,
+  expiresAt: apiTokens.expiresAt,
+  oauthClientId: apiTokens.oauthClientId,
+};
+
+function toAgentDTO(r: {
+  id: string;
+  name: string;
+  agent: string | null;
+  lastUsedAt: string | null;
+  mcpLastUsedAt: string | null;
+  expiresAt: string | null;
+  oauthClientId: string | null;
+}): MyMcpAgentDTO {
+  return {
     id: r.id,
     name: r.name,
     agent: isMcpAgentId(r.agent) ? r.agent : null,
     lastUsedAt: r.mcpLastUsedAt ?? r.lastUsedAt,
     expiresAt: r.expiresAt,
     viaSignIn: r.oauthClientId !== null,
-  }));
+  };
 }
 
 export async function countMcpAgents(): Promise<number> {

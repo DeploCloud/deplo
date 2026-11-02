@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { Check, Fingerprint, KeyRound, Moon, Plus } from "lucide-react";
+import { Bot, Check, Fingerprint, KeyRound, Moon, Plus } from "lucide-react";
 import Link from "@/components/ui/link";
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
@@ -105,6 +105,12 @@ export function MobileMorePanel({
           />
           <Text title={user.name || user.username} sub={`@${user.username}`} />
         </Row>
+        {caps.has("manage_mcp") && (
+          <Row href="/settings/agents" onClick={onClose}>
+            <RowIcon icon={Bot} />
+            <Text title="AI agents" />
+          </Row>
+        )}
         <Row href="/settings/security" onClick={onClose}>
           <RowIcon icon={Fingerprint} />
           <Text title="Security" />

@@ -104,8 +104,7 @@ export function Topbar({
 }
 
 const SEGMENT_LABELS: Record<string, string> = {
-  mcp: "MCP Server",
-  dns: "Automatic DNS",
+  agents: "AI agents",
   tokens: "API tokens",
 };
 

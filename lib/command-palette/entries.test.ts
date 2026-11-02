@@ -303,8 +303,13 @@ test("a row is findable by what its capability is called", () => {
   const all = staticEntries();
   const label = (q: string) => matchEntries(all, q).map((e) => e.label);
 
-  assert.deepEqual(label("manage mcp"), ["MCP Server"]);
-  assert.deepEqual(label("claude"), ["MCP Server"], "a curated keyword");
+  assert.deepEqual(label("connect ai agents"), ["AI agents"]);
+  assert.deepEqual(label("claude"), ["AI agents"], "a curated keyword");
+  assert.deepEqual(
+    label("automatic dns"),
+    ["General"],
+    "its old page is a card there",
+  );
   assert.deepEqual(label("secrets"), ["Variables"]);
   assert.deepEqual(label("discord"), ["Notifications"]);
 
@@ -395,8 +400,8 @@ test("every gate names a capability that exists", () => {
 test("a capability's words reach the row it gates, wherever the row is", () => {
   const inTeam = teamPageEntries([{ id: "t2", name: "Acme" }], "t1");
   assert.deepEqual(
-    matchEntries(inTeam, "manage mcp").map((e) => e.label),
-    ["MCP Server"],
+    matchEntries(inTeam, "manage registries").map((e) => e.label),
+    ["Registries"],
     "and not only in the active team's copy",
   );
 });

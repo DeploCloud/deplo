@@ -5,23 +5,25 @@ import { Button } from "@/components/ui/button";
 import { StepShell } from "./step-shell";
 
 export function EnableStep({
+  teamName,
   canManageTeam,
   pending,
   onTurnOn,
 }: {
+  teamName: string;
   canManageTeam: boolean;
   pending: boolean;
   onTurnOn: () => void;
 }) {
   return (
     <StepShell
-      title="The MCP Server is off for this team"
+      title={`AI agents are off in ${teamName}`}
       lead="Members can then connect their own agents. Each one does only what its token allows."
       action={
         canManageTeam ? (
           <Button onClick={onTurnOn} disabled={pending}>
             {pending && <Loader2 className="size-4 animate-spin" />}
-            Turn on MCP for this team
+            Turn on AI agents for this team
           </Button>
         ) : null
       }

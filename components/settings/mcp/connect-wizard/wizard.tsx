@@ -39,6 +39,7 @@ export function ConnectWizard({
   mcpEnabled,
   canConnect,
   canManageTeam,
+  teamName,
   publicUrl,
   tree,
   connectionCount,
@@ -46,6 +47,7 @@ export function ConnectWizard({
   mcpEnabled: boolean;
   canConnect: boolean;
   canManageTeam: boolean;
+  teamName: string;
   publicUrl: string;
   tree: ScopeTreeTeam[];
   connectionCount: number;
@@ -62,6 +64,7 @@ export function ConnectWizard({
       mcpEnabled={mcpEnabled}
       canConnect={canConnect}
       canManageTeam={canManageTeam}
+      teamName={teamName}
       url={url}
       https={https}
       tree={tree}
@@ -81,6 +84,7 @@ function WizardRun({
   mcpEnabled,
   canConnect,
   canManageTeam,
+  teamName,
   url,
   https,
   tree,
@@ -91,6 +95,7 @@ function WizardRun({
   mcpEnabled: boolean;
   canConnect: boolean;
   canManageTeam: boolean;
+  teamName: string;
   url: string;
   https: boolean;
   tree: ScopeTreeTeam[];
@@ -343,6 +348,7 @@ function WizardRun({
         <div>
           {step === "enable" && (
             <EnableStep
+              teamName={teamName}
               canManageTeam={canManageTeam}
               pending={pending}
               onTurnOn={turnOn}

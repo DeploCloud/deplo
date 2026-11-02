@@ -79,6 +79,8 @@ function byDestination(entries: Entry[]): Entry[] {
 const EXTRA_KEYWORDS: Record<string, string> = {
   "/settings/security": "2fa totp otp mfa webauthn",
   "/settings/account": "avatar picture profile",
+  "/settings/agents": "mcp server",
+  "/settings": "automatic dns cloudflare zone",
   "/settings/notifications": "smtp alert",
   "/settings/registries": "registry ghcr dockerhub image pull",
   "/settings/servers": "cleanup prune disk fleet agent",

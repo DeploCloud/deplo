@@ -21,7 +21,7 @@ export default async function OAuthConsentPage(props: {
 
   const oauthQuery = rebuildOauthQuery(params);
 
-  if (!clientId) redirect("/settings/mcp");
+  if (!clientId) redirect("/settings/agents");
 
   if (typeof params.sig !== "string" || !params.sig)
     return (

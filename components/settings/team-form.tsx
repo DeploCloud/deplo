@@ -43,62 +43,57 @@ export function TeamForm({
   }
 
   const teamMark = (
-    <TeamAvatar name={initialName} avatarUrl={avatarUrl} size="3xl" />
-  );
-  const pictureText = (
-    <div>
-      <p className="text-base font-medium">Team picture</p>
-      <p className="mt-1.5 text-xs text-muted-foreground">
-        {canManage
-          ? "Click the picture or drop an image on it. PNG, JPEG or WebP."
-          : "Shown before the team's name everywhere it appears."}
-      </p>
-    </div>
+    <TeamAvatar name={initialName} avatarUrl={avatarUrl} size="4xl" />
   );
 
   return (
-    <div className="space-y-4">
-      {canManage ? (
-        <AvatarPicker
-          label="Change the team picture"
-          hasImage={Boolean(avatarUrl)}
-          sources={{
-            team: true,
-            choice: avatarChoiceFromUrl(avatarUrl),
-            letters: avatarSeedFromName(initialName),
-          }}
-          preview={teamMark}
-          onSave={(image) =>
-            gqlAction(
-              `mutation($image: String) { updateTeamAvatar(image: $image) { id } }`,
-              { image },
-            )
-          }
-        >
-          {pictureText}
-        </AvatarPicker>
-      ) : (
-        <div className="flex items-center gap-4">
-          {teamMark}
-          {pictureText}
-        </div>
-      )}
-      <div className="space-y-2">
-        <Label htmlFor="team-name">Team name</Label>
-        <Input
-          id="team-name"
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          disabled={!canManage}
-        />
+    <div className="flex flex-1 flex-col gap-3">
+      <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-2.5 py-2">
+        {canManage ? (
+          <div className="w-fit">
+            <AvatarPicker
+              label="Change the team picture"
+              hasImage={Boolean(avatarUrl)}
+              sources={{
+                team: true,
+                choice: avatarChoiceFromUrl(avatarUrl),
+                letters: avatarSeedFromName(initialName),
+              }}
+              preview={teamMark}
+              onSave={(image) =>
+                gqlAction(
+                  `mutation($image: String) { updateTeamAvatar(image: $image) { id } }`,
+                  { image },
+                )
+              }
+            />
+          </div>
+        ) : (
+          teamMark
+        )}
+        <p className="text-center text-xs text-muted-foreground">
+          {canManage
+            ? "Click or drop a PNG, JPEG or WebP."
+            : "Shown before the team's name everywhere it appears."}
+        </p>
       </div>
-      {canManage && (
-        <div className="flex justify-end">
-          <Button size="sm" onClick={save} disabled={!dirty || !name.trim()}>
-            Save changes
-          </Button>
+      <div className="space-y-2 rounded-lg border border-border p-3">
+        <Label htmlFor="team-name">Team name</Label>
+        <div className="flex gap-2">
+          <Input
+            id="team-name"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            disabled={!canManage}
+            className="min-w-0 flex-1"
+          />
+          {canManage && (
+            <Button onClick={save} disabled={!dirty || !name.trim()}>
+              Save changes
+            </Button>
+          )}
         </div>
-      )}
+      </div>
     </div>
   );
 }

@@ -90,7 +90,7 @@ function refusalFor(
   if (!t)
     return `This connection has no access to the team "${team}". Run list_teams to see the teams it can act in.`;
   if (!t.mcpEnabled)
-    return `The team "${t.name}" has turned off MCP access. An admin can switch it back on under Settings → MCP Server.`;
+    return `The team "${t.name}" has turned off MCP access. An admin can switch it back on under Settings → General.`;
   if (!t.canConnect)
     return `You may not connect AI agents to the team "${t.name}". A team admin can grant the "Connect AI agents" permission.`;
   return null;

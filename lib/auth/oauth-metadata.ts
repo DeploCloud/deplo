@@ -41,7 +41,7 @@ export function protectedResourceMetadata(): ProtectedResourceMetadata | null {
     scopes_supported: ["openid", "profile", "email", "offline_access"],
     bearer_methods_supported: ["header"],
     resource_name: "Deplo MCP server",
-    resource_documentation: `${base}/settings/mcp`,
+    resource_documentation: `${base}/settings/agents`,
   };
 }
 

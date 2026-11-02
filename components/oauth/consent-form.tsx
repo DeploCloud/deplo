@@ -199,7 +199,7 @@ export function ConsentForm({
       accept: false,
       ...(oauthQuery ? { oauth_query: oauthQuery } : {}),
     });
-    window.location.assign(done.url ?? "/settings/mcp");
+    window.location.assign(done.url ?? "/settings/agents");
   }
 
   return (

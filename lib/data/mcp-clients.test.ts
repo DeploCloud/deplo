@@ -4,6 +4,8 @@ import assert from "node:assert/strict";
 import { TEAM_A, TEAM_B, USER_1 } from "./identity-test-helpers";
 import {
   countMcpAgents,
+  countTeamMcpAgents,
+  listAllMyMcpAgents,
   getOAuthClientForConsent,
   listMyMcpAgents,
   listConnectableTeamIds,
@@ -426,6 +428,32 @@ test("the agent count is per team, and only counts where the owner may connect",
   );
   assert.equal(await as(OWNER, () => countMcpAgents(), TEAM_B), 0);
   assert.equal(await as(OWNER, () => countMcpAgents()), 1);
+});
+
+test("the account page lists your agents in every team, and only yours", async () => {
+  await grantOwnerIn(TEAM_B);
+  const { tokenId } = await as(OWNER, () =>
+    mintMcpConnection({ clientId: CLIENT, capabilities: ["view"] }),
+  );
+  await pg.query(
+    `delete from membership_capabilities
+     where membership_id = 'mem_owner_b2' and capability = 'manage_tokens'`,
+  );
+  for (const team of [TEAM_A, TEAM_B])
+    assert.deepEqual(
+      (await as(OWNER, () => listAllMyMcpAgents(), team)).map((a) => a.id),
+      [tokenId],
+      "the list does not depend on the active team",
+    );
+  assert.deepEqual(await as(MEMBER, () => listAllMyMcpAgents()), []);
+});
+
+test("the team's agent count adds up every member's agents", async () => {
+  await as(OWNER, () =>
+    mintMcpConnection({ clientId: CLIENT, capabilities: ["view"] }),
+  );
+  assert.equal(await as(MEMBER, () => countTeamMcpAgents()), 1);
+  assert.equal(await as(MEMBER, () => countMcpAgents()), 0);
 });
 
 test("revoking from one team disconnects the client from all of them", async () => {

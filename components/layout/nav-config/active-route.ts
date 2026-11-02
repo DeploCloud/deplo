@@ -41,6 +41,7 @@ export function onSubRoute(
 
 export const NON_TEAM_SETTINGS_PREFIXES = [
   "/settings/account",
+  "/settings/agents",
   "/settings/security",
   "/settings/tokens",
   "/settings/users",
