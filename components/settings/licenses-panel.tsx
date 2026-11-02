@@ -153,7 +153,7 @@ export function LicensesPanel({ notices }: { notices: Notice[] }) {
       <Sheet open={sheetOpen} onOpenChange={setSheetOpen}>
         <SheetContent
           side="right"
-          className="flex w-full flex-col gap-0 sm:w-2xl sm:max-w-[90vw]"
+          className="flex w-full flex-col gap-0 md:w-2xl md:max-w-[90vw]"
         >
           {selected && (
             <>

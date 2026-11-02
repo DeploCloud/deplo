@@ -440,6 +440,7 @@ html body[data-scroll-locked] {
   @media (max-width: 767.98px) {
     :root {
       --toast-bottom: calc(max(12px, env(safe-area-inset-bottom)) + 76px);
+      --sheet-top-gap: max(4rem, calc(env(safe-area-inset-top) + 1.5rem));
     }
   }
 
@@ -681,6 +682,10 @@ html body[data-scroll-locked] {
 }
 
 @media (max-width: 767.98px) {
+  /* No modal is full screen on a phone: the page stays in sight above every sheet. */
+  [data-slot="sheet"] {
+    max-height: calc(100dvh - var(--sheet-top-gap)) !important;
+  }
   [data-slot="sheet"][data-state="open"] {
     animation: deplo-sheet-in 420ms cubic-bezier(0.32, 0.72, 0, 1);
   }

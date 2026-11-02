@@ -65,7 +65,7 @@ export function CommandPalette(props: CommandPaletteProps) {
         className={cn(
           "top-[12vh] flex max-w-2xl translate-y-0 flex-col gap-0 overflow-hidden p-0",
           "bg-background/30 backdrop-blur-xl",
-          "max-sm:inset-0 max-sm:h-dvh max-sm:max-w-none max-sm:translate-x-0 max-sm:rounded-none max-sm:border-0",
+          "max-md:h-[calc(100dvh-var(--sheet-top-gap))] max-md:px-0 max-md:pb-[env(safe-area-inset-bottom)]",
         )}
       >
         <DialogTitle className="sr-only">Search</DialogTitle>

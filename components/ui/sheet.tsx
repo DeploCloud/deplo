@@ -7,6 +7,8 @@ import { X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useNestedLayerDismissGuard } from "@/components/ui/use-nested-layer-dismiss-guard";
 import { overlayAutoFocus } from "@/components/ui/overlay-autofocus";
+import { DiscardPrompt, SheetHandle } from "@/components/ui/sheet-chrome";
+import { useSheetDrag } from "@/components/ui/use-sheet-drag";
 
 const Sheet = SheetPrimitive.Root;
 const SheetTrigger = SheetPrimitive.Trigger;
@@ -18,6 +20,7 @@ const SheetOverlay = React.forwardRef<
   React.ComponentPropsWithoutRef<typeof SheetPrimitive.Overlay>
 >(({ className, ...props }, ref) => (
   <SheetPrimitive.Overlay
+    data-slot="sheet-scrim"
     className={cn(
       // z-[45], never z-50: overlay and content are SEPARATE portals, so a close+reopen can append the
       // overlay after the content, and an equal z-index then paints the scrim over the sheet.
@@ -31,7 +34,11 @@ const SheetOverlay = React.forwardRef<
 SheetOverlay.displayName = SheetPrimitive.Overlay.displayName;
 
 const sheetVariants = cva(
-  "fixed z-50 gap-4 bg-sidebar p-0 shadow-lg transition ease-in-out data-[state=closed]:animate-out data-[state=closed]:duration-300 data-[state=open]:animate-in data-[state=open]:duration-300",
+  [
+    "fixed z-50 gap-4 bg-sidebar p-0 shadow-lg transition ease-in-out data-[state=closed]:animate-out data-[state=closed]:duration-300 data-[state=open]:animate-in data-[state=open]:duration-300",
+    // Below md every side is a bottom sheet, like a dialog.
+    "max-md:inset-x-0 max-md:top-auto max-md:bottom-0 max-md:h-auto max-md:w-full max-md:max-w-none max-md:rounded-t-3xl max-md:border-x-0 max-md:border-t max-md:border-b-0 max-md:bg-card max-md:pt-[30px] max-md:pb-[env(safe-area-inset-bottom)] max-md:shadow-[0_-12px_40px_rgb(0_0_0/0.55)]",
+  ],
   {
     variants: {
       side: {
@@ -69,22 +76,32 @@ const SheetContent = React.forwardRef<
   ) => {
     const nestedLayerJustDismissed = useNestedLayerDismissGuard();
     const contentRef = React.useRef<HTMLDivElement | null>(null);
+    const sheet = useSheetDrag();
+    const sheetRef = sheet.ref;
+    const setRefs = React.useCallback(
+      (node: HTMLDivElement | null) => {
+        contentRef.current = node;
+        sheetRef(node);
+        if (typeof ref === "function") ref(node);
+        else if (ref) ref.current = node;
+      },
+      [ref, sheetRef],
+    );
     return (
       <SheetPortal>
         <SheetOverlay />
         <SheetPrimitive.Content
-          ref={(node) => {
-            contentRef.current = node;
-            if (typeof ref === "function") ref(node);
-            else if (ref) ref.current = node;
-          }}
+          data-slot="sheet"
+          ref={setRefs}
           className={cn(sheetVariants({ side }), className)}
+          {...sheet.handlers}
           onInteractOutside={(event) => {
             if (nestedLayerJustDismissed()) {
               event.preventDefault();
               return;
             }
             onInteractOutside?.(event);
+            if (!event.defaultPrevented) sheet.guardOutside(event);
           }}
           onOpenAutoFocus={(event) => {
             onOpenAutoFocus?.(event);
@@ -92,11 +109,18 @@ const SheetContent = React.forwardRef<
           }}
           {...props}
         >
-          <SheetPrimitive.Close className="absolute top-4 right-4 cursor-pointer rounded-sm opacity-70 transition-opacity hover:opacity-100 focus:outline-none">
+          <SheetHandle />
+          <SheetPrimitive.Close className="absolute top-4 right-4 cursor-pointer rounded-sm opacity-70 transition-opacity hover:opacity-100 focus:outline-none max-md:sr-only">
             <X className="size-5" />
             <span className="sr-only">Close</span>
           </SheetPrimitive.Close>
           {children}
+          {sheet.confirmDiscard && (
+            <DiscardPrompt
+              onKeep={sheet.keepEditing}
+              onDiscard={sheet.discard}
+            />
+          )}
         </SheetPrimitive.Content>
       </SheetPortal>
     );

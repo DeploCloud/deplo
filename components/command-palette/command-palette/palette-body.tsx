@@ -184,7 +184,7 @@ export function PaletteBody({
         style={{
           height: "min(calc(var(--cmdk-list-height) + 1rem), 24rem)",
         }}
-        className="max-h-96 min-h-0 overscroll-contain p-2 transition-[height] duration-200 ease-out max-sm:h-auto! max-sm:max-h-none max-sm:flex-1 max-sm:transition-none"
+        className="max-h-96 min-h-0 overscroll-contain p-2 transition-[height] duration-200 ease-out max-md:h-auto! max-md:max-h-none max-md:flex-1 max-md:transition-none"
       >
         {nothing && !loading && (
           <div className="flex flex-col items-center py-8 text-center">
@@ -292,7 +292,7 @@ export function PaletteBody({
 
       <div
         aria-hidden
-        className="flex h-11 shrink-0 items-center gap-4 border-t border-border bg-surface px-4 text-xs text-muted-foreground max-sm:hidden"
+        className="flex h-11 shrink-0 items-center gap-4 border-t border-border bg-surface px-4 text-xs text-muted-foreground max-md:hidden"
       >
         <Hint chord="↵" label="Select" />
         <span className="ml-auto flex items-center gap-1.5">

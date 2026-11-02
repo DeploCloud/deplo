@@ -69,7 +69,7 @@ export function AppContainers({
       <Sheet open={open} onOpenChange={setOpen}>
         <SheetContent
           side="right"
-          className="flex w-full flex-col gap-0 sm:w-md sm:max-w-[90vw]"
+          className="flex w-full flex-col gap-0 md:w-md md:max-w-[90vw]"
         >
           <div className="space-y-1 border-b border-border p-4 pr-12">
             <SheetTitle>Containers</SheetTitle>

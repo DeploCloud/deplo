@@ -4,22 +4,12 @@ import * as React from "react";
 import * as DropdownMenuPrimitive from "@radix-ui/react-dropdown-menu";
 import { Check, ChevronRight, Circle } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { SheetHandle } from "@/components/ui/sheet-chrome";
 import { useSheetDrag } from "@/components/ui/use-sheet-drag";
 
 // Below md a menu is an action sheet; globals.css pins its popper wrapper to the bottom.
 const ACTION_SHEET =
   "max-md:max-h-[80dvh] max-md:w-full max-md:min-w-0 max-md:overflow-y-auto max-md:rounded-t-3xl max-md:rounded-b-none max-md:border-x-0 max-md:border-b-0 max-md:bg-card max-md:px-3 max-md:pt-[30px] max-md:pb-[calc(env(safe-area-inset-bottom)+16px)] max-md:shadow-[0_0_0_100vmax_rgb(0_0_0/0.6)]";
-
-function SheetHandle() {
-  return (
-    <div
-      aria-hidden
-      className="absolute inset-x-0 top-0 h-[30px] touch-none md:hidden"
-    >
-      <span className="mx-auto mt-2.5 block h-1 w-9 rounded-full bg-ring" />
-    </div>
-  );
-}
 
 const DropdownMenu = DropdownMenuPrimitive.Root;
 const DropdownMenuTrigger = DropdownMenuPrimitive.Trigger;
@@ -76,10 +66,19 @@ const DropdownMenuContent = React.forwardRef<
   React.ComponentPropsWithoutRef<typeof DropdownMenuPrimitive.Content>
 >(({ className, sideOffset = 4, children, ...props }, ref) => {
   const sheet = useSheetDrag();
+  const sheetRef = sheet.ref;
+  const setRefs = React.useCallback(
+    (node: HTMLDivElement | null) => {
+      sheetRef(node);
+      if (typeof ref === "function") ref(node);
+      else if (ref) ref.current = node;
+    },
+    [ref, sheetRef],
+  );
   return (
     <DropdownMenuPrimitive.Portal>
       <DropdownMenuPrimitive.Content
-        ref={ref}
+        ref={setRefs}
         sideOffset={sideOffset}
         data-slot="dropdown-menu-content"
         className={cn(
