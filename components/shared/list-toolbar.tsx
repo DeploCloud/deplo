@@ -4,6 +4,7 @@ import * as React from "react";
 import { Search } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { ViewToggle, type ListView } from "@/components/shared/view-toggle";
+import { FilterSheet } from "@/components/shared/filter-sheet";
 
 export type { ListView };
 
@@ -16,6 +17,7 @@ export function ListToolbar({
   gridLabel = "Grid view",
   listLabel = "List view",
   filters,
+  filterSheet,
   action,
 }: {
   query: string;
@@ -26,21 +28,32 @@ export function ListToolbar({
   gridLabel?: string;
   listLabel?: string;
   filters?: React.ReactNode;
+  // Set when there is more than one filter: below md they move into a sheet.
+  filterSheet?: { active: number; onClear: () => void };
   action?: React.ReactNode;
 }) {
   return (
     <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-      <div className="relative flex-1">
-        <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
-        <Input
-          value={query}
-          onChange={(e) => onQuery(e.target.value)}
-          placeholder={placeholder}
-          aria-label={placeholder}
-          className="pl-9"
-        />
+      <div className="flex flex-1 gap-2">
+        <div className="relative min-w-0 flex-1">
+          <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
+          <Input
+            value={query}
+            onChange={(e) => onQuery(e.target.value)}
+            placeholder={placeholder}
+            aria-label={placeholder}
+            className="pl-9"
+          />
+        </div>
+        {filterSheet && filters && (
+          <FilterSheet {...filterSheet}>{filters}</FilterSheet>
+        )}
       </div>
-      {filters}
+      {filterSheet ? (
+        <div className="contents max-md:hidden">{filters}</div>
+      ) : (
+        filters
+      )}
       {view && onView && (
         <ViewToggle
           view={view}

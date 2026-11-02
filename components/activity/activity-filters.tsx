@@ -17,6 +17,7 @@ import {
   type ActivityParams,
 } from "@/lib/activity-filter";
 import { cn } from "@/lib/utils";
+import { FilterSheet } from "@/components/shared/filter-sheet";
 import type { ActivityType } from "@/lib/types/activity";
 import type { DatabaseType } from "@/lib/types/database";
 import { DateRangeFilter } from "./date-range-filter";
@@ -112,43 +113,96 @@ export function ActivityFilters({
         pending && "opacity-60",
       )}
     >
-      {actors && (
+      {/* Below md the filters sit in a sheet behind one button. */}
+      <FilterSheet
+        active={
+          Number(params.actorUserIds.length > 0) +
+          Number(params.types.length > 0) +
+          Number(params.resourceIds.length > 0) +
+          Number(params.range !== "" || params.from !== "" || params.to !== "")
+        }
+        onClear={() => router.replace(base)}
+      >
+        {actors && (
+          <div className="flex min-w-0 flex-1">
+            <FacetCombobox
+              facet={facet("actor", "User", "Anyone", UserRound, actors)}
+              counts={actorCounts}
+              values={params.actorUserIds}
+              onChange={(actorUserIds) => go({ actorUserIds })}
+            />
+          </div>
+        )}
+        <DateRangeFilter params={params} onChange={go} />
         <div className="flex min-w-0 flex-1">
           <FacetCombobox
-            facet={facet("actor", "User", "Anyone", UserRound, actors)}
-            counts={actorCounts}
-            values={params.actorUserIds}
-            onChange={(actorUserIds) => go({ actorUserIds })}
+            facet={facet("event", "Event", "Any event", Zap, EVENT_OPTIONS)}
+            counts={typeCounts}
+            values={params.types}
+            onChange={(types) => go({ types: types as ActivityType[] })}
           />
         </div>
-      )}
-      <DateRangeFilter params={params} onChange={go} />
-      <div className="flex min-w-0 flex-1">
-        <FacetCombobox
-          facet={facet("event", "Event", "Any event", Zap, EVENT_OPTIONS)}
-          counts={typeCounts}
-          values={params.types}
-          onChange={(types) => go({ types: types as ActivityType[] })}
-        />
+        {resources.length > 0 && (
+          <div className="flex min-w-0 flex-1">
+            <FacetCombobox
+              facet={facet(
+                "resource",
+                "Resource",
+                "Anything",
+                Boxes,
+                resources,
+              )}
+              values={params.resourceIds}
+              onChange={(resourceIds) => go({ resourceIds })}
+            />
+          </div>
+        )}
+      </FilterSheet>
+      <div className="contents max-md:hidden">
+        {actors && (
+          <div className="flex min-w-0 flex-1">
+            <FacetCombobox
+              facet={facet("actor", "User", "Anyone", UserRound, actors)}
+              counts={actorCounts}
+              values={params.actorUserIds}
+              onChange={(actorUserIds) => go({ actorUserIds })}
+            />
+          </div>
+        )}
+        <DateRangeFilter params={params} onChange={go} />
+        <div className="flex min-w-0 flex-1">
+          <FacetCombobox
+            facet={facet("event", "Event", "Any event", Zap, EVENT_OPTIONS)}
+            counts={typeCounts}
+            values={params.types}
+            onChange={(types) => go({ types: types as ActivityType[] })}
+          />
+        </div>
+        {resources.length > 0 && (
+          <div className="flex min-w-0 flex-1">
+            <FacetCombobox
+              facet={facet(
+                "resource",
+                "Resource",
+                "Anything",
+                Boxes,
+                resources,
+              )}
+              values={params.resourceIds}
+              onChange={(resourceIds) => go({ resourceIds })}
+            />
+          </div>
+        )}
+        {on && (
+          <Button
+            variant="ghost"
+            onClick={() => router.replace(base)}
+            className={cn("shrink-0", layout === "rail" && "lg:justify-start")}
+          >
+            Clear filters
+          </Button>
+        )}
       </div>
-      {resources.length > 0 && (
-        <div className="flex min-w-0 flex-1">
-          <FacetCombobox
-            facet={facet("resource", "Resource", "Anything", Boxes, resources)}
-            values={params.resourceIds}
-            onChange={(resourceIds) => go({ resourceIds })}
-          />
-        </div>
-      )}
-      {on && (
-        <Button
-          variant="ghost"
-          onClick={() => router.replace(base)}
-          className={cn("shrink-0", layout === "rail" && "lg:justify-start")}
-        >
-          Clear filters
-        </Button>
-      )}
     </div>
   );
 }

@@ -126,6 +126,17 @@ export function BackupsView({
         query={query}
         onQuery={setQuery}
         placeholder="Search backups"
+        filterSheet={{
+          active:
+            Number(target !== "all") +
+            Number(status !== "all") +
+            Number(destination !== ALL),
+          onClear: () => {
+            setTarget("all");
+            setStatus("all");
+            setDestination(ALL);
+          },
+        }}
         view={view}
         onView={setView}
         listLabel="Table view"

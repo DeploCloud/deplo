@@ -144,6 +144,13 @@ export function DestinationsView({
         query={query}
         onQuery={setQuery}
         placeholder="Search destinations"
+        filterSheet={{
+          active: Number(kind !== "all") + Number(status !== "all"),
+          onClear: () => {
+            setKind("all");
+            setStatus("all");
+          },
+        }}
         view={view}
         onView={setView}
         listLabel="Table view"

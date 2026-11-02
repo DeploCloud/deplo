@@ -216,6 +216,13 @@ export function DatabasesGrid({
         query={query}
         onQuery={setQuery}
         placeholder="Search databases"
+        filterSheet={{
+          active: Number(engine !== "all") + Number(status !== "all"),
+          onClear: () => {
+            setEngine("all");
+            setStatus("all");
+          },
+        }}
         view={view}
         onView={setView}
         action={createButton}

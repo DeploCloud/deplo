@@ -134,7 +134,7 @@ export function FacetCombobox<T>({
             onClick={() => setOpen(true)}
             onKeyDown={onKeyDown}
             className={cn(
-              "h-9 pr-8",
+              "h-9 pr-8 max-md:h-11",
               Icon ? "pl-8" : "pl-3",
               on &&
                 "border-primary/60 bg-primary-wash placeholder:text-foreground",
