@@ -31,7 +31,7 @@ export function RowActions({
 }: {
   title: string;
   actions: (RowAction | false | null | undefined)[];
-  children: React.ReactNode;
+  children?: React.ReactNode;
 }) {
   const shown = actions.filter((a): a is RowAction => Boolean(a));
   if (shown.length < 2) return <>{children}</>;

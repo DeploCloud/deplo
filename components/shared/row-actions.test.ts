@@ -10,11 +10,7 @@ const edit = { label: "Edit", icon: Pencil, onSelect: () => {} };
 const del = { label: "Delete", icon: Trash2, destructive: true };
 const render = (actions: Parameters<typeof RowActions>[0]["actions"]) =>
   renderToStaticMarkup(
-    createElement(RowActions, {
-      title: "API_KEY",
-      actions,
-      children: "INLINE",
-    }),
+    createElement(RowActions, { title: "API_KEY", actions }, "INLINE"),
   );
 
 test("a row with one action keeps its button, on a phone too", () => {
