@@ -29,7 +29,7 @@ export function PaletteKbd({ className }: { className?: string }) {
   );
 }
 
-// Compact is the icon rail: a 40px cell, like every other rail item.
+// Compact is the icon rail: a 40px square, like every other rail item.
 export function SearchTrigger({
   compact = false,
   onClick,
@@ -46,7 +46,7 @@ export function SearchTrigger({
       aria-keyshortcuts="Meta+K Control+K"
       aria-label="Search"
       className={cn(
-        "relative flex h-9 cursor-pointer items-center overflow-hidden rounded-md border border-sidebar-border bg-card text-left text-sm text-muted-foreground shadow-sm transition-colors hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-background focus-visible:outline-none",
+        "relative flex h-10 cursor-pointer items-center overflow-hidden rounded-md border border-sidebar-border bg-card text-left text-sm text-muted-foreground shadow-sm transition-colors hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-background focus-visible:outline-none",
         compact ? "w-10 justify-center" : "w-full pr-7 pl-8",
       )}
     >

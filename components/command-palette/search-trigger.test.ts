@@ -10,6 +10,7 @@ test("the rail's search is a 40px icon cell, never the full box squeezed", () =>
     createElement(SearchTrigger, { compact: true }),
   );
   assert.match(rail, /\bw-10\b/);
+  assert.match(rail, /\bh-10\b/, "square: as tall as it is wide");
   assert.doesNotMatch(rail, /pl-8|pr-7/, "no padding wider than the rail");
   assert.doesNotMatch(rail, />Search</, "the label stays out");
 

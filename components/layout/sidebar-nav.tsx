@@ -134,7 +134,7 @@ export function SidebarNav({
                       aria-disabled="true"
                       aria-label={item.label}
                       className={cn(
-                        "group relative z-10 flex cursor-default items-center gap-2.5 overflow-hidden rounded-md px-3 py-2 text-sm whitespace-nowrap text-muted-foreground/50",
+                        "group relative z-10 flex h-10 cursor-default items-center gap-2.5 overflow-hidden rounded-md px-3 text-sm whitespace-nowrap text-muted-foreground/50",
                       )}
                     >
                       {showIcon && <Icon className="size-4 shrink-0" />}
@@ -168,7 +168,7 @@ export function SidebarNav({
                     }
                     data-active={active ? "true" : undefined}
                     className={cn(
-                      "group relative z-10 flex cursor-pointer items-center gap-2.5 overflow-hidden rounded-md px-3 py-2 text-sm whitespace-nowrap transition-colors",
+                      "group relative z-10 flex h-10 cursor-pointer items-center gap-2.5 overflow-hidden rounded-md px-3 text-sm whitespace-nowrap transition-colors",
                       active
                         ? "text-foreground"
                         : "text-muted-foreground hover:bg-surface hover:text-foreground focus-visible:bg-surface",

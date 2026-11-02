@@ -29,7 +29,7 @@ import { cn } from "@/lib/utils";
 import { docsUrl } from "@/lib/docs";
 
 const FOOTER_LINK =
-  "group flex w-full cursor-pointer items-center gap-2.5 overflow-hidden rounded-md px-3 py-2 text-left text-sm whitespace-nowrap text-muted-foreground transition-colors hover:bg-surface hover:text-foreground focus-visible:bg-surface";
+  "group flex h-10 w-full cursor-pointer items-center gap-2.5 overflow-hidden rounded-md px-3 text-left text-sm whitespace-nowrap text-muted-foreground transition-colors hover:bg-surface hover:text-foreground focus-visible:bg-surface";
 
 function RailLabel({
   hidden,
