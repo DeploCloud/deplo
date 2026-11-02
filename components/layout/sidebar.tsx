@@ -1,5 +1,6 @@
 "use client";
 
+import * as React from "react";
 import Link from "@/components/ui/link";
 
 import { useFlatPathname } from "@/lib/nav";
@@ -13,7 +14,7 @@ import { DeploLogo } from "@/components/logo";
 import { sidebarMenuFor } from "@/components/layout/nav-config/active-route";
 import { SidebarNav, SubmenuChevron } from "./sidebar-nav";
 import { SidebarTips } from "./sidebar-tips";
-import { useSidebar } from "./sidebar-state";
+import { RAIL_WIDTH, useSidebar } from "./sidebar-state";
 import { Button } from "@/components/ui/button";
 import { SearchTrigger } from "@/components/command-palette/palette-kbd";
 import {
@@ -25,7 +26,23 @@ import { cn } from "@/lib/utils";
 import { docsUrl } from "@/lib/docs";
 
 const FOOTER_LINK =
-  "group flex cursor-pointer items-center gap-2.5 rounded-md px-3 py-2 text-sm text-muted-foreground transition-colors hover:bg-surface hover:text-foreground focus-visible:bg-surface";
+  "group flex w-full cursor-pointer items-center gap-2.5 overflow-hidden rounded-md px-3 py-2 text-left text-sm whitespace-nowrap text-muted-foreground transition-colors hover:bg-surface hover:text-foreground focus-visible:bg-surface";
+
+function RailLabel({
+  hidden,
+  children,
+}: {
+  hidden: boolean;
+  children: React.ReactNode;
+}) {
+  return (
+    <span
+      className={cn("transition-opacity duration-100", hidden && "opacity-0")}
+    >
+      {children}
+    </span>
+  );
+}
 
 export function Sidebar({
   capabilities = [],
@@ -38,7 +55,7 @@ export function Sidebar({
 }) {
   const { menu } = sidebarMenuFor(useFlatPathname());
   const {
-    collapsed,
+    mode,
     hydrated,
     width,
     peek,
@@ -47,65 +64,59 @@ export function Sidebar({
     startResize,
     resetWidth,
   } = useSidebar();
+  const rail = mode === "rail";
+  const hidden = mode === "hidden";
+  const tipDelay = rail ? 0 : 400;
   return (
     <aside
-      data-collapsed={collapsed}
-      inert={collapsed}
-      style={{ width: collapsed ? 0 : width - peek }}
+      data-collapsed={mode !== "expanded"}
+      inert={hidden}
+      style={{ width: hidden ? 0 : rail ? RAIL_WIDTH : width - peek }}
       className={cn(
         "sticky top-0 hidden h-screen shrink-0 overflow-hidden border-r border-sidebar-border bg-sidebar md:block",
         hydrated && !dragging && "transition-[width] duration-200 ease-out",
-        collapsed && "border-r-0",
+        hidden && "border-r-0",
       )}
     >
       <div
         style={{
-          width,
+          width: rail ? RAIL_WIDTH : width,
           transform:
-            collapsed || peek
-              ? `translateX(-${collapsed ? width : peek}px)`
+            hidden || peek
+              ? `translateX(-${hidden ? width : peek}px)`
               : undefined,
         }}
         className={cn(
           "flex h-full flex-col",
-          hydrated && !dragging && "transition-transform duration-200 ease-out",
+          hydrated &&
+            !dragging &&
+            "transition-[transform,width] duration-200 ease-out",
         )}
       >
-        <div className="flex h-14 items-center justify-between gap-2 pr-2 pl-5">
+        <div
+          className={cn(
+            "flex h-14 items-center pr-2",
+            rail ? "pl-[18px]" : "pl-5",
+          )}
+        >
           <Link href="/" className="cursor-pointer" aria-label="Deplo home">
-            <DeploLogo />
+            <DeploLogo showWordmark={!rail} />
           </Link>
-
-          <Tooltip delayDuration={400}>
-            <TooltipTrigger asChild>
-              <Button
-                variant="ghost"
-                size="icon-sm"
-                onClick={toggle}
-                aria-label="Collapse sidebar"
-                className="shrink-0 text-muted-foreground"
-              >
-                <PanelLeftClose className="size-4" />
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent side="right">
-              Collapse sidebar
-              <kbd className="ml-1.5 rounded border border-border bg-muted px-1 text-[10px]">
-                [
-              </kbd>
-            </TooltipContent>
-          </Tooltip>
         </div>
 
         <div className="px-2 pb-1">
-          <SearchTrigger />
+          <SearchTrigger compact={rail} />
         </div>
 
         <div className="flex-1 overflow-x-hidden overflow-y-auto">
-          <SidebarNav capabilities={capabilities} isAdmin={isAdmin} />
+          <SidebarNav
+            collapsed={rail}
+            capabilities={capabilities}
+            isAdmin={isAdmin}
+          />
         </div>
 
-        {menu === "main" && (
+        {menu === "main" && !rail && (
           <div className="px-2 pb-2">
             <SidebarTips
               hasSecondFactor={hasSecondFactor}
@@ -115,11 +126,11 @@ export function Sidebar({
           </div>
         )}
 
-        {menu === "main" && (
-          <>
-            <hr className="mx-2 border-t border-sidebar-border" />
-            <div className="space-y-0.5 p-2">
-              <Tooltip delayDuration={400}>
+        <hr className="mx-2 border-t border-sidebar-border" />
+        <div className="space-y-0.5 p-2">
+          {menu === "main" && (
+            <>
+              <Tooltip delayDuration={tipDelay}>
                 <TooltipTrigger asChild>
                   <a
                     href={docsUrl("docs.home")}
@@ -129,12 +140,12 @@ export function Sidebar({
                     className={FOOTER_LINK}
                   >
                     <BookOpen className="size-4 shrink-0 group-hover:text-foreground" />
-                    Documentation
+                    <RailLabel hidden={rail}>Documentation</RailLabel>
                   </a>
                 </TooltipTrigger>
                 <TooltipContent side="right">Documentation</TooltipContent>
               </Tooltip>
-              <Tooltip delayDuration={400}>
+              <Tooltip delayDuration={tipDelay}>
                 <TooltipTrigger asChild>
                   <Link
                     href="/settings"
@@ -142,36 +153,66 @@ export function Sidebar({
                     className={FOOTER_LINK}
                   >
                     <Settings className="size-4 shrink-0 group-hover:text-foreground" />
-                    Settings
-                    <SubmenuChevron />
+                    <RailLabel hidden={rail}>Settings</RailLabel>
+                    {!rail && <SubmenuChevron />}
                   </Link>
                 </TooltipTrigger>
                 <TooltipContent side="right">Settings</TooltipContent>
               </Tooltip>
-            </div>
-          </>
-        )}
+            </>
+          )}
+          <Tooltip delayDuration={tipDelay}>
+            <TooltipTrigger asChild>
+              <button
+                type="button"
+                onClick={toggle}
+                aria-label={rail ? "Expand sidebar" : "Collapse sidebar"}
+                className={FOOTER_LINK}
+              >
+                {rail ? (
+                  <PanelLeftOpen className="size-4 shrink-0 group-hover:text-foreground" />
+                ) : (
+                  <PanelLeftClose className="size-4 shrink-0 group-hover:text-foreground" />
+                )}
+                <RailLabel hidden={rail}>Collapse</RailLabel>
+                {!rail && (
+                  <kbd className="ml-auto rounded border border-border bg-muted px-1 text-[10px]">
+                    [
+                  </kbd>
+                )}
+              </button>
+            </TooltipTrigger>
+            <TooltipContent side="right">
+              {rail ? "Expand sidebar" : "Collapse sidebar"}
+              <kbd className="ml-1.5 rounded border border-border bg-muted px-1 text-[10px]">
+                [
+              </kbd>
+            </TooltipContent>
+          </Tooltip>
+        </div>
       </div>
 
-      <div
-        onPointerDown={startResize}
-        onDoubleClick={resetWidth}
-        title="Double-click to reset the width"
-        role="separator"
-        aria-orientation="vertical"
-        aria-label="Resize sidebar"
-        className={cn(
-          "absolute top-0 right-0 z-20 h-full w-1.5 cursor-col-resize touch-none transition-colors hover:bg-border",
-          dragging && "bg-ring",
-        )}
-      />
+      {!rail && (
+        <div
+          onPointerDown={startResize}
+          onDoubleClick={resetWidth}
+          title="Double-click to reset the width"
+          role="separator"
+          aria-orientation="vertical"
+          aria-label="Resize sidebar"
+          className={cn(
+            "absolute top-0 right-0 z-20 h-full w-1.5 cursor-col-resize touch-none transition-colors hover:bg-border",
+            dragging && "bg-ring",
+          )}
+        />
+      )}
     </aside>
   );
 }
 
 export function SidebarExpandButton() {
-  const { collapsed, toggle } = useSidebar();
-  if (!collapsed) return null;
+  const { mode, toggle } = useSidebar();
+  if (mode !== "hidden") return null;
 
   return (
     <Tooltip delayDuration={400}>

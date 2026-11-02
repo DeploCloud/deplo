@@ -6,6 +6,7 @@ import { ChevronRight, Loader2 } from "lucide-react";
 import type { NavItem } from "./nav-config/nav-item";
 import { useNavSections } from "./use-nav-sections";
 import { backOutOf } from "./navigation-history";
+import { useRetapRefresh } from "./scroll-to-top";
 import { useActiveDeployments } from "./deploy-activity";
 import { useUpstreamUpdate } from "./update-state";
 import { cn } from "@/lib/utils";
@@ -41,11 +42,13 @@ export function SidebarNav({
   } = useNavSections(capabilities, isAdmin);
   const deploying = useActiveDeployments();
   const upstream = useUpstreamUpdate();
+  const retap = useRetapRefresh();
 
   function handleNavClick(
     item: NavItem,
     e: React.MouseEvent<HTMLAnchorElement>,
   ) {
+    if (retap(e)) return;
     if (
       item.back &&
       e.button === 0 &&
@@ -94,7 +97,7 @@ export function SidebarNav({
     () =>
       navRef.current?.querySelector<HTMLElement>('[data-active="true"]') ??
       null,
-    [pathname, signature],
+    [pathname, signature, collapsed],
   );
 
   function isActive(href: string, exact?: boolean) {
@@ -131,12 +134,11 @@ export function SidebarNav({
                       aria-disabled="true"
                       aria-label={item.label}
                       className={cn(
-                        "group relative z-10 flex cursor-default items-center gap-2.5 rounded-md text-sm text-muted-foreground/50",
-                        collapsed ? "h-9 w-9 justify-center" : "px-3 py-2",
+                        "group relative z-10 flex cursor-default items-center gap-2.5 overflow-hidden rounded-md px-3 py-2 text-sm whitespace-nowrap text-muted-foreground/50",
                       )}
                     >
                       {showIcon && <Icon className="size-4 shrink-0" />}
-                      {!collapsed && item.label}
+                      <NavLabel hidden={collapsed}>{item.label}</NavLabel>
                     </span>
                   </TooltipTrigger>
                   <TooltipContent side="right">
@@ -166,15 +168,14 @@ export function SidebarNav({
                     }
                     data-active={active ? "true" : undefined}
                     className={cn(
-                      "group relative z-10 flex cursor-pointer items-center gap-2.5 rounded-md text-sm transition-colors",
-                      collapsed ? "h-9 w-9 justify-center" : "px-3 py-2",
+                      "group relative z-10 flex cursor-pointer items-center gap-2.5 overflow-hidden rounded-md px-3 py-2 text-sm whitespace-nowrap transition-colors",
                       active
                         ? "text-foreground"
                         : "text-muted-foreground hover:bg-surface hover:text-foreground focus-visible:bg-surface",
                     )}
                   >
                     {showIcon && <NavIcon item={item} active={active} />}
-                    {!collapsed && item.label}
+                    <NavLabel hidden={collapsed}>{item.label}</NavLabel>
                     {!collapsed && item.submenu && <SubmenuChevron />}
                     {!showIcon && <NavPending />}
                     {updateTip &&
@@ -210,6 +211,22 @@ export function SidebarNav({
         </div>
       ))}
     </nav>
+  );
+}
+
+function NavLabel({
+  hidden,
+  children,
+}: {
+  hidden: boolean;
+  children: React.ReactNode;
+}) {
+  return (
+    <span
+      className={cn("transition-opacity duration-100", hidden && "opacity-0")}
+    >
+      {children}
+    </span>
   );
 }
 

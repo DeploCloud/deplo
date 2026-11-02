@@ -9,6 +9,19 @@ const DEFAULT_WIDTH = 240;
 
 const CLOSE_AT = DEFAULT_WIDTH * 0.66;
 
+export const RAIL_WIDTH = 56;
+
+export type SidebarMode = "expanded" | "rail" | "hidden";
+
+// "1" is what the old collapse switch stored: the sidebar was fully hidden.
+export function parseMode(raw: string | null): SidebarMode {
+  if (raw === "rail") return "rail";
+  return raw === "hidden" || raw === "1" ? "hidden" : "expanded";
+}
+
+export const nextMode = (mode: SidebarMode): SidebarMode =>
+  mode === "expanded" ? "rail" : "expanded";
+
 const clampWidth = (n: number) =>
   Math.min(MAX_WIDTH, Math.max(DEFAULT_WIDTH, n));
 
@@ -20,7 +33,7 @@ export function resizeStep(clientX: number) {
 }
 
 type SidebarState = {
-  collapsed: boolean;
+  mode: SidebarMode;
   hydrated: boolean;
   width: number;
   dragging: boolean;
@@ -34,7 +47,7 @@ const SidebarContext = React.createContext<SidebarState | null>(null);
 
 export function SidebarProvider({ children }: { children: React.ReactNode }) {
   const [state, setState] = React.useState({
-    collapsed: false,
+    mode: "expanded" as SidebarMode,
     hydrated: false,
     width: DEFAULT_WIDTH,
   });
@@ -42,17 +55,17 @@ export function SidebarProvider({ children }: { children: React.ReactNode }) {
   const widthRef = React.useRef(DEFAULT_WIDTH);
 
   React.useEffect(() => {
-    let storedCollapsed = false;
+    let storedMode: SidebarMode = "expanded";
     let storedWidth = DEFAULT_WIDTH;
     try {
-      storedCollapsed = window.localStorage.getItem(COLLAPSE_KEY) === "1";
+      storedMode = parseMode(window.localStorage.getItem(COLLAPSE_KEY));
       const w = Number(window.localStorage.getItem(WIDTH_KEY));
       if (Number.isFinite(w) && w > 0) storedWidth = clampWidth(w);
     } catch {}
     widthRef.current = storedWidth;
     // eslint-disable-next-line react-hooks/set-state-in-effect -- apply persisted UI preference after mount
     setState({
-      collapsed: storedCollapsed,
+      mode: storedMode,
       hydrated: true,
       width: storedWidth,
     });
@@ -60,11 +73,11 @@ export function SidebarProvider({ children }: { children: React.ReactNode }) {
 
   const toggle = React.useCallback(() => {
     setState((prev) => {
-      const next = !prev.collapsed;
+      const mode = nextMode(prev.mode);
       try {
-        window.localStorage.setItem(COLLAPSE_KEY, next ? "1" : "0");
+        window.localStorage.setItem(COLLAPSE_KEY, mode);
       } catch {}
-      return { ...prev, collapsed: next };
+      return { ...prev, mode };
     });
   }, []);
 
@@ -96,10 +109,10 @@ export function SidebarProvider({ children }: { children: React.ReactNode }) {
       window.removeEventListener("pointerup", onUp);
       window.removeEventListener("pointercancel", onUp);
       if (endResize.current === onUp) endResize.current = null;
-      if (close) setState((prev) => ({ ...prev, collapsed: true }));
+      if (close) setState((prev) => ({ ...prev, mode: "hidden" }));
       try {
         window.localStorage.setItem(WIDTH_KEY, String(widthRef.current));
-        if (close) window.localStorage.setItem(COLLAPSE_KEY, "1");
+        if (close) window.localStorage.setItem(COLLAPSE_KEY, "hidden");
       } catch {}
     }
     function onUp() {
