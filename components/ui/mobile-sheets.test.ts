@@ -3,7 +3,11 @@ import assert from "node:assert/strict";
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 
-import { bodyDragStarts, dragCloses } from "./use-sheet-drag";
+import {
+  bodyDragStarts,
+  dragCloses,
+  swallowGhostClick,
+} from "./use-sheet-drag";
 
 function walk(dir: string, out: string[] = []) {
   for (const name of readdirSync(dir)) {
@@ -57,6 +61,41 @@ describe("mobile sheets", () => {
       );
       assert.ok(close, f);
       assert.match(close[1], /\bmax-md:sr-only\b/, f);
+    }
+  });
+
+  test("the tap that closes an action sheet clicks nothing under it, on a phone only", () => {
+    const g = globalThis as Record<string, unknown>;
+    const saved = { document: g.document, window: g.window };
+    const click = (doc: EventTarget) => {
+      const e = new Event("click", { cancelable: true });
+      doc.dispatchEvent(e);
+      return e.defaultPrevented;
+    };
+    try {
+      for (const phone of [true, false]) {
+        const doc = new EventTarget();
+        g.document = doc;
+        const timers: (() => void)[] = [];
+        g.window = {
+          matchMedia: () => ({ matches: phone }),
+          setTimeout: (fn: () => void) => timers.push(fn),
+        };
+        swallowGhostClick();
+        timers.forEach((fn) => fn());
+        assert.equal(
+          click(doc),
+          false,
+          "a tap that fired no click leaves the next one alone",
+        );
+        swallowGhostClick();
+        assert.equal(click(doc), phone, phone ? "phone" : "desktop");
+        assert.equal(click(doc), false, "only that one click");
+        timers.forEach((fn) => fn());
+      }
+    } finally {
+      g.document = saved.document;
+      g.window = saved.window;
     }
   });
 });

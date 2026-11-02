@@ -38,6 +38,22 @@ function grabsAtOnce(el: HTMLElement, target: Element, y: number): boolean {
   );
 }
 
+// An action sheet's backdrop is a painted shadow, and the menu closes on pointerdown:
+// the click that same tap fires next must not land on the page underneath.
+export function swallowGhostClick() {
+  if (!window.matchMedia(MOBILE).matches) return;
+  const doc = document;
+  const stop = (e: Event) => {
+    e.preventDefault();
+    e.stopPropagation();
+  };
+  doc.addEventListener("click", stop, { capture: true, once: true });
+  window.setTimeout(
+    () => doc.removeEventListener("click", stop, { capture: true }),
+    600,
+  );
+}
+
 function settle(el: HTMLElement) {
   el.style.transition = "transform 200ms ease-out";
   el.style.transform = "";

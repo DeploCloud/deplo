@@ -5,7 +5,10 @@ import * as DropdownMenuPrimitive from "@radix-ui/react-dropdown-menu";
 import { Check, ChevronRight, Circle } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { SheetHandle } from "@/components/ui/sheet-chrome";
-import { useSheetDrag } from "@/components/ui/use-sheet-drag";
+import {
+  swallowGhostClick,
+  useSheetDrag,
+} from "@/components/ui/use-sheet-drag";
 
 // Below md a menu is an action sheet; globals.css pins its popper wrapper to the bottom.
 const ACTION_SHEET =
@@ -64,37 +67,46 @@ DropdownMenuSubContent.displayName =
 const DropdownMenuContent = React.forwardRef<
   React.ElementRef<typeof DropdownMenuPrimitive.Content>,
   React.ComponentPropsWithoutRef<typeof DropdownMenuPrimitive.Content>
->(({ className, sideOffset = 4, children, ...props }, ref) => {
-  const sheet = useSheetDrag();
-  const sheetRef = sheet.ref;
-  const setRefs = React.useCallback(
-    (node: HTMLDivElement | null) => {
-      sheetRef(node);
-      if (typeof ref === "function") ref(node);
-      else if (ref) ref.current = node;
-    },
-    [ref, sheetRef],
-  );
-  return (
-    <DropdownMenuPrimitive.Portal>
-      <DropdownMenuPrimitive.Content
-        ref={setRefs}
-        sideOffset={sideOffset}
-        data-slot="dropdown-menu-content"
-        className={cn(
-          "z-50 min-w-[10rem] animate-in overflow-hidden rounded-md border border-border bg-popover p-1 text-popover-foreground shadow-lg fade-in-0 zoom-in-95 data-[side=bottom]:slide-in-from-top-2 data-[side=top]:slide-in-from-bottom-2",
-          ACTION_SHEET,
-          className,
-        )}
-        {...sheet.handlers}
-        {...props}
-      >
-        <SheetHandle />
-        {children}
-      </DropdownMenuPrimitive.Content>
-    </DropdownMenuPrimitive.Portal>
-  );
-});
+>(
+  (
+    { className, sideOffset = 4, children, onPointerDownOutside, ...props },
+    ref,
+  ) => {
+    const sheet = useSheetDrag();
+    const sheetRef = sheet.ref;
+    const setRefs = React.useCallback(
+      (node: HTMLDivElement | null) => {
+        sheetRef(node);
+        if (typeof ref === "function") ref(node);
+        else if (ref) ref.current = node;
+      },
+      [ref, sheetRef],
+    );
+    return (
+      <DropdownMenuPrimitive.Portal>
+        <DropdownMenuPrimitive.Content
+          ref={setRefs}
+          sideOffset={sideOffset}
+          data-slot="dropdown-menu-content"
+          className={cn(
+            "z-50 min-w-[10rem] animate-in overflow-hidden rounded-md border border-border bg-popover p-1 text-popover-foreground shadow-lg fade-in-0 zoom-in-95 data-[side=bottom]:slide-in-from-top-2 data-[side=top]:slide-in-from-bottom-2",
+            ACTION_SHEET,
+            className,
+          )}
+          {...sheet.handlers}
+          onPointerDownOutside={(event) => {
+            onPointerDownOutside?.(event);
+            if (!event.defaultPrevented) swallowGhostClick();
+          }}
+          {...props}
+        >
+          <SheetHandle />
+          {children}
+        </DropdownMenuPrimitive.Content>
+      </DropdownMenuPrimitive.Portal>
+    );
+  },
+);
 DropdownMenuContent.displayName = DropdownMenuPrimitive.Content.displayName;
 
 const DropdownMenuItem = React.forwardRef<
