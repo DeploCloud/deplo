@@ -120,6 +120,8 @@
 - **On a phone no modal has a corner X and none is full screen.** Below md every sheet closes by
   dragging down or tapping the backdrop, and stops short of the top (`--sheet-top-gap`);
   `mobile-sheets.test.ts` holds both. Never add a mobile close button or a `max-md:h-dvh` sheet.
+  While typing, a sheet rides on the keyboard with `DialogHeader`/`DialogFooter` pinned, so a
+  body cap in `vh` must read `var(--sheet-room,85vh)` (`PANEL_BODY_MAX`) or the buttons go under it.
 - **On a phone a row with two or more actions shows one kebab.** Wrap the inline buttons in
   `RowActions` (`components/shared/row-actions.tsx`) with the same actions as data; the desktop
   keeps its buttons, and a table's actions cell takes `ROW_ACTIONS_CELL`.
