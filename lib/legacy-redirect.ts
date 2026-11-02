@@ -30,17 +30,24 @@ async function teamFor(
   return teams.find((t) => t.id === active)?.slug ?? teams[0]?.slug ?? null;
 }
 
+// A moved page keeps the link's query, or a deep link lands on the page's first step.
+export function querySuffix(
+  params: Record<string, string | string[] | undefined>,
+): string {
+  const query = new URLSearchParams();
+  for (const [key, value] of Object.entries(params))
+    for (const one of Array.isArray(value) ? value : [value ?? ""])
+      query.append(key, one);
+  const search = query.toString();
+  return search ? `?${search}` : "";
+}
+
 export async function legacyRedirect(
   section: string,
   props: LegacyProps,
 ): Promise<never> {
   const { rest = [] } = await props.params;
-  const query = new URLSearchParams();
-  for (const [key, value] of Object.entries(await props.searchParams))
-    for (const one of Array.isArray(value) ? value : [value ?? ""])
-      query.append(key, one);
-  const search = query.toString();
-  const path = `/${[section, ...rest].join("/")}${search ? `?${search}` : ""}`;
+  const path = `/${[section, ...rest].join("/")}${querySuffix(await props.searchParams)}`;
   const slug = await teamFor(section, rest);
   // A stale session passes the proxy; sign-in keeps the target when safeNext allows it.
   if (!slug && !(await getCurrentUser()))
