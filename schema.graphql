@@ -6856,9 +6856,19 @@ type Subscription {
   appStatus(slug: String!): App
 
   """
+  appStatus for a whole list on one stream: emits each app once, then again whenever one of them changes. A slug the caller cannot reach is skipped.
+  """
+  appsStatus(slugs: [String!]!): App
+
+  """
   Emits the database whenever its status changes (provisioning → running, start/stop, redeploy, …). Fires once immediately with the current snapshot, then on every change; ends when the database is deleted.
   """
   databaseStatus(id: String!): Database
+
+  """
+  databaseStatus for a whole list on one stream: emits each database once, then again whenever one of them changes. An id the caller cannot see is skipped.
+  """
+  databasesStatus(ids: [String!]!): Database
 
   """
   Emits the whole cleanup history whenever it changes - a sweep started, finished, or was pruned. Fires once immediately with the current snapshot. Instance-wide: there is no per-server stream, because there is one policy and one shared fleet.

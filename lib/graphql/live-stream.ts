@@ -47,3 +47,13 @@ export function liveStream<T>(
   };
   return self;
 }
+
+export const MAX_LIVE_KEYS = 200;
+
+// One stream for a whole list, so a page holds one connection however long the list is.
+export function liveKeys(keys: readonly string[]): string[] {
+  const unique = [...new Set(keys)];
+  if (unique.length > MAX_LIVE_KEYS)
+    throw new Error(`At most ${MAX_LIVE_KEYS} items per live list`);
+  return unique;
+}

@@ -5,11 +5,14 @@ import type { PGlite } from "@electric-sql/pglite";
 
 import { makeTestDb, type TestDb } from "../db/test-harness";
 import { __setTestDb, __resetTestDb } from "../db/client";
-import { seedIdentity, TEAM_A, USER_1 } from "./identity-test-helpers";
+import { seedIdentity, TEAM_A, TEAM_B, USER_1 } from "./identity-test-helpers";
 import { seedServer } from "./app-graph-test-helpers";
 import { seedDatabase, TRUNCATE_BACKUPS } from "./backup-test-helpers";
 import { publishDatabaseChanged } from "../graphql/pubsub";
-import { databaseStatusStream } from "../graphql/types/database";
+import {
+  databaseStatusStream,
+  databasesStatusStream,
+} from "../graphql/types/database";
 
 let db: TestDb;
 let pg: PGlite;
@@ -96,6 +99,83 @@ test("databaseStatusStream ends when the database is deleted mid-stream", async 
 test("databaseStatusStream ends for a member removed mid-stream", async () => {
   await seedDatabase(db, { id: "db_1", name: "main" });
   const gen = databaseStatusStream("db_1", TEAM_A, USER_1);
+  await gen.next();
+  const p = gen.next();
+  await pg.exec(`delete from memberships where user_id = '${USER_1}';`);
+  publishDatabaseChanged("db_1");
+  assert.equal((await p).done, true, "no update reaches a former member");
+});
+
+test("databasesStatusStream carries a whole list on one stream and skips what the team cannot see", async () => {
+  await seedDatabase(db, { id: "db_1", name: "main" });
+  await seedDatabase(db, { id: "db_2", name: "cache", status: "stopped" });
+  await seedDatabase(db, { id: "db_x", name: "theirs", teamId: TEAM_B });
+
+  const gen = databasesStatusStream(
+    ["db_1", "db_x", "db_nope", "db_2", "db_1"],
+    TEAM_A,
+    USER_1,
+  );
+  const first = [(await gen.next()).value.id, (await gen.next()).value.id];
+  assert.deepEqual(
+    first,
+    ["db_1", "db_2"],
+    "each visible id once, foreign and unknown skipped",
+  );
+
+  const p1 = gen.next();
+  await pg.exec(`update databases set status = 'running' where id = 'db_2';`);
+  publishDatabaseChanged("db_2");
+  const second = await p1;
+  assert.equal(second.value.id, "db_2");
+  assert.equal(second.value.status, "running");
+
+  const p2 = gen.next();
+  publishDatabaseChanged("db_x");
+  await pg.exec(`update databases set status = 'stopped' where id = 'db_1';`);
+  publishDatabaseChanged("db_1");
+  const third = await p2;
+  assert.equal(
+    third.value.id,
+    "db_1",
+    "a foreign id's ping never comes through",
+  );
+
+  await pg.exec(`delete from databases where id = 'db_2';`);
+  const p3 = gen.next();
+  publishDatabaseChanged("db_2");
+  publishDatabaseChanged("db_1");
+  assert.equal(
+    (await p3).value.id,
+    "db_1",
+    "a deleted one drops out, the rest stay live",
+  );
+
+  assert.equal((await gen.return(undefined as never)).done, true);
+});
+
+test("databasesStatusStream refuses a caller outside the team and an oversized list", async () => {
+  await seedDatabase(db, { id: "db_1", name: "main" });
+  await assert.rejects(
+    () => databasesStatusStream(["db_1"], TEAM_A, null).next(),
+    /Database not found/,
+  );
+  await assert.rejects(
+    () => databasesStatusStream(["db_1"], TEAM_B, USER_1).next(),
+    /Database not found/,
+  );
+  const many = Array.from({ length: 201 }, (_, i) => `db_${i}`);
+  await assert.rejects(
+    () => databasesStatusStream(many, TEAM_A, USER_1).next(),
+    /At most 200/,
+  );
+  const none = await databasesStatusStream(["db_nope"], TEAM_A, USER_1).next();
+  assert.equal(none.done, true, "nothing visible ends the stream at once");
+});
+
+test("databasesStatusStream ends for a member removed mid-stream", async () => {
+  await seedDatabase(db, { id: "db_1", name: "main" });
+  const gen = databasesStatusStream(["db_1"], TEAM_A, USER_1);
   await gen.next();
   const p = gen.next();
   await pg.exec(`delete from memberships where user_id = '${USER_1}';`);

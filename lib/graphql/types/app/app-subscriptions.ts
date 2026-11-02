@@ -6,7 +6,8 @@ import {
 } from "@/lib/data/apps/listing";
 import type { AppSummary } from "@/lib/data/apps/summary";
 import { pubSub, APP_ACTIVITY_TOPIC } from "../../pubsub";
-import { liveStream } from "../../live-stream";
+import { Repeater } from "@graphql-yoga/subscription";
+import { liveKeys, liveStream } from "../../live-stream";
 import { countActiveDeploymentsForTeam } from "@/lib/data/deployments/deployment-queries";
 
 builder.subscriptionType({});
@@ -21,6 +22,17 @@ builder.subscriptionFields((t) => ({
     args: { slug: t.arg.string({ required: true }) },
     subscribe: (_root, { slug }, ctx) =>
       appStatusStream(slug, ctx.teamId, ctx.viewer?.id ?? null),
+    resolve: (project) => project,
+  }),
+  appsStatus: t.field({
+    type: AppRef,
+    description:
+      "appStatus for a whole list on one stream: emits each app once, then " +
+      "again whenever one of them changes. A slug the caller cannot reach is skipped.",
+    authScopes: { loggedIn: true },
+    args: { slugs: t.arg.stringList({ required: true }) },
+    subscribe: (_root, { slugs }, ctx) =>
+      appsStatusStream(slugs, ctx.teamId, ctx.viewer?.id ?? null),
     resolve: (project) => project,
   }),
   activeDeployments: t.int({
@@ -73,6 +85,32 @@ export function appStatusStream(
       const next = await summarizeForTeam(changedId, teamId, userId);
       if (!next) return;
       yield next;
+    }
+  });
+}
+
+export function appsStatusStream(
+  slugs: readonly string[],
+  teamId: string | null,
+  userId: string | null,
+) {
+  return liveStream(async function* (track): AsyncGenerator<AppSummary> {
+    if (!teamId || !userId) throw new Error("App not found");
+    const found: string[] = [];
+    for (const slug of liveKeys(slugs)) {
+      const project = await findAppSummaryBySlugForTeam(slug, teamId, userId);
+      if (!project) continue;
+      found.push(project.id);
+      yield project;
+    }
+    if (found.length === 0) return;
+
+    const changes = found.map((id) =>
+      track(pubSub.subscribe("appChanged", id)),
+    );
+    for await (const changedId of Repeater.merge(changes)) {
+      const next = await summarizeForTeam(changedId, teamId, userId);
+      if (next) yield next;
     }
   });
 }

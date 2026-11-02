@@ -29,6 +29,7 @@ import {
 import { ALL_CAPABILITIES } from "../types/identity";
 import {
   appStatusStream,
+  appsStatusStream,
   activeDeploymentsStream,
 } from "../graphql/types/app/app-subscriptions";
 
@@ -354,5 +355,94 @@ test("a build inside a folder the member can't see is not counted", async () => 
   assert.equal(
     (await activeDeploymentsStream(TEAM_A, "u_folder_owner").next()).value,
     1,
+  );
+});
+
+test("appsStatusStream carries a list on one stream, and an app moved out of reach drops out alone", async () => {
+  await pg.exec(`truncate table users, teams restart identity cascade;`);
+  await seedIdentity(db, {
+    users: [
+      { id: "u_folder_owner", teamId: TEAM_A, role: "owner" },
+      {
+        id: "u_outsider",
+        teamId: TEAM_A,
+        role: "member",
+        isInstanceAdmin: false,
+        capabilities: ["view", "create_apps", "deploy_apps"],
+      },
+    ],
+  });
+  await db.insert(foldersTable).values({
+    id: "fld_private",
+    teamId: TEAM_A,
+    name: "Private",
+    parentId: null,
+    color: null,
+    ownerUserId: "u_folder_owner",
+    createdAt: "2026-01-01T00:00:00.000Z",
+    updatedAt: "2026-01-01T00:00:00.000Z",
+  });
+  for (const [id, slug] of [
+    ["prj_1", "alpha"],
+    ["prj_2", "beta"],
+    ["prj_3", "hidden"],
+  ])
+    await seedApp(db, { id, slug, teamId: TEAM_A, status: "active" });
+  await db
+    .update(appsTable)
+    .set({ folderId: "fld_private" })
+    .where(eq(appsTable.id, "prj_3"));
+
+  const gen = appsStatusStream(
+    ["alpha", "hidden", "nope", "beta"],
+    TEAM_A,
+    "u_outsider",
+  );
+  const first = [(await gen.next()).value.id, (await gen.next()).value.id];
+  assert.deepEqual(
+    first,
+    ["prj_1", "prj_2"],
+    "the folder-hidden app is skipped",
+  );
+
+  const p1 = gen.next();
+  publishAppChanged("prj_3");
+  publishAppChanged("prj_2");
+  assert.equal(
+    (await p1).value.id,
+    "prj_2",
+    "a hidden app's ping never comes through",
+  );
+
+  await db
+    .update(appsTable)
+    .set({ folderId: "fld_private" })
+    .where(eq(appsTable.id, "prj_1"));
+  const p2 = gen.next();
+  publishAppChanged("prj_1");
+  publishAppChanged("prj_2");
+  assert.equal(
+    (await p2).value.id,
+    "prj_2",
+    "the moved app drops out, the other stays live",
+  );
+
+  assert.equal((await gen.return(undefined as never)).done, true);
+});
+
+test("appsStatusStream refuses no team and ends at once when nothing is visible", async () => {
+  await seedApp(db, {
+    id: "prj_1",
+    slug: "alpha",
+    teamId: TEAM_A,
+    status: "active",
+  });
+  await assert.rejects(
+    () => appsStatusStream(["alpha"], null, USER_1).next(),
+    /App not found/,
+  );
+  assert.equal(
+    (await appsStatusStream(["alpha"], "team_other", USER_1).next()).done,
+    true,
   );
 });

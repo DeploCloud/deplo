@@ -2,7 +2,8 @@ import { builder } from "../builder";
 import { DatabaseTypeEnum } from "./enums";
 import { ResourceLimitsRef, ResourceLimitsInputType } from "./resource-limits";
 import { pubSub } from "../pubsub";
-import { liveStream } from "../live-stream";
+import { Repeater } from "@graphql-yoga/subscription";
+import { liveKeys, liveStream } from "../live-stream";
 import { acceptDataCopyLoss } from "@/lib/data/data-copy";
 import { moveDatabaseToEnvironment } from "@/lib/data/databases/environment-move";
 import {
@@ -590,7 +591,47 @@ builder.subscriptionFields((t) => ({
       databaseStatusStream(id, ctx.teamId, ctx.viewer?.id ?? null),
     resolve: (db) => db,
   }),
+  databasesStatus: t.field({
+    type: DatabaseRef,
+    description:
+      "databaseStatus for a whole list on one stream: emits each database once, " +
+      "then again whenever one of them changes. An id the caller cannot see is skipped.",
+    authScopes: { loggedIn: true },
+    args: { ids: t.arg.stringList({ required: true }) },
+    subscribe: (_root, { ids }, ctx) =>
+      databasesStatusStream(ids, ctx.teamId, ctx.viewer?.id ?? null),
+    resolve: (db) => db,
+  }),
 }));
+
+export function databasesStatusStream(
+  ids: readonly string[],
+  teamId: string | null,
+  userId: string | null,
+) {
+  return liveStream(async function* (track): AsyncGenerator<DatabaseDTO> {
+    if (!teamId || !userId) throw new Error("Database not found");
+    const reaches = () => memberHoldsTeamWide(userId, teamId, "view");
+    if (!(await reaches())) throw new Error("Database not found");
+    const found: string[] = [];
+    for (const id of liveKeys(ids)) {
+      const db = await getDatabaseForTeam(id, teamId);
+      if (!db) continue;
+      found.push(db.id);
+      yield db;
+    }
+    if (found.length === 0) return;
+
+    const changes = found.map((id) =>
+      track(pubSub.subscribe("databaseChanged", id)),
+    );
+    for await (const changedId of Repeater.merge(changes)) {
+      if (!(await reaches())) return;
+      const next = await getDatabaseForTeam(changedId, teamId);
+      if (next) yield next;
+    }
+  });
+}
 
 export function databaseStatusStream(
   id: string,

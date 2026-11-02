@@ -25,8 +25,8 @@ export const STATUS_LABELS: Record<DeploymentStatus, string> = {
 };
 
 const DEPLOYMENT_STATUS_SUB = /* GraphQL */ `
-  subscription DeploymentRowStatus($slug: String!) {
-    appStatus(slug: $slug) {
+  subscription DeploymentRowStatus($slugs: [String!]!) {
+    appsStatus(slugs: $slugs) {
       id
       latestDeployment {
         id
@@ -36,7 +36,7 @@ const DEPLOYMENT_STATUS_SUB = /* GraphQL */ `
   }
 `;
 type StatusSub = {
-  appStatus: {
+  appsStatus: {
     id: string;
     latestDeployment: { id: string; status: DeploymentStatus } | null;
   } | null;
@@ -70,22 +70,19 @@ export function useLiveDeploymentStatuses(
 
   React.useEffect(() => {
     if (!slugKey) return;
-    const unsubs = slugKey.split(",").map((slug) =>
-      gqlSubscribe<StatusSub>(
-        DEPLOYMENT_STATUS_SUB,
-        { slug },
-        (data) => {
-          const dep = data.appStatus?.latestDeployment;
-          if (!dep) return;
-          setOverlay((prev) =>
-            withLiveStatus(prev, dep.id, dep.status, onScreen.current),
-          );
-          if (!IN_PROGRESS.has(dep.status)) router.refresh();
-        },
-        () => {},
-      ),
+    return gqlSubscribe<StatusSub>(
+      DEPLOYMENT_STATUS_SUB,
+      { slugs: slugKey.split(",") },
+      (data) => {
+        const dep = data.appsStatus?.latestDeployment;
+        if (!dep) return;
+        setOverlay((prev) =>
+          withLiveStatus(prev, dep.id, dep.status, onScreen.current),
+        );
+        if (!IN_PROGRESS.has(dep.status)) router.refresh();
+      },
+      () => {},
     );
-    return () => unsubs.forEach((u) => u());
   }, [slugKey, router]);
 
   return statusOf;

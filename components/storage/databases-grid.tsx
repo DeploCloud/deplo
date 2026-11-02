@@ -56,6 +56,7 @@ import {
   usePendingCreate,
 } from "@/components/shared/pending-create";
 import { DatabaseCard } from "@/components/storage/database-card";
+import { DatabaseListLiveStatusProvider } from "@/components/storage/database-live-status";
 import { DB_TYPES } from "@/components/storage/db-engines";
 import { DatabaseLogo } from "@/components/storage/database-logo";
 import { gqlAction } from "@/lib/graphql-client";
@@ -211,194 +212,196 @@ export function DatabasesGrid({
   }
 
   return (
-    <div className="space-y-4">
-      <ListToolbar
-        query={query}
-        onQuery={setQuery}
-        placeholder="Search databases"
-        filterSheet={{
-          active: Number(engine !== "all") + Number(status !== "all"),
-          onClear: () => {
-            setEngine("all");
-            setStatus("all");
-          },
-        }}
-        view={view}
-        onView={setView}
-        action={createButton}
-        filters={
-          <>
-            <Select
-              value={engine}
-              onValueChange={(v) => setEngine(v as DatabaseType | "all")}
-            >
-              <SelectTrigger className="w-full sm:w-40">
-                <SelectValue placeholder="Engine" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All engines</SelectItem>
-                {DB_TYPES.map((t) => (
-                  <SelectItem key={t.id} value={t.id}>
-                    <span className="flex items-center gap-2">
-                      <DatabaseLogo type={t.id} size={16} />
-                      {t.name}
-                    </span>
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <Select
-              value={status}
-              onValueChange={(v) => setStatus(v as DatabaseStatus | "all")}
-            >
-              <SelectTrigger className="w-full sm:w-36">
-                <SelectValue placeholder="Status" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All statuses</SelectItem>
-                {(Object.keys(STATUS_LABELS) as DatabaseStatus[]).map((s) => (
-                  <SelectItem key={s} value={s}>
-                    {STATUS_LABELS[s]}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </>
-        }
-      />
+    <DatabaseListLiveStatusProvider ids={databases.map((d) => d.id)}>
+      <div className="space-y-4">
+        <ListToolbar
+          query={query}
+          onQuery={setQuery}
+          placeholder="Search databases"
+          filterSheet={{
+            active: Number(engine !== "all") + Number(status !== "all"),
+            onClear: () => {
+              setEngine("all");
+              setStatus("all");
+            },
+          }}
+          view={view}
+          onView={setView}
+          action={createButton}
+          filters={
+            <>
+              <Select
+                value={engine}
+                onValueChange={(v) => setEngine(v as DatabaseType | "all")}
+              >
+                <SelectTrigger className="w-full sm:w-40">
+                  <SelectValue placeholder="Engine" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All engines</SelectItem>
+                  {DB_TYPES.map((t) => (
+                    <SelectItem key={t.id} value={t.id}>
+                      <span className="flex items-center gap-2">
+                        <DatabaseLogo type={t.id} size={16} />
+                        {t.name}
+                      </span>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Select
+                value={status}
+                onValueChange={(v) => setStatus(v as DatabaseStatus | "all")}
+              >
+                <SelectTrigger className="w-full sm:w-36">
+                  <SelectValue placeholder="Status" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All statuses</SelectItem>
+                  {(Object.keys(STATUS_LABELS) as DatabaseStatus[]).map((s) => (
+                    <SelectItem key={s} value={s}>
+                      {STATUS_LABELS[s]}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </>
+          }
+        />
 
-      <SelectionCanvas canvasRef={canvasRef} marqueeRef={marqueeRef}>
-        {filtered.length === 0 && pending.length === 0 ? (
-          <EmptyState
-            icon={Database}
-            title="No matching databases"
-            description="No database matches the current search and filters."
-          />
-        ) : reorderable ? (
-          <DndContext
-            sensors={sensors}
-            collisionDetection={closestCenter}
-            onDragStart={(e: DragStartEvent) =>
-              setActiveId(String(e.active.id))
-            }
-            onDragEnd={onDragEnd}
-            onDragCancel={() => setActiveId(null)}
-          >
-            <SortableContext
-              items={filtered.map((d) => d.id)}
-              strategy={rectSortingStrategy}
+        <SelectionCanvas canvasRef={canvasRef} marqueeRef={marqueeRef}>
+          {filtered.length === 0 && pending.length === 0 ? (
+            <EmptyState
+              icon={Database}
+              title="No matching databases"
+              description="No database matches the current search and filters."
+            />
+          ) : reorderable ? (
+            <DndContext
+              sensors={sensors}
+              collisionDetection={closestCenter}
+              onDragStart={(e: DragStartEvent) =>
+                setActiveId(String(e.active.id))
+              }
+              onDragEnd={onDragEnd}
+              onDragCancel={() => setActiveId(null)}
             >
-              <div className={gridClass(view)}>
-                {filtered.map((d) => (
-                  <SortableCard
-                    key={d.id}
-                    id={d.id}
-                    selected={selected.has(d.id)}
-                    groupDragging={groupDragIds.has(d.id)}
-                    locked={Boolean(d.migrationRunId)}
-                    onSelect={(e) => onItemClick(d.id, e)}
-                  >
-                    {({ handle, dragActive }) => (
-                      <DatabaseCard
-                        environments={environments}
-                        canConfigure={canConfigure}
-                        canMove={canMove}
-                        db={d}
-                        serverName={serverNames[d.serverId]}
-                        view={view}
-                        dragHandle={handle}
-                        dragActive={dragActive}
-                        pollMs={view === "list" ? 20000 : 15000}
-                        canReveal={canReveal}
-                      />
-                    )}
-                  </SortableCard>
-                ))}
-                <PendingCards />
-              </div>
-            </SortableContext>
-            <DragOverlay dropAnimation={DRAG_DROP_ANIMATION}>
-              {activeDb ? (
-                <DragStack count={activeGroup.length}>
+              <SortableContext
+                items={filtered.map((d) => d.id)}
+                strategy={rectSortingStrategy}
+              >
+                <div className={gridClass(view)}>
+                  {filtered.map((d) => (
+                    <SortableCard
+                      key={d.id}
+                      id={d.id}
+                      selected={selected.has(d.id)}
+                      groupDragging={groupDragIds.has(d.id)}
+                      locked={Boolean(d.migrationRunId)}
+                      onSelect={(e) => onItemClick(d.id, e)}
+                    >
+                      {({ handle, dragActive }) => (
+                        <DatabaseCard
+                          environments={environments}
+                          canConfigure={canConfigure}
+                          canMove={canMove}
+                          db={d}
+                          serverName={serverNames[d.serverId]}
+                          view={view}
+                          dragHandle={handle}
+                          dragActive={dragActive}
+                          pollMs={view === "list" ? 20000 : 15000}
+                          canReveal={canReveal}
+                        />
+                      )}
+                    </SortableCard>
+                  ))}
+                  <PendingCards />
+                </div>
+              </SortableContext>
+              <DragOverlay dropAnimation={DRAG_DROP_ANIMATION}>
+                {activeDb ? (
+                  <DragStack count={activeGroup.length}>
+                    <DatabaseCard
+                      environments={environments}
+                      canConfigure={canConfigure}
+                      canMove={canMove}
+                      db={activeDb}
+                      serverName={serverNames[activeDb.serverId]}
+                      view={view}
+                      dragActive
+                      canReveal={canReveal}
+                    />
+                  </DragStack>
+                ) : null}
+              </DragOverlay>
+            </DndContext>
+          ) : (
+            <div className={gridClass(view)}>
+              {filtered.map((d) => (
+                <SelectableCard
+                  key={d.id}
+                  id={d.id}
+                  selected={selected.has(d.id)}
+                  onSelect={(e) => onItemClick(d.id, e)}
+                >
                   <DatabaseCard
                     environments={environments}
                     canConfigure={canConfigure}
                     canMove={canMove}
-                    db={activeDb}
-                    serverName={serverNames[activeDb.serverId]}
+                    db={d}
+                    serverName={serverNames[d.serverId]}
                     view={view}
-                    dragActive
+                    pollMs={view === "list" ? 20000 : 15000}
                     canReveal={canReveal}
                   />
-                </DragStack>
-              ) : null}
-            </DragOverlay>
-          </DndContext>
-        ) : (
-          <div className={gridClass(view)}>
-            {filtered.map((d) => (
-              <SelectableCard
-                key={d.id}
-                id={d.id}
-                selected={selected.has(d.id)}
-                onSelect={(e) => onItemClick(d.id, e)}
-              >
-                <DatabaseCard
-                  environments={environments}
-                  canConfigure={canConfigure}
-                  canMove={canMove}
-                  db={d}
-                  serverName={serverNames[d.serverId]}
-                  view={view}
-                  pollMs={view === "list" ? 20000 : 15000}
-                  canReveal={canReveal}
-                />
-              </SelectableCard>
-            ))}
-            <PendingCards />
-          </div>
-        )}
-      </SelectionCanvas>
+                </SelectableCard>
+              ))}
+              <PendingCards />
+            </div>
+          )}
+        </SelectionCanvas>
 
-      <SelectionBar
-        count={selectionCount}
-        onSelectAll={selectAll}
-        onClear={clearSelection}
-      >
-        <DatabaseBulkActions
-          canControl={canControl}
-          canDelete={canDelete}
-          onStart={() =>
-            void bulkRun(
-              `mutation($id: String!) { setDatabaseRunning(id: $id, running: true) { id } }`,
-              `${selectionNoun} started`,
-            )
-          }
-          onStop={() =>
-            void bulkRun(
-              `mutation($id: String!) { setDatabaseRunning(id: $id, running: false) { id } }`,
-              `${selectionNoun} stopped`,
-            )
-          }
-          onRestart={() =>
-            void bulkRun(
-              `mutation($id: String!) { restartDatabase(id: $id) { id } }`,
-              `${selectionNoun} restarted`,
-            )
-          }
-          onDelete={() => setBulkDeleteOpen(true)}
+        <SelectionBar
+          count={selectionCount}
+          onSelectAll={selectAll}
+          onClear={clearSelection}
+        >
+          <DatabaseBulkActions
+            canControl={canControl}
+            canDelete={canDelete}
+            onStart={() =>
+              void bulkRun(
+                `mutation($id: String!) { setDatabaseRunning(id: $id, running: true) { id } }`,
+                `${selectionNoun} started`,
+              )
+            }
+            onStop={() =>
+              void bulkRun(
+                `mutation($id: String!) { setDatabaseRunning(id: $id, running: false) { id } }`,
+                `${selectionNoun} stopped`,
+              )
+            }
+            onRestart={() =>
+              void bulkRun(
+                `mutation($id: String!) { restartDatabase(id: $id) { id } }`,
+                `${selectionNoun} restarted`,
+              )
+            }
+            onDelete={() => setBulkDeleteOpen(true)}
+          />
+        </SelectionBar>
+
+        <ConfirmAction
+          open={bulkDeleteOpen}
+          onOpenChange={setBulkDeleteOpen}
+          title={`Delete ${selectionNoun}?`}
+          description={`${selectionCount === 1 ? "This database is" : "These databases are"} stopped, and their containers, all their data and every backup they have stored are permanently destroyed.`}
+          confirmLabel={`Delete ${selectionCount === 1 ? "database" : "databases"}`}
+          onConfirm={() => bulkRun(DELETE_DATABASE, `${selectionNoun} deleted`)}
         />
-      </SelectionBar>
-
-      <ConfirmAction
-        open={bulkDeleteOpen}
-        onOpenChange={setBulkDeleteOpen}
-        title={`Delete ${selectionNoun}?`}
-        description={`${selectionCount === 1 ? "This database is" : "These databases are"} stopped, and their containers, all their data and every backup they have stored are permanently destroyed.`}
-        confirmLabel={`Delete ${selectionCount === 1 ? "database" : "databases"}`}
-        onConfirm={() => bulkRun(DELETE_DATABASE, `${selectionNoun} deleted`)}
-      />
-    </div>
+      </div>
+    </DatabaseListLiveStatusProvider>
   );
 }
 
