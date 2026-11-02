@@ -71,7 +71,8 @@ function SegmentedTabsList({
   return (
     <TabsList
       className={cn(
-        "grid h-auto w-full auto-cols-fr grid-flow-col items-center rounded-lg border border-border bg-surface p-1",
+        // max-md:h-auto beats the plain list's phone height, which its taller triggers would overflow.
+        "grid h-auto w-full auto-cols-fr grid-flow-col items-center rounded-lg border border-border bg-surface p-1 max-md:h-auto",
         className,
       )}
       indicatorClassName="bg-background shadow-sm"
