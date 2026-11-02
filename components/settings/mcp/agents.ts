@@ -108,7 +108,7 @@ export const AGENTS: AgentDef[] = [
   {
     id: "vscode",
     label: "VS Code",
-    blurb: "Copilot agent mode, in every workspace.",
+    blurb: "Copilot agent mode, all workspaces.",
     icon: VsCodeIcon,
     brand: { bg: "#007ACC", fg: "#FFFFFF" },
     veil: { hue: 249 },
