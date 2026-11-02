@@ -11,6 +11,7 @@ import {
   Boxes,
   Layers,
   Users,
+  Pencil,
 } from "lucide-react";
 import {
   Table,
@@ -24,6 +25,8 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { SimpleTooltip } from "@/components/ui/tooltip";
 import { EmptyState } from "@/components/shared/empty-state";
+import { RowActions } from "@/components/shared/row-actions";
+import { ROW_ACTIONS_CELL } from "@/components/shared/row-actions-cell";
 import { ConfirmAction } from "@/components/shared/confirm-action";
 import { useOptimisticRemove } from "@/components/shared/use-optimistic-remove";
 import {
@@ -256,7 +259,7 @@ export function SharedVarsManager({
                     Modified by
                   </TableHead>
                   <TableHead className="text-right whitespace-nowrap">
-                    Actions
+                    <span className="max-md:sr-only">Actions</span>
                   </TableHead>
                 </TableRow>
               </TableHeader>
@@ -300,35 +303,58 @@ export function SharedVarsManager({
                         author={v.updatedBy ?? v.createdBy ?? null}
                       />
                     </TableCell>
-                    <TableCell className="text-right">
+                    <TableCell className={`text-right ${ROW_ACTIONS_CELL}`}>
                       {v.editable ? (
-                        <div className="flex justify-end gap-1">
-                          <EnvEditButton
-                            secret={v.type === "secret"}
-                            label="Edit value"
-                            tooltip="Edit value"
-                            onClick={() => setEditing(v)}
-                          />
-                          <SimpleTooltip content="Change sharing">
+                        <RowActions
+                          title={v.key}
+                          actions={[
+                            {
+                              label: "Edit value",
+                              icon: Pencil,
+                              disabled: v.type === "secret",
+                              onSelect: () => setEditing(v),
+                            },
+                            {
+                              label: "Change sharing",
+                              icon: Share2,
+                              onSelect: () => setWizard({ editing: v }),
+                            },
+                            {
+                              label: "Delete",
+                              icon: Trash2,
+                              destructive: true,
+                              onSelect: () => setDeleteId(v.id),
+                            },
+                          ]}
+                        >
+                          <div className="flex justify-end gap-1">
+                            <EnvEditButton
+                              secret={v.type === "secret"}
+                              label="Edit value"
+                              tooltip="Edit value"
+                              onClick={() => setEditing(v)}
+                            />
+                            <SimpleTooltip content="Change sharing">
+                              <Button
+                                variant="ghost"
+                                size="icon-sm"
+                                onClick={() => setWizard({ editing: v })}
+                                aria-label="Change sharing"
+                              >
+                                <Share2 className="size-4" />
+                              </Button>
+                            </SimpleTooltip>
                             <Button
                               variant="ghost"
                               size="icon-sm"
-                              onClick={() => setWizard({ editing: v })}
-                              aria-label="Change sharing"
+                              className="text-muted-foreground hover:text-destructive"
+                              onClick={() => setDeleteId(v.id)}
+                              aria-label="Delete"
                             >
-                              <Share2 className="size-4" />
+                              <Trash2 className="size-4" />
                             </Button>
-                          </SimpleTooltip>
-                          <Button
-                            variant="ghost"
-                            size="icon-sm"
-                            className="text-muted-foreground hover:text-destructive"
-                            onClick={() => setDeleteId(v.id)}
-                            aria-label="Delete"
-                          >
-                            <Trash2 className="size-4" />
-                          </Button>
-                        </div>
+                          </div>
+                        </RowActions>
                       ) : (
                         <SimpleTooltip
                           content={`Owned by ${v.ownerTeam?.name ?? "an instance admin"}. Only they can change it.`}

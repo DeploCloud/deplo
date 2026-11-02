@@ -3,10 +3,11 @@
 import * as React from "react";
 import { useRouter } from "@/lib/nav";
 import { toast } from "sonner";
-import { Check, Clock, Copy, LinkIcon, Loader2 } from "lucide-react";
+import { Check, Clock, Copy, LinkIcon, Loader2, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { SimpleTooltip } from "@/components/ui/tooltip";
 import { RevealChip } from "@/components/shared/reveal-chip";
+import { RowActions } from "@/components/shared/row-actions";
 import { copyText } from "@/lib/clipboard";
 import { gqlAction } from "@/lib/graphql-client";
 import { cn, timeAgo } from "@/lib/utils";
@@ -127,35 +128,54 @@ export function RegistrationLinkRow({
                 Created by {link.createdBy} · {scope}
               </p>
             </div>
-            <div className="flex shrink-0 items-center gap-1">
-              {canReveal && (
-                <SimpleTooltip content="Copy the link without showing it">
-                  <Button
-                    variant="ghost"
-                    size="icon-sm"
-                    onClick={copy}
-                    disabled={pending}
-                    aria-label="Copy registration link"
-                  >
-                    {copied ? (
-                      <Check className="size-4 text-emerald-500" />
-                    ) : pending ? (
-                      <Loader2 className="size-4 animate-spin" />
-                    ) : (
-                      <Copy className="size-4" />
-                    )}
-                  </Button>
-                </SimpleTooltip>
-              )}
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={revoke}
-                disabled={revoking}
-              >
-                Revoke
-              </Button>
-            </div>
+            <RowActions
+              title="Registration link"
+              actions={[
+                canReveal && {
+                  label: "Copy link",
+                  icon: Copy,
+                  disabled: pending,
+                  onSelect: () => void copy(),
+                },
+                {
+                  label: "Revoke",
+                  icon: Trash2,
+                  destructive: true,
+                  disabled: revoking,
+                  onSelect: revoke,
+                },
+              ]}
+            >
+              <div className="flex shrink-0 items-center gap-1">
+                {canReveal && (
+                  <SimpleTooltip content="Copy the link without showing it">
+                    <Button
+                      variant="ghost"
+                      size="icon-sm"
+                      onClick={copy}
+                      disabled={pending}
+                      aria-label="Copy registration link"
+                    >
+                      {copied ? (
+                        <Check className="size-4 text-emerald-500" />
+                      ) : pending ? (
+                        <Loader2 className="size-4 animate-spin" />
+                      ) : (
+                        <Copy className="size-4" />
+                      )}
+                    </Button>
+                  </SimpleTooltip>
+                )}
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={revoke}
+                  disabled={revoking}
+                >
+                  Revoke
+                </Button>
+              </div>
+            </RowActions>
           </div>
 
           <RevealChip

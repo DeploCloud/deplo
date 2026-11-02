@@ -12,6 +12,7 @@ import {
 
 import { PageHeader } from "@/components/shared/page-header";
 import { EmptyState } from "@/components/shared/empty-state";
+import { ROW_ACTIONS_CELL } from "@/components/shared/row-actions-cell";
 import { DeploMark } from "@/components/logo";
 import { AddServer } from "@/components/servers/add-server";
 import {
@@ -55,7 +56,11 @@ import {
   ServerHealthProvider,
   type ServerHealthState,
 } from "./server-health-provider";
-import { CheckStatusButton, RefreshFleetButton } from "./check-status-button";
+import {
+  CheckStatusButton,
+  RefreshFleetButton,
+  ServerRowActions,
+} from "./check-status-button";
 
 export const metadata = { title: "Servers" };
 
@@ -194,18 +199,23 @@ function ServerCard({
               {accessLabel}
             </Badge>
           </div>
-          <div className="ml-auto flex shrink-0 items-center gap-1">
-            <CheckStatusButton
-              serverId={server.id}
-              serverName={serverLabel(server)}
-            />
-            <Button variant="outline" size="sm" asChild>
-              <Link href={`/settings/servers/${server.id}`}>
-                <Settings2 className="size-4" />
-                Manage
-              </Link>
-            </Button>
-          </div>
+          <ServerRowActions
+            serverId={server.id}
+            serverName={serverLabel(server)}
+          >
+            <div className="ml-auto flex shrink-0 items-center gap-1">
+              <CheckStatusButton
+                serverId={server.id}
+                serverName={serverLabel(server)}
+              />
+              <Button variant="outline" size="sm" asChild>
+                <Link href={`/settings/servers/${server.id}`}>
+                  <Settings2 className="size-4" />
+                  Manage
+                </Link>
+              </Button>
+            </div>
+          </ServerRowActions>
         </div>
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 text-xs">
           <span className="flex items-center gap-0.5">
@@ -309,19 +319,21 @@ function ServerListRow({
           ? "All teams"
           : `${accessTeamIds.length} team${accessTeamIds.length === 1 ? "" : "s"}`}
       </TableCell>
-      <TableCell className="text-right">
-        <div className="flex items-center justify-end gap-1">
-          <CheckStatusButton
-            serverId={server.id}
-            serverName={serverLabel(server)}
-          />
-          <Button variant="outline" size="sm" asChild>
-            <Link href={`/settings/servers/${server.id}`}>
-              <Settings2 className="size-4" />
-              Manage
-            </Link>
-          </Button>
-        </div>
+      <TableCell className={`text-right ${ROW_ACTIONS_CELL}`}>
+        <ServerRowActions serverId={server.id} serverName={serverLabel(server)}>
+          <div className="flex items-center justify-end gap-1">
+            <CheckStatusButton
+              serverId={server.id}
+              serverName={serverLabel(server)}
+            />
+            <Button variant="outline" size="sm" asChild>
+              <Link href={`/settings/servers/${server.id}`}>
+                <Settings2 className="size-4" />
+                Manage
+              </Link>
+            </Button>
+          </div>
+        </ServerRowActions>
       </TableCell>
     </TableRow>
   );

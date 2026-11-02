@@ -1,8 +1,9 @@
 "use client";
 
-import { RefreshCw } from "lucide-react";
+import { RefreshCw, Settings2 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import { RowActions } from "@/components/shared/row-actions";
 import { SimpleTooltip } from "@/components/ui/tooltip";
 import { useServerHealth } from "./server-health-provider";
 
@@ -29,6 +30,39 @@ export function CheckStatusButton({
         <RefreshCw className={pending ? "size-4 animate-spin" : "size-4"} />
       </Button>
     </SimpleTooltip>
+  );
+}
+
+// Check status and Manage, folded into one kebab below md.
+export function ServerRowActions({
+  serverId,
+  serverName,
+  children,
+}: {
+  serverId: string;
+  serverName: string;
+  children: React.ReactNode;
+}) {
+  const { checkOne, isChecking } = useServerHealth();
+  return (
+    <RowActions
+      title={serverName}
+      actions={[
+        {
+          label: "Check status",
+          icon: RefreshCw,
+          disabled: isChecking(serverId),
+          onSelect: () => checkOne(serverId),
+        },
+        {
+          label: "Manage",
+          icon: Settings2,
+          href: `/settings/servers/${serverId}`,
+        },
+      ]}
+    >
+      {children}
+    </RowActions>
   );
 }
 

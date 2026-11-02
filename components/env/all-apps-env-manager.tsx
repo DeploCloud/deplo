@@ -15,6 +15,7 @@ import {
   ChevronsUpDown,
   Layers,
   SearchX,
+  Pencil,
 } from "lucide-react";
 import { AppLogo } from "@/components/shared/project-logo";
 import { SharedVarDialog } from "@/components/env/shared-var-wizard/dialog";
@@ -36,6 +37,8 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { SimpleTooltip } from "@/components/ui/tooltip";
 import { EmptyState } from "@/components/shared/empty-state";
+import { RowActions } from "@/components/shared/row-actions";
+import { ROW_ACTIONS_CELL } from "@/components/shared/row-actions-cell";
 import { ConfirmAction } from "@/components/shared/confirm-action";
 import { useOptimisticRemove } from "@/components/shared/use-optimistic-remove";
 import {
@@ -675,7 +678,7 @@ function AppVarsCard({
                     Modified by
                   </TableHead>
                   <TableHead className="text-right whitespace-nowrap">
-                    Actions
+                    <span className="max-md:sr-only">Actions</span>
                   </TableHead>
                 </TableRow>
               </TableHeader>
@@ -698,22 +701,40 @@ function AppVarsCard({
                           author={row.updatedBy ?? row.createdBy ?? null}
                         />
                       </TableCell>
-                      <TableCell className="text-right">
-                        <div className="flex justify-end gap-1">
-                          <EnvEditButton
-                            secret={row.type === "secret"}
-                            onClick={() => onEdit(row)}
-                          />
-                          <Button
-                            variant="ghost"
-                            size="icon-sm"
-                            className="text-muted-foreground hover:text-destructive"
-                            onClick={() => onDelete(row.id)}
-                            aria-label="Delete"
-                          >
-                            <Trash2 className="size-4" />
-                          </Button>
-                        </div>
+                      <TableCell className={`text-right ${ROW_ACTIONS_CELL}`}>
+                        <RowActions
+                          title={row.key}
+                          actions={[
+                            {
+                              label: "Edit",
+                              icon: Pencil,
+                              disabled: row.type === "secret",
+                              onSelect: () => onEdit(row),
+                            },
+                            {
+                              label: "Delete",
+                              icon: Trash2,
+                              destructive: true,
+                              onSelect: () => onDelete(row.id),
+                            },
+                          ]}
+                        >
+                          <div className="flex justify-end gap-1">
+                            <EnvEditButton
+                              secret={row.type === "secret"}
+                              onClick={() => onEdit(row)}
+                            />
+                            <Button
+                              variant="ghost"
+                              size="icon-sm"
+                              className="text-muted-foreground hover:text-destructive"
+                              onClick={() => onDelete(row.id)}
+                              aria-label="Delete"
+                            >
+                              <Trash2 className="size-4" />
+                            </Button>
+                          </div>
+                        </RowActions>
                       </TableCell>
                     </TableRow>
                   ) : (
@@ -740,7 +761,7 @@ function AppVarsCard({
                       <TableCell className="max-md:hidden">
                         <EnvAuthorCell author={row.updatedBy ?? null} />
                       </TableCell>
-                      <TableCell className="text-right">
+                      <TableCell className={`text-right ${ROW_ACTIONS_CELL}`}>
                         <div className="flex justify-end gap-1">
                           {editableSharedIds.has(row.id) ? (
                             <EnvEditButton

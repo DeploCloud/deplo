@@ -23,6 +23,7 @@ import { TableCell, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { SimpleTooltip } from "@/components/ui/tooltip";
+import { RowActions } from "@/components/shared/row-actions";
 import { cn } from "@/lib/utils";
 import { domainRoutingWarning } from "@/lib/domain-issues";
 import { dnsRecordsFor } from "@/lib/host-address";
@@ -172,6 +173,20 @@ export function DomainRow({
         router.refresh();
       } else toast.error(res.error);
     });
+  }
+
+  const canSetPrimary =
+    !pending && canManage && domain.status !== "misconfigured";
+  function setPrimary() {
+    call(
+      () =>
+        gqlAction<{ setPrimaryDomain: boolean }, undefined>(
+          `mutation($id: String!) { setPrimaryDomain(id: $id) }`,
+          { id: domain.id },
+          () => undefined,
+        ),
+      "Set as primary",
+    );
   }
 
   function openEdit() {
@@ -535,56 +550,70 @@ export function DomainRow({
         </span>
       </TableCell>
       <TableCell className="text-right max-md:ml-auto">
-        <div className="flex items-center justify-end gap-1">
-          {!domain.primary && !domain.redirectTo && (
-            <SimpleTooltip content="Make this the canonical host">
+        <RowActions
+          title={domain.name}
+          actions={[
+            !domain.primary &&
+              !domain.redirectTo && {
+                label: "Set as primary",
+                icon: Star,
+                disabled: !canSetPrimary,
+                onSelect: setPrimary,
+              },
+            {
+              label: "Edit",
+              icon: Pencil,
+              disabled: !canManage,
+              onSelect: () => openEdit(),
+            },
+            {
+              label: "Remove",
+              icon: Trash2,
+              destructive: true,
+              disabled: !canManage,
+              onSelect: () => setConfirmOpen(true),
+            },
+          ]}
+        >
+          <div className="flex items-center justify-end gap-1">
+            {!domain.primary && !domain.redirectTo && (
+              <SimpleTooltip content="Make this the canonical host">
+                <Button
+                  variant="ghost"
+                  size="icon-sm"
+                  aria-label={`Set ${domain.name} as primary`}
+                  onClick={setPrimary}
+                  disabled={!canSetPrimary}
+                >
+                  <Star className="size-4" />
+                </Button>
+              </SimpleTooltip>
+            )}
+            <SimpleTooltip content="Remove this domain">
               <Button
                 variant="ghost"
                 size="icon-sm"
-                aria-label={`Set ${domain.name} as primary`}
-                onClick={() =>
-                  call(
-                    () =>
-                      gqlAction<{ setPrimaryDomain: boolean }, undefined>(
-                        `mutation($id: String!) { setPrimaryDomain(id: $id) }`,
-                        { id: domain.id },
-                        () => undefined,
-                      ),
-                    "Set as primary",
-                  )
-                }
-                disabled={
-                  pending || !canManage || domain.status === "misconfigured"
-                }
+                aria-label={`Remove ${domain.name}`}
+                onClick={() => setConfirmOpen(true)}
+                disabled={!canManage}
+                className="text-muted-foreground hover:text-destructive"
               >
-                <Star className="size-4" />
+                <Trash2 className="size-4" />
               </Button>
             </SimpleTooltip>
-          )}
-          <SimpleTooltip content="Remove this domain">
-            <Button
-              variant="ghost"
-              size="icon-sm"
-              aria-label={`Remove ${domain.name}`}
-              onClick={() => setConfirmOpen(true)}
-              disabled={!canManage}
-              className="text-muted-foreground hover:text-destructive"
-            >
-              <Trash2 className="size-4" />
-            </Button>
-          </SimpleTooltip>
-          <SimpleTooltip content="Edit this domain">
-            <Button
-              variant="ghost"
-              size="icon-sm"
-              aria-label={`Edit ${domain.name}`}
-              onClick={() => openEdit()}
-              disabled={!canManage}
-            >
-              <Pencil className="size-4" />
-            </Button>
-          </SimpleTooltip>
-        </div>
+            <SimpleTooltip content="Edit this domain">
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                aria-label={`Edit ${domain.name}`}
+                onClick={() => openEdit()}
+                disabled={!canManage}
+              >
+                <Pencil className="size-4" />
+              </Button>
+            </SimpleTooltip>
+          </div>
+        </RowActions>
         <ConfirmAction
           open={confirmOpen}
           onOpenChange={setConfirmOpen}

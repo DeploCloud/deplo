@@ -3,7 +3,15 @@
 import * as React from "react";
 import { useRouter } from "@/lib/nav";
 import { toast } from "sonner";
-import { Plus, Trash2, Share2, SearchX, Settings, Unlink } from "lucide-react";
+import {
+  Pencil,
+  Plus,
+  Trash2,
+  Share2,
+  SearchX,
+  Settings,
+  Unlink,
+} from "lucide-react";
 import Link from "@/components/ui/link";
 import {
   Table,
@@ -18,6 +26,8 @@ import { Badge } from "@/components/ui/badge";
 import { InfoTip } from "@/components/ui/info-tip";
 import { SimpleTooltip } from "@/components/ui/tooltip";
 import { EmptyState } from "@/components/shared/empty-state";
+import { RowActions } from "@/components/shared/row-actions";
+import { ROW_ACTIONS_CELL } from "@/components/shared/row-actions-cell";
 import { ConfirmAction } from "@/components/shared/confirm-action";
 import { useOptimisticRemove } from "@/components/shared/use-optimistic-remove";
 import {
@@ -227,7 +237,7 @@ export function EnvManager({
                     Modified by
                   </TableHead>
                   <TableHead className="text-right whitespace-nowrap">
-                    Actions
+                    <span className="max-md:sr-only">Actions</span>
                   </TableHead>
                 </TableRow>
               </TableHeader>
@@ -269,33 +279,64 @@ export function EnvManager({
                           author={row.updatedBy ?? row.createdBy ?? null}
                         />
                       </TableCell>
-                      <TableCell className="text-right">
-                        <div className="flex justify-end gap-1">
-                          {row.connected && (
-                            <UnlinkButton
-                              id={row.id}
-                              envKey={row.key}
-                              database={row.database?.name}
+                      <TableCell className={`text-right ${ROW_ACTIONS_CELL}`}>
+                        <RowActions
+                          title={row.key}
+                          actions={[
+                            row.connected && {
+                              label: "Unlink",
+                              icon: Unlink,
+                              onSelect: () =>
+                                void unlinkVariable(
+                                  row.id,
+                                  row.key,
+                                  row.database?.name,
+                                ).then((ok) => ok && router.refresh()),
+                            },
+                            {
+                              label: row.connected ? "Rename" : "Edit",
+                              icon: Pencil,
+                              disabled: row.type === "secret" && !row.connected,
+                              onSelect: () => {
+                                setEditing(row);
+                                setAddOpen(true);
+                              },
+                            },
+                            {
+                              label: "Delete",
+                              icon: Trash2,
+                              destructive: true,
+                              onSelect: () => setDeleteId(row.id),
+                            },
+                          ]}
+                        >
+                          <div className="flex justify-end gap-1">
+                            {row.connected && (
+                              <UnlinkButton
+                                id={row.id}
+                                envKey={row.key}
+                                database={row.database?.name}
+                              />
+                            )}
+                            <EnvEditButton
+                              secret={row.type === "secret" && !row.connected}
+                              label={row.connected ? "Rename" : "Edit"}
+                              onClick={() => {
+                                setEditing(row);
+                                setAddOpen(true);
+                              }}
                             />
-                          )}
-                          <EnvEditButton
-                            secret={row.type === "secret" && !row.connected}
-                            label={row.connected ? "Rename" : "Edit"}
-                            onClick={() => {
-                              setEditing(row);
-                              setAddOpen(true);
-                            }}
-                          />
-                          <Button
-                            variant="ghost"
-                            size="icon-sm"
-                            className="text-muted-foreground hover:text-destructive"
-                            onClick={() => setDeleteId(row.id)}
-                            aria-label="Delete"
-                          >
-                            <Trash2 className="size-4" />
-                          </Button>
-                        </div>
+                            <Button
+                              variant="ghost"
+                              size="icon-sm"
+                              className="text-muted-foreground hover:text-destructive"
+                              onClick={() => setDeleteId(row.id)}
+                              aria-label="Delete"
+                            >
+                              <Trash2 className="size-4" />
+                            </Button>
+                          </div>
+                        </RowActions>
                       </TableCell>
                     </TableRow>
                   ) : (
@@ -341,7 +382,7 @@ export function EnvManager({
                       <TableCell className="max-md:hidden">
                         <EnvAuthorCell author={row.updatedBy ?? null} />
                       </TableCell>
-                      <TableCell className="text-right">
+                      <TableCell className={`text-right ${ROW_ACTIONS_CELL}`}>
                         {row.linked ? (
                           <SharedRowActions
                             row={row}
@@ -452,34 +493,51 @@ function SharedRowActions({
   }
 
   return (
-    <div className="flex justify-end gap-1">
-      {manageable && (
-        <SimpleTooltip content="Manage this shared variable">
-          <Button variant="ghost" size="icon-sm" asChild aria-label="Manage">
-            <Link href={`/variables?tab=shared&edit=${row.id}`}>
-              <Settings className="size-4" />
-            </Link>
+    <RowActions
+      title={row.key}
+      actions={[
+        manageable && {
+          label: "Manage",
+          icon: Settings,
+          href: `/variables?tab=shared&edit=${row.id}`,
+        },
+        {
+          label: "Remove from this app",
+          icon: Unlink,
+          destructive: true,
+          onSelect: removeFromApp,
+        },
+      ]}
+    >
+      <div className="flex justify-end gap-1">
+        {manageable && (
+          <SimpleTooltip content="Manage this shared variable">
+            <Button variant="ghost" size="icon-sm" asChild aria-label="Manage">
+              <Link href={`/variables?tab=shared&edit=${row.id}`}>
+                <Settings className="size-4" />
+              </Link>
+            </Button>
+          </SimpleTooltip>
+        )}
+        <SimpleTooltip
+          content={
+            keepsArriving
+              ? "Remove this app's opt-in. It still arrives from the team that shares it."
+              : "Remove from this app. Every other app keeps it."
+          }
+        >
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            onClick={removeFromApp}
+            aria-label="Remove from this app"
+            className="text-muted-foreground hover:text-destructive"
+          >
+            <Unlink className="size-4" />
           </Button>
         </SimpleTooltip>
-      )}
-      <SimpleTooltip
-        content={
-          keepsArriving
-            ? "Remove this app's opt-in. It still arrives from the team that shares it."
-            : "Remove from this app. Every other app keeps it."
-        }
-      >
-        <Button
-          variant="ghost"
-          size="icon-sm"
-          onClick={removeFromApp}
-          aria-label="Remove from this app"
-          className="text-muted-foreground hover:text-destructive"
-        >
-          <Unlink className="size-4" />
-        </Button>
-      </SimpleTooltip>
-    </div>
+      </div>
+    </RowActions>
   );
 }
 
@@ -503,6 +561,31 @@ function VariableKey({ row }: { row: EnvVarDTO }) {
 }
 
 // Unlink keeps today's value and stops following; Delete stays its own action.
+async function unlinkVariable(
+  id: string,
+  envKey: string,
+  database?: string,
+): Promise<boolean> {
+  const res = await gqlAction(
+    /* GraphQL */ `
+      mutation ($id: String!) {
+        unlinkEnv(id: $id) {
+          id
+        }
+      }
+    `,
+    { id },
+  );
+  if (!res.ok) {
+    toast.error(res.error);
+    return false;
+  }
+  toast.success(`${envKey} no longer follows ${database ?? "its database"}`, {
+    description: "It keeps its current value.",
+  });
+  return true;
+}
+
 function UnlinkButton({
   id,
   envKey,
@@ -523,22 +606,7 @@ function UnlinkButton({
         aria-label="Unlink"
         onClick={() =>
           startTransition(async () => {
-            const res = await gqlAction(
-              /* GraphQL */ `
-                mutation ($id: String!) {
-                  unlinkEnv(id: $id) {
-                    id
-                  }
-                }
-              `,
-              { id },
-            );
-            if (!res.ok) return void toast.error(res.error);
-            toast.success(
-              `${envKey} no longer follows ${database ?? "its database"}`,
-              { description: "It keeps its current value." },
-            );
-            router.refresh();
+            if (await unlinkVariable(id, envKey, database)) router.refresh();
           })
         }
       >

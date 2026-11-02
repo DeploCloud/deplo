@@ -25,6 +25,7 @@ import {
 } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { RowActions } from "@/components/shared/row-actions";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -256,29 +257,42 @@ function CredentialCard({
             <p className="mt-1 text-xs text-muted-foreground">Username</p>
           </div>
         </div>
-        <div className="flex shrink-0 items-center gap-1">
-          <SimpleTooltip content="Change password">
-            <Button
-              variant="ghost"
-              size="icon-sm"
-              onClick={onEdit}
-              aria-label={`Change ${user.username}'s password`}
-            >
-              <Pencil className="size-4" />
-            </Button>
-          </SimpleTooltip>
-          <SimpleTooltip content="Delete">
-            <Button
-              variant="ghost"
-              size="icon-sm"
-              className="text-muted-foreground hover:text-destructive"
-              onClick={onDelete}
-              aria-label={`Delete ${user.username}`}
-            >
-              <Trash2 className="size-4" />
-            </Button>
-          </SimpleTooltip>
-        </div>
+        <RowActions
+          title={user.username}
+          actions={[
+            { label: "Change password", icon: Pencil, onSelect: onEdit },
+            {
+              label: "Delete",
+              icon: Trash2,
+              destructive: true,
+              onSelect: onDelete,
+            },
+          ]}
+        >
+          <div className="flex shrink-0 items-center gap-1">
+            <SimpleTooltip content="Change password">
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                onClick={onEdit}
+                aria-label={`Change ${user.username}'s password`}
+              >
+                <Pencil className="size-4" />
+              </Button>
+            </SimpleTooltip>
+            <SimpleTooltip content="Delete">
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                className="text-muted-foreground hover:text-destructive"
+                onClick={onDelete}
+                aria-label={`Delete ${user.username}`}
+              >
+                <Trash2 className="size-4" />
+              </Button>
+            </SimpleTooltip>
+          </div>
+        </RowActions>
       </div>
 
       <div>

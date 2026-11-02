@@ -24,6 +24,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { ConfirmAction } from "@/components/shared/confirm-action";
+import { RowActionItem } from "@/components/shared/row-actions";
 import { RollbackDialog } from "@/components/apps/rollback-deployment";
 import { gqlAction } from "@/lib/graphql-client";
 import type { DeploymentStatus } from "@/lib/types/deployment";
@@ -138,7 +139,12 @@ export function DeploymentActions({
     <>
       <div className="flex items-center justify-end gap-0.5">
         <SimpleTooltip content="Open this deployment - build logs & details">
-          <Button variant="ghost" size="icon-sm" asChild>
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            asChild
+            className="max-md:hidden"
+          >
             <Link href={detailHref} aria-label="Open deployment">
               <Logs className="size-4" />
             </Link>
@@ -147,7 +153,12 @@ export function DeploymentActions({
 
         {url && (
           <SimpleTooltip content="Open the live app in a new tab">
-            <Button variant="ghost" size="icon-sm" asChild>
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              asChild
+              className="max-md:hidden"
+            >
               <a
                 href={url}
                 target="_blank"
@@ -172,6 +183,25 @@ export function DeploymentActions({
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="w-52">
+            {/* Below md the two links beside the menu fold into it. */}
+            <RowActionItem
+              className="md:hidden"
+              action={{
+                label: "Open deployment",
+                icon: Logs,
+                href: detailHref,
+              }}
+            />
+            {url && (
+              <RowActionItem
+                className="md:hidden"
+                action={{
+                  label: "Visit live app",
+                  icon: ExternalLink,
+                  external: url,
+                }}
+              />
+            )}
             {/* A preview whose pull request is gone has nothing left to rebuild. */}
             {(!isPreview || previewId) && (
               <DropdownMenuItem

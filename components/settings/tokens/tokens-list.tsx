@@ -22,6 +22,8 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { SimpleTooltip } from "@/components/ui/tooltip";
+import { RowActions } from "@/components/shared/row-actions";
+import { ROW_ACTIONS_CELL } from "@/components/shared/row-actions-cell";
 import { ConfirmAction } from "@/components/shared/confirm-action";
 import { useOptimisticRemove } from "@/components/shared/use-optimistic-remove";
 import {
@@ -67,7 +69,9 @@ export function TokensList({
             <TableHead>Permissions</TableHead>
             <TableHead>Access</TableHead>
             <TableHead>Last used</TableHead>
-            <TableHead className="text-right">Actions</TableHead>
+            <TableHead className="text-right">
+              <span className="max-md:sr-only">Actions</span>
+            </TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
@@ -171,26 +175,43 @@ export function TokensList({
                       </span>
                     ))}
                 </TableCell>
-                <TableCell className="text-right">
-                  <div className="flex justify-end gap-1">
-                    <Button asChild variant="ghost" size="icon-sm">
-                      <Link
-                        href={`/settings/tokens/${t.id}`}
-                        aria-label={`Edit ${t.name}`}
+                <TableCell className={`text-right ${ROW_ACTIONS_CELL}`}>
+                  <RowActions
+                    title={t.name}
+                    actions={[
+                      {
+                        label: "Edit",
+                        icon: Pencil,
+                        href: `/settings/tokens/${t.id}`,
+                      },
+                      {
+                        label: "Revoke",
+                        icon: Trash2,
+                        destructive: true,
+                        onSelect: () => setRevoke(t),
+                      },
+                    ]}
+                  >
+                    <div className="flex justify-end gap-1">
+                      <Button asChild variant="ghost" size="icon-sm">
+                        <Link
+                          href={`/settings/tokens/${t.id}`}
+                          aria-label={`Edit ${t.name}`}
+                        >
+                          <Pencil className="size-4" />
+                        </Link>
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon-sm"
+                        className="text-muted-foreground hover:text-destructive"
+                        onClick={() => setRevoke(t)}
+                        aria-label={`Revoke ${t.name}`}
                       >
-                        <Pencil className="size-4" />
-                      </Link>
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="icon-sm"
-                      className="text-muted-foreground hover:text-destructive"
-                      onClick={() => setRevoke(t)}
-                      aria-label={`Revoke ${t.name}`}
-                    >
-                      <Trash2 className="size-4" />
-                    </Button>
-                  </div>
+                        <Trash2 className="size-4" />
+                      </Button>
+                    </div>
+                  </RowActions>
                 </TableCell>
               </TableRow>
             );

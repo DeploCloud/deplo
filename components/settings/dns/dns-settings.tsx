@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { toast } from "sonner";
-import { Loader2, Plus } from "lucide-react";
+import { Loader2, Pencil, Plus, Unplug } from "lucide-react";
 
 import { useRouter } from "@/lib/nav";
 import { gqlAction } from "@/lib/graphql-client";
@@ -17,6 +17,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { ConfirmAction } from "@/components/shared/confirm-action";
+import { RowActions } from "@/components/shared/row-actions";
 import { ConnectWizard } from "./connect-wizard";
 import { DNS_PROVIDER_META, ProviderMark } from "./provider-mark";
 import { TeamAccess, type DnsTeam } from "./team-access";
@@ -104,14 +105,27 @@ function ConnectedRow({
       <Badge variant="muted">
         {provider.shared ? "Anyone in these teams" : "Only you"}
       </Badge>
-      <div className="flex items-center gap-2">
-        <Button variant="outline" size="sm" onClick={() => setEditing(true)}>
-          Edit
-        </Button>
-        <Button variant="outline" size="sm" onClick={() => setRemoving(true)}>
-          Disconnect
-        </Button>
-      </div>
+      <RowActions
+        title={provider.zoneName}
+        actions={[
+          { label: "Edit", icon: Pencil, onSelect: () => setEditing(true) },
+          {
+            label: "Disconnect",
+            icon: Unplug,
+            destructive: true,
+            onSelect: () => setRemoving(true),
+          },
+        ]}
+      >
+        <div className="flex items-center gap-2">
+          <Button variant="outline" size="sm" onClick={() => setEditing(true)}>
+            Edit
+          </Button>
+          <Button variant="outline" size="sm" onClick={() => setRemoving(true)}>
+            Disconnect
+          </Button>
+        </div>
+      </RowActions>
 
       <EditAccessDialog
         open={editing}

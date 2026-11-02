@@ -14,6 +14,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { ConfirmAction } from "@/components/shared/confirm-action";
+import { RowActions } from "@/components/shared/row-actions";
 import { useOptimisticRemove } from "@/components/shared/use-optimistic-remove";
 import { gqlAction } from "@/lib/graphql-client";
 import { useRouter } from "@/lib/nav";
@@ -129,23 +130,36 @@ function AgentRow({
             : "Not used yet"}
         </p>
       </div>
-      <Button variant="outline" size="sm" asChild>
-        <Link href={`/settings/tokens/${agent.id}`}>
-          <Pencil className="size-3.5" />
-          Edit
-        </Link>
-      </Button>
-      <SimpleTooltip content="Remove">
-        <Button
-          variant="ghost"
-          size="icon-sm"
-          aria-label={`Remove ${agent.name}`}
-          className="text-muted-foreground hover:text-destructive"
-          onClick={onRemove}
-        >
-          <Trash2 className="size-4" />
+      <RowActions
+        title={agent.name}
+        actions={[
+          { label: "Edit", icon: Pencil, href: `/settings/tokens/${agent.id}` },
+          {
+            label: "Remove",
+            icon: Trash2,
+            destructive: true,
+            onSelect: onRemove,
+          },
+        ]}
+      >
+        <Button variant="outline" size="sm" asChild>
+          <Link href={`/settings/tokens/${agent.id}`}>
+            <Pencil className="size-3.5" />
+            Edit
+          </Link>
         </Button>
-      </SimpleTooltip>
+        <SimpleTooltip content="Remove">
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            aria-label={`Remove ${agent.name}`}
+            className="text-muted-foreground hover:text-destructive"
+            onClick={onRemove}
+          >
+            <Trash2 className="size-4" />
+          </Button>
+        </SimpleTooltip>
+      </RowActions>
     </li>
   );
 }

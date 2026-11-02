@@ -16,6 +16,7 @@ import {
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { RowActions } from "@/components/shared/row-actions";
 import { Card, CardContent } from "@/components/ui/card";
 import {
   Dialog,
@@ -198,43 +199,66 @@ function CronJobRow({
             </div>
           </button>
           {canManage && (
-            <div className="flex shrink-0 items-center gap-1">
-              <SimpleTooltip content="Run now">
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  onClick={runNow}
-                  disabled={pending}
-                  aria-label={`Run ${job.name} now`}
-                >
-                  {pending ? (
-                    <Loader2 className="size-4 animate-spin" />
-                  ) : (
-                    <Play className="size-4" />
-                  )}
-                </Button>
-              </SimpleTooltip>
-              <SimpleTooltip content="Edit">
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  onClick={() => setEditing(true)}
-                  aria-label={`Edit ${job.name}`}
-                >
-                  <Pencil className="size-4" />
-                </Button>
-              </SimpleTooltip>
-              <SimpleTooltip content="Delete">
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  onClick={() => setConfirmDelete(true)}
-                  aria-label={`Delete ${job.name}`}
-                >
-                  <Trash2 className="size-4" />
-                </Button>
-              </SimpleTooltip>
-            </div>
+            <RowActions
+              title={job.name}
+              actions={[
+                {
+                  label: "Run now",
+                  icon: Play,
+                  disabled: pending,
+                  onSelect: runNow,
+                },
+                {
+                  label: "Edit",
+                  icon: Pencil,
+                  onSelect: () => setEditing(true),
+                },
+                {
+                  label: "Delete",
+                  icon: Trash2,
+                  destructive: true,
+                  onSelect: () => setConfirmDelete(true),
+                },
+              ]}
+            >
+              <div className="flex shrink-0 items-center gap-1">
+                <SimpleTooltip content="Run now">
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={runNow}
+                    disabled={pending}
+                    aria-label={`Run ${job.name} now`}
+                  >
+                    {pending ? (
+                      <Loader2 className="size-4 animate-spin" />
+                    ) : (
+                      <Play className="size-4" />
+                    )}
+                  </Button>
+                </SimpleTooltip>
+                <SimpleTooltip content="Edit">
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => setEditing(true)}
+                    aria-label={`Edit ${job.name}`}
+                  >
+                    <Pencil className="size-4" />
+                  </Button>
+                </SimpleTooltip>
+                <SimpleTooltip content="Delete">
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => setConfirmDelete(true)}
+                    aria-label={`Delete ${job.name}`}
+                  >
+                    <Trash2 className="size-4" />
+                  </Button>
+                </SimpleTooltip>
+              </div>
+            </RowActions>
           )}
         </div>
         {open && (

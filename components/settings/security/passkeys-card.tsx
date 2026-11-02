@@ -3,7 +3,7 @@
 import * as React from "react";
 import { useRouter } from "@/lib/nav";
 import { toast } from "sonner";
-import { Cloud, Fingerprint, Plus, Usb } from "lucide-react";
+import { Cloud, Fingerprint, Pencil, Plus, Trash2, Usb } from "lucide-react";
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -16,6 +16,7 @@ import { SimpleTooltip } from "@/components/ui/tooltip";
 import { BetaChip } from "@/components/shared/beta-chip";
 import { ConfirmAction } from "@/components/shared/confirm-action";
 import { EmptyState } from "@/components/shared/empty-state";
+import { RowActions } from "@/components/shared/row-actions";
 import { gqlAction } from "@/lib/graphql-client";
 import { timeAgo } from "@/lib/utils";
 import { describeUserAgent } from "@/lib/user-agent";
@@ -144,16 +145,7 @@ export function PasskeysCard({
                       {p.createdAt ? ` · added ${timeAgo(p.createdAt)}` : ""}
                     </p>
                   </div>
-                  <span className="ml-auto flex shrink-0 gap-1">
-                    <RenamePasskey
-                      passkey={p}
-                      onDone={() => router.refresh()}
-                    />
-                    <DeletePasskey
-                      passkey={p}
-                      onDone={() => router.refresh()}
-                    />
-                  </span>
+                  <PasskeyActions passkey={p} onDone={() => router.refresh()} />
                 </li>
               );
             })}
@@ -257,15 +249,65 @@ function AddPasskeyDialog({
   );
 }
 
-function RenamePasskey({
+function PasskeyActions({
   passkey,
   onDone,
 }: {
   passkey: PasskeyDTO;
   onDone: () => void;
 }) {
-  const [open, setOpen] = React.useState(false);
+  const [dialog, setDialog] = React.useState<"rename" | "remove" | null>(null);
+  const opener = (which: "rename" | "remove") => (next: boolean) =>
+    setDialog(next ? which : null);
+  return (
+    <RowActions
+      title={passkey.name}
+      actions={[
+        { label: "Rename", icon: Pencil, onSelect: () => setDialog("rename") },
+        {
+          label: "Remove",
+          icon: Trash2,
+          destructive: true,
+          onSelect: () => setDialog("remove"),
+        },
+      ]}
+    >
+      <span className="ml-auto flex shrink-0 gap-1">
+        <RenamePasskey
+          passkey={passkey}
+          onDone={onDone}
+          open={dialog === "rename"}
+          onOpenChange={opener("rename")}
+        />
+        <DeletePasskey
+          passkey={passkey}
+          onDone={onDone}
+          open={dialog === "remove"}
+          onOpenChange={opener("remove")}
+        />
+      </span>
+    </RowActions>
+  );
+}
+
+function RenamePasskey({
+  passkey,
+  onDone,
+  open,
+  onOpenChange,
+}: {
+  passkey: PasskeyDTO;
+  onDone: () => void;
+  open: boolean;
+  onOpenChange: (next: boolean) => void;
+}) {
   const [name, setName] = React.useState(passkey.name);
+  const [wasOpen, setWasOpen] = React.useState(open);
+  // Opened from the button or the kebab, the field starts from the saved name.
+  if (open !== wasOpen) {
+    setWasOpen(open);
+    if (open) setName(passkey.name);
+  }
 
   return (
     <ConfirmAction
@@ -275,10 +317,7 @@ function RenamePasskey({
         </Button>
       }
       open={open}
-      onOpenChange={(next) => {
-        if (next) setName(passkey.name);
-        setOpen(next);
-      }}
+      onOpenChange={onOpenChange}
       title={`Rename ${passkey.name}`}
       description="Only you see this name."
       confirmLabel="Rename"
@@ -312,11 +351,14 @@ function RenamePasskey({
 function DeletePasskey({
   passkey,
   onDone,
+  open,
+  onOpenChange,
 }: {
   passkey: PasskeyDTO;
   onDone: () => void;
+  open: boolean;
+  onOpenChange: (next: boolean) => void;
 }) {
-  const [open, setOpen] = React.useState(false);
   const [password, setPassword] = React.useState("");
 
   return (
@@ -329,7 +371,7 @@ function DeletePasskey({
       open={open}
       onOpenChange={(next) => {
         if (!next) setPassword("");
-        setOpen(next);
+        onOpenChange(next);
       }}
       title="Remove passkey?"
       description={`${passkey.name} stops signing you in. The passkey stays on that device until you delete it there too.`}

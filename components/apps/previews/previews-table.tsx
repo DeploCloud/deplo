@@ -13,6 +13,7 @@ import {
   MoreHorizontal,
   RotateCw,
   ShieldAlert,
+  ShieldCheck,
   Trash2,
 } from "lucide-react";
 
@@ -38,6 +39,12 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { ConfirmAction } from "@/components/shared/confirm-action";
+import {
+  RowActionItem,
+  RowKebab,
+  type RowAction,
+} from "@/components/shared/row-actions";
+import { ROW_ACTIONS_CELL } from "@/components/shared/row-actions-cell";
 import { DocsLink } from "@/components/ui/docs-link";
 import { StatusBadge } from "@/components/shared/status-badge";
 import { useLiveApp } from "@/components/apps/app-live-status";
@@ -60,6 +67,7 @@ export function PreviewsTable({
 }) {
   const router = useRouter();
   const [, startTransition] = React.useTransition();
+  const [reviewing, setReviewing] = React.useState<string | null>(null);
   const live = useLiveApp();
   const {
     visible: rows,
@@ -119,6 +127,33 @@ export function PreviewsTable({
           <TableBody>
             {rows.map((p) => {
               const blocked = p.isFork && !p.approved;
+              const review = blocked && canDeploy;
+              const openUrl = !review && !p.closed ? p.url : null;
+              const logsHref = p.latestDeploymentId
+                ? `/apps/${appSlug}/deployments/${p.latestDeploymentId}`
+                : null;
+              // Below md these join the kebab, or become one when there is none.
+              const folded: RowAction[] = [];
+              if (review)
+                folded.push({
+                  label: "Review and deploy",
+                  icon: ShieldCheck,
+                  onSelect: () => setReviewing(p.id),
+                });
+              if (openUrl)
+                folded.push({
+                  label: "Open preview",
+                  icon: ExternalLink,
+                  external: openUrl,
+                });
+              if (logsHref)
+                folded.push({
+                  label: "Build logs",
+                  icon: Logs,
+                  href: logsHref,
+                });
+              const fold = canDeploy || folded.length > 1;
+              const hideOnPhone = fold ? "max-md:hidden" : undefined;
               return (
                 <TableRow key={p.id}>
                   <TableCell>
@@ -209,13 +244,19 @@ export function PreviewsTable({
                     {timeAgo(p.updatedAt)}
                   </TableCell>
 
-                  <TableCell className="text-right">
+                  <TableCell className={`text-right ${ROW_ACTIONS_CELL}`}>
                     <div className="flex items-center justify-end gap-1">
-                      {blocked && canDeploy ? (
+                      {review ? (
                         <ConfirmAction
                           variant="default"
+                          open={reviewing === p.id}
+                          onOpenChange={(v) => setReviewing(v ? p.id : null)}
                           trigger={
-                            <Button size="sm" variant="outline">
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className={hideOnPhone}
+                            >
                               Review and deploy
                             </Button>
                           }
@@ -242,23 +283,34 @@ export function PreviewsTable({
                           }}
                         />
                       ) : (
-                        p.url &&
-                        !p.closed && (
+                        openUrl && (
                           <SimpleTooltip content="Open this preview in a new tab">
-                            <Button asChild size="icon" variant="ghost">
-                              <a href={p.url} target="_blank" rel="noreferrer">
+                            <Button
+                              asChild
+                              size="icon"
+                              variant="ghost"
+                              className={hideOnPhone}
+                            >
+                              <a
+                                href={openUrl}
+                                target="_blank"
+                                rel="noreferrer"
+                              >
                                 <ExternalLink className="size-4" />
                               </a>
                             </Button>
                           </SimpleTooltip>
                         )
                       )}
-                      {p.latestDeploymentId && (
+                      {logsHref && (
                         <SimpleTooltip content="Open the build logs for this preview">
-                          <Button asChild size="icon" variant="ghost">
-                            <Link
-                              href={`/apps/${appSlug}/deployments/${p.latestDeploymentId}`}
-                            >
+                          <Button
+                            asChild
+                            size="icon"
+                            variant="ghost"
+                            className={hideOnPhone}
+                          >
+                            <Link href={logsHref}>
                               <Logs className="size-4" />
                             </Link>
                           </Button>
@@ -272,6 +324,13 @@ export function PreviewsTable({
                             </Button>
                           </DropdownMenuTrigger>
                           <DropdownMenuContent align="end" className="w-52">
+                            {folded.map((a) => (
+                              <RowActionItem
+                                key={a.label}
+                                action={a}
+                                className="md:hidden"
+                              />
+                            ))}
                             <DropdownMenuItem
                               disabled={blocked}
                               onClick={() =>
@@ -313,6 +372,14 @@ export function PreviewsTable({
                             </DropdownMenuItem>
                           </DropdownMenuContent>
                         </DropdownMenu>
+                      )}
+                      {!canDeploy && fold && (
+                        <div className="md:hidden">
+                          <RowKebab
+                            title={`#${p.prNumber} ${p.title}`}
+                            actions={folded}
+                          />
+                        </div>
                       )}
                     </div>
                   </TableCell>
