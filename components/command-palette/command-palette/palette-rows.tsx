@@ -50,7 +50,7 @@ export function EntryRow({
         {entry.label}
       </span>
       {entry.hint && !owner && (
-        <span className="ml-auto shrink-0 truncate text-xs text-muted-foreground">
+        <span className="ml-auto shrink-0 truncate text-xs text-muted-foreground max-md:hidden">
           {entry.hint}
         </span>
       )}
@@ -136,7 +136,7 @@ export function HitRow({
         </span>
       ) : (
         hit.hint && (
-          <span className="ml-auto shrink-0 truncate text-xs text-muted-foreground">
+          <span className="ml-auto shrink-0 truncate text-xs text-muted-foreground max-md:hidden">
             {hit.hint}
           </span>
         )
