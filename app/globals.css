@@ -405,6 +405,35 @@ html body[data-scroll-locked] {
   [role="button"]:not([aria-disabled="true"]) {
     cursor: pointer;
   }
+  /* Below md every control answers a 44px finger: an invisible hit area, the drawing unchanged.
+     :where() keeps it weaker than any position utility; a control that draws with ::after opts out. */
+  @media (max-width: 767.98px) {
+    :where(
+      button,
+      [role="button"],
+      [role="switch"],
+      [role="checkbox"],
+      [role="tab"]
+    ):not([class*="after:"]) {
+      position: relative;
+    }
+    :where(
+        button,
+        [role="button"],
+        [role="switch"],
+        [role="checkbox"],
+        [role="tab"]
+      ):not([class*="after:"])::after {
+      content: "";
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      width: max(100%, 44px);
+      height: max(100%, 44px);
+      transform: translate(-50%, -50%);
+    }
+  }
+
   /* Toasts rise above the floating tab bar. */
   @media (max-width: 767.98px) {
     :root {

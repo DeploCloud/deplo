@@ -112,7 +112,7 @@ const DialogContent = React.forwardRef<
           {!hideClose && (
             <DialogPrimitive.Close
               type="button"
-              className="absolute top-4 right-4 cursor-pointer rounded-sm opacity-60 transition-opacity hover:opacity-100 focus:ring-2 focus:ring-ring focus:outline-none max-md:top-6 max-md:right-5 max-md:grid max-md:size-9 max-md:place-items-center max-md:rounded-full max-md:border max-md:border-border max-md:bg-accent max-md:opacity-100"
+              className="absolute top-4 right-4 cursor-pointer rounded-sm opacity-60 transition-opacity hover:opacity-100 focus:ring-2 focus:ring-ring focus:outline-none max-md:top-5 max-md:right-4 max-md:grid max-md:size-11 max-md:place-items-center max-md:rounded-full max-md:border max-md:border-border max-md:bg-accent max-md:opacity-100"
             >
               <X className="size-4" />
               <span className="sr-only">Close</span>
@@ -156,7 +156,7 @@ const DialogHeader = ({
   <div
     data-sheet-drag
     className={cn(
-      "flex flex-col space-y-1.5 text-left max-md:touch-none max-md:pr-10",
+      "flex flex-col space-y-1.5 text-left max-md:touch-none max-md:pr-12",
       className,
     )}
     {...props}

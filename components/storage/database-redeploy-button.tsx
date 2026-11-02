@@ -36,6 +36,7 @@ export function DatabaseRedeployButton({
   return (
     <SimpleTooltip content="Re-apply settings by recreating the container - brief downtime, data volume preserved">
       <Button
+        data-primary-action=""
         variant={variant}
         size={size}
         onClick={redeploy}

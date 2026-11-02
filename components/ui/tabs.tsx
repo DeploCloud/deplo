@@ -32,7 +32,7 @@ const TabsList = React.forwardRef<
     <TabsPrimitive.List
       ref={listRef}
       className={cn(
-        "relative isolate inline-flex h-9 items-center justify-center gap-1 text-muted-foreground",
+        "relative isolate inline-flex h-9 items-center justify-center gap-1 text-muted-foreground max-md:h-11",
         className,
       )}
       {...props}
@@ -50,7 +50,7 @@ TabsList.displayName = TabsPrimitive.List.displayName;
 const TRIGGER_ICON = "gap-2 [&_svg]:size-4 [&_svg]:shrink-0";
 
 const triggerClass =
-  "inline-flex cursor-pointer items-center justify-center rounded-md px-3 py-1.5 text-sm font-medium whitespace-nowrap text-muted-foreground hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none disabled:pointer-events-none disabled:opacity-50 data-[state=active]:text-foreground";
+  "inline-flex cursor-pointer items-center justify-center rounded-md px-3 py-1.5 text-sm font-medium whitespace-nowrap max-md:h-10 max-md:px-3.5 max-md:text-[15px] text-muted-foreground hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none disabled:pointer-events-none disabled:opacity-50 data-[state=active]:text-foreground";
 
 const TabsTrigger = React.forwardRef<
   React.ElementRef<typeof TabsPrimitive.Trigger>,

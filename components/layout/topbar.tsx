@@ -43,7 +43,7 @@ export function Topbar({
       <Link
         href="/"
         aria-label="Overview"
-        className="-ml-1 grid size-9 place-items-center text-foreground md:hidden"
+        className="-ml-2 grid size-11 place-items-center text-foreground md:hidden"
       >
         <DeploMark size={19} />
       </Link>

@@ -47,7 +47,7 @@ export function UserMenu({ user }: { user: PublicUser }) {
       <DropdownMenuTrigger asChild>
         <button
           type="button"
-          className="cursor-pointer rounded-full outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          className="cursor-pointer rounded-full outline-none focus-visible:ring-2 focus-visible:ring-ring max-md:grid max-md:size-11 max-md:place-items-center"
           aria-label="Account menu"
         >
           <UserAvatar

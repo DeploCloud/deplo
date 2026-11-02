@@ -88,7 +88,8 @@ export default async function DatabaseLayout(
                 </p>
               </div>
             </div>
-            <div className="flex flex-wrap items-center gap-2">
+            {/* Below md the redeploy takes the whole first row; the rest share the second. */}
+            <div className="flex flex-wrap items-center gap-2 max-md:grid max-md:grid-cols-[1fr_1fr_auto] max-md:[&>:has([data-primary-action])]:order-first max-md:[&>:has([data-primary-action])]:col-span-full max-md:[&>:last-child]:col-start-3 max-md:[&>[data-primary-action]]:order-first max-md:[&>[data-primary-action]]:col-span-full">
               <DatabaseControls id={db.id} status={db.status} />
               <DatabaseRedeployButton id={db.id} />
               <DatabaseActionsMenu

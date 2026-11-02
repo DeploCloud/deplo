@@ -33,7 +33,7 @@ function RevealToggle({
       aria-pressed={visible}
       aria-controls={controls}
       disabled={disabled}
-      className="absolute inset-y-0 end-0 flex h-full w-9 items-center justify-center rounded-e-md text-muted-foreground/80 transition-colors outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50"
+      className="absolute inset-y-0 end-0 flex h-full w-9 items-center justify-center rounded-e-md text-muted-foreground/80 transition-colors outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 max-md:w-11"
     >
       {visible ? (
         <EyeOff className="size-3.5" aria-hidden="true" />

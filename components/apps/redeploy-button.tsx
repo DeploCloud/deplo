@@ -62,7 +62,7 @@ export function RedeployButton({
   if (!can) {
     return (
       <CapabilityTip cap="deploy_apps">
-        <Button variant={variant} size={size} disabled>
+        <Button variant={variant} size={size} disabled data-primary-action="">
           <Icon className="size-4" />
           {label}
         </Button>
@@ -79,6 +79,7 @@ export function RedeployButton({
       }
     >
       <Button
+        data-primary-action=""
         variant={variant}
         size={size}
         onClick={redeploy}
