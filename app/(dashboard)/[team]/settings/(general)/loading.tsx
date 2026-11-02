@@ -2,7 +2,7 @@ import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Skeleton, TextLine } from "@/components/ui/skeleton";
 import { titleClass } from "@/components/shared/page-header";
 import { TwoFactorGraphic } from "@/components/settings/two-factor-graphic";
-import { ConnectGraphic } from "@/components/settings/mcp/connect-graphic";
+import { AgentsGraphic } from "@/components/settings/agents-graphic";
 
 const CARD_TITLE = "text-base leading-none font-semibold lg:text-lg";
 
@@ -72,7 +72,7 @@ export default function Loading() {
           </CardHeader>
           <CardContent className="flex flex-1 flex-col gap-3">
             <div className="flex min-h-0 flex-1 items-center justify-center py-2">
-              <ConnectGraphic className="max-h-20" />
+              <AgentsGraphic className="max-h-20" />
             </div>
             <SettingBox wide />
           </CardContent>

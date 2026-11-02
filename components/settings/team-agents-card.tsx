@@ -4,7 +4,7 @@ import Link from "@/components/ui/link";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { InfoTip } from "@/components/ui/info-tip";
 import { Switch } from "@/components/ui/switch";
-import { ConnectGraphic } from "@/components/settings/mcp/connect-graphic";
+import { AgentsGraphic } from "@/components/settings/agents-graphic";
 import { useOptimisticValue } from "@/components/shared/use-optimistic-value";
 import { gqlAction } from "@/lib/graphql-client";
 
@@ -55,7 +55,7 @@ export function TeamAgentsCard({
       </CardHeader>
       <CardContent className="flex flex-1 flex-col gap-3">
         <div className="flex min-h-0 flex-1 items-center justify-center py-2">
-          <ConnectGraphic className="max-h-20" />
+          <AgentsGraphic className="max-h-20" />
         </div>
         <div className="flex items-start justify-between gap-4 rounded-lg border border-border p-3">
           <div className="space-y-1">
