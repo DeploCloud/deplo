@@ -40,6 +40,7 @@ import {
 } from "./domains/crud";
 import {
   checkDnsProvider,
+  dnsProviderTeamChoices,
   listMyDnsProviders,
   removeDnsProvider,
   saveDnsProvider,
@@ -176,6 +177,18 @@ test("a connected domain belongs to its owner, and only teams they manage domain
       ),
     /not found/,
   );
+});
+
+test("the team picker carries each team's picture", async () => {
+  await pg.query(
+    `update teams set image = 'glyphs:default:acme' where id = $1`,
+    [TEAM_A],
+  );
+  const picture = (teams: { id: string; avatarUrl: string | null }[]) =>
+    teams.find((t) => t.id === TEAM_A)?.avatarUrl;
+  assert.ok(picture(await as(OWNER, () => dnsProviderTeamChoices())));
+  const saved = await connect();
+  assert.ok(picture(saved.teams), "the connected row shows it too");
 });
 
 test("an API token cannot connect a DNS provider", async () => {

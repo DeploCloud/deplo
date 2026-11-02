@@ -5,6 +5,7 @@ import { and, eq, inArray } from "drizzle-orm";
 import { assertUser } from "../../auth/current-user";
 import { requirePersonalSession } from "../../auth/request-context";
 import * as cloudflare from "../../cloudflare/tunnel-api";
+import { teamAvatarUrl } from "../../avatar";
 import { encryptSecret } from "../../crypto";
 import { getDb } from "../../db/client";
 import {
@@ -24,6 +25,7 @@ export interface DnsProviderTeam {
   id: string;
   name: string;
   slug: string;
+  avatarUrl: string | null;
 }
 
 export interface DnsProviderView {
@@ -50,10 +52,11 @@ export async function dnsProviderTeamChoices(): Promise<DnsProviderTeam[]> {
       id: teamsTable.id,
       name: teamsTable.name,
       slug: teamsTable.slug,
+      image: teamsTable.image,
     })
     .from(teamsTable)
     .where(inArray(teamsTable.id, ids));
-  return rows.sort((a, b) => a.name.localeCompare(b.name));
+  return rows.map(toTeam).sort((a, b) => a.name.localeCompare(b.name));
 }
 
 export async function listMyDnsProviders(): Promise<DnsProviderView[]> {
@@ -75,6 +78,7 @@ export async function listMyDnsProviders(): Promise<DnsProviderView[]> {
       id: teamsTable.id,
       name: teamsTable.name,
       slug: teamsTable.slug,
+      image: teamsTable.image,
     })
     .from(dnsProviderTeams)
     .innerJoin(teamsTable, eq(teamsTable.id, dnsProviderTeams.teamId))
@@ -90,10 +94,24 @@ export async function listMyDnsProviders(): Promise<DnsProviderView[]> {
       provider: r.provider as DnsProviderKind,
       teams: links
         .filter((l) => l.providerId === r.id)
-        .map(({ id, name, slug }) => ({ id, name, slug }))
+        .map(toTeam)
         .sort((a, b) => a.name.localeCompare(b.name)),
     }))
     .sort((a, b) => a.zoneName.localeCompare(b.zoneName));
+}
+
+function toTeam(t: {
+  id: string;
+  name: string;
+  slug: string;
+  image: string | null;
+}): DnsProviderTeam {
+  return {
+    id: t.id,
+    name: t.name,
+    slug: t.slug,
+    avatarUrl: teamAvatarUrl(t.image),
+  };
 }
 
 // A DNS provider holds a person's own Cloudflare key: only they, signed in, connect or change one.
