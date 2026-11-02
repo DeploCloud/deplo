@@ -3,6 +3,7 @@
 import * as React from "react";
 import Link from "@/components/ui/link";
 import { useFlatPathname } from "@/lib/nav";
+import { useRetapRefresh } from "./scroll-to-top";
 import { cn } from "@/lib/utils";
 import {
   SlidingBackground,
@@ -34,6 +35,7 @@ export function MobileTabBar({
   }
   const active = moreOpen ? "more" : (tapped ?? activeMobileTab(pathname));
   const keyboard = useKeyboardOpen();
+  const retap = useRetapRefresh();
   const navRef = React.useRef<HTMLElement | null>(null);
   const rect = useSlidingRect(
     navRef,
@@ -75,9 +77,10 @@ export function MobileTabBar({
             className={className}
             aria-current={on ? "page" : undefined}
             data-active={on ? "true" : undefined}
-            onClick={() => {
-              setTapped(tab.id);
+            onClick={(e) => {
               onNavigate();
+              if (retap(e)) return;
+              setTapped(tab.id);
             }}
           >
             {body}

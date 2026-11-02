@@ -6,6 +6,7 @@ import { ChevronRight, Loader2 } from "lucide-react";
 import type { NavItem } from "./nav-config/nav-item";
 import { useNavSections } from "./use-nav-sections";
 import { backOutOf } from "./navigation-history";
+import { useRetapRefresh } from "./scroll-to-top";
 import { useActiveDeployments } from "./deploy-activity";
 import { useUpstreamUpdate } from "./update-state";
 import { cn } from "@/lib/utils";
@@ -41,11 +42,13 @@ export function SidebarNav({
   } = useNavSections(capabilities, isAdmin);
   const deploying = useActiveDeployments();
   const upstream = useUpstreamUpdate();
+  const retap = useRetapRefresh();
 
   function handleNavClick(
     item: NavItem,
     e: React.MouseEvent<HTMLAnchorElement>,
   ) {
+    if (retap(e)) return;
     if (
       item.back &&
       e.button === 0 &&

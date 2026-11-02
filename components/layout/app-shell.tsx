@@ -6,6 +6,7 @@ import { ShellFrame } from "./shell-frame";
 import { UpdateProvider } from "./update-state";
 import { NavigationHistoryTracker } from "./navigation-history";
 import { NavProgress } from "./nav-progress";
+import { ScrollToTop } from "./scroll-to-top";
 import { MobileNav } from "./mobile-nav";
 import { GitConnectToast } from "@/components/shared/git-connect-toast";
 import { DeployActivityProvider } from "./deploy-activity";
@@ -44,6 +45,7 @@ export function AppShell({
       <LogsDisplayVars />
       <React.Suspense fallback={null}>
         <NavProgress />
+        <ScrollToTop />
       </React.Suspense>
       <DeployActivityProvider key={team.id}>
         <MigrationActivityProvider key={team.id}>
