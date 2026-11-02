@@ -33,12 +33,19 @@ async function registrationAllowed(request: Request): Promise<Response | null> {
 }
 
 // Better Auth reads only x-real-ip, so its limiter and session rows see the address ours do.
+// Built fresh: Next hands a Proxy, and `new Request(proxy, init)` throws on Request's private #state.
 function withClientAddress(request: Request): Request {
   const headers = new Headers(request.headers);
   const ip = clientAddress(request.headers);
   if (ip) headers.set("x-real-ip", ip);
   else headers.delete("x-real-ip");
-  return new Request(request, { headers });
+  return new Request(request.url, {
+    method: request.method,
+    headers,
+    body: request.body,
+    signal: request.signal,
+    duplex: "half",
+  } as RequestInit);
 }
 
 export async function GET(request: Request) {

@@ -14,6 +14,7 @@ import {
   protectedResourceResponse,
 } from "./oauth-well-known";
 import { GET as PATH_INSERTED_METADATA } from "@/app/.well-known/oauth-authorization-server/api/auth/route";
+import { GET as AUTH_ROUTE_GET } from "@/app/api/auth/[...all]/route";
 import {
   authorize,
   consent,
@@ -611,4 +612,33 @@ test("the team the seed made is untouched by any of this", async () => {
   const rows = (await pg.query(`select id from teams where id = $1`, [TEAM_A]))
     .rows;
   assert.equal(rows.length, 1);
+});
+
+// Next hands a route handler a Proxy over the request, never the Request itself.
+function asNextHandsIt(request: Request): Request {
+  return new Proxy(request, {
+    get: (target, prop) => {
+      const value = Reflect.get(target, prop, target);
+      return typeof value === "function" ? value.bind(target) : value;
+    },
+  });
+}
+
+test("the auth route answers the request the way Next hands it over", async () => {
+  const reg = await registerClient();
+  const { challenge } = pkcePair();
+  const qs = new URLSearchParams({
+    client_id: String(reg.body.client_id),
+    redirect_uri: REDIRECT,
+    response_type: "code",
+    scope: "openid",
+    state: "st",
+    code_challenge: challenge,
+    code_challenge_method: "S256",
+  });
+  const res = await AUTH_ROUTE_GET(
+    asNextHandsIt(new Request(`${BASE}/api/auth/oauth2/authorize?${qs}`)),
+  );
+  assert.equal(res.status, 302, `authorize answered ${res.status}`);
+  assert.match(res.headers.get("location") ?? "", /\/login\?/);
 });
