@@ -30,7 +30,6 @@ export function MobileNav(props: {
     <>
       {moreOpen && <MobileMorePanel {...props} onClose={close} />}
       <MobileTabBar
-        capabilities={props.capabilities}
         moreOpen={moreOpen}
         onMore={() => setMoreOpen((o) => !o)}
         onNavigate={close}
