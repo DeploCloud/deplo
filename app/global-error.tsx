@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
-import { isStaleBuildError, reloadOnce } from "@/lib/stale-build";
+import { recoverableError, reloadWhenBack } from "@/lib/stale-build";
 
 export default function GlobalError({
   error,
@@ -10,10 +10,11 @@ export default function GlobalError({
   error: Error & { digest?: string };
   retry: () => void;
 }) {
-  const stale = isStaleBuildError(error);
+  const recoverable = recoverableError(error);
+  const stale = recoverable === "stale";
   useEffect(() => {
-    if (stale) reloadOnce();
-  }, [stale]);
+    if (recoverable) return reloadWhenBack();
+  }, [recoverable]);
 
   return (
     <html lang="en">
@@ -41,7 +42,11 @@ export default function GlobalError({
             }}
           />
           <h1 style={{ fontSize: "1.25rem", fontWeight: 600, margin: 0 }}>
-            {stale ? "Deplo was updated" : "Something went wrong"}
+            {stale
+              ? "Deplo was updated"
+              : recoverable
+                ? "Connection interrupted"
+                : "Something went wrong"}
           </h1>
           <p
             style={{
@@ -52,11 +57,15 @@ export default function GlobalError({
           >
             {stale
               ? "This tab is still running the previous version. Reloading picks up the new one."
-              : "An unexpected error occurred."}
+              : recoverable
+                ? "The page stopped loading halfway. Reloading picks it up again."
+                : "An unexpected error occurred."}
           </p>
           <button
             type="button"
-            onClick={stale ? () => window.location.reload() : () => retry()}
+            onClick={
+              recoverable ? () => window.location.reload() : () => retry()
+            }
             style={{
               marginTop: "1.5rem",
               cursor: "pointer",
@@ -69,7 +78,7 @@ export default function GlobalError({
               fontWeight: 500,
             }}
           >
-            {stale ? "Reload" : "Try again"}
+            {recoverable ? "Reload" : "Try again"}
           </button>
         </div>
       </body>

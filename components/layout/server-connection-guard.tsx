@@ -24,8 +24,9 @@ export function ServerConnectionGuard() {
 
   React.useEffect(() => {
     if (disconnected) return;
+    // A phone cuts the network of an app in the background; coming back re-checks at once.
     const interval = window.setInterval(() => {
-      void checkServerConnection();
+      if (!document.hidden) void checkServerConnection();
     }, HEARTBEAT_INTERVAL_MS);
     const onOffline = () => void checkServerConnection();
     const onVisibilityChange = () => {

@@ -3,7 +3,7 @@
 import { useEffect } from "react";
 import { TriangleAlert, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { isStaleBuildError, reloadOnce } from "@/lib/stale-build";
+import { recoverableError, reloadWhenBack } from "@/lib/stale-build";
 
 export default function DashboardError({
   error,
@@ -12,27 +12,29 @@ export default function DashboardError({
   error: Error & { digest?: string };
   retry: () => void;
 }) {
-  const stale = isStaleBuildError(error);
+  const recoverable = recoverableError(error);
 
   useEffect(() => {
-    if (stale) {
-      reloadOnce();
-      return;
-    }
+    if (recoverable) return reloadWhenBack();
     console.error(error);
-  }, [error, stale]);
+  }, [error, recoverable]);
 
-  if (stale)
+  if (recoverable)
     return (
       <div className="flex flex-col items-center justify-center gap-5 rounded-xl border border-dashed border-border py-20 text-center">
         <div className="flex size-12 items-center justify-center rounded-full border border-border bg-secondary">
           <Loader2 className="size-5 animate-spin text-muted-foreground" />
         </div>
         <div className="space-y-1">
-          <h2 className="text-lg font-semibold">Deplo was updated</h2>
+          <h2 className="text-lg font-semibold">
+            {recoverable === "stale"
+              ? "Deplo was updated"
+              : "Connection interrupted"}
+          </h2>
           <p className="max-w-sm text-sm text-muted-foreground">
-            This tab is still running the previous version. Reloading picks up
-            the new one.
+            {recoverable === "stale"
+              ? "This tab is still running the previous version. Reloading picks up the new one."
+              : "The page stopped loading halfway. Reloading picks it up again."}
           </p>
         </div>
         <Button onClick={() => window.location.reload()}>Reload</Button>
