@@ -2190,7 +2190,7 @@ write_traefik_compose() {
 cat > "$TRAEFIK_COMPOSE" <<YAML
 services:
   traefik:
-    image: traefik:v3.7
+    image: traefik:v3.7.17
     container_name: deplo-traefik
     restart: unless-stopped
     logging:

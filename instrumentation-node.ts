@@ -30,6 +30,12 @@ export async function register(): Promise<void> {
       e,
     );
   }
+  try {
+    const { startTraefikPin } = await import("./lib/data/servers/traefik-pin");
+    startTraefikPin();
+  } catch (e) {
+    console.error("[deplo] Traefik could not be kept on its pin:", e);
+  }
   // Early, so servers relink while the jobs below make their first calls (ADR-0040).
   try {
     const { startAgentLinkListener } =

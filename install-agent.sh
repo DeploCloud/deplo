@@ -1300,7 +1300,7 @@ else
     cat > "$TRAEFIK_DIR/docker-compose.yml" <<YAML
 services:
   traefik:
-    image: traefik:v3.7
+    image: traefik:v3.7.17
     container_name: deplo-traefik
     restart: unless-stopped
     logging:

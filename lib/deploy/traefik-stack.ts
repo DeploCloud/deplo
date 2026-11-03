@@ -13,6 +13,26 @@ import { composeTruthy } from "./compose-lint/document";
 
 export const TRAEFIK_CONTAINER = "deplo-traefik";
 
+/** Every server's Traefik: install scripts write it, and a stack behind it on the same line is moved up when its server links. */
+export const TRAEFIK_IMAGE = "traefik:v3.7.17";
+
+const TRAEFIK_TAG = /^traefik:(v\d+\.\d+)(?:\.(\d+))?$/;
+
+/** The stack on TRAEFIK_IMAGE, or null when it already is or runs a release line someone picked by hand. */
+export function withTraefikImage(currentYaml: string): string | null {
+  const doc = parseCompose(currentYaml);
+  const service = traefikService(doc);
+  const image = service.get("image", true);
+  if (!isScalar(image)) return null;
+  const pin = TRAEFIK_IMAGE.match(TRAEFIK_TAG)!;
+  const m = String(image.value).match(TRAEFIK_TAG);
+  if (!m || m[1] !== pin[1]) return null;
+  if (m[2] !== undefined && Number(m[2]) >= Number(pin[2])) return null;
+  image.value = TRAEFIK_IMAGE;
+  withRedirectFallback(doc, service);
+  return dump(doc);
+}
+
 export function acmeEmail(currentYaml: string): string | null {
   const resolver = stackCertResolver(currentYaml);
   if (resolver === null) return null;
