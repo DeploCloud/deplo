@@ -148,6 +148,12 @@ can update past it. Clicking Update on an instance below a stop installs the sto
 release.
 _Avoid_: upgrade stop, checkpoint, required version, mandatory release.
 
+**Security fix**:
+A Deplo release that closes a security flaw in Deplo itself or in what it runs on every server, such
+as its proxy. Each release names the oldest version without a known flaw (`deplo.securityFloor`);
+below it, instance admins see a card and a top-bar chip until they update, and the alert repeats.
+_Avoid_: security update (that is the team's own apps), patch, hotfix.
+
 **Left behind**:
 A server an instance admin let an **update stop** pass without, because it never connected to
 Deplo. It keeps its Apps and settings; once Deplo is past the stop it is an **unusable server**

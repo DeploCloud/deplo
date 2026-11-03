@@ -154,7 +154,7 @@ export function SidebarNav({
                 ? `${deploying} deployment${deploying === 1 ? "" : "s"} in progress`
                 : null;
             const updateTip =
-              upstream && item.href === "/settings/deplo"
+              upstream?.next && item.href === "/settings/deplo"
                 ? `Deplo ${upstream.next} is available`
                 : null;
             return (

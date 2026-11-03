@@ -35,6 +35,7 @@ export const INSTANCE: McpToolDef[] = [
             reason
             waiting
           }
+          securityFix
           publishedAt
           url
           checkedAt
@@ -71,6 +72,7 @@ export const INSTANCE: McpToolDef[] = [
             reason
             waiting
           }
+          securityFix
           publishedAt
           url
           canary

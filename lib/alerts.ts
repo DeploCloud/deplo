@@ -184,6 +184,13 @@ export const ALERT_META: Record<AlertKey, AlertMeta> = {
     keywords: "version upgrade release panel",
     defaultOn: true,
   },
+  deplo_security_fix: {
+    label: "Deplo security fix",
+    description:
+      "A newer Deplo fixes a security flaw this instance has. Repeats every 3 days until you update.",
+    keywords: "security vulnerability flaw version upgrade release panel",
+    defaultOn: true,
+  },
 
   member_joined: {
     label: "Member joined",
@@ -338,7 +345,7 @@ export const ALERT_CATEGORIES: {
     key: "instance",
     label: "This Deplo instance",
     description: "The panel itself, not the apps it runs.",
-    alerts: ["deplo_update_available"],
+    alerts: ["deplo_update_available", "deplo_security_fix"],
   },
   {
     key: "security",

@@ -26,6 +26,7 @@ import {
   SETTINGS_ID,
 } from "./instance-settings/settings-store";
 import { recordActivity } from "./activity";
+import { readReleaseDeclaration } from "./update-stops/declaration";
 import {
   decideUpdate,
   passThisStopIfMet,
@@ -43,6 +44,8 @@ export interface UpdateInfo {
   next: string | null;
   nextIsStop: boolean;
   stop: UpdateStopInfo | null;
+  /** The release that fixes a known security flaw this instance has, or null. */
+  securityFix: string | null;
   url: string | null;
   name: string | null;
   publishedAt: string | null;
@@ -156,6 +159,7 @@ async function fetchUpdateInfo(init: RequestInit): Promise<UpdateInfo> {
     next: null,
     nextIsStop: false,
     stop: null,
+    securityFix: null,
     url: null,
     name: null,
     publishedAt: null,
@@ -203,6 +207,10 @@ async function checkReleases(
       typeof json.published_at === "string" ? json.published_at : null,
   };
   if (!isNewer(tag, found.current)) return newest;
+  // Read from the newest release, which names the floor whether or not Update can install it yet.
+  const floor = (await readReleaseDeclaration(tag, init))?.securityFloor;
+  if (floor && isNewer(floor, found.current))
+    newest.securityFix = versionTag(floor);
   const route = await decideUpdate(
     tag,
     passed,

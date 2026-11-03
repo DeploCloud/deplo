@@ -1,6 +1,8 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
+import { deplo } from "../package.json";
+
 import {
   AGENT_MIN_VERSION,
   AGENT_VERSION,
@@ -164,5 +166,15 @@ test("every release requires the stop that brought every server onto its link", 
   assert.ok(
     !isNewer("0.6.0", REQUIRED_STOP),
     `v${REQUIRED_STOP} comes before the stop every server linked by`,
+  );
+});
+
+// The floor only moves up: a release that fixes a security flaw raises it to itself.
+test("the security floor names a release no later than this one", () => {
+  const floor = deplo.securityFloor;
+  assert.ok(floor, "deplo.securityFloor is empty");
+  assert.ok(
+    !isNewer(floor, DEPLO_VERSION),
+    `v${floor} comes after this release`,
   );
 });

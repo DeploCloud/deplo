@@ -78,7 +78,9 @@ const json = (body: unknown, status = 200) =>
     headers: { "content-type": "application/json" },
   });
 
-type Declared = { updateStop?: boolean; requiresStop?: string } | number;
+type Declared =
+  | { updateStop?: boolean; requiresStop?: string; securityFloor?: string }
+  | number;
 const STOP: Declared = { updateStop: true };
 
 // A mocked GitHub: the newest stable, the published releases, and what each tag's package.json declares.
@@ -413,6 +415,57 @@ test("the update notification names the stop Update installs, and says nothing w
     assert.equal(deploUpdateAlert(await getUpdateInfo()), null);
   } finally {
     waiting.restore();
+  }
+});
+
+test("below the newest release's security floor, Deplo names the fix and the alert repeats it", async () => {
+  const capture = github({
+    latest: "99.1.0",
+    declares: { "99.1.0": { securityFloor: "v99.1.0" } },
+  });
+  try {
+    const info = await getUpdateInfo();
+    assert.equal(info.securityFix, "v99.1.0");
+    const alert = deploUpdateAlert(info);
+    assert.equal(alert?.key, "deplo_security_fix");
+    assert.equal(alert?.title, "Deplo v99.1.0 fixes a security flaw");
+    assert.equal(alert?.dedupe.state, "v99.1.0");
+  } finally {
+    capture.restore();
+  }
+});
+
+test("a security floor this instance is already past asks for nothing more than an update", async () => {
+  const capture = github({
+    latest: "99.1.0",
+    declares: { "99.1.0": { securityFloor: DEPLO_VERSION } },
+  });
+  try {
+    const info = await getUpdateInfo();
+    assert.equal(info.securityFix, null);
+    assert.equal(deploUpdateAlert(info)?.key, "deplo_update_available");
+  } finally {
+    capture.restore();
+  }
+});
+
+test("the security alert still goes out while a stop keeps Update waiting", async () => {
+  __setThisReleaseForTest({
+    updateStop: true,
+    condition: async () => ({ met: false }),
+  });
+  const capture = github({
+    latest: "99.1.0",
+    declares: {
+      "99.1.0": { requiresStop: DEPLO_VERSION, securityFloor: "99.1.0" },
+    },
+  });
+  try {
+    const info = await getUpdateInfo();
+    assert.equal(info.next, null);
+    assert.equal(deploUpdateAlert(info)?.key, "deplo_security_fix");
+  } finally {
+    capture.restore();
   }
 });
 

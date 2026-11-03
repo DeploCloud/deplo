@@ -2,10 +2,11 @@
 
 import * as React from "react";
 import Link from "@/components/ui/link";
-import { ShieldCheck, X } from "lucide-react";
+import { ShieldAlert, ShieldCheck, X } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { useUpstreamUpdate } from "./update-state";
 
 export interface SidebarTip {
   id: string;
@@ -75,12 +76,25 @@ function readDismissed(): string[] {
 }
 
 export function SidebarTips(ctx: SidebarTipContext) {
+  const update = useUpstreamUpdate();
   const [dismissed, setDismissed] = React.useState<string[] | null>(null);
 
   React.useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setDismissed(readDismissed());
   }, []);
+
+  // No dismiss: it goes away once Deplo is updated past the flaw.
+  if (update?.securityFix)
+    return (
+      <TipCard
+        icon={ShieldAlert}
+        tone="destructive"
+        title="Deplo security fix"
+        description={`Deplo ${update.securityFix} fixes a security flaw. You are on v${update.current}.`}
+        cta={{ label: "Update now", href: "/settings/deplo?tab=updates" }}
+      />
+    );
 
   if (dismissed === null) return null;
   const tip = nextTip(dismissed, ctx);
@@ -94,27 +108,43 @@ export function SidebarTips(ctx: SidebarTipContext) {
     setDismissed(next);
   }
 
-  const Icon = tip.icon;
-  const tone = TONE[tip.tone ?? "default"];
+  return <TipCard {...tip} onDismiss={() => dismiss(tip.id)} />;
+}
 
+function TipCard({
+  icon: Icon,
+  title,
+  description,
+  tone = "default",
+  cta,
+  onDismiss,
+}: Omit<SidebarTip, "id" | "when"> & { onDismiss?: () => void }) {
+  const style = TONE[tone];
   return (
-    <div className={cn("relative rounded-lg border p-3", tone.card)}>
-      <button
-        type="button"
-        onClick={() => dismiss(tip.id)}
-        aria-label="Dismiss"
-        className="absolute top-2 right-2 cursor-pointer text-muted-foreground hover:text-foreground"
-      >
-        <X className="size-3.5" />
-      </button>
-      <div className="flex items-center gap-2 pr-6">
-        <Icon className={cn("size-4 shrink-0", tone.icon)} />
-        <span className="text-sm font-medium">{tip.title}</span>
+    <div className={cn("relative rounded-lg border p-3", style.card)}>
+      {onDismiss && (
+        <button
+          type="button"
+          onClick={onDismiss}
+          aria-label="Dismiss"
+          className="absolute top-2 right-2 cursor-pointer text-muted-foreground hover:text-foreground"
+        >
+          <X className="size-3.5" />
+        </button>
+      )}
+      <div className={cn("flex items-center gap-2", onDismiss && "pr-6")}>
+        <Icon className={cn("size-4 shrink-0", style.icon)} />
+        <span className="text-sm font-medium">{title}</span>
       </div>
-      <p className="mt-1 text-xs text-muted-foreground">{tip.description}</p>
-      {tip.cta && (
-        <Button variant="secondary" size="sm" asChild className="mt-2.5 w-full">
-          <Link href={tip.cta.href}>{tip.cta.label}</Link>
+      <p className="mt-1 text-xs text-muted-foreground">{description}</p>
+      {cta && (
+        <Button
+          variant={onDismiss ? "secondary" : "default"}
+          size="sm"
+          asChild
+          className="mt-2.5 w-full"
+        >
+          <Link href={cta.href}>{cta.label}</Link>
         </Button>
       )}
     </div>

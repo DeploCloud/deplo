@@ -47,7 +47,9 @@ the answers. Settle these first - from the request or the tree when they are the
    instance that has not passed it. A stable may only require a published stable stop, and every
    patch of a stop is declared a stop too. Since v0.6.0 every release requires that stop or a later
    one: nothing dials a server past it, so `requiresStop` is never emptied (`lib/version.test.ts`).
-5. **Is there an upgrade step or a bad bug to put on top of the notes?** Usually not.
+5. **Does it close a security flaw?** Then `deplo.securityFloor` moves to this release, and every
+   instance below it shows a non-dismissable card until it updates. It only ever moves up.
+6. **Is there an upgrade step or a bad bug to put on top of the notes?** Usually not.
 
 A release's migrations must leave the previous release working: the installer rolls a failed update
 back onto them, so a column goes one release after its last reader (`lib/db/server-agent-pin-migration.test.ts`).

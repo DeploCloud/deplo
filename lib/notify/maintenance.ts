@@ -89,6 +89,15 @@ async function settle(what: string, fn: () => Promise<void>): Promise<void> {
 
 /** Names what Update installs, which is an update stop when the newest release needs one first. */
 export function deploUpdateAlert(info: UpdateInfo) {
+  // Sent even while a stop waits: the admin has something to fix before the flaw is gone.
+  if (info.securityFix)
+    return {
+      key: "deplo_security_fix" as const,
+      dedupe: { id: "deplo-security-fix", state: info.securityFix },
+      title: `Deplo ${info.securityFix} fixes a security flaw`,
+      body: `This instance is on ${info.current}. Update it to close the flaw.`,
+      path: "/settings/deplo?tab=updates",
+    };
   if (!info.next) return null;
   return {
     key: "deplo_update_available" as const,

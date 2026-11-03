@@ -54,3 +54,13 @@ test("an update nag uses the version as its state, so a new release re-fires", (
     true,
   );
 });
+
+test("a security fix nags again after three days, not before", () => {
+  const day = 86_400_000;
+  assert.equal(shouldFire("deplo_security_fix", "x", "v1.2.0", 0), true);
+  assert.equal(
+    shouldFire("deplo_security_fix", "x", "v1.2.0", 3 * day - 1),
+    false,
+  );
+  assert.equal(shouldFire("deplo_security_fix", "x", "v1.2.0", 3 * day), true);
+});

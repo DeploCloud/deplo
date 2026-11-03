@@ -7122,6 +7122,11 @@ type UpdateInfo {
   publishedAt: String
 
   """
+  The release that fixes a known security flaw this instance has, as the newest release declares it. Null when this instance has none.
+  """
+  securityFix: String
+
+  """
   The update stop between this instance and `latest`, while it has not passed it. Before any newer release requires it, this release itself while it is a stop not passed yet.
   """
   stop: UpdateStop

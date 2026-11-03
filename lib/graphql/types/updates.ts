@@ -130,6 +130,11 @@ const UpdateInfoRef = builder.objectRef<UpdateInfo>("UpdateInfo").implement({
         "The update stop between this instance and `latest`, while it has not passed it. Before any newer release requires it, this release itself while it is a stop not passed yet.",
       resolve: (info) => info.stop,
     }),
+    securityFix: t.exposeString("securityFix", {
+      nullable: true,
+      description:
+        "The release that fixes a known security flaw this instance has, as the newest release declares it. Null when this instance has none.",
+    }),
     url: t.exposeString("url", { nullable: true }),
     name: t.exposeString("name", { nullable: true }),
     publishedAt: t.exposeString("publishedAt", { nullable: true }),

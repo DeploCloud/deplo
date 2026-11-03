@@ -29,6 +29,7 @@ const COOLDOWN_MS: Partial<Record<AlertKey, number>> = {
   cleanup_failed: 6 * 60 * 60_000,
   agent_certificate_failed: 6 * 60 * 60_000,
   deplo_update_available: 7 * 24 * 60 * 60_000,
+  deplo_security_fix: 3 * 24 * 60 * 60_000,
   certificate_expiring: 24 * 60 * 60_000,
   git_access_missing: 24 * 60 * 60_000,
   domain_dns_drift: 24 * 60 * 60_000,

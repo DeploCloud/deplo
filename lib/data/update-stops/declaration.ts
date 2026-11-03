@@ -7,6 +7,8 @@ export interface ReleaseDeclaration {
   agentMin: string | null;
   updateStop: boolean;
   requiresStop: string | null;
+  /** The oldest version without a known security flaw: below it, Deplo asks for the update. */
+  securityFloor: string | null;
 }
 
 /** Read off the release's tag without the API budget. Null when it could not be read. */
@@ -30,10 +32,15 @@ export async function readReleaseDeclaration(
       typeof block.requiresStop === "string"
         ? bareVersion(block.requiresStop)
         : "";
+    const floor =
+      typeof block.securityFloor === "string"
+        ? bareVersion(block.securityFloor)
+        : "";
     return {
       agentMin: typeof block.agentMin === "string" ? block.agentMin : null,
       updateStop: block.updateStop === true,
       requiresStop: stop || null,
+      securityFloor: floor || null,
     };
   } catch {
     return null;

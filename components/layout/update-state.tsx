@@ -4,10 +4,11 @@ import * as React from "react";
 
 import { gqlAction } from "@/lib/graphql-client";
 
-// What Update installs: the newest release, or an update stop before it.
+// What Update installs (the newest release, or an update stop before it), and a security fix this instance lacks.
 export interface UpstreamUpdate {
-  next: string;
+  next: string | null;
   current: string;
+  securityFix: string | null;
 }
 
 const UpdateContext = React.createContext<UpstreamUpdate | null>(null);
@@ -18,6 +19,7 @@ const UPDATE_QUERY = /* GraphQL */ `
       updateAvailable
       next
       current
+      securityFix
     }
   }
 `;
@@ -26,6 +28,7 @@ type Info = {
   updateAvailable: boolean;
   next: string | null;
   current: string;
+  securityFix: string | null;
 };
 
 export function UpdateProvider({
@@ -47,8 +50,9 @@ export function UpdateProvider({
     ).then((res) => {
       if (!active || !res.ok || !res.data) return;
       const d = res.data;
-      if (!d.updateAvailable || !d.next) return;
-      setUpdate({ next: d.next, current: d.current });
+      const next = d.updateAvailable ? d.next : null;
+      if (!next && !d.securityFix) return;
+      setUpdate({ next, current: d.current, securityFix: d.securityFix });
     });
     return () => {
       active = false;
