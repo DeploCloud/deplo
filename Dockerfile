@@ -28,6 +28,8 @@ WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 ENV NEXT_TELEMETRY_DISABLED=1
+# V8 caps the heap at 2 GB below 16 GB of RAM, and the type check needs more.
+ENV NODE_OPTIONS=--max-old-space-size=4096
 # Placeholders, builder stage ONLY - they never reach the runtime image below.
 # `next build` collects page data by IMPORTING every route module, and lib/db/pg.ts
 # fail-fasts on a missing DEPLO_DATABASE_URL at module load (deliberately: a real
