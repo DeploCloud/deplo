@@ -673,6 +673,9 @@ runs on a machine you choose. See "Core mission" for why the words are the produ
   answer, and never skip the question because the change "looks internal". Clone at
   `/root/projects/deplo-docs`, `git pull` before touching it (that repo moves under you), and
   follow its own `AGENTS.md` for how a page is written.
+  **A docs page is wired into the UI in the same task, without asking.** Every relevant tooltip
+  (`docs=` on `InfoTip` / `FieldLabel`) and description (an inline `<DocsLink>`) gets a "Learn
+  more" to its section: a topic in `lib/docs.ts`, then `scripts/check-docs-links.mts` green.
 - **Commits = Conventional Commits with a scope**: `type(scope): imperative lowercase summary`
   (`feat(apps): redeploy a stack from the app page`). **Title 50 characters or fewer, no trailing
   period.** Body only when the why does not fit the title, 2-3 lines at most.
