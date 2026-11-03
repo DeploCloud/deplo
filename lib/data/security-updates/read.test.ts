@@ -248,6 +248,7 @@ test("groups count once per package with EPSS on each advisory", async () => {
     cve: "CVE-2026-1",
     severity: "critical",
     cvssTenths: 98,
+    conditional: true,
     summary: "Only with enableJavaScriptEvaluation",
     modified: "m1",
     fetchedAt: T0,
@@ -261,6 +262,8 @@ test("groups count once per package with EPSS on each advisory", async () => {
   const s = await as(OWNER, TEAM_A, () => appSecurityUpdates("prj_web"));
   const a = s!.updates.find((u) => u.vulnId === "GHSA-a")!;
   assert.equal(a.epss, 0.1234);
+  assert.equal(a.conditional, true);
+  assert.equal(a.direct, null, "seeded without a direct mark");
   assert.equal(a.summary, "Only with enableJavaScriptEvaluation");
   assert.equal(a.counted, true);
   assert.deepEqual(

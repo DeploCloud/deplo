@@ -41,6 +41,8 @@ export interface SecurityUpdate {
   cve: string | null;
   level: Level;
   cvss: number | null;
+  // It needs the package set up a certain way; a critical one is then listed as high.
+  conditional: boolean;
   summary: string;
   ecosystem: string;
   packageName: string;
@@ -56,8 +58,10 @@ export interface SecurityUpdate {
   service: string;
   // The image it was found in: an image's update moves it whole.
   imageRef: string;
-  // Who pulls the package in, parent first up to the app's own dependency; [] when direct.
+  // Who pulls the package in, parent first up to the app's own dependency; [] when direct or unknown.
   via: string[];
+  // Named in the app's package.json; null when Deplo cannot tell.
+  direct: boolean | null;
   osvUrl: string;
 }
 
@@ -200,6 +204,7 @@ async function subjectUpdates(
         cve: a?.cve ?? null,
         level,
         cvss: a?.cvssTenths != null ? a.cvssTenths / 10 : null,
+        conditional: a?.conditional ?? false,
         summary: a?.summary ?? "",
         ecosystem: f.ecosystem,
         packageName: f.packageName,
@@ -212,6 +217,7 @@ async function subjectUpdates(
         service: f.service,
         imageRef,
         via: f.via ? f.via.split("\t") : [],
+        direct: f.direct,
         osvUrl: `https://osv.dev/vulnerability/${encodeURIComponent(f.vulnId)}`,
       };
     });

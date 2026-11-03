@@ -140,6 +140,7 @@ async function refreshVulnCache(
               cve: r.cve,
               severity: r.severity,
               cvssTenths: r.cvssTenths,
+              conditional: r.conditional,
               summary: r.summary,
               modified: r.modified,
               fetchedAt: now,
@@ -255,6 +256,16 @@ export async function matchWorkloads(
     for (const p of pk)
       packages.set(p.imageId, [...(packages.get(p.imageId) ?? []), p]);
   }
+  // An agent that marks direct packages marks at least one in an app it could read.
+  const directKnown = new Set(
+    rows
+      .filter(
+        (r) =>
+          r.inv.directRead &&
+          packages.get(r.inv.imageId)?.some((p) => p.direct),
+      )
+      .map((r) => r.inv.imageId),
+  );
   const distro = new Map(
     rows.map((r) => [
       r.inv.imageId,
@@ -320,6 +331,7 @@ export async function matchWorkloads(
             stamp,
             candidates.get(`${wi.serverId}\0${wi.workloadId}\0${wi.service}`) ??
               null,
+            directKnown.has(inv.imageId),
           )
         : [];
     const diff = await persistFindings(
@@ -362,6 +374,7 @@ function findingsFor(
   stamp: string,
   // The newer build's versions per package, once read; null until then.
   candidate: Map<string, string[]> | null,
+  directKnown: boolean,
 ): Finding[] {
   // One finding per package and CVE: distros publish the same flaw under several ids.
   const best = new Map<string, { f: Finding; actionable: boolean }>();
@@ -369,7 +382,12 @@ function findingsFor(
     for (const hit of hitsByQuery.get(qkey(q)) ?? []) {
       const a = affectedFor(affected.get(hit.id) ?? [], q.ecosystem, q.name);
       if (!a) continue;
-      const level = levelOf(a.severity as Severity | null, a.cve, kev);
+      const level = levelOf(
+        a.severity as Severity | null,
+        a.cve,
+        kev,
+        a.conditional,
+      );
       if (!level) continue;
       const fixedVersion = fixedFor(a.ranges, q.version);
       const later = candidate?.get(`${q.ecosystem}\0${q.name}`) ?? [];
@@ -404,6 +422,7 @@ function findingsFor(
         fixedVersion,
         location: pkg.location,
         via: pkg.via,
+        direct: directKnown ? pkg.direct : null,
         level,
         fix,
         firstSeenAt: stamp,
@@ -520,7 +539,8 @@ async function persistFindings(
         old.fix !== f.fix ||
         old.fixedVersion !== f.fixedVersion ||
         old.location !== f.location ||
-        old.via !== (f.via ?? "")
+        old.via !== (f.via ?? "") ||
+        old.direct !== (f.direct ?? null)
       )
         await tx
           .update(securityFindings)
@@ -530,6 +550,7 @@ async function persistFindings(
             fixedVersion: f.fixedVersion,
             location: f.location,
             via: f.via ?? "",
+            direct: f.direct ?? null,
           })
           .where(findingPk(f));
     }

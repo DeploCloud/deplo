@@ -28,6 +28,8 @@ export const imageInventories = pgTable("image_inventories", {
   scannedAt: isoTimestamptz("scanned_at").notNull(),
   // Read by an agent that marks build-only packages and who pulls each in (`image-inventory.deps`).
   depsRead: boolean("deps_read").notNull().default(false),
+  // Read by an agent that marks the direct ones too (`image-inventory.direct`).
+  directRead: boolean("direct_read").notNull().default(false),
 });
 
 export const imageInventoryPackages = pgTable(
@@ -43,8 +45,10 @@ export const imageInventoryPackages = pgTable(
     version: text("version").notNull(),
     // Reachable only from the app's devDependencies: built with, never run.
     buildOnly: boolean("build_only").notNull().default(false),
-    // Who pulls it in, parent first up to the app's own dependency, tab-separated; "" when direct.
+    // Who pulls it in, parent first up to the app's own dependency, tab-separated; "" when unknown.
     via: text("via").notNull().default(""),
+    // Named in the app's package.json.
+    direct: boolean("direct").notNull().default(false),
   },
   (t) => [primaryKey({ columns: [t.imageId, t.purl, t.location] })],
 );
@@ -108,6 +112,8 @@ export const osvAffected = pgTable(
     severity: text("severity"),
     // CVSS base score times ten, NULL when OSV has none.
     cvssTenths: integer("cvss_tenths"),
+    // Its CVSS vector needs a setup the attacker does not control (attack complexity high).
+    conditional: boolean("conditional").notNull().default(false),
     summary: text("summary").notNull().default(""),
     modified: text("modified").notNull(),
     fetchedAt: isoTimestamptz("fetched_at").notNull(),
@@ -172,6 +178,8 @@ export const securityFindings = pgTable(
     fixedVersion: text("fixed_version"),
     location: text("location").notNull().default(""),
     via: text("via").notNull().default(""),
+    // Named in the app's package.json; NULL when Deplo cannot tell.
+    direct: boolean("direct"),
     level: text("level").notNull(),
     fix: text("fix").notNull(),
     firstSeenAt: isoTimestamptz("first_seen_at").notNull(),

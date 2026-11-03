@@ -22,6 +22,8 @@ export interface OsvAffectedRow {
   cve: string | null;
   severity: Severity | null;
   cvssTenths: number | null;
+  // It needs the package set up a certain way: a conditional critical is listed as high.
+  conditional: boolean;
   summary: string;
   modified: string;
 }
@@ -135,6 +137,29 @@ function maxCvssTenths(lists: (OsvSeverity[] | undefined)[]): number | null {
   return best;
 }
 
+// AC:H, in CVSS 3 or 4: the flaw needs conditions the attacker does not control. CVSS 4's AT:P
+// alone does not count: it often names something as common as glibc.
+export function vectorConditional(vector: string): boolean | null {
+  if (!/^CVSS:(3\.[01]|4\.0)\//.test(vector)) return null;
+  const m = Object.fromEntries(vector.split("/").map((p) => p.split(":")));
+  return m.AC ? m.AC === "H" : null;
+}
+
+// Conditional only when every vector the record carries says so; null when it carries none.
+function recordConditional(lists: (OsvSeverity[] | undefined)[]) {
+  const said = lists
+    .flat()
+    .flatMap((s) => (s?.score ? [vectorConditional(s.score)] : []))
+    .filter((c): c is boolean => c !== null);
+  return said.length ? said.every(Boolean) : null;
+}
+
+export interface RecordSeverity {
+  severity: Severity | null;
+  cvssTenths: number | null;
+  conditional: boolean | null;
+}
+
 const TEXT_SEVERITY: Record<string, Severity> = {
   critical: "critical",
   high: "high",
@@ -144,23 +169,23 @@ const TEXT_SEVERITY: Record<string, Severity> = {
 };
 
 // The severity and score of one record, from the best source it carries.
-export function recordSeverity(rec: OsvRecord): {
-  severity: Severity | null;
-  cvssTenths: number | null;
-} {
-  const cvssTenths = maxCvssTenths([
-    rec.severity,
-    ...(rec.affected ?? []).map((a) => a.severity),
-  ]);
+export function recordSeverity(rec: OsvRecord): RecordSeverity {
+  const lists = [rec.severity, ...(rec.affected ?? []).map((a) => a.severity)];
+  const conditional = recordConditional(lists);
+  const cvssTenths = maxCvssTenths(lists);
   if (cvssTenths !== null)
-    return { severity: severityOfTenths(cvssTenths), cvssTenths };
+    return { severity: severityOfTenths(cvssTenths), cvssTenths, conditional };
+  const text = (s: string) => ({
+    severity: TEXT_SEVERITY[s.toLowerCase()],
+    cvssTenths: null,
+    conditional,
+  });
   const ghsa = rec.database_specific?.severity;
   if (typeof ghsa === "string" && TEXT_SEVERITY[ghsa.toLowerCase()])
-    return { severity: TEXT_SEVERITY[ghsa.toLowerCase()], cvssTenths: null };
+    return text(ghsa);
   const ubuntu = rec.severity?.find((s) => s.type === "Ubuntu")?.score;
-  if (ubuntu && TEXT_SEVERITY[ubuntu.toLowerCase()])
-    return { severity: TEXT_SEVERITY[ubuntu.toLowerCase()], cvssTenths: null };
-  return { severity: null, cvssTenths: null };
+  if (ubuntu && TEXT_SEVERITY[ubuntu.toLowerCase()]) return text(ubuntu);
+  return { severity: null, cvssTenths: null, conditional };
 }
 
 export function recordCve(rec: OsvRecord): string | null {
@@ -174,14 +199,16 @@ export function recordCve(rec: OsvRecord): string | null {
 // One row per affected package; `fallback` is the severity of the record's CVE when it has none.
 export function osvAffectedRows(
   rec: OsvRecord,
-  fallback: { severity: Severity | null; cvssTenths: number | null } = {
+  fallback: RecordSeverity = {
     severity: null,
     cvssTenths: null,
+    conditional: null,
   },
 ): OsvAffectedRow[] {
   if (rec.withdrawn) return [];
   const own = recordSeverity(rec);
   const sev = own.severity ? own : fallback;
+  const conditional = own.conditional ?? fallback.conditional ?? false;
   const rows = new Map<string, OsvAffectedRow>();
   for (const a of rec.affected ?? []) {
     const ecosystem = a.package?.ecosystem;
@@ -204,6 +231,7 @@ export function osvAffectedRows(
       cve: recordCve(rec),
       severity: sev.severity,
       cvssTenths: sev.cvssTenths,
+      conditional,
       summary: (rec.summary ?? "").slice(0, 300),
       modified: rec.modified ?? "",
     });

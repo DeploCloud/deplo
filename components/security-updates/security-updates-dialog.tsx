@@ -32,6 +32,7 @@ const QUERY = /* GraphQL */ `
         level
         cvss
         epss
+        conditional
         summary
         ecosystem
         packageName
@@ -46,6 +47,7 @@ const QUERY = /* GraphQL */ `
         service
         imageRef
         via
+        direct
         osvUrl
       }
     }

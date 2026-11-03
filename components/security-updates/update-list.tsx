@@ -173,11 +173,14 @@ function UpdateRow({
               (u.ignoreReason ? `: ${u.ignoreReason}` : "")
             : fixLine({
                 fix: g.fix,
+                ecosystem: u.ecosystem,
                 packageName: u.packageName,
+                installedVersion: u.installedVersion,
                 fixedVersion: g.fixedVersion,
                 newerTag,
                 flaws: g.items.length,
                 via: u.via,
+                direct: u.direct,
               })}
           {!g.image && !single
             ? ` · ${plural(g.items.length, "advisory", "advisories")}`

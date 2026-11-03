@@ -5,8 +5,11 @@ import type { Update } from "./types";
 
 // Scores and the advisory's own summary, which often names the condition it needs.
 export function AdvisoryContext({ u }: { u: Update }) {
-  const epss = epssLabel(u.epss);
-  const scores = [u.cvss != null ? `CVSS ${u.cvss.toFixed(1)}` : null, epss]
+  const scores = [
+    u.cvss != null ? `CVSS ${u.cvss.toFixed(1)}` : null,
+    epssLabel(u.epss),
+    u.conditional ? "Only when the package is set up a certain way" : null,
+  ]
     .filter(Boolean)
     .join(" · ");
   if (!scores && !u.summary) return null;

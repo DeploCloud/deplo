@@ -9,6 +9,7 @@ import {
   osvQueryBatch,
   osvVuln,
   recordSeverity,
+  vectorConditional,
   type OsvRecord,
 } from "./osv";
 
@@ -125,6 +126,7 @@ test("osvAffectedRows: one row per affected package, with fix, CVE and score", (
       cve: "CVE-2024-5535",
       severity: "critical",
       cvssTenths: 91,
+      conditional: false,
       modified: undefined,
       summary: undefined,
     },
@@ -171,24 +173,72 @@ test("recordSeverity: GHSA text, Ubuntu priority, then the CVE fallback", () => 
       id: "GHSA-1",
       database_specific: { severity: "MODERATE" },
     }),
-    { severity: "medium", cvssTenths: null },
+    { severity: "medium", cvssTenths: null, conditional: null },
   );
   assert.deepEqual(
     recordSeverity({
       id: "USN-1",
       severity: [{ type: "Ubuntu", score: "high" }],
     }),
-    { severity: "high", cvssTenths: null },
+    { severity: "high", cvssTenths: null, conditional: null },
   );
   const rows = osvAffectedRows(
     {
       id: "ALPINE-CVE-1",
       affected: [{ package: { ecosystem: "Alpine:v3.21", name: "curl" } }],
     },
-    { severity: "critical", cvssTenths: 98 },
+    { severity: "critical", cvssTenths: 98, conditional: true },
   );
   assert.equal(rows[0].severity, "critical");
   assert.equal(rows[0].cvssTenths, 98);
+  assert.equal(rows[0].conditional, true, "the CVE's vector speaks for it");
+});
+
+test("vectorConditional: AC:H in CVSS 3 or 4; AT:P alone is not enough", () => {
+  const v3 = "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H";
+  assert.equal(vectorConditional(v3), false);
+  assert.equal(vectorConditional(v3.replace("AC:L", "AC:H")), true);
+  const v4 = "CVSS:4.0/AV:N/AC:L/AT:N/PR:N/UI:N/VC:H/VI:H/VA:L/SC:N/SI:N/SA:N";
+  assert.equal(vectorConditional(v4), false);
+  // GHSA-2464-fhr4-w9xw, Next.js RCE: AT:P only means it runs on glibc, which is nearly everyone.
+  assert.equal(vectorConditional(v4.replace("AT:N", "AT:P")), false);
+  assert.equal(vectorConditional(v4.replace("AC:L", "AC:H")), true);
+  assert.equal(vectorConditional("garbage"), null);
+});
+
+test("recordSeverity: the GHSA label stays, and a CVSS 4 vector says it needs a setup", () => {
+  // GHSA-cg2g-xh64-v4q7, DOMPurify: rated CRITICAL, exploitable only with SAFE_FOR_TEMPLATES + RETURN_DOM.
+  const dompurify: OsvRecord = {
+    id: "GHSA-cg2g-xh64-v4q7",
+    severity: [
+      {
+        type: "CVSS_V4",
+        score:
+          "CVSS:4.0/AV:N/AC:H/AT:P/PR:N/UI:N/VC:H/VI:H/VA:L/SC:N/SI:N/SA:N",
+      },
+    ],
+    database_specific: { severity: "CRITICAL" },
+  };
+  assert.deepEqual(recordSeverity(dompurify), {
+    severity: "critical",
+    cvssTenths: null,
+    conditional: true,
+  });
+  const both: OsvRecord = {
+    ...dompurify,
+    severity: [
+      ...dompurify.severity!,
+      {
+        type: "CVSS_V3",
+        score: "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H",
+      },
+    ],
+  };
+  assert.equal(
+    recordSeverity(both).conditional,
+    false,
+    "one vector that needs nothing is enough to count",
+  );
 });
 
 test("affectedFor: an ecosystem OSV qualifies further still matches", () => {

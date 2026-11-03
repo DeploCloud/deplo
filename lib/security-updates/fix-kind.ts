@@ -17,13 +17,15 @@ export type FixKind =
   | "deplo"
   | "none";
 
+// A critical flaw that needs the package set up a certain way is listed, not counted (ADR-0038).
 export function levelOf(
   severity: Severity | null,
   cve: string | null,
   kev: ReadonlySet<string>,
+  conditional = false,
 ): Level | null {
   if (cve && kev.has(cve)) return "exploited";
-  if (severity === "critical") return "critical";
+  if (severity === "critical") return conditional ? "high" : "critical";
   if (severity === "high") return "high";
   return null;
 }
@@ -111,6 +113,8 @@ export interface Scoped {
 function embedded(f: Scoped): boolean {
   const l = f.location;
   if (l.includes("/_vendor/")) return true;
+  // A copy bundled inside another package, like next/dist/compiled/*: its maintainers' to update.
+  if (/\/node_modules\/.+\/dist\/compiled\//.test(l)) return true;
   if (/\/lib\/node_modules\/(npm|corepack)\//.test(l)) return true;
   if (l.includes("/node_modules/")) return f.ecosystem !== "npm";
   if (l.includes("/site-packages/") || l.includes("/dist-packages/"))

@@ -3,13 +3,42 @@ import { plural } from "@/lib/utils";
 
 export interface FixLineInput {
   fix: FixKind;
+  ecosystem: string;
   packageName: string;
+  installedVersion: string;
   fixedVersion: string | null;
   newerTag: string | null;
   // How many advisories an image's update closes.
   flaws: number;
-  // Who pulls the package in, parent first; [] when the app depends on it directly.
+  // Who pulls the package in, parent first; [] when direct or unknown.
   via: string[];
+  // Named in the app's package.json; null when Deplo cannot tell.
+  direct: boolean | null;
+}
+
+// A new major version, or a new minor on 0.x: an override there can break whoever pulls it in.
+export function breakingBump(from: string, to: string | null): boolean {
+  const parse = (v: string) => v.replace(/^v/, "").split(".").map(Number);
+  if (!to) return false;
+  const [a, b] = [parse(from), parse(to)];
+  if (!Number.isInteger(a[0]) || !Number.isInteger(b[0])) return false;
+  return a[0] !== b[0] || (a[0] === 0 && a[1] !== b[1]);
+}
+
+function codeLine(u: FixLineInput): string {
+  const pkg = u.packageName;
+  const breaking = breakingBump(u.installedVersion, u.fixedVersion);
+  if (u.via.length)
+    return breaking
+      ? `Update ${u.via.at(-1)}: the fix for ${pkg} is a new major version, which an override could break`
+      : `Pulled in by ${u.via.join(" ← ")}: add an override for ${pkg} ${u.fixedVersion}`;
+  if (u.direct === false)
+    return breaking
+      ? `Pulled in by another package: the fix for ${pkg} is a new major version, so update the package that pulls it in`
+      : `Pulled in by another package: add an override for ${pkg} ${u.fixedVersion}`;
+  if (u.direct === null && u.ecosystem === "npm")
+    return `Update ${pkg} to ${u.fixedVersion}, or add an override if another package pulls it in`;
+  return `Update ${pkg} to ${u.fixedVersion} in your code`;
 }
 
 // What the team does to get the fix, in one line.
@@ -17,9 +46,7 @@ export function fixLine(u: FixLineInput): string {
   const flaws = plural(u.flaws, "known flaw", "known flaws");
   switch (u.fix) {
     case "code":
-      return u.via.length
-        ? `Pulled in by ${u.via.join(" ← ")}: add an override for ${u.packageName} ${u.fixedVersion}`
-        : `Update ${u.packageName} to ${u.fixedVersion} in your code`;
+      return codeLine(u);
     case "build_only":
       return "Only used to build the app: it never runs";
     case "update":

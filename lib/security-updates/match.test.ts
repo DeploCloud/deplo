@@ -57,8 +57,15 @@ const KERNEL = "pkg:deb/debian/linux-libc-dev@6.1.164-1?upstream=linux";
 let workloads: WorkloadImage[] = [];
 let packagesOf: Record<
   string,
-  { purl: string; location: string; buildOnly?: boolean; via?: string[] }[]
+  {
+    purl: string;
+    location: string;
+    buildOnly?: boolean;
+    via?: string[];
+    direct?: boolean;
+  }[]
 > = {};
+let capabilities: string[] = [];
 // What InventoryCandidate finds in a newer build, by the ref it is asked for.
 let candidateRefs: string[] = [];
 let candidatePurls: string[] = [];
@@ -76,9 +83,7 @@ const wl = (o: Partial<WorkloadImage>): WorkloadImage => ({
 });
 
 const fakeAgent = {
-  hello: async () => ({
-    capabilities: ["image-inventory", "image-inventory.candidate"],
-  }),
+  hello: async () => ({ capabilities }),
   listWorkloadImages: async () => ({ images: workloads }),
   inventoryImage: async (imageId: string) => ({
     status: InventoryStatus.INVENTORY_STATUS_OK,
@@ -94,7 +99,7 @@ const fakeAgent = {
       ...p,
       name: "",
       version: "",
-      type: "",
+      type: p.purl.startsWith("pkg:npm/") ? "npm" : "",
     })),
   }),
   inventoryCandidate: async (imageRef: string) => {
@@ -295,6 +300,7 @@ beforeEach(async () => {
     [PG_IMAGE]: [{ purl: OPENSSL, location: "/var/lib/dpkg/status" }],
   };
   osvDown = false;
+  capabilities = ["image-inventory", "image-inventory.candidate"];
   candidateRefs = [];
   candidatePurls = [];
   __setAgentConnectorForTest(async () => fakeAgent);
@@ -648,4 +654,65 @@ test("a package only the build uses is listed, never counted; an indirect one sa
     JSON.stringify(hookCalls()[0].body),
     /1 security update to apply/,
   );
+});
+
+test("a critical flaw that needs a particular setup is listed as Important and never alerts", async () => {
+  const original = RECORDS["GHSA-xvch-5gv4-984h"];
+  RECORDS["GHSA-xvch-5gv4-984h"] = {
+    ...(original as object),
+    severity: [
+      {
+        type: "CVSS_V4",
+        score:
+          "CVSS:4.0/AV:N/AC:H/AT:P/PR:N/UI:N/VC:H/VI:H/VA:L/SC:N/SI:N/SA:N",
+      },
+    ],
+  };
+  try {
+    workloads = [wl({ projectId: "prj_web" })];
+    await backfill();
+    await matchWorkloads("full", new Date("2026-10-25T10:05:00Z"));
+    const rows = await db.select().from(securityFindings);
+    assert.deepEqual(
+      rows.map((f) => `${f.packageName}:${f.level}:${f.fix}`),
+      ["minimist:high:code"],
+    );
+    await settle();
+    assert.equal(hookCalls().length, 0, "an Important update never alerts");
+  } finally {
+    RECORDS["GHSA-xvch-5gv4-984h"] = original;
+  }
+});
+
+test("an agent that marks direct packages says which are the app's own; an older one says nothing", async () => {
+  packagesOf[WEB_IMAGE] = [
+    { purl: MINIMIST, location: "/app/node_modules/minimist/package.json" },
+    {
+      purl: AXIOS,
+      location: "/app/node_modules/axios/package.json",
+      direct: true,
+    },
+  ];
+  workloads = [wl({ projectId: "prj_web" })];
+  capabilities = ["image-inventory", "image-inventory.deps"];
+  await backfill();
+  await matchWorkloads("full", new Date("2026-10-25T10:05:00Z"));
+  const direct = async () =>
+    Object.fromEntries(
+      (await db.select().from(securityFindings)).map((f) => [
+        f.packageName,
+        f.direct,
+      ]),
+    );
+  assert.deepEqual(await direct(), { minimist: null, axios: null });
+
+  capabilities.push("image-inventory.direct");
+  await refreshServer(SERVER_1, new Date("2026-10-25T10:10:00Z"));
+  const [inv] = await db
+    .select()
+    .from(imageInventories)
+    .where(eq(imageInventories.imageId, WEB_IMAGE));
+  assert.equal(inv.directRead, true, "read once more by the newer agent");
+  await matchWorkloads("light", new Date("2026-10-25T10:15:00Z"));
+  assert.deepEqual(await direct(), { minimist: false, axios: true });
 });

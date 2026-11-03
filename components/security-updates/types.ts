@@ -6,6 +6,7 @@ export interface Update {
   level: Level;
   cvss: number | null;
   epss: number | null;
+  conditional: boolean;
   summary: string;
   ecosystem: string;
   packageName: string;
@@ -20,6 +21,7 @@ export interface Update {
   service: string;
   imageRef: string;
   via: string[];
+  direct: boolean | null;
   osvUrl: string;
 }
 

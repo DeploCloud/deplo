@@ -6096,7 +6096,7 @@ enum SecurityFix {
 }
 
 """
-How serious a security update is: `exploited` is on CISA's known-exploited list, `critical` and `high` come from its CVSS score or advisory.
+How serious a security update is: `exploited` is on CISA's known-exploited list, `critical` and `high` come from its CVSS score or advisory. A critical one that needs the package set up a certain way (`conditional`) is `high`.
 """
 enum SecurityLevel {
   critical
@@ -6126,11 +6126,21 @@ type SecurityUpdate {
   actionable: Boolean @deprecated(reason: "Use `counted`, which it always equals.")
 
   """
+  True when the flaw needs the package set up a certain way: its CVSS attack complexity is high. A conditional critical flaw is listed as `high`.
+  """
+  conditional: Boolean
+
+  """
   True when it is critical or already used in attacks, in the app's own dependencies or the software its image ships. Only these count in `count` and send alerts.
   """
   counted: Boolean
   cve: String
   cvss: Float
+
+  """
+  True when the app's package.json names the package, false when another package pulls it in. Null when Deplo cannot tell.
+  """
+  direct: Boolean
   ecosystem: String
 
   """
@@ -6162,7 +6172,7 @@ type SecurityUpdate {
   summary: String
 
   """
-  Who pulls the package in, from its parent up to the app's own dependency; empty for a direct one. An indirect one is fixed with an override.
+  Who pulls the package in, from its parent up to the app's own dependency; empty for a direct one or when Deplo cannot tell. An indirect one is fixed with an override.
   """
   via: [String!]
 
@@ -6178,6 +6188,11 @@ type SecurityUpdateGroup {
 
   """True when it counts in `count`: critical or attacked, and not ignored."""
   counted: Boolean
+
+  """
+  True when the app's package.json names the package; null for an image or when Deplo cannot tell.
+  """
+  direct: Boolean
   exploited: Boolean
   fix: SecurityFix
 
@@ -6197,7 +6212,7 @@ type SecurityUpdateGroup {
   service: String
 
   """
-  Who pulls the package in, parent first; empty for a direct dependency or an image.
+  Who pulls the package in, parent first; empty for a direct dependency, an image, or when Deplo cannot tell.
   """
   via: [String!]
 }

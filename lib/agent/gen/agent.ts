@@ -2708,8 +2708,10 @@ export interface ImagePackage {
   location: string;
   /** Reachable only from the app's devDependencies per its lockfile: built with, never run. */
   buildOnly: boolean;
-  /** Who pulls it in, from its parent up to the app's own dependency; empty for a direct one. */
+  /** Who pulls it in, from its parent up to the app's own dependency; empty when unknown. */
   via: string[];
+  /** Named in the app's package.json dependencies (`image-inventory.direct`). */
+  direct: boolean;
 }
 
 export interface InventoryImageResponse {
@@ -19848,7 +19850,7 @@ export const InventoryImageRequest: MessageFns<InventoryImageRequest> = {
 };
 
 function createBaseImagePackage(): ImagePackage {
-  return { purl: "", name: "", version: "", type: "", location: "", buildOnly: false, via: [] };
+  return { purl: "", name: "", version: "", type: "", location: "", buildOnly: false, via: [], direct: false };
 }
 
 export const ImagePackage: MessageFns<ImagePackage> = {
@@ -19873,6 +19875,9 @@ export const ImagePackage: MessageFns<ImagePackage> = {
     }
     for (const v of message.via) {
       writer.uint32(58).string(v!);
+    }
+    if (message.direct !== false) {
+      writer.uint32(64).bool(message.direct);
     }
     return writer;
   },
@@ -19946,6 +19951,14 @@ export const ImagePackage: MessageFns<ImagePackage> = {
             message.via.push(reader.string());
             continue;
           }
+          case 8: {
+            if (tag !== 64) {
+              break;
+            }
+
+            message.direct = reader.bool();
+            continue;
+          }
         }
         if ((tag & 7) === 4 || tag === 0) {
           break;
@@ -19971,6 +19984,7 @@ export const ImagePackage: MessageFns<ImagePackage> = {
         ? globalThis.Boolean(object.build_only)
         : false,
       via: globalThis.Array.isArray(object?.via) ? object.via.map((e: any) => globalThis.String(e)) : [],
+      direct: isSet(object.direct) ? globalThis.Boolean(object.direct) : false,
     };
   },
 
@@ -19997,6 +20011,9 @@ export const ImagePackage: MessageFns<ImagePackage> = {
     if (message.via?.length) {
       obj.via = message.via;
     }
+    if (message.direct !== false) {
+      obj.direct = message.direct;
+    }
     return obj;
   },
 
@@ -20012,6 +20029,7 @@ export const ImagePackage: MessageFns<ImagePackage> = {
     message.location = object.location ?? "";
     message.buildOnly = object.buildOnly ?? false;
     message.via = object.via?.map((e) => e) || [];
+    message.direct = object.direct ?? false;
     return message;
   },
 };

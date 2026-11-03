@@ -180,6 +180,31 @@ test("levelOf: known-exploited beats any score; medium and below are dropped", (
   assert.equal(levelOf(null, null, kev), null);
 });
 
+test("levelOf: a critical flaw that needs a particular setup is Important, unless attacked", () => {
+  const kev = new Set(["CVE-2021-44228"]);
+  assert.equal(levelOf("critical", "CVE-1", kev, true), "high");
+  assert.equal(levelOf("high", "CVE-1", kev, true), "high");
+  assert.equal(levelOf("critical", "CVE-2021-44228", kev, true), "exploited");
+});
+
+test("inScope: a copy bundled inside another package is its maintainers'", () => {
+  const f = {
+    fix: "code",
+    ecosystem: "npm",
+    packageName: "@babel/runtime",
+    location:
+      "/app/node_modules/next/dist/compiled/@babel/runtime/package.json",
+  };
+  assert.equal(inScope(f), false);
+  assert.equal(
+    inScope({
+      ...f,
+      location: "/app/node_modules/@babel/runtime/package.json",
+    }),
+    true,
+  );
+});
+
 test("inScope: only the app's own dependencies, or what an image ships", () => {
   const f = (o: Partial<Parameters<typeof inScope>[0]>) => ({
     fix: "code",

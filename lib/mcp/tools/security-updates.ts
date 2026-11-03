@@ -11,6 +11,7 @@ const GROUP_FIELDS = /* GraphQL */ `
   installedVersion
   fixedVersion
   via
+  direct
   level
   fix
   counted
@@ -22,6 +23,7 @@ const GROUP_FIELDS = /* GraphQL */ `
     level
     cvss
     epss
+    conditional
     summary
     ignoredUntil
     ignoreReason

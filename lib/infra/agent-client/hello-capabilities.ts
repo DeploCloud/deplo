@@ -69,6 +69,8 @@ export const IMAGE_INVENTORY_CAPABILITY = "image-inventory";
 export const IMAGE_CANDIDATE_CAPABILITY = "image-inventory.candidate";
 // The package list marks build-only packages and who pulls each in (lockfile graph).
 export const IMAGE_DEPS_CAPABILITY = "image-inventory.deps";
+// It also marks the packages the app's package.json names, and follows bun.lock's peers.
+export const IMAGE_DIRECT_CAPABILITY = "image-inventory.direct";
 
 export const DEPLOY_PULL_BASE_CAPABILITY = "deploy.pull-base";
 

@@ -23,7 +23,7 @@ import {
 
 const SecurityLevelEnum = builder.enumType("SecurityLevel", {
   description:
-    "How serious a security update is: `exploited` is on CISA's known-exploited list, `critical` and `high` come from its CVSS score or advisory.",
+    "How serious a security update is: `exploited` is on CISA's known-exploited list, `critical` and `high` come from its CVSS score or advisory. A critical one that needs the package set up a certain way (`conditional`) is `high`.",
   values: ["exploited", "critical", "high"] as const,
 });
 
@@ -56,6 +56,10 @@ const SecurityUpdateRef = builder
       cve: t.exposeString("cve", { nullable: true }),
       level: t.field({ type: SecurityLevelEnum, resolve: (u) => u.level }),
       cvss: t.exposeFloat("cvss", { nullable: true }),
+      conditional: t.exposeBoolean("conditional", {
+        description:
+          "True when the flaw needs the package set up a certain way: its CVSS attack complexity is high. A conditional critical flaw is listed as `high`.",
+      }),
       summary: t.exposeString("summary"),
       ecosystem: t.exposeString("ecosystem"),
       packageName: t.exposeString("packageName"),
@@ -91,7 +95,12 @@ const SecurityUpdateRef = builder
       }),
       via: t.exposeStringList("via", {
         description:
-          "Who pulls the package in, from its parent up to the app's own dependency; empty for a direct one. An indirect one is fixed with an override.",
+          "Who pulls the package in, from its parent up to the app's own dependency; empty for a direct one or when Deplo cannot tell. An indirect one is fixed with an override.",
+      }),
+      direct: t.exposeBoolean("direct", {
+        nullable: true,
+        description:
+          "True when the app's package.json names the package, false when another package pulls it in. Null when Deplo cannot tell.",
       }),
       osvUrl: t.exposeString("osvUrl"),
     }),
@@ -120,8 +129,14 @@ const SecurityUpdateGroupRef = builder
       }),
       via: t.stringList({
         description:
-          "Who pulls the package in, parent first; empty for a direct dependency or an image.",
+          "Who pulls the package in, parent first; empty for a direct dependency, an image, or when Deplo cannot tell.",
         resolve: (g) => (g.image ? [] : g.items[0].via),
+      }),
+      direct: t.boolean({
+        nullable: true,
+        description:
+          "True when the app's package.json names the package; null for an image or when Deplo cannot tell.",
+        resolve: (g) => (g.image ? null : g.items[0].direct),
       }),
       fixedVersion: t.exposeString("fixedVersion", {
         nullable: true,

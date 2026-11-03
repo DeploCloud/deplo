@@ -31,6 +31,7 @@ import type { AgentConnection } from "../infra/agent-client/connection";
 import {
   IMAGE_CANDIDATE_CAPABILITY,
   IMAGE_DEPS_CAPABILITY,
+  IMAGE_DIRECT_CAPABILITY,
   IMAGE_INVENTORY_CAPABILITY,
 } from "../infra/agent-client/hello-capabilities";
 import { builtByDeplo } from "./fix-kind";
@@ -180,12 +181,22 @@ async function upsertWorkloads(
   });
 }
 
+// What the server agent marks in a package list, from its Hello capabilities.
+interface DepMarks {
+  deps: boolean;
+  direct: boolean;
+}
+
 // Images on this server with no usable package list yet: never read, or a failure worth retrying.
 async function imagesToInventory(
   serverId: string,
   now: Date,
-  withDeps: boolean,
+  marks: DepMarks,
 ): Promise<string[]> {
+  const unmarked = [
+    marks.deps ? eq(imageInventories.depsRead, false) : undefined,
+    marks.direct ? eq(imageInventories.directRead, false) : undefined,
+  ].filter((c) => c !== undefined);
   const retryBefore = new Date(now.getTime() - RETRY_FAILED_MS).toISOString();
   // Newest first: the image a deploy just started is the one someone is waiting on.
   const rows = await getDb()
@@ -204,11 +215,11 @@ async function imagesToInventory(
             ne(imageInventories.status, "ok"),
             lt(imageInventories.scannedAt, retryBefore),
           ),
-          // An app image read before the agent knew build-only packages is read once more.
-          withDeps
+          // An app image read before the agent marked what it marks now is read once more.
+          unmarked.length
             ? and(
                 eq(imageInventories.status, "ok"),
-                eq(imageInventories.depsRead, false),
+                or(...unmarked),
                 exists(
                   getDb()
                     .select({ one: sql`1` })
@@ -238,7 +249,7 @@ async function storeInventory(
   imageId: string,
   resp: Awaited<ReturnType<AgentConnection["inventoryImage"]>>,
   now: string,
-  depsRead: boolean,
+  marks: DepMarks,
 ): Promise<void> {
   const status = STATUS_TEXT[resp.status] ?? "failed";
   const pkgs = new Map<string, typeof imageInventoryPackages.$inferInsert>();
@@ -252,6 +263,7 @@ async function storeInventory(
       version: p.version,
       buildOnly: p.buildOnly ?? false,
       via: (p.via ?? []).join("\t"),
+      direct: p.direct ?? false,
     });
   }
   await getDb().transaction(async (tx) => {
@@ -267,7 +279,8 @@ async function storeInventory(
       workingDir: resp.workingDir,
       scannerVersion: resp.scannerVersion,
       scannedAt: now,
-      depsRead,
+      depsRead: marks.deps,
+      directRead: marks.direct,
     });
     const rows = [...pkgs.values()];
     for (let i = 0; i < rows.length; i += 500)
@@ -310,20 +323,23 @@ export async function refreshServer(
       stamp,
     );
 
-    const withDeps = hello.capabilities.includes(IMAGE_DEPS_CAPABILITY);
+    const marks = {
+      deps: hello.capabilities.includes(IMAGE_DEPS_CAPABILITY),
+      direct: hello.capabilities.includes(IMAGE_DIRECT_CAPABILITY),
+    };
     let inventoried = 0;
-    for (const imageId of await imagesToInventory(serverId, now, withDeps)) {
+    for (const imageId of await imagesToInventory(serverId, now, marks)) {
       if (!(await keepGoing())) break;
       const resp = await conn.inventoryImage(imageId);
       if (resp.status === InventoryStatus.INVENTORY_STATUS_BUSY) break;
-      await storeInventory(imageId, resp, new Date().toISOString(), withDeps);
+      await storeInventory(imageId, resp, new Date().toISOString(), marks);
       inventoried++;
     }
     if (
       hello.capabilities.includes(IMAGE_CANDIDATE_CAPABILITY) &&
       (await keepGoing())
     )
-      await readOneCandidate(serverId, conn, now, withDeps);
+      await readOneCandidate(serverId, conn, now, marks);
     return { reached: true, inventoried };
   } catch (e) {
     console.warn(
@@ -358,7 +374,7 @@ async function readOneCandidate(
   serverId: string,
   conn: AgentConnection,
   now: Date,
-  withDeps: boolean,
+  marks: DepMarks,
 ): Promise<void> {
   const db = getDb();
   const retryBefore = now.getTime() - RETRY_FAILED_MS;
@@ -405,7 +421,7 @@ async function readOneCandidate(
   const stamp = new Date().toISOString();
   const ok =
     result.status === InventoryStatus.INVENTORY_STATUS_OK && !!resp.imageId;
-  if (ok) await storeInventory(resp.imageId, result, stamp, withDeps);
+  if (ok) await storeInventory(resp.imageId, result, stamp, marks);
   await db
     .update(workloadImages)
     .set({
