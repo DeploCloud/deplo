@@ -16,7 +16,12 @@ const emit = () => listeners.forEach((l) => l());
 export function startPwa(): void {
   if (started || typeof window === "undefined") return;
   started = true;
-  if ("serviceWorker" in navigator && window.isSecureContext)
+  // Never in development: a worker left on localhost outlives the dev server.
+  if (
+    process.env.NODE_ENV === "production" &&
+    "serviceWorker" in navigator &&
+    window.isSecureContext
+  )
     navigator.serviceWorker.register("/sw.js").catch(() => {});
   window.addEventListener("beforeinstallprompt", (e) => {
     e.preventDefault();
