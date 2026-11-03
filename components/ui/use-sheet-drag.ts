@@ -88,6 +88,14 @@ export function swallowGhostClick() {
   );
 }
 
+// Radix blocks the page under a menu with pointer-events:none, which a card's pointer-events-auto
+// actions punch through: a press there only closes the menu, it never opens a second one.
+export function blockPressOutside(e: Event) {
+  const target = e.target as Element | null;
+  if (!target?.closest?.("[data-radix-popper-content-wrapper]"))
+    e.preventDefault();
+}
+
 function settle(el: HTMLElement) {
   el.style.transition = "transform 200ms ease-out";
   el.style.transform = "";

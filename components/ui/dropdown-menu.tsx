@@ -6,6 +6,7 @@ import { Check, ChevronRight, Circle } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { SheetHandle } from "@/components/ui/sheet-chrome";
 import {
+  blockPressOutside,
   swallowGhostClick,
   useSheetDrag,
 } from "@/components/ui/use-sheet-drag";
@@ -100,6 +101,7 @@ const DropdownMenuContent = React.forwardRef<
           }}
           {...props}
         >
+          <PressOutsideGuard />
           <SheetHandle />
           {children}
         </DropdownMenuPrimitive.Content>
@@ -108,6 +110,16 @@ const DropdownMenuContent = React.forwardRef<
   },
 );
 DropdownMenuContent.displayName = DropdownMenuPrimitive.Content.displayName;
+
+// Mounted only while a menu is open, so nothing else ever pays for the listener.
+function PressOutsideGuard() {
+  React.useEffect(() => {
+    window.addEventListener("pointerdown", blockPressOutside, true);
+    return () =>
+      window.removeEventListener("pointerdown", blockPressOutside, true);
+  }, []);
+  return null;
+}
 
 const DropdownMenuItem = React.forwardRef<
   React.ElementRef<typeof DropdownMenuPrimitive.Item>,

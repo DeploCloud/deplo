@@ -4,6 +4,7 @@ import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 
 import {
+  blockPressOutside,
   bodyDragStarts,
   dragCloses,
   keyboardInset,
@@ -98,6 +99,19 @@ describe("mobile sheets", () => {
       g.document = saved.document;
       g.window = saved.window;
     }
+  });
+
+  test("with a menu open, a press elsewhere cannot open a second one", () => {
+    const press = (insideMenu: boolean) => {
+      const e = new Event("pointerdown", { cancelable: true });
+      Object.defineProperty(e, "target", {
+        value: { closest: () => (insideMenu ? {} : null) },
+      });
+      blockPressOutside(e);
+      return e.defaultPrevented;
+    };
+    assert.equal(press(false), true, "another kebab under the open menu");
+    assert.equal(press(true), false, "an item of the open menu");
   });
 
   test("the sheet rides exactly as high as the keyboard reaches", () => {
