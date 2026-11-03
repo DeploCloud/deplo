@@ -168,10 +168,11 @@ be the best thing in the release (`v0.1.4` shipped arm64 images that way).
 **Credit goes inline only when the commit came through a pull request** (`, by @handle in [#57]`);
 every other author still lands in Contributors, and the owner and the bots never do.
 
-**The note on top is for an upgrade step or a bad bug**, in one short paragraph: what broke or what
-the operator has to do, and the way out. `v0.1.3` (an install that died without a domain) and
-`v0.4.0` (`--public-setup` removed) are the shape. It is not a feature tour, and a release that
-needs nothing from the reader gets no note at all.
+**The note on top covers every change a user notices**, cumulative since the last **stable**: one
+bold-led paragraph each, written for someone arriving from that stable, so a fix to something new in
+the same release folds into it. An upgrade step or a bad bug goes first, with ⚠️. Before publishing,
+walk every Features and Bug Fixes line and check the note covers it: `v0.8.0` first went out with
+only its last canaries' summary.
 
 ## Three things that are not this
 
