@@ -33,3 +33,15 @@ export function activeMobileTab(pathname: string): MobileTabId {
   if (MORE_SECTIONS.test(pathname)) return "more";
   return "home";
 }
+
+export type TabPlaces = Partial<Record<MobileTabId, string>>;
+
+/** Like a phone app: a tab reopens where you left it, and tapping the tab you are in goes to its root. */
+export function tabHref(
+  tab: MobileTab,
+  active: MobileTabId,
+  places: TabPlaces,
+): string | undefined {
+  if (!tab.href) return undefined;
+  return tab.id === active ? tab.href : (places[tab.id] ?? tab.href);
+}

@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import Link from "@/components/ui/link";
-import { useFlatPathname } from "@/lib/nav";
+import { useFlatPathname, useSearchParams, useTeamSlug } from "@/lib/nav";
 import { useRetapRefresh } from "./scroll-to-top";
 import { cn } from "@/lib/utils";
 import {
@@ -12,8 +12,38 @@ import {
 import {
   activeMobileTab,
   MOBILE_TABS,
+  tabHref,
   type MobileTabId,
+  type TabPlaces,
 } from "./nav-config/mobile-tabs";
+
+// Per team, so a tab never reopens on another team's page; sessionStorage outlives a reload.
+const PLACES_EVENT = "deplo:tab-places";
+const placesKey = (slug: string | null) => `deplo:tab-places:${slug ?? ""}`;
+
+function readPlaces(slug: string | null): string {
+  try {
+    return sessionStorage.getItem(placesKey(slug)) ?? "{}";
+  } catch {
+    return "{}";
+  }
+}
+
+function subscribePlaces(onChange: () => void) {
+  window.addEventListener(PLACES_EVENT, onChange);
+  return () => window.removeEventListener(PLACES_EVENT, onChange);
+}
+
+function rememberPlace(slug: string | null, tab: MobileTabId, place: string) {
+  if (!MOBILE_TABS.some((t) => t.id === tab && t.href)) return;
+  try {
+    const places = JSON.parse(readPlaces(slug)) as TabPlaces;
+    if (places[tab] === place) return;
+    places[tab] = place;
+    sessionStorage.setItem(placesKey(slug), JSON.stringify(places));
+    window.dispatchEvent(new Event(PLACES_EVENT));
+  } catch {}
+}
 
 // Below md the sidebar gives way to this floating pill; it steps aside while the keyboard is up.
 export function MobileTabBar({
@@ -33,7 +63,27 @@ export function MobileTabBar({
     setTappedOn(pathname);
     setTapped(null);
   }
-  const active = moreOpen ? "more" : (tapped ?? activeMobileTab(pathname));
+  const routeTab = activeMobileTab(pathname);
+  const active = moreOpen ? "more" : (tapped ?? routeTab);
+  const slug = useTeamSlug();
+  const query = useSearchParams().toString();
+  const place = query ? `${pathname}?${query}` : pathname;
+  React.useEffect(
+    () => rememberPlace(slug, routeTab, place),
+    [slug, routeTab, place],
+  );
+  const placesJson = React.useSyncExternalStore(
+    subscribePlaces,
+    () => readPlaces(slug),
+    () => "{}",
+  );
+  const places = React.useMemo((): TabPlaces => {
+    try {
+      return JSON.parse(placesJson);
+    } catch {
+      return {};
+    }
+  }, [placesJson]);
   const keyboard = useKeyboardOpen();
   const retap = useRetapRefresh();
   const navRef = React.useRef<HTMLElement | null>(null);
@@ -70,15 +120,18 @@ export function MobileTabBar({
             <span className="max-w-full truncate">{tab.label}</span>
           </>
         );
-        return tab.href ? (
+        const href = tabHref(tab, active, places);
+        return href ? (
           <Link
             key={tab.id}
-            href={tab.href}
+            href={href}
             className={className}
             aria-current={on ? "page" : undefined}
             data-active={on ? "true" : undefined}
             onClick={(e) => {
               onNavigate();
+              // Over the More panel, the tab of the page underneath only closes the panel.
+              if (moreOpen && tab.id === routeTab) return e.preventDefault();
               if (retap(e)) return;
               setTapped(tab.id);
             }}
