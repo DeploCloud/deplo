@@ -346,3 +346,25 @@ test("types: the four types split out of `member` survive the round trip", async
     );
   });
 });
+
+test("filters: a date that is not a date is refused by name, never sent to SQL", async () => {
+  await seedActivity(db, { id: "act_1", teamId: TEAM_A, createdAt: MAY });
+  await asUser1(async () => {
+    await assert.rejects(
+      () => listActivity(5, { from: "x" }),
+      /from is not a date/,
+    );
+    await assert.rejects(
+      () => listActivity(5, { to: "1" }),
+      /to is not a date/,
+    );
+    await assert.rejects(
+      () => listActivity(5, { cursor: { createdAt: "soon", seq: 1 } }),
+      /cursor is not a date/,
+    );
+    assert.equal(
+      (await listActivity(5, { from: "2026-05-01", to: AUG })).length,
+      1,
+    );
+  });
+});

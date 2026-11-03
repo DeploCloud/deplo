@@ -49,7 +49,28 @@ export async function listActivity(
   limit = 20,
   filter: ActivityFilter = {},
 ): Promise<Activity[]> {
-  return queryActivity(Math.min(Math.max(1, limit), 200), filter);
+  const cursor = filter.cursor && {
+    ...filter.cursor,
+    createdAt: isoDate(filter.cursor.createdAt, "The page cursor"),
+  };
+  return queryActivity(Math.min(Math.max(1, limit), 200), {
+    ...filter,
+    from: filter.from && isoDate(filter.from, "from"),
+    to: filter.to && isoDate(filter.to, "to"),
+    cursor,
+  });
+}
+
+const ISO_DATE =
+  /^\d{4}-\d{2}-\d{2}([T ]\d{2}:\d{2}(:\d{2}(\.\d+)?)?(Z|[+-]\d{2}(:?\d{2})?)?)?$/;
+
+// An API caller's date reaches SQL as a timestamptz: check it here so a typo is an answer, not a 500.
+function isoDate(value: string, what: string): string {
+  if (!ISO_DATE.test(value) || Number.isNaN(Date.parse(value)))
+    throw new Error(
+      `${what} is not a date. Use ISO 8601, for example 2026-11-03T10:00:00Z.`,
+    );
+  return value;
 }
 
 function activityFilterWhere(
