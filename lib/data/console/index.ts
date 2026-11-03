@@ -413,12 +413,17 @@ export async function resolveAttachTarget(
   | { ok: true; instance: ConsoleInstance; server: Server | undefined }
   | {
       ok: false;
-      reason: "not-found" | "no-instance" | "stopped" | "unreachable";
+      reason:
+        "not-found" | "no-instance" | "stopped" | "unreachable" | "forbidden";
     }
 > {
-  const { teamId } = await requireAppCapability(appId, "open_app_console");
+  const teamId = await requireActiveTeamId();
   const p = await loadTeamApp(appId, teamId);
-  if (!p || !p.consoleEnabled) return { ok: false, reason: "not-found" };
+  if (!p) return { ok: false, reason: "not-found" };
+  if (!(await hasAppCapability(appId, "open_app_console")))
+    return { ok: false, reason: "forbidden" };
+  await requireAppCapability(appId, "open_app_console");
+  if (!p.consoleEnabled) return { ok: false, reason: "not-found" };
 
   let instances: ConsoleInstance[];
   try {

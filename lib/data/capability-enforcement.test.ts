@@ -242,6 +242,22 @@ test("the console switch gates attach, not only the sidebar chip", async () => {
   });
 });
 
+test("the console attach refuses with an answer, never an exception", async () => {
+  await as(OWNER, () => setConsoleEnabled(APP, true));
+  assert.deepEqual(await as(CREATOR, () => resolveAttachTarget(APP)), {
+    ok: false,
+    reason: "forbidden",
+  });
+  const otherTeam = runWithIdentity(
+    { userId: "u_other_team", teamId: TEAM_B },
+    () => resolveAttachTarget(APP),
+  );
+  assert.deepEqual(await otherTeam, {
+    ok: false,
+    reason: "not-found",
+  });
+});
+
 test("view_logs gates the live container log stream", async () => {
   const denied = await as(NO_READS, () => resolveLogsTarget(APP));
   assert.deepEqual(denied, { ok: false, reason: "forbidden" });

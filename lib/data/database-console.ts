@@ -214,12 +214,15 @@ export async function resolveDatabaseAttachTarget(
   | { ok: true; instance: ConsoleInstance; serverId: string }
   | {
       ok: false;
-      reason: "not-found" | "no-instance" | "stopped" | "unreachable";
+      reason:
+        "not-found" | "no-instance" | "stopped" | "unreachable" | "forbidden";
     }
 > {
-  const { teamId } = await requireCapability("open_database_console");
+  const teamId = await requireActiveTeamId();
   const db = await loadDatabaseForTeam(id, teamId);
   if (!db) return { ok: false, reason: "not-found" };
+  if (!(await hasCapability("open_database_console")))
+    return { ok: false, reason: "forbidden" };
 
   let instances: ConsoleInstance[];
   try {
