@@ -44,14 +44,7 @@ export function deploMarkDataUri(): string {
   return `data:image/svg+xml,${encodeURIComponent(svg)}`;
 }
 
-export function DeploLogo({
-  className,
-  showWordmark = true,
-}: {
-  className?: string;
-  showWordmark?: boolean;
-}) {
-  if (!showWordmark) return <DeploMark className={className} />;
+export function DeploLogo({ className }: { className?: string }) {
   return (
     <svg
       viewBox={FULL_VIEWBOX}

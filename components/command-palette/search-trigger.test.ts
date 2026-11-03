@@ -5,16 +5,19 @@ import { renderToStaticMarkup } from "react-dom/server";
 
 import { SearchTrigger } from "./palette-kbd";
 
-test("the rail's search is a 40px icon cell, never the full box squeezed", () => {
+const buttonClass = (html: string) =>
+  html.match(/^<button[^>]*class="([^"]+)"/)?.[1];
+
+test("the rail's search is the same 40px-tall box, only its label fades", () => {
   const rail = renderToStaticMarkup(
     createElement(SearchTrigger, { compact: true }),
   );
-  assert.match(rail, /\bw-10\b/);
-  assert.match(rail, /\bh-10\b/, "square: as tall as it is wide");
-  assert.doesNotMatch(rail, /pl-8|pr-7/, "no padding wider than the rail");
-  assert.doesNotMatch(rail, />Search</, "the label stays out");
-
   const open = renderToStaticMarkup(createElement(SearchTrigger));
-  assert.match(open, /\bw-full\b/);
-  assert.match(open, />Search</);
+  assert.equal(buttonClass(rail), buttonClass(open), "one box, so it morphs");
+  assert.match(
+    buttonClass(open) ?? "",
+    /\bh-10\b.*\bw-full\b|\bw-full\b.*\bh-10\b/,
+  );
+  assert.match(rail, /class="[^"]*opacity-0[^"]*">Search</);
+  assert.doesNotMatch(open, /opacity-0/);
 });

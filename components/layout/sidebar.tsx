@@ -10,12 +10,11 @@ import {
   PanelLeftOpen,
   Settings,
 } from "lucide-react";
-import { DeploLogo } from "@/components/logo";
+import { DeploLogo, DeploMark } from "@/components/logo";
 import { sidebarMenuFor } from "@/components/layout/nav-config/active-route";
-import { SidebarNav, SubmenuChevron } from "./sidebar-nav";
+import { NavLabel, SidebarNav, SubmenuChevron } from "./sidebar-nav";
 import { SidebarTips } from "./sidebar-tips";
 import { RAIL_WIDTH, useSidebar } from "./sidebar-state";
-import { Button } from "@/components/ui/button";
 import {
   PaletteKbd,
   SearchTrigger,
@@ -28,24 +27,10 @@ import {
 import { cn } from "@/lib/utils";
 import { docsUrl } from "@/lib/docs";
 
+const FADE = "transition-opacity duration-200";
+
 const FOOTER_LINK =
   "group flex h-10 w-full cursor-pointer items-center gap-2.5 overflow-hidden rounded-md px-3 text-left text-sm whitespace-nowrap text-muted-foreground transition-colors hover:bg-surface hover:text-foreground focus-visible:bg-surface";
-
-function RailLabel({
-  hidden,
-  children,
-}: {
-  hidden: boolean;
-  children: React.ReactNode;
-}) {
-  return (
-    <span
-      className={cn("transition-opacity duration-100", hidden && "opacity-0")}
-    >
-      {children}
-    </span>
-  );
-}
 
 export function Sidebar({
   capabilities = [],
@@ -63,64 +48,56 @@ export function Sidebar({
     width,
     peek,
     dragging,
+    following,
     toggle,
     startResize,
     resetWidth,
   } = useSidebar();
   const rail = mode === "rail";
-  const hidden = mode === "hidden";
   const tipDelay = rail ? 0 : 400;
   return (
     <aside
-      data-collapsed={mode !== "expanded"}
-      inert={hidden}
-      style={{ width: hidden ? 0 : rail ? RAIL_WIDTH : width - peek }}
+      style={{ width: rail ? RAIL_WIDTH : width - peek }}
       className={cn(
         "sticky top-0 hidden h-screen shrink-0 overflow-hidden border-r border-sidebar-border bg-sidebar md:block",
-        hydrated && !dragging && "transition-[width] duration-200 ease-out",
-        hidden && "border-r-0",
+        hydrated && !following && "transition-[width] duration-200 ease-out",
       )}
     >
       <div
-        style={{
-          width: rail ? RAIL_WIDTH : width,
-          transform:
-            hidden || peek
-              ? `translateX(-${hidden ? width : peek}px)`
-              : undefined,
-        }}
+        style={{ width: rail ? RAIL_WIDTH : width }}
         className={cn(
           "flex h-full flex-col",
-          hydrated &&
-            !dragging &&
-            "transition-[transform,width] duration-200 ease-out",
+          hydrated && !following && "transition-[width] duration-200 ease-out",
         )}
       >
-        <div
-          className={cn(
-            "flex h-14 items-center pr-2",
-            rail ? "pl-[18px]" : "pl-5",
-          )}
-        >
-          <Link href="/" className="cursor-pointer" aria-label="Deplo home">
-            <DeploLogo showWordmark={!rail} />
+        <div className="flex h-14 items-center pr-2 pl-5">
+          <Link
+            href="/"
+            className="relative cursor-pointer"
+            aria-label="Deplo home"
+          >
+            <DeploLogo className={cn(FADE, rail && "opacity-0")} />
+            {/* Centred in the rail, 2px left of the wordmark's edge. */}
+            <DeploMark
+              className={cn(
+                "absolute top-1/2 -left-0.5 -translate-y-1/2",
+                FADE,
+                !rail && "opacity-0",
+              )}
+            />
           </Link>
         </div>
 
         <div className="px-2 pb-1">
-          {rail ? (
-            <Tooltip delayDuration={tipDelay}>
-              <TooltipTrigger asChild>
-                <SearchTrigger compact />
-              </TooltipTrigger>
-              <TooltipContent side="right">
-                Search
-                <PaletteKbd className="ml-1.5" />
-              </TooltipContent>
-            </Tooltip>
-          ) : (
-            <SearchTrigger />
-          )}
+          <Tooltip delayDuration={tipDelay}>
+            <TooltipTrigger asChild>
+              <SearchTrigger compact={rail} />
+            </TooltipTrigger>
+            <TooltipContent side="right">
+              Search
+              <PaletteKbd className="ml-1.5" />
+            </TooltipContent>
+          </Tooltip>
         </div>
 
         <div className="flex-1 overflow-x-hidden overflow-y-auto">
@@ -131,13 +108,25 @@ export function Sidebar({
           />
         </div>
 
-        {menu === "main" && !rail && (
-          <div className="px-2 pb-2">
-            <SidebarTips
-              hasSecondFactor={hasSecondFactor}
-              capabilities={capabilities}
-              isAdmin={isAdmin}
-            />
+        {menu === "main" && (
+          <div
+            inert={rail}
+            className={cn(
+              "grid px-2 transition-[grid-template-rows,opacity] duration-200 ease-out",
+              rail ? "grid-rows-[0fr] opacity-0" : "grid-rows-[1fr]",
+            )}
+          >
+            {/* Expanded width, so the card never rewraps while it folds. */}
+            <div
+              className="min-h-0 overflow-hidden pb-2"
+              style={{ width: width - 16 }}
+            >
+              <SidebarTips
+                hasSecondFactor={hasSecondFactor}
+                capabilities={capabilities}
+                isAdmin={isAdmin}
+              />
+            </div>
           </div>
         )}
 
@@ -153,8 +142,8 @@ export function Sidebar({
                     className={FOOTER_LINK}
                   >
                     <Settings className="size-4 shrink-0 group-hover:text-foreground" />
-                    <RailLabel hidden={rail}>Settings</RailLabel>
-                    {!rail && <SubmenuChevron />}
+                    <NavLabel hidden={rail}>Settings</NavLabel>
+                    <SubmenuChevron hidden={rail} />
                   </Link>
                 </TooltipTrigger>
                 <TooltipContent side="right">Settings</TooltipContent>
@@ -169,7 +158,7 @@ export function Sidebar({
                     className={FOOTER_LINK}
                   >
                     <BookOpen className="size-4 shrink-0 group-hover:text-foreground" />
-                    <RailLabel hidden={rail}>Documentation</RailLabel>
+                    <NavLabel hidden={rail}>Documentation</NavLabel>
                   </a>
                 </TooltipTrigger>
                 <TooltipContent side="right">Documentation</TooltipContent>
@@ -189,12 +178,16 @@ export function Sidebar({
                 ) : (
                   <PanelLeftClose className="size-4 shrink-0 group-hover:text-foreground" />
                 )}
-                <RailLabel hidden={rail}>Collapse</RailLabel>
-                {!rail && (
-                  <kbd className="ml-auto rounded border border-border bg-muted px-1 text-[10px]">
-                    [
-                  </kbd>
-                )}
+                <NavLabel hidden={rail}>Collapse</NavLabel>
+                <kbd
+                  className={cn(
+                    "ml-auto rounded border border-border bg-muted px-1 text-[10px]",
+                    FADE,
+                    rail && "opacity-0",
+                  )}
+                >
+                  [
+                </kbd>
               </button>
             </TooltipTrigger>
             <TooltipContent side="right">
@@ -207,47 +200,18 @@ export function Sidebar({
         </div>
       </div>
 
-      {!rail && (
-        <div
-          onPointerDown={startResize}
-          onDoubleClick={resetWidth}
-          title="Double-click to reset the width"
-          role="separator"
-          aria-orientation="vertical"
-          aria-label="Resize sidebar"
-          className={cn(
-            "absolute top-0 right-0 z-20 h-full w-1.5 cursor-col-resize touch-none transition-colors hover:bg-border",
-            dragging && "bg-ring",
-          )}
-        />
-      )}
+      <div
+        onPointerDown={startResize}
+        onDoubleClick={resetWidth}
+        title="Double-click to reset the width"
+        role="separator"
+        aria-orientation="vertical"
+        aria-label="Resize sidebar"
+        className={cn(
+          "absolute top-0 right-0 z-20 h-full w-1.5 cursor-col-resize touch-none transition-colors hover:bg-border",
+          dragging && "bg-ring",
+        )}
+      />
     </aside>
-  );
-}
-
-export function SidebarExpandButton() {
-  const { mode, toggle } = useSidebar();
-  if (mode !== "hidden") return null;
-
-  return (
-    <Tooltip delayDuration={400}>
-      <TooltipTrigger asChild>
-        <Button
-          variant="ghost"
-          size="icon-sm"
-          onClick={toggle}
-          aria-label="Expand sidebar"
-          className="hidden shrink-0 text-muted-foreground md:flex"
-        >
-          <PanelLeftOpen className="size-4" />
-        </Button>
-      </TooltipTrigger>
-      <TooltipContent side="bottom">
-        Expand sidebar
-        <kbd className="ml-1.5 rounded border border-border bg-muted px-1 text-[10px]">
-          [
-        </kbd>
-      </TooltipContent>
-    </Tooltip>
   );
 }

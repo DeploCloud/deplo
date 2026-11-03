@@ -125,7 +125,7 @@ export function SidebarNav({
           {section.items.map((item) => {
             const active = isActive(item.href, item.exact);
             const Icon = item.icon;
-            const showIcon = !section.iconless || collapsed;
+            const iconless = !!section.iconless && !collapsed;
             if (item.disabledReason) {
               return (
                 <Tooltip key={item.href} delayDuration={collapsed ? 0 : 400}>
@@ -137,7 +137,9 @@ export function SidebarNav({
                         "group relative z-10 flex h-10 cursor-default items-center gap-2.5 overflow-hidden rounded-md px-3 text-sm whitespace-nowrap text-muted-foreground/50",
                       )}
                     >
-                      {showIcon && <Icon className="size-4 shrink-0" />}
+                      <IconSlot hidden={iconless}>
+                        <Icon className="size-4 shrink-0" />
+                      </IconSlot>
                       <NavLabel hidden={collapsed}>{item.label}</NavLabel>
                     </span>
                   </TooltipTrigger>
@@ -174,10 +176,12 @@ export function SidebarNav({
                         : "text-muted-foreground hover:bg-surface hover:text-foreground focus-visible:bg-surface",
                     )}
                   >
-                    {showIcon && <NavIcon item={item} active={active} />}
+                    <IconSlot hidden={iconless}>
+                      <NavIcon item={item} active={active} />
+                    </IconSlot>
                     <NavLabel hidden={collapsed}>{item.label}</NavLabel>
-                    {!collapsed && item.submenu && <SubmenuChevron />}
-                    {!showIcon && <NavPending />}
+                    {item.submenu && <SubmenuChevron hidden={collapsed} />}
+                    {iconless && <NavPending />}
                     {updateTip &&
                       (collapsed ? (
                         <span className="absolute top-1 right-1 size-2 rounded-full bg-[var(--success)]" />
@@ -214,7 +218,7 @@ export function SidebarNav({
   );
 }
 
-function NavLabel({
+export function NavLabel({
   hidden,
   children,
 }: {
@@ -223,16 +227,41 @@ function NavLabel({
 }) {
   return (
     <span
-      className={cn("transition-opacity duration-100", hidden && "opacity-0")}
+      className={cn("transition-opacity duration-200", hidden && "opacity-0")}
     >
       {children}
     </span>
   );
 }
 
-export function SubmenuChevron() {
+// An iconless menu grows its icons in the rail; -mr-2.5 cancels the gap.
+function IconSlot({
+  hidden,
+  children,
+}: {
+  hidden: boolean;
+  children: React.ReactNode;
+}) {
   return (
-    <ChevronRight className="ml-auto size-4 shrink-0 text-muted-foreground group-hover:text-foreground" />
+    <span
+      className={cn(
+        "flex shrink-0 overflow-hidden transition-[width,margin,opacity] duration-200 ease-out",
+        hidden ? "-mr-2.5 w-0 opacity-0" : "w-4",
+      )}
+    >
+      {children}
+    </span>
+  );
+}
+
+export function SubmenuChevron({ hidden = false }: { hidden?: boolean }) {
+  return (
+    <ChevronRight
+      className={cn(
+        "ml-auto size-4 shrink-0 text-muted-foreground transition-opacity duration-200 group-hover:text-foreground",
+        hidden && "opacity-0",
+      )}
+    />
   );
 }
 

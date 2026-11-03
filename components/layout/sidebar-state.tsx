@@ -7,16 +7,17 @@ const WIDTH_KEY = "deplo:sidebar-width";
 const MAX_WIDTH = 420;
 const DEFAULT_WIDTH = 240;
 
-const CLOSE_AT = DEFAULT_WIDTH * 0.66;
-
 export const RAIL_WIDTH = 56;
+const RAIL_AT = (RAIL_WIDTH + DEFAULT_WIDTH) / 2;
+const SNAP_MS = 200;
 
-export type SidebarMode = "expanded" | "rail" | "hidden";
+export type SidebarMode = "expanded" | "rail";
 
-// "1" is what the old collapse switch stored: the sidebar was fully hidden.
+// "hidden" and "1" are the fully hidden sidebar the rail replaced.
 export function parseMode(raw: string | null): SidebarMode {
-  if (raw === "rail") return "rail";
-  return raw === "hidden" || raw === "1" ? "hidden" : "expanded";
+  return raw === "rail" || raw === "hidden" || raw === "1"
+    ? "rail"
+    : "expanded";
 }
 
 export const nextMode = (mode: SidebarMode): SidebarMode =>
@@ -25,11 +26,20 @@ export const nextMode = (mode: SidebarMode): SidebarMode =>
 const clampWidth = (n: number) =>
   Math.min(MAX_WIDTH, Math.max(DEFAULT_WIDTH, n));
 
-export function resizeStep(clientX: number) {
+export function resizeStep(clientX: number): {
+  mode: SidebarMode;
+  width: number;
+  peek: number;
+} {
   if (clientX >= DEFAULT_WIDTH)
-    return { width: clampWidth(clientX), peek: 0, close: false };
-  const peek = DEFAULT_WIDTH - Math.max(0, clientX);
-  return { width: DEFAULT_WIDTH, peek, close: peek >= CLOSE_AT };
+    return { mode: "expanded", width: clampWidth(clientX), peek: 0 };
+  if (clientX >= RAIL_AT)
+    return {
+      mode: "expanded",
+      width: DEFAULT_WIDTH,
+      peek: DEFAULT_WIDTH - clientX,
+    };
+  return { mode: "rail", width: DEFAULT_WIDTH, peek: 0 };
 }
 
 type SidebarState = {
@@ -37,6 +47,8 @@ type SidebarState = {
   hydrated: boolean;
   width: number;
   dragging: boolean;
+  // The width tracks the pointer with no transition; a snap animates.
+  following: boolean;
   peek: number;
   toggle: () => void;
   startResize: (e: React.PointerEvent) => void;
@@ -51,7 +63,11 @@ export function SidebarProvider({ children }: { children: React.ReactNode }) {
     hydrated: false,
     width: DEFAULT_WIDTH,
   });
-  const [drag, setDrag] = React.useState({ active: false, peek: 0 });
+  const [drag, setDrag] = React.useState({
+    active: false,
+    peek: 0,
+    snapping: false,
+  });
   const widthRef = React.useRef(DEFAULT_WIDTH);
 
   React.useEffect(() => {
@@ -91,38 +107,52 @@ export function SidebarProvider({ children }: { children: React.ReactNode }) {
 
   const endResize = React.useRef<(() => void) | null>(null);
 
-  const startResize = React.useCallback((e: React.PointerEvent) => {
-    e.preventDefault();
-    endResize.current?.();
-    setDrag({ active: true, peek: 0 });
+  const startResize = React.useCallback(
+    (e: React.PointerEvent) => {
+      e.preventDefault();
+      endResize.current?.();
+      let mode = state.mode;
+      let snapTimer: ReturnType<typeof setTimeout> | undefined;
+      setDrag({ active: true, peek: 0, snapping: false });
 
-    function onMove(ev: PointerEvent) {
-      const { width, peek, close } = resizeStep(ev.clientX);
-      widthRef.current = width;
-      setState((prev) => ({ ...prev, width }));
-      if (close) finish(true);
-      else setDrag({ active: true, peek });
-    }
-    function finish(close: boolean) {
-      setDrag({ active: false, peek: 0 });
-      window.removeEventListener("pointermove", onMove);
-      window.removeEventListener("pointerup", onUp);
-      window.removeEventListener("pointercancel", onUp);
-      if (endResize.current === onUp) endResize.current = null;
-      if (close) setState((prev) => ({ ...prev, mode: "hidden" }));
-      try {
-        window.localStorage.setItem(WIDTH_KEY, String(widthRef.current));
-        if (close) window.localStorage.setItem(COLLAPSE_KEY, "hidden");
-      } catch {}
-    }
-    function onUp() {
-      finish(false);
-    }
-    endResize.current = onUp;
-    window.addEventListener("pointermove", onMove);
-    window.addEventListener("pointerup", onUp);
-    window.addEventListener("pointercancel", onUp);
-  }, []);
+      function onMove(ev: PointerEvent) {
+        const step = resizeStep(ev.clientX);
+        widthRef.current = step.width;
+        const snapped = step.mode !== mode;
+        mode = step.mode;
+        setState((prev) => ({ ...prev, mode: step.mode, width: step.width }));
+        if (snapped) {
+          clearTimeout(snapTimer);
+          snapTimer = setTimeout(
+            () => setDrag((d) => ({ ...d, snapping: false })),
+            SNAP_MS,
+          );
+        }
+        setDrag((d) => ({
+          active: true,
+          peek: step.peek,
+          snapping: d.snapping || snapped,
+        }));
+      }
+      function onUp() {
+        clearTimeout(snapTimer);
+        setDrag({ active: false, peek: 0, snapping: false });
+        window.removeEventListener("pointermove", onMove);
+        window.removeEventListener("pointerup", onUp);
+        window.removeEventListener("pointercancel", onUp);
+        if (endResize.current === onUp) endResize.current = null;
+        try {
+          window.localStorage.setItem(WIDTH_KEY, String(widthRef.current));
+          window.localStorage.setItem(COLLAPSE_KEY, mode);
+        } catch {}
+      }
+      endResize.current = onUp;
+      window.addEventListener("pointermove", onMove);
+      window.addEventListener("pointerup", onUp);
+      window.addEventListener("pointercancel", onUp);
+    },
+    [state.mode],
+  );
 
   React.useEffect(() => () => endResize.current?.(), []);
 
@@ -142,6 +172,7 @@ export function SidebarProvider({ children }: { children: React.ReactNode }) {
     () => ({
       ...state,
       dragging: drag.active,
+      following: drag.active && state.mode === "expanded" && !drag.snapping,
       peek: drag.peek,
       toggle,
       startResize,

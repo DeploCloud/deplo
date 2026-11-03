@@ -6,7 +6,6 @@ import { Search, Settings } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import Link from "@/components/ui/link";
 import { DeploMark } from "@/components/logo";
-import { SidebarExpandButton } from "./sidebar";
 import { ThemeToggle } from "./theme-toggle";
 import { MigrationChip } from "./migration-activity";
 import { UpdateChip } from "./update-chip";
@@ -50,8 +49,6 @@ export function Topbar({
       <span className="-mx-1 text-xl text-ring md:hidden" aria-hidden>
         /
       </span>
-
-      <SidebarExpandButton />
 
       {hideTeam ? (
         <span className="flex items-center gap-2 text-sm font-medium">
