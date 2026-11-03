@@ -285,11 +285,16 @@ is remapped onto the control-plane `users` table. Deploy execution is the Go age
   `typegen` emits them without a build and needs no environment. Run it before `tsc` in a clean
   tree too.
   `docker-image.yml` is separate and still fires only on a `v*` tag.
-- **`overrides` in `package.json` are pins with a reason, never preferences.** Two, one of
-  each kind (the file is the list; this is why each one is there):
+- **`overrides` in `package.json` are pins with a reason, never preferences.** Three (the file
+  is the list; this is why each one is there):
   - **Security**: `esbuild` - a transitive that still pulls an older, flagged copy into the tree
     when the entry goes (`drizzle-kit` and `tsx` both do). The three `@graphql-tools/*` pins went
     on 22 Oct 2026 with `graphql-yoga@6`, which names the patched majors itself.
+  - **Security**: `minimatch` (`11.0.4`) - GHSA-g3hv-75wg-m249 is fixed only in 11, and eslint
+    still asks for 10 while `eslint-plugin-react`, `-import` and `-jsx-a11y` ask for 3. Those
+    three call it as a function in rules this config leaves off (`import/order` among them):
+    turning one on needs those plugins on minimatch 11 first, or lint crashes with "is not a
+    function".
   - **Functional**: `graphql` (`^17.0.2`). The `@escape.tech/graphql-armor-*` packages still
     nest a 16 when it goes. Two copies of `graphql` and Pothos and yoga stop recognising each
     other's types.

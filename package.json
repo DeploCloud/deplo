@@ -140,6 +140,7 @@
   ],
   "overrides": {
     "graphql": "^17.0.2",
-    "esbuild": "^0.28.2"
+    "esbuild": "^0.28.2",
+    "minimatch": "11.0.4"
   }
 }
