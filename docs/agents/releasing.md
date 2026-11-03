@@ -168,11 +168,11 @@ be the best thing in the release (`v0.1.4` shipped arm64 images that way).
 **Credit goes inline only when the commit came through a pull request** (`, by @handle in [#57]`);
 every other author still lands in Contributors, and the owner and the bots never do.
 
-**The note on top covers every change a user notices**, cumulative since the last **stable**: one
-bold-led paragraph each, written for someone arriving from that stable, so a fix to something new in
-the same release folds into it. An upgrade step or a bad bug goes first, with ⚠️. Before publishing,
-walk every Features and Bug Fixes line and check the note covers it: `v0.8.0` first went out with
-only its last canaries' summary.
+**Highlights cover every change a user notices**, cumulative since the last **stable**: a
+`### ✨ Highlights` list, one line each led by a bold label, the sections folded below it in
+`<details><summary><b>All N changes</b>, by type</summary>`, Contributors outside (`v0.5.0`, `v0.8.0`).
+The `>` ⚠️ block is only for an upgrade step or a bad bug, one short paragraph. Walk every Features
+and Bug Fixes line before publishing: `v0.8.0` first went out with only its last canaries' summary.
 
 ## Three things that are not this
 
