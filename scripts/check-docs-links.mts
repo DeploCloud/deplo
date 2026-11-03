@@ -52,6 +52,12 @@ function anchorsOf(file: string) {
     if (inFence) continue;
     const h = line.match(/^#{2,4}\s+(.+?)\s*$/);
     if (!h) continue;
+    // Fumadocs' `## Heading [#custom-id]` sets the id outright.
+    const custom = h[1].match(/\[#([^\]]+)\]$/);
+    if (custom) {
+      anchors.add(custom[1]);
+      continue;
+    }
     const base = slugify(h[1].replace(/\{#[^}]*\}$/, ""));
     const n = seen.get(base) ?? 0;
     seen.set(base, n + 1);
