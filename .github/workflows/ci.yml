@@ -109,3 +109,5 @@ jobs:
       # fail-fasts on a missing DEPLO_DATABASE_URL (lib/db/pg.ts).
       - run: bunx next typegen
       - run: bunx tsc --noEmit
+      # schema.graphql is generated, and the MCP tool test and the API docs both read it.
+      - run: bun run gen:schema && git diff --exit-code schema.graphql

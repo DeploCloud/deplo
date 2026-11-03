@@ -324,8 +324,8 @@ scripts/gen-schema.ts`. Both halves of that prefix are load-bearing: the shim
   real entrypoint throws outside a Next build, and it is the same shim the test
   runner preloads), and `NODE_TEST_CONTEXT` answers the fail-fast in `lib/db/pg.ts`,
   which throws at module load without a database URL.
-  `schema.graphql` is generated output, **never hand-edit**, and nothing auto-runs it (no hook,
-  no CI drift check).
+  `schema.graphql` is generated output, **never hand-edit**. No hook runs it; CI's Types job
+  regenerates it and fails on any drift.
 - Validation = **Pothos arg requiredness** + hand-rolled cleaners (`cleanName`,
   `normalizeHexColor`, `validateUsername`). Zod is for **schemas a machine reads**: every
   `lib/mcp/tools/*` input shape (that is what MCP publishes), plus `types/auth.ts` and
