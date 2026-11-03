@@ -681,3 +681,19 @@ test("scoping a role narrows a holder who keeps their own set too", async () => 
   );
   assert.deepEqual(await capsOfDev(), ["deploy_apps", "manage_env", "view"]);
 });
+
+test("a team that does not exist is refused by name", async () => {
+  const viewer = (await rolesOfTeamA()).find((r) => r.builtinKey === "viewer")!;
+  await assert.rejects(
+    () =>
+      as(ADMIN, () =>
+        setUserTeamAccess({
+          userId: DEV,
+          teamId: "team_gone",
+          roleId: viewer.id,
+          granular: false,
+        }),
+      ),
+    /Team not found/,
+  );
+});

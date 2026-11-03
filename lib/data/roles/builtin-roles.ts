@@ -8,6 +8,7 @@ import {
   teamRoles as teamRolesTable,
   teamRoleCapabilities as teamRoleCapabilitiesTable,
 } from "../../db/schema/control-plane/access-control";
+import { teams as teamsTable } from "../../db/schema/control-plane/identity";
 import { newId, nowIso } from "../../ids";
 import { recordActivity } from "../activity";
 import { requireCapability } from "../../membership";
@@ -46,6 +47,14 @@ export async function ensureTeamRoles(
   const byKey = new Map<Role, string>(
     present.map((r) => [r.builtinKey as Role, r.id]),
   );
+  if (present.length === 0) {
+    const [team] = await db
+      .select({ id: teamsTable.id })
+      .from(teamsTable)
+      .where(eq(teamsTable.id, teamId))
+      .limit(1);
+    if (!team) throw new Error("Team not found");
+  }
 
   for (const key of BUILTIN_ROLE_KEYS) {
     if (byKey.has(key)) continue;
