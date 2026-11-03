@@ -222,6 +222,7 @@ export async function createEnvironment(
   await requireOwnedProject(projectId);
   await assertContainerNotMigrating("project", projectId);
   const clean = cleanName(name);
+  await assertEnvironmentNameFree(projectId, clean);
   const slug = await uniqueEnvSlug(projectId, clean);
   const existing = await getDb()
     .select({ position: environmentsTable.position })
@@ -249,6 +250,26 @@ export async function createEnvironment(
   return assembleEnvironment(env as typeof environmentsTable.$inferSelect);
 }
 
+async function assertEnvironmentNameFree(
+  projectId: string,
+  name: string,
+  exceptId?: string,
+): Promise<void> {
+  const [taken] = await getDb()
+    .select({ id: environmentsTable.id })
+    .from(environmentsTable)
+    .where(
+      and(
+        eq(environmentsTable.projectId, projectId),
+        eq(environmentsTable.name, name),
+        exceptId ? ne(environmentsTable.id, exceptId) : undefined,
+      ),
+    )
+    .limit(1);
+  if (taken)
+    throw new Error(`This project already has an environment called “${name}”`);
+}
+
 export async function renameEnvironment(
   id: string,
   name: string,
@@ -265,6 +286,7 @@ export async function renameEnvironment(
   )[0];
   if (!env) throw new Error("Environment not found");
   await requireOwnedProject(env.projectId, env.id);
+  await assertEnvironmentNameFree(env.projectId, clean, env.id);
   await getDb()
     .update(environmentsTable)
     .set({ name: clean, updatedAt: nowIso() })

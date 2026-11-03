@@ -18,7 +18,11 @@ import {
   seedServer,
   TRUNCATE_PROJECT_GRAPH,
 } from "./app-graph-test-helpers";
-import { deleteEnvironment } from "./environments";
+import {
+  createEnvironment,
+  deleteEnvironment,
+  renameEnvironment,
+} from "./environments";
 import { seedDatabase } from "./backup-test-helpers";
 
 let db: TestDb;
@@ -140,4 +144,17 @@ test("the default is undeletable, so a project always keeps one", async () => {
     left.map((e) => e.id),
     ["environ_prod"],
   );
+});
+
+test("a taken environment name is refused by name, on create and on rename", async () => {
+  await seedProjectWith("environ_prod");
+  await assert.rejects(
+    () => asUser1(() => createEnvironment(PRC, "environ_dev")),
+    /already has an environment called “environ_dev”/,
+  );
+  await assert.rejects(
+    () => asUser1(() => renameEnvironment("environ_stage", "environ_dev")),
+    /already has an environment called “environ_dev”/,
+  );
+  await asUser1(() => renameEnvironment("environ_dev", "environ_dev"));
 });
