@@ -70,13 +70,33 @@ builder.queryFields((t) => ({
     authScopes: { capability: "view_activity" },
     description: "Recent activity in the active team, newest first.",
     args: {
-      limit: t.arg.int({ required: false }),
-      cursor: t.arg.string({ required: false }),
-      actorUserIds: t.arg.idList({ required: false }),
+      limit: t.arg.int({
+        required: false,
+        description: "Rows per page, 1 to 200. Default 20.",
+      }),
+      cursor: t.arg.string({
+        required: false,
+        description: "The last row's `cursor`, to read the page after it.",
+      }),
+      actorUserIds: t.arg.idList({
+        required: false,
+        description: "Only these people. `system` picks what Deplo did itself.",
+      }),
       types: t.arg({ type: [ActivityTypeEnum], required: false }),
-      from: t.arg.string({ required: false }),
-      to: t.arg.string({ required: false }),
-      resourceIds: t.arg.idList({ required: false }),
+      from: t.arg.string({
+        required: false,
+        description:
+          "Only rows at or after this ISO 8601 date, like `2026-11-01` or `2026-11-01T09:00:00Z`.",
+      }),
+      to: t.arg.string({
+        required: false,
+        description: "Only rows before this ISO 8601 date.",
+      }),
+      resourceIds: t.arg.idList({
+        required: false,
+        description:
+          "Only rows about these apps or databases, or the apps in these folders or projects.",
+      }),
     },
     resolve: (_r, a) =>
       listActivity(a.limit ?? undefined, {

@@ -5089,7 +5089,30 @@ input PublishedPortInput {
 
 type Query {
   """Recent activity in the active team, newest first."""
-  activity(actorUserIds: [ID!], cursor: String, from: String, limit: Int, resourceIds: [ID!], to: String, types: [ActivityType!]): [Activity!]
+  activity(
+    """Only these people. `system` picks what Deplo did itself."""
+    actorUserIds: [ID!]
+
+    """The last row's `cursor`, to read the page after it."""
+    cursor: String
+
+    """
+    Only rows at or after this ISO 8601 date, like `2026-11-01` or `2026-11-01T09:00:00Z`.
+    """
+    from: String
+
+    """Rows per page, 1 to 200. Default 20."""
+    limit: Int
+
+    """
+    Only rows about these apps or databases, or the apps in these folders or projects.
+    """
+    resourceIds: [ID!]
+
+    """Only rows before this ISO 8601 date."""
+    to: String
+    types: [ActivityType!]
+  ): [Activity!]
 
   """
   The paste-on-the-host command that removes Deplo's agent from a machine. Instance-wide, identical for every host, and carrying no secret - the installer it points at is served unauthenticated by design. Shown next to a migration source Deplo could not reach, because an unreachable host's agent can only be taken off from the host.
