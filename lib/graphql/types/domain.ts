@@ -300,18 +300,21 @@ builder.mutationFields((t) => ({
     description: "Remove the domain so it stops routing. Returns true.",
     args: { id: t.arg.string({ required: true }) },
     resolve: async (_r, { id }) => {
-      await applyRouting(await removeDomain(id));
+      await applyRouting(await removeDomain(id), "removed");
       return true;
     },
   }),
 }));
 
-async function applyRouting(appId: string): Promise<void> {
+async function applyRouting(
+  appId: string,
+  done: "saved" | "removed" = "saved",
+): Promise<void> {
   try {
     await rerouteApp(appId);
   } catch (e) {
     throw new Error(
-      `The domain was saved, but the routing could not be applied on the server: ${
+      `The domain was ${done}, but the routing could not be applied on the server: ${
         e instanceof Error ? e.message : String(e)
       }. Deploy the app to apply it.`,
     );
