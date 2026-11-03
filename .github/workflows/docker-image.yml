@@ -37,8 +37,9 @@ jobs:
           [[ "$GITHUB_REF_NAME" == *-* || "$stop" != *-* ]] || fail "is a canary, and a stable release requires a stable stop"
           [ "$(gh release view "v${stop}" --repo "$GITHUB_REPOSITORY" --json isDraft --jq .isDraft)" = false ] \
             || fail "is not a published release"
+          # jq, not a pipe into node: Scorecard reads any download piped into an interpreter as running it.
           curl -fsSL "https://raw.githubusercontent.com/${GITHUB_REPOSITORY}/v${stop}/package.json" \
-            | node -e 'process.exit(JSON.parse(require("fs").readFileSync(0, "utf8")).deplo?.updateStop === true ? 0 : 1)' \
+            | jq -e '.deplo.updateStop == true' > /dev/null \
             || fail 'does not declare "updateStop": true'
 
   # One runner per architecture, not QEMU on one: an emulated `next build` takes
