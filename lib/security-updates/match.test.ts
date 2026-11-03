@@ -25,6 +25,7 @@ import {
 import { seedDatabase } from "../data/backup-test-helpers";
 import { seedIdentity, TEAM_A, USER_1 } from "../data/identity-test-helpers";
 import { saveNotificationChannel } from "../data/notifications";
+import { __settleAlertsForTest } from "../notify/dispatch";
 import { __setAgentConnectorForTest } from "../infra/agent-client/connect";
 import type { AgentConnection } from "../infra/agent-client/connection";
 import {
@@ -307,17 +308,15 @@ beforeEach(async () => {
   capture = captureFetch((url) => osv(url, capture!.calls.at(-1)?.body));
 });
 
-afterEach(() => {
+// A late alert must land in the test that sent it, never in the next one.
+afterEach(async () => {
+  await __settleAlertsForTest();
   capture?.restore();
   capture = null;
 });
 
 const hookCalls = () => capture!.calls.filter((c) => c.url === HOOK);
-async function settle(): Promise<void> {
-  for (let i = 0; i < 50 && hookCalls().length === 0; i++)
-    await new Promise((r) => setTimeout(r, 10));
-  await new Promise((r) => setTimeout(r, 30));
-}
+const settle = __settleAlertsForTest;
 
 async function backfill(now = new Date("2026-10-25T10:00:00Z")) {
   await refreshServer(SERVER_1, now);

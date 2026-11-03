@@ -24,9 +24,22 @@ export interface Alert {
 
 export { CHANNEL_TIMEOUT_MS };
 
+// Fire-and-forget sends, so a test can wait for them instead of for a clock.
+const inFlight = new Set<Promise<void>>();
+function track(p: Promise<void>): void {
+  inFlight.add(p);
+  void p.finally(() => inFlight.delete(p));
+}
+
+export async function __settleAlertsForTest(): Promise<void> {
+  while (inFlight.size > 0) await Promise.allSettled([...inFlight]);
+}
+
 export function dispatchAlert(alert: Alert): void {
-  void dispatchAlertNow(alert).catch((e) =>
-    console.error("[deplo] alert dispatch failed:", e),
+  track(
+    dispatchAlertNow(alert).catch((e) =>
+      console.error("[deplo] alert dispatch failed:", e),
+    ),
   );
 }
 
@@ -67,8 +80,10 @@ export function dispatchServerAlert(
   serverId: string,
   alert: Omit<Alert, "teamId">,
 ): void {
-  void dispatchServerAlertNow(serverId, alert).catch((e) =>
-    console.error("[deplo] server alert fan-out failed:", e),
+  track(
+    dispatchServerAlertNow(serverId, alert).catch((e) =>
+      console.error("[deplo] server alert fan-out failed:", e),
+    ),
   );
 }
 
