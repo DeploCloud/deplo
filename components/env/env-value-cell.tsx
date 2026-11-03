@@ -24,3 +24,12 @@ export function EnvValueCell({
     />
   );
 }
+
+// Below md the value rides under its key: a column beside a monospace key is left no width at all.
+export function EnvValueUnderKey(props: { value: string; masked: boolean }) {
+  return (
+    <div className="mt-1.5 md:hidden">
+      <EnvValueCell {...props} />
+    </div>
+  );
+}

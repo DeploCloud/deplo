@@ -36,7 +36,10 @@ import {
 } from "@/components/env/env-bulk-selection";
 import { sharedBulkItem } from "@/components/env/env-bulk-items";
 import { SharedVarsGraphic } from "@/components/env/shared-vars-graphic";
-import { EnvValueCell } from "@/components/env/env-value-cell";
+import {
+  EnvValueCell,
+  EnvValueUnderKey,
+} from "@/components/env/env-value-cell";
 import { TimeAgo } from "@/components/shared/time-ago";
 import { EnvAuthorCell } from "@/components/env/env-author-cell";
 import { TeamAvatar } from "@/components/shared/user-avatar";
@@ -59,6 +62,7 @@ import type {
 } from "@/components/env/shared-var-wizard/types";
 import { gqlAction } from "@/lib/graphql-client";
 import type { SharedVarDTO } from "@/lib/data/shared-vars/team-view";
+import { cn } from "@/lib/utils";
 import type { TeamEnvironment } from "@/lib/data/environments";
 
 function matchSharing(v: SharedVarDTO, value: string): boolean {
@@ -247,9 +251,11 @@ export function SharedVarsManager({
               <TableHeader>
                 <TableRow>
                   <EnvSelectionHead />
-                  <TableHead className="whitespace-nowrap">Key</TableHead>
-                  <TableHead className="w-full max-md:w-auto">Value</TableHead>
-                  <TableHead className="whitespace-nowrap">
+                  <TableHead className="whitespace-nowrap max-md:w-full">
+                    Key
+                  </TableHead>
+                  <TableHead className="w-full max-md:hidden">Value</TableHead>
+                  <TableHead className="whitespace-nowrap max-md:hidden">
                     Shared with
                   </TableHead>
                   <TableHead className="whitespace-nowrap max-md:hidden">
@@ -267,33 +273,19 @@ export function SharedVarsManager({
                 {shown.map((v) => (
                   <TableRow key={v.id}>
                     <EnvSelectionCell id={v.id} />
-                    <TableCell className="font-mono text-xs font-medium">
+                    <TableCell className="font-mono text-xs font-medium max-md:break-all">
                       {v.key}
+                      <EnvValueUnderKey value={v.value} masked={v.masked} />
+                      <SharedWith
+                        v={v}
+                        className="mt-1.5 font-sans md:hidden"
+                      />
                     </TableCell>
-                    <TableCell>
+                    <TableCell className="max-md:hidden">
                       <EnvValueCell value={v.value} masked={v.masked} />
                     </TableCell>
-                    <TableCell>
-                      <div className="flex flex-wrap items-center gap-1">
-                        {!v.editable && (
-                          <Badge
-                            variant="outline"
-                            className="gap-1 text-[10px] font-normal"
-                          >
-                            {v.ownerTeam ? (
-                              <TeamAvatar
-                                name={v.ownerTeam.name}
-                                avatarUrl={v.ownerTeam.avatarUrl}
-                                size="xs"
-                              />
-                            ) : (
-                              <Users className="size-3" />
-                            )}
-                            {v.ownerTeam?.name ?? "Every team"}
-                          </Badge>
-                        )}
-                        <SharedWithChips v={v} />
-                      </div>
+                    <TableCell className="max-md:hidden">
+                      <SharedWith v={v} />
                     </TableCell>
                     <TableCell className="text-xs whitespace-nowrap text-muted-foreground max-md:hidden">
                       <TimeAgo at={v.updatedAt} />
@@ -417,6 +409,29 @@ export function SharedVarsManager({
           return res;
         }}
       />
+    </div>
+  );
+}
+
+// Below md it rides under the key with the value, so the value keeps a usable width.
+function SharedWith({ v, className }: { v: SharedVarDTO; className?: string }) {
+  return (
+    <div className={cn("flex flex-wrap items-center gap-1", className)}>
+      {!v.editable && (
+        <Badge variant="outline" className="gap-1 text-[10px] font-normal">
+          {v.ownerTeam ? (
+            <TeamAvatar
+              name={v.ownerTeam.name}
+              avatarUrl={v.ownerTeam.avatarUrl}
+              size="xs"
+            />
+          ) : (
+            <Users className="size-3" />
+          )}
+          {v.ownerTeam?.name ?? "Every team"}
+        </Badge>
+      )}
+      <SharedWithChips v={v} />
     </div>
   );
 }

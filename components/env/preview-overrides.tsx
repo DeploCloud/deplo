@@ -36,7 +36,10 @@ import {
   EnvSelectionCell,
   EnvSelectionHead,
 } from "@/components/env/env-bulk-selection";
-import { EnvValueCell } from "@/components/env/env-value-cell";
+import {
+  EnvValueCell,
+  EnvValueUnderKey,
+} from "@/components/env/env-value-cell";
 import {
   EnvRowsEditor,
   filledRows,
@@ -219,8 +222,10 @@ export function PreviewOverrides({
                   <TableHeader>
                     <TableRow>
                       <EnvSelectionHead />
-                      <TableHead className="whitespace-nowrap">Key</TableHead>
-                      <TableHead className="w-full max-md:w-auto">
+                      <TableHead className="whitespace-nowrap max-md:w-full">
+                        Key
+                      </TableHead>
+                      <TableHead className="w-full max-md:hidden">
                         Value
                       </TableHead>
                       <TableHead className="whitespace-nowrap max-md:hidden">
@@ -235,7 +240,7 @@ export function PreviewOverrides({
                     {visibleOverrides.map((o) => (
                       <TableRow key={o.key}>
                         <EnvSelectionCell id={o.key} />
-                        <TableCell className="font-mono text-xs font-medium">
+                        <TableCell className="font-mono text-xs font-medium max-md:break-all">
                           <div className="flex items-center gap-2">
                             {o.key}
                             <Badge
@@ -246,8 +251,9 @@ export function PreviewOverrides({
                               Preview
                             </Badge>
                           </div>
+                          <EnvValueUnderKey value="" masked />
                         </TableCell>
-                        <TableCell>
+                        <TableCell className="max-md:hidden">
                           <EnvValueCell value="" masked />
                         </TableCell>
                         <TableCell className="text-xs whitespace-nowrap text-muted-foreground max-md:hidden">

@@ -41,7 +41,10 @@ import {
   unlinkBulkItem,
 } from "@/components/env/env-bulk-items";
 import { EnvGraphic } from "@/components/env/env-graphic";
-import { EnvValueCell } from "@/components/env/env-value-cell";
+import {
+  EnvValueCell,
+  EnvValueUnderKey,
+} from "@/components/env/env-value-cell";
 import { TimeAgo } from "@/components/shared/time-ago";
 import { EnvVarDialog } from "@/components/env/env-var-dialog";
 import { DatabaseLogo } from "@/components/storage/database-logo";
@@ -228,8 +231,10 @@ export function EnvManager({
               <TableHeader>
                 <TableRow>
                   <EnvSelectionHead />
-                  <TableHead className="whitespace-nowrap">Key</TableHead>
-                  <TableHead className="w-full max-md:w-auto">Value</TableHead>
+                  <TableHead className="whitespace-nowrap max-md:w-full">
+                    Key
+                  </TableHead>
+                  <TableHead className="w-full max-md:hidden">Value</TableHead>
                   <TableHead className="whitespace-nowrap max-md:hidden">
                     Last modified
                   </TableHead>
@@ -246,7 +251,7 @@ export function EnvManager({
                   row.kind === "standalone" ? (
                     <TableRow key={rowKey(row)}>
                       <EnvSelectionCell id={rowKey(row)} />
-                      <TableCell className="font-mono text-xs font-medium">
+                      <TableCell className="font-mono text-xs font-medium max-md:break-all">
                         <div className="flex items-center gap-2">
                           <VariableKey row={row} />
                           {row.type === "plain" &&
@@ -267,8 +272,12 @@ export function EnvManager({
                             </SimpleTooltip>
                           )}
                         </div>
+                        <EnvValueUnderKey
+                          value={row.value}
+                          masked={row.masked}
+                        />
                       </TableCell>
-                      <TableCell>
+                      <TableCell className="max-md:hidden">
                         <EnvValueCell value={row.value} masked={row.masked} />
                       </TableCell>
                       <TableCell className="text-xs whitespace-nowrap text-muted-foreground max-md:hidden">
@@ -342,7 +351,7 @@ export function EnvManager({
                   ) : (
                     <TableRow key={rowKey(row)}>
                       <EnvSelectionCell id={rowKey(row)} />
-                      <TableCell className="font-mono text-xs font-medium">
+                      <TableCell className="font-mono text-xs font-medium max-md:break-all">
                         <div className="flex items-center gap-2">
                           {row.key}
                           <Badge
@@ -372,8 +381,12 @@ export function EnvManager({
                               <LooksLikeSecretBadge />
                             )}
                         </div>
+                        <EnvValueUnderKey
+                          value={row.value}
+                          masked={row.masked}
+                        />
                       </TableCell>
-                      <TableCell>
+                      <TableCell className="max-md:hidden">
                         <EnvValueCell value={row.value} masked={row.masked} />
                       </TableCell>
                       <TableCell className="text-xs whitespace-nowrap text-muted-foreground max-md:hidden">

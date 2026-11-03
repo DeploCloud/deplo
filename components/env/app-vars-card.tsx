@@ -28,7 +28,10 @@ import {
   EnvSelectionCell,
   EnvSelectionHead,
 } from "@/components/env/env-bulk-selection";
-import { EnvValueCell } from "@/components/env/env-value-cell";
+import {
+  EnvValueCell,
+  EnvValueUnderKey,
+} from "@/components/env/env-value-cell";
 import { TimeAgo } from "@/components/shared/time-ago";
 import { EnvAuthorCell } from "@/components/env/env-author-cell";
 import { EnvEditButton } from "@/components/env/env-edit-button";
@@ -116,25 +119,37 @@ export function AppVarsCard({
             <span className="block truncate text-base leading-none font-semibold tracking-tight lg:text-lg">
               {app.name}
             </span>
-            <span className="mt-1 block truncate text-xs text-muted-foreground">
+            <span className="mt-1 block truncate text-xs text-muted-foreground max-md:wrap-anywhere max-md:whitespace-normal">
               {[subtitle, open ? null : plural(rows.length, "variable")]
                 .filter(Boolean)
                 .join(" · ") || plural(rows.length, "variable")}
             </span>
           </span>
         </button>
-        <div className="flex items-center gap-2">
-          <Button size="sm" variant="outline" onClick={onAdd}>
-            <Plus className="size-4" />
-            Add
-          </Button>
-          <Button variant="outline" size="sm" asChild>
-            <Link href={`/apps/${app.slug}/environment`}>
-              Open
-              <ArrowUpRight className="size-4" />
-            </Link>
-          </Button>
-        </div>
+        <RowActions
+          title={app.name}
+          actions={[
+            { label: "Add variable", icon: Plus, onSelect: onAdd },
+            {
+              label: "Open app",
+              icon: ArrowUpRight,
+              href: `/apps/${app.slug}/environment`,
+            },
+          ]}
+        >
+          <div className="flex items-center gap-2">
+            <Button size="sm" variant="outline" onClick={onAdd}>
+              <Plus className="size-4" />
+              Add
+            </Button>
+            <Button variant="outline" size="sm" asChild>
+              <Link href={`/apps/${app.slug}/environment`}>
+                Open
+                <ArrowUpRight className="size-4" />
+              </Link>
+            </Button>
+          </div>
+        </RowActions>
       </CardHeader>
       {open && (
         <CardContent id={bodyId}>
@@ -143,8 +158,10 @@ export function AppVarsCard({
               <TableHeader>
                 <TableRow>
                   <EnvSelectionHead ids={rows.map(rowKey)} />
-                  <TableHead className="whitespace-nowrap">Key</TableHead>
-                  <TableHead className="w-full max-md:w-auto">Value</TableHead>
+                  <TableHead className="whitespace-nowrap max-md:w-full">
+                    Key
+                  </TableHead>
+                  <TableHead className="w-full max-md:hidden">Value</TableHead>
                   <TableHead className="whitespace-nowrap max-md:hidden">
                     Last modified
                   </TableHead>
@@ -161,10 +178,14 @@ export function AppVarsCard({
                   row.kind === "standalone" ? (
                     <TableRow key={`${app.id}:standalone:${row.id}`}>
                       <EnvSelectionCell id={rowKey(row)} />
-                      <TableCell className="font-mono text-xs font-medium">
+                      <TableCell className="font-mono text-xs font-medium max-md:break-all">
                         {row.key}
+                        <EnvValueUnderKey
+                          value={row.value}
+                          masked={row.masked}
+                        />
                       </TableCell>
-                      <TableCell>
+                      <TableCell className="max-md:hidden">
                         <EnvValueCell value={row.value} masked={row.masked} />
                       </TableCell>
                       <TableCell className="text-xs whitespace-nowrap text-muted-foreground max-md:hidden">
@@ -214,7 +235,7 @@ export function AppVarsCard({
                   ) : (
                     <TableRow key={`${app.id}:shared:${row.id}`}>
                       <EnvSelectionCell id={rowKey(row)} />
-                      <TableCell className="font-mono text-xs font-medium">
+                      <TableCell className="font-mono text-xs font-medium max-md:break-all">
                         <div className="flex items-center gap-2">
                           {row.key}
                           <Badge
@@ -225,8 +246,12 @@ export function AppVarsCard({
                             Shared
                           </Badge>
                         </div>
+                        <EnvValueUnderKey
+                          value={row.value}
+                          masked={row.masked}
+                        />
                       </TableCell>
-                      <TableCell>
+                      <TableCell className="max-md:hidden">
                         <EnvValueCell value={row.value} masked={row.masked} />
                       </TableCell>
                       <TableCell className="text-xs whitespace-nowrap text-muted-foreground max-md:hidden">
