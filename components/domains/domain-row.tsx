@@ -347,13 +347,23 @@ export function DomainRow({
             </Badge>
           )}
           {domain.tunnel ? (
-            <Badge
-              variant="outline"
-              className="gap-1 border-[#f38020]/40 bg-[#f38020]/15 text-[#f38020]"
+            <SimpleTooltip
+              content={
+                <>
+                  Cloudflare serves it, HTTPS included. To turn the tunnel off,
+                  remove the domain and add it again.{" "}
+                  <DocsLink topic="domains.automaticDnsTunnel" />
+                </>
+              }
             >
-              <CloudflareIcon className="size-3" />
-              Cloudflare Tunnel
-            </Badge>
+              <Badge
+                variant="outline"
+                className="gap-1 border-[#f38020]/40 bg-[#f38020]/15 text-[#f38020]"
+              >
+                <CloudflareIcon className="size-3" />
+                Cloudflare Tunnel
+              </Badge>
+            </SimpleTooltip>
           ) : oneCloudflareChip ? (
             <Badge
               variant="outline"

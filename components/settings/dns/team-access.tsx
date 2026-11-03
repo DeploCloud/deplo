@@ -105,6 +105,7 @@ export function TeamAccess({
           htmlFor={`${idPrefix}-shared`}
           className="cursor-pointer font-normal"
           info="Off, only you get automatic DNS. On, every member of these teams who can add domains does too, with your API token."
+          docs="domains.automaticDnsAccess"
         >
           Anyone in these teams can use it
         </FieldLabel>

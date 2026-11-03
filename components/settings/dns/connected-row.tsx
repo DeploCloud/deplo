@@ -16,6 +16,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { DocsLink } from "@/components/ui/docs-link";
 import { ConfirmAction } from "@/components/shared/confirm-action";
 import { RowActions } from "@/components/shared/row-actions";
 import { DNS_PROVIDER_META, ProviderMark } from "./provider-mark";
@@ -91,7 +92,12 @@ export function ConnectedRow({
         open={removing}
         onOpenChange={setRemoving}
         title={`Disconnect ${provider.zoneName}?`}
-        description="New domains under it no longer get their DNS created."
+        description={
+          <>
+            New domains under it no longer get their DNS created.{" "}
+            <DocsLink topic="domains.automaticDnsDeletes" />
+          </>
+        }
         consequence="Domains served through its Cloudflare Tunnels stop working, and their DNS records are deleted."
         confirmLabel="Disconnect"
         successMessage={`${provider.zoneName} disconnected`}
@@ -176,7 +182,8 @@ function EditAccessDialog({
         <DialogHeader>
           <DialogTitle>Who can use {provider.zoneName}?</DialogTitle>
           <DialogDescription>
-            Domains added in these teams get their DNS created for them.
+            Domains added in these teams get their DNS created for them.{" "}
+            <DocsLink topic="domains.automaticDnsAccess" />
           </DialogDescription>
         </DialogHeader>
         <TeamAccess

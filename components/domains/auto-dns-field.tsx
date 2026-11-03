@@ -1,6 +1,7 @@
 "use client";
 
 import { CloudflareIcon } from "@/components/shared/brand-icons";
+import { DocsLink } from "@/components/ui/docs-link";
 import { FieldLabel } from "@/components/ui/info-tip";
 import { Switch } from "@/components/ui/switch";
 
@@ -22,7 +23,8 @@ export function AutoDnsField({
         <CloudflareIcon className="size-3.5 shrink-0 text-[#f38020]" />
         <span>
           Deplo creates the DNS record in{" "}
-          <span className="font-mono text-foreground">{zone}</span>
+          <span className="font-mono text-foreground">{zone}</span>.{" "}
+          <DocsLink topic="domains.automaticDnsAdd" />
         </span>
       </p>
       <div className="flex items-center justify-between gap-3">
@@ -30,6 +32,7 @@ export function AutoDnsField({
           htmlFor={id}
           className="cursor-pointer font-normal"
           info="Cloudflare reaches this server over a connection it opens: no port to open, HTTPS included. The first one restarts the server's proxy briefly."
+          docs="domains.automaticDnsTunnel"
         >
           Use Cloudflare Tunnel
         </FieldLabel>

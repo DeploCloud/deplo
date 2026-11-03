@@ -15,6 +15,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { DocsLink } from "@/components/ui/docs-link";
 import { FieldLabel } from "@/components/ui/info-tip";
 import { Input } from "@/components/ui/input";
 import {
@@ -146,7 +147,7 @@ export function ConnectDnsDialog({
           <DialogTitle>Connect a domain</DialogTitle>
           <DialogDescription>
             Deplo creates the DNS record when you add a domain under it to an
-            app.
+            app. <DocsLink topic="domains.automaticDns" />
           </DialogDescription>
         </DialogHeader>
         <form
@@ -186,6 +187,7 @@ export function ConnectDnsDialog({
             <FieldLabel
               htmlFor="dns-zone"
               info={`The domain as it is listed in your ${meta.label} account. Every name under it gets automatic DNS.`}
+              docs="domains.automaticDnsConnect"
             >
               Domain
             </FieldLabel>
@@ -203,6 +205,7 @@ export function ConnectDnsDialog({
             <FieldLabel
               htmlFor="dns-token"
               info="Deplo keeps it encrypted, and uses it only to create and delete this domain's records and tunnels."
+              docs="domains.automaticDnsConnect"
             >
               API token
             </FieldLabel>

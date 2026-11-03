@@ -54,6 +54,15 @@ export const DOCS = {
   "domains.pathRouting": "guides/networking/domains-and-https#path-routing",
   "domains.redirects": "guides/networking/domains-and-https#redirects",
   "domains.automaticDns": "guides/networking/automatic-dns",
+  "domains.automaticDnsConnect":
+    "guides/networking/automatic-dns#connect-a-domain",
+  "domains.automaticDnsAccess":
+    "guides/networking/automatic-dns#who-can-use-it",
+  "domains.automaticDnsAdd": "guides/networking/automatic-dns#add-a-domain",
+  "domains.automaticDnsTunnel":
+    "guides/networking/automatic-dns#cloudflare-tunnel",
+  "domains.automaticDnsDeletes":
+    "guides/networking/automatic-dns#what-deplo-deletes",
   "domains.security":
     "guides/networking/domains-and-https#security-headers-and-cors",
   "domains.dnsRecord": "getting-started/add-a-domain#create-an-a-record",
