@@ -120,7 +120,7 @@ export const DOCS = {
   "logs.retention": "guides/observability/logs#retention",
   "health.overview": "guides/observability/health-checks",
   "health.timings": "guides/observability/health-checks#turn-one-on",
-  "health.verdict": "guides/observability/health-checks#reading-the-verdict",
+  "health.verdict": "guides/observability/health-checks#reading-the-result",
   "monitoring.overview": "guides/observability/monitoring",
   "monitoring.saveMetrics":
     "guides/observability/monitoring#save-metrics-on-server",
@@ -216,8 +216,8 @@ export const DOCS = {
   "panel.certEmail":
     "operations/panel-address-and-certificates#the-certificate-account-email",
   "panel.tunnel": "operations/cloudflare-tunnel",
-  "upgrade.overview": "operations/upgrade",
-  "upgrade.releases": "operations/upgrade#release-history",
+  "upgrade.overview": "operations/update",
+  "upgrade.releases": "operations/update#release-history",
   "deplo.move": "operations/move-deplo",
 
   "migration.takeover": "migrations",
