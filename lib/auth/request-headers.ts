@@ -14,10 +14,18 @@ export function authRequestHeaders(
   if (agent) out.set("user-agent", agent);
   const ip = request && clientAddress(request);
   if (ip) out.set("x-real-ip", ip);
-  if (cookie)
+  // A cookie deleted earlier in this request is still listed, empty, and would shadow its live twin.
+  const live = cookie
+    .split("; ")
+    .filter((p) => {
+      const eq = p.indexOf("=");
+      return eq > 0 && eq < p.length - 1;
+    })
+    .join("; ");
+  if (live)
     out.set(
       "cookie",
-      opts.twinCookieNames === false ? cookie : withBothCookieNames(cookie),
+      opts.twinCookieNames === false ? live : withBothCookieNames(live),
     );
   return out;
 }

@@ -100,3 +100,21 @@ test("the twin cookie name is not offered on an https request", () => {
   const https = authRequestHeaders(null, cookie, { twinCookieNames: false });
   assert.equal(https.get("cookie"), cookie);
 });
+
+test("a cookie deleted earlier in the request does not shadow its live twin", () => {
+  const out = authRequestHeaders(
+    null,
+    "__Secure-deplo.session_token=; deplo.session_token=abc",
+  );
+  assert.equal(
+    out.get("cookie"),
+    "deplo.session_token=abc; __Secure-deplo.session_token=abc",
+  );
+});
+
+test("a value that ends in base64 padding is kept", () => {
+  const out = authRequestHeaders(null, "deplo.session_token=abc.sig=", {
+    twinCookieNames: false,
+  });
+  assert.equal(out.get("cookie"), "deplo.session_token=abc.sig=");
+});
