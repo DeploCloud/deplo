@@ -205,3 +205,13 @@ jobs:
           prerelease: ${{ steps.version.outputs.PRERELEASE == 'true' }}
           make_latest: ${{ steps.version.outputs.PRERELEASE != 'true' }}
           files: deplo-${{ steps.version.outputs.VERSION }}.spdx.json
+
+  # After the release exists: a build that failed never announces a version.
+  notify-discord:
+    needs: merge
+    permissions:
+      contents: read
+    uses: DeploCloud/.github/.github/workflows/notify-discord.yml@88c633db5638410f11fcb580fea6cd029ca59399 # main
+    with:
+      tag: ${{ github.ref_name }}
+    secrets: inherit
