@@ -47,6 +47,17 @@ export const INSTANCE: McpToolDef[] = [
             reason
             at
           }
+          automatic {
+            enabled
+            blockedBy
+            hour
+            timezone
+            installsAt
+            nextCheckAt
+            heldReason
+            postponedUntil
+            postponedBy
+          }
         }
       }
     `,
@@ -98,6 +109,66 @@ export const INSTANCE: McpToolDef[] = [
           current
           latest
           updateAvailable
+        }
+      }
+    `,
+  }),
+  tool({
+    name: "set_automatic_updates",
+    title: "Change Deplo's automatic updates",
+    description:
+      "Turn the automatic updates on or off, or move their three hourly checks (`hour` is the first, 0-23, in `timezone`). Omitted fields keep their value.",
+    group: "Instance",
+    requires: "instanceAdmin",
+    idempotent: true,
+    input: z.object({
+      enabled: z.boolean().optional(),
+      hour: z.number().int().min(0).max(23).optional(),
+      timezone: z
+        .string()
+        .optional()
+        .describe(
+          'An IANA zone like "Europe/Rome"; empty follows the machine.',
+        ),
+    }),
+    query: /* GraphQL */ `
+      mutation McpSetAutoUpdates(
+        $enabled: Boolean
+        $hour: Int
+        $timezone: String
+      ) {
+        setAutoUpdates(enabled: $enabled, hour: $hour, timezone: $timezone) {
+          next
+          automatic {
+            enabled
+            blockedBy
+            hour
+            timezone
+            installsAt
+            nextCheckAt
+          }
+        }
+      }
+    `,
+  }),
+  tool({
+    name: "postpone_automatic_update",
+    title: "Postpone Deplo's automatic update by one night",
+    description:
+      "Skip the next night of automatic updates, or the one after a night already skipped. Recorded in the update log.",
+    group: "Instance",
+    requires: "instanceAdmin",
+    input: z.object({}),
+    query: /* GraphQL */ `
+      mutation McpPostponeAutoUpdate {
+        postponeAutoUpdate {
+          next
+          automatic {
+            installsAt
+            postponedUntil
+            postponedBy
+            postponedTimes
+          }
         }
       }
     `,

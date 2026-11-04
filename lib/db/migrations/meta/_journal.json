@@ -1492,6 +1492,13 @@
       "when": 1793790686172,
       "tag": "0212_deplo_update_log",
       "breakpoints": true
+    },
+    {
+      "idx": 213,
+      "version": "7",
+      "when": 1793791452978,
+      "tag": "0213_automatic_updates",
+      "breakpoints": true
     }
   ]
 }

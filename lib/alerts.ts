@@ -191,6 +191,19 @@ export const ALERT_META: Record<AlertKey, AlertMeta> = {
     keywords: "security vulnerability flaw version upgrade release panel",
     defaultOn: true,
   },
+  deplo_auto_updated: {
+    label: "Deplo updated itself",
+    description: "An automatic update installed a new version of Deplo.",
+    keywords: "automatic auto version upgrade release panel night",
+    defaultOn: false,
+  },
+  deplo_auto_update_stopped: {
+    label: "Automatic update stopped",
+    description:
+      "An automatic update did not take, or a new version has to be installed by hand.",
+    keywords: "automatic auto version upgrade release rollback failed manual",
+    defaultOn: true,
+  },
 
   member_joined: {
     label: "Member joined",
@@ -345,7 +358,12 @@ export const ALERT_CATEGORIES: {
     key: "instance",
     label: "This Deplo instance",
     description: "The panel itself, not the apps it runs.",
-    alerts: ["deplo_update_available", "deplo_security_fix"],
+    alerts: [
+      "deplo_update_available",
+      "deplo_security_fix",
+      "deplo_auto_updated",
+      "deplo_auto_update_stopped",
+    ],
   },
   {
     key: "security",

@@ -576,6 +576,69 @@ type AutoDnsZone {
   zoneName: String
 }
 
+"""
+Why the automatic updates are paused. The admin's choice is kept and comes back when this goes.
+"""
+enum AutoUpdateBlock {
+  """Canary versions install only by hand."""
+  canary
+
+  """
+  The machine Deplo runs on is not one of its servers, so it cannot update itself.
+  """
+  host
+
+  """
+  DEPLO_AUTO_UPDATE=off on this install: whoever runs it manages updates.
+  """
+  provider
+}
+
+"""
+Deplo installs new stable versions by itself, at night, when nothing is running.
+"""
+type AutoUpdateStatus {
+  blockedBy: AutoUpdateBlock
+
+  """The admin's switch. On by default."""
+  enabled: Boolean
+
+  """
+  Why `UpdateInfo.next` waits for an admin: its own manual step, or nights it did not take.
+  """
+  heldReason: String
+
+  """The first of the three hourly checks, 0-23, in `timezone`."""
+  hour: Int
+
+  """
+  When `UpdateInfo.next` installs itself (ISO 8601). Null with nothing waiting, or with a version an admin has to install.
+  """
+  installsAt: String
+
+  """The next hourly check (ISO 8601)."""
+  nextCheckAt: String
+  postponedBy: String
+
+  """How often the waiting version has been postponed."""
+  postponedTimes: Int
+  postponedUntil: String
+  timezone: String
+  timezoneSource: AutoUpdateTimezoneSource
+}
+
+"""Where the automatic updates' timezone comes from."""
+enum AutoUpdateTimezoneSource {
+  """UTC: the machine reports UTC and nobody picked one."""
+  default
+
+  """The machine Deplo runs on."""
+  server
+
+  """An instance admin picked it."""
+  set
+}
+
 """A scheduled backup of a database or project to a backup destination."""
 type Backup {
   appId: ID
@@ -1938,12 +2001,23 @@ enum DeploUpdateOutcome {
   failed
 
   """
+  The automatic updates stopped on this version: it has to be installed by hand.
+  """
+  held
+
+  """An instance admin skipped a night."""
+  postponed
+
+  """
   The new version did not start, so the installer put the previous one back.
   """
   rolled_back
 
   """Started, and Deplo has not restarted yet."""
   running
+
+  """An automatic check found work a restart would break, and waited."""
+  skipped
 
   """Deplo came back on the new version."""
   updated
@@ -3527,6 +3601,11 @@ type Mutation {
   addUserToTeam(input: UserTeamInput!): [UserTeamAccess!]
 
   """
+  Offer the admin's own timezone for a machine that reports UTC. Changes nothing once a timezone is set or the machine names one.
+  """
+  adoptAutoUpdateTimezone(timezone: String!): UpdateInfo
+
+  """
   Unblock a fork's pull request and build it. Approval is per pull request, so later commits on it build automatically.
   """
   approvePreview(id: ID!): AppPreview
@@ -4048,6 +4127,11 @@ type Mutation {
   planMigrationDataMove(input: MigrationSourceInput!, runId: String!): [MigrationDataService!]
 
   """
+  Skip the next night of automatic updates, or the one after a night already skipped. Recorded in the update log.
+  """
+  postponeAutoUpdate: UpdateInfo
+
+  """
   Rebuild the image from the current source and REPLACE the running container, even if nothing about the stack changed. Volumes, domains and data are untouched.
   """
   rebuildApp(id: String!): App
@@ -4444,6 +4528,19 @@ type Mutation {
   Replace an app's volumes (named, app-files, and host bind mounts). Compose-stack apps included - each volume names the service it mounts into.
   """
   setAppVolumes(id: String!, volumes: [VolumeInput!]!): App
+
+  """
+  Turn the automatic updates on or off, or move their three hourly checks. Omitted arguments keep their value; an empty `timezone` follows the machine's own again.
+  """
+  setAutoUpdates(
+    enabled: Boolean
+
+    """0-23, the first check."""
+    hour: Int
+
+    """An IANA zone, like "Europe/Rome"."""
+    timezone: String
+  ): UpdateInfo
 
   """
   Offer canary (pre-release) versions of Deplo as updates, or go back to stable ones. Server agents follow the agent version the installed Deplo is pinned to, never this switch. Installs nothing: a newer version shows up as an update, and turning it off never downgrades anything already on a canary.
@@ -7183,6 +7280,9 @@ input UpdateGitConnectionInput {
 Result of checking the upstream GitHub repository for a newer Deplo release.
 """
 type UpdateInfo {
+  """The automatic updates, and when `next` installs itself."""
+  automatic: AutoUpdateStatus
+
   """
   Whether canary (pre-release) versions count as updates. Off: only stable releases do.
   """

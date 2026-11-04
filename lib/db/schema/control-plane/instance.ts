@@ -43,6 +43,11 @@ export const instanceSettings = pgTable("instance_settings", {
   agentRolloutBy: text("agent_rollout_by"),
   // Offer canary (pre-release) versions of Deplo as updates. Never installs one by itself.
   canaryReleases: boolean("canary_releases").notNull().default(false),
+  // https://deplo.build/docs/operations/update#automatic-updates
+  autoUpdatesEnabled: boolean("auto_updates_enabled").notNull().default(true),
+  autoUpdateHour: integer("auto_update_hour").notNull().default(2),
+  autoUpdateTimezone: text("auto_update_timezone"),
+  autoUpdatePostponedUntil: isoTimestamptz("auto_update_postponed_until"),
   // ADR-0033: the id is re-minted every time the switch goes from off to on.
   usageReportsEnabled: boolean("usage_reports_enabled").notNull().default(true),
   usageInstanceId: text("usage_instance_id"),
@@ -78,6 +83,7 @@ export const deploUpdateLog = pgTable(
     logPath: text("log_path"),
     at: isoTimestamptz("at").notNull(),
     finishedAt: isoTimestamptz("finished_at"),
+    notifiedAt: isoTimestamptz("notified_at"),
   },
   (t) => [index("deplo_update_log_at_idx").on(t.at)],
 );

@@ -17,6 +17,8 @@ export const CRON_SCHEDULER_LEASE = "cron-scheduler";
 
 export const SECURITY_UPDATES_LEASE = "security-updates";
 
+export const AUTO_UPDATE_LEASE = "auto-updates";
+
 export interface LeaseRow {
   owner: string;
   heartbeatAt: Date;

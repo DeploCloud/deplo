@@ -243,6 +243,7 @@ const WARN = new Set<AlertKey>([
   "domain_dns_drift",
   "teardown_abandoned",
   "git_access_missing",
+  "deplo_auto_update_stopped",
 ]);
 
 function embedColor(key: AlertKey): number {

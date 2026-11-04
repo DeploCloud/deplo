@@ -2442,6 +2442,8 @@ services:
       - DEPLO_TAKEOVER=$TAKEOVER
       - DEPLO_DATABASE_URL=postgres://deplo:\${DEPLO_DB_PASSWORD}@postgres:5432/deplo
       - DEPLO_ACME_EMAIL=\${ACME_EMAIL}
+      # off: whoever runs this install manages Deplo's updates, so the panel never installs one itself.
+      - DEPLO_AUTO_UPDATE=\${DEPLO_AUTO_UPDATE:-}
     # NO docker.sock. The panel is the one container on this host reachable from
     # the internet, and a socket mount is root on the box for whoever reaches it -
     # so ADR-0006's "the control plane never touches a Docker socket" has to hold

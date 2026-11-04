@@ -2,11 +2,11 @@
 
 import * as React from "react";
 import Link from "@/components/ui/link";
-import { ShieldAlert, ShieldCheck, X } from "lucide-react";
+import { CircleFadingArrowUp, ShieldAlert, ShieldCheck, X } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import { useUpstreamUpdate } from "./update-state";
+import { useAutoUpdatesActive, useUpstreamUpdate } from "./update-state";
 
 export interface SidebarTip {
   id: string;
@@ -39,6 +39,7 @@ export interface SidebarTipContext {
   hasSecondFactor: boolean;
   capabilities: string[];
   isAdmin: boolean;
+  autoUpdates?: boolean;
 }
 
 export const SIDEBAR_TIPS: SidebarTip[] = [
@@ -50,6 +51,15 @@ export const SIDEBAR_TIPS: SidebarTip[] = [
       "A code from your phone on top of your password, so a stolen one is not enough.",
     cta: { label: "Set it up", href: "/settings/security" },
     when: (ctx) => !ctx.hasSecondFactor,
+  },
+  {
+    id: "automatic-updates",
+    icon: CircleFadingArrowUp,
+    title: "Deplo updates itself now",
+    description:
+      "New stable versions install at night, when nothing is running. You pick when, or turn it off.",
+    cta: { label: "See when", href: "/settings/deplo?tab=updates" },
+    when: (ctx) => ctx.autoUpdates === true,
   },
 ];
 
@@ -77,6 +87,7 @@ function readDismissed(): string[] {
 
 export function SidebarTips(ctx: SidebarTipContext) {
   const update = useUpstreamUpdate();
+  const autoUpdates = useAutoUpdatesActive();
   const [dismissed, setDismissed] = React.useState<string[] | null>(null);
 
   React.useEffect(() => {
@@ -97,7 +108,7 @@ export function SidebarTips(ctx: SidebarTipContext) {
     );
 
   if (dismissed === null) return null;
-  const tip = nextTip(dismissed, ctx);
+  const tip = nextTip(dismissed, { ...ctx, autoUpdates });
   if (!tip) return null;
 
   function dismiss(id: string) {

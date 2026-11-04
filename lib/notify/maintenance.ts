@@ -24,6 +24,7 @@ import { sweepCloudflareCertificates } from "../data/domains/cloudflare-mode";
 import { describeStackCertificates } from "../data/server-certificates";
 import { getUpdateInfo, type UpdateInfo } from "../data/updates";
 import { sweepUpdateLog } from "../data/update-log";
+import { autoUpdatePlan, statusFromPlan } from "../data/auto-updates";
 import { sweepFinishedMigrationMarks } from "../data/migration-import/run-report";
 import { autoLinkAllEnv } from "../data/database-autolink";
 import { sendUsageReport } from "../usage-report/send";
@@ -90,7 +91,7 @@ async function settle(what: string, fn: () => Promise<void>): Promise<void> {
 }
 
 /** Names what Update installs, which is an update stop when the newest release needs one first. */
-export function deploUpdateAlert(info: UpdateInfo) {
+export function deploUpdateAlert(info: UpdateInfo, installsItself = false) {
   // Sent even while a stop waits: the admin has something to fix before the flaw is gone.
   if (info.securityFix)
     return {
@@ -100,7 +101,8 @@ export function deploUpdateAlert(info: UpdateInfo) {
       body: `This instance is on ${info.current}. Update it to close the flaw.`,
       path: "/settings/deplo?tab=updates",
     };
-  if (!info.next) return null;
+  // The automatic updates announce what they install once it is in.
+  if (!info.next || installsItself) return null;
   return {
     key: "deplo_update_available" as const,
     dedupe: { id: "deplo-update", state: info.next },
@@ -114,7 +116,9 @@ export function deploUpdateAlert(info: UpdateInfo) {
 }
 
 async function checkDeploUpdate(): Promise<void> {
-  const alert = deploUpdateAlert(await getUpdateInfo());
+  const info = await getUpdateInfo();
+  const auto = statusFromPlan(await autoUpdatePlan(info));
+  const alert = deploUpdateAlert(info, auto.installsAt !== null);
   if (!alert) return;
   const teams = await allTeamIds();
   if (teams.length === 0) return;

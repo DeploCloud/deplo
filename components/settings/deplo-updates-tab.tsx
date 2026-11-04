@@ -21,6 +21,7 @@ import { UpdateGraphic } from "@/components/settings/update-graphic";
 import { gqlAction } from "@/lib/graphql-client";
 import { Changelog, ChangelogSkeleton, type Release } from "./deplo-changelog";
 import { FleetBehind, useFleetAgents, type FleetSummary } from "./fleet-agents";
+import { AutoUpdateRow, type AutoUpdateStatus } from "./auto-update-row";
 
 export type { FleetSummary };
 
@@ -32,6 +33,7 @@ type UpdateInfo = {
   nextIsStop: boolean;
   stop: UpdateStop | null;
   manualUpdate?: string | null;
+  automatic?: AutoUpdateStatus | null;
   publishedAt: string | null;
   canary: boolean;
   error?: string | null;
@@ -77,6 +79,19 @@ const UPDATES_QUERY = /* GraphQL */ `
         version
         reason
         at
+      }
+      automatic {
+        enabled
+        blockedBy
+        hour
+        timezone
+        timezoneSource
+        installsAt
+        nextCheckAt
+        heldReason
+        postponedUntil
+        postponedBy
+        postponedTimes
       }
     }
     deploChangelog {
@@ -347,6 +362,13 @@ export function DeploUpdatesTab({
             </div>
           )}
         </CardContent>
+        {info?.automatic && !updating && (
+          <AutoUpdateRow
+            status={info.automatic}
+            next={info.updateAvailable ? info.next : null}
+            onChanged={load}
+          />
+        )}
         {extras && (
           <div className="space-y-3 border-t border-border p-5">
             {readFirst && <ReadFirstNotice {...readFirst} />}

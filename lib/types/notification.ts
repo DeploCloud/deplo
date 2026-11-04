@@ -50,6 +50,8 @@ export type AlertKey =
   | "teardown_abandoned"
   | "deplo_update_available"
   | "deplo_security_fix"
+  | "deplo_auto_updated"
+  | "deplo_auto_update_stopped"
   | "member_joined"
   | "member_removed"
   | "member_access_changed"
@@ -92,6 +94,8 @@ export const ALL_ALERTS: AlertKey[] = [
   "teardown_abandoned",
   "deplo_update_available",
   "deplo_security_fix",
+  "deplo_auto_updated",
+  "deplo_auto_update_stopped",
   "member_joined",
   "member_removed",
   "member_access_changed",

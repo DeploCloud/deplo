@@ -230,6 +230,7 @@ test("a row still open long after it started reads as failed, naming the run's l
     logPath: "/var/log/deplo-update.log",
     at,
     finishedAt: null,
+    notifiedAt: null,
   };
   const soon = Date.parse(at) + 60_000;
   assert.equal(effectiveEntry(row, soon).outcome, "running");

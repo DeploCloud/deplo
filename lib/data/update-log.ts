@@ -1,6 +1,6 @@
 import "server-only";
 
-import { and, desc, eq, lt } from "drizzle-orm";
+import { and, desc, eq, inArray, isNull, lt } from "drizzle-orm";
 
 import { getDb } from "../db/client";
 import { deploUpdateLog } from "../db/schema/control-plane/instance";
@@ -11,7 +11,15 @@ import { readRefusedNote } from "./update-stops/refused";
 
 // button: an admin clicked Update. host: the installer ran on the machine, outside Deplo.
 export type UpdateTrigger = "button" | "automatic" | "host";
-export type UpdateOutcome = "running" | "updated" | "rolled_back" | "failed";
+// The last three never install anything: the automatic updates write them on the way.
+export type UpdateOutcome =
+  | "running"
+  | "updated"
+  | "rolled_back"
+  | "failed"
+  | "skipped"
+  | "postponed"
+  | "held";
 
 export interface UpdateLogEntry {
   id: string;
@@ -64,6 +72,88 @@ export async function logUpdateLogPath(id: string, logPath: string) {
   await getDb()
     .update(deploUpdateLog)
     .set({ logPath })
+    .where(eq(deploUpdateLog.id, id));
+}
+
+/** A row for something that installed nothing: a skipped attempt, a postponement, a hold. */
+export async function logUpdateEvent(entry: {
+  outcome: "skipped" | "postponed" | "held";
+  to: string;
+  trigger: UpdateTrigger;
+  actor: string | null;
+  reason: string;
+  at?: string;
+}): Promise<void> {
+  const at = entry.at ?? nowIso();
+  await getDb()
+    .insert(deploUpdateLog)
+    .values({
+      id: newId("dupd"),
+      trigger: entry.trigger,
+      outcome: entry.outcome,
+      fromVersion: versionTag(DEPLO_VERSION),
+      toVersion: versionTag(entry.to),
+      actor: entry.actor,
+      reason: entry.reason,
+      at,
+      finishedAt: at,
+    });
+}
+
+/** Writes down what `effectiveEntry` shows for an update that never finished, so it can be announced. */
+export async function settleUnfinishedUpdates(now = Date.now()) {
+  const db = getDb();
+  const stale = await db
+    .select()
+    .from(deploUpdateLog)
+    .where(
+      and(
+        eq(deploUpdateLog.outcome, "running"),
+        lt(
+          deploUpdateLog.at,
+          new Date(now - UNFINISHED_AFTER_MS).toISOString(),
+        ),
+      ),
+    );
+  for (const row of stale) {
+    const e = effectiveEntry(row, now);
+    await db
+      .update(deploUpdateLog)
+      .set({ outcome: e.outcome, reason: e.reason, finishedAt: nowIso() })
+      .where(
+        and(
+          eq(deploUpdateLog.id, row.id),
+          eq(deploUpdateLog.outcome, "running"),
+        ),
+      );
+  }
+}
+
+/** Finished automatic rows no alert has gone out for yet. */
+export async function unannouncedAutomatic(): Promise<UpdateLogEntry[]> {
+  const rows = await getDb()
+    .select()
+    .from(deploUpdateLog)
+    .where(
+      and(
+        eq(deploUpdateLog.trigger, "automatic"),
+        isNull(deploUpdateLog.notifiedAt),
+        inArray(deploUpdateLog.outcome, [
+          "updated",
+          "rolled_back",
+          "failed",
+          "held",
+        ]),
+      ),
+    )
+    .orderBy(deploUpdateLog.at);
+  return rows.map((r) => effectiveEntry(r));
+}
+
+export async function markAnnounced(id: string) {
+  await getDb()
+    .update(deploUpdateLog)
+    .set({ notifiedAt: nowIso() })
     .where(eq(deploUpdateLog.id, id));
 }
 

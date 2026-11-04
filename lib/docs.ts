@@ -219,6 +219,7 @@ export const DOCS = {
   "upgrade.overview": "operations/update",
   "upgrade.releases": "operations/update#release-history",
   "upgrade.log": "operations/update#update-log",
+  "upgrade.automatic": "operations/update#automatic-updates",
   "deplo.move": "operations/move-deplo",
 
   "migration.takeover": "migrations",

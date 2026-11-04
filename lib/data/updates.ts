@@ -53,6 +53,7 @@ export interface UpdateInfo {
   securityFix: string | null;
   /** Why `next` has to be installed by hand, as that release declares it. */
   manualUpdate: string | null;
+  nextPublishedAt: string | null;
   url: string | null;
   name: string | null;
   publishedAt: string | null;
@@ -147,14 +148,16 @@ async function fetchNewestRelease(
 async function releasePublished(
   version: string,
   init: RequestInit,
-): Promise<boolean | { error: string }> {
+): Promise<{ publishedAt: string | null } | false | { error: string }> {
   const res = await fetch(
     `https://api.github.com/repos/${DEPLO_REPO}/releases/tags/${versionTag(version)}`,
     { headers: GH_HEADERS, signal: AbortSignal.timeout(TIMEOUT_MS), ...init },
   );
   if (res.status === 404) return false;
   if (!res.ok) return { error: describeFailure(res) };
-  return true;
+  const at = ((await res.json().catch(() => null)) as GitHubRelease | null)
+    ?.published_at;
+  return { publishedAt: typeof at === "string" ? at : null };
 }
 
 async function fetchUpdateInfo(init: RequestInit): Promise<UpdateInfo> {
@@ -168,6 +171,7 @@ async function fetchUpdateInfo(init: RequestInit): Promise<UpdateInfo> {
     stop: null,
     securityFix: null,
     manualUpdate: null,
+    nextPublishedAt: null,
     url: null,
     name: null,
     publishedAt: null,
@@ -219,10 +223,16 @@ async function checkReleases(
   const floor = (await readReleaseDeclaration(tag, init))?.securityFloor;
   if (floor && isNewer(floor, found.current))
     newest.securityFix = versionTag(floor);
+  const stopsPublished = new Map<string, string | null>();
   const route = await decideUpdate(
     tag,
     passed,
-    (v) => releasePublished(v, init),
+    async (v) => {
+      const found = await releasePublished(v, init);
+      if (found === false || "error" in found) return found;
+      stopsPublished.set(versionTag(v), found.publishedAt);
+      return true;
+    },
     init,
   );
   if (route.error) return { ...newest, error: route.error };
@@ -232,6 +242,10 @@ async function checkReleases(
   return {
     ...newest,
     manualUpdate: manual ?? null,
+    nextPublishedAt:
+      route.next === tag
+        ? newest.publishedAt
+        : (stopsPublished.get(route.next ?? "") ?? null),
     updateAvailable: route.next !== null,
     next: route.next,
     nextIsStop: route.next !== null && route.stop?.version === route.next,

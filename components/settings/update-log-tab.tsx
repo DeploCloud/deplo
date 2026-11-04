@@ -17,18 +17,25 @@ import type { UpdateLogEntry } from "@/lib/data/update-log";
 
 const OUTCOME: Record<
   UpdateLogEntry["outcome"],
-  { label: string; dot: "success" | "unhealthy" | "failed" | "building" }
+  {
+    label: string;
+    dot: "success" | "unhealthy" | "failed" | "building" | "idle";
+  }
 > = {
   running: { label: "Updating", dot: "building" },
   updated: { label: "Updated", dot: "success" },
   rolled_back: { label: "Rolled back", dot: "unhealthy" },
   failed: { label: "Failed", dot: "failed" },
+  skipped: { label: "Skipped", dot: "idle" },
+  postponed: { label: "Postponed", dot: "idle" },
+  held: { label: "Needs you", dot: "unhealthy" },
 };
 
 export function updateLogActor(e: UpdateLogEntry): string {
+  if (e.actor) return e.actor;
   if (e.trigger === "automatic") return "Automatic";
   if (e.trigger === "host") return "Installer";
-  return e.actor ?? "Update button";
+  return "Update button";
 }
 
 export function UpdateLogTab({ entries }: { entries: UpdateLogEntry[] }) {

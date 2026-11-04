@@ -25,6 +25,13 @@ import {
   type UpdateStopInfo,
 } from "@/lib/data/updates";
 import { listUpdateLog, type UpdateLogEntry } from "@/lib/data/update-log";
+import {
+  adoptAutoUpdateTimezone,
+  postponeAutoUpdate,
+  readAutoUpdateStatus,
+  setAutoUpdates,
+  type AutoUpdateStatus,
+} from "@/lib/data/auto-updates";
 import { bareVersion } from "@/lib/version";
 
 const StrandedServerRef = builder
@@ -103,6 +110,78 @@ const RefusedUpdateRef = builder
     }),
   });
 
+const AutoUpdateBlockEnum = builder.enumType("AutoUpdateBlock", {
+  description:
+    "Why the automatic updates are paused. The admin's choice is kept and comes back when this goes.",
+  values: {
+    provider: {
+      description:
+        "DEPLO_AUTO_UPDATE=off on this install: whoever runs it manages updates.",
+    },
+    canary: { description: "Canary versions install only by hand." },
+    host: {
+      description:
+        "The machine Deplo runs on is not one of its servers, so it cannot update itself.",
+    },
+  } as const,
+});
+
+const TimezoneSourceEnum = builder.enumType("AutoUpdateTimezoneSource", {
+  description: "Where the automatic updates' timezone comes from.",
+  values: {
+    set: { description: "An instance admin picked it." },
+    server: { description: "The machine Deplo runs on." },
+    default: {
+      description: "UTC: the machine reports UTC and nobody picked one.",
+    },
+  } as const,
+});
+
+const AutoUpdateStatusRef = builder
+  .objectRef<AutoUpdateStatus>("AutoUpdateStatus")
+  .implement({
+    description:
+      "Deplo installs new stable versions by itself, at night, when nothing is running.",
+    fields: (t) => ({
+      enabled: t.exposeBoolean("enabled", {
+        description: "The admin's switch. On by default.",
+      }),
+      blockedBy: t.field({
+        type: AutoUpdateBlockEnum,
+        nullable: true,
+        resolve: (s) => s.blockedBy,
+      }),
+      hour: t.exposeInt("hour", {
+        description:
+          "The first of the three hourly checks, 0-23, in `timezone`.",
+      }),
+      timezone: t.exposeString("timezone"),
+      timezoneSource: t.field({
+        type: TimezoneSourceEnum,
+        resolve: (s) => s.timezoneSource,
+      }),
+      installsAt: t.exposeString("installsAt", {
+        nullable: true,
+        description:
+          "When `UpdateInfo.next` installs itself (ISO 8601). Null with nothing waiting, or with a version an admin has to install.",
+      }),
+      nextCheckAt: t.exposeString("nextCheckAt", {
+        nullable: true,
+        description: "The next hourly check (ISO 8601).",
+      }),
+      heldReason: t.exposeString("heldReason", {
+        nullable: true,
+        description:
+          "Why `UpdateInfo.next` waits for an admin: its own manual step, or nights it did not take.",
+      }),
+      postponedUntil: t.exposeString("postponedUntil", { nullable: true }),
+      postponedBy: t.exposeString("postponedBy", { nullable: true }),
+      postponedTimes: t.exposeInt("postponedTimes", {
+        description: "How often the waiting version has been postponed.",
+      }),
+    }),
+  });
+
 const UpdateInfoRef = builder.objectRef<UpdateInfo>("UpdateInfo").implement({
   description:
     "Result of checking the upstream GitHub repository for a newer Deplo release.",
@@ -157,6 +236,12 @@ const UpdateInfoRef = builder.objectRef<UpdateInfo>("UpdateInfo").implement({
         "Offline servers whose agent is older than the minimum the `next` Deplo supports. They cannot update while offline, so they stay unusable until they come back and their agent updates. Empty when there is no update or the release does not say.",
       resolve: (info) =>
         info.next ? strandedByPanelUpdate(bareVersion(info.next)) : [],
+    }),
+    automatic: t.field({
+      type: AutoUpdateStatusRef,
+      authScopes: { instanceAdmin: true },
+      description: "The automatic updates, and when `next` installs itself.",
+      resolve: (info) => readAutoUpdateStatus(info),
     }),
     lastRefusedUpdate: t.field({
       type: RefusedUpdateRef,
@@ -289,6 +374,15 @@ const UpdateOutcomeEnum = builder.enumType("DeploUpdateOutcome", {
   description: "How an update of Deplo ended.",
   values: {
     running: { description: "Started, and Deplo has not restarted yet." },
+    skipped: {
+      description:
+        "An automatic check found work a restart would break, and waited.",
+    },
+    postponed: { description: "An instance admin skipped a night." },
+    held: {
+      description:
+        "The automatic updates stopped on this version: it has to be installed by hand.",
+    },
     updated: { description: "Deplo came back on the new version." },
     rolled_back: {
       description:
@@ -378,6 +472,35 @@ builder.mutationFields((t) => ({
     description:
       "Update this instance to `updateInfo.next`: the newest release, or the update stop it has to pass first. The server agent on the machine Deplo runs on re-runs the installer.",
     resolve: () => applyDeploUpdate(),
+  }),
+  setAutoUpdates: t.field({
+    type: UpdateInfoRef,
+    authScopes: { instanceAdmin: true },
+    description:
+      "Turn the automatic updates on or off, or move their three hourly checks. Omitted arguments keep their value; an empty `timezone` follows the machine's own again.",
+    args: {
+      enabled: t.arg.boolean(),
+      hour: t.arg.int({ description: "0-23, the first check." }),
+      timezone: t.arg.string({
+        description: 'An IANA zone, like "Europe/Rome".',
+      }),
+    },
+    resolve: (_r, args) => setAutoUpdates(args),
+  }),
+  postponeAutoUpdate: t.field({
+    type: UpdateInfoRef,
+    authScopes: { instanceAdmin: true },
+    description:
+      "Skip the next night of automatic updates, or the one after a night already skipped. Recorded in the update log.",
+    resolve: () => postponeAutoUpdate(),
+  }),
+  adoptAutoUpdateTimezone: t.field({
+    type: UpdateInfoRef,
+    authScopes: { instanceAdmin: true },
+    description:
+      "Offer the admin's own timezone for a machine that reports UTC. Changes nothing once a timezone is set or the machine names one.",
+    args: { timezone: t.arg.string({ required: true }) },
+    resolve: (_r, { timezone }) => adoptAutoUpdateTimezone(timezone),
   }),
   setCanaryReleases: t.field({
     type: UpdateInfoRef,

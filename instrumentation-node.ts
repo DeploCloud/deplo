@@ -204,6 +204,13 @@ export async function register(): Promise<void> {
     console.error("[deplo] security updates scheduler startup failed:", e);
   }
   try {
+    const { startAutoUpdateScheduler } =
+      await import("./lib/auto-updates/scheduler");
+    startAutoUpdateScheduler();
+  } catch (e) {
+    console.error("[deplo] automatic updates startup failed:", e);
+  }
+  try {
     const { startMetricsStreams } = await import("./lib/monitoring/supervisor");
     startMetricsStreams();
   } catch (e) {
@@ -287,6 +294,9 @@ export async function register(): Promise<void> {
         ),
         import("./lib/security-updates/scheduler").then(
           ({ releaseSecurityUpdatesLease }) => releaseSecurityUpdatesLease(),
+        ),
+        import("./lib/auto-updates/scheduler").then(
+          ({ releaseAutoUpdateLease }) => releaseAutoUpdateLease(),
         ),
         import("./lib/data/migration-runner/run-loop").then(
           ({ releaseMigrationRunnerLease }) => releaseMigrationRunnerLease(),
