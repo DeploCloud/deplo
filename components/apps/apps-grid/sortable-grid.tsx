@@ -349,6 +349,7 @@ export function SortableGrid({
   const groupDragIds = new Set(activeGroup.length >= 2 ? activeGroup : []);
   return (
     <DndContext
+      id="dnd-overview-grid"
       sensors={sensors}
       collisionDetection={collisionDetection}
       onDragStart={(e: DragStartEvent) => setActiveId(String(e.active.id))}

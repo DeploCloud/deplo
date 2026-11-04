@@ -107,6 +107,7 @@ export function TeamSwitcher({
         <DropdownMenuContent align="start" className="w-64">
           <DropdownMenuLabel>Teams</DropdownMenuLabel>
           <DndContext
+            id="dnd-team-switcher"
             sensors={sensors}
             collisionDetection={closestCenter}
             onDragEnd={handleDragEnd}

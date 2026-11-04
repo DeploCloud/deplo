@@ -235,6 +235,7 @@ export function DatabasesGrid({
             />
           ) : reorderable ? (
             <DndContext
+              id="dnd-databases-grid"
               sensors={sensors}
               collisionDetection={closestCenter}
               onDragStart={(e: DragStartEvent) =>
