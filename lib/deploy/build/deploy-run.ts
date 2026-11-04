@@ -330,7 +330,8 @@ async function runDeployment(depId: string): Promise<void> {
       if (preview) return;
       if (hasCompose && !useCompose)
         await recordSourceCompose(project.id, null);
-      if (!method.methodAuto) return;
+      // No builtWith from an auto build: the agent reused an image, so the method stands.
+      if (!method.methodAuto || !builtWith) return;
       await recordResolvedMethod(
         project.id,
         builtWith === "dockerfile" ? "dockerfile" : "railpack",
@@ -596,6 +597,8 @@ async function runDeployment(depId: string): Promise<void> {
             pullBase,
             forceRecreate,
             forkPreview: Boolean(forkUrl),
+            // A fork's image is never offered: its commit was approved, not its build.
+            reuseFor: forkUrl ? undefined : depId,
             ready,
             // A fork is a stranger's code: its build never borrows the team's GitHub identity.
             githubToken,

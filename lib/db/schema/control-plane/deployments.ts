@@ -60,6 +60,8 @@ export const deployments = pgTable(
     // Rebuild: fetch the Dockerfile's base images again (agent `deploy.pull-base`).
     pullBase: boolean("pull_base").notNull().default(false),
     imageRef: text("image_ref"),
+    // A git build's input minus the commit: a redeploy of the same commit reuses this image.
+    buildFingerprint: text("build_fingerprint"),
     rollbackOf: text("rollback_of"),
     creator: text("creator").notNull(),
     creatorUserId: text("creator_user_id").references(() => users.id, {

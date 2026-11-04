@@ -31,6 +31,7 @@ import { appVolumes as appVolumesTable } from "../db/schema/control-plane/apps";
 import { tarDir, tarDirChunks } from "./context-tar";
 import { buildConfigFor, normalizeBuildConfig } from "../frameworks";
 import { autoComposeSkip } from "./build/source-compose";
+import { offerBuiltImage } from "./build/build-reuse";
 import type { BuildConfig } from "../types/build";
 import type { LogLevel } from "../types/deployment";
 
@@ -235,6 +236,8 @@ export async function runAgentDeploy(opts: {
   forkPreview?: boolean;
   ready?: ReadyCheck;
   githubToken?: string;
+  // The deployment row of a git build that may take on an earlier image of the same commit.
+  reuseFor?: string;
   sink: AgentDeploySink;
 }): Promise<AgentDeployResult> {
   const hello = await agentPreflight(opts.serverId);
@@ -312,6 +315,13 @@ export async function runAgentDeploy(opts: {
       : await loadRegistryAuthsForApp(opts.appId),
   });
   applyAgentFeatures(req, opts, hello.capabilities, opts.sink);
+  if (opts.reuseFor)
+    req.reuseImage = await offerBuiltImage(
+      opts.reuseFor,
+      opts.serverId,
+      req,
+      hello.capabilities,
+    );
   if (
     req.composeUpArgs.length &&
     !hello.capabilities.includes("deploy.compose-args")

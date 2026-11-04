@@ -947,6 +947,12 @@ export interface DeployRequest {
    * a rebuild that has to pick up a fixed base. Advertised as `deploy.pull-base`.
    */
   pullBaseImages: boolean;
+  /**
+   * An earlier deployment's image of the same app, built from commit_sha with the same build
+   * settings: when the branch still points there and the image is on this host, it is tagged as
+   * image_ref and nothing is cloned or built. Advertised as `deploy.reuse-image`.
+   */
+  reuseImage?: ReuseImage | undefined;
 }
 
 export interface DeployRequest_EnvEntry {
@@ -2763,6 +2769,11 @@ export interface CaptureScreenshotResponse {
   darkWebp: Uint8Array;
   /** Why it was not OK, for logs. */
   detail: string;
+}
+
+export interface ReuseImage {
+  imageRef: string;
+  commitSha: string;
 }
 
 function createBaseRenewalCSRRequest(): RenewalCSRRequest {
@@ -4824,6 +4835,7 @@ function createBaseDeployRequest(): DeployRequest {
     ready: undefined,
     githubToken: "",
     pullBaseImages: false,
+    reuseImage: undefined,
   };
 }
 
@@ -4906,6 +4918,9 @@ export const DeployRequest: MessageFns<DeployRequest> = {
     }
     if (message.pullBaseImages !== false) {
       writer.uint32(208).bool(message.pullBaseImages);
+    }
+    if (message.reuseImage !== undefined) {
+      ReuseImage.encode(message.reuseImage, writer.uint32(218).fork()).join();
     }
     return writer;
   },
@@ -5134,6 +5149,14 @@ export const DeployRequest: MessageFns<DeployRequest> = {
             message.pullBaseImages = reader.bool();
             continue;
           }
+          case 27: {
+            if (tag !== 218) {
+              break;
+            }
+
+            message.reuseImage = ReuseImage.decode(reader, reader.uint32());
+            continue;
+          }
         }
         if ((tag & 7) === 4 || tag === 0) {
           break;
@@ -5265,6 +5288,11 @@ export const DeployRequest: MessageFns<DeployRequest> = {
         : isSet(object.pull_base_images)
         ? globalThis.Boolean(object.pull_base_images)
         : false,
+      reuseImage: isSet(object.reuseImage)
+        ? ReuseImage.fromJSON(object.reuseImage)
+        : isSet(object.reuse_image)
+        ? ReuseImage.fromJSON(object.reuse_image)
+        : undefined,
     };
   },
 
@@ -5354,6 +5382,9 @@ export const DeployRequest: MessageFns<DeployRequest> = {
     if (message.pullBaseImages !== false) {
       obj.pullBaseImages = message.pullBaseImages;
     }
+    if (message.reuseImage !== undefined) {
+      obj.reuseImage = ReuseImage.toJSON(message.reuseImage);
+    }
     return obj;
   },
 
@@ -5402,6 +5433,9 @@ export const DeployRequest: MessageFns<DeployRequest> = {
       : undefined;
     message.githubToken = object.githubToken ?? "";
     message.pullBaseImages = object.pullBaseImages ?? false;
+    message.reuseImage = (object.reuseImage !== undefined && object.reuseImage !== null)
+      ? ReuseImage.fromPartial(object.reuseImage)
+      : undefined;
     return message;
   },
 };
@@ -20680,6 +20714,99 @@ export const CaptureScreenshotResponse: MessageFns<CaptureScreenshotResponse> = 
     message.lightWebp = object.lightWebp ?? new Uint8Array(0);
     message.darkWebp = object.darkWebp ?? new Uint8Array(0);
     message.detail = object.detail ?? "";
+    return message;
+  },
+};
+
+function createBaseReuseImage(): ReuseImage {
+  return { imageRef: "", commitSha: "" };
+}
+
+export const ReuseImage: MessageFns<ReuseImage> = {
+  encode(message: ReuseImage, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.imageRef !== "") {
+      writer.uint32(10).string(message.imageRef);
+    }
+    if (message.commitSha !== "") {
+      writer.uint32(18).string(message.commitSha);
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): ReuseImage {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const previousRecursionDepth = (reader as any).__tsProtoDecodeDepth ?? 0;
+    if (previousRecursionDepth >= 100) {
+      throw new globalThis.Error("protobuf decode recursion limit exceeded");
+    }
+    (reader as any).__tsProtoDecodeDepth = previousRecursionDepth + 1;
+    try {
+      const end = length === undefined ? reader.len : reader.pos + length;
+      const message = createBaseReuseImage();
+      while (reader.pos < end) {
+        const tag = reader.uint32();
+        switch (tag >>> 3) {
+          case 1: {
+            if (tag !== 10) {
+              break;
+            }
+
+            message.imageRef = reader.string();
+            continue;
+          }
+          case 2: {
+            if (tag !== 18) {
+              break;
+            }
+
+            message.commitSha = reader.string();
+            continue;
+          }
+        }
+        if ((tag & 7) === 4 || tag === 0) {
+          break;
+        }
+        reader.skip(tag & 7);
+      }
+      return message;
+    } finally {
+      (reader as any).__tsProtoDecodeDepth = previousRecursionDepth;
+    }
+  },
+
+  fromJSON(object: any): ReuseImage {
+    return {
+      imageRef: isSet(object.imageRef)
+        ? globalThis.String(object.imageRef)
+        : isSet(object.image_ref)
+        ? globalThis.String(object.image_ref)
+        : "",
+      commitSha: isSet(object.commitSha)
+        ? globalThis.String(object.commitSha)
+        : isSet(object.commit_sha)
+        ? globalThis.String(object.commit_sha)
+        : "",
+    };
+  },
+
+  toJSON(message: ReuseImage): unknown {
+    const obj: any = {};
+    if (message.imageRef !== "") {
+      obj.imageRef = message.imageRef;
+    }
+    if (message.commitSha !== "") {
+      obj.commitSha = message.commitSha;
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<ReuseImage>, I>>(base?: I): ReuseImage {
+    return ReuseImage.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<ReuseImage>, I>>(object: I): ReuseImage {
+    const message = createBaseReuseImage();
+    message.imageRef = object.imageRef ?? "";
+    message.commitSha = object.commitSha ?? "";
     return message;
   },
 };

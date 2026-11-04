@@ -278,6 +278,7 @@ export async function tryAgent(opts: {
   githubToken?: string;
   // The agent replays a deploy id it has already run, so a second leg of one deployment needs its own.
   agentDeployId?: string;
+  reuseFor?: string;
 }): Promise<AgentAttempt> {
   return withKeyedLock(`app-lifecycle:${opts.project.id}`, async () => {
     const stillExists = await getDb()
@@ -360,6 +361,8 @@ export async function tryAgent(opts: {
         composeUpArgs: parseComposeUpArgs(opts.project.composeUpArgs),
         ready: opts.ready,
         githubToken: opts.githubToken,
+        // A build server already built it; only a build here can be skipped.
+        reuseFor: plan.kind === "git" ? opts.reuseFor : undefined,
         sink: { log: (level, text) => log(opts.depId, level, text) },
       });
       return {
