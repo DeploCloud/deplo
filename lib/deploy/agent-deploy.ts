@@ -24,7 +24,6 @@ import {
 } from "../infra/agent-client/hello-capabilities";
 import { stackFilesDir } from "./deploy-key";
 import { fileBindsUnderFilesDir, filesBindSources } from "./file-binds";
-import { composeDeployArgs } from "./compose-args";
 import { loadRegistryAuthsForApp } from "../data/registries";
 import { and, eq } from "drizzle-orm";
 import { getDb } from "../db/client";
@@ -572,7 +571,6 @@ export async function buildDeployRequest(opts: {
       ...base,
       sourceKind: SourceKind.SOURCE_KIND_COMPOSE,
       buildKind: BuildKind.BUILD_KIND_NONE,
-      composeUpArgs: composeDeployArgs(opts.composeUpArgs ?? []),
       mounts: opts.plan.mounts.map((m) => ({
         path: m.filePath,
         content: m.content,
@@ -614,7 +612,6 @@ export async function buildDeployRequest(opts: {
         ...buildSpecFor(buildConfigFor({ buildMethod: "compose" })),
         composeFile,
       },
-      composeUpArgs: composeDeployArgs(opts.composeUpArgs ?? []),
       ...(source.kind === "git"
         ? {
             sourceKind: SourceKind.SOURCE_KIND_GIT,

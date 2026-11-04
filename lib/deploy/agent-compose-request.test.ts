@@ -46,18 +46,19 @@ test("compose plan → SOURCE_KIND_COMPOSE, no build, no single image to pull", 
   assert.equal(req.contextTar.length, 0);
 });
 
-test("a compose stack's bring-up pulls every service's image, the operator's flags after", async () => {
+// The agent pulls every service's image before the bring-up, so `up` carries only the operator's flags.
+test("a compose stack's bring-up carries only the operator's flags", async () => {
   const plain = await buildDeployRequest({
     ...base,
     plan: { kind: "compose", mounts: [] },
   });
-  assert.deepEqual(plain.composeUpArgs, ["--pull", "always"]);
+  assert.deepEqual(plain.composeUpArgs, []);
   const withFlags = await buildDeployRequest({
     ...base,
     plan: { kind: "compose", mounts: [] },
     composeUpArgs: ["--wait"],
   });
-  assert.deepEqual(withFlags.composeUpArgs, ["--pull", "always", "--wait"]);
+  assert.deepEqual(withFlags.composeUpArgs, ["--wait"]);
   const optedOut = await buildDeployRequest({
     ...base,
     plan: { kind: "compose", mounts: [] },
@@ -217,7 +218,7 @@ test("the compose leg deploys the rendered stack from the commit it was read at"
   assert.equal(req.git?.subdir, "apps/web");
   assert.equal(req.buildSpec?.method, "compose");
   assert.equal(req.buildSpec?.composeFile, "compose.yaml");
-  assert.deepEqual(req.composeUpArgs, ["--pull", "always"]);
+  assert.deepEqual(req.composeUpArgs, []);
 });
 
 test("a static site is a Railpack build with its output folder", async () => {

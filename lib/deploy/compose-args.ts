@@ -79,12 +79,6 @@ export function validateComposeUpArgs(raw: string): string | null {
   return null;
 }
 
-export function composeDeployArgs(extra: string[]): string[] {
-  const own = extra.some((t) => t === "--pull" || t.startsWith("--pull="));
-  if (own || extra.length + 2 > COMPOSE_UP_ARGS_MAX_TOKENS) return extra;
-  return ["--pull", "always", ...extra];
-}
-
 export function composeUpCommandPreview(opts: {
   slug: string;
   usesEnvFile: boolean;
@@ -94,7 +88,6 @@ export function composeUpCommandPreview(opts: {
   const parts = ["docker", "compose", "-p", `deplo-${opts.slug}`, "-f", stack];
   if (opts.usesEnvFile)
     parts.push("--env-file", `/data/stacks/${opts.slug}.env`);
-  const extra = opts.usesEnvFile ? composeDeployArgs(opts.extra) : opts.extra;
-  parts.push("up", "-d", "--remove-orphans", ...extra);
+  parts.push("up", "-d", "--remove-orphans", ...opts.extra);
   return parts.join(" ");
 }

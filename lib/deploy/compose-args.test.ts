@@ -2,8 +2,6 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 
 import {
-  COMPOSE_UP_ARGS_MAX_TOKENS,
-  composeDeployArgs,
   composeUpCommandPreview,
   parseComposeUpArgs,
   validateComposeUpArgs,
@@ -113,7 +111,7 @@ test("the preview is the command, not a description of it", () => {
       extra: ["--wait"],
     }),
     "docker compose -p deplo-api -f /data/stacks/api.yml --env-file /data/stacks/api.env " +
-      "up -d --remove-orphans --pull always --wait",
+      "up -d --remove-orphans --wait",
   );
   assert.equal(
     composeUpCommandPreview({
@@ -124,32 +122,4 @@ test("the preview is the command, not a description of it", () => {
     "docker compose -p deplo-api -f /data/stacks/api.yml --env-file /data/stacks/api.env " +
       "up -d --remove-orphans --pull missing",
   );
-});
-
-test("a compose stack's deploy pulls unless the operator chose a pull policy", () => {
-  assert.deepEqual(composeDeployArgs([]), ["--pull", "always"]);
-  assert.deepEqual(composeDeployArgs(["--wait"]), [
-    "--pull",
-    "always",
-    "--wait",
-  ]);
-  assert.deepEqual(composeDeployArgs(["--pull", "missing"]), [
-    "--pull",
-    "missing",
-  ]);
-  assert.deepEqual(composeDeployArgs(["--wait", "--pull=never"]), [
-    "--wait",
-    "--pull=never",
-  ]);
-  const atCap = Array.from(
-    { length: COMPOSE_UP_ARGS_MAX_TOKENS - 1 },
-    () => "--wait",
-  );
-  assert.deepEqual(composeDeployArgs(atCap), atCap);
-  const withRoom = atCap.slice(0, COMPOSE_UP_ARGS_MAX_TOKENS - 2);
-  assert.deepEqual(composeDeployArgs(withRoom), [
-    "--pull",
-    "always",
-    ...withRoom,
-  ]);
 });
