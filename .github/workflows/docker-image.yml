@@ -211,7 +211,7 @@ jobs:
     needs: merge
     permissions:
       contents: read
-    uses: DeploCloud/.github/.github/workflows/notify-discord.yml@88c633db5638410f11fcb580fea6cd029ca59399 # main
+    uses: DeploCloud/.github/.github/workflows/notify-discord.yml@5bc80cb52b96297bc5173655c923cc44686a7500 # main
     with:
       tag: ${{ github.ref_name }}
     secrets: inherit
