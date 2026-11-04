@@ -218,6 +218,7 @@ export const DOCS = {
   "panel.tunnel": "operations/cloudflare-tunnel",
   "upgrade.overview": "operations/update",
   "upgrade.releases": "operations/update#release-history",
+  "upgrade.log": "operations/update#update-log",
   "deplo.move": "operations/move-deplo",
 
   "migration.takeover": "migrations",

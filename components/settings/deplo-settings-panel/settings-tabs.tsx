@@ -5,6 +5,7 @@ import { useSearchParams } from "@/lib/nav";
 import {
   CircleFadingArrowUp,
   Globe,
+  History,
   Info,
   LifeBuoy,
   ShieldCheck,
@@ -43,9 +44,11 @@ import { PanelTunnelCard } from "./panel-tunnel-card";
 import { CertificatesCard } from "./certificates-card";
 import { SettingGroup } from "./setting-item";
 import { DeploAboutTab } from "@/components/settings/deplo-about-tab";
+import { UpdateLogTab } from "@/components/settings/update-log-tab";
+import type { UpdateLogEntry } from "@/lib/data/update-log";
 import type { Notice } from "@/components/settings/licenses-panel";
 
-const TABS = ["general", "updates", "advanced", "about"] as const;
+const TABS = ["general", "updates", "update-log", "advanced", "about"] as const;
 type TabId = (typeof TABS)[number];
 
 export function DeploSettingsPanel({
@@ -58,8 +61,10 @@ export function DeploSettingsPanel({
   canary: canarySeed,
   security,
   notices,
+  updateLog,
 }: {
   notices: Notice[];
+  updateLog: UpdateLogEntry[];
   canary: boolean;
   security: SecurityUpdatesStatus;
   settings: InstanceSettings;
@@ -99,6 +104,10 @@ export function DeploSettingsPanel({
           <CircleFadingArrowUp className="size-4" />
           Updates
         </UnderlineTabsTrigger>
+        <UnderlineTabsTrigger value="update-log">
+          <History className="size-4" />
+          Update log
+        </UnderlineTabsTrigger>
         <UnderlineTabsTrigger value="advanced">
           <SlidersHorizontal className="size-4" />
           Advanced
@@ -135,6 +144,9 @@ export function DeploSettingsPanel({
           canary={canary}
           fleet={fleet}
         />
+      </TabsContent>
+      <TabsContent value="update-log">
+        <UpdateLogTab entries={updateLog} />
       </TabsContent>
       <TabsContent value="advanced" className="space-y-8">
         <SettingGroup icon={CircleFadingArrowUp} title="Updates">

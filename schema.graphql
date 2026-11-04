@@ -1914,12 +1914,59 @@ type DeploRelease {
   url: String
 }
 
+"""One update of Deplo itself, however it was started."""
+type DeploUpdateLogEntry {
+  """Who clicked Update. Null when no person did."""
+  actor: String
+
+  """When it started (ISO 8601)."""
+  at: String
+  finishedAt: String
+  fromVersion: String
+  id: ID
+  outcome: DeploUpdateOutcome
+
+  """Why it rolled back or failed, in one plain sentence."""
+  reason: String
+  toVersion: String
+  trigger: DeploUpdateTrigger
+}
+
+"""How an update of Deplo ended."""
+enum DeploUpdateOutcome {
+  """The update never started, or never finished."""
+  failed
+
+  """
+  The new version did not start, so the installer put the previous one back.
+  """
+  rolled_back
+
+  """Started, and Deplo has not restarted yet."""
+  running
+
+  """Deplo came back on the new version."""
+  updated
+}
+
 """
 An update the host has STARTED. Deplo restarts as it lands, so there is no completion to report here.
 """
 type DeploUpdateStarted {
   logPath: String
   version: String
+}
+
+"""What started an update of Deplo."""
+enum DeploUpdateTrigger {
+  """Deplo installed it on its own schedule."""
+  automatic
+
+  """An instance admin clicked Update."""
+  button
+
+  """The installer ran on the machine Deplo runs on, outside the panel."""
+  host
 }
 
 enum DeploySource {
@@ -5296,6 +5343,11 @@ type Query {
   Public on purpose: the id is unguessable and the copy signs everyone out, so the progress page cannot lean on a session. Null for an unknown id.
   """
   deploMoveStatus(id: String!): DeploMoveStatus
+
+  """
+  Every update of Deplo in the last 90 days, newest first: who or what started it and how it ended.
+  """
+  deploUpdateLog: [DeploUpdateLogEntry!]
   deployment(id: String!): Deployment
   deployments(appId: String, environment: DeploymentEnvironment, status: DeploymentStatus): [Deployment!]
 
@@ -7148,6 +7200,11 @@ type UpdateInfo {
   The newest release on this instance's channel. Update may install an update stop before it: see `next`.
   """
   latest: String
+
+  """
+  Why `next` has to be installed by hand, in that release's own words. Null when nothing needs reading first.
+  """
+  manualUpdate: String
   name: String
 
   """

@@ -31,6 +31,7 @@ type UpdateInfo = {
   next: string | null;
   nextIsStop: boolean;
   stop: UpdateStop | null;
+  manualUpdate?: string | null;
   publishedAt: string | null;
   canary: boolean;
   error?: string | null;
@@ -63,6 +64,7 @@ const UPDATES_QUERY = /* GraphQL */ `
         reason
         waiting
       }
+      manualUpdate
       publishedAt
       canary
       error
@@ -279,9 +281,14 @@ export function DeploUpdatesTab({
   });
 
   const refused = info?.lastRefusedUpdate ?? null;
+  const readFirst =
+    info?.updateAvailable && info.next && info.manualUpdate
+      ? { version: info.next, reason: info.manualUpdate }
+      : null;
   const extras =
     (manual && !updating) ||
     refused !== null ||
+    readFirst !== null ||
     fleet.behind.length > 0 ||
     fleet.pausedBy !== null;
 
@@ -342,6 +349,7 @@ export function DeploUpdatesTab({
         </CardContent>
         {extras && (
           <div className="space-y-3 border-t border-border p-5">
+            {readFirst && <ReadFirstNotice {...readFirst} />}
             {refused && <RefusedUpdateNotice refused={refused} />}
             {manual && !updating && <ManualUpdate />}
             <FleetBehind fleet={fleet} onSettled={refreshFleet} />
@@ -535,6 +543,25 @@ export function RefusedUpdateNotice({ refused }: { refused: RefusedUpdate }) {
             : "An update was rolled back"}
         </p>
         <p className="mt-1 text-muted-foreground">{refused.reason}</p>
+      </div>
+    </div>
+  );
+}
+
+// A release that declares `manualUpdate` (docs/agents/releasing.md).
+function ReadFirstNotice({
+  version,
+  reason,
+}: {
+  version: string;
+  reason: string;
+}) {
+  return (
+    <div className="flex items-start gap-2 text-sm">
+      <TriangleAlert className="mt-0.5 size-4 shrink-0 text-warning" />
+      <div className="min-w-0">
+        <p className="font-medium">Before you update to {version}</p>
+        <p className="mt-1 text-muted-foreground">{reason}</p>
       </div>
     </div>
   );

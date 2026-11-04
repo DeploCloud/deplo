@@ -75,6 +75,7 @@ const CONTROL_PLANE = [
   "monitoring_settings",
   "instance_settings",
   "passed_update_stops",
+  "deplo_update_log",
   "migration_runs",
   "migration_run_db_hosts",
   "migration_run_items",

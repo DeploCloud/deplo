@@ -84,6 +84,8 @@ export const MOVE_TABLES: Readonly<Record<string, TablePolicy>> = {
   deplo_move_servers: { kind: "local" },
   deplo_move_workloads: { kind: "local" },
   deplo_moves: { kind: "local" },
+  // The history of this install's own updates.
+  deplo_update_log: { kind: "local" },
   deployment_logs: COPY,
   // Derived: the next deploy on the new Deplo takes them again.
   deployment_screenshots: { kind: "skip" },

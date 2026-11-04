@@ -9,6 +9,8 @@ export interface ReleaseDeclaration {
   requiresStop: string | null;
   /** The oldest version without a known security flaw: below it, Deplo asks for the update. */
   securityFloor: string | null;
+  /** Why this release never installs itself: a step the admin has to read first. */
+  manualUpdate: string | null;
 }
 
 /** Read off the release's tag without the API budget. Null when it could not be read. */
@@ -36,11 +38,16 @@ export async function readReleaseDeclaration(
       typeof block.securityFloor === "string"
         ? bareVersion(block.securityFloor)
         : "";
+    const manual =
+      typeof block.manualUpdate === "string"
+        ? block.manualUpdate.trim().slice(0, 300)
+        : "";
     return {
       agentMin: typeof block.agentMin === "string" ? block.agentMin : null,
       updateStop: block.updateStop === true,
       requiresStop: stop || null,
       securityFloor: floor || null,
+      manualUpdate: manual || null,
     };
   } catch {
     return null;

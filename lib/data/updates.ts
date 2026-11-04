@@ -28,6 +28,11 @@ import {
 import { recordActivity } from "./activity";
 import { readReleaseDeclaration } from "./update-stops/declaration";
 import {
+  logUpdateFailed,
+  logUpdateLogPath,
+  logUpdateStarted,
+} from "./update-log";
+import {
   decideUpdate,
   passThisStopIfMet,
   thisStopWaiting,
@@ -46,6 +51,8 @@ export interface UpdateInfo {
   stop: UpdateStopInfo | null;
   /** The release that fixes a known security flaw this instance has, or null. */
   securityFix: string | null;
+  /** Why `next` has to be installed by hand, as that release declares it. */
+  manualUpdate: string | null;
   url: string | null;
   name: string | null;
   publishedAt: string | null;
@@ -160,6 +167,7 @@ async function fetchUpdateInfo(init: RequestInit): Promise<UpdateInfo> {
     nextIsStop: false,
     stop: null,
     securityFix: null,
+    manualUpdate: null,
     url: null,
     name: null,
     publishedAt: null,
@@ -218,8 +226,12 @@ async function checkReleases(
     init,
   );
   if (route.error) return { ...newest, error: route.error };
+  const manual = route.next
+    ? (await readReleaseDeclaration(route.next, init))?.manualUpdate
+    : null;
   return {
     ...newest,
+    manualUpdate: manual ?? null,
     updateAvailable: route.next !== null,
     next: route.next,
     nextIsStop: route.next !== null && route.stop?.version === route.next,
@@ -337,11 +349,11 @@ export interface DeploUpdateStarted {
   logPath: string;
 }
 
-export async function applyDeploUpdate(): Promise<DeploUpdateStarted> {
-  await requireInstanceAdmin();
-  const teamId = await requireActiveTeamId();
-  const user = (await getCurrentUser())!;
-
+/** Ungated: the Update button and the automatic updates both start one here, and the log says which. */
+export async function startDeploUpdate(by: {
+  trigger: "button" | "automatic";
+  actor: string | null;
+}): Promise<DeploUpdateStarted> {
   const info = await getUpdateInfo();
   if (!info.next)
     throw new Error(
@@ -357,26 +369,47 @@ export async function applyDeploUpdate(): Promise<DeploUpdateStarted> {
       "The machine Deplo runs on is not one of its servers, so Deplo cannot update itself here.",
     );
 
+  const entry = await logUpdateStarted({ to: version, ...by });
+  const fail = async (reason: string) => {
+    await logUpdateFailed(entry, reason);
+    return new Error(reason);
+  };
   const { updateControlPlaneOn } =
     await import("../infra/agent-client/host-ops");
   const res = await updateControlPlaneOn(
     server.id,
     hostname(),
     /^\d+\.\d+\.\d+(-[0-9A-Za-z.]+)?$/.test(version) ? version : "",
-  );
+  ).catch(async (e: unknown) => {
+    throw await fail(
+      e instanceof Error ? e.message : "Deplo could not start the update",
+    );
+  });
   if (!res.ok)
-    throw new Error(
+    throw await fail(
       res.error || "Deplo could not start the update on this host",
     );
+  await logUpdateLogPath(entry, res.logPath);
 
   const { markAgentRolloutPending } = await import("./servers/agent-rollout");
-  await markAgentRolloutPending(user.name);
+  await markAgentRolloutPending(by.actor ?? "Deplo");
+  return { version, logPath: res.logPath };
+}
+
+export async function applyDeploUpdate(): Promise<DeploUpdateStarted> {
+  await requireInstanceAdmin();
+  const teamId = await requireActiveTeamId();
+  const user = (await getCurrentUser())!;
+  const started = await startDeploUpdate({
+    trigger: "button",
+    actor: user.name,
+  });
   await recordActivity(
     "server",
-    `Started the update of Deplo to v${version}`,
+    `Started the update of Deplo to v${started.version}`,
     user.name,
     null,
     teamId,
   );
-  return { version, logPath: res.logPath };
+  return started;
 }

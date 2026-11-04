@@ -36,6 +36,7 @@ export const INSTANCE: McpToolDef[] = [
             waiting
           }
           securityFix
+          manualUpdate
           publishedAt
           url
           checkedAt
@@ -121,6 +122,32 @@ export const INSTANCE: McpToolDef[] = [
             prerelease
             body
           }
+        }
+      }
+    `,
+  }),
+  tool({
+    name: "read_update_log",
+    title: "Read Deplo's update log",
+    description:
+      "Every update of Deplo in the last 90 days: from and to which version, who or what started it, and how it ended.",
+    group: "Instance",
+    requires: "instanceAdmin",
+    readOnly: true,
+    idempotent: true,
+    input: z.object({}),
+    query: /* GraphQL */ `
+      query McpUpdateLog {
+        deploUpdateLog {
+          id
+          trigger
+          outcome
+          fromVersion
+          toVersion
+          actor
+          reason
+          at
+          finishedAt
         }
       }
     `,

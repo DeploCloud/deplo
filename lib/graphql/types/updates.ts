@@ -24,6 +24,7 @@ import {
   type UpdateInfo,
   type UpdateStopInfo,
 } from "@/lib/data/updates";
+import { listUpdateLog, type UpdateLogEntry } from "@/lib/data/update-log";
 import { bareVersion } from "@/lib/version";
 
 const StrandedServerRef = builder
@@ -134,6 +135,11 @@ const UpdateInfoRef = builder.objectRef<UpdateInfo>("UpdateInfo").implement({
       nullable: true,
       description:
         "The release that fixes a known security flaw this instance has, as the newest release declares it. Null when this instance has none.",
+    }),
+    manualUpdate: t.exposeString("manualUpdate", {
+      nullable: true,
+      description:
+        "Why `next` has to be installed by hand, in that release's own words. Null when nothing needs reading first.",
     }),
     url: t.exposeString("url", { nullable: true }),
     name: t.exposeString("name", { nullable: true }),
@@ -267,7 +273,70 @@ const FleetAgentsRef = builder
     }),
   });
 
+const UpdateTriggerEnum = builder.enumType("DeploUpdateTrigger", {
+  description: "What started an update of Deplo.",
+  values: {
+    button: { description: "An instance admin clicked Update." },
+    automatic: { description: "Deplo installed it on its own schedule." },
+    host: {
+      description:
+        "The installer ran on the machine Deplo runs on, outside the panel.",
+    },
+  } as const,
+});
+
+const UpdateOutcomeEnum = builder.enumType("DeploUpdateOutcome", {
+  description: "How an update of Deplo ended.",
+  values: {
+    running: { description: "Started, and Deplo has not restarted yet." },
+    updated: { description: "Deplo came back on the new version." },
+    rolled_back: {
+      description:
+        "The new version did not start, so the installer put the previous one back.",
+    },
+    failed: {
+      description: "The update never started, or never finished.",
+    },
+  } as const,
+});
+
+const UpdateLogEntryRef = builder
+  .objectRef<UpdateLogEntry>("DeploUpdateLogEntry")
+  .implement({
+    description: "One update of Deplo itself, however it was started.",
+    fields: (t) => ({
+      id: t.exposeID("id"),
+      trigger: t.field({
+        type: UpdateTriggerEnum,
+        resolve: (e) => e.trigger,
+      }),
+      outcome: t.field({
+        type: UpdateOutcomeEnum,
+        resolve: (e) => e.outcome,
+      }),
+      fromVersion: t.exposeString("fromVersion"),
+      toVersion: t.exposeString("toVersion"),
+      actor: t.exposeString("actor", {
+        nullable: true,
+        description: "Who clicked Update. Null when no person did.",
+      }),
+      reason: t.exposeString("reason", {
+        nullable: true,
+        description: "Why it rolled back or failed, in one plain sentence.",
+      }),
+      at: t.exposeString("at", { description: "When it started (ISO 8601)." }),
+      finishedAt: t.exposeString("finishedAt", { nullable: true }),
+    }),
+  });
+
 builder.queryFields((t) => ({
+  deploUpdateLog: t.field({
+    type: [UpdateLogEntryRef],
+    authScopes: { instanceAdmin: true },
+    description:
+      "Every update of Deplo in the last 90 days, newest first: who or what started it and how it ended.",
+    resolve: () => listUpdateLog(),
+  }),
   fleetAgents: t.field({
     type: FleetAgentsRef,
     authScopes: { instanceAdmin: true },

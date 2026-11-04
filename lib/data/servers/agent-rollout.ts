@@ -29,6 +29,7 @@ import {
 import type { Server } from "../../types/server";
 import { recordActivity } from "../activity";
 import { SETTINGS_ID } from "../instance-settings/settings-store";
+import { settleUpdateLogAtBoot } from "../update-log";
 import { markServerSeen } from "./agent-handshake";
 import {
   type AgentUpdateDTO,
@@ -381,6 +382,9 @@ export async function claimBootRollout(): Promise<void> {
     .from(instanceSettings)
     .where(eq(instanceSettings.id, SETTINGS_ID));
   const state = rows[0] ?? { bootedVersion: null, actor: null };
+  await settleUpdateLogAtBoot(state.bootedVersion).catch((e) =>
+    console.error("[deplo] the update log could not be settled:", e),
+  );
   const updated =
     Boolean(state.bootedVersion) && state.bootedVersion !== DEPLO_VERSION;
   await writeRolloutState({

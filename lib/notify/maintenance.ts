@@ -23,6 +23,7 @@ import { sweepDomainDns } from "../data/domains/dns-check";
 import { sweepCloudflareCertificates } from "../data/domains/cloudflare-mode";
 import { describeStackCertificates } from "../data/server-certificates";
 import { getUpdateInfo, type UpdateInfo } from "../data/updates";
+import { sweepUpdateLog } from "../data/update-log";
 import { sweepFinishedMigrationMarks } from "../data/migration-import/run-report";
 import { autoLinkAllEnv } from "../data/database-autolink";
 import { sendUsageReport } from "../usage-report/send";
@@ -51,6 +52,7 @@ export async function runMaintenanceSweep(): Promise<void> {
   await settle("database links", autoLinkAllEnv);
   await settle("oauth clients", sweepAbandonedOauthClients);
   await settle("expired challenges", sweepExpiredVerifications);
+  await settle("update log", () => sweepUpdateLog());
   await settle("usage report", async () => {
     await sendUsageReport();
   });

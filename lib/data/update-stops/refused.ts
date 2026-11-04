@@ -20,6 +20,11 @@ const NOTE = "refused-update";
 /** Until an update succeeds: the installer removes the note, and a version installed since hides it. */
 export async function lastRefusedUpdate(): Promise<RefusedUpdate | null> {
   await requireInstanceAdmin();
+  return readRefusedNote();
+}
+
+// Ungated: the update log reads it at boot, with no one signed in.
+export async function readRefusedNote(): Promise<RefusedUpdate | null> {
   const text = await readFile(join(dataDir(), NOTE), "utf8").catch(() => "");
   const fields = new Map<string, string>();
   for (const line of text.split("\n")) {

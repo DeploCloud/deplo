@@ -49,7 +49,10 @@ the answers. Settle these first - from the request or the tree when they are the
    one: nothing dials a server past it, so `requiresStop` is never emptied (`lib/version.test.ts`).
 5. **Does it close a security flaw?** Then `deplo.securityFloor` moves to this release, and every
    instance below it shows a non-dismissable card until it updates. It only ever moves up.
-6. **Is there an upgrade step or a bad bug to put on top of the notes?** Usually not.
+6. **Is there an upgrade step or a bad bug to put on top of the notes?** Usually not. A step the
+   admin must take before updating also goes in `deplo.manualUpdate`, one plain sentence naming it:
+   Settings → Deplo → Updates shows it above the Update button, and the automatic updates never
+   install that release. Leave it out of a release that needs nothing; the next one drops it.
 
 A release's migrations must leave the previous release working: the installer rolls a failed update
 back onto them, so a column goes one release after its last reader (`lib/db/server-agent-pin-migration.test.ts`).
@@ -73,7 +76,8 @@ on the `0.x` line however big a release feels.
 
 **A breaking release during the beta is still a minor.** A rename, a dropped setting, a release that
 needs a manual step from the operator: on the `0.x` line the number carries none of it, so the step
-goes in the release notes and the version does not move differently for it. Never cut `1.0.0`
+goes in the release notes and `deplo.manualUpdate` (question 6), and the version does not move
+differently for it. Never cut `1.0.0`
 because something broke.
 
 After launch the same table holds with a third row: **major** is a release that cannot be applied by

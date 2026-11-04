@@ -64,6 +64,24 @@ export const passedUpdateStops = pgTable("passed_update_stops", {
   passedAt: isoTimestamptz("passed_at").notNull(),
 });
 
+// One row per update of Deplo itself, however it was started, kept 90 days.
+export const deploUpdateLog = pgTable(
+  "deplo_update_log",
+  {
+    id: text("id").primaryKey(),
+    trigger: text("trigger").notNull(),
+    outcome: text("outcome").notNull(),
+    fromVersion: text("from_version").notNull(),
+    toVersion: text("to_version").notNull(),
+    actor: text("actor"),
+    reason: text("reason"),
+    logPath: text("log_path"),
+    at: isoTimestamptz("at").notNull(),
+    finishedAt: isoTimestamptz("finished_at"),
+  },
+  (t) => [index("deplo_update_log_at_idx").on(t.at)],
+);
+
 export const rateLimits = pgTable(
   "rate_limits",
   {
