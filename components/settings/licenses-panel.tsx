@@ -207,9 +207,9 @@ export function LicensesPanel({ notices }: { notices: Notice[] }) {
                   <TableCell className="min-w-40">
                     <button
                       type="button"
-                      className="cursor-pointer text-left font-medium break-words"
+                      className="cursor-pointer text-left font-medium"
                     >
-                      <Breakable name={n.name} />
+                      {n.name}
                     </button>
                   </TableCell>
                   <TableCell className="hidden font-mono text-xs text-muted-foreground sm:table-cell">
@@ -263,17 +263,6 @@ export function LicensesPanel({ notices }: { notices: Notice[] }) {
 }
 
 // A scoped name may wrap after its scope, never inside a word.
-function Breakable({ name }: { name: string }) {
-  const slash = name.indexOf("/");
-  if (slash < 0) return name;
-  return (
-    <>
-      {name.slice(0, slash + 1)}
-      <wbr />
-      {name.slice(slash + 1)}
-    </>
-  );
-}
 
 function SourceLinks({
   notice,

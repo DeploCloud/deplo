@@ -155,7 +155,9 @@ export function PreviewsTable({
                   <span className="font-mono text-muted-foreground">
                     #{p.prNumber}
                   </span>
-                  <span className="line-clamp-1">{p.title}</span>
+                  <span className="line-clamp-1 min-w-64 whitespace-normal">
+                    {p.title}
+                  </span>
                   {p.securityUpdates && (
                     <SecurityShield {...p.securityUpdates} />
                   )}

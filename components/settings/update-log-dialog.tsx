@@ -200,7 +200,7 @@ function LogEntries({
           <TableBody>
             {entries.map((e) => (
               <TableRow key={e.id}>
-                <TableCell className="align-top whitespace-nowrap text-muted-foreground">
+                <TableCell className="align-top text-muted-foreground">
                   {logWhen(e.at, tz, now)}
                 </TableCell>
                 <TableCell className="align-top">
@@ -209,17 +209,17 @@ function LogEntries({
                     <div className="min-w-0">
                       <p className="font-medium">{entrySentence(e)}</p>
                       {e.reason && (
-                        <p className="text-xs text-muted-foreground">
+                        <p className="min-w-64 text-xs whitespace-normal text-muted-foreground">
                           {e.reason}
                         </p>
                       )}
                     </div>
                   </div>
                 </TableCell>
-                <TableCell className="align-top font-mono text-xs whitespace-nowrap text-muted-foreground">
+                <TableCell className="align-top font-mono text-xs text-muted-foreground">
                   {e.fromVersion} → {e.toVersion}
                 </TableCell>
-                <TableCell className="align-top whitespace-nowrap text-muted-foreground">
+                <TableCell className="align-top text-muted-foreground">
                   {updateLogActor(e)}
                 </TableCell>
               </TableRow>

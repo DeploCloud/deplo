@@ -273,7 +273,7 @@ export function SharedVarsManager({
                 {shown.map((v) => (
                   <TableRow key={v.id}>
                     <EnvSelectionCell id={v.id} />
-                    <TableCell className="font-mono text-xs font-medium max-md:break-all">
+                    <TableCell className="font-mono text-xs font-medium max-md:break-all max-md:whitespace-normal">
                       {v.key}
                       <EnvValueUnderKey value={v.value} masked={v.masked} />
                       <SharedWith

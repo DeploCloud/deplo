@@ -29,7 +29,7 @@ export function DomainTableFrame({
 }) {
   return (
     <div className="overflow-hidden rounded-xl border border-border">
-      <Table className="max-md:block">
+      <Table className="max-md:block max-md:[&_td]:whitespace-normal">
         <TableHeader className="max-md:hidden">
           <TableRow>
             <TableHead>Domain</TableHead>

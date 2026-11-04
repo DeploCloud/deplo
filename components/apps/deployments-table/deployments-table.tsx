@@ -264,7 +264,7 @@ export function DeploymentsTable({
       {showFilters && <DeploymentFilterBar filters={filters} />}
 
       <Card className="overflow-hidden p-0">
-        <Table className="max-md:block">
+        <Table className="max-md:block max-md:[&_td]:whitespace-normal">
           <TableHeader className="max-md:hidden">
             <TableRow className="hover:bg-transparent">
               {canManage && (

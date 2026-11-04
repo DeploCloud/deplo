@@ -122,6 +122,10 @@
   `mobile-sheets.test.ts` holds both. Never add a mobile close button or a `max-md:h-dvh` sheet.
   While typing, a sheet rides on the keyboard with `DialogHeader`/`DialogFooter` pinned, so a
   body cap in `vh` must read `var(--sheet-room,85vh)` (`PANEL_BODY_MAX`) or the buttons go under it.
+- **A table never folds a label or a row onto two lines.** `TableHead` and `TableCell` are
+  `whitespace-nowrap`, so a narrow screen scrolls the table sideways instead. Only free text (a
+  title, a reason, an error) opts back in, with `whitespace-normal` and a `min-w-*` so it never
+  shrinks to a word per line; a table that turns into cards on a phone wraps there (`max-md:block`).
 - **On a phone a row with two or more actions shows one kebab.** Wrap the inline buttons in
   `RowActions` (`components/shared/row-actions.tsx`) with the same actions as data; the desktop
   keeps its buttons, and a table's actions cell takes `ROW_ACTIONS_CELL`.

@@ -123,7 +123,7 @@ export function RunRow({
         </p>
         {run.error && (
           <SimpleTooltip content={run.error}>
-            <p className="mt-1 line-clamp-2 text-xs text-destructive">
+            <p className="mt-1 line-clamp-2 min-w-64 text-xs whitespace-normal text-destructive">
               {run.error}
             </p>
           </SimpleTooltip>

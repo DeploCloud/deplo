@@ -240,7 +240,7 @@ export function PreviewOverrides({
                     {visibleOverrides.map((o) => (
                       <TableRow key={o.key}>
                         <EnvSelectionCell id={o.key} />
-                        <TableCell className="font-mono text-xs font-medium max-md:break-all">
+                        <TableCell className="font-mono text-xs font-medium max-md:break-all max-md:whitespace-normal">
                           <div className="flex items-center gap-2">
                             {o.key}
                             <Badge

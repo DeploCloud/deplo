@@ -25,3 +25,39 @@ test("every table sits in a rounded-xl frame or a Card", () => {
   }
   assert.deepEqual(offenders, []);
 });
+
+test("a table cell keeps its label and its row on one line", async () => {
+  const React = await import("react");
+  const { renderToStaticMarkup } = await import("react-dom/server");
+  const { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } =
+    await import("./components/ui/table");
+  const html = renderToStaticMarkup(
+    React.createElement(Table, null, [
+      React.createElement(
+        TableHeader,
+        { key: "h" },
+        React.createElement(
+          TableRow,
+          null,
+          React.createElement(TableHead, null, "Last seen"),
+        ),
+      ),
+      React.createElement(
+        TableBody,
+        { key: "b" },
+        React.createElement(
+          TableRow,
+          null,
+          React.createElement(TableCell, null, "24 days ago"),
+        ),
+      ),
+    ]),
+  );
+  assert.match(html, /<th class="[^"]*whitespace-nowrap/);
+  assert.match(html, /<td class="[^"]*whitespace-nowrap/);
+  assert.match(
+    html,
+    /overflow-x-auto/,
+    "a table too wide for the screen scrolls",
+  );
+});

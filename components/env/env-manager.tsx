@@ -259,7 +259,7 @@ export function EnvManager({
                   row.kind === "standalone" ? (
                     <TableRow key={rowKey(row)}>
                       <EnvSelectionCell id={rowKey(row)} />
-                      <TableCell className="font-mono text-xs font-medium max-md:break-all">
+                      <TableCell className="font-mono text-xs font-medium max-md:break-all max-md:whitespace-normal">
                         <div className="flex items-center gap-2">
                           <VariableKey row={row} />
                           {row.type === "plain" &&
@@ -359,7 +359,7 @@ export function EnvManager({
                   ) : (
                     <TableRow key={rowKey(row)}>
                       <EnvSelectionCell id={rowKey(row)} />
-                      <TableCell className="font-mono text-xs font-medium max-md:break-all">
+                      <TableCell className="font-mono text-xs font-medium max-md:break-all max-md:whitespace-normal">
                         <div className="flex items-center gap-2">
                           {row.key}
                           <Badge

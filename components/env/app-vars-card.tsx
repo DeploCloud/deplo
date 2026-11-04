@@ -185,7 +185,7 @@ export function AppVarsCard({
                   row.kind === "standalone" ? (
                     <TableRow key={`${app.id}:standalone:${row.id}`}>
                       <EnvSelectionCell id={rowKey(row)} />
-                      <TableCell className="font-mono text-xs font-medium max-md:break-all">
+                      <TableCell className="font-mono text-xs font-medium max-md:break-all max-md:whitespace-normal">
                         <Bone loading={loading}>{row.key}</Bone>
                         <Bone
                           box
@@ -254,7 +254,7 @@ export function AppVarsCard({
                   ) : (
                     <TableRow key={`${app.id}:shared:${row.id}`}>
                       <EnvSelectionCell id={rowKey(row)} />
-                      <TableCell className="font-mono text-xs font-medium max-md:break-all">
+                      <TableCell className="font-mono text-xs font-medium max-md:break-all max-md:whitespace-normal">
                         <div className="flex items-center gap-2">
                           <Bone loading={loading}>{row.key}</Bone>
                           <Badge
