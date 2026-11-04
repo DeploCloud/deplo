@@ -1,16 +1,15 @@
 import Link from "@/components/ui/link";
-import { cn } from "@/lib/utils";
-import { Lock, CloudOff, X } from "lucide-react";
+import { Lock, CloudOff } from "lucide-react";
 
 import {
   hasCapabilityAnywhere,
   isInstanceAdmin,
   requireActiveTeamId,
 } from "@/lib/membership";
-import { DeploLogo } from "@/components/logo";
 import { EmptyState } from "@/components/shared/empty-state";
 import { Button } from "@/components/ui/button";
 import { NewAppWizard } from "@/components/apps/new-app-wizard/new-app-wizard";
+import { FocusFrame } from "@/components/apps/new-app-wizard/focus-frame";
 import { getTemplateBlueprint } from "@/lib/templates-blueprint";
 import {
   listBuildServerChoices,
@@ -52,36 +51,6 @@ const SOURCES: DeploySource[] = [
 
 function one(v: string | string[] | undefined): string | undefined {
   return Array.isArray(v) ? v[0] : v;
-}
-
-function FocusFrame({
-  exitHref,
-  narrow,
-  children,
-}: {
-  exitHref: string;
-  narrow?: boolean;
-  children: React.ReactNode;
-}) {
-  return (
-    <div className="flex min-h-dvh flex-col">
-      <header className="flex items-center justify-between px-6 py-5">
-        <Link href="/" className="cursor-pointer">
-          <DeploLogo />
-        </Link>
-        <Button variant="ghost" size="icon" asChild aria-label="Close">
-          <Link href={exitHref}>
-            <X className="size-5" />
-          </Link>
-        </Button>
-      </header>
-      <main className="flex flex-1 items-center justify-center px-4 pb-16">
-        <div className={cn("w-full", narrow ? "max-w-lg" : "max-w-2xl")}>
-          {children}
-        </div>
-      </main>
-    </div>
-  );
 }
 
 export default async function NewAppPage(props: PageProps<"/[team]/new">) {

@@ -77,18 +77,23 @@ export function WizardStage({
   leaving: boolean;
   children: React.ReactNode;
 }) {
+  // The first step is already where the loading state drew it: only a step change slides.
+  const [first] = React.useState(step);
+  const [moved, setMoved] = React.useState(false);
+  if (!moved && (step !== first || leaving)) setMoved(true);
   return (
     <AnimatedHeight className="w-full" scroll={false}>
       <div
         key={step}
         className={cn(
-          leaving
-            ? direction === "forward"
-              ? "animate-step-out-up"
-              : "animate-step-out-down"
-            : direction === "forward"
-              ? "animate-step-in-up"
-              : "animate-step-in-down",
+          moved &&
+            (leaving
+              ? direction === "forward"
+                ? "animate-step-out-up"
+                : "animate-step-out-down"
+              : direction === "forward"
+                ? "animate-step-in-up"
+                : "animate-step-in-down"),
         )}
       >
         {children}
@@ -112,7 +117,7 @@ export function WizardCard({
   onCreateWithoutDeploy,
   pending = false,
 }: {
-  title: string;
+  title: React.ReactNode;
   icon?: React.ReactNode;
   description?: React.ReactNode;
   meta?: React.ReactNode;

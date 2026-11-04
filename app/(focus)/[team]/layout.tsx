@@ -11,6 +11,7 @@ import { FinishSetupScreen } from "@/components/auth/finish-setup-screen";
 import { TwoFactorLockScreen } from "@/components/settings/security/two-factor-lock-screen";
 import { NoTeamAccessScreen } from "@/components/teams/no-team-access";
 import { NavigationHistoryTracker } from "@/components/layout/navigation-history";
+import { FocusBackdrop } from "@/components/apps/new-app-wizard/focus-frame";
 
 export default async function FocusLayout(props: LayoutProps<"/[team]">) {
   const { team: addressed } = await props.params;
@@ -48,10 +49,9 @@ export default async function FocusLayout(props: LayoutProps<"/[team]">) {
   }
 
   return (
-    <div className="relative min-h-dvh">
-      <div className="deplo-grid-bg pointer-events-none absolute inset-0" />
+    <FocusBackdrop>
       <NavigationHistoryTracker />
-      <div className="relative z-10">{children}</div>
-    </div>
+      {children}
+    </FocusBackdrop>
   );
 }

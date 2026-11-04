@@ -9,8 +9,6 @@ import { Server as ServerIcon } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/shared/empty-state";
-import { Input } from "@/components/ui/input";
-import { FieldLabel } from "@/components/ui/info-tip";
 
 import type { GithubSelection } from "@/components/apps/github-repo-picker";
 import type { GitSourceValue } from "@/components/apps/git-source-picker";
@@ -62,7 +60,7 @@ import {
   checkComposeNameClashes,
   submitCreatedApp,
 } from "./create-app";
-import { DetailsStep } from "./details-step";
+import { AppNameField, DetailsStep } from "./details-step";
 import { SourceFields } from "./source-fields";
 import {
   nameFromArchive,
@@ -337,11 +335,7 @@ export function NewAppWizard({
     });
   }
 
-  const meta = placement ? (
-    <p className="text-xs text-muted-foreground">
-      Creating in <span className="text-foreground">{placement.label}</span>
-    </p>
-  ) : null;
+  const meta = placement ? <PlacementMeta label={placement.label} /> : null;
 
   const advanced = (
     <WizardAdvanced
@@ -373,23 +367,13 @@ export function NewAppWizard({
   );
 
   const nameField = (
-    <div className="space-y-2">
-      <FieldLabel
-        htmlFor="name"
-        info="Shown everywhere in Deplo. It also seeds the app's URL, which is frozen after creation."
-      >
-        App name
-      </FieldLabel>
-      <Input
-        id="name"
-        value={name}
-        onChange={(e) => {
-          setName(e.target.value);
-          setNameTouched(true);
-        }}
-        placeholder="my-app"
-      />
-    </div>
+    <AppNameField
+      value={name}
+      onChange={(next) => {
+        setName(next);
+        setNameTouched(true);
+      }}
+    />
   );
 
   const noServer = servers.length === 0 && (
@@ -419,20 +403,15 @@ export function NewAppWizard({
 
       <WizardStage step={step} direction={direction} leaving={leaving}>
         {step === "source" ? (
-          <WizardCard
-            title="New app"
-            description="Where does your code live? Deplo takes it from there and puts it online."
+          <SourceStep
             meta={meta}
-          >
-            <SourceTiles
-              value={source}
-              onSelect={(next) => {
-                setSource(next);
-                go("details", "forward");
-              }}
-              templatesHref={templatesHref(placement)}
-            />
-          </WizardCard>
+            value={source}
+            onSelect={(next) => {
+              setSource(next);
+              go("details", "forward");
+            }}
+            templatesHref={templatesHref(placement)}
+          />
         ) : step === "details" ? (
           <DetailsStep
             isTemplate={isTemplate}
@@ -540,5 +519,39 @@ export function NewAppWizard({
         }}
       />
     </>
+  );
+}
+
+export function SourceStep({
+  meta,
+  value,
+  onSelect,
+  templatesHref,
+}: {
+  meta: React.ReactNode;
+  value: DeploySource | null;
+  onSelect: (source: DeploySource) => void;
+  templatesHref: string;
+}) {
+  return (
+    <WizardCard
+      title="New app"
+      description="Where does your code live? Deplo takes it from there and puts it online."
+      meta={meta}
+    >
+      <SourceTiles
+        value={value}
+        onSelect={onSelect}
+        templatesHref={templatesHref}
+      />
+    </WizardCard>
+  );
+}
+
+export function PlacementMeta({ label }: { label: React.ReactNode }) {
+  return (
+    <p className="text-xs text-muted-foreground">
+      Creating in <span className="text-foreground">{label}</span>
+    </p>
   );
 }
