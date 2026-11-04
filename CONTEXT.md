@@ -137,7 +137,7 @@ _Avoid_: vulnerability or CVE (in anything a non-expert reads), scan, security i
 A pre-release of the next Deplo version, tagged `x.y.z-canary.n`. Off by default; an instance
 admin opts in once (Settings → Deplo → Advanced), and `deplo update` on the host follows the same
 switch. Opting in only changes which versions count as an update: nothing installs until someone
-clicks Update, and opting out never downgrades. Server agents never follow the switch: each Deplo
+clicks Update, so the **automatic updates** pause, and opting out never downgrades. Server agents never follow the switch: each Deplo
 version pins its own agent ([ADR-0037](docs/adr/0037-a-panel-pins-its-agent.md)).
 _Avoid_: beta (the whole product is in beta), nightly, pre-release (in anything a person reads),
 channel.
@@ -153,6 +153,18 @@ A Deplo release that closes a security flaw in Deplo itself or in what it runs o
 as its proxy. Each release names the oldest version without a known flaw (`deplo.securityFloor`);
 below it, instance admins see a card and a top-bar chip until they update, and the alert repeats.
 _Avoid_: security update (that is the team's own apps), patch, hotfix.
+
+**Automatic updates**:
+Deplo installing a new stable version by itself, on by default: three checks an hour apart in a
+nightly window, on the clock of the machine Deplo runs on. A check is skipped while work a restart
+would break is running, and a release that declares `deplo.manualUpdate` never installs itself.
+Canary releases pause them. _Avoid_: auto-upgrade, unattended upgrades, self-update (that is the
+server agent's).
+
+**Update log**:
+Every update of Deplo from the last 90 days, however it was started (the Update button, the
+automatic updates or the installer on the machine), with how it ended. Settings → Deplo → Update log.
+_Avoid_: update history, changelog (that is what each release changed).
 
 **Left behind**:
 A server an instance admin let an **update stop** pass without, because it never connected to
