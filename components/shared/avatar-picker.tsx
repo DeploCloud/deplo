@@ -164,7 +164,13 @@ export function AvatarPicker({
   if (controlled) return editor;
 
   return (
-    <div className="grid grid-cols-[auto_1fr] items-center gap-x-4 gap-y-1.5">
+    <div
+      className={cn(
+        "grid items-center gap-y-1.5",
+        // An empty second column would still take its gap and pull the picture off centre.
+        children ? "grid-cols-[auto_1fr] gap-x-4" : "w-fit",
+      )}
+    >
       <button
         type="button"
         disabled={busy}
