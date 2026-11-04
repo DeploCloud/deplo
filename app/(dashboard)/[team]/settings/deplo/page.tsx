@@ -17,7 +17,6 @@ import { reportedAgentVersion } from "@/lib/version";
 import { fleetAgentStatus } from "@/lib/data/servers/agent-rollout";
 import { canaryReleasesEnabled } from "@/lib/data/updates";
 import { securityUpdatesStatus } from "@/lib/data/security-updates/settings";
-import { listUpdateLog } from "@/lib/data/update-log";
 
 export const metadata = { title: "Settings · Deplo" };
 
@@ -43,7 +42,6 @@ export default async function DeploSettingsPage() {
     canary,
     security,
     notices,
-    updateLog,
   ] = await Promise.all([
     getInstanceSettings(),
     viewerIsInstanceOwner(),
@@ -54,7 +52,6 @@ export default async function DeploSettingsPage() {
     canaryReleasesEnabled(),
     securityUpdatesStatus(),
     readNotices(),
-    listUpdateLog(),
   ]);
 
   const ownerCandidates = users
@@ -106,7 +103,6 @@ export default async function DeploSettingsPage() {
         canary={canary}
         security={security}
         notices={notices}
-        updateLog={updateLog}
       />
     </div>
   );

@@ -4,6 +4,7 @@ import * as React from "react";
 import {
   CheckCircle2,
   CircleFadingArrowUp,
+  History,
   Loader2,
   RefreshCw,
   TriangleAlert,
@@ -19,9 +20,11 @@ import { titleClass } from "@/components/shared/page-header";
 import { installOneLiner } from "@/lib/install-script";
 import { UpdateGraphic } from "@/components/settings/update-graphic";
 import { gqlAction } from "@/lib/graphql-client";
+import { useSearchParams } from "@/lib/nav";
 import { Changelog, ChangelogSkeleton, type Release } from "./deplo-changelog";
 import { FleetBehind, useFleetAgents, type FleetSummary } from "./fleet-agents";
 import { AutoUpdateRow, type AutoUpdateStatus } from "./auto-update-row";
+import { UpdateLogView } from "./update-log-view";
 
 export type { FleetSummary };
 
@@ -139,6 +142,8 @@ export function DeploUpdatesTab({
   const [manual, setManual] = React.useState<string | null>(null);
   const loaded = React.useRef(false);
   const refusedAt = React.useRef<string | null>(null);
+  const params = useSearchParams();
+  const showLog = params.get("view") === "log";
 
   const load = React.useCallback(async () => {
     const res = await gqlAction<UpdatesData, UpdatesData>(UPDATES_QUERY);
@@ -283,6 +288,13 @@ export function DeploUpdatesTab({
     </Button>
   );
 
+  if (showLog)
+    return (
+      <UpdateLogView
+        timezone={info?.automatic?.timezone ?? null}
+        onBack={() => openLog(false)}
+      />
+    );
   if (releases === null) return <UpdatesSkeleton />;
 
   const hero = heroState({
@@ -380,11 +392,31 @@ export function DeploUpdatesTab({
       </Card>
 
       <section className="space-y-3">
-        <h2 className={titleClass.section}>What changed</h2>
+        <div className="flex items-center justify-between gap-3">
+          <h2 className={titleClass.section}>What changed</h2>
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            onClick={() => openLog(true)}
+          >
+            <History className="size-4" />
+            Update log
+          </Button>
+        </div>
         <Changelog releases={releases} error={listError} />
       </section>
     </UpdatesLayout>
   );
+}
+
+// A view inside the Updates tab, kept in the address so Back and a shared link land on it.
+function openLog(open: boolean) {
+  const next = new URLSearchParams(window.location.search);
+  next.set("tab", "updates");
+  if (open) next.set("view", "log");
+  else next.delete("view");
+  window.history.pushState(null, "", `?${next}`);
 }
 
 // The illustration follows the page down on wide screens, beside the status and the changelog.

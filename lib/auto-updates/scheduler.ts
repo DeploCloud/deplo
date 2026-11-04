@@ -130,7 +130,7 @@ export async function workInProgress(): Promise<string | null> {
 }
 
 function announcement(e: UpdateLogEntry) {
-  const path = "/settings/deplo?tab=update-log";
+  const path = "/settings/deplo?tab=updates&view=log";
   if (e.outcome === "updated")
     return {
       key: "deplo_auto_updated" as const,

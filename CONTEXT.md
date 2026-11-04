@@ -163,7 +163,7 @@ server agent's).
 
 **Update log**:
 Every update of Deplo from the last 90 days, however it was started (the Update button, the
-automatic updates or the installer on the machine), with how it ended. Settings → Deplo → Update log.
+automatic updates or the installer on the machine), with how it ended. Opened from the Updates tab.
 _Avoid_: update history, changelog (that is what each release changed).
 
 **Left behind**:

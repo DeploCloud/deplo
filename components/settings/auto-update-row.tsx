@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { toast } from "sonner";
-import { Clock } from "lucide-react";
+import { Clock, MoreHorizontal, PauseCircle } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -13,6 +13,12 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { FieldLabel, InfoTip } from "@/components/ui/info-tip";
 import {
   Select,
@@ -147,33 +153,40 @@ export function AutoUpdateRow({
           {autoUpdateLine(status, next, new Date())}
         </p>
       </div>
-      <div className="flex shrink-0 flex-wrap items-center gap-2">
-        {canPostpone && (
-          <Button
-            size="sm"
-            variant="outline"
-            disabled={pending}
-            onClick={postpone}
-          >
-            Postpone one night
-          </Button>
-        )}
-        {!blocked && status.enabled && (
-          <Button
-            size="sm"
-            variant="ghost"
-            disabled={pending}
-            onClick={() => setEditing(true)}
-          >
-            Change
-          </Button>
-        )}
+      <div className="flex shrink-0 items-center gap-1">
         <Switch
           id="auto-updates"
           checked={status.enabled && !blocked}
           disabled={blocked || pending}
           onCheckedChange={toggle}
         />
+        {!blocked && status.enabled && (
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                className="-mr-1 text-muted-foreground hover:text-foreground"
+                aria-label="Automatic updates options"
+                disabled={pending}
+              >
+                <MoreHorizontal className="size-4" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-52">
+              {canPostpone && (
+                <DropdownMenuItem onSelect={postpone}>
+                  <PauseCircle className="size-4" />
+                  Postpone one night
+                </DropdownMenuItem>
+              )}
+              <DropdownMenuItem onSelect={() => setEditing(true)}>
+                <Clock className="size-4" />
+                Change schedule
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        )}
       </div>
       <ScheduleDialog
         open={editing}
