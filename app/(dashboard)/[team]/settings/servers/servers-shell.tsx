@@ -43,7 +43,7 @@ export function ServersHeader({ actions }: { actions: React.ReactNode }) {
           />
         </span>
       }
-      description="Connected Docker hosts running your deployments."
+      description="The servers your apps and databases run on."
       actions={actions}
     />
   );

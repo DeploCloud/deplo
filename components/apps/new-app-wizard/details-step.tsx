@@ -167,7 +167,7 @@ function TemplateIntro({ logo }: { logo: React.ReactNode }) {
     <div className="flex items-center gap-4 rounded-lg border border-border p-3">
       {logo}
       <p className="min-w-0 flex-1 text-sm text-muted-foreground">
-        Deplo provisions the stack and exposes it through Traefik.{" "}
+        Deplo sets it up on your server and gives it an address.{" "}
         <DocsLink topic="deploy.fromTemplate" />
       </p>
     </div>

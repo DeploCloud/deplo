@@ -107,7 +107,7 @@ export const SETTINGS_NAV: NavSection[] = [
         label: "Servers",
         href: "/settings/servers",
         icon: Server,
-        tooltip: "Connected servers & Docker hosts",
+        tooltip: "The servers your apps run on",
         requiresAdmin: true,
       },
       {
