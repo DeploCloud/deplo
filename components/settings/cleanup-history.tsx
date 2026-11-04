@@ -52,7 +52,7 @@ export function CleanupHistory({
             description="Runs appear here once the schedule fires or you clean up a server by hand."
           />
         ) : (
-          <div className="overflow-x-auto rounded-lg border border-border">
+          <div className="overflow-x-auto rounded-xl border border-border">
             <Table>
               <TableHeader>
                 <TableRow>

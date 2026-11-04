@@ -37,7 +37,7 @@ export function MigrationsHistory({ runs }: { runs: ImportRun[] }) {
 
   return (
     <>
-      <div className="overflow-hidden rounded-lg border border-border">
+      <div className="overflow-hidden rounded-xl border border-border">
         <Table className="min-w-[50rem]">
           <TableHeader>
             <TableRow>

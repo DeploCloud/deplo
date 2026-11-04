@@ -129,61 +129,63 @@ export function DevicesPanel({ sessions }: { sessions: UserSessionDTO[] }) {
             description="This is the only thing holding a session for your account."
           />
         ) : (
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Device</TableHead>
-                <TableHead>IP address</TableHead>
-                <TableHead>
-                  <span className="inline-flex items-center gap-1">
-                    Last seen
-                    <InfoTip
-                      content="Sessions refresh as they are used, so this is accurate to about fifteen minutes rather than to the second."
-                      docs="team.sessions"
-                    />
-                  </span>
-                </TableHead>
-                <TableHead>Signed in</TableHead>
-                <TableHead className="w-0" />
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {others.map((s) => (
-                <TableRow key={s.id}>
-                  <TableCell>
-                    <span className="flex items-center gap-3">
-                      <DeviceMark os={s.os} browser={s.browser} />
-                      <span className="font-medium">{s.label}</span>
+          <div className="rounded-xl border border-border">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Device</TableHead>
+                  <TableHead>IP address</TableHead>
+                  <TableHead>
+                    <span className="inline-flex items-center gap-1">
+                      Last seen
+                      <InfoTip
+                        content="Sessions refresh as they are used, so this is accurate to about fifteen minutes rather than to the second."
+                        docs="team.sessions"
+                      />
                     </span>
-                  </TableCell>
-                  <TableCell className="font-mono text-xs text-muted-foreground">
-                    {s.ipAddress ?? "Unknown"}
-                  </TableCell>
-                  <TableCell className="text-muted-foreground">
-                    {timeAgo(s.lastSeenAt)}
-                  </TableCell>
-                  <TableCell className="text-muted-foreground">
-                    {timeAgo(s.createdAt)}
-                  </TableCell>
-                  <TableCell className="text-right">
-                    <ConfirmAction
-                      trigger={
-                        <Button variant="ghost" size="sm">
-                          Sign out
-                        </Button>
-                      }
-                      title="Sign out device?"
-                      description={`${s.label} will have to sign in again. If you do not recognise it, change your password too.`}
-                      confirmLabel="Sign it out"
-                      variant="destructive"
-                      optimistic
-                      onConfirm={() => revoke(s.id)}
-                    />
-                  </TableCell>
+                  </TableHead>
+                  <TableHead>Signed in</TableHead>
+                  <TableHead className="w-0" />
                 </TableRow>
-              ))}
-            </TableBody>
-          </Table>
+              </TableHeader>
+              <TableBody>
+                {others.map((s) => (
+                  <TableRow key={s.id}>
+                    <TableCell>
+                      <span className="flex items-center gap-3">
+                        <DeviceMark os={s.os} browser={s.browser} />
+                        <span className="font-medium">{s.label}</span>
+                      </span>
+                    </TableCell>
+                    <TableCell className="font-mono text-xs text-muted-foreground">
+                      {s.ipAddress ?? "Unknown"}
+                    </TableCell>
+                    <TableCell className="text-muted-foreground">
+                      {timeAgo(s.lastSeenAt)}
+                    </TableCell>
+                    <TableCell className="text-muted-foreground">
+                      {timeAgo(s.createdAt)}
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <ConfirmAction
+                        trigger={
+                          <Button variant="ghost" size="sm">
+                            Sign out
+                          </Button>
+                        }
+                        title="Sign out device?"
+                        description={`${s.label} will have to sign in again. If you do not recognise it, change your password too.`}
+                        confirmLabel="Sign it out"
+                        variant="destructive"
+                        optimistic
+                        onConfirm={() => revoke(s.id)}
+                      />
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
         )}
       </div>
     </div>

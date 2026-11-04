@@ -101,7 +101,7 @@ export default function Loading() {
                   </div>
                 </CardHeader>
                 <CardContent>
-                  <div className="overflow-hidden rounded-lg border border-border">
+                  <div className="overflow-hidden rounded-xl border border-border">
                     <Table>
                       <TableHeader>
                         <TableRow>

@@ -107,7 +107,7 @@ export function RestoreRunsDialog({
             No completed backups to restore yet.
           </p>
         ) : (
-          <div className="max-h-80 overflow-y-auto rounded-lg border border-border">
+          <div className="max-h-80 overflow-y-auto rounded-xl border border-border">
             <Table>
               <TableHeader>
                 <TableRow>

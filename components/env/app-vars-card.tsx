@@ -153,7 +153,7 @@ export function AppVarsCard({
       </CardHeader>
       {open && (
         <CardContent id={bodyId}>
-          <div className="overflow-hidden rounded-lg border border-border">
+          <div className="overflow-hidden rounded-xl border border-border">
             <Table className="max-md:[&_td]:px-2 max-md:[&_td>div]:flex-wrap max-md:[&_th]:px-2">
               <TableHeader>
                 <TableRow>
