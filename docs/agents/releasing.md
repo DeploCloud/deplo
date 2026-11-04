@@ -150,6 +150,10 @@ node --import tsx scripts/release-notes.mts v0.5.0 > /tmp/notes.md
 gh release edit v0.5.0 --title v0.5.0 --notes-file /tmp/notes.md
 ```
 
+That edit is also what announces the release on Discord (`#production`, `#canary`): `discord-release.yml`
+fires when the generated notes are replaced. Forgot it, or it failed:
+`gh workflow run discord-release.yml -f tag=v0.5.0`.
+
 The title is the bare tag, never a sentence. The body is a linked heading, an optional note, then
 the sections **in this order**, each one skipped when it is empty:
 

@@ -1,0 +1,27 @@
+name: Discord release
+
+on:
+  release:
+    types: [edited]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Release tag to announce
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  announce:
+    # GitHub's generated notes are replaced by hand; announce only that edit.
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (contains(github.event.changes.body.from, 'Full Changelog') &&
+      !contains(github.event.release.body, 'Full Changelog'))
+    permissions:
+      contents: read
+    uses: DeploCloud/.github/.github/workflows/notify-discord.yml@5bc80cb52b96297bc5173655c923cc44686a7500 # main
+    with:
+      tag: ${{ inputs.tag || github.event.release.tag_name }}
+    secrets: inherit
