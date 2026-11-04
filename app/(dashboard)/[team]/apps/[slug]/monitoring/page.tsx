@@ -7,7 +7,7 @@ import { listServers } from "@/lib/data/servers/roster";
 import { isInstanceAdmin } from "@/lib/membership";
 import { serverLabel } from "@/lib/utils";
 import { EmptyState } from "@/components/shared/empty-state";
-import { PageHeader } from "@/components/shared/page-header";
+import { AppMonitoringHeader } from "@/components/apps/app-tab-headers";
 import { SettingsShortcut } from "@/components/shared/settings-shortcut";
 import { ContainerMonitoringDashboard } from "@/components/monitoring/container-monitoring-dashboard";
 import { HostChip } from "@/components/monitoring/host-chip";
@@ -42,11 +42,7 @@ export default async function AppMonitoringPage(
 
   return (
     <div className="space-y-5">
-      <PageHeader
-        level="section"
-        docs="monitoring.overview"
-        title="Monitoring"
-        description="Real-time CPU, memory, network and disk I/O for this app's containers."
+      <AppMonitoringHeader
         actions={
           <div className="flex items-center gap-2">
             {host && (

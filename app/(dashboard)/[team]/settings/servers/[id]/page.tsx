@@ -1,10 +1,7 @@
 import { notFound } from "next/navigation";
-import Link from "@/components/ui/link";
-import { ArrowLeft } from "lucide-react";
 
 import { DeploMark } from "@/components/logo";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import { getServerById, serverRole } from "@/lib/data/servers/roster";
 import { getServerTeamIds } from "@/lib/data/servers/team-access";
 import { listServerWorkloads } from "@/lib/data/servers/workloads";
@@ -30,7 +27,7 @@ import {
 import { ServerHealthChip } from "../server-health-chip";
 import { CheckStatusButton } from "../check-status-button";
 import { ServerDetailTabs } from "./server-detail-tabs";
-import { titleClass } from "@/components/shared/page-header";
+import { ServerDetailHeader } from "./server-detail-header";
 
 export async function generateMetadata(
   props: PageProps<"/[team]/settings/servers/[id]">,
@@ -85,49 +82,34 @@ export default async function ServerDetailPage(
   return (
     <ServerHealthProvider seed={seed}>
       <div className="mx-auto w-full max-w-5xl space-y-6">
-        <div className="space-y-3">
-          <Button
-            variant="ghost"
-            size="sm"
-            className="-ml-2 h-8 text-muted-foreground"
-            asChild
-          >
-            <Link href="/settings/servers">
-              <ArrowLeft className="size-4" />
-              Servers
-            </Link>
-          </Button>
-          <div className="flex items-center gap-2">
-            <h1
-              className={`${titleClass.page} min-w-0 truncate`}
-              title={serverLabel(hydrated)}
-            >
-              {serverLabel(hydrated)}
-            </h1>
-            <span className="shrink-0">
-              <ServerHealthChip
-                serverId={server.id}
-                fallback={seed[server.id]}
-                offlineAdvice={advice}
-              />
-            </span>
-            {isDeploHost && (
-              <Badge className="shrink-0 gap-1 whitespace-nowrap">
-                <DeploMark size={12} className="text-current" />
-                Deplo host
-              </Badge>
-            )}
-            <div className="ml-auto shrink-0">
-              <CheckStatusButton
-                serverId={server.id}
-                serverName={serverLabel(hydrated)}
-              />
-            </div>
-          </div>
-          <p className="mt-1 font-mono text-xs text-muted-foreground">
-            {hydrated.ip}
-          </p>
-        </div>
+        <ServerDetailHeader
+          name={serverLabel(hydrated)}
+          title={serverLabel(hydrated)}
+          badges={
+            <>
+              <span className="shrink-0">
+                <ServerHealthChip
+                  serverId={server.id}
+                  fallback={seed[server.id]}
+                  offlineAdvice={advice}
+                />
+              </span>
+              {isDeploHost && (
+                <Badge className="shrink-0 gap-1 whitespace-nowrap">
+                  <DeploMark size={12} className="text-current" />
+                  Deplo host
+                </Badge>
+              )}
+            </>
+          }
+          action={
+            <CheckStatusButton
+              serverId={server.id}
+              serverName={serverLabel(hydrated)}
+            />
+          }
+          ip={hydrated.ip}
+        />
 
         <ServerDetailTabs
           server={{

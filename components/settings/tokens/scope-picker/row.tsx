@@ -4,6 +4,7 @@ import * as React from "react";
 import { ChevronRight, Box } from "lucide-react";
 import { TeamAvatar } from "@/components/shared/user-avatar";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Bone, Skeleton } from "@/components/ui/skeleton";
 import { LogoImage } from "@/components/shared/project-logo";
 import { cn } from "@/lib/utils";
 
@@ -42,7 +43,9 @@ export function Row({
   onToggleExpand,
   id,
   right,
+  loading = false,
 }: {
+  loading?: boolean;
   depth: number;
   mark: React.ReactNode;
   label: string;
@@ -84,12 +87,14 @@ export function Row({
         <span className="size-4" aria-hidden />
       )}
       {checkbox ? (
-        <Checkbox
-          id={id}
-          checked={checked}
-          disabled={disabled}
-          onCheckedChange={(v) => onCheckedChange(v === true)}
-        />
+        <Bone box loading={loading} className="rounded-sm">
+          <Checkbox
+            id={id}
+            checked={checked}
+            disabled={disabled}
+            onCheckedChange={(v) => onCheckedChange(v === true)}
+          />
+        </Bone>
       ) : (
         <span className="size-4" aria-hidden />
       )}
@@ -101,7 +106,7 @@ export function Row({
         )}
       >
         <span className="flex size-4 shrink-0 items-center justify-center">
-          {mark}
+          {loading ? <Skeleton className="size-4 rounded-sm" /> : mark}
         </span>
         <span
           className={cn(
@@ -109,11 +114,11 @@ export function Row({
             depth === 0 && "font-medium",
           )}
         >
-          {label}
+          <Bone loading={loading}>{label}</Bone>
         </span>
         {meta && (
           <span className="shrink-0 truncate text-xs text-muted-foreground">
-            {meta}
+            <Bone loading={loading}>{meta}</Bone>
           </span>
         )}
       </label>

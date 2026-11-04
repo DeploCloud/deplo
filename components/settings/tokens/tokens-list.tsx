@@ -20,6 +20,8 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
+import { Bone } from "@/components/ui/skeleton";
+import { ALL_CAPABILITIES } from "@/lib/types/identity";
 import { Button } from "@/components/ui/button";
 import { SimpleTooltip } from "@/components/ui/tooltip";
 import { RowActions } from "@/components/shared/row-actions";
@@ -42,7 +44,9 @@ export function TokensList({
   tokens,
   names,
   activeTeamId,
+  loading = false,
 }: {
+  loading?: boolean;
   tokens: ApiTokenDTO[];
   names: Record<string, string>;
   activeTeamId: string;
@@ -74,7 +78,7 @@ export function TokensList({
             </TableHead>
           </TableRow>
         </TableHeader>
-        <TableBody>
+        <TableBody inert={loading || undefined}>
           {rows.map((t) => {
             const presetId = presetIdFor(t.capabilities);
             const preset = TOKEN_PRESETS.find((p) => p.id === presetId);
@@ -89,26 +93,32 @@ export function TokensList({
             return (
               <TableRow key={t.id}>
                 <TableCell>
-                  <Link
-                    href={`/settings/tokens/${t.id}`}
-                    className="font-medium hover:underline"
-                  >
-                    {t.name}
-                  </Link>
+                  <Bone loading={loading}>
+                    <Link
+                      href={`/settings/tokens/${t.id}`}
+                      className="font-medium hover:underline"
+                    >
+                      {t.name}
+                    </Link>
+                  </Bone>
                   <p className="mt-1 font-mono text-xs text-muted-foreground">
-                    {`${t.prefix}${"•".repeat(8)}`}
+                    <Bone loading={loading}>
+                      {`${t.prefix}${"•".repeat(8)}`}
+                    </Bone>
                   </p>
                 </TableCell>
                 <TableCell>
                   <span className="flex flex-wrap items-center gap-1.5">
-                    <Badge variant="secondary" className="gap-1">
-                      <Icon className="size-3" aria-hidden />
-                      {preset
-                        ? preset.name
-                        : granted === 0
-                          ? "View only"
-                          : `${granted} permissions`}
-                    </Badge>
+                    <Bone box loading={loading}>
+                      <Badge variant="secondary" className="gap-1">
+                        <Icon className="size-3" aria-hidden />
+                        {preset
+                          ? preset.name
+                          : granted === 0
+                            ? "View only"
+                            : `${granted} permissions`}
+                      </Badge>
+                    </Bone>
                     {sensitive && (
                       <SimpleTooltip content="Holds a permission that can destroy data or hand over access">
                         <span className="leading-none">
@@ -144,7 +154,9 @@ export function TokensList({
                   </span>
                 </TableCell>
                 <TableCell className="text-muted-foreground">
-                  {!t.scoped ? (
+                  {loading ? (
+                    <Bone>{scope.text}</Bone>
+                  ) : !t.scoped ? (
                     scope.text
                   ) : scope.empty ? (
                     <SimpleTooltip content="Every team, project and app it was limited to has been deleted, so it reaches nothing and no longer authenticates. Edit it to pick another, or revoke it.">
@@ -161,7 +173,9 @@ export function TokensList({
                   )}
                 </TableCell>
                 <TableCell className="text-muted-foreground">
-                  {t.lastUsedAt ? timeAgo(t.lastUsedAt) : "Never used"}
+                  <Bone loading={loading}>
+                    {t.lastUsedAt ? timeAgo(t.lastUsedAt) : "Never used"}
+                  </Bone>
                   {t.expiresAt &&
                     (t.expired ? (
                       <SimpleTooltip content="This token has expired and no longer authenticates anywhere. Edit it to move the date, or revoke it.">
@@ -171,7 +185,9 @@ export function TokensList({
                       </SimpleTooltip>
                     ) : (
                       <span className="mt-1 block text-xs">
-                        Expires {new Date(t.expiresAt).toLocaleDateString()}
+                        <Bone loading={loading}>
+                          Expires {new Date(t.expiresAt).toLocaleDateString()}
+                        </Bone>
                       </span>
                     ))}
                 </TableCell>
@@ -249,5 +265,35 @@ export function TokensList({
         }}
       />
     </div>
+  );
+}
+
+const SKELETON_TOKENS: ApiTokenDTO[] = [
+  "Claude Code",
+  "GitHub Actions deploy",
+  "Codex CLI",
+].map((name, i) => ({
+  id: String(i),
+  name,
+  prefix: "deplo_ab12cd",
+  capabilities: ALL_CAPABILITIES.slice(0, 44),
+  scoped: false,
+  teamIds: [],
+  projectIds: [],
+  folderIds: [],
+  appIds: [],
+  teamsReached: [],
+  instanceAdmin: false,
+  oauthClientName: null,
+  mcp: i !== 1,
+  expiresAt: "2026-12-04T00:00:00.000Z",
+  expired: false,
+  lastUsedAt: null,
+  createdAt: "",
+}));
+
+export function TokensListSkeleton() {
+  return (
+    <TokensList tokens={SKELETON_TOKENS} names={{}} activeTeamId="" loading />
   );
 }

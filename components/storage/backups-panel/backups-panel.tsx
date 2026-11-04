@@ -2,6 +2,8 @@
 
 import * as React from "react";
 import { useRouter } from "@/lib/nav";
+import { Archive, ChevronDown } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import {
   Table,
   TableBody,
@@ -23,8 +25,8 @@ import { noun, type BackupTarget, type Destination } from "./target";
 import { BackUpMenu } from "./back-up-menu";
 import { BackUpNow } from "./back-up-now";
 import { ScheduleBackup } from "./schedule-wizard";
-import { ScheduleRow } from "./schedule-row";
-import { PendingRunRow, RunRow } from "./run-row";
+import { ScheduleRow, ScheduleRowSkeleton } from "./schedule-row";
+import { PendingRunRow, RunRow, RunRowSkeleton } from "./run-row";
 
 export function BackupsPanel({
   target,
@@ -98,11 +100,8 @@ export function BackupsPanel({
         active={anythingRunning}
         intervalMs={pending.length > 0 ? 2_000 : 5_000}
       />
-      <PageHeader
-        level="section"
-        docs="backups.overview"
-        title="Backups"
-        description={`Scheduled backups of this ${noun(target)} to a backup destination, and restore.`}
+      <BackupsHeader
+        kind={target.kind}
         actions={
           <BackUpMenu
             canManage={canManage}
@@ -157,17 +156,7 @@ export function BackupsPanel({
           ) : (
             <div className="rounded-xl border border-border">
               <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Name</TableHead>
-                    <TableHead>Destination</TableHead>
-                    <TableHead>Schedule</TableHead>
-                    <TableHead>Retention</TableHead>
-                    <TableHead>Last run</TableHead>
-                    <TableHead>Enabled</TableHead>
-                    <TableHead className="text-right" />
-                  </TableRow>
-                </TableHeader>
+                <SchedulesHead />
                 <TableBody>
                   <OptimisticList>
                     {schedules.map((s) => (
@@ -201,13 +190,7 @@ export function BackupsPanel({
         ) : (
           <div className="rounded-xl border border-border">
             <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Backup</TableHead>
-                  <TableHead className="text-right">Size</TableHead>
-                  <TableHead className="w-px" />
-                </TableRow>
-              </TableHeader>
+              <RunsHead />
               <TableBody>
                 {pending.map((p) => (
                   <PendingRunRow
@@ -237,6 +220,94 @@ export function BackupsPanel({
             </Table>
           </div>
         )}
+      </section>
+    </div>
+  );
+}
+
+function BackupsHeader({
+  kind,
+  actions,
+}: {
+  kind: BackupTarget["kind"];
+  actions: React.ReactNode;
+}) {
+  return (
+    <PageHeader
+      level="section"
+      docs="backups.overview"
+      title="Backups"
+      description={`Scheduled backups of this ${kind === "app" ? "app" : "database"} to a backup destination, and restore.`}
+      actions={actions}
+    />
+  );
+}
+
+function SchedulesHead() {
+  return (
+    <TableHeader>
+      <TableRow>
+        <TableHead>Name</TableHead>
+        <TableHead>Destination</TableHead>
+        <TableHead>Schedule</TableHead>
+        <TableHead>Retention</TableHead>
+        <TableHead>Last run</TableHead>
+        <TableHead>Enabled</TableHead>
+        <TableHead className="text-right" />
+      </TableRow>
+    </TableHeader>
+  );
+}
+
+function RunsHead() {
+  return (
+    <TableHeader>
+      <TableRow>
+        <TableHead>Backup</TableHead>
+        <TableHead className="text-right">Size</TableHead>
+        <TableHead className="w-px" />
+      </TableRow>
+    </TableHeader>
+  );
+}
+
+/** The panel while its schedules and restore points load: one schedule, three runs. */
+export function BackupsPanelSkeleton({ kind }: { kind: BackupTarget["kind"] }) {
+  return (
+    <div className="space-y-8" aria-busy>
+      <BackupsHeader
+        kind={kind}
+        actions={
+          <Button size="sm" disabled>
+            <Archive className="size-4" />
+            Back up
+            <ChevronDown className="size-3.5 opacity-70" />
+          </Button>
+        }
+      />
+      <section className="space-y-3">
+        <h2 className="text-sm font-medium">Schedules</h2>
+        <div className="rounded-xl border border-border">
+          <Table>
+            <SchedulesHead />
+            <TableBody>
+              <ScheduleRowSkeleton />
+            </TableBody>
+          </Table>
+        </div>
+      </section>
+      <section className="space-y-3">
+        <h2 className="text-sm font-medium">Restore points</h2>
+        <div className="rounded-xl border border-border">
+          <Table>
+            <RunsHead />
+            <TableBody>
+              <RunRowSkeleton />
+              <RunRowSkeleton />
+              <RunRowSkeleton />
+            </TableBody>
+          </Table>
+        </div>
       </section>
     </div>
   );

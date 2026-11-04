@@ -1,5 +1,7 @@
 "use client";
 
+import { Bone } from "@/components/ui/skeleton";
+import { useSettingsLoading } from "@/components/apps/settings/settings-loading";
 import * as React from "react";
 import { useRouter } from "@/lib/nav";
 import { toast } from "sonner";
@@ -66,6 +68,7 @@ export function BasicAuthManager({
   const [deleting, setDeleting] = React.useState<BasicAuthUserDTO | null>(null);
   const router = useRouter();
   const { pending } = usePendingCreate();
+  const loading = useSettingsLoading();
 
   const {
     visible: liveUsers,
@@ -124,7 +127,11 @@ export function BasicAuthManager({
             at a time.
           </p>
         </div>
-        {!hasUsers && pending.length === 0 && addButton("sm")}
+        {!hasUsers && pending.length === 0 && (
+          <Bone box loading={loading}>
+            {addButton("sm")}
+          </Bone>
+        )}
       </div>
 
       {hasUsers && (
@@ -141,11 +148,13 @@ export function BasicAuthManager({
       )}
 
       {!hasUsers && pending.length === 0 ? (
-        <EmptyState
-          icon={ShieldOff}
-          title="No login required"
-          description="Add a credential to put a username and password in front of every domain of this app."
-        />
+        <Bone box loading={loading} className="w-full rounded-xl">
+          <EmptyState
+            icon={ShieldOff}
+            title="No login required"
+            description="Add a credential to put a username and password in front of every domain of this app."
+          />
+        </Bone>
       ) : !hasMatches && pending.length === 0 ? (
         <EmptyState
           icon={SearchX}

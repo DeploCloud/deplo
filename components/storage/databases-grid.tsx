@@ -214,59 +214,16 @@ export function DatabasesGrid({
   return (
     <DatabaseListLiveStatusProvider ids={databases.map((d) => d.id)}>
       <div className="space-y-4">
-        <ListToolbar
+        <DatabasesToolbar
           query={query}
           onQuery={setQuery}
-          placeholder="Search databases"
-          filterSheet={{
-            active: Number(engine !== "all") + Number(status !== "all"),
-            onClear: () => {
-              setEngine("all");
-              setStatus("all");
-            },
-          }}
+          engine={engine}
+          onEngine={setEngine}
+          status={status}
+          onStatus={setStatus}
           view={view}
           onView={setView}
-          action={createButton}
-          filters={
-            <>
-              <Select
-                value={engine}
-                onValueChange={(v) => setEngine(v as DatabaseType | "all")}
-              >
-                <SelectTrigger className="w-full sm:w-40">
-                  <SelectValue placeholder="Engine" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All engines</SelectItem>
-                  {DB_TYPES.map((t) => (
-                    <SelectItem key={t.id} value={t.id}>
-                      <span className="flex items-center gap-2">
-                        <DatabaseLogo type={t.id} size={16} />
-                        {t.name}
-                      </span>
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <Select
-                value={status}
-                onValueChange={(v) => setStatus(v as DatabaseStatus | "all")}
-              >
-                <SelectTrigger className="w-full sm:w-36">
-                  <SelectValue placeholder="Status" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All statuses</SelectItem>
-                  {(Object.keys(STATUS_LABELS) as DatabaseStatus[]).map((s) => (
-                    <SelectItem key={s} value={s}>
-                      {STATUS_LABELS[s]}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </>
-          }
+          createButton={createButton}
         />
 
         <SelectionCanvas canvasRef={canvasRef} marqueeRef={marqueeRef}>
@@ -455,7 +412,7 @@ function DatabaseBulkActions({
   );
 }
 
-function gridClass(view: View): string {
+export function gridClass(view: View): string {
   return view === "list"
     ? "flex flex-col gap-3"
     : "grid gap-4 sm:grid-cols-2 lg:grid-cols-3";
@@ -575,5 +532,84 @@ function SortableCard({
     >
       {children({ handle, dragActive: isDragging })}
     </div>
+  );
+}
+
+export function DatabasesToolbar({
+  query,
+  onQuery,
+  engine,
+  onEngine,
+  status,
+  onStatus,
+  view,
+  onView,
+  createButton,
+}: {
+  query: string;
+  onQuery: (v: string) => void;
+  engine: DatabaseType | "all";
+  onEngine: (v: DatabaseType | "all") => void;
+  status: DatabaseStatus | "all";
+  onStatus: (v: DatabaseStatus | "all") => void;
+  view: View;
+  onView: (v: View) => void;
+  createButton?: React.ReactNode;
+}) {
+  return (
+    <ListToolbar
+      query={query}
+      onQuery={onQuery}
+      placeholder="Search databases"
+      filterSheet={{
+        active: Number(engine !== "all") + Number(status !== "all"),
+        onClear: () => {
+          onEngine("all");
+          onStatus("all");
+        },
+      }}
+      view={view}
+      onView={onView}
+      action={createButton}
+      filters={
+        <>
+          <Select
+            value={engine}
+            onValueChange={(v) => onEngine(v as DatabaseType | "all")}
+          >
+            <SelectTrigger className="w-full sm:w-40">
+              <SelectValue placeholder="Engine" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All engines</SelectItem>
+              {DB_TYPES.map((t) => (
+                <SelectItem key={t.id} value={t.id}>
+                  <span className="flex items-center gap-2">
+                    <DatabaseLogo type={t.id} size={16} />
+                    {t.name}
+                  </span>
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <Select
+            value={status}
+            onValueChange={(v) => onStatus(v as DatabaseStatus | "all")}
+          >
+            <SelectTrigger className="w-full sm:w-36">
+              <SelectValue placeholder="Status" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All statuses</SelectItem>
+              {(Object.keys(STATUS_LABELS) as DatabaseStatus[]).map((s) => (
+                <SelectItem key={s} value={s}>
+                  {STATUS_LABELS[s]}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </>
+      }
+    />
   );
 }

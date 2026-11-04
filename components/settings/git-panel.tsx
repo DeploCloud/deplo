@@ -39,6 +39,7 @@ import {
 } from "@/components/ui/dialog";
 import { FieldLabel } from "@/components/ui/info-tip";
 import { PageHeader } from "@/components/shared/page-header";
+import { Bone, Skeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/shared/empty-state";
 import { ConfirmAction } from "@/components/shared/confirm-action";
 import { useOptimisticRemove } from "@/components/shared/use-optimistic-remove";
@@ -64,7 +65,9 @@ export function GitPanel({
   next,
   isInstanceAdmin,
   suggestNewRepos,
+  loading = false,
 }: {
+  loading?: boolean;
   githubApps: GithubAppDTO[];
   connections: GitConnectionDTO[];
   providers: GitProviderChoice[];
@@ -112,7 +115,7 @@ export function GitPanel({
     providers.find((p) => p.id === connectProviderId) ?? null;
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6" aria-busy={loading || undefined}>
       <PageHeader
         docs="git.providers"
         title="Git"
@@ -125,9 +128,31 @@ export function GitPanel({
         }
       />
 
-      {!empty && <NewReposSwitch enabled={suggestNewRepos} />}
+      {(loading || !empty) && (
+        <NewReposSwitch enabled={suggestNewRepos} loading={loading} />
+      )}
 
-      {empty ? (
+      {loading ? (
+        <div className="grid items-start gap-4 sm:grid-cols-2 xl:grid-cols-3">
+          <HostCard
+            loading
+            provider="github"
+            title="Deplo GitHub App"
+            href=""
+            subtitle="1 installation"
+            menu={null}
+          >
+            <div className="mt-3 flex flex-wrap gap-2">
+              <Bone box>
+                <Badge variant="secondary" className="gap-1.5">
+                  <CheckCircle2 className="size-3" />
+                  account
+                </Badge>
+              </Bone>
+            </div>
+          </HostCard>
+        </div>
+      ) : empty ? (
         <EmptyState
           graphic={<GitGraphic />}
           title="No git host connected"
@@ -290,6 +315,7 @@ function HostCard({
   subtitle,
   menu,
   children,
+  loading = false,
 }: {
   provider: string;
   title: string;
@@ -297,15 +323,22 @@ function HostCard({
   subtitle: string;
   menu: React.ReactNode;
   children?: React.ReactNode;
+  loading?: boolean;
 }) {
   return (
-    <Card className="p-4">
+    <Card className="p-4" inert={loading || undefined}>
       <div className="flex items-start gap-3">
-        <GitProviderMark provider={provider} className="size-10" />
+        {loading ? (
+          <Skeleton className="size-10 shrink-0 rounded-lg" />
+        ) : (
+          <GitProviderMark provider={provider} className="size-10" />
+        )}
         <div className="min-w-0 flex-1">
-          <p className="truncate text-sm font-medium">{title}</p>
+          <p className="truncate text-sm font-medium">
+            <Bone loading={loading}>{title}</Bone>
+          </p>
           <p className="mt-1 truncate text-xs text-muted-foreground">
-            {subtitle}
+            <Bone loading={loading}>{subtitle}</Bone>
           </p>
         </div>
         <DropdownMenu>

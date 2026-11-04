@@ -24,6 +24,7 @@ import {
 import { GitHubIcon } from "@/components/shared/brand-icons";
 import { describeAppSource } from "@/components/apps/app-source";
 import { Card } from "@/components/ui/card";
+import { Bone } from "@/components/ui/skeleton";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -694,4 +695,89 @@ export function AppCard({
     );
 
   return cardInner;
+}
+
+/** One app card while the Overview loads, on the card's own frame. */
+export function AppCardSkeleton({ view = "grid" }: { view?: "grid" | "list" }) {
+  const logo = (
+    <Bone box className="shrink-0">
+      <AppLogo logo={null} size={36} />
+    </Bone>
+  );
+  const name = (
+    <span className="block truncate font-medium">
+      <Bone>app-name</Bone>
+    </span>
+  );
+  const subtitle = (
+    <span className="relative z-[1] mt-1 inline-block max-w-full truncate align-top text-xs text-muted-foreground max-md:-my-2 max-md:mt-0 max-md:py-2">
+      <Bone>app-name.example.com</Bone>
+    </span>
+  );
+  const actions = (
+    <div className="pointer-events-auto relative z-10 flex items-center gap-1">
+      <span className="inline-flex items-center">
+        <Bone box className="rounded-full">
+          <AppStatusIndicator status="active" runtime={null} />
+        </Bone>
+      </span>
+      <div>
+        <Button variant="ghost" size="icon-sm" aria-label="App menu" disabled>
+          <MoreHorizontal className="size-4" />
+        </Button>
+      </div>
+    </div>
+  );
+  if (view === "list")
+    return (
+      <Card className="group relative flex items-center gap-4 p-4">
+        <div className="pointer-events-none relative z-[1] flex min-w-0 flex-1 items-center gap-4">
+          {logo}
+          <div className="min-w-0 flex-1">
+            {name}
+            {subtitle}
+          </div>
+          <div className="hidden items-center gap-2 text-xs text-muted-foreground md:flex">
+            <span className="whitespace-nowrap">
+              <Bone>2mo ago</Bone>
+            </span>
+          </div>
+        </div>
+        {actions}
+      </Card>
+    );
+  return (
+    <Card className="group relative flex flex-col gap-4 p-5">
+      <div className="pointer-events-none relative z-[1] flex flex-1 flex-col gap-4">
+        <div className="flex items-start justify-between gap-3">
+          <div className="flex min-w-0 flex-1 items-center gap-3">
+            {logo}
+            <div className="min-w-0 flex-1">
+              {name}
+              {subtitle}
+            </div>
+          </div>
+          {actions}
+        </div>
+        <div className="rounded-lg border border-border bg-surface p-3">
+          <div className="flex items-center gap-2 text-xs text-muted-foreground">
+            <code className="shrink-0 font-mono text-foreground">
+              <Bone>0000000</Bone>
+            </code>
+            <span className="min-w-0 flex-1 truncate">
+              <Bone>Redeploy of the latest commit</Bone>
+            </span>
+          </div>
+          <div className="mt-2 flex items-center gap-2 text-xs text-muted-foreground">
+            <span className="shrink-0">
+              <Bone>2mo ago</Bone>
+            </span>
+            <span className="min-w-0 truncate">
+              <Bone>owner/repository</Bone>
+            </span>
+          </div>
+        </div>
+      </div>
+    </Card>
+  );
 }

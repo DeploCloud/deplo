@@ -23,6 +23,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { FieldLabel } from "@/components/ui/info-tip";
 import { Badge } from "@/components/ui/badge";
+import { Bone } from "@/components/ui/skeleton";
 import {
   Select,
   SelectContent,
@@ -96,15 +97,27 @@ const TYPE_META: Record<
   },
 };
 
-export function RegistriesPanel({ registries }: { registries: RegistryDTO[] }) {
+export function RegistriesPanel({
+  registries,
+  loading = false,
+}: {
+  registries: RegistryDTO[];
+  loading?: boolean;
+}) {
   return (
     <PendingCreateProvider count={registries.length}>
-      <RegistriesBody registries={registries} />
+      <RegistriesBody registries={registries} loading={loading} />
     </PendingCreateProvider>
   );
 }
 
-function RegistriesBody({ registries }: { registries: RegistryDTO[] }) {
+function RegistriesBody({
+  registries,
+  loading,
+}: {
+  registries: RegistryDTO[];
+  loading: boolean;
+}) {
   const router = useRouter();
   const [addOpen, setAddOpen] = React.useState(false);
   const [addKey, setAddKey] = React.useState(0);
@@ -117,7 +130,7 @@ function RegistriesBody({ registries }: { registries: RegistryDTO[] }) {
   const { pending } = usePendingCreate();
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6" aria-busy={loading || undefined}>
       <PageHeader
         docs="registries.overview"
         title={
@@ -138,12 +151,15 @@ function RegistriesBody({ registries }: { registries: RegistryDTO[] }) {
       />
 
       {rows.length === 0 && pending.length === 0 ? (
-        <EmptyState
-          graphic={<RegistryGraphic />}
-          title="No registry connected"
-          docs="registries.add"
-          description="Connect one and its private images are yours to deploy, with the credentials kept here."
-        />
+        <Bone box loading={loading} className="w-full rounded-xl">
+          <EmptyState
+            className={loading ? "w-full" : undefined}
+            graphic={<RegistryGraphic />}
+            title="No registry connected"
+            docs="registries.add"
+            description="Connect one and its private images are yours to deploy, with the credentials kept here."
+          />
+        </Bone>
       ) : (
         <div className="grid items-start gap-4 sm:grid-cols-2 xl:grid-cols-3">
           {rows.map((r) => (

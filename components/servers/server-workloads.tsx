@@ -11,6 +11,7 @@ import {
 
 import Link from "@/components/ui/link";
 import { EmptyState } from "@/components/shared/empty-state";
+import { Bone } from "@/components/ui/skeleton";
 import { ListToolbar } from "@/components/shared/list-toolbar";
 import { AppLogo } from "@/components/shared/project-logo";
 import { TeamAvatar } from "@/components/shared/user-avatar";
@@ -121,18 +122,22 @@ export function ServerWorkloads({
     };
   }, [serverId]);
 
-  if (rows === null)
+  if (rows === null && error)
     return (
-      <div role={error ? "alert" : "status"}>
+      <div role="alert">
         <EmptyState
           icon={AppWindow}
-          title={error ? "Could not load apps" : "Loading apps"}
-          description={error ?? "Reading apps and databases on this server."}
+          title="Could not load apps"
+          description={error}
         />
       </div>
     );
 
-  if (rows.length === 0)
+  // Until the first answer, the real toolbar and table over placeholder rows.
+  const loading = rows === null;
+  const list = rows ?? PLACEHOLDER_WORKLOADS;
+
+  if (list.length === 0)
     return (
       <EmptyState
         icon={AppWindow}
@@ -141,14 +146,14 @@ export function ServerWorkloads({
       />
     );
 
-  const shown = filterWorkloads(rows, {
+  const shown = filterWorkloads(list, {
     query,
     statuses: picked.status,
     kinds: picked.type,
     teams: picked.team,
   });
   const teams = teamFacetOptions(
-    rows.map((w) => [
+    list.map((w) => [
       { slug: w.teamSlug, name: w.teamName, avatarUrl: w.teamAvatarUrl },
     ]),
   );
@@ -162,7 +167,11 @@ export function ServerWorkloads({
   }
 
   return (
-    <div className="space-y-3">
+    <div
+      className="space-y-3"
+      inert={loading || undefined}
+      aria-busy={loading || undefined}
+    >
       {error && (
         <p role="alert" className="text-sm text-destructive">
           {error}
@@ -190,7 +199,7 @@ export function ServerWorkloads({
               allLabel="Any status"
               icon={CircleDot}
               options={STATUS_OPTIONS}
-              counts={countBy(rows, (w) => statusGroup(w) ?? "")}
+              counts={countBy(list, (w) => statusGroup(w) ?? "")}
               values={picked.status}
               onChange={(v) => setPicked("status", v)}
             />
@@ -200,7 +209,7 @@ export function ServerWorkloads({
               allLabel="Any type"
               icon={Shapes}
               options={KIND_OPTIONS}
-              counts={countBy(rows, (w) => w.kind)}
+              counts={countBy(list, (w) => w.kind)}
               values={picked.type}
               onChange={(v) => setPicked("type", v)}
             />
@@ -244,10 +253,16 @@ export function ServerWorkloads({
                 workload={w}
                 open={open.has(w.id)}
                 onToggle={() => toggle(w.id)}
+                loading={loading}
               />
             ))}
           </TableBody>
         </Table>
+        {loading && (
+          <span role="status" className="sr-only">
+            Loading apps
+          </span>
+        )}
       </div>
     </div>
   );
@@ -257,17 +272,23 @@ function WorkloadRows({
   workload: w,
   open,
   onToggle,
+  loading = false,
 }: {
   workload: ServerWorkload;
   open: boolean;
   onToggle: () => void;
+  loading?: boolean;
 }) {
   const engine = w.engine as DatabaseType | null;
   const logo = w.logo ?? (engine ? DB_LOGOS[engine] : null);
   const name = (
     <span className="flex items-center gap-2.5">
-      <AppLogo logo={logo ?? null} tone={w.logoTone} size={24} />
-      <WorkloadText className="font-medium">{w.name}</WorkloadText>
+      <Bone box loading={loading} className="shrink-0">
+        <AppLogo logo={logo ?? null} tone={w.logoTone} size={24} />
+      </Bone>
+      <Bone box loading={loading} className="min-w-0">
+        <WorkloadText className="font-medium">{w.name}</WorkloadText>
+      </Bone>
     </span>
   );
   return (
@@ -301,27 +322,37 @@ function WorkloadRows({
           )}
         </TableCell>
         <TableCell className="hidden text-muted-foreground sm:table-cell">
-          {engine ? (DB_NAMES[engine] ?? engine) : "App"}
+          <Bone loading={loading}>
+            {engine ? (DB_NAMES[engine] ?? engine) : "App"}
+          </Bone>
         </TableCell>
         <TableCell className="hidden sm:table-cell">
           <span className="flex items-center gap-2">
-            <TeamAvatar
-              name={w.teamName}
-              avatarUrl={w.teamAvatarUrl}
-              size="xs"
-            />
-            <WorkloadText>{w.teamName}</WorkloadText>
+            <Bone box loading={loading} className="shrink-0 rounded-full">
+              <TeamAvatar
+                name={w.teamName}
+                avatarUrl={w.teamAvatarUrl}
+                size="xs"
+              />
+            </Bone>
+            <Bone box loading={loading} className="min-w-0">
+              <WorkloadText>{w.teamName}</WorkloadText>
+            </Bone>
           </span>
         </TableCell>
         <TableCell className={cn(WIDE, "text-muted-foreground")}>
-          <WorkloadText>
-            {[w.project, w.environment].filter(Boolean).join(" / ") || "-"}
-          </WorkloadText>
+          <Bone box loading={loading} className="min-w-0">
+            <WorkloadText>
+              {[w.project, w.environment].filter(Boolean).join(" / ") || "-"}
+            </WorkloadText>
+          </Bone>
         </TableCell>
         <TableCell>
-          <StatusIndicator status={w.status} detail={null} badge />
+          <Bone box loading={loading}>
+            <StatusIndicator status={w.status} detail={null} badge />
+          </Bone>
         </TableCell>
-        <Usage cpu={w.cpu} memUsed={w.memUsed} />
+        <Usage cpu={w.cpu} memUsed={w.memUsed} loading={loading} />
         <TableCell
           className={cn(
             WIDE,
@@ -329,7 +360,7 @@ function WorkloadRows({
             w.restarts > 0 ? "text-warning" : "text-muted-foreground",
           )}
         >
-          {w.restarts}
+          <Bone loading={loading}>{w.restarts}</Bone>
         </TableCell>
       </TableRow>
       {open && w.containers.map((c) => <ContainerRow key={c.name} c={c} />)}
@@ -371,21 +402,27 @@ function ContainerRow({ c }: { c: WorkloadContainer }) {
 function Usage({
   cpu,
   memUsed,
+  loading = false,
 }: {
   cpu: number | null;
   memUsed: number | null;
+  loading?: boolean;
 }) {
   return (
     <>
       <TableCell
         className={cn(WIDE, "text-right whitespace-nowrap tabular-nums")}
       >
-        {cpu == null ? "-" : `${cpu.toFixed(1)}%`}
+        <Bone loading={loading}>
+          {cpu == null ? "-" : `${cpu.toFixed(1)}%`}
+        </Bone>
       </TableCell>
       <TableCell
         className={cn(WIDE, "text-right whitespace-nowrap tabular-nums")}
       >
-        {memUsed == null ? "-" : formatBytes(memUsed)}
+        <Bone loading={loading}>
+          {memUsed == null ? "-" : formatBytes(memUsed)}
+        </Bone>
       </TableCell>
     </>
   );
@@ -407,3 +444,29 @@ function WorkloadText({
     </span>
   );
 }
+
+const PLACEHOLDER_WORKLOADS: ServerWorkload[] = [
+  "app-name",
+  "another-app",
+  "database-name",
+  "web",
+  "api-server",
+].map((name, i) => ({
+  id: `loading-${i}`,
+  kind: "app",
+  name,
+  logo: null,
+  logoTone: null,
+  engine: null,
+  teamName: "Team",
+  teamSlug: "team",
+  teamAvatarUrl: null,
+  href: null,
+  project: null,
+  environment: null,
+  status: "active",
+  cpu: null,
+  memUsed: null,
+  restarts: 0,
+  containers: [],
+}));

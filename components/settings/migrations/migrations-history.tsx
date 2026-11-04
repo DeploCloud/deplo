@@ -4,6 +4,7 @@ import * as React from "react";
 import { Logs } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
+import { Bone, Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import {
   Table,
@@ -37,87 +38,70 @@ export function MigrationsHistory({ runs }: { runs: ImportRun[] }) {
 
   return (
     <>
-      <div className="overflow-hidden rounded-xl border border-border">
-        <Table className="min-w-[50rem]">
-          <TableHeader>
-            <TableRow>
-              <TableHead>Source</TableHead>
-              <TableHead>Team</TableHead>
-              <TableHead>When</TableHead>
-              <TableHead>Outcome</TableHead>
-              <TableHead className="text-right">Actions</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {runs.map((r) => (
-              <TableRow key={r.id}>
-                <TableCell className="max-w-[16rem]">
-                  <div className="flex items-center gap-2 font-medium">
-                    <SimpleTooltip content={SOURCE_COPY[r.platform].name}>
-                      <span className="inline-flex">
-                        <SourceMark kind={r.platform} />
-                      </span>
-                    </SimpleTooltip>
-                    <span className="truncate">{r.orgName ?? r.sourceUrl}</span>
-                  </div>
-                  {r.orgName && (
-                    <div className="mt-1 truncate text-xs text-muted-foreground">
-                      {r.sourceUrl}
-                    </div>
-                  )}
-                </TableCell>
-                <TableCell className="max-w-[12rem]">
-                  <div className="flex items-center gap-2 text-sm">
-                    <TeamAvatar
-                      name={r.teamName}
-                      avatarUrl={r.teamAvatarUrl}
-                      size="xs"
-                    />
-                    <span className="truncate">{r.teamName}</span>
-                  </div>
-                </TableCell>
-                <TableCell className="text-sm whitespace-nowrap">
-                  {new Date(r.startedAt).toLocaleString(undefined, {
-                    dateStyle: "medium",
-                    timeStyle: "short",
-                  })}
-                  <div className="mt-1 flex items-center gap-1.5 text-xs text-muted-foreground">
-                    <UserAvatar
-                      name={r.actor}
-                      username={r.actorUsername}
-                      avatarUrl={r.actorAvatarUrl}
-                      size="xs"
-                    />
-                    {r.actor}
-                  </div>
-                </TableCell>
-                <TableCell>
-                  <div className="flex flex-wrap items-center gap-1.5">
-                    {reportBadges(r).map((b) => (
-                      <Badge key={b.key} variant={b.variant}>
-                        {b.label}
-                      </Badge>
-                    ))}
-                    {r.status !== "done" && (
-                      <Badge variant="outline">{r.status}</Badge>
-                    )}
-                  </div>
-                </TableCell>
-                <TableCell className="text-right">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setOpen(r)}
-                  >
-                    <Logs className="size-4" />
-                    Show log
-                  </Button>
-                </TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
-      </div>
+      <HistoryTable>
+        {runs.map((r) => (
+          <TableRow key={r.id}>
+            <TableCell className="max-w-[16rem]">
+              <div className="flex items-center gap-2 font-medium">
+                <SimpleTooltip content={SOURCE_COPY[r.platform].name}>
+                  <span className="inline-flex">
+                    <SourceMark kind={r.platform} />
+                  </span>
+                </SimpleTooltip>
+                <span className="truncate">{r.orgName ?? r.sourceUrl}</span>
+              </div>
+              {r.orgName && (
+                <div className="mt-1 truncate text-xs text-muted-foreground">
+                  {r.sourceUrl}
+                </div>
+              )}
+            </TableCell>
+            <TableCell className="max-w-[12rem]">
+              <div className="flex items-center gap-2 text-sm">
+                <TeamAvatar
+                  name={r.teamName}
+                  avatarUrl={r.teamAvatarUrl}
+                  size="xs"
+                />
+                <span className="truncate">{r.teamName}</span>
+              </div>
+            </TableCell>
+            <TableCell className="text-sm whitespace-nowrap">
+              {new Date(r.startedAt).toLocaleString(undefined, {
+                dateStyle: "medium",
+                timeStyle: "short",
+              })}
+              <div className="mt-1 flex items-center gap-1.5 text-xs text-muted-foreground">
+                <UserAvatar
+                  name={r.actor}
+                  username={r.actorUsername}
+                  avatarUrl={r.actorAvatarUrl}
+                  size="xs"
+                />
+                {r.actor}
+              </div>
+            </TableCell>
+            <TableCell>
+              <div className="flex flex-wrap items-center gap-1.5">
+                {reportBadges(r).map((b) => (
+                  <Badge key={b.key} variant={b.variant}>
+                    {b.label}
+                  </Badge>
+                ))}
+                {r.status !== "done" && (
+                  <Badge variant="outline">{r.status}</Badge>
+                )}
+              </div>
+            </TableCell>
+            <TableCell className="text-right">
+              <Button variant="outline" size="sm" onClick={() => setOpen(r)}>
+                <Logs className="size-4" />
+                Show log
+              </Button>
+            </TableCell>
+          </TableRow>
+        ))}
+      </HistoryTable>
 
       <MigrationConsole
         runs={open ? [{ id: open.id, teamId: open.teamId }] : []}
@@ -126,5 +110,69 @@ export function MigrationsHistory({ runs }: { runs: ImportRun[] }) {
         live={open?.status === "running"}
       />
     </>
+  );
+}
+
+function HistoryTable({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="overflow-hidden rounded-xl border border-border">
+      <Table className="min-w-[50rem]">
+        <TableHeader>
+          <TableRow>
+            <TableHead>Source</TableHead>
+            <TableHead>Team</TableHead>
+            <TableHead>When</TableHead>
+            <TableHead>Outcome</TableHead>
+            <TableHead className="text-right">Actions</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>{children}</TableBody>
+      </Table>
+    </div>
+  );
+}
+
+export function MigrationsHistorySkeleton() {
+  return (
+    <HistoryTable>
+      {[0, 1, 2].map((i) => (
+        <TableRow key={i}>
+          <TableCell className="max-w-[16rem]">
+            <div className="flex items-center gap-2 font-medium">
+              <Skeleton className="size-4 shrink-0" />
+              <span className="truncate">
+                <Bone>panel.example.com</Bone>
+              </span>
+            </div>
+          </TableCell>
+          <TableCell className="max-w-[12rem]">
+            <div className="flex items-center gap-2 text-sm">
+              <Skeleton className="size-4 shrink-0 rounded-full" />
+              <span className="truncate">
+                <Bone>Team name</Bone>
+              </span>
+            </div>
+          </TableCell>
+          <TableCell className="text-sm whitespace-nowrap">
+            <Bone>Nov 3, 2026, 9:41 PM</Bone>
+            <div className="mt-1 flex items-center gap-1.5 text-xs text-muted-foreground">
+              <Skeleton className="size-4 shrink-0 rounded-full" />
+              <Bone>Someone</Bone>
+            </div>
+          </TableCell>
+          <TableCell>
+            <Bone box>
+              <Badge variant="outline">12 apps</Badge>
+            </Bone>
+          </TableCell>
+          <TableCell className="text-right">
+            <Button variant="outline" size="sm" disabled>
+              <Logs className="size-4" />
+              Show log
+            </Button>
+          </TableCell>
+        </TableRow>
+      ))}
+    </HistoryTable>
   );
 }

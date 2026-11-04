@@ -327,16 +327,18 @@ function WizardRun({
     );
 
   return (
-    <div className="grid gap-8 xl:grid-cols-[minmax(0,1fr)_clamp(24rem,30vw,36rem)] xl:gap-12">
-      <div className="relative order-first flex justify-center pt-2 xl:sticky xl:top-24 xl:order-last xl:self-start xl:pt-16">
-        <ConnectGraphic
-          state={scene}
-          agent={agent}
-          className="h-auto w-64 xl:w-full"
-        />
-        {connected && <ConfettiBurst className="top-28" />}
-      </div>
-
+    <WizardFrame
+      graphic={
+        <>
+          <ConnectGraphic
+            state={scene}
+            agent={agent}
+            className="h-auto w-64 xl:w-full"
+          />
+          {connected && <ConfettiBurst className="top-28" />}
+        </>
+      }
+    >
       <div className="max-w-xl min-w-0 space-y-6">
         <WizardStepper
           steps={steps.map((id) => ({ id, label: STEP_LABEL[id] }))}
@@ -437,6 +439,48 @@ function WizardRun({
         scope={scope}
         onScope={setScope}
       />
+    </WizardFrame>
+  );
+}
+
+function WizardFrame({
+  graphic,
+  children,
+}: {
+  graphic: React.ReactNode;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="grid gap-8 xl:grid-cols-[minmax(0,1fr)_clamp(24rem,30vw,36rem)] xl:gap-12">
+      <div className="relative order-first flex justify-center pt-2 xl:sticky xl:top-24 xl:order-last xl:self-start xl:pt-16">
+        {graphic}
+      </div>
+      {children}
     </div>
+  );
+}
+
+const SKELETON_STEPS: StepId[] = ["agent", "connect", "done"];
+
+// MCP is on for a new team, so the agent picker is the step most visits land on.
+export function ConnectWizardSkeleton() {
+  return (
+    <WizardFrame
+      graphic={
+        <ConnectGraphic state="idle" className="h-auto w-64 xl:w-full" />
+      }
+    >
+      <div inert className="max-w-xl min-w-0 space-y-6">
+        <WizardStepper
+          steps={SKELETON_STEPS.map((id) => ({ id, label: STEP_LABEL[id] }))}
+          current="agent"
+          reachable={(s) => s === "agent"}
+          onSelect={() => {}}
+        />
+        <div>
+          <AgentStep agentId={null} canConnect onPick={() => {}} />
+        </div>
+      </div>
+    </WizardFrame>
   );
 }

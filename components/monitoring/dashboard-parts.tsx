@@ -1,5 +1,6 @@
 "use client";
 
+import { Bone } from "@/components/ui/skeleton";
 import * as React from "react";
 import { SlidingButtonGroup } from "@/components/ui/sliding-button-group";
 import type { LucideIcon } from "lucide-react";
@@ -81,12 +82,14 @@ export function ChartCard({
   action,
   className,
   children,
+  loading = false,
 }: {
   title: string;
   caption?: string;
   action?: React.ReactNode;
   className?: string;
   children: React.ReactNode;
+  loading?: boolean;
 }) {
   return (
     <Card className={className}>
@@ -97,7 +100,7 @@ export function ChartCard({
         </div>
         {caption && (
           <p className="text-xs text-muted-foreground tabular-nums">
-            {caption}
+            <Bone loading={loading}>{caption}</Bone>
           </p>
         )}
       </CardHeader>
@@ -110,10 +113,12 @@ export function InfoItem({
   icon: Icon,
   label,
   value,
+  loading = false,
 }: {
   icon: LucideIcon;
   label: string;
   value: string;
+  loading?: boolean;
 }) {
   return (
     <div className="space-y-1">
@@ -121,7 +126,9 @@ export function InfoItem({
         <Icon className="size-3.5" />
         {label}
       </div>
-      <p className="truncate font-mono text-sm tabular-nums">{value}</p>
+      <p className="truncate font-mono text-sm tabular-nums">
+        <Bone loading={loading}>{value}</Bone>
+      </p>
     </div>
   );
 }

@@ -11,6 +11,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { RevealInput } from "@/components/ui/password-field";
 import { InfoTip } from "@/components/ui/info-tip";
+import { Bone, Skeleton } from "@/components/ui/skeleton";
 import { ConfirmAction } from "@/components/shared/confirm-action";
 import { TwoFactorWizard } from "./two-factor-wizard";
 import { copyText } from "@/lib/clipboard";
@@ -34,7 +35,9 @@ export function TwoFactorCard({
   passkeyStanding = "none",
   wizardOpen,
   onWizardOpenChange,
+  loading = false,
 }: {
+  loading?: boolean;
   enabled: boolean;
   requiredBy?: string | null;
   passkeyStanding?: "none" | "idle" | "carrying";
@@ -100,31 +103,37 @@ export function TwoFactorCard({
       <CardContent className="space-y-4">
         <div className="flex items-center justify-between gap-4">
           <div className="flex items-center gap-3">
-            {enabled ? (
+            {loading ? (
+              <Skeleton className="size-5" />
+            ) : enabled ? (
               <ShieldCheck className="size-5 text-[var(--success)]" />
             ) : (
               <ShieldOff className="size-5 text-muted-foreground" />
             )}
             <div>
               <div className="flex items-center gap-2 text-sm font-medium">
-                {enabled ? "On" : "Off"}
+                <Bone loading={loading}>{enabled ? "On" : "Off"}</Bone>
                 {enabled && (
                   <Badge variant="secondary">Authenticator app</Badge>
                 )}
               </div>
               <p className="mt-1 text-sm text-balance text-muted-foreground">
-                {enabled
-                  ? "Sign-in asks for a code from your authenticator app."
-                  : passkeyStanding === "carrying"
-                    ? "Your passkey is already your second factor. An authenticator app is a spare."
-                    : passkeyStanding === "idle"
-                      ? "Your passkey counts as a second factor, but this session signed in with your password."
-                      : "Your password is the only thing protecting this account."}
+                <Bone loading={loading}>
+                  {enabled
+                    ? "Sign-in asks for a code from your authenticator app."
+                    : passkeyStanding === "carrying"
+                      ? "Your passkey is already your second factor. An authenticator app is a spare."
+                      : passkeyStanding === "idle"
+                        ? "Your passkey counts as a second factor, but this session signed in with your password."
+                        : "Your password is the only thing protecting this account."}
+                </Bone>
               </p>
             </div>
           </div>
           {!enabled && (
-            <Button onClick={() => onWizardOpenChange(true)}>Turn on</Button>
+            <Bone box loading={loading}>
+              <Button onClick={() => onWizardOpenChange(true)}>Turn on</Button>
+            </Bone>
           )}
         </div>
 

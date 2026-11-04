@@ -1,8 +1,16 @@
 import * as React from "react";
-import { DatabaseConnectionCard } from "@/components/storage/database-connection-card";
-import { DatabaseConnectedApps } from "@/components/storage/database-connected-apps";
+import { Activity, Archive, HardDrive } from "lucide-react";
+import { Bone } from "@/components/ui/skeleton";
+import {
+  DatabaseConnectionCard,
+  DatabaseConnectionCardSkeleton,
+} from "@/components/storage/database-connection-card";
+import {
+  DatabaseConnectedApps,
+  DatabaseConnectedAppsSkeleton,
+} from "@/components/storage/database-connected-apps";
 import { DatabaseHealthStat } from "@/components/storage/database-health-stat";
-import { BackupsStat } from "@/components/storage/database-stats";
+import { BackupsStat, StatCard } from "@/components/storage/database-stats";
 import type { DatabaseBackupSummary } from "@/lib/data/backups/run-listing";
 import type { DatabaseDTO } from "@/lib/data/databases/rows";
 import type { listDatabaseAppLinks } from "@/lib/data/database-links";
@@ -36,7 +44,7 @@ export function DatabaseOverview({
   dataStat: React.ReactNode;
 }) {
   return (
-    <div className="space-y-5">
+    <OverviewStack>
       <DatabaseConnectionCard
         db={db}
         serverHost={serverHost}
@@ -58,7 +66,7 @@ export function DatabaseOverview({
         />
       )}
 
-      <div className="grid gap-4 sm:grid-cols-3">
+      <StatsRow>
         <DatabaseHealthStat id={db.id} status={db.status} />
         {dataStat}
         <BackupsStat
@@ -67,7 +75,54 @@ export function DatabaseOverview({
             canViewBackups ? `/storage/databases/${db.id}/backups` : undefined
           }
         />
-      </div>
-    </div>
+      </StatsRow>
+    </OverviewStack>
+  );
+}
+
+function OverviewStack({ children }: { children: React.ReactNode }) {
+  return <div className="space-y-5">{children}</div>;
+}
+
+function StatsRow({ children }: { children: React.ReactNode }) {
+  return <div className="grid gap-4 sm:grid-cols-3">{children}</div>;
+}
+
+export function DatabaseOverviewSkeleton({ id }: { id: string }) {
+  return (
+    <OverviewStack>
+      <DatabaseConnectionCardSkeleton />
+      <DatabaseConnectedAppsSkeleton />
+      <StatsRow>
+        <StatCard
+          icon={Activity}
+          label="Health"
+          value={
+            <span className="flex items-center gap-1.5">
+              <Bone>Healthy</Bone>
+            </span>
+          }
+          sub={
+            <p>
+              <Bone>No restarts</Bone>
+            </p>
+          }
+        />
+        <StatCard
+          icon={HardDrive}
+          label="Data"
+          value={<Bone>120 MB</Bone>}
+          sub={<p>on disk</p>}
+          href={`/storage/databases/${id}/monitoring`}
+        />
+        <StatCard
+          icon={Archive}
+          label="Backups"
+          value={<Bone>21h ago</Bone>}
+          sub={<Bone>Daily, 03:00</Bone>}
+          href={`/storage/databases/${id}/backups`}
+        />
+      </StatsRow>
+    </OverviewStack>
   );
 }

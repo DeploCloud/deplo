@@ -1,6 +1,5 @@
 import { notFound } from "next/navigation";
 import Link from "@/components/ui/link";
-import { GitPullRequest } from "lucide-react";
 
 import { getAppBySlug } from "@/lib/data/apps/listing";
 import { listAppPreviews } from "@/lib/data/previews";
@@ -11,8 +10,15 @@ import { SettingsShortcut } from "@/components/shared/settings-shortcut";
 import { GitAccessNotice } from "@/components/shared/git-access-notice";
 import { Button } from "@/components/ui/button";
 import { DeployPullRequestDialog } from "@/components/apps/previews/deploy-pull-request-dialog";
-import { PreviewsTable } from "@/components/apps/previews/previews-table";
+import {
+  PreviewsTable,
+  PullRequestsIntro,
+} from "@/components/apps/previews/previews-table";
 import { PullRequestGraphic } from "@/components/apps/previews/pull-request-graphic";
+import {
+  PreviewsNeedGithub,
+  PreviewsOff,
+} from "@/components/apps/previews/previews-unavailable";
 import { previewSecurityCounts } from "@/lib/data/security-updates/read";
 
 export const metadata = { title: "Pull requests" };
@@ -41,38 +47,20 @@ export default async function AppPullRequestsPage(
   );
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between gap-3">
-        <div>
-          <h3 className="text-sm font-medium">Pull request previews</h3>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Every open pull request against {view.branch} gets its own deploy
-            and its own URL.
-          </p>
-        </div>
-        <div className="flex shrink-0 items-center gap-2">
-          <SettingsShortcut
-            href={`/apps/${slug}/settings/pull-requests`}
-            label="Pull request settings"
-          />
-          {deployButton}
-        </div>
-      </div>
+      <PullRequestsIntro
+        branch={view.branch}
+        actions={
+          <>
+            <SettingsShortcut
+              href={`/apps/${slug}/settings/pull-requests`}
+              label="Pull request settings"
+            />
+            {deployButton}
+          </>
+        }
+      />
 
-      {view.unavailable === "not-github" && (
-        <EmptyState
-          icon={GitPullRequest}
-          title="Pull request previews need a GitHub repository"
-          docs="previews.overview"
-          description="This app does not deploy from a connected GitHub repository, so Deplo never receives its pull requests."
-          action={
-            <Button asChild variant="outline" size="sm">
-              <Link href={`/apps/${slug}/settings/pull-requests`}>
-                Deploy source settings
-              </Link>
-            </Button>
-          }
-        />
-      )}
+      {view.unavailable === "not-github" && <PreviewsNeedGithub slug={slug} />}
 
       {view.unavailable === "no-installation" && (
         <EmptyState
@@ -101,21 +89,7 @@ export default async function AppPullRequestsPage(
         />
       )}
 
-      {view.unavailable === "disabled" && (
-        <EmptyState
-          graphic={<PullRequestGraphic variant="off" />}
-          title="Pull request previews are off for this app"
-          docs="previews.turnOn"
-          description="Turn them on and every open pull request gets its own deploy with its own URL."
-          action={
-            <Button asChild variant="outline" size="sm">
-              <Link href={`/apps/${slug}/settings/pull-requests`}>
-                Deployment settings
-              </Link>
-            </Button>
-          }
-        />
-      )}
+      {view.unavailable === "disabled" && <PreviewsOff slug={slug} />}
 
       {(view.unavailable === null || view.unavailable === "app-needs-update") &&
         (view.previews.length === 0 ? (

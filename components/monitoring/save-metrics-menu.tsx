@@ -87,3 +87,17 @@ export function SaveMetricsMenu({
     </DropdownMenu>
   );
 }
+
+/** The trigger alone, while the setting loads. */
+export function SaveMetricsMenuSkeleton() {
+  return (
+    <Button
+      variant="outline"
+      size="icon"
+      aria-label="Monitoring options"
+      disabled
+    >
+      <MoreHorizontal className="size-4" />
+    </Button>
+  );
+}

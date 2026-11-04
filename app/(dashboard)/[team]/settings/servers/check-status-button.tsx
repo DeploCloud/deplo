@@ -3,6 +3,7 @@
 import { RefreshCw, Settings2 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 import { RowActions } from "@/components/shared/row-actions";
 import { SimpleTooltip } from "@/components/ui/tooltip";
 import { useServerHealth } from "./server-health-provider";
@@ -78,8 +79,22 @@ export function RefreshFleetButton() {
         disabled={sweeping}
       >
         <RefreshCw className={sweeping ? "size-4 animate-spin" : "size-4"} />
-        {sweeping ? "Refreshing" : "Refresh"}
+        <RefreshLabel sweeping={sweeping} />
       </Button>
     </SimpleTooltip>
+  );
+}
+
+// Both words share one cell, so the header does not reflow when a sweep starts or ends.
+export function RefreshLabel({ sweeping }: { sweeping: boolean }) {
+  return (
+    <span className="grid justify-items-center">
+      <span className={cn("col-start-1 row-start-1", sweeping && "invisible")}>
+        Refresh
+      </span>
+      <span className={cn("col-start-1 row-start-1", !sweeping && "invisible")}>
+        Refreshing
+      </span>
+    </span>
   );
 }

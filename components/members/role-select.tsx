@@ -14,6 +14,7 @@ import {
 } from "lucide-react";
 import { InfoTip } from "@/components/ui/info-tip";
 import { cn } from "@/lib/utils";
+import { Bone, Skeleton } from "@/components/ui/skeleton";
 import type { TeamRoleDTO } from "@/lib/data/roles/role-list";
 
 const ROLE_ICON: Record<string, LucideIcon> = {
@@ -28,7 +29,9 @@ export function RoleSelect({
   onChange,
   canAssignOwner = false,
   isCustom = false,
+  loading = false,
 }: {
+  loading?: boolean;
   roles: TeamRoleDTO[];
   value: string | null;
   onChange: (roleId: string) => void;
@@ -99,20 +102,28 @@ export function RoleSelect({
                     : "bg-muted text-muted-foreground",
                 )}
               >
-                <Icon className="size-4" aria-hidden />
+                {loading ? (
+                  <Skeleton className="size-4" />
+                ) : (
+                  <Icon className="size-4" aria-hidden />
+                )}
               </span>
               <span className="min-w-0 flex-1">
                 <span className="flex items-center gap-2">
-                  <span className="text-sm font-medium">{role.name}</span>
+                  <span className="text-sm font-medium">
+                    <Bone loading={loading}>{role.name}</Bone>
+                  </span>
                   <span className="text-[11px] text-muted-foreground tabular-nums">
-                    {optional === 0
-                      ? "View only"
-                      : `${optional} permission${optional === 1 ? "" : "s"}`}
+                    <Bone loading={loading}>
+                      {optional === 0
+                        ? "View only"
+                        : `${optional} permission${optional === 1 ? "" : "s"}`}
+                    </Bone>
                   </span>
                 </span>
                 {role.description && (
                   <span className="block truncate text-xs leading-snug text-muted-foreground">
-                    {role.description}
+                    <Bone loading={loading}>{role.description}</Bone>
                   </span>
                 )}
               </span>

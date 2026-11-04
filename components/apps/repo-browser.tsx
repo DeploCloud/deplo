@@ -16,7 +16,8 @@ import {
 
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { Skeleton } from "@/components/ui/skeleton";
+import { Bone, Skeleton } from "@/components/ui/skeleton";
+import { useSettingsLoading } from "@/components/apps/settings/settings-loading";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
   Select,
@@ -102,6 +103,8 @@ export function RepoBrowser({
   const [browsing, setBrowsing] = React.useState(false);
   const seededRef = React.useRef(false);
   const [unreachable, setUnreachable] = React.useState<string | null>(null);
+  const [loadedOnce, setLoadedOnce] = React.useState(false);
+  const pageLoading = useSettingsLoading();
   const initialRef = React.useRef(initial);
   React.useEffect(() => {
     initialRef.current = initial;
@@ -177,6 +180,7 @@ export function RepoBrowser({
               (d) => d.gitRepos,
             );
       setLoadingRepos(false);
+      setLoadedOnce(true);
       if (res.ok && res.data) {
         setRepos(res.data);
         const seed = initialRef.current;
@@ -200,9 +204,10 @@ export function RepoBrowser({
   );
 
   React.useEffect(() => {
+    if (pageLoading) return;
     // eslint-disable-next-line react-hooks/set-state-in-effect
     loadRepos(sourceId);
-  }, [sourceId, loadRepos]);
+  }, [sourceId, loadRepos, pageLoading]);
 
   React.useEffect(() => {
     if (selected && branch) onChange({ fullName: selected.fullName, branch });
@@ -235,11 +240,46 @@ export function RepoBrowser({
       );
   }, [repos, query, visibility, sort]);
 
+  // An app that already has a repository shows it as a card, so the wait draws that card.
+  if (initial?.fullName && (pageLoading || (!loadedOnce && sourceId))) {
+    return (
+      <SelectedRepoCard
+        branchFieldId={branchFieldId}
+        avatar={
+          avatarUrl !== undefined && (
+            <Skeleton className="size-8 shrink-0 rounded-full" />
+          )
+        }
+        title={
+          <span className="truncate text-sm font-medium">
+            <Bone>{initial.fullName}</Bone>
+          </span>
+        }
+        subtitle={<Bone>Updated 2 days ago</Bone>}
+        link={<span className="size-4 shrink-0" />}
+        branch={
+          <Bone box>
+            <Select value={initial.branch}>
+              <SelectTrigger className="h-8 w-auto max-w-full min-w-44 bg-background">
+                <span className="flex! min-w-0 items-center gap-2">
+                  <GitBranch className="size-4 shrink-0 text-muted-foreground" />
+                  {initial.branch}
+                </span>
+              </SelectTrigger>
+            </Select>
+          </Bone>
+        }
+      />
+    );
+  }
+
   if (selected && !browsing) {
     return (
-      <div className="rounded-lg border border-border bg-surface">
-        <div className="flex items-center gap-3 p-3">
-          {avatarUrl !== undefined && (
+      <SelectedRepoCard
+        branchFieldId={branchFieldId}
+        onBrowse={() => setBrowsing(true)}
+        avatar={
+          avatarUrl !== undefined && (
             <Avatar className="size-8">
               <AvatarImage src={avatarUrl} alt="" />
               <AvatarFallback className="text-[10px]">
@@ -248,21 +288,23 @@ export function RepoBrowser({
                   .toUpperCase()}
               </AvatarFallback>
             </Avatar>
-          )}
-          <div className="min-w-0 flex-1">
-            <div className="flex items-center gap-2">
-              <RepoVisibilityMark private={selected.private} />
-              <span className="truncate text-sm font-medium">
-                {selected.fullName}
-              </span>
-            </div>
-            <p className="truncate text-xs text-muted-foreground">
-              {selected.updatedAt
-                ? `Updated ${timeAgo(selected.updatedAt)}`
-                : "Selected repository"}
-            </p>
-          </div>
-          {selected.url && (
+          )
+        }
+        title={
+          <>
+            <RepoVisibilityMark private={selected.private} />
+            <span className="truncate text-sm font-medium">
+              {selected.fullName}
+            </span>
+          </>
+        }
+        subtitle={
+          selected.updatedAt
+            ? `Updated ${timeAgo(selected.updatedAt)}`
+            : "Selected repository"
+        }
+        link={
+          selected.url && (
             <a
               href={selected.url}
               target="_blank"
@@ -272,26 +314,9 @@ export function RepoBrowser({
             >
               <ExternalLink className="size-4" />
             </a>
-          )}
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            onClick={() => setBrowsing(true)}
-          >
-            Change
-          </Button>
-        </div>
-
-        <div className="flex flex-wrap items-center gap-2 border-t border-border/60 px-3 py-2">
-          <FieldLabel
-            htmlFor={branchFieldId}
-            className="text-xs font-medium text-muted-foreground"
-            info="The branch Deplo clones and deploys. New pushes to it can trigger a redeploy."
-            docs="deploy.fromGit"
-          >
-            Branch
-          </FieldLabel>
+          )
+        }
+        branch={
           <Select value={branch} onValueChange={setBranch}>
             <SelectTrigger
               id={branchFieldId}
@@ -310,8 +335,8 @@ export function RepoBrowser({
               ))}
             </SelectContent>
           </Select>
-        </div>
-      </div>
+        }
+      />
     );
   }
 
@@ -458,6 +483,58 @@ export function RepoBrowser({
             );
           })
         )}
+      </div>
+    </div>
+  );
+}
+
+function SelectedRepoCard({
+  branchFieldId,
+  avatar,
+  title,
+  subtitle,
+  link,
+  branch,
+  onBrowse,
+}: {
+  branchFieldId: string;
+  avatar: React.ReactNode;
+  title: React.ReactNode;
+  subtitle: React.ReactNode;
+  link: React.ReactNode;
+  branch: React.ReactNode;
+  onBrowse?: () => void;
+}) {
+  return (
+    <div className="rounded-lg border border-border bg-surface">
+      <div className="flex items-center gap-3 p-3">
+        {avatar}
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-2">{title}</div>
+          <p className="truncate text-xs text-muted-foreground">{subtitle}</p>
+        </div>
+        {link}
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          onClick={onBrowse}
+          disabled={!onBrowse}
+        >
+          Change
+        </Button>
+      </div>
+
+      <div className="flex flex-wrap items-center gap-2 border-t border-border/60 px-3 py-2">
+        <FieldLabel
+          htmlFor={branchFieldId}
+          className="text-xs font-medium text-muted-foreground"
+          info="The branch Deplo clones and deploys. New pushes to it can trigger a redeploy."
+          docs="deploy.fromGit"
+        >
+          Branch
+        </FieldLabel>
+        {branch}
       </div>
     </div>
   );

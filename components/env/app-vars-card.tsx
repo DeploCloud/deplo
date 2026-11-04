@@ -1,5 +1,6 @@
 "use client";
 
+import { Bone } from "@/components/ui/skeleton";
 import Link from "@/components/ui/link";
 import {
   ArrowUpRight,
@@ -79,6 +80,7 @@ export function AppVarsCard({
   onDelete,
   onEditShared,
   editableSharedIds,
+  loading = false,
 }: {
   card: AppBucket<EnvRow>;
   open: boolean;
@@ -89,6 +91,7 @@ export function AppVarsCard({
   onDelete: (id: string) => void;
   onEditShared: (id: string) => void;
   editableSharedIds: Set<string>;
+  loading?: boolean;
 }) {
   const { app, rows } = card;
   const subtitle = appSubtitle(app, environmentName);
@@ -114,15 +117,19 @@ export function AppVarsCard({
               !open && "-rotate-90",
             )}
           />
-          <AppLogo logo={app.logo} size={32} />
+          <Bone box loading={loading} className="shrink-0">
+            <AppLogo logo={app.logo} size={32} />
+          </Bone>
           <span className="min-w-0">
             <span className="block truncate text-base leading-none font-semibold tracking-tight lg:text-lg">
-              {app.name}
+              <Bone loading={loading}>{app.name}</Bone>
             </span>
             <span className="mt-1 block truncate text-xs text-muted-foreground max-md:wrap-anywhere max-md:whitespace-normal">
-              {[subtitle, open ? null : plural(rows.length, "variable")]
-                .filter(Boolean)
-                .join(" · ") || plural(rows.length, "variable")}
+              <Bone loading={loading}>
+                {[subtitle, open ? null : plural(rows.length, "variable")]
+                  .filter(Boolean)
+                  .join(" · ") || plural(rows.length, "variable")}
+              </Bone>
             </span>
           </span>
         </button>
@@ -179,22 +186,34 @@ export function AppVarsCard({
                     <TableRow key={`${app.id}:standalone:${row.id}`}>
                       <EnvSelectionCell id={rowKey(row)} />
                       <TableCell className="font-mono text-xs font-medium max-md:break-all">
-                        {row.key}
-                        <EnvValueUnderKey
-                          value={row.value}
-                          masked={row.masked}
-                        />
+                        <Bone loading={loading}>{row.key}</Bone>
+                        <Bone
+                          box
+                          loading={loading}
+                          className="w-full md:hidden"
+                        >
+                          <EnvValueUnderKey
+                            value={row.value}
+                            masked={row.masked}
+                          />
+                        </Bone>
                       </TableCell>
                       <TableCell className="max-md:hidden">
-                        <EnvValueCell value={row.value} masked={row.masked} />
+                        <Bone box loading={loading} className="w-full">
+                          <EnvValueCell value={row.value} masked={row.masked} />
+                        </Bone>
                       </TableCell>
                       <TableCell className="text-xs whitespace-nowrap text-muted-foreground max-md:hidden">
-                        <TimeAgo at={row.updatedAt} />
+                        <Bone loading={loading}>
+                          <TimeAgo at={row.updatedAt} />
+                        </Bone>
                       </TableCell>
                       <TableCell className="max-md:hidden">
-                        <EnvAuthorCell
-                          author={row.updatedBy ?? row.createdBy ?? null}
-                        />
+                        <Bone box loading={loading}>
+                          <EnvAuthorCell
+                            author={row.updatedBy ?? row.createdBy ?? null}
+                          />
+                        </Bone>
                       </TableCell>
                       <TableCell className={`text-right ${ROW_ACTIONS_CELL}`}>
                         <RowActions
@@ -237,7 +256,7 @@ export function AppVarsCard({
                       <EnvSelectionCell id={rowKey(row)} />
                       <TableCell className="font-mono text-xs font-medium max-md:break-all">
                         <div className="flex items-center gap-2">
-                          {row.key}
+                          <Bone loading={loading}>{row.key}</Bone>
                           <Badge
                             variant="muted"
                             className="gap-1 text-[10px] font-normal whitespace-nowrap"
@@ -246,23 +265,35 @@ export function AppVarsCard({
                             Shared
                           </Badge>
                         </div>
-                        <EnvValueUnderKey
-                          value={row.value}
-                          masked={row.masked}
-                        />
+                        <Bone
+                          box
+                          loading={loading}
+                          className="w-full md:hidden"
+                        >
+                          <EnvValueUnderKey
+                            value={row.value}
+                            masked={row.masked}
+                          />
+                        </Bone>
                       </TableCell>
                       <TableCell className="max-md:hidden">
-                        <EnvValueCell value={row.value} masked={row.masked} />
+                        <Bone box loading={loading} className="w-full">
+                          <EnvValueCell value={row.value} masked={row.masked} />
+                        </Bone>
                       </TableCell>
                       <TableCell className="text-xs whitespace-nowrap text-muted-foreground max-md:hidden">
-                        <TimeAgo at={row.updatedAt} />
+                        <Bone loading={loading}>
+                          <TimeAgo at={row.updatedAt} />
+                        </Bone>
                       </TableCell>
                       <TableCell className="max-md:hidden">
-                        <EnvAuthorCell author={row.updatedBy ?? null} />
+                        <Bone box loading={loading}>
+                          <EnvAuthorCell author={row.updatedBy ?? null} />
+                        </Bone>
                       </TableCell>
                       <TableCell className={`text-right ${ROW_ACTIONS_CELL}`}>
                         <div className="flex justify-end gap-1">
-                          {editableSharedIds.has(row.id) ? (
+                          {loading || editableSharedIds.has(row.id) ? (
                             <EnvEditButton
                               secret={row.type === "secret"}
                               label="Edit shared variable"

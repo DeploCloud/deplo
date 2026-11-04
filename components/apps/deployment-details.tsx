@@ -20,6 +20,7 @@ import {
 import Link from "@/components/ui/link";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { Bone } from "@/components/ui/skeleton";
 import { StatusBadge, StatusDot } from "@/components/shared/status-badge";
 import { DeploymentCreator } from "@/components/apps/deployment-creator";
 import { CommitLink } from "@/components/apps/commit-link";
@@ -104,10 +105,9 @@ export function DeploymentDetailsCard({
 }) {
   const [first, ...more] = domains;
   return (
-    <Card className="overflow-hidden">
-      <div className="flex items-center justify-between gap-3 border-b border-border px-5 py-3">
-        <p className="text-sm font-semibold">Deployment Details</p>
-        <div className="flex items-center gap-2">
+    <DetailsFrame
+      actions={
+        <>
           {d.canRollback && (
             <RollbackButton
               id={d.id}
@@ -124,163 +124,272 @@ export function DeploymentDetailsCard({
               Visit
             </a>
           </Button>
-        </div>
-      </div>
-
-      <div className="p-5">
-        <WithCover cover={cover}>
-          <div className="grid content-start gap-x-6 gap-y-5 sm:grid-cols-2 xl:grid-cols-4">
-            <Cell label="Created">
-              <span className={row}>
-                <DeploymentCreator
-                  creator={d.creator}
-                  creatorUser={d.creatorUser}
-                  creatorProvider={d.creatorProvider}
-                  creatorUrl={creatorUrl}
-                  className="font-medium"
-                />
-                <span className="shrink-0 text-muted-foreground">
-                  {timeAgoShort(d.createdAt)}
-                </span>
+        </>
+      }
+      settingsMeta={
+        <SettingsMeta>
+          {settings.map((s) => (
+            <span key={s.label} className={row}>
+              <SettingIcon on={s.on} />
+              <span className={s.on ? "" : "text-muted-foreground"}>
+                {s.label}
               </span>
-            </Cell>
-            <Cell label="Status">
-              <span className={row}>
-                <StatusDot status={d.status} />
-                <span className="font-medium">{STATUS_LABEL[d.status]}</span>
+            </span>
+          ))}
+        </SettingsMeta>
+      }
+      settings={
+        <ul className="divide-y divide-border">
+          {settings.map((s) => (
+            <li
+              key={s.label}
+              className="flex items-center gap-2 px-5 py-3 text-sm"
+            >
+              <SettingIcon on={s.on} />
+              <span className="font-medium">{s.label}</span>
+              <span className="text-muted-foreground">
+                {s.on ? "On" : "Off"}
               </span>
-            </Cell>
-            <Cell label="Duration">
-              <span className={row}>
-                <Clock className={icon} />
-                <BuildDuration
-                  status={d.status}
-                  startedAt={d.startedAt}
-                  buildDurationMs={d.buildDurationMs}
-                  className="font-medium"
-                />
+              <Link
+                href={`/apps/${slug}${s.href}`}
+                className="ml-auto text-muted-foreground hover:text-foreground"
+              >
+                Manage
+              </Link>
+            </li>
+          ))}
+        </ul>
+      }
+    >
+      <WithCover cover={cover}>
+        <div className="grid content-start gap-x-6 gap-y-5 sm:grid-cols-2 xl:grid-cols-4">
+          <Cell label="Created">
+            <span className={row}>
+              <DeploymentCreator
+                creator={d.creator}
+                creatorUser={d.creatorUser}
+                creatorProvider={d.creatorProvider}
+                creatorUrl={creatorUrl}
+                className="font-medium"
+              />
+              <span className="shrink-0 text-muted-foreground">
+                {timeAgoShort(d.createdAt)}
               </span>
-            </Cell>
-            <Cell label="Environment">
-              <span className={row}>
-                <Rocket className={icon} />
-                <span className="font-medium">
-                  {d.environment === "production" ? "Production" : "Preview"}
-                </span>
+            </span>
+          </Cell>
+          <Cell label="Status">
+            <span className={row}>
+              <StatusDot status={d.status} />
+              <span className="font-medium">{STATUS_LABEL[d.status]}</span>
+            </span>
+          </Cell>
+          <Cell label="Duration">
+            <span className={row}>
+              <Clock className={icon} />
+              <BuildDuration
+                status={d.status}
+                startedAt={d.startedAt}
+                buildDurationMs={d.buildDurationMs}
+                className="font-medium"
+              />
+            </span>
+          </Cell>
+          <Cell label="Environment">
+            <span className={row}>
+              <Rocket className={icon} />
+              <span className="font-medium">
+                {d.environment === "production" ? "Production" : "Preview"}
               </span>
-            </Cell>
-            {first && (
-              <Cell label="Domains" wide>
-                <a
-                  href={`https://${first.host}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className={`${row} w-fit max-w-full font-medium hover:underline`}
-                >
-                  {domainServes(first.status) ? (
-                    <Globe className={icon} />
-                  ) : (
-                    <DomainAlert status={first.status} />
-                  )}
-                  <span className="truncate">{first.host}</span>
-                  {more.length > 0 && (
-                    <span className="rounded-full bg-secondary px-1.5 py-0.5 text-[11px] leading-none text-secondary-foreground">
-                      +{more.length}
-                    </span>
-                  )}
-                </a>
-              </Cell>
-            )}
-            <Cell label="Source" wide>
-              <div className="space-y-1.5">
-                {source.isGit ? (
-                  <p className={row}>
-                    <GitBranch className={icon} />
-                    <span className="truncate font-mono text-[13px]">
-                      {d.branch}
-                    </span>
-                    {d.prNumber != null && (
-                      <span className={`${row} text-muted-foreground`}>
-                        <GitPullRequest className="size-3.5 shrink-0" />
-                        {prUrl ? (
-                          <a
-                            href={prUrl}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="hover:underline"
-                          >
-                            #{d.prNumber}
-                          </a>
-                        ) : (
-                          `#${d.prNumber}`
-                        )}
-                      </span>
-                    )}
-                  </p>
+            </span>
+          </Cell>
+          {first && (
+            <Cell label="Domains" wide>
+              <a
+                href={`https://${first.host}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className={`${row} w-fit max-w-full font-medium hover:underline`}
+              >
+                {domainServes(first.status) ? (
+                  <Globe className={icon} />
                 ) : (
-                  <p className={row}>
-                    <source.Icon className={icon} />
-                    <span className="truncate">{source.label}</span>
-                  </p>
+                  <DomainAlert status={first.status} />
                 )}
-                <p className={row}>
-                  <GitCommitHorizontal className={icon} />
-                  {d.commitSha && (
-                    <CommitLink
-                      sha={d.commitSha}
-                      url={commitUrl}
-                      signature={d.commitSignature}
-                      className="font-mono text-[13px]"
-                    />
-                  )}
-                  <span className="truncate">{d.commitMessage}</span>
-                </p>
-              </div>
+                <span className="truncate">{first.host}</span>
+                {more.length > 0 && (
+                  <span className="rounded-full bg-secondary px-1.5 py-0.5 text-[11px] leading-none text-secondary-foreground">
+                    +{more.length}
+                  </span>
+                )}
+              </a>
             </Cell>
-          </div>
-        </WithCover>
-      </div>
+          )}
+          <Cell label="Source" wide>
+            <div className="space-y-1.5">
+              {source.isGit ? (
+                <p className={row}>
+                  <GitBranch className={icon} />
+                  <span className="truncate font-mono text-[13px]">
+                    {d.branch}
+                  </span>
+                  {d.prNumber != null && (
+                    <span className={`${row} text-muted-foreground`}>
+                      <GitPullRequest className="size-3.5 shrink-0" />
+                      {prUrl ? (
+                        <a
+                          href={prUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="hover:underline"
+                        >
+                          #{d.prNumber}
+                        </a>
+                      ) : (
+                        `#${d.prNumber}`
+                      )}
+                    </span>
+                  )}
+                </p>
+              ) : (
+                <p className={row}>
+                  <source.Icon className={icon} />
+                  <span className="truncate">{source.label}</span>
+                </p>
+              )}
+              <p className={row}>
+                <GitCommitHorizontal className={icon} />
+                {d.commitSha && (
+                  <CommitLink
+                    sha={d.commitSha}
+                    url={commitUrl}
+                    signature={d.commitSignature}
+                    className="font-mono text-[13px]"
+                  />
+                )}
+                <span className="truncate">{d.commitMessage}</span>
+              </p>
+            </div>
+          </Cell>
+        </div>
+      </WithCover>
+    </DetailsFrame>
+  );
+}
 
+function DetailsFrame({
+  actions,
+  settingsMeta,
+  settings,
+  children,
+}: {
+  actions: React.ReactNode;
+  settingsMeta: React.ReactNode;
+  settings: React.ReactNode;
+  children: React.ReactNode;
+}) {
+  return (
+    <Card className="overflow-hidden">
+      <div className="flex items-center justify-between gap-3 border-b border-border px-5 py-3">
+        <p className="text-sm font-semibold">Deployment Details</p>
+        <div className="flex items-center gap-2">{actions}</div>
+      </div>
+      <div className="p-5">{children}</div>
       <DetailRows className="border-t border-border">
         <DetailRow
           value="settings"
           title="Deployment Settings"
-          meta={
-            <span className="hidden flex-wrap items-center gap-x-5 gap-y-1 md:flex">
-              {settings.map((s) => (
-                <span key={s.label} className={row}>
-                  <SettingIcon on={s.on} />
-                  <span className={s.on ? "" : "text-muted-foreground"}>
-                    {s.label}
-                  </span>
-                </span>
-              ))}
-            </span>
-          }
+          meta={settingsMeta}
         >
-          <ul className="divide-y divide-border">
-            {settings.map((s) => (
-              <li
-                key={s.label}
-                className="flex items-center gap-2 px-5 py-3 text-sm"
-              >
-                <SettingIcon on={s.on} />
-                <span className="font-medium">{s.label}</span>
-                <span className="text-muted-foreground">
-                  {s.on ? "On" : "Off"}
-                </span>
-                <Link
-                  href={`/apps/${slug}${s.href}`}
-                  className="ml-auto text-muted-foreground hover:text-foreground"
-                >
-                  Manage
-                </Link>
-              </li>
-            ))}
-          </ul>
+          {settings}
         </DetailRow>
       </DetailRows>
     </Card>
+  );
+}
+
+function SettingsMeta({ children }: { children: React.ReactNode }) {
+  return (
+    <span className="hidden flex-wrap items-center gap-x-5 gap-y-1 md:flex">
+      {children}
+    </span>
+  );
+}
+
+const PLACEHOLDER_SETTINGS = [
+  "Deploy on push",
+  "Health check",
+  "Restart loop protection",
+];
+
+// Shaped like a git App's live production deployment.
+export function DeploymentDetailsCardSkeleton() {
+  return (
+    <DetailsFrame
+      actions={
+        <Bone box>
+          <Button variant="outline" size="sm" disabled>
+            <ExternalLink className="size-4" />
+            Visit
+          </Button>
+        </Bone>
+      }
+      settingsMeta={
+        <SettingsMeta>
+          {PLACEHOLDER_SETTINGS.map((label) => (
+            <span key={label} className={row}>
+              <Bone box className="rounded-full">
+                <SettingIcon on />
+              </Bone>
+              <span>{label}</span>
+            </span>
+          ))}
+        </SettingsMeta>
+      }
+      settings={null}
+    >
+      <div className="grid content-start gap-x-6 gap-y-5 sm:grid-cols-2 xl:grid-cols-4">
+        <Cell label="Created">
+          <span className={row}>
+            <Bone>Someone 2d ago</Bone>
+          </span>
+        </Cell>
+        <Cell label="Status">
+          <span className={row}>
+            <Bone>Ready</Bone>
+          </span>
+        </Cell>
+        <Cell label="Duration">
+          <span className={row}>
+            <Clock className={icon} />
+            <Bone>1m 30s</Bone>
+          </span>
+        </Cell>
+        <Cell label="Environment">
+          <span className={row}>
+            <Rocket className={icon} />
+            <Bone>Production</Bone>
+          </span>
+        </Cell>
+        <Cell label="Domains" wide>
+          <span className={`${row} w-fit max-w-full font-medium`}>
+            <Globe className={icon} />
+            <Bone>web-app.example.com</Bone>
+          </span>
+        </Cell>
+        <Cell label="Source" wide>
+          <div className="space-y-1.5">
+            <p className={row}>
+              <GitBranch className={icon} />
+              <Bone className="font-mono text-[13px]">main</Bone>
+            </p>
+            <p className={row}>
+              <GitCommitHorizontal className={icon} />
+              <Bone>a1b2c3d Commit message of the build</Bone>
+            </p>
+          </div>
+        </Cell>
+      </div>
+    </DetailsFrame>
   );
 }
 

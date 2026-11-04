@@ -23,6 +23,7 @@ import { ConfirmAction } from "@/components/shared/confirm-action";
 import { useOptimisticRemove } from "@/components/shared/use-optimistic-remove";
 import { EmptyState } from "@/components/shared/empty-state";
 import { Badge } from "@/components/ui/badge";
+import { Bone } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import {
@@ -52,10 +53,12 @@ export function NotificationsPanel({
   initial,
   vapidPublicKey,
   canManage,
+  loading = false,
 }: {
   initial: NotificationChannelInstance[];
   vapidPublicKey: string;
   canManage: boolean;
+  loading?: boolean;
 }) {
   const router = useRouter();
   const [open, setOpen] = React.useState(false);
@@ -196,7 +199,7 @@ export function NotificationsPanel({
   const ready = draft ? isChannelReady(draft, secrets) : false;
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6" aria-busy={loading || undefined}>
       <PageHeader
         docs="notifications.overview"
         title="Notifications"
@@ -219,13 +222,15 @@ export function NotificationsPanel({
       >
         <div className="min-w-0 space-y-4">
           {channels.length === 0 ? (
-            <EmptyState
-              graphic={<NotificationIllustration caption={false} />}
-              className="py-12"
-              title="No channels yet"
-              docs="notifications.channels"
-              description="Add a channel, then pick what it should tell you about."
-            />
+            <Bone box loading={loading} className="w-full rounded-xl">
+              <EmptyState
+                graphic={<NotificationIllustration caption={false} />}
+                className={loading ? "w-full py-12" : "py-12"}
+                title="No channels yet"
+                docs="notifications.channels"
+                description="Add a channel, then pick what it should tell you about."
+              />
+            </Bone>
           ) : (
             <div className="space-y-3">
               <div className="flex w-fit flex-wrap items-center gap-1.5 px-1 text-sm font-medium">

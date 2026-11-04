@@ -6,16 +6,24 @@ import { Download, ExternalLink, Info, Scale } from "lucide-react";
 import { SettingsSection } from "@/components/apps/settings/settings-shared";
 import {
   LicensesPanel,
+  LicensesPanelSkeleton,
   type Notice,
 } from "@/components/settings/licenses-panel";
 import { Badge } from "@/components/ui/badge";
+import { Bone } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { GITHUB_URL } from "@/lib/links";
 import { cn } from "@/lib/utils";
 import { DEPLO_COMMIT, DEPLO_VERSION } from "@/lib/version";
 
-export function DeploAboutTab({ notices }: { notices: Notice[] }) {
+export function DeploAboutTab({
+  notices,
+  loading = false,
+}: {
+  notices: Notice[];
+  loading?: boolean;
+}) {
   const ref = DEPLO_COMMIT || "main";
   return (
     <div className="space-y-8">
@@ -54,11 +62,13 @@ export function DeploAboutTab({ notices }: { notices: Notice[] }) {
         <div className="flex items-center justify-between gap-3">
           <div className="flex items-center gap-2">
             <SettingsSection icon={Scale} title="Open source licenses" />
-            <Badge variant="secondary" className="tabular-nums">
-              {notices.length}
-            </Badge>
+            <Bone box loading={loading}>
+              <Badge variant="secondary" className="tabular-nums">
+                {loading ? 999 : notices.length}
+              </Badge>
+            </Bone>
           </div>
-          {notices.length > 0 && (
+          {(loading || notices.length > 0) && (
             <Button asChild size="sm" variant="outline">
               <a href="/third-party-notices.txt" download>
                 <Download className="size-4" />
@@ -67,7 +77,11 @@ export function DeploAboutTab({ notices }: { notices: Notice[] }) {
             </Button>
           )}
         </div>
-        <LicensesPanel notices={notices} />
+        {loading ? (
+          <LicensesPanelSkeleton />
+        ) : (
+          <LicensesPanel notices={notices} />
+        )}
       </section>
     </div>
   );

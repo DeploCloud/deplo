@@ -8,7 +8,8 @@ test("on a phone a variable's value rides under its key, never in a column of it
   for (const name of readdirSync("components/env")) {
     if (!name.endsWith(".tsx")) continue;
     const src = readFileSync(join("components/env", name), "utf8");
-    const cells = src.match(/<TableCell[^>]*>\s*<EnvValueCell/g) ?? [];
+    const cells =
+      src.match(/<TableCell[^>]*>\s*(?:<Bone[^>]*>\s*)?<EnvValueCell/g) ?? [];
     if (cells.length === 0) continue;
     tables++;
     for (const cell of cells) assert.match(cell, /max-md:hidden/, name);

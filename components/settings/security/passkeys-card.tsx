@@ -16,6 +16,7 @@ import { SimpleTooltip } from "@/components/ui/tooltip";
 import { BetaChip } from "@/components/shared/beta-chip";
 import { ConfirmAction } from "@/components/shared/confirm-action";
 import { EmptyState } from "@/components/shared/empty-state";
+import { Bone } from "@/components/ui/skeleton";
 import { RowActions } from "@/components/shared/row-actions";
 import { gqlAction } from "@/lib/graphql-client";
 import { timeAgo } from "@/lib/utils";
@@ -66,7 +67,9 @@ export function PasskeysCard({
   rpId,
   addOpen,
   onAddOpenChange,
+  loading = false,
 }: {
+  loading?: boolean;
   passkeys: PasskeyDTO[];
   panelUrl: string | null;
   rpId: string | null;
@@ -94,7 +97,9 @@ export function PasskeysCard({
             docs="team.passkeys"
           />
         </CardTitle>
-        {blocked ? (
+        {loading ? (
+          <Bone box>{addButton}</Bone>
+        ) : blocked ? (
           <SimpleTooltip content={blocked}>
             <span>{addButton}</span>
           </SimpleTooltip>
@@ -110,13 +115,15 @@ export function PasskeysCard({
       </CardHeader>
       <CardContent className="flex flex-1 flex-col">
         {passkeys.length === 0 ? (
-          <EmptyState
-            className="flex-1 py-10"
-            icon={Fingerprint}
-            title="No passkeys yet"
-            docs="team.passkeys"
-            description="Add one and this device signs you in without a password."
-          />
+          <Bone box loading={loading} className="w-full flex-1 rounded-xl">
+            <EmptyState
+              className={loading ? "w-full flex-1 py-10" : "flex-1 py-10"}
+              icon={Fingerprint}
+              title="No passkeys yet"
+              docs="team.passkeys"
+              description="Add one and this device signs you in without a password."
+            />
+          </Bone>
         ) : (
           <ul className="space-y-2">
             {passkeys.map((p) => {

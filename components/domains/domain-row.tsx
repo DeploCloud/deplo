@@ -21,6 +21,7 @@ import {
 } from "lucide-react";
 import { TableCell, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
+import { Bone } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { SimpleTooltip } from "@/components/ui/tooltip";
 import { RowActions } from "@/components/shared/row-actions";
@@ -64,6 +65,9 @@ type Row = Domain & {
 };
 
 // Keyed here, not in the page: keys don't survive the RSC boundary, so a row could never hide.
+const ROW =
+  "max-md:flex max-md:flex-wrap max-md:items-center max-md:gap-x-3 max-md:gap-y-2 max-md:px-3 max-md:py-3 max-md:[&>td]:p-0";
+
 export function DomainRows({
   domains,
   strays = {},
@@ -314,7 +318,7 @@ export function DomainRow({
   }
 
   return (
-    <TableRow className="max-md:flex max-md:flex-wrap max-md:items-center max-md:gap-x-3 max-md:gap-y-2 max-md:px-3 max-md:py-3 max-md:[&>td]:p-0">
+    <TableRow className={ROW}>
       <TableCell className="max-md:basis-full">
         <div className="flex flex-wrap items-center gap-2">
           <a
@@ -704,6 +708,71 @@ export function DomainRow({
             </form>
           </DialogContent>
         </Dialog>
+      </TableCell>
+    </TableRow>
+  );
+}
+
+const NO_OP_ACTIONS = [
+  { label: "Edit", icon: Pencil, disabled: true },
+  { label: "Remove", icon: Trash2, destructive: true, disabled: true },
+];
+
+// A primary domain's row while the tab loads, shaped like the common case: a port, a provider
+// chip and a status still being checked.
+export function DomainRowSkeleton() {
+  return (
+    <TableRow className={ROW}>
+      <TableCell className="max-md:basis-full">
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="inline-flex items-center gap-1.5 font-medium">
+            <Bone>web-app.example.com</Bone>
+            <ExternalLink className="size-3.5 shrink-0 text-muted-foreground" />
+          </span>
+          <Bone box>
+            <Badge variant="secondary" className="gap-1">
+              <Star className="size-3" />
+              Primary
+            </Badge>
+          </Bone>
+          <Bone box>
+            <Badge variant="outline" className="gap-1 font-mono">
+              <Network className="size-3" />
+              :3000
+            </Badge>
+          </Bone>
+          <Bone box>
+            <Badge variant="outline" className="gap-1">
+              <CloudflareIcon className="size-3" />
+              Cloudflare
+            </Badge>
+          </Bone>
+        </div>
+      </TableCell>
+      <TableCell>
+        <span className="flex items-center gap-1">
+          <Bone box>
+            <StatusBadge status="cloudflare" />
+          </Bone>
+          <Bone box>
+            <Button variant="ghost" size="icon-sm" disabled>
+              <RefreshCw className="size-3.5" />
+            </Button>
+          </Bone>
+        </span>
+      </TableCell>
+      <TableCell className="text-right max-md:ml-auto">
+        <RowActions title="Domain" actions={NO_OP_ACTIONS}>
+          <div className="flex items-center justify-end gap-1">
+            {[Trash2, Pencil].map((Icon, i) => (
+              <Bone box key={i}>
+                <Button variant="ghost" size="icon-sm" disabled>
+                  <Icon className="size-4" />
+                </Button>
+              </Bone>
+            ))}
+          </div>
+        </RowActions>
       </TableCell>
     </TableRow>
   );

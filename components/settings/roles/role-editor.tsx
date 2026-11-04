@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { useRouter } from "@/lib/nav";
+import { useFlatPathname, useRouter } from "@/lib/nav";
 import { toast } from "sonner";
 import {
   Check,
@@ -16,10 +16,15 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Bone, InputBone } from "@/components/ui/skeleton";
+import { RolesIndexEmpty } from "@/components/settings/roles/roles-frame";
 import { Switch } from "@/components/ui/switch";
 import { FieldLabel, InfoTip } from "@/components/ui/info-tip";
 import { ConfirmAction } from "@/components/shared/confirm-action";
-import { PermissionPicker } from "@/components/settings/permission-picker";
+import {
+  PARTIAL_CAPABILITIES,
+  PermissionPicker,
+} from "@/components/settings/permission-picker";
 import { gqlAction } from "@/lib/graphql-client";
 import { ALL_CAPABILITIES, type Capability } from "@/lib/types/identity";
 import { CAPABILITY_CATEGORIES, CAPABILITY_META } from "@/lib/capabilities";
@@ -40,7 +45,9 @@ export function RoleEditor({
   basedOn,
   canManage,
   tree,
+  loading = false,
 }: {
+  loading?: boolean;
   mode: "create" | "edit";
   role?: TeamRoleDTO;
   basedOn?: TeamRoleDTO | null;
@@ -56,8 +63,12 @@ export function RoleEditor({
     () => ({
       name: role?.name ?? (basedOn ? `${basedOn.name} copy` : ""),
       description: role?.description ?? basedOn?.description ?? "",
-      capabilities: role?.capabilities ??
-        basedOn?.capabilities ?? ["view" as Capability],
+      capabilities:
+        role?.capabilities ??
+        basedOn?.capabilities ??
+        (loading && mode === "edit"
+          ? PARTIAL_CAPABILITIES
+          : ["view" as Capability]),
       requireTwoFactor:
         role?.requireTwoFactor ?? basedOn?.requireTwoFactor ?? false,
       scope:
@@ -65,7 +76,7 @@ export function RoleEditor({
           ? toSelection(role?.scope ?? basedOn?.scope ?? null)
           : everythingSelection(tree),
     }),
-    [role, basedOn, tree],
+    [role, basedOn, tree, loading, mode],
   );
 
   const [name, setName] = React.useState(initial.name);
@@ -162,6 +173,7 @@ export function RoleEditor({
     <form
       className="grid items-start gap-6 xl:grid-cols-[minmax(0,1fr)_320px]"
       onSubmit={submit}
+      aria-busy={loading || undefined}
     >
       <div className="space-y-4">
         {locked && (
@@ -188,15 +200,19 @@ export function RoleEditor({
               >
                 Name
               </FieldLabel>
-              <Input
-                id="role-name"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                placeholder="Developer"
-                maxLength={40}
-                disabled={readOnly}
-                autoFocus={mode === "create"}
-              />
+              {loading ? (
+                <InputBone value="Developer" />
+              ) : (
+                <Input
+                  id="role-name"
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  placeholder="Developer"
+                  maxLength={40}
+                  disabled={readOnly}
+                  autoFocus={mode === "create"}
+                />
+              )}
             </div>
             <div className="grid gap-2">
               <FieldLabel
@@ -206,14 +222,18 @@ export function RoleEditor({
               >
                 Description
               </FieldLabel>
-              <Input
-                id="role-description"
-                value={description}
-                onChange={(e) => setDescription(e.target.value)}
-                placeholder="Ships apps, doesn't touch infrastructure"
-                maxLength={160}
-                disabled={readOnly}
-              />
+              {loading ? (
+                <InputBone value="Ships apps, doesn't touch infrastructure" />
+              ) : (
+                <Input
+                  id="role-description"
+                  value={description}
+                  onChange={(e) => setDescription(e.target.value)}
+                  placeholder="Ships apps, doesn't touch infrastructure"
+                  maxLength={160}
+                  disabled={readOnly}
+                />
+              )}
             </div>
             <div className="flex items-start justify-between gap-3 rounded-lg border border-border p-3">
               <div className="min-w-0">
@@ -227,12 +247,14 @@ export function RoleEditor({
                   the API alike.
                 </p>
               </div>
-              <Switch
-                checked={twoFactor}
-                disabled={readOnly}
-                onCheckedChange={setTwoFactor}
-                aria-label="Require two-factor authentication"
-              />
+              <Bone box loading={loading} className="rounded-full">
+                <Switch
+                  checked={twoFactor}
+                  disabled={readOnly}
+                  onCheckedChange={setTwoFactor}
+                  aria-label="Require two-factor authentication"
+                />
+              </Bone>
             </div>
           </CardContent>
         </Card>
@@ -248,6 +270,7 @@ export function RoleEditor({
               info="Where this role can work. Everything is ticked to begin with - untick what its holders should not reach."
               docs="roles.build"
               emptyNote="This team has nothing to limit a role to yet."
+              loading={loading}
             />
           </CardContent>
         </Card>
@@ -255,6 +278,7 @@ export function RoleEditor({
         <Card>
           <CardContent className="pt-6">
             <PermissionPicker
+              loading={loading}
               capabilities={caps}
               onChange={setCaps}
               disabled={readOnly}
@@ -288,14 +312,16 @@ export function RoleEditor({
               <div className="flex items-center gap-3">
                 <dt className="shrink-0 text-muted-foreground">Name</dt>
                 <dd className="min-w-0 flex-1 truncate text-right font-medium">
-                  {name.trim() || "—"}
+                  <Bone loading={loading}>{name.trim() || "Developer"}</Bone>
                 </dd>
               </div>
               {mode === "create" && (
                 <div className="flex items-center gap-3">
                   <dt className="shrink-0 text-muted-foreground">Based on</dt>
                   <dd className="min-w-0 flex-1 truncate text-right font-medium">
-                    {basedOn ? basedOn.name : "Nothing (blank)"}
+                    <Bone loading={loading}>
+                      {basedOn ? basedOn.name : "Nothing (blank)"}
+                    </Bone>
                   </dd>
                 </div>
               )}
@@ -303,24 +329,28 @@ export function RoleEditor({
                 <div className="flex items-center gap-3">
                   <dt className="shrink-0 text-muted-foreground">Members</dt>
                   <dd className="min-w-0 flex-1 truncate text-right font-medium tabular-nums">
-                    {role!.memberCount}
+                    <Bone loading={loading}>{role?.memberCount ?? 0}</Bone>
                   </dd>
                 </div>
               )}
               <div className="flex items-center gap-3">
                 <dt className="shrink-0 text-muted-foreground">Access</dt>
                 <dd className="min-w-0 flex-1 truncate text-right font-medium">
-                  {!scoped
-                    ? "Whole team"
-                    : ticked === 0
-                      ? "Nothing"
-                      : describeScope(scope)}
+                  <Bone loading={loading}>
+                    {!scoped
+                      ? "Whole team"
+                      : ticked === 0
+                        ? "Nothing"
+                        : describeScope(scope)}
+                  </Bone>
                 </dd>
               </div>
               <div className="flex items-center gap-3">
                 <dt className="shrink-0 text-muted-foreground">Permissions</dt>
                 <dd className="min-w-0 flex-1 truncate text-right font-medium tabular-nums">
-                  {granted} of {ALL_CAPABILITIES.length - 1}
+                  <Bone loading={loading}>
+                    {granted} of {ALL_CAPABILITIES.length - 1}
+                  </Bone>
                 </dd>
               </div>
               {outOfScope > 0 && (
@@ -344,7 +374,7 @@ export function RoleEditor({
                     Sensitive
                   </dt>
                   <dd className="min-w-0 flex-1 truncate text-right font-medium tabular-nums">
-                    {sensitive}
+                    <Bone loading={loading}>{sensitive}</Bone>
                   </dd>
                 </div>
               )}
@@ -367,12 +397,14 @@ export function RoleEditor({
                     >
                       {cat.label}
                     </span>
-                    <Badge
-                      variant={n === 0 ? "muted" : "secondary"}
-                      className="tabular-nums"
-                    >
-                      {n}/{cat.caps.length}
-                    </Badge>
+                    <Bone box loading={loading}>
+                      <Badge
+                        variant={n === 0 ? "muted" : "secondary"}
+                        className="tabular-nums"
+                      >
+                        {n}/{cat.caps.length}
+                      </Badge>
+                    </Bone>
                   </div>
                 );
               })}
@@ -389,30 +421,32 @@ export function RoleEditor({
             )}
 
             {!readOnly && (
-              <Button
-                type="submit"
-                size="lg"
-                className="w-full"
-                disabled={
-                  pending || !name.trim() || (mode === "edit" && !dirty)
-                }
-              >
-                {pending ? (
-                  <Loader2 className="size-4 animate-spin" />
-                ) : (
-                  <Check className="size-4" />
-                )}
-                {mode === "create"
-                  ? "Create role"
-                  : dirty
-                    ? "Save changes"
-                    : "Saved"}
-              </Button>
+              <Bone box loading={loading} className="w-full">
+                <Button
+                  type="submit"
+                  size="lg"
+                  className="w-full"
+                  disabled={
+                    pending || !name.trim() || (mode === "edit" && !dirty)
+                  }
+                >
+                  {pending ? (
+                    <Loader2 className="size-4 animate-spin" />
+                  ) : (
+                    <Check className="size-4" />
+                  )}
+                  {mode === "create"
+                    ? "Create role"
+                    : dirty
+                      ? "Save changes"
+                      : "Saved"}
+                </Button>
+              </Bone>
             )}
 
             {mode === "edit" &&
               canManage &&
-              role!.builtinKey &&
+              role?.builtinKey &&
               role!.modified &&
               !locked && (
                 <Button
@@ -425,7 +459,7 @@ export function RoleEditor({
                   Reset to default
                 </Button>
               )}
-            {mode === "edit" && canManage && !role!.builtinKey && (
+            {mode === "edit" && canManage && role && !role.builtinKey && (
               <Button
                 type="button"
                 variant="outline"
@@ -440,7 +474,7 @@ export function RoleEditor({
         </Card>
       </aside>
 
-      {mode === "edit" && (
+      {mode === "edit" && role && (
         <>
           <ConfirmAction
             open={resetOpen}
@@ -546,4 +580,24 @@ function describeScope(scope: ScopeSelection): string {
   ].filter((p): p is string => p != null);
   if (parts.length <= 1) return parts[0] ?? "nothing";
   return `${parts.slice(0, -1).join(", ")} and ${parts[parts.length - 1]}`;
+}
+
+/** The pane under the roles rail while it loads, shaped like the page its address names. */
+export function RolePaneSkeleton() {
+  const pathname = useFlatPathname();
+  const sub = pathname.slice("/settings/roles".length).replace(/^\//, "");
+  if (!sub)
+    return (
+      <div aria-busy>
+        <RolesIndexEmpty canManage />
+      </div>
+    );
+  return (
+    <RoleEditor
+      mode={sub === "new" ? "create" : "edit"}
+      canManage
+      tree={[]}
+      loading
+    />
+  );
 }

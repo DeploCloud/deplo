@@ -14,9 +14,7 @@ import {
 } from "@/lib/data/dns-providers/store";
 import { canDeleteTeam } from "@/lib/data/team-delete";
 import { PageHeader } from "@/components/shared/page-header";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { InfoTip } from "@/components/ui/info-tip";
-import { TeamForm } from "@/components/settings/team-form";
+import { TeamCard } from "@/components/settings/team-form";
 import { TeamSecurityCard } from "@/components/settings/team-security-card";
 import { TeamAgentsCard } from "@/components/settings/team-agents-card";
 import { TeamDnsCard } from "@/components/settings/dns/team-dns-card";
@@ -85,24 +83,11 @@ export default async function SettingsGeneralPage() {
 
       {settings && extras ? (
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-          <Card className="flex flex-col">
-            <CardHeader>
-              <CardTitle className="flex w-fit items-center gap-2 text-base">
-                Team
-                <InfoTip
-                  content="Your workspace details."
-                  docs="team.overview"
-                />
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="flex flex-1 flex-col">
-              <TeamForm
-                name={team.name}
-                avatarUrl={team.avatarUrl}
-                canManage={canManageTeam}
-              />
-            </CardContent>
-          </Card>
+          <TeamCard
+            name={team.name}
+            avatarUrl={team.avatarUrl}
+            canManage={canManageTeam}
+          />
 
           <TeamSecurityCard
             requireTwoFactor={settings.requireTwoFactor ?? false}

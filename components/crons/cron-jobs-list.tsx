@@ -10,12 +10,14 @@ import {
   Pencil,
   Play,
   Plus,
+  Settings,
   Timer,
   Trash2,
 } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Bone } from "@/components/ui/skeleton";
 import { RowActions } from "@/components/shared/row-actions";
 import { Card, CardContent } from "@/components/ui/card";
 import {
@@ -387,19 +389,10 @@ export function CronJobsList({
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between gap-3">
-        <div>
-          <h3 className="text-sm font-medium">Cron jobs</h3>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Every job runs a command inside this container, on its own schedule
-            and in its own timezone.
-          </p>
-        </div>
-        <div className="flex shrink-0 items-center gap-2">
-          <SettingsShortcut href={settingsHref} label="Cron job settings" />
-          {newJobButton}
-        </div>
-      </div>
+      <ListHeader>
+        <SettingsShortcut href={settingsHref} label="Cron job settings" />
+        {newJobButton}
+      </ListHeader>
 
       {jobs.length === 0 ? (
         <EmptyState
@@ -441,6 +434,90 @@ export function CronJobsList({
           primaryService={primaryService}
         />
       )}
+    </div>
+  );
+}
+
+function ListHeader({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="flex items-center justify-between gap-3">
+      <div>
+        <h3 className="text-sm font-medium">Cron jobs</h3>
+        <p className="mt-1 text-sm text-muted-foreground">
+          Every job runs a command inside this container, on its own schedule
+          and in its own timezone.
+        </p>
+      </div>
+      <div className="flex shrink-0 items-center gap-2">{children}</div>
+    </div>
+  );
+}
+
+const NO_OP = () => {};
+
+/** The list while it loads, for a member who can manage: one job row. */
+export function CronJobsListSkeleton() {
+  return (
+    <div className="space-y-4" aria-busy>
+      <ListHeader>
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          disabled
+          aria-label="Cron job settings"
+        >
+          <Settings className="size-4" />
+        </Button>
+        <Button variant="outline" size="sm" disabled>
+          <Plus className="size-4" />
+          New cron job
+        </Button>
+      </ListHeader>
+      <Card>
+        <CardContent className="space-y-2 pt-6">
+          <div className="rounded-lg border border-border">
+            <div className="flex items-center gap-3 p-3">
+              <div className="flex min-w-0 flex-1 items-center gap-3">
+                <ChevronRight className="size-4 shrink-0 text-muted-foreground" />
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-2">
+                    <span className="truncate text-sm font-medium">
+                      <Bone>Nightly cleanup</Bone>
+                    </span>
+                    <Bone box>
+                      <Badge
+                        variant="success"
+                        className="text-[10px] font-normal"
+                      >
+                        Succeeded
+                      </Badge>
+                    </Bone>
+                  </div>
+                  <p className="mt-1 flex items-center gap-2 text-xs text-muted-foreground">
+                    <Bone className="text-xs">Daily, 03:00 Europe/Rome</Bone>
+                    <Bone>· next in 14 hours</Bone>
+                  </p>
+                </div>
+              </div>
+              <RowActions
+                title="Cron job"
+                actions={[
+                  { label: "Run now", icon: Play, onSelect: NO_OP },
+                  { label: "Edit", icon: Pencil, onSelect: NO_OP },
+                ]}
+              >
+                <div className="flex shrink-0 items-center gap-1">
+                  {[Play, Pencil, Trash2].map((Icon, i) => (
+                    <Button key={i} variant="ghost" size="icon" disabled>
+                      <Icon className="size-4" />
+                    </Button>
+                  ))}
+                </div>
+              </RowActions>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
     </div>
   );
 }

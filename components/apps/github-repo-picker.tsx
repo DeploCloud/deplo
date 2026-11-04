@@ -36,6 +36,11 @@ import {
   type RepoSelection,
 } from "@/components/apps/repo-browser";
 import { cn, pickerInstallationId } from "@/lib/utils";
+import { Skeleton } from "@/components/ui/skeleton";
+import {
+  LoadingText,
+  useSettingsLoading,
+} from "@/components/apps/settings/settings-loading";
 import type { GithubInstallationDTO } from "@/lib/data/github";
 
 export interface GithubSelection {
@@ -53,8 +58,10 @@ function installationSettingsUrl(inst: GithubInstallationDTO): string {
 function InstallationLabel({ inst }: { inst: GithubInstallationDTO }) {
   return (
     <span className="min-w-0 flex-1 truncate">
-      <span className="font-medium">{inst.appName}</span>
-      <span className="text-muted-foreground"> · {inst.accountLogin}</span>
+      <LoadingText>
+        <span className="font-medium">{inst.appName}</span>
+        <span className="text-muted-foreground"> · {inst.accountLogin}</span>
+      </LoadingText>
     </span>
   );
 }
@@ -66,6 +73,11 @@ function AccountAvatar({
   inst: GithubInstallationDTO;
   className?: string;
 }) {
+  const loading = useSettingsLoading();
+  if (loading)
+    return (
+      <Skeleton className={cn("size-5 shrink-0 rounded-full", className)} />
+    );
   return (
     <Avatar className={cn("size-5", className)}>
       <AvatarImage src={inst.avatarUrl} alt="" />

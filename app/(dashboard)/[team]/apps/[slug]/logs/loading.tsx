@@ -1,5 +1,5 @@
-import { LogPaneSkeleton } from "@/components/logs/log-pane-skeleton";
+import { LogsSkeleton } from "@/components/apps/app-tab-skeletons";
 
 export default function Loading() {
-  return <LogPaneSkeleton />;
+  return <LogsSkeleton />;
 }

@@ -11,6 +11,7 @@ import {
   Pencil,
   Trash2,
 } from "lucide-react";
+import { Bone, Skeleton } from "@/components/ui/skeleton";
 import { Card } from "@/components/ui/card";
 import {
   DropdownMenu,
@@ -427,5 +428,61 @@ export function ProjectContainerCard({
       {card}
       {bulk.dialog}
     </>
+  );
+}
+
+/** A project or folder card while the Overview loads. */
+export function ContainerCardSkeleton({
+  view = "grid",
+  count = "2 apps",
+}: {
+  view?: "grid" | "list";
+  count?: string;
+}) {
+  const tile = <Skeleton className="size-9 shrink-0 rounded-md" />;
+  const text = (
+    <>
+      <span className="block truncate font-medium">
+        <Bone>Project name</Bone>
+      </span>
+      <p className="mt-1 text-xs text-muted-foreground">
+        <Bone>{count}</Bone>
+      </p>
+    </>
+  );
+  const actions = (
+    <div className="pointer-events-auto relative z-10 flex items-center gap-1 self-center">
+      <div>
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          aria-label="Project menu"
+          disabled
+        >
+          <MoreHorizontal className="size-4" />
+        </Button>
+      </div>
+    </div>
+  );
+  if (view === "list")
+    return (
+      <Card className="group relative flex items-center gap-4 p-4">
+        <div className="pointer-events-none relative z-[1] flex min-w-0 flex-1 items-center gap-4">
+          {tile}
+          <div className="min-w-0 flex-1">{text}</div>
+        </div>
+        {actions}
+      </Card>
+    );
+  return (
+    <Card className="group relative flex flex-col gap-4 p-5">
+      <div className="pointer-events-none relative z-[1] flex flex-1 items-start justify-between gap-3">
+        <div className="flex min-w-0 items-center gap-3">
+          {tile}
+          <div className="min-w-0">{text}</div>
+        </div>
+        {actions}
+      </div>
+    </Card>
   );
 }

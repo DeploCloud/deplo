@@ -4,6 +4,8 @@ import { ChevronLeft, Loader2 } from "lucide-react";
 import Link from "@/components/ui/link";
 import { useFullBleedRoute } from "@/components/layout/shell-frame";
 import { useFlatPathname } from "@/lib/nav";
+import { ALL_CAPABILITIES } from "@/lib/types/identity";
+import type { AppNavState } from "@/components/apps/app-nav-store";
 import { cn } from "@/lib/utils";
 import { Card, NavRow } from "./mobile-rows";
 import { backOutOf } from "./navigation-history";
@@ -14,6 +16,7 @@ export interface MobileDetail {
   root: string;
   name: string;
   parent: { href: string; label: string };
+  nav?: AppNavState;
 }
 
 export function DetailFrame({
@@ -21,12 +24,14 @@ export function DetailFrame({
   sidecars,
   locked = false,
   mobile,
+  busy = false,
   children,
 }: {
   header: React.ReactNode;
   sidecars?: React.ReactNode;
   locked?: boolean;
   mobile: MobileDetail;
+  busy?: boolean;
   children: React.ReactNode;
 }) {
   const full = useFullBleedRoute();
@@ -36,7 +41,10 @@ export function DetailFrame({
 
   if (full) {
     return (
-      <div className="flex min-h-0 w-full flex-1 flex-col">
+      <div
+        aria-busy={busy || undefined}
+        className="flex min-h-0 w-full flex-1 flex-col"
+      >
         {sidecars}
         <div className="px-4 md:hidden">{back}</div>
         {locked ? (
@@ -51,7 +59,10 @@ export function DetailFrame({
   }
 
   return (
-    <div className="mx-auto w-full max-w-6xl space-y-6">
+    <div
+      aria-busy={busy || undefined}
+      className="mx-auto w-full max-w-6xl space-y-6"
+    >
       {sidecars}
       <div className="-mt-3 mb-1 md:hidden">{back}</div>
       {locked && <MigrationNotice />}
@@ -60,7 +71,9 @@ export function DetailFrame({
         className={cn("space-y-6", locked && "opacity-70")}
       >
         <div className={cn(!atRoot && "max-md:hidden")}>{header}</div>
-        {atRoot && <MobileSections root={mobile.root} />}
+        {atRoot && (
+          <MobileSections root={mobile.root} nav={mobile.nav} busy={busy} />
+        )}
         {children}
       </div>
     </div>
@@ -89,8 +102,17 @@ function MobileBack({
   );
 }
 
-function MobileSections({ root }: { root: string }) {
-  const { sections } = useNavSections([], false);
+function MobileSections({
+  root,
+  nav,
+  busy,
+}: {
+  root: string;
+  nav?: AppNavState;
+  busy: boolean;
+}) {
+  // Still loading, nothing names the member's Capabilities yet: draw the full menu.
+  const { sections } = useNavSections(busy ? ALL_CAPABILITIES : [], false, nav);
   const items = sections
     .filter((s) => !s.backLink)
     .flatMap((s) => s.items)

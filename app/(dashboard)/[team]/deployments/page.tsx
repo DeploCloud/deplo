@@ -3,7 +3,7 @@ import { hasCapability, isInstanceAdmin } from "@/lib/membership";
 import { EmptyState } from "@/components/shared/empty-state";
 import { DeploymentGraphic } from "@/components/apps/deployment-graphic";
 import { DeploymentsTable } from "@/components/apps/deployments-table/deployments-table";
-import { titleClass } from "@/components/shared/page-header";
+import { DeploymentsHeader } from "./header";
 
 export const metadata = { title: "Deployments" };
 
@@ -16,14 +16,7 @@ export default async function DeploymentsPage() {
   ]);
   const canManage = canDeploy || isAdmin;
 
-  const header = (
-    <div className="space-y-1">
-      <h1 className={titleClass.page}>Deployments</h1>
-      <p className="text-sm text-muted-foreground">
-        Every deployment across all of your apps and servers, newest first.
-      </p>
-    </div>
-  );
+  const header = <DeploymentsHeader />;
 
   return (
     <div className="space-y-6">

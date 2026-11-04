@@ -1,5 +1,6 @@
 "use client";
 
+import { LoadingText } from "@/components/apps/settings/settings-loading";
 import * as React from "react";
 import { useRouter } from "@/lib/nav";
 import { toast } from "sonner";
@@ -107,7 +108,9 @@ export function ComposeArgsPanel({
                 aria-hidden
                 className="size-3 shrink-0 translate-y-px text-muted-foreground/70"
               />
-              <span className="text-muted-foreground/70">{base}</span>
+              <span className="text-muted-foreground/70">
+                <LoadingText>{base}</LoadingText>
+              </span>
               {yours && (
                 <span className="font-medium text-foreground">{yours}</span>
               )}

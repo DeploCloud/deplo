@@ -2,12 +2,13 @@
 
 import * as React from "react";
 import { useRouter } from "@/lib/nav";
-import { AlertTriangle } from "lucide-react";
+import { AlertTriangle, ShieldCheck } from "lucide-react";
 import { toast } from "sonner";
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Switch } from "@/components/ui/switch";
 import { InfoTip } from "@/components/ui/info-tip";
+import { Bone } from "@/components/ui/skeleton";
 import { TwoFactorGraphic } from "@/components/settings/two-factor-graphic";
 import { gqlAction } from "@/lib/graphql-client";
 
@@ -16,11 +17,13 @@ export function TeamSecurityCard({
   canManage,
   without,
   total,
+  loading = false,
 }: {
   requireTwoFactor: boolean;
   canManage: boolean;
   without: number;
   total: number;
+  loading?: boolean;
 }) {
   const router = useRouter();
   const [on, setOn] = React.useState(requireTwoFactor);
@@ -71,24 +74,34 @@ export function TeamSecurityCard({
               Members without it can&apos;t use this team.
             </p>
           </div>
-          <Switch
-            checked={on}
-            onCheckedChange={toggle}
-            disabled={!canManage || pending}
-            aria-label="Require two-factor authentication"
-          />
+          <Bone box loading={loading} className="rounded-full">
+            <Switch
+              checked={on}
+              onCheckedChange={toggle}
+              disabled={!canManage || pending}
+              aria-label="Require two-factor authentication"
+            />
+          </Bone>
         </div>
-        {without > 0 && (
-          <div className="flex items-center gap-3 rounded-lg border border-[var(--warning)]/30 bg-[var(--warning)]/5 p-3">
-            <AlertTriangle className="size-5 shrink-0 text-[var(--warning)]" />
-            <p className="text-sm">
-              {without} of {total} member{total === 1 ? "" : "s"}{" "}
-              {on
-                ? "can't use this team until they set it up."
-                : `${without === 1 ? "doesn't" : "don't"} have it yet.`}
-            </p>
-          </div>
-        )}
+        {/* Always present, so the card keeps its height whatever the count. */}
+        <Bone box loading={loading} className="w-full rounded-lg">
+          {without > 0 ? (
+            <div className="flex w-full items-center gap-3 rounded-lg border border-[var(--warning)]/30 bg-[var(--warning)]/5 p-3">
+              <AlertTriangle className="size-5 shrink-0 text-[var(--warning)]" />
+              <p className="text-sm">
+                {without} of {total} member{total === 1 ? "" : "s"}{" "}
+                {on
+                  ? "can't use this team until they set it up."
+                  : `${without === 1 ? "doesn't" : "don't"} have it yet.`}
+              </p>
+            </div>
+          ) : (
+            <div className="flex w-full items-center gap-3 rounded-lg border border-border bg-surface p-3">
+              <ShieldCheck className="size-5 shrink-0 text-[var(--success)]" />
+              <p className="text-sm">Everyone in this team has it set up.</p>
+            </div>
+          )}
+        </Bone>
       </CardContent>
     </Card>
   );

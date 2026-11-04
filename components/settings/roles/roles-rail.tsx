@@ -24,6 +24,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Badge } from "@/components/ui/badge";
+import { Bone } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { SimpleTooltip } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
@@ -38,9 +39,11 @@ const ROLE_ICON: Record<string, LucideIcon> = {
 export function RolesRail({
   roles,
   canManage,
+  loading = false,
 }: {
   roles: TeamRoleDTO[];
   canManage: boolean;
+  loading?: boolean;
 }) {
   const router = useRouter();
   const pathname = useFlatPathname();
@@ -54,49 +57,53 @@ export function RolesRail({
         <h2 className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">
           Roles
           <span className="ml-1.5 text-muted-foreground/70 tabular-nums">
-            {roles.length}
+            <Bone loading={loading}>{roles.length}</Bone>
           </span>
         </h2>
         {canManage && (
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button size="sm" variant="outline">
-                <Plus className="size-4" />
-                New role
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-60">
-              <DropdownMenuItem
-                className="cursor-pointer"
-                onSelect={() => router.push("/settings/roles/new")}
-              >
-                <FileText className="size-4" />
-                <span className="flex flex-col">
-                  <span>Start from scratch</span>
-                  <span className="text-xs leading-relaxed text-muted-foreground">
-                    View access only, then pick what to add
-                  </span>
-                </span>
-              </DropdownMenuItem>
-              <DropdownMenuSeparator />
-              <DropdownMenuLabel>Start from an existing role</DropdownMenuLabel>
-              {roles.map((r) => (
+          <Bone box loading={loading}>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button size="sm" variant="outline">
+                  <Plus className="size-4" />
+                  New role
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-60">
                 <DropdownMenuItem
-                  key={r.id}
                   className="cursor-pointer"
-                  onSelect={() =>
-                    router.push(`/settings/roles/new?from=${r.id}`)
-                  }
+                  onSelect={() => router.push("/settings/roles/new")}
                 >
-                  <Copy className="size-4" />
-                  <span className="min-w-0 flex-1 truncate">{r.name}</span>
-                  <span className="shrink-0 text-xs text-muted-foreground tabular-nums">
-                    {r.capabilities.filter((c) => c !== "view").length}
+                  <FileText className="size-4" />
+                  <span className="flex flex-col">
+                    <span>Start from scratch</span>
+                    <span className="text-xs leading-relaxed text-muted-foreground">
+                      View access only, then pick what to add
+                    </span>
                   </span>
                 </DropdownMenuItem>
-              ))}
-            </DropdownMenuContent>
-          </DropdownMenu>
+                <DropdownMenuSeparator />
+                <DropdownMenuLabel>
+                  Start from an existing role
+                </DropdownMenuLabel>
+                {roles.map((r) => (
+                  <DropdownMenuItem
+                    key={r.id}
+                    className="cursor-pointer"
+                    onSelect={() =>
+                      router.push(`/settings/roles/new?from=${r.id}`)
+                    }
+                  >
+                    <Copy className="size-4" />
+                    <span className="min-w-0 flex-1 truncate">{r.name}</span>
+                    <span className="shrink-0 text-xs text-muted-foreground tabular-nums">
+                      {r.capabilities.filter((c) => c !== "view").length}
+                    </span>
+                  </DropdownMenuItem>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </Bone>
         )}
       </div>
 
@@ -105,34 +112,32 @@ export function RolesRail({
           const Icon = role.builtinKey ? ROLE_ICON[role.builtinKey] : Shield;
           const active = role.id === activeId;
           const granted = role.capabilities.filter((c) => c !== "view").length;
-          return (
-            <Link
-              key={role.id}
-              href={`/settings/roles/${role.id}`}
-              aria-current={active ? "page" : undefined}
-              className={cn(
-                "flex items-center gap-2.5 rounded-lg border px-2.5 py-2 transition-colors",
-                active
-                  ? "border-primary bg-primary-wash"
-                  : "border-transparent hover:bg-accent",
-              )}
-            >
-              <span
-                className={cn(
-                  "flex size-7 shrink-0 items-center justify-center rounded-md",
-                  role.builtinKey === "owner"
-                    ? "bg-amber-500/10 text-amber-600 dark:text-amber-400"
-                    : active
-                      ? "bg-primary-wash-strong text-primary"
-                      : "bg-muted text-muted-foreground",
-                )}
-              >
-                <Icon className="size-3.5" aria-hidden />
-              </span>
+          const className = cn(
+            "flex items-center gap-2.5 rounded-lg border px-2.5 py-2 transition-colors",
+            active
+              ? "border-primary bg-primary-wash"
+              : "border-transparent hover:bg-accent",
+          );
+          const body = (
+            <>
+              <Bone box loading={loading}>
+                <span
+                  className={cn(
+                    "flex size-7 shrink-0 items-center justify-center rounded-md",
+                    role.builtinKey === "owner"
+                      ? "bg-amber-500/10 text-amber-600 dark:text-amber-400"
+                      : active
+                        ? "bg-primary-wash-strong text-primary"
+                        : "bg-muted text-muted-foreground",
+                  )}
+                >
+                  <Icon className="size-3.5" aria-hidden />
+                </span>
+              </Bone>
               <span className="min-w-0 flex-1">
                 <span className="flex items-center gap-1.5">
                   <span className="truncate text-sm font-medium">
-                    {role.name}
+                    <Bone loading={loading}>{role.name}</Bone>
                   </span>
                   {role.locked && (
                     <Lock
@@ -152,9 +157,11 @@ export function RolesRail({
                   )}
                 </span>
                 <span className="block truncate text-xs text-muted-foreground tabular-nums">
-                  {granted === 0 ? "View only" : `${granted} permissions`}
-                  {role.memberCount > 0 &&
-                    ` · ${role.memberCount} member${role.memberCount === 1 ? "" : "s"}`}
+                  <Bone loading={loading}>
+                    {granted === 0 ? "View only" : `${granted} permissions`}
+                    {role.memberCount > 0 &&
+                      ` · ${role.memberCount} member${role.memberCount === 1 ? "" : "s"}`}
+                  </Bone>
                 </span>
               </span>
               {role.modified && !role.locked && (
@@ -162,6 +169,20 @@ export function RolesRail({
                   Edited
                 </Badge>
               )}
+            </>
+          );
+          return loading ? (
+            <div key={role.id} className={className}>
+              {body}
+            </div>
+          ) : (
+            <Link
+              key={role.id}
+              href={`/settings/roles/${role.id}`}
+              aria-current={active ? "page" : undefined}
+              className={className}
+            >
+              {body}
             </Link>
           );
         })}
@@ -177,4 +198,25 @@ export function RolesRail({
       </nav>
     </div>
   );
+}
+
+const SKELETON_ROLES: TeamRoleDTO[] = ["Owner", "Member", "Viewer"].map(
+  (name) => ({
+    id: name,
+    name,
+    description: null,
+    builtinKey: null,
+    capabilities: [],
+    requireTwoFactor: false,
+    memberCount: 0,
+    modified: false,
+    locked: false,
+    scope: null,
+    createdAt: "",
+  }),
+);
+
+/** The three roles every team starts with. */
+export function RolesRailSkeleton() {
+  return <RolesRail roles={SKELETON_ROLES} canManage loading />;
 }

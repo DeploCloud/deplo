@@ -37,7 +37,11 @@ type CertificateAccount = {
 const ACCOUNT_FIELDS =
   "serverId serverName email unavailable customCertificates expiresInDays";
 
-export function CertificatesCard() {
+export function CertificatesCard({
+  loading: placeholder = false,
+}: {
+  loading?: boolean;
+}) {
   const [accounts, setAccounts] = React.useState<CertificateAccount[] | null>(
     null,
   );
@@ -72,8 +76,8 @@ export function CertificatesCard() {
 
   React.useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
-    void load();
-  }, [load]);
+    if (!placeholder) void load();
+  }, [load, placeholder]);
 
   const manageable = (accounts ?? []).filter((a) => !a.unavailable);
   const dirty =

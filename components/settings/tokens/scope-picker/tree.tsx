@@ -12,6 +12,32 @@ import { AppMark, Row, TeamMark } from "./row";
 import type { ScopeNode } from "./selection";
 import type { ScopePickerState } from "./use-scope-picker";
 
+const TREE_BOX =
+  "max-h-96 divide-y divide-border/60 overflow-y-auto rounded-lg border border-border";
+
+/** One team with a handful of apps, the tree most teams have. */
+export function ScopeTreeSkeleton() {
+  return (
+    <div className={TREE_BOX}>
+      <div>
+        {Array.from({ length: 9 }, (_, i) => (
+          <Row
+            key={i}
+            loading
+            depth={i === 0 ? 0 : 1}
+            mark={null}
+            label={i === 0 ? "Team name" : "app-name"}
+            meta={i === 0 ? "10 apps" : "app-slug"}
+            checked={false}
+            onCheckedChange={() => {}}
+            id={`scope-skeleton-${i}`}
+          />
+        ))}
+      </div>
+    </div>
+  );
+}
+
 export function ScopeTree({
   state,
   disabled,
@@ -113,7 +139,7 @@ export function ScopeTree({
   }
 
   return (
-    <div className="max-h-96 divide-y divide-border/60 overflow-y-auto rounded-lg border border-border">
+    <div className={TREE_BOX}>
       {shown.map((team) => {
         const teamOn = teams.has(team.id);
         const expanded = isOpen(team.id);

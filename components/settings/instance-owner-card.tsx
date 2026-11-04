@@ -1,5 +1,6 @@
 "use client";
 
+import { Bone } from "@/components/ui/skeleton";
 import * as React from "react";
 import Link from "@/components/ui/link";
 import { useRouter } from "@/lib/nav";
@@ -28,11 +29,13 @@ export function InstanceOwnerCard({
   viewerIsOwner,
   viewerTwoFactorEnabled,
   candidates,
+  loading = false,
 }: {
   ownerName: string | null;
   viewerIsOwner: boolean;
   viewerTwoFactorEnabled: boolean;
   candidates: OwnerCandidate[];
+  loading?: boolean;
 }) {
   const router = useRouter();
   const [successor, setSuccessor] = React.useState("");
@@ -54,7 +57,9 @@ export function InstanceOwnerCard({
           />
         </CardTitle>
         <p className="mt-1 text-sm text-muted-foreground">
-          {ownerName ? (
+          {loading ? (
+            <Bone>This instance belongs to someone.</Bone>
+          ) : ownerName ? (
             <>
               This instance belongs to{" "}
               <span className="font-medium text-foreground">{ownerName}</span>.
@@ -65,7 +70,11 @@ export function InstanceOwnerCard({
         </p>
       </CardHeader>
       <CardContent>
-        {!viewerIsOwner ? (
+        {loading ? (
+          <p className="text-sm text-muted-foreground">
+            <Bone>Only the owner can hand the instance over.</Bone>
+          </p>
+        ) : !viewerIsOwner ? (
           <p className="text-sm text-muted-foreground">
             Only the owner can hand the instance over.
           </p>

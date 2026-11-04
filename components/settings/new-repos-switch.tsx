@@ -5,11 +5,18 @@ import { toast } from "sonner";
 
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Bone } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
 import { gqlAction } from "@/lib/graphql-client";
 import { useRouter } from "@/lib/nav";
 
-export function NewReposSwitch({ enabled }: { enabled: boolean }) {
+export function NewReposSwitch({
+  enabled,
+  loading = false,
+}: {
+  enabled: boolean;
+  loading?: boolean;
+}) {
   const router = useRouter();
   const [on, setOn] = React.useState(enabled);
   const [pending, startTransition] = React.useTransition();
@@ -42,12 +49,14 @@ export function NewReposSwitch({ enabled }: { enabled: boolean }) {
           deploy.
         </p>
       </div>
-      <Switch
-        checked={on}
-        onCheckedChange={toggle}
-        disabled={pending}
-        aria-label="Suggest new repositories"
-      />
+      <Bone box loading={loading} className="rounded-full">
+        <Switch
+          checked={on}
+          onCheckedChange={toggle}
+          disabled={pending}
+          aria-label="Suggest new repositories"
+        />
+      </Bone>
     </Card>
   );
 }

@@ -13,7 +13,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { InfoTip } from "@/components/ui/info-tip";
-import { Skeleton, TextLine } from "@/components/ui/skeleton";
+import { Bone, Skeleton } from "@/components/ui/skeleton";
 import { CommandLine } from "@/components/shared/code-block";
 import { ConfirmAction } from "@/components/shared/confirm-action";
 import { titleClass } from "@/components/shared/page-header";
@@ -23,7 +23,11 @@ import { gqlAction } from "@/lib/graphql-client";
 import { useSearchParams } from "@/lib/nav";
 import { Changelog, ChangelogSkeleton, type Release } from "./deplo-changelog";
 import { FleetBehind, useFleetAgents, type FleetSummary } from "./fleet-agents";
-import { AutoUpdateRow, type AutoUpdateStatus } from "./auto-update-row";
+import {
+  AutoUpdateRow,
+  AutoUpdateRowSkeleton,
+  type AutoUpdateStatus,
+} from "./auto-update-row";
 import { UpdateLogDialog } from "./update-log-dialog";
 
 export type { FleetSummary };
@@ -400,18 +404,7 @@ export function DeploUpdatesTab({
       </Card>
 
       <section className="space-y-3">
-        <div className="flex items-center justify-between gap-3">
-          <h2 className={titleClass.section}>What changed</h2>
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            onClick={() => openLog(true)}
-          >
-            <History className="size-4" />
-            Update log
-          </Button>
-        </div>
+        <ChangelogHeading onLog={() => openLog(true)} />
         <Changelog releases={releases} error={listError} />
       </section>
       <UpdateLogDialog
@@ -420,6 +413,25 @@ export function DeploUpdatesTab({
         timezone={info?.automatic?.timezone ?? null}
       />
     </UpdatesLayout>
+  );
+}
+
+// Without onLog it is the loading state's copy: the same row, the button not yet live.
+function ChangelogHeading({ onLog }: { onLog?: () => void }) {
+  return (
+    <div className="flex items-center justify-between gap-3">
+      <h2 className={titleClass.section}>What changed</h2>
+      <Button
+        type="button"
+        variant="ghost"
+        size="sm"
+        onClick={onLog}
+        disabled={!onLog}
+      >
+        <History className="size-4" />
+        Update log
+      </Button>
+    </div>
   );
 }
 
@@ -542,27 +554,35 @@ export function heroState({
 
 export function UpdatesSkeleton() {
   return (
-    <div role="status" aria-busy aria-label="Loading updates">
-      <UpdatesLayout>
-        <Card>
-          <CardContent className={STATUS_ROW}>
-            <div className="min-w-0 flex-1">
-              <div className={STATUS_TITLE}>
-                <Skeleton className="size-6 rounded-full" />
-                <TextLine className="w-64" />
-              </div>
-              <TextLine type="mt-1 text-sm leading-[1.6]" className="w-32" />
-            </div>
-            <Skeleton className="h-8 w-[106px] shrink-0" />
-          </CardContent>
-        </Card>
+    <UpdatesLayout>
+      <Card>
+        <CardContent className={STATUS_ROW}>
+          <div className="min-w-0 flex-1">
+            <h2 className={STATUS_TITLE}>
+              <Skeleton className="size-6 shrink-0 rounded-full" />
+              <span className="min-w-0">
+                <Bone>Deplo is up to date</Bone>
+              </span>
+            </h2>
+            <p className="mt-1 text-sm text-muted-foreground">
+              <Bone>You&apos;re on v0.0.0.</Bone>
+            </p>
+          </div>
+          <div className="flex shrink-0 flex-wrap items-center gap-2">
+            <Button type="button" variant="outline" size="sm" disabled>
+              <RefreshCw className="size-4" />
+              Check now
+            </Button>
+          </div>
+        </CardContent>
+        <AutoUpdateRowSkeleton />
+      </Card>
 
-        <section className="space-y-3">
-          <TextLine type={titleClass.section} className="w-28" />
-          <ChangelogSkeleton />
-        </section>
-      </UpdatesLayout>
-    </div>
+      <section className="space-y-3">
+        <ChangelogHeading />
+        <ChangelogSkeleton />
+      </section>
+    </UpdatesLayout>
   );
 }
 

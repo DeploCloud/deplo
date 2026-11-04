@@ -9,6 +9,7 @@ import { FilterFacet, useUrlFacets } from "@/components/shared/filter-facet";
 import { ListToolbar } from "@/components/shared/list-toolbar";
 import { GitHubIcon, NpmIcon } from "@/components/shared/brand-icons";
 import { Badge } from "@/components/ui/badge";
+import { Bone } from "@/components/ui/skeleton";
 import {
   Sheet,
   SheetContent,
@@ -35,6 +36,105 @@ export interface Notice {
 }
 
 const FACETS = ["license"] as const;
+
+function LicensesToolbar({
+  query,
+  onQuery,
+  options,
+  counts,
+  values,
+  onChange,
+}: {
+  query: string;
+  onQuery: (v: string) => void;
+  options: { value: string; label: string }[];
+  counts: Record<string, number>;
+  values: string[];
+  onChange: (v: string[]) => void;
+}) {
+  return (
+    <ListToolbar
+      query={query}
+      onQuery={onQuery}
+      placeholder="Search packages"
+      filters={
+        <FilterFacet
+          id="license"
+          label="License"
+          allLabel="Any license"
+          icon={Scale}
+          options={options}
+          counts={counts}
+          values={values}
+          onChange={onChange}
+        />
+      }
+    />
+  );
+}
+
+function LicensesHead() {
+  return (
+    <TableHeader>
+      <TableRow>
+        <TableHead>Package</TableHead>
+        <TableHead className="hidden sm:table-cell">Version</TableHead>
+        <TableHead>License</TableHead>
+        <TableHead className="hidden text-right sm:table-cell">
+          Source
+        </TableHead>
+      </TableRow>
+    </TableHeader>
+  );
+}
+
+// One option, so the facet draws as it will once loaded, not as an empty one.
+const PLACEHOLDER_OPTIONS = [{ value: "", label: "" }];
+const SKELETON_PACKAGES = [
+  "@scope/package",
+  "package-name",
+  "a-longer-package",
+];
+
+export function LicensesPanelSkeleton() {
+  return (
+    <div className="space-y-4">
+      <LicensesToolbar
+        query=""
+        onQuery={() => {}}
+        options={PLACEHOLDER_OPTIONS}
+        counts={{}}
+        values={[]}
+        onChange={() => {}}
+      />
+      <div className="overflow-x-auto rounded-xl border border-border">
+        <Table>
+          <LicensesHead />
+          <TableBody>
+            {SKELETON_PACKAGES.map((name) => (
+              <TableRow key={name}>
+                <TableCell className="min-w-40">
+                  <span className="font-medium">
+                    <Bone>{name}</Bone>
+                  </span>
+                </TableCell>
+                <TableCell className="hidden font-mono text-xs text-muted-foreground sm:table-cell">
+                  <Bone>1.0.0</Bone>
+                </TableCell>
+                <TableCell>
+                  <Bone box>
+                    <Badge variant="secondary">MIT</Badge>
+                  </Bone>
+                </TableCell>
+                <TableCell className="hidden sm:table-cell" />
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      </div>
+    </div>
+  );
+}
 
 export function LicensesPanel({ notices }: { notices: Notice[] }) {
   const [query, setQuery] = React.useState("");
@@ -78,22 +178,13 @@ export function LicensesPanel({ notices }: { notices: Notice[] }) {
 
   return (
     <div className="space-y-4">
-      <ListToolbar
+      <LicensesToolbar
         query={query}
         onQuery={setQuery}
-        placeholder="Search packages"
-        filters={
-          <FilterFacet
-            id="license"
-            label="License"
-            allLabel="Any license"
-            icon={Scale}
-            options={options}
-            counts={counts}
-            values={picked.license}
-            onChange={(v) => setPicked("license", v)}
-          />
-        }
+        options={options}
+        counts={counts}
+        values={picked.license}
+        onChange={(v) => setPicked("license", v)}
       />
 
       {shown.length === 0 ? (
@@ -105,16 +196,7 @@ export function LicensesPanel({ notices }: { notices: Notice[] }) {
       ) : (
         <div className="overflow-x-auto rounded-xl border border-border">
           <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Package</TableHead>
-                <TableHead className="hidden sm:table-cell">Version</TableHead>
-                <TableHead>License</TableHead>
-                <TableHead className="hidden text-right sm:table-cell">
-                  Source
-                </TableHead>
-              </TableRow>
-            </TableHeader>
+            <LicensesHead />
             <TableBody>
               {shown.map((n) => (
                 <TableRow

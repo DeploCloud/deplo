@@ -10,6 +10,7 @@ import {
   Loader2,
 } from "lucide-react";
 import { Card } from "@/components/ui/card";
+import { Bone, Skeleton } from "@/components/ui/skeleton";
 import { DetailRow, DetailRows } from "@/components/apps/detail-rows";
 import { BuildLogStream } from "@/components/apps/build-log-stream";
 import { BuildDuration } from "@/components/apps/build-duration";
@@ -96,7 +97,7 @@ export function DeploymentSections({
                   type="button"
                   onClick={showIssues}
                   aria-label="Show warnings and errors"
-                  className="flex cursor-pointer items-center gap-1 rounded-full border border-border bg-card px-2 py-0.5 text-xs font-medium hover:bg-surface-strong"
+                  className="-my-px flex cursor-pointer items-center gap-1 rounded-full border border-border bg-card px-2 py-0.5 text-xs font-medium hover:bg-surface-strong"
                 >
                   <AlertTriangle
                     className={cn(
@@ -143,6 +144,63 @@ export function DeploymentSections({
             {domains}
           </DetailRow>
         )}
+      </DetailRows>
+    </Card>
+  );
+}
+
+const NO_ROWS: string[] = [];
+
+// The sections closed, as a finished deployment opens; nothing mounts a log stream.
+export function DeploymentSectionsSkeleton() {
+  const done = (
+    <Skeleton className="size-5 shrink-0 rounded-full" aria-hidden />
+  );
+  return (
+    <Card className="overflow-hidden">
+      <DetailRows value={NO_ROWS}>
+        <DetailRow
+          value="logs"
+          title="Build Logs"
+          className="p-4"
+          meta={
+            <>
+              <span className="text-muted-foreground tabular-nums">
+                <Bone>1m 30s</Bone>
+              </span>
+              {done}
+            </>
+          }
+        >
+          {null}
+        </DetailRow>
+        <DetailRow
+          value="summary"
+          title="Deployment Summary"
+          meta={
+            <span className="inline-flex items-center gap-1.5">
+              <Skeleton className="size-3.5 shrink-0" />
+              <Bone>Vite</Bone>
+            </span>
+          }
+          className="px-5 py-4"
+        >
+          {null}
+        </DetailRow>
+        <DetailRow
+          value="domains"
+          title="Domains"
+          meta={
+            <>
+              <span className="text-muted-foreground">
+                <Bone>1 domain</Bone>
+              </span>
+              {done}
+            </>
+          }
+        >
+          {null}
+        </DetailRow>
       </DetailRows>
     </Card>
   );

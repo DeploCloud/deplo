@@ -24,7 +24,7 @@ import {
   AppLiveStatusProvider,
   type LiveApp,
 } from "@/components/apps/app-live-status";
-import { titleClass } from "@/components/shared/page-header";
+import { AppHeader } from "@/components/apps/app-header";
 
 const PROJECT_TITLE_MAX = 24;
 
@@ -78,44 +78,51 @@ export default async function AppLayout(
             root: `/apps/${slug}`,
             name: project.name,
             parent: { href: "/", label: "Overview" },
+            nav: {
+              slug,
+              logo: project.logo,
+              running: project.status === "active",
+              capabilities,
+              isGithubApp: project.source === "github",
+              previewsEnabled: project.previewEnabled,
+              cronsEnabled: project.cronEnabled,
+              consoleEnabled: project.consoleEnabled,
+            },
           }}
           header={
-            <div>
-              <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-                <div className="flex items-center gap-3">
-                  <LogoEditLink
-                    href={`/apps/${slug}/settings`}
-                    label="General settings"
+            <AppHeader
+              logo={
+                <LogoEditLink
+                  href={`/apps/${slug}/settings`}
+                  label="General settings"
+                >
+                  <AppLogo
+                    logo={project.logo}
+                    tone={project.logoTone}
+                    size={44}
+                  />
+                </LogoEditLink>
+              }
+              name={project.name}
+              status={<AppStatusBadge status={project.status} />}
+              subtitle={
+                project.productionUrl ? (
+                  <a
+                    href={project.productionUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex cursor-pointer items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground"
                   >
-                    <AppLogo
-                      logo={project.logo}
-                      tone={project.logoTone}
-                      size={44}
-                    />
-                  </LogoEditLink>
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <h1 className={titleClass.page}>{project.name}</h1>
-                      <AppStatusBadge status={project.status} />
-                    </div>
-                    {project.productionUrl ? (
-                      <a
-                        href={project.productionUrl}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="flex cursor-pointer items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground"
-                      >
-                        {project.productionUrl.replace(/^https?:\/\//, "")}
-                      </a>
-                    ) : (
-                      <p className="text-sm text-muted-foreground">
-                        {appTypeLabel(project)}
-                      </p>
-                    )}
-                  </div>
-                </div>
-                {/* Below md the redeploy takes the whole first row; the rest share the second. */}
-                <div className="flex flex-wrap items-center gap-2 max-md:grid max-md:grid-cols-[1fr_1fr_auto] max-md:[&>:has([data-primary-action])]:order-first max-md:[&>:has([data-primary-action])]:col-span-full max-md:[&>:last-child]:col-start-3 max-md:[&>[data-primary-action]]:order-first max-md:[&>[data-primary-action]]:col-span-full">
+                    {project.productionUrl.replace(/^https?:\/\//, "")}
+                  </a>
+                ) : (
+                  <p className="text-sm text-muted-foreground">
+                    {appTypeLabel(project)}
+                  </p>
+                )
+              }
+              actions={
+                <>
                   {buildsOwnImage ? (
                     <AppRollbackButton slug={project.slug} target={rollback} />
                   ) : (
@@ -138,9 +145,9 @@ export default async function AppLayout(
                     repoUrl={repoWebUrl(project.repo)}
                     showLifecycle={buildsOwnImage}
                   />
-                </div>
-              </div>
-            </div>
+                </>
+              }
+            />
           }
           sidecars={
             <AppNavSync

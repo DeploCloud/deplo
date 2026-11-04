@@ -1,5 +1,10 @@
 "use client";
 
+import { Skeleton } from "@/components/ui/skeleton";
+import {
+  LoadingText,
+  useSettingsLoading,
+} from "@/components/apps/settings/settings-loading";
 import * as React from "react";
 import { toast } from "sonner";
 import { useRouter } from "@/lib/nav";
@@ -103,6 +108,7 @@ export function DatabaseGeneralSettings({ db }: { db: DatabaseDTO }) {
   }
 
   const engine = DB_NAMES[db.type] ?? db.type;
+  const loading = useSettingsLoading();
 
   return (
     <>
@@ -115,7 +121,11 @@ export function DatabaseGeneralSettings({ db }: { db: DatabaseDTO }) {
               Logo
             </FieldLabel>
             <div className="flex flex-wrap items-center gap-4">
-              <DatabaseLogo type={db.type} logo={logo} size={48} />
+              {loading ? (
+                <Skeleton className="size-12 shrink-0 rounded-md" />
+              ) : (
+                <DatabaseLogo type={db.type} logo={logo} size={48} />
+              )}
               <div className="flex flex-wrap items-center gap-2">
                 <Button
                   variant="outline"
@@ -142,7 +152,7 @@ export function DatabaseGeneralSettings({ db }: { db: DatabaseDTO }) {
             <p className="text-xs text-muted-foreground">
               PNG, JPEG, WebP, GIF, SVG or ICO · up to{" "}
               {formatBytes(MAX_LOGO_BYTES)}. Remove it to go back to the{" "}
-              {engine} logo.
+              <LoadingText>{engine}</LoadingText> logo.
             </p>
             <ImageCropDialog
               file={picked}
@@ -179,8 +189,11 @@ export function DatabaseGeneralSettings({ db }: { db: DatabaseDTO }) {
             />
             <p className="text-xs text-muted-foreground">
               A label for the dashboard. The connection string keeps pointing at{" "}
-              <code className="font-mono">{db.host}</code> - renaming never
-              restarts the database or changes how apps reach it.
+              <code className="font-mono">
+                <LoadingText>{db.host}</LoadingText>
+              </code>{" "}
+              - renaming never restarts the database or changes how apps reach
+              it.
             </p>
           </div>
         </CardContent>

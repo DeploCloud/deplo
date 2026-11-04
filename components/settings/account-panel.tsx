@@ -18,6 +18,7 @@ import { AvatarPicker } from "@/components/shared/avatar-picker";
 import { avatarChoiceFromUrl } from "@/lib/apps/avatar-shared";
 import { AccountGraphic } from "@/components/settings/account-graphic";
 import { Badge } from "@/components/ui/badge";
+import { Bone, InputBone, Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { RevealInput } from "@/components/ui/password-field";
@@ -108,108 +109,91 @@ function ProfileCard({
   }
 
   return (
-    <Card className="flex flex-col">
-      <CardHeader>
-        <CardTitle className="flex w-fit items-center gap-2 text-base">
-          Profile
-          <InfoTip
-            content="Your name, and the picture people see next to it."
-            docs="team.security"
+    <ProfileFrame>
+      <AvatarPicker
+        label="Change your picture"
+        hasImage={Boolean(user.avatarUrl?.startsWith("data:"))}
+        sources={{
+          choice,
+          letters: avatarInitials(user.name, user.username),
+          gravatar,
+        }}
+        onSave={(image) =>
+          gqlAction(
+            `mutation($image: String) { updateMyAvatar(image: $image) }`,
+            { image },
+          )
+        }
+        preview={
+          <UserAvatar
+            name={user.name}
+            username={user.username}
+            avatarUrl={user.avatarUrl}
+            size="3xl"
           />
-        </CardTitle>
-      </CardHeader>
-      <CardContent className="flex flex-1 flex-col gap-4">
-        <AvatarPicker
-          label="Change your picture"
-          hasImage={Boolean(user.avatarUrl?.startsWith("data:"))}
-          sources={{
-            choice,
-            letters: avatarInitials(user.name, user.username),
-            gravatar,
-          }}
-          onSave={(image) =>
-            gqlAction(
-              `mutation($image: String) { updateMyAvatar(image: $image) }`,
-              { image },
-            )
-          }
-          preview={
-            <UserAvatar
-              name={user.name}
-              username={user.username}
-              avatarUrl={user.avatarUrl}
-              size="3xl"
-            />
-          }
-        >
-          <div className="min-w-0">
-            <p className="truncate text-base font-medium">{user.name}</p>
-            <p className="mt-1 truncate text-sm text-muted-foreground">
-              @{user.username}
-            </p>
-            <div className="mt-2 flex flex-wrap items-center gap-1.5">
-              {user.isInstanceAdmin && (
-                <Badge variant="secondary" className="gap-1 px-1.5 py-0">
-                  <ShieldCheck className="size-3" />
-                  Instance admin
-                </Badge>
-              )}
-              <Badge
-                variant={user.twoFactorEnabled ? "success" : "warning"}
-                className="gap-1 px-1.5 py-0"
-              >
-                <KeyRound className="size-3" />
-                {user.twoFactorEnabled ? "2FA on" : "2FA off"}
+        }
+      >
+        <div className="min-w-0">
+          <p className="truncate text-base font-medium">{user.name}</p>
+          <p className="mt-1 truncate text-sm text-muted-foreground">
+            @{user.username}
+          </p>
+          <div className="mt-2 flex flex-wrap items-center gap-1.5">
+            {user.isInstanceAdmin && (
+              <Badge variant="secondary" className="gap-1 px-1.5 py-0">
+                <ShieldCheck className="size-3" />
+                Instance admin
               </Badge>
-            </div>
+            )}
+            <Badge
+              variant={user.twoFactorEnabled ? "success" : "warning"}
+              className="gap-1 px-1.5 py-0"
+            >
+              <KeyRound className="size-3" />
+              {user.twoFactorEnabled ? "2FA on" : "2FA off"}
+            </Badge>
           </div>
-        </AvatarPicker>
-        <form className="mt-auto space-y-4" onSubmit={save}>
-          <div className="grid gap-4 sm:grid-cols-2">
-            <div className="space-y-2">
-              <Label htmlFor="acct-name">Display name</Label>
+        </div>
+      </AvatarPicker>
+      <form className="mt-auto space-y-4" onSubmit={save}>
+        <div className="grid gap-4 sm:grid-cols-2">
+          <div className="space-y-2">
+            <Label htmlFor="acct-name">Display name</Label>
+            <Input
+              id="acct-name"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+            />
+          </div>
+          <div className="space-y-2">
+            <HandleLabel htmlFor="acct-handle" />
+            <div className="relative">
+              <span className="pointer-events-none absolute top-1/2 left-3 -translate-y-1/2 font-mono text-sm text-muted-foreground">
+                @
+              </span>
               <Input
-                id="acct-name"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
+                id="acct-handle"
+                value={handle}
+                autoCapitalize="none"
+                autoCorrect="off"
+                spellCheck={false}
+                className="pl-7 font-mono text-sm"
+                onChange={(e) =>
+                  setHandle(
+                    e.target.value.toLowerCase().replace(/[^a-z0-9_-]/g, "-"),
+                  )
+                }
               />
             </div>
-            <div className="space-y-2">
-              <FieldLabel
-                htmlFor="acct-handle"
-                info="Your public handle across the instance. Lowercase letters, numbers, - and _."
-                docs="team.security"
-              >
-                Handle
-              </FieldLabel>
-              <div className="relative">
-                <span className="pointer-events-none absolute top-1/2 left-3 -translate-y-1/2 font-mono text-sm text-muted-foreground">
-                  @
-                </span>
-                <Input
-                  id="acct-handle"
-                  value={handle}
-                  autoCapitalize="none"
-                  autoCorrect="off"
-                  spellCheck={false}
-                  className="pl-7 font-mono text-sm"
-                  onChange={(e) =>
-                    setHandle(
-                      e.target.value.toLowerCase().replace(/[^a-z0-9_-]/g, "-"),
-                    )
-                  }
-                />
-              </div>
-            </div>
           </div>
-          <div className="flex justify-end">
-            <Button type="submit" size="sm" disabled={pending || !canSave}>
-              <PendingLabel pending={pending}>Save</PendingLabel>
-            </Button>
-          </div>
-        </form>
-      </CardContent>
-    </Card>
+        </div>
+        <div className="flex justify-end">
+          <Button type="submit" size="sm" disabled={pending || !canSave}>
+            <PendingLabel pending={pending}>Save</PendingLabel>
+          </Button>
+        </div>
+      </form>
+    </ProfileFrame>
   );
 }
 
@@ -238,50 +222,39 @@ function EmailCard({ user }: { user: PublicUser }) {
   }
 
   return (
-    <Card className="flex flex-col">
-      <CardHeader>
-        <CardTitle className="flex w-fit items-center gap-2 text-base">
-          Email
-          <InfoTip
-            content="Where sign-in alerts and notifications go. Changing it needs your current password."
-            docs="team.security"
+    <EmailFrame>
+      <form className="flex flex-1 flex-col gap-4" onSubmit={save}>
+        <div className="space-y-2">
+          <Label htmlFor="acct-email">Email</Label>
+          <Input
+            id="acct-email"
+            type="email"
+            autoComplete="email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
           />
-        </CardTitle>
-      </CardHeader>
-      <CardContent className="flex flex-1 flex-col">
-        <form className="flex flex-1 flex-col gap-4" onSubmit={save}>
-          <div className="space-y-2">
-            <Label htmlFor="acct-email">Email</Label>
-            <Input
-              id="acct-email"
-              type="email"
-              autoComplete="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-            />
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="acct-email-pw">Current password</Label>
-            <RevealInput
-              id="acct-email-pw"
-              autoComplete="current-password"
-              placeholder="The one you sign in with"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-            />
-          </div>
-          <div className="mt-auto flex justify-end">
-            <Button
-              type="submit"
-              size="sm"
-              disabled={pending || !dirty || !password}
-            >
-              <PendingLabel pending={pending}>Update email</PendingLabel>
-            </Button>
-          </div>
-        </form>
-      </CardContent>
-    </Card>
+        </div>
+        <div className="space-y-2">
+          <Label htmlFor="acct-email-pw">Current password</Label>
+          <RevealInput
+            id="acct-email-pw"
+            autoComplete="current-password"
+            placeholder="The one you sign in with"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+          />
+        </div>
+        <div className="mt-auto flex justify-end">
+          <Button
+            type="submit"
+            size="sm"
+            disabled={pending || !dirty || !password}
+          >
+            <PendingLabel pending={pending}>Update email</PendingLabel>
+          </Button>
+        </div>
+      </form>
+    </EmailFrame>
   );
 }
 
@@ -313,6 +286,21 @@ function SecurityCard({
     },
   ];
 
+  return <SecurityShortcuts shortcuts={shortcuts} />;
+}
+
+const SHORTCUTS = [
+  { icon: KeyRound, label: "Password", status: "Change it here" },
+  { icon: ShieldCheck, label: "Two-factor" },
+  { icon: Fingerprint, label: "Passkeys" },
+  { icon: MonitorSmartphone, label: "Sessions" },
+];
+
+function SecurityShortcuts({
+  shortcuts,
+}: {
+  shortcuts: { icon: typeof KeyRound; label: string; status?: string }[];
+}) {
   return (
     <Card>
       <CardHeader>
@@ -339,7 +327,7 @@ function SecurityCard({
               <div className="min-w-0 flex-1">
                 <p className="truncate text-sm font-medium">{s.label}</p>
                 <p className="mt-1 truncate text-xs text-muted-foreground">
-                  {s.status}
+                  {s.status ?? <Bone>Loading</Bone>}
                 </p>
               </div>
               <ChevronRight className="size-4 shrink-0 text-muted-foreground" />
@@ -348,5 +336,129 @@ function SecurityCard({
         </div>
       </CardContent>
     </Card>
+  );
+}
+
+function ProfileFrame({ children }: { children: React.ReactNode }) {
+  return (
+    <Card className="flex flex-col">
+      <CardHeader>
+        <CardTitle className="flex w-fit items-center gap-2 text-base">
+          Profile
+          <InfoTip
+            content="Your name, and the picture people see next to it."
+            docs="team.security"
+          />
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="flex flex-1 flex-col gap-4">
+        {children}
+      </CardContent>
+    </Card>
+  );
+}
+
+function EmailFrame({ children }: { children: React.ReactNode }) {
+  return (
+    <Card className="flex flex-col">
+      <CardHeader>
+        <CardTitle className="flex w-fit items-center gap-2 text-base">
+          Email
+          <InfoTip
+            content="Where sign-in alerts and notifications go. Changing it needs your current password."
+            docs="team.security"
+          />
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="flex flex-1 flex-col">{children}</CardContent>
+    </Card>
+  );
+}
+
+function HandleLabel({ htmlFor }: { htmlFor?: string }) {
+  return (
+    <FieldLabel
+      htmlFor={htmlFor}
+      info="Your public handle across the instance. Lowercase letters, numbers, - and _."
+      docs="team.security"
+    >
+      Handle
+    </FieldLabel>
+  );
+}
+
+export function AccountPanelSkeleton() {
+  return (
+    <div className="space-y-4">
+      <div className="grid gap-4 lg:grid-cols-2">
+        <ProfileFrame>
+          <div className="grid grid-cols-[auto_1fr] items-center gap-x-4 gap-y-1.5">
+            <Skeleton className="col-start-1 row-start-1 size-16 rounded-full" />
+            <div className="col-start-2 row-start-1 min-w-0">
+              <div className="min-w-0">
+                <p className="truncate text-base font-medium">
+                  <Bone>Your name</Bone>
+                </p>
+                <p className="mt-1 truncate text-sm text-muted-foreground">
+                  <Bone>@handle</Bone>
+                </p>
+                <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                  <Bone box>
+                    <Badge className="gap-1 px-1.5 py-0">
+                      <KeyRound className="size-3" />
+                      2FA on
+                    </Badge>
+                  </Bone>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div className="mt-auto space-y-4">
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div className="space-y-2">
+                <Label>Display name</Label>
+                <InputBone value="Your name" />
+              </div>
+              <div className="space-y-2">
+                <HandleLabel />
+                <div className="relative">
+                  <span className="pointer-events-none absolute top-1/2 left-3 z-10 -translate-y-1/2 font-mono text-sm text-muted-foreground">
+                    @
+                  </span>
+                  <InputBone value="handle" className="pl-7 font-mono" />
+                </div>
+              </div>
+            </div>
+            <div className="flex justify-end">
+              <Button size="sm" disabled>
+                <PendingLabel pending={false}>Save</PendingLabel>
+              </Button>
+            </div>
+          </div>
+        </ProfileFrame>
+        <EmailFrame>
+          <div className="flex flex-1 flex-col gap-4">
+            <div className="space-y-2">
+              <Label>Email</Label>
+              <InputBone value="name@example.com" />
+            </div>
+            <div className="space-y-2">
+              <Label>Current password</Label>
+              <RevealInput
+                readOnly
+                tabIndex={-1}
+                placeholder="The one you sign in with"
+              />
+            </div>
+            <div className="mt-auto flex justify-end">
+              <Button size="sm" disabled>
+                <PendingLabel pending={false}>Update email</PendingLabel>
+              </Button>
+            </div>
+          </div>
+        </EmailFrame>
+      </div>
+      <SecurityShortcuts shortcuts={SHORTCUTS} />
+    </div>
   );
 }

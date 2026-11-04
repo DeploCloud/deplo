@@ -1,5 +1,6 @@
 "use client";
 
+import { Bone } from "@/components/ui/skeleton";
 import * as React from "react";
 import Link from "@/components/ui/link";
 import { useRouter } from "@/lib/nav";
@@ -113,6 +114,7 @@ export function AllAppsEnvManager({
   projects,
   environments,
   teams,
+  loading = false,
 }: {
   groups: AppEnvGroup[];
   sharedByApp: Record<string, AppliedSharedVarDTO[]>;
@@ -121,6 +123,7 @@ export function AllAppsEnvManager({
   projects: ProjectRef[];
   environments: TeamEnvironment[];
   teams: TeamRef[];
+  loading?: boolean;
 }) {
   const [dialog, setDialog] = React.useState<{
     appId: string;
@@ -319,7 +322,11 @@ export function AllAppsEnvManager({
   }
 
   return (
-    <div className="space-y-4">
+    <div
+      className="space-y-4"
+      inert={loading || undefined}
+      aria-busy={loading || undefined}
+    >
       <EnvFilters
         state={filters}
         onChange={setFilters}
@@ -373,6 +380,7 @@ export function AllAppsEnvManager({
             <section key={section.id} className="group space-y-3">
               <ProjectSectionHeader
                 section={section}
+                loading={loading}
                 open={open}
                 onToggle={() => projectCollapse.toggle(section.id)}
               />
@@ -400,6 +408,7 @@ export function AllAppsEnvManager({
                         if (full) setSharedEditing(full);
                       }}
                       editableSharedIds={editableSharedIds}
+                      loading={loading}
                     />
                   ))}
                 </div>
@@ -481,10 +490,12 @@ function ProjectSectionHeader({
   section,
   open,
   onToggle,
+  loading,
 }: {
   section: ProjectBucket<EnvRow>;
   open: boolean;
   onToggle: () => void;
+  loading: boolean;
 }) {
   const top = section.id === TOP_LEVEL;
   const color = section.color;
@@ -521,25 +532,146 @@ function ProjectSectionHeader({
             !open && "-rotate-90",
           )}
         />
-        <span
-          className={cn(
-            "flex size-8 shrink-0 items-center justify-center rounded-md",
-            color ? "" : "bg-secondary text-muted-foreground",
-          )}
-          style={tileStyle}
-        >
-          <Glyph className="size-4" />
-        </span>
+        <Bone box loading={loading} className="shrink-0">
+          <span
+            className={cn(
+              "flex size-8 shrink-0 items-center justify-center rounded-md",
+              color ? "" : "bg-secondary text-muted-foreground",
+            )}
+            style={tileStyle}
+          >
+            <Glyph className="size-4" />
+          </span>
+        </Bone>
         <span className="min-w-0 flex-1">
           <span className="block truncate text-sm font-medium">
-            {section.name}
+            <Bone loading={loading}>{section.name}</Bone>
           </span>
           <span className="mt-1 block truncate text-xs text-muted-foreground">
-            {plural(section.apps.length, "app")} ·{" "}
-            {plural(section.rowCount, "variable")}
+            <Bone loading={loading}>
+              {plural(section.apps.length, "app")} ·{" "}
+              {plural(section.rowCount, "variable")}
+            </Bone>
           </span>
         </span>
       </button>
     </div>
+  );
+}
+
+// Relative, so "Last modified" reads like a real row.
+const daysAgo = (days: number) =>
+  new Date(Date.now() - days * 86_400_000).toISOString();
+
+const PLACEHOLDER_AUTHOR = {
+  id: "loading-author",
+  name: "Someone",
+  username: "lisadev",
+  avatarColor: "",
+  avatarUrl: null,
+};
+
+function placeholderGroup(
+  id: string,
+  projectId: string | null,
+  updatedAt: string,
+  keys: string[],
+): AppEnvGroup {
+  return {
+    app: {
+      id,
+      name: "app-name",
+      slug: id,
+      projectId,
+      environmentId: projectId ? "loading-env" : null,
+      logo: null,
+      primaryDomain: "app-name-quiet-falcon-0000.example.io",
+    },
+    vars: keys.map((key, i) => ({
+      id: `${id}-${i}`,
+      key,
+      value: "",
+      masked: true,
+      targets: [],
+      type: i % 2 ? "secret" : "plain",
+      connected: false,
+      database: null,
+      detectedDatabase: null,
+      createdBy: PLACEHOLDER_AUTHOR,
+      updatedBy: PLACEHOLDER_AUTHOR,
+      createdAt: updatedAt,
+      updatedAt,
+    })),
+  };
+}
+
+// Mixed types and one shared link, so the filter bar offers what a real team's does.
+const PLACEHOLDER_GROUPS = [
+  placeholderGroup("loading-a", "loading-project", daysAgo(60), [
+    "GENERIC_TIMEZONE",
+    "SERVICE_HOST",
+    "SERVICE_PORT",
+  ]),
+  placeholderGroup("loading-b", "loading-project", daysAgo(61), [
+    "SENTRY_DSN",
+    "APP_SECRET",
+    "DATABASE_TYPE",
+    "DATABASE_URL",
+  ]),
+  placeholderGroup("loading-c", null, daysAgo(62), [
+    "SESSION_LIFETIME",
+    "BASE_URL",
+    "TIMEZONE",
+  ]),
+];
+const PLACEHOLDER_SHARED: Record<string, AppliedSharedVarDTO[]> = {
+  "loading-b": [
+    {
+      appId: "loading-b",
+      id: "loading-shared",
+      key: "SENTRY_DSN",
+      value: "",
+      masked: false,
+      targets: [],
+      updatedBy: PLACEHOLDER_AUTHOR,
+      updatedAt: daysAgo(60.9),
+    },
+  ],
+};
+const PLACEHOLDER_ENVIRONMENTS: TeamEnvironment[] = [
+  {
+    id: "loading-env",
+    name: "Production",
+    slug: "production",
+    kind: "production",
+    projectId: "loading-project",
+    projectName: "Project",
+    projectColor: null,
+  },
+];
+const PLACEHOLDER_PROJECTS = [
+  {
+    id: "loading-project",
+    name: "Project",
+    slug: "project",
+    color: null,
+    appCount: 2,
+    environmentCount: 1,
+  },
+];
+
+/** The All tab while it loads: the real filters and cards over placeholder rows. */
+export function AllAppsEnvSkeleton() {
+  return (
+    <AllAppsEnvManager
+      loading
+      groups={PLACEHOLDER_GROUPS}
+      sharedByApp={PLACEHOLDER_SHARED}
+      sharedVars={[]}
+      apps={PLACEHOLDER_GROUPS.map((g) => g.app)}
+      projects={PLACEHOLDER_PROJECTS}
+      environments={PLACEHOLDER_ENVIRONMENTS}
+      teams={[]}
+    />
   );
 }

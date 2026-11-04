@@ -4,6 +4,9 @@ import * as React from "react";
 import { useRouter } from "@/lib/nav";
 import { toast } from "sonner";
 import { Input } from "@/components/ui/input";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { InfoTip } from "@/components/ui/info-tip";
+import { Bone, InputBone, Skeleton } from "@/components/ui/skeleton";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { TeamAvatar } from "@/components/shared/user-avatar";
@@ -18,10 +21,12 @@ export function TeamForm({
   name: initialName,
   avatarUrl,
   canManage = true,
+  loading = false,
 }: {
   name: string;
   avatarUrl: string | null;
   canManage?: boolean;
+  loading?: boolean;
 }) {
   const router = useRouter();
   const [, startTransition] = React.useTransition();
@@ -49,7 +54,9 @@ export function TeamForm({
   return (
     <div className="flex flex-1 flex-col gap-3">
       <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-2.5 py-2">
-        {canManage ? (
+        {loading ? (
+          <Skeleton className="size-20 rounded-full" />
+        ) : canManage ? (
           <div className="w-fit">
             <AvatarPicker
               label="Change the team picture"
@@ -72,21 +79,29 @@ export function TeamForm({
           teamMark
         )}
         <p className="text-center text-xs text-muted-foreground">
-          {canManage
-            ? "Click or drop a PNG, JPEG or WebP."
-            : "Shown before the team's name everywhere it appears."}
+          <Bone loading={loading}>
+            {canManage
+              ? "Click or drop a PNG, JPEG or WebP."
+              : "Shown before the team's name everywhere it appears."}
+          </Bone>
         </p>
       </div>
       <div className="space-y-2 rounded-lg border border-border p-3">
         <Label htmlFor="team-name">Team name</Label>
         <div className="flex gap-2">
-          <Input
-            id="team-name"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            disabled={!canManage}
-            className="min-w-0 flex-1"
-          />
+          {loading ? (
+            <div className="min-w-0 flex-1">
+              <InputBone value="Team name" />
+            </div>
+          ) : (
+            <Input
+              id="team-name"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              disabled={!canManage}
+              className="min-w-0 flex-1"
+            />
+          )}
           {canManage && (
             <Button onClick={save} disabled={!dirty || !name.trim()}>
               Save changes
@@ -95,5 +110,21 @@ export function TeamForm({
         </div>
       </div>
     </div>
+  );
+}
+
+export function TeamCard(props: React.ComponentProps<typeof TeamForm>) {
+  return (
+    <Card className="flex flex-col">
+      <CardHeader>
+        <CardTitle className="flex w-fit items-center gap-2 text-base">
+          Team
+          <InfoTip content="Your workspace details." docs="team.overview" />
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="flex flex-1 flex-col">
+        <TeamForm {...props} />
+      </CardContent>
+    </Card>
   );
 }

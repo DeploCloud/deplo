@@ -7,6 +7,7 @@ import { useRouter } from "@/lib/nav";
 import Link from "@/components/ui/link";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Bone, Skeleton } from "@/components/ui/skeleton";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Dialog,
@@ -71,15 +72,14 @@ export function DatabaseConnectedApps({
 
   return (
     <Card>
-      <CardHeader className="flex-row items-center justify-between space-y-0">
-        <CardTitle className="text-base">Connected apps</CardTitle>
+      <ConnectedAppsHeader>
         {apps.length > 0 && (
           <Button size="sm" variant="outline" onClick={() => setOpen(true)}>
             <Plus className="size-4" />
             Connect app
           </Button>
         )}
-      </CardHeader>
+      </ConnectedAppsHeader>
       <CardContent>
         {byApp.size === 0 ? (
           <p className="text-sm text-muted-foreground">
@@ -206,6 +206,50 @@ export function DatabaseConnectedApps({
           </AnimatedHeight>
         </DialogContent>
       </Dialog>
+    </Card>
+  );
+}
+
+function ConnectedAppsHeader({ children }: { children: React.ReactNode }) {
+  return (
+    <CardHeader className="flex-row items-center justify-between space-y-0">
+      <CardTitle className="text-base">Connected apps</CardTitle>
+      {children}
+    </CardHeader>
+  );
+}
+
+export function DatabaseConnectedAppsSkeleton() {
+  return (
+    <Card>
+      <ConnectedAppsHeader>
+        <Bone box>
+          <Button size="sm" variant="outline" disabled>
+            <Plus className="size-4" />
+            Connect app
+          </Button>
+        </Bone>
+      </ConnectedAppsHeader>
+      <CardContent>
+        <div className="divide-y divide-border overflow-hidden rounded-lg border border-border">
+          <div className="flex items-center gap-3 px-3 py-2.5">
+            <Skeleton className="size-7 shrink-0 rounded-md" />
+            <div className="min-w-0 flex-1">
+              <span className="block truncate text-sm font-medium">
+                <Bone>app-name</Bone>
+              </span>
+              <p className="mt-1 truncate font-mono text-xs text-muted-foreground">
+                <Bone>DATABASE_URL</Bone>
+              </p>
+            </div>
+            <Bone box>
+              <Button variant="ghost" size="icon-sm" disabled>
+                <Unlink className="size-4" />
+              </Button>
+            </Bone>
+          </div>
+        </div>
+      </CardContent>
     </Card>
   );
 }

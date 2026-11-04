@@ -1,5 +1,9 @@
 "use client";
 
+import {
+  LoadingText,
+  useSettingsLoading,
+} from "@/components/apps/settings/settings-loading";
 import { Server, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { SimpleTooltip } from "@/components/ui/tooltip";
@@ -69,8 +73,9 @@ export function SizeTiles({
   hostCap: HostInfo | null;
   onSelect: (size: ResourceSize | null) => void;
 }) {
-  const uncapped = form.memoryMb === "" && form.cpuCores === "";
-  const activePreset = activeResourcePreset(form);
+  const loading = useSettingsLoading();
+  const uncapped = !loading && form.memoryMb === "" && form.cpuCores === "";
+  const activePreset = loading ? null : activeResourcePreset(form);
   return (
     <div
       role="radiogroup"
@@ -130,9 +135,13 @@ export function HostSummaryCell({
       {hostCap && (
         <div className="flex items-center gap-2 text-sm">
           <Server className="size-4 shrink-0 text-muted-foreground" />
-          <span className="truncate font-medium">{hostCap.name}</span>
+          <span className="truncate font-medium">
+            <LoadingText>{hostCap.name}</LoadingText>
+          </span>
           <span className="shrink-0 text-muted-foreground">
-            {fmtMemMb(hostCap.memoryMb)} · {fmtCpu(hostCap.cpuCores)}
+            <LoadingText>
+              {fmtMemMb(hostCap.memoryMb)} · {fmtCpu(hostCap.cpuCores)}
+            </LoadingText>
           </span>
         </div>
       )}

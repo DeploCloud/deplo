@@ -71,7 +71,7 @@ export default async function MemberPage(
       </Link>
       <MemberDetailTabs
         activity={
-          <Suspense fallback={<ScopedActivitySkeleton />}>
+          <Suspense fallback={<ScopedActivitySkeleton pinnedActor />}>
             <MemberActivity
               userId={id}
               username={member.username}

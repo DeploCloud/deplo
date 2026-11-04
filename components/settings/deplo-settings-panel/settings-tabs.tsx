@@ -19,8 +19,12 @@ import {
 } from "@/components/ui/tabs";
 import {
   DeploUpdatesTab,
+  UpdatesSkeleton,
   type FleetSummary,
 } from "@/components/settings/deplo-updates-tab";
+import { PageHeader } from "@/components/shared/page-header";
+import { Badge } from "@/components/ui/badge";
+import Link from "@/components/ui/link";
 import {
   DeploDiagnosticsCard,
   type DiagnosticHost,
@@ -36,7 +40,11 @@ import {
   type OwnerCandidate,
 } from "@/components/settings/instance-owner-card";
 import type { InstanceSettings } from "@/lib/data/instance-settings/settings-store";
-import { PanelAddressCard, SOURCE_LABEL } from "./panel-address-card";
+import {
+  PanelAddressCard,
+  PanelAddressCardSkeleton,
+  SOURCE_LABEL,
+} from "./panel-address-card";
 import { PanelBackupAddressCard } from "./panel-backup-address-card";
 import { PanelHttpCard } from "./panel-http-card";
 import { PanelTunnelCard } from "./panel-tunnel-card";
@@ -71,10 +79,7 @@ export function DeploSettingsPanel({
 }) {
   const [canary, setCanary] = React.useState(canarySeed);
   const params = useSearchParams();
-  const requested = params.get("tab");
-  const active: TabId = (TABS as readonly string[]).includes(requested ?? "")
-    ? (requested as TabId)
-    : "general";
+  const active = tabOf(params.get("tab"));
 
   function selectTab(tab: string) {
     const next = new URLSearchParams(params.toString());
@@ -91,24 +96,7 @@ export function DeploSettingsPanel({
 
   return (
     <Tabs value={active} onValueChange={selectTab} className="space-y-3">
-      <UnderlineTabsList>
-        <UnderlineTabsTrigger value="general">
-          <Globe className="size-4" />
-          General
-        </UnderlineTabsTrigger>
-        <UnderlineTabsTrigger value="updates">
-          <CircleFadingArrowUp className="size-4" />
-          Updates
-        </UnderlineTabsTrigger>
-        <UnderlineTabsTrigger value="advanced">
-          <SlidersHorizontal className="size-4" />
-          Advanced
-        </UnderlineTabsTrigger>
-        <UnderlineTabsTrigger value="about">
-          <Info className="size-4" />
-          About
-        </UnderlineTabsTrigger>
-      </UnderlineTabsList>
+      <TabBar />
 
       <TabsContent value="general">
         <div className="grid gap-4 lg:grid-cols-2">
@@ -171,6 +159,90 @@ export function DeploSettingsPanel({
       </TabsContent>
       <TabsContent value="about">
         <DeploAboutTab notices={notices} />
+      </TabsContent>
+    </Tabs>
+  );
+}
+
+function tabOf(requested: string | null): TabId {
+  return (TABS as readonly string[]).includes(requested ?? "")
+    ? (requested as TabId)
+    : "general";
+}
+
+function TabBar() {
+  return (
+    <UnderlineTabsList>
+      <UnderlineTabsTrigger value="general">
+        <Globe className="size-4" />
+        General
+      </UnderlineTabsTrigger>
+      <UnderlineTabsTrigger value="updates">
+        <CircleFadingArrowUp className="size-4" />
+        Updates
+      </UnderlineTabsTrigger>
+      <UnderlineTabsTrigger value="advanced">
+        <SlidersHorizontal className="size-4" />
+        Advanced
+      </UnderlineTabsTrigger>
+      <UnderlineTabsTrigger value="about">
+        <Info className="size-4" />
+        About
+      </UnderlineTabsTrigger>
+    </UnderlineTabsList>
+  );
+}
+
+export function DeploSettingsHeader({ version }: { version: string }) {
+  return (
+    <PageHeader
+      title="Deplo"
+      description={
+        <>
+          <span className="font-mono">v{version}</span>
+          {version.startsWith("0.") ? (
+            <Badge variant="secondary" className="ml-2 align-middle">
+              Beta
+            </Badge>
+          ) : null}
+          <Link
+            href="/settings/deplo?tab=about"
+            className="ml-1.5 font-medium text-foreground underline underline-offset-2 hover:no-underline"
+          >
+            Learn more
+          </Link>
+        </>
+      }
+    />
+  );
+}
+
+// Advanced is the one tab left blank until it loads: it is only ever opened from inside this page.
+export function DeploSettingsPanelSkeleton() {
+  const active = tabOf(useSearchParams().get("tab"));
+  return (
+    <Tabs value={active} className="space-y-3">
+      <TabBar />
+      <TabsContent value="general">
+        <div className="grid gap-4 lg:grid-cols-2">
+          <PanelAddressCardSkeleton />
+          <CertificatesCard loading />
+          <div className="lg:col-span-2">
+            <InstanceOwnerCard
+              ownerName={null}
+              viewerIsOwner={false}
+              viewerTwoFactorEnabled={false}
+              candidates={[]}
+              loading
+            />
+          </div>
+        </div>
+      </TabsContent>
+      <TabsContent value="updates">
+        <UpdatesSkeleton />
+      </TabsContent>
+      <TabsContent value="about">
+        <DeploAboutTab notices={[]} loading />
       </TabsContent>
     </Tabs>
   );

@@ -13,6 +13,7 @@ import {
 import { DeploymentCreator } from "@/components/apps/deployment-creator";
 import { AppLogo } from "@/components/shared/project-logo";
 import { Badge } from "@/components/ui/badge";
+import { Bone } from "@/components/ui/skeleton";
 import { Checkbox } from "@/components/ui/checkbox";
 import { TableCell, TableRow } from "@/components/ui/table";
 import { StatusBadge } from "@/components/shared/status-badge";
@@ -91,6 +92,7 @@ export function DeploymentTableRow({
   onToggle,
   onRemoved,
   onRestored,
+  loading = false,
 }: {
   d: DeploymentRow;
   showApp: boolean;
@@ -103,6 +105,7 @@ export function DeploymentTableRow({
   onToggle: (checked: boolean) => void;
   onRemoved: () => void;
   onRestored: () => void;
+  loading?: boolean;
 }) {
   const inProgress = IN_PROGRESS.has(d.status);
   return (
@@ -127,12 +130,14 @@ export function DeploymentTableRow({
             }
           >
             <span className="inline-flex">
-              <Checkbox
-                checked={checked}
-                disabled={inProgress || d.appMigrating}
-                onCheckedChange={(v) => onToggle(v === true)}
-                aria-label={`Select deployment ${d.commitSha}`}
-              />
+              <Bone box loading={loading} className="rounded-sm">
+                <Checkbox
+                  checked={checked}
+                  disabled={inProgress || d.appMigrating}
+                  onCheckedChange={(v) => onToggle(v === true)}
+                  aria-label={`Select deployment ${d.commitSha}`}
+                />
+              </Bone>
             </span>
           </SimpleTooltip>
         </TableCell>
@@ -143,15 +148,17 @@ export function DeploymentTableRow({
           href={`/apps/${d.appSlug}/deployments/${d.id}`}
           className="block truncate font-medium text-foreground hover:underline focus-visible:underline"
         >
-          {d.commitMessage}
+          <Bone loading={loading}>{d.commitMessage}</Bone>
         </Link>
         <span className="flex items-center gap-1.5">
-          <CommitLink
-            sha={d.commitSha}
-            url={d.commitUrl}
-            signature={d.commitSignature}
-            className="font-mono text-xs text-muted-foreground"
-          />
+          <Bone box loading={loading}>
+            <CommitLink
+              sha={d.commitSha}
+              url={d.commitUrl}
+              signature={d.commitSignature}
+              className="font-mono text-xs text-muted-foreground"
+            />
+          </Bone>
           {d.prNumber ? (
             <SimpleTooltip content={`Built for pull request #${d.prNumber}`}>
               <Badge
@@ -184,8 +191,12 @@ export function DeploymentTableRow({
               href={`/apps/${d.appSlug}/deployments/${d.id}`}
               className="flex cursor-pointer items-center gap-2 font-medium text-foreground hover:underline"
             >
-              <AppLogo logo={d.appLogo ?? null} size={20} />
-              <span className="truncate">{d.serviceName}</span>
+              <Bone box loading={loading} className="shrink-0">
+                <AppLogo logo={d.appLogo ?? null} size={20} />
+              </Bone>
+              <span className="truncate">
+                <Bone loading={loading}>{d.serviceName}</Bone>
+              </span>
             </Link>
           </SimpleTooltip>
         </TableCell>
@@ -203,7 +214,9 @@ export function DeploymentTableRow({
             >
               <span className="flex items-center gap-1.5 text-muted-foreground">
                 {d.buildServerName && <Hammer className="size-3.5 shrink-0" />}
-                <span className="truncate">{d.serverName}</span>
+                <span className="truncate">
+                  <Bone loading={loading}>{d.serverName}</Bone>
+                </span>
               </span>
             </SimpleTooltip>
           ) : (
@@ -213,52 +226,60 @@ export function DeploymentTableRow({
       )}
 
       <TableCell className="max-md:order-2">
-        <StatusBadge status={liveStatus} />
+        <Bone box loading={loading}>
+          <StatusBadge status={liveStatus} />
+        </Bone>
       </TableCell>
 
       <TableCell className="max-md:hidden">
         <span className="flex items-center gap-1.5 text-muted-foreground">
           <GitBranch className="size-3.5 shrink-0" />
-          <span className="truncate font-mono text-xs">{d.branch}</span>
+          <span className="truncate font-mono text-xs">
+            <Bone loading={loading}>{d.branch}</Bone>
+          </span>
         </span>
       </TableCell>
 
       <TableCell className="max-md:order-4 max-md:text-sm max-md:text-muted-foreground">
         <p className="whitespace-nowrap text-foreground max-md:text-muted-foreground">
-          {timeAgo(d.createdAt)}
+          <Bone loading={loading}>{timeAgo(d.createdAt)}</Bone>
         </p>
         <p className="flex items-center gap-1.5 truncate text-xs text-muted-foreground max-md:hidden">
           <span>by</span>
-          <DeploymentCreator
-            creator={d.creator}
-            creatorUser={d.creatorUser}
-            creatorProvider={d.creatorProvider}
-            creatorUrl={d.creatorUrl}
-            size="xs"
-          />
+          <Bone box loading={loading}>
+            <DeploymentCreator
+              creator={d.creator}
+              creatorUser={d.creatorUser}
+              creatorProvider={d.creatorProvider}
+              creatorUrl={d.creatorUrl}
+              size="xs"
+            />
+          </Bone>
         </p>
       </TableCell>
 
       <TableCell className="text-right max-md:order-5 max-md:ml-auto">
-        <DeploymentActions
-          id={d.id}
-          appId={d.appId}
-          appSlug={d.appSlug}
-          url={d.url}
-          status={d.status}
-          pullRequestUrl={d.pullRequestUrl}
-          isPreview={d.prNumber != null}
-          previewId={d.previewId}
-          canDelete={canManage && !d.appMigrating}
-          canDeploy={canManage && !d.appMigrating}
-          canRollback={d.canRollback && !d.appMigrating}
-          canRollbackApps={canRollbackApps}
-          rollbackRebuilds={d.rollbackRebuilds}
-          commitSha={d.commitSha}
-          commitMessage={d.commitMessage}
-          onRemoved={onRemoved}
-          onRestored={onRestored}
-        />
+        <Bone box loading={loading} className="w-full">
+          <DeploymentActions
+            id={d.id}
+            appId={d.appId}
+            appSlug={d.appSlug}
+            url={d.url}
+            status={d.status}
+            pullRequestUrl={d.pullRequestUrl}
+            isPreview={d.prNumber != null}
+            previewId={d.previewId}
+            canDelete={canManage && !d.appMigrating}
+            canDeploy={canManage && !d.appMigrating}
+            canRollback={d.canRollback && !d.appMigrating}
+            canRollbackApps={canRollbackApps}
+            rollbackRebuilds={d.rollbackRebuilds}
+            commitSha={d.commitSha}
+            commitMessage={d.commitMessage}
+            onRemoved={onRemoved}
+            onRestored={onRestored}
+          />
+        </Bone>
       </TableCell>
     </TableRow>
   );

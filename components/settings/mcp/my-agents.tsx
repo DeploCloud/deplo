@@ -5,6 +5,7 @@ import { Pencil, Trash2 } from "lucide-react";
 
 import Link from "@/components/ui/link";
 import { Button } from "@/components/ui/button";
+import { Bone } from "@/components/ui/skeleton";
 import { SimpleTooltip } from "@/components/ui/tooltip";
 import {
   Dialog,
@@ -25,6 +26,17 @@ import { AgentMark } from "./connect-wizard/agent-picker";
 import { RobotMark } from "./robot-mark";
 
 const OTHER = AGENTS.find((a) => a.id === "other")!;
+
+// Most visits come back to see what is connected, so the bone is the button.
+export function MyAgentsSkeleton() {
+  return (
+    <Bone box>
+      <Button variant="outline" size="sm" disabled aria-hidden>
+        <RobotMark />2 agents connected
+      </Button>
+    </Bone>
+  );
+}
 
 export function MyAgents({ agents }: { agents: MyMcpAgentDTO[] }) {
   const router = useRouter();

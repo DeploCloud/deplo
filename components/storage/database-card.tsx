@@ -18,6 +18,8 @@ import {
   ArrowLeftRight,
 } from "lucide-react";
 import { Card } from "@/components/ui/card";
+import { Bone } from "@/components/ui/skeleton";
+import { StatusDot } from "@/components/shared/status-badge";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -502,5 +504,67 @@ function CardActions({
         onDeleted={() => router.refresh()}
       />
     </div>
+  );
+}
+
+/** One database card while Storage loads, on the card's own frame. */
+export function DatabaseCardSkeleton() {
+  return (
+    <Card className="group relative flex flex-col gap-4 p-5">
+      <div className="pointer-events-none relative z-[1] flex flex-1 flex-col gap-4">
+        <div className="flex items-start justify-between gap-3">
+          <div className="flex min-w-0 flex-1 items-center gap-3">
+            <Bone box className="shrink-0">
+              <DatabaseLogo type="postgres" logo={null} size={36} />
+            </Bone>
+            <div className="min-w-0 flex-1">
+              <p className="truncate font-medium">
+                <Bone>database-name</Bone>
+              </p>
+              <p className="mt-1 truncate text-xs text-muted-foreground">
+                <Bone>PostgreSQL · v17</Bone>
+              </p>
+            </div>
+          </div>
+          <div className="pointer-events-auto relative z-10 flex items-center gap-1">
+            <Bone box className="rounded-full">
+              <StatusDot status="running" />
+            </Bone>
+            <div>
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                aria-label="Database menu"
+                disabled
+              >
+                <MoreHorizontal className="size-4" />
+              </Button>
+            </div>
+          </div>
+        </div>
+        <div className="rounded-lg border border-border bg-surface p-3">
+          <Bone box className="w-full">
+            <div className="pointer-events-auto relative z-10 w-full">
+              <DatabaseConnectionString
+                id=""
+                masked="postgres://user:••••@database-name:5432/db"
+                canReveal
+              />
+            </div>
+          </Bone>
+          <div className="mt-2 flex items-center gap-1.5 text-xs text-muted-foreground">
+            <ServerIcon className="size-3.5 shrink-0" />
+            <span className="min-w-0 truncate">
+              <Bone>server-name</Bone>
+            </span>
+            <span className="shrink-0 text-muted-foreground/40">·</span>
+            <Lock className="size-3.5 shrink-0" />
+            <span className="shrink-0">
+              <Bone>Internal</Bone>
+            </span>
+          </div>
+        </div>
+      </div>
+    </Card>
   );
 }

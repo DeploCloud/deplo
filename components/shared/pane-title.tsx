@@ -2,6 +2,7 @@
 
 import Link from "@/components/ui/link";
 import { SettingsShortcut } from "@/components/shared/settings-shortcut";
+import { Bone } from "@/components/ui/skeleton";
 
 export interface PaneTitle {
   label: string;
@@ -9,7 +10,13 @@ export interface PaneTitle {
   settingsHref?: string;
 }
 
-export function PaneTitleLink({ title }: { title?: PaneTitle | null }) {
+export function PaneTitleLink({
+  title,
+  loading = false,
+}: {
+  title?: PaneTitle | null;
+  loading?: boolean;
+}) {
   if (!title) return null;
   return (
     <>
@@ -18,7 +25,7 @@ export function PaneTitleLink({ title }: { title?: PaneTitle | null }) {
         title={`Open ${title.label}`}
         className="max-w-60 shrink-0 cursor-pointer truncate text-sm font-medium underline-offset-4 hover:underline"
       >
-        {title.label}
+        <Bone loading={loading}>{title.label}</Bone>
       </Link>
       {title.settingsHref && (
         <SettingsShortcut

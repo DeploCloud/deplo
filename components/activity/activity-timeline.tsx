@@ -1,4 +1,5 @@
 import * as React from "react";
+import { Bone, Skeleton } from "@/components/ui/skeleton";
 import Link from "@/components/ui/link";
 import { ChevronRight } from "lucide-react";
 
@@ -165,13 +166,19 @@ function ActivityMarker({
   item,
   size,
   showActor,
+  loading,
 }: {
   item: ActivityItem;
   size: "md" | "lg";
   showActor: boolean;
+  loading: boolean;
 }) {
   const box = size === "lg" ? "size-8" : "size-6";
   const rail = size === "lg" ? "ring-4 ring-background" : "";
+  if (loading)
+    return (
+      <Skeleton className={cn("relative shrink-0 rounded-full", rail, box)} />
+    );
   if (item.actorUser && showActor)
     return (
       <UserAvatar
@@ -204,6 +211,7 @@ export function ActivityRow({
   showMark = true,
   appLinks,
   databaseLinks,
+  loading = false,
 }: {
   item: ActivityItem;
   repeats?: string[];
@@ -212,6 +220,7 @@ export function ActivityRow({
   showMark?: boolean;
   appLinks?: AppLinks;
   databaseLinks?: DatabaseLinks;
+  loading?: boolean;
 }) {
   const times = repeats ?? [item.createdAt];
   const many = times.length > 1;
@@ -233,7 +242,9 @@ export function ActivityRow({
             className="font-medium text-foreground"
           />
         ) : (
-          <span className="font-medium text-foreground">{item.actor}</span>
+          <span className="font-medium text-foreground">
+            <Bone loading={loading}>{item.actor}</Bone>
+          </span>
         ))}
       <time
         dateTime={item.createdAt}
@@ -241,18 +252,25 @@ export function ActivityRow({
         className="text-xs text-muted-foreground"
         suppressHydrationWarning
       >
-        {timeAgoShort(item.createdAt)}
+        <Bone loading={loading}>{timeAgoShort(item.createdAt)}</Bone>
       </time>
       {(many || !stampAtEnd) && (
         <span className="text-xs text-muted-foreground">
-          · {many ? `${times.length} times` : stamp(item.createdAt)}
+          <Bone loading={loading}>
+            · {many ? `${times.length} times` : stamp(item.createdAt)}
+          </Bone>
         </span>
       )}
     </>
   );
   return (
     <li className="relative flex items-start gap-3">
-      <ActivityMarker item={item} size={size} showActor={showActor} />
+      <ActivityMarker
+        item={item}
+        size={size}
+        showActor={showActor}
+        loading={loading}
+      />
       <div className="min-w-0 flex-1">
         {many ? (
           <details open className="group">
@@ -282,13 +300,17 @@ export function ActivityRow({
             <p className={headerLine}>{header}</p>
             {stampAtEnd ? (
               <p className="mt-1 flex items-baseline justify-between gap-3 text-sm text-muted-foreground">
-                <span className="min-w-0">{sentence}</span>
+                <span className="min-w-0">
+                  <Bone loading={loading}>{sentence}</Bone>
+                </span>
                 <span className="shrink-0 text-xs">
-                  {stamp(item.createdAt)}
+                  <Bone loading={loading}>{stamp(item.createdAt)}</Bone>
                 </span>
               </p>
             ) : (
-              <p className="mt-1 text-sm text-muted-foreground">{sentence}</p>
+              <p className="mt-1 text-sm text-muted-foreground">
+                <Bone loading={loading}>{sentence}</Bone>
+              </p>
             )}
           </>
         )}
@@ -321,10 +343,12 @@ function MonthHeading({
   month,
   count,
   offset,
+  loading,
 }: {
   month: string;
   count?: number;
   offset: string;
+  loading: boolean;
 }) {
   return (
     <li
@@ -334,12 +358,14 @@ function MonthHeading({
       )}
     >
       <h2 className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
-        {monthLabel(month)}
-        {count != null && (
-          <span className="ml-1.5 normal-case">
-            · {count} {count === 1 ? "event" : "events"}
-          </span>
-        )}
+        <Bone loading={loading}>
+          {monthLabel(month)}
+          {count != null && (
+            <span className="ml-1.5 normal-case">
+              · {count} {count === 1 ? "event" : "events"}
+            </span>
+          )}
+        </Bone>
       </h2>
     </li>
   );
@@ -356,6 +382,7 @@ export function ActivityTimeline({
   appLinks,
   databaseLinks,
   children,
+  loading = false,
 }: {
   items: ActivityItem[];
   variant?: "full" | "compact";
@@ -365,6 +392,7 @@ export function ActivityTimeline({
   appLinks?: AppLinks;
   databaseLinks?: DatabaseLinks;
   children?: React.ReactNode;
+  loading?: boolean;
 }) {
   const full = variant === "full";
   const size = full ? "lg" : "md";
@@ -379,6 +407,7 @@ export function ActivityTimeline({
           month={key}
           count={monthCounts?.[key]}
           offset={HEADING_OFFSET}
+          loading={loading}
         />,
       );
     month = key;
@@ -392,6 +421,7 @@ export function ActivityTimeline({
         showMark={showMark}
         appLinks={appLinks}
         databaseLinks={databaseLinks}
+        loading={loading}
       />,
     );
   }
@@ -407,4 +437,20 @@ export function ActivityTimeline({
       {children}
     </ol>
   );
+}
+
+/** Stand-in entries for a timeline that is still loading, one message per row. */
+export function placeholderActivity(messages: string[]): ActivityItem[] {
+  return messages.map((message, i) => ({
+    id: `loading-${i}`,
+    type: "app" as ActivityType,
+    message,
+    actor: i % 3 === 2 ? "Scheduler" : "Someone",
+    actorUser: null,
+    actorProvider: null,
+    createdAt: "2026-01-15T12:00:00.000Z",
+    appId: null,
+    databaseId: null,
+    cursor: `${i}`,
+  }));
 }

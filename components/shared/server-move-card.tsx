@@ -1,5 +1,6 @@
 "use client";
 
+import { LoadingText } from "@/components/apps/settings/settings-loading";
 import * as React from "react";
 import { useRouter } from "@/lib/nav";
 import { ArrowRightLeft, Server as ServerIcon } from "lucide-react";
@@ -132,8 +133,10 @@ function ServerMoveCard({
           </FieldLabel>
           <p className="flex items-center gap-2 text-sm">
             <ServerIcon className="size-4 text-muted-foreground" />
-            {currentName}
-            <ServerRoleHint isDeploHost={current?.isDeploHost} />
+            <LoadingText>
+              {currentName}
+              <ServerRoleHint isDeploHost={current?.isDeploHost} />
+            </LoadingText>
           </p>
         </div>
         <ConfirmAction

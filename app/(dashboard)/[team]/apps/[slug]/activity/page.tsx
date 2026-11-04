@@ -1,7 +1,7 @@
 import { notFound } from "next/navigation";
 
 import { getAppBySlug } from "@/lib/data/apps/listing";
-import { PageHeader } from "@/components/shared/page-header";
+import { AppActivityHeader } from "@/components/apps/app-tab-headers";
 import { ScopedActivity } from "@/components/activity/scoped-activity";
 
 export const metadata = { title: "Activity" };
@@ -15,12 +15,7 @@ export default async function AppActivityPage(
 
   return (
     <div className="space-y-5">
-      <PageHeader
-        level="section"
-        title="Activity"
-        docs="team.activity"
-        description="Everything that happened to this app, newest first."
-      />
+      <AppActivityHeader />
       <ScopedActivity
         scope={{ kind: "resource", resourceId: app.id }}
         base={`/apps/${slug}/activity`}

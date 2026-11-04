@@ -7,6 +7,7 @@ import { ChevronDown, ChevronUp, Cog } from "lucide-react";
 import { UserAvatar } from "@/components/shared/user-avatar";
 import { ACTIVITY_ICON, UNKNOWN_ACTIVITY_ICON } from "@/lib/activity-types";
 import { activityHref, type ActivityParams } from "@/lib/activity-filter";
+import { Bone } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
 import type { ActivityType } from "@/lib/types/activity";
 import type { VarAuthor } from "@/lib/types/identity";
@@ -33,6 +34,7 @@ export function ActivitySummary({
   events,
   people,
   className,
+  loading = false,
 }: {
   label: string;
   params: ActivityParams;
@@ -40,10 +42,11 @@ export function ActivitySummary({
   events: SummaryCount[];
   people: SummaryCount[];
   className?: string;
+  loading?: boolean;
 }) {
   const empty = events.length === 0 && people.length === 0;
   return (
-    <div className={cn("space-y-3", className)}>
+    <div className={cn("space-y-3", className)} inert={loading || undefined}>
       <h2 className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">
         {label}
       </h2>
@@ -55,6 +58,7 @@ export function ActivitySummary({
         <>
           <Block
             title="Events"
+            loading={loading}
             rows={events}
             picked={params.types}
             href={(value) =>
@@ -75,6 +79,7 @@ export function ActivitySummary({
           />
           <Block
             title="People"
+            loading={loading}
             rows={people}
             picked={params.actorUserIds}
             href={(value) =>
@@ -114,12 +119,14 @@ function Block({
   picked,
   href,
   mark,
+  loading,
 }: {
   title: string;
   rows: SummaryCount[];
   picked: string[];
   href: (value: string) => string;
   mark: (row: SummaryCount) => React.ReactNode;
+  loading: boolean;
 }) {
   const [all, setAll] = React.useState(false);
   if (rows.length === 0) return null;
@@ -145,10 +152,14 @@ function Block({
                   on && "bg-accent text-foreground",
                 )}
               >
-                {mark(row)}
-                <span className="truncate">{row.label}</span>
+                <Bone box loading={loading} className="shrink-0">
+                  {mark(row)}
+                </Bone>
+                <span className="truncate">
+                  <Bone loading={loading}>{row.label}</Bone>
+                </span>
                 <span className="ml-auto pl-2 text-xs text-muted-foreground tabular-nums">
-                  {row.count}
+                  <Bone loading={loading}>{row.count}</Bone>
                 </span>
               </Link>
             </li>
@@ -166,7 +177,9 @@ function Block({
           ) : (
             <ChevronDown className="size-4 shrink-0" />
           )}
-          {all ? "Show less" : `Show ${hidden} more`}
+          <Bone loading={loading}>
+            {all ? "Show less" : `Show ${hidden} more`}
+          </Bone>
         </button>
       )}
     </div>

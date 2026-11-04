@@ -47,6 +47,7 @@ import {
 import { PageHeader } from "@/components/shared/page-header";
 import { UserAvatar } from "@/components/shared/user-avatar";
 import { Badge } from "@/components/ui/badge";
+import { Bone, Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { SimpleTooltip } from "@/components/ui/tooltip";
 import { InfoTip } from "@/components/ui/info-tip";
@@ -94,73 +95,27 @@ export function UsersPanel({
   const teams = teamFacetOptions(users.map((u) => u.teams));
   return (
     <div className="space-y-6">
-      <PageHeader
-        docs="instance.users"
-        title={
-          <span className="flex items-center gap-2">
-            Users
-            <Badge variant="secondary" className="tabular-nums">
-              {users.length}
-            </Badge>
-          </span>
-        }
-        description="Instance-wide user administration."
-        actions={
-          <>
-            <Button size="sm" onClick={() => setRegisterOpen(true)}>
-              <UserPlus className="size-4" />
-              Register user
-            </Button>
-            <RegisterUserWizard
-              open={registerOpen}
-              onOpenChange={setRegisterOpen}
-              pinActiveTeam={false}
-            />
-          </>
-        }
-      />
+      <UsersHeader
+        count={users.length}
+        onRegister={() => setRegisterOpen(true)}
+      >
+        <RegisterUserWizard
+          open={registerOpen}
+          onOpenChange={setRegisterOpen}
+          pinActiveTeam={false}
+        />
+      </UsersHeader>
       {users.length > 1 && (
-        <ListToolbar
+        <UsersToolbar
           query={query}
           onQuery={setQuery}
-          placeholder="Search users"
           view={view}
           onView={setView}
-          listLabel="Table view"
-          filters={
-            <>
-              <FilterFacet
-                id="team"
-                label="Team"
-                allLabel="Any team"
-                icon={Users}
-                options={teams.options}
-                counts={teams.counts}
-                values={picked.team}
-                onChange={(v) => setPicked("team", v)}
-              />
-              <FilterFacet
-                id="access"
-                label="Access"
-                allLabel="Any access"
-                icon={ShieldCheck}
-                options={ACCESS_OPTIONS}
-                counts={countBy(users, accessOf)}
-                values={picked.access}
-                onChange={(v) => setPicked("access", v)}
-              />
-              <FilterFacet
-                id="status"
-                label="Status"
-                allLabel="Any status"
-                icon={CircleDot}
-                options={USER_STATUS_OPTIONS}
-                counts={countBy(users, statusOf)}
-                values={picked.status}
-                onChange={(v) => setPicked("status", v)}
-              />
-            </>
-          }
+          teams={teams}
+          picked={picked}
+          onPick={setPicked}
+          accessCounts={countBy(users, accessOf)}
+          statusCounts={countBy(users, statusOf)}
         />
       )}
 
@@ -266,6 +221,163 @@ export function UsersPanel({
           </CardContent>
         </Card>
       )}
+    </div>
+  );
+}
+
+function UsersHeader({
+  count,
+  onRegister,
+  children,
+}: {
+  count: number | null;
+  onRegister?: () => void;
+  children?: React.ReactNode;
+}) {
+  return (
+    <PageHeader
+      docs="instance.users"
+      title={
+        <span className="flex items-center gap-2">
+          Users
+          <Bone box loading={count === null}>
+            <Badge variant="secondary" className="tabular-nums">
+              {count ?? 0}
+            </Badge>
+          </Bone>
+        </span>
+      }
+      description="Instance-wide user administration."
+      actions={
+        <>
+          <Button size="sm" disabled={!onRegister} onClick={onRegister}>
+            <UserPlus className="size-4" />
+            Register user
+          </Button>
+          {children}
+        </>
+      }
+    />
+  );
+}
+
+function UsersToolbar({
+  query,
+  onQuery,
+  view,
+  onView,
+  teams,
+  picked,
+  onPick,
+  accessCounts,
+  statusCounts,
+}: {
+  query: string;
+  onQuery: (v: string) => void;
+  view: ListView;
+  onView: (v: ListView) => void;
+  teams: ReturnType<typeof teamFacetOptions>;
+  picked: Record<(typeof FACETS)[number], string[]>;
+  onPick: (key: (typeof FACETS)[number], values: string[]) => void;
+  accessCounts?: Record<string, number>;
+  statusCounts?: Record<string, number>;
+}) {
+  return (
+    <ListToolbar
+      query={query}
+      onQuery={onQuery}
+      placeholder="Search users"
+      view={view}
+      onView={onView}
+      listLabel="Table view"
+      filters={
+        <>
+          <FilterFacet
+            id="team"
+            label="Team"
+            allLabel="Any team"
+            icon={Users}
+            options={teams.options}
+            counts={teams.counts}
+            values={picked.team}
+            onChange={(v) => onPick("team", v)}
+          />
+          <FilterFacet
+            id="access"
+            label="Access"
+            allLabel="Any access"
+            icon={ShieldCheck}
+            options={ACCESS_OPTIONS}
+            counts={accessCounts}
+            values={picked.access}
+            onChange={(v) => onPick("access", v)}
+          />
+          <FilterFacet
+            id="status"
+            label="Status"
+            allLabel="Any status"
+            icon={CircleDot}
+            options={USER_STATUS_OPTIONS}
+            counts={statusCounts}
+            values={picked.status}
+            onChange={(v) => onPick("status", v)}
+          />
+        </>
+      }
+    />
+  );
+}
+
+// One option, so the facet draws as it will once loaded, not as an empty one.
+const PLACEHOLDER_OPTIONS = [{ value: "", label: "" }];
+const noop = () => {};
+const SKELETON_USERS = ["@username", "@user", "@longer-name", "@name"];
+
+export function UsersPanelSkeleton() {
+  return (
+    <div className="space-y-6" aria-busy>
+      <UsersHeader count={null} />
+      <UsersToolbar
+        query=""
+        onQuery={noop}
+        view="grid"
+        onView={noop}
+        teams={{ options: PLACEHOLDER_OPTIONS, counts: {} }}
+        picked={{ team: [], access: [], status: [] }}
+        onPick={noop}
+      />
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+        {SKELETON_USERS.map((handle) => (
+          <div
+            key={handle}
+            className="flex items-center gap-3 rounded-lg border border-border p-3"
+          >
+            <div className="flex min-w-0 flex-1 items-center gap-3 text-left">
+              <Skeleton className="size-8 shrink-0 rounded-full" />
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-1.5">
+                  <p className="truncate text-sm font-medium">
+                    <Bone>{handle}</Bone>
+                  </p>
+                </div>
+                <p className="truncate text-xs text-muted-foreground">
+                  <Bone>Full name · 2 teams · joined 3mo ago</Bone>
+                </p>
+              </div>
+              <ChevronRight className="size-4 shrink-0 text-muted-foreground" />
+            </div>
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              className="-mr-1 shrink-0"
+              disabled
+              aria-hidden
+            >
+              <MoreHorizontal className="size-4" />
+            </Button>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }

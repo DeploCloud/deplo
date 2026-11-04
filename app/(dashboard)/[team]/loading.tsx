@@ -1,5 +1,4 @@
-import { PageSkeleton } from "@/components/shared/page-skeleton";
-
+// Only seen before a route's own loading state arrives: a shape here would belong to no page.
 export default function Loading() {
-  return <PageSkeleton />;
+  return <div aria-busy className="min-h-[50vh]" />;
 }

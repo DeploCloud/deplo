@@ -23,6 +23,7 @@ import {
 } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Bone } from "@/components/ui/skeleton";
 import { InfoTip } from "@/components/ui/info-tip";
 import { SimpleTooltip } from "@/components/ui/tooltip";
 import { EmptyState } from "@/components/shared/empty-state";
@@ -86,6 +87,7 @@ export function EnvManager({
   environments,
   teams,
   composeKeys = [],
+  loading = false,
 }: {
   appId: string;
   vars: EnvVarDTO[];
@@ -97,6 +99,7 @@ export function EnvManager({
   environments: TeamEnvironment[];
   teams: TeamRef[];
   composeKeys?: string[];
+  loading?: boolean;
 }) {
   const [editing, setEditing] = React.useState<EnvVarDTO | null>(null);
   const [addOpen, setAddOpen] = React.useState(false);
@@ -128,15 +131,15 @@ export function EnvManager({
     restore,
   } = useOptimisticRemove(serverRows, rowKey);
 
-  const facets = React.useMemo(
-    () => [
-      sourceFacet(rows),
-      typeFacet(rows),
-      editorFacet(rows),
+  const facets = React.useMemo(() => {
+    const from = loading ? PLACEHOLDER_FACET_ROWS : rows;
+    return [
+      sourceFacet(from),
+      typeFacet(from),
+      editorFacet(from),
       updatedFacet<EnvRow>(),
-    ],
-    [rows],
-  );
+    ];
+  }, [rows, loading]);
   const {
     state: filters,
     setState: setFilters,
@@ -162,12 +165,13 @@ export function EnvManager({
     };
   });
 
-  const hasVars = rows.length > 0;
-  const hasMatches = shownRows.length > 0;
+  const hasVars = loading || rows.length > 0;
+  const hasMatches = loading || shownRows.length > 0;
 
   const addButton = (size: "sm" | "default") => (
     <Button
       size={size}
+      disabled={loading}
       onClick={() => {
         setEditing(null);
         setAddOpen(true);
@@ -247,6 +251,10 @@ export function EnvManager({
                 </TableRow>
               </TableHeader>
               <TableBody>
+                {loading &&
+                  PLACEHOLDER_KEYS.map((k) => (
+                    <EnvRowSkeleton key={k} envKey={k} />
+                  ))}
                 {shownRows.map((row) =>
                   row.kind === "standalone" ? (
                     <TableRow key={rowKey(row)}>
@@ -639,3 +647,71 @@ function LooksLikeSecretBadge() {
     />
   );
 }
+
+const PLACEHOLDER_KEYS = ["DATABASE_URL", "API_KEY", "NODE_ENV"];
+
+// A variable's row while the tab loads: its real cells, the values boned.
+function EnvRowSkeleton({ envKey }: { envKey: string }) {
+  return (
+    <TableRow>
+      <EnvSelectionCell id={envKey} />
+      <TableCell className="font-mono text-xs font-medium max-md:break-all">
+        <div className="flex items-center gap-2">
+          <Bone>{envKey}</Bone>
+        </div>
+        <Bone box className="w-full md:hidden">
+          <EnvValueUnderKey value="" masked />
+        </Bone>
+      </TableCell>
+      <TableCell className="max-md:hidden">
+        <Bone box className="w-full">
+          <EnvValueCell value="" masked />
+        </Bone>
+      </TableCell>
+      <TableCell className="text-xs whitespace-nowrap text-muted-foreground max-md:hidden">
+        <Bone>2 months ago</Bone>
+      </TableCell>
+      <TableCell className="max-md:hidden">
+        <Bone box>
+          <EnvAuthorCell author={PLACEHOLDER_AUTHOR} />
+        </Bone>
+      </TableCell>
+      <TableCell className={`text-right ${ROW_ACTIONS_CELL}`}>
+        <RowActions title={envKey} actions={PLACEHOLDER_ACTIONS}>
+          <div className="flex justify-end gap-1">
+            {[Pencil, Trash2].map((Icon, i) => (
+              <Bone box key={i}>
+                <Button variant="ghost" size="icon-sm" disabled>
+                  <Icon className="size-4" />
+                </Button>
+              </Bone>
+            ))}
+          </div>
+        </RowActions>
+      </TableCell>
+    </TableRow>
+  );
+}
+
+const PLACEHOLDER_AUTHOR = {
+  id: "loading",
+  name: "Someone",
+  username: "someone",
+  avatarColor: "",
+  avatarUrl: null,
+};
+
+// What a typical App's variables offer the filters: both types, one editor.
+const PLACEHOLDER_FACET_ROWS = (["plain", "secret"] as const).map(
+  (type) =>
+    ({
+      type,
+      kind: "standalone",
+      updatedBy: PLACEHOLDER_AUTHOR,
+    }) as unknown as EnvRow,
+);
+
+const PLACEHOLDER_ACTIONS = [
+  { label: "Edit", icon: Pencil, disabled: true },
+  { label: "Delete", icon: Trash2, destructive: true, disabled: true },
+];

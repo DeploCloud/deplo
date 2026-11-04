@@ -4,7 +4,11 @@ import * as React from "react";
 import { Loader2 } from "lucide-react";
 import { gql, gqlAction } from "@/lib/graphql-client";
 import { EmptyState } from "@/components/shared/empty-state";
-import { ConsoleEmpty, ConsolePane } from "@/components/console/console-pane";
+import {
+  ConsoleEmpty,
+  ConsolePane,
+  ConsolePaneSkeleton,
+} from "@/components/console/console-pane";
 import { NotRunningGraphic } from "@/components/apps/not-running-graphic";
 import { useLiveRunning } from "@/components/apps/app-live-status";
 import type { PaneTitle } from "@/components/shared/pane-title";
@@ -109,13 +113,41 @@ export function LiveConsole({
           description="The app just started, attaching now."
         />
       ) : (
-        <EmptyState
-          graphic={<NotRunningGraphic />}
-          title="App is not running"
-          docs="console.overview"
-          description="Deploy this app, then come back to open a console in it."
-        />
+        <NotRunning />
       )}
     </ConsoleEmpty>
+  );
+}
+
+function NotRunning() {
+  return (
+    <EmptyState
+      graphic={<NotRunningGraphic />}
+      title="App is not running"
+      docs="console.overview"
+      description="Deploy this app, then come back to open a console in it."
+    />
+  );
+}
+
+// A stopped App's console is known before the page loads: it opens on the same empty state.
+// Wrapped like the page wraps LiveConsole.
+export function LiveConsoleSkeleton({ slug }: { slug: string }) {
+  const running = useLiveRunning(true);
+  const title = {
+    label: "App name",
+    href: `/apps/${slug}`,
+    settingsHref: `/apps/${slug}/settings/advanced`,
+  };
+  return (
+    <div aria-busy className="flex min-h-0 flex-1 flex-col">
+      {running ? (
+        <ConsolePaneSkeleton title={title} />
+      ) : (
+        <ConsoleEmpty loading title={title}>
+          <NotRunning />
+        </ConsoleEmpty>
+      )}
+    </div>
   );
 }

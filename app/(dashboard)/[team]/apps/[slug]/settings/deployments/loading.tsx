@@ -1,105 +1,76 @@
-import { Skeleton } from "@/components/ui/skeleton";
-import {
-  Card,
-  CardContent,
-  CardFooter,
-  CardHeader,
-} from "@/components/ui/card";
-import { SectionLabel } from "@/components/apps/settings/settings-skeletons";
+import { Rocket } from "lucide-react";
+import { SettingsSection } from "@/components/apps/settings/settings-shared";
+import { SettingsLoading } from "@/components/apps/settings/settings-loading";
+import { DeploymentSettingsForm } from "@/components/apps/settings/deployment-settings-form/deployment-settings-form";
+import { CapabilityFieldset } from "@/components/apps/app-capabilities";
+import type { BuildConfig } from "@/lib/types/build";
 
-const REPO_WIDTHS = ["w-1/2", "w-2/3", "w-2/5", "w-3/5", "w-1/3", "w-1/2"];
+// Drawn for an app deploying from a GitHub repository, the shape most apps have.
+const BUILD: BuildConfig = {
+  buildMethod: "railpack",
+  methodAuto: true,
+  methodSettings: {},
+  rootDirectory: "",
+  includeFilesOutsideRoot: false,
+  skipUnchangedDeployments: false,
+  buildCache: true,
+  buildCacheClearPending: false,
+  installCommand: null,
+  buildCommand: null,
+  outputDirectory: null,
+  startCommand: null,
+  runtimeVersion: "",
+  port: 3000,
+};
+const INSTALLATION = {
+  id: "loading",
+  installationId: 0,
+  appName: "Deplo",
+  accountLogin: "account",
+  accountType: "User" as const,
+  avatarUrl: "",
+};
 
 export default function Loading() {
   return (
-    <section
-      className="space-y-4"
-      role="status"
-      aria-busy
-      aria-label="Loading deployment settings"
-    >
-      <SectionLabel width="w-24" />
-      <div className="space-y-6">
-        <Card>
-          <CardHeader>
-            <Skeleton className="h-5 w-32" />
-            <Skeleton className="h-4 w-80" />
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="flex flex-wrap items-center gap-2">
-              {["w-24", "w-16", "w-32", "w-24", "w-28"].map((w, i) => (
-                <Skeleton key={i} className={`h-8 ${w} rounded-md`} />
-              ))}
-            </div>
-            <div className="space-y-3">
-              <Skeleton className="h-9 w-full rounded-md" />
-              <div className="max-h-56 space-y-1 overflow-y-auto rounded-lg border border-border p-1">
-                {REPO_WIDTHS.map((w, i) => (
-                  <div
-                    key={i}
-                    className="flex w-full items-center gap-2 px-3 py-2"
-                  >
-                    <Skeleton className={`h-3.5 ${w}`} />
-                  </div>
-                ))}
-              </div>
-            </div>
-            <div className="max-w-md space-y-2">
-              <Skeleton className="h-4 w-16" />
-              <Skeleton className="h-9 w-full rounded-md" />
-            </div>
-          </CardContent>
-          <CardFooter className="justify-end border-t border-border pt-4">
-            <Skeleton className="h-8 w-28 rounded-md" />
-          </CardFooter>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <Skeleton className="h-5 w-24" />
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="space-y-2">
-              <Skeleton className="h-11 w-full rounded-lg" />
-              <Skeleton className="h-3 w-96" />
-            </div>
-            <div className="grid gap-4 sm:grid-cols-2">
-              {Array.from({ length: 2 }).map((_, i) => (
-                <div key={i} className="space-y-2">
-                  <Skeleton className="h-4 w-24" />
-                  <Skeleton className="h-9 w-full rounded-md" />
-                </div>
-              ))}
-            </div>
-            <Skeleton className="h-12 w-full rounded-lg" />
-          </CardContent>
-          <CardFooter className="justify-end border-t border-border pt-4">
-            <Skeleton className="h-9 w-40 rounded-md" />
-          </CardFooter>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <Skeleton className="h-5 w-28" />
-          </CardHeader>
-          <div className="divide-y divide-border border-t border-border">
-            {["w-9", "w-4", "w-36"].map((control, i) => (
-              <div
-                key={i}
-                className="flex items-center justify-between gap-4 px-6 py-4"
-              >
-                <div className="space-y-1.5">
-                  <Skeleton className="h-4 w-28" />
-                  <Skeleton className="h-3 w-64" />
-                </div>
-                <Skeleton className={`h-5 ${control} rounded-md`} />
-              </div>
-            ))}
-          </div>
-          <CardFooter className="justify-end border-t border-border pt-4">
-            <Skeleton className="h-9 w-20 rounded-md" />
-          </CardFooter>
-        </Card>
-      </div>
-    </section>
+    <SettingsLoading className="space-y-4">
+      <SettingsSection
+        icon={Rocket}
+        title="Deployment"
+        docs="releases.autoDeploy"
+      />
+      <CapabilityFieldset cap="configure_apps">
+        <DeploymentSettingsForm
+          appId=""
+          slug=""
+          build={BUILD}
+          lastBuiltWith="railpack"
+          framework={null}
+          frameworkOverride={null}
+          autoDeploy
+          source="github"
+          repo={{
+            provider: "github",
+            url: "",
+            repo: "account/repository",
+            branch: "main",
+            installationId: INSTALLATION.id,
+          }}
+          dockerImage={null}
+          upload={null}
+          compose={null}
+          installations={[INSTALLATION]}
+          connections={[]}
+          providers={[]}
+          isInstanceAdmin={false}
+          webhook={null}
+          repoAccess={null}
+          cloneRefusal={null}
+          connectionAccess={[]}
+          canManageGit={false}
+          rollbackKeep={3}
+        />
+      </CapabilityFieldset>
+    </SettingsLoading>
   );
 }

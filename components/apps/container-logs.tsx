@@ -90,6 +90,107 @@ interface ParsedLine {
   ts: string | null;
 }
 
+const STATUS_LABEL: Record<Status, string> = {
+  connecting: "connecting",
+  live: "streaming",
+  reattaching: "reattaching",
+  ended: "ended",
+  error: "failed",
+};
+
+function StreamStatus({ status }: { status: Status }) {
+  return (
+    <span
+      className={cn(
+        "flex shrink-0 items-center gap-1.5 text-[11px]",
+        status === "live"
+          ? "text-[var(--success)]"
+          : status === "error"
+            ? "text-destructive"
+            : status === "reattaching"
+              ? "text-[var(--warning)]"
+              : "text-muted-foreground",
+      )}
+    >
+      <span
+        className={cn(
+          "size-1.5 rounded-full",
+          status === "live"
+            ? "animate-pulse bg-[var(--success)]"
+            : status === "error"
+              ? "bg-destructive"
+              : status === "reattaching"
+                ? "animate-pulse bg-[var(--warning)]"
+                : "bg-ring",
+        )}
+      />
+      {STATUS_LABEL[status]}
+    </span>
+  );
+}
+
+const NO_OP = () => {};
+
+/** The pane before its page has loaded: the toolbar idle, the stream still connecting. */
+export function ContainerLogsSkeleton({ title }: { title: PaneTitle }) {
+  const filters = useLogFilters([], RUNTIME_LEVELS);
+  return (
+    <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+      <div
+        inert
+        className="flex flex-wrap items-center gap-2 border-b border-border bg-surface px-3 py-2"
+      >
+        <Logs className="size-4 shrink-0 text-muted-foreground" />
+        <PaneTitleLink title={title} loading />
+        <StreamStatus status="connecting" />
+        <LogSearch
+          value=""
+          onChange={NO_OP}
+          className="basis-full sm:basis-auto"
+        />
+        <LogLevelFilter
+          facet={filters.facet}
+          values={[]}
+          counts={filters.counts}
+          onChange={NO_OP}
+        />
+        <TimelineMenu
+          value={defaultTimeline(DEFAULT_LOG_RANGE_DAYS)}
+          onChange={NO_OP}
+          maxDays={DEFAULT_LOG_RANGE_DAYS}
+          disabled
+        />
+        <div className="ml-auto flex shrink-0 items-center gap-1">
+          <Button
+            variant="ghost"
+            disabled
+            aria-label="Pause auto-scroll"
+            className="size-9"
+          >
+            <Pause className="size-3.5" />
+          </Button>
+          <Button
+            variant="ghost"
+            disabled
+            aria-label="Clear"
+            className="size-9"
+          >
+            <Trash2 className="size-3.5" />
+          </Button>
+          <LogsDisplayMenu />
+          <CopyButton value="" className="size-9" />
+          <DownloadButton value="" filename="logs.log" className="size-9" />
+        </div>
+      </div>
+      <LogLines className="min-h-0 flex-1">
+        <p className="text-[11px] text-zinc-500">
+          Connecting to the log stream
+        </p>
+      </LogLines>
+    </div>
+  );
+}
+
 export function ContainerLogs({
   appId,
   instances,
@@ -371,13 +472,6 @@ export function ContainerLogs({
     }
   }
 
-  const statusLabel: Record<Status, string> = {
-    connecting: "connecting",
-    live: "streaming",
-    reattaching: "reattaching",
-    ended: "ended",
-    error: "failed",
-  };
   const busy = status === "connecting" || status === "reattaching";
 
   return (
@@ -434,32 +528,7 @@ export function ContainerLogs({
 
         <LogNoticeChip notice={notice} />
 
-        <span
-          className={cn(
-            "flex shrink-0 items-center gap-1.5 text-[11px]",
-            status === "live"
-              ? "text-[var(--success)]"
-              : status === "error"
-                ? "text-destructive"
-                : status === "reattaching"
-                  ? "text-[var(--warning)]"
-                  : "text-muted-foreground",
-          )}
-        >
-          <span
-            className={cn(
-              "size-1.5 rounded-full",
-              status === "live"
-                ? "animate-pulse bg-[var(--success)]"
-                : status === "error"
-                  ? "bg-destructive"
-                  : status === "reattaching"
-                    ? "animate-pulse bg-[var(--warning)]"
-                    : "bg-ring",
-            )}
-          />
-          {statusLabel[status]}
-        </span>
+        <StreamStatus status={status} />
 
         <LogSearch
           value={filters.state.q}

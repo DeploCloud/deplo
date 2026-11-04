@@ -1,5 +1,6 @@
 "use client";
 
+import { Bone } from "@/components/ui/skeleton";
 import * as React from "react";
 import Link from "@/components/ui/link";
 import { useRouter } from "@/lib/nav";
@@ -135,12 +136,19 @@ function OpenTargetLink({ row }: { row: LogTreeRow }) {
   );
 }
 
-export function LogChooser({ rows }: { rows: LogTreeRow[] }) {
+export function LogChooser({
+  rows,
+  loading = false,
+}: {
+  rows: LogTreeRow[];
+  loading?: boolean;
+}) {
   const router = useRouter();
-  const hasTargets = rows.some((r) => r.target);
+  const hasTargets = loading || rows.some((r) => r.target);
 
   return (
     <div
+      aria-busy={loading || undefined}
       className={cn(
         "flex min-h-0 flex-1 flex-col items-center overflow-y-auto p-6 pb-24",
         // From the top, so the picker's list has room to open downward under the art.
@@ -158,13 +166,24 @@ export function LogChooser({ rows }: { rows: LogTreeRow[] }) {
               Pick an app or a database to watch its output live.
             </p>
           </div>
-          <LogTreePicker
-            rows={rows}
-            value=""
-            onChange={(key) => router.push(logTargetHref(key))}
-            autoFocus
-            className="mt-6"
-          />
+          {loading ? (
+            <Bone box className="mt-6 w-full">
+              <LogTreePicker
+                rows={[]}
+                value=""
+                onChange={() => {}}
+                className="w-full"
+              />
+            </Bone>
+          ) : (
+            <LogTreePicker
+              rows={rows}
+              value=""
+              onChange={(key) => router.push(logTargetHref(key))}
+              autoFocus
+              className="mt-6"
+            />
+          )}
         </div>
       ) : (
         <EmptyState

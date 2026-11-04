@@ -8,7 +8,8 @@ import { InfoTip } from "@/components/ui/info-tip";
 import type { DocsTopic } from "@/lib/docs";
 import type { ScopeTreeTeam } from "@/lib/data/tokens/scope-tree";
 import type { ScopeNode, ScopeSelection } from "./selection";
-import { ScopeTree } from "./tree";
+import { ScopeTree, ScopeTreeSkeleton } from "./tree";
+import { Bone } from "@/components/ui/skeleton";
 import { useScopePicker } from "./use-scope-picker";
 
 export function ScopePicker({
@@ -22,7 +23,9 @@ export function ScopePicker({
   notice,
   renderMeta,
   teamPickable = true,
+  loading = false,
 }: {
+  loading?: boolean;
   tree: ScopeTreeTeam[];
   selection: ScopeSelection;
   onChange: (next: ScopeSelection) => void;
@@ -48,21 +51,23 @@ export function ScopePicker({
       <div className="flex items-center gap-1.5">
         <h3 className="text-sm font-medium">Access</h3>
         <InfoTip content={info} docs={docs} />
-        {tree.length > 0 && (
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            disabled={disabled}
-            onClick={() => tickAll(!allOn)}
-            className="ml-auto h-7 text-xs"
-          >
-            {allOn ? "Unselect all" : "Select all"}
-          </Button>
+        {(loading || tree.length > 0) && (
+          <Bone box loading={loading} className="ml-auto">
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              disabled={disabled}
+              onClick={() => tickAll(!allOn)}
+              className="ml-auto h-7 text-xs"
+            >
+              {allOn ? "Unselect all" : "Select all"}
+            </Button>
+          </Bone>
         )}
       </div>
 
-      {tree.length === 0 ? (
+      {!loading && tree.length === 0 ? (
         <p className="text-sm text-muted-foreground">{emptyNote}</p>
       ) : (
         <>
@@ -87,14 +92,16 @@ export function ScopePicker({
             )}
           </div>
 
-          {notice && (
+          {notice && !loading && (
             <div className="flex items-start gap-3 rounded-lg border border-[var(--warning)]/30 bg-[var(--warning)]/5 p-3">
               <AlertTriangle className="mt-0.5 size-5 shrink-0 text-[var(--warning)]" />
               <div className="min-w-0 text-sm">{notice}</div>
             </div>
           )}
 
-          {shown.length === 0 ? (
+          {loading ? (
+            <ScopeTreeSkeleton />
+          ) : shown.length === 0 ? (
             <div className="rounded-lg border border-dashed border-border px-3 py-6 text-center text-sm text-muted-foreground">
               Nothing matches &ldquo;{query}&rdquo;.
             </div>

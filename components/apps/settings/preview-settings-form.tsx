@@ -45,6 +45,7 @@ import { ServerRoleHint } from "@/components/shared/server-role-hint";
 import { SettingRow } from "@/components/shared/setting-row";
 import { gqlAction } from "@/lib/graphql-client";
 import { ConsequenceNote } from "@/components/shared/confirm-action";
+import { LoadingText } from "@/components/apps/settings/settings-loading";
 
 export interface PreviewSettingsFormProps {
   appId: string;
@@ -169,9 +170,11 @@ export function PreviewSettingsForm(props: PreviewSettingsFormProps) {
               </p>
               <p className="mt-1 text-sm text-muted-foreground">
                 Every pull request opened against{" "}
-                <span className="font-mono">{props.branch}</span> gets its own
-                deploy and its own URL. Still new - expect the odd rough edge,
-                and tell us about it.
+                <span className="font-mono">
+                  <LoadingText>{props.branch}</LoadingText>
+                </span>{" "}
+                gets its own deploy and its own URL. Still new - expect the odd
+                rough edge, and tell us about it.
               </p>
             </div>
             <Switch

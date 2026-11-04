@@ -1,5 +1,7 @@
 "use client";
 
+import { Skeleton } from "@/components/ui/skeleton";
+import { useSettingsLoading } from "@/components/apps/settings/settings-loading";
 import * as React from "react";
 import { toast } from "sonner";
 import { useRouter } from "@/lib/nav";
@@ -45,6 +47,7 @@ export function GeneralSettingsForm({
   const [picked, setPicked] = React.useState<File | null>(null);
   const logoInputRef = React.useRef<HTMLInputElement>(null);
   const [pending, startTransition] = React.useTransition();
+  const loading = useSettingsLoading();
 
   const [savedName, setSavedName] = React.useState(initialName);
   const nameDirty = name !== savedName;
@@ -138,7 +141,11 @@ export function GeneralSettingsForm({
               Logo
             </FieldLabel>
             <div className="flex flex-wrap items-center gap-4">
-              <AppLogo logo={logo} tone={tone} size={48} />
+              {loading ? (
+                <Skeleton className="size-12 shrink-0 rounded-md" />
+              ) : (
+                <AppLogo logo={logo} tone={tone} size={48} />
+              )}
               <div className="flex flex-wrap items-center gap-2">
                 <Button
                   variant="outline"

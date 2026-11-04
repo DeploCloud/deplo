@@ -12,6 +12,7 @@ import {
   ServerOff,
   ArrowDown,
   ArrowUp,
+  ChevronsUpDown,
 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { TimeSeriesChart } from "@/components/monitoring/time-series-chart";
@@ -24,6 +25,8 @@ import { ManageServerButton } from "@/components/monitoring/host-chip";
 import { ServerPicker } from "@/components/monitoring/server-picker";
 import { ServerWorkloads } from "@/components/servers/server-workloads";
 import { PageHeader } from "@/components/shared/page-header";
+import { Bone, Skeleton } from "@/components/ui/skeleton";
+import { Button } from "@/components/ui/button";
 import {
   ChartCard,
   InfoItem,
@@ -284,22 +287,7 @@ export function MonitoringDashboard({
                 )
               }
             />
-            <Card>
-              <CardContent className="space-y-1.5 p-4">
-                <div className="flex items-center gap-1.5 text-muted-foreground">
-                  <Network className="size-4" />
-                  <span className="text-xs">Network</span>
-                </div>
-                <div className="flex items-center gap-1.5 text-lg font-semibold tracking-tight">
-                  <ArrowDown className="size-4 text-[var(--success)]" />
-                  {formatBytes(cur.netRx)}/s
-                </div>
-                <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
-                  <ArrowUp className="size-4" />
-                  {formatBytes(cur.netTx)}/s
-                </div>
-              </CardContent>
-            </Card>
+            <NetworkTile rx={cur.netRx} tx={cur.netTx} />
           </div>
 
           <div className="grid gap-4 lg:grid-cols-2">
@@ -432,4 +420,92 @@ function fmtUptime(sec: number): string {
   if (d) return `${d}d ${h}h`;
   if (h) return `${h}h ${m}m`;
   return `${m}m`;
+}
+
+function NetworkTile({
+  rx,
+  tx,
+  loading = false,
+}: {
+  rx: number;
+  tx: number;
+  loading?: boolean;
+}) {
+  return (
+    <Card>
+      <CardContent className="space-y-1.5 p-4">
+        <div className="flex items-center gap-1.5 text-muted-foreground">
+          <Network className="size-4" />
+          <span className="text-xs">Network</span>
+        </div>
+        <div className="flex items-center gap-1.5 text-lg font-semibold tracking-tight">
+          <ArrowDown className="size-4 text-[var(--success)]" />
+          <Bone loading={loading}>{formatBytes(rx)}/s</Bone>
+        </div>
+        <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
+          <ArrowUp className="size-4" />
+          <Bone loading={loading}>{formatBytes(tx)}/s</Bone>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+const CHARTS = ["CPU usage", "Memory usage", "Network I/O", "Load average"];
+const CAPTIONED = new Set(["CPU usage", "Memory usage"]);
+
+/** A reporting server's dashboard, before its numbers arrive. */
+export function MonitoringDashboardSkeleton() {
+  const gauge = {
+    value: 0,
+    full: 100,
+    display: "12.3%",
+    caption: "4.1 GB of 8 GB",
+  };
+  return (
+    <div className="space-y-6" aria-busy inert>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+          <Bone box>
+            <Button variant="outline" size="sm" className="max-w-full gap-2">
+              <span className="truncate font-medium">server-name</span>
+              <ChevronsUpDown className="size-3.5" />
+            </Button>
+          </Bone>
+        </div>
+        <WindowSelector windowMs={WINDOWS[0].ms} onChange={() => {}} />
+      </div>
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <GaugeTile loading icon={Cpu} label="CPU" {...gauge} />
+        <GaugeTile loading icon={MemoryStick} label="Memory" {...gauge} />
+        <GaugeTile loading icon={HardDrive} label="Disk" {...gauge} />
+        <NetworkTile loading rx={1024} tx={1024} />
+      </div>
+      <div className="grid gap-4 lg:grid-cols-2">
+        {CHARTS.map((title) => (
+          <ChartCard
+            key={title}
+            loading
+            title={title}
+            caption={CAPTIONED.has(title) ? "12.3% of 4 cores" : undefined}
+          >
+            <Skeleton className="h-[200px] w-full rounded-lg" />
+          </ChartCard>
+        ))}
+      </div>
+      <Card>
+        <CardContent className="grid grid-cols-2 gap-4 py-4 sm:grid-cols-4">
+          <InfoItem loading icon={Clock} label="Uptime" value="12d 4h" />
+          <InfoItem loading icon={Boxes} label="Containers" value="12" />
+          <InfoItem
+            loading
+            icon={Gauge}
+            label="Load (1/5/15m)"
+            value="0.12 / 0.10 / 0.08"
+          />
+          <InfoItem loading icon={Cpu} label="Docker" value="27.3.1" />
+        </CardContent>
+      </Card>
+    </div>
+  );
 }

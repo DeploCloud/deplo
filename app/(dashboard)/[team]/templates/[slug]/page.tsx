@@ -1,13 +1,6 @@
 import Link from "@/components/ui/link";
-import {
-  ArrowLeft,
-  ArrowUpRight,
-  BookOpen,
-  CloudOff,
-  Globe,
-} from "lucide-react";
+import { BookOpen, CloudOff, Globe } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { SimpleTooltip } from "@/components/ui/tooltip";
 import { EmptyState } from "@/components/shared/empty-state";
 import { GitHubIcon } from "@/components/shared/brand-icons";
 import { CategoryIcon } from "@/components/templates/category-icon";
@@ -18,7 +11,6 @@ import {
 } from "@/components/templates/template-card";
 import { RemoteMarkdown } from "@/components/shared/remote-markdown";
 import { TemplateRail } from "@/components/templates/template-rail";
-import { TemplateSearchLink } from "@/components/templates/template-search";
 import { TrademarkNote } from "@/components/templates/trademark-note";
 import { TemplateScreenshots } from "@/components/templates/template-screenshots";
 import { VariantPicker } from "@/components/templates/variant-picker";
@@ -30,7 +22,6 @@ import {
   placementFromSearchParams,
   templateHref,
   templatesHref,
-  type OverviewPlacement,
 } from "@/lib/overview-links";
 import { templateAccent, templateAccents } from "@/lib/templates/logo-color";
 import { pickRelated } from "@/lib/templates/related";
@@ -41,6 +32,7 @@ import {
 } from "@/templates/catalog";
 import { defaultVariant } from "@/templates/types";
 import { titleClass } from "@/components/shared/page-header";
+import { DeployButton, Row, TopBar } from "./template-parts";
 
 const RELATED_MIN = 6;
 const RELATED_MAX = 12;
@@ -220,65 +212,6 @@ export default async function TemplatePage(
       )}
 
       <TrademarkNote />
-    </div>
-  );
-}
-
-function TopBar({ placement }: { placement: OverviewPlacement | null }) {
-  const scope = templatesHref(placement).split("?")[1] ?? "";
-  return (
-    <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-      <Link
-        href={templatesHref(placement)}
-        className="inline-flex shrink-0 items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground"
-      >
-        <ArrowLeft className="size-4" />
-        Templates
-      </Link>
-      <TemplateSearchLink scope={scope} className="w-full sm:w-72" />
-    </div>
-  );
-}
-
-function DeployButton({
-  canDeploy,
-  href,
-}: {
-  canDeploy: boolean;
-  href: string;
-}) {
-  if (canDeploy)
-    return (
-      <Button asChild className="shrink-0 sm:w-32">
-        <Link href={href}>
-          Deploy
-          <ArrowUpRight className="size-4" />
-        </Link>
-      </Button>
-    );
-  return (
-    <SimpleTooltip content="Needs the “Create apps” permission">
-      <span tabIndex={0} className="shrink-0">
-        <Button disabled className="w-full sm:w-32">
-          Deploy
-          <ArrowUpRight className="size-4" />
-        </Button>
-      </span>
-    </SimpleTooltip>
-  );
-}
-
-function Row({
-  label,
-  children,
-}: {
-  label: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <div>
-      <dt className="text-xs text-muted-foreground">{label}</dt>
-      <dd className="mt-1 text-sm">{children}</dd>
     </div>
   );
 }

@@ -14,6 +14,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { TableCell, TableRow } from "@/components/ui/table";
 import { Switch } from "@/components/ui/switch";
+import { Bone } from "@/components/ui/skeleton";
 import { StatusDot } from "@/components/shared/status-badge";
 import { ConfirmAction } from "@/components/shared/confirm-action";
 import { timeAgo } from "@/lib/utils";
@@ -24,6 +25,48 @@ import type { BackupDTO } from "@/lib/data/backups/schedules";
 import type { BackupTarget, Destination } from "./target";
 import { MenuAction } from "./menu-action";
 import { EditScheduleDialog } from "./edit-schedule-dialog";
+
+export function ScheduleRowSkeleton() {
+  return (
+    <TableRow>
+      <TableCell className="font-medium">
+        <Bone>Nightly backup</Bone>
+      </TableCell>
+      <TableCell className="text-muted-foreground">
+        <Bone>Backup storage</Bone>
+      </TableCell>
+      <TableCell>
+        <Bone className="text-xs">Daily, 03:00 Europe/Rome</Bone>
+      </TableCell>
+      <TableCell className="text-muted-foreground">
+        <Bone>7 backups</Bone>
+      </TableCell>
+      <TableCell>
+        <span className="flex items-center gap-1.5 text-xs">
+          <Bone box className="rounded-full">
+            <StatusDot status="success" />
+          </Bone>
+          <Bone>1 day ago</Bone>
+        </span>
+      </TableCell>
+      <TableCell>
+        <Bone box className="rounded-full">
+          <Switch checked={false} disabled />
+        </Bone>
+      </TableCell>
+      <TableCell className="text-right">
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          disabled
+          aria-label="Schedule menu"
+        >
+          <MoreHorizontal className="size-4" />
+        </Button>
+      </TableCell>
+    </TableRow>
+  );
+}
 
 export function ScheduleRow({
   schedule,

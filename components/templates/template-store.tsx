@@ -1,5 +1,6 @@
 "use client";
 
+import { Bone } from "@/components/ui/skeleton";
 import * as React from "react";
 import { useRouter } from "@/lib/nav";
 import { toast } from "sonner";
@@ -116,33 +117,15 @@ export function TemplateStore({
 
   return (
     <div className="space-y-8">
-      <section className="relative grid items-center gap-8 pt-8 sm:pt-12 lg:grid-cols-[minmax(0,1fr)_20rem]">
-        <div
-          aria-hidden
-          className="pointer-events-none hidden lg:order-last lg:block"
-        >
-          <TemplatesGraphic className="h-auto w-full" />
-        </div>
-        <div className="relative min-w-0">
-          <h1 className="text-3xl font-semibold tracking-tight">Templates</h1>
-          <p className="mt-1 text-sm text-muted-foreground">
-            {templates.length} apps, databases and services, ready to run on
-            your own servers. <DocsLink topic="deploy.fromTemplate" />
-          </p>
-          <div className="mt-5 flex max-w-md items-center gap-2">
-            <TemplateSearchField
-              value={q}
-              onChange={(next) => {
-                typed.current = true;
-                setQ(next);
-              }}
-              className="min-w-0 flex-1"
-            />
-            <TemplateRefreshButton />
-          </div>
-          <ComposeLaunch canDeploy={canDeploy} className="mt-3" />
-        </div>
-      </section>
+      <StoreHero
+        count={templates.length}
+        query={q}
+        onQuery={(next) => {
+          typed.current = true;
+          setQ(next);
+        }}
+        canDeploy={canDeploy}
+      />
 
       <CategoryChips
         categories={categories}
@@ -384,5 +367,53 @@ function Grid({ children }: { children: React.ReactNode }) {
     <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
       {children}
     </div>
+  );
+}
+
+/** The store's heading, search and compose entry; `loading` keeps it inert with the count unknown. */
+export function StoreHero({
+  count,
+  query,
+  onQuery,
+  canDeploy,
+  loading = false,
+}: {
+  count: number;
+  query: string;
+  onQuery: (next: string) => void;
+  canDeploy: boolean;
+  loading?: boolean;
+}) {
+  return (
+    <section className="relative grid items-center gap-8 pt-8 sm:pt-12 lg:grid-cols-[minmax(0,1fr)_20rem]">
+      <div
+        aria-hidden
+        className="pointer-events-none hidden lg:order-last lg:block"
+      >
+        <TemplatesGraphic className="h-auto w-full" />
+      </div>
+      <div className="relative min-w-0" inert={loading || undefined}>
+        <h1 className="text-3xl font-semibold tracking-tight">Templates</h1>
+        <p className="mt-1 text-sm text-muted-foreground">
+          <Bone loading={loading}>{count}</Bone> apps, databases and services,
+          ready to run on your own servers.{" "}
+          <DocsLink topic="deploy.fromTemplate" />
+        </p>
+        <div className="mt-5 flex max-w-md items-center gap-2">
+          <TemplateSearchField
+            value={query}
+            onChange={onQuery}
+            className="min-w-0 flex-1"
+          />
+          <TemplateRefreshButton />
+        </div>
+        <Bone box loading={loading} className="mt-3">
+          <ComposeLaunch
+            canDeploy={canDeploy}
+            className={loading ? undefined : "mt-3"}
+          />
+        </Bone>
+      </div>
+    </section>
   );
 }

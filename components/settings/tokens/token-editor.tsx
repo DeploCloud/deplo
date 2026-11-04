@@ -21,6 +21,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Bone, InputBone } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
 import {
   Select,
@@ -61,7 +62,9 @@ export function TokenEditor({
   activeTeamId,
   canGrantInstanceAdmin,
   publicUrl,
+  loading = false,
 }: {
+  loading?: boolean;
   mode: "create" | "edit";
   token?: ApiTokenDTO;
   activeTeamId: string;
@@ -81,7 +84,9 @@ export function TokenEditor({
       capabilities:
         token?.capabilities ??
         preset?.capabilities ??
-        (["view"] as Capability[]),
+        (loading && mode === "edit"
+          ? ALL_CAPABILITIES
+          : (["view"] as Capability[])),
       scope: {
         teamIds: token?.teamIds ?? [],
         projectIds: token?.projectIds ?? [],
@@ -91,7 +96,7 @@ export function TokenEditor({
       instanceAdmin: token?.instanceAdmin ?? false,
       expiry: token ? "keep" : "90",
     }),
-    [token, preset],
+    [token, preset, loading, mode],
   );
 
   const [name, setName] = React.useState(initial.name);
@@ -210,14 +215,18 @@ export function TokenEditor({
               >
                 Name
               </FieldLabel>
-              <Input
-                id="token-name"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                placeholder="GitHub Actions deploy"
-                maxLength={40}
-                autoFocus={mode === "create"}
-              />
+              {loading && mode === "edit" ? (
+                <InputBone value="GitHub Actions deploy" />
+              ) : (
+                <Input
+                  id="token-name"
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  placeholder="GitHub Actions deploy"
+                  maxLength={40}
+                  autoFocus={mode === "create" && !loading}
+                />
+              )}
             </div>
 
             <div className="space-y-2">
@@ -230,7 +239,11 @@ export function TokenEditor({
               </FieldLabel>
               <Select value={expiry} onValueChange={setExpiry}>
                 <SelectTrigger id="token-expiry" className="w-full">
-                  <SelectValue />
+                  {loading && mode === "edit" ? (
+                    <Bone>Keep no expiry</Bone>
+                  ) : (
+                    <SelectValue />
+                  )}
                 </SelectTrigger>
                 <SelectContent>
                   {mode === "edit" && (
@@ -289,7 +302,12 @@ export function TokenEditor({
 
         <Card>
           <CardContent className="pt-6">
-            <ScopePicker tree={tree} selection={scope} onChange={changeScope} />
+            <ScopePicker
+              tree={tree}
+              selection={scope}
+              onChange={changeScope}
+              loading={loading}
+            />
           </CardContent>
         </Card>
 
@@ -311,7 +329,7 @@ export function TokenEditor({
                 }}
               >
                 <SelectTrigger id="token-preset" className="w-full">
-                  <SelectValue />
+                  {loading ? <Bone>Custom</Bone> : <SelectValue />}
                 </SelectTrigger>
                 <SelectContent>
                   {TOKEN_PRESETS.map((p) => (
@@ -328,6 +346,7 @@ export function TokenEditor({
               </Select>
             </div>
             <PermissionPicker
+              loading={loading}
               capabilities={caps}
               onChange={setCaps}
               hint="Every action Deplo can gate, one permission each. Tick exactly what this token should be able to do - search by what you want it to reach."
@@ -352,20 +371,28 @@ export function TokenEditor({
               <div className="flex items-center gap-3">
                 <dt className="shrink-0 text-muted-foreground">Name</dt>
                 <dd className="min-w-0 flex-1 truncate text-right font-medium">
-                  {name.trim() || "—"}
+                  {loading && mode === "edit" ? (
+                    <Bone>Token name</Bone>
+                  ) : (
+                    name.trim() || "—"
+                  )}
                 </dd>
               </div>
               <div className="flex items-center gap-3">
                 <dt className="shrink-0 text-muted-foreground">Template</dt>
                 <dd className="min-w-0 flex-1 truncate text-right font-medium">
-                  {TOKEN_PRESETS.find((p) => p.id === presetIdFor(caps))
-                    ?.name ?? "Custom"}
+                  <Bone loading={loading}>
+                    {TOKEN_PRESETS.find((p) => p.id === presetIdFor(caps))
+                      ?.name ?? "Custom"}
+                  </Bone>
                 </dd>
               </div>
               <div className="flex items-center gap-3">
                 <dt className="shrink-0 text-muted-foreground">Permissions</dt>
                 <dd className="min-w-0 flex-1 truncate text-right font-medium tabular-nums">
-                  {granted} of {ALL_CAPABILITIES.length - 1}
+                  <Bone loading={loading}>
+                    {granted} of {ALL_CAPABILITIES.length - 1}
+                  </Bone>
                 </dd>
               </div>
               {sensitive > 0 && (
@@ -375,14 +402,14 @@ export function TokenEditor({
                     Sensitive
                   </dt>
                   <dd className="min-w-0 flex-1 truncate text-right font-medium tabular-nums">
-                    {sensitive}
+                    <Bone loading={loading}>{sensitive}</Bone>
                   </dd>
                 </div>
               )}
               <div className="flex items-center gap-3">
                 <dt className="shrink-0 text-muted-foreground">Access</dt>
                 <dd className="min-w-0 flex-1 truncate text-right font-medium">
-                  {scopeLabel}
+                  <Bone loading={loading}>{scopeLabel}</Bone>
                 </dd>
               </div>
             </dl>
@@ -404,12 +431,14 @@ export function TokenEditor({
                     >
                       {cat.label}
                     </span>
-                    <Badge
-                      variant={n === 0 ? "muted" : "secondary"}
-                      className="tabular-nums"
-                    >
-                      {n}/{cat.caps.length}
-                    </Badge>
+                    <Bone box loading={loading}>
+                      <Badge
+                        variant={n === 0 ? "muted" : "secondary"}
+                        className="tabular-nums"
+                      >
+                        {n}/{cat.caps.length}
+                      </Badge>
+                    </Bone>
                   </div>
                 );
               })}
@@ -477,14 +506,14 @@ export function TokenEditor({
         </Card>
       </aside>
 
-      {mode === "edit" && (
+      {mode === "edit" && token && (
         <ConfirmAction
           open={revokeOpen}
           onOpenChange={setRevokeOpen}
           title="Revoke token?"
           description={
             <>
-              <strong>{token!.name}</strong> is deleted.
+              <strong>{token.name}</strong> is deleted.
             </>
           }
           consequence={revokeDescription(revokeCopy)}
@@ -493,7 +522,7 @@ export function TokenEditor({
           onConfirm={async () => {
             const res = await gqlAction(
               `mutation($id: String!) { revokeToken(id: $id) }`,
-              { id: token!.id },
+              { id: token.id },
             );
             if (res.ok) {
               router.push("/settings/tokens");
@@ -574,4 +603,18 @@ function expiresAtFor(choice: string): string | null | undefined {
   const days = Number(choice);
   if (!Number.isFinite(days) || days <= 0) return null;
   return new Date(Date.now() + days * 86_400_000).toISOString();
+}
+
+/** The editor while its token and scope tree load; `mode` comes from the address. */
+export function TokenEditorSkeleton({ mode }: { mode: "create" | "edit" }) {
+  return (
+    <TokenEditor
+      mode={mode}
+      tree={[]}
+      activeTeamId=""
+      canGrantInstanceAdmin
+      publicUrl=""
+      loading
+    />
+  );
 }

@@ -43,7 +43,13 @@ type Certificate = {
 const CERT_FIELDS =
   "id subject domains issuer notBefore notAfter expired expiresInDays";
 
-export function ServerCertificatesTab({ server }: { server: ServerSummary }) {
+export function ServerCertificatesTab({
+  server,
+  loading: placeholder = false,
+}: {
+  server: ServerSummary;
+  loading?: boolean;
+}) {
   const [certificates, setCertificates] = React.useState<Certificate[] | null>(
     null,
   );
@@ -93,8 +99,8 @@ export function ServerCertificatesTab({ server }: { server: ServerSummary }) {
 
   React.useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
-    void load();
-  }, [load]);
+    if (!placeholder) void load();
+  }, [load, placeholder]);
 
   return (
     <>

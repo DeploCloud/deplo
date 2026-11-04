@@ -1,7 +1,7 @@
 "use client";
 
 import { useFlatPathname } from "@/lib/nav";
-import { useAppNav } from "@/components/apps/app-nav-store";
+import { useAppNav, type AppNavState } from "@/components/apps/app-nav-store";
 import { useDbNav } from "@/components/storage/db-nav-store";
 import { useConsoleAck } from "@/components/apps/console-ack";
 import { sidebarMenuFor } from "./nav-config/active-route";
@@ -12,10 +12,16 @@ import { canSee, type NavSection } from "./nav-config/nav-item";
 import { SETTINGS_NAV } from "./nav-config/settings-nav";
 
 // The menu for where you are (main, an App, a database, settings), filtered to what you may open.
-export function useNavSections(capabilities: string[], isAdmin: boolean) {
+// `app` is what the App's own page already knows, for the render before the store has it.
+export function useNavSections(
+  capabilities: string[],
+  isAdmin: boolean,
+  app?: AppNavState,
+) {
   const pathname = useFlatPathname();
   const caps = new Set(capabilities);
-  const service = useAppNav();
+  const stored = useAppNav();
+  const service = app && stored?.slug !== app.slug ? app : stored;
   const dbNav = useDbNav();
   const consoleAcknowledged = useConsoleAck() === true;
 

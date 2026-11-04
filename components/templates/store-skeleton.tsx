@@ -1,6 +1,9 @@
 import type { CSSProperties } from "react";
 
-import { Skeleton, TextLine } from "@/components/ui/skeleton";
+import { TemplateRail } from "@/components/templates/template-rail";
+import { ArrowUpRight } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Bone, Skeleton, TextLine } from "@/components/ui/skeleton";
 import { titleClass } from "@/components/shared/page-header";
 import { COLLECTIONS, FEATURED } from "@/components/templates/collections";
 import { cn } from "@/lib/utils";
@@ -8,12 +11,12 @@ import { cn } from "@/lib/utils";
 const delay = (ms: number) =>
   ({ "--shimmer-delay": `${ms}ms` }) as CSSProperties;
 
-// All, four categories and More, measured; pb-1 is CategoryChips' focus gutter.
+// All, four categories and More, measured; p-1 -mt-1 is CategoryChips' unmeasured row.
 const CHIP_WIDTHS = ["w-15", "w-29", "w-14", "w-30", "w-20", "w-19"];
 
 export function StoreChipsSkeleton() {
   return (
-    <div className="-mx-1 flex gap-2 overflow-hidden px-1 pb-1">
+    <div className="-mx-1 -mt-1 flex gap-2 overflow-hidden p-1">
       {CHIP_WIDTHS.map((width, i) => (
         <Skeleton
           key={i}
@@ -30,7 +33,7 @@ export function StoreRailsSkeleton() {
   return (
     <div className="space-y-10">
       <section className="space-y-3">
-        <TextLine shimmer type={titleClass.section} className="w-24" />
+        <h2 className={titleClass.section}>Featured</h2>
         <div className="grid gap-3 xl:grid-cols-3">
           <HeroCardSkeleton />
           <div className="grid gap-3 sm:grid-cols-2 xl:col-span-2">
@@ -42,25 +45,19 @@ export function StoreRailsSkeleton() {
       </section>
 
       {COLLECTIONS.slice(0, 2).map((collection) => (
-        <section key={collection.title} className="space-y-3">
-          <div>
-            <TextLine shimmer type={titleClass.section} className="w-44" />
-            <TextLine
-              shimmer
-              type="mt-1 text-sm leading-[1.6]"
-              className="w-80 max-w-full"
+        <TemplateRail
+          key={collection.title}
+          title={collection.title}
+          subtitle={collection.subtitle}
+        >
+          {Array.from({ length: 6 }, (_, i) => (
+            <CardSkeleton
+              key={i}
+              className="w-72 shrink-0 snap-start"
+              style={delay(i * 60)}
             />
-          </div>
-          <div className="-mx-1 flex gap-3 overflow-hidden px-1 py-1">
-            {Array.from({ length: 6 }, (_, i) => (
-              <CardSkeleton
-                key={i}
-                className="w-72 shrink-0"
-                style={delay(i * 60)}
-              />
-            ))}
-          </div>
-        </section>
+          ))}
+        </TemplateRail>
       ))}
     </div>
   );
@@ -77,9 +74,17 @@ function HeroCardSkeleton() {
           <Description type="text-sm" last="@min-[31rem]:hidden" />
         </div>
       </div>
-      <div className="flex items-center justify-between gap-3">
-        <Skeleton className="h-4 w-24" shimmer />
-        <Skeleton className="h-9 w-32" shimmer />
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
+          <Skeleton className="size-4" shimmer />
+          <Bone>Category</Bone>
+        </span>
+        <Bone box>
+          <Button disabled className="w-32">
+            Deploy
+            <ArrowUpRight className="size-4" />
+          </Button>
+        </Bone>
       </div>
     </div>
   );
@@ -100,7 +105,7 @@ function SidekickSkeleton({ style }: { style: CSSProperties }) {
   );
 }
 
-function CardSkeleton({
+export function CardSkeleton({
   className,
   style,
 }: {

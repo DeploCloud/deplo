@@ -1,5 +1,4 @@
 import { notFound } from "next/navigation";
-import { Loader2 } from "lucide-react";
 import { getAppBySlug } from "@/lib/data/apps/listing";
 import { listDeployments } from "@/lib/data/deployments/deployment-queries";
 import { isInstanceAdmin } from "@/lib/membership";
@@ -8,7 +7,7 @@ import { EmptyState } from "@/components/shared/empty-state";
 import { SettingsShortcut } from "@/components/shared/settings-shortcut";
 import { DeploymentGraphic } from "@/components/apps/deployment-graphic";
 import { DeploymentsTable } from "@/components/apps/deployments-table/deployments-table";
-import { titleClass } from "@/components/shared/page-header";
+import { DeploymentHistoryHeader } from "@/components/apps/deployment-history-header";
 
 export const metadata = { title: "Deployments" };
 
@@ -33,21 +32,10 @@ export default async function AppDeploymentsPage(
   const canManage = canDeploy || isAdmin;
 
   const header = (
-    <div className="space-y-1">
-      <h2 className={titleClass.section}>Deployment history</h2>
-      <p className="text-sm text-muted-foreground">
-        {deployments.length} total
-        {inProgress > 0 && (
-          <>
-            {" · "}
-            <span className="inline-flex items-center gap-1 text-foreground">
-              <Loader2 className="size-3.5 animate-spin" />
-              {inProgress} in progress
-            </span>
-          </>
-        )}
-      </p>
-    </div>
+    <DeploymentHistoryHeader
+      total={deployments.length}
+      inProgress={inProgress}
+    />
   );
 
   const gear = (

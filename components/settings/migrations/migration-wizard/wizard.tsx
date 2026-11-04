@@ -639,3 +639,36 @@ export function MigrationWizard({
     </>
   );
 }
+
+const IDLE_MOVE = {
+  source: null,
+  activeTargetId: null,
+  readiness: { ready: true, reason: null },
+  openOutbound: false,
+};
+
+// The landing every visit without a run in flight opens on.
+export function MigrationWizardSkeleton() {
+  return (
+    <div className="mx-auto flex w-full flex-col items-center gap-8 pt-8">
+      <MigrationGraphic
+        state="connect"
+        kind={null}
+        grid
+        className="h-auto w-full max-w-md"
+      />
+      <div inert className="w-full max-w-xl min-w-0">
+        <AnimatedHeight scroll={false} className="space-y-6">
+          <div>
+            <SourceStep
+              move={IDLE_MOVE}
+              view="sources"
+              onViewChange={() => {}}
+              onPick={() => {}}
+            />
+          </div>
+        </AnimatedHeight>
+      </div>
+    </div>
+  );
+}

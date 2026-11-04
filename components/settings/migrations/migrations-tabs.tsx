@@ -11,8 +11,14 @@ import {
   UnderlineTabsTrigger,
 } from "@/components/ui/tabs";
 import type { SourceMoveStatus } from "@/lib/data/deplo-move/source";
-import { MigrationWizard } from "./migration-wizard/wizard";
-import { MigrationsHistory } from "./migrations-history";
+import {
+  MigrationWizard,
+  MigrationWizardSkeleton,
+} from "./migration-wizard/wizard";
+import {
+  MigrationsHistory,
+  MigrationsHistorySkeleton,
+} from "./migrations-history";
 import type { ImportRun, ServerChoice, TargetTeam } from "./types";
 
 const TABS = ["migrate", "history"] as const;
@@ -48,9 +54,7 @@ export function MigrationsTabs({
   const requested = params.get("tab");
   // "move" was its own tab once; old links land on Move this Deplo.
   const [openOutbound] = React.useState(requested === "move");
-  const active: TabId = (TABS as readonly string[]).includes(requested ?? "")
-    ? (requested as TabId)
-    : "migrate";
+  const active = tabOf(requested);
 
   function selectTab(tab: string) {
     const next = new URLSearchParams(params.toString());
@@ -66,18 +70,7 @@ export function MigrationsTabs({
 
   return (
     <Tabs value={active} onValueChange={selectTab} className="space-y-3">
-      <div className="border-b border-border">
-        <UnderlineTabsList>
-          <UnderlineTabsTrigger value="migrate">
-            <Cable />
-            Migrate
-          </UnderlineTabsTrigger>
-          <UnderlineTabsTrigger value="history">
-            <History />
-            History
-          </UnderlineTabsTrigger>
-        </UnderlineTabsList>
-      </div>
+      <TabBar />
 
       <TabsContent
         value="migrate"
@@ -99,6 +92,48 @@ export function MigrationsTabs({
 
       <TabsContent value="history">
         <MigrationsHistory runs={runs} />
+      </TabsContent>
+    </Tabs>
+  );
+}
+
+function tabOf(requested: string | null): TabId {
+  return (TABS as readonly string[]).includes(requested ?? "")
+    ? (requested as TabId)
+    : "migrate";
+}
+
+function TabBar() {
+  return (
+    <div className="border-b border-border">
+      <UnderlineTabsList>
+        <UnderlineTabsTrigger value="migrate">
+          <Cable />
+          Migrate
+        </UnderlineTabsTrigger>
+        <UnderlineTabsTrigger value="history">
+          <History />
+          History
+        </UnderlineTabsTrigger>
+      </UnderlineTabsList>
+    </div>
+  );
+}
+
+export function MigrationsTabsSkeleton() {
+  const active = tabOf(useSearchParams().get("tab"));
+  return (
+    <Tabs value={active} className="space-y-3">
+      <TabBar />
+      <TabsContent
+        value="migrate"
+        forceMount
+        className="data-[state=inactive]:hidden"
+      >
+        <MigrationWizardSkeleton />
+      </TabsContent>
+      <TabsContent value="history">
+        <MigrationsHistorySkeleton />
       </TabsContent>
     </Tabs>
   );

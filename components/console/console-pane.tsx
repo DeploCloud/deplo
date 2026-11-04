@@ -11,6 +11,7 @@ import {
   TriangleAlert,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Bone } from "@/components/ui/skeleton";
 import {
   Dialog,
   DialogContent,
@@ -229,50 +230,10 @@ export function ConsolePane({
         />
 
         {mode === "exec" ? (
-          <SimpleTooltip content="Run each line through a shell so pipes, redirects and builtins work. 'auto' runs it raw - the first word is the binary.">
-            <Select value={shell} onValueChange={(v) => setShell(v as Shell)}>
-              <SelectTrigger className="h-9 w-auto gap-2 border-border/60 bg-background/60 px-2 font-mono text-xs">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {SHELLS.map((s) => (
-                  <SelectItem
-                    key={s.value}
-                    value={s.value}
-                    className="font-mono text-xs"
-                  >
-                    {s.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </SimpleTooltip>
+          <ShellPicker value={shell} onChange={setShell} />
         ) : null}
 
-        <TabsList className="h-9 gap-0 rounded-lg border border-border bg-background/60 p-1">
-          <TabsTrigger value="exec" className="px-2.5 py-1 text-xs">
-            <SquareTerminal />
-            Shell
-          </TabsTrigger>
-          <SimpleTooltip
-            content={
-              attachable
-                ? "Watch the main process (PID 1) live and type to its stdin. Ctrl-C reaches the app; detaching never stops the container."
-                : "The container isn't running, so there's no process to attach to."
-            }
-          >
-            <span className="inline-flex">
-              <TabsTrigger
-                value="attach"
-                disabled={!attachable}
-                className="px-2.5 py-1 text-xs"
-              >
-                <Plug />
-                Attach
-              </TabsTrigger>
-            </span>
-          </SimpleTooltip>
-        </TabsList>
+        <ModeTabs attachable={attachable} />
 
         <div className="ml-auto flex shrink-0 items-center gap-1">
           <SimpleTooltip content="Clear">
@@ -337,18 +298,128 @@ export function ConsolePane({
   );
 }
 
+function ShellPicker({
+  value,
+  onChange,
+}: {
+  value: Shell;
+  onChange: (shell: Shell) => void;
+}) {
+  return (
+    <SimpleTooltip content="Run each line through a shell so pipes, redirects and builtins work. 'auto' runs it raw - the first word is the binary.">
+      <Select value={value} onValueChange={(v) => onChange(v as Shell)}>
+        <SelectTrigger className="h-9 w-auto gap-2 border-border/60 bg-background/60 px-2 font-mono text-xs">
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          {SHELLS.map((s) => (
+            <SelectItem
+              key={s.value}
+              value={s.value}
+              className="font-mono text-xs"
+            >
+              {s.label}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+    </SimpleTooltip>
+  );
+}
+
+function ModeTabs({ attachable }: { attachable: boolean }) {
+  return (
+    <TabsList className="h-9 gap-0 rounded-lg border border-border bg-background/60 p-1">
+      <TabsTrigger value="exec" className="px-2.5 py-1 text-xs">
+        <SquareTerminal />
+        Shell
+      </TabsTrigger>
+      <SimpleTooltip
+        content={
+          attachable
+            ? "Watch the main process (PID 1) live and type to its stdin. Ctrl-C reaches the app; detaching never stops the container."
+            : "The container isn't running, so there's no process to attach to."
+        }
+      >
+        <span className="inline-flex">
+          <TabsTrigger
+            value="attach"
+            disabled={!attachable}
+            className="px-2.5 py-1 text-xs"
+          >
+            <Plug />
+            Attach
+          </TabsTrigger>
+        </span>
+      </SimpleTooltip>
+    </TabsList>
+  );
+}
+
+const NO_OP = () => {};
+
+/** The pane before its page has loaded: the toolbar idle over an empty terminal. */
+export function ConsolePaneSkeleton({ title }: { title: PaneTitle }) {
+  return (
+    <Tabs value="exec" className="flex min-h-0 flex-1 flex-col">
+      <div
+        inert
+        className="flex flex-wrap items-center gap-2 border-b border-border bg-surface px-3 py-2"
+      >
+        <TerminalSquare className="size-4 shrink-0 text-muted-foreground" />
+        <PaneTitleLink title={title} loading />
+        <span className="shrink-0 font-mono text-xs text-muted-foreground">
+          <Bone>db-database</Bone>
+        </span>
+        <Bone box>
+          <ConsoleStatus label="running" tone="good" />
+        </Bone>
+        <ShellPicker value="auto" onChange={NO_OP} />
+        <ModeTabs attachable />
+        <div className="ml-auto flex shrink-0 items-center gap-1">
+          <Button
+            variant="ghost"
+            disabled
+            aria-label="Clear"
+            className="size-9"
+          >
+            <Eraser className="size-3.5" />
+          </Button>
+          <CopyButton value="" size="icon" className="size-9" />
+          <DownloadButton
+            value=""
+            filename="console.txt"
+            size="icon"
+            className="size-9"
+          />
+        </div>
+      </div>
+      <TabsContent
+        value="exec"
+        className="mt-0 flex min-h-0 flex-1 flex-col focus-visible:ring-0"
+      >
+        <div className="flex min-h-0 flex-1 flex-col">
+          <div className="min-h-0 flex-1 bg-terminal p-2" />
+        </div>
+      </TabsContent>
+    </Tabs>
+  );
+}
+
 export function ConsoleEmpty({
   title,
+  loading = false,
   children,
 }: {
   title: PaneTitle;
+  loading?: boolean;
   children: React.ReactNode;
 }) {
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <div className="flex items-center gap-2 border-b border-border bg-surface px-3 py-2">
         <TerminalSquare className="size-4 shrink-0 text-muted-foreground" />
-        <PaneTitleLink title={title} />
+        <PaneTitleLink title={title} loading={loading} />
       </div>
       <div className="flex min-h-0 flex-1 items-center justify-center p-6">
         {children}

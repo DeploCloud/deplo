@@ -1,5 +1,8 @@
-import { ConsoleSkeleton } from "@/components/console/console-skeleton";
+"use client";
+
+import { useParams } from "next/navigation";
+import { LiveConsoleSkeleton } from "@/components/apps/live-console";
 
 export default function Loading() {
-  return <ConsoleSkeleton label="Loading console" />;
+  return <LiveConsoleSkeleton slug={useParams<{ slug: string }>().slug} />;
 }

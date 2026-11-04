@@ -15,6 +15,7 @@ import { PageHeader } from "@/components/shared/page-header";
 import { UserAvatar } from "@/components/shared/user-avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Bone, Skeleton } from "@/components/ui/skeleton";
 import { AddMemberDialog } from "@/components/members/add-member-dialog";
 import { RegisterUserWizard } from "@/components/settings/users/register-user-wizard";
 import { SimpleTooltip } from "@/components/ui/tooltip";
@@ -43,11 +44,13 @@ export function MembersManager({
   currentUserId,
   canManage,
   isAdmin = false,
+  loading = false,
 }: {
   members: MemberDTO[];
   currentUserId: string;
   canManage: boolean;
   isAdmin?: boolean;
+  loading?: boolean;
 }) {
   const [addOpen, setAddOpen] = React.useState(false);
   const [userOpen, setUserOpen] = React.useState(false);
@@ -72,19 +75,23 @@ export function MembersManager({
   const actions = (isAdmin || canManage) && (
     <>
       {isAdmin && (
-        <Button variant="outline" size="sm" asChild>
-          <Link href="/settings/users">
-            <UserCog className="size-4" />
-            Manage users
-          </Link>
-        </Button>
+        <Bone box loading={loading}>
+          <Button variant="outline" size="sm" asChild>
+            <Link href="/settings/users">
+              <UserCog className="size-4" />
+              Manage users
+            </Link>
+          </Button>
+        </Bone>
       )}
       {canManage && (
         <>
-          <Button size="sm" onClick={() => setAddOpen(true)}>
-            <UserPlus className="size-4" />
-            Add member
-          </Button>
+          <Bone box loading={loading}>
+            <Button size="sm" onClick={() => setAddOpen(true)}>
+              <UserPlus className="size-4" />
+              Add member
+            </Button>
+          </Bone>
           <AddMemberDialog
             open={addOpen}
             onOpenChange={setAddOpen}
@@ -101,15 +108,17 @@ export function MembersManager({
   );
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6" aria-busy={loading || undefined}>
       <PageHeader
         docs="team.members"
         title={
           <span className="flex items-center gap-2">
             Members
-            <Badge variant="secondary" className="tabular-nums">
-              {members.length}
-            </Badge>
+            <Bone box loading={loading}>
+              <Badge variant="secondary" className="tabular-nums">
+                {members.length}
+              </Badge>
+            </Bone>
           </span>
         }
         description="People who can access this team's apps and resources."
@@ -157,6 +166,7 @@ export function MembersManager({
               member={m}
               isSelf={m.userId === currentUserId}
               canManage={canManage}
+              loading={loading}
             />
           ))}
         </div>
@@ -292,10 +302,12 @@ function MemberCard({
   member,
   isSelf,
   canManage,
+  loading = false,
 }: {
   member: MemberDTO;
   isSelf: boolean;
   canManage: boolean;
+  loading?: boolean;
 }) {
   const isFounder = member.isPrimaryOwner;
   const granted = member.capabilities.filter((c) => c !== "view").length;
@@ -303,15 +315,21 @@ function MemberCard({
   const inner = (
     <div className="flex h-full flex-col gap-3 rounded-lg border border-border p-4 transition-colors group-hover:border-foreground/20">
       <div className="flex w-full items-center gap-3">
-        <UserAvatar
-          name={member.name}
-          username={member.username}
-          avatarUrl={member.avatarUrl}
-          size="lg"
-        />
+        {loading ? (
+          <Skeleton className="size-8 shrink-0 rounded-full" />
+        ) : (
+          <UserAvatar
+            name={member.name}
+            username={member.username}
+            avatarUrl={member.avatarUrl}
+            size="lg"
+          />
+        )}
         <div className="min-w-0 flex-1">
           <p className="flex items-center gap-1 text-sm font-medium">
-            <span className="truncate">@{member.username}</span>
+            <Bone loading={loading} className="truncate">
+              <span className="truncate">@{member.username}</span>
+            </Bone>
             {isFounder && (
               <SimpleTooltip content="Primary owner - created this team; can't be removed or demoted">
                 <span className="shrink-0 leading-none">
@@ -340,7 +358,7 @@ function MemberCard({
           </p>
           {member.name && member.name !== member.username && (
             <p className="truncate text-xs text-muted-foreground">
-              {member.name}
+              <Bone loading={loading}>{member.name}</Bone>
             </p>
           )}
         </div>
@@ -348,39 +366,42 @@ function MemberCard({
           <ChevronRight className="size-4 shrink-0 text-muted-foreground" />
         )}
       </div>
-      <div className="flex flex-wrap items-center gap-1.5">
-        {isFounder ? (
-          <Badge className="gap-1 border-amber-500/30 bg-amber-500/10 text-amber-600 dark:text-amber-400">
-            <Crown className="size-3" />
-            Primary owner
-          </Badge>
-        ) : (
-          <Badge variant="outline">{member.roleName ?? "Custom"}</Badge>
-        )}
-        <Badge variant="outline">
-          {granted === 0
-            ? "View only"
-            : `${granted} permission${granted === 1 ? "" : "s"}`}
-        </Badge>
-        {member.roleScoped && (
-          <SimpleTooltip
-            content={`Their ${member.roleName ?? "assigned"} role only reaches part of this team`}
-          >
-            <Badge variant="outline" className="gap-1">
-              <FolderTree className="size-3" />
-              Limited access
+      <Bone box loading={loading}>
+        <div className="flex flex-wrap items-center gap-1.5">
+          {isFounder ? (
+            <Badge className="gap-1 border-amber-500/30 bg-amber-500/10 text-amber-600 dark:text-amber-400">
+              <Crown className="size-3" />
+              Primary owner
             </Badge>
-          </SimpleTooltip>
-        )}
-        <AccessDeltaBadge
-          delta={member.accessDelta}
-          roleName={member.roleName}
-        />
-      </div>
+          ) : (
+            <Badge variant="outline">{member.roleName ?? "Custom"}</Badge>
+          )}
+          <Badge variant="outline">
+            {granted === 0
+              ? "View only"
+              : `${granted} permission${granted === 1 ? "" : "s"}`}
+          </Badge>
+          {member.roleScoped && (
+            <SimpleTooltip
+              content={`Their ${member.roleName ?? "assigned"} role only reaches part of this team`}
+            >
+              <Badge variant="outline" className="gap-1">
+                <FolderTree className="size-3" />
+                Limited access
+              </Badge>
+            </SimpleTooltip>
+          )}
+          <AccessDeltaBadge
+            delta={member.accessDelta}
+            roleName={member.roleName}
+          />
+        </div>
+      </Bone>
     </div>
   );
 
   if (!canManage) return inner;
+  if (loading) return <div className="block h-full rounded-lg">{inner}</div>;
 
   return (
     <Link
@@ -407,5 +428,38 @@ function TokenCountBadge({ member }: { member: MemberDTO }) {
         {agents}
       </Badge>
     </SimpleTooltip>
+  );
+}
+
+const SKELETON_MEMBER: MemberDTO = {
+  userId: "",
+  membershipId: "",
+  username: "username",
+  name: "Full name",
+  role: "owner",
+  roleId: null,
+  roleName: null,
+  roleScoped: false,
+  capabilities: [],
+  accessDelta: null,
+  tokenCount: 0,
+  agentCount: 0,
+  isPrimaryOwner: true,
+  isInstanceAdmin: true,
+  avatarColor: "",
+  avatarUrl: null,
+  createdAt: "",
+};
+
+/** A team of one, the shape most rosters start as: no search bar, one card. */
+export function MembersManagerSkeleton() {
+  return (
+    <MembersManager
+      members={[SKELETON_MEMBER]}
+      currentUserId=""
+      canManage
+      isAdmin
+      loading
+    />
   );
 }

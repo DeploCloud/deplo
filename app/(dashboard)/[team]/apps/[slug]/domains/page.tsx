@@ -13,7 +13,7 @@ import { EmptyState } from "@/components/shared/empty-state";
 import { AddDomain } from "@/components/domains/add-domain";
 import { DomainNotices } from "@/components/domains/domain-notices";
 import { DomainGraphic } from "@/components/domains/domain-graphic";
-import { DomainTable } from "@/components/domains/domain-table";
+import { DomainTable, DomainsIntro } from "@/components/domains/domain-table";
 import {
   PendingCreateProvider,
   PendingList,
@@ -51,30 +51,28 @@ export default async function AppDomainsPage(
   return (
     <PendingCreateProvider count={domains.length}>
       <div className="space-y-4">
-        <div className="flex items-center justify-between">
-          <div>
-            <h3 className="text-sm font-medium">Domains</h3>
-            <p className="mt-1 text-sm text-muted-foreground">
-              Custom domains routed to this app with automatic TLS.
-            </p>
-            {!serverIp && (
+        <DomainsIntro
+          note={
+            !serverIp && (
               <p className="mt-1 text-sm text-muted-foreground">
                 No generated address here: Deplo doesn’t know this server’s
                 address.
               </p>
-            )}
-          </div>
-          <AddDomain
-            project={{
-              id: project.id,
-              name: project.name,
-              compose: composeForBrowser,
-              defaultPort: project.build.port,
-            }}
-            suggestedDomain={suggestedDomain}
-            autoDnsZones={autoDns}
-          />
-        </div>
+            )
+          }
+          action={
+            <AddDomain
+              project={{
+                id: project.id,
+                name: project.name,
+                compose: composeForBrowser,
+                defaultPort: project.build.port,
+              }}
+              suggestedDomain={suggestedDomain}
+              autoDnsZones={autoDns}
+            />
+          }
+        />
 
         <DomainNotices
           appId={project.id}

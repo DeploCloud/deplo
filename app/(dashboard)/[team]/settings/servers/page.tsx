@@ -1,6 +1,6 @@
 import { notFound } from "next/navigation";
 import Link from "@/components/ui/link";
-import { Suspense, type ElementType } from "react";
+import { Suspense } from "react";
 import {
   Server as ServerIcon,
   Cpu,
@@ -10,7 +10,6 @@ import {
   Settings2,
 } from "lucide-react";
 
-import { PageHeader } from "@/components/shared/page-header";
 import { EmptyState } from "@/components/shared/empty-state";
 import { ROW_ACTIONS_CELL } from "@/components/shared/row-actions-cell";
 import { DeploMark } from "@/components/logo";
@@ -26,9 +25,7 @@ import {
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { TableCell, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
-import { InfoTip } from "@/components/ui/info-tip";
 import { CopyButton } from "@/components/shared/copy-button";
 import { listAllServers } from "@/lib/data/servers/roster";
 import { listAllServerTeamIds } from "@/lib/data/servers/team-access";
@@ -52,6 +49,7 @@ import type { TeamOption } from "@/components/servers/server-team-access";
 import { AgentVersionBadge } from "./agent-version-badge";
 import { ServerHealthChip } from "./server-health-chip";
 import { ServerTraefikBadge } from "./server-traefik-badge";
+import { ServersHeader, Spec, SpecTilesSkeleton } from "./servers-shell";
 import {
   ServerHealthProvider,
   type ServerHealthState,
@@ -63,31 +61,6 @@ import {
 } from "./check-status-button";
 
 export const metadata = { title: "Servers" };
-
-function Spec({
-  icon: Icon,
-  label,
-  value,
-  unit,
-}: {
-  icon: ElementType;
-  label: string;
-  value: string;
-  unit: string;
-}) {
-  return (
-    <div className="rounded-lg border border-border bg-surface p-3">
-      <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-        <Icon className="size-3.5" />
-        {label}
-      </div>
-      <div className="mt-1 flex items-baseline gap-1">
-        <span className="text-lg font-semibold tabular-nums">{value}</span>
-        <span className="text-xs text-muted-foreground">{unit}</span>
-      </div>
-    </div>
-  );
-}
 
 async function SpecTiles({ specs }: { specs: Promise<Server> }) {
   const server = await specs;
@@ -119,25 +92,6 @@ async function SpecTiles({ specs }: { specs: Promise<Server> }) {
         value={server.dockerVersion || "—"}
         unit="engine"
       />
-    </>
-  );
-}
-
-function SpecTilesSkeleton() {
-  return (
-    <>
-      {Array.from({ length: 4 }).map((_, i) => (
-        <div key={i} className="rounded-lg border border-border bg-surface p-3">
-          <div className="flex items-center gap-1.5">
-            <Skeleton className="size-3.5 rounded" />
-            <Skeleton className="h-3 w-12" />
-          </div>
-          <div className="mt-1 flex items-baseline gap-1">
-            <Skeleton className="h-5 w-8" />
-            <Skeleton className="h-3 w-12" />
-          </div>
-        </div>
-      ))}
     </>
   );
 }
@@ -438,25 +392,7 @@ export default async function ServersPage(
   return (
     <ServerHealthProvider seed={healthSeed}>
       <div className="space-y-6">
-        <PageHeader
-          docs="servers.overview"
-          title={
-            <span className="flex items-center gap-2">
-              Servers
-              <InfoTip
-                content={
-                  <>
-                    Start with <strong>this host</strong>: add it (use its IP),
-                    then run the one-time install command it gives you on the
-                    box to install the agent. Add more Linux hosts the same way.
-                    The agent calls home and provisions itself - Deplo never
-                    needs SSH access to your servers.
-                  </>
-                }
-              />
-            </span>
-          }
-          description="Connected Docker hosts running your deployments."
+        <ServersHeader
           actions={
             <>
               <RefreshFleetButton />

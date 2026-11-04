@@ -16,6 +16,7 @@ import {
 
 import { UserAvatar } from "@/components/shared/user-avatar";
 import { Badge } from "@/components/ui/badge";
+import { Bone, Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -28,7 +29,10 @@ import {
   UnderlineTabsTrigger,
 } from "@/components/ui/tabs";
 import { RoleSelect } from "@/components/members/role-select";
-import { PermissionPicker } from "@/components/settings/permission-picker";
+import {
+  PARTIAL_CAPABILITIES,
+  PermissionPicker,
+} from "@/components/settings/permission-picker";
 import { ConfirmAction } from "@/components/shared/confirm-action";
 import { EmptyState } from "@/components/shared/empty-state";
 import { AccessDeltaBadge } from "@/components/members/access-delta-badge";
@@ -68,7 +72,9 @@ export function MemberDetailTabs({
   canManageAccount,
   viewerIsPrimaryOwner,
   viewerTwoFactorEnabled,
+  loading = false,
 }: {
+  loading?: boolean;
   activity: React.ReactNode;
   member: MemberDTO;
   access: UserTeamAccessDTO;
@@ -216,19 +222,29 @@ export function MemberDetailTabs({
     <div className="space-y-6">
       <header className="space-y-3">
         <div className="flex flex-wrap items-center gap-3">
-          <UserAvatar
-            name={member.name}
-            username={member.username}
-            avatarUrl={member.avatarUrl}
-            size="xl"
-          />
+          {loading ? (
+            <Skeleton className="size-10 shrink-0 rounded-full" />
+          ) : (
+            <UserAvatar
+              name={member.name}
+              username={member.username}
+              avatarUrl={member.avatarUrl}
+              size="xl"
+            />
+          )}
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-2">
-              <h1 className={titleClass.page}>@{member.username}</h1>
+              <h1 className={titleClass.page}>
+                <Bone loading={loading}>@{member.username}</Bone>
+              </h1>
               {member.roleName && (
-                <Badge variant="outline">{member.roleName}</Badge>
+                <Bone box loading={loading}>
+                  <Badge variant="outline">{member.roleName}</Badge>
+                </Bone>
               )}
-              <AccessDeltaBadge delta={delta} roleName={role?.name ?? null} />
+              {!loading && (
+                <AccessDeltaBadge delta={delta} roleName={role?.name ?? null} />
+              )}
               {member.isPrimaryOwner && (
                 <Badge variant="secondary" className="gap-1">
                   <Crown className="size-3" />
@@ -243,19 +259,23 @@ export function MemberDetailTabs({
               )}
             </div>
             <p className="mt-1 text-sm text-muted-foreground">
-              {member.name && member.name !== member.username
-                ? `${member.name} · `
-                : ""}
-              joined {timeAgo(member.createdAt)}
+              <Bone loading={loading}>
+                {member.name && member.name !== member.username
+                  ? `${member.name} · `
+                  : ""}
+                joined {loading ? "2 months ago" : timeAgo(member.createdAt)}
+              </Bone>
             </p>
           </div>
           {canManageAccount && (
-            <Button asChild variant="outline" size="sm" className="ml-auto">
-              <Link href={`/settings/users?user=${member.userId}`}>
-                <UserCog className="size-4" />
-                Manage account
-              </Link>
-            </Button>
+            <Bone box loading={loading} className="ml-auto">
+              <Button asChild variant="outline" size="sm" className="ml-auto">
+                <Link href={`/settings/users?user=${member.userId}`}>
+                  <UserCog className="size-4" />
+                  Manage account
+                </Link>
+              </Button>
+            </Bone>
           )}
         </div>
       </header>
@@ -297,6 +317,7 @@ export function MemberDetailTabs({
                       onChange={pickRole}
                       canAssignOwner={canAssignOwner}
                       isCustom={access.roleId == null}
+                      loading={loading}
                     />
                   )}
                 </CardContent>
@@ -319,6 +340,7 @@ export function MemberDetailTabs({
                   docs="team.limitedAccess"
                   emptyNote="This team has nothing to give access to yet."
                   notice={blockedReason}
+                  loading={loading}
                 />
               </CardContent>
             </Card>
@@ -326,6 +348,7 @@ export function MemberDetailTabs({
             <Card>
               <CardContent className="space-y-3 pt-6">
                 <PermissionPicker
+                  loading={loading}
                   capabilities={caps}
                   onChange={setCaps}
                   disabled={readOnly}
@@ -348,14 +371,16 @@ export function MemberDetailTabs({
 
           {!readOnly && onTeamTab && (
             <div className="flex justify-end">
-              <Button type="submit" disabled={!dirty || pending || blocked}>
-                {pending ? (
-                  <Loader2 className="size-4 animate-spin" />
-                ) : (
-                  <Check className="size-4" />
-                )}
-                {dirty ? "Save changes" : "Saved"}
-              </Button>
+              <Bone box loading={loading}>
+                <Button type="submit" disabled={!dirty || pending || blocked}>
+                  {pending ? (
+                    <Loader2 className="size-4 animate-spin" />
+                  ) : (
+                    <Check className="size-4" />
+                  )}
+                  {dirty ? "Save changes" : "Saved"}
+                </Button>
+              </Bone>
             </div>
           )}
         </form>
@@ -670,5 +695,75 @@ function sameSelection(a: ScopeSelection, b: ScopeSelection): boolean {
     same(a.projectIds, b.projectIds) &&
     same(a.folderIds, b.folderIds) &&
     same(a.appIds, b.appIds)
+  );
+}
+
+const SKELETON_ROLES: TeamRoleDTO[] = [
+  ["Owner", "Full access to the team, members and settings."],
+  ["Member", "Deploys and manages apps, no team settings."],
+  ["Viewer", "Sees everything, changes nothing."],
+].map(([name, description]) => ({
+  id: name,
+  name,
+  description,
+  builtinKey: null,
+  capabilities: [],
+  requireTwoFactor: false,
+  memberCount: 0,
+  modified: false,
+  locked: false,
+  scope: null,
+  createdAt: "",
+}));
+
+/** Another member of the team, opened by an owner: the page's usual shape. */
+export function MemberDetailSkeleton({
+  activity,
+}: {
+  activity: React.ReactNode;
+}) {
+  return (
+    <MemberDetailTabs
+      loading
+      activity={activity}
+      member={{
+        userId: "",
+        membershipId: "",
+        username: "username",
+        name: "username",
+        role: "member",
+        roleId: null,
+        roleName: "Member",
+        roleScoped: false,
+        capabilities: [],
+        accessDelta: null,
+        tokenCount: 0,
+        agentCount: 0,
+        isPrimaryOwner: false,
+        isInstanceAdmin: false,
+        avatarColor: "",
+        avatarUrl: null,
+        createdAt: "",
+      }}
+      access={{
+        teamId: "",
+        teamName: "",
+        roleId: "none",
+        roleName: "Member",
+        rank: "member",
+        granular: false,
+        baseCapabilities: PARTIAL_CAPABILITIES,
+        customCapabilities: false,
+        nodes: [],
+        isFounder: false,
+      }}
+      roles={SKELETON_ROLES}
+      tree={[]}
+      canAssignOwner
+      isSelf={false}
+      canManageAccount
+      viewerIsPrimaryOwner={false}
+      viewerTwoFactorEnabled={false}
+    />
   );
 }

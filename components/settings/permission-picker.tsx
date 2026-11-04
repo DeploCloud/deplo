@@ -5,6 +5,7 @@ import { Ban, Search, Lock, ShieldAlert, X } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
+import { Bone } from "@/components/ui/skeleton";
 import { InfoTip } from "@/components/ui/info-tip";
 import { SimpleTooltip } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
@@ -17,6 +18,13 @@ import {
 
 const OPTIONAL = ALL_CAPABILITIES.filter((c) => c !== "view");
 
+/** A typical role's spread for skeletons: something in every category, none full. */
+export const PARTIAL_CAPABILITIES: Capability[] = [
+  "view",
+  ...CAPABILITY_CATEGORIES.map((c) => c.caps[0]),
+  "delete_apps",
+];
+
 export function PermissionPicker({
   capabilities,
   onChange,
@@ -24,7 +32,9 @@ export function PermissionPicker({
   hint = "Every action Deplo can gate, one permission each. Tick exactly what this role should be able to do - search by what you want it to reach.",
   muted,
   scroll = false,
+  loading = false,
 }: {
+  loading?: boolean;
   capabilities: Capability[];
   onChange: (caps: Capability[]) => void;
   disabled?: boolean;
@@ -91,16 +101,20 @@ export function PermissionPicker({
         </div>
         <div className="flex items-center gap-2 text-xs text-muted-foreground">
           <span className="tabular-nums">
-            {grantedCount} of {OPTIONAL.length} granted
+            <Bone loading={loading}>
+              {grantedCount} of {OPTIONAL.length} granted
+            </Bone>
           </span>
           {!disabled && grantedCount > 0 && (
-            <button
-              type="button"
-              onClick={() => setMany(OPTIONAL, false)}
-              className="rounded font-medium transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
-            >
-              Clear all
-            </button>
+            <Bone box loading={loading}>
+              <button
+                type="button"
+                onClick={() => setMany(OPTIONAL, false)}
+                className="rounded font-medium transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+              >
+                Clear all
+              </button>
+            </Bone>
           )}
         </div>
       </div>
@@ -148,23 +162,27 @@ export function PermissionPicker({
               >
                 <header className="flex flex-wrap items-center gap-2 border-b border-border bg-surface px-3 py-2">
                   <h4 className="text-sm font-medium">{cat.label}</h4>
-                  <Badge
-                    variant={granted === 0 ? "muted" : "secondary"}
-                    className="tabular-nums"
-                  >
-                    {granted}/{cat.caps.length}
-                  </Badge>
+                  <Bone box loading={loading}>
+                    <Badge
+                      variant={granted === 0 ? "muted" : "secondary"}
+                      className="tabular-nums"
+                    >
+                      {granted}/{cat.caps.length}
+                    </Badge>
+                  </Bone>
                   <span className="hidden min-w-0 flex-1 truncate text-xs text-muted-foreground sm:block">
                     {cat.description}
                   </span>
                   {!disabled && (
-                    <button
-                      type="button"
-                      onClick={() => setMany(cat.shown, !allShownOn)}
-                      className="ml-auto shrink-0 rounded text-xs font-medium text-muted-foreground transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
-                    >
-                      {allShownOn ? "Unselect all" : "Select all"}
-                    </button>
+                    <Bone box loading={loading} className="ml-auto shrink-0">
+                      <button
+                        type="button"
+                        onClick={() => setMany(cat.shown, !allShownOn)}
+                        className="ml-auto shrink-0 rounded text-xs font-medium text-muted-foreground transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+                      >
+                        {allShownOn ? "Unselect all" : "Select all"}
+                      </button>
+                    </Bone>
                   )}
                 </header>
                 <div className="divide-y divide-border/60">
@@ -182,13 +200,19 @@ export function PermissionPicker({
                             : "cursor-pointer hover:bg-accent",
                         )}
                       >
-                        <Checkbox
-                          id={id}
-                          checked={enabled.has(cap)}
-                          disabled={disabled}
-                          onCheckedChange={(v) => toggle(cap, v === true)}
-                          className="mt-0.5"
-                        />
+                        <Bone
+                          box
+                          loading={loading}
+                          className="mt-0.5 rounded-sm"
+                        >
+                          <Checkbox
+                            id={id}
+                            checked={enabled.has(cap)}
+                            disabled={disabled}
+                            onCheckedChange={(v) => toggle(cap, v === true)}
+                            className={loading ? undefined : "mt-0.5"}
+                          />
+                        </Bone>
                         <span className="min-w-0">
                           <span className="flex flex-wrap items-center gap-1.5">
                             <span

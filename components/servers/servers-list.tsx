@@ -73,37 +73,15 @@ export function ServersList({ items }: { items: ServerListItem[] }) {
   return (
     <div className="space-y-4">
       {items.length > 1 && (
-        <ListToolbar
+        <ServersToolbar
           query={query}
           onQuery={setQuery}
-          placeholder="Search servers"
           view={view}
           onView={setView}
-          listLabel="Table view"
-          filters={
-            <>
-              <FilterFacet
-                id="team"
-                label="Team"
-                allLabel="Any team"
-                icon={Users}
-                options={teams.options}
-                counts={teams.counts}
-                values={picked.team}
-                onChange={(v) => setPicked("team", v)}
-              />
-              <FilterFacet
-                id="use"
-                label="Used for"
-                allLabel="Any use"
-                icon={ServerIcon}
-                options={USE_OPTIONS}
-                counts={countBy(items, (i) => i.use)}
-                values={picked.use}
-                onChange={(v) => setPicked("use", v)}
-              />
-            </>
-          }
+          teams={teams}
+          useCounts={countBy(items, (i) => i.use)}
+          picked={picked}
+          onPick={setPicked}
         />
       )}
 
@@ -116,6 +94,87 @@ export function ServersList({ items }: { items: ServerListItem[] }) {
       ) : (
         <ServerGroup items={shown} view={view} />
       )}
+    </div>
+  );
+}
+
+function ServersToolbar({
+  query,
+  onQuery,
+  view,
+  onView,
+  teams,
+  useCounts,
+  picked,
+  onPick,
+}: {
+  query: string;
+  onQuery: (v: string) => void;
+  view: ListView;
+  onView: (v: ListView) => void;
+  teams: ReturnType<typeof teamFacetOptions>;
+  useCounts?: Record<string, number>;
+  picked: Record<(typeof FACETS)[number], string[]>;
+  onPick: (key: (typeof FACETS)[number], values: string[]) => void;
+}) {
+  return (
+    <ListToolbar
+      query={query}
+      onQuery={onQuery}
+      placeholder="Search servers"
+      view={view}
+      onView={onView}
+      listLabel="Table view"
+      filters={
+        <>
+          <FilterFacet
+            id="team"
+            label="Team"
+            allLabel="Any team"
+            icon={Users}
+            options={teams.options}
+            counts={teams.counts}
+            values={picked.team}
+            onChange={(v) => onPick("team", v)}
+          />
+          <FilterFacet
+            id="use"
+            label="Used for"
+            allLabel="Any use"
+            icon={ServerIcon}
+            options={USE_OPTIONS}
+            counts={useCounts}
+            values={picked.use}
+            onChange={(v) => onPick("use", v)}
+          />
+        </>
+      }
+    />
+  );
+}
+
+// One option, so the facet draws as it will once loaded, not as an empty one.
+const PLACEHOLDER_OPTIONS = [{ value: "", label: "" }];
+const noop = () => {};
+
+// The grid view with its toolbar; `children` are the skeleton cards.
+export function ServersListSkeleton({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="space-y-4">
+      <ServersToolbar
+        query=""
+        onQuery={noop}
+        view="grid"
+        onView={noop}
+        teams={{ options: PLACEHOLDER_OPTIONS, counts: {} }}
+        picked={{ team: [], use: [] }}
+        onPick={noop}
+      />
+      <div className="grid items-start gap-4 sm:grid-cols-2">{children}</div>
     </div>
   );
 }

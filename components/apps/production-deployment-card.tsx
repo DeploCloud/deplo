@@ -14,6 +14,7 @@ import Link from "@/components/ui/link";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { StatusBadge } from "@/components/shared/status-badge";
+import { Bone, Skeleton } from "@/components/ui/skeleton";
 import { DeploymentCreator } from "@/components/apps/deployment-creator";
 import { DeploymentCover, WithCover } from "@/components/apps/deployment-cover";
 import { describeAppSource } from "@/components/apps/app-source";
@@ -151,10 +152,9 @@ export function ProductionDeploymentCard({
       ];
 
   return (
-    <Card className="overflow-hidden">
-      <CardHeader className="flex-row items-center justify-between space-y-0 border-b border-border px-6 py-3">
-        <CardTitle className="text-base">Production Deployment</CardTitle>
-        <div className="flex items-center gap-2">
+    <ProdCard
+      actions={
+        <>
           {prod && (
             <Button size="sm" variant="outline" asChild>
               <Link href={`/apps/${slug}/deployments/${prod.id}`}>
@@ -175,105 +175,207 @@ export function ProductionDeploymentCard({
               </a>
             </Button>
           )}
-        </div>
-      </CardHeader>
-      <CardContent className="pt-6">
-        {prod ? (
-          <WithCover
-            cover={
-              shot && (
-                <DeploymentCover
-                  deploymentId={shot.deploymentId}
-                  href={project.productionUrl || prod.url}
-                  lightUrl={shot.lightUrl}
-                  darkUrl={shot.darkUrl}
-                  canRetake={shot.current && canConfigure}
-                />
-              )
-            }
-          >
-            <div className="grid content-start gap-x-6 gap-y-5 sm:grid-cols-2">
-              {project.productionUrl && (
-                <Field label="Domain" wide>
-                  <a
-                    href={project.productionUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className={`${row} w-fit max-w-full cursor-pointer font-medium hover:underline`}
-                  >
-                    <span className="truncate">
-                      {project.productionUrl.replace(/^https?:\/\//, "")}
-                    </span>
-                    <ArrowUpRight className="size-3.5 shrink-0 text-muted-foreground" />
-                  </a>
-                </Field>
-              )}
-              <Field label="Status">
-                <StatusBadge status={prod.status} />
-              </Field>
-              <Field label="Created">
-                <p className={row}>
-                  {timeAgoShort(prod.createdAt)} by
-                  <DeploymentCreator
-                    creator={prod.creator}
-                    creatorUser={prod.creatorUser}
-                    creatorProvider={prod.creatorProvider}
-                    creatorUrl={gitProfileUrl(
-                      prod.creatorProvider,
-                      prod.creator,
-                      project.repo?.url,
-                    )}
-                  />
-                </p>
-              </Field>
-              {cells.map((c, i) => (
-                <Field
-                  key={c.label}
-                  label={c.label}
-                  wide={i === 0 && cells.length % 2 === 1}
+        </>
+      }
+      footer={
+        hint && (
+          <HintBar auto={hint.auto}>
+            {hint.parts.map((p, i) =>
+              typeof p === "string" ? p : <HintCode key={i}>{p.code}</HintCode>,
+            )}
+          </HintBar>
+        )
+      }
+    >
+      {prod ? (
+        <WithCover
+          cover={
+            shot && (
+              <DeploymentCover
+                deploymentId={shot.deploymentId}
+                href={project.productionUrl || prod.url}
+                lightUrl={shot.lightUrl}
+                darkUrl={shot.darkUrl}
+                canRetake={shot.current && canConfigure}
+              />
+            )
+          }
+        >
+          <div className="grid content-start gap-x-6 gap-y-5 sm:grid-cols-2">
+            {project.productionUrl && (
+              <Field label="Domain" wide>
+                <a
+                  href={project.productionUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className={`${row} w-fit max-w-full cursor-pointer font-medium hover:underline`}
                 >
-                  {c.node}
-                </Field>
-              ))}
-            </div>
-          </WithCover>
-        ) : (
-          <div className="space-y-3">
-            <p className="text-sm text-muted-foreground">
-              No production deployment yet.
-            </p>
-            <Field label="Source">
+                  <span className="truncate">
+                    {project.productionUrl.replace(/^https?:\/\//, "")}
+                  </span>
+                  <ArrowUpRight className="size-3.5 shrink-0 text-muted-foreground" />
+                </a>
+              </Field>
+            )}
+            <Field label="Status">
+              <StatusBadge status={prod.status} />
+            </Field>
+            <Field label="Created">
               <p className={row}>
-                <src.Icon className="size-3.5 shrink-0" />
-                <span className="truncate">{src.label}</span>
+                {timeAgoShort(prod.createdAt)} by
+                <DeploymentCreator
+                  creator={prod.creator}
+                  creatorUser={prod.creatorUser}
+                  creatorProvider={prod.creatorProvider}
+                  creatorUrl={gitProfileUrl(
+                    prod.creatorProvider,
+                    prod.creator,
+                    project.repo?.url,
+                  )}
+                />
               </p>
             </Field>
+            {cells.map((c, i) => (
+              <Field
+                key={c.label}
+                label={c.label}
+                wide={i === 0 && cells.length % 2 === 1}
+              >
+                {c.node}
+              </Field>
+            ))}
           </div>
-        )}
-      </CardContent>
-      {hint && (
-        <div className="flex items-center gap-2 border-t border-border bg-surface px-6 py-3 text-sm text-muted-foreground">
-          {hint.auto ? (
-            <Zap className="size-3.5 shrink-0" />
-          ) : (
-            <RefreshCw className="size-3.5 shrink-0" />
-          )}
-          <p>
-            {hint.parts.map((p, i) =>
-              typeof p === "string" ? (
-                p
-              ) : (
-                <code
-                  key={i}
-                  className="rounded border border-border bg-secondary px-1.5 py-0.5 font-mono text-xs text-foreground"
-                >
-                  {p.code}
-                </code>
-              ),
-            )}
+        </WithCover>
+      ) : (
+        <div className="space-y-3">
+          <p className="text-sm text-muted-foreground">
+            No production deployment yet.
           </p>
+          <Field label="Source">
+            <p className={row}>
+              <src.Icon className="size-3.5 shrink-0" />
+              <span className="truncate">{src.label}</span>
+            </p>
+          </Field>
         </div>
       )}
+    </ProdCard>
+  );
+}
+
+function ProdCard({
+  actions,
+  footer,
+  children,
+}: {
+  actions: React.ReactNode;
+  footer: React.ReactNode;
+  children: React.ReactNode;
+}) {
+  return (
+    <Card className="overflow-hidden">
+      <CardHeader className="flex-row items-center justify-between space-y-0 border-b border-border px-6 py-3">
+        <CardTitle className="text-base">Production Deployment</CardTitle>
+        <div className="flex items-center gap-2">{actions}</div>
+      </CardHeader>
+      <CardContent className="pt-6">{children}</CardContent>
+      {footer}
     </Card>
+  );
+}
+
+function HintCode({ children }: { children: React.ReactNode }) {
+  return (
+    <code className="rounded border border-border bg-secondary px-1.5 py-0.5 font-mono text-xs text-foreground">
+      {children}
+    </code>
+  );
+}
+
+function HintBar({
+  auto,
+  children,
+}: {
+  auto: boolean;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="flex items-center gap-2 border-t border-border bg-surface px-6 py-3 text-sm text-muted-foreground">
+      {auto ? (
+        <Zap className="size-3.5 shrink-0" />
+      ) : (
+        <RefreshCw className="size-3.5 shrink-0" />
+      )}
+      <p>{children}</p>
+    </div>
+  );
+}
+
+// Shaped like the common case: a git App with a detected framework and a domain.
+export function ProductionDeploymentCardSkeleton() {
+  return (
+    <ProdCard
+      actions={
+        <>
+          <Bone box>
+            <Button size="sm" variant="outline" disabled>
+              <ScrollText className="size-4" />
+              Build Logs
+            </Button>
+          </Bone>
+          <Bone box>
+            <Button size="sm" variant="outline" disabled>
+              <ExternalLink className="size-4" />
+              Visit
+            </Button>
+          </Bone>
+        </>
+      }
+      footer={
+        <HintBar auto>
+          <Bone>
+            Every push to <HintCode>main</HintCode> deploys to production.
+          </Bone>
+        </HintBar>
+      }
+    >
+      <div className="grid content-start gap-x-6 gap-y-5 sm:grid-cols-2">
+        <Field label="Domain" wide>
+          <span className={`${row} w-fit max-w-full font-medium`}>
+            <Bone>web-app.example.com</Bone>
+            <ArrowUpRight className="size-3.5 shrink-0 text-muted-foreground" />
+          </span>
+        </Field>
+        <Field label="Status">
+          <Bone box>
+            <StatusBadge status="ready" />
+          </Bone>
+        </Field>
+        <Field label="Created">
+          <p className={row}>
+            <Bone>2d ago by someone</Bone>
+          </p>
+        </Field>
+        <Field label="Source" wide>
+          <p className={row}>
+            <Bone>main</Bone>
+          </p>
+          <p className={`${row} mt-1.5`}>
+            <Bone>a1b2c3d Commit message of the build</Bone>
+          </p>
+        </Field>
+        <Field label="Framework">
+          <span className="inline-flex items-center gap-1.5">
+            <Skeleton className="size-3.5 shrink-0" />
+            <Bone>Vite</Bone>
+          </span>
+        </Field>
+        <Field label="Build time">
+          <p className={row}>
+            <Bone>1m 30s</Bone>
+          </p>
+        </Field>
+      </div>
+    </ProdCard>
   );
 }

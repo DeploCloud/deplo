@@ -1,5 +1,6 @@
 "use client";
 
+import { LoadingText } from "@/components/apps/settings/settings-loading";
 import * as React from "react";
 import { useRouter } from "@/lib/nav";
 import { toast } from "sonner";
@@ -124,13 +125,15 @@ export function BuildServerPanel({
       info="Building on another server keeps the one that runs the app free of the load. Only a server with the same CPU architecture can build for it."
       docs="build.serversHowItWorks"
       description={
-        value === SELF
-          ? `Always builds on ${serverName}, where it runs.`
-          : value === AUTOMATIC
-            ? autoWouldUse
-              ? "Uses a build server automatically."
-              : `No build server in this fleet yet, so it builds on ${serverName}.`
-            : `Builds on ${others.find((c) => c.id === value)?.name ?? value}, then runs on ${serverName}.`
+        <LoadingText>
+          {value === SELF
+            ? `Always builds on ${serverName}, where it runs.`
+            : value === AUTOMATIC
+              ? autoWouldUse
+                ? "Uses a build server automatically."
+                : `No build server in this fleet yet, so it builds on ${serverName}.`
+              : `Builds on ${others.find((c) => c.id === value)?.name ?? value}, then runs on ${serverName}.`}
+        </LoadingText>
       }
       control={
         <Select value={value} onValueChange={pick} disabled={saving}>

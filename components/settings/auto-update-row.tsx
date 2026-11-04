@@ -28,6 +28,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
+import { Bone } from "@/components/ui/skeleton";
 import { TimezonePicker } from "@/components/servers/timezone-picker";
 import { gqlAction } from "@/lib/graphql-client";
 import { describeAt, slotHours } from "@/lib/auto-updates/window";
@@ -72,6 +73,40 @@ export function autoUpdateLine(
   if (s.nextCheckAt)
     return `Next check ${when(s.nextCheckAt, s.timezone, now)} (${s.timezone}).`;
   return "On.";
+}
+
+const ROW =
+  "flex flex-col gap-3 border-t border-border p-5 sm:flex-row sm:items-center sm:justify-between";
+
+function RowTitle() {
+  return (
+    <p className="flex items-center gap-1.5 text-sm font-medium">
+      <Clock className="size-4 shrink-0 text-muted-foreground" />
+      <label htmlFor="auto-updates">Automatic updates</label>
+      <InfoTip
+        content="New stable versions install themselves at night, at the first of three checks where nothing is deploying or backing up."
+        docs="upgrade.automatic"
+      />
+    </p>
+  );
+}
+
+export function AutoUpdateRowSkeleton() {
+  return (
+    <div className={ROW}>
+      <div className="min-w-0 flex-1">
+        <RowTitle />
+        <p className="mt-1 text-sm text-muted-foreground">
+          <Bone>Next check today at 03:00 (Europe/Rome).</Bone>
+        </p>
+      </div>
+      <div className="flex shrink-0 flex-wrap items-center gap-2">
+        <Bone box>
+          <Switch checked={false} disabled aria-hidden />
+        </Bone>
+      </div>
+    </div>
+  );
 }
 
 export function AutoUpdateRow({
@@ -139,16 +174,9 @@ export function AutoUpdateRow({
   );
 
   return (
-    <div className="flex flex-col gap-3 border-t border-border p-5 sm:flex-row sm:items-center sm:justify-between">
+    <div className={ROW}>
       <div className="min-w-0 flex-1">
-        <p className="flex items-center gap-1.5 text-sm font-medium">
-          <Clock className="size-4 shrink-0 text-muted-foreground" />
-          <label htmlFor="auto-updates">Automatic updates</label>
-          <InfoTip
-            content="New stable versions install themselves at night, at the first of three checks where nothing is deploying or backing up."
-            docs="upgrade.automatic"
-          />
-        </p>
+        <RowTitle />
         <p className="mt-1 text-sm text-muted-foreground">
           {autoUpdateLine(status, next, new Date())}
         </p>

@@ -6,6 +6,7 @@ import { Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { InfoTip } from "@/components/ui/info-tip";
+import { Bone } from "@/components/ui/skeleton";
 import { ConnectDnsDialog } from "./connect-dialog";
 import { ConnectedRow, type ConnectedDns } from "./connected-row";
 import type { DnsTeam } from "./team-access";
@@ -14,10 +15,12 @@ export function TeamDnsCard({
   providers,
   teams,
   activeTeamId,
+  loading = false,
 }: {
   providers: ConnectedDns[];
   teams: DnsTeam[];
   activeTeamId: string;
+  loading?: boolean;
 }) {
   const [connecting, setConnecting] = React.useState(false);
 
@@ -35,7 +38,12 @@ export function TeamDnsCard({
             docs="domains.automaticDns"
           />
         </CardTitle>
-        <Button variant="outline" size="sm" onClick={() => setConnecting(true)}>
+        <Button
+          variant="outline"
+          size="sm"
+          disabled={loading}
+          onClick={() => setConnecting(true)}
+        >
           <Plus className="size-4" />
           <span className="sm:hidden">Connect</span>
           <span className="max-sm:hidden">Connect a domain</span>
@@ -43,9 +51,11 @@ export function TeamDnsCard({
       </CardHeader>
       <CardContent>
         {providers.length === 0 ? (
-          <p className="rounded-xl border border-dashed border-border p-6 text-center text-sm text-muted-foreground">
-            No domains connected yet.
-          </p>
+          <Bone box loading={loading} className="w-full rounded-xl">
+            <p className="w-full rounded-xl border border-dashed border-border p-6 text-center text-sm text-muted-foreground">
+              No domains connected yet.
+            </p>
+          </Bone>
         ) : (
           <ul className="divide-y divide-border rounded-xl border border-border">
             {providers.map((p) => (

@@ -3,6 +3,7 @@
 import * as React from "react";
 import { Loader2 } from "lucide-react";
 import { TableCell, TableRow } from "@/components/ui/table";
+import { Bone } from "@/components/ui/skeleton";
 import { SimpleTooltip } from "@/components/ui/tooltip";
 import { StatusDot } from "@/components/shared/status-badge";
 import { formatBytes, formatDateTime, timeAgo } from "@/lib/utils";
@@ -36,6 +37,35 @@ export function PendingRunRow({
       <TableCell className="text-right text-muted-foreground">-</TableCell>
       <TableCell className="w-px text-right">
         <RunMenu href={null} running ok={false} canRestore={canRestore} />
+      </TableCell>
+    </TableRow>
+  );
+}
+
+/** A restore point still loading: a finished run's two lines, size and menu. */
+export function RunRowSkeleton() {
+  return (
+    <TableRow>
+      <TableCell>
+        <div className="flex items-center gap-2">
+          <Bone box className="rounded-full">
+            <StatusDot status="success" />
+          </Bone>
+          <span className="text-sm font-medium">
+            <Bone>1 day ago</Bone>
+          </span>
+        </div>
+        <p className="mt-1 text-xs text-muted-foreground">
+          <Bone>3 Nov, 03:00 · Backup storage</Bone>
+        </p>
+      </TableCell>
+      <TableCell className="text-right text-muted-foreground">
+        <Bone>12 MB</Bone>
+      </TableCell>
+      <TableCell className="w-px text-right">
+        <Bone box className="ml-auto">
+          <RunMenu href={null} running={false} ok={false} canRestore={false} />
+        </Bone>
       </TableCell>
     </TableRow>
   );

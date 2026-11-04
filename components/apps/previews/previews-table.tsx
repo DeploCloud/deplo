@@ -28,7 +28,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Skeleton } from "@/components/ui/skeleton";
+import { Bone, Skeleton } from "@/components/ui/skeleton";
 import { SimpleTooltip } from "@/components/ui/tooltip";
 import {
   Table,
@@ -113,282 +113,265 @@ export function PreviewsTable({
 
   return (
     <div className="space-y-3">
-      <Card className="overflow-hidden p-0">
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Pull request</TableHead>
-              <TableHead className="w-[140px]">Status</TableHead>
-              <TableHead>Preview</TableHead>
-              <TableHead className="w-[120px]">Updated</TableHead>
-              <TableHead className="w-[120px] text-right">Actions</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {rows.map((p) => {
-              const blocked = p.isFork && !p.approved;
-              const review = blocked && canDeploy;
-              const openUrl = !review && !p.closed ? p.url : null;
-              const logsHref = p.latestDeploymentId
-                ? `/apps/${appSlug}/deployments/${p.latestDeploymentId}`
-                : null;
-              // Below md these join the kebab, or become one when there is none.
-              const folded: RowAction[] = [];
-              if (review)
-                folded.push({
-                  label: "Review and deploy",
-                  icon: ShieldCheck,
-                  onSelect: () => setReviewing(p.id),
-                });
-              if (openUrl)
-                folded.push({
-                  label: "Open preview",
-                  icon: ExternalLink,
-                  external: openUrl,
-                });
-              if (logsHref)
-                folded.push({
-                  label: "Build logs",
-                  icon: Logs,
-                  href: logsHref,
-                });
-              const fold = canDeploy || folded.length > 1;
-              const hideOnPhone = fold ? "max-md:hidden" : undefined;
-              return (
-                <TableRow key={p.id}>
-                  <TableCell>
-                    <a
-                      href={p.pullRequestUrl}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="flex items-center gap-1.5 text-sm font-medium hover:underline"
-                    >
-                      <span className="font-mono text-muted-foreground">
-                        #{p.prNumber}
-                      </span>
-                      <span className="line-clamp-1">{p.title}</span>
-                      {p.securityUpdates && (
-                        <SecurityShield {...p.securityUpdates} />
-                      )}
-                    </a>
-                    <p className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
-                      <span className="flex items-center gap-1">
-                        <GitBranch className="size-3" />
-                        <span className="font-mono">{p.headBranch}</span>
-                        <span aria-hidden>to</span>
-                        <span className="font-mono">{p.baseBranch}</span>
-                      </span>
-                      {p.author && (
-                        <GitAccount
-                          login={p.author}
-                          provider="github"
-                          url={gitProfileUrl("github", p.author)}
-                          size="xs"
-                        />
-                      )}
-                      {p.isFork && (
-                        <Badge variant="secondary" className="gap-1">
-                          <GitFork className="size-3" />
-                          {p.headRepo || "fork"}
-                        </Badge>
-                      )}
-                    </p>
-                  </TableCell>
+      <PreviewsTableFrame>
+        {rows.map((p) => {
+          const blocked = p.isFork && !p.approved;
+          const review = blocked && canDeploy;
+          const openUrl = !review && !p.closed ? p.url : null;
+          const logsHref = p.latestDeploymentId
+            ? `/apps/${appSlug}/deployments/${p.latestDeploymentId}`
+            : null;
+          // Below md these join the kebab, or become one when there is none.
+          const folded: RowAction[] = [];
+          if (review)
+            folded.push({
+              label: "Review and deploy",
+              icon: ShieldCheck,
+              onSelect: () => setReviewing(p.id),
+            });
+          if (openUrl)
+            folded.push({
+              label: "Open preview",
+              icon: ExternalLink,
+              external: openUrl,
+            });
+          if (logsHref)
+            folded.push({
+              label: "Build logs",
+              icon: Logs,
+              href: logsHref,
+            });
+          const fold = canDeploy || folded.length > 1;
+          const hideOnPhone = fold ? "max-md:hidden" : undefined;
+          return (
+            <TableRow key={p.id}>
+              <TableCell>
+                <a
+                  href={p.pullRequestUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="flex items-center gap-1.5 text-sm font-medium hover:underline"
+                >
+                  <span className="font-mono text-muted-foreground">
+                    #{p.prNumber}
+                  </span>
+                  <span className="line-clamp-1">{p.title}</span>
+                  {p.securityUpdates && (
+                    <SecurityShield {...p.securityUpdates} />
+                  )}
+                </a>
+                <p className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
+                  <span className="flex items-center gap-1">
+                    <GitBranch className="size-3" />
+                    <span className="font-mono">{p.headBranch}</span>
+                    <span aria-hidden>to</span>
+                    <span className="font-mono">{p.baseBranch}</span>
+                  </span>
+                  {p.author && (
+                    <GitAccount
+                      login={p.author}
+                      provider="github"
+                      url={gitProfileUrl("github", p.author)}
+                      size="xs"
+                    />
+                  )}
+                  {p.isFork && (
+                    <Badge variant="secondary" className="gap-1">
+                      <GitFork className="size-3" />
+                      {p.headRepo || "fork"}
+                    </Badge>
+                  )}
+                </p>
+              </TableCell>
 
-                  <TableCell>
-                    {blocked ? (
-                      <Badge variant="outline" className="gap-1.5">
-                        <ShieldAlert className="size-3.5 text-[var(--warning)]" />
-                        Needs approval
-                      </Badge>
-                    ) : p.status === "evicted" ? (
-                      <SimpleTooltip
-                        content={`At the limit of ${maxActive} previews, this was the least recently touched. Redeploy brings it back on the same address.`}
-                      >
-                        <span className="inline-flex">
-                          <StatusBadge status={p.status} />
-                        </span>
-                      </SimpleTooltip>
-                    ) : (
+              <TableCell>
+                {blocked ? (
+                  <Badge variant="outline" className="gap-1.5">
+                    <ShieldAlert className="size-3.5 text-[var(--warning)]" />
+                    Needs approval
+                  </Badge>
+                ) : p.status === "evicted" ? (
+                  <SimpleTooltip
+                    content={`At the limit of ${maxActive} previews, this was the least recently touched. Redeploy brings it back on the same address.`}
+                  >
+                    <span className="inline-flex">
                       <StatusBadge status={p.status} />
-                    )}
-                  </TableCell>
+                    </span>
+                  </SimpleTooltip>
+                ) : (
+                  <StatusBadge status={p.status} />
+                )}
+              </TableCell>
 
-                  <TableCell>
-                    {p.status === "building" || p.status === "queued" ? (
-                      <Skeleton className="h-4 w-40" />
-                    ) : p.url && !p.closed && p.status !== "evicted" ? (
-                      <a
-                        href={p.url}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="font-mono text-xs hover:underline"
+              <TableCell>
+                {p.status === "building" || p.status === "queued" ? (
+                  <Skeleton className="h-4 w-40" />
+                ) : p.url && !p.closed && p.status !== "evicted" ? (
+                  <a
+                    href={p.url}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="font-mono text-xs hover:underline"
+                  >
+                    {p.host}
+                  </a>
+                ) : p.status === "evicted" ? (
+                  <span
+                    className="font-mono text-xs text-muted-foreground"
+                    title="Redeploy to bring this address back"
+                  >
+                    {p.host}
+                  </span>
+                ) : (
+                  <span className="text-xs text-muted-foreground">
+                    Not deployed
+                  </span>
+                )}
+              </TableCell>
+
+              <TableCell className="text-xs text-muted-foreground">
+                {timeAgo(p.updatedAt)}
+              </TableCell>
+
+              <TableCell className={`text-right ${ROW_ACTIONS_CELL}`}>
+                <div className="flex items-center justify-end gap-1">
+                  {review ? (
+                    <ConfirmAction
+                      variant="default"
+                      open={reviewing === p.id}
+                      onOpenChange={(v) => setReviewing(v ? p.id : null)}
+                      trigger={
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className={hideOnPhone}
+                        >
+                          Review and deploy
+                        </Button>
+                      }
+                      title="Deploy this fork's code?"
+                      description={
+                        <>
+                          Pull request #{p.prNumber} comes from{" "}
+                          <strong>{p.headRepo || "a fork"}</strong>, a
+                          repository you don&apos;t control.{" "}
+                          <DocsLink topic="previews.forksAndSecrets" />
+                        </>
+                      }
+                      consequence="Approving runs that code on your server, and new commits deploy automatically. Secret variables are never given to a fork preview."
+                      confirmLabel="Approve and deploy"
+                      successMessage="Building the preview"
+                      optimistic
+                      onConfirm={async () => {
+                        const res = await gqlAction(
+                          `mutation ($id: ID!) { approvePreview(id: $id) { id } }`,
+                          { id: p.id },
+                        );
+                        if (res.ok) router.refresh();
+                        return res;
+                      }}
+                    />
+                  ) : (
+                    openUrl && (
+                      <SimpleTooltip content="Open this preview in a new tab">
+                        <Button
+                          asChild
+                          size="icon"
+                          variant="ghost"
+                          className={hideOnPhone}
+                        >
+                          <a href={openUrl} target="_blank" rel="noreferrer">
+                            <ExternalLink className="size-4" />
+                          </a>
+                        </Button>
+                      </SimpleTooltip>
+                    )
+                  )}
+                  {logsHref && (
+                    <SimpleTooltip content="Open the build logs for this preview">
+                      <Button
+                        asChild
+                        size="icon"
+                        variant="ghost"
+                        className={hideOnPhone}
                       >
-                        {p.host}
-                      </a>
-                    ) : p.status === "evicted" ? (
-                      <span
-                        className="font-mono text-xs text-muted-foreground"
-                        title="Redeploy to bring this address back"
-                      >
-                        {p.host}
-                      </span>
-                    ) : (
-                      <span className="text-xs text-muted-foreground">
-                        Not deployed
-                      </span>
-                    )}
-                  </TableCell>
-
-                  <TableCell className="text-xs text-muted-foreground">
-                    {timeAgo(p.updatedAt)}
-                  </TableCell>
-
-                  <TableCell className={`text-right ${ROW_ACTIONS_CELL}`}>
-                    <div className="flex items-center justify-end gap-1">
-                      {review ? (
-                        <ConfirmAction
-                          variant="default"
-                          open={reviewing === p.id}
-                          onOpenChange={(v) => setReviewing(v ? p.id : null)}
-                          trigger={
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              className={hideOnPhone}
-                            >
-                              Review and deploy
-                            </Button>
-                          }
-                          title="Deploy this fork's code?"
-                          description={
-                            <>
-                              Pull request #{p.prNumber} comes from{" "}
-                              <strong>{p.headRepo || "a fork"}</strong>, a
-                              repository you don&apos;t control.{" "}
-                              <DocsLink topic="previews.forksAndSecrets" />
-                            </>
-                          }
-                          consequence="Approving runs that code on your server, and new commits deploy automatically. Secret variables are never given to a fork preview."
-                          confirmLabel="Approve and deploy"
-                          successMessage="Building the preview"
-                          optimistic
-                          onConfirm={async () => {
-                            const res = await gqlAction(
-                              `mutation ($id: ID!) { approvePreview(id: $id) { id } }`,
-                              { id: p.id },
-                            );
-                            if (res.ok) router.refresh();
-                            return res;
-                          }}
-                        />
-                      ) : (
-                        openUrl && (
-                          <SimpleTooltip content="Open this preview in a new tab">
-                            <Button
-                              asChild
-                              size="icon"
-                              variant="ghost"
-                              className={hideOnPhone}
-                            >
-                              <a
-                                href={openUrl}
-                                target="_blank"
-                                rel="noreferrer"
-                              >
-                                <ExternalLink className="size-4" />
-                              </a>
-                            </Button>
-                          </SimpleTooltip>
-                        )
-                      )}
-                      {logsHref && (
-                        <SimpleTooltip content="Open the build logs for this preview">
-                          <Button
-                            asChild
-                            size="icon"
-                            variant="ghost"
-                            className={hideOnPhone}
-                          >
-                            <Link href={logsHref}>
-                              <Logs className="size-4" />
-                            </Link>
-                          </Button>
-                        </SimpleTooltip>
-                      )}
-                      {canDeploy && (
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
-                            <Button size="icon" variant="ghost">
-                              <MoreHorizontal className="size-4" />
-                            </Button>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end" className="w-52">
-                            {folded.map((a) => (
-                              <RowActionItem
-                                key={a.label}
-                                action={a}
-                                className="md:hidden"
-                              />
-                            ))}
-                            <DropdownMenuItem
-                              disabled={blocked}
-                              onClick={() =>
-                                run(
-                                  `mutation ($id: ID!) { redeployPreview(id: $id) { id } }`,
-                                  { id: p.id },
-                                  "Redeploy started",
-                                )
-                              }
-                            >
-                              <RotateCw className="size-4" />
-                              Redeploy
-                            </DropdownMenuItem>
-                            <DropdownMenuItem asChild>
-                              <a
-                                href={p.pullRequestUrl}
-                                target="_blank"
-                                rel="noreferrer"
-                              >
-                                <GitPullRequest className="size-4" />
-                                Open pull request
-                              </a>
-                            </DropdownMenuItem>
-                            <DropdownMenuSeparator />
-                            <DropdownMenuItem
-                              variant="destructive"
-                              onClick={() => {
-                                remove(p.id);
-                                run(
-                                  `mutation ($id: ID!) { destroyPreview(id: $id) }`,
-                                  { id: p.id },
-                                  "Preview destroyed",
-                                  () => restore(p.id),
-                                );
-                              }}
-                            >
-                              <Trash2 className="size-4" />
-                              Destroy preview
-                            </DropdownMenuItem>
-                          </DropdownMenuContent>
-                        </DropdownMenu>
-                      )}
-                      {!canDeploy && fold && (
-                        <div className="md:hidden">
-                          <RowKebab
-                            title={`#${p.prNumber} ${p.title}`}
-                            actions={folded}
+                        <Link href={logsHref}>
+                          <Logs className="size-4" />
+                        </Link>
+                      </Button>
+                    </SimpleTooltip>
+                  )}
+                  {canDeploy && (
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button size="icon" variant="ghost">
+                          <MoreHorizontal className="size-4" />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end" className="w-52">
+                        {folded.map((a) => (
+                          <RowActionItem
+                            key={a.label}
+                            action={a}
+                            className="md:hidden"
                           />
-                        </div>
-                      )}
+                        ))}
+                        <DropdownMenuItem
+                          disabled={blocked}
+                          onClick={() =>
+                            run(
+                              `mutation ($id: ID!) { redeployPreview(id: $id) { id } }`,
+                              { id: p.id },
+                              "Redeploy started",
+                            )
+                          }
+                        >
+                          <RotateCw className="size-4" />
+                          Redeploy
+                        </DropdownMenuItem>
+                        <DropdownMenuItem asChild>
+                          <a
+                            href={p.pullRequestUrl}
+                            target="_blank"
+                            rel="noreferrer"
+                          >
+                            <GitPullRequest className="size-4" />
+                            Open pull request
+                          </a>
+                        </DropdownMenuItem>
+                        <DropdownMenuSeparator />
+                        <DropdownMenuItem
+                          variant="destructive"
+                          onClick={() => {
+                            remove(p.id);
+                            run(
+                              `mutation ($id: ID!) { destroyPreview(id: $id) }`,
+                              { id: p.id },
+                              "Preview destroyed",
+                              () => restore(p.id),
+                            );
+                          }}
+                        >
+                          <Trash2 className="size-4" />
+                          Destroy preview
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  )}
+                  {!canDeploy && fold && (
+                    <div className="md:hidden">
+                      <RowKebab
+                        title={`#${p.prNumber} ${p.title}`}
+                        actions={folded}
+                      />
                     </div>
-                  </TableCell>
-                </TableRow>
-              );
-            })}
-          </TableBody>
-        </Table>
-      </Card>
+                  )}
+                </div>
+              </TableCell>
+            </TableRow>
+          );
+        })}
+      </PreviewsTableFrame>
 
       {liveCount >= maxActive && (
         <p className="text-xs text-muted-foreground">
@@ -397,6 +380,93 @@ export function PreviewsTable({
           <DocsLink topic="previews.limit" />
         </p>
       )}
+    </div>
+  );
+}
+
+function PreviewsTableFrame({ children }: { children: React.ReactNode }) {
+  return (
+    <Card className="overflow-hidden p-0">
+      <Table>
+        <TableHeader>
+          <TableRow>
+            <TableHead>Pull request</TableHead>
+            <TableHead className="w-[140px]">Status</TableHead>
+            <TableHead>Preview</TableHead>
+            <TableHead className="w-[120px]">Updated</TableHead>
+            <TableHead className="w-[120px] text-right">Actions</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>{children}</TableBody>
+      </Table>
+    </Card>
+  );
+}
+
+// Two open pull requests, their values boned, for the tab's loading state.
+export function PreviewsTableSkeleton() {
+  return (
+    <div className="space-y-3">
+      <PreviewsTableFrame>
+        {[0, 1].map((i) => (
+          <TableRow key={i}>
+            <TableCell>
+              <span className="flex items-center gap-1.5 text-sm font-medium">
+                <Bone>#12 Pull request title</Bone>
+              </span>
+              <p className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
+                <Bone>feature-branch to main</Bone>
+              </p>
+            </TableCell>
+            <TableCell>
+              <Bone box>
+                <StatusBadge status="ready" />
+              </Bone>
+            </TableCell>
+            <TableCell>
+              <span className="font-mono text-xs">
+                <Bone>app-pr-12.example.com</Bone>
+              </span>
+            </TableCell>
+            <TableCell className="text-xs text-muted-foreground">
+              <Bone>2 hours ago</Bone>
+            </TableCell>
+            <TableCell className={`text-right ${ROW_ACTIONS_CELL}`}>
+              <div className="flex items-center justify-end gap-1">
+                {[ExternalLink, Logs, MoreHorizontal].map((Icon, n) => (
+                  <Bone box key={n} className={n < 2 ? "max-md:hidden" : ""}>
+                    <Button size="icon" variant="ghost" disabled>
+                      <Icon className="size-4" />
+                    </Button>
+                  </Bone>
+                ))}
+              </div>
+            </TableCell>
+          </TableRow>
+        ))}
+      </PreviewsTableFrame>
+    </div>
+  );
+}
+
+// The tab's heading; the page knows the branch, the loading state bones it.
+export function PullRequestsIntro({
+  branch,
+  actions,
+}: {
+  branch: React.ReactNode;
+  actions: React.ReactNode;
+}) {
+  return (
+    <div className="flex items-center justify-between gap-3">
+      <div>
+        <h3 className="text-sm font-medium">Pull request previews</h3>
+        <p className="mt-1 text-sm text-muted-foreground">
+          Every open pull request against {branch} gets its own deploy and its
+          own URL.
+        </p>
+      </div>
+      <div className="flex shrink-0 items-center gap-2">{actions}</div>
     </div>
   );
 }

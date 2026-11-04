@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { Server as ServerIcon } from "lucide-react";
+import { Server as ServerIcon, Settings } from "lucide-react";
 import {
   Card,
   CardContent,
@@ -10,6 +10,8 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Bone } from "@/components/ui/skeleton";
+import { Switch } from "@/components/ui/switch";
 import { useGraphqlMutation } from "@/lib/use-graphql";
 import { toast } from "sonner";
 import { CopyButton } from "@/components/shared/copy-button";
@@ -61,14 +63,13 @@ export function DatabaseConnectionCard({
 
   return (
     <Card>
-      <CardHeader className="flex-row items-start justify-between space-y-0">
-        <CardTitle className="text-base">Connection</CardTitle>
+      <ConnectionHeader>
         <SettingsShortcut
           href={`/storage/databases/${db.id}/settings/connection`}
           label="Connection settings"
           className="-mt-1"
         />
-      </CardHeader>
+      </ConnectionHeader>
       <CardContent className="space-y-5">
         <DatabaseConnectionString
           id={db.id}
@@ -178,6 +179,108 @@ export function DatabaseConnectionCard({
           </Button>
         </CardFooter>
       )}
+    </Card>
+  );
+}
+
+function ConnectionHeader({ children }: { children: React.ReactNode }) {
+  return (
+    <CardHeader className="flex-row items-start justify-between space-y-0">
+      <CardTitle className="text-base">Connection</CardTitle>
+      {children}
+    </CardHeader>
+  );
+}
+
+export function DatabaseConnectionCardSkeleton() {
+  return (
+    <Card>
+      <ConnectionHeader>
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          disabled
+          className="-mt-1"
+          aria-label="Connection settings"
+        >
+          <Settings className="size-4" />
+        </Button>
+      </ConnectionHeader>
+      <CardContent className="space-y-5">
+        <Bone box className="w-full">
+          <DatabaseConnectionString
+            id=""
+            masked="postgres://user:••••••@db-name:5432"
+            className="w-full"
+          />
+        </Bone>
+        <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
+          <div className="min-w-0">
+            <AddressLabel
+              label="Internal"
+              info="Apps on the same network reach it by name."
+            />
+            <div className="mt-0.5 flex min-w-0 items-center gap-1.5">
+              <Bone box>
+                <code className="truncate font-mono text-sm">db-name:5432</code>
+                <CopyButton value="" />
+              </Bone>
+            </div>
+          </div>
+          <div className="min-w-0">
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <AddressLabel label="Public" />
+                <p className="mt-0.5 text-sm text-muted-foreground">
+                  <Bone>Not published</Bone>
+                </p>
+              </div>
+              <Bone box className="rounded-full">
+                <Switch checked={false} disabled />
+              </Bone>
+            </div>
+          </div>
+        </div>
+        <dl className="grid grid-cols-2 items-start gap-x-6 gap-y-4 border-t border-border pt-4 text-sm lg:grid-cols-3">
+          <Field label="Engine">
+            <Bone>PostgreSQL · v17</Bone>
+          </Field>
+          <Field label="Username">
+            <code className="font-mono text-xs">
+              <Bone>username</Bone>
+            </code>
+          </Field>
+          <Field label="Database">
+            <code className="font-mono text-xs">
+              <Bone>database</Bone>
+            </code>
+          </Field>
+          <Field label="Server">
+            <span className="flex items-center gap-1">
+              <ServerIcon className="size-3.5 text-muted-foreground" />
+              <Bone>server-name</Bone>
+            </span>
+          </Field>
+          <Field
+            label="Environment"
+            info="Only apps here reach the internal address."
+          >
+            <div className="mt-1">
+              <Bone box className="w-full">
+                <EnvironmentCombobox
+                  value={NO_ENVIRONMENT}
+                  environments={[]}
+                  onChange={() => {}}
+                  disabled
+                />
+              </Bone>
+            </div>
+          </Field>
+          <Field label="Created">
+            <Bone>4mo ago</Bone>
+          </Field>
+        </dl>
+      </CardContent>
     </Card>
   );
 }

@@ -1,5 +1,10 @@
 "use client";
 
+import { Bone } from "@/components/ui/skeleton";
+import {
+  LoadingText,
+  useSettingsLoading,
+} from "@/components/apps/settings/settings-loading";
 import {
   type ResourceLimitsForm as FormState,
   type ResourceSize,
@@ -46,10 +51,20 @@ function CapCaptions({
   used: string;
   peakText: string;
 }) {
+  const loading = useSettingsLoading();
+  // The usage line keeps its row while empty, so the first sample never pushes the card.
   return (
     <div className="space-y-0.5 text-xs text-muted-foreground">
-      <p>{capLine(cap, full)}</p>
-      <p>{usageLine(usage, used, peakText)}</p>
+      <p>
+        <LoadingText>{capLine(cap, full)}</LoadingText>
+      </p>
+      <p className="min-h-lh">
+        {loading ? (
+          <Bone>Using 128 MB · peak 256 MB</Bone>
+        ) : (
+          usageLine(usage, used, peakText)
+        )}
+      </p>
     </div>
   );
 }

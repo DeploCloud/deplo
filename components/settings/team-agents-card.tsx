@@ -4,6 +4,7 @@ import Link from "@/components/ui/link";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { InfoTip } from "@/components/ui/info-tip";
 import { Switch } from "@/components/ui/switch";
+import { Bone } from "@/components/ui/skeleton";
 import { AgentsGraphic } from "@/components/settings/agents-graphic";
 import { useOptimisticValue } from "@/components/shared/use-optimistic-value";
 import { gqlAction } from "@/lib/graphql-client";
@@ -12,10 +13,12 @@ export function TeamAgentsCard({
   enabled,
   canManage,
   agents,
+  loading = false,
 }: {
   enabled: boolean;
   canManage: boolean;
   agents: number;
+  loading?: boolean;
 }) {
   const [on, apply] = useOptimisticValue(enabled);
 
@@ -64,9 +67,11 @@ export function TeamAgentsCard({
               Members can connect their own AI agents here.
             </p>
             <p className="pt-1 text-xs text-muted-foreground">
-              {agents === 0
-                ? "No agents yet."
-                : `${agents} agent${agents === 1 ? "" : "s"} connected.`}{" "}
+              <Bone loading={loading}>
+                {agents === 0
+                  ? "No agents yet."
+                  : `${agents} agent${agents === 1 ? "" : "s"} connected.`}
+              </Bone>{" "}
               <Link
                 href="/settings/agents"
                 className="font-medium text-foreground underline underline-offset-2 hover:no-underline"
@@ -75,12 +80,14 @@ export function TeamAgentsCard({
               </Link>
             </p>
           </div>
-          <Switch
-            checked={on}
-            onCheckedChange={toggle}
-            disabled={!canManage}
-            aria-label="Allow AI agents"
-          />
+          <Bone box loading={loading} className="rounded-full">
+            <Switch
+              checked={on}
+              onCheckedChange={toggle}
+              disabled={!canManage}
+              aria-label="Allow AI agents"
+            />
+          </Bone>
         </div>
       </CardContent>
     </Card>

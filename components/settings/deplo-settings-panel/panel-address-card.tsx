@@ -14,6 +14,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { Bone } from "@/components/ui/skeleton";
 import { InfoTip } from "@/components/ui/info-tip";
 import { CopyButton } from "@/components/shared/copy-button";
 import { CloudflareNote } from "@/components/domains/cloudflare-note";
@@ -91,6 +92,81 @@ export function PanelAddressCard({ settings }: { settings: InstanceSettings }) {
   }
 
   return (
+    <AddressFrame
+      dialog={
+        <PanelAddressDialog
+          open={confirming}
+          onOpenChange={setConfirming}
+          url={dirty ? target : ""}
+          title={`Move the panel to ${target}?`}
+          confirmLabel="Change address"
+          successMessage={`Deplo now calls itself ${target}`}
+          onConfirm={save}
+        />
+      }
+      badge={
+        settings.panelUrlSource !== "stored" && (
+          <Badge variant="muted">{SOURCE_LABEL[settings.panelUrlSource]}</Badge>
+        )
+      }
+    >
+      <form
+        className="flex flex-wrap items-center gap-2"
+        onSubmit={(e) => {
+          e.preventDefault();
+          if (dirty && target) setConfirming(true);
+        }}
+      >
+        <div className="relative w-full max-w-sm">
+          <span className="pointer-events-none absolute inset-y-0 left-3 flex items-center font-mono text-sm text-muted-foreground select-none">
+            {scheme}://
+          </span>
+          <Input
+            id="panel-url"
+            aria-label="Panel address"
+            value={value}
+            onChange={(e) => setValue(hostPart(e.target.value))}
+            placeholder="deplo.example.com"
+            autoComplete="off"
+            spellCheck={false}
+            disabled={tunneled}
+            className={`w-full font-mono text-sm ${
+              scheme === "https"
+                ? "pl-[calc(0.75rem_+_8ch)]"
+                : "pl-[calc(0.75rem_+_7ch)]"
+            }`}
+          />
+        </div>
+        <Button type="submit" disabled={tunneled || !dirty || !target}>
+          Save
+        </Button>
+      </form>
+
+      {tunneled ? (
+        <TunnelNote />
+      ) : (
+        <PanelDnsBlock dns={dns} serverIp={settings.deploHostIp} />
+      )}
+
+      <PanelFallbackRow
+        url={routedFallbackUrl ?? settings.panelFallbackUrl}
+        panelUrl={settings.panelUrl}
+        disabled={settings.panelFallbackDisabled}
+      />
+    </AddressFrame>
+  );
+}
+
+function AddressFrame({
+  badge,
+  dialog,
+  children,
+}: {
+  badge: React.ReactNode;
+  dialog?: React.ReactNode;
+  children: React.ReactNode;
+}) {
+  return (
     <Card>
       <CardHeader className="flex-row flex-wrap items-center gap-2 space-y-0">
         <CardTitle className="flex w-fit items-center gap-2 text-base">
@@ -101,66 +177,38 @@ export function PanelAddressCard({ settings }: { settings: InstanceSettings }) {
             docs="panel.address"
           />
         </CardTitle>
-        {settings.panelUrlSource !== "stored" && (
-          <Badge variant="muted">{SOURCE_LABEL[settings.panelUrlSource]}</Badge>
-        )}
+        {badge}
       </CardHeader>
-      <CardContent className="space-y-4">
-        <form
-          className="flex flex-wrap items-center gap-2"
-          onSubmit={(e) => {
-            e.preventDefault();
-            if (dirty && target) setConfirming(true);
-          }}
-        >
-          <div className="relative w-full max-w-sm">
-            <span className="pointer-events-none absolute inset-y-0 left-3 flex items-center font-mono text-sm text-muted-foreground select-none">
-              {scheme}://
-            </span>
-            <Input
-              id="panel-url"
-              aria-label="Panel address"
-              value={value}
-              onChange={(e) => setValue(hostPart(e.target.value))}
-              placeholder="deplo.example.com"
-              autoComplete="off"
-              spellCheck={false}
-              disabled={tunneled}
-              className={`w-full font-mono text-sm ${
-                scheme === "https"
-                  ? "pl-[calc(0.75rem_+_8ch)]"
-                  : "pl-[calc(0.75rem_+_7ch)]"
-              }`}
-            />
-          </div>
-          <Button type="submit" disabled={tunneled || !dirty || !target}>
-            Save
-          </Button>
-        </form>
-
-        {tunneled ? (
-          <TunnelNote />
-        ) : (
-          <PanelDnsBlock dns={dns} serverIp={settings.deploHostIp} />
-        )}
-
-        <PanelFallbackRow
-          url={routedFallbackUrl ?? settings.panelFallbackUrl}
-          panelUrl={settings.panelUrl}
-          disabled={settings.panelFallbackDisabled}
-        />
-      </CardContent>
-
-      <PanelAddressDialog
-        open={confirming}
-        onOpenChange={setConfirming}
-        url={dirty ? target : ""}
-        title={`Move the panel to ${target}?`}
-        confirmLabel="Change address"
-        successMessage={`Deplo now calls itself ${target}`}
-        onConfirm={save}
-      />
+      <CardContent className="space-y-4">{children}</CardContent>
+      {dialog}
     </Card>
+  );
+}
+
+export function PanelAddressCardSkeleton() {
+  return (
+    <AddressFrame badge={null}>
+      <div className="flex flex-wrap items-center gap-2">
+        <div className="relative w-full max-w-sm" aria-hidden>
+          <span className="pointer-events-none absolute inset-y-0 left-3 z-10 flex items-center font-mono text-sm text-muted-foreground select-none">
+            https://
+          </span>
+          <Input
+            readOnly
+            tabIndex={-1}
+            className="w-full pl-[calc(0.75rem_+_8ch)] font-mono text-sm"
+          />
+          <span className="pointer-events-none absolute inset-y-0 left-[calc(0.75rem_+_8ch)] flex items-center font-mono text-sm">
+            <Bone>deplo.example.com</Bone>
+          </span>
+        </div>
+        <Button disabled>Save</Button>
+      </div>
+      <p className="flex items-center gap-1.5 text-sm text-muted-foreground">
+        <Loader2 className="size-4 animate-spin" />
+        Checking where this address points
+      </p>
+    </AddressFrame>
   );
 }
 

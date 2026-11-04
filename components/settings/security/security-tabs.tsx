@@ -24,6 +24,7 @@ import { PasskeysCard, passkeyBlockedReason } from "./passkeys-card";
 import { DevicesPanel } from "./devices-panel";
 import { SecurityGraphic, type SecurityLevel } from "./security-graphic";
 import { cn } from "@/lib/utils";
+import { Bone, Skeleton } from "@/components/ui/skeleton";
 import type { PasskeyDTO } from "@/lib/data/passkeys";
 import type { UserSessionDTO } from "@/lib/data/sessions";
 
@@ -38,7 +39,9 @@ export function SecurityTabs({
   sessions,
   panelUrl,
   rpId,
+  loading = false,
 }: {
+  loading?: boolean;
   twoFactorEnabled: boolean;
   requiredBy: string | null;
   passkeyStanding: "none" | "idle" | "carrying";
@@ -84,6 +87,7 @@ export function SecurityTabs({
         <SignedInCount
           count={sessions.length}
           onOpen={() => selectTab("devices")}
+          loading={loading}
         />
       </div>
 
@@ -96,9 +100,11 @@ export function SecurityTabs({
             onTurnOnTwoFactor={() => setWizard(true)}
             onAddPasskey={() => setAddPasskey(true)}
             onReviewDevices={() => selectTab("devices")}
+            loading={loading}
           />
           <PasswordCard twoFactorEnabled={twoFactorEnabled} />
           <TwoFactorCard
+            loading={loading}
             enabled={twoFactorEnabled}
             requiredBy={requiredBy}
             passkeyStanding={passkeyStanding}
@@ -106,6 +112,7 @@ export function SecurityTabs({
             onWizardOpenChange={setWizard}
           />
           <PasskeysCard
+            loading={loading}
             passkeys={passkeys}
             panelUrl={panelUrl}
             rpId={rpId}
@@ -125,9 +132,11 @@ export function SecurityTabs({
 function SignedInCount({
   count,
   onOpen,
+  loading,
 }: {
   count: number;
   onOpen: () => void;
+  loading: boolean;
 }) {
   return (
     <button
@@ -140,7 +149,12 @@ function SignedInCount({
       )}
     >
       <MonitorSmartphone className="size-4" />
-      {count} {count === 1 ? "device" : "devices"} signed in
+      <Bone loading={loading}>
+        {loading
+          ? "1 device"
+          : `${count} ${count === 1 ? "device" : "devices"}`}{" "}
+        signed in
+      </Bone>
     </button>
   );
 }
@@ -179,7 +193,9 @@ function SecurityHero({
   onTurnOnTwoFactor,
   onAddPasskey,
   onReviewDevices,
+  loading,
 }: {
+  loading: boolean;
   twoFactorEnabled: boolean;
   passkeys: number;
   passkeysBlocked: boolean;
@@ -226,11 +242,17 @@ function SecurityHero({
       </CardHeader>
       <CardContent className="flex flex-1 flex-col gap-4">
         <div className="flex min-h-0 flex-1 items-center justify-center py-2">
-          <SecurityGraphic level={level} className="max-h-20" />
+          <Bone box loading={loading}>
+            <SecurityGraphic level={level} className="max-h-20" />
+          </Bone>
         </div>
         <div>
-          <p className="text-sm font-medium">{headline}</p>
-          <p className="mt-1 text-sm text-muted-foreground">{blurb}</p>
+          <p className="text-sm font-medium">
+            <Bone loading={loading}>{headline}</Bone>
+          </p>
+          <p className="mt-1 text-sm text-muted-foreground">
+            <Bone loading={loading}>{blurb}</Bone>
+          </p>
         </div>
         <button
           type="button"
@@ -238,12 +260,18 @@ function SecurityHero({
           className="group mt-auto flex w-full cursor-pointer items-center gap-3 rounded-lg border border-border p-3 text-left transition-colors hover:border-foreground/20 hover:bg-accent"
         >
           <span className="flex size-9 shrink-0 items-center justify-center rounded-full border border-border bg-secondary">
-            <step.icon className="size-4 text-muted-foreground" />
+            {loading ? (
+              <Skeleton className="size-4" />
+            ) : (
+              <step.icon className="size-4 text-muted-foreground" />
+            )}
           </span>
           <span className="min-w-0 flex-1">
-            <span className="block text-sm font-medium">{step.label}</span>
+            <span className="block text-sm font-medium">
+              <Bone loading={loading}>{step.label}</Bone>
+            </span>
             <span className="mt-1 block text-xs text-muted-foreground">
-              {step.hint}
+              <Bone loading={loading}>{step.hint}</Bone>
             </span>
           </span>
           <ChevronRight className="size-4 shrink-0 text-muted-foreground" />

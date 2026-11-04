@@ -34,6 +34,7 @@ import {
 } from "@/components/settings/deplo-settings-panel/setting-item";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Bone, InputBone } from "@/components/ui/skeleton";
 import { SlidingButtonGroup } from "@/components/ui/sliding-button-group";
 import { cn } from "@/lib/utils";
 import { gqlAction } from "@/lib/graphql-client";
@@ -55,7 +56,7 @@ import { ServerCertificatesTab } from "./certificates-tab";
 import { ServerWorkloads } from "@/components/servers/server-workloads";
 import { AgentUpdateStatus } from "@/components/servers/agent-update-status";
 import type { AgentUpdateDTO } from "@/lib/data/servers/agent-update-state";
-import type { AgentReach } from "@/lib/version";
+import { AGENT_VERSION, type AgentReach } from "@/lib/version";
 
 export type ServerSummary = {
   id: string;
@@ -104,10 +105,7 @@ export function ServerDetailTabs({
   workloads: ServerWorkload[];
 }) {
   const params = useSearchParams();
-  const requested = params.get("tab");
-  const active: TabId = (TABS as readonly string[]).includes(requested ?? "")
-    ? (requested as TabId)
-    : "overview";
+  const active = tabOf(params.get("tab"));
 
   function selectTab(tab: string) {
     const next = new URLSearchParams(params.toString());
@@ -123,32 +121,7 @@ export function ServerDetailTabs({
 
   return (
     <Tabs value={active} onValueChange={selectTab}>
-      <UnderlineTabsList>
-        <UnderlineTabsTrigger value="overview">
-          <LayoutDashboard className="size-4" />
-          Overview
-        </UnderlineTabsTrigger>
-        <UnderlineTabsTrigger value="apps">
-          <AppWindow className="size-4" />
-          Apps
-        </UnderlineTabsTrigger>
-        <UnderlineTabsTrigger value="certificates">
-          <ShieldCheck className="size-4" />
-          Certificates
-        </UnderlineTabsTrigger>
-        <UnderlineTabsTrigger value="maintenance">
-          <Wrench className="size-4" />
-          Maintenance
-        </UnderlineTabsTrigger>
-        <UnderlineTabsTrigger value="cleanup">
-          <Brush className="size-4" />
-          Cleanup
-        </UnderlineTabsTrigger>
-        <UnderlineTabsTrigger value="advanced">
-          <SlidersHorizontal className="size-4" />
-          Advanced
-        </UnderlineTabsTrigger>
-      </UnderlineTabsList>
+      <TabBar />
 
       <TabsContent value="overview" className="space-y-4 pt-4">
         <OverviewTab
@@ -176,16 +149,99 @@ export function ServerDetailTabs({
   );
 }
 
+function tabOf(requested: string | null): TabId {
+  return (TABS as readonly string[]).includes(requested ?? "")
+    ? (requested as TabId)
+    : "overview";
+}
+
+function TabBar() {
+  return (
+    <UnderlineTabsList>
+      <UnderlineTabsTrigger value="overview">
+        <LayoutDashboard className="size-4" />
+        Overview
+      </UnderlineTabsTrigger>
+      <UnderlineTabsTrigger value="apps">
+        <AppWindow className="size-4" />
+        Apps
+      </UnderlineTabsTrigger>
+      <UnderlineTabsTrigger value="certificates">
+        <ShieldCheck className="size-4" />
+        Certificates
+      </UnderlineTabsTrigger>
+      <UnderlineTabsTrigger value="maintenance">
+        <Wrench className="size-4" />
+        Maintenance
+      </UnderlineTabsTrigger>
+      <UnderlineTabsTrigger value="cleanup">
+        <Brush className="size-4" />
+        Cleanup
+      </UnderlineTabsTrigger>
+      <UnderlineTabsTrigger value="advanced">
+        <SlidersHorizontal className="size-4" />
+        Advanced
+      </UnderlineTabsTrigger>
+    </UnderlineTabsList>
+  );
+}
+
+const PLACEHOLDER: ServerSummary = {
+  id: "",
+  name: "",
+  ip: "",
+  host: "",
+  status: "online",
+  cpuCores: 8,
+  memoryMb: 16384,
+  diskGb: 160,
+  dockerVersion: "29.0.1",
+  allTeams: true,
+  deployConcurrency: 1,
+  role: "everything",
+  buildFallback: false,
+  generatedAddressFamily: null,
+  isDeploHost: false,
+  provisioning: false,
+  agentVersion: AGENT_VERSION,
+  expectedAgentVersion: AGENT_VERSION,
+  agentReach: "usable",
+  agentUpdate: null,
+};
+
+// Overview and Certificates (linked from Settings, Deplo) are drawn; other tabs show their bar.
+export function ServerDetailTabsSkeleton() {
+  const active = tabOf(useSearchParams().get("tab"));
+  return (
+    <Tabs value={active}>
+      <TabBar />
+      <TabsContent value="overview" className="space-y-4 pt-4">
+        <OverviewTab
+          server={PLACEHOLDER}
+          teams={[]}
+          accessTeamIds={[]}
+          loading
+        />
+      </TabsContent>
+      <TabsContent value="certificates" className="space-y-4 pt-4">
+        <ServerCertificatesTab server={PLACEHOLDER} loading />
+      </TabsContent>
+    </Tabs>
+  );
+}
+
 function Spec({
   icon: Icon,
   label,
   value,
   unit,
+  loading = false,
 }: {
   icon: React.ElementType;
   label: string;
   value: string;
   unit: string;
+  loading?: boolean;
 }) {
   return (
     <Card>
@@ -199,7 +255,7 @@ function Spec({
             className="min-w-0 truncate text-2xl font-semibold tabular-nums"
             title={value}
           >
-            {value}
+            <Bone loading={loading}>{value}</Bone>
           </span>
           <span className="text-xs text-muted-foreground">{unit}</span>
         </div>
@@ -212,10 +268,12 @@ function OverviewTab({
   server,
   teams,
   accessTeamIds,
+  loading = false,
 }: {
   server: ServerSummary;
   teams: TeamOption[];
   accessTeamIds: string[];
+  loading?: boolean;
 }) {
   const router = useRouter();
   const [pending, startTransition] = React.useTransition();
@@ -283,24 +341,28 @@ function OverviewTab({
         <Spec
           icon={Cpu}
           label="CPU"
+          loading={loading}
           value={num(server.cpuCores)}
           unit={server.cpuCores === 1 ? "core" : "cores"}
         />
         <Spec
           icon={MemoryStick}
           label="Memory"
+          loading={loading}
           value={num(ramGb)}
           unit="GB RAM"
         />
         <Spec
           icon={HardDrive}
           label="Disk"
+          loading={loading}
           value={num(server.diskGb)}
           unit="GB"
         />
         <Spec
           icon={Boxes}
           label="Docker"
+          loading={loading}
           value={server.dockerVersion || "-"}
           unit="engine"
         />
@@ -315,22 +377,26 @@ function OverviewTab({
             <div className="min-w-0">
               <div className="flex flex-wrap items-center gap-2">
                 <h2 className="text-sm font-medium">Server agent</h2>
-                <AgentVersionBadge
-                  version={server.agentVersion}
-                  expected={server.expectedAgentVersion}
-                  reach={server.agentReach}
-                />
+                <Bone box loading={loading}>
+                  <AgentVersionBadge
+                    version={server.agentVersion}
+                    expected={server.expectedAgentVersion}
+                    reach={server.agentReach}
+                  />
+                </Bone>
               </div>
               <p className="mt-1 text-sm text-muted-foreground">
                 Keeps this server ready to build and run your apps.
               </p>
               <div className="mt-2 empty:hidden">
-                <AgentUpdateStatus
-                  serverId={server.id}
-                  reach={server.agentReach}
-                  update={server.agentUpdate}
-                  onSettled={() => router.refresh()}
-                />
+                {!loading && (
+                  <AgentUpdateStatus
+                    serverId={server.id}
+                    reach={server.agentReach}
+                    update={server.agentUpdate}
+                    onSettled={() => router.refresh()}
+                  />
+                )}
               </div>
             </div>
           </div>
@@ -338,7 +404,7 @@ function OverviewTab({
             <Button
               variant="outline"
               onClick={() => setReadinessOpen(true)}
-              disabled={pending}
+              disabled={pending || loading}
             >
               <ListChecks className="size-4" />
               Check readiness
@@ -356,14 +422,18 @@ function OverviewTab({
             info="The name shown in Deplo. Changing it does not rename the machine."
             control={
               <form className="flex items-center gap-2" onSubmit={saveName}>
-                <Input
-                  id="server-display-name"
-                  aria-label="Display name"
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  disabled={pending}
-                  className="w-36"
-                />
+                {loading ? (
+                  <InputBone value="server-name" className="w-36" />
+                ) : (
+                  <Input
+                    id="server-display-name"
+                    aria-label="Display name"
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                    disabled={pending}
+                    className="w-36"
+                  />
+                )}
                 <Button
                   type="submit"
                   disabled={
@@ -386,17 +456,21 @@ function OverviewTab({
                 className="flex items-center gap-2"
                 onSubmit={saveConcurrency}
               >
-                <Input
-                  id="deploy-concurrency"
-                  aria-label="Concurrent deployments"
-                  type="number"
-                  min={1}
-                  max={50}
-                  value={concurrency}
-                  onChange={(e) => setConcurrency(e.target.value)}
-                  disabled={pending}
-                  className="w-20"
-                />
+                {loading ? (
+                  <InputBone value="1" className="w-20" />
+                ) : (
+                  <Input
+                    id="deploy-concurrency"
+                    aria-label="Concurrent deployments"
+                    type="number"
+                    min={1}
+                    max={50}
+                    value={concurrency}
+                    onChange={(e) => setConcurrency(e.target.value)}
+                    disabled={pending}
+                    className="w-20"
+                  />
+                )}
                 <Button
                   type="submit"
                   disabled={
@@ -414,6 +488,7 @@ function OverviewTab({
           server={server}
           teams={teams}
           accessTeamIds={accessTeamIds}
+          loading={loading}
         />
       </div>
 
@@ -431,10 +506,12 @@ function AccessCard({
   server,
   teams,
   accessTeamIds,
+  loading = false,
 }: {
   server: ServerSummary;
   teams: TeamOption[];
   accessTeamIds: string[];
+  loading?: boolean;
 }) {
   const router = useRouter();
   const [pending, startTransition] = React.useTransition();
@@ -485,38 +562,42 @@ function AccessCard({
           info="Which teams are allowed to deploy to this server."
           docs="servers.teams"
           description={
-            access.allTeams
-              ? "Every team can deploy here"
-              : "Only the teams you pick"
+            <Bone loading={loading}>
+              {access.allTeams
+                ? "Every team can deploy here"
+                : "Only the teams you pick"}
+            </Bone>
           }
           control={
-            <SlidingButtonGroup aria-label="Team access">
-              {[
-                { all: true, label: "All teams" },
-                { all: false, label: "Specific teams" },
-              ].map((o) => (
-                <button
-                  key={o.label}
-                  type="button"
-                  aria-pressed={access.allTeams === o.all}
-                  disabled={pending}
-                  onClick={() =>
-                    setAccess({
-                      allTeams: o.all,
-                      teamIds: o.all ? [] : access.teamIds,
-                    })
-                  }
-                  className={cn(
-                    "rounded-md px-3 py-1.5 text-sm font-medium transition-colors disabled:opacity-50",
-                    access.allTeams === o.all
-                      ? "text-foreground"
-                      : "text-muted-foreground hover:text-foreground",
-                  )}
-                >
-                  {o.label}
-                </button>
-              ))}
-            </SlidingButtonGroup>
+            <Bone box loading={loading}>
+              <SlidingButtonGroup aria-label="Team access">
+                {[
+                  { all: true, label: "All teams" },
+                  { all: false, label: "Specific teams" },
+                ].map((o) => (
+                  <button
+                    key={o.label}
+                    type="button"
+                    aria-pressed={access.allTeams === o.all}
+                    disabled={pending}
+                    onClick={() =>
+                      setAccess({
+                        allTeams: o.all,
+                        teamIds: o.all ? [] : access.teamIds,
+                      })
+                    }
+                    className={cn(
+                      "rounded-md px-3 py-1.5 text-sm font-medium transition-colors disabled:opacity-50",
+                      access.allTeams === o.all
+                        ? "text-foreground"
+                        : "text-muted-foreground hover:text-foreground",
+                    )}
+                  >
+                    {o.label}
+                  </button>
+                ))}
+              </SlidingButtonGroup>
+            </Bone>
           }
         />
         {!access.allTeams && (

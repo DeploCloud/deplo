@@ -16,6 +16,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { InfoTip } from "@/components/ui/info-tip";
+import { Bone } from "@/components/ui/skeleton";
 import { ConfirmAction } from "@/components/shared/confirm-action";
 import { gqlAction } from "@/lib/graphql-client";
 import { cn } from "@/lib/utils";
@@ -56,6 +57,71 @@ export function TeamDangerZone({
       : "";
 
   return (
+    <DangerFrame twoColumns={canDelete && canTransfer}>
+      {canTransfer && (
+        <TransferOwnership
+          candidates={candidates}
+          viewerTwoFactorEnabled={viewerTwoFactorEnabled}
+        />
+      )}
+      {canDelete && (
+        <div className="flex flex-col justify-between gap-3">
+          <div className="min-w-0">
+            <p className="text-sm font-medium">Delete team</p>
+            <p className="mt-1 text-xs text-muted-foreground">
+              {onlyTeam
+                ? "You can't delete your only team - create another team first."
+                : "Every app and database stack is torn down (data volumes included). This cannot be undone."}
+            </p>
+          </div>
+          <ConfirmAction
+            trigger={
+              <Button
+                variant="outline"
+                size="sm"
+                className={dangerButton}
+                disabled={onlyTeam}
+              >
+                <Trash2 className="size-4" />
+                Delete team
+              </Button>
+            }
+            title="Delete team?"
+            description={
+              <>
+                Everything in <strong>{teamName}</strong> is torn down. Cleanup
+                continues in the background.
+              </>
+            }
+            consequence={`Its apps and databases go with their data volumes, along with every folder, project, domain, variable, member and backup. This cannot be undone.${sharedVarsCaveat}`}
+            confirmLabel="Delete team"
+            successMessage="Team deleted"
+            confirmText={teamName}
+            onConfirm={async () => {
+              const res = await gqlAction(
+                `mutation($teamId: String!) { deleteTeam(teamId: $teamId) }`,
+                { teamId },
+              );
+              if (res.ok) {
+                window.location.assign("/");
+              }
+              return res;
+            }}
+          />
+        </div>
+      )}
+    </DangerFrame>
+  );
+}
+
+function DangerFrame({
+  twoColumns,
+  children,
+}: {
+  twoColumns: boolean;
+  children: React.ReactNode;
+}) {
+  return (
     <Card className="border-destructive/40">
       <CardHeader>
         <CardTitle className="flex w-fit items-center gap-2 text-base text-destructive">
@@ -66,66 +132,58 @@ export function TeamDangerZone({
           />
         </CardTitle>
       </CardHeader>
-      <CardContent
-        className={cn(
-          "grid gap-6",
-          canDelete && canTransfer && "md:grid-cols-2",
-        )}
-      >
-        {canTransfer && (
-          <TransferOwnership
-            candidates={candidates}
-            viewerTwoFactorEnabled={viewerTwoFactorEnabled}
-          />
-        )}
-        {canDelete && (
-          <div className="flex flex-col justify-between gap-3">
-            <div className="min-w-0">
-              <p className="text-sm font-medium">Delete team</p>
-              <p className="mt-1 text-xs text-muted-foreground">
-                {onlyTeam
-                  ? "You can't delete your only team - create another team first."
-                  : "Every app and database stack is torn down (data volumes included). This cannot be undone."}
-              </p>
-            </div>
-            <ConfirmAction
-              trigger={
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className={dangerButton}
-                  disabled={onlyTeam}
-                >
-                  <Trash2 className="size-4" />
-                  Delete team
-                </Button>
-              }
-              title="Delete team?"
-              description={
-                <>
-                  Everything in <strong>{teamName}</strong> is torn down.
-                  Cleanup continues in the background.
-                </>
-              }
-              consequence={`Its apps and databases go with their data volumes, along with every folder, project, domain, variable, member and backup. This cannot be undone.${sharedVarsCaveat}`}
-              confirmLabel="Delete team"
-              successMessage="Team deleted"
-              confirmText={teamName}
-              onConfirm={async () => {
-                const res = await gqlAction(
-                  `mutation($teamId: String!) { deleteTeam(teamId: $teamId) }`,
-                  { teamId },
-                );
-                if (res.ok) {
-                  window.location.assign("/");
-                }
-                return res;
-              }}
-            />
-          </div>
-        )}
+      <CardContent className={cn("grid gap-6", twoColumns && "md:grid-cols-2")}>
+        {children}
       </CardContent>
     </Card>
+  );
+}
+
+function SectionSkeleton({
+  title,
+  description,
+  action,
+  icon: Icon,
+}: {
+  title: string;
+  description: string;
+  action: string;
+  icon: typeof Crown;
+}) {
+  return (
+    <div className="flex flex-col justify-between gap-3">
+      <div className="min-w-0">
+        <p className="text-sm font-medium">{title}</p>
+        <p className="mt-1 text-xs text-muted-foreground">
+          <Bone>{description}</Bone>
+        </p>
+      </div>
+      <Bone box>
+        <Button variant="outline" size="sm" disabled>
+          <Icon className="size-4" />
+          {action}
+        </Button>
+      </Bone>
+    </div>
+  );
+}
+
+export function TeamDangerZoneSkeleton() {
+  return (
+    <DangerFrame twoColumns>
+      <SectionSkeleton
+        title="Transfer ownership"
+        description="You're the only member of this team - invite someone first."
+        action="Transfer ownership"
+        icon={Crown}
+      />
+      <SectionSkeleton
+        title="Delete team"
+        description="You can't delete your only team - create another team first."
+        action="Delete team"
+        icon={Trash2}
+      />
+    </DangerFrame>
   );
 }
 

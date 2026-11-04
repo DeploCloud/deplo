@@ -1,5 +1,7 @@
 "use client";
 
+import { Bone } from "@/components/ui/skeleton";
+import { useSettingsLoading } from "@/components/apps/settings/settings-loading";
 import * as React from "react";
 import Link from "@/components/ui/link";
 import { toast } from "sonner";
@@ -31,6 +33,7 @@ export function DeployHookPanel({
   enabled: boolean;
   maskedUrl: string;
 }) {
+  const loading = useSettingsLoading();
   const [enabled, applyEnabled] = useOptimisticValue(initialEnabled);
   const [url, setUrl] = React.useState<string | null>(null);
   const [revealed, setRevealed] = React.useState(false);
@@ -95,27 +98,29 @@ export function DeployHookPanel({
     >
       <div className="mt-4 space-y-3">
         <div className="flex min-w-0 items-center gap-1.5">
-          <RevealChip
-            className="min-w-0 flex-1"
-            placeholder={maskedUrl}
-            placeholderClassName="text-muted-foreground/70"
-            value={url}
-            revealed={revealed}
-            pending={pending}
-            onToggle={() => {
-              if (revealed) {
-                setRevealed(false);
-                return;
-              }
-              void resolve().then((v) => {
-                if (v !== null) setRevealed(true);
-              });
-            }}
-            labels={{
-              reveal: "Reveal deploy hook URL",
-              hide: "Hide deploy hook URL",
-            }}
-          />
+          <Bone box loading={loading} className="min-w-0 flex-1">
+            <RevealChip
+              className="min-w-0 flex-1"
+              placeholder={maskedUrl}
+              placeholderClassName="text-muted-foreground/70"
+              value={url}
+              revealed={revealed}
+              pending={pending}
+              onToggle={() => {
+                if (revealed) {
+                  setRevealed(false);
+                  return;
+                }
+                void resolve().then((v) => {
+                  if (v !== null) setRevealed(true);
+                });
+              }}
+              labels={{
+                reveal: "Reveal deploy hook URL",
+                hide: "Hide deploy hook URL",
+              }}
+            />
+          </Bone>
           <CopyResolved resolve={resolve} />
           <ConfirmAction
             title="Rotate the deploy hook URL?"

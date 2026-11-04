@@ -7,6 +7,7 @@ import { Trash2, CircleStop, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Bone } from "@/components/ui/skeleton";
 import {
   Table,
   TableBody,
@@ -42,6 +43,7 @@ export function DeploymentsTable({
   scopeAppId,
   canManage,
   canRollbackApps = false,
+  loading = false,
 }: {
   deployments: DeploymentRow[];
   header?: React.ReactNode;
@@ -51,6 +53,7 @@ export function DeploymentsTable({
   scopeAppId?: string;
   canManage: boolean;
   canRollbackApps?: boolean;
+  loading?: boolean;
 }) {
   const router = useRouter();
   const [selected, setSelected] = React.useState<Set<string>>(() => new Set());
@@ -216,38 +219,44 @@ export function DeploymentsTable({
   const showDeleteAll = canManage && selectableIds.length > 0;
 
   return (
-    <div className="space-y-4">
+    <div
+      className="space-y-4"
+      inert={loading || undefined}
+      aria-busy={loading || undefined}
+    >
       {(header || actions || showStopAll || showDeleteAll) && (
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div className="min-w-0">{header}</div>
           {(actions || showStopAll || showDeleteAll) && (
-            <div className="flex shrink-0 flex-wrap items-center gap-2">
-              {showStopAll && (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setCancelAllOpen(true)}
-                >
-                  <CircleStop className="size-4" />
-                  Stop all builds
-                  <span className="text-muted-foreground">
-                    ({inProgressCount})
-                  </span>
-                </Button>
-              )}
-              {showDeleteAll && (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="text-destructive hover:text-destructive"
-                  onClick={() => setDeleteAllOpen(true)}
-                >
-                  <Trash2 className="size-4" />
-                  Delete all
-                </Button>
-              )}
-              {actions}
-            </div>
+            <Bone box loading={loading}>
+              <div className="flex shrink-0 flex-wrap items-center gap-2">
+                {showStopAll && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setCancelAllOpen(true)}
+                  >
+                    <CircleStop className="size-4" />
+                    Stop all builds
+                    <span className="text-muted-foreground">
+                      ({inProgressCount})
+                    </span>
+                  </Button>
+                )}
+                {showDeleteAll && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="text-destructive hover:text-destructive"
+                    onClick={() => setDeleteAllOpen(true)}
+                  >
+                    <Trash2 className="size-4" />
+                    Delete all
+                  </Button>
+                )}
+                {actions}
+              </div>
+            </Bone>
           )}
         </div>
       )}
@@ -320,6 +329,7 @@ export function DeploymentsTable({
                   onToggle={(v) => toggleRow(d.id, v)}
                   onRemoved={() => remove(d.id)}
                   onRestored={() => restore(d.id)}
+                  loading={loading}
                 />
               ))
             )}
@@ -331,7 +341,9 @@ export function DeploymentsTable({
         <div className="flex items-center justify-center">
           <div ref={sentinelRef} aria-hidden className="h-px w-px" />
           <span className="text-sm text-muted-foreground">
-            Showing {paged.length} of {visible.length}
+            <Bone loading={loading}>
+              Showing {paged.length} of {visible.length}
+            </Bone>
           </span>
         </div>
       )}
@@ -405,5 +417,57 @@ export function DeploymentsTable({
         onConfirm={cancelAll}
       />
     </div>
+  );
+}
+
+const HOUR = 3_600_000;
+
+// Typical lengths: an auto-layout table sizes its columns from the widest content.
+function placeholderRows(appId?: string): DeploymentRow[] {
+  const now = Date.now();
+  return Array.from({ length: PAGE_SIZE + 1 }, (_, i) => ({
+    id: `loading-${i}`,
+    appId: appId ?? `app-${i % 3}`,
+    appSlug: "app",
+    serviceName: ["old-blog", "Site Starter", "legacy-proxy"][i % 3]!,
+    serverId: "server",
+    serverName: "eu-main-1",
+    commitMessage: "feat: add the multi-page export",
+    commitSha: "0000000",
+    commitUrl: null,
+    status: "ready",
+    branch: i % 3 ? "main" : "feat/login",
+    createdAt: new Date(now - (i < 3 ? 10 : 60) * 24 * HOUR).toISOString(),
+    creator: "A teammate",
+    url: i % 3 === 1 ? "https://app.example.com" : "",
+  }));
+}
+
+/** The table while its page loads: the real chrome over placeholder rows. */
+export function DeploymentsTableSkeleton({
+  header,
+  actions,
+  showApp = false,
+  showServer = false,
+  scopeAppId,
+}: {
+  header?: React.ReactNode;
+  actions?: React.ReactNode;
+  showApp?: boolean;
+  showServer?: boolean;
+  scopeAppId?: string;
+}) {
+  const [rows] = React.useState(() => placeholderRows(scopeAppId));
+  return (
+    <DeploymentsTable
+      loading
+      header={header}
+      actions={actions}
+      showApp={showApp}
+      showServer={showServer}
+      scopeAppId={scopeAppId}
+      canManage
+      deployments={rows}
+    />
   );
 }

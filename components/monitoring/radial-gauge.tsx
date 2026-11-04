@@ -1,5 +1,6 @@
 "use client";
 
+import { Bone, Skeleton } from "@/components/ui/skeleton";
 import * as React from "react";
 import type { LucideIcon } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
@@ -71,6 +72,7 @@ export function GaugeTile({
   info,
   color,
   action,
+  loading = false,
 }: {
   icon: LucideIcon;
   label: string;
@@ -81,16 +83,21 @@ export function GaugeTile({
   info?: React.ReactNode;
   color?: string;
   action?: React.ReactNode;
+  loading?: boolean;
 }) {
   return (
     <Card>
       <CardContent className="flex items-center gap-3 p-4">
-        <RadialGauge
-          value={value}
-          full={full}
-          color={color}
-          ariaLabel={`${label}: ${display}`}
-        />
+        {loading ? (
+          <Skeleton className="size-[92px] shrink-0 rounded-full" />
+        ) : (
+          <RadialGauge
+            value={value}
+            full={full}
+            color={color}
+            ariaLabel={`${label}: ${display}`}
+          />
+        )}
         <div className="min-w-0 flex-1 space-y-1">
           <div className="flex items-center gap-1.5 text-muted-foreground">
             <Icon className="size-4" />
@@ -98,8 +105,12 @@ export function GaugeTile({
             {info && <InfoTip content={info} side="top" />}
             {action && <span className="ml-auto">{action}</span>}
           </div>
-          <p className="text-2xl font-semibold tracking-tight">{display}</p>
-          <p className="truncate text-xs text-muted-foreground">{caption}</p>
+          <p className="text-2xl font-semibold tracking-tight">
+            <Bone loading={loading}>{display}</Bone>
+          </p>
+          <p className="truncate text-xs text-muted-foreground">
+            <Bone loading={loading}>{caption}</Bone>
+          </p>
         </div>
       </CardContent>
     </Card>

@@ -1,6 +1,6 @@
 import { hasCapability, reachesWholeTeam } from "@/lib/membership";
 import { listRoles } from "@/lib/data/roles/role-list";
-import { PageHeader } from "@/components/shared/page-header";
+import { RolesHeader } from "@/components/settings/roles/roles-frame";
 import { OutsideYourAccess } from "@/components/shared/outside-your-access";
 import { RolesRail } from "@/components/settings/roles/roles-rail";
 
@@ -23,11 +23,7 @@ export default async function RolesLayout({
 
   return (
     <div className="space-y-6">
-      <PageHeader
-        docs="roles.overview"
-        title="Roles"
-        description="What a member can do in this team. Assign a role to each member on the Members page."
-      />
+      <RolesHeader />
       <div className="grid items-start gap-6 lg:grid-cols-[minmax(220px,260px)_1fr]">
         <RolesRail roles={roles} canManage={canManage} />
         <div className="min-w-0">{children}</div>
