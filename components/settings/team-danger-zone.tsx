@@ -68,7 +68,7 @@ export function TeamDangerZone({
         <div className="flex flex-col justify-between gap-3">
           <div className="min-w-0">
             <p className="text-sm font-medium">Delete team</p>
-            <p className="mt-1 text-xs text-muted-foreground">
+            <p className="mt-1 min-h-[2lh] text-xs text-muted-foreground">
               {onlyTeam
                 ? "You can't delete your only team - create another team first."
                 : "Every app and database stack is torn down (data volumes included). This cannot be undone."}
@@ -154,7 +154,8 @@ function SectionSkeleton({
     <div className="flex flex-col justify-between gap-3">
       <div className="min-w-0">
         <p className="text-sm font-medium">{title}</p>
-        <p className="mt-1 text-xs text-muted-foreground">
+        {/* Two lines either way: a team of one reads the short text, a shared one the long. */}
+        <p className="mt-1 min-h-[2lh] text-xs text-muted-foreground">
           <Bone>{description}</Bone>
         </p>
       </div>
@@ -205,7 +206,7 @@ function TransferOwnership({
     <div className="flex flex-col justify-between gap-3">
       <div className="min-w-0">
         <p className="text-sm font-medium">Transfer ownership</p>
-        <p className="mt-1 text-xs text-muted-foreground">
+        <p className="mt-1 min-h-[2lh] text-xs text-muted-foreground">
           {alone
             ? "You're the only member of this team - invite someone first."
             : "Another member becomes the primary owner. You stay an owner, and only they can hand the team back."}

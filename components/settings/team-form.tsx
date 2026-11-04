@@ -6,7 +6,7 @@ import { toast } from "sonner";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { InfoTip } from "@/components/ui/info-tip";
-import { Bone, InputBone, Skeleton } from "@/components/ui/skeleton";
+import { InputBone, Skeleton } from "@/components/ui/skeleton";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { TeamAvatar } from "@/components/shared/user-avatar";
@@ -79,11 +79,9 @@ export function TeamForm({
           teamMark
         )}
         <p className="text-center text-xs text-muted-foreground">
-          <Bone loading={loading}>
-            {canManage
-              ? "Click or drop a PNG, JPEG or WebP."
-              : "Shown before the team's name everywhere it appears."}
-          </Bone>
+          {canManage
+            ? "Click or drop a PNG, JPEG or WebP."
+            : "Shown before the team's name everywhere it appears."}
         </p>
       </div>
       <div className="space-y-2 rounded-lg border border-border p-3">
