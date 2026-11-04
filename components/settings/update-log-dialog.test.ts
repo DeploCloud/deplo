@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 
 import type { UpdateLogEntry } from "@/lib/data/update-log";
-import { entrySentence, groupByDay, updateLogActor } from "./update-log-view";
+import { entrySentence, logWhen, updateLogActor } from "./update-log-dialog";
 
 const e = (over: Partial<UpdateLogEntry>): UpdateLogEntry => ({
   id: over.at ?? "x",
@@ -17,29 +17,14 @@ const e = (over: Partial<UpdateLogEntry>): UpdateLogEntry => ({
   ...over,
 });
 
-test("entries group by day on the window's clock, newest first", () => {
+test("each entry says when, on the window's clock", () => {
   const now = new Date("2026-11-05T12:00:00Z");
-  const days = groupByDay(
-    [
-      e({ at: "2026-11-05T02:01:00.000Z" }),
-      e({ at: "2026-11-05T01:00:00.000Z", outcome: "skipped" }),
-      // 23:30 UTC on the 3rd is already the 4th in Rome.
-      e({ at: "2026-11-03T23:30:00.000Z", outcome: "postponed" }),
-      e({ at: "2026-11-01T01:00:00.000Z", outcome: "rolled_back" }),
-      e({ at: "2025-12-24T10:00:00.000Z", trigger: "host" }),
-    ],
-    "Europe/Rome",
-    now,
-  );
-  assert.deepEqual(
-    days.map((d) => [d.label, d.items.map((i) => i.time)]),
-    [
-      ["Today", ["03:01", "02:00"]],
-      ["Yesterday", ["00:30"]],
-      ["1 Nov", ["02:00"]],
-      ["24 Dec 2025", ["11:00"]],
-    ],
-  );
+  const when = (at: string) => logWhen(at, "Europe/Rome", now);
+  assert.equal(when("2026-11-05T02:01:00.000Z"), "Today 03:01");
+  // 23:30 UTC on the 3rd is already the 4th in Rome.
+  assert.equal(when("2026-11-03T23:30:00.000Z"), "Yesterday 00:30");
+  assert.equal(when("2026-11-01T01:00:00.000Z"), "1 Nov 02:00");
+  assert.equal(when("2025-12-24T10:00:00.000Z"), "24 Dec 2025 11:00");
 });
 
 test("each entry reads as one sentence, and says who started it", () => {

@@ -24,7 +24,7 @@ import { useSearchParams } from "@/lib/nav";
 import { Changelog, ChangelogSkeleton, type Release } from "./deplo-changelog";
 import { FleetBehind, useFleetAgents, type FleetSummary } from "./fleet-agents";
 import { AutoUpdateRow, type AutoUpdateStatus } from "./auto-update-row";
-import { UpdateLogView } from "./update-log-view";
+import { UpdateLogDialog } from "./update-log-dialog";
 
 export type { FleetSummary };
 
@@ -144,6 +144,21 @@ export function DeploUpdatesTab({
   const refusedAt = React.useRef<string | null>(null);
   const params = useSearchParams();
   const showLog = params.get("view") === "log";
+  const pushedLog = React.useRef(false);
+  // Kept in the address so Back closes it and an alert's link opens it.
+  const openLog = (open: boolean) => {
+    if (!open && pushedLog.current) {
+      pushedLog.current = false;
+      window.history.back();
+      return;
+    }
+    const next = new URLSearchParams(window.location.search);
+    next.set("tab", "updates");
+    if (open) next.set("view", "log");
+    else next.delete("view");
+    pushedLog.current = open;
+    window.history[open ? "pushState" : "replaceState"](null, "", `?${next}`);
+  };
 
   const load = React.useCallback(async () => {
     const res = await gqlAction<UpdatesData, UpdatesData>(UPDATES_QUERY);
@@ -288,13 +303,6 @@ export function DeploUpdatesTab({
     </Button>
   );
 
-  if (showLog)
-    return (
-      <UpdateLogView
-        timezone={info?.automatic?.timezone ?? null}
-        onBack={() => openLog(false)}
-      />
-    );
   if (releases === null) return <UpdatesSkeleton />;
 
   const hero = heroState({
@@ -406,17 +414,13 @@ export function DeploUpdatesTab({
         </div>
         <Changelog releases={releases} error={listError} />
       </section>
+      <UpdateLogDialog
+        open={showLog}
+        onOpenChange={openLog}
+        timezone={info?.automatic?.timezone ?? null}
+      />
     </UpdatesLayout>
   );
-}
-
-// A view inside the Updates tab, kept in the address so Back and a shared link land on it.
-function openLog(open: boolean) {
-  const next = new URLSearchParams(window.location.search);
-  next.set("tab", "updates");
-  if (open) next.set("view", "log");
-  else next.delete("view");
-  window.history.pushState(null, "", `?${next}`);
 }
 
 // The illustration follows the page down on wide screens, beside the status and the changelog.
