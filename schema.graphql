@@ -937,6 +937,74 @@ type CertificateAccount {
   unavailable: String
 }
 
+"""
+An account or group on one of the team's git connections where Deplo can create a repository.
+"""
+type CloneDestination {
+  avatarUrl: String
+  connectionId: String
+  installationId: String
+  key: String
+  login: String
+
+  """
+  github-sign-in | github-permissions, or null when a repository can be created here now.
+  """
+  needs: String
+
+  """Pass it back as cloneRepository's owner."""
+  ownerId: String
+  personal: Boolean
+
+  """github | gitlab | bitbucket | gitea."""
+  provider: String
+  providerLabel: String
+
+  """Where to grant the missing GitHub App permissions."""
+  settingsUrl: String
+}
+
+type CloneDestinations {
+  destinations: [CloneDestination!]
+
+  """Labels of git connections that did not answer."""
+  unreachable: [String!]
+}
+
+input CloneRepositoryInput {
+  """
+  A link to a compose file in that repository. Alone, it names the repository too.
+  """
+  compose: String
+
+  """Create it through this git connection."""
+  connectionId: String
+
+  """Create it on this GitHub account."""
+  installationId: String
+  name: String!
+
+  """The CloneDestination's ownerId."""
+  owner: String!
+  private: Boolean!
+
+  """A public GitHub or GitLab repository link."""
+  repo: String
+}
+
+"""
+The new repository: create the app from it as from any other repository.
+"""
+type ClonedRepository {
+  branch: String
+  composeFile: String
+  connectionId: String
+  fullName: String
+  installationId: String
+  provider: String
+  url: String
+}
+
 enum CommitSignature {
   unverified
   verified
@@ -3720,6 +3788,11 @@ type Mutation {
   """
   clearAppBuildCache(id: String!): App
 
+  """
+  Copy a public repository into a new repository on one of the team's git accounts. It never deletes or changes an existing repository.
+  """
+  cloneRepository(input: CloneRepositoryInput!): ClonedRepository
+
   """First-run setup: create the first account + team. Signs in."""
   completeSetup(email: String!, image: String, key: String, name: String!, password: String!, teamImage: String, teamName: String!, username: String): AuthPayload
 
@@ -5363,6 +5436,9 @@ type Query {
   """
   buildServerChoices: [BuildServerChoice!]
 
+  """Where Deplo can create a repository for a Deploy button's project."""
+  cloneDestinations: CloneDestinations
+
   """
   The service names a stack would share with something already on the network it lands on - what `createApp` refuses it over, asked before creating so the caller can pass `renameClashes` instead. Empty when nothing clashes.
   """
@@ -5570,6 +5646,11 @@ type Query {
 
   """Repositories accessible to a GitHub App installation."""
   githubRepos(installationId: String!): [GithubRepo!]
+
+  """
+  Where to send a person to sign in to GitHub, so Deplo can create a repository in their personal account.
+  """
+  githubSignInUrl(installationId: String!, returnTo: String): String
 
   """
   The capabilities the caller may hand out on a folder (their own effective folder caps). Owner/admin only.

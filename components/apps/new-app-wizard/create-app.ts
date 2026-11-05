@@ -26,6 +26,8 @@ import { deploySourceEnumName } from "@/lib/types/app";
 
 import type {
   CreateAppVariables,
+  WizardClone,
+  WizardCloneDestination,
   WizardPlacement,
   WizardTemplate,
 } from "./types";
@@ -348,5 +350,49 @@ export async function submitCreatedApp(
     firstDeploymentId
       ? `/apps/${app.slug}/deployments/${firstDeploymentId}`
       : `/apps/${app.slug}`,
+  );
+}
+
+export interface ClonedRepo {
+  provider: string;
+  fullName: string;
+  url: string;
+  branch: string;
+  installationId: string | null;
+  connectionId: string | null;
+  composeFile: string | null;
+}
+
+export function cloneProject(
+  clone: WizardClone,
+  dest: WizardCloneDestination,
+  target: { repoName: string; private: boolean },
+) {
+  return gqlAction(
+    /* GraphQL */ `
+      mutation ($input: CloneRepositoryInput!) {
+        cloneRepository(input: $input) {
+          provider
+          fullName
+          url
+          branch
+          installationId
+          connectionId
+          composeFile
+        }
+      }
+    `,
+    {
+      input: {
+        repo: clone.repoParam,
+        compose: clone.composeParam,
+        installationId: dest.installationId,
+        connectionId: dest.connectionId,
+        owner: dest.ownerId,
+        name: target.repoName.trim(),
+        private: target.private,
+      },
+    },
+    (d: { cloneRepository: ClonedRepo }) => d.cloneRepository,
   );
 }

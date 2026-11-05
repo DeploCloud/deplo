@@ -14,7 +14,7 @@ import type { GitCredential, GitProviderApi, RepoSummary } from "./types";
 const glProject = (fullName: string) =>
   `/api/v4/projects/${encodeURIComponent(assertFullName(fullName))}`;
 
-const glAuth = (c: GitCredential) => ({ "PRIVATE-TOKEN": c.token });
+export const glAuth = (c: GitCredential) => ({ "PRIVATE-TOKEN": c.token });
 
 function lastCommitMessage(
   commits: { message?: string }[] | undefined,

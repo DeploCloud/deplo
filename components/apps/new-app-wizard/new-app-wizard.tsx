@@ -53,12 +53,21 @@ import type { GitProviderChoice } from "@/lib/types/git";
 import type { GitConnectionDTO } from "@/lib/data/git-connections";
 import type { GithubInstallationDTO } from "@/lib/data/github";
 
+import { buildConfigFor } from "@/lib/frameworks";
+
 import { WizardAdvanced } from "./advanced-fields";
+import {
+  CloneFields,
+  cloneTargetReady,
+  type CloneTarget,
+} from "./clone-fields";
 import { ConfigureStep } from "./configure-step";
 import {
   buildCreateAppInput,
   checkComposeNameClashes,
+  cloneProject,
   submitCreatedApp,
+  type ClonedRepo,
 } from "./create-app";
 import { AppNameField, DetailsStep } from "./details-step";
 import { SourceFields } from "./source-fields";
@@ -73,6 +82,7 @@ import type {
   CreateAppVariables,
   Step,
   WizardBuildServer,
+  WizardClone,
   WizardPlacement,
   WizardServer,
   WizardTemplate,
@@ -83,6 +93,7 @@ export function NewAppWizard({
   buildServers,
   sharedVars,
   template,
+  clone,
   presetRepo,
   presetBranch,
   presetInstallationId,
@@ -101,6 +112,7 @@ export function NewAppWizard({
   buildServers: WizardBuildServer[];
   sharedVars: LinkableSharedVar[];
   template?: WizardTemplate;
+  clone?: WizardClone;
   presetRepo?: string;
   presetBranch?: string;
   presetInstallationId?: string;
@@ -131,15 +143,19 @@ export function NewAppWizard({
     (presetRepo && connections.find((c) => c.id === presetConnectionId)) ||
     null;
   const [source, setSource] = React.useState<DeploySource | null>(
-    isTemplate
-      ? "docker-image"
-      : dropped
-        ? "upload"
-        : (presetSource ??
-          (presetGithub ? "github" : presetRepo ? "git" : null)),
+    clone
+      ? "git"
+      : isTemplate
+        ? "docker-image"
+        : dropped
+          ? "upload"
+          : (presetSource ??
+            (presetGithub ? "github" : presetRepo ? "git" : null)),
   );
   const firstStep: Step =
-    isTemplate || presetSource || presetRepo || dropped ? "details" : "source";
+    clone || isTemplate || presetSource || presetRepo || dropped
+      ? "details"
+      : "source";
   const url = useUrlStep<Step>(firstStep);
   const { step, direction, leaving, go } = useStepSwap(firstStep, url);
 
@@ -176,9 +192,18 @@ export function NewAppWizard({
     () => (template?.compose ? lintCompose(template.compose) : []),
   );
   const [extraRouted, setExtraRouted] = React.useState<string[]>([]);
+  const [cloneTarget, setCloneTarget] = React.useState<CloneTarget>(() => ({
+    destinationKey:
+      (clone?.destinations.find((d) => !d.needs) ?? clone?.destinations[0])
+        ?.key ?? "",
+    repoName: clone?.suggestedName ?? "",
+    private: true,
+  }));
+  const [cloned, setCloned] = React.useState<ClonedRepo | null>(null);
 
   const [name, setName] = React.useState(
     presetName ??
+      (clone ? nameFromRepo(clone.fullName) : undefined) ??
       template?.name ??
       (dropped ? nameFromArchive(dropped.name) : ""),
   );
@@ -216,7 +241,21 @@ export function NewAppWizard({
     prefilledBuild,
     prefilledStart,
     setImagePort,
-  } = useBuildConfig({ source, buildsImage, ghSelection, gitValue });
+  } = useBuildConfig({
+    source,
+    buildsImage,
+    ghSelection,
+    gitValue,
+    // A Deploy button's project builds with Railpack, or with the compose file its link names.
+    initial: clone
+      ? clone.composeFile
+        ? buildConfigFor({
+            buildMethod: "compose",
+            methodSettings: { composeFile: clone.composeFile },
+          })
+        : buildConfigFor({ buildMethod: "railpack" })
+      : undefined,
+  });
 
   function suggestName(suggested: string) {
     if (!nameTouched && suggested) setName(suggested);
@@ -249,6 +288,7 @@ export function NewAppWizard({
     : null;
 
   function sourceReady(): boolean {
+    if (clone) return Boolean(cloned) || cloneTargetReady(clone, cloneTarget);
     if (source === "github") return Boolean(ghSelection);
     if (source === "git") return Boolean(parseRepo(gitValue.url));
     if (source === "docker-image")
@@ -259,9 +299,11 @@ export function NewAppWizard({
   }
 
   url.settle(
-    isTemplate
-      ? ["details"]
-      : ["source", "details", ...(usesGit ? (["configure"] as Step[]) : [])],
+    clone
+      ? ["details", "configure"]
+      : isTemplate
+        ? ["details"]
+        : ["source", "details", ...(usesGit ? (["configure"] as Step[]) : [])],
     (s) =>
       s === "source" || (source !== null && (s === "details" || sourceReady())),
   );
@@ -272,7 +314,7 @@ export function NewAppWizard({
       : !name.trim();
 
   function onBack() {
-    if (isTemplate || (backHref && step === "details")) {
+    if (isTemplate || ((clone || backHref) && step === "details")) {
       router.push(backHref ?? exitHref);
       return;
     }
@@ -288,6 +330,10 @@ export function NewAppWizard({
   }
 
   function deploy(startDeployment = true) {
+    if (clone) {
+      deployClone(startDeployment);
+      return;
+    }
     const input = buildCreateAppInput({
       name,
       serverId,
@@ -332,6 +378,77 @@ export function NewAppWizard({
         }
       }
       await submitCreatedApp(input, { router, source, uploadFile });
+    });
+  }
+
+  // Copy the project once, then create the app from the new repository like any other.
+  function deployClone(startDeployment: boolean) {
+    if (!clone) return;
+    startTransition(async () => {
+      let repo = cloned;
+      if (!repo) {
+        const dest = clone.destinations.find(
+          (d) => d.key === cloneTarget.destinationKey,
+        );
+        if (!dest) {
+          toast.error("Choose a Git account for the new repository");
+          return;
+        }
+        const res = await cloneProject(clone, dest, cloneTarget);
+        if (!res.ok || !res.data) {
+          if (!res.ok) toast.error(res.error);
+          return;
+        }
+        repo = res.data;
+        setCloned(repo);
+      }
+      const isGithub = repo.provider === "github";
+      const input = buildCreateAppInput({
+        name,
+        serverId,
+        buildServerId,
+        source: isGithub ? "github" : "git",
+        isTemplate: false,
+        useCompose: false,
+        templateCompose: false,
+        compose: "",
+        composeDiags: [],
+        composeUpArgs: "",
+        composeArgsProblem: null,
+        ghSelection: isGithub
+          ? {
+              installationId: repo.installationId!,
+              fullName: repo.fullName,
+              branch: repo.branch,
+            }
+          : null,
+        gitValue: {
+          provider: repo.provider as GitSourceValue["provider"],
+          url: repo.url,
+          repo: repo.fullName,
+          branch: repo.branch,
+          connectionId: repo.connectionId,
+        },
+        dockerImage: "",
+        gitOptions,
+        buildsImage: true,
+        build,
+        envRows,
+        sharedIds,
+        usesGit: true,
+        autoDeploy,
+        shouldDeploy: startDeployment,
+        primaryService: null,
+        routeCandidates: [],
+        extraRouted: [],
+        placement,
+      });
+      if (!input) return;
+      await submitCreatedApp(input, {
+        router,
+        source: isGithub ? "github" : "git",
+        uploadFile: null,
+      });
     });
   }
 
@@ -414,6 +531,15 @@ export function NewAppWizard({
           />
         ) : step === "details" ? (
           <DetailsStep
+            heading={
+              clone
+                ? {
+                    title: "New app",
+                    description:
+                      "Deplo copies this project into your Git account, then puts it online.",
+                  }
+                : undefined
+            }
             isTemplate={isTemplate}
             template={template}
             source={source}
@@ -425,25 +551,34 @@ export function NewAppWizard({
             nextDisabled={nextDisabled}
             pending={pending}
             sourceFields={
-              <SourceFields
-                source={source}
-                isTemplate={isTemplate}
-                installations={installations}
-                setSource={setSource}
-                ghPreset={ghPreset}
-                setGhSelection={setGhSelection}
-                suggestName={suggestName}
-                connections={connections}
-                providers={providers}
-                isInstanceAdmin={isInstanceAdmin}
-                gitValue={gitValue}
-                onGitChange={onGitChange}
-                dockerImage={dockerImage}
-                setDockerImage={setDockerImage}
-                setImagePort={setImagePort}
-                uploadFile={uploadFile}
-                setUploadFile={setUploadFile}
-              />
+              clone ? (
+                <CloneFields
+                  clone={clone}
+                  target={cloneTarget}
+                  onChange={setCloneTarget}
+                  locked={Boolean(cloned)}
+                />
+              ) : (
+                <SourceFields
+                  source={source}
+                  isTemplate={isTemplate}
+                  installations={installations}
+                  setSource={setSource}
+                  ghPreset={ghPreset}
+                  setGhSelection={setGhSelection}
+                  suggestName={suggestName}
+                  connections={connections}
+                  providers={providers}
+                  isInstanceAdmin={isInstanceAdmin}
+                  gitValue={gitValue}
+                  onGitChange={onGitChange}
+                  dockerImage={dockerImage}
+                  setDockerImage={setDockerImage}
+                  setImagePort={setImagePort}
+                  uploadFile={uploadFile}
+                  setUploadFile={setUploadFile}
+                />
+              )
             }
             useCompose={useCompose}
             composeServices={composeServices}

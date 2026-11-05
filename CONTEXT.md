@@ -415,10 +415,12 @@ family holds one or more **variants**: the actually deployable unit, one `docker
   produces, `lib/templates-blueprint.ts`), service (a compose service inside the stack).
 
 **Deploy button**:
-The "Deploy on Deplo" badge a project puts in its README. It links to `deplo.build/deploy?compose=<url>`,
-which sends the visitor to `/new?compose=` on the instance they saved in their own browser; `/new`
-reads that `docker-compose.yml` plus any `template.toml` and logo beside it, and opens the wizard
-like a Template, marked as not from the catalog. Nothing is created until they click **Deploy**.
+The "Deploy on Deplo" badge a project puts in its README. It links to `deplo.build/deploy?repo=<url>`
+(optionally `&compose=<url>`, or `compose=` alone), which sends the visitor to `/new?clone=` on the
+instance they saved in their own browser. Deplo copies the public GitHub or GitLab repository into a
+new repository on one of the team's git accounts, then builds that with Railpack, or with the compose
+file the link names. A `compose=` link on any other host still opens the template wizard. Nothing is
+created until they click **Deploy**.
 _Avoid_: one-click deploy (a catalog Template), import (the migration importer).
 
 ### Runtimes

@@ -123,6 +123,10 @@ export const MOVE_TABLES: Readonly<Record<string, TablePolicy>> = {
     },
   },
   github_installation: COPY,
+  github_user_tokens: {
+    kind: "copy",
+    rekey: { token_enc: SECRET, refresh_token_enc: SECRET },
+  },
   // Read again from the new Deplo's own servers (ADR-0038).
   image_inventories: { kind: "skip" },
   image_inventory_packages: { kind: "skip" },

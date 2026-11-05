@@ -51,3 +51,32 @@ export interface WizardPlacement {
 }
 
 export type Step = "source" | "details" | "configure";
+
+export interface WizardCloneDestination {
+  key: string;
+  provider: string;
+  providerLabel: string;
+  installationId: string | null;
+  connectionId: string | null;
+  ownerId: string;
+  login: string;
+  avatarUrl: string;
+  personal: boolean;
+  needs: "github-sign-in" | "github-permissions" | null;
+  settingsUrl: string | null;
+}
+
+// A Deploy button's project: Deplo copies it into a new repository of the team's, then builds that.
+export interface WizardClone {
+  host: "github" | "gitlab";
+  hostLabel: string;
+  fullName: string;
+  ref: string | null;
+  composeFile: string | null;
+  repoParam: string | null;
+  composeParam: string | null;
+  suggestedName: string;
+  destinations: WizardCloneDestination[];
+  unreachable: string[];
+  signIn: "denied" | "error" | null;
+}

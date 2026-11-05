@@ -11,7 +11,9 @@ import {
 import { hmacHex, sameSecret } from "./signature";
 import type { GitCredential, GitProviderApi, RepoSummary } from "./types";
 
-const giAuth = (c: GitCredential) => ({ Authorization: `token ${c.token}` });
+export const giAuth = (c: GitCredential) => ({
+  Authorization: `token ${c.token}`,
+});
 const giRepo = (fullName: string) =>
   `/api/v1/repos/${assertFullName(fullName)}`;
 

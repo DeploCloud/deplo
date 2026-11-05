@@ -6,7 +6,9 @@ import {
   signConnectState,
 } from "@/lib/github/manifest";
 import { createGithubApp } from "@/lib/data/github";
-import { resolvePublicBaseUrl } from "@/lib/public-url";
+import { completeGithubUserAuthorize } from "@/lib/data/github-user";
+import { readUserAuthorizeState } from "@/lib/github/user-token";
+import { resolveManifestBaseUrl, resolvePublicBaseUrl } from "@/lib/public-url";
 import { refuseWhileFrozen } from "@/lib/data/deplo-move/freeze";
 
 export async function GET(request: NextRequest) {
@@ -20,6 +22,25 @@ export async function GET(request: NextRequest) {
 
   const code = request.nextUrl.searchParams.get("code");
   const state = request.nextUrl.searchParams.get("state");
+
+  // A person signing in to GitHub to create a repository in their own account.
+  const signIn = readUserAuthorizeState(state, user.id);
+  if (signIn) {
+    const back = new URL(signIn.returnTo ?? "/new", origin);
+    if (!code) back.searchParams.set("github", "denied");
+    else {
+      const ok = await completeGithubUserAuthorize(
+        signIn.appId,
+        code,
+        resolveManifestBaseUrl(),
+      ).then(
+        () => true,
+        () => false,
+      );
+      if (!ok) back.searchParams.set("github", "error");
+    }
+    return NextResponse.redirect(back);
+  }
 
   const started = readConnectState(state, user.id);
   if (!started) {

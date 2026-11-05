@@ -88,3 +88,23 @@ test("the connect dialog's scopes line is the requirement list", () => {
     ["core", "core"],
   );
 });
+
+test("Deploy button copies ask GitHub to create and write, nothing broader", () => {
+  const { permissions } = githubManifestAccess();
+  assert.equal(permissions.administration, "write");
+  assert.equal(permissions.contents, "write");
+  assert.deepEqual(
+    missingAccess("github", githubGranted({ contents: "read" }, []), {
+      clone: true,
+    })
+      .filter((r) => r.feature === "clone")
+      .map((r) => r.key),
+    ["administration:write", "contents:write"],
+  );
+  assert.ok(
+    missingAccess("github", githubGranted({}, [])).every(
+      (r) => r.feature === "core",
+    ),
+    "an app without them still deploys",
+  );
+});
