@@ -8,12 +8,10 @@ export function parseEnv(text: string): { key: string; value: string }[] {
     const eq = line.indexOf("=");
     if (eq === -1) continue;
     const key = line.slice(0, eq).trim();
-    let value = line.slice(eq + 1).trim();
-    if (
-      (value.startsWith('"') && value.endsWith('"')) ||
-      (value.startsWith("'") && value.endsWith("'"))
-    )
-      value = value.slice(1, -1);
+    const rest = line.slice(eq + 1);
+    // An unquoted `#` is a comment only after whitespace, so `COLOR=#fff` survives.
+    const quoted = rest.trim().match(/^(["'])(.*?)\1\s*(?:#.*)?$/);
+    const value = quoted ? quoted[2] : rest.replace(/\s+#.*$/, "").trim();
     if (!key) continue;
     out.push({ key, value });
   }
