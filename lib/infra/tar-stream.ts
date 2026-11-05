@@ -4,6 +4,7 @@ const MAX_META_BYTES = 64 * 1024;
 export interface TarEntry {
   name: string;
   size: number;
+  mode: number;
   bytes: Buffer | null;
 }
 
@@ -70,6 +71,7 @@ interface RawHeader {
   name: string;
   prefix: string;
   size: number;
+  mode: number;
   type: string;
 }
 
@@ -123,6 +125,7 @@ function parseHeader(block: Buffer): RawHeader | null {
     name: readString(block, 0, 100),
     prefix: magic.startsWith("ustar") ? readString(block, 345, 155) : "",
     size,
+    mode: Math.max(0, readNumber(block, 100, 8)),
     type: String.fromCharCode(block[156] || 0x30),
   };
 }
@@ -153,6 +156,7 @@ type ParserState =
       kind: "data";
       name: string;
       size: number;
+      mode: number;
       type: string;
       remaining: number;
       padding: number;
@@ -200,6 +204,7 @@ export async function* tarEntries(
           kind: "data",
           name,
           size: header.size,
+          mode: header.mode,
           type: header.type,
           remaining: header.size,
           padding: (BLOCK_SIZE - (header.size % BLOCK_SIZE)) % BLOCK_SIZE,
@@ -231,11 +236,13 @@ export async function* tarEntries(
       const entry: {
         name: string;
         size: number;
+        mode: number;
         type: string;
         bytes: Buffer | null;
       } = {
         name: state.name,
         size: state.size,
+        mode: state.mode,
         type: state.type,
         bytes: state.collected ? Buffer.concat(state.collected) : null,
       };
@@ -253,7 +260,12 @@ export async function* tarEntries(
       }
       overrideName = null;
       if (entry.type === "g" || !isRegularFile(entry.type)) continue;
-      yield { name: entry.name, size: entry.size, bytes: entry.bytes };
+      yield {
+        name: entry.name,
+        size: entry.size,
+        mode: entry.mode,
+        bytes: entry.bytes,
+      };
     }
 
     if (scanned >= maxScanBytes) return;

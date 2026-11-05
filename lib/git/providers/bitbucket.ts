@@ -9,7 +9,7 @@ import {
 import { hmacHex, sameSecret } from "./signature";
 import type { GitCredential, GitProviderApi, RepoSummary } from "./types";
 
-const bbAuth = (c: GitCredential) => ({
+export const bbAuth = (c: GitCredential) => ({
   Authorization: `Basic ${Buffer.from(`${c.username}:${c.token}`).toString("base64")}`,
 });
 const bbRepo = (fullName: string) =>

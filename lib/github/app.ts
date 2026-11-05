@@ -178,6 +178,55 @@ export async function getInstallationToken(
   return json.token;
 }
 
+// A token narrowed to what one job needs: GitHub refuses it outright if the app was never granted that much.
+export async function scopedInstallationToken(
+  installationId: string,
+  permissions: Record<string, string>,
+  repositories?: string[],
+): Promise<string> {
+  const key = `scoped:${installationId}:${JSON.stringify(permissions)}:${(repositories ?? []).join(",")}`;
+  const cached = tokenCache.get(key);
+  if (cached && cached.expiresAt - 5 * 60_000 > Date.now()) return cached.token;
+  const found = await findInstallation(installationId);
+  if (!found) throw new Error("GitHub installation not found");
+  const res = await fetch(
+    `${API}/app/installations/${found.install.installationId}/access_tokens`,
+    {
+      method: "POST",
+      headers: {
+        Accept: "application/vnd.github+json",
+        "X-GitHub-Api-Version": "2022-11-28",
+        "User-Agent": UA,
+        Authorization: `Bearer ${appJwt(found.app)}`,
+      },
+      body: JSON.stringify({
+        permissions,
+        ...(repositories ? { repositories } : {}),
+      }),
+    },
+  );
+  if (res.status === 422)
+    throw new GithubPermissionError(
+      `The GitHub App on ${found.install.accountLogin} hasn't been given this access yet.`,
+    );
+  if (!res.ok)
+    throw new Error(`Could not mint GitHub installation token (${res.status})`);
+  const json = (await res.json()) as { token: string; expires_at: string };
+  tokenCache.set(key, {
+    token: json.token,
+    expiresAt: new Date(json.expires_at).getTime(),
+  });
+  return json.token;
+}
+
+export class GithubPermissionError extends Error {}
+
+export async function installationWithApp(
+  installationId: string,
+): Promise<{ app: GithubApp; install: GithubInstallation } | null> {
+  return findInstallation(installationId);
+}
+
 // For a builder's version lookups on public repos: scoped to metadata, a leaked copy reads nothing private.
 export async function buildMetadataToken(
   teamId: string,
@@ -414,7 +463,10 @@ export async function installationCloneUrl(
     return repoUrl;
   }
   if (parsed.hostname !== "github.com") return repoUrl;
-  const token = await getInstallationToken(installationId);
+  // The clone runs on a server agent: hand it read access and nothing else.
+  const token = await scopedInstallationToken(installationId, {
+    contents: "read",
+  }).catch(() => getInstallationToken(installationId));
   const path = parsed.pathname.replace(/^\/+/, "").replace(/\.git$/, "");
   if (!OWNER_REPO_RE.test(path)) return repoUrl;
   return `https://x-access-token:${token}@github.com/${path}.git`;
@@ -423,6 +475,7 @@ export async function installationCloneUrl(
 export interface GithubAppAccess {
   missingCore: AccessRequirement[];
   missingPreviews: AccessRequirement[];
+  missingClone: AccessRequirement[];
   previewReady: boolean;
   settingsUrl: string;
   ownerLogin: string;
@@ -476,9 +529,13 @@ export async function readAppAccess(
     const missingPreviews = missingAccess("github", granted, {
       previews: true,
     }).filter((r) => r.feature === "previews");
+    const missingClone = missingAccess("github", granted, {
+      clone: true,
+    }).filter((r) => r.feature === "clone");
     const value: GithubAppAccess = {
       missingCore,
       missingPreviews,
+      missingClone,
       previewReady: missingCore.length === 0 && missingPreviews.length === 0,
       settingsUrl,
       ownerLogin,

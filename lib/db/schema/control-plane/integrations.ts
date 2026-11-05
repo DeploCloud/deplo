@@ -9,7 +9,7 @@ import {
 } from "drizzle-orm/pg-core";
 
 import { isoTimestamptz } from "../columns";
-import { teams } from "./identity";
+import { teams, users } from "./identity";
 
 export const githubAccountType = pgEnum("github_account_type", [
   "User",
@@ -52,6 +52,27 @@ export const githubInstallation = pgTable(
   (t) => [
     uniqueIndex("github_installation_installation_id_uq").on(t.installationId),
   ],
+);
+
+// A person's own GitHub sign-in through a team's GitHub App: only a repository in a personal account needs it.
+export const githubUserTokens = pgTable(
+  "github_user_tokens",
+  {
+    id: text("id").primaryKey(),
+    appId: text("app_id")
+      .notNull()
+      .references(() => githubApps.id, { onDelete: "cascade" }),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    githubLogin: text("github_login").notNull(),
+    tokenEnc: text("token_enc").notNull(),
+    expiresAt: isoTimestamptz("expires_at"),
+    refreshTokenEnc: text("refresh_token_enc"),
+    refreshExpiresAt: isoTimestamptz("refresh_expires_at"),
+    createdAt: isoTimestamptz("created_at").notNull(),
+  },
+  (t) => [uniqueIndex("github_user_tokens_app_user_uq").on(t.appId, t.userId)],
 );
 
 export const gitConnections = pgTable(

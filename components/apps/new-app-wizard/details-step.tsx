@@ -26,6 +26,7 @@ import { templateAlert, WizardAlerts, type WizardAlert } from "./wizard-alerts";
 import type { WizardTemplate } from "./types";
 
 export function DetailsStep({
+  heading,
   isTemplate,
   template,
   source,
@@ -49,6 +50,7 @@ export function DetailsStep({
   hasServers,
   advanced,
 }: {
+  heading?: { title: string; description: string };
   isTemplate: boolean;
   template?: WizardTemplate;
   source: DeploySource | null;
@@ -93,17 +95,23 @@ export function DetailsStep({
   return (
     <WizardCard
       title={
-        isTemplate
-          ? templateTitle(template!)
-          : `Deploy from ${sourceLabelFor(source!)}`
+        heading
+          ? heading.title
+          : isTemplate
+            ? templateTitle(template!)
+            : `Deploy from ${sourceLabelFor(source!)}`
       }
       icon={
-        isTemplate ? undefined : (
+        heading || isTemplate ? undefined : (
           <SourceMark tab={SOURCE_TABS.find((t) => t.id === source)!} />
         )
       }
       description={
-        isTemplate ? template!.description : detailsDescription(source!)
+        heading
+          ? heading.description
+          : isTemplate
+            ? template!.description
+            : detailsDescription(source!)
       }
       meta={meta}
       backLabel={

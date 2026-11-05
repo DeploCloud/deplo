@@ -17,14 +17,16 @@ export function useBuildConfig({
   buildsImage,
   ghSelection,
   gitValue,
+  initial,
 }: {
   source: DeploySource | null;
   buildsImage: boolean;
   ghSelection: GithubSelection | null;
   gitValue: GitSourceValue;
+  initial?: BuildConfig;
 }) {
-  const [draftBuild, setDraftBuild] = React.useState(() =>
-    buildConfigFor({ methodAuto: true }),
+  const [draftBuild, setDraftBuild] = React.useState(
+    () => initial ?? buildConfigFor({ methodAuto: true }),
   );
   const [portTouched, setPortTouched] = React.useState(false);
   const [imagePort, setImagePort] = React.useState<number | null>(null);

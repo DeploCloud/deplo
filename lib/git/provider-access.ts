@@ -4,7 +4,7 @@ export interface AccessRequirement {
   key: string;
   label: string;
   unlocks: string;
-  feature: "core" | "previews";
+  feature: "core" | "previews" | "clone";
 }
 
 const GITHUB: AccessRequirement[] = [
@@ -37,6 +37,19 @@ const GITHUB: AccessRequirement[] = [
     label: "Subscribe to event: Pull request",
     unlocks: "build a preview when a pull request opens",
     feature: "previews",
+  },
+  {
+    key: "administration:write",
+    label: "Administration: Read and write",
+    unlocks:
+      "create a new repository when you deploy a project from a Deploy button",
+    feature: "clone",
+  },
+  {
+    key: "contents:write",
+    label: "Contents: Read and write",
+    unlocks: "put the project's code in that new repository",
+    feature: "clone",
   },
 ];
 
@@ -96,19 +109,27 @@ export const PROVIDER_ACCESS: Record<
   git: [],
 };
 
+export interface AccessFeatures {
+  previews?: boolean;
+  clone?: boolean;
+}
+
 export function requiredAccess(
   provider: GitProviderId | "github",
-  opts: { previews?: boolean } = {},
+  opts: AccessFeatures = {},
 ): AccessRequirement[] {
   return (PROVIDER_ACCESS[provider] ?? []).filter(
-    (r) => r.feature === "core" || opts.previews,
+    (r) =>
+      r.feature === "core" ||
+      (r.feature === "previews" && opts.previews) ||
+      (r.feature === "clone" && opts.clone),
   );
 }
 
 export function missingAccess(
   provider: GitProviderId | "github",
   granted: ReadonlySet<string> | null,
-  opts: { previews?: boolean } = {},
+  opts: AccessFeatures = {},
 ): AccessRequirement[] {
   if (!granted) return [];
   return requiredAccess(provider, opts).filter((r) => !granted.has(r.key));
@@ -164,7 +185,8 @@ export function githubManifestAccess(): {
     if (r.key.startsWith("event:")) events.push(r.key.slice("event:".length));
     else {
       const [name, level] = r.key.split(":");
-      permissions[name!] = level!;
+      const held = GITHUB_LEVELS.indexOf(permissions[name!] ?? "");
+      if (GITHUB_LEVELS.indexOf(level!) > held) permissions[name!] = level!;
     }
   }
   return { permissions, events };

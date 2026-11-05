@@ -36,6 +36,13 @@ import {
 } from "@/templates/catalog";
 import { templateAccent } from "@/lib/templates/logo-color";
 import { loadComposeFromUrl } from "@/lib/templates/from-url";
+import {
+  cloneHostLabel,
+  parseCloneSource,
+  suggestedRepoName,
+} from "@/lib/git/clone-source";
+import { listCloneDestinations } from "@/lib/data/clone-repository";
+import type { WizardClone } from "@/components/apps/new-app-wizard/types";
 import { docsUrl } from "@/lib/docs";
 import type { DeploySource } from "@/lib/types/app";
 
@@ -84,6 +91,7 @@ export default async function NewAppPage(props: PageProps<"/[team]/new">) {
   const connectionParam = one(params.connection);
   const sourceParam = one(params.source);
   const composeParam = one(params.compose);
+  const cloneParam = one(params.clone);
   const presetSource = SOURCES.find((s) => s === sourceParam) ?? null;
   const detected = one(params.detected) === "1";
 
@@ -127,8 +135,32 @@ export default async function NewAppPage(props: PageProps<"/[team]/new">) {
       </FocusFrame>
     );
 
+  // A Deploy button: the project is copied into the team's Git account and built from there.
+  const cloneSource =
+    !template && (cloneParam || composeParam)
+      ? parseCloneSource({ repo: cloneParam, compose: composeParam })
+      : null;
+  if (cloneParam && !cloneSource)
+    return (
+      <FocusFrame exitHref={exitHref}>
+        <EmptyState
+          icon={CloudOff}
+          title="That repository isn't available"
+          description="This Deploy button has to link to a public GitHub or GitLab repository."
+          docs="deploy.button"
+          action={
+            <Button asChild size="sm">
+              <Link href="/new">Create from scratch</Link>
+            </Button>
+          }
+        />
+      </FocusFrame>
+    );
+
   const imported =
-    !template && composeParam ? await loadComposeFromUrl(composeParam) : null;
+    !template && !cloneSource && composeParam
+      ? await loadComposeFromUrl(composeParam)
+      : null;
   if (imported && !imported.ok)
     return (
       <FocusFrame exitHref={exitHref}>
@@ -181,6 +213,7 @@ export default async function NewAppPage(props: PageProps<"/[team]/new">) {
     connections,
     sharedVars,
     instanceAdmin,
+    cloneTargets,
   ] = await Promise.all([
     listServerChoices(),
     listBuildServerChoices(),
@@ -188,10 +221,33 @@ export default async function NewAppPage(props: PageProps<"/[team]/new">) {
     listGitConnections(),
     listSharedVars().catch(() => []),
     isInstanceAdmin(),
+    cloneSource
+      ? listCloneDestinations().catch(() => ({
+          destinations: [],
+          unreachable: [],
+        }))
+      : null,
   ]);
+  const signIn = one(params.github);
+  const clone: WizardClone | undefined =
+    cloneSource && cloneTargets
+      ? {
+          host: cloneSource.host,
+          hostLabel: cloneHostLabel(cloneSource.host),
+          fullName: cloneSource.fullName,
+          ref: cloneSource.ref,
+          composeFile: cloneSource.composeFile,
+          repoParam: cloneParam ?? null,
+          composeParam: composeParam ?? null,
+          suggestedName: suggestedRepoName(cloneSource),
+          destinations: cloneTargets.destinations,
+          unreachable: cloneTargets.unreachable,
+          signIn: signIn === "denied" || signIn === "error" ? signIn : null,
+        }
+      : undefined;
 
   return (
-    <FocusFrame exitHref={exitHref} narrow={Boolean(spec)}>
+    <FocusFrame exitHref={exitHref} narrow={Boolean(spec || clone)}>
       <NewAppWizard
         servers={servers}
         buildServers={buildServers}
@@ -249,6 +305,7 @@ export default async function NewAppPage(props: PageProps<"/[team]/new">) {
                 }
               : undefined
         }
+        clone={clone}
         presetRepo={repoParam}
         presetBranch={branchParam}
         presetInstallationId={installationParam}

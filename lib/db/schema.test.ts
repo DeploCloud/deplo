@@ -133,6 +133,7 @@ const CONTROL_PLANE = [
   "shared_env_var_teams",
   "github_apps",
   "github_installation",
+  "github_user_tokens",
   "git_connections",
   "deplo_moves",
   "deplo_move_servers",

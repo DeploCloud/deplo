@@ -21,31 +21,40 @@ export function assertFullName(fullName: string): string {
 const REQUEST_TIMEOUT_MS = 15_000;
 
 // ponytail: a redirect is refused, not re-validated. If a host is ever found that
-function timedFetch(target: string, init: RequestInit): Promise<Response> {
+function timedFetch(
+  target: string,
+  init: RequestInit,
+  timeoutMs = REQUEST_TIMEOUT_MS,
+): Promise<Response> {
   return fetch(target, {
     ...init,
     // The base URL is SSRF-checked once, when the connection is saved; a 302 is the way out, so redirects are refused.
     redirect: "manual",
-    signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+    signal: AbortSignal.timeout(timeoutMs),
   });
 }
 
 export async function call(
   c: GitCredential,
   path: string,
-  init: RequestInit & { auth: Record<string, string> },
+  init: RequestInit & { auth: Record<string, string>; timeoutMs?: number },
 ): Promise<Response> {
-  const { auth, ...rest } = init;
-  const res = await timedFetch(url(c, path), {
-    ...rest,
-    headers: {
-      Accept: "application/json",
-      "User-Agent": UA,
-      ...auth,
-      ...(rest.body ? { "Content-Type": "application/json" } : {}),
-      ...(rest.headers as Record<string, string> | undefined),
+  const { auth, timeoutMs, ...rest } = init;
+  const jsonBody = rest.body != null && !(rest.body instanceof FormData);
+  const res = await timedFetch(
+    url(c, path),
+    {
+      ...rest,
+      headers: {
+        Accept: "application/json",
+        "User-Agent": UA,
+        ...auth,
+        ...(jsonBody ? { "Content-Type": "application/json" } : {}),
+        ...(rest.headers as Record<string, string> | undefined),
+      },
     },
-  });
+    timeoutMs,
+  );
   if (res.status >= 300 && res.status < 400) {
     const to = res.headers.get("location") ?? "";
     throw new Error(
@@ -67,7 +76,7 @@ export async function call(
 export async function json<T>(
   c: GitCredential,
   path: string,
-  init: RequestInit & { auth: Record<string, string> },
+  init: RequestInit & { auth: Record<string, string>; timeoutMs?: number },
 ): Promise<T> {
   return (await call(c, path, init)).json() as Promise<T>;
 }
