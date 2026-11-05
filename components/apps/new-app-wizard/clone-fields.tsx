@@ -22,6 +22,8 @@ import { GitProviderIcon } from "@/components/shared/brand-icons";
 import { repoNameProblem } from "@/lib/git/clone-source";
 import { gqlAction } from "@/lib/graphql-client";
 
+import { useGithubConnect } from "@/components/apps/github-connect-button";
+
 import { WizardAlerts } from "./wizard-alerts";
 import type { WizardClone, WizardCloneDestination } from "./types";
 
@@ -113,6 +115,7 @@ export function CloneFields({
   locked: boolean;
 }) {
   const [signingIn, startSignIn] = React.useTransition();
+  const { connect: recreate, pending: recreating } = useGithubConnect();
   const dest = clone.destinations.find((d) => d.key === target.destinationKey);
   const nameProblem = target.repoName ? repoNameProblem(target.repoName) : null;
 
@@ -252,25 +255,22 @@ export function CloneFields({
               type: "warning",
               icon: ShieldAlert,
               content: (
-                <>
-                  Deplo&apos;s GitHub App can&apos;t create repositories yet.
-                  Allow Administration and Contents (read and write)
-                  {dest.settingsUrl ? (
-                    <>
-                      {" "}
-                      in{" "}
-                      <a
-                        href={dest.settingsUrl}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="underline"
-                      >
-                        its settings
-                      </a>
-                    </>
-                  ) : null}
-                  , then accept the change on GitHub.
-                </>
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <span>
+                    Deplo&apos;s GitHub App on {dest.login} is older than the
+                    Deploy button. A new one comes with everything it needs, and
+                    your apps move to it.
+                  </span>
+                  <Button
+                    size="sm"
+                    disabled={recreating}
+                    onClick={() =>
+                      recreate(dest.personal ? undefined : dest.login)
+                    }
+                  >
+                    Recreate GitHub App
+                  </Button>
+                </div>
               ),
             },
           ]}

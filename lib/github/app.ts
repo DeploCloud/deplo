@@ -696,3 +696,24 @@ export async function upsertPullRequestComment(opts: {
     return null;
   }
 }
+
+// Takes an older Deplo app off one account it was replaced on. It never touches a repository.
+export async function uninstallFromAccount(
+  app: GithubApp,
+  numericInstallationId: number,
+): Promise<void> {
+  try {
+    await fetch(`${API}/app/installations/${numericInstallationId}`, {
+      method: "DELETE",
+      headers: {
+        Accept: "application/vnd.github+json",
+        "X-GitHub-Api-Version": "2022-11-28",
+        "User-Agent": UA,
+        Authorization: `Bearer ${appJwt(app)}`,
+      },
+      signal: AbortSignal.timeout(15_000),
+    });
+  } catch {
+    // Best effort: the older App only loses an account Deplo no longer uses.
+  }
+}

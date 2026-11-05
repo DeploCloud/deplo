@@ -29,6 +29,8 @@ import {
   removeGithubApp,
 } from "./github";
 import { recordActivity, listActivity } from "./activity";
+import { seedApp, seedServer } from "./app-graph-test-helpers";
+import { apps as appsTable } from "../db/schema/control-plane/apps";
 
 let db: TestDb;
 let pg: PGlite;
@@ -337,4 +339,94 @@ test("activities: listActivity is team-scoped, newest-first, and seq breaks a sa
       "newest-first by (createdAt DESC, seq DESC)",
     );
   });
+});
+
+test("github: a new App on the same account replaces the older one and takes its apps", async () => {
+  await seedServer(db);
+  await seedGithubApp(db, { id: "gha_old", teamId: TEAM_A, appId: 1 });
+  await seedGithubInstallation(db, {
+    id: "ghi_old",
+    appId: "gha_old",
+    installationId: 10,
+    accountLogin: "Acme",
+  });
+  await seedGithubApp(db, { id: "gha_new", teamId: TEAM_A, appId: 2 });
+  await seedApp(db, {
+    id: "prj_web",
+    repo: {
+      provider: "github",
+      url: "https://github.com/acme/web",
+      repo: "acme/web",
+      branch: "main",
+      installationId: "ghi_old",
+    },
+  });
+  // Another team on the same account is left alone.
+  await seedGithubApp(db, { id: "gha_b", teamId: TEAM_B, appId: 3 });
+  await seedGithubInstallation(db, {
+    id: "ghi_b",
+    appId: "gha_b",
+    installationId: 30,
+    accountLogin: "acme",
+  });
+
+  const installed = await asUser1(() =>
+    upsertInstallation({
+      appDbId: "gha_new",
+      installationId: 20,
+      accountLogin: "acme",
+      accountType: "Organization",
+      avatarUrl: "",
+    }),
+  );
+
+  const [app] = await db.select().from(appsTable);
+  assert.equal(app!.repoInstallationId, installed.id);
+  const installs = await db.select().from(githubInstallationTable);
+  assert.deepEqual(
+    installs.map((i) => i.id).sort(),
+    [installed.id, "ghi_b"].sort(),
+  );
+  const ghApps = await db.select().from(githubAppsTable);
+  assert.deepEqual(ghApps.map((a) => a.id).sort(), ["gha_b", "gha_new"]);
+});
+
+test("github: an older App still on another account stays", async () => {
+  await seedGithubApp(db, { id: "gha_old", teamId: TEAM_A, appId: 1 });
+  await seedGithubInstallation(db, {
+    id: "ghi_acme",
+    appId: "gha_old",
+    installationId: 10,
+    accountLogin: "acme",
+  });
+  await seedGithubInstallation(db, {
+    id: "ghi_other",
+    appId: "gha_old",
+    installationId: 11,
+    accountLogin: "other",
+  });
+  await seedGithubApp(db, { id: "gha_new", teamId: TEAM_A, appId: 2 });
+  await asUser1(() =>
+    upsertInstallation({
+      appDbId: "gha_new",
+      installationId: 20,
+      accountLogin: "acme",
+      accountType: "Organization",
+      avatarUrl: "",
+    }),
+  );
+  const installs = await db.select().from(githubInstallationTable);
+  assert.equal(
+    installs.some((i) => i.id === "ghi_acme"),
+    false,
+  );
+  assert.equal(
+    installs.some((i) => i.id === "ghi_other"),
+    true,
+  );
+  const ghApps = await db.select().from(githubAppsTable);
+  assert.equal(
+    ghApps.some((a) => a.id === "gha_old"),
+    true,
+  );
 });

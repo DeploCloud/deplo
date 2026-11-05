@@ -2,7 +2,7 @@ import "server-only";
 
 import { and, eq, inArray } from "drizzle-orm";
 
-import { readAppAccess } from "../github/app";
+import { readAppAccess, uninstallFromAccount } from "../github/app";
 import { getDb } from "../db/client";
 import { apps as appsTable } from "../db/schema/control-plane/apps";
 import {
@@ -268,7 +268,72 @@ export async function upsertInstallation(input: {
     null,
     membership.teamId,
   );
-  return assembleGithubInstallation(row);
+  const installed = assembleGithubInstallation(row);
+  await replaceOlderInstallations(membership.teamId, installed, user.name);
+  return installed;
+}
+
+// A new GitHub App on an account the team already reached through another one replaces it:
+// the apps move over, and an App left with no account is removed from Deplo.
+async function replaceOlderInstallations(
+  teamId: string,
+  installed: GithubInstallation,
+  actor: string,
+): Promise<void> {
+  const db = getDb();
+  const rows = await db
+    .select({ app: githubAppsTable, install: githubInstallationTable })
+    .from(githubInstallationTable)
+    .innerJoin(
+      githubAppsTable,
+      eq(githubAppsTable.id, githubInstallationTable.appId),
+    )
+    .where(eq(githubAppsTable.teamId, teamId));
+  const login = installed.accountLogin.toLowerCase();
+  const older = rows.filter(
+    (r) =>
+      r.install.appId !== installed.appId &&
+      r.install.accountLogin.toLowerCase() === login,
+  );
+  if (older.length === 0) return;
+  const olderIds = older.map((r) => r.install.id);
+  await db.transaction(async (tx) => {
+    await tx
+      .update(appsTable)
+      .set({ repoInstallationId: installed.id })
+      .where(
+        and(
+          eq(appsTable.teamId, teamId),
+          inArray(appsTable.repoInstallationId, olderIds),
+        ),
+      );
+    await tx
+      .delete(githubInstallationTable)
+      .where(inArray(githubInstallationTable.id, olderIds));
+  });
+  const remaining = new Set(
+    rows.filter((r) => !olderIds.includes(r.install.id)).map((r) => r.app.id),
+  );
+  for (const r of older) {
+    const app = assembleGithubApp(r.app);
+    await uninstallFromAccount(app, r.install.installationId);
+    if (!remaining.has(app.id))
+      await db
+        .delete(githubAppsTable)
+        .where(
+          and(
+            eq(githubAppsTable.id, app.id),
+            eq(githubAppsTable.teamId, teamId),
+          ),
+        );
+    await recordActivity(
+      "integration",
+      `Replaced GitHub App ${app.name} on ${installed.accountLogin}`,
+      actor,
+      null,
+      teamId,
+    );
+  }
 }
 
 export async function removeGithubApp(id: string): Promise<void> {

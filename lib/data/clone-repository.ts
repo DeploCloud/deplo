@@ -95,17 +95,6 @@ async function teamInstallations(
   }));
 }
 
-export function installationSettingsUrl(
-  install: Pick<
-    GithubInstallation,
-    "accountType" | "accountLogin" | "installationId"
-  >,
-): string {
-  return install.accountType === "Organization"
-    ? `https://github.com/organizations/${install.accountLogin}/settings/installations/${install.installationId}`
-    : `https://github.com/settings/installations/${install.installationId}`;
-}
-
 export async function listCloneDestinations(): Promise<CloneDestinations> {
   const teamId = await requireActiveTeamId();
   await requireTeamWide("the team's git accounts");
@@ -228,7 +217,7 @@ async function readSource(source: CloneSource, teamId: string) {
 }
 
 function permissionsMessage(install: GithubInstallation): string {
-  return `Deplo's GitHub App can't create repositories on ${install.accountLogin} yet. Give it "Administration" and "Contents" read and write access, then accept the new permissions: ${installationSettingsUrl(install)}`;
+  return `Deplo's GitHub App on ${install.accountLogin} can't create repositories. Recreate it from the new app screen: the new one has everything it needs, and your apps move to it.`;
 }
 
 async function cloneToGithub(
