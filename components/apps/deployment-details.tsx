@@ -46,7 +46,11 @@ const STATUS_LABEL: Record<Deployment["status"], string> = {
 };
 
 export type DeploymentSetting = { label: string; on: boolean; href: string };
-export type DeploymentDomain = { host: string; status: DomainStatus | null };
+export type DeploymentDomain = {
+  host: string;
+  url: string;
+  status: DomainStatus | null;
+};
 
 // A preview's host carries no status; a domain behind Cloudflare or a proxy is a working one.
 export const domainServes = (status: DomainStatus | null) =>
@@ -205,7 +209,7 @@ export function DeploymentDetailsCard({
           {first && (
             <Cell label="Domains" wide>
               <a
-                href={`https://${first.host}`}
+                href={first.url}
                 target="_blank"
                 rel="noopener noreferrer"
                 className={`${row} w-fit max-w-full font-medium hover:underline`}
@@ -507,7 +511,7 @@ export function DeploymentDomainList({
               <DomainAlert status={x.status} />
             )}
             <a
-              href={`https://${x.host}`}
+              href={x.url}
               target="_blank"
               rel="noopener noreferrer"
               className="truncate font-medium hover:underline"

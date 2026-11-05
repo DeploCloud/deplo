@@ -13,6 +13,7 @@ import {
   isFirstDeployment,
 } from "@/lib/data/deployments/deployment-queries";
 import { listDomains } from "@/lib/data/domains/crud";
+import { domainScheme } from "@/lib/deploy/domains";
 import { Button } from "@/components/ui/button";
 import {
   githubPullRequestUrl,
@@ -79,16 +80,28 @@ export default async function DeploymentDetailPage(
   const domains: DeploymentDomain[] = !deployment.live
     ? []
     : deployment.previewId
-      ? [{ host: deployment.url.replace(/^https?:\/\//, ""), status: null }]
+      ? [
+          {
+            host: deployment.url.replace(/^https?:\/\//, ""),
+            url: deployment.url,
+            status: null,
+          },
+        ]
       : (await listDomains(project.id))
           .filter((d) => !d.redirectTo)
-          .map((d) => ({
-            host:
+          .map((d) => {
+            const host =
               d.name +
-              (d.pathPrefix && d.pathPrefix !== "/" ? d.pathPrefix : ""),
-            // Same reading as the Domains page: a proxy answering for it is not a fault.
-            status: d.proxied && d.status !== "valid" ? "cloudflare" : d.status,
-          }));
+              (d.pathPrefix && d.pathPrefix !== "/" ? d.pathPrefix : "");
+            return {
+              host,
+              // An address with no certificate opens over http, as on the Domains page.
+              url: `${domainScheme(d)}://${host}`,
+              // Same reading as the Domains page: a proxy answering for it is not a fault.
+              status:
+                d.proxied && d.status !== "valid" ? "cloudflare" : d.status,
+            };
+          });
 
   const settings = [
     ...(source.isGit
