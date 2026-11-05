@@ -361,6 +361,8 @@ export interface ClonedRepo {
   installationId: string | null;
   connectionId: string | null;
   composeFile: string | null;
+  port: number | null;
+  startCommand: string | null;
 }
 
 export function cloneProject(
@@ -379,6 +381,8 @@ export function cloneProject(
           installationId
           connectionId
           composeFile
+          port
+          startCommand
         }
       }
     `,

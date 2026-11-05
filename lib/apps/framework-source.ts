@@ -19,6 +19,7 @@ import {
   frameworkDefaults,
   detectFramework,
   parsePackageManifest,
+  productionStartCommand,
   rootFileNames,
   type DetectedCommands,
   type PackageManifest,
@@ -57,7 +58,9 @@ function hintsFor(
         : (derived.staticOutput ??
           frameworkById(framework)?.staticOutput ??
           null),
-    startCommand: derived.startCommand,
+    startCommand:
+      derived.startCommand ??
+      productionStartCommand(files, manifest, framework),
     ...detectCommands(files, manifest),
   };
 }

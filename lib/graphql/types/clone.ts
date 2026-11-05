@@ -67,6 +67,15 @@ const ClonedRepositoryRef = builder
       installationId: t.exposeString("installationId", { nullable: true }),
       connectionId: t.exposeString("connectionId", { nullable: true }),
       composeFile: t.exposeString("composeFile", { nullable: true }),
+      port: t.exposeInt("port", {
+        nullable: true,
+        description: "The port the app answers on, when its framework says.",
+      }),
+      startCommand: t.exposeString("startCommand", {
+        nullable: true,
+        description:
+          "A production start command, when the project's own `start` runs a development server.",
+      }),
     }),
   });
 

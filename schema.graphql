@@ -1001,7 +1001,15 @@ type ClonedRepository {
   connectionId: String
   fullName: String
   installationId: String
+
+  """The port the app answers on, when its framework says."""
+  port: Int
   provider: String
+
+  """
+  A production start command, when the project's own `start` runs a development server.
+  """
+  startCommand: String
   url: String
 }
 

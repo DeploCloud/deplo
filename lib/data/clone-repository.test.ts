@@ -156,6 +156,8 @@ describe("clone-repository", () => {
       installationId: null,
       connectionId: "gc_lab",
       composeFile: "deploy/docker-compose.yml",
+      port: null,
+      startCommand: null,
     });
     const commit = net.calls.find((c) => c.url.endsWith("/commits"))!;
     assert.deepEqual(

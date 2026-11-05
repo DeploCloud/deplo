@@ -432,7 +432,12 @@ export function NewAppWizard({
         dockerImage: "",
         gitOptions,
         buildsImage: true,
-        build,
+        build: {
+          ...build,
+          startCommand: build.startCommand || repo.startCommand,
+          // 3000 is the untouched default; a port someone typed stays.
+          port: repo.port && build.port === 3000 ? repo.port : build.port,
+        },
         envRows,
         sharedIds,
         usesGit: true,

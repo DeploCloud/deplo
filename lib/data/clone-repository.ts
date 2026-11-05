@@ -51,6 +51,13 @@ import {
   userToken,
 } from "../github/user-token";
 import { resolveManifestBaseUrl } from "../public-url";
+import { frameworkById } from "../apps/framework-catalog";
+import {
+  detectFramework,
+  parsePackageManifest,
+  productionStartCommand,
+  rootFileNames,
+} from "../apps/framework-detect";
 import type {
   GitProviderId,
   GithubApp,
@@ -202,6 +209,24 @@ export interface ClonedRepository {
   installationId: string | null;
   connectionId: string | null;
   composeFile: string | null;
+  // Read from the copied files, so the app starts right without anyone editing it.
+  port: number | null;
+  startCommand: string | null;
+}
+
+function startHints(
+  files: SourceFile[],
+): Pick<ClonedRepository, "port" | "startCommand"> {
+  const root = rootFileNames(files.map((f) => f.path));
+  const pkg = files.find((f) => f.path === "package.json");
+  const manifest = pkg
+    ? parsePackageManifest(pkg.bytes.toString("utf8"))
+    : null;
+  const framework = detectFramework(root, manifest);
+  return {
+    port: frameworkById(framework)?.defaultPort ?? null,
+    startCommand: productionStartCommand(root, manifest, framework),
+  };
 }
 
 async function readSource(source: CloneSource, teamId: string) {
@@ -376,5 +401,8 @@ export async function cloneRepository(
     installationId: input.installationId ?? null,
     connectionId: input.connectionId ?? null,
     composeFile: source.composeFile,
+    ...(source.composeFile
+      ? { port: null, startCommand: null }
+      : startHints(files)),
   };
 }
