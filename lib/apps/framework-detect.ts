@@ -141,13 +141,14 @@ export function productionStartCommand(
   if (framework === "astro")
     return deps.has("@astrojs/node")
       ? "HOST=0.0.0.0 PORT=4321 node ./dist/server/entry.mjs"
-      : `${run} astro preview --host 0.0.0.0 --port 4321`;
+      : `${run} astro preview --host 0.0.0.0 --port 4321 --allowed-hosts`;
   if (framework === "nextjs") return `${run} next start -H 0.0.0.0 -p 3000`;
   if (framework === "nuxt")
     return "HOST=0.0.0.0 PORT=3000 node .output/server/index.mjs";
   if (deps.has("vite")) {
+    // `vite preview` has no flag for it: the preview only answers hosts it was told about.
     const port = frameworkById(framework)?.defaultPort ?? 4173;
-    return `${run} vite preview --host 0.0.0.0 --port ${port}`;
+    return `node -e "import('vite').then((v) => v.preview({ preview: { host: '0.0.0.0', port: ${port}, allowedHosts: true } }))"`;
   }
   return null;
 }

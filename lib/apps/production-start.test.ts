@@ -9,14 +9,14 @@ const manifest = (start: string, deps: Record<string, string> = {}) => ({
 });
 
 describe("productionStartCommand", () => {
-  test("a static Astro site whose start is `astro dev` is served on every address", () => {
+  test("a static Astro site whose start is `astro dev` answers every address and host", () => {
     assert.equal(
       productionStartCommand(
         ["package.json", "pnpm-lock.yaml"],
         manifest("astro dev", { astro: "5" }),
         "astro",
       ),
-      "pnpm exec astro preview --host 0.0.0.0 --port 4321",
+      "pnpm exec astro preview --host 0.0.0.0 --port 4321 --allowed-hosts",
     );
   });
 
@@ -46,7 +46,7 @@ describe("productionStartCommand", () => {
         manifest("vite", { vite: "6" }),
         "vite",
       ),
-      "yarn vite preview --host 0.0.0.0 --port 4173",
+      `node -e "import('vite').then((v) => v.preview({ preview: { host: '0.0.0.0', port: 4173, allowedHosts: true } }))"`,
     );
   });
 
