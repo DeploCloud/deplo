@@ -825,6 +825,39 @@ in **Activity**, and the destination card nudges until someone has.
 _Avoid_: password, encryption key (it is the key you keep OUTSIDE Deplo); "shown once" (it
 stays downloadable on purpose).
 
+**Replica**:
+One of several running copies of the same **App** release, each able to answer its traffic on
+its own. An App has one replica unless someone asks for more; the replicas of one App share its
+configuration, its domains and its database, never their own disk.
+_Avoid_: instance (that is a whole Deplo), copy (a **live copy** is a migration), node, pod.
+
+**Cluster**:
+Several **servers** that act as one. An App or managed database is placed on the cluster, never
+on one of its members, and the cluster decides which member runs it. A server belongs to at most
+one cluster; joining brings the Apps already on it along, where they run. A cluster of one is
+allowed, and **failover** starts at two. Shared across teams by the same rules as a server, which
+its members follow. Offered next to "server" when adding one, and in every place an App picks
+where it runs.
+_Avoid_: Kubernetes cluster (nothing of Kubernetes is involved), server group, pool, node (a
+member is a server).
+
+**Cluster leader**:
+The process that leads one **cluster**: it decides which member runs each workload and orders
+**failover**, re-sending the stack Deplo last built rather than building one. It runs on Deplo's
+own machine unless an admin installs it on another server, so a cluster can keep failing over
+while Deplo is down; while a remote leader is offline, Deplo's machine leads in its place. It
+accepts no incoming connection
+([ADR-0043](docs/adr/0043-a-cluster-is-led-by-its-own-leader-not-kubernetes.md)).
+_Avoid_: master, manager, control plane (that is Deplo itself), scheduler.
+
+**Failover**:
+A **cluster** moving an App, unasked, off a member that has gone **offline** and onto another
+member, so its domains answer again. The automatic twin of a **server move**: nobody clicks
+anything, and the move is recorded in **Activity** like any other. An App on a server outside a
+cluster never fails over.
+_Avoid_: automatic server move, migration (that is moving off another platform), restart (the
+App stays on a server that is still up).
+
 **Storage-only server**:
 A **server** whose agent is installed to HOLD BACKUPS and nothing else: no Docker, no
 Traefik, never a deploy target. Chosen at registration; the install command then skips all of
