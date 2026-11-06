@@ -49,6 +49,7 @@ repository root.
 | [0040](0040-a-server-agent-links-to-its-control-plane.md)                                 | A server agent links out to its control plane, and no server accepts an incoming connection. **Amends 0006; amended by 0041**                |
 | [0041](0041-a-release-can-require-an-update-stop.md)                                      | A release can require an update stop; direct dialing stays only to bring a server onto its link. **Amends 0040**                             |
 | [0042](0042-the-panel-can-be-served-through-a-cloudflare-tunnel.md)                       | The panel can be served through a Cloudflare Tunnel Deplo sets up itself, so its machine accepts no incoming connection either               |
+| [0043](0043-a-cluster-is-led-by-its-own-leader-not-kubernetes.md)                         | A cluster is led by its own Go leader, on Deplo's machine by default, that never builds compose; no Kubernetes. **Proposed**                 |
 
 ## Amended or superseded
 
