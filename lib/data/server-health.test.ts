@@ -1,5 +1,6 @@
 import { test, before, after, beforeEach } from "node:test";
 import assert from "node:assert/strict";
+import { setTimeout as sleep } from "node:timers/promises";
 
 import type { PGlite } from "@electric-sql/pglite";
 
@@ -19,6 +20,10 @@ import {
   recordServerHealth,
 } from "./server-health";
 import { HEALTH_MESSAGES } from "../infra/server-health";
+import { __resetCooldowns, shouldFire } from "../notify/cooldown";
+import { captureFetch } from "../notify/fetch-capture-test-helpers";
+import { instanceFrozen } from "./deplo-move/freeze";
+import { saveNotificationChannel } from "./notifications";
 
 let db: TestDb;
 let pg: PGlite;
@@ -94,6 +99,70 @@ test("recordServerHealth persists the status, the reason and the observation tim
   assert.equal(stored.status, "warning");
   assert.equal(stored.statusMessage, HEALTH_MESSAGES.dockerDown);
   assert.equal(stored.statusCheckedAt, T1);
+});
+
+test("only a persisted offline-to-online transition sends a recovery alert", async (t) => {
+  __resetCooldowns();
+  t.after(__resetCooldowns);
+  const id = "srv_recovery";
+  await seedServerRow(db, {
+    id,
+    status: "offline",
+    agent: AGENT,
+    statusCheckedAt: T2,
+  });
+  await seedServerRow(db, {
+    id: "srv_provisioning",
+    status: "provisioning",
+    agent: agent("fp_provisioning"),
+  });
+  await asAdmin(() =>
+    saveNotificationChannel(null, {
+      kind: "discord",
+      name: "",
+      enabled: true,
+      url: "https://discord/hook",
+      target: "",
+      emailFrom: "",
+      emailProvider: "resend",
+      smtpHost: "",
+      smtpPort: 587,
+      smtpUser: "",
+      alerts: ["server_online"],
+    }),
+  );
+  const capture = captureFetch();
+  t.after(capture.restore);
+  let now = Date.parse(T2);
+  t.mock.method(Date, "now", () => now);
+  const online = { status: "online", message: null } as const;
+  await instanceFrozen();
+
+  await recordServerHealth(id, online, T1);
+  assert.equal((await getServerById(id))?.status, "offline");
+  assert.ok(shouldFire("server_online", `server:${id}`, "online"));
+  await recordServerHealth("srv_provisioning", online, T2);
+  assert.equal((await getServerById("srv_provisioning"))?.status, "online");
+  assert.ok(shouldFire("server_online", "server:srv_provisioning", "online"));
+  __resetCooldowns();
+
+  await Promise.all([
+    recordServerHealth(id, online, T2),
+    recordServerHealth(id, online, T2),
+  ]);
+  for (let attempt = 0; attempt < 100 && !capture.calls.length; attempt++)
+    await sleep(10);
+  assert.equal(capture.calls.length, 1);
+
+  now += 31 * 60_000;
+  const later = new Date(now).toISOString();
+  await instanceFrozen();
+  await recordServerHealth(id, online, later);
+  const stored = await getServerById(id);
+  assert.equal(stored?.statusCheckedAt, later);
+  assert.equal(stored?.lastSeenAt, later);
+  assert.ok(shouldFire("server_online", `server:${id}`, "online"));
+  assert.equal(capture.calls.length, 1);
 });
 
 test("a late-landing older probe cannot overwrite a newer observation", async () => {
