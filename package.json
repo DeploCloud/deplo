@@ -2,7 +2,7 @@
   "name": "deplo",
   "version": "0.8.2-canary.14",
   "deplo": {
-    "agent": "0.5.3-canary.2",
+    "agent": "0.5.3-canary.3",
     "agentMin": "0.5.1-canary.10",
     "updateStop": false,
     "requiresStop": "0.6.0",
