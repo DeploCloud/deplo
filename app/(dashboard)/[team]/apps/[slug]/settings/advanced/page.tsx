@@ -18,6 +18,7 @@ import { RebuildContainerRow } from "@/components/apps/settings/rebuild-containe
 import { ConsoleSettingsForm } from "@/components/apps/settings/console-settings-form";
 import { HealthCheckForm } from "@/components/apps/settings/health-check-form";
 import { RestartLoopForm } from "@/components/apps/settings/restart-loop-form";
+import { ZeroDowntimeForm } from "@/components/apps/settings/zero-downtime-form";
 import { ScreenshotsForm } from "@/components/apps/settings/screenshots-form";
 import { PublishedPortsForm } from "@/components/apps/settings/published-ports-form";
 import { CronSettingsForm } from "@/components/crons/cron-settings-form";
@@ -112,6 +113,15 @@ export default async function AppAdvancedSettingsPage(
             enabled={project.restartLoopGuard}
           />
         </CapabilityFieldset>
+
+        {!isComposeStack && (
+          <CapabilityFieldset cap="configure_apps">
+            <ZeroDowntimeForm
+              appId={project.id}
+              enabled={project.zeroDowntimeDeploys}
+            />
+          </CapabilityFieldset>
+        )}
 
         <CapabilityFieldset cap="configure_apps">
           <ScreenshotsForm

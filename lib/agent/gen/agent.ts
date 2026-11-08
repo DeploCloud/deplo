@@ -952,7 +952,18 @@ export interface DeployRequest {
    * settings: when the branch still points there and the image is on this host, it is tagged as
    * image_ref and nothing is cloned or built. Advertised as `deploy.reuse-image`.
    */
-  reuseImage?: ReuseImage | undefined;
+  reuseImage?:
+    | ReuseImage
+    | undefined;
+  /**
+   * Keep the app online through the deploy (single-image apps). The agent brings this stack up
+   * as project `deplo-<slug>_next` beside the live container, waits for it to be ready and
+   * healthy, replaces the live container with compose_yaml while it serves, waits again, then
+   * removes it. A stand-in that never gets ready is removed and the live container is never
+   * touched, unless the live container mounts storage (which may refuse a second copy): then
+   * the agent swaps in place instead. Empty => the in-place swap. Advertised as `deploy.overlap`.
+   */
+  standInComposeYaml: string;
 }
 
 export interface DeployRequest_EnvEntry {
@@ -4836,6 +4847,7 @@ function createBaseDeployRequest(): DeployRequest {
     githubToken: "",
     pullBaseImages: false,
     reuseImage: undefined,
+    standInComposeYaml: "",
   };
 }
 
@@ -4921,6 +4933,9 @@ export const DeployRequest: MessageFns<DeployRequest> = {
     }
     if (message.reuseImage !== undefined) {
       ReuseImage.encode(message.reuseImage, writer.uint32(218).fork()).join();
+    }
+    if (message.standInComposeYaml !== "") {
+      writer.uint32(226).string(message.standInComposeYaml);
     }
     return writer;
   },
@@ -5157,6 +5172,14 @@ export const DeployRequest: MessageFns<DeployRequest> = {
             message.reuseImage = ReuseImage.decode(reader, reader.uint32());
             continue;
           }
+          case 28: {
+            if (tag !== 226) {
+              break;
+            }
+
+            message.standInComposeYaml = reader.string();
+            continue;
+          }
         }
         if ((tag & 7) === 4 || tag === 0) {
           break;
@@ -5293,6 +5316,11 @@ export const DeployRequest: MessageFns<DeployRequest> = {
         : isSet(object.reuse_image)
         ? ReuseImage.fromJSON(object.reuse_image)
         : undefined,
+      standInComposeYaml: isSet(object.standInComposeYaml)
+        ? globalThis.String(object.standInComposeYaml)
+        : isSet(object.stand_in_compose_yaml)
+        ? globalThis.String(object.stand_in_compose_yaml)
+        : "",
     };
   },
 
@@ -5385,6 +5413,9 @@ export const DeployRequest: MessageFns<DeployRequest> = {
     if (message.reuseImage !== undefined) {
       obj.reuseImage = ReuseImage.toJSON(message.reuseImage);
     }
+    if (message.standInComposeYaml !== "") {
+      obj.standInComposeYaml = message.standInComposeYaml;
+    }
     return obj;
   },
 
@@ -5436,6 +5467,7 @@ export const DeployRequest: MessageFns<DeployRequest> = {
     message.reuseImage = (object.reuseImage !== undefined && object.reuseImage !== null)
       ? ReuseImage.fromPartial(object.reuseImage)
       : undefined;
+    message.standInComposeYaml = object.standInComposeYaml ?? "";
     return message;
   },
 };

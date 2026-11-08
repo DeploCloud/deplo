@@ -1,0 +1,1 @@
+ALTER TABLE "apps" ADD COLUMN "zero_downtime_deploys" boolean DEFAULT false NOT NULL;

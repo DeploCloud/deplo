@@ -287,6 +287,11 @@ type App {
 
   """Persistent volumes mounted into this app."""
   volumes: [Volume!]
+
+  """
+  Beta. Whether a redeploy keeps the old version online until the new one is ready. Off by default.
+  """
+  zeroDowntimeDeploys: Boolean
 }
 
 """One app together with all of its env vars."""
@@ -4609,6 +4614,11 @@ type Mutation {
   Replace an app's volumes (named, app-files, and host bind mounts). Compose-stack apps included - each volume names the service it mounts into.
   """
   setAppVolumes(id: String!, volumes: [VolumeInput!]!): App
+
+  """
+  Beta. Turn zero-downtime deploys on or off for one app: on, a redeploy starts the new version beside the old one and switches only once it is ready. Applies from the next deploy.
+  """
+  setAppZeroDowntimeDeploys(id: String!, value: Boolean!): App
 
   """
   Turn the automatic updates on or off, or move their three hourly checks. Omitted arguments keep their value; an empty `timezone` follows the machine's own again.

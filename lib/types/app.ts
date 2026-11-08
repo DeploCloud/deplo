@@ -69,6 +69,8 @@ export interface App {
   restartLoopGuard: boolean;
   restartLoopStoppedAt?: string | null;
   screenshotsEnabled: boolean;
+  // Beta: start the new version beside the old one and swap only once it is ready.
+  zeroDowntimeDeploys: boolean;
   deployHookEnabled: boolean;
   composeUpArgs: string | null;
   rollbackKeep: number;

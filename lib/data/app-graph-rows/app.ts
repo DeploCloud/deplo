@@ -95,6 +95,7 @@ export function assembleApp(row: AppRow, children: AppChildRows): App {
     restartLoopGuard: row.restartLoopGuard,
     restartLoopStoppedAt: row.restartLoopStoppedAt ?? null,
     screenshotsEnabled: row.screenshotsEnabled,
+    zeroDowntimeDeploys: row.zeroDowntimeDeploys,
     // The hook's on/off state travels with the app; deploy_hook_token_enc never does, only deploy-hook.ts reads it.
     deployHookEnabled: row.deployHookEnabled,
     composeUpArgs: row.composeUpArgs?.trim() ? row.composeUpArgs : null,

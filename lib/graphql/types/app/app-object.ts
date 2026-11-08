@@ -177,6 +177,11 @@ export const AppRef = builder.objectRef<AppSummary>("App").implement({
         "Whether Deplo stops this app's container once it has restarted 10 " +
         "times in half an hour. On by default; off lets it keep crashing.",
     }),
+    zeroDowntimeDeploys: t.exposeBoolean("zeroDowntimeDeploys", {
+      description:
+        "Beta. Whether a redeploy keeps the old version online until the new one " +
+        "is ready. Off by default.",
+    }),
     screenshotsEnabled: t.exposeBoolean("screenshotsEnabled", {
       description:
         "Whether Deplo takes a light and a dark picture of the site after " +

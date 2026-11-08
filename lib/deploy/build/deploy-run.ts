@@ -338,8 +338,8 @@ async function runDeployment(depId: string): Promise<void> {
       );
     };
 
-    const renderStack = (image: string) =>
-      renderDeployStack({
+    const renderStack = async (image: string) => {
+      const rendered = await renderDeployStack({
         project,
         name,
         deployKey,
@@ -350,6 +350,12 @@ async function runDeployment(depId: string): Promise<void> {
         routes: routeDomains,
         image,
       });
+      // Beta, opt-in per app: off keeps the in-place swap.
+      return {
+        ...rendered,
+        overlap: project.zeroDowntimeDeploys ? rendered.overlap : undefined,
+      };
+    };
 
     const buildAndMaybeAgent = async (treeOpts: {
       workDir: string;
@@ -399,9 +405,8 @@ async function runDeployment(depId: string): Promise<void> {
           "info",
           "Found a Dockerfile: building it (Detect automatically).",
         );
-      const { composeYaml, env, buildEnv, network } = await renderStack(
-        treeOpts.imageRef,
-      );
+      const { composeYaml, env, buildEnv, network, overlap } =
+        await renderStack(treeOpts.imageRef);
       const attempt = await tryAgent({
         depId,
         serverId,
@@ -412,6 +417,7 @@ async function runDeployment(depId: string): Promise<void> {
         env,
         buildEnv,
         plan: { kind: "dockerfile", buildDir, build },
+        overlap,
         noCache,
         pullBase,
         forceRecreate,
@@ -472,7 +478,8 @@ async function runDeployment(depId: string): Promise<void> {
           "info",
           `Rolling back to the image from deployment ${plan.of}`,
         );
-        const { composeYaml, env, network } = await renderStack(imageRef);
+        const { composeYaml, env, network, overlap } =
+          await renderStack(imageRef);
         const { outcome } = await tryAgent({
           depId,
           serverId,
@@ -482,6 +489,7 @@ async function runDeployment(depId: string): Promise<void> {
           network,
           env,
           plan: { kind: "image", image: imageRef, pull: false },
+          overlap,
           forceRecreate,
           ready,
         });
@@ -495,7 +503,8 @@ async function runDeployment(depId: string): Promise<void> {
         const claim = deploImageClaim(plan.image);
         if (claim) throw new Error(deploImageMessage(plan.image, claim));
         imageRef = plan.image;
-        const { composeYaml, env, network } = await renderStack(imageRef);
+        const { composeYaml, env, network, overlap } =
+          await renderStack(imageRef);
         const { outcome } = await tryAgent({
           depId,
           serverId,
@@ -505,6 +514,7 @@ async function runDeployment(depId: string): Promise<void> {
           network,
           env,
           plan: { kind: "image", image: plan.image, pull: true },
+          overlap,
           forceRecreate,
           ready,
         });
@@ -555,6 +565,8 @@ async function runDeployment(depId: string): Promise<void> {
         // An explicit compose method first only reads the file at this commit: there is no image stack yet.
         const composeYaml = stackFromSource ? "" : rendered.composeYaml;
         const { env, network } = rendered;
+        // A stack read from the source has no single image to start beside the live one.
+        const overlap = stackFromSource ? undefined : rendered.overlap;
         const buildEnv = stackFromSource ? undefined : rendered.buildEnv;
         log(
           depId,
@@ -584,6 +596,7 @@ async function runDeployment(depId: string): Promise<void> {
             network,
             env,
             buildEnv,
+            overlap,
             plan: {
               kind: "git",
               url: cloneUrl,

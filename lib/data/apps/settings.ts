@@ -101,6 +101,27 @@ export async function setAppRestartLoopGuard(
   );
 }
 
+// Beta. Applies from the next deploy: the old version stays online until the new one is ready.
+export async function setAppZeroDowntimeDeploys(
+  id: string,
+  enabled: boolean,
+): Promise<void> {
+  const { membership } = await requireAppCapability(id, "configure_apps");
+  const user = (await getCurrentUser())!;
+  const rows = await getDb()
+    .update(appsTable)
+    .set({ zeroDowntimeDeploys: enabled, updatedAt: nowIso() })
+    .where(and(eq(appsTable.id, id), eq(appsTable.teamId, membership.teamId)))
+    .returning({ name: appsTable.name });
+  if (rows.length === 0) throw new Error("App not found");
+  await recordActivity(
+    "app",
+    `${enabled ? "Turned on" : "Turned off"} zero-downtime deploys for ${rows[0].name}`,
+    user.name,
+    id,
+  );
+}
+
 // Off deletes every saved picture of the app: off means none are kept.
 export async function setAppScreenshots(
   id: string,

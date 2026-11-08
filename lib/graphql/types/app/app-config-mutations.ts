@@ -32,6 +32,7 @@ import {
   setAppFramework,
   setAppComposeUpArgs,
   setAppRestartLoopGuard,
+  setAppZeroDowntimeDeploys,
   setAppScreenshots,
 } from "@/lib/data/apps/settings";
 import { moveAppToServer, updateAppSource } from "@/lib/data/apps/source";
@@ -335,6 +336,22 @@ builder.mutationFields((t) => ({
     },
     resolve: async (_r, { id, value }) => {
       await setAppRestartLoopGuard(id, value);
+      return reloadApp(id);
+    },
+  }),
+  setAppZeroDowntimeDeploys: t.field({
+    type: AppRef,
+    authScopes: { capability: "configure_apps" },
+    description:
+      "Beta. Turn zero-downtime deploys on or off for one app: on, a redeploy starts " +
+      "the new version beside the old one and switches only once it is ready. " +
+      "Applies from the next deploy.",
+    args: {
+      id: t.arg.string({ required: true }),
+      value: t.arg.boolean({ required: true }),
+    },
+    resolve: async (_r, { id, value }) => {
+      await setAppZeroDowntimeDeploys(id, value);
       return reloadApp(id);
     },
   }),

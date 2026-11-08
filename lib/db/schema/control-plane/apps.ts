@@ -124,6 +124,9 @@ export const apps = pgTable(
     restartLoopGuard: boolean("restart_loop_guard").notNull().default(true),
     restartLoopStoppedAt: isoTimestamptz("restart_loop_stopped_at"),
     screenshotsEnabled: boolean("screenshots_enabled").notNull().default(true),
+    zeroDowntimeDeploys: boolean("zero_downtime_deploys")
+      .notNull()
+      .default(false),
     latestDeploymentId: text("latest_deployment_id").references(
       (): AnyPgColumn => deployments.id,
       { onDelete: "set null" },

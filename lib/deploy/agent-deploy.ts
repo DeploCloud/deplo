@@ -32,6 +32,8 @@ import { tarDir, tarDirChunks } from "./context-tar";
 import { buildConfigFor, normalizeBuildConfig } from "../frameworks";
 import { autoComposeSkip } from "./build/source-compose";
 import { offerBuiltImage } from "./build/build-reuse";
+import { deployOverlap, type OverlapStacks } from "./overlap";
+import { getServerById } from "../data/servers/roster";
 import type { BuildConfig } from "../types/build";
 import type { LogLevel } from "../types/deployment";
 
@@ -236,6 +238,7 @@ export async function runAgentDeploy(opts: {
   forkPreview?: boolean;
   ready?: ReadyCheck;
   githubToken?: string;
+  overlap?: OverlapStacks;
   // The deployment row of a git build that may take on an earlier image of the same commit.
   reuseFor?: string;
   sink: AgentDeploySink;
@@ -315,6 +318,17 @@ export async function runAgentDeploy(opts: {
       : await loadRegistryAuthsForApp(opts.appId),
   });
   applyAgentFeatures(req, opts, hello.capabilities, opts.sink);
+  if (opts.overlap && !opts.buildOnly) {
+    const choice = deployOverlap({
+      ports: opts.overlap.ports,
+      capabilities: hello.capabilities,
+      dockerVersion: (await getServerById(opts.serverId))?.dockerVersion,
+    });
+    if (choice.overlap) {
+      req.composeYaml = opts.overlap.live;
+      req.standInComposeYaml = opts.overlap.standIn;
+    } else opts.sink.log("info", choice.reason);
+  }
   if (opts.reuseFor)
     req.reuseImage = await offerBuiltImage(
       opts.reuseFor,
@@ -574,6 +588,7 @@ export async function buildDeployRequest(opts: {
     ready: undefined,
     githubToken: "",
     pullBaseImages: opts.pullBase ?? false,
+    standInComposeYaml: "",
   };
 
   if (opts.plan.kind === "compose") {

@@ -28,6 +28,7 @@ import {
 } from "../agent-deploy";
 import { resolveBuildPlan, buildPlanLines } from "../build-server";
 import { parseComposeUpArgs } from "../compose-args";
+import type { OverlapStacks } from "../overlap";
 import { warnCrossNetwork } from "./cross-network-warning";
 import {
   commitOutcome,
@@ -276,6 +277,7 @@ export async function tryAgent(opts: {
   forkPreview?: boolean;
   ready?: ReadyCheck;
   githubToken?: string;
+  overlap?: OverlapStacks;
   // The agent replays a deploy id it has already run, so a second leg of one deployment needs its own.
   agentDeployId?: string;
   reuseFor?: string;
@@ -361,6 +363,7 @@ export async function tryAgent(opts: {
         composeUpArgs: parseComposeUpArgs(opts.project.composeUpArgs),
         ready: opts.ready,
         githubToken: opts.githubToken,
+        overlap: opts.overlap,
         // A build server already built it; only a build here can be skipped.
         reuseFor: plan.kind === "git" ? opts.reuseFor : undefined,
         sink: { log: (level, text) => log(opts.depId, level, text) },
