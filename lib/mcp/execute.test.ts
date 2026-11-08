@@ -177,6 +177,7 @@ const NOT_A_CREDENTIAL = new Set([
   "CloneDestination.connectionId",
   "CloneDestination.key",
   "ClonedRepository.connectionId",
+  "ClonedRepository.startCommand",
   "CronJob.command",
   "CronJob.envKeys",
   "CronRun.command",
