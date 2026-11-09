@@ -850,6 +850,13 @@ accepts no incoming connection
 ([ADR-0043](docs/adr/0043-a-cluster-is-led-by-its-own-leader-not-kubernetes.md)).
 _Avoid_: master, manager, control plane (that is Deplo itself), scheduler.
 
+**Cluster relay**:
+The meeting point of one **cluster**: its leader and every member dial out to it and it passes
+their traffic between them, unable to read it. Deplo's machine always runs one; a leader on
+another server runs a second one there
+([ADR-0044](docs/adr/0044-cluster-members-meet-through-a-relay-over-tcp.md)).
+_Avoid_: proxy (that is Traefik), tunnel (that is Cloudflare's), mesh, VPN.
+
 **Failover**:
 A **cluster** moving an App, unasked, off a member that has gone **offline** and onto another
 member, so its domains answer again. The automatic twin of a **server move**: nobody clicks
