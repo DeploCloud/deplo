@@ -59,6 +59,25 @@ export const clusterLeaderKeys = pgTable(
   (t) => [primaryKey({ columns: [t.clusterId, t.publicKey] })],
 );
 
+// The deployment whose failover bundle each leader key holds for a workload (ADR-0045); a relink compares and resends.
+export const failoverBundlePushes = pgTable(
+  "failover_bundle_pushes",
+  {
+    workloadKind: text("workload_kind").notNull(),
+    workloadId: text("workload_id").notNull(),
+    keyFingerprint: text("key_fingerprint").notNull(),
+    deploymentId: text("deployment_id").notNull(),
+    // The bundle under DEPLO_SECRET, so a new leader key can be sealed to it without a redeploy.
+    bundleEnc: text("bundle_enc").notNull(),
+    // Null until the leader acknowledged it.
+    pushedAt: isoTimestamptz("pushed_at"),
+  },
+  (t) => [
+    primaryKey({ columns: [t.workloadKind, t.workloadId, t.keyFingerprint] }),
+    index("failover_bundle_pushes_key_idx").on(t.keyFingerprint),
+  ],
+);
+
 // A server in a cluster: at most one cluster per server, so the server id is the key.
 export const clusterMembers = pgTable(
   "cluster_members",

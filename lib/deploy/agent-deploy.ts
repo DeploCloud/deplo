@@ -37,6 +37,7 @@ import { offerBuiltImage } from "./build/build-reuse";
 import { deployOverlap, type OverlapStacks } from "./overlap";
 import { REPLICAS_AGENT_MESSAGE, REPLICAS_CAPABILITY } from "./replicas";
 import { getServerById } from "../data/servers/roster";
+import { scheduleFailoverBundle } from "../data/clusters/bundles";
 import type { BuildConfig } from "../types/build";
 import type { LogLevel } from "../types/deployment";
 
@@ -371,6 +372,13 @@ export async function runAgentDeploy(opts: {
     );
   }
 
+  // A cluster App's leader gets what this deploy sent, sealed, once it is ready (ADR-0045).
+  const offerBundle = (r: AgentDeployResult): AgentDeployResult => {
+    if (r.ready && !opts.buildOnly && !opts.forkPreview)
+      offerFailoverBundle(opts.appId, opts.deployId, req);
+    return r;
+  };
+
   // A reattach replays everything AFTER this seq, so a reconnect never double-logs and misses nothing.
   const cursor = { seq: 0 };
 
@@ -403,7 +411,7 @@ export async function runAgentDeploy(opts: {
         started = true;
       },
     );
-    if (outcome.terminal) return outcome.terminal;
+    if (outcome.terminal) return offerBundle(outcome.terminal);
     if (!started) {
       throw new AgentUnavailableError("agent stream produced no events");
     }
@@ -443,7 +451,7 @@ export async function runAgentDeploy(opts: {
         cursor,
         () => {},
       );
-      if (outcome.terminal) return outcome.terminal;
+      if (outcome.terminal) return offerBundle(outcome.terminal);
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
       if (/not.?found/i.test(msg)) {
@@ -463,6 +471,31 @@ export async function runAgentDeploy(opts: {
     "Could not reconnect to the agent to follow the deploy.",
   );
   return { ready: false, commitSha: "" };
+}
+
+function offerFailoverBundle(
+  appId: string,
+  agentDeployId: string,
+  req: DeployRequest,
+): void {
+  scheduleFailoverBundle({
+    appId,
+    deploymentId: agentDeployId.replace(/-stack$/, ""),
+    stack: {
+      slug: req.slug,
+      projectId: req.projectId,
+      imageRef: req.imageRef,
+      composeYaml: req.composeYaml,
+      network: req.network,
+      env: { ...req.env },
+      // Pulled images need their credentials again; a built image is already on the member.
+      registryAuth:
+        req.pullImage || req.sourceKind === SourceKind.SOURCE_KIND_COMPOSE
+          ? req.registryAuth.map((a) => ({ ...a }))
+          : [],
+      composeUpArgs: [...req.composeUpArgs],
+    },
+  });
 }
 
 // An upload's build folder goes up in chunks when the agent can take them, else whole.

@@ -2,6 +2,7 @@ import { status as GrpcStatus } from "@grpc/grpc-js";
 
 import {
   ContractVersion,
+  type DeployRequest,
   HelloResponse,
   HostInfoResponse,
   TraefikConfigResponse,
@@ -36,6 +37,8 @@ export interface FakeClusterHost {
   ) => { alreadyPresent: boolean; bytes: number; pruned: string[] };
   /** Every copyClusterImage the agent was asked, in order. */
   imageCopies: { imageRef: string; targetFingerprint: string; keep: number }[];
+  /** Every deploy request this host's agent was handed, answered ready. */
+  deploys: DeployRequest[];
   opened: string[];
   closed: number;
   /** The leader's event buffer, as its watch serves it: a hello, what came after `since`, then what is pushed. */
@@ -154,6 +157,7 @@ export function fakeClusterHosts(): {
           agentVersion: "9.9.9",
           contractVersion: ContractVersion.CONTRACT_VERSION_V1,
           capabilities: h.capabilities,
+          dockerAvailable: true,
         }),
       clusterStatus: () => guard(() => ({ ...h.status })),
       installCluster: (version, binaries, relay) =>
@@ -184,6 +188,20 @@ export function fakeClusterHosts(): {
           h.calls.push({ method, payload });
           return h.leader(method, payload);
         }),
+      deploy: async function* (req: DeployRequest) {
+        h.deploys.push(req);
+        yield {
+          seq: 1,
+          result: {
+            ready: true,
+            error: "",
+            commitSha: "",
+            observedPort: 0,
+            builtWith: "",
+            listeningPorts: [],
+          },
+        };
+      },
       hostInfo: async () =>
         HostInfoResponse.fromPartial({ traefikComposeYaml: h.proxy.yaml }),
       traefikConfig: async (req) => {
@@ -231,6 +249,7 @@ export function fakeClusterHosts(): {
         proxy: { yaml: "", applied: 0, refuse: "" },
         imageCopy: () => ({ alreadyPresent: false, bytes: 1, pruned: [] }),
         imageCopies: [],
+        deploys: [],
         opened: [],
         closed: 0,
         watch: newWatch(),
