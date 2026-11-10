@@ -3001,6 +3001,16 @@ export interface ClusterCallResponse {
   payload: Uint8Array;
 }
 
+export interface ClusterWatchRequest {
+  /** The last sequence the caller applied; 0 asks for everything the leader still holds. */
+  since: number;
+}
+
+export interface ClusterWatchLine {
+  /** One line of the leader's watch, forwarded as is (no trailing newline). */
+  line: Uint8Array;
+}
+
 function createBaseRenewalCSRRequest(): RenewalCSRRequest {
   return {};
 }
@@ -22460,6 +22470,140 @@ export const ClusterCallResponse: MessageFns<ClusterCallResponse> = {
   },
 };
 
+function createBaseClusterWatchRequest(): ClusterWatchRequest {
+  return { since: 0 };
+}
+
+export const ClusterWatchRequest: MessageFns<ClusterWatchRequest> = {
+  encode(message: ClusterWatchRequest, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.since !== 0) {
+      writer.uint32(8).uint64(message.since);
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): ClusterWatchRequest {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const previousRecursionDepth = (reader as any).__tsProtoDecodeDepth ?? 0;
+    if (previousRecursionDepth >= 100) {
+      throw new globalThis.Error("protobuf decode recursion limit exceeded");
+    }
+    (reader as any).__tsProtoDecodeDepth = previousRecursionDepth + 1;
+    try {
+      const end = length === undefined ? reader.len : reader.pos + length;
+      const message = createBaseClusterWatchRequest();
+      while (reader.pos < end) {
+        const tag = reader.uint32();
+        switch (tag >>> 3) {
+          case 1: {
+            if (tag !== 8) {
+              break;
+            }
+
+            message.since = longToNumber(reader.uint64());
+            continue;
+          }
+        }
+        if ((tag & 7) === 4 || tag === 0) {
+          break;
+        }
+        reader.skip(tag & 7);
+      }
+      return message;
+    } finally {
+      (reader as any).__tsProtoDecodeDepth = previousRecursionDepth;
+    }
+  },
+
+  fromJSON(object: any): ClusterWatchRequest {
+    return { since: isSet(object.since) ? globalThis.Number(object.since) : 0 };
+  },
+
+  toJSON(message: ClusterWatchRequest): unknown {
+    const obj: any = {};
+    if (message.since !== 0) {
+      obj.since = Math.round(message.since);
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<ClusterWatchRequest>, I>>(base?: I): ClusterWatchRequest {
+    return ClusterWatchRequest.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<ClusterWatchRequest>, I>>(object: I): ClusterWatchRequest {
+    const message = createBaseClusterWatchRequest();
+    message.since = object.since ?? 0;
+    return message;
+  },
+};
+
+function createBaseClusterWatchLine(): ClusterWatchLine {
+  return { line: new Uint8Array(0) };
+}
+
+export const ClusterWatchLine: MessageFns<ClusterWatchLine> = {
+  encode(message: ClusterWatchLine, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.line.length !== 0) {
+      writer.uint32(10).bytes(message.line);
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): ClusterWatchLine {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const previousRecursionDepth = (reader as any).__tsProtoDecodeDepth ?? 0;
+    if (previousRecursionDepth >= 100) {
+      throw new globalThis.Error("protobuf decode recursion limit exceeded");
+    }
+    (reader as any).__tsProtoDecodeDepth = previousRecursionDepth + 1;
+    try {
+      const end = length === undefined ? reader.len : reader.pos + length;
+      const message = createBaseClusterWatchLine();
+      while (reader.pos < end) {
+        const tag = reader.uint32();
+        switch (tag >>> 3) {
+          case 1: {
+            if (tag !== 10) {
+              break;
+            }
+
+            message.line = reader.bytes();
+            continue;
+          }
+        }
+        if ((tag & 7) === 4 || tag === 0) {
+          break;
+        }
+        reader.skip(tag & 7);
+      }
+      return message;
+    } finally {
+      (reader as any).__tsProtoDecodeDepth = previousRecursionDepth;
+    }
+  },
+
+  fromJSON(object: any): ClusterWatchLine {
+    return { line: isSet(object.line) ? bytesFromBase64(object.line) : new Uint8Array(0) };
+  },
+
+  toJSON(message: ClusterWatchLine): unknown {
+    const obj: any = {};
+    if (message.line.length !== 0) {
+      obj.line = base64FromBytes(message.line);
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<ClusterWatchLine>, I>>(base?: I): ClusterWatchLine {
+    return ClusterWatchLine.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<ClusterWatchLine>, I>>(object: I): ClusterWatchLine {
+    const message = createBaseClusterWatchLine();
+    message.line = object.line ?? new Uint8Array(0);
+    return message;
+  },
+};
+
 export type AgentService = typeof AgentService;
 export const AgentService = {
   /**
@@ -22882,6 +23026,20 @@ export const AgentService = {
     responseSerialize: (value: SetClusterMemberResponse): Buffer =>
       Buffer.from(SetClusterMemberResponse.encode(value).finish()),
     responseDeserialize: (value: Buffer): SetClusterMemberResponse => SetClusterMemberResponse.decode(value),
+  },
+  /**
+   * Stream the leader's events after `since`, one JSON line each, until the caller cancels. The
+   * first line is the leader's hello (newest sequence, whether the buffer dropped events). The
+   * agent does not read the lines. A leader that is not running is UNAVAILABLE.
+   */
+  clusterWatch: {
+    path: "/deplo.agent.v1.Agent/ClusterWatch" as const,
+    requestStream: false as const,
+    responseStream: true as const,
+    requestSerialize: (value: ClusterWatchRequest): Buffer => Buffer.from(ClusterWatchRequest.encode(value).finish()),
+    requestDeserialize: (value: Buffer): ClusterWatchRequest => ClusterWatchRequest.decode(value),
+    responseSerialize: (value: ClusterWatchLine): Buffer => Buffer.from(ClusterWatchLine.encode(value).finish()),
+    responseDeserialize: (value: Buffer): ClusterWatchLine => ClusterWatchLine.decode(value),
   },
   /** Back up a database or a project to a destination, streaming progress. */
   backup: {
@@ -23609,6 +23767,12 @@ export interface AgentServer extends UntypedServiceImplementation {
    * Deplo's own. A saved choice survives a restart; the relay set follows the panel's address.
    */
   setClusterMember: handleUnaryCall<SetClusterMemberRequest, SetClusterMemberResponse>;
+  /**
+   * Stream the leader's events after `since`, one JSON line each, until the caller cancels. The
+   * first line is the leader's hello (newest sequence, whether the buffer dropped events). The
+   * agent does not read the lines. A leader that is not running is UNAVAILABLE.
+   */
+  clusterWatch: handleServerStreamingCall<ClusterWatchRequest, ClusterWatchLine>;
   /** Back up a database or a project to a destination, streaming progress. */
   backup: handleServerStreamingCall<BackupRequest, BackupEvent>;
   /**
@@ -24316,6 +24480,17 @@ export interface AgentClient extends Client {
     options: Partial<CallOptions>,
     callback: (error: ServiceError | null, response: SetClusterMemberResponse) => void,
   ): ClientUnaryCall;
+  /**
+   * Stream the leader's events after `since`, one JSON line each, until the caller cancels. The
+   * first line is the leader's hello (newest sequence, whether the buffer dropped events). The
+   * agent does not read the lines. A leader that is not running is UNAVAILABLE.
+   */
+  clusterWatch(request: ClusterWatchRequest, options?: Partial<CallOptions>): ClientReadableStream<ClusterWatchLine>;
+  clusterWatch(
+    request: ClusterWatchRequest,
+    metadata?: Metadata,
+    options?: Partial<CallOptions>,
+  ): ClientReadableStream<ClusterWatchLine>;
   /** Back up a database or a project to a destination, streaming progress. */
   backup(request: BackupRequest, options?: Partial<CallOptions>): ClientReadableStream<BackupEvent>;
   backup(

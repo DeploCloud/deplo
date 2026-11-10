@@ -124,6 +124,38 @@ export async function callClusterLeader(
   });
 }
 
+/**
+ * The leader's event stream on `serverId` after `since`, one JSON line per item. The connection stays open until
+ * the caller stops iterating. A leader below `clusterMin` is refused, as for a call.
+ */
+export async function* watchClusterLeader(
+  serverId: string,
+  since: number,
+): AsyncGenerator<Uint8Array, void, unknown> {
+  const conn = await connectAgent(serverId);
+  try {
+    const hello = await conn.hello();
+    if (!hello.capabilities?.includes(CLUSTER_HOST_CAPABILITY))
+      throw new AgentClusterUnsupportedError(CLUSTER_HOST_UNSUPPORTED_MESSAGE);
+    const here = await conn.clusterStatus();
+    if (!here.installed || !here.running)
+      throw new Error("The cluster leader on this server is not running.");
+    const { min } = pin();
+    if (!versionAtLeast(here.version, min))
+      throw new ClusterLeaderTooOldError(here.version, min);
+    yield* conn.clusterWatch(since);
+  } catch (e) {
+    if (
+      !(e instanceof AgentClusterUnsupportedError) &&
+      (e as Partial<ServiceError> | null)?.code === GrpcStatus.UNIMPLEMENTED
+    )
+      throw new AgentClusterUnsupportedError(CLUSTER_HOST_UNSUPPORTED_MESSAGE);
+    throw e;
+  } finally {
+    conn.close();
+  }
+}
+
 /** One call to the relay on `serverId`, forwarded by its agent. A method is named `relay.<verb>`. */
 export async function callClusterRelay(
   serverId: string,
