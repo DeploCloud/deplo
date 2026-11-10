@@ -28,7 +28,7 @@ export const CLUSTERS: McpToolDef[] = [
     name: "get_cluster",
     title: "Get a cluster",
     description:
-      "One cluster in full: which teams may use it, its member servers with their status, and whether failover is on (from two members).",
+      "One cluster in full: which teams may use it, its member servers with their status and whether the leader hears them (leaseState), and whether failover is on (from two members).",
     group: "Servers",
     requires: "view",
     readOnly: true,
@@ -43,7 +43,7 @@ export const CLUSTERS: McpToolDef[] = [
         cluster(id: $id) {
           ${CLUSTER_FIELDS}
           failoverOn
-          members { serverId serverName status joinedAt emptyingSince }
+          members { serverId serverName status leaseState joinedAt emptyingSince }
           teams { id name slug }
         }
       }

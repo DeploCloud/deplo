@@ -29,6 +29,7 @@ function assemble(r: Row): Cluster {
     allTeams: r.allTeams,
     leaderServerId: r.leaderServerId,
     leaderEpoch: r.leaderEpoch,
+    eventSeq: r.eventSeq,
     createdAt: r.createdAt,
   };
 }

@@ -178,6 +178,13 @@ export async function register(): Promise<void> {
     console.error("[deplo] preview reaper startup failed:", e);
   }
   try {
+    const { startClusterWatch } =
+      await import("./lib/data/clusters/watch-scheduler");
+    startClusterWatch();
+  } catch (e) {
+    console.error("[deplo] cluster watch startup failed:", e);
+  }
+  try {
     const { startPubSubBridge } = await import("./lib/graphql/pubsub");
     startPubSubBridge();
   } catch (e) {
@@ -288,6 +295,9 @@ export async function register(): Promise<void> {
         ),
         import("./lib/previews/reaper").then(({ releasePreviewReaperLease }) =>
           releasePreviewReaperLease(),
+        ),
+        import("./lib/data/clusters/watch-scheduler").then(
+          ({ releaseClusterWatchLease }) => releaseClusterWatchLease(),
         ),
         import("./lib/crons/scheduler").then(({ releaseCronSchedulerLease }) =>
           releaseCronSchedulerLease(),

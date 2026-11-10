@@ -25,6 +25,7 @@ import {
   type ClusterJoin,
   type ClusterJoinCandidate,
   type ClusterJoinReason,
+  type ClusterLeaseState,
   type ClusterMember,
 } from "../../types/cluster";
 import type { ServerStatus } from "../../types/server";
@@ -206,6 +207,7 @@ function toMember(r: {
   status: string;
   joinedAt: string;
   emptyingSince: string | null;
+  leaseState: string;
 }): ClusterMember {
   return {
     serverId: r.serverId,
@@ -213,7 +215,12 @@ function toMember(r: {
     status: r.status as ServerStatus,
     joinedAt: r.joinedAt,
     emptyingSince: r.emptyingSince,
+    leaseState: toLeaseState(r.leaseState),
   };
+}
+
+function toLeaseState(s: string): ClusterLeaseState {
+  return s === "not_responding" || s === "fenced" ? s : "ok";
 }
 
 async function readMembers(clusterId: string): Promise<ClusterMember[]> {
@@ -224,6 +231,7 @@ async function readMembers(clusterId: string): Promise<ClusterMember[]> {
       status: serversTable.status,
       joinedAt: membersTable.joinedAt,
       emptyingSince: membersTable.emptyingSince,
+      leaseState: membersTable.leaseState,
     })
     .from(membersTable)
     .innerJoin(serversTable, eq(serversTable.id, membersTable.serverId))
