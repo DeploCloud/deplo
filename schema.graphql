@@ -744,6 +744,11 @@ type BackupRun {
   destinationId: ID
   error: String
   finishedAt: String
+
+  """
+  How long the App was paused so its data could be copied consistently, in milliseconds. Null when it was not paused.
+  """
+  heldMs: Float
   id: ID
 
   """Object key of the stored artifact."""

@@ -75,6 +75,7 @@ export interface BackupRun {
   objectKey: string;
   sizeBytes: number;
   decryptedSizeBytes: number | null;
+  heldMs: number | null;
   sha256: string | null;
   orphanedAt: string | null;
   status: BackupRunStatus;

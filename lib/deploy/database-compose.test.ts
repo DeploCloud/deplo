@@ -76,8 +76,33 @@ test("generateDatabaseCompose: redis still sets requirepass via command override
     username: "default",
     dbName: "cache",
   });
-  assert.ok(yaml.includes("redis-server --requirepass s3cret"));
+  assert.ok(yaml.includes('--requirepass \\"$$REDISCLI_AUTH\\"'), yaml);
+  assert.ok(yaml.includes("REDISCLI_AUTH=s3cret"));
   assert.ok(yaml.includes("- cache-data:/data"));
+});
+
+test("generateDatabaseCompose: redis runs append-only, and switches a snapshot-only dataset on live", () => {
+  const yaml = generateDatabaseCompose({
+    network: "deplo-team-team_test",
+    name: "cache",
+    databaseId: "db_test",
+    type: "redis",
+    version: "8",
+    password: "s3$cret",
+    username: "default",
+    dbName: "cache",
+  });
+  assert.ok(yaml.includes('command: ["sh","-c",'), yaml);
+  // A fresh or already-converted dataset starts append-only, fsync every second.
+  assert.ok(yaml.includes("--appendonly yes --appendfsync everysec"), yaml);
+  // A snapshot with no append-only file would load as an empty dataset: start without it, enable it live.
+  const live = yaml.indexOf("--appendonly no");
+  assert.ok(live > 0 && live < yaml.indexOf("config set appendonly yes"), yaml);
+  assert.ok(yaml.includes("dump.rdb"), yaml);
+  // The password rides the environment, never the command line.
+  const line = yaml.split("\n").find((l) => l.includes("command:")) ?? "";
+  assert.ok(!line.includes("s3"), yaml);
+  assert.ok(yaml.includes("REDISCLI_AUTH=s3$$cret"), yaml);
 });
 
 const DB_CREATE_ENV: Partial<Record<DatabaseType, string>> = {
@@ -230,7 +255,7 @@ test("buildConnectionString: per-engine scheme + path", () => {
   );
   assert.equal(
     buildConnectionString({ ...base, type: "mongodb", dbName: "shop" }),
-    "mongodb://app:pw@db-x:5432/shop?authSource=admin",
+    "mongodb://app:pw@db-x:5432/shop?authSource=admin&directConnection=true",
   );
   assert.equal(
     buildConnectionString({
@@ -540,4 +565,59 @@ test("generateDatabaseCompose: redis carries REDISCLI_AUTH so redis-cli inside a
     customCommand: "redis-server --appendonly yes",
   });
   assert.ok(!custom.includes("REDISCLI_AUTH"), custom);
+});
+
+const MONGO = {
+  name: "mydb",
+  type: "mongodb" as const,
+  version: "8",
+  password: "pw",
+  ...DEFAULTS,
+};
+
+test("mongodb with a keyfile runs as a one-member replica set", () => {
+  const yaml = generateDatabaseCompose({ ...MONGO, mongoKeyfile: "S3KEY" });
+  assert.ok(yaml.includes("--replSet rs0 --keyFile /etc/mongo-keyfile"), yaml);
+  assert.ok(yaml.includes("chmod 400 /etc/mongo-keyfile"), yaml);
+  assert.ok(yaml.includes("- MONGO_KEYFILE=S3KEY"), yaml);
+  assert.ok(yaml.includes("rs.initiate("), yaml);
+  assert.ok(
+    yaml.includes('host:\\"mydb:27017\\"') || yaml.includes("mydb:27017"),
+    yaml,
+  );
+  assert.ok(yaml.includes("$$MONGO_INITDB_ROOT_PASSWORD"), yaml);
+});
+
+test("mongodb without a keyfile stays a standalone", () => {
+  const yaml = generateDatabaseCompose(MONGO);
+  assert.ok(!yaml.includes("replSet"), yaml);
+  assert.ok(!yaml.includes("MONGO_KEYFILE"), yaml);
+  assert.ok(yaml.includes("db.adminCommand('ping').ok"), yaml);
+});
+
+test("a custom command or an unofficial image keeps the user's own mongod", () => {
+  for (const extra of [
+    { customCommand: "mongod --auth" },
+    { customImage: "myorg/mongo:1" },
+  ]) {
+    const yaml = generateDatabaseCompose({
+      ...MONGO,
+      mongoKeyfile: "S3KEY",
+      ...extra,
+    });
+    assert.ok(!yaml.includes("replSet"), yaml);
+    assert.ok(!yaml.includes("MONGO_KEYFILE"), yaml);
+  }
+});
+
+test("no other engine takes a keyfile", () => {
+  const yaml = generateDatabaseCompose({
+    ...DEFAULTS,
+    name: "mydb",
+    type: "postgres",
+    version: "18",
+    password: "pw",
+    mongoKeyfile: "S3KEY",
+  });
+  assert.ok(!yaml.includes("KEYFILE") && !yaml.includes("replSet"), yaml);
 });
