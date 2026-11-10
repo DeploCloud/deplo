@@ -75,6 +75,8 @@ export interface AgentConsoleInstance {
   health: string;
   restartCount: number;
   startedAtUnix: number;
+  // The restart rule's last probe: "starting" | "answering" | "not_answering", "" when none (or an older agent).
+  answer?: string;
 }
 export interface AgentFileEntry {
   path: string;
