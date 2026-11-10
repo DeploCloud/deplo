@@ -60,6 +60,28 @@ export class AgentReleaseUnavailableError extends Error {
 
 export class AgentUninstallUnsupportedError extends Error {}
 
+/** An agent without `cluster.host`: named, never failed at runtime. */
+export class AgentClusterUnsupportedError extends Error {}
+
+export const CLUSTER_HOST_UNSUPPORTED_MESSAGE =
+  "The agent on this server is too old to run a cluster leader. " +
+  "Update the agent on this server, then try again.";
+
+export class ClusterReleaseUnavailableError extends Error {}
+
+/** A cluster leader below `clusterMin`: refused until the agent that supervises it updates it. */
+export class ClusterLeaderTooOldError extends Error {
+  constructor(
+    readonly leaderVersion: string,
+    readonly minVersion: string,
+  ) {
+    super(
+      `The cluster leader on this server is v${leaderVersion}, older than the v${minVersion} this Deplo needs. ` +
+        "It updates on its own; until then Deplo's own server leads the cluster.",
+    );
+  }
+}
+
 export class AgentBackupUnsupportedError extends Error {}
 
 export class AgentBackupStoreUnsupportedError extends Error {}

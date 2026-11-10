@@ -2929,6 +2929,57 @@ export interface ReuseImage {
   commitSha: string;
 }
 
+export interface InstallClusterRequest {
+  /** The target version, normalized without a leading v. Never older than the one installed. */
+  version: string;
+  /** The published binaries, keyed by Go arch, as in SelfUpdateRequest. */
+  binaries: { [key: string]: ArchBinary };
+  /** Also run the cluster relay beside the leader (a host that answers on 443). */
+  relay: boolean;
+}
+
+export interface InstallClusterRequest_BinariesEntry {
+  key: string;
+  value?: ArchBinary | undefined;
+}
+
+export interface InstallClusterResponse {
+  /** The version now installed and running. */
+  version: string;
+  running: boolean;
+}
+
+export interface RemoveClusterRequest {
+}
+
+export interface RemoveClusterResponse {
+  /** True when something was installed and is now gone. */
+  removed: boolean;
+}
+
+export interface ClusterStatusRequest {
+}
+
+export interface ClusterStatusResponse {
+  installed: boolean;
+  running: boolean;
+  /** The installed version; empty when nothing is installed. */
+  version: string;
+  relay: boolean;
+}
+
+export interface ClusterCallRequest {
+  /** The leader's method name, e.g. "place". Opaque to the agent apart from its charset. */
+  method: string;
+  /** The request body, forwarded as is. */
+  payload: Uint8Array;
+}
+
+export interface ClusterCallResponse {
+  /** The leader's answer body, returned as is. */
+  payload: Uint8Array;
+}
+
 function createBaseRenewalCSRRequest(): RenewalCSRRequest {
   return {};
 }
@@ -13625,7 +13676,8 @@ function createBaseConsoleInstance(): ConsoleInstance {
     state: "",
     health: "",
     restartCount: 0,
-    startedAtUnix: 0, answer: "",
+    startedAtUnix: 0,
+    answer: "",
   };
 }
 
@@ -21430,6 +21482,753 @@ export const ReuseImage: MessageFns<ReuseImage> = {
   },
 };
 
+function createBaseInstallClusterRequest(): InstallClusterRequest {
+  return { version: "", binaries: {}, relay: false };
+}
+
+export const InstallClusterRequest: MessageFns<InstallClusterRequest> = {
+  encode(message: InstallClusterRequest, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.version !== "") {
+      writer.uint32(10).string(message.version);
+    }
+    globalThis.Object.entries(message.binaries).forEach(([key, value]: [string, ArchBinary]) => {
+      InstallClusterRequest_BinariesEntry.encode({ key: key as any, value }, writer.uint32(18).fork()).join();
+    });
+    if (message.relay !== false) {
+      writer.uint32(24).bool(message.relay);
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): InstallClusterRequest {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const previousRecursionDepth = (reader as any).__tsProtoDecodeDepth ?? 0;
+    if (previousRecursionDepth >= 100) {
+      throw new globalThis.Error("protobuf decode recursion limit exceeded");
+    }
+    (reader as any).__tsProtoDecodeDepth = previousRecursionDepth + 1;
+    try {
+      const end = length === undefined ? reader.len : reader.pos + length;
+      const message = createBaseInstallClusterRequest();
+      while (reader.pos < end) {
+        const tag = reader.uint32();
+        switch (tag >>> 3) {
+          case 1: {
+            if (tag !== 10) {
+              break;
+            }
+
+            message.version = reader.string();
+            continue;
+          }
+          case 2: {
+            if (tag !== 18) {
+              break;
+            }
+
+            const entry2 = InstallClusterRequest_BinariesEntry.decode(reader, reader.uint32());
+            if (entry2.value !== undefined) {
+              message.binaries[entry2.key] = entry2.value;
+            }
+            continue;
+          }
+          case 3: {
+            if (tag !== 24) {
+              break;
+            }
+
+            message.relay = reader.bool();
+            continue;
+          }
+        }
+        if ((tag & 7) === 4 || tag === 0) {
+          break;
+        }
+        reader.skip(tag & 7);
+      }
+      return message;
+    } finally {
+      (reader as any).__tsProtoDecodeDepth = previousRecursionDepth;
+    }
+  },
+
+  fromJSON(object: any): InstallClusterRequest {
+    return {
+      version: isSet(object.version) ? globalThis.String(object.version) : "",
+      binaries: isObject(object.binaries)
+        ? (globalThis.Object.entries(object.binaries) as [string, any][]).reduce(
+          (acc: { [key: string]: ArchBinary }, [key, value]: [string, any]) => {
+            globalThis.Object.defineProperty(acc, key, {
+              value: ArchBinary.fromJSON(value),
+              enumerable: true,
+              configurable: true,
+              writable: true,
+            });
+            return acc;
+          },
+          {},
+        )
+        : {},
+      relay: isSet(object.relay) ? globalThis.Boolean(object.relay) : false,
+    };
+  },
+
+  toJSON(message: InstallClusterRequest): unknown {
+    const obj: any = {};
+    if (message.version !== "") {
+      obj.version = message.version;
+    }
+    if (message.binaries) {
+      const entries = globalThis.Object.entries(message.binaries) as [string, ArchBinary][];
+      if (entries.length > 0) {
+        obj.binaries = {};
+        entries.forEach(([k, v]) => {
+          obj.binaries[k] = ArchBinary.toJSON(v);
+        });
+      }
+    }
+    if (message.relay !== false) {
+      obj.relay = message.relay;
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<InstallClusterRequest>, I>>(base?: I): InstallClusterRequest {
+    return InstallClusterRequest.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<InstallClusterRequest>, I>>(object: I): InstallClusterRequest {
+    const message = createBaseInstallClusterRequest();
+    message.version = object.version ?? "";
+    message.binaries = (globalThis.Object.entries(object.binaries ?? {}) as [string, ArchBinary][]).reduce(
+      (acc: { [key: string]: ArchBinary }, [key, value]: [string, ArchBinary]) => {
+        if (value !== undefined) {
+          acc[key] = ArchBinary.fromPartial(value);
+        }
+        return acc;
+      },
+      {},
+    );
+    message.relay = object.relay ?? false;
+    return message;
+  },
+};
+
+function createBaseInstallClusterRequest_BinariesEntry(): InstallClusterRequest_BinariesEntry {
+  return { key: "", value: undefined };
+}
+
+export const InstallClusterRequest_BinariesEntry: MessageFns<InstallClusterRequest_BinariesEntry> = {
+  encode(message: InstallClusterRequest_BinariesEntry, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.key !== "") {
+      writer.uint32(10).string(message.key);
+    }
+    if (message.value !== undefined) {
+      ArchBinary.encode(message.value, writer.uint32(18).fork()).join();
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): InstallClusterRequest_BinariesEntry {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const previousRecursionDepth = (reader as any).__tsProtoDecodeDepth ?? 0;
+    if (previousRecursionDepth >= 100) {
+      throw new globalThis.Error("protobuf decode recursion limit exceeded");
+    }
+    (reader as any).__tsProtoDecodeDepth = previousRecursionDepth + 1;
+    try {
+      const end = length === undefined ? reader.len : reader.pos + length;
+      const message = createBaseInstallClusterRequest_BinariesEntry();
+      while (reader.pos < end) {
+        const tag = reader.uint32();
+        switch (tag >>> 3) {
+          case 1: {
+            if (tag !== 10) {
+              break;
+            }
+
+            message.key = reader.string();
+            continue;
+          }
+          case 2: {
+            if (tag !== 18) {
+              break;
+            }
+
+            message.value = ArchBinary.decode(reader, reader.uint32());
+            continue;
+          }
+        }
+        if ((tag & 7) === 4 || tag === 0) {
+          break;
+        }
+        reader.skip(tag & 7);
+      }
+      return message;
+    } finally {
+      (reader as any).__tsProtoDecodeDepth = previousRecursionDepth;
+    }
+  },
+
+  fromJSON(object: any): InstallClusterRequest_BinariesEntry {
+    return {
+      key: isSet(object.key) ? globalThis.String(object.key) : "",
+      value: isSet(object.value) ? ArchBinary.fromJSON(object.value) : undefined,
+    };
+  },
+
+  toJSON(message: InstallClusterRequest_BinariesEntry): unknown {
+    const obj: any = {};
+    if (message.key !== "") {
+      obj.key = message.key;
+    }
+    if (message.value !== undefined) {
+      obj.value = ArchBinary.toJSON(message.value);
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<InstallClusterRequest_BinariesEntry>, I>>(
+    base?: I,
+  ): InstallClusterRequest_BinariesEntry {
+    return InstallClusterRequest_BinariesEntry.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<InstallClusterRequest_BinariesEntry>, I>>(
+    object: I,
+  ): InstallClusterRequest_BinariesEntry {
+    const message = createBaseInstallClusterRequest_BinariesEntry();
+    message.key = object.key ?? "";
+    message.value = (object.value !== undefined && object.value !== null)
+      ? ArchBinary.fromPartial(object.value)
+      : undefined;
+    return message;
+  },
+};
+
+function createBaseInstallClusterResponse(): InstallClusterResponse {
+  return { version: "", running: false };
+}
+
+export const InstallClusterResponse: MessageFns<InstallClusterResponse> = {
+  encode(message: InstallClusterResponse, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.version !== "") {
+      writer.uint32(10).string(message.version);
+    }
+    if (message.running !== false) {
+      writer.uint32(16).bool(message.running);
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): InstallClusterResponse {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const previousRecursionDepth = (reader as any).__tsProtoDecodeDepth ?? 0;
+    if (previousRecursionDepth >= 100) {
+      throw new globalThis.Error("protobuf decode recursion limit exceeded");
+    }
+    (reader as any).__tsProtoDecodeDepth = previousRecursionDepth + 1;
+    try {
+      const end = length === undefined ? reader.len : reader.pos + length;
+      const message = createBaseInstallClusterResponse();
+      while (reader.pos < end) {
+        const tag = reader.uint32();
+        switch (tag >>> 3) {
+          case 1: {
+            if (tag !== 10) {
+              break;
+            }
+
+            message.version = reader.string();
+            continue;
+          }
+          case 2: {
+            if (tag !== 16) {
+              break;
+            }
+
+            message.running = reader.bool();
+            continue;
+          }
+        }
+        if ((tag & 7) === 4 || tag === 0) {
+          break;
+        }
+        reader.skip(tag & 7);
+      }
+      return message;
+    } finally {
+      (reader as any).__tsProtoDecodeDepth = previousRecursionDepth;
+    }
+  },
+
+  fromJSON(object: any): InstallClusterResponse {
+    return {
+      version: isSet(object.version) ? globalThis.String(object.version) : "",
+      running: isSet(object.running) ? globalThis.Boolean(object.running) : false,
+    };
+  },
+
+  toJSON(message: InstallClusterResponse): unknown {
+    const obj: any = {};
+    if (message.version !== "") {
+      obj.version = message.version;
+    }
+    if (message.running !== false) {
+      obj.running = message.running;
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<InstallClusterResponse>, I>>(base?: I): InstallClusterResponse {
+    return InstallClusterResponse.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<InstallClusterResponse>, I>>(object: I): InstallClusterResponse {
+    const message = createBaseInstallClusterResponse();
+    message.version = object.version ?? "";
+    message.running = object.running ?? false;
+    return message;
+  },
+};
+
+function createBaseRemoveClusterRequest(): RemoveClusterRequest {
+  return {};
+}
+
+export const RemoveClusterRequest: MessageFns<RemoveClusterRequest> = {
+  encode(_: RemoveClusterRequest, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): RemoveClusterRequest {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const previousRecursionDepth = (reader as any).__tsProtoDecodeDepth ?? 0;
+    if (previousRecursionDepth >= 100) {
+      throw new globalThis.Error("protobuf decode recursion limit exceeded");
+    }
+    (reader as any).__tsProtoDecodeDepth = previousRecursionDepth + 1;
+    try {
+      const end = length === undefined ? reader.len : reader.pos + length;
+      const message = createBaseRemoveClusterRequest();
+      while (reader.pos < end) {
+        const tag = reader.uint32();
+        switch (tag >>> 3) {
+        }
+        if ((tag & 7) === 4 || tag === 0) {
+          break;
+        }
+        reader.skip(tag & 7);
+      }
+      return message;
+    } finally {
+      (reader as any).__tsProtoDecodeDepth = previousRecursionDepth;
+    }
+  },
+
+  fromJSON(_: any): RemoveClusterRequest {
+    return {};
+  },
+
+  toJSON(_: RemoveClusterRequest): unknown {
+    const obj: any = {};
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<RemoveClusterRequest>, I>>(base?: I): RemoveClusterRequest {
+    return RemoveClusterRequest.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<RemoveClusterRequest>, I>>(_: I): RemoveClusterRequest {
+    const message = createBaseRemoveClusterRequest();
+    return message;
+  },
+};
+
+function createBaseRemoveClusterResponse(): RemoveClusterResponse {
+  return { removed: false };
+}
+
+export const RemoveClusterResponse: MessageFns<RemoveClusterResponse> = {
+  encode(message: RemoveClusterResponse, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.removed !== false) {
+      writer.uint32(8).bool(message.removed);
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): RemoveClusterResponse {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const previousRecursionDepth = (reader as any).__tsProtoDecodeDepth ?? 0;
+    if (previousRecursionDepth >= 100) {
+      throw new globalThis.Error("protobuf decode recursion limit exceeded");
+    }
+    (reader as any).__tsProtoDecodeDepth = previousRecursionDepth + 1;
+    try {
+      const end = length === undefined ? reader.len : reader.pos + length;
+      const message = createBaseRemoveClusterResponse();
+      while (reader.pos < end) {
+        const tag = reader.uint32();
+        switch (tag >>> 3) {
+          case 1: {
+            if (tag !== 8) {
+              break;
+            }
+
+            message.removed = reader.bool();
+            continue;
+          }
+        }
+        if ((tag & 7) === 4 || tag === 0) {
+          break;
+        }
+        reader.skip(tag & 7);
+      }
+      return message;
+    } finally {
+      (reader as any).__tsProtoDecodeDepth = previousRecursionDepth;
+    }
+  },
+
+  fromJSON(object: any): RemoveClusterResponse {
+    return { removed: isSet(object.removed) ? globalThis.Boolean(object.removed) : false };
+  },
+
+  toJSON(message: RemoveClusterResponse): unknown {
+    const obj: any = {};
+    if (message.removed !== false) {
+      obj.removed = message.removed;
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<RemoveClusterResponse>, I>>(base?: I): RemoveClusterResponse {
+    return RemoveClusterResponse.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<RemoveClusterResponse>, I>>(object: I): RemoveClusterResponse {
+    const message = createBaseRemoveClusterResponse();
+    message.removed = object.removed ?? false;
+    return message;
+  },
+};
+
+function createBaseClusterStatusRequest(): ClusterStatusRequest {
+  return {};
+}
+
+export const ClusterStatusRequest: MessageFns<ClusterStatusRequest> = {
+  encode(_: ClusterStatusRequest, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): ClusterStatusRequest {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const previousRecursionDepth = (reader as any).__tsProtoDecodeDepth ?? 0;
+    if (previousRecursionDepth >= 100) {
+      throw new globalThis.Error("protobuf decode recursion limit exceeded");
+    }
+    (reader as any).__tsProtoDecodeDepth = previousRecursionDepth + 1;
+    try {
+      const end = length === undefined ? reader.len : reader.pos + length;
+      const message = createBaseClusterStatusRequest();
+      while (reader.pos < end) {
+        const tag = reader.uint32();
+        switch (tag >>> 3) {
+        }
+        if ((tag & 7) === 4 || tag === 0) {
+          break;
+        }
+        reader.skip(tag & 7);
+      }
+      return message;
+    } finally {
+      (reader as any).__tsProtoDecodeDepth = previousRecursionDepth;
+    }
+  },
+
+  fromJSON(_: any): ClusterStatusRequest {
+    return {};
+  },
+
+  toJSON(_: ClusterStatusRequest): unknown {
+    const obj: any = {};
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<ClusterStatusRequest>, I>>(base?: I): ClusterStatusRequest {
+    return ClusterStatusRequest.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<ClusterStatusRequest>, I>>(_: I): ClusterStatusRequest {
+    const message = createBaseClusterStatusRequest();
+    return message;
+  },
+};
+
+function createBaseClusterStatusResponse(): ClusterStatusResponse {
+  return { installed: false, running: false, version: "", relay: false };
+}
+
+export const ClusterStatusResponse: MessageFns<ClusterStatusResponse> = {
+  encode(message: ClusterStatusResponse, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.installed !== false) {
+      writer.uint32(8).bool(message.installed);
+    }
+    if (message.running !== false) {
+      writer.uint32(16).bool(message.running);
+    }
+    if (message.version !== "") {
+      writer.uint32(26).string(message.version);
+    }
+    if (message.relay !== false) {
+      writer.uint32(32).bool(message.relay);
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): ClusterStatusResponse {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const previousRecursionDepth = (reader as any).__tsProtoDecodeDepth ?? 0;
+    if (previousRecursionDepth >= 100) {
+      throw new globalThis.Error("protobuf decode recursion limit exceeded");
+    }
+    (reader as any).__tsProtoDecodeDepth = previousRecursionDepth + 1;
+    try {
+      const end = length === undefined ? reader.len : reader.pos + length;
+      const message = createBaseClusterStatusResponse();
+      while (reader.pos < end) {
+        const tag = reader.uint32();
+        switch (tag >>> 3) {
+          case 1: {
+            if (tag !== 8) {
+              break;
+            }
+
+            message.installed = reader.bool();
+            continue;
+          }
+          case 2: {
+            if (tag !== 16) {
+              break;
+            }
+
+            message.running = reader.bool();
+            continue;
+          }
+          case 3: {
+            if (tag !== 26) {
+              break;
+            }
+
+            message.version = reader.string();
+            continue;
+          }
+          case 4: {
+            if (tag !== 32) {
+              break;
+            }
+
+            message.relay = reader.bool();
+            continue;
+          }
+        }
+        if ((tag & 7) === 4 || tag === 0) {
+          break;
+        }
+        reader.skip(tag & 7);
+      }
+      return message;
+    } finally {
+      (reader as any).__tsProtoDecodeDepth = previousRecursionDepth;
+    }
+  },
+
+  fromJSON(object: any): ClusterStatusResponse {
+    return {
+      installed: isSet(object.installed) ? globalThis.Boolean(object.installed) : false,
+      running: isSet(object.running) ? globalThis.Boolean(object.running) : false,
+      version: isSet(object.version) ? globalThis.String(object.version) : "",
+      relay: isSet(object.relay) ? globalThis.Boolean(object.relay) : false,
+    };
+  },
+
+  toJSON(message: ClusterStatusResponse): unknown {
+    const obj: any = {};
+    if (message.installed !== false) {
+      obj.installed = message.installed;
+    }
+    if (message.running !== false) {
+      obj.running = message.running;
+    }
+    if (message.version !== "") {
+      obj.version = message.version;
+    }
+    if (message.relay !== false) {
+      obj.relay = message.relay;
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<ClusterStatusResponse>, I>>(base?: I): ClusterStatusResponse {
+    return ClusterStatusResponse.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<ClusterStatusResponse>, I>>(object: I): ClusterStatusResponse {
+    const message = createBaseClusterStatusResponse();
+    message.installed = object.installed ?? false;
+    message.running = object.running ?? false;
+    message.version = object.version ?? "";
+    message.relay = object.relay ?? false;
+    return message;
+  },
+};
+
+function createBaseClusterCallRequest(): ClusterCallRequest {
+  return { method: "", payload: new Uint8Array(0) };
+}
+
+export const ClusterCallRequest: MessageFns<ClusterCallRequest> = {
+  encode(message: ClusterCallRequest, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.method !== "") {
+      writer.uint32(10).string(message.method);
+    }
+    if (message.payload.length !== 0) {
+      writer.uint32(18).bytes(message.payload);
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): ClusterCallRequest {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const previousRecursionDepth = (reader as any).__tsProtoDecodeDepth ?? 0;
+    if (previousRecursionDepth >= 100) {
+      throw new globalThis.Error("protobuf decode recursion limit exceeded");
+    }
+    (reader as any).__tsProtoDecodeDepth = previousRecursionDepth + 1;
+    try {
+      const end = length === undefined ? reader.len : reader.pos + length;
+      const message = createBaseClusterCallRequest();
+      while (reader.pos < end) {
+        const tag = reader.uint32();
+        switch (tag >>> 3) {
+          case 1: {
+            if (tag !== 10) {
+              break;
+            }
+
+            message.method = reader.string();
+            continue;
+          }
+          case 2: {
+            if (tag !== 18) {
+              break;
+            }
+
+            message.payload = reader.bytes();
+            continue;
+          }
+        }
+        if ((tag & 7) === 4 || tag === 0) {
+          break;
+        }
+        reader.skip(tag & 7);
+      }
+      return message;
+    } finally {
+      (reader as any).__tsProtoDecodeDepth = previousRecursionDepth;
+    }
+  },
+
+  fromJSON(object: any): ClusterCallRequest {
+    return {
+      method: isSet(object.method) ? globalThis.String(object.method) : "",
+      payload: isSet(object.payload) ? bytesFromBase64(object.payload) : new Uint8Array(0),
+    };
+  },
+
+  toJSON(message: ClusterCallRequest): unknown {
+    const obj: any = {};
+    if (message.method !== "") {
+      obj.method = message.method;
+    }
+    if (message.payload.length !== 0) {
+      obj.payload = base64FromBytes(message.payload);
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<ClusterCallRequest>, I>>(base?: I): ClusterCallRequest {
+    return ClusterCallRequest.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<ClusterCallRequest>, I>>(object: I): ClusterCallRequest {
+    const message = createBaseClusterCallRequest();
+    message.method = object.method ?? "";
+    message.payload = object.payload ?? new Uint8Array(0);
+    return message;
+  },
+};
+
+function createBaseClusterCallResponse(): ClusterCallResponse {
+  return { payload: new Uint8Array(0) };
+}
+
+export const ClusterCallResponse: MessageFns<ClusterCallResponse> = {
+  encode(message: ClusterCallResponse, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.payload.length !== 0) {
+      writer.uint32(10).bytes(message.payload);
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): ClusterCallResponse {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const previousRecursionDepth = (reader as any).__tsProtoDecodeDepth ?? 0;
+    if (previousRecursionDepth >= 100) {
+      throw new globalThis.Error("protobuf decode recursion limit exceeded");
+    }
+    (reader as any).__tsProtoDecodeDepth = previousRecursionDepth + 1;
+    try {
+      const end = length === undefined ? reader.len : reader.pos + length;
+      const message = createBaseClusterCallResponse();
+      while (reader.pos < end) {
+        const tag = reader.uint32();
+        switch (tag >>> 3) {
+          case 1: {
+            if (tag !== 10) {
+              break;
+            }
+
+            message.payload = reader.bytes();
+            continue;
+          }
+        }
+        if ((tag & 7) === 4 || tag === 0) {
+          break;
+        }
+        reader.skip(tag & 7);
+      }
+      return message;
+    } finally {
+      (reader as any).__tsProtoDecodeDepth = previousRecursionDepth;
+    }
+  },
+
+  fromJSON(object: any): ClusterCallResponse {
+    return { payload: isSet(object.payload) ? bytesFromBase64(object.payload) : new Uint8Array(0) };
+  },
+
+  toJSON(message: ClusterCallResponse): unknown {
+    const obj: any = {};
+    if (message.payload.length !== 0) {
+      obj.payload = base64FromBytes(message.payload);
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<ClusterCallResponse>, I>>(base?: I): ClusterCallResponse {
+    return ClusterCallResponse.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<ClusterCallResponse>, I>>(object: I): ClusterCallResponse {
+    const message = createBaseClusterCallResponse();
+    message.payload = object.payload ?? new Uint8Array(0);
+    return message;
+  },
+};
+
 export type AgentService = typeof AgentService;
 export const AgentService = {
   /**
@@ -21787,6 +22586,56 @@ export const AgentService = {
     responseSerialize: (value: SelfUninstallResponse): Buffer =>
       Buffer.from(SelfUninstallResponse.encode(value).finish()),
     responseDeserialize: (value: Buffer): SelfUninstallResponse => SelfUninstallResponse.decode(value),
+  },
+  /**
+   * Install the pinned deplo-cluster binary (checksum verified, forward-only) and run it as
+   * the cluster leader, or as the relay too. Calling it again with a newer version updates it.
+   */
+  installCluster: {
+    path: "/deplo.agent.v1.Agent/InstallCluster" as const,
+    requestStream: false as const,
+    responseStream: false as const,
+    requestSerialize: (value: InstallClusterRequest): Buffer =>
+      Buffer.from(InstallClusterRequest.encode(value).finish()),
+    requestDeserialize: (value: Buffer): InstallClusterRequest => InstallClusterRequest.decode(value),
+    responseSerialize: (value: InstallClusterResponse): Buffer =>
+      Buffer.from(InstallClusterResponse.encode(value).finish()),
+    responseDeserialize: (value: Buffer): InstallClusterResponse => InstallClusterResponse.decode(value),
+  },
+  /** Stop the supervised leader and delete its binary and state. Idempotent. */
+  removeCluster: {
+    path: "/deplo.agent.v1.Agent/RemoveCluster" as const,
+    requestStream: false as const,
+    responseStream: false as const,
+    requestSerialize: (value: RemoveClusterRequest): Buffer => Buffer.from(RemoveClusterRequest.encode(value).finish()),
+    requestDeserialize: (value: Buffer): RemoveClusterRequest => RemoveClusterRequest.decode(value),
+    responseSerialize: (value: RemoveClusterResponse): Buffer =>
+      Buffer.from(RemoveClusterResponse.encode(value).finish()),
+    responseDeserialize: (value: Buffer): RemoveClusterResponse => RemoveClusterResponse.decode(value),
+  },
+  /** What this host runs: installed or not, running or not, which version. */
+  clusterStatus: {
+    path: "/deplo.agent.v1.Agent/ClusterStatus" as const,
+    requestStream: false as const,
+    responseStream: false as const,
+    requestSerialize: (value: ClusterStatusRequest): Buffer => Buffer.from(ClusterStatusRequest.encode(value).finish()),
+    requestDeserialize: (value: Buffer): ClusterStatusRequest => ClusterStatusRequest.decode(value),
+    responseSerialize: (value: ClusterStatusResponse): Buffer =>
+      Buffer.from(ClusterStatusResponse.encode(value).finish()),
+    responseDeserialize: (value: Buffer): ClusterStatusResponse => ClusterStatusResponse.decode(value),
+  },
+  /**
+   * Forward one call to the leader process on this host and return its answer verbatim.
+   * The agent does not read the payload; an unreachable leader is UNAVAILABLE.
+   */
+  clusterCall: {
+    path: "/deplo.agent.v1.Agent/ClusterCall" as const,
+    requestStream: false as const,
+    responseStream: false as const,
+    requestSerialize: (value: ClusterCallRequest): Buffer => Buffer.from(ClusterCallRequest.encode(value).finish()),
+    requestDeserialize: (value: Buffer): ClusterCallRequest => ClusterCallRequest.decode(value),
+    responseSerialize: (value: ClusterCallResponse): Buffer => Buffer.from(ClusterCallResponse.encode(value).finish()),
+    responseDeserialize: (value: Buffer): ClusterCallResponse => ClusterCallResponse.decode(value),
   },
   /** Back up a database or a project to a destination, streaming progress. */
   backup: {
@@ -22495,6 +23344,20 @@ export interface AgentServer extends UntypedServiceImplementation {
    * of SelfUpdate, and the ONLY RPC that ends the agent's own life.
    */
   selfUninstall: handleUnaryCall<SelfUninstallRequest, SelfUninstallResponse>;
+  /**
+   * Install the pinned deplo-cluster binary (checksum verified, forward-only) and run it as
+   * the cluster leader, or as the relay too. Calling it again with a newer version updates it.
+   */
+  installCluster: handleUnaryCall<InstallClusterRequest, InstallClusterResponse>;
+  /** Stop the supervised leader and delete its binary and state. Idempotent. */
+  removeCluster: handleUnaryCall<RemoveClusterRequest, RemoveClusterResponse>;
+  /** What this host runs: installed or not, running or not, which version. */
+  clusterStatus: handleUnaryCall<ClusterStatusRequest, ClusterStatusResponse>;
+  /**
+   * Forward one call to the leader process on this host and return its answer verbatim.
+   * The agent does not read the payload; an unreachable leader is UNAVAILABLE.
+   */
+  clusterCall: handleUnaryCall<ClusterCallRequest, ClusterCallResponse>;
   /** Back up a database or a project to a destination, streaming progress. */
   backup: handleServerStreamingCall<BackupRequest, BackupEvent>;
   /**
@@ -23112,6 +23975,76 @@ export interface AgentClient extends Client {
     metadata: Metadata,
     options: Partial<CallOptions>,
     callback: (error: ServiceError | null, response: SelfUninstallResponse) => void,
+  ): ClientUnaryCall;
+  /**
+   * Install the pinned deplo-cluster binary (checksum verified, forward-only) and run it as
+   * the cluster leader, or as the relay too. Calling it again with a newer version updates it.
+   */
+  installCluster(
+    request: InstallClusterRequest,
+    callback: (error: ServiceError | null, response: InstallClusterResponse) => void,
+  ): ClientUnaryCall;
+  installCluster(
+    request: InstallClusterRequest,
+    metadata: Metadata,
+    callback: (error: ServiceError | null, response: InstallClusterResponse) => void,
+  ): ClientUnaryCall;
+  installCluster(
+    request: InstallClusterRequest,
+    metadata: Metadata,
+    options: Partial<CallOptions>,
+    callback: (error: ServiceError | null, response: InstallClusterResponse) => void,
+  ): ClientUnaryCall;
+  /** Stop the supervised leader and delete its binary and state. Idempotent. */
+  removeCluster(
+    request: RemoveClusterRequest,
+    callback: (error: ServiceError | null, response: RemoveClusterResponse) => void,
+  ): ClientUnaryCall;
+  removeCluster(
+    request: RemoveClusterRequest,
+    metadata: Metadata,
+    callback: (error: ServiceError | null, response: RemoveClusterResponse) => void,
+  ): ClientUnaryCall;
+  removeCluster(
+    request: RemoveClusterRequest,
+    metadata: Metadata,
+    options: Partial<CallOptions>,
+    callback: (error: ServiceError | null, response: RemoveClusterResponse) => void,
+  ): ClientUnaryCall;
+  /** What this host runs: installed or not, running or not, which version. */
+  clusterStatus(
+    request: ClusterStatusRequest,
+    callback: (error: ServiceError | null, response: ClusterStatusResponse) => void,
+  ): ClientUnaryCall;
+  clusterStatus(
+    request: ClusterStatusRequest,
+    metadata: Metadata,
+    callback: (error: ServiceError | null, response: ClusterStatusResponse) => void,
+  ): ClientUnaryCall;
+  clusterStatus(
+    request: ClusterStatusRequest,
+    metadata: Metadata,
+    options: Partial<CallOptions>,
+    callback: (error: ServiceError | null, response: ClusterStatusResponse) => void,
+  ): ClientUnaryCall;
+  /**
+   * Forward one call to the leader process on this host and return its answer verbatim.
+   * The agent does not read the payload; an unreachable leader is UNAVAILABLE.
+   */
+  clusterCall(
+    request: ClusterCallRequest,
+    callback: (error: ServiceError | null, response: ClusterCallResponse) => void,
+  ): ClientUnaryCall;
+  clusterCall(
+    request: ClusterCallRequest,
+    metadata: Metadata,
+    callback: (error: ServiceError | null, response: ClusterCallResponse) => void,
+  ): ClientUnaryCall;
+  clusterCall(
+    request: ClusterCallRequest,
+    metadata: Metadata,
+    options: Partial<CallOptions>,
+    callback: (error: ServiceError | null, response: ClusterCallResponse) => void,
   ): ClientUnaryCall;
   /** Back up a database or a project to a destination, streaming progress. */
   backup(request: BackupRequest, options?: Partial<CallOptions>): ClientReadableStream<BackupEvent>;

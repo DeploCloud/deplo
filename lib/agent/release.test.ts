@@ -4,8 +4,10 @@ import assert from "node:assert/strict";
 import { AGENT_VERSION } from "../version";
 import {
   AGENT_REPO,
+  CLUSTER_REPO,
   __resetReleaseCacheForTests,
   resolveAgentRelease,
+  resolveClusterRelease,
 } from "./release";
 
 function stub(respond: (url: string) => Response) {
@@ -89,6 +91,26 @@ test("a hit is kept; a miss is retried only after a short pause", async () => {
     assert.ok(await resolveAgentRelease());
     assert.ok(await resolveAgentRelease());
     assert.equal(seen.length, 2, "a published tag is fetched once");
+  } finally {
+    restore();
+  }
+});
+
+test("the cluster release comes from its own repo and asset names; an unset pin reads nothing", async () => {
+  const { seen, restore } = stub(
+    () => new Response(`${"c".repeat(64)}  deplo-cluster-linux-arm64\n`),
+  );
+  try {
+    assert.equal(await resolveClusterRelease(""), null);
+    assert.deepEqual(seen, []);
+    const rel = await resolveClusterRelease("0.1.0");
+    const root = `https://github.com/${CLUSTER_REPO}/releases/download/v0.1.0`;
+    assert.deepEqual(seen, [`${root}/checksums.txt`]);
+    assert.equal(rel?.binaries.amd64, null);
+    assert.deepEqual(rel?.binaries.arm64, {
+      url: `${root}/deplo-cluster-linux-arm64`,
+      sha256: "c".repeat(64),
+    });
   } finally {
     restore();
   }

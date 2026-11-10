@@ -88,3 +88,6 @@ export const SCREENSHOT_CAPABILITY = "screenshot";
 
 // The agent links to the panel (ADR-0040), and with it Hello's link_addresses and SetLinkAddresses.
 export const AGENT_LINK_CAPABILITY = "agent-link";
+
+// The agent installs, runs and removes the deplo-cluster binary and forwards calls to it (ADR-0043).
+export const CLUSTER_HOST_CAPABILITY = "cluster.host";
