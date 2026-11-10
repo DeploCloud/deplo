@@ -17,6 +17,9 @@ export const BACKUP_S3_READ_CAPABILITY = "backup-s3-read";
 // Hard gate: with it the agent takes only DATA from an outside-the-fleet artifact, never its compose/env/mounts.
 export const BACKUP_UNTRUSTED_CONFIG_CAPABILITY = "backup-untrusted-config";
 
+// A Redis that runs append-only reloads the append-only file after a restore, so an older agent restores into a dataset that comes back empty.
+export const BACKUP_REDIS_AOF_CAPABILITY = "backup.redis-aof";
+
 export const CRON_CAPABILITY = "cron";
 
 export const METRICS_STREAM_CAPABILITY = "metrics-stream";

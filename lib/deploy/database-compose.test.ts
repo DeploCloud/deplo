@@ -76,8 +76,33 @@ test("generateDatabaseCompose: redis still sets requirepass via command override
     username: "default",
     dbName: "cache",
   });
-  assert.ok(yaml.includes("redis-server --requirepass s3cret"));
+  assert.ok(yaml.includes('--requirepass \\"$$REDISCLI_AUTH\\"'), yaml);
+  assert.ok(yaml.includes("REDISCLI_AUTH=s3cret"));
   assert.ok(yaml.includes("- cache-data:/data"));
+});
+
+test("generateDatabaseCompose: redis runs append-only, and switches a snapshot-only dataset on live", () => {
+  const yaml = generateDatabaseCompose({
+    network: "deplo-team-team_test",
+    name: "cache",
+    databaseId: "db_test",
+    type: "redis",
+    version: "8",
+    password: "s3$cret",
+    username: "default",
+    dbName: "cache",
+  });
+  assert.ok(yaml.includes('command: ["sh","-c",'), yaml);
+  // A fresh or already-converted dataset starts append-only, fsync every second.
+  assert.ok(yaml.includes("--appendonly yes --appendfsync everysec"), yaml);
+  // A snapshot with no append-only file would load as an empty dataset: start without it, enable it live.
+  const live = yaml.indexOf("--appendonly no");
+  assert.ok(live > 0 && live < yaml.indexOf("config set appendonly yes"), yaml);
+  assert.ok(yaml.includes("dump.rdb"), yaml);
+  // The password rides the environment, never the command line.
+  const line = yaml.split("\n").find((l) => l.includes("command:")) ?? "";
+  assert.ok(!line.includes("s3"), yaml);
+  assert.ok(yaml.includes("REDISCLI_AUTH=s3$$cret"), yaml);
 });
 
 const DB_CREATE_ENV: Partial<Record<DatabaseType, string>> = {

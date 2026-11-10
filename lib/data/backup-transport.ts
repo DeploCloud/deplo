@@ -52,6 +52,8 @@ function hasS3Args(dest: BackupDestination): boolean {
   return dest.kind === "s3" && parseS3Args(dest.s3ExtraArgs).length > 0;
 }
 
+const isRedis = (t: TransportTarget) => t.database?.dbType === "redis";
+
 export async function backupToDestination(
   creds: DestinationWithSecrets,
   target: TransportTarget,
@@ -295,6 +297,7 @@ export async function restoreFromDestination(
       store: dest.kind === "server",
       encryptedS3: dest.kind === "s3" && !!dest.ageRecipient,
       s3Args: hasS3Args(dest),
+      redisAof: isRedis(target),
     });
     try {
       return await consumeRestore(conn.restore(req));
@@ -306,7 +309,10 @@ export async function restoreFromDestination(
   const src = await connectBackupAgent(destServer, { store: true });
   let workload: AgentConnection | null = null;
   try {
-    workload = await connectBackupAgent(target.serverId, { store: true });
+    workload = await connectBackupAgent(target.serverId, {
+      store: true,
+      redisAof: isRedis(target),
+    });
     const bytes = src.readStoreFile({ store: storeTargetFor(dest, objectKey) });
     return await consumeRestore(
       workload.restoreFrom(
@@ -338,6 +344,7 @@ export async function openUploadRestore(
   const conn = await connectBackupAgent(target.serverId, {
     store: true,
     untrustedConfig: true,
+    redisAof: isRedis(target),
   });
   return {
     events: conn.restoreFrom(

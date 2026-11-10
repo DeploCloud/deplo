@@ -72,6 +72,23 @@ function mysqlEnv(
     : [...base, `${prefix}_USER=${username}`, `${prefix}_PASSWORD=${password}`];
 }
 
+// Append-only, fsync every second. A dataset that only has a snapshot is switched on live: at
+// startup Redis would load an empty append-only file and ignore the snapshot.
+const REDIS_START = `d=/data
+if [ -f $d/dump.rdb ] && [ ! -s $d/appendonly.aof ] && ! ls $d/appendonlydir/*.base.* >/dev/null 2>&1; then
+  docker-entrypoint.sh redis-server --requirepass "$REDISCLI_AUTH" --appendonly no &
+  pid=$!
+  trap 'kill -TERM $pid' TERM INT
+  until redis-cli ping >/dev/null 2>&1; do sleep 0.2; done
+  redis-cli config set appendfsync everysec >/dev/null
+  redis-cli config set appendonly yes >/dev/null
+  wait $pid
+  wait $pid
+else
+  exec docker-entrypoint.sh redis-server --requirepass "$REDISCLI_AUTH" --appendonly yes --appendfsync everysec
+fi
+`;
+
 export function generateDatabaseCompose(input: {
   name: string;
   databaseId: string;
@@ -128,14 +145,10 @@ export function generateDatabaseCompose(input: {
       `CLICKHOUSE_DB=${dbName}`,
     ],
   };
-  const defaultCommand =
-    type === "redis"
-      ? `redis-server --requirepass ${escapeComposeDollars(password)}`
-      : "";
   const command = customCommand
     ? `    command: ${escapeComposeDollars(JSON.stringify(customCommand))}\n`
-    : defaultCommand
-      ? `    command: ${defaultCommand}\n`
+    : type === "redis"
+      ? `    command: ${escapeComposeDollars(JSON.stringify(["sh", "-c", REDIS_START]))}\n`
       : "";
   const envLines = envByType[type];
   const envBlock = envLines.length
