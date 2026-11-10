@@ -14,7 +14,7 @@ import {
   seedApp,
   seedServer,
 } from "../app-graph-test-helpers";
-import { setAppReplicas } from "./settings";
+import { setAppReplicas, setAppStickySessions } from "./settings";
 
 let db: TestDb;
 let pg: PGlite;
@@ -137,4 +137,32 @@ test("only a member who may configure the app sets it", async () => {
 test("another team's app is out of reach", async () => {
   await assert.rejects(as(STRANGER, TEAM_B, () => setAppReplicas(APP, 2)));
   assert.equal(await replicas(), 1);
+});
+
+const sticky = async () =>
+  (await db.select().from(apps).where(eq(apps.id, APP)))[0].stickySessions;
+
+test("sticky sessions are off until someone turns them on with more than one copy", async () => {
+  assert.equal(await sticky(), false);
+  await assert.rejects(
+    as(OWNER, TEAM_A, () => setAppStickySessions(APP, true)),
+    /more than one/,
+  );
+  await set(2);
+  await as(OWNER, TEAM_A, () => setAppStickySessions(APP, true));
+  assert.equal(await sticky(), true);
+  await as(OWNER, TEAM_A, () => setAppStickySessions(APP, false));
+  assert.equal(await sticky(), false);
+});
+
+test("only a member who may configure the app sets sticky sessions", async () => {
+  await set(2);
+  await assert.rejects(
+    as(VIEWER, TEAM_A, () => setAppStickySessions(APP, true)),
+    /permission/,
+  );
+  await assert.rejects(
+    as(STRANGER, TEAM_B, () => setAppStickySessions(APP, true)),
+  );
+  assert.equal(await sticky(), false);
 });

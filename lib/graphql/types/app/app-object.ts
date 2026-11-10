@@ -186,6 +186,10 @@ export const AppRef = builder.objectRef<AppSummary>("App").implement({
       description:
         "How many copies of this single-image app run on its server (1 to 10).",
     }),
+    stickySessions: t.exposeBoolean("stickySessions", {
+      description:
+        "Whether a cookie keeps each visitor on the same replica. Only applies with more than one.",
+    }),
     screenshotsEnabled: t.exposeBoolean("screenshotsEnabled", {
       description:
         "Whether Deplo takes a light and a dark picture of the site after " +

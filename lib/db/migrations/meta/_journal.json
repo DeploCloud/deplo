@@ -1527,6 +1527,13 @@
       "when": 1794236751012,
       "tag": "0217_app_replicas",
       "breakpoints": true
+    },
+    {
+      "idx": 218,
+      "version": "7",
+      "when": 1794323151012,
+      "tag": "0218_app_sticky_sessions",
+      "breakpoints": true
     }
   ]
 }

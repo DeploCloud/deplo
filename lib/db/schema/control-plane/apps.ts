@@ -128,6 +128,7 @@ export const apps = pgTable(
       .notNull()
       .default(false),
     replicas: integer("replicas").notNull().default(1),
+    stickySessions: boolean("sticky_sessions").notNull().default(false),
     latestDeploymentId: text("latest_deployment_id").references(
       (): AnyPgColumn => deployments.id,
       { onDelete: "set null" },

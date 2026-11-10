@@ -33,6 +33,7 @@ import {
   setAppComposeUpArgs,
   setAppRestartLoopGuard,
   setAppReplicas,
+  setAppStickySessions,
   setAppZeroDowntimeDeploys,
   setAppScreenshots,
 } from "@/lib/data/apps/settings";
@@ -368,6 +369,21 @@ builder.mutationFields((t) => ({
     },
     resolve: async (_r, { id, value }) => {
       await setAppReplicas(id, value);
+      return reloadApp(id);
+    },
+  }),
+  setAppStickySessions: t.field({
+    type: AppRef,
+    authScopes: { capability: "configure_apps" },
+    description:
+      "Keep each visitor on the same replica with a cookie. Needs more than one " +
+      "replica. Applies from the next deploy.",
+    args: {
+      id: t.arg.string({ required: true }),
+      value: t.arg.boolean({ required: true }),
+    },
+    resolve: async (_r, { id, value }) => {
+      await setAppStickySessions(id, value);
       return reloadApp(id);
     },
   }),
