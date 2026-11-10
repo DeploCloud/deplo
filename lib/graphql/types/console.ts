@@ -38,6 +38,12 @@ const ConsoleInstanceRef = builder
       workdir: t.exposeString("workdir"),
       openStdin: t.exposeBoolean("openStdin"),
       tty: t.exposeBoolean("tty"),
+      replica: t.exposeString("replica", {
+        nullable: true,
+        description:
+          "`web-2` when this is one of several replicas of its service; null " +
+          "for a lone container. Read from the container name, never stored.",
+      }),
     }),
   });
 

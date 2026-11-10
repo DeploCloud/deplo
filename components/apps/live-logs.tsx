@@ -39,6 +39,7 @@ const LOGS_INFO_QUERY = /* GraphQL */ `
         workdir
         openStdin
         tty
+        replica
       }
     }
   }

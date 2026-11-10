@@ -25,7 +25,7 @@ export const LOGS: McpToolDef[] = [
         .string()
         .optional()
         .describe(
-          "One container, by compose service name; defaults to the workload's own.",
+          "One container, by compose service name; defaults to the workload's own. An app with replicas reads every replica merged and tagged web-1, web-2; name one container to read a single replica.",
         ),
     }),
     query: "",

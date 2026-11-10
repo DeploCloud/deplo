@@ -2,7 +2,10 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 
 import type { ContainerStat } from "../agent/gen/agent";
-import { aggregateContainerStats } from "./container-metrics";
+import {
+  aggregateContainerStats,
+  tagReplicaMetrics,
+} from "./container-metrics";
 
 const HOST = { memTotal: 23.42 * 1024 ** 3, cpuCores: 8 };
 
@@ -143,4 +146,37 @@ test("a stack with nothing running measures zero, not a fabricated ceiling", () 
   assert.equal(agg.running, 0);
   assert.equal(agg.memUsed, 0);
   assert.equal(agg.memPct, 0);
+});
+
+test("the breakdown names each replica and the total still counts them all", () => {
+  const stats = [3, 1, 2].map((n) =>
+    stat(`deplo-web-deplo-web-${n}`, { memUsed: 100 * n, cpuPct: n }),
+  );
+  const agg = aggregateContainerStats("prj_1", stats, 1, HOST);
+  assert.equal(agg.memUsed, 600, "the App's total");
+  assert.equal(agg.running, 3);
+  assert.deepEqual(
+    tagReplicaMetrics(agg.instances, "web").map((i) => [i.replica, i.memUsed]),
+    [
+      ["web-1", 100],
+      ["web-2", 200],
+      ["web-3", 300],
+    ],
+  );
+});
+
+test("a stack of single containers has no replica names and keeps its order", () => {
+  const agg = aggregateContainerStats(
+    "prj_1",
+    [stat("deplo-shop-db-1"), stat("deplo-shop-api-1")],
+    1,
+    HOST,
+  );
+  assert.deepEqual(
+    tagReplicaMetrics(agg.instances, "shop").map((i) => [i.name, i.replica]),
+    [
+      ["deplo-shop-db-1", null],
+      ["deplo-shop-api-1", null],
+    ],
+  );
 });

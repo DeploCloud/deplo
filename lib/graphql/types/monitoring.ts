@@ -77,6 +77,10 @@ const ContainerInstanceMetricsRef = builder
       "byte counters since the container started.",
     fields: (t) => ({
       name: t.exposeString("name"),
+      replica: t.exposeString("replica", {
+        nullable: true,
+        description: "`web-2` when this is one of several replicas; else null.",
+      }),
       running: t.exposeBoolean("running"),
       cpu: t.exposeFloat("cpu"),
       memUsed: t.exposeFloat("memUsed"),
