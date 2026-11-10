@@ -10,5 +10,6 @@ export type OverviewAppStateView = {
   appId: string;
   status: AppStatus;
   neverDeployed: boolean;
+  restartsPaused: boolean;
   runtime: OverviewRuntimeView | null;
 };

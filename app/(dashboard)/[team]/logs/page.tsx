@@ -134,6 +134,7 @@ export default async function LogsPage(props: PageProps<"/[team]/logs">) {
     status: app.status,
     productionUrl: app.productionUrl ?? null,
     restartLoopStoppedAt: app.restartLoopStoppedAt ?? null,
+    restartsPausedAt: app.restartsPausedAt ?? null,
     latestDeploymentId: latest?.id ?? null,
     latestDeploymentStatus: latest?.status ?? null,
     latestScreenshotAt,

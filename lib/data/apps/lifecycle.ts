@@ -69,7 +69,7 @@ export async function startApp(id: string): Promise<void> {
   await assertNotPausedForMove("app", id);
   await getDb()
     .update(appsTable)
-    .set({ restartLoopStoppedAt: null })
+    .set({ restartLoopStoppedAt: null, restartsPausedAt: null })
     .where(eq(appsTable.id, id));
   await setAppStatus(id, "starting");
   try {

@@ -14,6 +14,7 @@ const OVERVIEW_APP_STATES_QUERY = /* GraphQL */ `
       appId
       status
       neverDeployed
+      restartsPaused
       runtime {
         total
         running

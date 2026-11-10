@@ -111,3 +111,13 @@ test("never deployed reads as such, not as stopped", () => {
   assert.equal(displayStatus("building", none, true), "building");
   assert.equal(displayStatus("error", none, true), "error");
 });
+
+test("restarts paused on a running app is Not answering, but a down one stays down", () => {
+  assert.equal(displayStatus("active", runtime(), false, true), "unresponsive");
+  assert.equal(displayStatus("active", null, false, true), "unresponsive");
+  assert.equal(
+    displayStatus("active", runtime({ running: 0 }), false, true),
+    "down",
+  );
+  assert.equal(displayStatus("idle", runtime(), false, true), "idle");
+});

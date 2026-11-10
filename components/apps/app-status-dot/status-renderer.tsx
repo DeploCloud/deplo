@@ -69,15 +69,21 @@ export function AppStatusIndicator({
   status,
   runtime,
   neverDeployed = false,
+  restartsPaused = false,
 }: {
   status: AppStatus;
   runtime: OverviewRuntimeView | null;
   neverDeployed?: boolean;
+  restartsPaused?: boolean;
 }) {
   return (
     <StatusIndicator
-      status={displayStatus(status, runtime, neverDeployed)}
-      detail={detailFor(runtime)}
+      status={displayStatus(status, runtime, neverDeployed, restartsPaused)}
+      detail={
+        restartsPaused && status === "active"
+          ? "Deplo restarted this app several times and it still does not answer, so it stopped restarting it. The app is still running. The Logs tab shows why."
+          : detailFor(runtime)
+      }
       badge={false}
     />
   );

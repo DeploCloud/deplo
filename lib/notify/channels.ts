@@ -223,6 +223,7 @@ function categoryLabel(key: AlertKey): string {
 
 const DANGER = new Set<AlertKey>([
   "app_crash_loop",
+  "app_restarts_paused",
   "server_offline",
   "server_unmanageable",
   "server_trust_changed",
@@ -232,6 +233,7 @@ const DANGER = new Set<AlertKey>([
 ]);
 const GOOD = new Set<AlertKey>(["server_online", "database_ready"]);
 const WARN = new Set<AlertKey>([
+  "app_unresponsive",
   "app_out_of_memory",
   "security_update_available",
   "deployment_interrupted",
