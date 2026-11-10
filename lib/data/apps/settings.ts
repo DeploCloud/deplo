@@ -177,6 +177,32 @@ export async function setAppReplicas(
   );
 }
 
+// Applies from the next deploy; the label is only rendered with more than one copy.
+export async function setAppStickySessions(
+  id: string,
+  enabled: boolean,
+): Promise<void> {
+  const { membership } = await requireAppCapability(id, "configure_apps");
+  const user = (await getCurrentUser())!;
+  const app = await loadAppGraph(id);
+  if (!app || app.teamId !== membership.teamId)
+    throw new Error("App not found");
+  if (usesComposeStack(app))
+    throw new Error("A compose stack sets its own routing labels");
+  if (enabled && app.replicas < 2)
+    throw new Error("Sticky sessions need more than one replica");
+  await getDb()
+    .update(appsTable)
+    .set({ stickySessions: enabled, updatedAt: nowIso() })
+    .where(and(eq(appsTable.id, id), eq(appsTable.teamId, membership.teamId)));
+  await recordActivity(
+    "app",
+    `${enabled ? "Kept" : "Stopped keeping"} each visitor on the same replica for ${app.name}`,
+    user.name,
+    id,
+  );
+}
+
 // Off deletes every saved picture of the app: off means none are kept.
 export async function setAppScreenshots(
   id: string,
