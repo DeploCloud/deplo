@@ -11,6 +11,7 @@ const APP_FIELDS_SETTINGS = /* GraphQL */ `
   buildFallback
   rollbackKeep
   deployHookEnabled
+  replicas
   composeUpArgs
   ports {
     published
@@ -184,6 +185,23 @@ export const APPS_SETTINGS: McpToolDef[] = [
     query: /* GraphQL */ `
       mutation McpSetHealthCheck($id: String!, $input: HealthCheckInput) {
         updateAppHealthCheck(id: $id, input: $input) { ${APP_FIELDS_SETTINGS} }
+      }
+    `,
+  }),
+  tool({
+    name: "set_app_replicas",
+    title: "Run an app as several copies",
+    description:
+      "How many copies (1 to 10) of a single-image app run on its server. " +
+      "Refused with a Volume, a Bind or a published port. A deploy briefly uses twice the memory.",
+    group: "Apps",
+    requires: "configure_apps",
+    idempotent: true,
+    input: z.object({ appId, replicas: z.number().int().min(1).max(10) }),
+    variables: (a) => ({ id: a.appId, value: a.replicas }),
+    query: /* GraphQL */ `
+      mutation McpSetAppReplicas($id: String!, $value: Int!) {
+        setAppReplicas(id: $id, value: $value) { ${APP_FIELDS_SETTINGS} }
       }
     `,
   }),

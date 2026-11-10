@@ -18,6 +18,9 @@ import { RebuildContainerRow } from "@/components/apps/settings/rebuild-containe
 import { ConsoleSettingsForm } from "@/components/apps/settings/console-settings-form";
 import { HealthCheckForm } from "@/components/apps/settings/health-check-form";
 import { RestartLoopForm } from "@/components/apps/settings/restart-loop-form";
+import { ReplicasForm } from "@/components/apps/settings/replicas-form";
+import { serverLacks } from "@/lib/infra/agent-client/preflight";
+import { REPLICAS_CAPABILITY, replicasRefusal } from "@/lib/deploy/replicas";
 import { ZeroDowntimeForm } from "@/components/apps/settings/zero-downtime-form";
 import { ScreenshotsForm } from "@/components/apps/settings/screenshots-form";
 import { PublishedPortsForm } from "@/components/apps/settings/published-ports-form";
@@ -119,6 +122,20 @@ export default async function AppAdvancedSettingsPage(
             <ZeroDowntimeForm
               appId={project.id}
               enabled={project.zeroDowntimeDeploys}
+            />
+          </CapabilityFieldset>
+        )}
+
+        {!isComposeStack && (
+          <CapabilityFieldset cap="configure_apps">
+            <ReplicasForm
+              appId={project.id}
+              replicas={project.replicas}
+              refusal={replicasRefusal(project, 2)}
+              agentTooOld={await serverLacks(
+                project.serverId,
+                REPLICAS_CAPABILITY,
+              )}
             />
           </CapabilityFieldset>
         )}

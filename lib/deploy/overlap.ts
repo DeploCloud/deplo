@@ -11,6 +11,8 @@ export type OverlapStacks = {
   live: string;
   standIn: string;
   ports: App["ports"];
+  // Above 1 the deploy always overlaps: it is never allowed to fall back to a swap in place.
+  replicas: number;
 };
 
 export type DeployOverlap =

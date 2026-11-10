@@ -1513,6 +1513,13 @@
       "when": 1794150251012,
       "tag": "0215_zero_downtime_deploys",
       "breakpoints": true
+    },
+    {
+      "idx": 216,
+      "version": "7",
+      "when": 1794236651012,
+      "tag": "0216_app_replicas",
+      "breakpoints": true
     }
   ]
 }

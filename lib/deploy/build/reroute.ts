@@ -23,6 +23,7 @@ import { owningServerIdForDeployKey } from "./stack-lifecycle";
 import {
   parseStackHealthCheck,
   parseStackPorts,
+  parseStackReplicas,
   parseStackResources,
   readStackEnvFromYaml,
   readStackImageFromYaml,
@@ -128,6 +129,7 @@ async function rerouteAppLocked(
         ports: parseStackPorts(current.yaml, name),
         healthCheckKeys: parseStackHealthCheck(current.yaml, name),
         resourceKeys: parseStackResources(current.yaml, name),
+        replicas: parseStackReplicas(current.yaml, name),
       });
     }
 
