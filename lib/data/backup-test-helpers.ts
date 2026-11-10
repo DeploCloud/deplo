@@ -259,6 +259,7 @@ export async function seedRun(db: TestDb, opts: SeedRunOpts): Promise<string> {
     objectKey: opts.objectKey ?? `deplo/team_a/${targetKind}/t/${opts.id}.gz`,
     sizeBytes: opts.sizeBytes ?? 1024,
     decryptedSizeBytes: opts.decryptedSizeBytes ?? null,
+    heldMs: null,
     sha256: opts.sha256 ?? null,
     orphanedAt: opts.orphanedAt ?? null,
     status: opts.status ?? "success",

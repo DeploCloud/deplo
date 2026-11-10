@@ -8,6 +8,7 @@ import { SimpleTooltip } from "@/components/ui/tooltip";
 import { StatusDot } from "@/components/shared/status-badge";
 import { formatBytes, formatDateTime, timeAgo } from "@/lib/utils";
 import type { BackupRun } from "@/lib/types/backup";
+import { heldLabel } from "@/lib/backup-hold";
 import type { BackupTarget } from "./target";
 import { RunMenu } from "./run-menu";
 import {
@@ -115,6 +116,9 @@ export function RunRow({
           suppressHydrationWarning
         >
           {formatDateTime(run.startedAt)} · {destinationName}
+          {ok && heldLabel(run.heldMs) && (
+            <span> · {heldLabel(run.heldMs)}</span>
+          )}
           {ok && !run.sha256 && (
             <SimpleTooltip content="Taken before Deplo recorded checksums, so it cannot prove this file is unchanged">
               <span> · not checksummed</span>
