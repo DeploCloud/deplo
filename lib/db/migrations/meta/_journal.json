@@ -1534,6 +1534,13 @@
       "when": 1794313242964,
       "tag": "0218_restart_when_unresponsive",
       "breakpoints": true
+    },
+    {
+      "idx": 219,
+      "version": "7",
+      "when": 1794323151012,
+      "tag": "0219_app_sticky_sessions",
+      "breakpoints": true
     }
   ]
 }
