@@ -50,6 +50,8 @@ repository root.
 | [0041](0041-a-release-can-require-an-update-stop.md)                                      | A release can require an update stop; direct dialing stays only to bring a server onto its link. **Amends 0040**                             |
 | [0042](0042-the-panel-can-be-served-through-a-cloudflare-tunnel.md)                       | The panel can be served through a Cloudflare Tunnel Deplo sets up itself, so its machine accepts no incoming connection either               |
 | [0043](0043-a-cluster-is-led-by-its-own-leader-not-kubernetes.md)                         | A cluster is led by its own Go leader, on Deplo's machine by default, that never builds compose; no Kubernetes. **Proposed**                 |
+| [0044](0044-cluster-members-meet-through-a-relay-over-tcp.md)                             | Cluster members meet through a relay over TCP on 443, with end-to-end mTLS; no WireGuard mesh. **Proposed**                                  |
+| [0045](0045-a-cluster-leader-holds-sealed-failover-bundles.md)                            | A cluster leader holds each workload's last stack and variables, sealed to its own key, to fail over without Deplo. **Proposed**             |
 
 ## Amended or superseded
 
