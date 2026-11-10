@@ -1,7 +1,9 @@
 import { notFound } from "next/navigation";
 import { Settings2 } from "lucide-react";
 import { getAppBySlug } from "@/lib/data/apps/listing";
-import { listServerChoices } from "@/lib/data/servers/roster";
+import { getServerById } from "@/lib/data/servers/roster";
+import { listPlacementChoices } from "@/lib/data/clusters/choices";
+import { getCluster } from "@/lib/data/clusters/roster";
 import { neighboursOnNetwork } from "@/lib/data/name-clash";
 import { faviconSourceKind } from "@/lib/apps/favicon-shared";
 import { SettingsSection } from "@/components/apps/settings/settings-shared";
@@ -19,8 +21,8 @@ export default async function AppGeneralSettingsPage(
   if (!project) notFound();
 
   const detectable = faviconSourceKind(project) !== "none";
-  const [servers, neighbours] = await Promise.all([
-    listServerChoices(),
+  const [servers, neighbours, cluster, member] = await Promise.all([
+    listPlacementChoices(),
     neighboursOnNetwork(
       {
         teamId: project.teamId,
@@ -29,6 +31,8 @@ export default async function AppGeneralSettingsPage(
       },
       project.id,
     ),
+    project.clusterId ? getCluster(project.clusterId) : null,
+    project.clusterId ? getServerById(project.serverId) : null,
   ]);
 
   return (
@@ -46,7 +50,21 @@ export default async function AppGeneralSettingsPage(
           appId={project.id}
           name={project.name}
           serverId={project.serverId}
-          servers={servers}
+          servers={servers.map((c) => ({
+            id: c.id,
+            name: c.name,
+            isDeploHost: c.isDeploHost,
+            ...(c.kind === "cluster" ? { kind: "cluster" as const } : {}),
+          }))}
+          cluster={
+            cluster
+              ? {
+                  id: cluster.id,
+                  name: cluster.name,
+                  serverName: member?.name ?? "a server in it",
+                }
+              : null
+          }
           neighbours={neighbours}
         />
       </CapabilityFieldset>

@@ -5,6 +5,8 @@ export interface WizardServer {
   name: string;
   type: "localhost" | "remote";
   isDeploHost: boolean;
+  /** A cluster: placing on it lets its leader pick the server. */
+  kind?: "cluster";
 }
 
 export interface WizardBuildServer {

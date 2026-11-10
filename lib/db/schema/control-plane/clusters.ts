@@ -71,3 +71,22 @@ export const clusterMembers = pgTable(
   },
   (t) => [index("cluster_members_cluster_idx").on(t.clusterId)],
 );
+
+// The leader's placement, mirrored; only the placement module writes it. A null member is waiting for room.
+export const workloadPlacements = pgTable(
+  "workload_placements",
+  {
+    kind: text("kind").notNull(),
+    workloadId: text("workload_id").notNull(),
+    replica: integer("replica").notNull().default(0),
+    memberServerId: text("member_server_id").references(() => servers.id, {
+      onDelete: "set null",
+    }),
+    epoch: integer("epoch").notNull().default(0),
+    updatedAt: isoTimestamptz("updated_at").notNull(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.kind, t.workloadId, t.replica] }),
+    index("workload_placements_member_idx").on(t.memberServerId),
+  ],
+);

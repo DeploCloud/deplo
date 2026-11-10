@@ -13,6 +13,12 @@ import { domains as domainsTable } from "../../db/schema/control-plane/domains";
 import { getCurrentUser } from "../../auth/current-user";
 import { nowIso } from "../../ids";
 import { assertServerNotInCluster } from "../clusters/members";
+import {
+  askLeaderToPlace,
+  clearPlacement,
+  recordPlacement,
+} from "../clusters/placement";
+import { listClustersForTeam } from "../clusters/roster";
 import { canHostWorkloads, listServersForTeam } from "../servers/roster";
 import { hostPortClaimed } from "../host-ports";
 import { assertNoNameClash, withNetworkLock } from "../name-clash";
@@ -35,6 +41,7 @@ import {
   scopeRepoCredentials,
 } from "./source-guards";
 import type { App, DeploySource } from "../../types/app";
+import type { Cluster } from "../../types/cluster";
 import type { GitRepo } from "../../types/build";
 
 export interface UpdateSourceInput {
@@ -63,6 +70,8 @@ export async function moveAppToServer(
   if (!app || app.teamId !== membership.teamId)
     throw new Error("App not found");
   if (app.serverId === serverId) return;
+  // Leaving a cluster is moving the App, not only configuring it.
+  if (app.clusterId) await requireAppCapability(id, "move_apps");
   await writeAppSource(
     id,
     {
@@ -75,10 +84,51 @@ export async function moveAppToServer(
   );
 }
 
+/** Places an App on a cluster: the leader picks the member, the App moves there like a server move. */
+export async function moveAppToCluster(
+  id: string,
+  clusterId: string,
+): Promise<void> {
+  const { membership } = await requireAppCapability(id, "configure_apps");
+  const app = await loadAppGraph(id);
+  if (!app || app.teamId !== membership.teamId)
+    throw new Error("App not found");
+  const cluster = (await listClustersForTeam(membership.teamId)).find(
+    (c) => c.id === clusterId,
+  );
+  if (!cluster) throw new Error("That cluster isn't available to this team.");
+  if (app.clusterId === cluster.id) return;
+  // A refusal throws here, before anything stops.
+  const member = await askLeaderToPlace(cluster, {
+    kind: "app",
+    id,
+    name: app.name,
+    environmentId: app.environmentId ?? null,
+    limitMb: app.resources?.memoryMb ?? 0,
+  });
+  await writeAppSource(
+    id,
+    {
+      source: app.source,
+      repo: app.repo,
+      dockerImage: app.dockerImage,
+      serverId: member,
+    },
+    { deploy: app.source !== "upload" || app.upload != null, cluster },
+  );
+  await recordPlacement({
+    clusterId: cluster.id,
+    kind: "app",
+    workloadId: id,
+    members: [member],
+    epoch: cluster.leaderEpoch,
+  });
+}
+
 async function writeAppSource(
   id: string,
   input: UpdateSourceInput,
-  move?: { deploy: boolean },
+  move?: { deploy: boolean; cluster?: Cluster },
 ): Promise<void> {
   const { membership } = await requireAppCapability(id, "configure_apps");
   assertImageRef(input.source, input.dockerImage);
@@ -113,7 +163,7 @@ async function writeAppSource(
     current && input.serverId && input.serverId !== current.serverId,
   );
   if (current && moving) {
-    await assertServerNotInCluster(input.serverId!);
+    if (!move?.cluster) await assertServerNotInCluster(input.serverId!);
     if (current.dataCopyError && !current.migrateFromServerId)
       throw new Error(
         `${current.name}'s data did not come across from its migration - copy it again, or choose "Deploy anyway" on its page, before moving it.`,
@@ -233,7 +283,7 @@ async function writeAppSource(
           .set({
             serverId,
             // Moving to a server of its own leaves the cluster.
-            ...(isMove ? { clusterId: null } : {}),
+            ...(isMove ? { clusterId: move?.cluster?.id ?? null } : {}),
             buildServerId,
             migrateFromServerId,
             ...(isMove && pending ? { dataCopyError: "" } : {}),
@@ -300,6 +350,8 @@ async function writeAppSource(
       teamId: membership.teamId,
       reclaimVolumes: appOwnVolumeNames(after.stray),
     }).catch(() => {});
+
+  if (after.moved && !move?.cluster) await clearPlacement("app", id);
 
   if (after.moved && (move ? move.deploy : input.source !== "upload")) {
     try {

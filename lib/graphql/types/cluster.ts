@@ -15,6 +15,7 @@ import {
   getClusterTeams,
   listClusters,
 } from "@/lib/data/clusters/roster";
+import { listPlacementChoices } from "@/lib/data/clusters/choices";
 import {
   addClusterMember,
   listClusterJoinCandidates,
@@ -194,7 +195,36 @@ const ClusterSharingInputType = builder.inputType("ClusterSharingInput", {
   }),
 });
 
+const PlacementKindEnum = builder.enumType("PlacementKind", {
+  values: ["server", "cluster"] as const,
+});
+
+const PlacementChoiceRef = builder
+  .objectRef<{
+    kind: "server" | "cluster";
+    id: string;
+    name: string;
+    isDeploHost: boolean;
+  }>("PlacementChoice")
+  .implement({
+    description:
+      "Somewhere an App can be placed: a server, or a cluster whose leader picks the server. A cluster's members are never listed here.",
+    fields: (t) => ({
+      kind: t.field({ type: PlacementKindEnum, resolve: (c) => c.kind }),
+      id: t.exposeID("id"),
+      name: t.exposeString("name"),
+      isDeploHost: t.exposeBoolean("isDeploHost"),
+    }),
+  });
+
 builder.queryFields((t) => ({
+  placementChoices: t.field({
+    type: [PlacementChoiceRef],
+    authScopes: { loggedIn: true },
+    description:
+      "The servers and clusters the active team may place an App on, servers first.",
+    resolve: () => listPlacementChoices(),
+  }),
   clusters: t.field({
     type: [ClusterRef],
     authScopes: { loggedIn: true },

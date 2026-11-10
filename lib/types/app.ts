@@ -73,6 +73,8 @@ export interface App {
   restartWhenUnresponsive: boolean;
   // Set while the agent has paused those restarts because the app keeps failing.
   restartsPausedAt: string | null;
+  // The cluster the App is placed on; `serverId` is the member it runs on now.
+  clusterId?: string | null;
   // Beta: start the new version beside the old one and swap only once it is ready.
   zeroDowntimeDeploys: boolean;
   // Copies of a single-image app that run on its server (1 to 10).

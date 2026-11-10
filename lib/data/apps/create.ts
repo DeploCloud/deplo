@@ -17,6 +17,10 @@ import {
   assertServerNotInCluster,
   clusterMemberServerIdSet,
 } from "../clusters/members";
+import { askLeaderToPlace, recordPlacement } from "../clusters/placement";
+import { listClustersForTeam } from "../clusters/roster";
+import type { Cluster } from "../../types/cluster";
+import type { Server } from "../../types/server";
 import { canHostWorkloads, listServersForTeam } from "../servers/roster";
 import { assertServerAccessibleTx } from "../servers/team-access";
 import { isReservedSharedName } from "../../deploy/compose-lint/networks";
@@ -146,6 +150,8 @@ export interface CreateAppInput {
     targets?: EnvTarget[];
   }[];
   serverId?: string;
+  /** Place the App on a cluster: the leader picks the member. Not together with `serverId`. */
+  clusterId?: string;
   buildServerId?: string | null;
   build?: Partial<BuildConfig>;
   autoDeploy?: boolean;
@@ -293,10 +299,34 @@ export async function createApp(input: CreateAppInput): Promise<AppSummary> {
   const deployable = servers.filter(
     (s) => canHostWorkloads(s) && !members.has(s.id),
   );
+  if (input.clusterId && input.serverId)
+    throw new Error("Pick a cluster or a server, not both.");
   if (input.serverId) await assertServerNotInCluster(input.serverId);
   if (input.serverId && !deployable.some((s) => s.id === input.serverId))
     throw new Error("That server doesn't run apps.");
+  // The leader answers before anything is written, so a refusal leaves no App behind.
+  const appId = newId("prj");
+  let cluster: Cluster | null = null;
+  let clusterServer: Server | null = null;
+  if (input.clusterId) {
+    cluster =
+      (await listClustersForTeam(membership.teamId)).find(
+        (c) => c.id === input.clusterId,
+      ) ?? null;
+    if (!cluster) throw new Error("That cluster isn't available to this team.");
+    const memberId = await askLeaderToPlace(cluster, {
+      kind: "app",
+      id: appId,
+      name: input.name.trim(),
+      environmentId: placement.environmentId,
+      limitMb: 0,
+    });
+    clusterServer = servers.find((s) => s.id === memberId) ?? null;
+    if (!clusterServer)
+      throw new Error("That cluster's server isn't available to this team.");
+  }
   const server =
+    clusterServer ||
     (input.serverId && deployable.find((s) => s.id === input.serverId)) ||
     deployable[0];
   if (!server)
@@ -388,7 +418,7 @@ export async function createApp(input: CreateAppInput): Promise<AppSummary> {
   const logo = input.logo && isValidLogoValue(input.logo) ? input.logo : null;
 
   const project: App = {
-    id: newId("prj"),
+    id: appId,
     name: input.name.trim(),
     slug,
     teamId: membership.teamId,
@@ -486,6 +516,7 @@ export async function createApp(input: CreateAppInput): Promise<AppSummary> {
               createdByUserId: userId,
               hostReachBy: reach.length > 0 ? userId : null,
               traefikLabelsBy,
+              clusterId: cluster?.id ?? null,
             });
             await tx
               .insert(appBuildTable)
@@ -511,9 +542,19 @@ export async function createApp(input: CreateAppInput): Promise<AppSummary> {
       }
     },
   );
+  if (cluster)
+    await recordPlacement({
+      clusterId: cluster.id,
+      kind: "app",
+      workloadId: project.id,
+      members: [server.id],
+      epoch: cluster.leaderEpoch,
+    });
   await recordActivity(
     "app",
-    `Created app ${project.name}`,
+    cluster
+      ? `Created app ${project.name} on cluster ${cluster.name}`
+      : `Created app ${project.name}`,
     user.name,
     project.id,
   );

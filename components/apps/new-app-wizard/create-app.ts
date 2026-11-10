@@ -36,6 +36,7 @@ import { parseRepo } from "./source-hints";
 export function buildCreateAppInput({
   name,
   serverId,
+  clusterIds,
   buildServerId,
   source,
   isTemplate,
@@ -64,6 +65,8 @@ export function buildCreateAppInput({
 }: {
   name: string;
   serverId: string;
+  /** Ids in `serverId`'s place that name a cluster: the leader picks the server. */
+  clusterIds?: readonly string[];
   buildServerId: string | null;
   source: DeploySource | null;
   isTemplate: boolean;
@@ -95,7 +98,7 @@ export function buildCreateAppInput({
     return null;
   }
   if (!serverId) {
-    toast.error("Select a server to deploy to");
+    toast.error("Select a server or cluster to deploy to");
     return null;
   }
   if (useCompose && hasBlockingErrors(composeDiags)) {
@@ -176,7 +179,9 @@ export function buildCreateAppInput({
   return {
     name: name.trim(),
     source: deploySourceEnumName(useCompose ? "compose" : source!),
-    serverId,
+    ...(clusterIds?.includes(serverId)
+      ? { clusterId: serverId }
+      : { serverId }),
     buildServerId,
     composeUpArgs: useCompose ? composeUpArgs.trim() || null : null,
     dockerImage: image,
