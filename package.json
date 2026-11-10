@@ -4,6 +4,8 @@
   "deplo": {
     "agent": "0.5.3-canary.3",
     "agentMin": "0.5.1-canary.10",
+    "cluster": "",
+    "clusterMin": "",
     "updateStop": false,
     "requiresStop": "0.6.0",
     "securityFloor": "0.8.1"

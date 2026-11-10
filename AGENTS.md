@@ -10,7 +10,7 @@ on the deeper docs it links (this file points; it does not restate them).
 - **The USER manual is NOT in this repo.** It is [`DeploCloud/docs`](https://github.com/DeploCloud/docs),
   served at <https://deplo.build/docs>. Never add a user-facing page here.
 - **`docs/agents/`**: `issue-tracker.md`, `triage-labels.md`, `domain.md`, `releasing.md`,
-  `fleet-rollout.md`.
+  `fleet-rollout.md`, `cluster-rollout.md`.
 
 **Every count in this file is a snapshot of a moving tree** (46 Capabilities, 125 tables, 195 MCP
 tools, 42 ADRs, the pin list). The rule they carry is the durable part; re-derive the number
@@ -208,6 +208,12 @@ route `UI → GraphQL → lib/data/* → connectAgent(serverId) → agent`.
   A server that can never link (too old to, or left behind there on a version Deplo never read) is
   **unusable** until its server agent is reinstalled, and one that has not linked yet until it
   does: `agentReach` in `lib/version.ts` says which, and `connectAgent` refuses only the first.
+- **A third binary, `deplo-cluster`** (ADR-0043, separate repo `DeploCloud/deplo-cluster`): one Go
+  binary that runs as a cluster leader or, with `relay`, as a cluster relay. The control plane never
+  dials it - it reaches it through the server agent that supervises it (Hello `cluster.host`), so
+  the rule above holds. The panel pins it as `deplo.cluster` / `deplo.clusterMin` (empty until its
+  first release), read through `lib/version.ts` beside the agent pin; the tag workflow refuses a
+  pin with no `checksums.txt`. Shipping it: `docs/agents/cluster-rollout.md`.
 - **Don't generalize the exceptions:** installed **Plugins** (ADR-0005) are host-managed containers
   where Deplo _does_ own the socket (`lib/plugins/runtime.ts`) - a Plugin is not an App. That
   code is **dormant**: the feature is deferred (**ADR-0013**), so nothing installs a plugin and

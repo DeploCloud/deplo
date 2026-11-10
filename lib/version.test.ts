@@ -1,11 +1,18 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+
 import { deplo } from "../package.json";
 
 import {
   AGENT_MIN_VERSION,
   AGENT_VERSION,
+  CLUSTER_MIN_VERSION,
+  CLUSTER_VERSION,
+  clusterPinned,
+  versionAtLeast,
   agentReach,
   agentUpdateAvailable,
   agentUsable,
@@ -177,4 +184,36 @@ test("the security floor names a release no later than this one", () => {
     !isNewer(floor, DEPLO_VERSION),
     `v${floor} comes after this release`,
   );
+});
+
+// Nothing is released from deplo-cluster yet, so both pins start empty; an empty pin is the one explicit "unpinned" state.
+test("the cluster pin is unset, or set with a floor it satisfies", () => {
+  if (!CLUSTER_VERSION) {
+    assert.equal(CLUSTER_MIN_VERSION, "", "a floor without a pin");
+    assert.equal(clusterPinned(), false);
+    return;
+  }
+  assert.equal(clusterPinned(), true);
+  assert.ok(versionAtLeast(CLUSTER_VERSION, CLUSTER_MIN_VERSION || "0.0.0"));
+  assert.ok(!isNewer(CLUSTER_MIN_VERSION, CLUSTER_VERSION));
+});
+
+test("only a parseable version is a cluster pin", () => {
+  assert.equal(clusterPinned(""), false);
+  assert.equal(clusterPinned("dev"), false);
+  assert.equal(clusterPinned("v0.1.0"), true);
+});
+
+// The tag workflow is the guard that a pin names a published release (ADR-0037).
+test("the tag workflow refuses a cluster pin with no published checksums.txt", () => {
+  const yml = readFileSync(
+    join(import.meta.dirname, "..", ".github", "workflows", "docker-image.yml"),
+    "utf8",
+  );
+  assert.match(yml, /deplo\.cluster/);
+  assert.match(
+    yml,
+    /DeploCloud\/deplo-cluster\/releases\/download\/v\$\{pin\}\/checksums\.txt/,
+  );
+  assert.match(yml, /deplo\.cluster is unset/);
 });
