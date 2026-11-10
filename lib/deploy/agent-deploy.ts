@@ -21,10 +21,12 @@ import { agentPreflight } from "../infra/agent-client/preflight";
 import {
   DEPLOY_PULL_BASE_CAPABILITY,
   FILES_BIND_CHECK_CAPABILITY,
+  RESTART_CAPABILITY,
 } from "../infra/agent-client/hello-capabilities";
 import { stackFilesDir } from "./deploy-key";
 import { fileBindsUnderFilesDir, filesBindSources } from "./file-binds";
 import { loadRegistryAuthsForApp } from "../data/registries";
+import { restartRuleForApp } from "./restart-rule-app";
 import { and, eq } from "drizzle-orm";
 import { getDb } from "../db/client";
 import { appVolumes as appVolumesTable } from "../db/schema/control-plane/apps";
@@ -318,6 +320,9 @@ export async function runAgentDeploy(opts: {
       : await loadRegistryAuthsForApp(opts.appId),
   });
   applyAgentFeatures(req, opts, hello.capabilities, opts.sink);
+  if (!opts.buildOnly && hello.capabilities.includes(RESTART_CAPABILITY))
+    req.restartRule =
+      (await restartRuleForApp(opts.appId, opts.ready)) ?? undefined;
   if (opts.overlap && !opts.buildOnly) {
     const choice = deployOverlap({
       ports: opts.overlap.ports,
@@ -589,6 +594,7 @@ export async function buildDeployRequest(opts: {
     githubToken: "",
     pullBaseImages: opts.pullBase ?? false,
     standInComposeYaml: "",
+    restartRule: undefined,
   };
 
   if (opts.plan.kind === "compose") {

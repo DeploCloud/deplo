@@ -5,7 +5,11 @@ import { notFound } from "next/navigation";
 import { Hammer, SlidersHorizontal, Sparkles } from "lucide-react";
 import { getAppBySlug } from "@/lib/data/apps/listing";
 import { deployHookUrlMasked } from "@/lib/data/deploy-hook";
-import { listBuildServerChoices } from "@/lib/data/servers/roster";
+import {
+  getServerById,
+  listBuildServerChoices,
+} from "@/lib/data/servers/roster";
+import { AGENT_RESTART_VERSION, versionAtLeast } from "@/lib/version";
 import { hasAppCapability } from "@/lib/data/node-access";
 import { canExposePorts } from "@/lib/membership";
 import { listAppCronJobs } from "@/lib/data/crons/listing";
@@ -17,6 +21,7 @@ import { DangerSettings } from "@/components/apps/settings/danger-settings";
 import { RebuildContainerRow } from "@/components/apps/settings/rebuild-container-row";
 import { ConsoleSettingsForm } from "@/components/apps/settings/console-settings-form";
 import { HealthCheckForm } from "@/components/apps/settings/health-check-form";
+import { RestartWhenUnresponsiveForm } from "@/components/apps/settings/restart-when-unresponsive-form";
 import { RestartLoopForm } from "@/components/apps/settings/restart-loop-form";
 import { ZeroDowntimeForm } from "@/components/apps/settings/zero-downtime-form";
 import { ScreenshotsForm } from "@/components/apps/settings/screenshots-form";
@@ -52,6 +57,10 @@ export default async function AppAdvancedSettingsPage(
     mayConfigureTraefik && !usesComposeStack(project)
       ? await getAppTraefikLabels(project.id)
       : null;
+  const agentVersion = (await getServerById(project.serverId))?.agent?.version;
+  const restartNeedsNewerAgent =
+    Boolean(agentVersion) &&
+    !versionAtLeast(agentVersion!, AGENT_RESTART_VERSION);
   const cron = canCron ? await listAppCronJobs(project.id) : null;
 
   const isComposeStack = usesComposeStack(project);
@@ -105,6 +114,15 @@ export default async function AppAdvancedSettingsPage(
             />
           </CapabilityFieldset>
         )}
+
+        <CapabilityFieldset cap="configure_apps">
+          <RestartWhenUnresponsiveForm
+            appId={project.id}
+            enabled={project.restartWhenUnresponsive}
+            paused={project.restartsPausedAt != null}
+            needsNewerAgent={restartNeedsNewerAgent}
+          />
+        </CapabilityFieldset>
 
         <CapabilityFieldset cap="configure_apps">
           <RestartLoopForm
