@@ -37,6 +37,7 @@ import {
 } from "./validate";
 import { databaseExists, toDTO, type DatabaseDTO } from "./rows";
 import { renderDatabaseStackYaml, rerouteRequest } from "./stack";
+import { assertServerNotInCluster } from "../clusters/members";
 import { assertHostPortAvailable, resolveTeamServer } from "./server-ports";
 import type { Database, DatabaseType } from "../../types/database";
 
@@ -76,6 +77,7 @@ export async function createDatabase(input: {
     throw new Error("You don't have permission to publish ports");
 
   const server = await resolveTeamServer(teamId, input.serverId);
+  await assertServerNotInCluster(server.id);
 
   const nameTaken = await getDb()
     .select({ id: databasesTable.id })

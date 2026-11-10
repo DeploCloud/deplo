@@ -23,6 +23,7 @@ import {
   requireTeamWide,
 } from "../../membership";
 import { narrowedScope } from "../../auth/request-context";
+import { clusterMemberServerIdSet } from "../clusters/members";
 import type { Server } from "../../types/server";
 
 export async function listAllServers(): Promise<Server[]> {
@@ -101,8 +102,9 @@ export async function listServerChoices(): Promise<
 > {
   const teamId = await requireActiveTeamId();
   const self = deploHostSelfAddresses();
+  const members = await clusterMemberServerIdSet();
   return (await listServersForTeam(teamId))
-    .filter(canHostWorkloads)
+    .filter((s) => canHostWorkloads(s) && !members.has(s.id))
     .map((s) => ({
       id: s.id,
       name: s.name,

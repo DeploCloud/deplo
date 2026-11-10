@@ -32,6 +32,7 @@ import {
   renderDatabaseStackYaml,
   rerouteRequest,
 } from "./stack";
+import { assertServerNotInCluster } from "../clusters/members";
 import { assertHostPortAvailable, resolveTeamServer } from "./server-ports";
 
 export async function updateDatabase(
@@ -56,6 +57,7 @@ export async function updateDatabase(
     input.serverId ?? db.serverId,
   );
   const movingFrom = targetServer.id !== db.serverId ? db.serverId : null;
+  if (movingFrom) await assertServerNotInCluster(targetServer.id);
   if (movingFrom) {
     const clash = databaseHostClash(
       db.host,
@@ -176,6 +178,7 @@ export async function updateDatabase(
       .update(databasesTable)
       .set({
         serverId: targetServer.id,
+        ...(movingFrom ? { clusterId: null } : {}),
         exposedPublicly: exposed,
         exposedPort: newExposedPort,
         connectionStringEnc: connEnc,

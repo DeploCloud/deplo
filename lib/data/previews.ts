@@ -37,6 +37,7 @@ import { recordActivity } from "./activity";
 import { loadAppGraph } from "./app-graph-load";
 import { requireFolderCapabilityForApp } from "./folder-access";
 import { assertPreviewBaseNotAnotherTeams } from "./domains/hostname-claim";
+import { assertServerNotInCluster } from "./clusters/members";
 import { canHostWorkloads, listServersForTeam } from "./servers/roster";
 import { requireAppCapability } from "./node-access";
 import { secretImmutable } from "../types/env";
@@ -386,6 +387,7 @@ export async function setAppPreviewSettings(
         throw new Error(
           "Nothing is deployed on that server - pick one that runs apps",
         );
+      await assertServerNotInCluster(picked.id);
     }
     patch.previewServerId = wanted && wanted !== app.serverId ? wanted : null;
     const current = (await previewSettings(appId))?.serverId ?? app.serverId;

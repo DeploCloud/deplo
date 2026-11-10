@@ -1050,7 +1050,17 @@ type Cluster {
   """
   allTeams: Boolean
   createdAt: String
+
+  """
+  Failover is on from two members: with one there is nowhere to move an App to.
+  """
+  failoverOn: Boolean
   id: ID
+
+  """
+  Every server, with what stops it joining this cluster right now. Requires instanceAdmin.
+  """
+  joinCandidates: [ClusterJoinCandidate!]
 
   """
   Where the leader runs and whether it answers. Live, so select it on one cluster at a time. Requires instanceAdmin.
@@ -1059,12 +1069,48 @@ type Cluster {
 
   """The leader epoch Deplo last heard of; 0 before a leader has reported."""
   leaderEpoch: Int
+
+  """
+  The servers in this cluster, in the order they joined. Anyone the cluster is shared with sees them.
+  """
+  members: [ClusterMember!]
   name: String
 
   """
   Teams granted access when `allTeams` is false. Only an instance admin sees every team; anyone else sees the active team at most.
   """
   teams: [Team!]
+}
+
+type ClusterJoin {
+  """Apps that came along, where they run."""
+  apps: Int
+  databases: Int
+  member: ClusterMember
+
+  """One plain line while the cluster has a single member."""
+  note: String
+}
+
+"""A server the join picker offers; an empty `reasons` means it can join."""
+type ClusterJoinCandidate {
+  reasons: [ClusterJoinReason!]
+  serverId: ID
+  serverName: String
+}
+
+"""One thing that stops a server joining a cluster."""
+type ClusterJoinReason {
+  code: ClusterJoinReasonCode
+  message: String
+}
+
+enum ClusterJoinReasonCode {
+  agent_too_old
+  cannot_host
+  in_cluster
+  offline
+  other_teams
 }
 
 """
@@ -1090,6 +1136,18 @@ enum ClusterLeaderState {
   stopped
   unavailable
   unreachable
+}
+
+"""
+A server in a cluster. Nothing is ever placed on a member directly: the cluster decides.
+"""
+type ClusterMember {
+  """Set while the member is being emptied."""
+  emptyingSince: String
+  joinedAt: String
+  serverId: ID
+  serverName: String
+  status: ServerStatus
 }
 
 """
@@ -3754,6 +3812,11 @@ type Mutation {
   Add a basic-auth user to an app. The login is required on every one of its domains within seconds - the routing is re-applied to the running container, no redeploy needed.
   """
   addBasicAuthUser(appId: String!, password: String!, username: String!): BasicAuthUser
+
+  """
+  Add an existing server to a cluster. Its Apps and databases come along where they run: nothing restarts and no address changes. Refused with every blocking reason listed.
+  """
+  addClusterMember(clusterId: String!, serverId: String!): ClusterJoin
   addDomain(appId: String!, config: DomainConfigInput, name: String!): Domain
 
   """Add an already-registered user to the active team."""

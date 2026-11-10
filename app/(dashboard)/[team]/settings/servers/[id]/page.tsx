@@ -24,6 +24,7 @@ import {
   ServerHealthProvider,
   type ServerHealthState,
 } from "../server-health-provider";
+import { clusterOfServer } from "@/lib/data/clusters/members";
 import { ServerHealthChip } from "../server-health-chip";
 import { CheckStatusButton } from "../check-status-button";
 import { ServerDetailTabs } from "./server-detail-tabs";
@@ -47,6 +48,7 @@ export default async function ServerDetailPage(
   if (!server) notFound();
   if (server.importOnly) notFound();
 
+  const memberOf = await clusterOfServer(id);
   const expectedAgentVersion = AGENT_VERSION;
   const [teamIds, teamsRaw, policy, runs, workloads, agentUpdate, advice] =
     await Promise.all([
@@ -94,6 +96,11 @@ export default async function ServerDetailPage(
                   offlineAdvice={advice}
                 />
               </span>
+              {memberOf && (
+                <Badge variant="muted" className="shrink-0 whitespace-nowrap">
+                  Member of cluster {memberOf.name}
+                </Badge>
+              )}
               {isDeploHost && (
                 <Badge className="shrink-0 gap-1 whitespace-nowrap">
                   <DeploMark size={12} className="text-current" />

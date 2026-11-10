@@ -10,6 +10,7 @@ import {
 } from "drizzle-orm/pg-core";
 
 import { isoTimestamptz } from "../columns";
+import { clusters } from "./clusters";
 import { teams } from "./identity";
 import { environments } from "./projects";
 import { servers } from "./servers";
@@ -37,6 +38,9 @@ export const databases = pgTable(
     serverId: text("server_id")
       .notNull()
       .references(() => servers.id, { onDelete: "restrict" }),
+    clusterId: text("cluster_id").references(() => clusters.id, {
+      onDelete: "set null",
+    }),
     host: text("host").notNull(),
     port: integer("port").notNull(),
     connectionStringEnc: text("connection_string_enc").notNull(),

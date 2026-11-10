@@ -3,7 +3,11 @@ import "server-only";
 import * as cloudflare from "../../cloudflare/tunnel-api";
 import { decryptSecretOrThrow } from "../../crypto";
 import { getDb } from "../../db/client";
-import { clusters as clustersTable } from "../../db/schema/control-plane/clusters";
+import { eq } from "drizzle-orm";
+import {
+  clusterMembers as clusterMembersTable,
+  clusters as clustersTable,
+} from "../../db/schema/control-plane/clusters";
 import {
   panelTunnelReachesHost,
   panelTunnelIngress,
@@ -22,7 +26,7 @@ import { deploHostServer } from "../instance-settings/settings-store";
 import { loadPanelTunnel } from "../instance-settings/panel-tunnel-store";
 import { getServerById } from "../servers/roster";
 import { leaderHost } from "./host";
-import { getClusterById } from "./roster";
+import { clusterMemberServerIds, getClusterById } from "./roster";
 
 // Every party of a cluster reaches the others through the relay on Deplo's machine (ADR-0044). This module owns what
 // that relay is told and where its door sits in the proxy; it is internal, so the callers hold the gates.
@@ -73,8 +77,9 @@ const encode = (v: unknown): Uint8Array =>
  */
 export async function pushClusterRoster(
   clusterId: string,
-  memberServerIds: string[] = [],
+  given?: string[],
 ): Promise<RosterPush> {
+  const memberServerIds = given ?? (await clusterMemberServerIds(clusterId));
   const roster = await clusterRoster(clusterId, memberServerIds);
   const out: RosterPush = { roster, dialing: [], failed: [] };
   const relayHost = await deploHostServer();
@@ -117,9 +122,19 @@ export async function clustersOfServer(serverId: string): Promise<string[]> {
   const rows = await getDb()
     .select({ id: clustersTable.id, leader: clustersTable.leaderServerId })
     .from(clustersTable);
+  const member = await getDb()
+    .select({ id: clusterMembersTable.clusterId })
+    .from(clusterMembersTable)
+    .where(eq(clusterMembersTable.serverId, serverId));
   const onDeploHost = !!server && isDeploHostServer(server);
+  const inside = new Set(member.map((m) => m.id));
   return rows
-    .filter((r) => r.leader === serverId || (r.leader === null && onDeploHost))
+    .filter(
+      (r) =>
+        inside.has(r.id) ||
+        r.leader === serverId ||
+        (r.leader === null && onDeploHost),
+    )
     .map((r) => r.id);
 }
 

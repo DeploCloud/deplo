@@ -13,6 +13,10 @@ import {
 import { getCurrentUser } from "../../auth/current-user";
 import { newId, nowIso } from "../../ids";
 import { requireCapability, requireMembership } from "../../membership";
+import {
+  assertServerNotInCluster,
+  clusterMemberServerIdSet,
+} from "../clusters/members";
 import { canHostWorkloads, listServersForTeam } from "../servers/roster";
 import { assertServerAccessibleTx } from "../servers/team-access";
 import { isReservedSharedName } from "../../deploy/compose-lint/networks";
@@ -285,7 +289,11 @@ export async function createApp(input: CreateAppInput): Promise<AppSummary> {
   const servers = await listServersForTeam(membership.teamId);
   if (input.serverId && !servers.some((s) => s.id === input.serverId))
     throw new Error("That server isn't available to this team.");
-  const deployable = servers.filter(canHostWorkloads);
+  const members = await clusterMemberServerIdSet();
+  const deployable = servers.filter(
+    (s) => canHostWorkloads(s) && !members.has(s.id),
+  );
+  if (input.serverId) await assertServerNotInCluster(input.serverId);
   if (input.serverId && !deployable.some((s) => s.id === input.serverId))
     throw new Error("That server doesn't run apps.");
   const server =

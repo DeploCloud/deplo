@@ -3,12 +3,13 @@
 import * as React from "react";
 import { useRouter } from "@/lib/nav";
 import { toast } from "sonner";
-import { Settings2 } from "lucide-react";
+import { Plus, Settings2 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
@@ -16,6 +17,13 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { gqlAction } from "@/lib/graphql-client";
 import {
   ServerTeamAccess,
@@ -148,5 +156,106 @@ export function StartLeaderButton({ clusterId }: { clusterId: string }) {
     >
       Try again
     </Button>
+  );
+}
+
+export type JoinOption = {
+  serverId: string;
+  serverName: string;
+  /** The first thing that stops it joining; empty when it can. */
+  blocked: string;
+};
+
+export function JoinClusterButton({
+  clusterId,
+  options,
+}: {
+  clusterId: string;
+  options: JoinOption[];
+}) {
+  const router = useRouter();
+  const [open, setOpen] = React.useState(false);
+  const [serverId, setServerId] = React.useState("");
+  const [pending, startTransition] = React.useTransition();
+  const chosen = options.find((o) => o.serverId === serverId);
+
+  function onSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    startTransition(async () => {
+      const res = await gqlAction<{
+        addClusterMember: { note: string | null };
+      }>(
+        `mutation AddClusterMember($clusterId: String!, $serverId: String!) {
+          addClusterMember(clusterId: $clusterId, serverId: $serverId) { note }
+        }`,
+        { clusterId, serverId },
+      );
+      if (!res.ok) return void toast.error(res.error);
+      toast.success(res.data?.addClusterMember.note ?? "Server added");
+      setOpen(false);
+      setServerId("");
+      router.refresh();
+    });
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger asChild>
+        <Button variant="outline" size="sm">
+          <Plus className="size-4" />
+          Add server
+        </Button>
+      </DialogTrigger>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Add a server</DialogTitle>
+          <DialogDescription>
+            Its Apps and databases stay where they run, without a restart.
+          </DialogDescription>
+        </DialogHeader>
+        <form className="grid gap-4" onSubmit={onSubmit}>
+          <div className="space-y-2">
+            <Label htmlFor={`join-${clusterId}`}>Server</Label>
+            <Select value={serverId} onValueChange={setServerId}>
+              <SelectTrigger id={`join-${clusterId}`}>
+                <SelectValue placeholder="Choose a server" />
+              </SelectTrigger>
+              <SelectContent>
+                {options.map((o) => (
+                  <SelectItem
+                    key={o.serverId}
+                    value={o.serverId}
+                    disabled={Boolean(o.blocked)}
+                  >
+                    {o.serverName}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            {options.some((o) => o.blocked) && (
+              <ul className="space-y-1 text-xs text-muted-foreground">
+                {options
+                  .filter((o) => o.blocked)
+                  .map((o) => (
+                    <li key={o.serverId}>{o.blocked}</li>
+                  ))}
+              </ul>
+            )}
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setOpen(false)}
+              disabled={pending}
+            >
+              Cancel
+            </Button>
+            <Button type="submit" disabled={pending || !chosen}>
+              Add
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
   );
 }

@@ -13,6 +13,7 @@ import type { AgentConnection, ClusterHostStatus } from "./connection";
 import {
   AgentClusterMemberUnsupportedError,
   AgentClusterUnsupportedError,
+  AgentTooOldError,
   CLUSTER_HOST_UNSUPPORTED_MESSAGE,
   CLUSTER_MEMBER_UNSUPPORTED_MESSAGE,
   ClusterLeaderTooOldError,
@@ -138,6 +139,28 @@ export async function callClusterRelay(
       throw new ClusterLeaderTooOldError(here.version, min);
     return conn.clusterCall(method, payload);
   });
+}
+
+export type MemberProbe = "ok" | "too_old" | "offline";
+
+/** Whether the server's agent answers and can be a cluster member (Hello capability `cluster`). Never throws. */
+export async function probeClusterMember(
+  serverId: string,
+): Promise<MemberProbe> {
+  let conn: AgentConnection;
+  try {
+    conn = await connectAgent(serverId);
+  } catch (e) {
+    return e instanceof AgentTooOldError ? "too_old" : "offline";
+  }
+  try {
+    const hello = await conn.hello();
+    return hello.capabilities?.includes(CLUSTER_CAPABILITY) ? "ok" : "too_old";
+  } catch {
+    return "offline";
+  } finally {
+    conn.close();
+  }
 }
 
 /** Makes the server's agent a cluster party that dials every relay it knows, or stops it (ADR-0044). */

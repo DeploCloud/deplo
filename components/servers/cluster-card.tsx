@@ -5,8 +5,21 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Bone } from "@/components/ui/skeleton";
 import { getClusterLeader } from "@/lib/data/clusters/leader";
-import type { Cluster, ClusterLeader } from "@/lib/types/cluster";
-import { ClusterActions, StartLeaderButton } from "./cluster-actions";
+import {
+  listClusterJoinCandidates,
+  listClusterMembers,
+} from "@/lib/data/clusters/members";
+import {
+  failoverOn,
+  type Cluster,
+  type ClusterLeader,
+} from "@/lib/types/cluster";
+import type { ServerStatus } from "@/lib/types/server";
+import {
+  ClusterActions,
+  JoinClusterButton,
+  StartLeaderButton,
+} from "./cluster-actions";
 import type { TeamOption } from "./server-team-access";
 
 const LEADER_BADGE: Record<
@@ -19,6 +32,66 @@ const LEADER_BADGE: Record<
   unreachable: { label: "Not reachable", variant: "destructive" },
   unavailable: { label: "Can't start", variant: "warning" },
 };
+
+const MEMBER_BADGE: Record<
+  ServerStatus,
+  { label: string; variant: "success" | "warning" | "destructive" }
+> = {
+  online: { label: "Online", variant: "success" },
+  warning: { label: "Degraded", variant: "warning" },
+  error: { label: "Error", variant: "destructive" },
+  offline: { label: "Offline", variant: "destructive" },
+  provisioning: { label: "Provisioning", variant: "warning" },
+};
+
+async function Members({ clusterId }: { clusterId: string }) {
+  const [members, candidates] = await Promise.all([
+    listClusterMembers(clusterId),
+    listClusterJoinCandidates(clusterId),
+  ]);
+  const options = candidates.map((c) => ({
+    serverId: c.serverId,
+    serverName: c.serverName,
+    blocked: c.reasons[0]?.message ?? "",
+  }));
+  return (
+    <div className="space-y-2">
+      <div className="flex flex-wrap items-center gap-2 text-sm">
+        <span className="text-muted-foreground">
+          {members.length === 0
+            ? "No servers yet."
+            : `${members.length} server${members.length === 1 ? "" : "s"}`}
+        </span>
+        {failoverOn(members.length) ? (
+          <Badge variant="success">Failover on</Badge>
+        ) : (
+          members.length > 0 && (
+            <span className="text-xs text-muted-foreground">
+              Failover starts at two servers.
+            </span>
+          )
+        )}
+        <div className="ml-auto">
+          <JoinClusterButton clusterId={clusterId} options={options} />
+        </div>
+      </div>
+      {members.length > 0 && (
+        <ul className="space-y-1">
+          {members.map((m) => (
+            <li key={m.serverId} className="flex items-center gap-2 text-sm">
+              <span className="min-w-0 truncate font-medium">
+                {m.serverName}
+              </span>
+              <Badge variant={MEMBER_BADGE[m.status].variant}>
+                {MEMBER_BADGE[m.status].label}
+              </Badge>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
 
 async function LeaderLine({ clusterId }: { clusterId: string }) {
   const leader = await getClusterLeader(clusterId);
@@ -79,7 +152,9 @@ export function ClusterCard({
         </div>
       </CardHeader>
       <CardContent className="space-y-3">
-        <p className="text-sm text-muted-foreground">No servers yet.</p>
+        <Suspense fallback={<Bone>2 servers Failover on</Bone>}>
+          <Members clusterId={cluster.id} />
+        </Suspense>
         <Suspense
           fallback={<Bone>Leader runs on Deplo machine Answering</Bone>}
         >
