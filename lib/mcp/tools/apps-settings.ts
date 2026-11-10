@@ -12,6 +12,7 @@ const APP_FIELDS_SETTINGS = /* GraphQL */ `
   rollbackKeep
   deployHookEnabled
   replicas
+  stickySessions
   composeUpArgs
   ports {
     published
@@ -223,6 +224,23 @@ export const APPS_SETTINGS: McpToolDef[] = [
     query: /* GraphQL */ `
       mutation McpSetAppReplicas($id: String!, $value: Int!) {
         setAppReplicas(id: $id, value: $value) { ${APP_FIELDS_SETTINGS} }
+      }
+    `,
+  }),
+  tool({
+    name: "set_app_sticky_sessions",
+    title: "Keep each visitor on the same replica",
+    description:
+      "For an app with more than one replica: a cookie keeps each visitor on the same copy, " +
+      "for apps that hold a session in memory. Applies from the next deploy.",
+    group: "Apps",
+    requires: "configure_apps",
+    idempotent: true,
+    input: z.object({ appId, enabled: z.boolean() }),
+    variables: (a) => ({ id: a.appId, value: a.enabled }),
+    query: /* GraphQL */ `
+      mutation McpSetAppStickySessions($id: String!, $value: Boolean!) {
+        setAppStickySessions(id: $id, value: $value) { ${APP_FIELDS_SETTINGS} }
       }
     `,
   }),

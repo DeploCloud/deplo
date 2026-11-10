@@ -414,6 +414,7 @@ export async function createApp(input: CreateAppInput): Promise<AppSummary> {
     restartWhenUnresponsive: true,
     restartsPausedAt: null,
     replicas: 1,
+    stickySessions: false,
     autoDeploy: input.autoDeploy ?? true,
     deployHookEnabled: true,
     composeUpArgs: rawComposeArgs

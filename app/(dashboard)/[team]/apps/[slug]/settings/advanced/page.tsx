@@ -21,6 +21,7 @@ import { HealthCheckForm } from "@/components/apps/settings/health-check-form";
 import { RestartWhenUnresponsiveForm } from "@/components/apps/settings/restart-when-unresponsive-form";
 import { RestartLoopForm } from "@/components/apps/settings/restart-loop-form";
 import { ReplicasForm } from "@/components/apps/settings/replicas-form";
+import { StickySessionsForm } from "@/components/apps/settings/sticky-sessions-form";
 import { serverLacks } from "@/lib/infra/agent-client/preflight";
 import { REPLICAS_CAPABILITY, replicasRefusal } from "@/lib/deploy/replicas";
 import { ZeroDowntimeForm } from "@/components/apps/settings/zero-downtime-form";
@@ -151,6 +152,15 @@ export default async function AppAdvancedSettingsPage(
                 project.serverId,
                 REPLICAS_CAPABILITY,
               )}
+            />
+          </CapabilityFieldset>
+        )}
+
+        {!isComposeStack && project.replicas > 1 && (
+          <CapabilityFieldset cap="configure_apps">
+            <StickySessionsForm
+              appId={project.id}
+              enabled={project.stickySessions}
             />
           </CapabilityFieldset>
         )}

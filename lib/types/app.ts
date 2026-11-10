@@ -77,6 +77,8 @@ export interface App {
   zeroDowntimeDeploys: boolean;
   // Copies of a single-image app that run on its server (1 to 10).
   replicas: number;
+  // With more than one copy, a cookie keeps each visitor on the same one.
+  stickySessions: boolean;
   deployHookEnabled: boolean;
   composeUpArgs: string | null;
   rollbackKeep: number;
