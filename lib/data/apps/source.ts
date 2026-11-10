@@ -12,6 +12,7 @@ import {
 import { domains as domainsTable } from "../../db/schema/control-plane/domains";
 import { getCurrentUser } from "../../auth/current-user";
 import { nowIso } from "../../ids";
+import { assertServerNotInCluster } from "../clusters/members";
 import { canHostWorkloads, listServersForTeam } from "../servers/roster";
 import { hostPortClaimed } from "../host-ports";
 import { assertNoNameClash, withNetworkLock } from "../name-clash";
@@ -112,6 +113,7 @@ async function writeAppSource(
     current && input.serverId && input.serverId !== current.serverId,
   );
   if (current && moving) {
+    await assertServerNotInCluster(input.serverId!);
     if (current.dataCopyError && !current.migrateFromServerId)
       throw new Error(
         `${current.name}'s data did not come across from its migration - copy it again, or choose "Deploy anyway" on its page, before moving it.`,
@@ -230,6 +232,8 @@ async function writeAppSource(
           .update(appsTable)
           .set({
             serverId,
+            // Moving to a server of its own leaves the cluster.
+            ...(isMove ? { clusterId: null } : {}),
             buildServerId,
             migrateFromServerId,
             ...(isMove && pending ? { dataCopyError: "" } : {}),

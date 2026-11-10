@@ -11,6 +11,7 @@ import {
 } from "drizzle-orm/pg-core";
 
 import { isoTimestamptz } from "../columns";
+import { clusters } from "./clusters";
 import { deployments } from "./deployments";
 import { teams, users } from "./identity";
 import { environments, folders, projects } from "./projects";
@@ -38,6 +39,10 @@ export const apps = pgTable(
     serverId: text("server_id")
       .notNull()
       .references(() => servers.id, { onDelete: "restrict" }),
+    // Set once the App's server joined a cluster; `server_id` still names where it runs now.
+    clusterId: text("cluster_id").references(() => clusters.id, {
+      onDelete: "set null",
+    }),
     migrateFromServerId: text("migrate_from_server_id").references(
       () => servers.id,
       { onDelete: "set null" },

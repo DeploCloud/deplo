@@ -54,3 +54,20 @@ export const clusterLeaderKeys = pgTable(
   },
   (t) => [primaryKey({ columns: [t.clusterId, t.publicKey] })],
 );
+
+// A server in a cluster: at most one cluster per server, so the server id is the key.
+export const clusterMembers = pgTable(
+  "cluster_members",
+  {
+    serverId: text("server_id")
+      .primaryKey()
+      .references(() => servers.id, { onDelete: "cascade" }),
+    clusterId: text("cluster_id")
+      .notNull()
+      .references(() => clusters.id, { onDelete: "cascade" }),
+    joinedAt: isoTimestamptz("joined_at").notNull(),
+    // Set while the member is being emptied; no new work is placed on it.
+    emptyingSince: isoTimestamptz("emptying_since"),
+  },
+  (t) => [index("cluster_members_cluster_idx").on(t.clusterId)],
+);

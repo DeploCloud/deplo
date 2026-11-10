@@ -1,4 +1,5 @@
 import { builder } from "../builder";
+import { ServerStatusEnum } from "./server/server-ref";
 import { TeamRef } from "./team";
 import {
   createCluster,
@@ -14,7 +15,20 @@ import {
   getClusterTeams,
   listClusters,
 } from "@/lib/data/clusters/roster";
-import type { Cluster, ClusterLeader } from "@/lib/types/cluster";
+import {
+  addClusterMember,
+  listClusterJoinCandidates,
+  listClusterMembers,
+} from "@/lib/data/clusters/members";
+import {
+  failoverOn,
+  type Cluster,
+  type ClusterJoin,
+  type ClusterJoinCandidate,
+  type ClusterJoinReason,
+  type ClusterLeader,
+  type ClusterMember,
+} from "@/lib/types/cluster";
 
 const ClusterLeaderStateEnum = builder.enumType("ClusterLeaderState", {
   values: [
@@ -50,6 +64,75 @@ const ClusterLeaderRef = builder
     }),
   });
 
+const ClusterMemberRef = builder
+  .objectRef<ClusterMember>("ClusterMember")
+  .implement({
+    description:
+      "A server in a cluster. Nothing is ever placed on a member directly: the cluster decides.",
+    fields: (t) => ({
+      serverId: t.exposeID("serverId"),
+      serverName: t.exposeString("serverName"),
+      status: t.field({ type: ServerStatusEnum, resolve: (m) => m.status }),
+      joinedAt: t.exposeString("joinedAt"),
+      emptyingSince: t.exposeString("emptyingSince", {
+        nullable: true,
+        description: "Set while the member is being emptied.",
+      }),
+    }),
+  });
+
+const ClusterJoinReasonCodeEnum = builder.enumType("ClusterJoinReasonCode", {
+  values: [
+    "offline",
+    "agent_too_old",
+    "in_cluster",
+    "cannot_host",
+    "other_teams",
+  ] as const,
+});
+
+const ClusterJoinReasonRef = builder
+  .objectRef<ClusterJoinReason>("ClusterJoinReason")
+  .implement({
+    description: "One thing that stops a server joining a cluster.",
+    fields: (t) => ({
+      code: t.field({
+        type: ClusterJoinReasonCodeEnum,
+        resolve: (r) => r.code,
+      }),
+      message: t.exposeString("message"),
+    }),
+  });
+
+const ClusterJoinCandidateRef = builder
+  .objectRef<ClusterJoinCandidate>("ClusterJoinCandidate")
+  .implement({
+    description:
+      "A server the join picker offers; an empty `reasons` means it can join.",
+    fields: (t) => ({
+      serverId: t.exposeID("serverId"),
+      serverName: t.exposeString("serverName"),
+      reasons: t.field({
+        type: [ClusterJoinReasonRef],
+        resolve: (c) => c.reasons,
+      }),
+    }),
+  });
+
+const ClusterJoinRef = builder.objectRef<ClusterJoin>("ClusterJoin").implement({
+  fields: (t) => ({
+    member: t.field({ type: ClusterMemberRef, resolve: (j) => j.member }),
+    apps: t.exposeInt("apps", {
+      description: "Apps that came along, where they run.",
+    }),
+    databases: t.exposeInt("databases"),
+    note: t.exposeString("note", {
+      nullable: true,
+      description: "One plain line while the cluster has a single member.",
+    }),
+  }),
+});
+
 export const ClusterRef = builder.objectRef<Cluster>("Cluster").implement({
   description:
     "Several servers that act as one. A cluster is shared across teams like a server: `allTeams` or the teams in `teams`.",
@@ -71,6 +154,26 @@ export const ClusterRef = builder.objectRef<Cluster>("Cluster").implement({
       description:
         "Teams granted access when `allTeams` is false. Only an instance admin sees every team; anyone else sees the active team at most.",
       resolve: (c) => getClusterTeams(c.id),
+    }),
+    members: t.field({
+      type: [ClusterMemberRef],
+      authScopes: { loggedIn: true },
+      description:
+        "The servers in this cluster, in the order they joined. Anyone the cluster is shared with sees them.",
+      resolve: (c) => listClusterMembers(c.id),
+    }),
+    failoverOn: t.boolean({
+      authScopes: { loggedIn: true },
+      description:
+        "Failover is on from two members: with one there is nowhere to move an App to.",
+      resolve: async (c) => failoverOn((await listClusterMembers(c.id)).length),
+    }),
+    joinCandidates: t.field({
+      type: [ClusterJoinCandidateRef],
+      authScopes: { instanceAdmin: true },
+      description:
+        "Every server, with what stops it joining this cluster right now. Requires instanceAdmin.",
+      resolve: (c) => listClusterJoinCandidates(c.id),
     }),
     leader: t.field({
       type: ClusterLeaderRef,
@@ -146,6 +249,18 @@ builder.mutationFields((t) => ({
         allTeams: sharing.allTeams,
         teamIds: sharing.teamIds ?? [],
       }),
+  }),
+  addClusterMember: t.field({
+    type: ClusterJoinRef,
+    authScopes: { instanceAdmin: true },
+    description:
+      "Add an existing server to a cluster. Its Apps and databases come along where they run: nothing restarts and no address changes. Refused with every blocking reason listed.",
+    args: {
+      clusterId: t.arg.string({ required: true }),
+      serverId: t.arg.string({ required: true }),
+    },
+    resolve: (_r, { clusterId, serverId }) =>
+      addClusterMember(clusterId, serverId),
   }),
   startClusterLeader: t.field({
     type: ClusterLeaderRef,

@@ -3,6 +3,7 @@ import "server-only";
 import { and, asc, eq, inArray, or } from "drizzle-orm";
 import { getDb } from "../../db/client";
 import {
+  clusterMembers as clusterMembersTable,
   clusterTeams as clusterTeamsTable,
   clusters as clustersTable,
 } from "../../db/schema/control-plane/clusters";
@@ -95,6 +96,21 @@ export async function getCluster(id: string): Promise<Cluster | null> {
     )
     .limit(1);
   return granted.length > 0 ? cluster : null;
+}
+
+/** The servers that are members of a cluster, in the order they joined. */
+export async function clusterMemberServerIds(
+  clusterId: string,
+): Promise<string[]> {
+  const rows = await getDb()
+    .select({ id: clusterMembersTable.serverId })
+    .from(clusterMembersTable)
+    .where(eq(clusterMembersTable.clusterId, clusterId))
+    .orderBy(
+      asc(clusterMembersTable.joinedAt),
+      asc(clusterMembersTable.serverId),
+    );
+  return rows.map((r) => r.id);
 }
 
 export async function getClusterTeamIds(clusterId: string): Promise<string[]> {

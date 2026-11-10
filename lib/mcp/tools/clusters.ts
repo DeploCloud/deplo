@@ -27,7 +27,8 @@ export const CLUSTERS: McpToolDef[] = [
   tool({
     name: "get_cluster",
     title: "Get a cluster",
-    description: "One cluster in full, including which teams may use it.",
+    description:
+      "One cluster in full: which teams may use it, its member servers with their status, and whether failover is on (from two members).",
     group: "Servers",
     requires: "view",
     readOnly: true,
@@ -39,7 +40,12 @@ export const CLUSTERS: McpToolDef[] = [
     }),
     query: /* GraphQL */ `
       query McpGetCluster($id: String!) {
-        cluster(id: $id) { ${CLUSTER_FIELDS} teams { id name slug } }
+        cluster(id: $id) {
+          ${CLUSTER_FIELDS}
+          failoverOn
+          members { serverId serverName status joinedAt emptyingSince }
+          teams { id name slug }
+        }
       }
     `,
   }),
