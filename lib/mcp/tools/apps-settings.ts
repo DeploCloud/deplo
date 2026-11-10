@@ -189,6 +189,27 @@ export const APPS_SETTINGS: McpToolDef[] = [
     `,
   }),
   tool({
+    name: "set_app_restart_when_unresponsive",
+    title: "Restart an app when it stops answering",
+    description:
+      "Whether the server agent restarts the app after 3 failed checks in a row (its health check, or GET / on its port when it has a domain). Applies from the next deploy.",
+    group: "Apps",
+    requires: "configure_apps",
+    idempotent: true,
+    input: z.object({ appId, enabled: z.boolean() }),
+    variables: (a) => ({ id: a.appId, value: a.enabled }),
+    query: /* GraphQL */ `
+      mutation McpSetRestartWhenUnresponsive($id: String!, $value: Boolean!) {
+        setAppRestartWhenUnresponsive(id: $id, value: $value) {
+          id
+          slug
+          restartWhenUnresponsive
+          restartsPausedAt
+        }
+      }
+    `,
+  }),
+  tool({
     name: "set_app_replicas",
     title: "Run an app as several copies",
     description:

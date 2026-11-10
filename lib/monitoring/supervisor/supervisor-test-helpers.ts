@@ -184,6 +184,7 @@ export function frame(containers: ContainerStat[] = []): MetricsSample {
     containers,
     sampledAtUnixMs: 0,
     source: "cgroup2",
+    restartEvents: [],
   };
 }
 

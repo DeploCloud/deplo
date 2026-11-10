@@ -273,6 +273,16 @@ type App {
   restartLoopStoppedAt: String
 
   """
+  Whether the server agent restarts this app when it stops answering. On by default.
+  """
+  restartWhenUnresponsive: Boolean
+
+  """
+  When the agent paused those restarts because the app kept failing; null while they are on.
+  """
+  restartsPausedAt: String
+
+  """
   How many previous deployments this app can be rolled back to (0-20, default 3). Retention: its server keeps this many of the app's images behind the running one. 0 means there is nothing to go back to.
   """
   rollbackKeep: Int
@@ -4611,6 +4621,11 @@ type Mutation {
   Turn restart loop protection on or off for one app. Applies at once - there is nothing to redeploy.
   """
   setAppRestartLoopGuard(id: String!, value: Boolean!): App
+
+  """
+  Turn automatic restart on or off for one app: on, the server agent restarts it when it stops answering. Applies from the next deploy.
+  """
+  setAppRestartWhenUnresponsive(id: String!, value: Boolean!): App
 
   """
   How many previous deployments this app can be rolled back to (0-20, default 3). It is retention: the app's server keeps this many of its images behind the running one. Takes effect on the next sweep - lowering it removes nothing now, and raising it cannot bring back images already removed.
