@@ -25,6 +25,13 @@ import { logMaxDays } from "../instance-settings/settings-store";
 import type { App } from "../../types/app";
 import type { Server } from "../../types/server";
 import {
+  ALL_REPLICAS_PREFIX,
+  byReplicaIndex,
+  replicaGroupOf,
+  tagReplicas,
+  withReplicaGroups,
+} from "./replicas";
+import {
   loadOverviewAppStates,
   type OverviewAppState,
 } from "./overview-app-states";
@@ -60,6 +67,8 @@ export interface ConsoleInstance {
   restartCount: number;
   startedAtUnix: number;
   answer?: string;
+  // `web-2` when this is one of several copies of its service, else null.
+  replica?: string | null;
 }
 
 export function containerName(p: App, deployKey: string = p.slug): string {
@@ -70,9 +79,9 @@ export async function listInstances(p: App): Promise<ConsoleInstance[]> {
   const exposeService = await primaryDomainApp(p.id);
   const conn = await connectAgent(p.serverId);
   try {
-    return orderInstances(
-      p,
-      await conn.listInstances(p.id, p.slug, exposeService),
+    return tagReplicas(
+      orderInstances(p, await conn.listInstances(p.id, p.slug, exposeService)),
+      p.slug,
     );
   } finally {
     conn.close();
@@ -88,7 +97,7 @@ function orderInstances(
     if (own(a) !== own(b)) return own(a) ? -1 : 1;
     if (a.exposed !== b.exposed) return a.exposed ? -1 : 1;
     if (a.running !== b.running) return a.running ? -1 : 1;
-    return a.service.localeCompare(b.service);
+    return a.service.localeCompare(b.service) || byReplicaIndex(a, b);
   });
 }
 
@@ -154,7 +163,7 @@ export async function getLogsInfo(appId: string): Promise<LogsInfo | null> {
     running: found.instances.some((i) => i.running),
     streamable: found.real,
     unreachable: found.unreachable,
-    instances: found.instances,
+    instances: withReplicaGroups(found.instances, p.slug),
     supportsTimeline,
     logMaxDays: maxDays,
   };
@@ -413,7 +422,13 @@ export async function resolveLogsTarget(
   appId: string,
   target?: string,
 ): Promise<
-  | { ok: true; instance: ConsoleInstance; server: Server | undefined }
+  | {
+      ok: true;
+      instance: ConsoleInstance;
+      // Every copy to read when the target is a service with replicas; one entry otherwise.
+      group: ConsoleInstance[];
+      server: Server | undefined;
+    }
   | {
       ok: false;
       reason: "not-found" | "no-instance" | "unreachable" | "forbidden";
@@ -433,12 +448,21 @@ export async function resolveLogsTarget(
       return { ok: false, reason: "unreachable" };
     throw e;
   }
-  const pick = target
-    ? (instances.find((i) => i.name === target) ??
-      instances.find((i) => i.service === target))
-    : instances[0];
+  const all = target?.startsWith(ALL_REPLICAS_PREFIX)
+    ? target.slice(ALL_REPLICAS_PREFIX.length)
+    : null;
+  const pick =
+    all !== null
+      ? instances.find((i) => i.service === all)
+      : target
+        ? (instances.find((i) => i.name === target) ??
+          instances.find((i) => i.service === target))
+        : instances[0];
   if (!pick) return { ok: false, reason: "no-instance" };
-  return { ok: true, instance: pick, server: await serverOf(p) };
+  // A named copy reads alone; the service, or the default, reads every copy.
+  const exact = all === null && !!target && pick.name === target;
+  const group = exact ? [pick] : replicaGroupOf(instances, pick);
+  return { ok: true, instance: group[0]!, group, server: await serverOf(p) };
 }
 
 export async function execInContainer(

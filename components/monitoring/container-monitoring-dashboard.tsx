@@ -58,6 +58,7 @@ function netNoteFor(c: InstanceMetrics, all: InstanceMetrics[]): string | null {
 
 interface InstanceMetrics {
   name: string;
+  replica?: string | null;
   running: boolean;
   cpu: number;
   memUsed: number;
@@ -96,7 +97,7 @@ interface ContainerLive extends ContainerSample {
 }
 
 const SAMPLE_FIELDS = `online ts cpu memUsed memLimit memPct netRx netTx blockRead blockWrite pids running containers hostCores`;
-const LIVE_FIELDS = `${SAMPLE_FIELDS} unsupported instances { name running cpu memUsed memLimit memPct netRx netTx blockRead blockWrite pids state health restartCount netNsId netNsHost }`;
+const LIVE_FIELDS = `${SAMPLE_FIELDS} unsupported instances { name replica running cpu memUsed memLimit memPct netRx netTx blockRead blockWrite pids state health restartCount netNsId netNsHost }`;
 
 function rate(cur: number, prev: number, dtSec: number): number {
   if (dtSec <= 0) return 0;
@@ -575,7 +576,9 @@ function ContainerBreakdown({ instances }: { instances: InstanceMetrics[] }) {
               {instances.map((c) => (
                 <tr key={c.name} className="border-b last:border-0">
                   <td className="px-4 py-2">
-                    <span className="font-mono text-xs">{c.name}</span>
+                    <span className="font-mono text-xs" title={c.name}>
+                      {c.replica ?? c.name}
+                    </span>
                     {netNoteFor(c, instances) && (
                       <span className="mt-1 block text-xs text-muted-foreground">
                         {netNoteFor(c, instances)}

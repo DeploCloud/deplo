@@ -189,7 +189,7 @@ export function ConsolePane({
                           inst.running ? "bg-[var(--success)]" : "bg-ring",
                         )}
                       />
-                      {inst.service}
+                      {inst.replica ?? inst.service}
                       {inst.exposed ? (
                         <span className="text-[10px] text-muted-foreground">
                           app

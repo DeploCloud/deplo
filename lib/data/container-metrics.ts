@@ -10,6 +10,7 @@ import {
   latestContainerSample,
   latestContainerInstances,
 } from "../monitoring/container-history";
+import { replicaIndexOf, replicaLabels } from "../deploy/replica-names";
 import { metricsStreamUnsupported } from "../monitoring/stream-modes";
 
 export interface ContainerInstanceMetrics {
@@ -29,6 +30,8 @@ export interface ContainerInstanceMetrics {
   restartCount: number;
   netNsId: number;
   netNsHost: boolean;
+  // `web-2` when this is one of several copies of its service, else null.
+  replica?: string | null;
 }
 
 export interface ContainerMetricsSample {
@@ -99,6 +102,29 @@ function toInstance(s: PbContainerStat): ContainerInstanceMetrics {
     netNsId: s.netNsId,
     netNsHost: s.netNsHost,
   };
+}
+
+// Names the copies of a service in a breakdown (`web-1`, `web-2`); the totals already count every one.
+export function tagReplicaMetrics(
+  instances: ContainerInstanceMetrics[],
+  slug: string,
+): ContainerInstanceMetrics[] {
+  const labels = replicaLabels(
+    instances.map((i) => i.name),
+    slug,
+  );
+  const tagged = instances.map((i) => ({
+    ...i,
+    replica: labels.get(i.name)?.label ?? null,
+  }));
+  if (labels.size === 0) return tagged;
+  const key = (i: ContainerInstanceMetrics) =>
+    labels.get(i.name)?.service ?? "";
+  return tagged.sort(
+    (a, b) =>
+      key(a).localeCompare(key(b)) ||
+      (replicaIndexOf(a.name) ?? 0) - (replicaIndexOf(b.name) ?? 0),
+  );
 }
 
 export interface HostCapacity {
@@ -181,16 +207,25 @@ export async function getAppMetrics(
   if (!(await hasAppCapability(appId, "view_metrics"))) return null;
   const app = await loadTeamApp(appId, teamId);
   if (!app) return null;
-  return fromBuffer(app.id, app.serverId ?? null);
+  return fromBuffer(app.id, app.serverId ?? null, app.slug);
 }
 
-function fromBuffer(id: string, serverId: string | null): ContainerMetrics {
+function fromBuffer(
+  id: string,
+  serverId: string | null,
+  slug?: string,
+): ContainerMetrics {
   const s = latestContainerSample(id);
   if (!s) {
     const stale = Boolean(serverId) && metricsStreamUnsupported(serverId!);
     return unavailable(id, Date.now(), stale);
   }
-  return { ...s, unsupported: false, instances: latestContainerInstances(id) };
+  const instances = latestContainerInstances(id);
+  return {
+    ...s,
+    unsupported: false,
+    instances: slug ? tagReplicaMetrics(instances, slug) : instances,
+  };
 }
 
 export async function getAppMetricsHistory(

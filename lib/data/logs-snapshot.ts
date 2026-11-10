@@ -3,6 +3,7 @@ import "server-only";
 import { StringDecoder } from "node:string_decoder";
 import { LINK_OFFLINE_MESSAGE } from "../agent-reachability";
 import { connectAgent } from "../infra/agent-client/connect";
+import { followGroup, logsStreamName } from "../logs/follow";
 import { resolveLogsTarget } from "./console";
 import { resolveDatabaseLogsTarget } from "./database-console";
 
@@ -76,9 +77,9 @@ export async function appLogsSnapshot(
 
   const tail = clampLines(opts.lines);
   const conn = await connectAgent(resolved.server.id);
-  const handle = conn.followLogs(appId, resolved.instance.name, tail);
+  const handle = followGroup(conn, appId, resolved.group, tail);
   const { text, truncated } = await drain(handle, () => conn.close());
-  return { container: resolved.instance.name, text, truncated };
+  return { container: logsStreamName(resolved.group), text, truncated };
 }
 
 export async function databaseLogsSnapshot(

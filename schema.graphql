@@ -1105,6 +1105,11 @@ type ConsoleInstance {
   image: String
   name: String
   openStdin: Boolean
+
+  """
+  `web-2` when this is one of several replicas of its service; null for a lone container. Read from the container name, never stored.
+  """
+  replica: String
   running: Boolean
   service: String
   tty: Boolean
@@ -1141,6 +1146,9 @@ type ContainerInstanceMetrics {
   netRx: Float
   netTx: Float
   pids: Int
+
+  """`web-2` when this is one of several replicas; else null."""
+  replica: String
 
   """
   How many times docker has restarted this container - what tells a container that is starting from one that has been dying for an hour.
