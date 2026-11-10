@@ -1041,6 +1041,65 @@ type ClonedRepository {
   url: String
 }
 
+"""
+Several servers that act as one. A cluster is shared across teams like a server: `allTeams` or the teams in `teams`.
+"""
+type Cluster {
+  """
+  True (the default) when every team may use this cluster. False restricts it to `teams`.
+  """
+  allTeams: Boolean
+  createdAt: String
+  id: ID
+
+  """
+  Where the leader runs and whether it answers. Live, so select it on one cluster at a time. Requires instanceAdmin.
+  """
+  leader: ClusterLeader
+
+  """The leader epoch Deplo last heard of; 0 before a leader has reported."""
+  leaderEpoch: Int
+  name: String
+
+  """
+  Teams granted access when `allTeams` is false. Only an instance admin sees every team; anyone else sees the active team at most.
+  """
+  teams: [Team!]
+}
+
+"""
+Where a cluster's leader runs and whether it answers, asked live of the server that runs it.
+"""
+type ClusterLeader {
+  """One plain sentence on why it is not running; empty when it is."""
+  message: String
+
+  """It runs on the machine Deplo itself runs on."""
+  onDeploHost: Boolean
+
+  """The server it runs on; null when Deplo's machine has no server entry."""
+  serverId: ID
+  serverName: String
+  state: ClusterLeaderState
+  version: String
+}
+
+enum ClusterLeaderState {
+  not_installed
+  running
+  stopped
+  unavailable
+  unreachable
+}
+
+"""
+Which teams may use a cluster. allTeams: true opens it to every team; false restricts it to teamIds.
+"""
+input ClusterSharingInput {
+  allTeams: Boolean!
+  teamIds: [String!]
+}
+
 enum CommitSignature {
   unverified
   verified
@@ -3869,6 +3928,11 @@ type Mutation {
 
   """Create a backup schedule. Returns true."""
   createBackup(input: CreateBackupInput!): Boolean
+
+  """
+  Create a cluster and ask the machine that leads it to start its leader. A leader that cannot start does not undo the cluster: read `leader` for why.
+  """
+  createCluster(name: String!, sharing: ClusterSharingInput!): Cluster
   createCronJob(
     input: CronJobInput!
     targetId: ID!
@@ -4340,6 +4404,7 @@ type Mutation {
   """
   removeUserFromTeam(input: UserTeamInput!): [UserTeamAccess!]
   renameApp(id: String!, name: String!): App
+  renameCluster(id: String!, name: String!): Cluster
 
   """
   Rename a database - its DISPLAY name only. The container's identity (compose project, data volume, DNS name and therefore the connection string) is fixed at creation and is untouched, so nothing restarts. The name must be unique within the team.
@@ -4689,6 +4754,9 @@ type Mutation {
   """
   setCertificateEmail(email: String!): [CertificateAccount!]
 
+  """Change which teams may use a cluster, with the same rules as a server."""
+  setClusterTeams(id: String!, sharing: ClusterSharingInput!): Cluster
+
   """
   Turn the container console on or off for one app. Off closes the attach sessions already open and hides the console everywhere.
   """
@@ -4869,6 +4937,11 @@ type Mutation {
   """
   skipDeploMoveWorkload(id: String!, kind: DeploMoveWorkloadKind!, workloadId: String!): DeploMoveStatus
   startApp(id: String!): App
+
+  """
+  Start the cluster's leader where it runs unless it already answers. Answers with the leader's state, never an error for a leader that could not start.
+  """
+  startClusterLeader(id: String!): ClusterLeader
 
   """
   Start a connected move: everything here is replaced by a copy of the old Deplo, then each app and database is deployed on its mapped server and filled with its data. The old Deplo keeps running.
@@ -5503,6 +5576,10 @@ type Query {
 
   """Where Deplo can create a repository for a Deploy button's project."""
   cloneDestinations: CloneDestinations
+  cluster(id: String!): Cluster
+
+  """The clusters the active team may use, by creation order."""
+  clusters: [Cluster!]
 
   """
   The service names a stack would share with something already on the network it lands on - what `createApp` refuses it over, asked before creating so the caller can pass `renameClashes` instead. Empty when nothing clashes.

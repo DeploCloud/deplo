@@ -1541,6 +1541,13 @@
       "when": 1794323151012,
       "tag": "0219_app_sticky_sessions",
       "breakpoints": true
+    },
+    {
+      "idx": 220,
+      "version": "7",
+      "when": 1794400000000,
+      "tag": "0220_clusters",
+      "breakpoints": true
     }
   ]
 }

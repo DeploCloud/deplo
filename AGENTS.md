@@ -635,7 +635,10 @@ They cover shared controls, copy, spacing, dialogs, themes and illustrations.
   `/<team slug>/apps/web`. Paths are written FLAT in the code and take the prefix only at the
   navigation boundary - `withTeam()` inside `components/ui/link.tsx` and `lib/nav.ts`, which
   eslint makes the only way in. The `deplo_team` cookie is now just "the last team visited".
-  **Servers are the one shared cross-team resource**, never team-scope server records.
+  **Servers and clusters are the two shared cross-team resources** (a cluster is several servers
+  acting as one, `lib/data/clusters/`): both carry `all_teams` plus a `*_teams` grant list, team
+  reads filter them (`listServersForTeam` / `listClustersForTeam`), and only an instance admin
+  writes them. Never team-scope a server or cluster record.
 - **A Project is an "advanced folder" with an environment dropdown - it has no page of its own.**
   It is browsed only on the Overview drill-in (`app/(dashboard)/[team]/projects/*` are redirect stubs);
   each Environment owns its own Apps and shared vars.

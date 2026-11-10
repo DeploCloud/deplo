@@ -4,6 +4,7 @@ import { eq } from "drizzle-orm";
 import { getDb } from "../../db/client";
 import { apps as appsTable } from "../../db/schema/control-plane/apps";
 import { backupDestination as destinationTable } from "../../db/schema/control-plane/backups";
+import { clusters as clustersTable } from "../../db/schema/control-plane/clusters";
 import { databases as databasesTable } from "../../db/schema/control-plane/databases";
 import { servers as serversTable } from "../../db/schema/control-plane/servers";
 import { isDeploHostServer } from "../../deploy/domains";
@@ -67,6 +68,14 @@ export async function assertNoWorkloads(id: string): Promise<void> {
 
 async function assertServerRemovable(id: string): Promise<void> {
   await assertNoWorkloads(id);
+  const leads = await getDb()
+    .select({ name: clustersTable.name })
+    .from(clustersTable)
+    .where(eq(clustersTable.leaderServerId, id));
+  if (leads.length > 0)
+    throw new Error(
+      `Move the leader of cluster ${nameList(leads.map((c) => c.name))} to another server first.`,
+    );
   const destinations = await getDb()
     .select({ name: destinationTable.name, teamId: destinationTable.teamId })
     .from(destinationTable)

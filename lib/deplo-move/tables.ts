@@ -74,6 +74,11 @@ export const MOVE_TABLES: Readonly<Record<string, TablePolicy>> = {
   cron_job_env: { kind: "copy", rekey: { value_enc: SECRET } },
   cron_jobs: COPY,
   cron_runs: COPY,
+  // A cluster's leader runs on a server of the old map (null is the machine itself).
+  cluster_teams: COPY,
+  clusters: COPY,
+  // Sealed to the old machine's leader; the new one makes its own key.
+  cluster_leader_keys: { kind: "skip", clear: true },
   database_mounts: COPY,
   databases: {
     kind: "copy",

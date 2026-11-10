@@ -8,6 +8,7 @@ import {
   BACKUP_SCHEDULES,
   DESTINATIONS,
 } from "./backups";
+import { CLUSTERS } from "./clusters";
 import { CRON, CRON_ADMIN } from "./cron";
 import { DATABASES } from "./databases";
 import { DATABASES_SETTINGS } from "./databases-settings";
@@ -48,6 +49,7 @@ export const MCP_TOOLS: McpToolDef[] = [
   ...GIT,
   ...REGISTRIES_AND_ACCESS,
   ...SERVERS,
+  ...CLUSTERS,
   ...STRUCTURE,
   ...APP_SHARED_ENV,
   ...TEAM_ADMIN,
