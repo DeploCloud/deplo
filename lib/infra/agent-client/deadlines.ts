@@ -20,6 +20,8 @@ export const S3_OP_DEADLINE_MS = 60_000;
 export const SELF_UPDATE_TIMEOUT_MS = 2 * 60_000;
 export const CLUSTER_INSTALL_TIMEOUT_MS = 2 * 60_000;
 export const CLUSTER_CALL_TIMEOUT_MS = 2 * 60_000;
+// The agent gives a copy 30 minutes; the margin covers the answer after it.
+export const CLUSTER_IMAGE_COPY_TIMEOUT_MS = 35 * 60_000;
 export const SELF_UNINSTALL_TIMEOUT_MS = 60_000;
 export const STACK_DEADLINE_MS = 3 * 60_000;
 export const VOLUME_COPY_DEADLINE_MS = 7 * 60 * 60_000;

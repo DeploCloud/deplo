@@ -3,6 +3,7 @@ import "server-only";
 import { and, eq, inArray, lte, ne, notInArray, sql } from "drizzle-orm";
 import { completePendingAppMigration } from "../../data/app-migration";
 import { appendLog, finalizeDeploymentLogs } from "../../data/deployment-logs";
+import { copyImageAfterDeploy } from "../../data/clusters/images";
 import { sweepSupersededAppImages } from "../../data/docker-cleanup/deploy-sweep";
 import { getDb } from "../../db/client";
 import { apps as appsTable } from "../../db/schema/control-plane/apps";
@@ -286,6 +287,7 @@ export async function commitOutcome(
 // Off the queue lane on purpose: a sweep or a screenshot takes long, and the next deploy must not wait on it.
 export function afterDeployReady(depId: string, serverId: string): void {
   captureAfterReady(depId);
+  copyImageAfterDeploy(depId, serverId);
   void sweepSupersededAppImages(serverId).then((freed) => {
     if (freed <= 0) return;
     log(

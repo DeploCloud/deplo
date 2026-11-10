@@ -3,6 +3,7 @@ import "server-only";
 import type { AgentConnection } from "./connection";
 import {
   CLUSTER_CALL_TIMEOUT_MS,
+  CLUSTER_IMAGE_COPY_TIMEOUT_MS,
   CLUSTER_INSTALL_TIMEOUT_MS,
   HELLO_TIMEOUT_MS,
 } from "./deadlines";
@@ -20,6 +21,7 @@ export function clusterRpc(
   | "clusterCall"
   | "setClusterMember"
   | "clusterWatch"
+  | "copyClusterImage"
 > {
   const { client } = channel;
   return {
@@ -70,6 +72,18 @@ export function clusterRpc(
         }))
           yield l.line;
       })();
+    },
+    async copyClusterImage(imageRef, targetFingerprint, keep) {
+      const r = await unary(
+        client.copyClusterImage.bind(client),
+        { imageRef, targetFingerprint, keep },
+        CLUSTER_IMAGE_COPY_TIMEOUT_MS,
+      );
+      return {
+        alreadyPresent: r.alreadyPresent,
+        bytes: Number(r.bytes),
+        pruned: r.pruned,
+      };
     },
     async clusterCall(method, payload) {
       const r = await unary(

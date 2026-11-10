@@ -71,3 +71,11 @@ export interface ClusterJoin {
   /** One plain line when the cluster still has a single member. */
   note: string | null;
 }
+
+/** An App whose newest release is still being copied: "web: on 2 of 3 servers". */
+export interface ClusterImageProgress {
+  appId: ID;
+  appName: string;
+  held: number;
+  total: number;
+}

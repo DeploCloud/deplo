@@ -11,10 +11,12 @@ import {
 import { connectAgent } from "./connect";
 import type { AgentConnection, ClusterHostStatus } from "./connection";
 import {
+  AgentClusterImagesUnsupportedError,
   AgentClusterMemberUnsupportedError,
   AgentClusterUnsupportedError,
   AgentTooOldError,
   CLUSTER_HOST_UNSUPPORTED_MESSAGE,
+  CLUSTER_IMAGES_UNSUPPORTED_MESSAGE,
   CLUSTER_MEMBER_UNSUPPORTED_MESSAGE,
   ClusterLeaderTooOldError,
   ClusterReleaseUnavailableError,
@@ -22,6 +24,7 @@ import {
 import {
   CLUSTER_CAPABILITY,
   CLUSTER_HOST_CAPABILITY,
+  CLUSTER_IMAGES_CAPABILITY,
 } from "./hello-capabilities";
 
 // Every leader call goes through connectAgent(serverId): the agent that supervises the leader is the only door (ADR-0043).
@@ -216,6 +219,42 @@ export async function setClusterMember(
     )
       throw new AgentClusterMemberUnsupportedError(
         CLUSTER_MEMBER_UNSUPPORTED_MESSAGE,
+      );
+    throw e;
+  } finally {
+    conn.close();
+  }
+}
+
+export type ImageCopyResult = {
+  alreadyPresent: boolean;
+  bytes: number;
+  /** Older releases the target removed to keep the last ones. */
+  pruned: string[];
+};
+
+/** Asks the agent of the server holding `imageRef` to send it to the member with that certificate (ADR-0044). */
+export async function copyClusterImage(
+  sourceServerId: string,
+  imageRef: string,
+  targetFingerprint: string,
+  keep: number,
+): Promise<ImageCopyResult> {
+  const conn = await connectAgent(sourceServerId);
+  try {
+    const hello = await conn.hello();
+    if (!hello.capabilities?.includes(CLUSTER_IMAGES_CAPABILITY))
+      throw new AgentClusterImagesUnsupportedError(
+        CLUSTER_IMAGES_UNSUPPORTED_MESSAGE,
+      );
+    return await conn.copyClusterImage(imageRef, targetFingerprint, keep);
+  } catch (e) {
+    if (
+      !(e instanceof AgentClusterImagesUnsupportedError) &&
+      (e as Partial<ServiceError> | null)?.code === GrpcStatus.UNIMPLEMENTED
+    )
+      throw new AgentClusterImagesUnsupportedError(
+        CLUSTER_IMAGES_UNSUPPORTED_MESSAGE,
       );
     throw e;
   } finally {

@@ -4,6 +4,7 @@ import { Network } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Bone } from "@/components/ui/skeleton";
+import { listClusterImageProgress } from "@/lib/data/clusters/images";
 import { getClusterLeader } from "@/lib/data/clusters/leader";
 import {
   listClusterJoinCandidates,
@@ -115,6 +116,27 @@ async function Members({ clusterId }: { clusterId: string }) {
   );
 }
 
+async function ImageCopies({ clusterId }: { clusterId: string }) {
+  const copies = await listClusterImageProgress(clusterId);
+  if (copies.length === 0) return null;
+  return (
+    <div className="space-y-1">
+      <p className="text-xs text-muted-foreground">
+        Failover is not ready for these Apps yet. Their latest version is still
+        being copied.
+      </p>
+      <ul className="space-y-0.5 text-sm">
+        {copies.map((c) => (
+          <li key={c.appId}>
+            <span className="font-medium">{c.appName}</span>: on {c.held} of{" "}
+            {c.total} servers
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
 async function LeaderLine({ clusterId }: { clusterId: string }) {
   const leader = await getClusterLeader(clusterId);
   const badge = LEADER_BADGE[leader.state];
@@ -176,6 +198,9 @@ export function ClusterCard({
       <CardContent className="space-y-3">
         <Suspense fallback={<Bone>2 servers Failover on</Bone>}>
           <Members clusterId={cluster.id} />
+        </Suspense>
+        <Suspense fallback={null}>
+          <ImageCopies clusterId={cluster.id} />
         </Suspense>
         <Suspense
           fallback={<Bone>Leader runs on Deplo machine Answering</Bone>}

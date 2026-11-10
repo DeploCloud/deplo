@@ -10,6 +10,7 @@ import {
   ensureClusterLeader,
   getClusterLeader,
 } from "@/lib/data/clusters/leader";
+import { listClusterImageProgress } from "@/lib/data/clusters/images";
 import {
   getCluster,
   getClusterTeams,
@@ -24,6 +25,7 @@ import {
 import {
   failoverOn,
   type Cluster,
+  type ClusterImageProgress,
   type ClusterJoin,
   type ClusterJoinCandidate,
   type ClusterJoinReason,
@@ -68,6 +70,23 @@ const ClusterLeaderRef = builder
 const ClusterLeaseStateEnum = builder.enumType("ClusterLeaseState", {
   values: ["ok", "not_responding", "fenced"] as const,
 });
+
+const ClusterImageProgressRef = builder
+  .objectRef<ClusterImageProgress>("ClusterImageProgress")
+  .implement({
+    description:
+      "An App whose newest release is still being copied to the servers of the cluster.",
+    fields: (t) => ({
+      appId: t.exposeID("appId"),
+      appName: t.exposeString("appName"),
+      held: t.exposeInt("held", {
+        description: "Servers that hold the release now.",
+      }),
+      total: t.exposeInt("total", {
+        description: "Servers that will hold it when the copies finish.",
+      }),
+    }),
+  });
 
 const ClusterMemberRef = builder
   .objectRef<ClusterMember>("ClusterMember")
@@ -172,6 +191,13 @@ export const ClusterRef = builder.objectRef<Cluster>("Cluster").implement({
       description:
         "The servers in this cluster, in the order they joined. Anyone the cluster is shared with sees them.",
       resolve: (c) => listClusterMembers(c.id),
+    }),
+    imageCopies: t.field({
+      type: [ClusterImageProgressRef],
+      authScopes: { loggedIn: true },
+      description:
+        "The active team's Apps on this cluster whose newest release has not reached every server yet, so failover is not ready for them. Empty when every App is everywhere.",
+      resolve: (c) => listClusterImageProgress(c.id),
     }),
     failoverOn: t.boolean({
       authScopes: { loggedIn: true },

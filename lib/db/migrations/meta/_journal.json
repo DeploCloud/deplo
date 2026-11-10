@@ -1569,6 +1569,13 @@
       "when": 1794659200000,
       "tag": "0223_cluster_watch",
       "breakpoints": true
+    },
+    {
+      "idx": 224,
+      "version": "7",
+      "when": 1794672800000,
+      "tag": "0224_cluster_image_copies",
+      "breakpoints": true
     }
   ]
 }
