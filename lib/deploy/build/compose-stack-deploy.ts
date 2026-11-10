@@ -13,6 +13,12 @@ import { buildComposeStack } from "../compose-stack/render";
 import { stackFilesDir } from "../deploy-key";
 import { deployNetwork } from "../network";
 import type { AgentBuildPlan } from "../agent-deploy";
+import { servicesOf } from "../compose-lint/document";
+import {
+  REPLICAS_AGENT_MESSAGE,
+  REPLICAS_CAPABILITY,
+  composeServiceReplicas,
+} from "../replicas";
 import { detectDefaultApp } from "../compose-lint/routing";
 import {
   recordSourceCompose,
@@ -175,6 +181,12 @@ async function finishComposeStack(
   }
 }
 
+function stackAsksForReplicas(compose: string | null): boolean {
+  return Object.values(servicesOf(compose ?? "") ?? {}).some(
+    (svc) => composeServiceReplicas(svc) > 1,
+  );
+}
+
 export async function deployComposeStackViaAgent(
   opts: ComposeStackOpts & { serverId: string },
 ): Promise<void> {
@@ -189,6 +201,14 @@ export async function deployComposeStackViaAgent(
         "This server's agent is too old to run multi-service compose stacks. " +
           "Update the agent (reissue the install command from the server's actions menu).",
       );
+      await finishComposeStack(opts, false);
+      return;
+    }
+    if (
+      stackAsksForReplicas(project.compose) &&
+      !hello.capabilities.includes(REPLICAS_CAPABILITY)
+    ) {
+      log(depId, "error", REPLICAS_AGENT_MESSAGE);
       await finishComposeStack(opts, false);
       return;
     }

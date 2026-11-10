@@ -3,6 +3,8 @@ import assert from "node:assert/strict";
 
 import yaml from "../yaml";
 import { renderCompose, renderOverlapStacks } from "./build/compose-render";
+import { assertComposeSavable } from "../data/apps/source-guards";
+import { buildComposeStack } from "./compose-stack/render";
 import { lintCompose } from "./compose-lint/lint";
 import {
   REPLICAS_DATA_MESSAGE,
@@ -84,7 +86,56 @@ describe("compose stacks", () => {
       (d) => d.rule === "replicas-storage",
     );
     assert.equal(diag?.severity, "error");
-    assert.ok(diag?.message.includes(REPLICAS_DATA_MESSAGE));
+    assert.equal(diag?.message, REPLICAS_DATA_MESSAGE);
+  });
+});
+
+describe("a compose stack with replicas", () => {
+  const stackYaml = (extra: string, replicas = 3) =>
+    `services:\n  web:\n    image: x\n    deploy:\n      replicas: ${replicas}\n${extra}`;
+  const build = (compose: string) =>
+    buildComposeStack({
+      network: "deplo-team-team_test",
+      compose,
+      name: "deplo-demo",
+      deployKey: "demo",
+      appId: "p1",
+      domainRoutes: [],
+    });
+
+  test("renders three copies when it keeps no disk and publishes no port", () => {
+    const doc = yaml.load(build(stackYaml(""))) as {
+      services: Record<string, { deploy?: { replicas?: number } }>;
+    };
+    assert.equal(doc.services.web.deploy?.replicas, 3);
+  });
+
+  for (const extra of [
+    "    volumes:\n      - data:/data\n",
+    "    volumes:\n      - /srv/x:/data\n",
+    '    ports:\n      - "8080:80"\n',
+  ])
+    test(`the render refuses ${extra.trim().split("\n").pop()?.trim()}`, () => {
+      assert.throws(() => build(stackYaml(extra)), {
+        message: REPLICAS_DATA_MESSAGE,
+      });
+    });
+
+  test("one copy with a volume still renders", () => {
+    assert.doesNotThrow(() =>
+      build(stackYaml("    volumes:\n      - data:/data\n", 1)),
+    );
+  });
+
+  test("saving refuses it with the same message", async () => {
+    for (const extra of [
+      "    volumes:\n      - data:/data\n",
+      '    ports:\n      - "8080:80"\n',
+    ])
+      await assert.rejects(assertComposeSavable(stackYaml(extra)), {
+        message: REPLICAS_DATA_MESSAGE,
+      });
+    await assert.doesNotReject(assertComposeSavable(stackYaml("")));
   });
 });
 
