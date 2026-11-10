@@ -1,3 +1,4 @@
+import { composeServiceReplicas } from "../replicas";
 import "server-only";
 
 import { join } from "node:path";
@@ -115,6 +116,17 @@ export function parseStackResources(
     return Object.keys(out).length > 0 ? out : null;
   } catch {
     return null;
+  }
+}
+
+export function parseStackReplicas(yamlText: string, service: string): number {
+  try {
+    const doc = yaml.load(yamlText) as {
+      services?: Record<string, unknown>;
+    } | null;
+    return composeServiceReplicas(doc?.services?.[service]);
+  } catch {
+    return 1;
   }
 }
 

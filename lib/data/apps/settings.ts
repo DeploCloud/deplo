@@ -32,6 +32,8 @@ import { requireAppCapability } from "../node-access";
 import { listGithubInstallations } from "../github";
 import { recordActivity } from "../activity";
 import { loadAppGraph } from "../app-graph-load";
+import { usesComposeStack } from "../../utils";
+import { cleanReplicas, replicasRefusal } from "../../deploy/replicas";
 import { syncAppWebhook } from "../git-connections";
 import { publishAppChanged } from "../../graphql/pubsub";
 import { cleanAppName } from "./create";
@@ -143,6 +145,33 @@ export async function setAppZeroDowntimeDeploys(
   await recordActivity(
     "app",
     `${enabled ? "Turned on" : "Turned off"} zero-downtime deploys for ${rows[0].name}`,
+    user.name,
+    id,
+  );
+}
+
+// Applies from the next deploy, which always starts every copy before it stops an old one.
+export async function setAppReplicas(
+  id: string,
+  replicas: number,
+): Promise<void> {
+  const { membership } = await requireAppCapability(id, "configure_apps");
+  const user = (await getCurrentUser())!;
+  const n = cleanReplicas(replicas);
+  const app = await loadAppGraph(id);
+  if (!app || app.teamId !== membership.teamId)
+    throw new Error("App not found");
+  if (usesComposeStack(app))
+    throw new Error("A compose stack sets replicas in its own YAML");
+  const refusal = replicasRefusal(app, n);
+  if (refusal) throw new Error(refusal);
+  await getDb()
+    .update(appsTable)
+    .set({ replicas: n, updatedAt: nowIso() })
+    .where(and(eq(appsTable.id, id), eq(appsTable.teamId, membership.teamId)));
+  await recordActivity(
+    "app",
+    `Set ${app.name} to ${n} ${n === 1 ? "replica" : "replicas"}`,
     user.name,
     id,
   );

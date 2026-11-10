@@ -350,10 +350,13 @@ async function runDeployment(depId: string): Promise<void> {
         routes: routeDomains,
         image,
       });
-      // Beta, opt-in per app: off keeps the in-place swap.
+      // Beta, opt-in per app: off keeps the in-place swap. Replicas always overlap.
       return {
         ...rendered,
-        overlap: project.zeroDowntimeDeploys ? rendered.overlap : undefined,
+        overlap:
+          project.zeroDowntimeDeploys || rendered.overlap.replicas > 1
+            ? rendered.overlap
+            : undefined,
       };
     };
 

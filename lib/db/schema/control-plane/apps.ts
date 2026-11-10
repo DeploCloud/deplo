@@ -131,6 +131,7 @@ export const apps = pgTable(
       .notNull()
       .default(true),
     restartsPausedAt: isoTimestamptz("restarts_paused_at"),
+    replicas: integer("replicas").notNull().default(1),
     latestDeploymentId: text("latest_deployment_id").references(
       (): AnyPgColumn => deployments.id,
       { onDelete: "set null" },

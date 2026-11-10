@@ -5,11 +5,8 @@ import { notFound } from "next/navigation";
 import { Hammer, SlidersHorizontal, Sparkles } from "lucide-react";
 import { getAppBySlug } from "@/lib/data/apps/listing";
 import { deployHookUrlMasked } from "@/lib/data/deploy-hook";
-import {
-  getServerById,
-  listBuildServerChoices,
-} from "@/lib/data/servers/roster";
-import { AGENT_RESTART_VERSION, versionAtLeast } from "@/lib/version";
+import { listBuildServerChoices } from "@/lib/data/servers/roster";
+import { RESTART_CAPABILITY } from "@/lib/infra/agent-client/hello-capabilities";
 import { hasAppCapability } from "@/lib/data/node-access";
 import { canExposePorts } from "@/lib/membership";
 import { listAppCronJobs } from "@/lib/data/crons/listing";
@@ -23,6 +20,9 @@ import { ConsoleSettingsForm } from "@/components/apps/settings/console-settings
 import { HealthCheckForm } from "@/components/apps/settings/health-check-form";
 import { RestartWhenUnresponsiveForm } from "@/components/apps/settings/restart-when-unresponsive-form";
 import { RestartLoopForm } from "@/components/apps/settings/restart-loop-form";
+import { ReplicasForm } from "@/components/apps/settings/replicas-form";
+import { serverLacks } from "@/lib/infra/agent-client/preflight";
+import { REPLICAS_CAPABILITY, replicasRefusal } from "@/lib/deploy/replicas";
 import { ZeroDowntimeForm } from "@/components/apps/settings/zero-downtime-form";
 import { ScreenshotsForm } from "@/components/apps/settings/screenshots-form";
 import { PublishedPortsForm } from "@/components/apps/settings/published-ports-form";
@@ -57,10 +57,10 @@ export default async function AppAdvancedSettingsPage(
     mayConfigureTraefik && !usesComposeStack(project)
       ? await getAppTraefikLabels(project.id)
       : null;
-  const agentVersion = (await getServerById(project.serverId))?.agent?.version;
-  const restartNeedsNewerAgent =
-    Boolean(agentVersion) &&
-    !versionAtLeast(agentVersion!, AGENT_RESTART_VERSION);
+  const restartNeedsNewerAgent = await serverLacks(
+    project.serverId,
+    RESTART_CAPABILITY,
+  );
   const cron = canCron ? await listAppCronJobs(project.id) : null;
 
   const isComposeStack = usesComposeStack(project);
@@ -137,6 +137,20 @@ export default async function AppAdvancedSettingsPage(
             <ZeroDowntimeForm
               appId={project.id}
               enabled={project.zeroDowntimeDeploys}
+            />
+          </CapabilityFieldset>
+        )}
+
+        {!isComposeStack && (
+          <CapabilityFieldset cap="configure_apps">
+            <ReplicasForm
+              appId={project.id}
+              replicas={project.replicas}
+              refusal={replicasRefusal(project, 2)}
+              agentTooOld={await serverLacks(
+                project.serverId,
+                REPLICAS_CAPABILITY,
+              )}
             />
           </CapabilityFieldset>
         )}

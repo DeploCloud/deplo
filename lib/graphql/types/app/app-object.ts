@@ -192,6 +192,10 @@ export const AppRef = builder.objectRef<AppSummary>("App").implement({
         "Beta. Whether a redeploy keeps the old version online until the new one " +
         "is ready. Off by default.",
     }),
+    replicas: t.exposeInt("replicas", {
+      description:
+        "How many copies of this single-image app run on its server (1 to 10).",
+    }),
     screenshotsEnabled: t.exposeBoolean("screenshotsEnabled", {
       description:
         "Whether Deplo takes a light and a dark picture of the site after " +

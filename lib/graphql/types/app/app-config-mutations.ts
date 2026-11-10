@@ -32,6 +32,7 @@ import {
   setAppFramework,
   setAppComposeUpArgs,
   setAppRestartLoopGuard,
+  setAppReplicas,
   setAppZeroDowntimeDeploys,
   setAppRestartWhenUnresponsive,
   setAppScreenshots,
@@ -368,6 +369,21 @@ builder.mutationFields((t) => ({
     },
     resolve: async (_r, { id, value }) => {
       await setAppZeroDowntimeDeploys(id, value);
+      return reloadApp(id);
+    },
+  }),
+  setAppReplicas: t.field({
+    type: AppRef,
+    authScopes: { capability: "configure_apps" },
+    description:
+      "Run a single-image app as 1 to 10 copies on its server. Refused with a Volume, " +
+      "a Bind or a published host port. Applies from the next deploy.",
+    args: {
+      id: t.arg.string({ required: true }),
+      value: t.arg.int({ required: true }),
+    },
+    resolve: async (_r, { id, value }) => {
+      await setAppReplicas(id, value);
       return reloadApp(id);
     },
   }),

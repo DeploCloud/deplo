@@ -32,6 +32,8 @@ export interface BackupOutcome {
   objectKey: string;
   sizeBytes: number;
   decryptedSizeBytes: number;
+  // How long the App was paused for a consistent volume copy; 0 or absent when it was not.
+  heldMs?: number;
   sha256: string;
 }
 
@@ -51,6 +53,8 @@ function wireKind(kind: BackupTargetKind): BackupKind {
 function hasS3Args(dest: BackupDestination): boolean {
   return dest.kind === "s3" && parseS3Args(dest.s3ExtraArgs).length > 0;
 }
+
+const isRedis = (t: TransportTarget) => t.database?.dbType === "redis";
 
 export async function backupToDestination(
   creds: DestinationWithSecrets,
@@ -119,6 +123,7 @@ async function consumeBackup(
         objectKey: ev.result.objectKey || objectKey,
         sizeBytes: Number(ev.result.sizeBytes ?? 0),
         decryptedSizeBytes: Number(ev.result.decryptedSizeBytes ?? 0),
+        heldMs: Number(ev.result.heldMs ?? 0),
         sha256: ev.result.sha256 ?? "",
       };
     }
@@ -183,6 +188,7 @@ async function relayBackup(
             objectKey,
             sizeBytes: Number(ev.result.sizeBytes ?? 0),
             decryptedSizeBytes: Number(ev.result.decryptedSizeBytes ?? 0),
+            heldMs: Number(ev.result.heldMs ?? 0),
             sha256: ev.result.sha256 ?? "",
           };
           if (!ev.result.ok) throw new RelayAborted();
@@ -262,6 +268,7 @@ async function relayBackup(
       objectKey,
       sizeBytes: landed.bytesWritten,
       decryptedSizeBytes: produced.decryptedSizeBytes,
+      heldMs: produced.heldMs ?? 0,
       sha256: landed.sha256 || produced.sha256,
     };
   } finally {
@@ -295,6 +302,7 @@ export async function restoreFromDestination(
       store: dest.kind === "server",
       encryptedS3: dest.kind === "s3" && !!dest.ageRecipient,
       s3Args: hasS3Args(dest),
+      redisAof: isRedis(target),
     });
     try {
       return await consumeRestore(conn.restore(req));
@@ -306,7 +314,10 @@ export async function restoreFromDestination(
   const src = await connectBackupAgent(destServer, { store: true });
   let workload: AgentConnection | null = null;
   try {
-    workload = await connectBackupAgent(target.serverId, { store: true });
+    workload = await connectBackupAgent(target.serverId, {
+      store: true,
+      redisAof: isRedis(target),
+    });
     const bytes = src.readStoreFile({ store: storeTargetFor(dest, objectKey) });
     return await consumeRestore(
       workload.restoreFrom(
@@ -338,6 +349,7 @@ export async function openUploadRestore(
   const conn = await connectBackupAgent(target.serverId, {
     store: true,
     untrustedConfig: true,
+    redisAof: isRedis(target),
   });
   return {
     events: conn.restoreFrom(

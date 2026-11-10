@@ -1808,6 +1808,11 @@ export interface BackupResult {
    * browser.
    */
   decryptedSizeBytes: number;
+  /**
+   * How long the app's containers were paused so its volumes could be copied
+   * consistently, in milliseconds. 0 when nothing was held.
+   */
+  heldMs: number;
 }
 
 export interface RestoreRequest {
@@ -11131,7 +11136,7 @@ export const BackupEvent: MessageFns<BackupEvent> = {
 };
 
 function createBaseBackupResult(): BackupResult {
-  return { ok: false, error: "", objectKey: "", sizeBytes: 0, sha256: "", decryptedSizeBytes: 0 };
+  return { ok: false, error: "", objectKey: "", sizeBytes: 0, sha256: "", decryptedSizeBytes: 0, heldMs: 0 };
 }
 
 export const BackupResult: MessageFns<BackupResult> = {
@@ -11153,6 +11158,9 @@ export const BackupResult: MessageFns<BackupResult> = {
     }
     if (message.decryptedSizeBytes !== 0) {
       writer.uint32(48).int64(message.decryptedSizeBytes);
+    }
+    if (message.heldMs !== 0) {
+      writer.uint32(56).int64(message.heldMs);
     }
     return writer;
   },
@@ -11218,6 +11226,14 @@ export const BackupResult: MessageFns<BackupResult> = {
             message.decryptedSizeBytes = longToNumber(reader.int64());
             continue;
           }
+          case 7: {
+            if (tag !== 56) {
+              break;
+            }
+
+            message.heldMs = longToNumber(reader.int64());
+            continue;
+          }
         }
         if ((tag & 7) === 4 || tag === 0) {
           break;
@@ -11250,6 +11266,11 @@ export const BackupResult: MessageFns<BackupResult> = {
         : isSet(object.decrypted_size_bytes)
         ? globalThis.Number(object.decrypted_size_bytes)
         : 0,
+      heldMs: isSet(object.heldMs)
+        ? globalThis.Number(object.heldMs)
+        : isSet(object.held_ms)
+        ? globalThis.Number(object.held_ms)
+        : 0,
     };
   },
 
@@ -11273,6 +11294,9 @@ export const BackupResult: MessageFns<BackupResult> = {
     if (message.decryptedSizeBytes !== 0) {
       obj.decryptedSizeBytes = Math.round(message.decryptedSizeBytes);
     }
+    if (message.heldMs !== 0) {
+      obj.heldMs = Math.round(message.heldMs);
+    }
     return obj;
   },
 
@@ -11287,6 +11311,7 @@ export const BackupResult: MessageFns<BackupResult> = {
     message.sizeBytes = object.sizeBytes ?? 0;
     message.sha256 = object.sha256 ?? "";
     message.decryptedSizeBytes = object.decryptedSizeBytes ?? 0;
+    message.heldMs = object.heldMs ?? 0;
     return message;
   },
 };
