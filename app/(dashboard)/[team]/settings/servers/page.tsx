@@ -14,6 +14,7 @@ import { EmptyState } from "@/components/shared/empty-state";
 import { ROW_ACTIONS_CELL } from "@/components/shared/row-actions-cell";
 import { DeploMark } from "@/components/logo";
 import { AddServer } from "@/components/servers/add-server";
+import { ClusterCard } from "@/components/servers/cluster-card";
 import {
   ServerUseBadge,
   serverUse,
@@ -29,6 +30,10 @@ import { Button } from "@/components/ui/button";
 import { CopyButton } from "@/components/shared/copy-button";
 import { listAllServers } from "@/lib/data/servers/roster";
 import { listAllServerTeamIds } from "@/lib/data/servers/team-access";
+import {
+  listAllClusterTeamIds,
+  listAllClusters,
+} from "@/lib/data/clusters/roster";
 import {
   deploHostSelfAddresses,
   isDeploHostServer,
@@ -303,11 +308,14 @@ export default async function ServersPage(
     (Array.isArray(newParam) ? newParam[0] : newParam) === "1";
 
   const expected = AGENT_VERSION;
-  const [serversRaw, serverTeamIds, teamsRaw] = await Promise.all([
-    listAllServers().then((all) => all.filter((s) => !s.importOnly)),
-    listAllServerTeamIds(),
-    listAllTeamsForAdmin(),
-  ]);
+  const [serversRaw, serverTeamIds, teamsRaw, clusters, clusterTeamIds] =
+    await Promise.all([
+      listAllServers().then((all) => all.filter((s) => !s.importOnly)),
+      listAllServerTeamIds(),
+      listAllTeamsForAdmin(),
+      listAllClusters(),
+      listAllClusterTeamIds(),
+    ]);
   const measured = hydrateServerSpecs(serversRaw)
     .catch(() => serversRaw)
     .then((list) => new Map(list.map((s) => [s.id, s])));
@@ -400,6 +408,19 @@ export default async function ServersPage(
             </>
           }
         />
+
+        {clusters.length > 0 && (
+          <div className="grid items-start gap-4 sm:grid-cols-2">
+            {clusters.map((c) => (
+              <ClusterCard
+                key={c.id}
+                cluster={c}
+                teamIds={clusterTeamIds.get(c.id) ?? []}
+                teams={teams}
+              />
+            ))}
+          </div>
+        )}
 
         {items.length === 0 ? (
           <EmptyState

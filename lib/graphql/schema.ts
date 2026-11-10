@@ -11,6 +11,7 @@ import "./types/backup";
 import "./types/basic-auth";
 import "./types/cleanup";
 import "./types/clone";
+import "./types/cluster";
 import "./types/console";
 import "./types/cron";
 import "./types/database";

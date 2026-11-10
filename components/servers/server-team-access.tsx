@@ -29,8 +29,12 @@ export function ServerTeamAccess({
   onChange,
   disabled,
   label = "Team access",
+  info = "Which teams are allowed to deploy to this server.",
+  docs = "servers.teams",
 }: {
   label?: React.ReactNode;
+  info?: string;
+  docs?: React.ComponentProps<typeof FieldLabel>["docs"];
   value: ServerAccess;
   teams: TeamOption[];
   onChange: (next: ServerAccess) => void;
@@ -41,10 +45,7 @@ export function ServerTeamAccess({
   return (
     <div className="space-y-2">
       {label && (
-        <FieldLabel
-          info="Which teams are allowed to deploy to this server."
-          docs="servers.teams"
-        >
+        <FieldLabel info={info} docs={docs}>
           {label}
         </FieldLabel>
       )}
