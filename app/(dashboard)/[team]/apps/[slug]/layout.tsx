@@ -64,6 +64,7 @@ export default async function AppLayout(
     status: project.status,
     productionUrl: project.productionUrl ?? null,
     restartLoopStoppedAt: project.restartLoopStoppedAt ?? null,
+    restartsPausedAt: project.restartsPausedAt ?? null,
     latestDeploymentId: project.latestDeployment?.id ?? null,
     latestDeploymentStatus: project.latestDeployment?.status ?? null,
     latestScreenshotAt,

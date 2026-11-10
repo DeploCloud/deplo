@@ -29,6 +29,7 @@ export interface OverviewAppState {
   appId: string;
   status: AppStatus;
   neverDeployed: boolean;
+  restartsPaused: boolean;
   runtime: OverviewRuntime | null;
 }
 
@@ -203,6 +204,7 @@ export async function loadOverviewAppStates(
       projectId: appsTable.projectId,
       environmentId: appsTable.environmentId,
       status: appsTable.status,
+      restartsPausedAt: appsTable.restartsPausedAt,
       latestDeploymentId: appsTable.latestDeploymentId,
       healthCheckEnabled: appsTable.healthCheckEnabled,
       healthCheckType: appsTable.healthCheckType,
@@ -266,6 +268,7 @@ export async function loadOverviewAppStates(
         appId: row.id,
         status: row.status as AppStatus,
         neverDeployed: row.status === "idle" && row.latestDeploymentId == null,
+        restartsPaused: false,
         runtime: null,
       };
     }
@@ -278,6 +281,7 @@ export async function loadOverviewAppStates(
         appId: row.id,
         status: row.status as AppStatus,
         neverDeployed: false,
+        restartsPaused: row.restartsPausedAt != null,
         runtime: live,
       };
 
@@ -287,6 +291,7 @@ export async function loadOverviewAppStates(
         appId: row.id,
         status: row.status as AppStatus,
         neverDeployed: false,
+        restartsPaused: row.restartsPausedAt != null,
         runtime: mergeHealth(live, cached.value),
       };
     }
@@ -295,6 +300,7 @@ export async function loadOverviewAppStates(
         appId: row.id,
         status: row.status as AppStatus,
         neverDeployed: false,
+        restartsPaused: row.restartsPausedAt != null,
         runtime: fromFallback(cached.value),
       };
     }
@@ -302,6 +308,7 @@ export async function loadOverviewAppStates(
       appId: row.id,
       status: row.status as AppStatus,
       neverDeployed: false,
+      restartsPaused: row.restartsPausedAt != null,
       runtime: live,
     };
   });

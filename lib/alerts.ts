@@ -34,6 +34,20 @@ export const ALERT_META: Record<AlertKey, AlertMeta> = {
     keywords: "crash loop down restarting unhealthy",
     defaultOn: true,
   },
+  app_unresponsive: {
+    label: "App stopped answering",
+    description:
+      "An app was up but stopped answering, so Deplo restarted it. You hear about the first restart, then when it answers again.",
+    keywords: "hang hung frozen unresponsive restart health check down",
+    defaultOn: true,
+  },
+  app_restarts_paused: {
+    label: "App still not answering",
+    description:
+      "Deplo restarted an app several times and it still does not answer, so it stopped restarting it.",
+    keywords: "hang hung frozen unresponsive restart paused give up",
+    defaultOn: true,
+  },
   security_update_available: {
     label: "Security update available",
     description:
@@ -305,6 +319,8 @@ export const ALERT_CATEGORIES: {
     description: "How your running apps behave.",
     alerts: [
       "app_crash_loop",
+      "app_unresponsive",
+      "app_restarts_paused",
       "app_out_of_memory",
       "security_update_available",
     ],

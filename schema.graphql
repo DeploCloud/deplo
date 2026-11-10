@@ -5170,6 +5170,7 @@ input NodeGrantInput {
 type OverviewAppState {
   appId: ID!
   neverDeployed: Boolean!
+  restartsPaused: Boolean!
   runtime: OverviewRuntime
   status: AppStatus!
 }

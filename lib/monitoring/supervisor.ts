@@ -18,6 +18,7 @@ import {
 import { connectMetricsStreamAgent } from "../infra/agent-client/preflight";
 import { linkMayCome } from "../infra/agent-link/registry";
 import { isMetricsSavingEnabled } from "../data/monitoring-settings";
+import { applyRestartEvents } from "../data/restart-events";
 import { measureServerForCollector } from "../data/monitoring";
 import { getDb } from "../db/client";
 import { apps as appsTable } from "../db/schema/control-plane/apps";
@@ -250,6 +251,7 @@ async function runStreamLoop(
         attempt = 0;
 
         const byProject = await ingestFrame(serverId, frame, facts);
+        await applyRestartEvents(serverId, frame.restartEvents);
 
         const now = Date.now();
         if (now - lastHealthWriteAt >= HEALTH_WRITE_MS) {

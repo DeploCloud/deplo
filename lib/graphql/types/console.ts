@@ -186,6 +186,7 @@ const OverviewAppStateRef = builder
         resolve: (state) => state.status,
       }),
       neverDeployed: t.exposeBoolean("neverDeployed", { nullable: false }),
+      restartsPaused: t.exposeBoolean("restartsPaused", { nullable: false }),
       runtime: t.field({
         type: OverviewRuntimeRef,
         nullable: true,

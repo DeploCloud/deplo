@@ -26,6 +26,8 @@ export type AlertKey =
   | "git_connection_failing"
   | "git_access_missing"
   | "app_crash_loop"
+  | "app_unresponsive"
+  | "app_restarts_paused"
   | "app_out_of_memory"
   | "security_update_available"
   | "cron_job_failed"

@@ -23,6 +23,8 @@ const COOLDOWN_MS: Partial<Record<AlertKey, number>> = {
   server_unmanageable: 30 * 60_000,
   server_trust_changed: 30 * 60_000,
   app_crash_loop: 30 * 60_000,
+  app_unresponsive: 30 * 60_000,
+  app_restarts_paused: 30 * 60_000,
   app_out_of_memory: 30 * 60_000,
   server_resources_high: 60 * 60_000,
   server_disk_low: 60 * 60_000,
