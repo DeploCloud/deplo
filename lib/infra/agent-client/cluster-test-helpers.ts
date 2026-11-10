@@ -2,6 +2,7 @@ import { status as GrpcStatus } from "@grpc/grpc-js";
 
 import {
   ContractVersion,
+  type DeployRequest,
   HelloResponse,
   HostInfoResponse,
   TraefikConfigResponse,
@@ -27,6 +28,8 @@ export interface FakeClusterHost {
   memberCalls: { member: boolean; relays: string[] }[];
   /** The proxy stack of this host, as hostInfo reads it and traefikConfig replaces it. */
   proxy: { yaml: string; applied: number; refuse: string };
+  /** Every deploy request this host's agent was handed, answered ready. */
+  deploys: DeployRequest[];
   opened: string[];
   closed: number;
 }
@@ -64,6 +67,7 @@ export function fakeClusterHosts(): {
           agentVersion: "9.9.9",
           contractVersion: ContractVersion.CONTRACT_VERSION_V1,
           capabilities: h.capabilities,
+          dockerAvailable: true,
         }),
       clusterStatus: () => guard(() => ({ ...h.status })),
       installCluster: (version, binaries, relay) =>
@@ -94,6 +98,20 @@ export function fakeClusterHosts(): {
           h.calls.push({ method, payload });
           return h.leader(method, payload);
         }),
+      deploy: async function* (req: DeployRequest) {
+        h.deploys.push(req);
+        yield {
+          seq: 1,
+          result: {
+            ready: true,
+            error: "",
+            commitSha: "",
+            observedPort: 0,
+            builtWith: "",
+            listeningPorts: [],
+          },
+        };
+      },
       hostInfo: async () =>
         HostInfoResponse.fromPartial({ traefikComposeYaml: h.proxy.yaml }),
       traefikConfig: async (req) => {
@@ -128,6 +146,7 @@ export function fakeClusterHosts(): {
         calls: [],
         memberCalls: [],
         proxy: { yaml: "", applied: 0, refuse: "" },
+        deploys: [],
         opened: [],
         closed: 0,
         ...over,

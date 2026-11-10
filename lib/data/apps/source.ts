@@ -12,6 +12,7 @@ import {
 import { domains as domainsTable } from "../../db/schema/control-plane/domains";
 import { getCurrentUser } from "../../auth/current-user";
 import { nowIso } from "../../ids";
+import { dropFailoverBundle } from "../clusters/bundles";
 import { assertServerNotInCluster } from "../clusters/members";
 import {
   askLeaderToPlace,
@@ -154,6 +155,7 @@ async function writeAppSource(
       compose: appsTable.compose,
       slug: appsTable.slug,
       migrateFromServerId: appsTable.migrateFromServerId,
+      clusterId: appsTable.clusterId,
       dataCopyError: appsTable.dataCopyError,
     })
     .from(appsTable)
@@ -352,6 +354,12 @@ async function writeAppSource(
     }).catch(() => {});
 
   if (after.moved && !move?.cluster) await clearPlacement("app", id);
+  if (
+    after.moved &&
+    current?.clusterId &&
+    current.clusterId !== move?.cluster?.id
+  )
+    await dropFailoverBundle(id, current.clusterId).catch(() => {});
 
   if (after.moved && (move ? move.deploy : input.source !== "upload")) {
     try {

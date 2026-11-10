@@ -1,5 +1,6 @@
 import "server-only";
 
+import { dropFailoverBundle } from "../clusters/bundles";
 import { clearPlacement } from "../clusters/placement";
 import { eq, inArray, isNotNull } from "drizzle-orm";
 
@@ -78,6 +79,7 @@ async function destroyApp(project: App, actor: string): Promise<void> {
     const heldDns = await takeAppDns([id]).catch(() => []);
     await getDb().delete(appsTable).where(eq(appsTable.id, id));
     await clearPlacement("app", id).catch(() => {});
+    await dropFailoverBundle(id, project.clusterId ?? null).catch(() => {});
     await deleteReleasedDns(heldDns).catch(() => null);
     return ok;
   });

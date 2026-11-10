@@ -82,6 +82,8 @@ export const MOVE_TABLES: Readonly<Record<string, TablePolicy>> = {
   cluster_leader_keys: { kind: "skip", clear: true },
   // The leader's placement, mirrored; a member left out of the server map reads as waiting.
   workload_placements: COPY,
+  // Re-keyed with the rest; the new machine's leader has its own key, so every bundle is sealed to it again.
+  failover_bundle_pushes: { kind: "copy", rekey: { bundle_enc: SECRET } },
   database_mounts: COPY,
   databases: {
     kind: "copy",

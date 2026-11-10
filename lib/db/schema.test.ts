@@ -69,6 +69,7 @@ const CONTROL_PLANE = [
   "cluster_members",
   "cluster_leader_keys",
   "workload_placements",
+  "failover_bundle_pushes",
   "docker_cleanup_policy",
   "docker_cleanup_policy_scopes",
   "dns_provider_teams",

@@ -1562,6 +1562,13 @@
       "when": 1794572800000,
       "tag": "0222_workload_placements",
       "breakpoints": true
+    },
+    {
+      "idx": 225,
+      "version": "7",
+      "when": 1794832000000,
+      "tag": "0225_failover_bundle_pushes",
+      "breakpoints": true
     }
   ]
 }
