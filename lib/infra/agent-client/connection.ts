@@ -137,6 +137,9 @@ export interface ClusterHostStatus {
   running: boolean;
   version: string;
   relay: boolean;
+  /** Needs `cluster`: whether this agent is a cluster member, and how many relays hold its connection. */
+  member: boolean;
+  relayLinks: number;
 }
 
 export interface AgentConnection {
@@ -241,6 +244,11 @@ export interface AgentConnection {
   removeCluster(): Promise<{ removed: boolean }>;
   clusterStatus(): Promise<ClusterHostStatus>;
   clusterCall(method: string, payload: Uint8Array): Promise<Uint8Array>;
+  // Needs `cluster` (ADR-0044): the agent dials every relay it knows and never listens.
+  setClusterMember(
+    member: boolean,
+    relays: string[],
+  ): Promise<{ member: boolean; relayLinks: number }>;
   /** Replaces the panel addresses the agent links to; it answers with the pair it kept. */
   setLinkAddresses(pair: LinkAddresses): Promise<LinkAddresses>;
   /** Closes the agent's own port for good; it takes this over its agent link only (ADR-0040). */

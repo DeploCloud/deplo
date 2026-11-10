@@ -196,14 +196,14 @@ export async function setPanelTunnel(input: {
             token,
             zone.accountId,
             tunnelId,
-            panelTunnelIngress(reuse.hostname, current.target),
+            panelTunnelIngress(reuse.hostname, current.target, current.relay),
           ),
         );
       await cloudflare.setTunnelIngress(
         token,
         zone.accountId,
         tunnelId,
-        panelTunnelIngress(hostname, current.target),
+        panelTunnelIngress(hostname, current.target, current.relay),
       );
 
       const record = await cloudflare.pointAtTunnel(
@@ -250,7 +250,9 @@ export async function setPanelTunnel(input: {
       await whilePanelAddressesChange({ url }, async () => {
         await applyStack(
           host.id,
-          withPanelTunnel(withPanelRoute(yaml, next), connector),
+          withPanelTunnel(withPanelRoute(yaml, next), connector, {
+            relay: next.relay,
+          }),
         );
         rememberRoutedFallback(next.fallbackDomain);
         undo.push(async () => {

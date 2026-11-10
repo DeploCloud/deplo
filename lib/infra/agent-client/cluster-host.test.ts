@@ -5,13 +5,17 @@ import { __resetReleaseCacheForTests } from "../../agent/release";
 import {
   __setClusterPinForTest,
   callClusterLeader,
+  callClusterRelay,
   clusterLeaderStatus,
+  setClusterMember,
   installClusterLeader,
   removeClusterLeader,
 } from "./cluster-host";
 import {
+  AgentClusterMemberUnsupportedError,
   AgentClusterUnsupportedError,
   CLUSTER_HOST_UNSUPPORTED_MESSAGE,
+  CLUSTER_MEMBER_UNSUPPORTED_MESSAGE,
   ClusterLeaderTooOldError,
   ClusterReleaseUnavailableError,
 } from "./errors";
@@ -32,6 +36,8 @@ const leaderAt = (version: string, running = true) => ({
   running,
   version,
   relay: false,
+  member: false,
+  relayLinks: 0,
 });
 
 beforeEach(() => {
@@ -185,6 +191,63 @@ test("the only way to a leader is connectAgent: no pin-free door, no dial of its
   );
   assert.match(src, /connectAgent\(serverId\)/);
   assert.doesNotMatch(src, /openAgent|serverChannel|new Client/);
+});
+
+test("a relay call goes to the relay through the server's agent, and only to a running relay", async () => {
+  const host = fleet.host("srv_a", {
+    status: { ...leaderAt("0.2.0"), relay: true },
+    leader: () => new TextEncoder().encode("ok"),
+  });
+  const out = await callClusterRelay(
+    "srv_a",
+    "relay.roster",
+    new TextEncoder().encode("{}"),
+  );
+  assert.equal(new TextDecoder().decode(out), "ok");
+  assert.equal(host.calls[0].method, "relay.roster");
+
+  fleet.host("srv_norelay", { status: leaderAt("0.2.0") });
+  await assert.rejects(
+    callClusterRelay("srv_norelay", "relay.roster"),
+    /No cluster relay is running/,
+  );
+  fleet.host("srv_old_relay", {
+    status: { ...leaderAt("0.1.0"), relay: true },
+  });
+  await assert.rejects(
+    callClusterRelay("srv_old_relay", "relay.roster"),
+    ClusterLeaderTooOldError,
+  );
+  fleet.host("srv_oldagent", { capabilities: [] });
+  await assert.rejects(
+    callClusterRelay("srv_oldagent", "relay.roster"),
+    AgentClusterUnsupportedError,
+  );
+});
+
+test("joining the relays needs the cluster capability, and an agent without it is named", async () => {
+  const host = fleet.host("srv_a");
+  const r = await setClusterMember("srv_a", true, ["https://r.example.com"]);
+  assert.deepEqual(r, { member: true, relayLinks: 0 });
+  assert.deepEqual(host.memberCalls, [
+    { member: true, relays: ["https://r.example.com"] },
+  ]);
+  assert.equal(host.closed, 1);
+
+  // cluster.host alone (an agent from before membership) does not carry it.
+  const old = fleet.host("srv_old", { capabilities: ["cluster.host"] });
+  await assert.rejects(setClusterMember("srv_old", true), (e: Error) => {
+    assert.ok(e instanceof AgentClusterMemberUnsupportedError);
+    assert.equal(e.message, CLUSTER_MEMBER_UNSUPPORTED_MESSAGE);
+    return true;
+  });
+  assert.deepEqual(old.memberCalls, []);
+
+  fleet.host("srv_unimpl", { unimplemented: true });
+  await assert.rejects(
+    setClusterMember("srv_unimpl", false),
+    AgentClusterMemberUnsupportedError,
+  );
 });
 
 test("remove goes through the agent, and removing nothing is fine", async () => {

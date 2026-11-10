@@ -7,6 +7,7 @@ import { nowIso } from "../../ids";
 import { findServerForToken, signBootstrapCsr } from "../../agent/bootstrap";
 import { dropAgentChannel } from "../../infra/agent-client/channel-pool";
 import { AGENT_VERSION, agentUpdateAvailable } from "../../version";
+import { pushRostersForServer } from "../clusters/relay";
 import { agentSeen } from "./agent-update-state";
 import { agentLinkUrl } from "./panel-address";
 import { listAllServers } from "./roster";
@@ -53,6 +54,7 @@ export async function completeBootstrap(
   }
   // A new agent identity: whatever held the old certificate is cut off.
   dropAgentChannel(server.id);
+  await pushRostersForServer(server.id);
   return { certPem: signed.certPem, caPem: signed.caPem, linkUrl };
 }
 

@@ -12,7 +12,11 @@ export function clusterRpc(
   channel: AgentChannel,
 ): Pick<
   AgentConnection,
-  "installCluster" | "removeCluster" | "clusterStatus" | "clusterCall"
+  | "installCluster"
+  | "removeCluster"
+  | "clusterStatus"
+  | "clusterCall"
+  | "setClusterMember"
 > {
   const { client } = channel;
   return {
@@ -43,7 +47,17 @@ export function clusterRpc(
         running: r.running,
         version: r.version,
         relay: r.relay,
+        member: r.member,
+        relayLinks: r.relayLinks,
       };
+    },
+    async setClusterMember(member, relays) {
+      const r = await unary(
+        client.setClusterMember.bind(client),
+        { member, relays },
+        HELLO_TIMEOUT_MS,
+      );
+      return { member: r.member, relayLinks: r.relayLinks };
     },
     async clusterCall(method, payload) {
       const r = await unary(

@@ -47,7 +47,17 @@ until the update lands (spec #176). The cluster binary is updated by the agent t
 one host at a time, so the order in `fleet-rollout.md` §4 applies: **a remote leader before Deplo's
 machine, the Deplo host last**, and skip a host while a failover is in flight.
 
-## 4. Rollback is forward-only
+## 4. The relay is part of the same release
+
+`deplo-cluster relay` runs beside the leader on Deplo's machine, behind the proxy
+([ADR-0044](../adr/0044-cluster-members-meet-through-a-relay-over-tcp.md)). Its names are a contract
+across three repos: the path `/api/cluster/relay` and port `3002` (`lib/deploy/cluster-relay.ts`),
+the stream headers and mutual TLS rules (`internal/wire` here and in `deplo-agent`'s
+`internal/clusterlink/wire`), and the roster push (`relay.roster` on the relay's local socket). Change
+one and the other two move in the same step. The agent half needs a Hello capability the panel gates
+on: `cluster` (membership and relay dialing), so an agent from before it is named, never failed.
+
+## 5. Rollback is forward-only
 
 Same as the fleet (`fleet-rollout.md` §10): nothing installs an older cluster binary than the one
 running, and a bad release is undone by pinning a fixed patch release. Never release a cluster

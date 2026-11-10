@@ -20,6 +20,7 @@ import {
   type AccessRequirement,
 } from "../git/provider-access";
 import { sweepDomainDns } from "../data/domains/dns-check";
+import { reconcileClusterRelay } from "../data/clusters/relay";
 import { sweepCloudflareCertificates } from "../data/domains/cloudflare-mode";
 import { describeStackCertificates } from "../data/server-certificates";
 import { getUpdateInfo, type UpdateInfo } from "../data/updates";
@@ -45,6 +46,7 @@ export async function runMaintenanceSweep(): Promise<void> {
   await settle("Deplo update", checkDeploUpdate);
   await settle("certificates", checkCustomCertificates);
   await settle("domain dns", sweepDomainDns);
+  await settle("cluster relay", reconcileClusterRelay);
   await settle("cloudflare certificates", sweepCloudflareCertificates);
   await settle("git tokens", checkGitConnections);
   await settle("github app access", checkGithubAppAccess);

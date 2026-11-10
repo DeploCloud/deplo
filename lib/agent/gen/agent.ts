@@ -2966,10 +2966,31 @@ export interface ClusterStatusResponse {
   /** The installed version; empty when nothing is installed. */
   version: string;
   relay: boolean;
+  /** Whether this agent is a cluster member, and how many relays hold its connection now. */
+  member: boolean;
+  relayLinks: number;
+}
+
+export interface SetClusterMemberRequest {
+  member: boolean;
+  /**
+   * Relay addresses (http or https origin, no path) to dial in addition to the one on this
+   * host and the panel's own. Only read when member is true.
+   */
+  relays: string[];
+}
+
+export interface SetClusterMemberResponse {
+  member: boolean;
+  /** Relays this agent is connected to at the moment of the answer. */
+  relayLinks: number;
 }
 
 export interface ClusterCallRequest {
-  /** The leader's method name, e.g. "place". Opaque to the agent apart from its charset. */
+  /**
+   * The leader's method name, e.g. "place". A name starting "relay." goes to the relay on this host
+   * instead, which is where the control plane pushes a cluster's roster. Opaque otherwise.
+   */
   method: string;
   /** The request body, forwarded as is. */
   payload: Uint8Array;
@@ -21961,7 +21982,7 @@ export const ClusterStatusRequest: MessageFns<ClusterStatusRequest> = {
 };
 
 function createBaseClusterStatusResponse(): ClusterStatusResponse {
-  return { installed: false, running: false, version: "", relay: false };
+  return { installed: false, running: false, version: "", relay: false, member: false, relayLinks: 0 };
 }
 
 export const ClusterStatusResponse: MessageFns<ClusterStatusResponse> = {
@@ -21977,6 +21998,12 @@ export const ClusterStatusResponse: MessageFns<ClusterStatusResponse> = {
     }
     if (message.relay !== false) {
       writer.uint32(32).bool(message.relay);
+    }
+    if (message.member !== false) {
+      writer.uint32(40).bool(message.member);
+    }
+    if (message.relayLinks !== 0) {
+      writer.uint32(48).int32(message.relayLinks);
     }
     return writer;
   },
@@ -22026,6 +22053,22 @@ export const ClusterStatusResponse: MessageFns<ClusterStatusResponse> = {
             message.relay = reader.bool();
             continue;
           }
+          case 5: {
+            if (tag !== 40) {
+              break;
+            }
+
+            message.member = reader.bool();
+            continue;
+          }
+          case 6: {
+            if (tag !== 48) {
+              break;
+            }
+
+            message.relayLinks = reader.int32();
+            continue;
+          }
         }
         if ((tag & 7) === 4 || tag === 0) {
           break;
@@ -22044,6 +22087,12 @@ export const ClusterStatusResponse: MessageFns<ClusterStatusResponse> = {
       running: isSet(object.running) ? globalThis.Boolean(object.running) : false,
       version: isSet(object.version) ? globalThis.String(object.version) : "",
       relay: isSet(object.relay) ? globalThis.Boolean(object.relay) : false,
+      member: isSet(object.member) ? globalThis.Boolean(object.member) : false,
+      relayLinks: isSet(object.relayLinks)
+        ? globalThis.Number(object.relayLinks)
+        : isSet(object.relay_links)
+        ? globalThis.Number(object.relay_links)
+        : 0,
     };
   },
 
@@ -22061,6 +22110,12 @@ export const ClusterStatusResponse: MessageFns<ClusterStatusResponse> = {
     if (message.relay !== false) {
       obj.relay = message.relay;
     }
+    if (message.member !== false) {
+      obj.member = message.member;
+    }
+    if (message.relayLinks !== 0) {
+      obj.relayLinks = Math.round(message.relayLinks);
+    }
     return obj;
   },
 
@@ -22073,6 +22128,182 @@ export const ClusterStatusResponse: MessageFns<ClusterStatusResponse> = {
     message.running = object.running ?? false;
     message.version = object.version ?? "";
     message.relay = object.relay ?? false;
+    message.member = object.member ?? false;
+    message.relayLinks = object.relayLinks ?? 0;
+    return message;
+  },
+};
+
+function createBaseSetClusterMemberRequest(): SetClusterMemberRequest {
+  return { member: false, relays: [] };
+}
+
+export const SetClusterMemberRequest: MessageFns<SetClusterMemberRequest> = {
+  encode(message: SetClusterMemberRequest, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.member !== false) {
+      writer.uint32(8).bool(message.member);
+    }
+    for (const v of message.relays) {
+      writer.uint32(18).string(v!);
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): SetClusterMemberRequest {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const previousRecursionDepth = (reader as any).__tsProtoDecodeDepth ?? 0;
+    if (previousRecursionDepth >= 100) {
+      throw new globalThis.Error("protobuf decode recursion limit exceeded");
+    }
+    (reader as any).__tsProtoDecodeDepth = previousRecursionDepth + 1;
+    try {
+      const end = length === undefined ? reader.len : reader.pos + length;
+      const message = createBaseSetClusterMemberRequest();
+      while (reader.pos < end) {
+        const tag = reader.uint32();
+        switch (tag >>> 3) {
+          case 1: {
+            if (tag !== 8) {
+              break;
+            }
+
+            message.member = reader.bool();
+            continue;
+          }
+          case 2: {
+            if (tag !== 18) {
+              break;
+            }
+
+            message.relays.push(reader.string());
+            continue;
+          }
+        }
+        if ((tag & 7) === 4 || tag === 0) {
+          break;
+        }
+        reader.skip(tag & 7);
+      }
+      return message;
+    } finally {
+      (reader as any).__tsProtoDecodeDepth = previousRecursionDepth;
+    }
+  },
+
+  fromJSON(object: any): SetClusterMemberRequest {
+    return {
+      member: isSet(object.member) ? globalThis.Boolean(object.member) : false,
+      relays: globalThis.Array.isArray(object?.relays) ? object.relays.map((e: any) => globalThis.String(e)) : [],
+    };
+  },
+
+  toJSON(message: SetClusterMemberRequest): unknown {
+    const obj: any = {};
+    if (message.member !== false) {
+      obj.member = message.member;
+    }
+    if (message.relays?.length) {
+      obj.relays = message.relays;
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<SetClusterMemberRequest>, I>>(base?: I): SetClusterMemberRequest {
+    return SetClusterMemberRequest.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<SetClusterMemberRequest>, I>>(object: I): SetClusterMemberRequest {
+    const message = createBaseSetClusterMemberRequest();
+    message.member = object.member ?? false;
+    message.relays = object.relays?.map((e) => e) || [];
+    return message;
+  },
+};
+
+function createBaseSetClusterMemberResponse(): SetClusterMemberResponse {
+  return { member: false, relayLinks: 0 };
+}
+
+export const SetClusterMemberResponse: MessageFns<SetClusterMemberResponse> = {
+  encode(message: SetClusterMemberResponse, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.member !== false) {
+      writer.uint32(8).bool(message.member);
+    }
+    if (message.relayLinks !== 0) {
+      writer.uint32(16).int32(message.relayLinks);
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): SetClusterMemberResponse {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const previousRecursionDepth = (reader as any).__tsProtoDecodeDepth ?? 0;
+    if (previousRecursionDepth >= 100) {
+      throw new globalThis.Error("protobuf decode recursion limit exceeded");
+    }
+    (reader as any).__tsProtoDecodeDepth = previousRecursionDepth + 1;
+    try {
+      const end = length === undefined ? reader.len : reader.pos + length;
+      const message = createBaseSetClusterMemberResponse();
+      while (reader.pos < end) {
+        const tag = reader.uint32();
+        switch (tag >>> 3) {
+          case 1: {
+            if (tag !== 8) {
+              break;
+            }
+
+            message.member = reader.bool();
+            continue;
+          }
+          case 2: {
+            if (tag !== 16) {
+              break;
+            }
+
+            message.relayLinks = reader.int32();
+            continue;
+          }
+        }
+        if ((tag & 7) === 4 || tag === 0) {
+          break;
+        }
+        reader.skip(tag & 7);
+      }
+      return message;
+    } finally {
+      (reader as any).__tsProtoDecodeDepth = previousRecursionDepth;
+    }
+  },
+
+  fromJSON(object: any): SetClusterMemberResponse {
+    return {
+      member: isSet(object.member) ? globalThis.Boolean(object.member) : false,
+      relayLinks: isSet(object.relayLinks)
+        ? globalThis.Number(object.relayLinks)
+        : isSet(object.relay_links)
+        ? globalThis.Number(object.relay_links)
+        : 0,
+    };
+  },
+
+  toJSON(message: SetClusterMemberResponse): unknown {
+    const obj: any = {};
+    if (message.member !== false) {
+      obj.member = message.member;
+    }
+    if (message.relayLinks !== 0) {
+      obj.relayLinks = Math.round(message.relayLinks);
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<SetClusterMemberResponse>, I>>(base?: I): SetClusterMemberResponse {
+    return SetClusterMemberResponse.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<SetClusterMemberResponse>, I>>(object: I): SetClusterMemberResponse {
+    const message = createBaseSetClusterMemberResponse();
+    message.member = object.member ?? false;
+    message.relayLinks = object.relayLinks ?? 0;
     return message;
   },
 };
@@ -22636,6 +22867,21 @@ export const AgentService = {
     requestDeserialize: (value: Buffer): ClusterCallRequest => ClusterCallRequest.decode(value),
     responseSerialize: (value: ClusterCallResponse): Buffer => Buffer.from(ClusterCallResponse.encode(value).finish()),
     responseDeserialize: (value: Buffer): ClusterCallResponse => ClusterCallResponse.decode(value),
+  },
+  /**
+   * Make this agent a cluster member (or stop being one) and name the relays to dial besides
+   * Deplo's own. A saved choice survives a restart; the relay set follows the panel's address.
+   */
+  setClusterMember: {
+    path: "/deplo.agent.v1.Agent/SetClusterMember" as const,
+    requestStream: false as const,
+    responseStream: false as const,
+    requestSerialize: (value: SetClusterMemberRequest): Buffer =>
+      Buffer.from(SetClusterMemberRequest.encode(value).finish()),
+    requestDeserialize: (value: Buffer): SetClusterMemberRequest => SetClusterMemberRequest.decode(value),
+    responseSerialize: (value: SetClusterMemberResponse): Buffer =>
+      Buffer.from(SetClusterMemberResponse.encode(value).finish()),
+    responseDeserialize: (value: Buffer): SetClusterMemberResponse => SetClusterMemberResponse.decode(value),
   },
   /** Back up a database or a project to a destination, streaming progress. */
   backup: {
@@ -23358,6 +23604,11 @@ export interface AgentServer extends UntypedServiceImplementation {
    * The agent does not read the payload; an unreachable leader is UNAVAILABLE.
    */
   clusterCall: handleUnaryCall<ClusterCallRequest, ClusterCallResponse>;
+  /**
+   * Make this agent a cluster member (or stop being one) and name the relays to dial besides
+   * Deplo's own. A saved choice survives a restart; the relay set follows the panel's address.
+   */
+  setClusterMember: handleUnaryCall<SetClusterMemberRequest, SetClusterMemberResponse>;
   /** Back up a database or a project to a destination, streaming progress. */
   backup: handleServerStreamingCall<BackupRequest, BackupEvent>;
   /**
@@ -24045,6 +24296,25 @@ export interface AgentClient extends Client {
     metadata: Metadata,
     options: Partial<CallOptions>,
     callback: (error: ServiceError | null, response: ClusterCallResponse) => void,
+  ): ClientUnaryCall;
+  /**
+   * Make this agent a cluster member (or stop being one) and name the relays to dial besides
+   * Deplo's own. A saved choice survives a restart; the relay set follows the panel's address.
+   */
+  setClusterMember(
+    request: SetClusterMemberRequest,
+    callback: (error: ServiceError | null, response: SetClusterMemberResponse) => void,
+  ): ClientUnaryCall;
+  setClusterMember(
+    request: SetClusterMemberRequest,
+    metadata: Metadata,
+    callback: (error: ServiceError | null, response: SetClusterMemberResponse) => void,
+  ): ClientUnaryCall;
+  setClusterMember(
+    request: SetClusterMemberRequest,
+    metadata: Metadata,
+    options: Partial<CallOptions>,
+    callback: (error: ServiceError | null, response: SetClusterMemberResponse) => void,
   ): ClientUnaryCall;
   /** Back up a database or a project to a destination, streaming progress. */
   backup(request: BackupRequest, options?: Partial<CallOptions>): ClientReadableStream<BackupEvent>;

@@ -7,6 +7,7 @@ import {
   CLOUDFLARED_IMAGE,
   TUNNEL_SERVICE,
   panelTunnelIngress,
+  panelTunnelReachesHost,
   panelTunnelToken,
   withPanelTunnel,
 } from "./panel-tunnel-stack";
@@ -102,6 +103,45 @@ test("the panel's own route edits keep the connector", () => {
   const both = withPanelRoute(withPanelTunnel(STACK, TOKEN), route);
   assert.equal(panelTunnelToken(both), TOKEN);
   assert.deepEqual(panelRoute(both), route);
+});
+
+test("with a relay the tunnel carries its path to the relay on the host, beside the link", () => {
+  assert.deepEqual(
+    panelTunnelIngress("deplo.example.com", "http://deplo:3000", true),
+    [
+      {
+        hostname: "deplo.example.com",
+        path: "^/api/agent/link$",
+        service: "http://deplo:3001",
+      },
+      {
+        hostname: "deplo.example.com",
+        path: "^/api/cluster/relay$",
+        service: "http://host.docker.internal:3002",
+      },
+      { hostname: "deplo.example.com", service: "http://deplo:3000" },
+      { service: "http_status:404" },
+    ],
+  );
+  assert.equal(
+    panelTunnelIngress("deplo.example.com", "http://deplo:3000").length,
+    3,
+    "no relay, no rule",
+  );
+});
+
+test("the connector reaches the host's relay by the gateway name only while a relay route needs it", () => {
+  const on = withPanelTunnel(STACK, TOKEN, { relay: true });
+  const svc = (parse(on) as Compose).services[TUNNEL_SERVICE];
+  assert.deepEqual(svc.extra_hosts, ["host.docker.internal:host-gateway"]);
+  assert.equal(panelTunnelReachesHost(on), true);
+  const off = withPanelTunnel(on, TOKEN);
+  assert.equal(
+    (parse(off) as Compose).services[TUNNEL_SERVICE].extra_hosts,
+    undefined,
+  );
+  assert.equal(panelTunnelReachesHost(off), false);
+  assert.equal(panelTunnelReachesHost(STACK), false);
 });
 
 test("the tunnel routes the link door to the link listener, then the panel, then nothing", () => {

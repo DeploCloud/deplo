@@ -15,6 +15,7 @@ import { recordActivity } from "../activity";
 import { pendingTeardownsForServer } from "../teardown-queue";
 import { controlPlaneCert, uninstallCommand } from "../../agent/bootstrap";
 import { dropAgentChannel } from "../../infra/agent-client/channel-pool";
+import { clustersOfServer, pushClusterRosters } from "../clusters/relay";
 import { getServerById, serverRole } from "./roster";
 
 export interface ServerRemoval {
@@ -119,6 +120,7 @@ async function removeServerRow(
 
   const abandoned = await pendingTeardownsForServer(id);
 
+  const clusterIds = await clustersOfServer(id);
   const pinned = server.agent?.certFingerprint ?? "";
   await getDb()
     .update(serversTable)
@@ -138,6 +140,8 @@ async function removeServerRow(
     );
   }
   dropAgentChannel(id);
+  // A removed server's certificate leaves every cluster relay's roster at once.
+  await pushClusterRosters(clusterIds);
   await recordActivity(
     "server",
     `Removed server ${server.name}`,

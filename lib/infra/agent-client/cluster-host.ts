@@ -11,12 +11,17 @@ import {
 import { connectAgent } from "./connect";
 import type { AgentConnection, ClusterHostStatus } from "./connection";
 import {
+  AgentClusterMemberUnsupportedError,
   AgentClusterUnsupportedError,
   CLUSTER_HOST_UNSUPPORTED_MESSAGE,
+  CLUSTER_MEMBER_UNSUPPORTED_MESSAGE,
   ClusterLeaderTooOldError,
   ClusterReleaseUnavailableError,
 } from "./errors";
-import { CLUSTER_HOST_CAPABILITY } from "./hello-capabilities";
+import {
+  CLUSTER_CAPABILITY,
+  CLUSTER_HOST_CAPABILITY,
+} from "./hello-capabilities";
 
 // Every leader call goes through connectAgent(serverId): the agent that supervises the leader is the only door (ADR-0043).
 let pinOverride: { version: string; min: string } | null = null;
@@ -116,4 +121,49 @@ export async function callClusterLeader(
       throw new ClusterLeaderTooOldError(here.version, min);
     return conn.clusterCall(method, payload);
   });
+}
+
+/** One call to the relay on `serverId`, forwarded by its agent. A method is named `relay.<verb>`. */
+export async function callClusterRelay(
+  serverId: string,
+  method: `relay.${string}`,
+  payload: Uint8Array = new Uint8Array(),
+): Promise<Uint8Array> {
+  return onHost(serverId, async (conn) => {
+    const here = await conn.clusterStatus();
+    if (!here.installed || !here.running || !here.relay)
+      throw new Error("No cluster relay is running on this server.");
+    const { min } = pin();
+    if (!versionAtLeast(here.version, min))
+      throw new ClusterLeaderTooOldError(here.version, min);
+    return conn.clusterCall(method, payload);
+  });
+}
+
+/** Makes the server's agent a cluster party that dials every relay it knows, or stops it (ADR-0044). */
+export async function setClusterMember(
+  serverId: string,
+  member: boolean,
+  relays: string[] = [],
+): Promise<{ member: boolean; relayLinks: number }> {
+  const conn = await connectAgent(serverId);
+  try {
+    const hello = await conn.hello();
+    if (!hello.capabilities?.includes(CLUSTER_CAPABILITY))
+      throw new AgentClusterMemberUnsupportedError(
+        CLUSTER_MEMBER_UNSUPPORTED_MESSAGE,
+      );
+    return await conn.setClusterMember(member, relays);
+  } catch (e) {
+    if (
+      !(e instanceof AgentClusterMemberUnsupportedError) &&
+      (e as Partial<ServiceError> | null)?.code === GrpcStatus.UNIMPLEMENTED
+    )
+      throw new AgentClusterMemberUnsupportedError(
+        CLUSTER_MEMBER_UNSUPPORTED_MESSAGE,
+      );
+    throw e;
+  } finally {
+    conn.close();
+  }
 }

@@ -27,7 +27,10 @@ test("each call sends its fields and answers with the agent's", async () => {
         running: false,
         version: "1.0.0",
         relay: true,
+        member: true,
+        relayLinks: 2,
       }),
+      setClusterMember: unary("member", { member: true, relayLinks: 1 }),
       clusterCall: unary("call", { payload: new Uint8Array([7]) }),
     },
   } as unknown as AgentChannel);
@@ -48,6 +51,19 @@ test("each call sends its fields and answers with the agent's", async () => {
     running: false,
     version: "1.0.0",
     relay: true,
+    member: true,
+    relayLinks: 2,
+  });
+  assert.deepEqual(
+    await rpc.setClusterMember(true, ["https://r.example.com"]),
+    {
+      member: true,
+      relayLinks: 1,
+    },
+  );
+  assert.deepEqual(sent.member.req, {
+    member: true,
+    relays: ["https://r.example.com"],
   });
   assert.deepEqual(
     [...(await rpc.clusterCall("place", new Uint8Array([1])))],

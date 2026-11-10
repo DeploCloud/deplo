@@ -91,3 +91,6 @@ export const AGENT_LINK_CAPABILITY = "agent-link";
 
 // The agent installs, runs and removes the deplo-cluster binary and forwards calls to it (ADR-0043).
 export const CLUSTER_HOST_CAPABILITY = "cluster.host";
+
+// The agent is a cluster party: it dials every relay it knows and holds one connection to each (ADR-0044).
+export const CLUSTER_CAPABILITY = "cluster";
