@@ -94,3 +94,6 @@ export const CLUSTER_HOST_CAPABILITY = "cluster.host";
 
 // The agent is a cluster party: it dials every relay it knows and holds one connection to each (ADR-0044).
 export const CLUSTER_CAPABILITY = "cluster";
+
+// The agent copies a built image to another member of its cluster over the relay (ADR-0044).
+export const CLUSTER_IMAGES_CAPABILITY = "cluster.images";

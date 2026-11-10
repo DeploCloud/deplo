@@ -82,6 +82,8 @@ export const MOVE_TABLES: Readonly<Record<string, TablePolicy>> = {
   cluster_leader_keys: { kind: "skip", clear: true },
   // The leader's placement, mirrored; a member left out of the server map reads as waiting.
   workload_placements: COPY,
+  // Which member holds which release image of a cluster App.
+  cluster_image_copies: { kind: "copy", needsServer: ["server_id"] },
   database_mounts: COPY,
   databases: {
     kind: "copy",

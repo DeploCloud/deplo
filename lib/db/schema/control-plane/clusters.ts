@@ -8,6 +8,7 @@ import {
 } from "drizzle-orm/pg-core";
 
 import { isoTimestamptz } from "../columns";
+import { apps } from "./apps";
 import { teams } from "./identity";
 import { servers } from "./servers";
 
@@ -70,6 +71,29 @@ export const clusterMembers = pgTable(
     emptyingSince: isoTimestamptz("emptying_since"),
   },
   (t) => [index("cluster_members_cluster_idx").on(t.clusterId)],
+);
+
+// Which member holds which release image of a cluster App, and how far a copy has got (spec #176).
+export const clusterImageCopies = pgTable(
+  "cluster_image_copies",
+  {
+    appId: text("app_id")
+      .notNull()
+      .references(() => apps.id, { onDelete: "cascade" }),
+    imageRef: text("image_ref").notNull(),
+    serverId: text("server_id")
+      .notNull()
+      .references(() => servers.id, { onDelete: "cascade" }),
+    // "copying" | "held" | "failed"
+    state: text("state").notNull(),
+    error: text("error").notNull().default(""),
+    createdAt: isoTimestamptz("created_at").notNull(),
+    updatedAt: isoTimestamptz("updated_at").notNull(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.appId, t.imageRef, t.serverId] }),
+    index("cluster_image_copies_server_idx").on(t.serverId),
+  ],
 );
 
 // The leader's placement, mirrored; only the placement module writes it. A null member is waiting for room.

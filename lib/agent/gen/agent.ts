@@ -3001,6 +3001,23 @@ export interface ClusterCallResponse {
   payload: Uint8Array;
 }
 
+export interface CopyClusterImageRequest {
+  /** A deplo/<key>:<tag> image this host holds. */
+  imageRef: string;
+  /** The target member's certificate fingerprint (sha256 hex of its DER). */
+  targetFingerprint: string;
+  /** How many releases of the App the target keeps, this one included. 0 means 2. */
+  keep: number;
+}
+
+export interface CopyClusterImageResponse {
+  /** The target already held the image, so nothing was sent. */
+  alreadyPresent: boolean;
+  bytes: number;
+  /** Releases the target removed to stay within keep. */
+  pruned: string[];
+}
+
 function createBaseRenewalCSRRequest(): RenewalCSRRequest {
   return {};
 }
@@ -22460,6 +22477,220 @@ export const ClusterCallResponse: MessageFns<ClusterCallResponse> = {
   },
 };
 
+function createBaseCopyClusterImageRequest(): CopyClusterImageRequest {
+  return { imageRef: "", targetFingerprint: "", keep: 0 };
+}
+
+export const CopyClusterImageRequest: MessageFns<CopyClusterImageRequest> = {
+  encode(message: CopyClusterImageRequest, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.imageRef !== "") {
+      writer.uint32(10).string(message.imageRef);
+    }
+    if (message.targetFingerprint !== "") {
+      writer.uint32(18).string(message.targetFingerprint);
+    }
+    if (message.keep !== 0) {
+      writer.uint32(24).int32(message.keep);
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): CopyClusterImageRequest {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const previousRecursionDepth = (reader as any).__tsProtoDecodeDepth ?? 0;
+    if (previousRecursionDepth >= 100) {
+      throw new globalThis.Error("protobuf decode recursion limit exceeded");
+    }
+    (reader as any).__tsProtoDecodeDepth = previousRecursionDepth + 1;
+    try {
+      const end = length === undefined ? reader.len : reader.pos + length;
+      const message = createBaseCopyClusterImageRequest();
+      while (reader.pos < end) {
+        const tag = reader.uint32();
+        switch (tag >>> 3) {
+          case 1: {
+            if (tag !== 10) {
+              break;
+            }
+
+            message.imageRef = reader.string();
+            continue;
+          }
+          case 2: {
+            if (tag !== 18) {
+              break;
+            }
+
+            message.targetFingerprint = reader.string();
+            continue;
+          }
+          case 3: {
+            if (tag !== 24) {
+              break;
+            }
+
+            message.keep = reader.int32();
+            continue;
+          }
+        }
+        if ((tag & 7) === 4 || tag === 0) {
+          break;
+        }
+        reader.skip(tag & 7);
+      }
+      return message;
+    } finally {
+      (reader as any).__tsProtoDecodeDepth = previousRecursionDepth;
+    }
+  },
+
+  fromJSON(object: any): CopyClusterImageRequest {
+    return {
+      imageRef: isSet(object.imageRef)
+        ? globalThis.String(object.imageRef)
+        : isSet(object.image_ref)
+        ? globalThis.String(object.image_ref)
+        : "",
+      targetFingerprint: isSet(object.targetFingerprint)
+        ? globalThis.String(object.targetFingerprint)
+        : isSet(object.target_fingerprint)
+        ? globalThis.String(object.target_fingerprint)
+        : "",
+      keep: isSet(object.keep) ? globalThis.Number(object.keep) : 0,
+    };
+  },
+
+  toJSON(message: CopyClusterImageRequest): unknown {
+    const obj: any = {};
+    if (message.imageRef !== "") {
+      obj.imageRef = message.imageRef;
+    }
+    if (message.targetFingerprint !== "") {
+      obj.targetFingerprint = message.targetFingerprint;
+    }
+    if (message.keep !== 0) {
+      obj.keep = Math.round(message.keep);
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<CopyClusterImageRequest>, I>>(base?: I): CopyClusterImageRequest {
+    return CopyClusterImageRequest.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<CopyClusterImageRequest>, I>>(object: I): CopyClusterImageRequest {
+    const message = createBaseCopyClusterImageRequest();
+    message.imageRef = object.imageRef ?? "";
+    message.targetFingerprint = object.targetFingerprint ?? "";
+    message.keep = object.keep ?? 0;
+    return message;
+  },
+};
+
+function createBaseCopyClusterImageResponse(): CopyClusterImageResponse {
+  return { alreadyPresent: false, bytes: 0, pruned: [] };
+}
+
+export const CopyClusterImageResponse: MessageFns<CopyClusterImageResponse> = {
+  encode(message: CopyClusterImageResponse, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.alreadyPresent !== false) {
+      writer.uint32(8).bool(message.alreadyPresent);
+    }
+    if (message.bytes !== 0) {
+      writer.uint32(16).int64(message.bytes);
+    }
+    for (const v of message.pruned) {
+      writer.uint32(26).string(v!);
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): CopyClusterImageResponse {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const previousRecursionDepth = (reader as any).__tsProtoDecodeDepth ?? 0;
+    if (previousRecursionDepth >= 100) {
+      throw new globalThis.Error("protobuf decode recursion limit exceeded");
+    }
+    (reader as any).__tsProtoDecodeDepth = previousRecursionDepth + 1;
+    try {
+      const end = length === undefined ? reader.len : reader.pos + length;
+      const message = createBaseCopyClusterImageResponse();
+      while (reader.pos < end) {
+        const tag = reader.uint32();
+        switch (tag >>> 3) {
+          case 1: {
+            if (tag !== 8) {
+              break;
+            }
+
+            message.alreadyPresent = reader.bool();
+            continue;
+          }
+          case 2: {
+            if (tag !== 16) {
+              break;
+            }
+
+            message.bytes = longToNumber(reader.int64());
+            continue;
+          }
+          case 3: {
+            if (tag !== 26) {
+              break;
+            }
+
+            message.pruned.push(reader.string());
+            continue;
+          }
+        }
+        if ((tag & 7) === 4 || tag === 0) {
+          break;
+        }
+        reader.skip(tag & 7);
+      }
+      return message;
+    } finally {
+      (reader as any).__tsProtoDecodeDepth = previousRecursionDepth;
+    }
+  },
+
+  fromJSON(object: any): CopyClusterImageResponse {
+    return {
+      alreadyPresent: isSet(object.alreadyPresent)
+        ? globalThis.Boolean(object.alreadyPresent)
+        : isSet(object.already_present)
+        ? globalThis.Boolean(object.already_present)
+        : false,
+      bytes: isSet(object.bytes) ? globalThis.Number(object.bytes) : 0,
+      pruned: globalThis.Array.isArray(object?.pruned) ? object.pruned.map((e: any) => globalThis.String(e)) : [],
+    };
+  },
+
+  toJSON(message: CopyClusterImageResponse): unknown {
+    const obj: any = {};
+    if (message.alreadyPresent !== false) {
+      obj.alreadyPresent = message.alreadyPresent;
+    }
+    if (message.bytes !== 0) {
+      obj.bytes = Math.round(message.bytes);
+    }
+    if (message.pruned?.length) {
+      obj.pruned = message.pruned;
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<CopyClusterImageResponse>, I>>(base?: I): CopyClusterImageResponse {
+    return CopyClusterImageResponse.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<CopyClusterImageResponse>, I>>(object: I): CopyClusterImageResponse {
+    const message = createBaseCopyClusterImageResponse();
+    message.alreadyPresent = object.alreadyPresent ?? false;
+    message.bytes = object.bytes ?? 0;
+    message.pruned = object.pruned?.map((e) => e) || [];
+    return message;
+  },
+};
+
 export type AgentService = typeof AgentService;
 export const AgentService = {
   /**
@@ -22882,6 +23113,21 @@ export const AgentService = {
     responseSerialize: (value: SetClusterMemberResponse): Buffer =>
       Buffer.from(SetClusterMemberResponse.encode(value).finish()),
     responseDeserialize: (value: Buffer): SetClusterMemberResponse => SetClusterMemberResponse.decode(value),
+  },
+  /**
+   * Send a locally built image to one member, which keeps the App's last releases and prunes
+   * older ones. A member that already holds the ref answers without a transfer.
+   */
+  copyClusterImage: {
+    path: "/deplo.agent.v1.Agent/CopyClusterImage" as const,
+    requestStream: false as const,
+    responseStream: false as const,
+    requestSerialize: (value: CopyClusterImageRequest): Buffer =>
+      Buffer.from(CopyClusterImageRequest.encode(value).finish()),
+    requestDeserialize: (value: Buffer): CopyClusterImageRequest => CopyClusterImageRequest.decode(value),
+    responseSerialize: (value: CopyClusterImageResponse): Buffer =>
+      Buffer.from(CopyClusterImageResponse.encode(value).finish()),
+    responseDeserialize: (value: Buffer): CopyClusterImageResponse => CopyClusterImageResponse.decode(value),
   },
   /** Back up a database or a project to a destination, streaming progress. */
   backup: {
@@ -23609,6 +23855,11 @@ export interface AgentServer extends UntypedServiceImplementation {
    * Deplo's own. A saved choice survives a restart; the relay set follows the panel's address.
    */
   setClusterMember: handleUnaryCall<SetClusterMemberRequest, SetClusterMemberResponse>;
+  /**
+   * Send a locally built image to one member, which keeps the App's last releases and prunes
+   * older ones. A member that already holds the ref answers without a transfer.
+   */
+  copyClusterImage: handleUnaryCall<CopyClusterImageRequest, CopyClusterImageResponse>;
   /** Back up a database or a project to a destination, streaming progress. */
   backup: handleServerStreamingCall<BackupRequest, BackupEvent>;
   /**
@@ -24315,6 +24566,25 @@ export interface AgentClient extends Client {
     metadata: Metadata,
     options: Partial<CallOptions>,
     callback: (error: ServiceError | null, response: SetClusterMemberResponse) => void,
+  ): ClientUnaryCall;
+  /**
+   * Send a locally built image to one member, which keeps the App's last releases and prunes
+   * older ones. A member that already holds the ref answers without a transfer.
+   */
+  copyClusterImage(
+    request: CopyClusterImageRequest,
+    callback: (error: ServiceError | null, response: CopyClusterImageResponse) => void,
+  ): ClientUnaryCall;
+  copyClusterImage(
+    request: CopyClusterImageRequest,
+    metadata: Metadata,
+    callback: (error: ServiceError | null, response: CopyClusterImageResponse) => void,
+  ): ClientUnaryCall;
+  copyClusterImage(
+    request: CopyClusterImageRequest,
+    metadata: Metadata,
+    options: Partial<CallOptions>,
+    callback: (error: ServiceError | null, response: CopyClusterImageResponse) => void,
   ): ClientUnaryCall;
   /** Back up a database or a project to a destination, streaming progress. */
   backup(request: BackupRequest, options?: Partial<CallOptions>): ClientReadableStream<BackupEvent>;

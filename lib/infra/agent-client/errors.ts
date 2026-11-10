@@ -74,6 +74,13 @@ export const CLUSTER_MEMBER_UNSUPPORTED_MESSAGE =
   "The agent on this server is too old to join a cluster. " +
   "Update the agent on this server, then try again.";
 
+/** An agent without `cluster.images`: named, never failed at runtime. */
+export class AgentClusterImagesUnsupportedError extends Error {}
+
+export const CLUSTER_IMAGES_UNSUPPORTED_MESSAGE =
+  "The agent on this server is too old to copy images to the other servers of its cluster. " +
+  "Update the agent on this server, then try again.";
+
 export class ClusterReleaseUnavailableError extends Error {}
 
 /** A cluster leader below `clusterMin`: refused until the agent that supervises it updates it. */

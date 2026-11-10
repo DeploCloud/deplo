@@ -1562,6 +1562,13 @@
       "when": 1794572800000,
       "tag": "0222_workload_placements",
       "breakpoints": true
+    },
+    {
+      "idx": 224,
+      "version": "7",
+      "when": 1794672800000,
+      "tag": "0224_cluster_image_copies",
+      "breakpoints": true
     }
   ]
 }

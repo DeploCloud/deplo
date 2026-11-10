@@ -1068,6 +1068,11 @@ type Cluster {
   id: ID
 
   """
+  The active team's Apps on this cluster whose newest release has not reached every server yet, so failover is not ready for them. Empty when every App is everywhere.
+  """
+  imageCopies: [ClusterImageProgress!]
+
+  """
   Every server, with what stops it joining this cluster right now. Requires instanceAdmin.
   """
   joinCandidates: [ClusterJoinCandidate!]
@@ -1090,6 +1095,20 @@ type Cluster {
   Teams granted access when `allTeams` is false. Only an instance admin sees every team; anyone else sees the active team at most.
   """
   teams: [Team!]
+}
+
+"""
+An App whose newest release is still being copied to the servers of the cluster.
+"""
+type ClusterImageProgress {
+  appId: ID
+  appName: String
+
+  """Servers that hold the release now."""
+  held: Int
+
+  """Servers that will hold it when the copies finish."""
+  total: Int
 }
 
 type ClusterJoin {

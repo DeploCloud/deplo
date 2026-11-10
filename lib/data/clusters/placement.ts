@@ -3,7 +3,10 @@ import "server-only";
 import { and, asc, eq, inArray } from "drizzle-orm";
 import { getDb } from "../../db/client";
 import { apps as appsTable } from "../../db/schema/control-plane/apps";
-import { workloadPlacements } from "../../db/schema/control-plane/clusters";
+import {
+  clusterImageCopies,
+  workloadPlacements,
+} from "../../db/schema/control-plane/clusters";
 import { databases as databasesTable } from "../../db/schema/control-plane/databases";
 import { nowIso } from "../../ids";
 import { callClusterLeader } from "../../infra/agent-client/cluster-host";
@@ -220,6 +223,10 @@ export async function clearPlacement(
   kind: WorkloadKind,
   workloadId: string,
 ): Promise<void> {
+  if (kind === "app")
+    await getDb()
+      .delete(clusterImageCopies)
+      .where(eq(clusterImageCopies.appId, workloadId));
   await getDb()
     .delete(workloadPlacements)
     .where(

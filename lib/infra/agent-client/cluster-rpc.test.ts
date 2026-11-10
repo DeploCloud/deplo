@@ -75,3 +75,33 @@ test("each call sends its fields and answers with the agent's", async () => {
   });
   for (const { ms } of Object.values(sent)) assert.ok(ms > 0 && ms <= 180_000);
 });
+
+test("an image copy names the image, the target and how many releases to keep, with room for a long transfer", async () => {
+  let sent: { req: unknown; ms: number } | null = null;
+  const rpc = clusterRpc({
+    client: {
+      copyClusterImage: (
+        req: unknown,
+        _md: unknown,
+        opts: { deadline: Date },
+        cb: (e: null, r: unknown) => void,
+      ) => {
+        sent = { req, ms: opts.deadline.getTime() - Date.now() };
+        cb(null, { alreadyPresent: false, bytes: "42", pruned: ["deplo/a:1"] });
+      },
+    },
+  } as unknown as AgentChannel);
+
+  assert.deepEqual(await rpc.copyClusterImage("deplo/a:2", "f".repeat(64), 2), {
+    alreadyPresent: false,
+    bytes: 42,
+    pruned: ["deplo/a:1"],
+  });
+  const got = sent as unknown as { req: unknown; ms: number };
+  assert.deepEqual(got.req, {
+    imageRef: "deplo/a:2",
+    targetFingerprint: "f".repeat(64),
+    keep: 2,
+  });
+  assert.ok(got.ms > 30 * 60_000);
+});

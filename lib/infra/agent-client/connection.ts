@@ -249,6 +249,12 @@ export interface AgentConnection {
     member: boolean,
     relays: string[],
   ): Promise<{ member: boolean; relayLinks: number }>;
+  // Needs `cluster.images` (ADR-0044): send a built image to one member, which prunes older releases.
+  copyClusterImage(
+    imageRef: string,
+    targetFingerprint: string,
+    keep: number,
+  ): Promise<{ alreadyPresent: boolean; bytes: number; pruned: string[] }>;
   /** Replaces the panel addresses the agent links to; it answers with the pair it kept. */
   setLinkAddresses(pair: LinkAddresses): Promise<LinkAddresses>;
   /** Closes the agent's own port for good; it takes this over its agent link only (ADR-0040). */

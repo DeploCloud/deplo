@@ -11,6 +11,7 @@ import type { AgentConnection, ClusterHostStatus } from "./connection";
 import {
   CLUSTER_CAPABILITY,
   CLUSTER_HOST_CAPABILITY,
+  CLUSTER_IMAGES_CAPABILITY,
 } from "./hello-capabilities";
 
 export interface FakeClusterHost {
@@ -27,6 +28,14 @@ export interface FakeClusterHost {
   memberCalls: { member: boolean; relays: string[] }[];
   /** The proxy stack of this host, as hostInfo reads it and traefikConfig replaces it. */
   proxy: { yaml: string; applied: number; refuse: string };
+  /** What the agent answers a copy request; throws to fail it. */
+  imageCopy: (
+    imageRef: string,
+    targetFingerprint: string,
+    keep: number,
+  ) => { alreadyPresent: boolean; bytes: number; pruned: string[] };
+  /** Every copyClusterImage the agent was asked, in order. */
+  imageCopies: { imageRef: string; targetFingerprint: string; keep: number }[];
   opened: string[];
   closed: number;
 }
@@ -112,6 +121,11 @@ export function fakeClusterHosts(): {
           h.status = { ...h.status, member };
           return { member, relayLinks: 0 };
         }),
+      copyClusterImage: (imageRef, targetFingerprint, keep) =>
+        guard(() => {
+          h.imageCopies.push({ imageRef, targetFingerprint, keep });
+          return h.imageCopy(imageRef, targetFingerprint, keep);
+        }),
       close: () => void h.closed++,
     };
     return conn as AgentConnection;
@@ -119,7 +133,12 @@ export function fakeClusterHosts(): {
   return {
     host(serverId, over = {}) {
       const h: FakeClusterHost = {
-        capabilities: [CLUSTER_HOST_CAPABILITY, CLUSTER_CAPABILITY, "hostops"],
+        capabilities: [
+          CLUSTER_HOST_CAPABILITY,
+          CLUSTER_CAPABILITY,
+          CLUSTER_IMAGES_CAPABILITY,
+          "hostops",
+        ],
         unimplemented: false,
         status: { ...NOTHING },
         leader: (_m, p) => p,
@@ -128,6 +147,8 @@ export function fakeClusterHosts(): {
         calls: [],
         memberCalls: [],
         proxy: { yaml: "", applied: 0, refuse: "" },
+        imageCopy: () => ({ alreadyPresent: false, bytes: 1, pruned: [] }),
+        imageCopies: [],
         opened: [],
         closed: 0,
         ...over,
