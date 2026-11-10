@@ -3,7 +3,8 @@
 import { LoadingText } from "@/components/apps/settings/settings-loading";
 import * as React from "react";
 import { useRouter } from "@/lib/nav";
-import { ArrowRightLeft, Server as ServerIcon } from "lucide-react";
+import { ArrowRightLeft, Boxes, Server as ServerIcon } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { FieldLabel } from "@/components/ui/info-tip";
@@ -22,7 +23,14 @@ import type { DocsTopic } from "@/lib/docs";
 import type { ActionResult } from "@/lib/result";
 import type { DatabaseDTO } from "@/lib/data/databases/rows";
 
-type MoveServer = { id: string; name: string; isDeploHost: boolean };
+type MoveServer = {
+  id: string;
+  name: string;
+  isDeploHost: boolean;
+  /** A cluster: the move lets its leader pick the server. */
+  kind?: "cluster";
+};
+type OnCluster = { id: string; name: string; serverName: string };
 
 export function AppServerCard({
   appId,
@@ -30,15 +38,18 @@ export function AppServerCard({
   serverId,
   servers,
   neighbours,
+  cluster,
 }: {
   appId: string;
   name: string;
   serverId: string;
   servers: MoveServer[];
   neighbours: string[];
+  cluster?: OnCluster | null;
 }) {
   return (
     <ServerMoveCard
+      cluster={cluster ?? undefined}
       name={name}
       serverId={serverId}
       servers={servers}
@@ -47,10 +58,15 @@ export function AppServerCard({
       docs="storage.move"
       successMessage={`Moving ${name}`}
       move={(to) =>
-        gqlAction(
-          `mutation($id: String!, $serverId: String!) { moveAppToServer(id: $id, serverId: $serverId) { id } }`,
-          { id: appId, serverId: to },
-        )
+        servers.find((s) => s.id === to)?.kind === "cluster"
+          ? gqlAction(
+              `mutation($id: String!, $clusterId: String!) { moveAppToCluster(id: $id, clusterId: $clusterId) { id } }`,
+              { id: appId, clusterId: to },
+            )
+          : gqlAction(
+              `mutation($id: String!, $serverId: String!) { moveAppToServer(id: $id, serverId: $serverId) { id } }`,
+              { id: appId, serverId: to },
+            )
       }
     />
   );
@@ -101,8 +117,10 @@ function ServerMoveCard({
   successMessage,
   move,
   disabled,
+  cluster,
 }: {
   disabled?: boolean;
+  cluster?: OnCluster;
   name: string;
   serverId: string;
   servers: MoveServer[];
@@ -114,10 +132,13 @@ function ServerMoveCard({
 }) {
   const router = useRouter();
   const selectId = React.useId();
-  const targets = servers.filter((s) => s.id !== serverId);
+  const targets = servers.filter(
+    (s) => s.id !== serverId && s.id !== cluster?.id,
+  );
   const [target, setTarget] = React.useState("");
   const current = servers.find((s) => s.id === serverId);
-  const currentName = current?.name ?? "its current server";
+  const currentName =
+    cluster?.serverName ?? current?.name ?? "its current server";
 
   if (targets.length === 0) return null;
 
@@ -134,8 +155,17 @@ function ServerMoveCard({
           <p className="flex items-center gap-2 text-sm">
             <ServerIcon className="size-4 text-muted-foreground" />
             <LoadingText>
-              {currentName}
-              <ServerRoleHint isDeploHost={current?.isDeploHost} />
+              {cluster ? (
+                <>
+                  Runs on <strong>{cluster.name}</strong> · now on{" "}
+                  {cluster.serverName}
+                </>
+              ) : (
+                <>
+                  {currentName}
+                  <ServerRoleHint isDeploHost={current?.isDeploHost} />
+                </>
+              )}
             </LoadingText>
           </p>
         </div>
@@ -172,9 +202,17 @@ function ServerMoveCard({
                   {targets.map((s) => (
                     <SelectItem key={s.id} value={s.id}>
                       <span className="flex items-center gap-2">
-                        <ServerIcon className="size-4 text-muted-foreground" />
+                        {s.kind === "cluster" ? (
+                          <Boxes className="size-4 text-muted-foreground" />
+                        ) : (
+                          <ServerIcon className="size-4 text-muted-foreground" />
+                        )}
                         {s.name}
-                        <ServerRoleHint isDeploHost={s.isDeploHost} />
+                        {s.kind === "cluster" ? (
+                          <Badge variant="outline">Cluster</Badge>
+                        ) : (
+                          <ServerRoleHint isDeploHost={s.isDeploHost} />
+                        )}
                       </span>
                     </SelectItem>
                   ))}

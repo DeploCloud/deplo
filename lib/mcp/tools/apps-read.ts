@@ -8,6 +8,8 @@ export const APP_FIELDS = /* GraphQL */ `
   status
   productionUrl
   serverId
+  clusterId
+  clusterName
   projectId
   folderId
   framework

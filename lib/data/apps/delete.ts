@@ -1,5 +1,6 @@
 import "server-only";
 
+import { clearPlacement } from "../clusters/placement";
 import { eq, inArray, isNotNull } from "drizzle-orm";
 
 import { getDb } from "../../db/client";
@@ -76,6 +77,7 @@ async function destroyApp(project: App, actor: string): Promise<void> {
 
     const heldDns = await takeAppDns([id]).catch(() => []);
     await getDb().delete(appsTable).where(eq(appsTable.id, id));
+    await clearPlacement("app", id).catch(() => {});
     await deleteReleasedDns(heldDns).catch(() => null);
     return ok;
   });

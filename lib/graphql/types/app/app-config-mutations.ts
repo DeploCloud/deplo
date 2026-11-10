@@ -38,7 +38,11 @@ import {
   setAppRestartWhenUnresponsive,
   setAppScreenshots,
 } from "@/lib/data/apps/settings";
-import { moveAppToServer, updateAppSource } from "@/lib/data/apps/source";
+import {
+  moveAppToCluster,
+  moveAppToServer,
+  updateAppSource,
+} from "@/lib/data/apps/source";
 import { setAppVolumes } from "@/lib/data/apps/volumes";
 import {
   revealDeployHook,
@@ -80,6 +84,7 @@ builder.mutationFields((t) => ({
         logoFromTemplate: input.logoFromTemplate ?? false,
         compose: input.compose ?? null,
         serverId: input.serverId ?? undefined,
+        clusterId: input.clusterId ?? undefined,
         buildServerId: input.buildServerId ?? null,
         composeUpArgs: input.composeUpArgs ?? null,
         sharedVarIds: input.sharedVarIds ?? null,
@@ -263,13 +268,27 @@ builder.mutationFields((t) => ({
     type: AppRef,
     authScopes: { capability: "configure_apps" },
     description:
-      "Move an app to another server and redeploy it there, copying its data. Its source is unchanged.",
+      "Move an app to another server and redeploy it there, copying its data. Its source is unchanged. An app on a cluster leaves it this way and also needs move_apps.",
     args: {
       id: t.arg.string({ required: true }),
       serverId: t.arg.string({ required: true }),
     },
     resolve: async (_r, { id, serverId }) => {
       await moveAppToServer(id, serverId);
+      return reloadApp(id);
+    },
+  }),
+  moveAppToCluster: t.field({
+    type: AppRef,
+    authScopes: { capability: "configure_apps" },
+    description:
+      "Place an app on a cluster and redeploy it on the member its leader picks, copying its data. A cluster with no room answers with the sentence that says what to change, and nothing stops. To take it off a cluster again use moveAppToServer, which also needs move_apps.",
+    args: {
+      id: t.arg.string({ required: true }),
+      clusterId: t.arg.string({ required: true }),
+    },
+    resolve: async (_r, { id, clusterId }) => {
+      await moveAppToCluster(id, clusterId);
       return reloadApp(id);
     },
   }),

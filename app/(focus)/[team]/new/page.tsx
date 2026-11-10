@@ -11,10 +11,8 @@ import { Button } from "@/components/ui/button";
 import { NewAppWizard } from "@/components/apps/new-app-wizard/new-app-wizard";
 import { FocusFrame } from "@/components/apps/new-app-wizard/focus-frame";
 import { getTemplateBlueprint } from "@/lib/templates-blueprint";
-import {
-  listBuildServerChoices,
-  listServerChoices,
-} from "@/lib/data/servers/roster";
+import { listBuildServerChoices } from "@/lib/data/servers/roster";
+import { listPlacementChoices } from "@/lib/data/clusters/choices";
 import { listGithubInstallations } from "@/lib/data/github";
 import { listGitConnections } from "@/lib/data/git-connections";
 import { listNewRepos } from "@/lib/data/new-repos";
@@ -215,7 +213,7 @@ export default async function NewAppPage(props: PageProps<"/[team]/new">) {
     instanceAdmin,
     cloneTargets,
   ] = await Promise.all([
-    listServerChoices(),
+    listPlacementChoices(),
     listBuildServerChoices(),
     listGithubInstallations(),
     listGitConnections(),
@@ -249,7 +247,13 @@ export default async function NewAppPage(props: PageProps<"/[team]/new">) {
   return (
     <FocusFrame exitHref={exitHref} narrow={Boolean(spec || clone)}>
       <NewAppWizard
-        servers={servers}
+        servers={servers.map((c) => ({
+          id: c.id,
+          name: c.name,
+          type: c.type,
+          isDeploHost: c.isDeploHost,
+          ...(c.kind === "cluster" ? { kind: "cluster" as const } : {}),
+        }))}
         buildServers={buildServers}
         sharedVars={sharedVars.map((v) => ({
           id: v.id,

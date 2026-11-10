@@ -4,6 +4,7 @@ import { HealthCheckRef } from "../health-check";
 import { DeploySourceEnum, AppStatusEnum } from "../enums";
 import { DeploymentRef } from "./deployment-object";
 import { listApps } from "@/lib/data/apps/listing";
+import { getCluster } from "@/lib/data/clusters/roster";
 import type { AppSummary } from "@/lib/data/apps/summary";
 import { effectiveFramework } from "@/lib/apps/framework-catalog";
 import { listDeployments } from "@/lib/data/deployments/deployment-queries";
@@ -86,7 +87,23 @@ export const AppRef = builder.objectRef<AppSummary>("App").implement({
       description: "The Project container this app belongs to, if any.",
       resolve: (p) => p.projectId ?? null,
     }),
-    serverId: t.exposeID("serverId"),
+    serverId: t.exposeID("serverId", {
+      description:
+        "The server the app runs on now. For an app on a cluster, the member the leader placed it on.",
+    }),
+    clusterId: t.id({
+      nullable: true,
+      description:
+        "The cluster the app is placed on; null for an app on one server.",
+      resolve: (p) => p.clusterId ?? null,
+    }),
+    clusterName: t.string({
+      nullable: true,
+      description:
+        'The name of that cluster, for the line "Runs on eu, now on server-b".',
+      resolve: async (p) =>
+        p.clusterId ? ((await getCluster(p.clusterId))?.name ?? null) : null,
+    }),
     buildServerId: t.id({
       nullable: true,
       description:

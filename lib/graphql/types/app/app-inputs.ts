@@ -168,6 +168,11 @@ export const CreateAppInputType = builder.inputType("CreateAppInput", {
     }),
     compose: t.string({ required: false }),
     serverId: t.string({ required: false }),
+    clusterId: t.string({
+      required: false,
+      description:
+        "Place the app on a cluster instead of a server: the cluster's leader picks the member. Not together with serverId.",
+    }),
     buildServerId: t.string({
       required: false,
       description:

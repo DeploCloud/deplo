@@ -80,6 +80,8 @@ export const MOVE_TABLES: Readonly<Record<string, TablePolicy>> = {
   cluster_members: { kind: "copy", needsServer: ["server_id"] },
   // Sealed to the old machine's leader; the new one makes its own key.
   cluster_leader_keys: { kind: "skip", clear: true },
+  // The leader's placement, mirrored; a member left out of the server map reads as waiting.
+  workload_placements: COPY,
   database_mounts: COPY,
   databases: {
     kind: "copy",

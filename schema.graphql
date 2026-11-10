@@ -192,6 +192,12 @@ type App {
   """
   buildServerId: ID
 
+  """The cluster the app is placed on; null for an app on one server."""
+  clusterId: ID
+
+  """The name of that cluster, for the line "Runs on eu, now on server-b"."""
+  clusterName: String
+
   """
   The authored compose file. Its inline values are masked unless you can configure the app.
   """
@@ -291,6 +297,10 @@ type App {
   Whether Deplo takes a light and a dark picture of the site after each deploy. On by default; off deletes the saved pictures.
   """
   screenshotsEnabled: Boolean
+
+  """
+  The server the app runs on now. For an app on a cluster, the member the leader placed it on.
+  """
   serverId: ID
   slug: String
   source: DeploySource
@@ -1365,6 +1375,11 @@ input CreateAppInput {
   Where the app COMPILES, when that is not where it runs. Omitted is Automatic - a build-only server if the fleet has one.
   """
   buildServerId: String
+
+  """
+  Place the app on a cluster instead of a server: the cluster's leader picks the member. Not together with serverId.
+  """
+  clusterId: String
   compose: String
   composePort: Int
   composeService: String
@@ -4306,6 +4321,11 @@ type Mutation {
   mintRegistrationLink(input: MintRegistrationLinkInput!): String
 
   """
+  Place an app on a cluster and redeploy it on the member its leader picks, copying its data. A cluster with no room answers with the sentence that says what to change, and nothing stops. To take it off a cluster again use moveAppToServer, which also needs move_apps.
+  """
+  moveAppToCluster(clusterId: String!, id: String!): App
+
+  """
   Move an app into a specific environment of a Project (ADR-0009: each environment holds its own apps). The app's project follows the environment.
   """
   moveAppToEnvironment(appId: ID!, environmentId: ID!): Boolean
@@ -4321,7 +4341,7 @@ type Mutation {
   moveAppToProject(appId: ID!, projectId: ID): Boolean
 
   """
-  Move an app to another server and redeploy it there, copying its data. Its source is unchanged.
+  Move an app to another server and redeploy it there, copying its data. Its source is unchanged. An app on a cluster leaves it this way and also needs move_apps.
   """
   moveAppToServer(id: String!, serverId: String!): App
 
@@ -5457,6 +5477,21 @@ enum PasskeyKind {
 }
 
 """
+Somewhere an App can be placed: a server, or a cluster whose leader picks the server. A cluster's members are never listed here.
+"""
+type PlacementChoice {
+  id: ID
+  isDeploHost: Boolean
+  kind: PlacementKind
+  name: String
+}
+
+enum PlacementKind {
+  cluster
+  server
+}
+
+"""
 A preview-only variable override. Write-only, like every stored secret: the value is never projected and there is no reveal path.
 """
 type PreviewEnvVar {
@@ -5955,6 +5990,11 @@ type Query {
   What moving the panel to this address would break: passkeys welded to the current hostname, sessions, deploy hooks already pasted into someone's CI, connected AI clients, invite links, servers still waiting for their install command, notification subscriptions. Counted live and instance-wide, and only meaningful when the address actually moves - an unchanged address answers all zeroes. A query, not a mutation: it reads the database and dials nothing.
   """
   panelAddressImpact(url: String!): PanelAddressImpact
+
+  """
+  The servers and clusters the active team may place an App on, servers first.
+  """
+  placementChoices: [PlacementChoice!]
 
   """The app's preview-only variable overrides (advanced)."""
   previewEnvVars(appId: ID!): [PreviewEnvVar!]

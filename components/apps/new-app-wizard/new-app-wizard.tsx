@@ -211,6 +211,10 @@ export function NewAppWizard({
     Boolean(presetName ?? template?.name),
   );
   const [serverId, setServerId] = React.useState(servers[0]?.id ?? "");
+  const clusterIds = React.useMemo(
+    () => servers.filter((s) => s.kind === "cluster").map((s) => s.id),
+    [servers],
+  );
   const [buildServerId, setBuildServerId] = React.useState<string | null>(null);
   const [autoDeploy, setAutoDeploy] = React.useState(true);
   const [gitOptions, setGitOptions] = React.useState<GitDeployOptionsValue>(
@@ -337,6 +341,7 @@ export function NewAppWizard({
     const input = buildCreateAppInput({
       name,
       serverId,
+      clusterIds,
       buildServerId,
       source,
       isTemplate,
@@ -366,7 +371,7 @@ export function NewAppWizard({
     if (!input) return;
 
     startTransition(async () => {
-      if (useCompose) {
+      if (useCompose && !clusterIds.includes(serverId)) {
         const pre = await checkComposeNameClashes({ compose, serverId, input });
         if (!pre.ok) {
           toast.error(pre.error);
@@ -406,6 +411,7 @@ export function NewAppWizard({
       const input = buildCreateAppInput({
         name,
         serverId,
+        clusterIds,
         buildServerId,
         source: isGithub ? "github" : "git",
         isTemplate: false,
