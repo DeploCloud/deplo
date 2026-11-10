@@ -26,6 +26,16 @@ jobs:
           pin=$(node -p 'require("./package.json").deplo.agent')
           curl -fsSL -o /dev/null "https://github.com/DeploCloud/deplo-agent/releases/download/v${pin}/checksums.txt" \
             || { echo "::error::deplo-agent v${pin} (package.json deplo.agent) has no checksums.txt - publish the agent first"; exit 1; }
+      # Unset until deplo-cluster publishes its first release; once set, it must be published like the agent.
+      - name: The pinned cluster release is published
+        run: |
+          pin=$(node -p 'require("./package.json").deplo.cluster || ""')
+          if [ -z "$pin" ]; then
+            echo "::notice::deplo.cluster is unset - no cluster release to check"
+            exit 0
+          fi
+          curl -fsSL -o /dev/null "https://github.com/DeploCloud/deplo-cluster/releases/download/v${pin}/checksums.txt" \
+            || { echo "::error::deplo-cluster v${pin} (package.json deplo.cluster) has no checksums.txt - publish the cluster binary first"; exit 1; }
       # A required stop no instance can install or pass would strand every instance below it (ADR-0041).
       - name: The required update stop is a published stop
         env:

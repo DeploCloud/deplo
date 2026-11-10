@@ -53,6 +53,12 @@ the answers. Settle these first - from the request or the tree when they are the
    admin must take before updating also goes in `deplo.manualUpdate`, one plain sentence naming it:
    Settings → Deplo → Updates shows it above the Update button, and the automatic updates never
    install that release. Leave it out of a release that needs nothing; the next one drops it.
+7. **Does the cluster binary need a release too?** Look, don't guess:
+   `git -C ../deplo-cluster log --oneline v<deplo.cluster>..origin/main` (with no `deplo.cluster`
+   pinned yet, any commit on `main` counts). Empty: cut none. Not empty: it ships **first** (its own
+   `v*` tag in `DeploCloud/deplo-cluster`, wait for `checksums.txt`), then `deplo.cluster` moves in
+   a `chore(cluster):` commit, then the panel is tagged. `deplo.clusterMin` moves only when the
+   panel cannot lead with the older one. See `docs/agents/cluster-rollout.md`.
 
 A release's migrations must leave the previous release working: the installer rolls a failed update
 back onto them, so a column goes one release after its last reader (`lib/db/server-agent-pin-migration.test.ts`).
@@ -197,6 +203,9 @@ and Bug Fixes line before publishing: `v0.8.0` first went out with only its last
   no `checksums.txt` on GitHub. A canary panel may pin an agent canary; a stable panel pins a
   stable agent. The same block carries `updateStop` / `requiresStop` (question 4), one flat line
   each, because the install script reads them with `sed`.
+- **The cluster binary** (`DeploCloud/deplo-cluster`) is a third thing on its own clock, pinned as
+  `deplo.cluster` / `deplo.clusterMin` beside the agent. Empty until its first release; the tag
+  workflow skips an unset pin and refuses a set one with no `checksums.txt`.
 - **The fleet only ever moves forward.** Nothing installs an agent older than the one a server
   runs. `docs/agents/fleet-rollout.md` §10 has the rollback options.
 - **The Beta badge** in Settings → Deplo is derived from the version starting with `0.`. Nothing

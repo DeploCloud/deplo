@@ -30,4 +30,5 @@ it anyway) and the reason for each.
   See `docs/agents/domain.md`.
 - **Shipping**: `docs/agents/releasing.md` (control plane, never bump on your own initiative; its
   "The questions before a release" comes before any tag) and
-  `docs/agents/fleet-rollout.md` (the `deplo-agent` fleet, forward-only).
+  `docs/agents/fleet-rollout.md` (the `deplo-agent` fleet, forward-only) and
+  `docs/agents/cluster-rollout.md` (the `deplo-cluster` binary).
