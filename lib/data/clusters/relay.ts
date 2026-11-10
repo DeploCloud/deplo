@@ -42,7 +42,7 @@ export type RosterPush = {
   failed: { serverId: string; message: string }[];
 };
 
-async function fingerprintOf(serverId: string): Promise<string | null> {
+export async function fingerprintOf(serverId: string): Promise<string | null> {
   const server = await getServerById(serverId);
   const fp = server?.agent?.certFingerprint?.toLowerCase() ?? "";
   // A server not enrolled yet holds no certificate; the relay refuses a roster with anything but a sha256 in it.

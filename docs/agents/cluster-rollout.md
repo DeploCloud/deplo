@@ -57,6 +57,12 @@ the stream headers and mutual TLS rules (`internal/wire` here and in `deplo-agen
 one and the other two move in the same step. The agent half needs a Hello capability the panel gates
 on: `cluster` (membership and relay dialing), so an agent from before it is named, never failed.
 
+The lease is a second contract of the same shape: the order each renewal carries and the 5 s / 15 s /
+60 s timings (`internal/lease` here and in `deplo-cluster`, `internal/clusterlink/lease` in
+`deplo-agent`), and the leader's watch (`/watch`, the `ClusterWatch` RPC, `lib/data/clusters/watch.ts`).
+A member refuses an older epoch and keeps the one it holds across restarts, so never lower the epoch a
+leader sends; Deplo adopts a newer one the leader reports.
+
 ## 5. Rollback is forward-only
 
 Same as the fleet (`fleet-rollout.md` §10): nothing installs an older cluster binary than the one

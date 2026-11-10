@@ -1148,6 +1148,12 @@ enum ClusterLeaderState {
   unreachable
 }
 
+enum ClusterLeaseState {
+  fenced
+  not_responding
+  ok
+}
+
 """
 A server in a cluster. Nothing is ever placed on a member directly: the cluster decides.
 """
@@ -1155,6 +1161,11 @@ type ClusterMember {
   """Set while the member is being emptied."""
   emptyingSince: String
   joinedAt: String
+
+  """
+  What the cluster's leader last said: answering, not responding (15 seconds without an answer), or fenced (a minute: it has stopped its databases and Apps with files).
+  """
+  leaseState: ClusterLeaseState
   serverId: ID
   serverName: String
   status: ServerStatus

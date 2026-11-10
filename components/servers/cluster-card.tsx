@@ -44,6 +44,20 @@ const MEMBER_BADGE: Record<
   provisioning: { label: "Provisioning", variant: "warning" },
 };
 
+const LEASE_BADGE = {
+  not_responding: {
+    label: "Not responding",
+    variant: "warning",
+    title: "The cluster has not heard from this server in a while.",
+  },
+  fenced: {
+    label: "Not responding",
+    variant: "destructive",
+    title:
+      "No answer for a minute: this server stopped its databases and Apps with files, so none of them can run twice.",
+  },
+} as const;
+
 async function Members({ clusterId }: { clusterId: string }) {
   const [members, candidates] = await Promise.all([
     listClusterMembers(clusterId),
@@ -85,6 +99,14 @@ async function Members({ clusterId }: { clusterId: string }) {
               <Badge variant={MEMBER_BADGE[m.status].variant}>
                 {MEMBER_BADGE[m.status].label}
               </Badge>
+              {m.leaseState !== "ok" && (
+                <Badge
+                  variant={LEASE_BADGE[m.leaseState].variant}
+                  title={LEASE_BADGE[m.leaseState].title}
+                >
+                  {LEASE_BADGE[m.leaseState].label}
+                </Badge>
+              )}
             </li>
           ))}
         </ul>

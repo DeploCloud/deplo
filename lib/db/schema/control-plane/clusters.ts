@@ -3,6 +3,7 @@ import {
   text,
   integer,
   boolean,
+  bigint,
   primaryKey,
   index,
 } from "drizzle-orm/pg-core";
@@ -20,6 +21,8 @@ export const clusters = pgTable("clusters", {
     onDelete: "set null",
   }),
   leaderEpoch: integer("leader_epoch").notNull().default(0),
+  // The last leader event this control plane applied; a reconnect replays from here.
+  eventSeq: bigint("event_seq", { mode: "number" }).notNull().default(0),
   createdAt: isoTimestamptz("created_at").notNull(),
 });
 
@@ -68,6 +71,9 @@ export const clusterMembers = pgTable(
     joinedAt: isoTimestamptz("joined_at").notNull(),
     // Set while the member is being emptied; no new work is placed on it.
     emptyingSince: isoTimestamptz("emptying_since"),
+    // What the leader last said about this member's lease: ok, not_responding or fenced.
+    leaseState: text("lease_state").notNull().default("ok"),
+    leaseChangedAt: isoTimestamptz("lease_changed_at"),
   },
   (t) => [index("cluster_members_cluster_idx").on(t.clusterId)],
 );

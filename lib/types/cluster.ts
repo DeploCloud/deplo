@@ -8,6 +8,8 @@ export interface Cluster {
   /** The server the leader runs on; null is Deplo's own machine. */
   leaderServerId: ID | null;
   leaderEpoch: number;
+  /** The last leader event applied; a reconnect replays from here. */
+  eventSeq: number;
   createdAt: string;
 }
 
@@ -32,6 +34,9 @@ export function failoverOn(memberCount: number): boolean {
   return memberCount >= FAILOVER_MIN_MEMBERS;
 }
 
+/** What the leader last said about a member's lease: ok, not responding (15 s) or fenced (60 s). */
+export type ClusterLeaseState = "ok" | "not_responding" | "fenced";
+
 export interface ClusterMember {
   serverId: ID;
   serverName: string;
@@ -39,6 +44,7 @@ export interface ClusterMember {
   joinedAt: string;
   /** Set while the member is being emptied. */
   emptyingSince: string | null;
+  leaseState: ClusterLeaseState;
 }
 
 export type ClusterJoinReasonCode =

@@ -6,6 +6,8 @@ import {
   CLUSTER_INSTALL_TIMEOUT_MS,
   HELLO_TIMEOUT_MS,
 } from "./deadlines";
+import { streamEvents } from "../stream-events";
+import { toAgentError } from "./errors";
 import { unary, type AgentChannel } from "./mtls-channel";
 
 export function clusterRpc(
@@ -17,6 +19,7 @@ export function clusterRpc(
   | "clusterStatus"
   | "clusterCall"
   | "setClusterMember"
+  | "clusterWatch"
 > {
   const { client } = channel;
   return {
@@ -58,6 +61,15 @@ export function clusterRpc(
         HELLO_TIMEOUT_MS,
       );
       return { member: r.member, relayLinks: r.relayLinks };
+    },
+    clusterWatch(since) {
+      return (async function* () {
+        // No deadline: a watch lives until Deplo or the leader ends it.
+        for await (const l of streamEvents(client.clusterWatch({ since }), {
+          normalise: toAgentError,
+        }))
+          yield l.line;
+      })();
     },
     async clusterCall(method, payload) {
       const r = await unary(
