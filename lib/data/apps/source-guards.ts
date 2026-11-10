@@ -9,6 +9,10 @@ import {
   deploImageMessage,
   serviceDeploImage,
 } from "../../deploy/deplo-image";
+import {
+  REPLICAS_DATA_MESSAGE,
+  composeReplicasConflicts,
+} from "../../deploy/replicas";
 import { composePublishesPorts } from "../../deploy/compose-lint/host-ports";
 import {
   composeHostReach,
@@ -60,6 +64,8 @@ export function assertImageRef(
 export async function assertComposeSavable(
   compose: string | null | undefined,
 ): Promise<string[]> {
+  if (compose != null && composeReplicasConflicts(compose).length > 0)
+    throw new Error(REPLICAS_DATA_MESSAGE);
   if (compose != null && composePublishesPorts(compose)) {
     await requireExposePorts();
   }

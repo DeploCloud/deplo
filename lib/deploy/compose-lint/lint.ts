@@ -501,7 +501,7 @@ export function lintCompose(source: string): LintDiagnostic[] {
     diags.push({
       severity: "error",
       rule: "replicas-storage",
-      message: `\`${name}\` asks for more than one replica. ${REPLICAS_DATA_MESSAGE}`,
+      message: REPLICAS_DATA_MESSAGE,
       line: lineOfServiceField(lines, lineOfAppKey(lines, name), "deploy"),
     });
   }
