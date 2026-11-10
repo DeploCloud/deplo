@@ -149,6 +149,7 @@ export function consoleRpc(
     health: i.health,
     restartCount: i.restartCount,
     startedAtUnix: Number(i.startedAtUnix ?? 0),
+    answer: i.answer ?? "",
   });
 
   return {

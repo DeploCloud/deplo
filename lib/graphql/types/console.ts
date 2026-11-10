@@ -103,8 +103,9 @@ const RuntimeContainerRef = builder
       }),
       health: t.exposeString("health", {
         description:
-          '"healthy" | "unhealthy" | "starting", or "" when the image declares ' +
-          "no healthcheck, which is not a synonym for healthy.",
+          '"healthy" | "unhealthy" | "starting", or "" when nothing checks it, ' +
+          "which is not a synonym for healthy. Follows the server agent's own " +
+          "check, the one that restarts the app, and Docker's when the image has one.",
       }),
       restartCount: t.exposeInt("restartCount", {
         description: "Times docker has restarted this container.",

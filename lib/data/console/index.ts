@@ -14,12 +14,6 @@ import { hasAppCapability, requireAppCapability } from "../node-access";
 import { loadTeamApp } from "../app-graph-load";
 import { primaryDomainApp } from "../domains/primary-domain";
 import { composeServiceNames } from "../../deploy/compose-stack/compose-read";
-import { portFor } from "../../deploy/ports";
-import {
-  httpHealthVerdict,
-  recentHttpHealth,
-  withinStartPeriod,
-} from "../../apps/http-health";
 import { isDockerLevelStderr } from "../../infra/docker";
 import { sweepStale } from "../../stale-sweep";
 import { connectAgent } from "../../infra/agent-client/connect";
@@ -65,6 +59,7 @@ export interface ConsoleInstance {
   health: string;
   restartCount: number;
   startedAtUnix: number;
+  answer?: string;
 }
 
 export function containerName(p: App, deployKey: string = p.slug): string {
@@ -235,7 +230,7 @@ async function probeRuntime(p: App): Promise<AppRuntime> {
       name: i.name,
       service: i.service,
       state: i.state || (idx === 0 ? legacySoloState : ""),
-      health: i.health,
+      health: healthOf(i),
       restartCount: i.restartCount,
       startedAtUnix: i.startedAtUnix,
       running: i.running,
@@ -245,8 +240,6 @@ async function probeRuntime(p: App): Promise<AppRuntime> {
     const declared = p.compose ? composeServiceNames(p.compose) : [p.slug];
     const present = new Set(containers.map((c) => c.service));
     const missing = declared.filter((s) => !present.has(s));
-
-    await applyHttpHealth(p, conn, containers, exposeService);
 
     return {
       total: containers.length,
@@ -266,43 +259,18 @@ async function probeRuntime(p: App): Promise<AppRuntime> {
   }
 }
 
-async function applyHttpHealth(
-  p: App,
-  conn: AgentConnection,
-  containers: RuntimeContainer[],
-  exposeService: string,
-): Promise<void> {
-  const h = p.healthCheck;
-  if (h?.type !== "http") return;
-  const target =
-    containers.find((c) => c.running && c.service === exposeService) ??
-    containers.find((c) => c.running);
-  if (!target) return;
-  if (withinStartPeriod(target.startedAtUnix, h.startPeriodS)) {
-    target.health = "starting";
-    return;
-  }
-  const recent = recentHttpHealth(p.id, h.intervalS);
-  if (recent) {
-    target.health = recent;
-    return;
-  }
-  let ok = false;
-  try {
-    const res = await conn.probeHttp({
-      appId: p.id,
-      slug: p.slug,
-      service: target.service,
-      port: h.port ?? portFor(p),
-      path: h.path?.trim() || "/",
-      host: "",
-      maxBytes: 1,
-    });
-    ok = res.status > 0 && res.status < 400;
-  } catch {
-    ok = false;
-  }
-  target.health = httpHealthVerdict(p.id, ok, h.retries);
+// The server agent's own check result, so "healthy" here is what the restart rule acts on.
+// No result (no rule, switch off, older agent) leaves Docker's verdict: never a made-up "healthy".
+const ANSWER_HEALTH: Record<string, string> = {
+  answering: "healthy",
+  not_answering: "unhealthy",
+  starting: "starting",
+};
+
+function healthOf(i: ConsoleInstance): string {
+  const seen = ANSWER_HEALTH[i.answer ?? ""];
+  if (!seen || i.health === "unhealthy") return i.health;
+  return seen;
 }
 
 function unknownRuntime(): AppRuntime {

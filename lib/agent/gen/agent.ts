@@ -2130,6 +2130,11 @@ export interface ConsoleInstance {
    * agent too old to send it - both mean "no uptime to show", never 1970.
    */
   startedAtUnix: number;
+  /**
+   * What the restart rule's last probe said (health.restart): "starting" | "answering" |
+   * "not_answering". Empty when no rule watches this container or none has probed yet.
+   */
+  answer: string;
 }
 
 export interface ListInstancesResponse {
@@ -13620,7 +13625,7 @@ function createBaseConsoleInstance(): ConsoleInstance {
     state: "",
     health: "",
     restartCount: 0,
-    startedAtUnix: 0,
+    startedAtUnix: 0, answer: "",
   };
 }
 
@@ -13664,6 +13669,9 @@ export const ConsoleInstance: MessageFns<ConsoleInstance> = {
     }
     if (message.startedAtUnix !== 0) {
       writer.uint32(104).int64(message.startedAtUnix);
+    }
+    if (message.answer !== "") {
+      writer.uint32(114).string(message.answer);
     }
     return writer;
   },
@@ -13785,6 +13793,14 @@ export const ConsoleInstance: MessageFns<ConsoleInstance> = {
             message.startedAtUnix = longToNumber(reader.int64());
             continue;
           }
+          case 14: {
+            if (tag !== 114) {
+              break;
+            }
+
+            message.answer = reader.string();
+            continue;
+          }
         }
         if ((tag & 7) === 4 || tag === 0) {
           break;
@@ -13824,6 +13840,7 @@ export const ConsoleInstance: MessageFns<ConsoleInstance> = {
         : isSet(object.started_at_unix)
         ? globalThis.Number(object.started_at_unix)
         : 0,
+      answer: isSet(object.answer) ? globalThis.String(object.answer) : "",
     };
   },
 
@@ -13868,6 +13885,9 @@ export const ConsoleInstance: MessageFns<ConsoleInstance> = {
     if (message.startedAtUnix !== 0) {
       obj.startedAtUnix = Math.round(message.startedAtUnix);
     }
+    if (message.answer !== "") {
+      obj.answer = message.answer;
+    }
     return obj;
   },
 
@@ -13889,6 +13909,7 @@ export const ConsoleInstance: MessageFns<ConsoleInstance> = {
     message.health = object.health ?? "";
     message.restartCount = object.restartCount ?? 0;
     message.startedAtUnix = object.startedAtUnix ?? 0;
+    message.answer = object.answer ?? "";
     return message;
   },
 };
