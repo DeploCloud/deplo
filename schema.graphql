@@ -254,6 +254,9 @@ type App {
   """The Project container this app belongs to, if any."""
   projectId: ID
 
+  """How many copies of this single-image app run on its server (1 to 10)."""
+  replicas: Int
+
   """
   Per-app resource caps applied at deploy time, or null when the app has no limits set.
   """
@@ -4598,6 +4601,11 @@ type Mutation {
 
   """Turn pull request previews on or off, and set their options."""
   setAppPreviewSettings(appId: ID!, input: AppPreviewSettingsInput!): Boolean
+
+  """
+  Run a single-image app as 1 to 10 copies on its server. Refused with a Volume, a Bind or a published host port. Applies from the next deploy.
+  """
+  setAppReplicas(id: String!, value: Int!): App
 
   """
   Turn restart loop protection on or off for one app. Applies at once - there is nothing to redeploy.

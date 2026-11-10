@@ -33,6 +33,7 @@ import { buildConfigFor, normalizeBuildConfig } from "../frameworks";
 import { autoComposeSkip } from "./build/source-compose";
 import { offerBuiltImage } from "./build/build-reuse";
 import { deployOverlap, type OverlapStacks } from "./overlap";
+import { REPLICAS_AGENT_MESSAGE, REPLICAS_CAPABILITY } from "./replicas";
 import { getServerById } from "../data/servers/roster";
 import type { BuildConfig } from "../types/build";
 import type { LogLevel } from "../types/deployment";
@@ -319,6 +320,9 @@ export async function runAgentDeploy(opts: {
   });
   applyAgentFeatures(req, opts, hello.capabilities, opts.sink);
   if (opts.overlap && !opts.buildOnly) {
+    const replicas = opts.overlap.replicas;
+    if (replicas > 1 && !hello.capabilities.includes(REPLICAS_CAPABILITY))
+      throw new Error(REPLICAS_AGENT_MESSAGE);
     const choice = deployOverlap({
       ports: opts.overlap.ports,
       capabilities: hello.capabilities,
@@ -327,6 +331,10 @@ export async function runAgentDeploy(opts: {
     if (choice.overlap) {
       req.composeYaml = opts.overlap.live;
       req.standInComposeYaml = opts.overlap.standIn;
+    } else if (replicas > 1) {
+      throw new Error(
+        `Running ${replicas} copies needs the new version to start beside the old one. ${choice.reason}`,
+      );
     } else opts.sink.log("info", choice.reason);
   }
   if (opts.reuseFor)

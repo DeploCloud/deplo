@@ -23,6 +23,7 @@ import {
   renderYamlKeys,
 } from "../health-check";
 import type { OverlapStacks } from "../overlap";
+import { replicasRefusal } from "../replicas";
 import { portProbeCommand } from "../port-probe";
 import { deployNetwork } from "../network";
 import { defaultLogging, renderResourceLimitsYaml } from "../resources";
@@ -89,6 +90,8 @@ export function renderCompose(opts: {
   serviceName?: string;
   aliases?: string[];
   extraLabels?: string[];
+  // More than one copy: no fixed container name, and Compose starts that many.
+  replicas?: number;
   name: string;
   image: string;
   port: number;
@@ -203,6 +206,11 @@ export function renderCompose(opts: {
     : renderHealthCheckYaml(opts.healthCheck, 4);
 
   const service = opts.serviceName ?? name;
+  const replicas = opts.replicas ?? 1;
+  const identityYaml =
+    replicas > 1
+      ? `    restart: unless-stopped\n    deploy:\n      replicas: ${replicas}\n`
+      : `    container_name: ${service}\n    restart: unless-stopped\n`;
   const networksYaml = opts.aliases?.length
     ? "    networks:\n      deplo:\n        aliases:\n" +
       opts.aliases.map((a) => `          - ${a}`).join("\n") +
@@ -213,9 +221,7 @@ export function renderCompose(opts: {
 services:
   ${service}:
     image: ${image}
-    container_name: ${service}
-    restart: unless-stopped
-${networksYaml}${resourcesYaml}${healthYaml}${portsYaml}${envYaml}${appVolsYaml}    labels:
+${identityYaml}${networksYaml}${resourcesYaml}${healthYaml}${portsYaml}${envYaml}${appVolsYaml}    labels:
 ${labelsYaml}
 
 networks:
@@ -257,6 +263,9 @@ export async function renderDeployStack(opts: {
   const basicAuthUsers = await basicAuthUsersValue(project.id);
   const network = deployNetwork(project, preview ? deployKey : null);
   const ports = preview ? [] : (project.ports ?? []);
+  const replicas = preview ? 1 : project.replicas;
+  const refusal = replicasRefusal(project, replicas);
+  if (refusal) throw new Error(refusal);
   const stackOpts: RenderComposeOptions = {
     ...(await appTraefikOverrides(project.id, Boolean(preview))),
     name: opts.name,
@@ -275,12 +284,13 @@ export async function renderDeployStack(opts: {
     ports: portMappings(ports),
     resources: project.resources,
     healthCheck: project.healthCheck,
+    replicas,
   };
   return {
     composeYaml: renderCompose(stackOpts),
     env,
     buildEnv,
     network,
-    overlap: { ...renderOverlapStacks(stackOpts), ports },
+    overlap: { ...renderOverlapStacks(stackOpts), ports, replicas },
   };
 }

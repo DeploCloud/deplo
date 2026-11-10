@@ -12,6 +12,7 @@ export const DOCS = {
   "deploy.screenshot": "concepts/what-happens-on-a-deploy#a-picture-is-taken",
   "deploy.zeroDowntime":
     "concepts/what-happens-on-a-deploy#zero-downtime-deploys",
+  "deploy.replicas": "advanced/replicas",
   "deploy.fromGit": "guides/deploy/from-git",
   "deploy.newRepos": "guides/deploy/from-git#new-repositories-on-the-overview",
   "deploy.dockerImage": "guides/deploy/docker-image",

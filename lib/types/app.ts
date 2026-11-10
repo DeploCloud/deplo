@@ -71,6 +71,8 @@ export interface App {
   screenshotsEnabled: boolean;
   // Beta: start the new version beside the old one and swap only once it is ready.
   zeroDowntimeDeploys: boolean;
+  // Copies of a single-image app that run on its server (1 to 10).
+  replicas: number;
   deployHookEnabled: boolean;
   composeUpArgs: string | null;
   rollbackKeep: number;

@@ -46,6 +46,24 @@ export async function serverSupports(
   }
 }
 
+// True only when the agent answered and does not know the capability; an unreachable one is not "too old".
+export async function serverLacks(
+  serverId: string,
+  capability: string,
+): Promise<boolean> {
+  try {
+    const conn = await connectAgent(serverId);
+    try {
+      const hello = await conn.hello();
+      return hello.capabilities?.includes(capability) !== true;
+    } finally {
+      conn.close();
+    }
+  } catch {
+    return false;
+  }
+}
+
 export async function agentPreflight(serverId: string): Promise<HelloResponse> {
   const conn = await connectAgent(serverId);
   try {

@@ -14,7 +14,13 @@ import {
   seedServer,
   TRUNCATE_PROJECT_GRAPH,
 } from "../data/app-graph-test-helpers";
-import { apps, appPorts } from "../db/schema/control-plane/apps";
+import { apps, appPorts, appVolumes } from "../db/schema/control-plane/apps";
+import { deploymentLogs } from "../db/schema/control-plane/deployments";
+import {
+  REPLICAS_AGENT_MESSAGE,
+  REPLICAS_CAPABILITY,
+  REPLICAS_DATA_MESSAGE,
+} from "./replicas";
 import { domains } from "../db/schema/control-plane/domains";
 import { servers } from "../db/schema/control-plane/servers";
 import { ContractVersion, type DeployRequest } from "../agent/gen/agent";
@@ -165,5 +171,66 @@ describe("a redeploy keeps the old version online", () => {
     const req = await deploy();
     assert.equal(req.standInComposeYaml, "");
     assert.match(req.composeYaml, /25565:25565/);
+  });
+});
+
+describe("replicas always deploy through the overlap path", () => {
+  beforeEach(async () => {
+    caps = [...CAPS, OVERLAP_CAPABILITY, REPLICAS_CAPABILITY];
+    await db
+      .update(apps)
+      .set({ replicas: 3, zeroDowntimeDeploys: false })
+      .where(eq(apps.id, "prj_1"));
+  });
+
+  const logs = async () =>
+    (await db.select().from(deploymentLogs)).map((l) => l.text).join("\n");
+
+  test("with zero-downtime off, every copy starts beside the live ones", async () => {
+    const req = await deploy();
+    for (const y of [req.composeYaml, req.standInComposeYaml]) {
+      assert.doesNotMatch(y, /container_name:/);
+      assert.match(y, /deploy:\n\s+replicas: 3\n/);
+    }
+    assert.match(req.standInComposeYaml, /deplo-web_next:/);
+  });
+
+  test("a Volume refuses the deploy before anything is sent", async () => {
+    await db.insert(appVolumes).values({
+      appId: "prj_1",
+      position: 0,
+      volumeId: "vol_1",
+      type: "named",
+      name: "data",
+      mountPath: "/data",
+      readOnly: false,
+    });
+    await runDeploymentGuarded("dpl_1");
+    assert.equal(sent.length, 0);
+    assert.ok((await logs()).includes(REPLICAS_DATA_MESSAGE));
+  });
+
+  test("a server agent without deploy.replicas fails instead of running one copy", async () => {
+    caps = [...CAPS, OVERLAP_CAPABILITY];
+    await runDeploymentGuarded("dpl_1");
+    assert.equal(sent.length, 0);
+    assert.ok((await logs()).includes(REPLICAS_AGENT_MESSAGE));
+  });
+
+  test("a server that cannot overlap fails instead of swapping in place", async () => {
+    await db.update(servers).set({ dockerVersion: "24.0.7" });
+    await runDeploymentGuarded("dpl_1");
+    assert.equal(sent.length, 0);
+    assert.match(
+      await logs(),
+      /3 copies needs the new version to start beside/,
+    );
+  });
+
+  test("one copy keeps the in-place stack when zero-downtime is off", async () => {
+    await db.update(apps).set({ replicas: 1 }).where(eq(apps.id, "prj_1"));
+    const req = await deploy();
+    assert.equal(req.standInComposeYaml, "");
+    assert.match(req.composeYaml, /container_name: deplo-web\n/);
   });
 });
