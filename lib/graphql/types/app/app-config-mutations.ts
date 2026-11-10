@@ -35,6 +35,7 @@ import {
   setAppReplicas,
   setAppStickySessions,
   setAppZeroDowntimeDeploys,
+  setAppRestartWhenUnresponsive,
   setAppScreenshots,
 } from "@/lib/data/apps/settings";
 import { moveAppToServer, updateAppSource } from "@/lib/data/apps/source";
@@ -338,6 +339,21 @@ builder.mutationFields((t) => ({
     },
     resolve: async (_r, { id, value }) => {
       await setAppRestartLoopGuard(id, value);
+      return reloadApp(id);
+    },
+  }),
+  setAppRestartWhenUnresponsive: t.field({
+    type: AppRef,
+    authScopes: { capability: "configure_apps" },
+    description:
+      "Turn automatic restart on or off for one app: on, the server agent restarts " +
+      "it when it stops answering. Applies from the next deploy.",
+    args: {
+      id: t.arg.string({ required: true }),
+      value: t.arg.boolean({ required: true }),
+    },
+    resolve: async (_r, { id, value }) => {
+      await setAppRestartWhenUnresponsive(id, value);
       return reloadApp(id);
     },
   }),

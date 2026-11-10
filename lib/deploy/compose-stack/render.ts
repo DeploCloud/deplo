@@ -33,6 +33,7 @@ import {
   takeTraefikLabels,
 } from "./service-stamp";
 import { ignoredTraefikMessage } from "../compose-lint/traefik-labels";
+import { REPLICAS_DATA_MESSAGE, composeReplicasConflicts } from "../replicas";
 import type { App, ComposeDoc, ComposeStackInput } from "./types";
 
 function readComposeKeepingEnvText(compose: string): string {
@@ -64,6 +65,9 @@ export function buildComposeStack(input: ComposeStackInput): string {
   if (!doc.services || typeof doc.services !== "object") {
     throw new Error("Compose file has no services to deploy");
   }
+
+  if (composeReplicasConflicts(compose).length > 0)
+    throw new Error(REPLICAS_DATA_MESSAGE);
 
   delete doc.version;
 

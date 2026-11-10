@@ -69,6 +69,10 @@ export interface App {
   restartLoopGuard: boolean;
   restartLoopStoppedAt?: string | null;
   screenshotsEnabled: boolean;
+  // The server agent restarts the app when it stops answering (on by default).
+  restartWhenUnresponsive: boolean;
+  // Set while the agent has paused those restarts because the app keeps failing.
+  restartsPausedAt: string | null;
   // Beta: start the new version beside the old one and swap only once it is ready.
   zeroDowntimeDeploys: boolean;
   // Copies of a single-image app that run on its server (1 to 10).

@@ -964,11 +964,141 @@ export interface DeployRequest {
    * the agent swaps in place instead. Empty => the in-place swap. Advertised as `deploy.overlap`.
    */
   standInComposeYaml: string;
+  /**
+   * When the app stops answering, restart it. The agent keeps the rule on disk and probes on its
+   * own, so it works while the control plane is down. Unset => none, and a stored rule is removed.
+   * Advertised as `health.restart`.
+   */
+  restartRule?: RestartRule | undefined;
 }
 
 export interface DeployRequest_EnvEntry {
   key: string;
   value: string;
+}
+
+/** How the agent decides an app has stopped answering, and when it restarts it. */
+export interface RestartRule {
+  probe: RestartRule_Probe;
+  port: number;
+  path: string;
+  intervalS: number;
+  timeoutS: number;
+  /** Failures in a row before a restart. Ignored for PROBE_DOCKER_HEALTH, where Docker already counted. */
+  retries: number;
+  /** Nothing counts this long after a container starts. */
+  startPeriodS: number;
+  /** Compose stacks: the service to watch. Empty => the app's single container. */
+  service: string;
+}
+
+export enum RestartRule_Probe {
+  PROBE_UNSPECIFIED = 0,
+  /** PROBE_HTTP - GET port+path from the host; any HTTP status counts as alive. */
+  PROBE_HTTP = 1,
+  /** PROBE_DOCKER_HEALTH - Docker's own health verdict (the app's command check); `unhealthy` is a failure. */
+  PROBE_DOCKER_HEALTH = 2,
+  UNRECOGNIZED = -1,
+}
+
+export function restartRule_ProbeFromJSON(object: any): RestartRule_Probe {
+  switch (object) {
+    case 0:
+    case "PROBE_UNSPECIFIED":
+      return RestartRule_Probe.PROBE_UNSPECIFIED;
+    case 1:
+    case "PROBE_HTTP":
+      return RestartRule_Probe.PROBE_HTTP;
+    case 2:
+    case "PROBE_DOCKER_HEALTH":
+      return RestartRule_Probe.PROBE_DOCKER_HEALTH;
+    case -1:
+    case "UNRECOGNIZED":
+    default:
+      return RestartRule_Probe.UNRECOGNIZED;
+  }
+}
+
+export function restartRule_ProbeToJSON(object: RestartRule_Probe): string {
+  switch (object) {
+    case RestartRule_Probe.PROBE_UNSPECIFIED:
+      return "PROBE_UNSPECIFIED";
+    case RestartRule_Probe.PROBE_HTTP:
+      return "PROBE_HTTP";
+    case RestartRule_Probe.PROBE_DOCKER_HEALTH:
+      return "PROBE_DOCKER_HEALTH";
+    case RestartRule_Probe.UNRECOGNIZED:
+    default:
+      return "UNRECOGNIZED";
+  }
+}
+
+/** Something the restart rule did, reported on the metrics stream (buffered while none is open). */
+export interface RestartEvent {
+  kind: RestartEvent_Kind;
+  slug: string;
+  container: string;
+  /** KIND_RESTARTED: how long it had not answered. Otherwise 0. */
+  unansweredS: number;
+  /** Restarts in the last 30 minutes, this one included. */
+  restarts: number;
+  /** KIND_RESUMED: "deploy" | "restart" | "quiet". */
+  reason: string;
+  atUnixMs: number;
+}
+
+export enum RestartEvent_Kind {
+  KIND_UNSPECIFIED = 0,
+  KIND_RESTARTED = 1,
+  /** KIND_PAUSED - Too many restarts in 30 minutes: restarting stops, the app keeps running. */
+  KIND_PAUSED = 2,
+  /** KIND_RESUMED - Restarting is back on (a deploy, a manual restart or 30 quiet minutes). */
+  KIND_RESUMED = 3,
+  /** KIND_RECOVERED - A restarted container answers again. */
+  KIND_RECOVERED = 4,
+  UNRECOGNIZED = -1,
+}
+
+export function restartEvent_KindFromJSON(object: any): RestartEvent_Kind {
+  switch (object) {
+    case 0:
+    case "KIND_UNSPECIFIED":
+      return RestartEvent_Kind.KIND_UNSPECIFIED;
+    case 1:
+    case "KIND_RESTARTED":
+      return RestartEvent_Kind.KIND_RESTARTED;
+    case 2:
+    case "KIND_PAUSED":
+      return RestartEvent_Kind.KIND_PAUSED;
+    case 3:
+    case "KIND_RESUMED":
+      return RestartEvent_Kind.KIND_RESUMED;
+    case 4:
+    case "KIND_RECOVERED":
+      return RestartEvent_Kind.KIND_RECOVERED;
+    case -1:
+    case "UNRECOGNIZED":
+    default:
+      return RestartEvent_Kind.UNRECOGNIZED;
+  }
+}
+
+export function restartEvent_KindToJSON(object: RestartEvent_Kind): string {
+  switch (object) {
+    case RestartEvent_Kind.KIND_UNSPECIFIED:
+      return "KIND_UNSPECIFIED";
+    case RestartEvent_Kind.KIND_RESTARTED:
+      return "KIND_RESTARTED";
+    case RestartEvent_Kind.KIND_PAUSED:
+      return "KIND_PAUSED";
+    case RestartEvent_Kind.KIND_RESUMED:
+      return "KIND_RESUMED";
+    case RestartEvent_Kind.KIND_RECOVERED:
+      return "KIND_RECOVERED";
+    case RestartEvent_Kind.UNRECOGNIZED:
+    default:
+      return "UNRECOGNIZED";
+  }
 }
 
 /**
@@ -2556,6 +2686,8 @@ export interface MetricsSample {
    * RPC, and makes an automatic demotion visible instead of silent.
    */
   source: string;
+  /** Restart-rule events since the last frame that carried them. */
+  restartEvents: RestartEvent[];
 }
 
 export interface HostInfoRequest {
@@ -4853,6 +4985,7 @@ function createBaseDeployRequest(): DeployRequest {
     pullBaseImages: false,
     reuseImage: undefined,
     standInComposeYaml: "",
+    restartRule: undefined,
   };
 }
 
@@ -4941,6 +5074,9 @@ export const DeployRequest: MessageFns<DeployRequest> = {
     }
     if (message.standInComposeYaml !== "") {
       writer.uint32(226).string(message.standInComposeYaml);
+    }
+    if (message.restartRule !== undefined) {
+      RestartRule.encode(message.restartRule, writer.uint32(234).fork()).join();
     }
     return writer;
   },
@@ -5185,6 +5321,14 @@ export const DeployRequest: MessageFns<DeployRequest> = {
             message.standInComposeYaml = reader.string();
             continue;
           }
+          case 29: {
+            if (tag !== 234) {
+              break;
+            }
+
+            message.restartRule = RestartRule.decode(reader, reader.uint32());
+            continue;
+          }
         }
         if ((tag & 7) === 4 || tag === 0) {
           break;
@@ -5326,6 +5470,11 @@ export const DeployRequest: MessageFns<DeployRequest> = {
         : isSet(object.stand_in_compose_yaml)
         ? globalThis.String(object.stand_in_compose_yaml)
         : "",
+      restartRule: isSet(object.restartRule)
+        ? RestartRule.fromJSON(object.restartRule)
+        : isSet(object.restart_rule)
+        ? RestartRule.fromJSON(object.restart_rule)
+        : undefined,
     };
   },
 
@@ -5421,6 +5570,9 @@ export const DeployRequest: MessageFns<DeployRequest> = {
     if (message.standInComposeYaml !== "") {
       obj.standInComposeYaml = message.standInComposeYaml;
     }
+    if (message.restartRule !== undefined) {
+      obj.restartRule = RestartRule.toJSON(message.restartRule);
+    }
     return obj;
   },
 
@@ -5473,6 +5625,9 @@ export const DeployRequest: MessageFns<DeployRequest> = {
       ? ReuseImage.fromPartial(object.reuseImage)
       : undefined;
     message.standInComposeYaml = object.standInComposeYaml ?? "";
+    message.restartRule = (object.restartRule !== undefined && object.restartRule !== null)
+      ? RestartRule.fromPartial(object.restartRule)
+      : undefined;
     return message;
   },
 };
@@ -5558,6 +5713,372 @@ export const DeployRequest_EnvEntry: MessageFns<DeployRequest_EnvEntry> = {
     const message = createBaseDeployRequest_EnvEntry();
     message.key = object.key ?? "";
     message.value = object.value ?? "";
+    return message;
+  },
+};
+
+function createBaseRestartRule(): RestartRule {
+  return { probe: 0, port: 0, path: "", intervalS: 0, timeoutS: 0, retries: 0, startPeriodS: 0, service: "" };
+}
+
+export const RestartRule: MessageFns<RestartRule> = {
+  encode(message: RestartRule, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.probe !== 0) {
+      writer.uint32(8).int32(message.probe);
+    }
+    if (message.port !== 0) {
+      writer.uint32(16).int32(message.port);
+    }
+    if (message.path !== "") {
+      writer.uint32(26).string(message.path);
+    }
+    if (message.intervalS !== 0) {
+      writer.uint32(32).int32(message.intervalS);
+    }
+    if (message.timeoutS !== 0) {
+      writer.uint32(40).int32(message.timeoutS);
+    }
+    if (message.retries !== 0) {
+      writer.uint32(48).int32(message.retries);
+    }
+    if (message.startPeriodS !== 0) {
+      writer.uint32(56).int32(message.startPeriodS);
+    }
+    if (message.service !== "") {
+      writer.uint32(66).string(message.service);
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): RestartRule {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const previousRecursionDepth = (reader as any).__tsProtoDecodeDepth ?? 0;
+    if (previousRecursionDepth >= 100) {
+      throw new globalThis.Error("protobuf decode recursion limit exceeded");
+    }
+    (reader as any).__tsProtoDecodeDepth = previousRecursionDepth + 1;
+    try {
+      const end = length === undefined ? reader.len : reader.pos + length;
+      const message = createBaseRestartRule();
+      while (reader.pos < end) {
+        const tag = reader.uint32();
+        switch (tag >>> 3) {
+          case 1: {
+            if (tag !== 8) {
+              break;
+            }
+
+            message.probe = reader.int32() as any;
+            continue;
+          }
+          case 2: {
+            if (tag !== 16) {
+              break;
+            }
+
+            message.port = reader.int32();
+            continue;
+          }
+          case 3: {
+            if (tag !== 26) {
+              break;
+            }
+
+            message.path = reader.string();
+            continue;
+          }
+          case 4: {
+            if (tag !== 32) {
+              break;
+            }
+
+            message.intervalS = reader.int32();
+            continue;
+          }
+          case 5: {
+            if (tag !== 40) {
+              break;
+            }
+
+            message.timeoutS = reader.int32();
+            continue;
+          }
+          case 6: {
+            if (tag !== 48) {
+              break;
+            }
+
+            message.retries = reader.int32();
+            continue;
+          }
+          case 7: {
+            if (tag !== 56) {
+              break;
+            }
+
+            message.startPeriodS = reader.int32();
+            continue;
+          }
+          case 8: {
+            if (tag !== 66) {
+              break;
+            }
+
+            message.service = reader.string();
+            continue;
+          }
+        }
+        if ((tag & 7) === 4 || tag === 0) {
+          break;
+        }
+        reader.skip(tag & 7);
+      }
+      return message;
+    } finally {
+      (reader as any).__tsProtoDecodeDepth = previousRecursionDepth;
+    }
+  },
+
+  fromJSON(object: any): RestartRule {
+    return {
+      probe: isSet(object.probe) ? restartRule_ProbeFromJSON(object.probe) : 0,
+      port: isSet(object.port) ? globalThis.Number(object.port) : 0,
+      path: isSet(object.path) ? globalThis.String(object.path) : "",
+      intervalS: isSet(object.intervalS)
+        ? globalThis.Number(object.intervalS)
+        : isSet(object.interval_s)
+        ? globalThis.Number(object.interval_s)
+        : 0,
+      timeoutS: isSet(object.timeoutS)
+        ? globalThis.Number(object.timeoutS)
+        : isSet(object.timeout_s)
+        ? globalThis.Number(object.timeout_s)
+        : 0,
+      retries: isSet(object.retries) ? globalThis.Number(object.retries) : 0,
+      startPeriodS: isSet(object.startPeriodS)
+        ? globalThis.Number(object.startPeriodS)
+        : isSet(object.start_period_s)
+        ? globalThis.Number(object.start_period_s)
+        : 0,
+      service: isSet(object.service) ? globalThis.String(object.service) : "",
+    };
+  },
+
+  toJSON(message: RestartRule): unknown {
+    const obj: any = {};
+    if (message.probe !== 0) {
+      obj.probe = restartRule_ProbeToJSON(message.probe);
+    }
+    if (message.port !== 0) {
+      obj.port = Math.round(message.port);
+    }
+    if (message.path !== "") {
+      obj.path = message.path;
+    }
+    if (message.intervalS !== 0) {
+      obj.intervalS = Math.round(message.intervalS);
+    }
+    if (message.timeoutS !== 0) {
+      obj.timeoutS = Math.round(message.timeoutS);
+    }
+    if (message.retries !== 0) {
+      obj.retries = Math.round(message.retries);
+    }
+    if (message.startPeriodS !== 0) {
+      obj.startPeriodS = Math.round(message.startPeriodS);
+    }
+    if (message.service !== "") {
+      obj.service = message.service;
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<RestartRule>, I>>(base?: I): RestartRule {
+    return RestartRule.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<RestartRule>, I>>(object: I): RestartRule {
+    const message = createBaseRestartRule();
+    message.probe = object.probe ?? 0;
+    message.port = object.port ?? 0;
+    message.path = object.path ?? "";
+    message.intervalS = object.intervalS ?? 0;
+    message.timeoutS = object.timeoutS ?? 0;
+    message.retries = object.retries ?? 0;
+    message.startPeriodS = object.startPeriodS ?? 0;
+    message.service = object.service ?? "";
+    return message;
+  },
+};
+
+function createBaseRestartEvent(): RestartEvent {
+  return { kind: 0, slug: "", container: "", unansweredS: 0, restarts: 0, reason: "", atUnixMs: 0 };
+}
+
+export const RestartEvent: MessageFns<RestartEvent> = {
+  encode(message: RestartEvent, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.kind !== 0) {
+      writer.uint32(8).int32(message.kind);
+    }
+    if (message.slug !== "") {
+      writer.uint32(18).string(message.slug);
+    }
+    if (message.container !== "") {
+      writer.uint32(26).string(message.container);
+    }
+    if (message.unansweredS !== 0) {
+      writer.uint32(32).int32(message.unansweredS);
+    }
+    if (message.restarts !== 0) {
+      writer.uint32(40).int32(message.restarts);
+    }
+    if (message.reason !== "") {
+      writer.uint32(50).string(message.reason);
+    }
+    if (message.atUnixMs !== 0) {
+      writer.uint32(56).int64(message.atUnixMs);
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): RestartEvent {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const previousRecursionDepth = (reader as any).__tsProtoDecodeDepth ?? 0;
+    if (previousRecursionDepth >= 100) {
+      throw new globalThis.Error("protobuf decode recursion limit exceeded");
+    }
+    (reader as any).__tsProtoDecodeDepth = previousRecursionDepth + 1;
+    try {
+      const end = length === undefined ? reader.len : reader.pos + length;
+      const message = createBaseRestartEvent();
+      while (reader.pos < end) {
+        const tag = reader.uint32();
+        switch (tag >>> 3) {
+          case 1: {
+            if (tag !== 8) {
+              break;
+            }
+
+            message.kind = reader.int32() as any;
+            continue;
+          }
+          case 2: {
+            if (tag !== 18) {
+              break;
+            }
+
+            message.slug = reader.string();
+            continue;
+          }
+          case 3: {
+            if (tag !== 26) {
+              break;
+            }
+
+            message.container = reader.string();
+            continue;
+          }
+          case 4: {
+            if (tag !== 32) {
+              break;
+            }
+
+            message.unansweredS = reader.int32();
+            continue;
+          }
+          case 5: {
+            if (tag !== 40) {
+              break;
+            }
+
+            message.restarts = reader.int32();
+            continue;
+          }
+          case 6: {
+            if (tag !== 50) {
+              break;
+            }
+
+            message.reason = reader.string();
+            continue;
+          }
+          case 7: {
+            if (tag !== 56) {
+              break;
+            }
+
+            message.atUnixMs = longToNumber(reader.int64());
+            continue;
+          }
+        }
+        if ((tag & 7) === 4 || tag === 0) {
+          break;
+        }
+        reader.skip(tag & 7);
+      }
+      return message;
+    } finally {
+      (reader as any).__tsProtoDecodeDepth = previousRecursionDepth;
+    }
+  },
+
+  fromJSON(object: any): RestartEvent {
+    return {
+      kind: isSet(object.kind) ? restartEvent_KindFromJSON(object.kind) : 0,
+      slug: isSet(object.slug) ? globalThis.String(object.slug) : "",
+      container: isSet(object.container) ? globalThis.String(object.container) : "",
+      unansweredS: isSet(object.unansweredS)
+        ? globalThis.Number(object.unansweredS)
+        : isSet(object.unanswered_s)
+        ? globalThis.Number(object.unanswered_s)
+        : 0,
+      restarts: isSet(object.restarts) ? globalThis.Number(object.restarts) : 0,
+      reason: isSet(object.reason) ? globalThis.String(object.reason) : "",
+      atUnixMs: isSet(object.atUnixMs)
+        ? globalThis.Number(object.atUnixMs)
+        : isSet(object.at_unix_ms)
+        ? globalThis.Number(object.at_unix_ms)
+        : 0,
+    };
+  },
+
+  toJSON(message: RestartEvent): unknown {
+    const obj: any = {};
+    if (message.kind !== 0) {
+      obj.kind = restartEvent_KindToJSON(message.kind);
+    }
+    if (message.slug !== "") {
+      obj.slug = message.slug;
+    }
+    if (message.container !== "") {
+      obj.container = message.container;
+    }
+    if (message.unansweredS !== 0) {
+      obj.unansweredS = Math.round(message.unansweredS);
+    }
+    if (message.restarts !== 0) {
+      obj.restarts = Math.round(message.restarts);
+    }
+    if (message.reason !== "") {
+      obj.reason = message.reason;
+    }
+    if (message.atUnixMs !== 0) {
+      obj.atUnixMs = Math.round(message.atUnixMs);
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<RestartEvent>, I>>(base?: I): RestartEvent {
+    return RestartEvent.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<RestartEvent>, I>>(object: I): RestartEvent {
+    const message = createBaseRestartEvent();
+    message.kind = object.kind ?? 0;
+    message.slug = object.slug ?? "";
+    message.container = object.container ?? "";
+    message.unansweredS = object.unansweredS ?? 0;
+    message.restarts = object.restarts ?? 0;
+    message.reason = object.reason ?? "";
+    message.atUnixMs = object.atUnixMs ?? 0;
     return message;
   },
 };
@@ -18270,7 +18791,7 @@ export const MetricsStreamRequest: MessageFns<MetricsStreamRequest> = {
 };
 
 function createBaseMetricsSample(): MetricsSample {
-  return { host: undefined, containers: [], sampledAtUnixMs: 0, source: "" };
+  return { host: undefined, containers: [], sampledAtUnixMs: 0, source: "", restartEvents: [] };
 }
 
 export const MetricsSample: MessageFns<MetricsSample> = {
@@ -18286,6 +18807,9 @@ export const MetricsSample: MessageFns<MetricsSample> = {
     }
     if (message.source !== "") {
       writer.uint32(34).string(message.source);
+    }
+    for (const v of message.restartEvents) {
+      RestartEvent.encode(v!, writer.uint32(42).fork()).join();
     }
     return writer;
   },
@@ -18335,6 +18859,14 @@ export const MetricsSample: MessageFns<MetricsSample> = {
             message.source = reader.string();
             continue;
           }
+          case 5: {
+            if (tag !== 42) {
+              break;
+            }
+
+            message.restartEvents.push(RestartEvent.decode(reader, reader.uint32()));
+            continue;
+          }
         }
         if ((tag & 7) === 4 || tag === 0) {
           break;
@@ -18359,6 +18891,11 @@ export const MetricsSample: MessageFns<MetricsSample> = {
         ? globalThis.Number(object.sampled_at_unix_ms)
         : 0,
       source: isSet(object.source) ? globalThis.String(object.source) : "",
+      restartEvents: globalThis.Array.isArray(object?.restartEvents)
+        ? object.restartEvents.map((e: any) => RestartEvent.fromJSON(e))
+        : globalThis.Array.isArray(object?.restart_events)
+        ? object.restart_events.map((e: any) => RestartEvent.fromJSON(e))
+        : [],
     };
   },
 
@@ -18376,6 +18913,9 @@ export const MetricsSample: MessageFns<MetricsSample> = {
     if (message.source !== "") {
       obj.source = message.source;
     }
+    if (message.restartEvents?.length) {
+      obj.restartEvents = message.restartEvents.map((e) => RestartEvent.toJSON(e));
+    }
     return obj;
   },
 
@@ -18390,6 +18930,7 @@ export const MetricsSample: MessageFns<MetricsSample> = {
     message.containers = object.containers?.map((e) => ContainerStat.fromPartial(e)) || [];
     message.sampledAtUnixMs = object.sampledAtUnixMs ?? 0;
     message.source = object.source ?? "";
+    message.restartEvents = object.restartEvents?.map((e) => RestartEvent.fromPartial(e)) || [];
     return message;
   },
 };

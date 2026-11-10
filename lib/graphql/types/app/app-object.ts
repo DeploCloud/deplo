@@ -177,6 +177,16 @@ export const AppRef = builder.objectRef<AppSummary>("App").implement({
         "Whether Deplo stops this app's container once it has restarted 10 " +
         "times in half an hour. On by default; off lets it keep crashing.",
     }),
+    restartWhenUnresponsive: t.exposeBoolean("restartWhenUnresponsive", {
+      description:
+        "Whether the server agent restarts this app when it stops answering. On by default.",
+    }),
+    restartsPausedAt: t.string({
+      nullable: true,
+      description:
+        "When the agent paused those restarts because the app kept failing; null while they are on.",
+      resolve: (p) => p.restartsPausedAt,
+    }),
     zeroDowntimeDeploys: t.exposeBoolean("zeroDowntimeDeploys", {
       description:
         "Beta. Whether a redeploy keeps the old version online until the new one " +

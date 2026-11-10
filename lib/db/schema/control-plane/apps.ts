@@ -127,6 +127,10 @@ export const apps = pgTable(
     zeroDowntimeDeploys: boolean("zero_downtime_deploys")
       .notNull()
       .default(false),
+    restartWhenUnresponsive: boolean("restart_when_unresponsive")
+      .notNull()
+      .default(true),
+    restartsPausedAt: isoTimestamptz("restarts_paused_at"),
     replicas: integer("replicas").notNull().default(1),
     stickySessions: boolean("sticky_sessions").notNull().default(false),
     latestDeploymentId: text("latest_deployment_id").references(

@@ -6,6 +6,7 @@ import { Hammer, SlidersHorizontal, Sparkles } from "lucide-react";
 import { getAppBySlug } from "@/lib/data/apps/listing";
 import { deployHookUrlMasked } from "@/lib/data/deploy-hook";
 import { listBuildServerChoices } from "@/lib/data/servers/roster";
+import { RESTART_CAPABILITY } from "@/lib/infra/agent-client/hello-capabilities";
 import { hasAppCapability } from "@/lib/data/node-access";
 import { canExposePorts } from "@/lib/membership";
 import { listAppCronJobs } from "@/lib/data/crons/listing";
@@ -17,6 +18,7 @@ import { DangerSettings } from "@/components/apps/settings/danger-settings";
 import { RebuildContainerRow } from "@/components/apps/settings/rebuild-container-row";
 import { ConsoleSettingsForm } from "@/components/apps/settings/console-settings-form";
 import { HealthCheckForm } from "@/components/apps/settings/health-check-form";
+import { RestartWhenUnresponsiveForm } from "@/components/apps/settings/restart-when-unresponsive-form";
 import { RestartLoopForm } from "@/components/apps/settings/restart-loop-form";
 import { ReplicasForm } from "@/components/apps/settings/replicas-form";
 import { StickySessionsForm } from "@/components/apps/settings/sticky-sessions-form";
@@ -56,6 +58,10 @@ export default async function AppAdvancedSettingsPage(
     mayConfigureTraefik && !usesComposeStack(project)
       ? await getAppTraefikLabels(project.id)
       : null;
+  const restartNeedsNewerAgent = await serverLacks(
+    project.serverId,
+    RESTART_CAPABILITY,
+  );
   const cron = canCron ? await listAppCronJobs(project.id) : null;
 
   const isComposeStack = usesComposeStack(project);
@@ -109,6 +115,15 @@ export default async function AppAdvancedSettingsPage(
             />
           </CapabilityFieldset>
         )}
+
+        <CapabilityFieldset cap="configure_apps">
+          <RestartWhenUnresponsiveForm
+            appId={project.id}
+            enabled={project.restartWhenUnresponsive}
+            paused={project.restartsPausedAt != null}
+            needsNewerAgent={restartNeedsNewerAgent}
+          />
+        </CapabilityFieldset>
 
         <CapabilityFieldset cap="configure_apps">
           <RestartLoopForm
