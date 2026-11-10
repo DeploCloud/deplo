@@ -19,6 +19,8 @@ export interface RouterLabelOptions {
   certResolver: string;
   dockerNetwork?: string;
   alwaysService?: boolean;
+  // A cookie pins each visitor to one replica.
+  sticky?: boolean;
   perRouteKey?: (route: RouterRoute) => string;
   basicAuth?: { name: string; users: string };
 }
@@ -52,7 +54,13 @@ export function traefikRouterLabels(opts: RouterLabelOptions): string[] {
     for (const route of routes) {
       const key = opts.perRouteKey(route);
       labels.push(
-        ...routerBlock(key, [route.name], resolveTls(route, opts), true),
+        ...routerBlock(
+          key,
+          [route.name],
+          resolveTls(route, opts),
+          true,
+          opts.sticky,
+        ),
       );
     }
     return labels;
@@ -90,7 +98,7 @@ export function traefikRouterLabels(opts: RouterLabelOptions): string[] {
       id === defaultId
         ? opts.baseKey
         : `${opts.baseKey}__${sigSuffix(g.sig, opts.certResolver)}`;
-    labels.push(...routerBlock(key, g.hosts, g.sig, withApp));
+    labels.push(...routerBlock(key, g.hosts, g.sig, withApp, opts.sticky));
   }
   return labels;
 }
@@ -216,6 +224,7 @@ function routerBlock(
   hosts: string[],
   sig: RouterSig,
   withApp: boolean,
+  sticky = false,
 ): string[] {
   const hostRule = hosts.map((d) => `Host(\`${d}\`)`).join(" || ");
   const rule = sig.pathPrefix
@@ -268,6 +277,17 @@ function routerBlock(
       : []),
     ...(withApp ? [`traefik.http.routers.${key}.service=${key}`] : []),
     `traefik.http.services.${key}.loadbalancer.server.port=${sig.port}`,
+    ...(sticky
+      ? [
+          `traefik.http.services.${key}.loadbalancer.sticky.cookie=true`,
+          `traefik.http.services.${key}.loadbalancer.sticky.cookie.httponly=true`,
+          ...(sig.tls
+            ? [
+                `traefik.http.services.${key}.loadbalancer.sticky.cookie.secure=true`,
+              ]
+            : []),
+        ]
+      : []),
   ];
 }
 

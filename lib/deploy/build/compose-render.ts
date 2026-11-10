@@ -92,6 +92,8 @@ export function renderCompose(opts: {
   extraLabels?: string[];
   // More than one copy: no fixed container name, and Compose starts that many.
   replicas?: number;
+  // Keep each visitor on one copy; only honoured with more than one.
+  stickySessions?: boolean;
   name: string;
   image: string;
   port: number;
@@ -134,6 +136,7 @@ export function renderCompose(opts: {
       defaultPort: port,
       certResolver: certResolver(),
       dockerNetwork: opts.network,
+      sticky: opts.stickySessions === true && (opts.replicas ?? 1) > 1,
       ...(opts.basicAuthUsers
         ? {
             basicAuth: {
@@ -285,6 +288,7 @@ export async function renderDeployStack(opts: {
     resources: project.resources,
     healthCheck: project.healthCheck,
     replicas,
+    stickySessions: project.stickySessions,
   };
   return {
     composeYaml: renderCompose(stackOpts),

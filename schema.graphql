@@ -295,6 +295,11 @@ type App {
   slug: String
   source: DeploySource
   status: AppStatus
+
+  """
+  Whether a cookie keeps each visitor on the same replica. Only applies with more than one.
+  """
+  stickySessions: Boolean
   teamId: ID
   updatedAt: String
 
@@ -4636,6 +4641,11 @@ type Mutation {
   Turn deployment screenshots on or off for one app. Off stops taking them and deletes every saved one; on takes the next at the next deploy.
   """
   setAppScreenshots(id: String!, value: Boolean!): App
+
+  """
+  Keep each visitor on the same replica with a cookie. Needs more than one replica. Applies from the next deploy.
+  """
+  setAppStickySessions(id: String!, value: Boolean!): App
   setAppTraefikLabels(id: String!, labels: [TraefikLabelInput!]!): App
 
   """
