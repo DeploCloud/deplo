@@ -138,6 +138,8 @@ export const backupRuns = pgTable(
     objectKey: text("object_key").notNull(),
     sizeBytes: bigint("size_bytes", { mode: "number" }).notNull(),
     decryptedSizeBytes: bigint("decrypted_size_bytes", { mode: "number" }),
+    // How long the App was paused for a consistent volume copy; NULL when it was not.
+    heldMs: bigint("held_ms", { mode: "number" }),
     sha256: text("sha256"),
     orphanedAt: isoTimestamptz("orphaned_at"),
     status: text("status").notNull(),

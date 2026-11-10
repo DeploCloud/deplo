@@ -101,6 +101,11 @@ export const BackupRunRef = builder
         resolve: (r) => Boolean(r.sha256),
       }),
       sizeBytes: t.exposeFloat("sizeBytes"),
+      heldMs: t.exposeFloat("heldMs", {
+        nullable: true,
+        description:
+          "How long the App was paused so its data could be copied consistently, in milliseconds. Null when it was not paused.",
+      }),
       status: t.field({
         type: BackupRunStatusEnum,
         resolve: (r) => r.status,

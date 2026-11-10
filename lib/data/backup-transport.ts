@@ -32,6 +32,8 @@ export interface BackupOutcome {
   objectKey: string;
   sizeBytes: number;
   decryptedSizeBytes: number;
+  // How long the App was paused for a consistent volume copy; 0 or absent when it was not.
+  heldMs?: number;
   sha256: string;
 }
 
@@ -119,6 +121,7 @@ async function consumeBackup(
         objectKey: ev.result.objectKey || objectKey,
         sizeBytes: Number(ev.result.sizeBytes ?? 0),
         decryptedSizeBytes: Number(ev.result.decryptedSizeBytes ?? 0),
+        heldMs: Number(ev.result.heldMs ?? 0),
         sha256: ev.result.sha256 ?? "",
       };
     }
@@ -183,6 +186,7 @@ async function relayBackup(
             objectKey,
             sizeBytes: Number(ev.result.sizeBytes ?? 0),
             decryptedSizeBytes: Number(ev.result.decryptedSizeBytes ?? 0),
+            heldMs: Number(ev.result.heldMs ?? 0),
             sha256: ev.result.sha256 ?? "",
           };
           if (!ev.result.ok) throw new RelayAborted();
@@ -262,6 +266,7 @@ async function relayBackup(
       objectKey,
       sizeBytes: landed.bytesWritten,
       decryptedSizeBytes: produced.decryptedSizeBytes,
+      heldMs: produced.heldMs ?? 0,
       sha256: landed.sha256 || produced.sha256,
     };
   } finally {

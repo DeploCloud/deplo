@@ -115,3 +115,29 @@ test("a backup cut off when its server drops says the server is offline, and run
     assert.deepEqual(runs.map((r) => r.status).sort(), ["failed", "success"]);
   });
 });
+
+test("a run records how long the agent held the App, and nothing when it held none", async (t) => {
+  let heldMs = 2140;
+  __setAgentConnectorForTest(async () => {
+    const conn = {
+      hello: async () => ({
+        capabilities: [BACKUP_CAPABILITY, BACKUP_ENCRYPT_S3_CAPABILITY],
+      }),
+      async *backup() {
+        yield {
+          result: { ok: true, error: "", sizeBytes: 3, sha256: "", heldMs },
+        };
+      },
+      close: () => {},
+    };
+    return conn as unknown as AgentConnection;
+  });
+  t.after(() => __setAgentConnectorForTest());
+  await asUser1(async () => {
+    await runDatabaseBackup("db_1", "s3_1");
+    heldMs = 0;
+    await runDatabaseBackup("db_1", "s3_1");
+    const runs = await listBackupRuns({ databaseId: "db_1" });
+    assert.deepEqual(runs.map((r) => r.heldMs).sort(), [2140, null]);
+  });
+});
