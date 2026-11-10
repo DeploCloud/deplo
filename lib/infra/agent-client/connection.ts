@@ -132,6 +132,13 @@ export interface FollowLogsOptions {
   timestamps?: boolean;
 }
 
+export interface ClusterHostStatus {
+  installed: boolean;
+  running: boolean;
+  version: string;
+  relay: boolean;
+}
+
 export interface AgentConnection {
   hello(timeoutMs?: number): Promise<HelloResponse>;
   metrics(dataDir?: string): Promise<HostMetrics>;
@@ -225,6 +232,15 @@ export interface AgentConnection {
     binaries: Record<string, { url: string; sha256: string }>,
   ): Promise<{ version: string; restarting: boolean }>;
   selfUninstall(deadlineMs?: number): Promise<string[]>;
+  // Need `cluster.host` (ADR-0043): the agent runs the deplo-cluster binary and forwards calls to it.
+  installCluster(
+    version: string,
+    binaries: Record<string, { url: string; sha256: string }>,
+    relay: boolean,
+  ): Promise<{ version: string; running: boolean }>;
+  removeCluster(): Promise<{ removed: boolean }>;
+  clusterStatus(): Promise<ClusterHostStatus>;
+  clusterCall(method: string, payload: Uint8Array): Promise<Uint8Array>;
   /** Replaces the panel addresses the agent links to; it answers with the pair it kept. */
   setLinkAddresses(pair: LinkAddresses): Promise<LinkAddresses>;
   /** Closes the agent's own port for good; it takes this over its agent link only (ADR-0040). */

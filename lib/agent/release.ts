@@ -1,16 +1,15 @@
 import "server-only";
 
-import { AGENT_VERSION } from "../version";
+import { AGENT_VERSION, CLUSTER_VERSION, clusterPinned } from "../version";
 
 export const AGENT_REPO = "DeploCloud/deplo-agent";
+export const CLUSTER_REPO = "DeploCloud/deplo-cluster";
 
-function assetName(arch: "amd64" | "arm64"): string {
-  return `deplo-agent-linux-${arch}`;
-}
+type Arch = "amd64" | "arm64";
 
 export interface AgentRelease {
   version: string;
-  binaries: Record<"amd64" | "arm64", { url: string; sha256: string } | null>;
+  binaries: Record<Arch, { url: string; sha256: string } | null>;
 }
 
 const USER_AGENT = "deplo-control-plane";
@@ -36,15 +35,17 @@ function cell(): { value: ReleaseCacheCell } {
   }) as { value: ReleaseCacheCell };
 }
 
-function downloadBase(tag: string): string {
-  return `https://github.com/${AGENT_REPO}/releases/download/${tag}`;
+function downloadBase(repo: string, tag: string): string {
+  return `https://github.com/${repo}/releases/download/${tag}`;
 }
 
 // No api.github.com call: its 60 an hour per instance run out, and an exhausted budget 503'd /install-agent.sh.
 export async function fetchPinnedRelease(
   version: string,
+  repo: string = AGENT_REPO,
+  binary: string = "deplo-agent",
 ): Promise<AgentRelease | null> {
-  const base = downloadBase(`v${version}`);
+  const base = downloadBase(repo, `v${version}`);
   let sums: Map<string, string>;
   try {
     const res = await fetch(`${base}/checksums.txt`, {
@@ -56,9 +57,10 @@ export async function fetchPinnedRelease(
   } catch {
     return null;
   }
-  const pick = (arch: "amd64" | "arm64") => {
-    const sha256 = sums.get(assetName(arch));
-    return sha256 ? { url: `${base}/${assetName(arch)}`, sha256 } : null;
+  const asset = (arch: Arch) => `${binary}-linux-${arch}`;
+  const pick = (arch: Arch) => {
+    const sha256 = sums.get(asset(arch));
+    return sha256 ? { url: `${base}/${asset(arch)}`, sha256 } : null;
   };
   const binaries = { amd64: pick("amd64"), arm64: pick("arm64") };
   if (!binaries.amd64 && !binaries.arm64) return null;
@@ -75,6 +77,35 @@ export async function resolveAgentRelease(): Promise<AgentRelease | null> {
   return release;
 }
 
+/** The deplo-cluster release this panel pins (`deplo.cluster`); null while none is released or it cannot be read. */
+export async function resolveClusterRelease(
+  version: string = CLUSTER_VERSION,
+): Promise<AgentRelease | null> {
+  if (!clusterPinned(version)) return null;
+  const c = clusterCell();
+  const hit = c.value[version];
+  if (hit?.release) return hit.release;
+  if (hit && Date.now() - hit.at < FAILURE_TTL_MS) return null;
+  const release = await fetchPinnedRelease(
+    version,
+    CLUSTER_REPO,
+    "deplo-cluster",
+  );
+  c.value[version] = { at: Date.now(), release };
+  return release;
+}
+
+const CLUSTER_CELL = Symbol.for("deplo.cluster.release.cache");
+
+function clusterCell(): {
+  value: Record<string, NonNullable<ReleaseCacheCell>>;
+} {
+  return ((globalThis as Record<symbol, unknown>)[CLUSTER_CELL] ??= {
+    value: {},
+  }) as { value: Record<string, NonNullable<ReleaseCacheCell>> };
+}
+
 export function __resetReleaseCacheForTests(): void {
   cell().value = null;
+  clusterCell().value = {};
 }

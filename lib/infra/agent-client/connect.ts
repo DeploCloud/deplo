@@ -6,6 +6,7 @@ import { agentSelfRpc } from "./agent-self-rpc";
 import { backupRpc } from "./backup-rpc";
 import { captureRpc } from "./capture-rpc";
 import type { AgentConnection } from "./connection";
+import { clusterRpc } from "./cluster-rpc";
 import { consoleRpc } from "./console-rpc";
 import { cronRpc } from "./cron-rpc";
 import { dataCopyRpc } from "./data-copy-rpc";
@@ -33,6 +34,7 @@ function connectionOn(channel: AgentChannel): AgentConnection {
     ...metricsRpc(channel),
     ...stackRpc(channel),
     ...agentSelfRpc(channel),
+    ...clusterRpc(channel),
     ...dataCopyRpc(channel),
     ...hostRpc(channel),
     ...inventoryRpc(channel),
