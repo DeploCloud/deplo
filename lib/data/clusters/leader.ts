@@ -11,21 +11,12 @@ import { requireActiveTeamId, requireInstanceAdmin } from "../../membership";
 import type { Cluster, ClusterLeader } from "../../types/cluster";
 import type { Server } from "../../types/server";
 import { recordActivity } from "../activity";
-import { getServerById, listAllServers } from "../servers/roster";
+import { leaderHost } from "./host";
+import { ensureClusterRelay, pushClusterRoster } from "./relay";
 import { getClusterById } from "./roster";
 
 const NO_HOST =
   "Deplo's own machine is not connected as a server yet, so there is nowhere to start the leader.";
-
-// The machine the leader runs on: the server it was moved to, else Deplo's own.
-async function leaderHost(cluster: Cluster): Promise<Server | null> {
-  if (cluster.leaderServerId) return getServerById(cluster.leaderServerId);
-  return (
-    (await listAllServers()).find(
-      (s) => !s.importOnly && isDeploHostServer(s),
-    ) ?? null
-  );
-}
 
 function down(
   host: Server | null,
@@ -78,7 +69,10 @@ export async function getClusterLeader(
   return readLeader(await leaderHost(cluster));
 }
 
-/** Starts the leader where it should run unless it already answers; says why when it cannot. */
+/**
+ * Starts the leader where it should run unless it already answers, then makes sure the relay on Deplo's machine
+ * runs, has its route in the proxy and has the cluster's roster. Says why when the leader cannot start.
+ */
 export async function ensureClusterLeader(
   clusterId: string,
 ): Promise<ClusterLeader> {
@@ -87,12 +81,22 @@ export async function ensureClusterLeader(
   const user = (await getCurrentUser())!;
   const cluster = await getClusterById(clusterId);
   if (!cluster) throw new Error("Cluster not found");
+  const leader = await startLeader(cluster, user.name, teamId);
+  await bringUpRelay(cluster, user.name, teamId);
+  return leader;
+}
+
+async function startLeader(
+  cluster: Cluster,
+  actor: string,
+  teamId: string,
+): Promise<ClusterLeader> {
   const host = await leaderHost(cluster);
   const before = await readLeader(host);
   if (!host || before.state === "running" || before.state === "unavailable")
     return before;
   try {
-    await installClusterLeader(host.id);
+    await installClusterLeader(host.id, { relay: isDeploHostServer(host) });
   } catch (e) {
     return down(
       host,
@@ -105,9 +109,45 @@ export async function ensureClusterLeader(
     await recordActivity(
       "server",
       `Started the leader of cluster ${cluster.name} on ${after.serverName}`,
-      user.name,
+      actor,
       null,
       teamId,
     );
   return after;
+}
+
+// The relay's trouble never undoes the cluster either: the sweep tries again, and the card says why.
+async function bringUpRelay(
+  cluster: Cluster,
+  actor: string,
+  teamId: string,
+): Promise<void> {
+  try {
+    const relay = await ensureClusterRelay();
+    if (relay.started)
+      await recordActivity(
+        "server",
+        `Started the cluster relay on ${relay.serverName}`,
+        actor,
+        null,
+        teamId,
+      );
+    if (relay.route === "on")
+      await recordActivity(
+        "server",
+        "Added the cluster relay to the panel's address",
+        actor,
+        null,
+        teamId,
+      );
+    if (relay.routeError)
+      console.warn(`[cluster-relay] ${cluster.id}: ${relay.routeError}`);
+    const push = await pushClusterRoster(cluster.id);
+    for (const f of push.failed)
+      console.warn(`[cluster-relay] ${cluster.id}: ${f.message}`);
+  } catch (e) {
+    console.warn(
+      `[cluster-relay] ${cluster.id}: ${e instanceof Error ? e.message : String(e)}`,
+    );
+  }
 }

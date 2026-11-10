@@ -16,7 +16,11 @@ import {
 } from "./identity-test-helpers";
 import { seedServerRow, TRUNCATE_INFRA } from "./infra-test-helpers";
 import { panelRoute, withPanelRoute } from "../deploy/traefik-stack";
-import { panelTunnelToken, TUNNEL_SERVICE } from "../deploy/panel-tunnel-stack";
+import {
+  panelTunnelReachesHost,
+  panelTunnelToken,
+  TUNNEL_SERVICE,
+} from "../deploy/panel-tunnel-stack";
 import { __setAgentConnectorForTest } from "../infra/agent-client/connect";
 import type { AgentConnection } from "../infra/agent-client/connection";
 import {
@@ -160,6 +164,26 @@ async function settingsRow() {
     .where(eq(instanceSettings.id, "default"));
   return row;
 }
+
+test("a cluster relay route on the panel travels with the tunnel: its rule in Cloudflare and the gateway name on the connector", async () => {
+  host.yaml = withPanelRoute(STACK, { ...panelRoute(STACK)!, relay: true });
+  await turnOn();
+  const [, made] = [...cf.tunnels.entries()][0];
+  assert.deepEqual(
+    (made.ingress as { path?: string; service: string }[]).filter(
+      (r) => r.path === "^/api/cluster/relay$",
+    ),
+    [
+      {
+        hostname: "deplo.example.com",
+        path: "^/api/cluster/relay$",
+        service: "http://host.docker.internal:3002",
+      },
+    ],
+  );
+  assert.equal(panelTunnelReachesHost(host.yaml), true);
+  assert.equal(panelRoute(host.yaml)?.relay, true);
+});
 
 test("only an instance admin can read, set or turn off the tunnel", async () => {
   await assert.rejects(() => asUser(MEMBER, getPanelTunnel), /admin/i);

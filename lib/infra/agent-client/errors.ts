@@ -67,6 +67,13 @@ export const CLUSTER_HOST_UNSUPPORTED_MESSAGE =
   "The agent on this server is too old to run a cluster leader. " +
   "Update the agent on this server, then try again.";
 
+/** An agent without `cluster`: named, never failed at runtime. */
+export class AgentClusterMemberUnsupportedError extends Error {}
+
+export const CLUSTER_MEMBER_UNSUPPORTED_MESSAGE =
+  "The agent on this server is too old to join a cluster. " +
+  "Update the agent on this server, then try again.";
+
 export class ClusterReleaseUnavailableError extends Error {}
 
 /** A cluster leader below `clusterMin`: refused until the agent that supervises it updates it. */

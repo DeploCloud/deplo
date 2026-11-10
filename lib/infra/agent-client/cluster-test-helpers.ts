@@ -1,9 +1,17 @@
 import { status as GrpcStatus } from "@grpc/grpc-js";
 
-import { ContractVersion, HelloResponse } from "../../agent/gen/agent";
+import {
+  ContractVersion,
+  HelloResponse,
+  HostInfoResponse,
+  TraefikConfigResponse,
+} from "../../agent/gen/agent";
 import { __setAgentConnectorForTest } from "./connect";
 import type { AgentConnection, ClusterHostStatus } from "./connection";
-import { CLUSTER_HOST_CAPABILITY } from "./hello-capabilities";
+import {
+  CLUSTER_CAPABILITY,
+  CLUSTER_HOST_CAPABILITY,
+} from "./hello-capabilities";
 
 export interface FakeClusterHost {
   capabilities: string[];
@@ -15,6 +23,10 @@ export interface FakeClusterHost {
   installs: { version: string; relay: boolean; urls: string[] }[];
   removes: number;
   calls: { method: string; payload: Uint8Array }[];
+  /** Every setClusterMember the agent was asked, in order. */
+  memberCalls: { member: boolean; relays: string[] }[];
+  /** The proxy stack of this host, as hostInfo reads it and traefikConfig replaces it. */
+  proxy: { yaml: string; applied: number; refuse: string };
   opened: string[];
   closed: number;
 }
@@ -24,6 +36,8 @@ const NOTHING: ClusterHostStatus = {
   running: false,
   version: "",
   relay: false,
+  member: false,
+  relayLinks: 0,
 };
 
 /** The server agent answering a leader's calls, behind `__setAgentConnectorForTest`: the one fake every cluster test uses. */
@@ -59,7 +73,13 @@ export function fakeClusterHosts(): {
             relay,
             urls: Object.values(binaries).map((b) => b.url),
           });
-          h.status = { installed: true, running: true, version, relay };
+          h.status = {
+            ...h.status,
+            installed: true,
+            running: true,
+            version,
+            relay,
+          };
           return { version, running: true };
         }),
       removeCluster: () =>
@@ -74,6 +94,24 @@ export function fakeClusterHosts(): {
           h.calls.push({ method, payload });
           return h.leader(method, payload);
         }),
+      hostInfo: async () =>
+        HostInfoResponse.fromPartial({ traefikComposeYaml: h.proxy.yaml }),
+      traefikConfig: async (req) => {
+        if (h.proxy.refuse)
+          return TraefikConfigResponse.fromPartial({
+            ok: false,
+            error: h.proxy.refuse,
+          });
+        if (req.composeYaml) h.proxy.yaml = req.composeYaml;
+        h.proxy.applied++;
+        return TraefikConfigResponse.fromPartial({ ok: true });
+      },
+      setClusterMember: (member, relays) =>
+        guard(() => {
+          h.memberCalls.push({ member, relays });
+          h.status = { ...h.status, member };
+          return { member, relayLinks: 0 };
+        }),
       close: () => void h.closed++,
     };
     return conn as AgentConnection;
@@ -81,13 +119,15 @@ export function fakeClusterHosts(): {
   return {
     host(serverId, over = {}) {
       const h: FakeClusterHost = {
-        capabilities: [CLUSTER_HOST_CAPABILITY],
+        capabilities: [CLUSTER_HOST_CAPABILITY, CLUSTER_CAPABILITY, "hostops"],
         unimplemented: false,
         status: { ...NOTHING },
         leader: (_m, p) => p,
         installs: [],
         removes: 0,
         calls: [],
+        memberCalls: [],
+        proxy: { yaml: "", applied: 0, refuse: "" },
         opened: [],
         closed: 0,
         ...over,

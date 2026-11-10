@@ -11,6 +11,7 @@ import { dropAgentChannel } from "../infra/agent-client/channel-pool";
 import { dispatchServerAlert } from "../notify/dispatch";
 import { signAgentCsr } from "./pki";
 import { instanceFrozen } from "../data/deplo-move/freeze";
+import { pushRostersForServer } from "../data/clusters/relay";
 
 export const CERT_RENEWAL_CAPABILITY = "cert-renewal";
 
@@ -71,6 +72,8 @@ export async function renewAgentCertIfDue(
       })
       .where(eq(serversTable.id, serverId));
     dropAgentChannel(serverId);
+    // The old certificate is cut off at every cluster relay at once.
+    await pushRostersForServer(serverId);
     return {
       renewed: true,
       reason: `renewed until ${notAfterOf(signed.certPem)}`,
