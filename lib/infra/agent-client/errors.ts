@@ -81,6 +81,13 @@ export const CLUSTER_IMAGES_UNSUPPORTED_MESSAGE =
   "The agent on this server is too old to copy images to the other servers of its cluster. " +
   "Update the agent on this server, then try again.";
 
+/** An agent without `cluster.forwarders`: named, never failed at runtime. */
+export class AgentClusterForwardersUnsupportedError extends Error {}
+
+export const CLUSTER_FORWARDERS_UNSUPPORTED_MESSAGE =
+  "The agent on this server is too old to keep names working across the servers of its cluster. " +
+  "Update the agent on this server, then try again.";
+
 export class ClusterReleaseUnavailableError extends Error {}
 
 /** A cluster leader below `clusterMin`: refused until the agent that supervises it updates it. */

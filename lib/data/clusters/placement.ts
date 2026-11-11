@@ -12,6 +12,7 @@ import { nowIso } from "../../ids";
 import { callClusterLeader } from "../../infra/agent-client/cluster-host";
 import type { Cluster } from "../../types/cluster";
 import { instanceFrozen } from "../deplo-move/freeze";
+import { syncNameForwardersSoon } from "./forwarders";
 import { leaderHost } from "./host";
 import { clusterMemberServerIds } from "./roster";
 
@@ -215,7 +216,10 @@ export async function recordPlacement(r: PlacementReport): Promise<boolean> {
 /** A leader's report arriving in the background: ignored while a Deplo move freezes this instance. */
 export async function applyLeaderReport(r: PlacementReport): Promise<boolean> {
   if (await instanceFrozen()) return false;
-  return recordPlacement(r);
+  const recorded = await recordPlacement(r);
+  // A member that now runs one of the Environment's workloads needs its names (#200).
+  if (recorded) syncNameForwardersSoon(r.clusterId);
+  return recorded;
 }
 
 /** Drops the mirror when a workload leaves its cluster or is deleted. */

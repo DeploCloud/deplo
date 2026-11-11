@@ -42,6 +42,31 @@ export type {
 } from "../../agent/gen/agent";
 import type { AttachHandle } from "../docker";
 
+/** What one cluster member is handed to run its name forwarders (#200). */
+export interface ClusterForwarderTable {
+  clusterId: string;
+  /** Every member of the cluster: server id and certificate fingerprint. */
+  members: { serverId: string; fingerprint: string }[];
+  /** The names this member holds on its Environments' networks. */
+  hold: {
+    network: string;
+    kind: "app" | "database";
+    workloadId: string;
+    name: string;
+    port: number;
+    origin: string;
+  }[];
+  /** The workloads placed here that other members of their Environment may reach. */
+  serve: {
+    network: string;
+    kind: "app" | "database";
+    workloadId: string;
+    port: number;
+    origin: string;
+    sourceFingerprints: string[];
+  }[];
+}
+
 export interface AgentProbeHttpRequest {
   appId: string;
   slug: string;
@@ -257,6 +282,10 @@ export interface AgentConnection {
     targetFingerprint: string,
     keep: number,
   ): Promise<{ alreadyPresent: boolean; bytes: number; pruned: string[] }>;
+  // Needs `cluster.forwarders` (#200): the names this member holds and the streams it serves; the full set.
+  setClusterForwarders(
+    table: ClusterForwarderTable,
+  ): Promise<{ held: number; served: number }>;
   /** Replaces the panel addresses the agent links to; it answers with the pair it kept. */
   setLinkAddresses(pair: LinkAddresses): Promise<LinkAddresses>;
   /** Closes the agent's own port for good; it takes this over its agent link only (ADR-0040). */

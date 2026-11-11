@@ -97,3 +97,6 @@ export const CLUSTER_CAPABILITY = "cluster";
 
 // The agent copies a built image to another member of its cluster over the relay (ADR-0044).
 export const CLUSTER_IMAGES_CAPABILITY = "cluster.images";
+
+// The agent holds workloads' names on its Environments' networks and relays them to the member that runs them (#200).
+export const CLUSTER_FORWARDERS_CAPABILITY = "cluster.forwarders";

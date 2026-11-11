@@ -8,9 +8,14 @@ import {
   TraefikConfigResponse,
 } from "../../agent/gen/agent";
 import { __setAgentConnectorForTest } from "./connect";
-import type { AgentConnection, ClusterHostStatus } from "./connection";
+import type {
+  AgentConnection,
+  ClusterForwarderTable,
+  ClusterHostStatus,
+} from "./connection";
 import {
   CLUSTER_CAPABILITY,
+  CLUSTER_FORWARDERS_CAPABILITY,
   CLUSTER_HOST_CAPABILITY,
   CLUSTER_IMAGES_CAPABILITY,
 } from "./hello-capabilities";
@@ -37,6 +42,8 @@ export interface FakeClusterHost {
   ) => { alreadyPresent: boolean; bytes: number; pruned: string[] };
   /** Every copyClusterImage the agent was asked, in order. */
   imageCopies: { imageRef: string; targetFingerprint: string; keep: number }[];
+  /** Every name-forwarder table this host's agent was handed, in order (#200). */
+  forwarders: ClusterForwarderTable[];
   /** Every deploy request this host's agent was handed, answered ready. */
   deploys: DeployRequest[];
   opened: string[];
@@ -226,6 +233,11 @@ export function fakeClusterHosts(): {
           h.imageCopies.push({ imageRef, targetFingerprint, keep });
           return h.imageCopy(imageRef, targetFingerprint, keep);
         }),
+      setClusterForwarders: (table) =>
+        guard(() => {
+          h.forwarders.push(table);
+          return { held: table.hold.length, served: table.serve.length };
+        }),
       close: () => void h.closed++,
     };
     return conn as AgentConnection;
@@ -237,6 +249,7 @@ export function fakeClusterHosts(): {
           CLUSTER_HOST_CAPABILITY,
           CLUSTER_CAPABILITY,
           CLUSTER_IMAGES_CAPABILITY,
+          CLUSTER_FORWARDERS_CAPABILITY,
           "hostops",
         ],
         unimplemented: false,
@@ -249,6 +262,7 @@ export function fakeClusterHosts(): {
         proxy: { yaml: "", applied: 0, refuse: "" },
         imageCopy: () => ({ alreadyPresent: false, bytes: 1, pruned: [] }),
         imageCopies: [],
+        forwarders: [],
         deploys: [],
         opened: [],
         closed: 0,
