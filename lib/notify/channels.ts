@@ -231,7 +231,11 @@ const DANGER = new Set<AlertKey>([
   "git_connection_failing",
   "failed_logins",
 ]);
-const GOOD = new Set<AlertKey>(["server_online", "database_ready"]);
+const GOOD = new Set<AlertKey>([
+  "server_online",
+  "database_ready",
+  "cluster_member_returned",
+]);
 const WARN = new Set<AlertKey>([
   "cluster_failover_waiting",
   "app_unresponsive",

@@ -20,6 +20,7 @@ import {
   setMemberLease,
 } from "./leader-sync";
 import { recordPlacement } from "./placement";
+import { applyMemberReturned } from "./returned";
 import { getClusterById } from "./roster";
 import { getServerById } from "../servers/roster";
 
@@ -170,6 +171,11 @@ export async function applyLeaderEvent(
     }
     case "failover": {
       await applyFailoverSummary(cluster, e.seq, d);
+      await advance();
+      return "applied";
+    }
+    case "member_returned": {
+      await applyMemberReturned(cluster, e.seq, d);
       await advance();
       return "applied";
     }
