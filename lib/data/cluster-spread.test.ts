@@ -19,7 +19,10 @@ import {
 } from "./app-graph-test-helpers";
 import { seedServerRow } from "./infra-test-helpers";
 import { apps as appsTable } from "../db/schema/control-plane/apps";
-import { workloadPlacements } from "../db/schema/control-plane/clusters";
+import {
+  imageArchitectures,
+  workloadPlacements,
+} from "../db/schema/control-plane/clusters";
 import {
   deploymentLogs,
   deployments as deploymentsTable,
@@ -32,6 +35,7 @@ import {
 import { domains } from "../db/schema/control-plane/domains";
 import { servers as serversTable } from "../db/schema/control-plane/servers";
 import { __resetReleaseCacheForTests } from "../agent/release";
+import { fakeRegistry } from "../registry/registry-test-helpers";
 import type { DeployRequest } from "../agent/gen/agent";
 import { __setClusterPinForTest } from "../infra/agent-client/cluster-host";
 import {
@@ -90,7 +94,11 @@ let leader: {
   publicKey: string;
   held: Map<string, Uint8Array>;
   places: (string | null)[];
-  asked: { replicas?: number; current?: string[] }[];
+  asked: {
+    replicas?: number;
+    current?: string[];
+    workload?: { archs?: string[] };
+  }[];
 };
 let clusterId: string;
 
@@ -329,6 +337,24 @@ test("a deploy spreads the replicas of an App with a Cloudflare domain: each ser
     await logs(),
     /Starting 1 replica on srv_3…[\s\S]*Starting 1 replica on srv_4…/,
   );
+});
+
+test("replicas of a pulled image are only offered the servers its image runs on", async () => {
+  await withCloudflareDomain();
+  await db
+    .update(serversTable)
+    .set({ hostArch: "arm64" })
+    .where(eq(serversTable.id, "srv_4"));
+  await runDeploymentGuarded("dpl_1");
+  // No registry described it: the kind of server it runs on, never any.
+  assert.deepEqual(leader.asked[0]!.workload?.archs, ["amd64"]);
+
+  await db.delete(imageArchitectures);
+  fakeRegistry({ "library/nginx:1.27": ["amd64", "arm64"] });
+  await db.update(appsTable).set({ replicas: 2 }).where(eq(appsTable.id, APP));
+  await seedDeployment(db, { id: "dpl_2", appId: APP, status: "queued" });
+  await runDeploymentGuarded("dpl_2");
+  assert.deepEqual(leader.asked[1]!.workload?.archs, ["amd64", "arm64"]);
 });
 
 test("a server that takes two of three replicas renders two, the other one", async () => {

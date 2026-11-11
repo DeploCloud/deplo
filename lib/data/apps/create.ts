@@ -17,6 +17,7 @@ import {
   assertServerNotInCluster,
   clusterMemberServerIdSet,
 } from "../clusters/members";
+import { imageArchs } from "../clusters/architectures";
 import { askLeaderToPlace, recordPlacement } from "../clusters/placement";
 import { listClustersForTeam } from "../clusters/roster";
 import type { Cluster } from "../../types/cluster";
@@ -320,6 +321,11 @@ export async function createApp(input: CreateAppInput): Promise<AppSummary> {
       name: input.name.trim(),
       environmentId: placement.environmentId,
       limitMb: 0,
+      // A pulled image only goes where its registry says it runs; one built here goes anywhere.
+      archs:
+        input.source === "docker-image" && input.dockerImage
+          ? await imageArchs(input.dockerImage)
+          : [],
     });
     clusterServer = servers.find((s) => s.id === memberId) ?? null;
     if (!clusterServer)

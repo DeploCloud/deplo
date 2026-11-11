@@ -17,6 +17,7 @@ import { relocateClusterDatabase } from "../databases/server-move";
 import { instanceFrozen } from "../deplo-move/freeze";
 import { hasPendingLock } from "../keyed-mutex";
 import { getServerById } from "../servers/roster";
+import { redeployArchs } from "./architectures";
 import { pushLeaderRoster } from "./leader-sync";
 import { listMemberWorkloads, type MemberWorkload } from "./member-workloads";
 import {
@@ -298,6 +299,7 @@ async function move(
     name: w.name,
     environmentId: w.environmentId,
     limitMb: w.limitMb,
+    archs: await redeployArchs(w.kind, w.id),
   });
   const placed = () =>
     recordPlacement({

@@ -660,6 +660,11 @@ test("a database moves first, with its data, and stays on the cluster", async ()
     ],
     "the database is whole before the first App starts moving",
   );
+  // No registry described either image, so each is only offered the kind of server it runs on.
+  assert.deepEqual(
+    asked.map((w) => w.archs),
+    [["amd64"], ["amd64"]],
+  );
   const moved = await dbRow("db_main");
   assert.equal(moved.serverId, "srv_3");
   assert.equal(moved.clusterId, cluster.id);

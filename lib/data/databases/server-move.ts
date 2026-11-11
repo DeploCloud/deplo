@@ -36,6 +36,7 @@ import {
   renderDatabaseStackYaml,
   rerouteRequest,
 } from "./stack";
+import { redeployArchs } from "../clusters/architectures";
 import { dropFailoverBundle } from "../clusters/bundles";
 import { assertServerNotInCluster } from "../clusters/members";
 import {
@@ -82,6 +83,7 @@ export async function moveDatabaseToCluster(
     name: db.name,
     environmentId: db.environmentId,
     limitMb: db.resources?.memoryMb ?? 0,
+    archs: await redeployArchs("database", id),
   });
   await writeDatabasePlacement(
     id,

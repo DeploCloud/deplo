@@ -70,6 +70,7 @@ const CONTROL_PLANE = [
   "cluster_leader_keys",
   "workload_placements",
   "cluster_image_copies",
+  "image_architectures",
   "failover_bundle_pushes",
   "cluster_binary_updates",
   "docker_cleanup_policy",

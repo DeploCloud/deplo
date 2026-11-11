@@ -144,6 +144,8 @@ export const MOVE_TABLES: Readonly<Record<string, TablePolicy>> = {
     kind: "copy",
     rekey: { token_enc: SECRET, refresh_token_enc: SECRET },
   },
+  // What a registry said about a pulled image; copied so a mixed cluster fails over as before.
+  image_architectures: COPY,
   // Read again from the new Deplo's own servers (ADR-0038).
   image_inventories: { kind: "skip" },
   image_inventory_packages: { kind: "skip" },

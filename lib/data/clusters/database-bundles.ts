@@ -15,6 +15,7 @@ import {
 import { databases as databasesTable } from "../../db/schema/control-plane/databases";
 import { encryptSecret, sha256Hex } from "../../crypto";
 import { archivesChangeLog } from "../../databases/change-log";
+import { effectiveDatabaseImage } from "../../deploy/database-compose";
 import type { BackupTargetKind } from "../../types/backup";
 import type { Database } from "../../types/database";
 import { assembleDatabase } from "../backup-rows";
@@ -33,6 +34,7 @@ import {
   getDestinationWithSecretsForTeam,
 } from "../destinations/credentials";
 import { getServerById } from "../servers/roster";
+import { imageArchs } from "./architectures";
 import { dropLeaderBundle, listLeaderBundles } from "./bundle-calls";
 import {
   type FailoverBundle,
@@ -247,7 +249,7 @@ export async function pushDatabaseBundle(databaseId: string): Promise<void> {
             name: db.name,
             environment: db.environmentId ?? "",
             image: "",
-            archs: [],
+            archs: await imageArchs(effectiveDatabaseImage(db), db.serverId),
             limitMb: db.resources?.memoryMb ?? 0,
             peakMb: 0,
             hasDomain: false,

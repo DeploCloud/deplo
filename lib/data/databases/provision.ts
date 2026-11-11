@@ -13,7 +13,10 @@ import { recordActivity } from "../activity";
 import { dispatchAlert } from "../../notify/dispatch";
 import { encryptSecret, randomToken } from "../../crypto";
 import { connectAgent } from "../../infra/agent-client/connect";
-import { buildConnectionString } from "../../deploy/database-compose";
+import {
+  buildConnectionString,
+  effectiveDatabaseImage,
+} from "../../deploy/database-compose";
 import { assertNoNameClash, withNetworkLock } from "../name-clash";
 import { databaseHostClash, hostNameClaims } from "../host-name-claims";
 import { environmentInTeam } from "../environments";
@@ -37,6 +40,7 @@ import {
 } from "./validate";
 import { databaseExists, toDTO, type DatabaseDTO } from "./rows";
 import { renderDatabaseStackYaml, rerouteRequest } from "./stack";
+import { imageArchs } from "../clusters/architectures";
 import { assertServerNotInCluster } from "../clusters/members";
 import { askLeaderToPlace, recordPlacement } from "../clusters/placement";
 import { listClustersForTeam } from "../clusters/roster";
@@ -117,6 +121,13 @@ export async function createDatabase(input: {
           name,
           environmentId,
           limitMb: 0,
+          archs: await imageArchs(
+            effectiveDatabaseImage({
+              type: input.type,
+              version: input.version,
+              customImage,
+            }),
+          ),
         }),
       ).catch(() => {
         throw new Error("That cluster's server isn't available to this team.");

@@ -14,6 +14,7 @@ import { callClusterLeader } from "../../infra/agent-client/cluster-host";
 import { requireActiveTeamId } from "../../membership";
 import type { Cluster } from "../../types/cluster";
 import { instanceFrozen } from "../deplo-move/freeze";
+import { onlyArch } from "./architectures";
 import { clusterMemberFacts } from "./facts";
 import { syncNameForwardersSoon } from "./forwarders";
 import { leaderHost } from "./host";
@@ -74,16 +75,21 @@ const REASON_REFUSALS = new Set<string>([
 /** The fixed set of sentences a refusal becomes. */
 export function refusalSentence(
   r: PlacementRefusal,
-  names: { cluster: string; workload: string },
+  // `arch` is "x86" or "ARM" when the workload cannot use every server of a mixed cluster.
+  names: { cluster: string; workload: string; arch?: string | null },
 ): string {
-  const { cluster, workload } = names;
+  const { cluster, workload, arch } = names;
   switch (r.reason) {
     case "no_room":
-      return `No server in cluster ${cluster} has ${r.neededMb} MB free. Add a server to it or lower ${workload}'s memory.`;
+      return arch
+        ? `No ${arch} server in cluster ${cluster} has ${r.neededMb} MB free. Add an ${arch} server to it or lower ${workload}'s memory.`
+        : `No server in cluster ${cluster} has ${r.neededMb} MB free. Add a server to it or lower ${workload}'s memory.`;
     case "no_member_online":
       return `No server in cluster ${cluster} is online and ready right now, so ${workload} has nowhere to run. Bring a server back or add one.`;
     case "no_architecture":
-      return `No server in cluster ${cluster} has the kind of processor ${workload} was built for. Add a server that does.`;
+      return arch
+        ? `${workload} runs on ${arch} servers only, and none in cluster ${cluster} can take it. Add an ${arch} server.`
+        : `No server in cluster ${cluster} has the kind of processor ${workload} was built for. Add a server that does.`;
     case "no_image":
       return `No server in cluster ${cluster} has ${workload}'s image yet. Try again in a minute.`;
   }
@@ -133,6 +139,7 @@ async function askLeader(
     throw new PlacementUnavailableError(
       "The cluster's leader is not running yet, so nothing can be placed on it.",
     );
+  const facts = await clusterMemberFacts(cluster.id);
   let raw: Uint8Array;
   try {
     raw = await callClusterLeader(
@@ -150,7 +157,7 @@ async function askLeader(
             image: req.imageRef ?? "",
             archs: req.archs ?? [],
           },
-          members: await clusterMemberFacts(cluster.id),
+          members: facts,
           ...(many
             ? {
                 replicas: many.replicas,
@@ -173,6 +180,7 @@ async function askLeader(
       refusalSentence(answer.refusal, {
         cluster: cluster.name,
         workload: req.name,
+        arch: onlyArch(req.archs, facts),
       }),
     );
   const members = await clusterMemberServerIds(cluster.id);
