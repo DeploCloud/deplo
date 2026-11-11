@@ -111,7 +111,7 @@ const forget = (cluster: string): Uint8Array =>
   new TextEncoder().encode(JSON.stringify({ cluster, parties: [] }));
 
 /** The server a leader left: its relay forgets the cluster, and with no cluster left to lead it is uninstalled. */
-async function retireLeader(
+export async function retireLeader(
   clusterId: string,
   serverId: string,
 ): Promise<void> {

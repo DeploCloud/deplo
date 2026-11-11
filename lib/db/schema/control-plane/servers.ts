@@ -42,6 +42,8 @@ export const servers = pgTable(
     firstLinkedAt: isoTimestamptz("first_linked_at"),
     // An instance admin let Deplo pass its update stop without this server: it needs its server agent reinstalled.
     leftBehindAt: isoTimestamptz("left_behind_at"),
+    // It left its cluster while its agent did not answer: the sweep tells the agent until it has heard.
+    clusterLeavePendingAt: isoTimestamptz("cluster_leave_pending_at"),
     allTeams: boolean("all_teams").notNull().default(true),
     storageOnly: boolean("storage_only").notNull().default(false),
     buildOnly: boolean("build_only").notNull().default(false),

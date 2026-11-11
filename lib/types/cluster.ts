@@ -74,6 +74,8 @@ export interface ClusterMember {
   emptyingSince: string | null;
   /** Progress while it is being emptied; null otherwise. */
   emptying: ClusterEmptying | null;
+  /** How many Apps and databases it holds; removing it needs none, except for the last member. */
+  held: number;
   leaseState: ClusterLeaseState;
 }
 
@@ -108,4 +110,22 @@ export interface ClusterImageProgress {
   appName: string;
   held: number;
   total: number;
+}
+
+/** One App or database a cluster lets go of when it is deleted: it stays on `serverName`. */
+export interface ClusterReleasedWorkload {
+  kind: "app" | "database";
+  name: string;
+  serverName: string;
+  /** The other servers a spread App also runs on: its copies there stop. */
+  stopsOn: string[];
+  /** It found no room after a server stopped, so it is not running now. */
+  waiting: boolean;
+}
+
+/** What the Delete confirmation shows: the asking team's own work by name, every other team's as a count. */
+export interface ClusterDeletion {
+  failoverOn: boolean;
+  workloads: ClusterReleasedWorkload[];
+  otherTeams: { teamName: string; apps: number; databases: number }[];
 }

@@ -33,7 +33,7 @@ import {
 import type { ServerStatus } from "../../types/server";
 import { recordActivity } from "../activity";
 import { getServerById, listAllServers } from "../servers/roster";
-import { listMemberWorkloads } from "./member-workloads";
+import { listMemberWorkloads, type MemberWorkload } from "./member-workloads";
 import { recordJoinedPlacements } from "./placement";
 import { pushClusterRoster } from "./relay";
 import { getCluster, getClusterById } from "./roster";
@@ -217,9 +217,11 @@ interface MemberRow {
   leaseState: string;
 }
 
-async function emptyingOf(r: MemberRow): Promise<ClusterEmptying | null> {
+function emptyingOf(
+  r: MemberRow,
+  held: MemberWorkload[],
+): ClusterEmptying | null {
   if (!r.emptyingSince) return null;
-  const held = await listMemberWorkloads(r.serverId);
   const moving = held.find((w) => `${w.kind}:${w.id}` === r.emptyingWorkload);
   return {
     since: r.emptyingSince,
@@ -232,13 +234,15 @@ async function emptyingOf(r: MemberRow): Promise<ClusterEmptying | null> {
 }
 
 async function toMember(r: MemberRow): Promise<ClusterMember> {
+  const held = await listMemberWorkloads(r.serverId);
   return {
     serverId: r.serverId,
     serverName: r.serverName,
     status: r.status as ServerStatus,
     joinedAt: r.joinedAt,
     emptyingSince: r.emptyingSince,
-    emptying: await emptyingOf(r),
+    emptying: emptyingOf(r, held),
+    held: held.length,
     leaseState: toLeaseState(r.leaseState),
   };
 }
