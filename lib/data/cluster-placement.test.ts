@@ -448,6 +448,27 @@ test("moving an App off its cluster needs move_apps, then it leaves with its pla
   );
 });
 
+test("a cluster cannot be taken from a team that still has work on it", async () => {
+  const cluster = await eu();
+  await asTeamB(() => newApp(cluster.id, "theirs"));
+  await assert.rejects(
+    () =>
+      asAdmin(() =>
+        setClusterTeams(cluster.id, { allTeams: false, teamIds: [TEAM_A] }),
+      ),
+    /These teams still have Apps or databases on this cluster: beta\. Move or delete them before taking the cluster away\./,
+  );
+  const b = await asTeamB(() => listPlacementChoices());
+  assert.ok(
+    b.some((c) => c.kind === "cluster"),
+    "nothing changed",
+  );
+  // Keeping the team, or sharing with everyone, is still fine.
+  await asAdmin(() =>
+    setClusterTeams(cluster.id, { allTeams: false, teamIds: [TEAM_B] }),
+  );
+});
+
 test("deleting an App drops its placement", async () => {
   const cluster = await eu();
   const app = await asAdmin(() => newApp(cluster.id));

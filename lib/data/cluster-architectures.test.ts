@@ -5,7 +5,11 @@ import { eq } from "drizzle-orm";
 
 import { runWithIdentity } from "../auth/request-context";
 import { apps as appsTable } from "../db/schema/control-plane/apps";
-import { imageArchitectures as archsTable } from "../db/schema/control-plane/clusters";
+import {
+  clusterTeams,
+  clusters as clustersTable,
+  imageArchitectures as archsTable,
+} from "../db/schema/control-plane/clusters";
 import { databases as databasesTable } from "../db/schema/control-plane/databases";
 import { servers as serversTable } from "../db/schema/control-plane/servers";
 import { fakeRegistry } from "../registry/registry-test-helpers";
@@ -424,9 +428,14 @@ test("App page: a team the cluster was taken from is told nothing about its serv
     asTeamB(async () => appFailoverReach((await loadAppGraph("prj_theirs"))!));
 
   assert.match((await theirs()).warning ?? "", /^If server-2 stops/);
-  await asAdmin(() =>
-    setClusterTeams(cluster.id, { allTeams: false, teamIds: [TEAM_A] }),
-  );
+  // Sharing no longer lets this happen; a cluster narrowed before that rule still reads as nothing.
+  await db
+    .update(clustersTable)
+    .set({ allTeams: false })
+    .where(eq(clustersTable.id, cluster.id));
+  await db
+    .insert(clusterTeams)
+    .values({ clusterId: cluster.id, teamId: TEAM_A });
   assert.deepEqual(await theirs(), { line: null, warning: null });
 });
 
