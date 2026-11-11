@@ -257,17 +257,12 @@ test("a compose stack on another member is handed its Environment's names and of
     last("srv_3").hold.map((h) => h.name),
     ["db-shop"],
   );
-  // nobody is handed an entry for the stack; its member is ready to serve the database after a failover
-  for (const id of ["srv_2", "srv_3"])
-    assert.deepEqual(
-      last(id).serve.map((s) => s.workloadId),
-      ["shop"],
-    );
+  assert.deepEqual(last("srv_3").serve, []);
   assert.deepEqual(last("srv_2").hold, []);
   assert.deepEqual(last("srv_2").serve[0]!.sourceFingerprints, [fp(3)]);
 });
 
-test("a member's entries name only its own Environments' workloads, and only same-Environment members as sources", async () => {
+test("a member's entries name only its own workloads, and only same-Environment members as sources", async () => {
   const c = await cluster();
   await placeDatabase(c.id, "shop", "environ_a1", "srv_2");
   await place(c.id, "web", "environ_a1", "srv_3");
@@ -278,16 +273,12 @@ test("a member's entries name only its own Environments' workloads, and only sam
 
   assert.deepEqual(
     last("srv_2").serve.map((s) => [s.workloadId, s.sourceFingerprints]),
-    [
-      ["web", [fp(3)]],
-      ["shop", [fp(3)]],
-    ],
+    [["shop", [fp(3)]]],
   );
   assert.deepEqual(
     last("srv_3").serve.map((s) => [s.workloadId, s.sourceFingerprints]),
     [
       ["web", [fp(2)]],
-      ["shop", [fp(2)]],
       ["staging", []],
     ],
   );
@@ -302,34 +293,12 @@ test("a member's entries name only its own Environments' workloads, and only sam
     );
 });
 
-test("every member of the Environment already holds the entry a failover needs, before Deplo says a word", async () => {
-  const c = await cluster();
-  await placeDatabase(c.id, "shop", "environ_a1", "srv_2");
-  await place(c.id, "web", "environ_a1", "srv_3");
-  await place(c.id, "api", "environ_a1", "srv_4");
-  await syncNameForwarders(c.id);
-
-  // the database runs on srv_2; srv_3 and srv_4 are ready to serve it to each other the moment the leader moves it
-  for (const [id, others] of [
-    ["srv_3", [fp(2), fp(4)]],
-    ["srv_4", [fp(2), fp(3)]],
-  ] as const) {
-    const shop = last(id).serve.find((s) => s.workloadId === "shop");
-    assert.deepEqual(shop?.sourceFingerprints, others, id);
-    assert.deepEqual(
-      last(id)
-        .hold.map((h) => h.name)
-        .includes("db-shop"),
-      true,
-    );
-  }
-});
-
-test("after a failover the new table moves the held name and renders no stack", async () => {
+test("a failover moves the serving entry with a new table and no stack render", async () => {
   const c = await cluster();
   await placeDatabase(c.id, "shop", "environ_a1", "srv_2");
   await place(c.id, "web", "environ_a1", "srv_3");
   await syncNameForwarders(c.id);
+  assert.equal(last("srv_2").serve.length, 1);
 
   await recordPlacement({
     clusterId: c.id,
@@ -340,21 +309,18 @@ test("after a failover the new table moves the held name and renders no stack", 
   });
   await syncNameForwarders(c.id);
 
-  // the server that lost it now runs nothing of the Environment, so it is handed nothing
   assert.deepEqual(last("srv_2").serve, []);
-  assert.deepEqual(last("srv_2").hold, []);
   assert.deepEqual(
     last("srv_4").serve.map((s) => s.workloadId),
-    ["web", "shop"],
+    ["shop"],
   );
+  // the App's member still holds the database's name; the server that lost it now runs nothing of the Environment
   assert.deepEqual(
     last("srv_3").hold.map((h) => h.name),
     ["db-shop"],
   );
-  assert.deepEqual(
-    last("srv_4").serve.map((s) => s.sourceFingerprints),
-    [[fp(3)], [fp(3)]],
-  );
+  assert.deepEqual(last("srv_2").hold, []);
+  assert.deepEqual(last("srv_4").serve[0]!.sourceFingerprints, [fp(3)]);
   assert.equal(hosts.srv_2!.deploys.length, 0);
 });
 
