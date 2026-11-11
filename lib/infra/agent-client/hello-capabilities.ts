@@ -20,6 +20,9 @@ export const BACKUP_UNTRUSTED_CONFIG_CAPABILITY = "backup-untrusted-config";
 // A Redis that runs append-only reloads the append-only file after a restore, so an older agent restores into a dataset that comes back empty.
 export const BACKUP_REDIS_AOF_CAPABILITY = "backup.redis-aof";
 
+// A Postgres base backup, its change log, and the restore that replays both (#203).
+export const POSTGRES_ARCHIVE_CAPABILITY = "backup.postgres-archive";
+
 export const CRON_CAPABILITY = "cron";
 
 export const METRICS_STREAM_CAPABILITY = "metrics-stream";

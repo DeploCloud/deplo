@@ -14,9 +14,11 @@ import {
 } from "../../db/schema/control-plane/clusters";
 import { databases as databasesTable } from "../../db/schema/control-plane/databases";
 import { encryptSecret, sha256Hex } from "../../crypto";
+import { archivesChangeLog } from "../../databases/change-log";
 import type { BackupTargetKind } from "../../types/backup";
 import type { Database } from "../../types/database";
 import { assembleDatabase } from "../backup-rows";
+import { changeLogPrefix, isBaseBackupKey } from "../backup-objectkey";
 import { restoreRequestFor } from "../backup-transport";
 import { databaseDescriptor } from "../backups/target-descriptor";
 import { mountsFor } from "../databases/rows";
@@ -60,6 +62,8 @@ export interface RestoreTarget {
   clusterId: string;
   database?: DatabaseDescriptor;
   project?: ProjectDescriptor;
+  /** Postgres archiving its change log: a base backup is preferred, and replayed up to the last piece archived. */
+  changeLog?: boolean;
 }
 
 /** `why` ends the sentence "x cannot fail over yet:"; null with no restore means no backup has finished yet. */
@@ -95,7 +99,14 @@ export async function latestRestorable(
   const members = await clusterMemberServerIds(t.clusterId);
   const dests = new Map<string, DestinationWithSecrets | null>();
   let why: string | null = null;
-  for (const run of runs) {
+  // A base backup first, however old: with its change log it restores a later point than any newer dump.
+  const ordered = t.changeLog
+    ? [
+        ...runs.filter((r) => isBaseBackupKey(r.objectKey)),
+        ...runs.filter((r) => !isBaseBackupKey(r.objectKey)),
+      ]
+    : runs;
+  for (const run of ordered) {
     if (!dests.has(run.destinationId))
       dests.set(
         run.destinationId,
@@ -129,6 +140,9 @@ export async function latestRestorable(
             { kind: t.kind, database: t.database, project: t.project },
             run.objectKey,
             run.sha256 ?? "",
+            t.changeLog && isBaseBackupKey(run.objectKey)
+              ? changeLogPrefix(run.objectKey)
+              : "",
           ),
         ),
       },
@@ -175,6 +189,7 @@ export async function pushDatabaseBundle(databaseId: string): Promise<void> {
     serverId: db.serverId,
     clusterId: cluster.id,
     database: databaseDescriptor(db),
+    changeLog: archivesChangeLog(db),
   });
   const body = {
     stack: {

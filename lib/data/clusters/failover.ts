@@ -15,8 +15,10 @@ import { publishDatabaseChanged } from "../../graphql/pubsub";
 import { dispatchAlert } from "../../notify/dispatch";
 import type { Cluster } from "../../types/cluster";
 import { recordActivity } from "../activity";
+import { isBaseBackupKey } from "../backup-objectkey";
 import { assembleDatabase } from "../backup-rows";
 import { markLinkedAppsPending } from "../database-links";
+import { changeLogBroken } from "./change-log";
 import { databasePassword } from "../databases/stack";
 import { getServerById } from "../servers/roster";
 import { pushDatabaseBundle } from "./database-bundles";
@@ -64,7 +66,13 @@ const quietly = (what: string) => (e: unknown) =>
  */
 async function databaseFailedOver(
   cluster: Cluster,
-  d: { workloadId: string; to: string; backupId?: unknown; backupAt?: unknown },
+  d: {
+    workloadId: string;
+    to: string;
+    backupId?: unknown;
+    backupAt?: unknown;
+    restoreMs?: unknown;
+  },
 ): Promise<void> {
   const db = getDb();
   const [row] = await db
@@ -86,6 +94,8 @@ async function databaseFailedOver(
           .select({
             startedAt: runsTable.startedAt,
             timezone: backupsTable.timezone,
+            objectKey: runsTable.objectKey,
+            sizeBytes: runsTable.sizeBytes,
           })
           .from(runsTable)
           .leftJoin(backupsTable, eq(backupsTable.id, runsTable.backupId))
@@ -105,6 +115,9 @@ async function databaseFailedOver(
       target?.name ?? "another server",
       run?.startedAt ?? (typeof d.backupAt === "string" ? d.backupAt : null),
       run?.timezone ?? "UTC",
+      undefined,
+      // ponytail: when Deplo last collected the change log, not what Postgres replayed; have the member report it if they ever differ.
+      run && isBaseBackupKey(run.objectKey) ? row.walArchivedAt : null,
     ),
     ACTOR,
     null,
@@ -112,6 +125,20 @@ async function databaseFailedOver(
     null,
     row.id,
   );
+  // Restored from a dump, Postgres is a new one: what it archives follows no base backup taken before.
+  if (!run || !isBaseBackupKey(run.objectKey)) await changeLogBroken(row.id);
+  const took = Number(d.restoreMs);
+  if (run && took > 0)
+    // The whole recovery, start to restored, is what the next estimate should promise.
+    await db
+      .update(databasesTable)
+      .set({
+        restoreBytesPerSec: Math.max(
+          1,
+          Math.round((run.sizeBytes * 1000) / took),
+        ),
+      })
+      .where(eq(databasesTable.id, row.id));
   if (target && row.exposedPublicly && row.exposedPort != null) {
     // A published database is reached on its server's own address, which just changed.
     const cur = assembleDatabase(row);
@@ -150,6 +177,7 @@ export async function applyFailedOver(
       to: d.to,
       backupId: d.backupId,
       backupAt: d.backupAt,
+      restoreMs: d.restoreMs,
     });
   if (d.kind !== "app") return;
   const app = await ownApp(cluster.id, d.workloadId);
@@ -328,6 +356,7 @@ export async function adoptLeaderMoves(
           reason: m.reason,
           backupId: m.backupId,
           backupAt: m.backupAt,
+          restoreMs: m.restoreMs,
         });
       else {
         const w = waiting.get(m.from) ?? { seq: 0, left: [] };

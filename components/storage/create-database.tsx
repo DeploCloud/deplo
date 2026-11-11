@@ -376,7 +376,10 @@ export function CreateDatabase({
             {onCluster && (
               <FailoverNote
                 promises={FAILOVER_PROMISES}
-                loss={lossSentence(FAILOVER_BACKUP_MINUTES)}
+                loss={lossSentence(
+                  FAILOVER_BACKUP_MINUTES,
+                  type === "postgres",
+                )}
                 recovery={recoverySentence(null, null)}
               />
             )}

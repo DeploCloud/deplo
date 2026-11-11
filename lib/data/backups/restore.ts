@@ -14,7 +14,9 @@ import { dispatchAlert } from "../../notify/dispatch";
 import { setAppStatus } from "../apps/lifecycle";
 import { mapBackupUnsupported } from "../../infra/agent-client/errors";
 import { getDestinationWithSecretsForTeam } from "../destinations/credentials";
+import { isBaseBackupKey } from "../backup-objectkey";
 import { restoreFromDestination } from "../backup-transport";
+import { changeLogBroken } from "../clusters/change-log";
 import { requireBackupCapability } from "./target-access";
 import { resolveTarget } from "./target-descriptor";
 import { assertNotPausedForMove } from "../deplo-move/source-guard";
@@ -75,6 +77,8 @@ export async function restoreBackup(runId: string): Promise<void> {
         run.objectKey,
         run.sha256 ?? "",
       );
+      if (result.ok && target.databaseId && isBaseBackupKey(run.objectKey))
+        await changeLogBroken(target.databaseId);
       if (!result.ok)
         failure = result.error || "the agent reported a failed restore";
       else if (target.databaseId)

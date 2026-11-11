@@ -16,6 +16,8 @@ import {
   lossSentence,
   recoverySentence,
 } from "../../databases/failover-copy";
+import { archivesChangeLog } from "../../databases/change-log";
+import { databases as databasesTable } from "../../db/schema/control-plane/databases";
 import { isDeploHostServer } from "../../deploy/domains";
 import { newId, nowIso } from "../../ids";
 import { requireActiveTeamId } from "../../membership";
@@ -23,9 +25,12 @@ import { serverLabel } from "../../utils";
 import { recordActivity } from "../activity";
 import {
   assembleBackup,
+  assembleDatabase,
   assembleDestination,
   backupToRow,
 } from "../backup-rows";
+import { latestBaseBackup } from "../clusters/change-log";
+import { waitingForRoomNote } from "../clusters/placement";
 import { clusterMemberServerIds, getClusterById } from "../clusters/roster";
 import { insertServerDestination } from "../destinations/create";
 import { getServerById, listAllServers } from "../servers/roster";
@@ -82,10 +87,24 @@ export async function ensureFailoverBackup(db: Placed): Promise<void> {
   const say = (message: string) =>
     recordActivity("backup", message, "Deplo", null, db.teamId, null, db.id);
   try {
+    const [row] = await getDb()
+      .select()
+      .from(databasesTable)
+      .where(eq(databasesTable.id, db.id))
+      .limit(1);
+    // Postgres replays its change log onto a base backup, which only this schedule writes: its own stay dumps.
+    // ponytail: a whole base backup every 15 minutes; a large database wants a rarer one once replay time is measured.
+    const base =
+      !!row && archivesChangeLog({ ...assembleDatabase(row), clusterId });
     const existing = await getDb()
       .select({ id: backupsTable.id })
       .from(backupsTable)
-      .where(eq(backupsTable.databaseId, db.id))
+      .where(
+        and(
+          eq(backupsTable.databaseId, db.id),
+          base ? eq(backupsTable.baseBackup, true) : undefined,
+        ),
+      )
       .limit(1);
     if (existing.length > 0) return;
     const dest = await failoverDestination({ ...db, clusterId });
@@ -109,6 +128,7 @@ export async function ensureFailoverBackup(db: Placed): Promise<void> {
       lastRunAt: null,
       lastStatus: "never",
       enabled: true,
+      baseBackup: base,
       createdAt: nowIso(),
     };
     await getDb().insert(backupsTable).values(backupToRow(b));
@@ -136,6 +156,10 @@ async function lossAndRecovery(
     .filter((s) => s.enabled)
     .map((s) => minutesBetweenRuns(s.schedule))
     .filter((m): m is number => m != null);
+  const archived =
+    archivesChangeLog(db) &&
+    !!db.walArchivedAt &&
+    !!(await latestBaseBackup(db.teamId, db.id));
   const last = await getDb()
     .select({ sizeBytes: backupRunsTable.sizeBytes })
     .from(backupRunsTable)
@@ -149,7 +173,10 @@ async function lossAndRecovery(
     .orderBy(desc(backupRunsTable.seq))
     .limit(1);
   return {
-    loss: lossSentence(windows.length > 0 ? Math.min(...windows) : null),
+    loss: lossSentence(
+      windows.length > 0 ? Math.min(...windows) : null,
+      archived,
+    ),
     recovery: recoverySentence(
       last[0]?.sizeBytes ?? null,
       db.restoreBytesPerSec ?? null,
@@ -189,9 +216,10 @@ export async function getFailoverPreview(
   const copy = await lossAndRecovery(db, schedules);
   return {
     promises: FAILOVER_PROMISES,
-    // No schedule yet: placing creates the 15-minute one.
-    loss:
-      schedules.length === 0
+    // Placing creates the 15-minute schedule when there is none, and starts archiving a Postgres change log.
+    loss: archivesChangeLog({ ...db, clusterId: db.clusterId ?? "placed" })
+      ? lossSentence(FAILOVER_BACKUP_MINUTES, true)
+      : schedules.length === 0
         ? lossSentence(FAILOVER_BACKUP_MINUTES)
         : copy.loss,
     recovery: copy.recovery,
@@ -206,6 +234,8 @@ export interface DatabaseFailover extends FailoverPreview {
   destination: string | null;
   /** Set when it runs on the server its backups are kept on. */
   warning: string | null;
+  /** "Waiting for room in eu" while no server of the cluster runs it. */
+  waiting: string | null;
 }
 
 /** What a database on a cluster relies on, as its page states it; null for a database on one server. */
@@ -245,6 +275,7 @@ export async function getDatabaseFailover(
     destination:
       destinations.find((d) => d.id === schedules[0]?.destinationId)?.name ??
       null,
+    waiting: await waitingForRoomNote(db.id, cluster.name, "database"),
     warning: onSameServer
       ? `${db.name} now runs on ${serverName}, the server its backups are kept on. If ${serverName} stops, the backups go with it. Pick another destination for its backup.`
       : null,

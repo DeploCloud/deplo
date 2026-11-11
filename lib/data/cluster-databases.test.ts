@@ -353,7 +353,13 @@ test("with no team destination and one member the backup goes to Deplo's own ser
 
 test("moving a database onto a cluster copies it to the leader's member and keeps its own schedule", async () => {
   const cluster = await eu();
-  await seedDatabase(db, { id: "db_1", name: "main", serverId: "srv_4" });
+  // Not Postgres: that one also gets a base backup for its change log (#203).
+  await seedDatabase(db, {
+    id: "db_1",
+    name: "main",
+    serverId: "srv_4",
+    type: "mysql",
+  });
   await seedDestination(db, { id: "dst_bucket", name: "Bucket" });
   await seedBackup(db, {
     id: "bkp_1",
@@ -657,8 +663,10 @@ test("GraphQL and MCP place a database on a cluster, and the field gate refuses 
 });
 
 test("the place-on-cluster dialog states what the database would rely on", async () => {
-  await seedDatabase(db, { id: "db_1", name: "main", serverId: "srv_4" });
-  await seedDatabase(db, { id: "db_2", name: "nightly", serverId: "srv_4" });
+  // Not Postgres: that one is promised about a minute (#203).
+  const on = { serverId: "srv_4", type: "mysql" as const };
+  await seedDatabase(db, { id: "db_1", name: "main", ...on });
+  await seedDatabase(db, { id: "db_2", name: "nightly", ...on });
   await seedDestination(db, { id: "dst_bucket", name: "Bucket" });
   await seedBackup(db, {
     id: "bkp_2",

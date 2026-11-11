@@ -1,5 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import * as yaml from "js-yaml";
 
 import {
   generateDatabaseCompose,
@@ -620,4 +621,45 @@ test("no other engine takes a keyfile", () => {
     mongoKeyfile: "S3KEY",
   });
   assert.ok(!yaml.includes("KEYFILE") && !yaml.includes("replSet"), yaml);
+});
+
+test("generateDatabaseCompose: a Postgres that archives its change log copies it beside its data, every minute", () => {
+  const rendered = generateDatabaseCompose({
+    ...DEFAULTS,
+    name: "db-main",
+    type: "postgres",
+    version: "17",
+    password: "pw",
+    archiveChangeLog: true,
+  });
+  const command = (
+    yaml.load(rendered) as { services: Record<string, { command: string[] }> }
+  ).services["db-main"]!.command;
+  assert.deepEqual(command.slice(0, 3), ["postgres", "-c", "archive_mode=on"]);
+  assert.ok(command.includes("archive_timeout=60"));
+  const copy = command.find((c) => c.startsWith("archive_command="))!;
+  // Written under a hidden name first, so a piece still being copied is never shipped; what waited too long goes.
+  assert.equal(
+    copy,
+    "archive_command=mkdir -p /var/lib/postgresql/data/deplo-wal && { find /var/lib/postgresql/data/deplo-wal -type f -mmin +30 -delete; cp %p /var/lib/postgresql/data/deplo-wal/.%f; } && mv /var/lib/postgresql/data/deplo-wal/.%f /var/lib/postgresql/data/deplo-wal/%f",
+  );
+});
+
+test("generateDatabaseCompose: nothing is archived unless asked, for a custom command, or for another engine", () => {
+  const base = { ...DEFAULTS, name: "db-main", version: "17", password: "pw" };
+  for (const out of [
+    generateDatabaseCompose({ ...base, type: "postgres" }),
+    generateDatabaseCompose({
+      ...base,
+      type: "postgres",
+      archiveChangeLog: true,
+      customCommand: "postgres -c shared_buffers=1GB",
+    }),
+    generateDatabaseCompose({
+      ...base,
+      type: "mysql",
+      archiveChangeLog: true,
+    }),
+  ])
+    assert.ok(!out.includes("archive_mode"), out);
 });

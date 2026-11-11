@@ -360,10 +360,11 @@ export async function listAppLogMembers(app: {
   ];
 }
 
-/** "Waiting for room in eu" while the leader has nowhere to run an App; null once it runs, or for an App on one server. */
+/** "Waiting for room in eu" while the leader has nowhere to run an App or a database; null once it runs, or off a cluster. */
 export async function waitingForRoomNote(
   appId: string,
   clusterName: string | null,
+  kind: "app" | "database" = "app",
 ): Promise<string | null> {
   if (!clusterName) return null;
   const rows = await getDb()
@@ -371,7 +372,7 @@ export async function waitingForRoomNote(
     .from(workloadPlacements)
     .where(
       and(
-        eq(workloadPlacements.kind, "app"),
+        eq(workloadPlacements.kind, kind),
         eq(workloadPlacements.workloadId, appId),
       ),
     );

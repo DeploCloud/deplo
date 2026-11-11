@@ -116,6 +116,8 @@ export interface LeaderMove extends LeaderEntry {
   /** The backup a moved workload was restored from, when it was. */
   backupId?: string;
   backupAt?: string;
+  /** How long the member took to start it and restore that backup. */
+  restoreMs?: number;
 }
 
 export interface LeaderSnapshot {

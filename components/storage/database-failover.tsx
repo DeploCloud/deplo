@@ -2,6 +2,7 @@ import { ShieldCheck, TriangleAlert } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { DocsLink } from "@/components/ui/docs-link";
 import Link from "@/components/ui/link";
+import { WaitingForRoom } from "@/components/shared/waiting-for-room";
 import type {
   DatabaseFailover,
   FailoverPreview,
@@ -58,6 +59,11 @@ export function DatabaseFailoverCard({
         <CardContent className="space-y-3 pt-6">
           <div>
             <p className="text-sm font-medium">Failover</p>
+            {failover.waiting && (
+              <p className="mt-1">
+                <WaitingForRoom note={failover.waiting} />
+              </p>
+            )}
             <p className="mt-1 text-sm text-muted-foreground">
               Runs on cluster {failover.cluster}, now on {failover.serverName}.
               {failover.destination && ` Backed up to ${failover.destination}.`}

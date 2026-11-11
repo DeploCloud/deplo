@@ -16,6 +16,7 @@ import {
 } from "../../deploy/database-compose";
 import { stackFilesDir } from "../../deploy/deploy-key";
 import { appNetwork, explainNetworkError } from "../../deploy/network";
+import { archivesChangeLog } from "../../databases/change-log";
 import { loadDatabase, mountsFor } from "./rows";
 import type { Database } from "../../types/database";
 import { isPausedForMove } from "../deplo-move/source-guard";
@@ -56,6 +57,7 @@ export function renderDatabaseStackYaml(
     filesDir: stackFilesDir(db.host),
     network: appNetwork(db),
     mongoKeyfile: db.type === "mongodb" ? mongoKeyfileFor(db.id) : null,
+    archiveChangeLog: archivesChangeLog(db),
   });
 }
 

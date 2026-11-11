@@ -3,8 +3,10 @@ import { gzipSync } from "node:zlib";
 import { status as GrpcStatus } from "@grpc/grpc-js";
 
 import {
+  type BackupRequest,
   ContractVersion,
   type DeployRequest,
+  type RestoreRequest,
   HelloResponse,
   HostInfoResponse,
   TraefikConfigResponse,
@@ -56,6 +58,16 @@ export interface FakeClusterHost {
   forwarders: ClusterForwarderTable[];
   /** Every deploy request this host's agent was handed, answered ready. */
   deploys: DeployRequest[];
+  /** Every backup this host's agent was asked for, answered with an artifact of `backupBytes` (0: nothing to write). */
+  backups: BackupRequest[];
+  backupBytes: number;
+  /** The agent fails every backup with this message. */
+  backupError: string;
+  /** Every restore this host's agent was asked for, answered ok. */
+  restores: RestoreRequest[];
+  /** Every artifact this host's agent stored for another server, and every key or folder it was asked to delete. */
+  stored: string[];
+  deleted: string[];
   /** The stacks this host runs, by slug, as readStack shows them; a reroute replaces one. */
   stacks: Record<string, string>;
   reroutes: Parameters<AgentConnection["reroute"]>[0][];
@@ -240,6 +252,41 @@ export function fakeClusterHosts(): {
           },
         };
       },
+      backup: async function* (req: BackupRequest) {
+        h.backups.push(req);
+        const key = req.s3?.objectKey || req.store?.objectKey || "";
+        if (req.streamOut && h.backupBytes > 0 && !h.backupError)
+          yield { data: Buffer.alloc(h.backupBytes) };
+        yield {
+          result: {
+            ok: !h.backupError,
+            error: h.backupError,
+            objectKey: h.backupBytes > 0 ? key : "",
+            sizeBytes: h.backupBytes,
+            sha256: "",
+            decryptedSizeBytes: h.backupBytes,
+            heldMs: 0,
+          },
+        };
+      },
+      restore: async function* (req: RestoreRequest) {
+        h.restores.push(req);
+        yield { result: { ok: true, error: "" } };
+      },
+      writeStoreFile: async (store, _overwrite, chunks) => {
+        let bytesWritten = 0;
+        for await (const c of chunks) bytesWritten += c.length;
+        h.stored.push(store.objectKey);
+        return { ok: true, error: "", bytesWritten, sha256: "" };
+      },
+      storeDelete: async (store) => {
+        h.deleted.push(store.objectKey);
+        return { ok: true, error: "", deleted: 1 };
+      },
+      s3Delete: async (s3) => {
+        h.deleted.push(s3.objectKey);
+        return { ok: true, error: "", deleted: 1 };
+      },
       readStack: async (slug) => ({
         exists: slug in h.stacks,
         yaml: h.stacks[slug] ?? "",
@@ -340,6 +387,12 @@ export function fakeClusterHosts(): {
         imageCopies: [],
         forwarders: [],
         deploys: [],
+        backups: [],
+        backupBytes: 2048,
+        backupError: "",
+        restores: [],
+        stored: [],
+        deleted: [],
         stacks: {},
         reroutes: [],
         rerouteError: "",

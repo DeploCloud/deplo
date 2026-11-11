@@ -7,6 +7,7 @@ import { getDb } from "../../db/client";
 import { clusters as clustersTable } from "../../db/schema/control-plane/clusters";
 import { acquireLease, releaseLease } from "../../backups/lease";
 import { instanceFrozen } from "../deplo-move/freeze";
+import { shipChangeLogs } from "./change-log";
 import { runEmptyingPass } from "./empty";
 import { leaderHost } from "./host";
 import { superviseClusterLeader } from "./leader-standby";
@@ -18,6 +19,7 @@ import { runClusterWatch } from "./watch";
 export const CLUSTER_WATCH_LEASE = "cluster-watch";
 
 const TICK_MS = 15_000;
+const CHANGE_LOG_EVERY_MS = 60_000;
 
 interface State {
   started: boolean;
@@ -27,6 +29,8 @@ interface State {
   watches: Map<string, AbortController>;
   /** The server whose leader each watch was opened on. */
   leading?: Map<string, string>;
+  /** When the change logs were last collected. */
+  changeLogAt?: number;
 }
 
 const KEY = Symbol.for("deplo.cluster.watch");
@@ -92,6 +96,13 @@ export async function runClusterWatchTick(): Promise<void> {
     void runEmptyingPass().catch((e) =>
       console.error("[deplo] emptying a cluster member failed:", e),
     );
+    // Once a minute, which is what "about a minute" of a Postgres failover rests on.
+    if (Date.now() - (state.changeLogAt ?? 0) >= CHANGE_LOG_EVERY_MS) {
+      state.changeLogAt = Date.now();
+      void shipChangeLogs().catch((e) =>
+        console.error("[deplo] collecting a change log failed:", e),
+      );
+    }
   } catch (e) {
     console.error("[deplo] cluster watch tick failed:", e);
   } finally {
@@ -116,6 +127,7 @@ export async function releaseClusterWatchLease(): Promise<void> {
 export function __resetClusterWatchForTest(): void {
   stopAll();
   state.started = false;
+  state.changeLogAt = 0;
   if (state.timer) clearInterval(state.timer);
   state.timer = null;
 }

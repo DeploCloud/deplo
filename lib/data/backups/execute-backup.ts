@@ -13,7 +13,10 @@ import { newId, nowIso } from "../../ids";
 import { requireMembership } from "../../membership";
 import { recordActivity } from "../activity";
 import { dispatchAlert } from "../../notify/dispatch";
+import { PostgresArchive } from "../../agent/gen/agent";
 import { BACKUP_RUN_MAX_MS } from "../../infra/agent-client/deadlines";
+import { POSTGRES_ARCHIVE_CAPABILITY } from "../../infra/agent-client/hello-capabilities";
+import { serverSupports } from "../../infra/agent-client/preflight";
 import { mapBackupUnsupported } from "../../infra/agent-client/errors";
 import { unreachableMessage } from "../../infra/server-health";
 import {
@@ -72,6 +75,8 @@ export async function executeBackup(
     appId: string | null;
     destinationId: string;
     retentionCount: number;
+    /** The schedule's runs are base backups, for as long as the database archives its change log. */
+    baseBackup?: boolean;
   },
 ): Promise<BackupRun> {
   const startedAt = nowIso();
@@ -135,6 +140,11 @@ export async function executeBackup(
     activityAppId = target.appId;
     activityDatabaseId = target.databaseId;
     targetServerId = target.serverId;
+    // A server that cannot write one keeps the dump: a failover then restores that, without the change log.
+    const base =
+      !!opts.baseBackup &&
+      !!target.archivesChangeLog &&
+      (await serverSupports(target.serverId, POSTGRES_ARCHIVE_CAPABILITY));
     objectKey = buildObjectKey({
       teamId,
       kind: opts.kind,
@@ -144,6 +154,7 @@ export async function executeBackup(
         opts.kind,
         target.dbType,
         Boolean(creds.destination.ageRecipient),
+        base,
       ),
       at: new Date(startedAt),
     });
@@ -159,6 +170,7 @@ export async function executeBackup(
         kind: opts.kind,
         database: target.database,
         project: target.project,
+        ...(base ? { archive: PostgresArchive.POSTGRES_ARCHIVE_BASE } : {}),
       },
       objectKey,
       abort.signal,

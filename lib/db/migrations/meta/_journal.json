@@ -1618,6 +1618,13 @@
       "when": 1795138000000,
       "tag": "0234_cron_run_server",
       "breakpoints": true
+    },
+    {
+      "idx": 236,
+      "version": "7",
+      "when": 1795206000000,
+      "tag": "0236_postgres_change_log",
+      "breakpoints": true
     }
   ]
 }
