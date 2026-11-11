@@ -292,7 +292,7 @@ interface Left {
 const NO_ROOM = "no_room";
 // No server of its kind is the same wait to a reader: `other` already names the kind ("no other x86 server").
 const ROOM = new Set([NO_ROOM, "no_architecture"]);
-// A wait read back after a reconnect: the leader's picture no longer says why.
+// A wait read back after a reconnect from a leader too old to say why.
 const UNKNOWN = "unknown";
 
 // What stopped it, after "<server> stopped answering and"; `other` is "no other server" or "no other x86 server".
@@ -519,7 +519,7 @@ export async function adoptLeaderMoves(
       else {
         const w = waiting.get(m.from) ?? { seq: 0, left: [] };
         if (!w.left.some((l) => l.workloadId === id))
-          w.left.push({ kind, workloadId: id, reason: UNKNOWN });
+          w.left.push({ kind, workloadId: id, reason: m.wait || UNKNOWN });
         w.seq = Math.max(w.seq, m.seq);
         waiting.set(m.from, w);
       }

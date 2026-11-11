@@ -283,6 +283,32 @@ test("a watch that lost events reads the missed failover from the snapshot: Acti
   );
 });
 
+test("a wait read back after a reconnect names the reason the leader still holds", async () => {
+  const cluster = await eu();
+  await web(cluster.id);
+  lab.leader.watch.gap = true;
+  lab.leader.watch.log.push({
+    seq: 9,
+    at: AT,
+    type: "member_state",
+    cluster: cluster.id,
+    data: { member: "srv_2", state: "fenced" },
+  });
+  leaderMoved(cluster.id, [
+    { id: "prj_web", member: "", seq: 5, wait: "no_image" },
+  ]);
+
+  assert.equal(await watchUntil(cluster.id, 9), "ended");
+  assert.deepEqual(
+    (await messages())
+      .map((m) => m.message)
+      .filter((m) => /is waiting/.test(m)),
+    [
+      "web is waiting in eu: server-2 stopped answering and no other server has its image yet",
+    ],
+  );
+});
+
 test("a watch that lost nothing writes the failover once: the snapshot adds no second entry", async () => {
   const cluster = await eu();
   await web(cluster.id);

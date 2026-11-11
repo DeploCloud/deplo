@@ -211,7 +211,7 @@ export function failoverLab() {
   /** What the leader's snapshot says after it moved Apps on its own. */
   function leaderMoved(
     clusterId: string,
-    moves: { id: string; member: string; seq: number }[],
+    moves: { id: string; member: string; seq: number; wait?: string }[],
   ) {
     lab.snapshot = {
       head: 0,
@@ -241,6 +241,7 @@ export function failoverLab() {
             from: "srv_2",
             reason: "stopped_answering",
             seq: m.seq,
+            ...(m.wait ? { wait: m.wait } : {}),
           })),
         },
       },

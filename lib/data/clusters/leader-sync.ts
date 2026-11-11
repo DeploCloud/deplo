@@ -145,6 +145,8 @@ export interface LeaderMove extends LeaderEntry {
   reason: string;
   /** The leader's event that reported it. */
   seq: number;
+  /** Why a waiting replica found no member; an older leader does not say. */
+  wait?: string;
   /** The backup a moved workload was restored from, when it was. */
   backupId?: string;
   backupAt?: string;
