@@ -24,6 +24,8 @@ import { ReplicasForm } from "@/components/apps/settings/replicas-form";
 import { StickySessionsForm } from "@/components/apps/settings/sticky-sessions-form";
 import { serverLacks } from "@/lib/infra/agent-client/preflight";
 import { REPLICAS_CAPABILITY, replicasRefusal } from "@/lib/deploy/replicas";
+import { appReplicasWaiting } from "@/lib/data/clusters/placement";
+import { replicaSpreadNote } from "@/lib/data/clusters/spread";
 import { ZeroDowntimeForm } from "@/components/apps/settings/zero-downtime-form";
 import { ScreenshotsForm } from "@/components/apps/settings/screenshots-form";
 import { PublishedPortsForm } from "@/components/apps/settings/published-ports-form";
@@ -152,6 +154,8 @@ export default async function AppAdvancedSettingsPage(
                 project.serverId,
                 REPLICAS_CAPABILITY,
               )}
+              spread={await replicaSpreadNote(project)}
+              waiting={await appReplicasWaiting(project)}
             />
           </CapabilityFieldset>
         )}

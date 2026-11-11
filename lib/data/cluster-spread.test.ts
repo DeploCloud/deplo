@@ -53,7 +53,13 @@ import {
   SPREAD_AGENT,
   SPREAD_NO_CLOUDFLARE,
 } from "./clusters/spread";
+import { applyLeaderEvent } from "./clusters/watch";
 import { invalidateFrozen } from "./deplo-move/freeze";
+import { saveNotificationChannel } from "./notifications";
+import { activities } from "../db/schema/control-plane/activity";
+import { __resetCooldowns } from "../notify/cooldown";
+import { __settleAlertsForTest } from "../notify/dispatch";
+import { captureFetch } from "../notify/fetch-capture-test-helpers";
 
 let db: TestDb;
 let pg: PGlite;
@@ -476,4 +482,95 @@ test("the replica count line shows the replicas still waiting for room", async (
   assert.equal(await note(), "2 of 3 replicas running · waiting for room");
   await record([null, null, null]);
   assert.equal(await note(), "Waiting for room in eu");
+});
+
+const event = (seq: number, type: string, data: Record<string, unknown>) =>
+  applyLeaderEvent(clusterId, {
+    seq,
+    at: "2026-11-08T00:00:00.000Z",
+    type,
+    cluster: clusterId,
+    data,
+  });
+
+const activity = async () =>
+  (await db.select().from(activities).where(eq(activities.appId, APP))).map(
+    (a) => a.message,
+  );
+
+test("a replica the leader started elsewhere is told as a replica, not as a move of the App", async () => {
+  await withCloudflareDomain();
+  await runDeploymentGuarded("dpl_1");
+  await event(1, "placement", {
+    kind: "app",
+    workloadId: APP,
+    members: ["srv_2", "srv_3", "srv_2"],
+    epoch: 1,
+  });
+  await event(2, "failed_over", {
+    kind: "app",
+    workloadId: APP,
+    from: "srv_4",
+    to: "srv_2",
+    reason: "stopped_answering",
+  });
+
+  assert.deepEqual(await placement(), ["srv_2", "srv_3", "srv_2"]);
+  assert.ok(
+    (await activity()).includes(
+      "Started a replica of prj_1 on srv_2: srv_4 stopped answering",
+    ),
+  );
+});
+
+test("a replica that found no room is told with the count, and the alert does not read as an App that is down", async () => {
+  await withCloudflareDomain();
+  await runDeploymentGuarded("dpl_1");
+  await asAdmin(() =>
+    saveNotificationChannel(null, {
+      kind: "webhook",
+      name: "",
+      enabled: true,
+      url: "https://ops/hook",
+      target: "",
+      emailFrom: "",
+      emailProvider: "resend",
+      smtpHost: "",
+      smtpPort: 587,
+      smtpUser: "",
+      alerts: ["cluster_failover_waiting"],
+    }),
+  );
+  __resetCooldowns();
+  const capture = captureFetch();
+  try {
+    await event(1, "placement", {
+      kind: "app",
+      workloadId: APP,
+      members: ["srv_2", "srv_3", ""],
+      epoch: 1,
+    });
+    await event(2, "failover", {
+      member: "srv_4",
+      reason: "stopped_answering",
+      moved: [],
+      waiting: [
+        { kind: "app", workloadId: APP, reason: "no_room", neededMb: 256 },
+      ],
+    });
+    await __settleAlertsForTest();
+  } finally {
+    capture.restore();
+  }
+
+  assert.ok(
+    (await activity()).includes(
+      "prj_1: 2 of 3 replicas running · waiting for room. srv_4 stopped answering and no other server has room for the rest yet",
+    ),
+  );
+  assert.equal(capture.calls.length, 1);
+  assert.equal(
+    (capture.calls[0]!.body as { title?: string }).title,
+    "prj_1: 2 of 3 replicas running · waiting for room",
+  );
 });

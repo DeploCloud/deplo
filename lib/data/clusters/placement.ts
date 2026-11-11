@@ -405,15 +405,9 @@ export async function listAppLogMembers(app: {
   ];
 }
 
-/**
- * "Waiting for room in eu" while the leader has nowhere to run an App, or "2 of 3 replicas running · waiting
- * for room" while only some of them found a server; null once all run, or for an App on one server.
- */
-export async function waitingForRoomNote(
+async function replicasRunning(
   appId: string,
-  clusterName: string | null,
-): Promise<string | null> {
-  if (!clusterName) return null;
+): Promise<{ running: number; total: number }> {
   const rows = await getDb()
     .select({ member: workloadPlacements.memberServerId })
     .from(workloadPlacements)
@@ -423,11 +417,38 @@ export async function waitingForRoomNote(
         eq(workloadPlacements.workloadId, appId),
       ),
     );
-  const running = rows.filter((r) => r.member !== null).length;
-  if (running === rows.length) return null;
+  return {
+    running: rows.filter((r) => r.member !== null).length,
+    total: rows.length,
+  };
+}
+
+/**
+ * "Waiting for room in eu" while the leader has nowhere to run an App, or "2 of 3 replicas running · waiting
+ * for room" while only some of them found a server; null once all run, or for an App on one server.
+ */
+export async function waitingForRoomNote(
+  appId: string,
+  clusterName: string | null,
+): Promise<string | null> {
+  if (!clusterName) return null;
+  const { running, total } = await replicasRunning(appId);
+  if (running === total) return null;
   return running > 0
-    ? `${running} of ${rows.length} replicas running · waiting for room`
+    ? `${running} of ${total} replicas running · waiting for room`
     : `Waiting for room in ${clusterName}`;
+}
+
+/** The replica count line for the Replicas setting; null unless only some of an App's replicas run. */
+export async function appReplicasWaiting(app: {
+  id: string;
+  clusterId?: string | null;
+}): Promise<string | null> {
+  if (!app.clusterId) return null;
+  const { running, total } = await replicasRunning(app.id);
+  return running > 0 && running < total
+    ? `${running} of ${total} replicas running · waiting for room`
+    : null;
 }
 
 /** The same note for an App the caller already read under its own gates. */
