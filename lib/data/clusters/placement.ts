@@ -366,6 +366,23 @@ export async function listWorkloadPlacements(
   return out;
 }
 
+/** Every server that runs replicas of an App, the one it "runs on now" first: stop, start, re-apply and delete reach them all. */
+export async function listAppMembers(app: {
+  id: string;
+  clusterId?: string | null;
+  serverId: string;
+}): Promise<string[]> {
+  if (!app.clusterId) return [app.serverId];
+  const placed = (await listWorkloadPlacements("app", [app.id])).get(app.id);
+  return [
+    ...new Set(
+      [app.serverId, ...(placed ?? []).map((p) => p.serverId)].filter(
+        (s): s is string => Boolean(s),
+      ),
+    ),
+  ];
+}
+
 /**
  * The servers that hold an App's logs: the one it runs on now, every member a replica is placed on, and
  * the member its release was deployed on when a failover has since moved it off.

@@ -43,7 +43,10 @@ import { runDeploymentGuarded } from "../deploy/build/deploy-run";
 import { REPLICAS_MARK } from "../deploy/failover-offer";
 import { OVERLAP_CAPABILITY } from "../deploy/overlap";
 import { REPLICAS_CAPABILITY } from "../deploy/replicas";
+import { rerouteApp } from "../deploy/build/reroute";
 import { loadAppGraph } from "./app-graph-load";
+import { deleteApp } from "./apps/delete";
+import { startApp, stopApp } from "./apps/lifecycle";
 import { flushFailoverBundles, type FailoverBundle } from "./clusters/bundles";
 import { createCluster } from "./clusters/manage";
 import { addClusterMember } from "./clusters/members";
@@ -487,7 +490,6 @@ test("the replica count line shows the replicas still waiting for room", async (
 const event = (seq: number, type: string, data: Record<string, unknown>) =>
   applyLeaderEvent(clusterId, {
     seq,
-    at: "2026-11-08T00:00:00.000Z",
     type,
     cluster: clusterId,
     data,
@@ -573,4 +575,63 @@ test("a replica that found no room is told with the count, and the alert does no
     (capture.calls[0]!.body as { title?: string }).title,
     "prj_1: 2 of 3 replicas running · waiting for room",
   );
+});
+
+// What a server runs after a deploy is the stack it was handed.
+function running() {
+  for (const id of MEMBERS)
+    if (hosts[id].deploys[0])
+      hosts[id].stacks.web = hosts[id].deploys.at(-1)!.composeYaml;
+}
+
+test("stopping and starting a spread App reaches every server that runs a replica", async () => {
+  await withCloudflareDomain();
+  await runDeploymentGuarded("dpl_1");
+
+  await asAdmin(() => stopApp(APP));
+  for (const id of MEMBERS) assert.ok(hosts[id].stack.includes("stop:web"), id);
+  await asAdmin(() => startApp(APP));
+  for (const id of MEMBERS)
+    assert.ok(hosts[id].stack.includes("start:web"), id);
+});
+
+test("a domain change is applied on every server, each keeping its own number of replicas", async () => {
+  await withCloudflareDomain();
+  leader.places = ["srv_2", "srv_3", "srv_2"];
+  await runDeploymentGuarded("dpl_1");
+  running();
+  await db.insert(domains).values({
+    id: "dom_2",
+    appId: APP,
+    name: "www.example.com",
+    status: "valid",
+    isPrimary: false,
+    ssl: false,
+    certProvider: "none",
+    port: 3000,
+    createdAt: "2026-11-08T00:00:00.000Z",
+  });
+
+  assert.equal(await rerouteApp(APP), "rerouted");
+  const sent = (id: string) => {
+    assert.equal(hosts[id].reroutes.length, 1, id);
+    const yaml = hosts[id].reroutes[0]!.composeYaml;
+    assert.match(yaml, /www\.example\.com/);
+    const svc = (parse(yaml) as Stack).services["deplo-web"]!;
+    assert.equal(svc.container_name, undefined);
+    return svc.deploy?.replicas;
+  };
+  assert.equal(sent("srv_2"), 2);
+  assert.equal(sent("srv_3"), 1);
+  assert.equal(hosts.srv_4.reroutes.length, 0);
+});
+
+test("deleting a spread App removes it from every server", async () => {
+  await withCloudflareDomain();
+  await runDeploymentGuarded("dpl_1");
+
+  await asAdmin(() => deleteApp(APP));
+  for (const id of MEMBERS)
+    assert.ok(hosts[id].stack.includes("destroy:web"), id);
+  assert.deepEqual(await placement(), []);
 });

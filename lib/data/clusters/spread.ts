@@ -151,13 +151,3 @@ export async function planAppReplicas(app: App): Promise<ReplicaPlan | null> {
     spread: state.kind === "spread",
   };
 }
-
-/** Every server that runs replicas of an App, the one it "runs on now" first; for the readers that need them all. */
-export async function listAppMembers(app: {
-  id: string;
-  clusterId?: string | null;
-  serverId: string;
-}): Promise<string[]> {
-  if (!app.clusterId) return [app.serverId];
-  return distinct([app.serverId, ...(await placed(app.id))]);
-}

@@ -130,6 +130,18 @@ export function parseStackReplicas(yamlText: string, service: string): number {
   }
 }
 
+// The service declares its replica count, so it has no container of its own name even with one copy.
+export function parseStackScaled(yamlText: string, service: string): boolean {
+  try {
+    const doc = yaml.load(yamlText) as {
+      services?: Record<string, { deploy?: { replicas?: unknown } } | null>;
+    } | null;
+    return doc?.services?.[service]?.deploy?.replicas != null;
+  } catch {
+    return false;
+  }
+}
+
 export function parseStackVolumes(
   yamlText: string,
   service: string,
