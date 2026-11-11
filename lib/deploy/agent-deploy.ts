@@ -10,7 +10,8 @@ import {
   type DeployEvent,
   type RegistryAuth,
   type BuildSpec,
-  type ReadyCheck,
+  ReadyCheck,
+  RestartRule,
   type SourceCompose,
 } from "../agent/gen/agent";
 import { explainNetworkError } from "./network";
@@ -494,6 +495,20 @@ function offerFailoverBundle(
           ? req.registryAuth.map((a) => ({ ...a }))
           : [],
       composeUpArgs: [...req.composeUpArgs],
+      ...(req.startAfterReady.length > 0
+        ? { startAfterReady: [...req.startAfterReady] }
+        : {}),
+      // What keeps a moved App checked, restarted and configured as this deploy left it.
+      ...(req.ready ? { ready: ReadyCheck.toJSON(req.ready) } : {}),
+      ...(req.restartRule
+        ? { restartRule: RestartRule.toJSON(req.restartRule) }
+        : {}),
+      ...(req.mounts.length > 0
+        ? { mounts: req.mounts.map((m) => ({ ...m })) }
+        : {}),
+      ...(req.filesBindSources.length > 0
+        ? { filesBindSources: [...req.filesBindSources] }
+        : {}),
     },
   });
 }
@@ -636,6 +651,7 @@ export async function buildDeployRequest(opts: {
     pullBaseImages: opts.pullBase ?? false,
     standInComposeYaml: "",
     restartRule: undefined,
+    startAfterReady: [],
   };
 
   if (opts.plan.kind === "compose") {

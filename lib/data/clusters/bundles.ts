@@ -4,6 +4,8 @@ import { and, desc, eq, gte, inArray, isNull, notInArray } from "drizzle-orm";
 import { getDb } from "../../db/client";
 import { activities } from "../../db/schema/control-plane/activity";
 import { apps as appsTable } from "../../db/schema/control-plane/apps";
+import { domains as domainsTable } from "../../db/schema/control-plane/domains";
+import { servers as serversTable } from "../../db/schema/control-plane/servers";
 import {
   clusterLeaderKeys,
   clusters as clustersTable,
@@ -16,12 +18,14 @@ import type { Cluster } from "../../types/cluster";
 import { recordActivity } from "../activity";
 import { instanceFrozen } from "../deplo-move/freeze";
 import {
+  type BundleMeta,
   askLeaderKey,
   dropLeaderBundle,
   listLeaderBundles,
   putLeaderBundle,
 } from "./bundle-calls";
 import { leaderHost } from "./host";
+import { isBuiltImage } from "./images";
 import { getClusterById } from "./roster";
 
 const ACTOR = "Deplo";
@@ -39,6 +43,13 @@ export interface FailoverStack {
   composeUpArgs: string[];
   /** The App's own tunnel run token, when it has one. */
   tunnelToken?: string;
+  /** Services the member starts only once the App is ready: the tunnel's connector. */
+  startAfterReady?: string[];
+  /** The deploy's ready check and restart rule, in the agent's own JSON: the leader passes them on unread. */
+  ready?: unknown;
+  restartRule?: unknown;
+  mounts?: { path: string; content: string }[];
+  filesBindSources?: string[];
 }
 
 export interface FailoverBundle {
@@ -145,6 +156,42 @@ const cannotFailOver = (name: string, cluster: string, why: string) =>
 
 type AppRow = { id: string; name: string; teamId: string };
 
+/** What the leader needs to place this App without Deplo: its size, its Environment, its image and whether it has a domain. */
+async function bundleMeta(
+  appId: string,
+  imageRef: string,
+): Promise<BundleMeta> {
+  const db = getDb();
+  const [app] = await db
+    .select({
+      name: appsTable.name,
+      environmentId: appsTable.environmentId,
+      limit: appsTable.resourceMemLimitMb,
+      createdAt: appsTable.createdAt,
+      arch: serversTable.hostArch,
+    })
+    .from(appsTable)
+    .leftJoin(serversTable, eq(serversTable.id, appsTable.serverId))
+    .where(eq(appsTable.id, appId))
+    .limit(1);
+  const [dom] = await db
+    .select({ id: domainsTable.id })
+    .from(domainsTable)
+    .where(eq(domainsTable.appId, appId))
+    .limit(1);
+  const built = isBuiltImage(imageRef);
+  return {
+    name: app?.name ?? "",
+    environment: app?.environmentId ?? "",
+    image: built ? imageRef : "",
+    archs: built && app?.arch ? [app.arch] : [],
+    limitMb: app?.limit ?? 0,
+    peakMb: 0,
+    hasDomain: Boolean(dom),
+    createdAt: app?.createdAt ?? "",
+  };
+}
+
 async function deliver(
   cluster: Cluster,
   app: AppRow,
@@ -154,6 +201,7 @@ async function deliver(
 ): Promise<string[]> {
   const failed: string[] = [];
   const db = getDb();
+  const meta = await bundleMeta(app.id, bundle.stack.imageRef);
   for (const k of keys) {
     const fp = keyFingerprint(k.publicKey);
     const now = nowIso();
@@ -184,6 +232,7 @@ async function deliver(
         id: app.id,
         deploymentId: bundle.deploymentId,
         sealed: await sealBundle(bundle, k.publicKey),
+        meta,
       });
       await db
         .update(pushes)
