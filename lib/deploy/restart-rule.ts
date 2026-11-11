@@ -18,7 +18,14 @@ export function restartRuleFor(opts: {
 }): RestartRule | null {
   if (!opts.enabled) return null;
   const { healthCheck: h, ready } = opts;
-  const base = { service: ready.service, port: 0, path: "", retries: 0 };
+  // Only the App's own http check fails on an error status; the default takes any answer as alive.
+  const base = {
+    service: ready.service,
+    port: 0,
+    path: "",
+    retries: 0,
+    failOnErrorStatus: false,
+  };
   if (h?.type === "command" && h.command?.trim())
     return {
       ...base,
@@ -39,6 +46,7 @@ export function restartRuleFor(opts: {
       timeoutS: h.timeoutS,
       retries: h.retries,
       startPeriodS: h.startPeriodS,
+      failOnErrorStatus: true,
     };
   }
   if (!ready.portRequired || ready.port <= 0) return null;
