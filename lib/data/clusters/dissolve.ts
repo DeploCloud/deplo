@@ -20,6 +20,7 @@ import {
   probeClusterMember,
   removeClusterLeader,
 } from "../../infra/agent-client/cluster-host";
+import { appNetwork } from "../../deploy/network";
 import { movePreviewsOff } from "../../deploy/preview-lifecycle/cluster-member";
 import { nowIso } from "../../ids";
 import { requireActiveTeamId, requireInstanceAdmin } from "../../membership";
@@ -37,12 +38,13 @@ import { teardownOrQueue } from "../teardown-queue";
 import { leaveAppTunnel } from "./app-tunnel";
 import { dropLeaderBundle, forgetLeaderCluster } from "./bundle-calls";
 import { hostFor, keyRows } from "./bundles";
+import { planClusterForwarding } from "./forwarders";
 import { leaderHostOf } from "./host";
 import { retireLeader } from "./leader-move";
 import { forgetLeaderRoster, type LeaderSnapshot } from "./leader-sync";
 import { clusterOfServer } from "./members";
 import { listMemberWorkloads } from "./member-workloads";
-import type { WorkloadKind } from "./placement";
+import { listStandbys, type WorkloadKind } from "./placement";
 import {
   pushClusterRosters,
   pushMembership,
@@ -70,6 +72,7 @@ interface Held {
   /** The stack's name on its server. */
   slug: string;
   teamId: string;
+  environmentId: string | null;
   serverId: string;
 }
 
@@ -83,6 +86,7 @@ async function clusterWorkloads(clusterId: string): Promise<Held[]> {
         name: appsTable.name,
         slug: appsTable.slug,
         teamId: appsTable.teamId,
+        environmentId: appsTable.environmentId,
         serverId: appsTable.serverId,
       })
       .from(appsTable)
@@ -94,6 +98,7 @@ async function clusterWorkloads(clusterId: string): Promise<Held[]> {
         name: databasesTable.name,
         slug: databasesTable.host,
         teamId: databasesTable.teamId,
+        environmentId: databasesTable.environmentId,
         serverId: databasesTable.serverId,
       })
       .from(databasesTable)
@@ -144,6 +149,43 @@ async function placedElsewhere(held: Held[]): Promise<Map<string, Placed>> {
 }
 
 /**
+ * What each App reaches by name on another member today: exactly the names the forwarders hold on its server, which
+ * go with the cluster. Read from the one plan the members run, so it never disagrees with what they serve.
+ */
+async function namesLost(
+  clusterId: string,
+  held: Held[],
+): Promise<Map<string, string[]>> {
+  const out = new Map<string, string[]>();
+  const plan = await planClusterForwarding(clusterId);
+  const nameOf = new Map(held.map((w) => [w.id, w.name] as const));
+  for (const w of held) {
+    if (w.kind !== "app") continue;
+    const network = appNetwork(w);
+    const lost = (plan.get(w.serverId)?.hold ?? [])
+      .filter((h) => h.network === network && h.workloadId !== w.id)
+      .map((h) => nameOf.get(h.workloadId))
+      .filter((n): n is string => Boolean(n));
+    if (lost.length > 0) out.set(w.id, [...new Set(lost)].sort());
+  }
+  return out;
+}
+
+/** " web can no longer reach main by its name: they run on different servers." for one team's Apps; empty with none. */
+function namesLostSentence(held: Held[], lost: Map<string, string[]>): string {
+  const cut = held.filter((w) => lost.has(w.id));
+  if (cut.length === 0) return "";
+  const said = cut
+    .slice(0, 5)
+    .map(
+      (w) =>
+        `${w.name} can no longer reach ${lost.get(w.id)!.join(", ")} by its name`,
+    );
+  const more = cut.length - said.length;
+  return `. ${said.join("; ")}${more > 0 ? `; and ${more} more` : ""}: they run on different servers.`;
+}
+
+/**
  * The Delete confirmation: what stops failing over. The asking team reads its own Apps and databases by name;
  * another team's are a count under that team's name, never their names.
  */
@@ -156,6 +198,7 @@ export async function getClusterDeletion(
   if (!cluster) throw new Error("Cluster not found");
   const held = await clusterWorkloads(clusterId);
   const placed = await placedElsewhere(held);
+  const lost = await namesLost(clusterId, held);
   const serverName = new Map(
     (await listAllServers()).map((s) => [s.id, s.name] as const),
   );
@@ -181,6 +224,7 @@ export async function getClusterDeletion(
           (id) => serverName.get(id) ?? "another server",
         ),
         waiting: placed.get(w.id)?.waiting ?? false,
+        losesReach: lost.get(w.id) ?? [],
       })),
     otherTeams: teams.map((t) => {
       const theirs = held.filter((w) => w.teamId === t.id);
@@ -230,9 +274,10 @@ async function detach(tx: DbTx, clusterId: string): Promise<void> {
     .set({ clusterId: null })
     .where(eq(appsTable.clusterId, clusterId))
     .returning({ id: appsTable.id });
+  // Off a cluster nothing collects a Postgres change log (#203); its stack stops writing one at its next render.
   const dbs = await tx
     .update(databasesTable)
-    .set({ clusterId: null })
+    .set({ clusterId: null, walArchivedAt: null })
     .where(eq(databasesTable.clusterId, clusterId))
     .returning({ id: databasesTable.id });
   for (const [kind, rows] of [
@@ -279,6 +324,19 @@ async function assertHoldersAnswer(
     const on = held.filter((w) => w.serverId === serverId);
     throw new Error(
       `${name} does not answer, and ${workloadCount(on)} still run${on.length === 1 ? "s" : ""} on it. Bring it back online, or empty it, before ${doing} ${cluster.name}.`,
+    );
+  }
+  // A standby copy is removed on the way out; on a server that cannot be asked it would stay there for good.
+  const ids = new Set(ofKind(held, "database"));
+  const copies = (await listStandbys(cluster.id)).filter((s) =>
+    ids.has(s.databaseId),
+  );
+  for (const serverId of new Set(copies.map((c) => c.serverId))) {
+    if ((await probeClusterMember(serverId)) !== "offline") continue;
+    const name = (await getServerById(serverId))?.name ?? "A server";
+    const n = copies.filter((c) => c.serverId === serverId).length;
+    throw new Error(
+      `${name} does not answer, and it keeps the standby copy of ${n} database${n === 1 ? "" : "s"}. Bring it back online, or turn the standby copy off, before ${doing} ${cluster.name}.`,
     );
   }
 }
@@ -474,6 +532,7 @@ export async function deleteCluster(clusterId: string): Promise<void> {
   const held = await clusterWorkloads(clusterId);
   await assertHoldersAnswer(cluster, held, "deleting");
   const placed = await placedElsewhere(held);
+  const lost = await namesLost(clusterId, held);
 
   await getDb().transaction(async (tx) => {
     const locked = await tx
@@ -506,7 +565,9 @@ export async function deleteCluster(clusterId: string): Promise<void> {
   await recordActivity(
     "server",
     `Deleted cluster ${cluster.name}` +
-      (mine.length > 0 ? `: this team's ${staysSentence(mine, failover)}` : ""),
+      (mine.length > 0
+        ? `: this team's ${staysSentence(mine, failover)}${namesLostSentence(mine, lost)}`
+        : ""),
     user.name,
     null,
     teamId,
@@ -517,7 +578,7 @@ export async function deleteCluster(clusterId: string): Promise<void> {
     const theirs = held.filter((w) => w.teamId === other);
     await recordActivity(
       "server",
-      `Deleted cluster ${cluster.name}: this team's ${staysSentence(theirs, failover)}`,
+      `Deleted cluster ${cluster.name}: this team's ${staysSentence(theirs, failover)}${namesLostSentence(theirs, lost)}`,
       user.name,
       null,
       other,

@@ -1369,6 +1369,11 @@ An App or database a cluster lets go of when it is deleted. It stays on the serv
 """
 type ClusterReleasedWorkload {
   kind: ClusterWorkloadKind
+
+  """
+  For an App: the Apps and databases of its Environment on another server, which it reaches by name today and no longer will once the cluster is gone.
+  """
+  losesReach: [String!]
   name: String
 
   """The server it stays on."""

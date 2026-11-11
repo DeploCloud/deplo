@@ -11,7 +11,9 @@ import { backups as backupsTable } from "../db/schema/control-plane/backups";
 import {
   clusterLeaderKeys,
   clusterMembers,
+  workloadPlacements,
 } from "../db/schema/control-plane/clusters";
+import { databases as databasesTable } from "../db/schema/control-plane/databases";
 import { panelRoute } from "../deploy/traefik-stack";
 import {
   RUNNING,
@@ -107,7 +109,7 @@ test("deleting a cluster leaves every workload where it runs, as an ordinary one
 
   assert.equal(
     (await activity()).at(-1),
-    "user_1: Deleted cluster eu: this team's 1 App and 1 database stay where they run and no longer fail over",
+    "user_1: Deleted cluster eu: this team's 1 App and 1 database stay where they run and no longer fail over. web can no longer reach main by its name: they run on different servers.",
   );
   assert.equal(
     (await activity(TEAM_B)).at(-1),
@@ -225,6 +227,8 @@ test("the confirmation names the asking team's Apps and databases, and only coun
         serverName: "srv_2",
         stopsOn: ["srv_3"],
         waiting: false,
+        // Both are on srv_3 only: the copy of web that stays, on srv_2, no longer finds them by name.
+        losesReach: ["main", "worker"],
       },
       {
         kind: "app",
@@ -232,6 +236,7 @@ test("the confirmation names the asking team's Apps and databases, and only coun
         serverName: "srv_3",
         stopsOn: [],
         waiting: true,
+        losesReach: [],
       },
       {
         kind: "database",
@@ -239,6 +244,7 @@ test("the confirmation names the asking team's Apps and databases, and only coun
         serverName: "srv_3",
         stopsOn: [],
         waiting: false,
+        losesReach: [],
       },
     ],
     otherTeams: [{ teamName: "beta", apps: 1, databases: 1 }],
@@ -251,6 +257,72 @@ test("the confirmation names the asking team's Apps and databases, and only coun
       as(() => getClusterDeletion(eu.id)),
       /Only an instance admin can do that/,
     );
+});
+
+test("deleting says which Apps lose a name that crossed servers, to each team about its own", async () => {
+  await runningApp("web", "srv_2");
+  await runningApp("api", "srv_2", TEAM_B);
+  await seedDatabase(db(), { id: "db_main", name: "main", serverId: "srv_3" });
+  await seedDatabase(db(), {
+    id: "db_b",
+    name: "ledger",
+    serverId: "srv_3",
+    teamId: TEAM_B,
+  });
+  const eu = await clusterOf("eu", ["srv_2", "srv_3"]);
+
+  const d = await asAdmin(() => getClusterDeletion(eu.id));
+  assert.deepEqual(
+    d.workloads.map((w) => [w.name, w.losesReach]),
+    [
+      ["web", ["main"]],
+      ["main", []],
+    ],
+  );
+  assert.ok(!JSON.stringify(d).includes("ledger"));
+
+  await asAdmin(() => deleteCluster(eu.id));
+  assert.equal(
+    (await activity()).at(-1),
+    "user_1: Deleted cluster eu: this team's 1 App and 1 database stay where they run and no longer fail over. web can no longer reach main by its name: they run on different servers.",
+  );
+  assert.equal(
+    (await activity(TEAM_B)).at(-1),
+    "user_1: Deleted cluster eu: this team's 1 App and 1 database stay where they run and no longer fail over. api can no longer reach ledger by its name: they run on different servers.",
+  );
+});
+
+test("a Postgres database stops being recorded as archiving its change log when its cluster is deleted", async () => {
+  await seedDatabase(db(), { id: "db_main", name: "main", serverId: "srv_2" });
+  const eu = await clusterOf("eu", ["srv_2", "srv_3"]);
+  await db()
+    .update(databasesTable)
+    .set({ walArchivedAt: "2026-11-01T00:00:00.000Z" })
+    .where(eq(databasesTable.id, "db_main"));
+  await asAdmin(() => deleteCluster(eu.id));
+  assert.equal((await dbRow("db_main")).walArchivedAt, null);
+});
+
+test("a cluster is not deleted while the server keeping a standby copy does not answer: the copy would stay there for good", async () => {
+  await seedDatabase(db(), { id: "db_main", name: "main", serverId: "srv_2" });
+  const eu = await clusterOf("eu", ["srv_2", "srv_3", "srv_4"]);
+  await db().insert(workloadPlacements).values({
+    kind: "standby",
+    workloadId: "db_main",
+    replica: 0,
+    memberServerId: "srv_4",
+    epoch: 1,
+    updatedAt: "2026-11-01T00:00:00.000Z",
+  });
+  hosts.srv_4.unreachable = true;
+  await assert.rejects(
+    asAdmin(() => deleteCluster(eu.id)),
+    {
+      message:
+        "srv_4 does not answer, and it keeps the standby copy of 1 database. Bring it back online, or turn the standby copy off, before deleting eu.",
+    },
+  );
+  assert.deepEqual(await clusterNames(), ["eu"]);
 });
 
 test("an App spread over several members stays on its first one, and its copies on the others are taken down", async () => {

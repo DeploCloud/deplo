@@ -222,6 +222,10 @@ const ClusterReleasedWorkloadRef = builder
         description:
           "It found no room after a server stopped, so it is not running now and stays stopped.",
       }),
+      losesReach: t.exposeStringList("losesReach", {
+        description:
+          "For an App: the Apps and databases of its Environment on another server, which it reaches by name today and no longer will once the cluster is gone.",
+      }),
     }),
   });
 
