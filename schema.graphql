@@ -426,11 +426,16 @@ type AppPreview {
   """
   isFork: Boolean
   latestDeploymentId: ID
+
+  """
+  Why an `offline` preview is not running: server_stopped | server_emptied (no other server of the cluster could take it). Null in every other status.
+  """
+  offlineReason: String
   prNumber: Int
   pullRequestUrl: String
 
   """
-  blocked | queued | building | active | error | idle | evicted | offline. `offline`: its server, a member of the App's cluster, stopped; the next push or a redeploy places it again.
+  blocked | queued | building | active | error | idle | evicted | offline. `offline`: its server, a member of the App's cluster, stopped or was emptied; the next push or a redeploy places it again.
   """
   status: String
   title: String

@@ -44,7 +44,7 @@ import { canHostWorkloads, listServersForTeam } from "./servers/roster";
 import { requireAppCapability } from "./node-access";
 import { secretImmutable } from "../types/env";
 
-/** `offline`: its server, a member of the App's cluster, stopped; the next push or a redeploy places it again. */
+/** `offline`: its server, a member of the App's cluster, stopped or was emptied; the next push or a redeploy places it again. */
 export type PreviewState =
   | "blocked"
   | "queued"
@@ -71,6 +71,8 @@ export interface AppPreviewDTO {
   approved: boolean;
   approvedSha: string | null;
   status: PreviewState;
+  /** Why an `offline` preview is not running; null in every other status. */
+  offlineReason: "server_stopped" | "server_emptied" | null;
   url: string;
   host: string;
   closed: boolean;
@@ -123,6 +125,13 @@ function toDTO(r: typeof appPreviewsTable.$inferSelect): AppPreviewDTO {
       : Boolean(r.approvedAt),
     approvedSha: r.approvedSha,
     status: (r.state === "closed" ? "idle" : r.status) as PreviewState,
+    // Only an emptied member's preview is offline with its stack already taken down.
+    offlineReason:
+      r.state === "closed" || r.status !== "offline"
+        ? null
+        : r.tornDownAt
+          ? "server_emptied"
+          : "server_stopped",
     url: r.url,
     host: r.host,
     closed: r.state === "closed",
