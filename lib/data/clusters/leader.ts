@@ -11,6 +11,7 @@ import { AgentClusterUnsupportedError } from "../../infra/agent-client/errors";
 import { requireActiveTeamId, requireInstanceAdmin } from "../../membership";
 import type { Cluster, ClusterLeader } from "../../types/cluster";
 import type { Server } from "../../types/server";
+import { messageOf } from "../../utils";
 import { versionAtLeast } from "../../version";
 import { recordActivity } from "../activity";
 import { failingClusterUpdate } from "./binary-rollout";
@@ -191,8 +192,6 @@ async function bringUpRelay(
     for (const f of push.failed)
       console.warn(`[cluster-relay] ${cluster.id}: ${f.message}`);
   } catch (e) {
-    console.warn(
-      `[cluster-relay] ${cluster.id}: ${e instanceof Error ? e.message : String(e)}`,
-    );
+    console.warn(`[cluster-relay] ${cluster.id}: ${messageOf(e)}`);
   }
 }

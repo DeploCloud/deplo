@@ -11,6 +11,7 @@ import {
   clearContainerHistory,
   recordMemberSample,
 } from "../monitoring/container-history";
+import { recordActivity } from "./activity";
 import { seedApp, SERVER_1 } from "./app-graph-test-helpers";
 import { moveAppToServer } from "./apps/source";
 import { AT, failoverLab } from "./cluster-failover-test-helpers";
@@ -210,6 +211,17 @@ test("a move a person asked for is marked too", async () => {
     (await asAdmin(() => getAppMetricsMarkers("prj_solo"))).map((m) => m.label),
     ["Moved solo to server-4"],
   );
+});
+
+test("only a change of server is marked: a sentence that merely reads like one is not", async () => {
+  await seedApp(lab.db, { id: "prj_solo", slug: "solo" });
+  // What a folder move and a port change write about an App, word for word.
+  for (const message of [
+    "Moved solo to marketing",
+    "Moved 2 domains to port 8080",
+  ])
+    await asAdmin(() => recordActivity("app", message, "user_1", "prj_solo"));
+  assert.deepEqual(await asAdmin(() => getAppMetricsMarkers("prj_solo")), []);
 });
 
 test("an App on one server reads exactly as it did: no shares, no server names, no markers", async () => {

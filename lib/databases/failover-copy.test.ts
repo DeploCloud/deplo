@@ -59,7 +59,7 @@ test("a timezone this runtime does not know falls back to UTC", () => {
 test("lossSentence: about a minute once the change log is archived, never without a backup to replay it onto", () => {
   assert.equal(
     lossSentence(15, true),
-    "A failover can lose about a minute of writes: its change log is archived continuously.",
+    "A failover can lose about a minute of writes while Deplo is running: it collects the change log every minute. If Deplo is down too, the loss is everything written since it stopped.",
   );
   assert.equal(lossSentence(null, true), lossSentence(null));
 });

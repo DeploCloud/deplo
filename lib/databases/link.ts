@@ -8,6 +8,8 @@ interface Placement {
   teamId: string;
   environmentId: string | null;
   serverId: string;
+  /** A loader that leaves it out gets "another server": the refusal, never the reach. */
+  clusterId?: string | null;
 }
 
 // Conventional names: DATABASE_URL (12-factor), MONGODB_URI (MongoDB's own), REDIS_URL.
@@ -26,7 +28,10 @@ export function databaseReach(
 ): DatabaseReach {
   if (app.teamId !== db.teamId) return "other-team";
   const sameNetwork = appNetwork(app) === appNetwork(db);
-  if (sameNetwork && app.serverId === db.serverId) return "internal";
+  // On one cluster the name forwarders carry the name across members (ADR-0028 amendment).
+  const sameCluster = app.clusterId != null && app.clusterId === db.clusterId;
+  if (sameNetwork && (app.serverId === db.serverId || sameCluster))
+    return "internal";
   if (db.exposedPublicly && db.exposedPort != null) return "public";
   return sameNetwork ? "other-server" : "other-environment";
 }

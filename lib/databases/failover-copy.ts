@@ -34,13 +34,13 @@ function span(minutes: number): string {
   return plural(Math.round(minutes / 1440), "day");
 }
 
-/** How much a failover can lose: the time between two backups, null when none is scheduled, about a minute once the change log is archived. */
+/** How much a failover can lose: the time between two backups, null when none is scheduled; with an archived change log, about a minute, and only while Deplo runs to collect it. */
 export function lossSentence(
   windowMinutes: number | null,
   changeLogArchived = false,
 ): string {
   if (changeLogArchived && windowMinutes != null)
-    return "A failover can lose about a minute of writes: its change log is archived continuously.";
+    return "A failover can lose about a minute of writes while Deplo is running: it collects the change log every minute. If Deplo is down too, the loss is everything written since it stopped.";
   if (windowMinutes == null)
     return "No backup is scheduled, so a failover has nothing recent to restore.";
   return `A failover can lose up to ${span(windowMinutes)} of writes: everything since the last backup.`;

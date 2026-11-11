@@ -7,6 +7,7 @@ import { TEAM_B, USER_1 } from "./identity-test-helpers";
 import { seedApp } from "./app-graph-test-helpers";
 import { __settleAlertsForTest } from "../notify/dispatch";
 import { captureFetch } from "../notify/fetch-capture-test-helpers";
+import { activities as activitiesTable } from "../db/schema/control-plane/activity";
 import { apps as appsTable } from "../db/schema/control-plane/apps";
 import { deploMoves } from "../db/schema/control-plane/deplo-move";
 import { deployments as deploymentsTable } from "../db/schema/control-plane/deployments";
@@ -132,6 +133,89 @@ test("the generated address waits until the App's stack is on the new member, an
   // Nothing left to do: a second sweep changes and sends nothing.
   await rehostClusterAddresses();
   assert.equal(lab.members.srv_3.reroutes.length, 1);
+});
+
+test("a generated address another team already routes is left alone, and Activity says so once", async () => {
+  const cluster = await eu();
+  lab.seq = 0;
+  await web(cluster.id);
+  await autoDomain();
+  await seedApp(lab.db, { id: "prj_b", serverId: "srv_3", teamId: TEAM_B });
+  await lab.db.insert(domainsTable).values({
+    id: "dom_b",
+    appId: "prj_b",
+    name: "web-word-0a000003.deplo.site",
+    pathPrefix: "/api",
+    status: "valid",
+    isPrimary: true,
+    ssl: false,
+    source: "custom",
+    createdAt: AT,
+  });
+  startedOn("srv_3");
+  await lab.db
+    .update(appsTable)
+    .set({ serverId: "srv_3" })
+    .where(eq(appsTable.id, "prj_web"));
+
+  await rehostClusterAddresses();
+  await rehostClusterAddresses();
+  const [mine] = await lab.db
+    .select()
+    .from(domainsTable)
+    .where(eq(domainsTable.id, "dom_prj_web"));
+  assert.equal(mine.name, "web-word-0a000002.deplo.site");
+  assert.equal(lab.members.srv_3.reroutes.length, 0);
+  assert.deepEqual(
+    (await messages()).filter((m) => /generated address/.test(m.message)),
+    [
+      {
+        message:
+          "web moved to another server of its cluster, but its generated address stays web-word-0a000002.deplo.site: web-word-0a000003.deplo.site is already routed by another team on this Deplo. A hostname belongs to one team.",
+        actor: "Deplo",
+      },
+    ],
+  );
+});
+
+test("what Deplo says about a cluster goes to the teams with work on it, never to the oldest team", async () => {
+  const cluster = await eu();
+  lab.seq = 0;
+  await web(cluster.id, "prj_b", TEAM_B);
+  const told = async () =>
+    (await lab.db.select().from(activitiesTable))
+      .filter((a) => a.actor === "Deplo" && a.type === "server")
+      .map((a) => [a.teamId, a.message]);
+
+  await apply(
+    cluster.id,
+    event(cluster.id, "member_state", { member: "srv_2", state: "fenced" }),
+    event(cluster.id, "superseded", {}),
+  );
+  assert.deepEqual(await told(), [
+    [
+      TEAM_B,
+      "server-2 has not responded for a minute in cluster eu, so it stopped the databases and Apps with files that must never run twice.",
+    ],
+    [
+      TEAM_B,
+      "Cluster eu's leader stepped down: a server in it follows a newer one.",
+    ],
+  ]);
+
+  // Two teams with work on it each read it once.
+  await web(cluster.id, "prj_a");
+  await apply(
+    cluster.id,
+    event(cluster.id, "member_state", { member: "srv_2", state: "ok" }),
+  );
+  assert.deepEqual(
+    (await told())
+      .filter(([, m]) => /answers again/.test(m))
+      .map(([t]) => t)
+      .sort(),
+    ["team_a", TEAM_B].sort(),
+  );
 });
 
 test("a member that refuses the new routes leaves the old address in place and says so", async () => {
@@ -312,6 +396,58 @@ test("waiting Apps show the room note, and one alert goes out per failover that 
     }),
   );
   assert.equal(await waitingForRoomNote("prj_web", "eu"), null);
+});
+
+test("an App left waiting for another reason than room is told that reason, not 'no room'", async () => {
+  const cluster = await eu();
+  lab.seq = 0;
+  await web(cluster.id);
+  await web(cluster.id, "prj_two");
+  await asAdmin(() =>
+    saveNotificationChannel(null, {
+      kind: "webhook",
+      name: "",
+      enabled: true,
+      url: "https://ops/hook",
+      target: "",
+      emailFrom: "",
+      emailProvider: "resend",
+      smtpHost: "",
+      smtpPort: 587,
+      smtpUser: "",
+      alerts: ["cluster_failover_waiting"],
+    }),
+  );
+  lab.capture = captureFetch();
+  await apply(
+    cluster.id,
+    event(cluster.id, "failover", {
+      member: "srv_2",
+      reason: "stopped_answering",
+      moved: [],
+      waiting: [
+        { kind: "app", workloadId: "prj_web", reason: "no_image" },
+        { kind: "app", workloadId: "prj_two", reason: "start_failed" },
+      ],
+    }),
+  );
+  await __settleAlertsForTest();
+  assert.deepEqual(
+    (await messages())
+      .map((m) => m.message)
+      .filter((m) => /is waiting/.test(m))
+      .sort(),
+    [
+      "prj_two is waiting in eu: server-2 stopped answering and it did not start on another server",
+      "web is waiting in eu: server-2 stopped answering and no other server has its image yet",
+    ],
+  );
+  const sent = lab.capture.calls[0].body as { title?: string; body?: string };
+  assert.equal(sent.title, "2 Apps waiting in eu");
+  assert.equal(
+    sent.body,
+    "server-2 stopped answering. No other server has the image of web yet. prj_two did not start on another server. Deplo tries again every 30 seconds.",
+  );
 });
 
 test("each team with something left waiting gets its own alert for one failover", async () => {

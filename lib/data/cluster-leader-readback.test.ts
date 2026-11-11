@@ -14,6 +14,10 @@ import { getClusterById } from "./clusters/roster";
 import { askLeaderToPlace, waitingForRoomNote } from "./clusters/placement";
 import { pushLeaderRoster } from "./clusters/leader-sync";
 import { reconcileCluster } from "./clusters/watch";
+import {
+  clearContainerHistory,
+  recordContainerSample,
+} from "../monitoring/container-history";
 import { saveNotificationChannel } from "./notifications";
 import { AT, failoverLab } from "./cluster-failover-test-helpers";
 
@@ -79,6 +83,49 @@ test("the leader is asked with real member facts: architecture, free memory, hel
   assert.deepEqual(facts.srv_3.images, ["deplo/web:abc"]);
   assert.deepEqual(facts.srv_2.images, []);
   assert.equal(facts.srv_3.arch, "amd64");
+});
+
+test("a workload with no memory limit is counted and asked for by its 24-hour peak", async () => {
+  const MB = 1024 * 1024;
+  const cluster = await eu();
+  await web(cluster.id);
+  clearContainerHistory();
+  const at = Date.now();
+  const reading = (id: string, memUsed: number) =>
+    recordContainerSample({
+      id,
+      online: true,
+      ts: at,
+      cpu: 0,
+      memUsed,
+      memLimit: 0,
+      memPct: 0,
+      netRx: 0,
+      netTx: 0,
+      blockRead: 0,
+      blockWrite: 0,
+      pids: 1,
+      running: 1,
+      containers: 1,
+      hostCores: 2,
+    });
+  reading("prj_web", 900 * MB);
+  reading("prj_new", 700 * MB);
+  const c = (await getClusterById(cluster.id))!;
+  await askLeaderToPlace(c, {
+    kind: "app",
+    id: "prj_new",
+    name: "new",
+    environmentId: null,
+    limitMb: 0,
+  });
+  const ask = lab.calls.find((x) => x.method === "placement.place")!;
+  assert.equal((ask.body.workload as { peakMb: number }).peakMb, 700);
+  const srv2 = (ask.body.members as { id: string; freeMb: number }[]).find(
+    (m) => m.id === "srv_2",
+  )!;
+  assert.equal(srv2.freeMb, 2048 - 900, "what it really uses, not the floor");
+  clearContainerHistory();
 });
 
 test("the roster carries the same facts so the leader can place while Deplo is away", async () => {

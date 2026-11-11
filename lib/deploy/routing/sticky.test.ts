@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 
 import { traefikRouterLabels } from "../routing";
 import { renderCompose } from "../build/compose-render";
+import { buildComposeStack } from "../compose-stack/render";
 import { CR } from "./routing-test-helpers";
 
 const AT = "traefik.http.services.deplo-web.loadbalancer.sticky.cookie";
@@ -46,4 +47,29 @@ test("a render carries the cookie only with the switch on and replicas > 1", () 
   assert.match(render(3, true), /sticky\.cookie=true/);
   assert.doesNotMatch(render(1, true), /sticky/);
   assert.doesNotMatch(render(3, false), /sticky/);
+});
+
+const stack = (replicas: number, stickySessions: boolean) =>
+  buildComposeStack({
+    compose: `services:\n  web:\n    image: nginx\n    deploy:\n      replicas: ${replicas}\n  worker:\n    image: nginx\n`,
+    name: "shop",
+    deployKey: "shop",
+    appId: "prj_shop",
+    network: "deplo-team-t",
+    domainRoutes: [
+      {
+        name: "app.com",
+        service: "web",
+        port: 80,
+        pathPrefix: "",
+        stripPrefix: false,
+      },
+    ],
+    stickySessions,
+  });
+
+test("a stack's routed service with replicas carries the cookie when the switch is on", () => {
+  assert.match(stack(3, true), /sticky\.cookie=true/);
+  assert.doesNotMatch(stack(1, true), /sticky/);
+  assert.doesNotMatch(stack(3, false), /sticky/);
 });

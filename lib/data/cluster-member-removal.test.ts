@@ -6,6 +6,10 @@ import { eq } from "drizzle-orm";
 import { SERVER_1 } from "./app-graph-test-helpers";
 import { seedDatabase } from "./backup-test-helpers";
 import { TEAM_B } from "./identity-test-helpers";
+import {
+  backupDestination as destTable,
+  backups as backupsTable,
+} from "../db/schema/control-plane/backups";
 import { clusters as clustersTable } from "../db/schema/control-plane/clusters";
 import { servers as serversTable } from "../db/schema/control-plane/servers";
 import {
@@ -68,6 +72,23 @@ test("removing an empty member cuts it off at once: no roster names it and its a
   );
   // What stayed on the other member is untouched.
   assert.equal((await appRow("web")).clusterId, cluster.id);
+});
+
+test("removing the member that keeps another database's failover backup moves that backup to a member that stays", async () => {
+  await seedDatabase(db(), { id: "db_main", name: "main", serverId: "srv_2" });
+  const cluster = await clusterOf("eu", ["srv_2", "srv_3", "srv_4"]);
+  const destOf = async () => {
+    const [b] = await db()
+      .select({ serverId: destTable.serverId })
+      .from(backupsTable)
+      .innerJoin(destTable, eq(destTable.id, backupsTable.destinationId))
+      .where(eq(backupsTable.databaseId, "db_main"));
+    return b?.serverId;
+  };
+  assert.equal(await destOf(), "srv_3");
+
+  await asAdmin(() => removeClusterMember(cluster.id, "srv_3"));
+  assert.equal(await destOf(), "srv_4");
 });
 
 test("only an instance admin removes a member, in the cluster's own team or another", async () => {

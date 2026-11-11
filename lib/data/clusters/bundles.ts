@@ -1,6 +1,7 @@
 import "server-only";
 
 import { and, desc, eq, gte, inArray, isNull, notInArray } from "drizzle-orm";
+import { peakMemoryMb } from "../../monitoring/container-history";
 import { getDb } from "../../db/client";
 import { activities } from "../../db/schema/control-plane/activity";
 import {
@@ -33,6 +34,7 @@ import {
 import { leaderHostOf } from "./host";
 import { isBuiltImage } from "./images";
 import { getClusterById } from "./roster";
+import { messageOf } from "../../utils";
 
 const ACTOR = "Deplo";
 const KIND = "app";
@@ -234,6 +236,7 @@ async function bundleMeta(
       name: appsTable.name,
       environmentId: appsTable.environmentId,
       limit: appsTable.resourceMemLimitMb,
+      replicas: appsTable.replicas,
       createdAt: appsTable.createdAt,
       serverId: appsTable.serverId,
     })
@@ -253,7 +256,7 @@ async function bundleMeta(
     // ponytail: a stack of several images is kept on its own architecture; read each service's image when one needs more.
     archs: await imageArchs(imageRef, app?.serverId),
     limitMb: app?.limit ?? 0,
-    peakMb: 0,
+    peakMb: peakMemoryMb(appId, app?.replicas),
     hasDomain: Boolean(dom),
     createdAt: app?.createdAt ?? "",
   };
@@ -438,11 +441,7 @@ const inFlight = new Set<Promise<void>>();
 /** Runs a bundle's push in the background: what called it never waits on, or fails with, the leader. */
 export function inBackground(id: string, push: () => Promise<void>): void {
   const p: Promise<void> = push()
-    .catch((e) =>
-      console.warn(
-        `[failover-bundle] ${id}: ${e instanceof Error ? e.message : String(e)}`,
-      ),
-    )
+    .catch((e) => console.warn(`[failover-bundle] ${id}: ${messageOf(e)}`))
     .finally(() => void inFlight.delete(p));
   inFlight.add(p);
 }
@@ -623,8 +622,6 @@ export async function reconcileFailoverBundles(): Promise<void> {
     .from(clustersTable);
   for (const r of rows)
     await reconcileClusterBundles(r.id).catch((e) =>
-      console.warn(
-        `[failover-bundle] ${r.id}: ${e instanceof Error ? e.message : String(e)}`,
-      ),
+      console.warn(`[failover-bundle] ${r.id}: ${messageOf(e)}`),
     );
 }

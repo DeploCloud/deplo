@@ -218,10 +218,9 @@ test("turning it off removes the copy with its data and only the copy, and the d
   );
   assert.equal(lastRoster().standbys, undefined);
   assert.equal((await open()).promote, undefined);
-  assert.deepEqual(
-    (await planClusterForwarding(cluster.id)).get("srv_3"),
-    undefined,
-  );
+  // It holds nothing and runs nothing of the database any more; like every member it would serve the name if the leader started it there.
+  const srv3 = (await planClusterForwarding(cluster.id)).get("srv_3")!;
+  assert.deepEqual([srv3.hold, srv3.involved], [[], false]);
 });
 
 test("a stack of that name that is not a copy is never destroyed", async () => {

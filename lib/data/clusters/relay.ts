@@ -33,6 +33,7 @@ import type { Server } from "../../types/server";
 import { getServerById } from "../servers/roster";
 import { leaderHostOf } from "./host";
 import { clusterMemberServerIds, getClusterById } from "./roster";
+import { messageOf } from "../../utils";
 
 // Every party of a cluster reaches the others through a relay: the one on Deplo's machine, and the one beside a leader
 // on another server (ADR-0044). This module owns what a relay is told and where its door sits in the proxy.
@@ -142,10 +143,6 @@ export async function pushClusterRoster(
 /** A server that left the cluster stops dialing; its agent forgets it was ever a member. */
 export async function releaseClusterMember(serverId: string): Promise<void> {
   await setClusterMember(serverId, false);
-}
-
-function messageOf(e: unknown): string {
-  return e instanceof Error ? e.message : String(e);
 }
 
 /** The clusters a server is a party of: collect them before it is removed, to push their rosters once it is gone. */

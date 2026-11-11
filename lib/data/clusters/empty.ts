@@ -1,7 +1,6 @@
 import "server-only";
 
 import { and, desc, eq, isNotNull, isNull, ne } from "drizzle-orm";
-import { getCurrentUser } from "../../auth/current-user";
 import { getDb } from "../../db/client";
 import { apps as appsTable } from "../../db/schema/control-plane/apps";
 import { clusterMembers as membersTable } from "../../db/schema/control-plane/clusters";
@@ -10,7 +9,6 @@ import { servers as serversTable } from "../../db/schema/control-plane/servers";
 import { startDeployment } from "../../deploy/build/deploy-start";
 import { movePreviewsOff } from "../../deploy/preview-lifecycle/cluster-member";
 import { nowIso } from "../../ids";
-import { requireActiveTeamId, requireInstanceAdmin } from "../../membership";
 import type { Cluster } from "../../types/cluster";
 import { recordActivity } from "../activity";
 import { relocateClusterApp } from "../apps/source";
@@ -19,6 +17,7 @@ import { instanceFrozen } from "../deplo-move/freeze";
 import { hasPendingLock } from "../keyed-mutex";
 import { getServerById } from "../servers/roster";
 import { redeployArchs } from "./architectures";
+import { neededMb } from "./facts";
 import { pushLeaderRoster } from "./leader-sync";
 import { listMemberWorkloads, type MemberWorkload } from "./member-workloads";
 import {
@@ -28,7 +27,8 @@ import {
   recordPlacement,
   refusalSentence,
 } from "./placement";
-import { getClusterById } from "./roster";
+import { getClusterById, requireClusterAdmin } from "./roster";
+import { messageOf } from "../../utils";
 
 // https://deplo.build/docs/operations/clusters/manage-servers#empty-a-server
 
@@ -49,9 +49,7 @@ async function memberOf(clusterId: string, serverId: string) {
 }
 
 async function admin(clusterId: string, serverId: string) {
-  await requireInstanceAdmin();
-  const teamId = await requireActiveTeamId();
-  const user = (await getCurrentUser())!;
+  const { teamId, user } = await requireClusterAdmin();
   const cluster = await getClusterById(clusterId);
   if (!cluster) throw new Error("Cluster not found");
   const server = await getServerById(serverId);
@@ -64,8 +62,7 @@ async function admin(clusterId: string, serverId: string) {
 }
 
 // ponytail: the floor the leader's rule uses; one constant with #198's facts.ts once both are merged.
-const MIN_WORKLOAD_MB = 256;
-const needMb = (w: MemberWorkload) => Math.max(w.limitMb, MIN_WORKLOAD_MB);
+const needMb = (w: MemberWorkload) => neededMb(w.id, w.limitMb);
 
 /**
  * Refuses with the room sentence unless the other members can take everything `serverId` holds.
@@ -117,9 +114,7 @@ async function assertRoomElsewhere(
 // The leader hears of it now; the watch tick sends the roster again if this one is lost.
 async function tellLeader(cluster: Cluster): Promise<void> {
   await pushLeaderRoster(cluster).catch((e) =>
-    console.warn(
-      `[cluster-empty] ${cluster.id}: ${e instanceof Error ? e.message : String(e)}`,
-    ),
+    console.warn(`[cluster-empty] ${cluster.id}: ${messageOf(e)}`),
   );
 }
 
@@ -282,9 +277,10 @@ async function redeploy(appId: string): Promise<void> {
 }
 
 async function settle(m: Member): Promise<Settled> {
-  const [kind, id] = m.emptyingWorkload.split(":") as [string, string];
   // A database moves inside one step, so one still named here was cut off by a restart: it is moved again.
-  return kind === "app" ? settleApp(m, id) : "moved";
+  return m.emptyingWorkloadKind === "app"
+    ? settleApp(m, m.emptyingWorkload)
+    : "moved";
 }
 
 async function move(
@@ -338,7 +334,7 @@ async function move(
       .where(eq(appsTable.id, w.id));
 }
 
-const message = (e: unknown) => (e instanceof Error ? e.message : String(e));
+const message = (e: unknown) => messageOf(e);
 
 async function halt(m: Member, cluster: Cluster, why: string): Promise<void> {
   const stopped = await getDb()
@@ -374,10 +370,13 @@ async function step(serverId: string): Promise<boolean> {
   if (!m?.emptyingSince || m.emptyingError) return false;
   const cluster = await getClusterById(m.clusterId);
   if (!cluster) return false;
-  const setMoving = (workload: string) =>
+  const setMoving = (w?: MemberWorkload) =>
     getDb()
       .update(membersTable)
-      .set({ emptyingWorkload: workload })
+      .set({
+        emptyingWorkload: w?.id ?? "",
+        emptyingWorkloadKind: w?.kind ?? "",
+      })
       .where(
         and(
           eq(membersTable.serverId, serverId),
@@ -402,14 +401,14 @@ async function step(serverId: string): Promise<boolean> {
         m.emptyingTeamId,
       );
     }
-    await setMoving("");
+    await setMoving();
     return left.length > 0;
   }
   const held = await listMemberWorkloads(serverId);
   // What is half-way goes first, so a member is never left holding only somebody's data.
   const next = held.find((w) => w.leaving) ?? held[0];
   if (!next) return false;
-  await setMoving(`${next.kind}:${next.id}`);
+  await setMoving(next);
   try {
     await move(cluster, m, next);
   } catch (e) {

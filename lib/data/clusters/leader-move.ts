@@ -1,9 +1,9 @@
 import "server-only";
 
-import { and, eq } from "drizzle-orm";
-import { getCurrentUser } from "../../auth/current-user";
+import { and, eq, isNotNull } from "drizzle-orm";
 import { getDb } from "../../db/client";
 import { clusters as clustersTable } from "../../db/schema/control-plane/clusters";
+import { servers as serversTable } from "../../db/schema/control-plane/servers";
 import {
   callClusterRelay,
   installClusterLeader,
@@ -11,7 +11,8 @@ import {
   removeClusterLeader,
 } from "../../infra/agent-client/cluster-host";
 import { CLUSTER_HOST_UNSUPPORTED_MESSAGE } from "../../infra/agent-client/errors";
-import { requireActiveTeamId, requireInstanceAdmin } from "../../membership";
+import { nowIso } from "../../ids";
+import { requireInstanceAdmin } from "../../membership";
 import type { Cluster, ClusterLeaderChoice } from "../../types/cluster";
 import { recordActivity } from "../activity";
 import { getServerById, listAllServers } from "../servers/roster";
@@ -25,7 +26,8 @@ import {
   readLeaderSnapshot,
 } from "./leader-sync";
 import { pushClusterRoster, relayAddress, syncLeaderRelayRoute } from "./relay";
-import { getClusterById } from "./roster";
+import { getClusterById, requireClusterAdmin } from "./roster";
+import { messageOf } from "../../utils";
 
 // Running the leader on another server (spec #176).
 // https://deplo.build/docs/operations/clusters/leader#run-the-leader-on-another-server
@@ -34,9 +36,7 @@ const NO_HOST =
   "Deplo's own machine is not connected as a server yet, so the leader cannot run on it.";
 
 const warn = (clusterId: string, e: unknown) =>
-  console.warn(
-    `[cluster-leader] ${clusterId}: ${e instanceof Error ? e.message : String(e)}`,
-  );
+  console.warn(`[cluster-leader] ${clusterId}: ${messageOf(e)}`);
 
 /**
  * Makes another leader lead the cluster. The stored epoch rises first and the leader is told after, so no two
@@ -141,14 +141,54 @@ export async function retireLeader(
   await syncLeaderRelayRoute(server, false);
 }
 
+const retirePending = (serverId: string, at: string | null) =>
+  getDb()
+    .update(serversTable)
+    .set({ clusterLeaderRetirePendingAt: at })
+    .where(eq(serversTable.id, serverId));
+
+/** Retires a leader, or leaves a mark the sweep finishes: a server that does not answer keeps nothing for good. */
+export async function retireLeaderOrQueue(
+  clusterId: string,
+  serverId: string,
+): Promise<void> {
+  try {
+    await retireLeader(clusterId, serverId);
+    await retirePending(serverId, null);
+  } catch (e) {
+    warn(clusterId, e);
+    await retirePending(serverId, nowIso());
+  }
+}
+
+/** The sweep's half: a leader no cluster uses any more is uninstalled once its server answers. */
+// ponytail: one that leads another cluster again keeps the lost cluster's sealed bundles; drop them here if it matters.
+export async function reconcileRetiredLeaders(): Promise<void> {
+  const pending = await getDb()
+    .select({ id: serversTable.id })
+    .from(serversTable)
+    .where(isNotNull(serversTable.clusterLeaderRetirePendingAt));
+  for (const { id } of pending) {
+    const leads = await getDb()
+      .select({ id: clustersTable.id })
+      .from(clustersTable)
+      .where(eq(clustersTable.leaderServerId, id))
+      .limit(1);
+    try {
+      if (leads.length === 0) await retireLeader("", id);
+    } catch {
+      continue;
+    }
+    await retirePending(id, null);
+  }
+}
+
 /** "Run the leader on another server": the picked server's agent installs it, and it leads from the next epoch. */
 export async function moveClusterLeader(
   clusterId: string,
   serverId: string | null,
 ): Promise<Cluster> {
-  await requireInstanceAdmin();
-  const teamId = await requireActiveTeamId();
-  const user = (await getCurrentUser())!;
+  const { teamId, user } = await requireClusterAdmin();
   const cluster = await getClusterById(clusterId);
   if (!cluster) throw new Error("Cluster not found");
   const own = await leaderHostOf(null);
@@ -187,11 +227,8 @@ export async function moveClusterLeader(
   for (const f of push.failed) warn(clusterId, f.message);
   // A new leader is a new key: what is live is sealed to it and sent, and the key of the server it left is retired.
   await reconcileClusterBundles(clusterId).catch((e) => warn(clusterId, e));
-  // ponytail: a server that is offline now keeps its idle leader installed; sweep for those if it ever matters.
   if (cluster.leaderServerId)
-    await retireLeader(clusterId, cluster.leaderServerId).catch((e) =>
-      warn(clusterId, e),
-    );
+    await retireLeaderOrQueue(clusterId, cluster.leaderServerId);
   await recordActivity(
     "server",
     `Moved the leader of cluster ${cluster.name} to ${target.name}`,

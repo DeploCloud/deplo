@@ -11,6 +11,7 @@ import {
   cleanReplicas,
   composeReplicasConflicts,
   replicasRefusal,
+  scaleConflicts,
 } from "./replicas";
 
 const vol = (type: "named" | "app" | "host") => ({
@@ -79,6 +80,25 @@ describe("compose stacks", () => {
       ),
       [],
     );
+  });
+
+  test("a count filled in by a variable is refused where one copy is the rule: nobody can read it as one", () => {
+    const filled = (svc: string) =>
+      `services:\n  web:\n    image: nginx:1\n    deploy:\n      replicas: \${N}\n${svc}`;
+    assert.deepEqual(
+      composeReplicasConflicts(filled("    volumes:\n      - data:/data\n")),
+      ["web"],
+    );
+    assert.deepEqual(composeReplicasConflicts(filled("")), []);
+  });
+
+  test("--scale is the same rule by another door", () => {
+    const one =
+      "services:\n  web:\n    image: x\n    volumes:\n      - data:/data\n  worker:\n    image: y\n";
+    assert.deepEqual(scaleConflicts(one, "--scale web=3 --wait"), ["web"]);
+    assert.deepEqual(scaleConflicts(one, "--scale=web=3"), ["web"]);
+    assert.deepEqual(scaleConflicts(one, "--scale web=1 --scale worker=4"), []);
+    assert.deepEqual(scaleConflicts(one, null), []);
   });
 
   test("the editor reports it as an error with the same message", () => {

@@ -22,7 +22,7 @@ import {
   TRUNCATE_PROJECT_GRAPH,
 } from "./app-graph-test-helpers";
 import { seedServerRow } from "./infra-test-helpers";
-import type { AttachHandle } from "../infra/docker";
+import type { AttachHandle } from "../attach/types";
 import type { AgentConnection } from "../infra/agent-client/connection";
 import { __setAgentConnectorForTest } from "../infra/agent-client/connect";
 import { AgentUnreachableError } from "../infra/agent-client/errors";

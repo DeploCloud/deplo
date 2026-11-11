@@ -211,11 +211,12 @@ test("an App of the same Environment reaches the database by its name after the 
     [["db-main", "db_main", 5432]],
   );
   assert.deepEqual(
-    last("srv_4").serve.map((s) => [s.workloadId, s.sourceFingerprints]),
-    [["db_main", [fp(3)]]],
+    last("srv_4").serve.find((s) => s.workloadId === "db_main")!
+      .sourceFingerprints,
+    [fp(3)],
   );
-  // The server that lost it serves it to nobody.
-  assert.deepEqual(last("srv_2").serve, []);
+  // The server that lost it runs nothing of the Environment now, so it holds none of its names.
+  assert.deepEqual(last("srv_2").hold, []);
 });
 
 test("after a failover onto the server that keeps its backups, the leader is told there is nothing left to restore from", async () => {

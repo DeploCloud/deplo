@@ -87,7 +87,10 @@ export interface ReplicaPlan {
  * Settles where each replica of a cluster App runs before a deploy and records one row per replica. The leader
  * places them; a replica it keeps waiting for room stays its own. Null for an App this does not apply to.
  */
-export async function planAppReplicas(app: App): Promise<ReplicaPlan | null> {
+export async function planAppReplicas(
+  app: App,
+  depId?: string,
+): Promise<ReplicaPlan | null> {
   if (!app.clusterId || usesComposeStack(app)) return null;
   const cluster = await getClusterById(app.clusterId);
   if (!cluster) return null;
@@ -143,6 +146,12 @@ export async function planAppReplicas(app: App): Promise<ReplicaPlan | null> {
       epoch: cluster.leaderEpoch,
     });
     syncNameForwardersSoon(cluster.id);
+    if (depId)
+      unlanded.set(depId, {
+        clusterId: cluster.id,
+        appId: app.id,
+        previous: current,
+      });
   }
   const members = distinct(next).map((serverId) => ({
     serverId,
@@ -155,4 +164,33 @@ export async function planAppReplicas(app: App): Promise<ReplicaPlan | null> {
     ),
     spread: state.kind === "spread",
   };
+}
+
+// Placements recorded for a deploy whose release runs nowhere yet, by deployment id.
+// ponytail: in this process; a restart mid-deploy keeps the rows, and the next deploy settles them.
+const unlanded = new Map<
+  string,
+  { clusterId: string; appId: string; previous: (string | null)[] }
+>();
+
+/** The release runs on its first server: from here the placement stands, and a later failure says "Deploy again to finish". */
+export function replicaPlanLanded(depId: string): void {
+  unlanded.delete(depId);
+}
+
+/** A deploy that failed before its release ran anywhere: the mirror goes back to what really runs. */
+export async function revertUnlandedReplicas(depId: string): Promise<void> {
+  const plan = unlanded.get(depId);
+  if (!plan) return;
+  unlanded.delete(depId);
+  const cluster = await getClusterById(plan.clusterId);
+  if (!cluster) return;
+  await recordPlacement({
+    clusterId: cluster.id,
+    kind: "app",
+    workloadId: plan.appId,
+    members: plan.previous,
+    epoch: cluster.leaderEpoch,
+  });
+  syncNameForwardersSoon(cluster.id);
 }

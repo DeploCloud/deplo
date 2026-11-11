@@ -1,7 +1,7 @@
 import { test, afterEach } from "node:test";
 import assert from "node:assert/strict";
 
-import type { AttachHandle } from "../infra/docker";
+import type { AttachHandle } from "../attach/types";
 import {
   open as openSession,
   destroy,

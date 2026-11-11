@@ -674,7 +674,7 @@ describe("cluster database change log", () => {
 
       assert.equal(
         (await asAdmin(() => getDatabaseFailover("db_main")))!.loss,
-        "A failover can lose about a minute of writes: its change log is archived continuously.",
+        "A failover can lose about a minute of writes while Deplo is running: it collects the change log every minute. If Deplo is down too, the loss is everything written since it stopped.",
       );
     });
 
@@ -721,7 +721,7 @@ describe("cluster database change log", () => {
 
       assert.equal(
         (await asAdmin(() => getFailoverPreview("db_solo")))!.loss,
-        "A failover can lose about a minute of writes: its change log is archived continuously.",
+        "A failover can lose about a minute of writes while Deplo is running: it collects the change log every minute. If Deplo is down too, the loss is everything written since it stopped.",
       );
       assert.equal(await page("db_solo", TEAM_B), null);
     });

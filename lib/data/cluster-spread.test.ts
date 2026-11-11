@@ -44,6 +44,7 @@ import {
 } from "../infra/agent-client/cluster-test-helpers";
 import { SPREAD_CAPABILITY } from "../infra/agent-client/hello-capabilities";
 import { runDeploymentGuarded } from "../deploy/build/deploy-run";
+import { deployOtherMembers } from "../deploy/build/spread-deploy";
 import { __resetQueueForTest } from "../deploy/deploy-queue";
 import { REPLICAS_MARK } from "../deploy/failover-offer";
 import { OVERLAP_CAPABILITY } from "../deploy/overlap";
@@ -466,6 +467,61 @@ test("a server whose deploy fails keeps its release, the App goes on answering a
   );
   // The placement stands: the next deploy goes to the same three servers.
   assert.deepEqual(await placement(), ["srv_2", "srv_3", "srv_4"]);
+});
+
+test("a deploy that fails before the release runs anywhere puts the placement back", async () => {
+  await withCloudflareDomain();
+  hosts.srv_2.extra = {
+    deploy: async function* (req: DeployRequest) {
+      hosts.srv_2.deploys.push(req);
+      yield {
+        seq: 1,
+        result: {
+          ready: false,
+          error: "The image could not be pulled",
+          commitSha: "",
+          observedPort: 0,
+          builtWith: "",
+          listeningPorts: [],
+        },
+      };
+    } as never,
+  };
+  await runDeploymentGuarded("dpl_1");
+
+  assert.equal(await deployStatus(), "error");
+  assert.equal(hosts.srv_3.deploys.length, 0);
+  // Nothing of this release runs on srv_3 or srv_4, so the mirror must not say it does.
+  assert.deepEqual(await placement(), ["srv_2", "srv_2", "srv_2"]);
+});
+
+test("a deploy waits for the image only on the servers that run a replica; the rest get it afterwards", async () => {
+  const sent = await deployOtherMembers({
+    depId: "dpl_1",
+    teamId: TEAM_A,
+    project: { id: APP, name: "web", deployKey: "web", composeUpArgs: null },
+    // Two replicas on two of the three servers: srv_4 runs none.
+    plan: {
+      members: [
+        { serverId: "srv_2", replicas: 1 },
+        { serverId: "srv_3", replicas: 1 },
+      ],
+      dropped: [],
+      spread: true,
+    },
+    imageRef: "deplo/web:dpl_1",
+    render: async () => ({
+      composeYaml: "services: {}\n",
+      env: {},
+      network: "deplo-team-team_a",
+    }),
+  });
+  assert.equal(sent, true);
+  assert.deepEqual(
+    hosts.srv_2.imageCopies.map((c) => c.targetFingerprint),
+    ["3".repeat(64)],
+  );
+  assert.equal(hosts.srv_3.deploys.length, 1);
 });
 
 test("a server left with none of the replicas loses its copy of the stack", async () => {

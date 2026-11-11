@@ -1,6 +1,7 @@
 import "server-only";
 
 import { and, desc, eq, inArray, isNull, notInArray } from "drizzle-orm";
+import { peakMemoryMb } from "../../monitoring/container-history";
 import { getDb } from "../../db/client";
 import { RestoreRequest } from "../../agent/gen/agent";
 import type {
@@ -60,6 +61,7 @@ import {
   standbyContainer,
   standbyMembersRefusal,
 } from "../../databases/standby";
+import { messageOf } from "../../utils";
 
 // A cluster database's failover bundle: its stack, and the backup another member restores before it starts (#202).
 // https://deplo.build/docs/operations/clusters/failover
@@ -276,7 +278,7 @@ export async function pushDatabaseBundle(databaseId: string): Promise<void> {
             image: "",
             archs: await imageArchs(effectiveDatabaseImage(db), db.serverId),
             limitMb: db.resources?.memoryMb ?? 0,
-            peakMb: 0,
+            peakMb: peakMemoryMb(db.id),
             hasDomain: false,
             createdAt: db.createdAt,
           },
@@ -305,9 +307,7 @@ const inFlight = new Set<Promise<void>>();
 export function scheduleDatabaseBundle(databaseId: string): void {
   const p: Promise<void> = pushDatabaseBundle(databaseId)
     .catch((e) =>
-      console.warn(
-        `[failover-bundle] ${databaseId}: ${e instanceof Error ? e.message : String(e)}`,
-      ),
+      console.warn(`[failover-bundle] ${databaseId}: ${messageOf(e)}`),
     )
     .finally(() => void inFlight.delete(p));
   inFlight.add(p);
@@ -318,7 +318,9 @@ export async function flushDatabaseBundles(): Promise<void> {
   while (inFlight.size > 0) await Promise.all([...inFlight]);
 }
 
-async function reconcileCluster(clusterId: string): Promise<void> {
+export async function reconcileClusterDatabaseBundles(
+  clusterId: string,
+): Promise<void> {
   const cluster = await getClusterById(clusterId);
   if (!cluster) return;
   const db = getDb();
@@ -366,9 +368,7 @@ export async function reconcileDatabaseBundles(): Promise<void> {
     .select({ id: clustersTable.id })
     .from(clustersTable);
   for (const r of rows)
-    await reconcileCluster(r.id).catch((e) =>
-      console.warn(
-        `[failover-bundle] ${r.id}: ${e instanceof Error ? e.message : String(e)}`,
-      ),
+    await reconcileClusterDatabaseBundles(r.id).catch((e) =>
+      console.warn(`[failover-bundle] ${r.id}: ${messageOf(e)}`),
     );
 }

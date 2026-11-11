@@ -10,9 +10,19 @@ import {
 } from "../../db/schema/control-plane/clusters";
 import { databases as databasesTable } from "../../db/schema/control-plane/databases";
 import { servers as serversTable } from "../../db/schema/control-plane/servers";
+import { peakMemoryMb } from "../../monitoring/container-history";
 
 /** The least memory a workload is assumed to need; the leader's rule uses the same floor. */
 export const MIN_WORKLOAD_MB = 256;
+
+/** The room one replica needs: its memory limit, else its 24-hour peak, never below the floor. */
+export function neededMb(
+  id: string,
+  limitMb: number | null | undefined,
+  replicas = 1,
+): number {
+  return Math.max(limitMb || peakMemoryMb(id, replicas), MIN_WORKLOAD_MB);
+}
 
 /** What the leader's placement rule needs to know about one member, as of now. Internal: callers hold the gates. */
 export interface MemberFact {
@@ -72,6 +82,7 @@ export async function clusterMemberFacts(
           .select({
             id: appsTable.id,
             limit: appsTable.resourceMemLimitMb,
+            replicas: appsTable.replicas,
           })
           .from(appsTable)
           .where(inArray(appsTable.id, appIds))
@@ -88,8 +99,8 @@ export async function clusterMemberFacts(
       : [],
   ]);
   const need = new Map<string, number>();
-  for (const a of apps) need.set(a.id, Math.max(a.limit ?? 0, MIN_WORKLOAD_MB));
-  for (const d of dbs) need.set(d.id, Math.max(d.limit ?? 0, MIN_WORKLOAD_MB));
+  for (const a of apps) need.set(a.id, neededMb(a.id, a.limit, a.replicas));
+  for (const d of dbs) need.set(d.id, neededMb(d.id, d.limit));
   const envOf = new Map(dbs.map((d) => [d.id, d.env]));
   return members.map((m) => {
     const mine = placed.filter((p) => p.member === m.id);

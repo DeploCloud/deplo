@@ -5,6 +5,7 @@ import { completePendingAppMigration } from "../../data/app-migration";
 import { appendLog, finalizeDeploymentLogs } from "../../data/deployment-logs";
 import { syncNameForwardersAfterDeploy } from "../../data/clusters/forwarders";
 import { copyImageAfterDeploy } from "../../data/clusters/images";
+import { revertUnlandedReplicas } from "../../data/clusters/spread";
 import { sweepSupersededAppImages } from "../../data/docker-cleanup/deploy-sweep";
 import { getDb } from "../../db/client";
 import { apps as appsTable } from "../../db/schema/control-plane/apps";
@@ -238,6 +239,8 @@ export async function commitOutcome(
   appPatch: Partial<typeof appsTable.$inferInsert>,
   opts: { rollback?: boolean } = {},
 ): Promise<boolean> {
+  // Failed or stopped before the release ran anywhere: a cluster App's placement goes back to what runs.
+  if (depPatch.status !== "ready") await revertUnlandedReplicas(depId);
   // The CAS is the cancel check: a "Stop build" that already claimed the row must win over this outcome.
   if (!(await setDep(depId, depPatch, { onlyIfNotCanceled: true }))) {
     await markStopped(depId, target);
@@ -247,7 +250,12 @@ export async function commitOutcome(
   await setDeployState(
     target,
     ok && target.kind !== "preview"
-      ? { ...appPatch, restartLoopStoppedAt: null, restartsPausedAt: null }
+      ? {
+          ...appPatch,
+          restartLoopStoppedAt: null,
+          restartsPausedAt: null,
+          recoveryAlertOwed: false,
+        }
       : appPatch,
   );
   if (ok && target.kind !== "preview")

@@ -23,6 +23,7 @@ import { nextRetryAt } from "../servers/agent-update-state";
 import { getServerById } from "../servers/roster";
 import { leaderHostOf } from "./host";
 import { forgetLeaderRoster } from "./leader-sync";
+import { messageOf } from "../../utils";
 
 // Deplo keeps every leader and relay on the cluster release it pins, forward only, one server at a time.
 // See docs/agents/cluster-rollout.md.
@@ -44,7 +45,7 @@ export function updatingClusterHost(serverId: string): boolean {
 }
 
 function sentence(e: unknown): string {
-  const text = (e instanceof Error ? e.message : String(e)).trim();
+  const text = messageOf(e).trim();
   return /[.!?]$/.test(text) ? text : `${text}.`;
 }
 

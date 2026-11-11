@@ -11,7 +11,7 @@ import type {
   ConsoleInstance as PbConsoleInstance,
   LogChunk,
 } from "../../agent/gen/agent";
-import type { AttachHandle } from "../docker";
+import type { AttachHandle } from "../../attach/types";
 import type {
   AgentConnection,
   AgentConsoleInstance,

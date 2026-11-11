@@ -24,6 +24,7 @@ import { assembleDatabase } from "../backup-rows";
 import { markLinkedAppsPending } from "../database-links";
 import { failoverOnly } from "./architectures";
 import { changeLogBroken } from "./change-log";
+import { rehomeFailoverBackups } from "../databases/failover";
 import { syncStandbySoon } from "../databases/standby";
 import { databasePassword } from "../databases/stack";
 import { getServerById } from "../servers/roster";
@@ -36,6 +37,7 @@ import {
   listWorkloadPlacements,
   recordPlacement,
 } from "./placement";
+import { messageOf } from "../../utils";
 
 // What the control plane does with a failover the leader reports (spec #176): words for the user, a new address
 // for an App on a generated one, and one alert when something is left waiting. The leader has already moved it.
@@ -98,9 +100,7 @@ export async function backupClock(
 }
 
 const quietly = (what: string) => (e: unknown) =>
-  console.warn(
-    `[cluster-failover] ${what}: ${e instanceof Error ? e.message : String(e)}`,
-  );
+  console.warn(`[cluster-failover] ${what}: ${messageOf(e)}`);
 
 /**
  * One database was restored on its new member: say from which backup, point a published address at the new
@@ -156,6 +156,7 @@ async function databaseFailedOver(
     row.teamId,
     null,
     row.id,
+    { serverChange: true },
   );
   // Restored from a dump, Postgres is a new one: what it archives follows no base backup taken before.
   if (!run || !isBaseBackupKey(run.objectKey)) await changeLogBroken(row.id);
@@ -192,6 +193,8 @@ async function databaseFailedOver(
     await markLinkedAppsPending(row.id).catch(quietly(row.id));
   }
   publishDatabaseChanged(row.id);
+  // It may now sit on the server its own backups are kept on: the bundle below names where they go next.
+  await rehomeFailoverBackups(cluster.id).catch(quietly(row.id));
   await pushDatabaseBundle(row.id).catch(quietly(row.id));
   await syncNameForwarders(cluster.id).catch(quietly(cluster.id));
   // A promoted copy is the database now: another server gets a new one when there is one.
@@ -244,6 +247,9 @@ export async function applyFailedOver(
     ACTOR,
     app.id,
     app.teamId,
+    null,
+    null,
+    { serverChange: true },
   );
   try {
     await rehostClusterApp(app.id);
@@ -251,7 +257,7 @@ export async function applyFailedOver(
     // The sweep tries again; until then the App runs but its generated address still names the old server.
     await recordActivity(
       "app",
-      `${app.name} runs on ${to}, but its generated address could not be updated yet: ${e instanceof Error ? e.message : String(e)}`,
+      `${app.name} runs on ${to}, but its generated address could not be updated yet: ${messageOf(e)}`,
       ACTOR,
       app.id,
       app.teamId,
@@ -279,6 +285,56 @@ export async function applyMoveFailed(
 interface Left {
   kind: string;
   workloadId: string;
+  /** Why the leader left it waiting; absent from a leader that does not say, which reads as no room. */
+  reason?: string;
+}
+
+/** Why a workload still waits after a failover, for Activity ("... stopped answering and <this>") and for the alert. */
+function waitWords(
+  reason: string | undefined,
+  other: string,
+): { room: boolean; and: string; alert: (names: string) => string } {
+  const Other = `${other[0]!.toUpperCase()}${other.slice(1)}`;
+  switch (reason) {
+    case "no_image":
+      return {
+        room: false,
+        and: `${other} has its image yet`,
+        alert: (names) => `${Other} has the image of ${names} yet.`,
+      };
+    case "start_failed":
+      return {
+        room: false,
+        and: "it did not start on another server",
+        alert: (names) => `${names} did not start on another server.`,
+      };
+    case "no_member_online":
+      return {
+        room: false,
+        and: `${other} is online and ready`,
+        alert: (names) => `${Other} is online and ready for ${names}.`,
+      };
+    case "no_architecture":
+      // On a mixed cluster `other` already names the kind of server; saying "kind of processor" again adds nothing.
+      return other === "no other server"
+        ? {
+            room: false,
+            and: `${other} has the kind of processor it was built for`,
+            alert: (names) =>
+              `${Other} has the kind of processor ${names} was built for.`,
+          }
+        : {
+            room: false,
+            and: `there is ${other} to take it`,
+            alert: (names) => `There is ${other} to take ${names}.`,
+          };
+    default:
+      return {
+        room: true,
+        and: `${other} has room yet`,
+        alert: (names) => `${Other} has room for ${names} yet.`,
+      };
+  }
 }
 
 /** The end of one failover: an Activity line for each App or database left waiting, and one alert per team that has some. */
@@ -296,6 +352,7 @@ export async function applyFailoverSummary(
         .map((w) => ({
           kind: String(w.kind),
           workloadId: String(w.workloadId),
+          reason: typeof w.reason === "string" ? w.reason : undefined,
         }))
         .filter((w) => w.workloadId)
     : [];
@@ -345,7 +402,7 @@ export async function applyFailoverSummary(
   const from = await serverName(d.member);
   const byTeam = new Map<string, typeof rows>();
   const partial = new Map<string, string>();
-  const others = new Map<string, string>();
+  const others = new Map<string, ReturnType<typeof waitWords>>();
   for (const r of rows) {
     // An App whose other replicas still run says how many, so nobody reads it as down.
     const some =
@@ -356,12 +413,16 @@ export async function applyFailoverSummary(
     // On a mixed cluster: the kind of server it waits for.
     const only = await failoverOnly(r.kind, r.id, cluster.id);
     const other = only ? `no other ${only} server` : "no other server";
-    others.set(r.id, other);
+    const why = waitWords(
+      left.find((w) => w.workloadId === r.id)?.reason,
+      other,
+    );
+    others.set(r.id, why);
     await recordActivity(
       r.kind,
-      some
+      some && why.room
         ? `${r.name}: ${some}. ${from} stopped answering and ${other} has room for the rest yet`
-        : `${r.name} is waiting for room in ${cluster.name}: ${from} stopped answering and ${other} has room yet`,
+        : `${r.name} is waiting ${why.room ? "for room " : ""}in ${cluster.name}: ${from} stopped answering and ${why.and}`,
       ACTOR,
       r.kind === "app" ? r.id : null,
       r.teamId,
@@ -373,14 +434,17 @@ export async function applyFailoverSummary(
   for (const [teamId, waiting] of byTeam) {
     const names = waiting.map((a) => a.name).join(", ");
     const only = waiting.length === 1 ? waiting[0]! : null;
-    // One sentence per kind of server waited for, as Activity names it.
-    const room = [...new Set(waiting.map((w) => others.get(w.id)!))].map(
-      (other) =>
-        `${other[0]!.toUpperCase()}${other.slice(1)} has room for ${waiting
-          .filter((w) => others.get(w.id) === other)
-          .map((w) => w.name)
-          .join(", ")} yet.`,
-    );
+    // One sentence per reason and kind of server waited for, as Activity names it.
+    const said = (w: (typeof waiting)[number]) => others.get(w.id)!.and;
+    const room = [...new Set(waiting.map(said))].map((and) => {
+      const group = waiting.filter((w) => said(w) === and);
+      return others
+        .get(group[0]!.id)!
+        .alert(group.map((w) => w.name).join(", "));
+    });
+    const forRoom = waiting.every((w) => others.get(w.id)!.room)
+      ? "for room "
+      : "";
     const many = waiting.every((w) => w.kind === "app")
       ? `${waiting.length} Apps`
       : `${waiting.length} Apps and databases`;
@@ -395,7 +459,7 @@ export async function applyFailoverSummary(
       title:
         only && partial.has(only.id)
           ? `${only.name}: ${partial.get(only.id)}`
-          : `${only ? names : many} waiting for room in ${cluster.name}`,
+          : `${only ? names : many} waiting ${forRoom}in ${cluster.name}`,
       body: `${from} stopped answering. ${room.join(" ")} Deplo tries again every 30 seconds.`,
       path: !only
         ? undefined
@@ -439,9 +503,7 @@ export async function adoptLeaderMoves(
           epoch: view.epoch || cluster.leaderEpoch,
         });
       } catch (e) {
-        console.warn(
-          `[cluster-watch] ${cluster.id}: ${e instanceof Error ? e.message : String(e)}`,
-        );
+        console.warn(`[cluster-watch] ${cluster.id}: ${messageOf(e)}`);
         continue;
       }
     for (const m of moves) {

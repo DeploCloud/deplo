@@ -19,10 +19,14 @@ import {
 } from "../clusters/members";
 import { imageArchs } from "../clusters/architectures";
 import { askLeaderToPlace, recordPlacement } from "../clusters/placement";
-import { listClustersForTeam } from "../clusters/roster";
+import { resolveTeamCluster } from "../clusters/roster";
 import type { Cluster } from "../../types/cluster";
 import type { Server } from "../../types/server";
-import { canHostWorkloads, listServersForTeam } from "../servers/roster";
+import {
+  canHostWorkloads,
+  getServerById,
+  listServersForTeam,
+} from "../servers/roster";
 import { assertServerAccessibleTx } from "../servers/team-access";
 import { isReservedSharedName } from "../../deploy/compose-lint/networks";
 import {
@@ -181,6 +185,7 @@ export interface CreateAppFromTemplateInput {
   variantSlug?: string;
   name?: string;
   serverId?: string;
+  clusterId?: string;
   projectId?: string;
   environmentId?: string;
   folderId?: string;
@@ -310,11 +315,7 @@ export async function createApp(input: CreateAppInput): Promise<AppSummary> {
   let cluster: Cluster | null = null;
   let clusterServer: Server | null = null;
   if (input.clusterId) {
-    cluster =
-      (await listClustersForTeam(membership.teamId)).find(
-        (c) => c.id === input.clusterId,
-      ) ?? null;
-    if (!cluster) throw new Error("That cluster isn't available to this team.");
+    cluster = await resolveTeamCluster(membership.teamId, input.clusterId);
     const memberId = await askLeaderToPlace(cluster, {
       kind: "app",
       id: appId,
@@ -327,9 +328,9 @@ export async function createApp(input: CreateAppInput): Promise<AppSummary> {
           ? await imageArchs(input.dockerImage)
           : [],
     });
-    clusterServer = servers.find((s) => s.id === memberId) ?? null;
-    if (!clusterServer)
-      throw new Error("That cluster's server isn't available to this team.");
+    // A member follows its cluster's sharing, whatever the server itself is shared with.
+    clusterServer = await getServerById(memberId);
+    if (!clusterServer) throw new Error("Server not found");
   }
   const server =
     clusterServer ||
@@ -692,6 +693,7 @@ export async function createAppFromTemplate(
     autoDomainPath: blueprint.expose?.path ?? null,
     mounts: blueprint.mounts,
     serverId: input.serverId,
+    clusterId: input.clusterId,
     projectId: input.projectId ?? null,
     environmentId: input.environmentId ?? null,
     folderId: input.folderId ?? null,

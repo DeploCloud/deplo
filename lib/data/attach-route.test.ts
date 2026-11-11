@@ -13,7 +13,7 @@ import {
   TRUNCATE_PROJECT_GRAPH,
 } from "./app-graph-test-helpers";
 import * as attach from "../attach/session";
-import type { AttachHandle } from "../infra/docker";
+import type { AttachHandle } from "../attach/types";
 import { memberHoldsTeamWide } from "../membership";
 
 import { POST as appPost } from "@/app/api/apps/[id]/attach/route";

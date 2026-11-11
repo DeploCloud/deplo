@@ -168,3 +168,19 @@ test("the Overview follows the same verdict", async () => {
   }
   assert.equal(states[0].runtime?.unhealthy, 1);
 });
+
+test("an App with replicas has no container the page calls missing: its service carries the stack's name", async () => {
+  const id = await freshApp();
+  const slug = `web${seq}`;
+  // What the server agent reports for `deploy.replicas: 3`: the compose service is deplo-<slug>.
+  agentReporting(() =>
+    [1, 2, 3].map((n) =>
+      instance({
+        name: `deplo-${slug}-deplo-${slug}-${n}`,
+        service: `deplo-${slug}`,
+      }),
+    ),
+  );
+  const rt = await runtimeOf(id);
+  assert.deepEqual([rt?.total, rt?.running, rt?.missing], [3, 3, []]);
+});

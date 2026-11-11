@@ -24,6 +24,7 @@ import { instanceFrozen } from "../deplo-move/freeze";
 import { listStandbys, listWorkloadPlacements } from "./placement";
 import { fingerprintOf } from "./relay";
 import { clusterMemberServerIds } from "./roster";
+import { messageOf } from "../../utils";
 
 // The control plane renders which names go on which member; each server agent only runs its own table (#200).
 
@@ -130,9 +131,7 @@ export async function planClusterForwarding(
 }
 
 function message(e: unknown): string {
-  return (e instanceof Error ? e.message : String(e))
-    .replace(/\s+/g, " ")
-    .slice(0, 300);
+  return messageOf(e).replace(/\s+/g, " ").slice(0, 300);
 }
 
 /** Hands each member of the cluster its table; one that cannot be reached is named in the log and left for the next sweep. */
@@ -157,7 +156,10 @@ export async function syncNameForwarders(clusterId: string): Promise<void> {
       });
     } catch (e) {
       // A member with nothing to run and an agent too old to take the table is not a problem.
-      if (!mine && e instanceof AgentClusterForwardersUnsupportedError)
+      if (
+        !mine?.involved &&
+        e instanceof AgentClusterForwardersUnsupportedError
+      )
         continue;
       console.warn(
         `[cluster-forwarders] ${clusterId} -> ${serverId}: ${message(e)}`,

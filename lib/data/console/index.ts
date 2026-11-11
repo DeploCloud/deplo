@@ -29,6 +29,7 @@ import type { App } from "../../types/app";
 import type { Server } from "../../types/server";
 import {
   ALL_REPLICAS_PREFIX,
+  allReplicasRow,
   replicaGroupOf,
   withReplicaGroups,
 } from "./replicas";
@@ -470,14 +471,7 @@ async function memberCopiesForDisplay(
       const copies = all.filter((c) => c.service === i.service);
       if (i.replica && copies.length > 1 && !grouped.has(i.service)) {
         grouped.add(i.service);
-        const running = copies.some((c) => c.running);
-        out.push({
-          ...i,
-          name: `${ALL_REPLICAS_PREFIX}${i.service}`,
-          replica: `${i.replica.replace(/-\d+$/, "")} · all replicas`,
-          running,
-          state: running ? "running" : i.state,
-        });
+        out.push(allReplicasRow(i, i.replica.replace(/-\d+$/, ""), copies));
       }
       out.push({
         ...onServer(i, m.server),

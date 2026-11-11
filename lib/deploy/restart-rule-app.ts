@@ -5,7 +5,7 @@ import type { ReadyCheck, RestartRule } from "../agent/gen/agent";
 import { getDb } from "../db/client";
 import { apps } from "../db/schema/control-plane/apps";
 import { assembleHealthCheck } from "../data/app-graph-rows/health-check";
-import { restartRuleFor } from "./restart-rule";
+import { composeHealthCheck, restartRuleFor } from "./restart-rule";
 
 // The app's own switch and health check, read at deploy time: the rule travels with the deploy.
 export async function restartRuleForApp(
@@ -17,8 +17,10 @@ export async function restartRuleForApp(
   if (!row) return null;
   return restartRuleFor({
     enabled: row.restartWhenUnresponsive,
-    // A stack's health check lives in its compose file.
-    healthCheck: ready.service ? null : assembleHealthCheck(row),
+    // ponytail: a stack whose compose file lives in its repository is not read here, so it keeps GET /.
+    healthCheck: ready.service
+      ? composeHealthCheck(row.compose, ready.service)
+      : assembleHealthCheck(row),
     ready,
   });
 }

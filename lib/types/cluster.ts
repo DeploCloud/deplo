@@ -141,6 +141,8 @@ export interface ClusterReleasedWorkload {
   stopsOn: string[];
   /** It found no room after a server stopped, so it is not running now. */
   waiting: boolean;
+  /** What an App reaches by name on another server today and no longer will: names stop crossing servers. */
+  losesReach: string[];
 }
 
 /** What the Delete confirmation shows: the asking team's own work by name, every other team's as a count. */

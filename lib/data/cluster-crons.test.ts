@@ -196,6 +196,22 @@ test("a job its member stopped itself when the lease ran out is lost, not failed
   assert.equal(jobs.srv_2.started.length, 1);
 });
 
+test("a member that answers decides for itself: a stale 'stopped' never marks a run lost while it runs or after it finished", async () => {
+  const cluster = await webWithJob();
+  await fireDueJobs([MINUTE]);
+  // The lease was renewed, but the event saying so has not been applied yet.
+  await apply(cluster.id, stopped(cluster.id, "srv_2"));
+
+  await reapInFlightRuns(after(70_000));
+  assert.equal((await runsOf(lab.db, "cron_1"))[0].status, "running");
+
+  jobs.srv_2.settleAll({ exitCode: 0, stdout: "done" });
+  await reapInFlightRuns(after(90_000));
+  const [run] = await runsOf(lab.db, "cron_1");
+  assert.equal(run.status, "succeeded");
+  assert.equal(run.stdout, "done");
+});
+
 test("a run on a healthy member is left alone when another member stops", async () => {
   const cluster = await webWithJob();
   await fireDueJobs([MINUTE]);

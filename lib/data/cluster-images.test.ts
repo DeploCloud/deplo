@@ -28,6 +28,7 @@ import {
   type FakeClusterHost,
 } from "../infra/agent-client/cluster-test-helpers";
 import { createCluster } from "./clusters/manage";
+import { rollbackKeepBySlug } from "./docker-cleanup/live-inventory";
 import { addClusterMember } from "./clusters/members";
 import { clearPlacement } from "./clusters/placement";
 import {
@@ -276,6 +277,46 @@ test("a member still copying is not a holder, and the card shows how far it is",
     await asAdmin(() => listClusterImageProgress(cluster.id)),
     [],
   );
+});
+
+test("a release that finishes while the one before is still copying is copied too", async () => {
+  await clusterWithApp();
+  let release = () => {};
+  const gate = new Promise<void>((r) => (release = r));
+  const quick = hostOf("srv_2").imageCopy;
+  // The agent's answer is awaited, so the first copy can be held open.
+  hostOf("srv_2").imageCopy = ((ref: string, fp: string, keep: number) =>
+    ref === REL1
+      ? gate.then(() => quick(ref, fp, keep))
+      : quick(ref, fp, keep)) as typeof quick;
+  const first = copyReleaseToMembers("app_web", REL1, "srv_2");
+  await until(
+    "the first copy to start",
+    async () => hostOf("srv_2").imageCopies.length > 0,
+  );
+  const second = copyReleaseToMembers("app_web", REL2, "srv_2");
+  release();
+  await Promise.all([first, second]);
+
+  assert.deepEqual(await states(REL2), {
+    srv_2: "held",
+    srv_3: "held",
+    srv_4: "held",
+  });
+});
+
+test("the image cleanup keeps the last two releases on every member that holds them, not only where the App runs", async () => {
+  await clusterWithApp();
+  await db
+    .update(appsTable)
+    .set({ rollbackKeep: 0 })
+    .where(eq(appsTable.id, "app_web"));
+  assert.deepEqual(await rollbackKeepBySlug("srv_3"), {});
+  await copyReleaseToMembers("app_web", REL1, "srv_2");
+  assert.deepEqual(await rollbackKeepBySlug("srv_3"), { app_web: 2 });
+  assert.deepEqual(await rollbackKeepBySlug("srv_2"), { app_web: 2 });
+  // A server outside the cluster is told nothing about it.
+  assert.deepEqual(await rollbackKeepBySlug(SERVER_1), {});
 });
 
 test("a member that joins later gets the newest release on the next sweep", async () => {

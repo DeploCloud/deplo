@@ -37,6 +37,7 @@ import { getClusterById } from "../clusters/roster";
 import { requireFolderCapabilityForApp } from "../folder-access";
 import { requireAppCapability } from "../node-access";
 import { getServerById } from "../servers/roster";
+import { messageOf } from "../../utils";
 
 // How a cluster App that keeps data on its server fails over, and the two things a person can do about it (#204).
 // https://deplo.build/docs/operations/clusters/apps-with-stored-data
@@ -166,9 +167,7 @@ export async function setAppFailoverFromBackup(
   );
   // The leader holds the backup only while this is on; the sweep sends it again if this does not arrive.
   await refreshAppBundle(id).catch((e) =>
-    console.warn(
-      `[failover-bundle] ${id}: ${e instanceof Error ? e.message : String(e)}`,
-    ),
+    console.warn(`[failover-bundle] ${id}: ${messageOf(e)}`),
   );
 }
 

@@ -36,6 +36,7 @@ import {
 import { appServerAddresses, checkDomainDns } from "../domains/dns-check";
 import { certProviderForDnsWithinQuota } from "../domains/letsencrypt-quota";
 import { withKeyedLock } from "../keyed-mutex";
+import { messageOf } from "../../utils";
 
 const ACTOR = "Deplo";
 const RECORD_COMMENT = "Deplo app";
@@ -485,7 +486,6 @@ async function resyncServerTunnel(tunnelRowId: string): Promise<void> {
  */
 export async function reconcileAppTunnels(): Promise<void> {
   if (await instanceFrozen()) return;
-  const { rerouteApp } = await import("../../deploy/build/reroute");
   const onCluster = await getDb()
     .select({ id: appsTable.id })
     .from(appsTable)
@@ -498,14 +498,31 @@ export async function reconcileAppTunnels(): Promise<void> {
     .selectDistinct({ appId: appTunnelDomains.appId })
     .from(appTunnelDomains)
     .where(eq(appTunnelDomains.active, false));
-  for (const { appId } of pending) {
+  for (const { appId } of pending)
+    await connectAppTunnel(appId).catch((e) =>
+      console.warn(`[app-tunnel] ${appId}: ${messageOf(e)}`),
+    );
+}
+
+// The connector goes into the running stack, and DNS switches once it is connected.
+async function connectAppTunnel(appId: string): Promise<void> {
+  const { rerouteApp } = await import("../../deploy/build/reroute");
+  await rerouteApp(appId);
+  if ((await activateAppTunnel(appId)) > 0) await rerouteApp(appId);
+}
+
+/** A server joined a cluster: the Apps that came with it get their tunnel now, with the zones of whoever joined it. */
+export async function joinAppTunnels(
+  appIds: string[],
+  actor: Actor,
+): Promise<void> {
+  if (await instanceFrozen()) return;
+  for (const id of appIds)
     try {
-      await rerouteApp(appId);
-      if ((await activateAppTunnel(appId)) > 0) await rerouteApp(appId);
+      if ((await joinAppTunnel(id, actor)) > 0) await connectAppTunnel(id);
     } catch (e) {
-      console.warn(`[app-tunnel] ${appId}: ${messageOf(e)}`);
+      console.warn(`[app-tunnel] ${id}: ${messageOf(e)}`);
     }
-  }
 }
 
 /** The App left its cluster: each switched domain goes back to the server it runs on now, and the tunnel is deleted. */
@@ -621,8 +638,4 @@ export async function clusterAddressNote(app: {
   const viewer = await getCurrentUser();
   const covered = await coveredDomains(app, viewer?.id ?? "");
   return covered.length > 0 ? null : ADDRESS_CHANGES_NOTE;
-}
-
-function messageOf(e: unknown): string {
-  return e instanceof Error ? e.message : String(e);
 }

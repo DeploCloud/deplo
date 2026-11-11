@@ -1,6 +1,6 @@
 import { StringDecoder } from "node:string_decoder";
 
-import type { AttachHandle } from "../infra/docker";
+import type { AttachHandle } from "../attach/types";
 import { splitTimestamp } from "./window";
 
 export interface ReplicaSource {

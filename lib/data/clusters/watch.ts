@@ -5,7 +5,6 @@ import { getDb } from "../../db/client";
 import { clusters as clustersTable } from "../../db/schema/control-plane/clusters";
 import { watchClusterLeader } from "../../infra/agent-client/cluster-host";
 import type { ClusterLeaseState } from "../../types/cluster";
-import { recordActivity } from "../activity";
 import { instanceFrozen } from "../deplo-move/freeze";
 import {
   adoptLeaderMoves,
@@ -22,9 +21,13 @@ import {
 } from "./leader-sync";
 import { recordPlacement } from "./placement";
 import { applyLeftSaved, applyMemberReturned } from "./returned";
+import { reconcileClusterBundles } from "./bundles";
+import { recordClusterActivity } from "./cluster-activity";
+import { reconcileClusterDatabaseBundles } from "./database-bundles";
 import { getClusterById } from "./roster";
 import { markPreviewsOffline } from "../../deploy/preview-lifecycle/cluster-member";
 import { getServerById } from "../servers/roster";
+import { messageOf } from "../../utils";
 
 // The control plane's long-lived watch on a cluster's leader, through the agent that supervises it (spec #176).
 // Events carry a sequence; the last one applied is stored, so a restart or a reconnect replays only what is new.
@@ -96,7 +99,7 @@ async function memberLeaseChanged(
       : state === "not_responding"
         ? `${name} is not responding in cluster ${clusterName}.`
         : `${name} has not responded for a minute in cluster ${clusterName}, so it stopped the databases and Apps with files that must never run twice.`;
-  await recordActivity("server", text, "Deplo");
+  await recordClusterActivity(clusterId, text);
 }
 
 export type EventResult = "applied" | "skipped" | "frozen";
@@ -163,9 +166,7 @@ export async function applyLeaderEvent(
           });
         } catch (err) {
           // A placement naming a server that has left is stale; it must not hold up what follows it.
-          console.warn(
-            `[cluster-watch] ${clusterId}: ${err instanceof Error ? err.message : String(err)}`,
-          );
+          console.warn(`[cluster-watch] ${clusterId}: ${messageOf(err)}`);
         }
       }
       await advance();
@@ -197,10 +198,9 @@ export async function applyLeaderEvent(
       return "applied";
     }
     case "superseded": {
-      await recordActivity(
-        "server",
+      await recordClusterActivity(
+        clusterId,
         `Cluster ${cluster.name}'s leader stepped down: a server in it follows a newer one.`,
-        "Deplo",
       );
       await advance();
       return "applied";
@@ -228,20 +228,29 @@ export async function reconcileCluster(
   // A leader that had no roster yet knows the cluster only now.
   const view =
     before ?? (await readLeaderSnapshot(cluster))?.clusters[clusterId];
-  if (!view) return;
-  for (const m of view.members)
-    if (LEASE_STATES.has(m.state))
-      await memberLeaseChanged(
-        clusterId,
-        cluster.name,
-        m.id,
-        m.state as ClusterLeaseState,
-      );
-  if (view.epoch > cluster.leaderEpoch)
-    await getDb()
-      .update(clustersTable)
-      .set({ leaderEpoch: view.epoch })
-      .where(eq(clustersTable.id, clusterId));
+  if (view) {
+    for (const m of view.members)
+      if (LEASE_STATES.has(m.state))
+        await memberLeaseChanged(
+          clusterId,
+          cluster.name,
+          m.id,
+          m.state as ClusterLeaseState,
+        );
+    if (view.epoch > cluster.leaderEpoch)
+      await getDb()
+        .update(clustersTable)
+        .set({ leaderEpoch: view.epoch })
+        .where(eq(clustersTable.id, clusterId));
+  }
+  // A push the leader missed while the link was down: it must not start the previous release.
+  for (const resend of [
+    reconcileClusterBundles,
+    reconcileClusterDatabaseBundles,
+  ])
+    await resend(clusterId).catch((e) =>
+      console.warn(`[failover-bundle] ${clusterId}: ${messageOf(e)}`),
+    );
 }
 
 export type WatchEnd = "ended" | "frozen" | "reset" | "no_leader";
@@ -271,7 +280,7 @@ export async function watchClusterOnce(
       await reconcileCluster(clusterId, lost);
     } catch (e) {
       console.warn(
-        `[cluster-watch] ${clusterId}: could not reconcile: ${e instanceof Error ? e.message : String(e)}`,
+        `[cluster-watch] ${clusterId}: could not reconcile: ${messageOf(e)}`,
       );
     }
   };
@@ -341,7 +350,7 @@ export async function runClusterWatch(
         await sleep(end === "reset" ? 0 : 1000, signal);
       }
     } catch (e) {
-      const message = e instanceof Error ? e.message : String(e);
+      const message = messageOf(e);
       if (message !== lastMessage)
         console.warn(`[cluster-watch] ${clusterId}: ${message}`);
       lastMessage = message;

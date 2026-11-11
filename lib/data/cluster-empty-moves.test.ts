@@ -25,6 +25,7 @@ import {
   releaseClusterWatchLease,
   runClusterWatchTick,
 } from "./clusters/watch-scheduler";
+import { listClusterMembers } from "./clusters/members";
 import { PlacementUnavailableError } from "./clusters/placement";
 import { invalidateFrozen } from "./deplo-move/freeze";
 import {
@@ -34,6 +35,7 @@ import {
   appRow,
   asAdmin,
   asMember,
+  asTeamB,
   asked,
   card,
   db,
@@ -104,6 +106,12 @@ test("Apps move one at a time, each team sees its own move, and the server ends 
     moving: "api",
     error: "",
   });
+  // Another team reads the count, never the name of an App that is not its own.
+  const theirs = async () =>
+    (await asTeamB(() => listClusterMembers(cluster.id))).find(
+      (m) => m.serverId === "srv_2",
+    )!.emptying!;
+  assert.deepEqual([(await theirs()).left, (await theirs()).moving], [2, ""]);
 
   await runEmptyingPass();
   assert.equal(asked.length, 1, "nothing else starts while api is deploying");
@@ -117,6 +125,7 @@ test("Apps move one at a time, each team sees its own move, and the server ends 
   assert.equal((await appRow("web")).serverId, "srv_3");
   const mid = (await card(cluster.id, "srv_2")).emptying!;
   assert.deepEqual([mid.total, mid.left, mid.moving], [2, 1, "web"]);
+  assert.equal((await theirs()).moving, "web", "its own App is named");
   assert.equal(
     (await activity(TEAM_B))[0],
     "Deplo: Moved web to srv_3: srv_2 is being emptied",
@@ -251,6 +260,14 @@ test("when the leader finds no room half-way, emptying stops with that sentence 
     [stopped.left, stopped.moving, stopped.error],
     [1, "", NO_ROOM_FOR_WEB],
   );
+  // The reason names an App, so only an instance admin reads it.
+  const seen = (await asTeamB(() => listClusterMembers(cluster.id))).find(
+    (m) => m.serverId === "srv_2",
+  )!.emptying!;
+  assert.equal(
+    seen.error,
+    "Emptying this server stopped. An instance admin can see why and continue it.",
+  );
   assert.equal(
     (await activity()).at(-1),
     `Deplo: Stopped emptying server srv_2 of cluster eu: ${NO_ROOM_FOR_WEB}`,
@@ -338,7 +355,7 @@ test("after a restart in the middle, the next pass picks up what was cut off", a
   // Deplo went away while the database was being copied: the row still names it, and it never left.
   await db
     .update(clusterMembers)
-    .set({ emptyingWorkload: "database:db_main" })
+    .set({ emptyingWorkloadKind: "database", emptyingWorkload: "db_main" })
     .where(eq(clusterMembers.serverId, "srv_2"));
   await runEmptyingPass();
   assert.equal((await dbRow("db_main")).serverId, "srv_3");

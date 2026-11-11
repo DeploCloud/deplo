@@ -45,9 +45,41 @@ export function composeReplicasConflicts(composeYaml: string): string[] {
   if (!services) return [];
   const out: string[] = [];
   for (const [name, raw] of Object.entries(services)) {
-    if (composeServiceReplicas(raw) > 1 && serviceKeepsOneCopy(raw))
+    // A count a variable fills in may be any number: where one copy is the rule, it is refused as written.
+    if (
+      (composeServiceReplicas(raw) > 1 || replicasAreInterpolated(raw)) &&
+      serviceKeepsOneCopy(raw)
+    )
       out.push(name);
   }
+  return out;
+}
+
+function replicasAreInterpolated(svc: unknown): boolean {
+  const n = (svc as { deploy?: { replicas?: unknown } } | null)?.deploy
+    ?.replicas;
+  return typeof n === "string" && n.includes("$");
+}
+
+// `--scale web=3` in the extra compose flags: the same rule by another door.
+export function scaleConflicts(
+  composeYaml: string | null | undefined,
+  composeUpArgs: string | null | undefined,
+): string[] {
+  const services = servicesOf(composeYaml ?? "");
+  if (!services) return [];
+  const tokens = (composeUpArgs ?? "").trim().split(/\s+/).filter(Boolean);
+  const out: string[] = [];
+  tokens.forEach((token, i) => {
+    const value = token.startsWith("--scale=")
+      ? token.slice("--scale=".length)
+      : tokens[i - 1] === "--scale"
+        ? token
+        : null;
+    const [name, count] = (value ?? "").split("=");
+    if (name && Number(count) > 1 && serviceKeepsOneCopy(services[name]))
+      out.push(name);
+  });
   return out;
 }
 

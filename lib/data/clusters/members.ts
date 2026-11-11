@@ -9,11 +9,15 @@ import {
   clusters as clustersTable,
 } from "../../db/schema/control-plane/clusters";
 import { databases as databasesTable } from "../../db/schema/control-plane/databases";
-import { ensureFailoverBackup } from "../databases/failover";
+import {
+  ensureFailoverBackup,
+  rehomeFailoverBackups,
+} from "../databases/failover";
 import { ensureVolumeAppBackups } from "./app-restore";
+import { joinAppTunnels } from "./app-tunnel";
+import { inBackground } from "./bundles";
 import { servers as serversTable } from "../../db/schema/control-plane/servers";
 import { teams as teamsTable } from "../../db/schema/control-plane/identity";
-import { getCurrentUser } from "../../auth/current-user";
 import { nowIso } from "../../ids";
 import {
   isInstanceAdmin,
@@ -39,7 +43,8 @@ import { getServerById, listAllServers } from "../servers/roster";
 import { listMemberWorkloads, type MemberWorkload } from "./member-workloads";
 import { recordJoinedPlacements } from "./placement";
 import { pushClusterRoster } from "./relay";
-import { getCluster, getClusterById } from "./roster";
+import { getCluster, getClusterById, requireClusterAdmin } from "./roster";
+import { messageOf } from "../../utils";
 
 /** A join refused: `reasons` lists every blocker found, so the admin fixes them in one pass. */
 export class ClusterJoinRefusedError extends Error {
@@ -216,27 +221,43 @@ interface MemberRow {
   emptyingSince: string | null;
   emptyingError: string;
   emptyingWorkload: string;
+  emptyingWorkloadKind: string;
   emptyingTotal: number;
   leaseState: string;
 }
 
+/** Who reads the card: an instance admin reads all of it, a team only the names of its own work. */
+interface Viewer {
+  admin: boolean;
+  teamId: string | null;
+}
+
+const EMPTYING_STOPPED =
+  "Emptying this server stopped. An instance admin can see why and continue it.";
+
 function emptyingOf(
   r: MemberRow,
   held: MemberWorkload[],
+  viewer: Viewer,
 ): ClusterEmptying | null {
   if (!r.emptyingSince) return null;
-  const moving = held.find((w) => `${w.kind}:${w.id}` === r.emptyingWorkload);
+  const moving = held.find(
+    (w) => w.id === r.emptyingWorkload && w.kind === r.emptyingWorkloadKind,
+  );
+  const mine = viewer.admin || moving?.teamId === viewer.teamId;
   return {
     since: r.emptyingSince,
     // Work that landed after the start still counts, so "moved" never goes below zero.
     total: Math.max(r.emptyingTotal, held.length),
     left: held.length,
-    moving: moving?.name ?? "",
-    error: r.emptyingError,
+    moving: mine ? (moving?.name ?? "") : "",
+    // The reason names the workload that stopped it, which may be another team's.
+    error:
+      viewer.admin || !r.emptyingError ? r.emptyingError : EMPTYING_STOPPED,
   };
 }
 
-async function toMember(r: MemberRow): Promise<ClusterMember> {
+async function toMember(r: MemberRow, viewer: Viewer): Promise<ClusterMember> {
   const held = await listMemberWorkloads(r.serverId);
   return {
     serverId: r.serverId,
@@ -244,7 +265,7 @@ async function toMember(r: MemberRow): Promise<ClusterMember> {
     status: r.status as ServerStatus,
     joinedAt: r.joinedAt,
     emptyingSince: r.emptyingSince,
-    emptying: emptyingOf(r, held),
+    emptying: emptyingOf(r, held, viewer),
     held: held.length,
     leaseState: toLeaseState(r.leaseState),
   };
@@ -254,7 +275,10 @@ function toLeaseState(s: string): ClusterLeaseState {
   return s === "not_responding" || s === "fenced" ? s : "ok";
 }
 
-async function readMembers(clusterId: string): Promise<ClusterMember[]> {
+async function readMembers(
+  clusterId: string,
+  viewer: Viewer,
+): Promise<ClusterMember[]> {
   const rows = await getDb()
     .select({
       serverId: membersTable.serverId,
@@ -264,6 +288,7 @@ async function readMembers(clusterId: string): Promise<ClusterMember[]> {
       emptyingSince: membersTable.emptyingSince,
       emptyingError: membersTable.emptyingError,
       emptyingWorkload: membersTable.emptyingWorkload,
+      emptyingWorkloadKind: membersTable.emptyingWorkloadKind,
       emptyingTotal: membersTable.emptyingTotal,
       leaseState: membersTable.leaseState,
     })
@@ -271,17 +296,22 @@ async function readMembers(clusterId: string): Promise<ClusterMember[]> {
     .innerJoin(serversTable, eq(serversTable.id, membersTable.serverId))
     .where(eq(membersTable.clusterId, clusterId))
     .orderBy(asc(membersTable.joinedAt), asc(membersTable.serverId));
-  return Promise.all(rows.map(toMember));
+  return Promise.all(rows.map((r) => toMember(r, viewer)));
 }
 
 /** A cluster's members, for whoever may see the cluster: an instance admin, or a team it is shared with. */
 export async function listClusterMembers(
   clusterId: string,
 ): Promise<ClusterMember[]> {
-  const visible = (await isInstanceAdmin())
+  const admin = await isInstanceAdmin();
+  const visible = admin
     ? await getClusterById(clusterId)
     : await getCluster(clusterId);
-  return visible ? readMembers(clusterId) : [];
+  if (!visible) return [];
+  return readMembers(clusterId, {
+    admin,
+    teamId: admin ? null : await requireActiveTeamId(),
+  });
 }
 
 /**
@@ -292,9 +322,7 @@ export async function addClusterMember(
   clusterId: string,
   serverId: string,
 ): Promise<ClusterJoin> {
-  await requireInstanceAdmin();
-  const teamId = await requireActiveTeamId();
-  const user = (await getCurrentUser())!;
+  const { teamId, user } = await requireClusterAdmin();
   const cluster = await getClusterById(clusterId);
   if (!cluster) throw new Error("Cluster not found");
   const server = await getServerById(serverId);
@@ -303,6 +331,7 @@ export async function addClusterMember(
   const reasons = await joinReasons(cluster, server);
   if (reasons.length > 0) throw new ClusterJoinRefusedError(reasons);
 
+  let cameApps: string[] = [];
   const came = await getDb().transaction(async (tx) => {
     const locked = await tx
       .select({ id: clustersTable.id })
@@ -349,10 +378,11 @@ export async function addClusterMember(
         })),
       ],
     );
+    cameApps = apps.map((a) => a.id);
     return { apps: apps.length, databases: dbs.length };
   });
 
-  const members = await readMembers(clusterId);
+  const members = await readMembers(clusterId, { admin: true, teamId });
   const member = members.find((m) => m.serverId === serverId)!;
   await recordActivity(
     "server",
@@ -395,6 +425,10 @@ export async function addClusterMember(
       await ensureFailoverBackup(d);
   // So does an App that keeps a Volume: it waits, or comes back, on that backup (#204).
   if (failoverOn(members.length)) await ensureVolumeAppBackups(clusterId);
+  // A backup made while the cluster was smaller may sit where no failover can read it.
+  await rehomeFailoverBackups(clusterId).catch((e) =>
+    console.warn(`[cluster] ${clusterId}: ${messageOf(e)}`),
+  );
   // The member's own change already happened: the sweep puts the roster right if a relay is down.
   try {
     const push = await pushClusterRoster(
@@ -404,10 +438,11 @@ export async function addClusterMember(
     for (const f of push.failed)
       console.warn(`[cluster-relay] ${clusterId}: ${f.serverId} ${f.message}`);
   } catch (e) {
-    console.warn(
-      `[cluster-relay] ${clusterId}: ${e instanceof Error ? e.message : String(e)}`,
-    );
+    console.warn(`[cluster-relay] ${clusterId}: ${messageOf(e)}`);
   }
+  // An App that came along keeps its address wherever it runs from now: its domains switch without waiting for the sweep.
+  if (cameApps.length > 0)
+    inBackground(serverId, () => joinAppTunnels(cameApps, user));
   return {
     member,
     ...came,

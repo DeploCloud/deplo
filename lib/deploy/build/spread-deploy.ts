@@ -5,7 +5,11 @@ import {
   isBuiltImage,
   membersHoldingImage,
 } from "../../data/clusters/images";
-import { planAppReplicas, type ReplicaPlan } from "../../data/clusters/spread";
+import {
+  planAppReplicas,
+  replicaPlanLanded,
+  type ReplicaPlan,
+} from "../../data/clusters/spread";
 import { getServerById } from "../../data/servers/roster";
 import { teardownOrQueue } from "../../data/teardown-queue";
 import type { ReadyCheck } from "../../agent/gen/agent";
@@ -23,12 +27,12 @@ type Member = ReplicaPlan["members"][number];
 /** Where each replica of a cluster App runs, settled before anything is rendered; only its production deploys. */
 export async function planDeployReplicas(
   project: App,
-  dep: { environment: string },
+  dep: { id: string; environment: string },
   preview: unknown,
 ): Promise<ReplicaPlan | null> {
   return preview || dep.environment !== "production"
     ? null
-    : planAppReplicas(project);
+    : planAppReplicas(project, dep.id);
 }
 
 const copies = (n: number) => (n === 1 ? "1 replica" : `${n} replicas`);
@@ -58,6 +62,7 @@ export async function deployOtherMembers(opts: {
   forceRecreate?: boolean;
 }): Promise<boolean> {
   const { depId, project, plan, imageRef } = opts;
+  replicaPlanLanded(depId);
   const [first, ...others] = plan.members;
   if (!first) return true;
   const nameOf = async (id: string) =>
@@ -65,7 +70,12 @@ export async function deployOtherMembers(opts: {
   // A registry image is pulled by each member; one Deplo built is copied to it first.
   const built = isBuiltImage(imageRef);
   if (built && others.length > 0)
-    await copyReleaseToMembers(project.id, imageRef, first.serverId);
+    await copyReleaseToMembers(
+      project.id,
+      imageRef,
+      first.serverId,
+      others.map((m) => m.serverId),
+    );
   const holding = built ? await membersHoldingImage(project.id, imageRef) : [];
   const done = [await nameOf(first.serverId)];
   for (const m of others) {

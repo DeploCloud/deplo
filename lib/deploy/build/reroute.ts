@@ -123,6 +123,7 @@ async function rerouteOn(
         // Omitting these would silently unmount storage or lift limits: a compose stack is re-rendered, not read back.
         envKeys: await appEnvKeys(appId),
         volumes: project.volumes,
+        stickySessions: project.stickySessions,
         resources: project.resources,
       });
       mounts = (project.mounts ?? []).map((m) => ({
@@ -153,6 +154,8 @@ async function rerouteOn(
         healthCheckKeys: parseStackHealthCheck(current.yaml, name),
         resourceKeys: parseStackResources(current.yaml, name),
         replicas: parseStackReplicas(current.yaml, name),
+        // Routing is what a reroute renders again, and the cookie is routing.
+        stickySessions: project.stickySessions,
         scaled: spread || parseStackScaled(current.yaml, name),
       });
     }

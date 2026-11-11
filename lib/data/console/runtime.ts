@@ -1,5 +1,7 @@
 import "server-only";
 
+import { stackName } from "../../deploy/deploy-key";
+
 import { composeServiceNames } from "../../deploy/compose-stack/compose-read";
 import { connectAgent } from "../../infra/agent-client/connect";
 import type { AgentConnection } from "../../infra/agent-client/connection";
@@ -144,6 +146,8 @@ async function probeRuntimeOn(p: App): Promise<AppRuntime> {
 
     const declared = p.compose ? composeServiceNames(p.compose) : [p.slug];
     const present = new Set(containers.map((c) => c.service));
+    // With replicas the App's one service is reported under the stack's name, not the slug.
+    if (!p.compose && present.has(stackName(p.slug))) present.add(p.slug);
     const missing = declared.filter((s) => !present.has(s));
 
     return {

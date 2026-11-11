@@ -38,6 +38,8 @@ export interface ComposeStackInput {
   dockerVersion?: string;
   onWarn?: (message: string) => void;
   takenNames?: readonly string[];
+  /** The App's switch: a routed service with replicas keeps each visitor on one of them. */
+  stickySessions?: boolean;
 }
 
 export type App = Record<string, unknown>;

@@ -44,6 +44,10 @@ export const servers = pgTable(
     leftBehindAt: isoTimestamptz("left_behind_at"),
     // It left its cluster while its agent did not answer: the sweep tells the agent until it has heard.
     clusterLeavePendingAt: isoTimestamptz("cluster_leave_pending_at"),
+    // A leader it no longer runs for any cluster could not be uninstalled: the sweep asks again.
+    clusterLeaderRetirePendingAt: isoTimestamptz(
+      "cluster_leader_retire_pending_at",
+    ),
     allTeams: boolean("all_teams").notNull().default(true),
     storageOnly: boolean("storage_only").notNull().default(false),
     buildOnly: boolean("build_only").notNull().default(false),

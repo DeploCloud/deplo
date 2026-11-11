@@ -24,11 +24,13 @@ import {
   STANDBY_ENGINES,
   standbyMembersRefusal,
 } from "../../databases/standby";
+import { apps as appsTable } from "../../db/schema/control-plane/apps";
+import { clusters as clustersTable } from "../../db/schema/control-plane/clusters";
 import { databases as databasesTable } from "../../db/schema/control-plane/databases";
 import { isDeploHostServer } from "../../deploy/domains";
 import { newId, nowIso } from "../../ids";
 import { requireActiveTeamId } from "../../membership";
-import { serverLabel } from "../../utils";
+import { serverLabel, messageOf } from "../../utils";
 import { recordActivity } from "../activity";
 import {
   assembleBackup,
@@ -37,6 +39,7 @@ import {
   backupToRow,
 } from "../backup-rows";
 import { notLeftBehind } from "../backups/left-behind";
+import { instanceFrozen } from "../deplo-move/freeze";
 import { latestBaseBackup } from "../clusters/change-log";
 import { standbyMemberOf, waitingForRoomNote } from "../clusters/placement";
 import { clusterMemberServerIds, getClusterById } from "../clusters/roster";
@@ -67,29 +70,56 @@ async function teamDestinations(teamId: string): Promise<BackupDestination[]> {
   return rows.map(assembleDestination);
 }
 
-/** Never the member the database runs on (ADR-0019): a bucket, then another member, then a server outside the cluster, which no failover can read. */
+const FAILOVER_BACKUP_NAME = "Failover backup";
+
+/** What another member can read without the workload's own server: a bucket, or another member's disk. */
+function readableByFailover(
+  d: { kind: string; serverId?: string | null },
+  workloadServerId: string,
+  members: string[],
+): boolean {
+  return (
+    d.kind === "s3" ||
+    (d.serverId !== workloadServerId && members.includes(d.serverId ?? ""))
+  );
+}
+
+/**
+ * Never the member the workload runs on (ADR-0019): a bucket, another member's disk (a new one when the team has
+ * none), and only then a server outside the cluster, which no failover can read.
+ */
 async function failoverDestination(
   db: Placed & { clusterId: string },
 ): Promise<BackupDestination | null> {
   const members = await clusterMemberServerIds(db.clusterId);
-  const rank = (d: BackupDestination) =>
-    d.kind === "s3" ? 0 : members.includes(d.serverId ?? "") ? 1 : 2;
+  const rank = (d: BackupDestination) => (d.kind === "s3" ? 0 : 1);
   const usable = (await teamDestinations(db.teamId))
     .filter(
       (d) =>
         d.status !== "error" && (d.kind === "s3" || d.serverId !== db.serverId),
     )
     .sort((a, b) => rank(a) - rank(b));
-  if (usable[0]) return usable[0];
+  const readable = usable.find((d) =>
+    readableByFailover(d, db.serverId, members),
+  );
+  if (readable) return readable;
 
   const ready = (await listAllServers()).filter(
     (s) => s.id !== db.serverId && s.agent?.certFingerprint && !s.importOnly,
   );
-  const target =
-    members.map((m) => ready.find((s) => s.id === m)).find(Boolean) ??
-    ready.find((s) => isDeploHostServer(s));
-  if (!target) return null;
-  return insertServerDestination(db.teamId, target.id, serverLabel(target));
+  // A member that answers before one that does not: a backup that cannot run protects nothing.
+  const member = members
+    .map((m) => ready.find((s) => s.id === m))
+    .filter((s): s is NonNullable<typeof s> => Boolean(s))
+    .sort(
+      (a, b) => Number(b.status === "online") - Number(a.status === "online"),
+    )[0];
+  if (member)
+    return insertServerDestination(db.teamId, member.id, serverLabel(member));
+  if (usable[0]) return usable[0];
+  const own = ready.find((s) => isDeploHostServer(s));
+  if (!own) return null;
+  return insertServerDestination(db.teamId, own.id, serverLabel(own));
 }
 
 /**
@@ -123,17 +153,31 @@ export async function ensureFailoverBackup(
     // ponytail: a whole base backup every 15 minutes; a large database wants a rarer one once replay time is measured.
     const base =
       !!row && archivesChangeLog({ ...assembleDatabase(row), clusterId });
+    const members = await clusterMemberServerIds(clusterId);
     const existing = await getDb()
-      .select({ id: backupsTable.id })
+      .select({
+        name: backupsTable.name,
+        enabled: backupsTable.enabled,
+        kind: destTable.kind,
+        serverId: destTable.serverId,
+      })
       .from(backupsTable)
+      .innerJoin(destTable, eq(destTable.id, backupsTable.destinationId))
       .where(
         and(
           eq(isApp ? backupsTable.appId : backupsTable.databaseId, db.id),
           base ? eq(backupsTable.baseBackup, true) : undefined,
         ),
+      );
+    // One a failover can use, or Deplo's own: never made twice, and left alone when the team switched it off.
+    if (
+      existing.some(
+        (b) =>
+          b.name === FAILOVER_BACKUP_NAME ||
+          (b.enabled && readableByFailover(b, db.serverId, members)),
       )
-      .limit(1);
-    if (existing.length > 0) return;
+    )
+      return;
     const dest = await failoverDestination({ ...db, clusterId });
     if (!dest) {
       await say(
@@ -144,7 +188,7 @@ export async function ensureFailoverBackup(
     const b: Backup = {
       id: newId("bkp"),
       teamId: db.teamId,
-      name: "Failover backup",
+      name: FAILOVER_BACKUP_NAME,
       targetKind: kind,
       databaseId: isApp ? null : db.id,
       appId: isApp ? db.id : null,
@@ -160,12 +204,98 @@ export async function ensureFailoverBackup(
     };
     await getDb().insert(backupsTable).values(backupToRow(b));
     await say(
-      `Backs up ${db.name} every ${FAILOVER_BACKUP_MINUTES} minutes to ${dest.name}`,
+      `Backs up ${db.name} every ${FAILOVER_BACKUP_MINUTES} minutes to ${dest.name}` +
+        // A database is dumped while it runs; an App's files are only whole while nothing writes them.
+        (isApp
+          ? `. ${db.name} pauses while each backup is taken, so its files are copied whole.`
+          : ""),
     );
   } catch (e) {
-    await say(
-      `Could not set up ${db.name}'s backup: ${e instanceof Error ? e.message : String(e)}`,
+    await say(`Could not set up ${db.name}'s backup: ${messageOf(e)}`);
+  }
+}
+
+/**
+ * Deplo's own backup follows its workload: one kept on the server the workload now runs on, or on a server outside
+ * the cluster, moves to where a failover can read it. A schedule the team made itself is never touched.
+ */
+export async function rehomeFailoverBackups(clusterId: string): Promise<void> {
+  const members = await clusterMemberServerIds(clusterId);
+  const rows = await getDb()
+    .select({
+      id: backupsTable.id,
+      teamId: backupsTable.teamId,
+      appId: backupsTable.appId,
+      databaseId: backupsTable.databaseId,
+      destKind: destTable.kind,
+      destServerId: destTable.serverId,
+      destId: destTable.id,
+    })
+    .from(backupsTable)
+    .innerJoin(destTable, eq(destTable.id, backupsTable.destinationId))
+    .where(eq(backupsTable.name, FAILOVER_BACKUP_NAME));
+  for (const b of rows) {
+    const [w] = b.databaseId
+      ? await getDb()
+          .select({
+            id: databasesTable.id,
+            teamId: databasesTable.teamId,
+            name: databasesTable.name,
+            serverId: databasesTable.serverId,
+            clusterId: databasesTable.clusterId,
+          })
+          .from(databasesTable)
+          .where(eq(databasesTable.id, b.databaseId))
+      : await getDb()
+          .select({
+            id: appsTable.id,
+            teamId: appsTable.teamId,
+            name: appsTable.name,
+            serverId: appsTable.serverId,
+            clusterId: appsTable.clusterId,
+          })
+          .from(appsTable)
+          .where(eq(appsTable.id, b.appId ?? ""));
+    if (!w || w.clusterId !== clusterId || w.teamId !== b.teamId) continue;
+    const kept = { kind: b.destKind, serverId: b.destServerId };
+    if (readableByFailover(kept, w.serverId, members)) continue;
+    const next = await failoverDestination({ ...w, clusterId });
+    if (!next || next.id === b.destId) continue;
+    if (!readableByFailover(next, w.serverId, members)) continue;
+    // Never onto a server that is down: the backup that still runs is worth more.
+    if (
+      next.kind === "server" &&
+      (await getServerById(next.serverId ?? ""))?.status !== "online"
+    )
+      continue;
+    await getDb()
+      .update(backupsTable)
+      .set({ destinationId: next.id })
+      .where(and(eq(backupsTable.id, b.id), eq(backupsTable.teamId, w.teamId)));
+    const here = (await getServerById(w.serverId))?.name ?? "its server";
+    await recordActivity(
+      "backup",
+      `Backs up ${w.name} every ${FAILOVER_BACKUP_MINUTES} minutes to ${next.name} from now on: ` +
+        (b.destServerId === w.serverId
+          ? `${w.name} now runs on ${here}, where its backups were kept.`
+          : "its backups were kept on a server outside its cluster, where a failover cannot read them."),
+      "Deplo",
+      b.appId,
+      w.teamId,
+      null,
+      b.databaseId,
     );
+  }
+}
+
+/** The sweep's job: a cluster that grew, or a failover Deplo slept through, still ends with a readable backup. */
+export async function reconcileFailoverBackupHomes(): Promise<void> {
+  const rows = await getDb()
+    .select({ id: clustersTable.id })
+    .from(clustersTable);
+  for (const c of rows) {
+    if (await instanceFrozen()) return;
+    await rehomeFailoverBackups(c.id);
   }
 }
 
@@ -186,7 +316,7 @@ async function lossAndRecovery(
   const archived =
     archivesChangeLog(db) &&
     !!db.walArchivedAt &&
-    !!(await latestBaseBackup(db.teamId, db.id));
+    !!(await latestBaseBackup(db));
   const last = await getDb()
     .select({ sizeBytes: backupRunsTable.sizeBytes })
     .from(backupRunsTable)

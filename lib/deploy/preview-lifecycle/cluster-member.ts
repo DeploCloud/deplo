@@ -14,6 +14,7 @@ import { deployPreviewRow } from "./deploy";
 import { previewTeardown } from "./placement";
 import { hasStack } from "./slots";
 import { cancelQueuedPreviewDeploys } from "./stack-teardown";
+import { messageOf } from "../../utils";
 
 // https://deplo.build/docs/operations/clusters/logs-metrics-and-previews#pull-request-previews
 
@@ -77,7 +78,7 @@ export async function movePreviewsOff(serverId: string): Promise<void> {
       publishAppChanged(p.appId);
       await recordActivity(
         "deployment",
-        `Took down the preview for pull request #${p.prNumber} of ${app.name} on ${server}: ${e instanceof Error ? e.message : String(e)}`,
+        `Took down the preview for pull request #${p.prNumber} of ${app.name} on ${server}: ${messageOf(e)}`,
         "Deplo",
         p.appId,
       );

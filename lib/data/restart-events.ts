@@ -1,9 +1,11 @@
 import "server-only";
 
-import { and, eq, isNotNull, isNull, lt, or } from "drizzle-orm";
+import { and, eq, inArray, isNotNull, isNull, lt, or } from "drizzle-orm";
 
 import { getDb } from "../db/client";
 import { apps as appsTable } from "../db/schema/control-plane/apps";
+import { workloadPlacements } from "../db/schema/control-plane/clusters";
+import { replicaTag } from "../deploy/replica-names";
 import { nowIso } from "../ids";
 import { publishAppChanged } from "../graphql/pubsub";
 import { dispatchAlert } from "../notify/dispatch";
@@ -34,18 +36,29 @@ export async function applyRestartEvents(
 }
 
 async function applyOne(serverId: string, e: RestartEvent): Promise<void> {
+  const placedHere = getDb()
+    .select({ id: workloadPlacements.workloadId })
+    .from(workloadPlacements)
+    .where(
+      and(
+        eq(workloadPlacements.kind, "app"),
+        eq(workloadPlacements.memberServerId, serverId),
+      ),
+    );
   const [app] = await getDb()
     .select({
       id: appsTable.id,
       teamId: appsTable.teamId,
       name: appsTable.name,
       slug: appsTable.slug,
+      replicas: appsTable.replicas,
     })
     .from(appsTable)
     .where(
       and(
         eq(appsTable.slug, e.slug),
-        eq(appsTable.serverId, serverId),
+        // Its own server, or any member that runs one of its replicas.
+        or(eq(appsTable.serverId, serverId), inArray(appsTable.id, placedHere)),
         isNull(appsTable.deletingAt),
       ),
     );
@@ -56,7 +69,8 @@ async function applyOne(serverId: string, e: RestartEvent): Promise<void> {
     case RestartEvent_Kind.KIND_RESTARTED: {
       await recordActivity(
         "app",
-        `Restarted ${app.name}: it stopped answering for ${e.unansweredS} s`,
+        // One of several is named, so nobody reads it as the whole App going down.
+        `Restarted ${app.replicas > 1 && e.container ? `replica ${replicaTag(e.container, app.slug)} of ` : ""}${app.name}: it stopped answering for ${e.unansweredS} s`,
         "Deplo",
         app.id,
       );

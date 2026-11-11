@@ -8,6 +8,8 @@ import { makeTestDb, type TestDb } from "../db/test-harness";
 import { __setTestDb, __resetTestDb } from "../db/client";
 import { runWithIdentity } from "../auth/request-context";
 import { encryptSecret } from "../crypto";
+import { apps as appsTable } from "../db/schema/control-plane/apps";
+import { clusters as clustersTable } from "../db/schema/control-plane/clusters";
 import { databases as databasesTable } from "../db/schema/control-plane/databases";
 import { seedApp, seedServer } from "./app-graph-test-helpers";
 import { seedDatabase, settleProvisioning } from "./backup-test-helpers";
@@ -138,6 +140,40 @@ describe("database links", () => {
         connectDatabase({ appId: "prj_hub", databaseId: "db_far", key: "X" }),
         /another server/,
       );
+    });
+  });
+
+  test("on a cluster, a database on another member of the same Environment is reached by its name", async () => {
+    await db
+      .insert(clustersTable)
+      .values({ id: "clu_1", name: "eu", createdAt: "2026-01-01T00:00:00Z" });
+    await seedDatabase(db, { id: "db_far", name: "far", serverId: "srv_2" });
+    await db
+      .update(databasesTable)
+      .set({ clusterId: "clu_1" })
+      .where(eq(databasesTable.id, "db_far"));
+    await asOwner(async () => {
+      await assert.rejects(
+        connectDatabase({ appId: "prj_hub", databaseId: "db_far", key: "X" }),
+        /another server/,
+      );
+      await db
+        .update(appsTable)
+        .set({ clusterId: "clu_1" })
+        .where(eq(appsTable.id, "prj_hub"));
+      const options = await listDatabaseLinkOptionsForApp("prj_hub");
+      assert.equal(options.find((o) => o.name === "far")?.reach, "internal");
+      await connectDatabase({
+        appId: "prj_hub",
+        databaseId: "db_far",
+        key: "FAR_URL",
+      });
+      assert.equal(
+        (await appEnv("prj_hub")).FAR_URL,
+        "postgres://app:pw@db-far:5432/db-far",
+      );
+      const linked = await listDatabaseAppLinks("db_far");
+      assert.equal(linked?.links[0].reach, "internal");
     });
   });
 

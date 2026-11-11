@@ -4,6 +4,11 @@ import { and, asc, eq, inArray, or } from "drizzle-orm";
 import { getDb, type DrizzleClient, type DbTx } from "../../db/client";
 import { apps as appsTable } from "../../db/schema/control-plane/apps";
 import { backupDestination as destinationTable } from "../../db/schema/control-plane/backups";
+import {
+  clusterMembers as clusterMembersTable,
+  clusterTeams as clusterTeamsTable,
+  clusters as clustersTable,
+} from "../../db/schema/control-plane/clusters";
 import { databases as databasesTable } from "../../db/schema/control-plane/databases";
 import { teams as teamsTable } from "../../db/schema/control-plane/identity";
 import {
@@ -122,6 +127,32 @@ export async function assertServerAccessibleTx(
     .where(eq(serversTable.id, serverId))
     .for("share");
   if (!rows[0]) throw new Error("Server not found");
+  // A member follows its cluster's sharing, whatever the server itself is shared with.
+  const member = await tx
+    .select({ id: clustersTable.id, allTeams: clustersTable.allTeams })
+    .from(clusterMembersTable)
+    .innerJoin(
+      clustersTable,
+      eq(clustersTable.id, clusterMembersTable.clusterId),
+    )
+    .where(eq(clusterMembersTable.serverId, serverId))
+    .for("share", { of: clustersTable });
+  if (member[0]) {
+    if (member[0].allTeams) return;
+    const shared = await tx
+      .select({ teamId: clusterTeamsTable.teamId })
+      .from(clusterTeamsTable)
+      .where(
+        and(
+          eq(clusterTeamsTable.clusterId, member[0].id),
+          eq(clusterTeamsTable.teamId, teamId),
+        ),
+      )
+      .limit(1);
+    if (!shared[0])
+      throw new Error("That cluster isn't available to this team.");
+    return;
+  }
   if (rows[0].allTeams) return;
   const grant = await tx
     .select({ teamId: serverTeamsTable.teamId })

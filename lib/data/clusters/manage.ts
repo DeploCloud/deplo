@@ -1,19 +1,19 @@
 import "server-only";
 
-import { eq, inArray, sql } from "drizzle-orm";
+import { asc, eq, inArray, sql } from "drizzle-orm";
 import { getDb } from "../../db/client";
+import { apps as appsTable } from "../../db/schema/control-plane/apps";
 import {
   clusterTeams as clusterTeamsTable,
   clusters as clustersTable,
 } from "../../db/schema/control-plane/clusters";
+import { databases as databasesTable } from "../../db/schema/control-plane/databases";
 import { teams as teamsTable } from "../../db/schema/control-plane/identity";
-import { getCurrentUser } from "../../auth/current-user";
 import { newId, nowIso } from "../../ids";
-import { requireActiveTeamId, requireInstanceAdmin } from "../../membership";
 import type { Cluster } from "../../types/cluster";
 import { recordActivity } from "../activity";
 import { ensureClusterLeader } from "./leader";
-import { getClusterById } from "./roster";
+import { getClusterById, requireClusterAdmin } from "./roster";
 
 export interface ClusterSharingInput {
   allTeams: boolean;
@@ -58,9 +58,7 @@ export async function createCluster(
   name: string,
   sharing: ClusterSharingInput,
 ): Promise<Cluster> {
-  await requireInstanceAdmin();
-  const teamId = await requireActiveTeamId();
-  const user = (await getCurrentUser())!;
+  const { teamId, user } = await requireClusterAdmin();
   const clean = cleanClusterName(name);
   const teamIds = sharing.allTeams ? [] : [...new Set(sharing.teamIds)];
   await assertNameFree(clean);
@@ -95,9 +93,7 @@ export async function renameCluster(
   id: string,
   name: string,
 ): Promise<Cluster> {
-  await requireInstanceAdmin();
-  const teamId = await requireActiveTeamId();
-  const user = (await getCurrentUser())!;
+  const { teamId, user } = await requireClusterAdmin();
   const clean = cleanClusterName(name);
   const cluster = await getClusterById(id);
   if (!cluster) throw new Error("Cluster not found");
@@ -122,9 +118,7 @@ export async function setClusterTeams(
   id: string,
   sharing: ClusterSharingInput,
 ): Promise<Cluster> {
-  await requireInstanceAdmin();
-  const teamId = await requireActiveTeamId();
-  const user = (await getCurrentUser())!;
+  const { teamId, user } = await requireClusterAdmin();
   const cluster = await getClusterById(id);
   if (!cluster) throw new Error("Cluster not found");
   const teamIds = sharing.allTeams ? [] : [...new Set(sharing.teamIds)];
@@ -137,6 +131,32 @@ export async function setClusterTeams(
       .where(eq(clustersTable.id, id))
       .for("update");
     if (!locked[0]) throw new Error("Cluster not found");
+    if (!sharing.allTeams) {
+      // The server twin's rule: a team keeps what it still has work on.
+      const using = [
+        ...(await tx
+          .selectDistinct({ teamId: appsTable.teamId })
+          .from(appsTable)
+          .where(eq(appsTable.clusterId, id))),
+        ...(await tx
+          .selectDistinct({ teamId: databasesTable.teamId })
+          .from(databasesTable)
+          .where(eq(databasesTable.clusterId, id))),
+      ].map((r) => r.teamId);
+      const losing = [...new Set(using)].filter((t) => !teamIds.includes(t));
+      if (losing.length > 0) {
+        const names = await tx
+          .select({ name: teamsTable.name })
+          .from(teamsTable)
+          .where(inArray(teamsTable.id, losing))
+          .orderBy(asc(teamsTable.name));
+        throw new Error(
+          `These teams still have Apps or databases on this cluster: ${names
+            .map((n) => n.name)
+            .join(", ")}. Move or delete them before taking the cluster away.`,
+        );
+      }
+    }
     await tx
       .update(clustersTable)
       .set({ allTeams: sharing.allTeams })

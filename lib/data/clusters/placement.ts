@@ -1,6 +1,7 @@
 import "server-only";
 
 import { and, asc, desc, eq, inArray, isNull } from "drizzle-orm";
+import { peakMemoryMb } from "../../monitoring/container-history";
 import { type DbTx, getDb } from "../../db/client";
 import { apps as appsTable } from "../../db/schema/control-plane/apps";
 import {
@@ -20,6 +21,7 @@ import { syncNameForwardersSoon } from "./forwarders";
 import { leaderHost } from "./host";
 import { memberIsEmptying } from "./member-workloads";
 import { clusterMemberServerIds, getCluster } from "./roster";
+import { messageOf } from "../../utils";
 
 export type WorkloadKind = "app" | "database";
 
@@ -154,6 +156,7 @@ async function askLeader(
             name: req.name,
             environment: req.environmentId ?? "",
             limitMb: req.limitMb,
+            peakMb: peakMemoryMb(req.id, many?.replicas),
             image: req.imageRef ?? "",
             archs: req.archs ?? [],
           },
@@ -170,7 +173,7 @@ async function askLeader(
     );
   } catch (e) {
     throw new PlacementUnavailableError(
-      `Cluster ${cluster.name}'s leader did not answer, so nothing was placed: ${e instanceof Error ? e.message : String(e)}`,
+      `Cluster ${cluster.name}'s leader did not answer, so nothing was placed: ${messageOf(e)}`,
     );
   }
   const answer = parseAnswer(raw);
@@ -247,8 +250,8 @@ export interface PlacementReport {
 }
 
 /**
- * The only writer of `workload_placements` and of a cluster workload's `server_id`: mirrors what the
- * leader says. `server_id` becomes the first member in placement order, and is left alone while waiting.
+ * What the leader says, mirrored: `workload_placements`, and `server_id` as the first member in placement order,
+ * left alone while waiting. A move a person asks for writes `server_id` first and reports here after; a delete lets go in `dissolve.ts`.
  */
 export async function recordPlacement(r: PlacementReport): Promise<boolean> {
   const members = new Set(await clusterMemberServerIds(r.clusterId));

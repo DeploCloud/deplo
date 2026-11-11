@@ -2,6 +2,7 @@ import { test, before, after, beforeEach } from "node:test";
 import assert from "node:assert/strict";
 import type { PGlite } from "@electric-sql/pglite";
 import * as yaml from "js-yaml";
+import { eq } from "drizzle-orm";
 
 import { makeTestDb, type TestDb } from "../db/test-harness";
 import { __setTestDb, __resetTestDb } from "../db/client";
@@ -12,6 +13,8 @@ import {
   seedServer,
   TRUNCATE_PROJECT_GRAPH,
 } from "../data/app-graph-test-helpers";
+import { apps as appsTable } from "../db/schema/control-plane/apps";
+import { domains as domainsTable } from "../db/schema/control-plane/domains";
 import { __setAgentConnectorForTest } from "../infra/agent-client/connect";
 import type { AgentConnection } from "../infra/agent-client/connection";
 import type { ResourceLimits } from "../types/container";
@@ -171,4 +174,43 @@ test("re-rendering a deployed single-image stack from its own limits is byte-ide
   });
   assert.equal(again, out);
   assert.equal(parseStackResources(single(null), "deplo-web"), null);
+});
+
+test("a domain change keeps the sticky cookie of an App with replicas", async () => {
+  await seedApp(db, {
+    id: "app_1",
+    slug: "web",
+    source: "docker-image",
+    repo: null,
+  });
+  await db
+    .update(appsTable)
+    .set({ replicas: 3, stickySessions: true })
+    .where(eq(appsTable.id, "app_1"));
+  await db.insert(domainsTable).values({
+    id: "dom_1",
+    appId: "app_1",
+    name: "web.example.com",
+    status: "valid",
+    isPrimary: true,
+    ssl: false,
+    createdAt: "2026-01-01T00:00:00.000Z",
+  });
+  // As it was deployed, before the domain was added.
+  deployed = renderCompose({
+    network: "deplo-team-team_test",
+    name: "deplo-web",
+    image: "deplo/web:abc",
+    port: 3000,
+    appId: "app_1",
+    deployKey: "web",
+    routes: [],
+    env: {},
+    replicas: 3,
+    stickySessions: true,
+  });
+
+  assert.equal(await reroute("app_1"), "rerouted");
+  assert.match(sent ?? "", /web\.example\.com/);
+  assert.match(sent ?? "", /loadbalancer\.sticky\.cookie=true/);
 });

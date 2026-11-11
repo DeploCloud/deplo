@@ -17,7 +17,10 @@ import {
 import { seedServerRow } from "./infra-test-helpers";
 import { apps as appsTable } from "../db/schema/control-plane/apps";
 import { workloadPlacements } from "../db/schema/control-plane/clusters";
-import { servers as serversTable } from "../db/schema/control-plane/servers";
+import {
+  servers as serversTable,
+  serverTeams,
+} from "../db/schema/control-plane/servers";
 import { __resetReleaseCacheForTests } from "../agent/release";
 import { __setClusterPinForTest } from "../infra/agent-client/cluster-host";
 import { fakeClusterHosts } from "../infra/agent-client/cluster-test-helpers";
@@ -37,7 +40,11 @@ import {
 } from "./clusters/placement";
 import { createApp } from "./apps/create";
 import { deleteApp } from "./apps/delete";
-import { moveAppToCluster, moveAppToServer } from "./apps/source";
+import {
+  moveAppToCluster,
+  moveAppToServer,
+  updateAppSource,
+} from "./apps/source";
 import { listServerChoices } from "./servers/roster";
 
 let db: TestDb;
@@ -445,6 +452,87 @@ test("moving an App off its cluster needs move_apps, then it leaves with its pla
   await assert.rejects(
     () => asAdmin(() => moveAppToServer(app.id, "srv_2")),
     /member of cluster eu/,
+  );
+});
+
+test("leaving a cluster by changing the App's server needs move_apps too", async () => {
+  const cluster = await eu();
+  const app = await asAdmin(() => newApp(cluster.id));
+  const leave = () =>
+    updateAppSource(app.id, {
+      source: "compose",
+      repo: null,
+      dockerImage: null,
+      serverId: "srv_4",
+    });
+  await assert.rejects(() => asMember(leave), /permission/i);
+  assert.equal((await appRow(app.id)).clusterId, cluster.id);
+  assert.equal((await placementsOf(app.id)).length, 1);
+  await asAdmin(leave);
+  assert.equal((await appRow(app.id)).clusterId, null);
+});
+
+test("a cluster cannot be taken from a team that still has work on it", async () => {
+  const cluster = await eu();
+  await asTeamB(() => newApp(cluster.id, "theirs"));
+  await assert.rejects(
+    () =>
+      asAdmin(() =>
+        setClusterTeams(cluster.id, { allTeams: false, teamIds: [TEAM_A] }),
+      ),
+    /These teams still have Apps or databases on this cluster: beta\. Move or delete them before taking the cluster away\./,
+  );
+  const b = await asTeamB(() => listPlacementChoices());
+  assert.ok(
+    b.some((c) => c.kind === "cluster"),
+    "nothing changed",
+  );
+  // Keeping the team, or sharing with everyone, is still fine.
+  await asAdmin(() =>
+    setClusterTeams(cluster.id, { allTeams: false, teamIds: [TEAM_B] }),
+  );
+});
+
+test("a member follows its cluster's sharing, whatever the server itself is shared with", async () => {
+  const cluster = await eu();
+  for (const id of ["srv_2", "srv_3"]) {
+    await db
+      .update(serversTable)
+      .set({ allTeams: false })
+      .where(eq(serversTable.id, id));
+    await db.insert(serverTeams).values({ serverId: id, teamId: TEAM_A });
+  }
+  const app = await asTeamB(() => newApp(cluster.id, "theirs"));
+  assert.equal((await appRow(app.id)).serverId, "srv_2");
+
+  await seedApp(db, {
+    id: "b_live",
+    teamId: TEAM_B,
+    serverId: "srv_4",
+    source: "docker-image",
+  });
+  await db
+    .update(appsTable)
+    .set({ dockerImage: "nginx:1", repoUrl: null, repoRepo: null })
+    .where(eq(appsTable.id, "b_live"));
+  answer = { member: "srv_3" };
+  await asTeamB(() => moveAppToCluster("b_live", cluster.id));
+  assert.equal((await appRow("b_live")).serverId, "srv_3");
+
+  // The member itself is still no server of that team.
+  await assert.rejects(
+    () =>
+      asTeamB(() =>
+        createApp({
+          name: "x",
+          source: "compose",
+          repo: null,
+          compose: COMPOSE,
+          deploy: false,
+          serverId: "srv_2",
+        }),
+      ),
+    /isn't available to this team/,
   );
 });
 

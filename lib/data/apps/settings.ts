@@ -33,12 +33,18 @@ import { listGithubInstallations } from "../github";
 import { recordActivity } from "../activity";
 import { loadAppGraph } from "../app-graph-load";
 import { usesComposeStack } from "../../utils";
-import { cleanReplicas, replicasRefusal } from "../../deploy/replicas";
+import {
+  REPLICAS_DATA_MESSAGE,
+  cleanReplicas,
+  replicasRefusal,
+  scaleConflicts,
+} from "../../deploy/replicas";
 import { syncAppWebhook } from "../git-connections";
 import { publishAppChanged } from "../../graphql/pubsub";
 import { cleanAppName } from "./create";
 import type { UploadArchive } from "../../types/app";
 import type { HealthCheck } from "../../types/container";
+import { stackReplicas } from "../../deploy/compose-stack/stand-in";
 
 export async function updateAppOwned(
   id: string,
@@ -114,7 +120,6 @@ export async function setAppRestartWhenUnresponsive(
     .update(appsTable)
     .set({
       restartWhenUnresponsive: enabled,
-      restartsPausedAt: null,
       pendingChangesAt: nowIso(),
       updatedAt: nowIso(),
     })
@@ -187,9 +192,11 @@ export async function setAppStickySessions(
   const app = await loadAppGraph(id);
   if (!app || app.teamId !== membership.teamId)
     throw new Error("App not found");
-  if (usesComposeStack(app))
-    throw new Error("A compose stack sets its own routing labels");
-  if (enabled && app.replicas < 2)
+  // A stack says how many in its own YAML.
+  const replicas = usesComposeStack(app)
+    ? stackReplicas(app.compose)
+    : app.replicas;
+  if (enabled && replicas < 2)
     throw new Error("Sticky sessions need more than one replica");
   await getDb()
     .update(appsTable)
@@ -366,6 +373,13 @@ export async function setAppComposeUpArgs(
   if (raw) {
     const problem = validateComposeUpArgs(raw);
     if (problem) throw new Error(problem);
+    const [app] = await getDb()
+      .select({ compose: appsTable.compose })
+      .from(appsTable)
+      .where(and(eq(appsTable.id, id), eq(appsTable.teamId, membership.teamId)))
+      .limit(1);
+    if (scaleConflicts(app?.compose, raw).length > 0)
+      throw new Error(REPLICAS_DATA_MESSAGE);
   }
   const updated = await getDb()
     .update(appsTable)

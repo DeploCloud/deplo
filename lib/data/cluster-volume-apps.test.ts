@@ -148,7 +148,7 @@ test("an App with a Volume that arrives with its server gets the 15-minute backu
   assert.deepEqual(await schedules("prj_bind"), []);
   assert.match(
     (await said("Deplo")).join("\n"),
-    /^Backs up prj_web every 15 minutes to /m,
+    /^Backs up prj_web every 15 minutes to \S+\. prj_web pauses while each backup is taken, so its files are copied whole\.$/m,
   );
 });
 

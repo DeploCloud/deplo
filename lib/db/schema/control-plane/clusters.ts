@@ -99,8 +99,9 @@ export const clusterMembers = pgTable(
     emptyingSince: isoTimestamptz("emptying_since"),
     // Why emptying stopped, until an admin continues; empty while it runs.
     emptyingError: text("emptying_error").notNull().default(""),
-    // The workload moving now, as "app:<id>" or "database:<id>".
+    // The workload moving now: its id, and "app" or "database". Empty between two moves.
     emptyingWorkload: text("emptying_workload").notNull().default(""),
+    emptyingWorkloadKind: text("emptying_workload_kind").notNull().default(""),
     emptyingTotal: integer("emptying_total").notNull().default(0),
     // The team whose Activity carries what Deplo says about this emptying.
     emptyingTeamId: text("emptying_team_id").references(() => teams.id, {

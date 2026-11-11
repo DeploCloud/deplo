@@ -1,4 +1,4 @@
-import { pgTable, text, bigint, index } from "drizzle-orm/pg-core";
+import { pgTable, text, bigint, boolean, index } from "drizzle-orm/pg-core";
 
 import { isoTimestamptz } from "../columns";
 import { apps } from "./apps";
@@ -24,6 +24,8 @@ export const activities = pgTable(
     databaseId: text("database_id").references(() => databases.id, {
       onDelete: "set null",
     }),
+    // The workload changed servers with this entry: a move, a failover. The charts mark it.
+    serverChange: boolean("server_change").notNull().default(false),
     createdAt: isoTimestamptz("created_at").notNull(),
   },
   (t) => [

@@ -38,8 +38,13 @@ import {
 } from "../deploy/deploy-queue";
 import { runAgentDeploy } from "../deploy/agent-deploy";
 import { addRegistry } from "./registries";
+import {
+  clearContainerHistory,
+  recordContainerSample,
+} from "../monitoring/container-history";
 import { createCluster } from "./clusters/manage";
 import { addClusterMember } from "./clusters/members";
+import { reconcileCluster } from "./clusters/watch";
 import {
   flushFailoverBundles,
   scheduleFailoverBundle,
@@ -51,6 +56,7 @@ import { invalidateFrozen } from "./deplo-move/freeze";
 import { createApp } from "./apps/create";
 import { deleteApp } from "./apps/delete";
 import { moveAppToServer } from "./apps/source";
+import { pushAppBundle } from "./clusters/app-restore";
 
 let db: TestDb;
 let pg: PGlite;
@@ -72,6 +78,8 @@ interface TestLeader {
   identity: string;
   publicKey: string;
   held: Map<string, { deploymentId: string; sealed: Uint8Array }>;
+  /** What the leader places each workload by, as last sent. */
+  metas: Map<string, { peakMb: number; limitMb: number }>;
   dropped: string[];
   refuseKey: boolean;
   refusePut: boolean;
@@ -84,6 +92,7 @@ async function newLeader(): Promise<TestLeader> {
     identity,
     publicKey: await age.identityToRecipient(identity),
     held: new Map(),
+    metas: new Map(),
     dropped: [],
     refuseKey: false,
     refusePut: false,
@@ -103,6 +112,10 @@ function leaderCalls(l: TestLeader) {
     }
     if (method === "leader.bundle.put") {
       if (l.refusePut) throw new Error("disk full");
+      l.metas.set(
+        body.id,
+        body.meta as unknown as { peakMb: number; limitMb: number },
+      );
       l.held.set(body.id, {
         deploymentId: body.deploymentId,
         sealed: Buffer.from(body.sealed, "base64"),
@@ -122,6 +135,7 @@ function leaderCalls(l: TestLeader) {
           deploymentId: b.deploymentId,
         })),
       });
+    if (method === "leader.snapshot") return answer({ head: 0, clusters: {} });
     return payload;
   };
 }
@@ -560,6 +574,79 @@ test("a relink compares deployment ids: a leader behind gets the live one, one t
   await reconcileFailoverBundles();
   assert.equal(puts().length, before + 1);
   assert.equal(leader.held.get(app.id)!.deploymentId, "dpl_1");
+});
+
+test("a watch that reconnects resends the bundle a leader missed, without waiting for the sweep", async () => {
+  const cluster = await eu();
+  const app = await clusterApp(cluster.id);
+  await deployOn(app, "dpl_1");
+  leader.held.get(app.id)!.deploymentId = "dpl_0";
+  await reconcileCluster(cluster.id);
+  assert.equal(leader.held.get(app.id)!.deploymentId, "dpl_1");
+});
+
+test("the bundle tells the leader the App's 24-hour peak, so a failover finds real room", async () => {
+  const cluster = await eu();
+  const app = await clusterApp(cluster.id);
+  clearContainerHistory();
+  recordContainerSample({
+    id: app.id,
+    online: true,
+    ts: Date.now(),
+    cpu: 0,
+    memUsed: 3000 * 1024 * 1024,
+    memLimit: 0,
+    memPct: 0,
+    netRx: 0,
+    netTx: 0,
+    blockRead: 0,
+    blockWrite: 0,
+    pids: 1,
+    running: 1,
+    containers: 1,
+    hostCores: 2,
+  });
+  await deployOn(app, "dpl_1");
+  assert.deepEqual(
+    [leader.metas.get(app.id)?.limitMb, leader.metas.get(app.id)?.peakMb],
+    [0, 3000],
+  );
+  clearContainerHistory();
+});
+
+test("a stack that builds its own images says, once, that they exist only on its server", async () => {
+  const cluster = await eu();
+  const app = await clusterApp(cluster.id);
+  const push = async (deploymentId: string, composeYaml: string) => {
+    await seedDeployment(db, { id: deploymentId, appId: app.id });
+    await pushAppBundle({
+      appId: app.id,
+      deploymentId,
+      stack: {
+        slug: app.slug,
+        projectId: app.id,
+        imageRef: "",
+        composeYaml,
+        network: "deplo-team-x",
+        env: {},
+        registryAuth: [],
+        composeUpArgs: [],
+      },
+    });
+  };
+
+  await push("dpl_1", COMPOSE);
+  assert.deepEqual(await activityFor(app.id), []);
+
+  const built = "services:\n  web:\n    build: .\n    image: deplo/web-web\n";
+  await push("dpl_2", built);
+  await push("dpl_3", built);
+  assert.deepEqual(
+    (await activityFor(app.id)).map((r) => `${r.actor}: ${r.message}`),
+    [
+      "Deplo: web does not fail over yet: its compose file builds images, and they exist only on the server that built them. A compose file that names published images does.",
+    ],
+  );
 });
 
 test("a bundle the leader holds for no App of the cluster is dropped", async () => {

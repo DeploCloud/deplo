@@ -110,7 +110,12 @@ export async function restoreBackup(runId: string): Promise<void> {
               ),
             ),
           })
-          .where(eq(databasesTable.id, target.databaseId));
+          .where(
+            and(
+              eq(databasesTable.id, target.databaseId),
+              eq(databasesTable.teamId, teamId),
+            ),
+          );
     } catch (e) {
       failure = (mapBackupUnsupported(e) as Error).message;
     } finally {

@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 
 import { RestartRule_Probe } from "../agent/gen/agent";
 import type { HealthCheck } from "../types/container";
-import { restartRuleFor } from "./restart-rule";
+import { composeHealthCheck, restartRuleFor } from "./restart-rule";
 
 const WITH_DOMAIN = { port: 3000, portRequired: true, service: "" };
 const WORKER = { port: 0, portRequired: false, service: "" };
@@ -111,4 +111,44 @@ test("a stack's rule names the routed service", () => {
   });
   assert.equal(rule?.service, "web");
   assert.equal(rule?.port, 80);
+});
+
+const STACK = `services:
+  web:
+    image: acme/web
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost/up"]
+      interval: 1m30s
+      timeout: 5s
+      start_period: 20s
+  api:
+    image: acme/api
+  off:
+    image: acme/off
+    healthcheck:
+      disable: true
+  none:
+    image: acme/none
+    healthcheck:
+      test: ["NONE"]
+`;
+
+test("a stack service's own healthcheck is what the rule uses, not GET /", () => {
+  const rule = restartRuleFor({
+    enabled: true,
+    healthCheck: composeHealthCheck(STACK, "web"),
+    ready: { port: 80, portRequired: true, service: "web" },
+  });
+  assert.equal(rule?.probe, RestartRule_Probe.PROBE_DOCKER_HEALTH);
+  assert.equal(rule?.service, "web");
+  assert.equal(rule?.intervalS, 90);
+  assert.equal(rule?.timeoutS, 5);
+  assert.equal(rule?.startPeriodS, 20);
+});
+
+test("a stack service with no healthcheck, or one switched off, keeps the default", () => {
+  for (const service of ["api", "off", "none", "missing"])
+    assert.equal(composeHealthCheck(STACK, service), null, service);
+  assert.equal(composeHealthCheck(null, "web"), null);
+  assert.equal(composeHealthCheck("services: [", "web"), null);
 });

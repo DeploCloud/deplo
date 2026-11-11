@@ -32,6 +32,22 @@ export function replicaGroupOf(
   return instances.filter((i) => i.replica && i.service === pick.service);
 }
 
+// The row that stands for every copy of `i`'s service: running while any of them is.
+export function allReplicasRow(
+  i: ConsoleInstance,
+  base: string,
+  copies: ConsoleInstance[],
+): ConsoleInstance {
+  const running = copies.some((c) => c.running);
+  return {
+    ...i,
+    name: `${ALL_REPLICAS_PREFIX}${i.service}`,
+    replica: `${base} · all replicas`,
+    running,
+    state: running ? "running" : i.state,
+  };
+}
+
 // The logs viewer lists "all replicas" ahead of a service's copies, and opens on it.
 export function withReplicaGroups(
   instances: ConsoleInstance[],
@@ -47,14 +63,13 @@ export function withReplicaGroups(
     const label = labels.get(i.name);
     if (label && !seen.has(label.service)) {
       seen.add(label.service);
-      const copies = instances.filter((c) => c.service === i.service);
-      out.push({
-        ...i,
-        name: `${ALL_REPLICAS_PREFIX}${i.service}`,
-        replica: `${label.base} · all replicas`,
-        running: copies.some((c) => c.running),
-        state: copies.some((c) => c.running) ? "running" : i.state,
-      });
+      out.push(
+        allReplicasRow(
+          i,
+          label.base,
+          instances.filter((c) => c.service === i.service),
+        ),
+      );
     }
     out.push(i);
   }

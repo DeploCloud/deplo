@@ -20,7 +20,12 @@ import {
 } from "../compose-stack/stand-in";
 import type { ComposeDoc } from "../compose-stack/types";
 import type { OverlapStacks } from "../overlap";
-import { REPLICAS_AGENT_MESSAGE, REPLICAS_CAPABILITY } from "../replicas";
+import {
+  REPLICAS_AGENT_MESSAGE,
+  REPLICAS_CAPABILITY,
+  REPLICAS_DATA_MESSAGE,
+  scaleConflicts,
+} from "../replicas";
 import yaml from "../../yaml";
 import { detectDefaultApp } from "../compose-lint/routing";
 import {
@@ -52,6 +57,7 @@ export interface ComposeStackApp {
   slug: string;
   compose: string | null;
   composeUpArgs?: string | null;
+  stickySessions?: boolean;
   mounts?: { filePath: string; content: string }[] | null;
   resources?: ResourceLimits | null;
   volumes?: VolumeMount[] | null;
@@ -105,6 +111,9 @@ async function prepareComposeStack(
   overlap?: OverlapStacks;
 }> {
   const { project, name, deployKey, trackingId, domainRoutes } = opts;
+  // The YAML's own rule, held against the extra flags too: `--scale` is replicas by another door.
+  if (scaleConflicts(project.compose, project.composeUpArgs).length > 0)
+    throw new Error(REPLICAS_DATA_MESSAGE);
 
   const filesDir = opts.sourceDir ?? composeFilesDir(deployKey);
   const basicAuthUsers = await basicAuthUsersValue(project.id);
@@ -130,6 +139,7 @@ async function prepareComposeStack(
     filesDir,
     basicAuthUsers,
     envKeys,
+    stickySessions: project.stickySessions,
     resources: project.resources,
     volumes: project.volumes,
     network: deployNetwork(project, opts.preview ? deployKey : null),

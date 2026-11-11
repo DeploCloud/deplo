@@ -445,7 +445,7 @@ builder.mutationFields((t) => ({
     authScopes: { capability: "configure_apps" },
     description:
       "Keep each visitor on the same replica with a cookie. Needs more than one " +
-      "replica. Applies from the next deploy.",
+      "replica, set on the App or in a compose stack's own YAML. Applies from the next deploy.",
     args: {
       id: t.arg.string({ required: true }),
       value: t.arg.boolean({ required: true }),

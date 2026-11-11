@@ -273,3 +273,37 @@ test("no volumes ⇒ no `volumes:` key anywhere (byte-identical baseline)", () =
   assert.equal(withEmpty, base);
   assert.ok(!base.includes("volumes:"));
 });
+
+test("a Volume or a Bind attached in Settings to a service with replicas is refused, as it is in the YAML; a File is not", () => {
+  const scaled =
+    "services:\n  web:\n    image: nginx\n    deploy:\n      replicas: 3\n";
+  const refused =
+    /An App that keeps data on its own disk runs one copy\. Keep the data in a database to run more\./;
+  assert.throws(
+    () =>
+      buildDoc(scaled, {
+        volumes: [vol({ name: "data", mountPath: "/data" })],
+      }),
+    refused,
+  );
+  assert.throws(
+    () =>
+      buildDoc(scaled, {
+        volumes: [
+          vol({ type: "host", hostPath: "/srv/media", mountPath: "/media" }),
+        ],
+      }),
+    refused,
+  );
+  const withFile = buildDoc(scaled, {
+    filesDir: "/data/stacks/demo.files",
+    volumes: [
+      vol({
+        type: "app",
+        projectPath: "conf/app.toml",
+        mountPath: "/app.toml",
+      }),
+    ],
+  });
+  assert.equal(volsOf(withFile.services.web).length, 1);
+});
