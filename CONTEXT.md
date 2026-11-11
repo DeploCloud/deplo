@@ -856,7 +856,8 @@ The process that leads one **cluster**: it decides which member runs each worklo
 **failover**, re-sending the stack Deplo last built rather than building one. It runs on Deplo's
 own machine unless an admin installs it on another server, so a cluster can keep failing over
 while Deplo is down; while a remote leader is offline, Deplo's machine leads in its place. It
-accepts no incoming connection
+leads only while more than half of the cluster's servers answer it, or exactly half and Deplo
+does, so a cluster cut in two never has two. It accepts no incoming connection
 ([ADR-0043](docs/adr/0043-a-cluster-is-led-by-its-own-leader-not-kubernetes.md)).
 _Avoid_: master, manager, control plane (that is Deplo itself), scheduler.
 

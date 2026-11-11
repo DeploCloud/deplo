@@ -74,6 +74,9 @@ test("each call sends its fields and answers with the agent's", async () => {
     payload: new Uint8Array([1]),
   });
   for (const { ms } of Object.values(sent)) assert.ok(ms > 0 && ms <= 180_000);
+  // Deplo's beat is given up on before the next one is due.
+  await rpc.clusterCall("leader.beat", new Uint8Array([1]), 4_000);
+  assert.ok(sent.call.ms > 0 && sent.call.ms <= 4_000);
 });
 
 test("an image copy names the image, the target and how many releases to keep, with room for a long transfer", async () => {

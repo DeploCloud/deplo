@@ -268,7 +268,11 @@ export interface AgentConnection {
   ): Promise<{ version: string; running: boolean }>;
   removeCluster(): Promise<{ removed: boolean }>;
   clusterStatus(): Promise<ClusterHostStatus>;
-  clusterCall(method: string, payload: Uint8Array): Promise<Uint8Array>;
+  clusterCall(
+    method: string,
+    payload: Uint8Array,
+    timeoutMs?: number,
+  ): Promise<Uint8Array>;
   /** The leader's event stream after `since`, one JSON line per item, until the caller stops iterating (#195). */
   clusterWatch(since: number): AsyncGenerator<Uint8Array, void, unknown>;
   // Needs `cluster` (ADR-0044): the agent dials every relay it knows and never listens.

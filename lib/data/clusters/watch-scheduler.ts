@@ -11,6 +11,7 @@ import { shipChangeLogs } from "./change-log";
 import { runClusterRollout } from "./binary-rollout";
 import { runEmptyingPass } from "./empty";
 import { leaderHost } from "./host";
+import { BEAT_EVERY_MS, beatClusterLeaders } from "./leader-beat";
 import { superviseClusterLeader } from "./leader-standby";
 import { pushLeaderRoster } from "./leader-sync";
 import { getClusterById } from "./roster";
@@ -35,6 +36,9 @@ interface State {
   changeLogAt?: number;
   /** When the last rollout pass over the cluster binaries started. */
   rolledAt?: number;
+  /** Whether this Deplo held the watch lease at its last tick: only that one names the leaders. */
+  holds?: boolean;
+  beatTimer?: ReturnType<typeof setInterval> | null;
 }
 
 const KEY = Symbol.for("deplo.cluster.watch");
@@ -60,9 +64,11 @@ export async function runClusterWatchTick(): Promise<void> {
       (await instanceFrozen()) ||
       !(await acquireLease(CLUSTER_WATCH_LEASE, state.owner, new Date()))
     ) {
+      state.holds = false;
       stopAll();
       return;
     }
+    state.holds = true;
     const ids = (
       await getDb().select({ id: clustersTable.id }).from(clustersTable)
     ).map((r) => r.id);
@@ -120,6 +126,14 @@ export async function runClusterWatchTick(): Promise<void> {
   }
 }
 
+/** One beat to every leader, from the Deplo that holds the watch. */
+export async function runClusterBeat(): Promise<void> {
+  if (!state.holds) return;
+  await beatClusterLeaders().catch((e) =>
+    console.error("[deplo] naming the cluster leaders failed:", e),
+  );
+}
+
 /** A deleted cluster's watch ends now, not at the next tick. */
 export function stopClusterWatch(clusterId: string): void {
   state.watches.get(clusterId)?.abort();
@@ -133,9 +147,12 @@ export function startClusterWatch(): void {
   void runClusterWatchTick();
   state.timer = setInterval(() => void runClusterWatchTick(), TICK_MS);
   state.timer.unref?.();
+  state.beatTimer = setInterval(() => void runClusterBeat(), BEAT_EVERY_MS);
+  state.beatTimer.unref?.();
 }
 
 export async function releaseClusterWatchLease(): Promise<void> {
+  state.holds = false;
   stopAll();
   await releaseLease(CLUSTER_WATCH_LEASE, state.owner);
 }
@@ -146,6 +163,9 @@ export function __resetClusterWatchForTest(): void {
   state.started = false;
   state.changeLogAt = 0;
   state.rolledAt = 0;
+  state.holds = false;
   if (state.timer) clearInterval(state.timer);
   state.timer = null;
+  if (state.beatTimer) clearInterval(state.beatTimer);
+  state.beatTimer = null;
 }
