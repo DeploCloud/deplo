@@ -10,6 +10,10 @@ import {
   ensureClusterLeader,
   getClusterLeader,
 } from "@/lib/data/clusters/leader";
+import {
+  listClusterLeaderChoices,
+  moveClusterLeader,
+} from "@/lib/data/clusters/leader-move";
 import { listClusterImageProgress } from "@/lib/data/clusters/images";
 import { listClusterWaiting } from "@/lib/data/clusters/placement";
 import {
@@ -36,6 +40,7 @@ import {
   type ClusterJoinCandidate,
   type ClusterJoinReason,
   type ClusterLeader,
+  type ClusterLeaderChoice,
   type ClusterMember,
 } from "@/lib/types/cluster";
 
@@ -69,6 +74,33 @@ const ClusterLeaderRef = builder
       message: t.exposeString("message", {
         description:
           "One plain sentence on why it is not running; empty when it is.",
+      }),
+      takenOverAt: t.exposeString("takenOverAt", {
+        nullable: true,
+        description:
+          "Since when Deplo's own machine leads the cluster because this leader does not answer; null while this leader leads. It leads again once it answers.",
+      }),
+    }),
+  });
+
+const ClusterLeaderChoiceRef = builder
+  .objectRef<ClusterLeaderChoice>("ClusterLeaderChoice")
+  .implement({
+    description:
+      "A server the leader can run on; an empty `blocked` means moveClusterLeader takes it.",
+    fields: (t) => ({
+      serverId: t.exposeID("serverId"),
+      serverName: t.exposeString("serverName"),
+      onDeploHost: t.exposeBoolean("onDeploHost", {
+        description:
+          "Deplo's own machine, where the leader runs unless it is moved.",
+      }),
+      current: t.exposeBoolean("current", {
+        description: "The leader runs here now.",
+      }),
+      blocked: t.exposeString("blocked", {
+        description:
+          "Why the leader cannot run there right now; empty when it can.",
       }),
     }),
   });
@@ -261,6 +293,13 @@ export const ClusterRef = builder.objectRef<Cluster>("Cluster").implement({
         "Where the leader runs and whether it answers. Live, so select it on one cluster at a time. Requires instanceAdmin.",
       resolve: (c) => getClusterLeader(c.id),
     }),
+    leaderChoices: t.field({
+      type: [ClusterLeaderChoiceRef],
+      authScopes: { instanceAdmin: true },
+      description:
+        "Every server the leader can run on, Deplo's own machine first. Requires instanceAdmin.",
+      resolve: (c) => listClusterLeaderChoices(c.id),
+    }),
   }),
 });
 
@@ -393,6 +432,17 @@ builder.mutationFields((t) => ({
     },
     resolve: (_r, { clusterId, serverId }) =>
       stopEmptyingClusterMember(clusterId, serverId),
+  }),
+  moveClusterLeader: t.field({
+    type: ClusterRef,
+    authScopes: { instanceAdmin: true },
+    description:
+      "Run the cluster's leader on another server, so failover keeps working while Deplo's own machine is down. That server installs the leader and leads from the next epoch; while it does not answer, Deplo's machine leads in its place. Pass the server of Deplo's own machine to move it back.",
+    args: {
+      id: t.arg.string({ required: true }),
+      serverId: t.arg.string({ required: true }),
+    },
+    resolve: (_r, { id, serverId }) => moveClusterLeader(id, serverId),
   }),
   startClusterLeader: t.field({
     type: ClusterLeaderRef,

@@ -10,7 +10,10 @@ import { servers as serversTable } from "../db/schema/control-plane/servers";
 import type { FakeClusterHost } from "../infra/agent-client/cluster-test-helpers";
 import { createCluster } from "./clusters/manage";
 import { ensureClusterLeader, getClusterLeader } from "./clusters/leader";
-import { moveClusterLeader } from "./clusters/leader-move";
+import {
+  listClusterLeaderChoices,
+  moveClusterLeader,
+} from "./clusters/leader-move";
 import { getClusterById } from "./clusters/roster";
 import { keyFingerprint } from "./clusters/bundles";
 import {
@@ -292,4 +295,50 @@ test("starting a stopped leader again on its server keeps the relay beside it", 
   assert.equal(leader.serverId, "srv_4");
   assert.equal(leader.state, "running");
   assert.equal(hosts.srv_4.installs.at(-1)!.relay, true);
+});
+
+test("the picker offers every server, Deplo's own machine first, and says which one cannot take the leader", async () => {
+  const cluster = await eu();
+  await asAdmin(() => moveClusterLeader(cluster.id, "srv_3"));
+  await db
+    .update(serversTable)
+    .set({ status: "offline" })
+    .where(eq(serversTable.id, "srv_4"));
+
+  const choices = await asAdmin(() => listClusterLeaderChoices(cluster.id));
+
+  assert.deepEqual(choices, [
+    {
+      serverId: SERVER_1,
+      serverName: SERVER_1,
+      onDeploHost: true,
+      current: false,
+      blocked: "",
+    },
+    {
+      serverId: "srv_2",
+      serverName: "srv_2",
+      onDeploHost: false,
+      current: false,
+      blocked: "",
+    },
+    {
+      serverId: "srv_3",
+      serverName: "srv_3",
+      onDeploHost: false,
+      current: true,
+      blocked: "",
+    },
+    {
+      serverId: "srv_4",
+      serverName: "srv_4",
+      onDeploHost: false,
+      current: false,
+      blocked: "srv_4 is offline. Bring it back online first.",
+    },
+  ]);
+  await assert.rejects(
+    asTeamB(() => listClusterLeaderChoices(cluster.id)),
+    /instance admin/i,
+  );
 });

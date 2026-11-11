@@ -15,6 +15,7 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
+import { DocsLink } from "@/components/ui/docs-link";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -156,6 +157,114 @@ export function StartLeaderButton({ clusterId }: { clusterId: string }) {
     >
       Try again
     </Button>
+  );
+}
+
+export type LeaderOption = {
+  serverId: string;
+  serverName: string;
+  onDeploHost: boolean;
+  current: boolean;
+  /** Why the leader cannot run there right now; empty when it can. */
+  blocked: string;
+};
+
+export function MoveLeaderButton({
+  clusterId,
+  options,
+}: {
+  clusterId: string;
+  options: LeaderOption[];
+}) {
+  const router = useRouter();
+  const [open, setOpen] = React.useState(false);
+  const [serverId, setServerId] = React.useState("");
+  const [pending, startTransition] = React.useTransition();
+  const chosen = options.find((o) => o.serverId === serverId);
+
+  function onSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    startTransition(async () => {
+      const res = await gqlAction(
+        /* GraphQL */ `
+          mutation MoveClusterLeader($id: String!, $serverId: String!) {
+            moveClusterLeader(id: $id, serverId: $serverId) {
+              id
+            }
+          }
+        `,
+        { id: clusterId, serverId },
+      );
+      if (!res.ok) return void toast.error(res.error);
+      toast.success(`The leader now runs on ${chosen?.serverName}`);
+      setOpen(false);
+      setServerId("");
+      router.refresh();
+    });
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger asChild>
+        <Button variant="outline" size="sm">
+          Run on another server
+        </Button>
+      </DialogTrigger>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Run the leader on another server</DialogTitle>
+          <DialogDescription>
+            Failover keeps working{" "}
+            <strong>while Deplo&apos;s own machine is down</strong>.{" "}
+            <DocsLink topic="clusters.leader" />
+          </DialogDescription>
+        </DialogHeader>
+        <form className="grid gap-4" onSubmit={onSubmit}>
+          <div className="space-y-2">
+            <Label htmlFor={`leader-${clusterId}`}>Server</Label>
+            <Select value={serverId} onValueChange={setServerId}>
+              <SelectTrigger id={`leader-${clusterId}`}>
+                <SelectValue placeholder="Choose a server" />
+              </SelectTrigger>
+              <SelectContent>
+                {options.map((o) => (
+                  <SelectItem
+                    key={o.serverId}
+                    value={o.serverId}
+                    disabled={o.current || Boolean(o.blocked)}
+                  >
+                    {o.serverName}
+                    {o.onDeploHost && " (Deplo's own machine)"}
+                    {o.current && " (runs here now)"}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            {options.some((o) => o.blocked) && (
+              <ul className="space-y-1 text-xs text-muted-foreground">
+                {options
+                  .filter((o) => o.blocked)
+                  .map((o) => (
+                    <li key={o.serverId}>{o.blocked}</li>
+                  ))}
+              </ul>
+            )}
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setOpen(false)}
+              disabled={pending}
+            >
+              Cancel
+            </Button>
+            <Button type="submit" disabled={pending || !chosen}>
+              Move
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
   );
 }
 

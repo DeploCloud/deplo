@@ -33,9 +33,11 @@ export interface ClusterLeader {
 
 /** A server the "Run the leader on another server" picker offers. */
 export interface ClusterLeaderChoice {
-  /** Null is Deplo's own machine. */
-  serverId: ID | null;
+  serverId: ID;
   serverName: string;
+  /** Deplo's own machine, where the leader runs unless it is moved. */
+  onDeploHost: boolean;
+  /** The leader runs here now. */
   current: boolean;
   /** Why the leader cannot run there right now; empty when it can. */
   blocked: string;

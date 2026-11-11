@@ -12,9 +12,9 @@ import {
 } from "../../infra/agent-client/cluster-host";
 import { CLUSTER_HOST_UNSUPPORTED_MESSAGE } from "../../infra/agent-client/errors";
 import { requireActiveTeamId, requireInstanceAdmin } from "../../membership";
-import type { Cluster } from "../../types/cluster";
+import type { Cluster, ClusterLeaderChoice } from "../../types/cluster";
 import { recordActivity } from "../activity";
-import { getServerById } from "../servers/roster";
+import { getServerById, listAllServers } from "../servers/roster";
 import { dropLeaderBundle, listLeaderBundles } from "./bundle-calls";
 import { reconcileClusterBundles } from "./bundles";
 import { leaderHost, leaderHostOf } from "./host";
@@ -81,6 +81,30 @@ export async function leadFrom(
     warn(cluster.id, e),
   );
   return (await getClusterById(cluster.id))!;
+}
+
+/** The servers the leader can run on, Deplo's own machine first. Not dialed: the move itself asks the agent. */
+export async function listClusterLeaderChoices(
+  clusterId: string,
+): Promise<ClusterLeaderChoice[]> {
+  await requireInstanceAdmin();
+  const cluster = await getClusterById(clusterId);
+  if (!cluster) throw new Error("Cluster not found");
+  const own = await leaderHostOf(null);
+  const servers = (await listAllServers()).filter((s) => !s.importOnly);
+  return [
+    ...servers.filter((s) => s.id === own?.id),
+    ...servers.filter((s) => s.id !== own?.id),
+  ].map((s) => ({
+    serverId: s.id,
+    serverName: s.name,
+    onDeploHost: s.id === own?.id,
+    current: cluster.leaderServerId === (s.id === own?.id ? null : s.id),
+    blocked:
+      s.status === "offline"
+        ? `${s.name} is offline. Bring it back online first.`
+        : "",
+  }));
 }
 
 const forget = (cluster: string): Uint8Array =>

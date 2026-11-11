@@ -8,6 +8,7 @@ import { Bone } from "@/components/ui/skeleton";
 import { AutoRefresh } from "@/components/shared/auto-refresh";
 import { listClusterImageProgress } from "@/lib/data/clusters/images";
 import { getClusterLeader } from "@/lib/data/clusters/leader";
+import { listClusterLeaderChoices } from "@/lib/data/clusters/leader-move";
 import { listClusterWaiting } from "@/lib/data/clusters/placement";
 import {
   listClusterJoinCandidates,
@@ -23,6 +24,7 @@ import type { ServerStatus } from "@/lib/types/server";
 import {
   ClusterActions,
   JoinClusterButton,
+  MoveLeaderButton,
   StartLeaderButton,
 } from "./cluster-actions";
 import {
@@ -209,7 +211,10 @@ async function Waiting({ cluster }: { cluster: Cluster }) {
 }
 
 async function LeaderLine({ clusterId }: { clusterId: string }) {
-  const leader = await getClusterLeader(clusterId);
+  const [leader, choices] = await Promise.all([
+    getClusterLeader(clusterId),
+    listClusterLeaderChoices(clusterId),
+  ]);
   const badge = LEADER_BADGE[leader.state];
   return (
     <div className="space-y-1">
@@ -220,9 +225,18 @@ async function LeaderLine({ clusterId }: { clusterId: string }) {
         {leader.state !== "running" && leader.state !== "unavailable" && (
           <StartLeaderButton clusterId={clusterId} />
         )}
+        <div className="ml-auto">
+          <MoveLeaderButton clusterId={clusterId} options={choices} />
+        </div>
       </div>
       {leader.message && (
         <p className="text-xs text-muted-foreground">{leader.message}</p>
+      )}
+      {leader.takenOverAt && (
+        <p className="text-xs text-muted-foreground">
+          Deplo&apos;s own machine leads this cluster until {leader.serverName}{" "}
+          answers again. <DocsLink topic="clusters.leader" />
+        </p>
       )}
     </div>
   );
