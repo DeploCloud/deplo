@@ -29,6 +29,7 @@ import {
   type ClusterDeletion,
 } from "../../types/cluster";
 import { recordActivity } from "../activity";
+import { rehomeFailoverBackups } from "../databases/failover";
 import { endStandby, syncClusterStandbys } from "../databases/standby";
 import { instanceFrozen } from "../deplo-move/freeze";
 import { getServerById, listAllServers } from "../servers/roster";
@@ -408,6 +409,9 @@ export async function removeClusterMember(
   }
   // A copy on the server that left, or of an engine the cluster is now too small for, is seen to at once.
   await syncClusterStandbys(clusterId).catch((e) => warn(clusterId, e));
+  // So is a failover backup it kept for a workload on another member: no failover could read it there now.
+  if (!keep)
+    await rehomeFailoverBackups(clusterId).catch((e) => warn(clusterId, e));
   await recordActivity(
     "server",
     `Removed server ${server.name} from cluster ${cluster.name}` +
