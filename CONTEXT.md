@@ -845,11 +845,23 @@ _Avoid_: instance (that is a whole Deplo), copy (a **live copy** is a migration)
 Several **servers** that act as one. An App or managed database is placed on the cluster, never
 on one of its members, and the cluster decides which member runs it. A server belongs to at most
 one cluster; joining brings the Apps already on it along, where they run. A cluster of one is
-allowed, and **failover** starts at two. Shared across teams by the same rules as a server, which
-its members follow. Offered next to "server" when adding one, and in every place an App picks
-where it runs.
+allowed, and **failover** starts at two, where it works only while Deplo is up: from three, with
+the leader on one of them, it also works while Deplo is down. Shared across teams by the same
+rules as a server, which its members follow. Offered next to "server" when adding one, and in
+every place an App picks where it runs.
 _Avoid_: Kubernetes cluster (nothing of Kubernetes is involved), server group, pool, node (a
 member is a server).
+
+**Cluster member**:
+A **server** that belongs to a **cluster**. It runs what the cluster's leader places on it and
+stops its databases and Apps with files when the leader has not renewed it for a minute. In
+copy a member is "a server" of the cluster; "member" is for code and these docs.
+_Avoid_: node, worker, host, replica (those are copies of an App).
+
+**Workload**:
+An **App** or a managed database placed on a **cluster**: the unit its leader places, moves and
+fails over. A word for code and these docs only; a user reads "Apps and databases".
+_Avoid_: service (a compose service), job (a scheduled job), task, pod.
 
 **Cluster leader**:
 The process that leads one **cluster**: it decides which member runs each workload and orders
