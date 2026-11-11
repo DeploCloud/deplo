@@ -16,7 +16,7 @@ import { log } from "./deployment-state";
 
 // The rest of a deploy for an App whose replicas run on several servers of its cluster (spec #176): the first
 // server is deployed by the usual path, then each other one in turn, the old replicas serving until the new are ready.
-// https://deplo.build/docs/operations/clusters#replicas-across-servers
+// https://deplo.build/docs/operations/clusters/replicas-and-architectures#replicas-across-servers
 
 type Member = ReplicaPlan["members"][number];
 

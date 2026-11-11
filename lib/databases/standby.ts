@@ -14,7 +14,7 @@ import {
 import { mariadb, mysql } from "./standby-sql";
 
 // How a cluster database keeps a standby copy (spec #176). The mechanism is engine-blind: one row here says how
-// an engine makes a copy, promotes it and what it costs. https://deplo.build/docs/operations/clusters#keep-a-standby-copy
+// an engine makes a copy, promotes it and what it costs. https://deplo.build/docs/operations/clusters/standby-copy
 
 export { standbyContainer } from "./standby-shell";
 export type { StandbyArgs, StandbyEngine } from "./standby-shell";

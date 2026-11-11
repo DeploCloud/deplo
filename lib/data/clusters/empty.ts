@@ -30,7 +30,7 @@ import {
 } from "./placement";
 import { getClusterById } from "./roster";
 
-// https://deplo.build/docs/operations/clusters#empty-a-server
+// https://deplo.build/docs/operations/clusters/manage-servers#empty-a-server
 
 const ACTOR = "Deplo";
 

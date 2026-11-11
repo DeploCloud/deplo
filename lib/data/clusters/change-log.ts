@@ -21,7 +21,7 @@ import { instanceFrozen } from "../deplo-move/freeze";
 import { getDestinationWithSecretsForTeam } from "../destinations/credentials";
 
 // Postgres on a cluster leaves each finished piece of its change log on its member; this collects them into the
-// folder beside the latest base backup. https://deplo.build/docs/operations/clusters#databases
+// folder beside the latest base backup. https://deplo.build/docs/operations/clusters/databases
 
 const KEPT_MS = CHANGE_LOG_KEPT_MINUTES * 60_000;
 

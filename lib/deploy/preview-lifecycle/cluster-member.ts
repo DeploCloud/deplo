@@ -15,7 +15,7 @@ import { previewTeardown } from "./placement";
 import { hasStack } from "./slots";
 import { cancelQueuedPreviewDeploys } from "./stack-teardown";
 
-// https://deplo.build/docs/operations/clusters#pull-request-previews
+// https://deplo.build/docs/operations/clusters/logs-metrics-and-previews#pull-request-previews
 
 /**
  * A server stopped or is gone: the previews running on it read "Offline: its server stopped" until the next

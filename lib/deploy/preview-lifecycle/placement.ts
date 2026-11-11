@@ -15,7 +15,7 @@ import type { App } from "../../types/app";
 import { rehostWildcard } from "../domains";
 import { previewSettings } from "./settings";
 
-// https://deplo.build/docs/operations/clusters#pull-request-previews
+// https://deplo.build/docs/operations/clusters/logs-metrics-and-previews#pull-request-previews
 
 type Preview = typeof appPreviewsTable.$inferSelect;
 

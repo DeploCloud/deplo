@@ -62,7 +62,7 @@ import {
 } from "../../databases/standby";
 
 // A cluster database's failover bundle: its stack, and the backup another member restores before it starts (#202).
-// https://deplo.build/docs/operations/clusters#when-a-server-stops
+// https://deplo.build/docs/operations/clusters/failover
 
 const KIND = "database";
 

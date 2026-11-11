@@ -39,7 +39,7 @@ import { requireAppCapability } from "../node-access";
 import { getServerById } from "../servers/roster";
 
 // How a cluster App that keeps data on its server fails over, and the two things a person can do about it (#204).
-// https://deplo.build/docs/operations/clusters#apps-that-keep-data
+// https://deplo.build/docs/operations/clusters/apps-with-stored-data
 
 const NOT_DEPLOYED =
   "it has not been deployed on its cluster yet, so there is nothing to bring back.";
