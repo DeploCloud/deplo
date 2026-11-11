@@ -187,6 +187,7 @@ export const DOCS = {
   "clusters.databases": "operations/clusters#databases",
   "clusters.appData": "operations/clusters#apps-that-keep-data",
   "clusters.addresses": "operations/clusters#addresses",
+  "clusters.replicas": "operations/clusters#replicas-across-servers",
   "registries.overview": "operations/servers/container-registries",
   "registries.add": "operations/servers/container-registries#add-one",
 

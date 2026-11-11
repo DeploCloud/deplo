@@ -26,6 +26,7 @@ import type { AttachHandle } from "../infra/docker";
 import type { AgentConnection } from "../infra/agent-client/connection";
 import { __setAgentConnectorForTest } from "../infra/agent-client/connect";
 import { AgentUnreachableError } from "../infra/agent-client/errors";
+import { getLogsInfo } from "./console";
 import { appLogsSnapshot } from "./logs-snapshot";
 import * as logs from "../logs/session";
 
@@ -323,4 +324,50 @@ test("a cluster App on a single member reads like an App on one server", async (
   ]);
   agents.say(B, "deplo-web", "no newline yet");
   assert.equal(await readData(res, /yet/), "no newline yet");
+});
+
+const picker = async (as = asOwner) =>
+  (await runWithIdentity(as, () => getLogsInfo(APP)))?.instances.map((i) => [
+    i.name,
+    i.replica,
+  ]);
+
+test("the picker lists the copies on every member, each named with its server", async () => {
+  await clusterApp([A, B]);
+  await db.update(apps).set({ replicas: 2 }).where(eq(apps.id, APP));
+  // Spread over two servers, each one numbers its own copies from 1.
+  fakeAgents({ [A]: [replica(1)], [B]: [replica(1)] });
+  assert.deepEqual(await picker(), [
+    ["replicas:deplo-web-deplo-web", "web · all replicas"],
+    [`${replica(1)}@${A}`, "web-1 · server-a"],
+    [`${replica(1)}@${B}`, "web-1 · server-b"],
+  ]);
+});
+
+test("a copy picked in the picker is read alone, on its own server", async () => {
+  await clusterApp([A, B]);
+  await db.update(apps).set({ replicas: 2 }).where(eq(apps.id, APP));
+  const agents = fakeAgents({ [A]: [replica(1)], [B]: [replica(1)] });
+  const res = await streamLogs(
+    `?container=${encodeURIComponent(`${replica(1)}@${B}`)}`,
+  );
+  assert.equal(res.status, 200);
+  assert.deepEqual(
+    agents.opened.map((o) => `${o.server}/${o.container}`),
+    [`${B}/${replica(1)}`],
+  );
+  agents.say(B, replica(1), `${T(1)} only b\n`);
+  assert.match(await readData(res, /only b/), /only b/);
+});
+
+test("the picker leaves out a member that cannot be reached, and another team sees nothing", async () => {
+  await clusterApp([A, B]);
+  await db.update(apps).set({ replicas: 2 }).where(eq(apps.id, APP));
+  const agents = fakeAgents({ [A]: "down", [B]: [replica(1)] });
+  assert.deepEqual(await picker(), [
+    [`${replica(1)}@${B}`, "web-1 · server-b"],
+  ]);
+  agents.asked.clear();
+  assert.equal(await picker({ userId: "u_other", teamId: TEAM_B }), undefined);
+  assert.deepEqual([...agents.asked], []);
 });

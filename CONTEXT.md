@@ -828,7 +828,9 @@ stays downloadable on purpose).
 **Replica**:
 One of several running copies of the same **App** release, each able to answer its traffic on
 its own. An App has one replica unless someone asks for more; the replicas of one App share its
-configuration, its domains and its database, never their own disk.
+configuration, its domains and its database, never their own disk. On a **cluster** the replicas
+of an App with a Cloudflare domain are spread across its members, each member running its own
+share beside a connector; any other App keeps them on one member, where its address points.
 _Avoid_: instance (that is a whole Deplo), copy (a **live copy** is a migration), node, pod.
 
 **Cluster**:

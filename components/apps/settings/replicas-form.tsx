@@ -31,12 +31,17 @@ export function ReplicasForm({
   replicas: initial,
   refusal,
   agentTooOld,
+  spread = null,
+  waiting = null,
 }: {
   appId: string;
   replicas: number;
   // Why more than one copy is refused for this app right now, or null.
   refusal: string | null;
   agentTooOld: boolean;
+  // On a cluster: how its replicas are laid out over the servers, and the count while some wait for room.
+  spread?: string | null;
+  waiting?: string | null;
 }) {
   const router = useRouter();
   const [pending, startTransition] = React.useTransition();
@@ -67,11 +72,16 @@ export function ReplicasForm({
       id="replicas"
       icon={Layers}
       title="Replicas"
-      info="Copies of the app on this server, with visitors shared between them."
-      docs="deploy.replicas"
+      info={
+        spread
+          ? "Copies of the app, with visitors shared between them."
+          : "Copies of the app on this server, with visitors shared between them."
+      }
+      docs={spread ? "clusters.replicas" : "deploy.replicas"}
       description={
         blocked ??
-        "A deploy briefly uses twice the memory while the new copies start."
+        ([waiting, spread].filter(Boolean).join(". ") ||
+          "A deploy briefly uses twice the memory while the new copies start.")
       }
       control={
         <Select

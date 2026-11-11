@@ -2,7 +2,7 @@ import "server-only";
 
 import { retireAppTunnel } from "../clusters/app-tunnel";
 import { dropFailoverBundle } from "../clusters/bundles";
-import { clearPlacement } from "../clusters/placement";
+import { clearPlacement, listAppMembers } from "../clusters/placement";
 import { eq, inArray, isNotNull } from "drizzle-orm";
 
 import { getDb } from "../../db/client";
@@ -66,6 +66,16 @@ async function destroyApp(project: App, actor: string): Promise<void> {
       reclaimVolumes: appOwnVolumeNames(project),
     });
 
+    // The other servers of a cluster that run replicas of it.
+    for (const serverId of await listAppMembers(project).catch(() => []))
+      if (serverId !== project.serverId)
+        await teardownOrQueue({
+          serverId,
+          deployKey: project.slug,
+          projectLabel: project.id,
+          label: project.name,
+          teamId: project.teamId,
+        }).catch(() => {});
     if (project.migrateFromServerId)
       await teardownOrQueue({
         serverId: project.migrateFromServerId,

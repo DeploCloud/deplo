@@ -112,3 +112,6 @@ export const CLUSTER_FORWARDERS_CAPABILITY = "cluster.forwarders";
 
 // The agent holds a marked service back until the App is ready: a tunnel's connector must not send visitors to an App that is not up.
 export const START_AFTER_READY_CAPABILITY = "deploy.start-after-ready";
+
+// The agent runs a stack that declares one replica as a project, so a member can hold one replica of an App spread over several (#208).
+export const SPREAD_CAPABILITY = "deploy.spread";

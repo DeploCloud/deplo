@@ -21,6 +21,7 @@ import { pushLeaderRoster } from "./leader-sync";
 import { listMemberWorkloads, type MemberWorkload } from "./member-workloads";
 import {
   askLeaderToPlace,
+  listWorkloadPlacements,
   PlacementRefusedError,
   recordPlacement,
   refusalSentence,
@@ -213,6 +214,26 @@ async function settleApp(m: Member, id: string): Promise<Settled> {
     .where(eq(appsTable.id, id))
     .limit(1);
   if (!app || app.deletingAt) return "moved";
+  // Replicas on other servers too: a deploy re-places the ones here, and the rest keep running (#208).
+  const placed = (await listWorkloadPlacements("app", [id])).get(id) ?? [];
+  const on = new Set(placed.map((p) => p.serverId).filter(Boolean));
+  if (on.size > 1 && on.has(m.serverId)) {
+    const [dep] = await getDb()
+      .select({ status: deploymentsTable.status })
+      .from(deploymentsTable)
+      .where(
+        and(
+          eq(deploymentsTable.appId, id),
+          eq(deploymentsTable.environment, "production"),
+        ),
+      )
+      .orderBy(desc(deploymentsTable.createdAt))
+      .limit(1);
+    if (dep?.status === "queued" || dep?.status === "building") return "moving";
+    return {
+      stopped: `${app.name} still runs replicas on this server. Its last deployment says why.`,
+    };
+  }
   if (app.serverId === m.serverId)
     return {
       stopped: `${app.name} could not be moved, so it is still on this server. Its last deployment says why.`,
@@ -265,8 +286,8 @@ async function move(
   m: Member,
   w: MemberWorkload,
 ): Promise<void> {
-  if (w.leaving) {
-    // Deployed elsewhere already and its data is still here: a deploy carries it.
+  if (w.leaving || w.spread) {
+    // Deployed elsewhere already and its data, or some of its replicas, are still here: a deploy carries them.
     if ((await settleApp(m, w.id)) !== "moving") await redeploy(w.id);
     return;
   }

@@ -94,6 +94,9 @@ export function renderCompose(opts: {
   replicas?: number;
   // Keep each visitor on one copy; only honoured with more than one.
   stickySessions?: boolean;
+  // One member's share of an App spread over a cluster: no fixed container name even for one copy,
+  // so the leader can start a lost replica beside it.
+  scaled?: boolean;
   name: string;
   image: string;
   port: number;
@@ -211,7 +214,7 @@ export function renderCompose(opts: {
   const service = opts.serviceName ?? name;
   const replicas = opts.replicas ?? 1;
   const identityYaml =
-    replicas > 1
+    replicas > 1 || opts.scaled
       ? `    restart: unless-stopped\n    deploy:\n      replicas: ${replicas}\n`
       : `    container_name: ${service}\n    restart: unless-stopped\n`;
   const networksYaml = opts.aliases?.length
@@ -250,6 +253,8 @@ export async function renderDeployStack(opts: {
   previewPort: number | null;
   routes: RoutableDomain[];
   image: string;
+  // One member of a cluster the App is spread over, and how many of its replicas that member runs.
+  member?: { replicas: number };
 }): Promise<{
   composeYaml: string;
   env: Record<string, string>;
@@ -266,8 +271,9 @@ export async function renderDeployStack(opts: {
   const basicAuthUsers = await basicAuthUsersValue(project.id);
   const network = deployNetwork(project, preview ? deployKey : null);
   const ports = preview ? [] : (project.ports ?? []);
-  const replicas = preview ? 1 : project.replicas;
-  const refusal = replicasRefusal(project, replicas);
+  const replicas = preview ? 1 : (opts.member?.replicas ?? project.replicas);
+  const scaled = !preview && opts.member !== undefined;
+  const refusal = replicasRefusal(project, preview ? 1 : project.replicas);
   if (refusal) throw new Error(refusal);
   const stackOpts: RenderComposeOptions = {
     ...(await appTraefikOverrides(project.id, Boolean(preview))),
@@ -288,6 +294,7 @@ export async function renderDeployStack(opts: {
     resources: project.resources,
     healthCheck: project.healthCheck,
     replicas,
+    scaled,
     stickySessions: project.stickySessions,
   };
   return {
@@ -295,6 +302,6 @@ export async function renderDeployStack(opts: {
     env,
     buildEnv,
     network,
-    overlap: { ...renderOverlapStacks(stackOpts), ports, replicas },
+    overlap: { ...renderOverlapStacks(stackOpts), ports, replicas, scaled },
   };
 }

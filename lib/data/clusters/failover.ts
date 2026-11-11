@@ -26,7 +26,11 @@ import { pushDatabaseBundle } from "./database-bundles";
 import { rehostClusterApp } from "./failover-address";
 import { syncNameForwarders } from "./forwarders";
 import type { LeaderEntry, LeaderMove } from "./leader-sync";
-import { listWorkloadPlacements, recordPlacement } from "./placement";
+import {
+  appReplicasWaiting,
+  listWorkloadPlacements,
+  recordPlacement,
+} from "./placement";
 
 // What the control plane does with a failover the leader reports (spec #176): words for the user, a new address
 // for an App on a generated one, and one alert when something is left waiting. The leader has already moved it.
@@ -201,6 +205,11 @@ export async function applyFailedOver(
   // An App with a Volume came back from a backup: the entry names it, as a database's does (#204).
   const run = await backupClock(app.teamId, app.id, d.backupId);
   const restored = run || typeof d.backupId === "string";
+  // An App spread over several servers lost one replica, not its only copy.
+  const on = ((await listWorkloadPlacements("app", [app.id])).get(app.id) ?? [])
+    .map((p) => p.serverId)
+    .filter((m) => m && m !== d.from);
+  const replica = on.length > 1;
   await recordActivity(
     "app",
     restored
@@ -211,7 +220,9 @@ export async function applyFailedOver(
             (typeof d.backupAt === "string" ? d.backupAt : null),
           run?.timezone ?? "UTC",
         )
-      : `Moved ${app.name} to ${to}: ${from} ${why}`,
+      : replica
+        ? `Started a replica of ${app.name} on ${to}: ${from} ${why}`
+        : `Moved ${app.name} to ${to}: ${from} ${why}`,
     ACTOR,
     app.id,
     app.teamId,
@@ -315,10 +326,19 @@ export async function applyFailoverSummary(
   if (rows.length === 0) return;
   const from = await serverName(d.member);
   const byTeam = new Map<string, typeof rows>();
+  const partial = new Map<string, string>();
   for (const r of rows) {
+    // An App whose other replicas still run says how many, so nobody reads it as down.
+    const some =
+      r.kind === "app"
+        ? await appReplicasWaiting({ id: r.id, clusterId: cluster.id })
+        : null;
+    if (some) partial.set(r.id, some);
     await recordActivity(
       r.kind,
-      `${r.name} is waiting for room in ${cluster.name}: ${from} stopped answering and no other server has room yet`,
+      some
+        ? `${r.name}: ${some}. ${from} stopped answering and no other server has room for the rest yet`
+        : `${r.name} is waiting for room in ${cluster.name}: ${from} stopped answering and no other server has room yet`,
       ACTOR,
       r.kind === "app" ? r.id : null,
       r.teamId,
@@ -341,7 +361,10 @@ export async function applyFailoverSummary(
         id: `failover:${cluster.id}:${seq}:${teamId}`,
         state: "waiting",
       },
-      title: `${only ? names : many} waiting for room in ${cluster.name}`,
+      title:
+        only && partial.has(only.id)
+          ? `${only.name}: ${partial.get(only.id)}`
+          : `${only ? names : many} waiting for room in ${cluster.name}`,
       body: `${from} stopped answering. ${names} found no room on the other servers yet. Deplo tries again every 30 seconds.`,
       path: !only
         ? undefined
