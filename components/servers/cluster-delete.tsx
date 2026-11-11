@@ -46,6 +46,13 @@ const count = (n: number, one: string) => `${n} ${one}${n === 1 ? "" : "s"}`;
 const held = (info: ClusterDeletion) =>
   info.workloads.length + info.otherTeams.length;
 
+// What deleting costs: failover, and the names that crossed its servers. Nothing when it could not fail over.
+export function deletionCost(info: ClusterDeletion): string | undefined {
+  return info.failoverOn && held(info) > 0
+    ? "These stop failing over, and an App stops reaching a database on another server by name. If a server stops, what runs on it stays down."
+    : undefined;
+}
+
 function Released({ info }: { info: ClusterDeletion }) {
   if (held(info) === 0)
     return <p className="text-sm text-muted-foreground">Nothing runs on it.</p>;
@@ -126,11 +133,7 @@ export function DeleteClusterButton({
           <DocsLink topic="clusters.deleting" />
         </>
       }
-      consequence={
-        info?.failoverOn && held(info) > 0
-          ? "These stop failing over. If a server stops, what runs on it stays down."
-          : undefined
-      }
+      consequence={info ? deletionCost(info) : undefined}
       extra={
         info ? (
           <Released info={info} />
