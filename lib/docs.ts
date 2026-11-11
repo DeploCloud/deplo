@@ -179,6 +179,7 @@ export const DOCS = {
   "servers.advanced": "operations/servers/maintenance-and-advanced#advanced",
   "servers.generatedAddresses":
     "operations/servers/maintenance-and-advanced#generated-addresses",
+  "clusters.emptying": "operations/clusters#empty-a-server",
   "clusters.overview": "operations/clusters",
   "clusters.teams": "operations/clusters#let-teams-use-it",
   "registries.overview": "operations/servers/container-registries",

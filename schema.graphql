@@ -1098,6 +1098,26 @@ type Cluster {
 }
 
 """
+How far emptying a server has got. Its Apps and databases move to the other servers of the cluster, one at a time.
+"""
+type ClusterEmptying {
+  """
+  Why it stopped, in one sentence, until emptyClusterMember is called again; empty while it runs.
+  """
+  error: String
+
+  """How many it still holds; 0 means it is empty."""
+  left: Int
+
+  """The App or database moving now; empty between two moves."""
+  moving: String
+  since: String
+
+  """How many Apps and databases it held at the start."""
+  total: Int
+}
+
+"""
 An App whose newest release is still being copied to the servers of the cluster.
 """
 type ClusterImageProgress {
@@ -1177,6 +1197,11 @@ enum ClusterLeaseState {
 A server in a cluster. Nothing is ever placed on a member directly: the cluster decides.
 """
 type ClusterMember {
+  """
+  Progress while the server is being emptied; null otherwise. It takes no new work in the meantime.
+  """
+  emptying: ClusterEmptying
+
   """Set while the member is being emptied."""
   emptyingSince: String
   joinedAt: String
@@ -4237,6 +4262,11 @@ type Mutation {
   dismissPendingChanges(appId: String!): Boolean
 
   """
+  Empty a server of a cluster: it takes no new work, and its Apps and databases move to the other servers one at a time, in the background. Refused before anything moves when the others lack the room. Call it again to continue after it stopped; read `members.emptying` for progress.
+  """
+  emptyClusterMember(clusterId: String!, serverId: String!): Cluster
+
+  """
   Run a command in the app's live container (docker exec). Gated on the deploy capability - this is arbitrary code execution.
   """
   execConsole(input: ExecConsoleInput!): ExecResult
@@ -5120,6 +5150,11 @@ type Mutation {
   """
   startWithoutMigratedData(id: String!): Database
   stopApp(id: String!): App
+
+  """
+  Stop emptying a server: it takes work again. What is moving right now finishes its move, and what already moved stays where it is.
+  """
+  stopEmptyingClusterMember(clusterId: String!, serverId: String!): Cluster
 
   """
   Close a run somebody stopped part-way, WITHOUT finishing it - the migration sources keep their agents, because re-running is how a stopped migration is resumed.

@@ -37,6 +37,18 @@ export function failoverOn(memberCount: number): boolean {
 /** What the leader last said about a member's lease: ok, not responding (15 s) or fenced (60 s). */
 export type ClusterLeaseState = "ok" | "not_responding" | "fenced";
 
+/** How far emptying a member has got. `left` at 0 means it holds nothing. */
+export interface ClusterEmptying {
+  since: string;
+  /** How many Apps and databases it held when emptying started. */
+  total: number;
+  left: number;
+  /** The name of the App or database moving now; empty between two moves. */
+  moving: string;
+  /** Why it stopped, in one sentence, until an admin continues; empty while it runs. */
+  error: string;
+}
+
 export interface ClusterMember {
   serverId: ID;
   serverName: string;
@@ -44,6 +56,8 @@ export interface ClusterMember {
   joinedAt: string;
   /** Set while the member is being emptied. */
   emptyingSince: string | null;
+  /** Progress while it is being emptied; null otherwise. */
+  emptying: ClusterEmptying | null;
   leaseState: ClusterLeaseState;
 }
 

@@ -1583,6 +1583,13 @@
       "when": 1794832000000,
       "tag": "0225_failover_bundle_pushes",
       "breakpoints": true
+    },
+    {
+      "idx": 230,
+      "version": "7",
+      "when": 1795002000000,
+      "tag": "0230_cluster_emptying",
+      "breakpoints": true
     }
   ]
 }

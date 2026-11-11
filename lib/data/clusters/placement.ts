@@ -14,6 +14,7 @@ import type { Cluster } from "../../types/cluster";
 import { instanceFrozen } from "../deplo-move/freeze";
 import { leaderHost } from "./host";
 import { clusterMemberServerIds } from "./roster";
+import { memberIsEmptying } from "./member-workloads";
 
 export type WorkloadKind = "app" | "database";
 
@@ -152,6 +153,11 @@ export async function askLeaderToPlace(
   if (!answer.member || !members.includes(answer.member))
     throw new PlacementUnavailableError(
       `Cluster ${cluster.name}'s leader named a server that is not in it.`,
+    );
+  // The leader may not have heard yet; nothing new lands on a member that is being emptied.
+  if (await memberIsEmptying(answer.member))
+    throw new PlacementUnavailableError(
+      `Cluster ${cluster.name}'s leader named a server that is being emptied. Try again in a moment.`,
     );
   return answer.member;
 }

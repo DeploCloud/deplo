@@ -91,6 +91,15 @@ export const clusterMembers = pgTable(
     joinedAt: isoTimestamptz("joined_at").notNull(),
     // Set while the member is being emptied; no new work is placed on it.
     emptyingSince: isoTimestamptz("emptying_since"),
+    // Why emptying stopped, until an admin continues; empty while it runs.
+    emptyingError: text("emptying_error").notNull().default(""),
+    // The workload moving now, as "app:<id>" or "database:<id>".
+    emptyingWorkload: text("emptying_workload").notNull().default(""),
+    emptyingTotal: integer("emptying_total").notNull().default(0),
+    // The team whose Activity carries what Deplo says about this emptying.
+    emptyingTeamId: text("emptying_team_id").references(() => teams.id, {
+      onDelete: "set null",
+    }),
     // What the leader last said about this member's lease: ok, not_responding or fenced.
     leaseState: text("lease_state").notNull().default("ok"),
     leaseChangedAt: isoTimestamptz("lease_changed_at"),
