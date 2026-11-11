@@ -375,7 +375,7 @@ test("without a Cloudflare domain the replicas stay on one server, and the setti
   assert.equal(await replicaSpreadNote(await app()), SPREAD_NO_CLOUDFLARE);
   assert.equal(
     SPREAD_NO_CLOUDFLARE,
-    "Its replicas stay on one server: only a Cloudflare domain reaches every server of a cluster, so a spread would get no visitors.",
+    "Its replicas stay on one server: without a Cloudflare domain, visitors reach only that one.",
   );
   assert.equal((await openBundle()).stack.scale, undefined);
 });

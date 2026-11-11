@@ -19,6 +19,8 @@ import { getClusterById } from "./roster";
 // Replicas across the members of a cluster (spec #176): an App with a Cloudflare domain spreads them, because
 // its tunnel reaches every member; any other keeps them on one, where its address points.
 // https://deplo.build/docs/operations/clusters#replicas-across-servers
+// ponytail: a server that comes back with a replica still its own runs the release it had; the next deploy
+// brings it level. Deploy that server alone on `member_returned` if a mixed release ever shows up.
 
 export type ReplicaSpread =
   | { kind: "single" }
@@ -26,9 +28,9 @@ export type ReplicaSpread =
   | { kind: "together"; why: "no_cloudflare" | "agent" };
 
 export const SPREAD_NO_CLOUDFLARE =
-  "Its replicas stay on one server: only a Cloudflare domain reaches every server of a cluster, so a spread would get no visitors.";
+  "Its replicas stay on one server: without a Cloudflare domain, visitors reach only that one.";
 export const SPREAD_AGENT =
-  "Its replicas stay on one server until every server of the cluster has updated its agent. Deplo updates them on its own.";
+  "Its replicas stay on one server until every server agent in the cluster is up to date. Deplo updates them on its own.";
 
 export function spreadSentence(servers: number): string {
   return `Spread across ${servers} servers: if one stops, the others keep answering`;
