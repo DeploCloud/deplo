@@ -34,6 +34,10 @@ import { createDatabase } from "./databases/provision";
 import { moveDatabaseToCluster } from "./databases/server-move";
 import { TEAM_A, TEAM_B } from "./identity-test-helpers";
 import { seedServerRow } from "./infra-test-helpers";
+import { saveNotificationChannel } from "./notifications";
+import { __resetCooldowns } from "../notify/cooldown";
+import { __settleAlertsForTest } from "../notify/dispatch";
+import { captureFetch } from "../notify/fetch-capture-test-helpers";
 
 databaseLab();
 
@@ -302,18 +306,48 @@ test("an App left waiting on a mixed cluster is told which kind of server it wai
   // The official image was read at a deploy: the database can use every server, the built App only x86.
   fakeRegistry({ "library/postgres:16-alpine": BOTH });
   await imageArchs("postgres:16-alpine", "srv_2");
-
-  await apply(
-    cluster.id,
-    event(cluster.id, "failover", {
-      member: "srv_2",
-      reason: "stopped_answering",
-      moved: [],
-      waiting: [
-        { kind: "database", workloadId: "db_main", reason: "no_room" },
-        { kind: "app", workloadId: "prj_web", reason: "no_architecture" },
-      ],
+  await asAdmin(() =>
+    saveNotificationChannel(null, {
+      kind: "webhook",
+      name: "",
+      enabled: true,
+      url: "https://ops/hook",
+      target: "",
+      emailFrom: "",
+      emailProvider: "resend",
+      smtpHost: "",
+      smtpPort: 587,
+      smtpUser: "",
+      alerts: ["cluster_failover_waiting"],
     }),
+  );
+  __resetCooldowns();
+  const capture = captureFetch();
+
+  try {
+    await apply(
+      cluster.id,
+      event(cluster.id, "failover", {
+        member: "srv_2",
+        reason: "stopped_answering",
+        moved: [],
+        waiting: [
+          { kind: "database", workloadId: "db_main", reason: "no_room" },
+          { kind: "app", workloadId: "prj_web", reason: "no_architecture" },
+        ],
+      }),
+    );
+    await __settleAlertsForTest();
+  } finally {
+    capture.restore();
+  }
+
+  // The alert names the kind of server too, as Activity does.
+  assert.deepEqual(
+    capture.calls.map((c) => (c.body as { body?: string }).body),
+    [
+      "server-2 stopped answering. No other server has room for main yet. No other x86 server has room for web yet. Deplo tries again every 30 seconds.",
+    ],
   );
 
   assert.deepEqual(
