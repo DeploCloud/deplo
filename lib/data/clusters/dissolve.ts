@@ -52,7 +52,7 @@ import { clusterMemberServerIds, getClusterById } from "./roster";
 import { stopClusterWatch } from "./watch-scheduler";
 
 // Taking a cluster apart: removing a member and deleting the cluster (spec #176).
-// https://deplo.build/docs/operations/clusters#remove-a-server
+// https://deplo.build/docs/operations/clusters/manage-servers#remove-a-server
 
 const message = (e: unknown) => (e instanceof Error ? e.message : String(e));
 const warn = (clusterId: string, e: unknown) =>

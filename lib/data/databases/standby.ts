@@ -53,7 +53,7 @@ import {
 } from "./stack";
 
 // A cluster database's standby copy (spec #176, #218): placed by the leader on another member, following the
-// database over the relay, promoted on a failover. https://deplo.build/docs/operations/clusters#keep-a-standby-copy
+// database over the relay, promoted on a failover. https://deplo.build/docs/operations/clusters/standby-copy
 
 const ACTOR = "Deplo";
 

@@ -19,7 +19,7 @@ import { getClusterById } from "./roster";
 
 // Replicas across the members of a cluster (spec #176): an App with a Cloudflare domain spreads them, because
 // its tunnel reaches every member; any other keeps them on one, where its address points.
-// https://deplo.build/docs/operations/clusters#replicas-across-servers
+// https://deplo.build/docs/operations/clusters/replicas-and-architectures#replicas-across-servers
 // ponytail: a server that comes back with a replica still its own runs the release it had; the next deploy
 // brings it level. Deploy that server alone on `member_returned` if a mixed release ever shows up.
 

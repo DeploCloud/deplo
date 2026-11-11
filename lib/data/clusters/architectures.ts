@@ -17,7 +17,7 @@ import type { DatabaseType } from "../../types/database";
 import { isBuiltImage } from "./images";
 import { getCluster } from "./roster";
 
-// https://deplo.build/docs/operations/clusters#mix-arm-and-x86-servers
+// https://deplo.build/docs/operations/clusters/replicas-and-architectures#mix-arm-and-x86-servers
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 /** How soon an image no registry described is asked about again. */

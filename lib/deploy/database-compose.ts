@@ -110,7 +110,7 @@ fi
 `;
 
 // A finished piece of the change log is copied beside the data, at most a minute after its first write; the
-// server agent ships it from there. https://deplo.build/docs/operations/clusters#databases
+// server agent ships it from there. https://deplo.build/docs/operations/clusters/databases
 const WAL_DIR = `${DB_DATA_DIRS.postgres}/${CHANGE_LOG_DIR}`;
 const POSTGRES_ARCHIVE = [
   "archive_mode=on",

@@ -39,7 +39,7 @@ import {
 
 // What the control plane does with a failover the leader reports (spec #176): words for the user, a new address
 // for an App on a generated one, and one alert when something is left waiting. The leader has already moved it.
-// https://deplo.build/docs/operations/clusters#when-a-server-stops
+// https://deplo.build/docs/operations/clusters/failover
 
 const ACTOR = "Deplo";
 

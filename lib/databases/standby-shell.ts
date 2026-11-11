@@ -1,5 +1,5 @@
 // What every engine's standby copy shares (spec #176): the row an engine fills in, and the two files a copy
-// keeps beside its data. https://deplo.build/docs/operations/clusters#keep-a-standby-copy
+// keeps beside its data. https://deplo.build/docs/operations/clusters/standby-copy
 
 export interface StandbyArgs {
   /** The database's own name on its network; the copy reaches it there. */

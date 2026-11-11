@@ -5,7 +5,7 @@ import {
 } from "../deploy/compose-lint/volumes";
 
 // How an App that keeps data on its server fails over (spec #176, stories 70-72).
-// https://deplo.build/docs/operations/clusters#apps-that-keep-data
+// https://deplo.build/docs/operations/clusters/apps-with-stored-data
 
 /** An App's storage rows and its own compose: all that decides how it fails over. A row with no type is a Volume. */
 export interface StoredOnDisk {

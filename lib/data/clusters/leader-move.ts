@@ -28,7 +28,7 @@ import { pushClusterRoster, relayAddress, syncLeaderRelayRoute } from "./relay";
 import { getClusterById } from "./roster";
 
 // Running the leader on another server (spec #176).
-// https://deplo.build/docs/operations/clusters#run-the-leader-on-another-server
+// https://deplo.build/docs/operations/clusters/leader#run-the-leader-on-another-server
 
 const NO_HOST =
   "Deplo's own machine is not connected as a server yet, so the leader cannot run on it.";

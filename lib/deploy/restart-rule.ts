@@ -9,7 +9,7 @@ export const DEFAULT_RESTART_PROBE = {
   startPeriodS: 60,
 } as const;
 
-// https://deplo.build/docs/guides/health-checks-and-automatic-restarts
+// https://deplo.build/docs/guides/observability/health-checks
 export function restartRuleFor(opts: {
   enabled: boolean;
   healthCheck: HealthCheck | null | undefined;

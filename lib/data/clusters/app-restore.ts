@@ -28,7 +28,7 @@ import { type RestoreSource, latestRestorable } from "./database-bundles";
 import { getClusterById } from "./roster";
 
 // An App that keeps data on its member's disk: a Bind never fails over, a Volume waits or moves with a backup (#204).
-// https://deplo.build/docs/operations/clusters#apps-that-keep-data
+// https://deplo.build/docs/operations/clusters/apps-with-stored-data
 
 /** What a member needs to put this App's Volumes and Files back. The stack itself comes from the bundle. */
 function restoreDescriptor(app: App, stack: FailoverStack): ProjectDescriptor {

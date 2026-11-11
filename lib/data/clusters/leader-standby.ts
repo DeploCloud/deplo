@@ -25,7 +25,7 @@ import { ensureClusterRelay, pushClusterRoster } from "./relay";
 import { getClusterById } from "./roster";
 
 // Deplo's own machine leads a cluster while its leader on another server does not answer (spec #176).
-// https://deplo.build/docs/operations/clusters#run-the-leader-on-another-server
+// https://deplo.build/docs/operations/clusters/leader#run-the-leader-on-another-server
 
 /** Checks in a row a leader may miss before Deplo's machine leads in its place: under the minute a member waits. */
 export const TAKEOVER_AFTER_MISSES = 2;
