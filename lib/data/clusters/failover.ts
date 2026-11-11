@@ -157,6 +157,7 @@ async function databaseFailedOver(
     row.teamId,
     null,
     row.id,
+    { serverChange: true },
   );
   // Restored from a dump, Postgres is a new one: what it archives follows no base backup taken before.
   if (!run || !isBaseBackupKey(run.objectKey)) await changeLogBroken(row.id);
@@ -247,6 +248,9 @@ export async function applyFailedOver(
     ACTOR,
     app.id,
     app.teamId,
+    null,
+    null,
+    { serverChange: true },
   );
   try {
     await rehostClusterApp(app.id);

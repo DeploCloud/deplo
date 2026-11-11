@@ -298,6 +298,8 @@ export async function recordActivity(
   teamId: string | null = null,
   alert: AlertKey | null = null,
   databaseId: string | null = null,
+  // Set when the entry says its App or database changed servers: the charts mark it from this, never from the wording.
+  opts: { serverChange?: boolean } = {},
 ): Promise<void> {
   const name = typeof actor === "string" ? actor : actor.name;
   const provider = typeof actor === "string" ? null : actor.provider;
@@ -331,7 +333,7 @@ export async function recordActivity(
       databaseId,
       createdAt: nowIso(),
     };
-    await insertActivityRow(activity);
+    await insertActivityRow(activity, opts.serverChange === true);
     written = true;
     await flushDroppedMarker(resolved);
     if (alert)
@@ -352,15 +354,17 @@ let droppedEntries = 0;
 
 async function insertActivityRow(
   activity: Omit<Activity, "seq">,
+  serverChange = false,
 ): Promise<void> {
+  const row = { ...activityToRow(activity), serverChange };
   try {
-    await getDb().insert(activitiesTable).values(activityToRow(activity));
+    await getDb().insert(activitiesTable).values(row);
     return;
   } catch (e) {
     console.warn("[deplo] recordActivity insert failed, retrying once:", e);
   }
   await new Promise((r) => setTimeout(r, 150));
-  await getDb().insert(activitiesTable).values(activityToRow(activity));
+  await getDb().insert(activitiesTable).values(row);
 }
 
 async function flushDroppedMarker(teamId: string): Promise<void> {

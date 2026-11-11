@@ -323,6 +323,7 @@ async function applyDatabasePlacement(
     teamId,
     null,
     db.id,
+    { serverChange: Boolean(movingFrom) },
   );
   await markLinkedAppsPending(db.id);
 }

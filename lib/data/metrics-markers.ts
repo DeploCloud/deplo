@@ -15,15 +15,6 @@ export interface MetricsMarker {
   label: string;
 }
 
-// The Activity entries that say an App changed servers: a move, a failover, a replica started elsewhere, a
-// failover that restored a backup. "Moved web's data from a to b" ends a move this already marked.
-const CHANGED_SERVERS =
-  /^(Moved (?!.*'s data from )|Started a replica of |Restored .+ on .+ from (its latest backup|the backup of ))/;
-
-// The same for a database: a move, a promoted standby copy, a failover that restored a backup.
-const DATABASE_CHANGED_SERVERS =
-  /^(Moved database .+ to |Promoted the standby copy of |Restored .+ on .+ from (its latest backup|the backup of ))/;
-
 /** Where an App's charts jump for a reason: each move or failover inside the history window, in Activity's words. */
 export async function getAppMetricsMarkers(
   appId: string,
@@ -35,7 +26,6 @@ export async function getAppMetricsMarkers(
   return markers(
     teamId,
     and(eq(activities.appId, app.id), eq(activities.type, "app")),
-    CHANGED_SERVERS,
   );
 }
 
@@ -50,14 +40,13 @@ export async function getDatabaseMetricsMarkers(
   return markers(
     teamId,
     and(eq(activities.databaseId, db.id), eq(activities.type, "database")),
-    DATABASE_CHANGED_SERVERS,
   );
 }
 
+// The writer says which entries are a change of server (`server_change`); nothing here reads their wording.
 async function markers(
   teamId: string,
   about: SQL | undefined,
-  changedServers: RegExp,
 ): Promise<MetricsMarker[]> {
   const since = new Date(Date.now() - CONTAINER_HISTORY_WINDOW_MS);
   const rows = await getDb()
@@ -67,11 +56,10 @@ async function markers(
       and(
         eq(activities.teamId, teamId),
         about,
+        eq(activities.serverChange, true),
         gte(activities.createdAt, since.toISOString()),
       ),
     )
     .orderBy(asc(activities.createdAt), asc(activities.seq));
-  return rows
-    .filter((r) => changedServers.test(r.message))
-    .map((r) => ({ ts: Date.parse(r.at), label: r.message }));
+  return rows.map((r) => ({ ts: Date.parse(r.at), label: r.message }));
 }

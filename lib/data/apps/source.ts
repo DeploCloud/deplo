@@ -417,6 +417,10 @@ async function applyAppSource(
       : `Updated deploy source`,
     user.name,
     id,
+    null,
+    null,
+    null,
+    { serverChange: Boolean(move) && after.moved },
   );
 
   const movedOff =
