@@ -20,6 +20,7 @@ import {
   probeClusterMember,
   removeClusterLeader,
 } from "../../infra/agent-client/cluster-host";
+import { movePreviewsOff } from "../../deploy/preview-lifecycle/cluster-member";
 import { nowIso } from "../../ids";
 import { requireActiveTeamId, requireInstanceAdmin } from "../../membership";
 import {
@@ -398,6 +399,8 @@ export async function removeClusterMember(
   // Its agent forgets the cluster before the cluster forgets it, so nothing it runs is stopped on the way out.
   await leave(clusterId, [serverId]);
   await pushMembership([clusterId]);
+  // Previews it still ran go to the members that are left; kept Apps keep theirs where they run (#212).
+  if (!keep) await movePreviewsOff(serverId).catch((e) => warn(clusterId, e));
   if (keep) {
     await dropBundlesAtLeaders(cluster, released);
     await endStandbys(released);

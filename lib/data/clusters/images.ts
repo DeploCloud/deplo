@@ -215,11 +215,14 @@ export function copyImageAfterDeploy(depId: string, serverId: string): void {
         .select({
           appId: deploymentsTable.appId,
           imageRef: deploymentsTable.imageRef,
+          previewId: deploymentsTable.previewId,
         })
         .from(deploymentsTable)
         .where(eq(deploymentsTable.id, depId))
         .limit(1)
     )[0];
+    // A preview never fails over, and its build is not one of the App's releases (#212).
+    if (dep?.previewId) return;
     if (!dep?.imageRef || !isBuiltImage(dep.imageRef)) return;
     await copyReleaseToMembers(dep.appId, dep.imageRef, serverId);
   })().catch((e) => console.warn(`[cluster-images] ${depId}: ${message(e)}`));

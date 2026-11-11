@@ -16,6 +16,7 @@ import { pendingTeardownsForServer } from "../teardown-queue";
 import { controlPlaneCert, uninstallCommand } from "../../agent/bootstrap";
 import { dropAgentChannel } from "../../infra/agent-client/channel-pool";
 import { clustersOfServer, pushClusterRosters } from "../clusters/relay";
+import { markPreviewsOffline } from "../../deploy/preview-lifecycle/cluster-member";
 import { getServerById, serverRole } from "./roster";
 
 export interface ServerRemoval {
@@ -121,6 +122,9 @@ async function removeServerRow(
   const abandoned = await pendingTeardownsForServer(id);
 
   const clusterIds = await clustersOfServer(id);
+  // A preview that ran here is gone with it; the next push or a redeploy places it again (#212).
+  // ponytail: marked before the delete, which clears the column; a refused delete leaves them offline until redeployed.
+  await markPreviewsOffline(id);
   const pinned = server.agent?.certFingerprint ?? "";
   await getDb()
     .update(serversTable)
