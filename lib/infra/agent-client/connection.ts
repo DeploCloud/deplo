@@ -167,6 +167,9 @@ export interface ClusterHostStatus {
   relayLinks: number;
 }
 
+/** The cluster a member is in and the certificates that may lead it: an order from anyone else is refused. */
+export type ClusterLeaderPins = { clusterId: string; leaders: string[] };
+
 export interface AgentConnection {
   hello(timeoutMs?: number): Promise<HelloResponse>;
   metrics(dataDir?: string): Promise<HostMetrics>;
@@ -279,7 +282,14 @@ export interface AgentConnection {
   setClusterMember(
     member: boolean,
     relays: string[],
+    pins?: ClusterLeaderPins,
   ): Promise<{ member: boolean; relayLinks: number }>;
+  /** Tells this member to accept one image from one member's certificate; it refuses any other image stream. */
+  expectClusterImage(
+    imageRef: string,
+    sourceFingerprint: string,
+    keep: number,
+  ): Promise<void>;
   // Needs `cluster.images` (ADR-0044): send a built image to one member, which prunes older releases.
   copyClusterImage(
     imageRef: string,

@@ -10,7 +10,10 @@ import {
 import { deployments as deploymentsTable } from "../../db/schema/control-plane/deployments";
 import { servers as serversTable } from "../../db/schema/control-plane/servers";
 import { nowIso } from "../../ids";
-import { copyClusterImage } from "../../infra/agent-client/cluster-host";
+import {
+  copyClusterImage,
+  expectClusterImage,
+} from "../../infra/agent-client/cluster-host";
 import { requireActiveTeamId } from "../../membership";
 import type { ClusterImageProgress } from "../../types/cluster";
 import { instanceFrozen } from "../deplo-move/freeze";
@@ -176,12 +179,19 @@ export async function copyReleaseToMembers(
       const todo = targets.filter((t) => !have.has(t.serverId));
       for (const t of todo)
         await setCopy(appId, imageRef, t.serverId, "copying");
+      const from = await fingerprintOf(source.serverId);
       for (const t of todo) {
         if (await instanceFrozen()) return;
         try {
           const fingerprint = await fingerprintOf(t.serverId);
-          if (!fingerprint)
+          if (!fingerprint || !from)
             throw new Error("This server has no certificate yet.");
+          await expectClusterImage(
+            t.serverId,
+            imageRef,
+            from,
+            IMAGE_RELEASES_KEPT,
+          );
           const r = await copyClusterImage(
             source.serverId,
             imageRef,

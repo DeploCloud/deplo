@@ -124,13 +124,19 @@ export async function pushClusterRoster(
       out.failed.push({ serverId: relay.id, message: messageOf(e) });
     }
   }
+  const pins = {
+    clusterId,
+    leaders: roster.parties
+      .filter((p) => p.role === "leader")
+      .map((p) => p.fingerprint),
+  };
   if (roster.parties.length > 0)
     for (const id of new Set(memberServerIds)) {
       try {
         // Its own relay is already the one beside it.
         const relays =
           remote && remote.id !== id ? [relayAddress(remote)!] : [];
-        await setClusterMember(id, true, relays);
+        await setClusterMember(id, true, relays, pins);
         out.dialing.push(id);
       } catch (e) {
         out.failed.push({ serverId: id, message: messageOf(e) });

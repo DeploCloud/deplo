@@ -45,6 +45,8 @@ export interface FakeClusterHost {
   calls: { method: string; payload: Uint8Array }[];
   /** Every setClusterMember the agent was asked, in order. */
   memberCalls: { member: boolean; relays: string[] }[];
+  /** The cluster and its leaders' certificates each joining setClusterMember carried, in order. */
+  memberPins: { clusterId: string; leaders: string[] }[];
   /** The proxy stack of this host, as hostInfo reads it and traefikConfig replaces it. */
   proxy: { yaml: string; applied: number; refuse: string };
   /** What the agent answers a copy request; throws to fail it. */
@@ -55,6 +57,8 @@ export interface FakeClusterHost {
   ) => { alreadyPresent: boolean; bytes: number; pruned: string[] };
   /** Every copyClusterImage the agent was asked, in order. */
   imageCopies: { imageRef: string; targetFingerprint: string; keep: number }[];
+  /** Every image this host's agent was told to expect from another member, in order. */
+  imageExpects: { imageRef: string; sourceFingerprint: string; keep: number }[];
   /** Every name-forwarder table this host's agent was handed, in order (#200). */
   forwarders: ClusterForwarderTable[];
   /** Every deploy request this host's agent was handed, answered ready. */
@@ -341,9 +345,10 @@ export function fakeClusterHosts(): {
         return TraefikConfigResponse.fromPartial({ ok: true });
       },
       clusterWatch: (since) => watchStream(h, since),
-      setClusterMember: (member, relays) =>
+      setClusterMember: (member, relays, pins) =>
         guard(() => {
           h.memberCalls.push({ member, relays });
+          if (pins) h.memberPins.push(pins);
           h.status = { ...h.status, member };
           return { member, relayLinks: 0 };
         }),
@@ -351,6 +356,10 @@ export function fakeClusterHosts(): {
         guard(() => {
           h.imageCopies.push({ imageRef, targetFingerprint, keep });
           return h.imageCopy(imageRef, targetFingerprint, keep);
+        }),
+      expectClusterImage: (imageRef, sourceFingerprint, keep) =>
+        guard(() => {
+          h.imageExpects.push({ imageRef, sourceFingerprint, keep });
         }),
       setClusterForwarders: (table) =>
         guard(() => {
@@ -384,9 +393,11 @@ export function fakeClusterHosts(): {
         removes: 0,
         calls: [],
         memberCalls: [],
+        memberPins: [],
         proxy: { yaml: "", applied: 0, refuse: "" },
         imageCopy: () => ({ alreadyPresent: false, bytes: 1, pruned: [] }),
         imageCopies: [],
+        imageExpects: [],
         forwarders: [],
         deploys: [],
         backups: [],

@@ -202,6 +202,14 @@ test("the roster names the leader and each member by the certificate their serve
   assert.deepEqual(m.memberCalls, [{ member: true, relays: [] }]);
 });
 
+test("each member is handed its cluster and the certificates that may lead it", async () => {
+  deploHost();
+  const m = fleet.host("srv_2");
+  const c = await asAdmin(() => createCluster("eu", everyone));
+  await pushClusterRoster(c.id, ["srv_2"]);
+  assert.deepEqual(m.memberPins, [{ clusterId: c.id, leaders: [FP1] }]);
+});
+
 test("a member whose agent is too old is named, and the roster still goes out", async () => {
   const host = deploHost();
   fleet.host("srv_2", { capabilities: ["cluster.host"] });

@@ -22,6 +22,7 @@ export function clusterRpc(
   | "setClusterMember"
   | "clusterWatch"
   | "copyClusterImage"
+  | "expectClusterImage"
   | "setClusterForwarders"
 > {
   const { client } = channel;
@@ -57,10 +58,15 @@ export function clusterRpc(
         relayLinks: r.relayLinks,
       };
     },
-    async setClusterMember(member, relays) {
+    async setClusterMember(member, relays, pins) {
       const r = await unary(
         client.setClusterMember.bind(client),
-        { member, relays },
+        {
+          member,
+          relays,
+          clusterId: pins?.clusterId ?? "",
+          leaderFingerprints: pins?.leaders ?? [],
+        },
         HELLO_TIMEOUT_MS,
       );
       return { member: r.member, relayLinks: r.relayLinks };
@@ -85,6 +91,13 @@ export function clusterRpc(
         bytes: Number(r.bytes),
         pruned: r.pruned,
       };
+    },
+    async expectClusterImage(imageRef, sourceFingerprint, keep) {
+      await unary(
+        client.expectClusterImage.bind(client),
+        { imageRef, sourceFingerprint, keep },
+        HELLO_TIMEOUT_MS,
+      );
     },
     async setClusterForwarders(table) {
       const r = await unary(

@@ -13,6 +13,7 @@ import type {
   AgentConnection,
   ClusterForwarderTable,
   ClusterHostStatus,
+  ClusterLeaderPins,
 } from "./connection";
 import {
   AgentClusterForwardersUnsupportedError,
@@ -305,6 +306,7 @@ export async function setClusterMember(
   serverId: string,
   member: boolean,
   relays: string[] = [],
+  pins?: ClusterLeaderPins,
 ): Promise<{ member: boolean; relayLinks: number }> {
   const conn = await connectAgent(serverId);
   try {
@@ -313,7 +315,7 @@ export async function setClusterMember(
       throw new AgentClusterMemberUnsupportedError(
         CLUSTER_MEMBER_UNSUPPORTED_MESSAGE,
       );
-    return await conn.setClusterMember(member, relays);
+    return await conn.setClusterMember(member, relays, pins);
   } catch (e) {
     if (
       !(e instanceof AgentClusterMemberUnsupportedError) &&
@@ -362,21 +364,18 @@ export type ImageCopyResult = {
   pruned: string[];
 };
 
-/** Asks the agent of the server holding `imageRef` to send it to the member with that certificate (ADR-0044). */
-export async function copyClusterImage(
-  sourceServerId: string,
-  imageRef: string,
-  targetFingerprint: string,
-  keep: number,
-): Promise<ImageCopyResult> {
-  const conn = await connectAgent(sourceServerId);
+async function onImages<T>(
+  serverId: string,
+  fn: (conn: AgentConnection) => Promise<T>,
+): Promise<T> {
+  const conn = await connectAgent(serverId);
   try {
     const hello = await conn.hello();
     if (!hello.capabilities?.includes(CLUSTER_IMAGES_CAPABILITY))
       throw new AgentClusterImagesUnsupportedError(
         CLUSTER_IMAGES_UNSUPPORTED_MESSAGE,
       );
-    return await conn.copyClusterImage(imageRef, targetFingerprint, keep);
+    return await fn(conn);
   } catch (e) {
     if (
       !(e instanceof AgentClusterImagesUnsupportedError) &&
@@ -389,4 +388,28 @@ export async function copyClusterImage(
   } finally {
     conn.close();
   }
+}
+
+/** Asks the agent of the server holding `imageRef` to send it to the member with that certificate (ADR-0044). */
+export function copyClusterImage(
+  sourceServerId: string,
+  imageRef: string,
+  targetFingerprint: string,
+  keep: number,
+): Promise<ImageCopyResult> {
+  return onImages(sourceServerId, (conn) =>
+    conn.copyClusterImage(imageRef, targetFingerprint, keep),
+  );
+}
+
+/** Tells the target to accept that one image from the source's certificate: a member takes no image it was not told of. */
+export function expectClusterImage(
+  targetServerId: string,
+  imageRef: string,
+  sourceFingerprint: string,
+  keep: number,
+): Promise<void> {
+  return onImages(targetServerId, (conn) =>
+    conn.expectClusterImage(imageRef, sourceFingerprint, keep),
+  );
 }
