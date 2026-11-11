@@ -16,6 +16,10 @@ import { getServerById } from "../servers/roster";
 import { updatingClusterHost } from "./binary-rollout";
 import { reconcileClusterBundles } from "./bundles";
 import { leaderHostOf } from "./host";
+import {
+  __setLeaderBeatClockForTest,
+  leaderNamedRecently,
+} from "./leader-beat";
 import { leadFrom } from "./leader-move";
 import { ensureClusterRelay, pushClusterRoster } from "./relay";
 import { getClusterById } from "./roster";
@@ -28,9 +32,10 @@ export const TAKEOVER_AFTER_MISSES = 2;
 
 const misses = new Map<string, number>();
 
-/** Test seam: forget every missed check. */
+/** Test seam: forget every missed check and every beat. */
 export function __resetLeaderChecksForTest(): void {
   misses.clear();
+  __setLeaderBeatClockForTest(null);
 }
 
 export type LeaderHandover = "taken_over" | "handed_back" | null;
@@ -46,8 +51,8 @@ async function say(cluster: Cluster, message: string): Promise<void> {
 }
 
 /**
- * One check of a leader that runs on another server. Away twice in a row, Deplo's own machine leads from the next
- * epoch; once it answers again it leads again, from another epoch. Background work: nothing changes while frozen.
+ * One check of a leader that runs on another server. Away twice in a row and unnamed for 25 s, Deplo's own machine
+ * leads from the next epoch; once it answers again it leads again, from another. Nothing changes while frozen.
  */
 export async function superviseClusterLeader(
   clusterId: string,
@@ -86,6 +91,8 @@ export async function superviseClusterLeader(
   const missed = (misses.get(clusterId) ?? 0) + 1;
   misses.set(clusterId, missed);
   if (missed < TAKEOVER_AFTER_MISSES) return null;
+  // It may still lead its half of a split on Deplo's last word: two leaders never hold one half each.
+  if (leaderNamedRecently(clusterId)) return null;
   const own = await leaderHostOf(null);
   if (!own) return null;
   if (!(await clusterLeaderAnswers(own.id)))

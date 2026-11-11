@@ -18,6 +18,7 @@ import { getServerById, listAllServers } from "../servers/roster";
 import { dropLeaderBundle, listLeaderBundles } from "./bundle-calls";
 import { reconcileClusterBundles } from "./bundles";
 import { leaderHost, leaderHostOf } from "./host";
+import { tellLeaderReplaced } from "./leader-beat";
 import {
   forgetLeaderRoster,
   pushLeaderRoster,
@@ -54,7 +55,9 @@ export async function leadFrom(
     leaderServerId: to.leaderServerId,
     leaderTakeoverAt: to.leaderTakeoverAt,
   };
-  if (!(await leaderHost(target))) throw new Error(NO_HOST);
+  const next = await leaderHost(target);
+  if (!next) throw new Error(NO_HOST);
+  const before = await leaderHost(cluster);
   // Its buffer may hold events of an earlier time it led: the watch starts after them.
   const head = Number((await readLeaderSnapshot(target))?.head) || 0;
   const claimed = await getDb()
@@ -77,10 +80,14 @@ export async function leadFrom(
     throw new Error("The cluster's leader changed meanwhile. Try again.");
   forgetLeaderRoster(cluster.id);
   // The watch's next pass repeats a roster this leader did not take.
-  await pushLeaderRoster((await getClusterById(cluster.id))!).catch((e) =>
-    warn(cluster.id, e),
-  );
-  return (await getClusterById(cluster.id))!;
+  const led = (await getClusterById(cluster.id))!;
+  await pushLeaderRoster(led).catch((e) => warn(cluster.id, e));
+  // A takeover is from a leader that does not answer; any other one hears it was replaced and stops at once.
+  if (before && before.id !== next.id && !to.leaderTakeoverAt)
+    await tellLeaderReplaced(before.id, cluster.id, led.leaderEpoch).catch(
+      () => {},
+    );
+  return led;
 }
 
 /** The servers the leader can run on, Deplo's own machine first. Not dialed: the move itself asks the agent. */

@@ -118,11 +118,15 @@ export async function clusterLeaderStatus(
   return onHost(serverId, (conn) => conn.clusterStatus());
 }
 
-/** One call to the leader on `serverId`, forwarded by its agent. A leader below `clusterMin` is refused. */
+/**
+ * One call to the leader on `serverId`, forwarded by its agent. A leader below `clusterMin` is refused. `sent` runs
+ * once the call itself leaves: a failure before it never reached the leader.
+ */
 export async function callClusterLeader(
   serverId: string,
   method: string,
   payload: Uint8Array = new Uint8Array(),
+  opts: { timeoutMs?: number; sent?: () => void } = {},
 ): Promise<Uint8Array> {
   return onHost(serverId, async (conn) => {
     const here = await conn.clusterStatus();
@@ -135,7 +139,8 @@ export async function callClusterLeader(
     const { min } = pin();
     if (!versionAtLeast(here.version, min))
       throw new ClusterLeaderTooOldError(here.version, min);
-    return conn.clusterCall(method, payload);
+    opts.sent?.();
+    return conn.clusterCall(method, payload, opts.timeoutMs);
   });
 }
 

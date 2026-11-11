@@ -94,11 +94,11 @@ export function clusterRpc(
       );
       return { held: r.held, served: r.served };
     },
-    async clusterCall(method, payload) {
+    async clusterCall(method, payload, timeoutMs = CLUSTER_CALL_TIMEOUT_MS) {
       const r = await unary(
         client.clusterCall.bind(client),
         { method, payload },
-        CLUSTER_CALL_TIMEOUT_MS,
+        timeoutMs,
       );
       return r.payload;
     },
