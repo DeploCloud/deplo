@@ -22,6 +22,8 @@ import { joinNames } from "@/lib/utils";
 import type { DocsTopic } from "@/lib/docs";
 import type { ActionResult } from "@/lib/result";
 import type { DatabaseDTO } from "@/lib/data/databases/rows";
+import type { FailoverPreview } from "@/lib/data/databases/failover";
+import { FailoverNote } from "@/components/storage/database-failover";
 
 type MoveServer = {
   id: string;
@@ -82,32 +84,44 @@ export function DatabaseServerCard({
   db,
   servers,
   disabled,
+  cluster,
+  failover,
 }: {
   db: DatabaseDTO;
   servers: MoveServer[];
   disabled: boolean;
+  cluster?: OnCluster | null;
+  /** What placing it on a cluster would promise, shown once a cluster is picked. */
+  failover?: FailoverPreview | null;
 }) {
   return (
     <ServerMoveCard
       disabled={disabled}
+      cluster={cluster ?? undefined}
       name={db.name}
       serverId={db.serverId}
       servers={servers}
       verb="Restarts"
       docs="databases.move"
       successMessage="Database moved"
+      onClusterNote={failover ? <FailoverNote {...failover} /> : undefined}
       move={(to) =>
-        gqlAction(
-          `mutation($id: String!, $input: UpdateDatabaseInput!) { updateDatabase(id: $id, input: $input) { id } }`,
-          {
-            id: db.id,
-            input: {
-              exposedPublicly: db.exposedPublicly,
-              exposedPort: db.exposedPublicly ? db.exposedPort : null,
-              serverId: to,
-            },
-          },
-        )
+        servers.find((s) => s.id === to)?.kind === "cluster"
+          ? gqlAction(
+              `mutation($id: String!, $clusterId: String!) { moveDatabaseToCluster(id: $id, clusterId: $clusterId) { id } }`,
+              { id: db.id, clusterId: to },
+            )
+          : gqlAction(
+              `mutation($id: String!, $input: UpdateDatabaseInput!) { updateDatabase(id: $id, input: $input) { id } }`,
+              {
+                id: db.id,
+                input: {
+                  exposedPublicly: db.exposedPublicly,
+                  exposedPort: db.exposedPublicly ? db.exposedPort : null,
+                  serverId: to,
+                },
+              },
+            )
       }
     />
   );
@@ -124,9 +138,12 @@ function ServerMoveCard({
   move,
   disabled,
   cluster,
+  onClusterNote,
 }: {
   disabled?: boolean;
   cluster?: OnCluster;
+  /** Shown in the dialog while the picked target is a cluster. */
+  onClusterNote?: React.ReactNode;
   name: string;
   serverId: string;
   servers: MoveServer[];
@@ -226,6 +243,8 @@ function ServerMoveCard({
                   ))}
                 </SelectContent>
               </Select>
+              {targets.find((s) => s.id === target)?.kind === "cluster" &&
+                onClusterNote}
               {neighbours.length > 0 && (
                 <p className="text-xs text-muted-foreground">
                   Stops reaching {joinNames(neighbours)} by name:{" "}

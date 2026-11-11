@@ -2,6 +2,7 @@ import { Suspense } from "react";
 import { notFound } from "next/navigation";
 import { getDatabase } from "@/lib/data/databases/rows";
 import { getDatabaseVolumeBytes } from "@/lib/data/databases/stack";
+import { getDatabaseFailover } from "@/lib/data/databases/failover";
 import { getDatabaseBackupSummary } from "@/lib/data/backups/run-listing";
 import { getDatabaseMetrics } from "@/lib/data/container-metrics";
 import { getServerById } from "@/lib/data/servers/roster";
@@ -10,6 +11,7 @@ import { listAllEnvironmentsForTeam } from "@/lib/data/environments";
 import { listDatabaseAppLinks } from "@/lib/data/database-links";
 import { DatabaseRelayNotice } from "@/components/storage/database-relay-notice";
 import { DatabaseOverview } from "@/components/storage/database-overview";
+import { DatabaseFailoverCard } from "@/components/storage/database-failover";
 import { DataStat } from "@/components/storage/database-stats";
 import { DatabaseRelabelNotice } from "@/components/storage/database-health-stat";
 import { DataCopyNotice } from "@/components/shared/data-copy-notice";
@@ -24,7 +26,7 @@ export default async function DatabaseOverviewPage(
   const db = await getDatabase(id);
   if (!db) notFound();
 
-  const [server, caps, mayExposePorts, backups, metrics, appLinks] =
+  const [server, caps, mayExposePorts, backups, metrics, appLinks, failover] =
     await Promise.all([
       getServerById(db.serverId),
       currentCapabilities(),
@@ -32,6 +34,7 @@ export default async function DatabaseOverviewPage(
       getDatabaseBackupSummary(db.id),
       getDatabaseMetrics(db.id),
       listDatabaseAppLinks(db.id),
+      db.clusterId ? getDatabaseFailover(db.id) : null,
     ]);
   const can = new Set(caps);
   const allEnvs = await listAllEnvironmentsForTeam();
@@ -64,6 +67,16 @@ export default async function DatabaseOverviewPage(
       <Suspense fallback={null}>
         <SecurityUpdatesNotice kind="database" id={db.id} name={db.name} />
       </Suspense>
+      {failover && (
+        <DatabaseFailoverCard
+          failover={failover}
+          backupsHref={
+            can.has("manage_backups")
+              ? `/storage/databases/${db.id}/backups`
+              : undefined
+          }
+        />
+      )}
       <DatabaseOverview
         environmentLabel={environmentLabel}
         environments={environments}

@@ -53,6 +53,7 @@ export function databaseToRow(d: Database): DatabaseInsert {
     dataCopyError: d.dataCopyError,
     migrationRunId: d.migrationRunId,
     serverId: d.serverId,
+    clusterId: d.clusterId ?? null,
     host: d.host,
     port: d.port,
     connectionStringEnc: d.connectionStringEnc,
@@ -65,6 +66,7 @@ export function databaseToRow(d: Database): DatabaseInsert {
     restartLoopGuard: d.restartLoopGuard,
     restartLoopStoppedAt: d.restartLoopStoppedAt,
     sizeMb: d.sizeMb,
+    restoreBytesPerSec: d.restoreBytesPerSec ?? null,
     createdAt: d.createdAt,
   } satisfies Record<
     Exclude<keyof Database, "resources" | "mounts">,
@@ -90,6 +92,7 @@ export function assembleDatabase(
     dataCopyError: row.dataCopyError ?? "",
     migrationRunId: row.migrationRunId ?? null,
     serverId: row.serverId,
+    clusterId: row.clusterId ?? null,
     host: row.host,
     port: row.port,
     connectionStringEnc: row.connectionStringEnc,
@@ -103,6 +106,7 @@ export function assembleDatabase(
     restartLoopStoppedAt: row.restartLoopStoppedAt ?? null,
     mounts,
     sizeMb: row.sizeMb,
+    restoreBytesPerSec: row.restoreBytesPerSec ?? null,
     createdAt: row.createdAt,
   };
 }

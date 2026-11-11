@@ -33,15 +33,77 @@ import {
   rerouteRequest,
 } from "./stack";
 import { assertServerNotInCluster } from "../clusters/members";
+import {
+  askLeaderToPlace,
+  clearPlacement,
+  recordPlacement,
+} from "../clusters/placement";
+import { listClustersForTeam } from "../clusters/roster";
+import { ensureFailoverBackup } from "./failover";
 import { assertHostPortAvailable, resolveTeamServer } from "./server-ports";
+import type { Cluster } from "../../types/cluster";
 
-export async function updateDatabase(
+interface UpdateDatabaseInput {
+  exposedPublicly: boolean;
+  exposedPort?: number;
+  serverId?: string;
+}
+
+export function updateDatabase(
   id: string,
-  input: {
-    exposedPublicly: boolean;
-    exposedPort?: number;
-    serverId?: string;
-  },
+  input: UpdateDatabaseInput,
+): Promise<void> {
+  return writeDatabasePlacement(id, input);
+}
+
+/** Places a database on a cluster: the leader picks the member, the database moves there like a server move. */
+export async function moveDatabaseToCluster(
+  id: string,
+  clusterId: string,
+): Promise<void> {
+  const { membership } = await requireCapability("configure_databases");
+  const cluster = (await listClustersForTeam(membership.teamId)).find(
+    (c) => c.id === clusterId,
+  );
+  if (!cluster) throw new Error("That cluster isn't available to this team.");
+  const db = await requireDatabase(id, membership.teamId);
+  if (db.clusterId === cluster.id) return;
+  assertNotProvisioning(db, "moving it");
+  // A refusal throws here, before anything stops.
+  const member = await askLeaderToPlace(cluster, {
+    kind: "database",
+    id,
+    name: db.name,
+    environmentId: db.environmentId,
+    limitMb: db.resources?.memoryMb ?? 0,
+  });
+  await writeDatabasePlacement(
+    id,
+    {
+      exposedPublicly: db.exposedPublicly,
+      exposedPort: db.exposedPort ?? undefined,
+      serverId: member,
+    },
+    cluster,
+  );
+  await recordPlacement({
+    clusterId: cluster.id,
+    kind: "database",
+    workloadId: id,
+    members: [member],
+    epoch: cluster.leaderEpoch,
+  });
+  await ensureFailoverBackup({
+    ...db,
+    serverId: member,
+    clusterId: cluster.id,
+  });
+}
+
+async function writeDatabasePlacement(
+  id: string,
+  input: UpdateDatabaseInput,
+  cluster?: Cluster,
 ): Promise<void> {
   const { membership } = await requireCapability("configure_databases");
   const teamId = membership.teamId;
@@ -57,7 +119,7 @@ export async function updateDatabase(
     input.serverId ?? db.serverId,
   );
   const movingFrom = targetServer.id !== db.serverId ? db.serverId : null;
-  if (movingFrom) await assertServerNotInCluster(targetServer.id);
+  if (movingFrom && !cluster) await assertServerNotInCluster(targetServer.id);
   if (movingFrom) {
     const clash = databaseHostClash(
       db.host,
@@ -178,7 +240,7 @@ export async function updateDatabase(
       .update(databasesTable)
       .set({
         serverId: targetServer.id,
-        ...(movingFrom ? { clusterId: null } : {}),
+        ...(movingFrom ? { clusterId: cluster?.id ?? null } : {}),
         exposedPublicly: exposed,
         exposedPort: newExposedPort,
         connectionStringEnc: connEnc,
@@ -187,12 +249,17 @@ export async function updateDatabase(
     publishDatabaseChanged(id);
   });
   if (moveWarning) console.warn(`[databases] ${moveWarning}`);
+  if (movingFrom && db.clusterId && !cluster)
+    await clearPlacement("database", id);
+  const where = cluster
+    ? `cluster ${cluster.name}, now on ${targetServer.name}`
+    : targetServer.name;
   await recordActivity(
     "database",
     movingFrom
       ? moveWarning
-        ? `Moved database ${db.name} to ${targetServer.name} (warning: ${moveWarning})`
-        : `Moved database ${db.name} to ${targetServer.name}`
+        ? `Moved database ${db.name} to ${where} (warning: ${moveWarning})`
+        : `Moved database ${db.name} to ${where}`
       : exposed
         ? `Exposed database ${db.name} on port ${newExposedPort}`
         : `Unexposed database ${db.name}`,

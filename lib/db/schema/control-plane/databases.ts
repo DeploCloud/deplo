@@ -64,6 +64,8 @@ export const databases = pgTable(
     restartLoopGuard: boolean("restart_loop_guard").notNull().default(true),
     restartLoopStoppedAt: isoTimestamptz("restart_loop_stopped_at"),
     sizeMb: bigint("size_mb", { mode: "number" }).notNull(),
+    // Artifact bytes per second of the last restore; NULL until one was measured.
+    restoreBytesPerSec: bigint("restore_bytes_per_sec", { mode: "number" }),
     createdAt: isoTimestamptz("created_at").notNull(),
   },
   (t) => [

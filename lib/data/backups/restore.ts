@@ -4,6 +4,7 @@ import { and, eq } from "drizzle-orm";
 
 import { getDb } from "../../db/client";
 import { backupRuns as backupRunsTable } from "../../db/schema/control-plane/backups";
+import { databases as databasesTable } from "../../db/schema/control-plane/databases";
 import { assembleBackupRun } from "../backup-rows";
 import { getCurrentUser } from "../../auth/current-user";
 import { requireMembership } from "../../membership";
@@ -62,6 +63,7 @@ export async function restoreBackup(runId: string): Promise<void> {
     try {
       if (run.targetKind === "app" && target.appId)
         await setAppStatus(target.appId, "restoring");
+      const started = Date.now();
       const result = await restoreFromDestination(
         creds,
         {
@@ -75,6 +77,19 @@ export async function restoreBackup(runId: string): Promise<void> {
       );
       if (!result.ok)
         failure = result.error || "the agent reported a failed restore";
+      else if (target.databaseId)
+        // The recovery estimate of a database on a cluster reads this.
+        await getDb()
+          .update(databasesTable)
+          .set({
+            restoreBytesPerSec: Math.max(
+              1,
+              Math.round(
+                (run.sizeBytes * 1000) / Math.max(1, Date.now() - started),
+              ),
+            ),
+          })
+          .where(eq(databasesTable.id, target.databaseId));
     } catch (e) {
       failure = (mapBackupUnsupported(e) as Error).message;
     } finally {
