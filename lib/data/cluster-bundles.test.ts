@@ -669,3 +669,35 @@ test("while a Deplo move freezes this instance, nothing is pushed or reconciled"
 function fleetCalls(serverId: string, method: string) {
   return hosts[serverId].calls.filter((c) => c.method === method);
 }
+
+test("a stack deployed beside its old release leaves a bundle that starts it on its own", async () => {
+  const cluster = await eu();
+  const app = await clusterApp(cluster.id);
+  hosts.srv_2.capabilities.push(
+    "deploy.overlap",
+    "deploy.replicas",
+    "deploy.overlap.stack",
+  );
+  await seedDeployment(db, { id: "dpl_1", appId: app.id, status: "ready" });
+  const standIn = COMPOSE.replace("web:", "web_next:");
+  const result = await runAgentDeploy({
+    serverId: "srv_2",
+    deployId: "dpl_1",
+    slug: app.slug,
+    appId: app.id,
+    imageRef: "",
+    composeYaml: COMPOSE,
+    network: "deplo-team-x",
+    env: {},
+    plan: { kind: "compose", mounts: [] },
+    overlap: { live: COMPOSE, standIn, ports: [], replicas: 2, stack: true },
+    sink: { log: () => {} },
+  });
+  assert.equal(result.ready, true);
+  await flushFailoverBundles();
+
+  assert.equal(hosts.srv_2.deploys[0].standInComposeYaml, standIn);
+  const bundle = await open(leader, app.id);
+  assert.equal(bundle.stack.composeYaml, COMPOSE);
+  assert.doesNotMatch(JSON.stringify(bundle), /_next/);
+});

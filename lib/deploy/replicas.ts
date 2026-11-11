@@ -45,18 +45,22 @@ export function composeReplicasConflicts(composeYaml: string): string[] {
   if (!services) return [];
   const out: string[] = [];
   for (const [name, raw] of Object.entries(services)) {
-    const svc = raw as { volumes?: unknown; ports?: unknown } | null;
-    if (!svc || typeof svc !== "object" || composeServiceReplicas(svc) <= 1)
-      continue;
-    const ports = Array.isArray(svc.ports)
-      ? svc.ports.some((p) => p != null && p !== "")
-      : svc.ports != null;
-    const disk = (Array.isArray(svc.volumes) ? svc.volumes : []).some(
-      mountsDisk,
-    );
-    if (ports || disk) out.push(name);
+    if (composeServiceReplicas(raw) > 1 && serviceKeepsOneCopy(raw))
+      out.push(name);
   }
   return out;
+}
+
+// A named volume, a host path or a published host port: what two copies of a service cannot share.
+export function serviceKeepsOneCopy(raw: unknown): boolean {
+  const svc = raw as { volumes?: unknown; ports?: unknown } | null;
+  if (!svc || typeof svc !== "object") return false;
+  const ports = Array.isArray(svc.ports)
+    ? svc.ports.some((p) => p != null && p !== "")
+    : svc.ports != null;
+  return (
+    ports || (Array.isArray(svc.volumes) ? svc.volumes : []).some(mountsDisk)
+  );
 }
 
 export function composeServiceReplicas(svc: unknown): number {

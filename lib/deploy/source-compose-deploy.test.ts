@@ -548,3 +548,31 @@ test("a compose file of images only is named as the app when Railpack then finds
     ),
   );
 });
+
+test("a repository's stack with replicas starts beside the live one from the images it just built", async () => {
+  caps = [...CAPS, "deploy.overlap", "deploy.replicas", "deploy.overlap.stack"];
+  const compose =
+    "services:\n  web:\n    build: ./web\n    expose: ['3000']\n    deploy:\n      replicas: 2\n";
+  answer = (req) => ({
+    ready: req.buildKind === BuildKind.BUILD_KIND_COMPOSE,
+    error: "",
+    commitSha: SHA,
+    observedPort: 0,
+    builtWith: "",
+    listeningPorts: [],
+    ...(req.buildKind === BuildKind.BUILD_KIND_COMPOSE
+      ? {}
+      : { sourceCompose: { path: "compose.yaml", content: compose } }),
+  });
+  await runDeploymentGuarded("dpl_1");
+
+  assert.equal(sent.length, 2, "one read, one deploy");
+  const [read, stack] = sent;
+  assert.equal(read.standInComposeYaml, "", "the read has no stack yet");
+  assert.match(stack.composeYaml, /\n  web:\n/);
+  assert.match(stack.composeYaml, /build:/);
+  assert.match(stack.standInComposeYaml, /\n  web_next:\n/);
+  assert.match(stack.standInComposeYaml, /image: deplo\/shop-web:/);
+  // Building twice would be a second copy of the work, and a second image name.
+  assert.doesNotMatch(stack.standInComposeYaml, /build:/);
+});

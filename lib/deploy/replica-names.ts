@@ -21,10 +21,11 @@ export function replicaIndexOf(container: string): number | null {
 
 // The service as the person named it: without Deplo's own prefixes.
 function baseOf(service: string, slug: string): string {
-  const project = `deplo-${slug}-`;
-  const own = service.startsWith(project)
-    ? service.slice(project.length)
-    : service;
+  // The second is the stand-in a deploy runs beside the live copies.
+  const project = [`deplo-${slug}-`, `deplo-${slug}_next-`].find((p) =>
+    service.startsWith(p),
+  );
+  const own = project ? service.slice(project.length) : service;
   return own.replace(/^deplo-/, "") || slug;
 }
 

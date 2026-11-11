@@ -13,12 +13,15 @@ import { buildComposeStack } from "../compose-stack/render";
 import { stackFilesDir } from "../deploy-key";
 import { deployNetwork } from "../network";
 import type { AgentBuildPlan } from "../agent-deploy";
-import { servicesOf } from "../compose-lint/document";
 import {
-  REPLICAS_AGENT_MESSAGE,
-  REPLICAS_CAPABILITY,
-  composeServiceReplicas,
-} from "../replicas";
+  standInStack,
+  stackOverlapBlocker,
+  stackReplicas,
+} from "../compose-stack/stand-in";
+import type { ComposeDoc } from "../compose-stack/types";
+import type { OverlapStacks } from "../overlap";
+import { REPLICAS_AGENT_MESSAGE, REPLICAS_CAPABILITY } from "../replicas";
+import yaml from "../../yaml";
 import { detectDefaultApp } from "../compose-lint/routing";
 import {
   recordSourceCompose,
@@ -98,6 +101,8 @@ async function prepareComposeStack(
 ): Promise<{
   stackYaml: string;
   filesDir: string;
+  // Set when the stack asks for replicas and every service of it can run twice.
+  overlap?: OverlapStacks;
 }> {
   const { project, name, deployKey, trackingId, domainRoutes } = opts;
 
@@ -130,7 +135,39 @@ async function prepareComposeStack(
     network: deployNetwork(project, opts.preview ? deployKey : null),
     dockerVersion: (await getServerById(opts.serverId))?.dockerVersion,
   });
-  return { stackYaml, filesDir };
+  return {
+    stackYaml,
+    filesDir,
+    overlap: stackOverlap(opts.depId, project, stackYaml, takenNames),
+  };
+}
+
+// https://deplo.build/docs/advanced/replicas#compose-stacks
+function stackOverlap(
+  depId: string,
+  project: ComposeStackApp,
+  stackYaml: string,
+  takenNames: string[],
+): OverlapStacks | undefined {
+  const replicas = stackReplicas(project.compose);
+  if (replicas <= 1) return undefined;
+  const blocker = stackOverlapBlocker(
+    project.compose ?? "",
+    (yaml.load(stackYaml) as ComposeDoc) ?? {},
+    project.volumes,
+    takenNames,
+  );
+  if (blocker) {
+    log(depId, "info", blocker);
+    return undefined;
+  }
+  return {
+    live: stackYaml,
+    standIn: standInStack(stackYaml),
+    ports: [],
+    replicas,
+    stack: true,
+  };
 }
 
 // `failure` is logged only when nothing else said why: the agent's own reason is already in the log.
@@ -181,12 +218,6 @@ async function finishComposeStack(
   }
 }
 
-function stackAsksForReplicas(compose: string | null): boolean {
-  return Object.values(servicesOf(compose ?? "") ?? {}).some(
-    (svc) => composeServiceReplicas(svc) > 1,
-  );
-}
-
 export async function deployComposeStackViaAgent(
   opts: ComposeStackOpts & { serverId: string },
 ): Promise<void> {
@@ -205,7 +236,7 @@ export async function deployComposeStackViaAgent(
       return;
     }
     if (
-      stackAsksForReplicas(project.compose) &&
+      stackReplicas(project.compose) > 1 &&
       !hello.capabilities.includes(REPLICAS_CAPABILITY)
     ) {
       log(depId, "error", REPLICAS_AGENT_MESSAGE);
@@ -222,12 +253,13 @@ export async function deployComposeStackViaAgent(
     return;
   }
 
-  const { stackYaml } = await prepareComposeStack(opts);
+  const { stackYaml, overlap } = await prepareComposeStack(opts);
   const env = await appEnv(project.id, opts.environment, {
     preview: opts.preview,
   });
 
   const { outcome, error } = await tryAgent({
+    overlap,
     depId,
     serverId,
     project: {
@@ -329,12 +361,13 @@ export async function deploySourceComposeStack(
       opts.source.kind === "git" ? opts.subdir : "",
     ),
   };
-  const { stackYaml } = await prepareComposeStack(stackOpts);
+  const { stackYaml, overlap } = await prepareComposeStack(stackOpts);
   const ready = readyCheckFor({ routes, stack: true, compose: stored });
   const env = await appEnv(project.id, opts.environment, {
     preview: opts.preview,
   });
   const attempt = await tryAgent({
+    overlap,
     depId,
     serverId,
     project: {

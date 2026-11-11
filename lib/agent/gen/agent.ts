@@ -1001,6 +1001,8 @@ export interface DeployRequest {
    * removes it. A stand-in that never gets ready is removed and the live container is never
    * touched, unless the live container mounts storage (which may refuse a second copy): then
    * the agent swaps in place instead. Empty => the in-place swap. Advertised as `deploy.overlap`.
+   * A compose stack (`deploy.overlap.stack`) is copied whole, each service `<name>_next`: the
+   * deploy's `ready` check judges the copy, and one that never gets ready always fails the deploy.
    */
   standInComposeYaml: string;
   /**
