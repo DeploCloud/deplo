@@ -18,3 +18,4 @@ The leader makes an age key pair at install and only its public key leaves its m
 
 - A compromised leader machine exposes the clusters' workloads' variables, as a compromised member already exposes its own.
 - A workload whose bundle the leader never received does not fail over, and Activity says why.
+- **The control plane keeps each bundle too**, in `failover_bundle_pushes.bundle_enc`, encrypted under `DEPLO_SECRET` like every other `*_enc` column. That is what lets it seal the same bundle to a new leader key and resend one a leader lost, without a redeploy. It is a second copy at rest of values the control plane already holds (variables, registry and destination credentials, the tunnel token, the engine password), and one whole document in a text column by decision, not a precedent for JSON in the schema: it is ciphertext nothing queries into.

@@ -249,8 +249,8 @@ export interface PlacementReport {
 }
 
 /**
- * The only writer of `workload_placements` and of a cluster workload's `server_id`: mirrors what the
- * leader says. `server_id` becomes the first member in placement order, and is left alone while waiting.
+ * What the leader says, mirrored: `workload_placements`, and `server_id` as the first member in placement order,
+ * left alone while waiting. A move a person asks for writes `server_id` first and reports here after; a delete lets go in `dissolve.ts`.
  */
 export async function recordPlacement(r: PlacementReport): Promise<boolean> {
   const members = new Set(await clusterMemberServerIds(r.clusterId));
