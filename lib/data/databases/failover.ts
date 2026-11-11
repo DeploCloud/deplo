@@ -314,7 +314,7 @@ async function lossAndRecovery(
   const archived =
     archivesChangeLog(db) &&
     !!db.walArchivedAt &&
-    !!(await latestBaseBackup(db.teamId, db.id));
+    !!(await latestBaseBackup(db));
   const last = await getDb()
     .select({ sizeBytes: backupRunsTable.sizeBytes })
     .from(backupRunsTable)

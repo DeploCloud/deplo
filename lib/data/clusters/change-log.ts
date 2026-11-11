@@ -28,8 +28,9 @@ const KEPT_MS = CHANGE_LOG_KEPT_MINUTES * 60_000;
 // Since when each database's stack was seen archiving, while its change log is not counted yet.
 const watching = new Map<string, number>();
 
-/** The newest finished base backup of a database: its change log is kept beside it and replayed onto it. */
-export async function latestBaseBackup(teamId: string, databaseId: string) {
+/** The newest finished base backup of a database: its change log is kept beside it and replayed onto it. Callers hold the gate. */
+export async function latestBaseBackup(db: Pick<Database, "id" | "teamId">) {
+  const { teamId, id: databaseId } = db;
   const runs = await getDb()
     .select()
     .from(runsTable)
@@ -91,7 +92,7 @@ async function shipOne(db: Database): Promise<void> {
   if (counted !== null && at.getTime() - counted > KEPT_MS)
     // Postgres dropped what waited that long, so the log has a hole: it counts again after the next base backup.
     return changeLogBroken(db.id);
-  const base = await latestBaseBackup(db.teamId, db.id);
+  const base = await latestBaseBackup(db);
   if (counted === null) {
     if (!(await stackArchives(db))) {
       watching.delete(db.id);
