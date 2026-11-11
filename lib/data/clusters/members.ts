@@ -14,6 +14,8 @@ import {
   rehomeFailoverBackups,
 } from "../databases/failover";
 import { ensureVolumeAppBackups } from "./app-restore";
+import { joinAppTunnels } from "./app-tunnel";
+import { inBackground } from "./bundles";
 import { servers as serversTable } from "../../db/schema/control-plane/servers";
 import { teams as teamsTable } from "../../db/schema/control-plane/identity";
 import { getCurrentUser } from "../../auth/current-user";
@@ -373,7 +375,11 @@ export async function addClusterMember(
         })),
       ],
     );
-    return { apps: apps.length, databases: dbs.length };
+    return {
+      apps: apps.length,
+      databases: dbs.length,
+      appIds: apps.map((a) => a.id),
+    };
   });
 
   const members = await readMembers(clusterId, { admin: true, teamId });
@@ -438,9 +444,13 @@ export async function addClusterMember(
       `[cluster-relay] ${clusterId}: ${e instanceof Error ? e.message : String(e)}`,
     );
   }
+  // An App that came along keeps its address wherever it runs from now: its domains switch without waiting for the sweep.
+  if (came.appIds.length > 0)
+    inBackground(serverId, () => joinAppTunnels(came.appIds, user));
   return {
     member,
-    ...came,
+    apps: came.apps,
+    databases: came.databases,
     note: failoverOn(members.length)
       ? null
       : "Failover starts at two members. Add another server to turn it on.",

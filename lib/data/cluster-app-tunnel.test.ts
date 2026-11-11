@@ -577,16 +577,15 @@ test("a domain added to a cluster App in a connected zone is served by its tunne
   );
 });
 
-test("an App that came with its server gets its tunnel from the sweep, connector first", async () => {
+test("an App that came with its server gets its tunnel at the join, connector first", async () => {
   await connectCloudflare();
   const app = await soloApp("srv_4");
   await withDomain(app.id);
   await running(app, "srv_4", COMPOSE);
   const cluster = await eu();
   await asAdmin(() => addClusterMember(cluster.id, "srv_4"));
-  assert.equal(cf.tunnels.size, 0);
+  await flushFailoverBundles();
 
-  await reconcileAppTunnels();
   const [tunnelId] = [...cf.tunnels.keys()];
   const first = parse(hosts.srv_4.reroutes[0].composeYaml) as Stack;
   assert.deepEqual(first.services[CONNECTOR].environment, [
@@ -595,7 +594,7 @@ test("an App that came with its server gets its tunnel from the sweep, connector
   assert.deepEqual(records(), [
     { type: "CNAME", content: `${tunnelId}.cfargotunnel.com`, proxied: true },
   ]);
-  // A second pass has nothing left to do.
+  // The sweep has nothing left to do.
   const calls = cf.calls.length;
   await reconcileAppTunnels();
   assert.equal(hosts.srv_4.reroutes.length, 2);
