@@ -33,7 +33,12 @@ import { listGithubInstallations } from "../github";
 import { recordActivity } from "../activity";
 import { loadAppGraph } from "../app-graph-load";
 import { usesComposeStack } from "../../utils";
-import { cleanReplicas, replicasRefusal } from "../../deploy/replicas";
+import {
+  REPLICAS_DATA_MESSAGE,
+  cleanReplicas,
+  replicasRefusal,
+  scaleConflicts,
+} from "../../deploy/replicas";
 import { syncAppWebhook } from "../git-connections";
 import { publishAppChanged } from "../../graphql/pubsub";
 import { cleanAppName } from "./create";
@@ -365,6 +370,13 @@ export async function setAppComposeUpArgs(
   if (raw) {
     const problem = validateComposeUpArgs(raw);
     if (problem) throw new Error(problem);
+    const [app] = await getDb()
+      .select({ compose: appsTable.compose })
+      .from(appsTable)
+      .where(and(eq(appsTable.id, id), eq(appsTable.teamId, membership.teamId)))
+      .limit(1);
+    if (scaleConflicts(app?.compose, raw).length > 0)
+      throw new Error(REPLICAS_DATA_MESSAGE);
   }
   const updated = await getDb()
     .update(appsTable)

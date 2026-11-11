@@ -20,7 +20,12 @@ import {
 } from "../compose-stack/stand-in";
 import type { ComposeDoc } from "../compose-stack/types";
 import type { OverlapStacks } from "../overlap";
-import { REPLICAS_AGENT_MESSAGE, REPLICAS_CAPABILITY } from "../replicas";
+import {
+  REPLICAS_AGENT_MESSAGE,
+  REPLICAS_CAPABILITY,
+  REPLICAS_DATA_MESSAGE,
+  scaleConflicts,
+} from "../replicas";
 import yaml from "../../yaml";
 import { detectDefaultApp } from "../compose-lint/routing";
 import {
@@ -105,6 +110,9 @@ async function prepareComposeStack(
   overlap?: OverlapStacks;
 }> {
   const { project, name, deployKey, trackingId, domainRoutes } = opts;
+  // The YAML's own rule, held against the extra flags too: `--scale` is replicas by another door.
+  if (scaleConflicts(project.compose, project.composeUpArgs).length > 0)
+    throw new Error(REPLICAS_DATA_MESSAGE);
 
   const filesDir = opts.sourceDir ?? composeFilesDir(deployKey);
   const basicAuthUsers = await basicAuthUsersValue(project.id);

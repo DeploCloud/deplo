@@ -99,3 +99,23 @@ test("another team's app can't be given flags", async () => {
   );
   assert.equal((await loadAppGraph("prj_1"))?.composeUpArgs, null);
 });
+
+test("--scale above one is refused on a service that keeps data, with the replicas sentence", async () => {
+  await seedApp(db, {
+    id: "prj_1",
+    teamId: TEAM_A,
+    source: "compose",
+    repo: null,
+    compose:
+      "services:\n  web:\n    image: nginx\n    volumes:\n      - data:/data\n  worker:\n    image: busybox\n",
+  });
+  await assert.rejects(
+    asUser1(() => setAppComposeUpArgs("prj_1", "--scale web=3")),
+    /An App that keeps data on its own disk runs one copy/,
+  );
+  await asUser1(() => setAppComposeUpArgs("prj_1", "--scale worker=3"));
+  assert.equal(
+    (await loadAppGraph("prj_1"))?.composeUpArgs,
+    "--scale worker=3",
+  );
+});
