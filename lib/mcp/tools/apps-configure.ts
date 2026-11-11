@@ -97,6 +97,12 @@ export const APPS_CONFIG: McpToolDef[] = [
         .optional()
         .describe("The new App name. Omit to use the template name."),
       serverId: z.string().optional(),
+      clusterId: z
+        .string()
+        .optional()
+        .describe(
+          "Place the app on a cluster (an id from list_clusters) instead of a server: its leader picks the member. Not together with serverId.",
+        ),
       projectId: z.string().optional(),
       environmentId: z.string().optional(),
       folderId: z.string().optional(),
@@ -119,6 +125,7 @@ export const APPS_CONFIG: McpToolDef[] = [
         variantSlug: a.variantSlug,
         name: a.name,
         serverId: a.serverId,
+        clusterId: a.clusterId,
         projectId: a.projectId,
         environmentId: a.environmentId,
         folderId: a.folderId,

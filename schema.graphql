@@ -1608,6 +1608,11 @@ type ContainerMetricsShare {
 
 input CreateAppFromTemplateInput {
   """
+  Place the App on a cluster instead of a server: its leader picks the server. Not together with serverId.
+  """
+  clusterId: String
+
+  """
   Request the first deployment. Defaults to false; a token also needs deploy_apps.
   """
   deploy: Boolean

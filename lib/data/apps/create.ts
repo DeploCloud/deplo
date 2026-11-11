@@ -185,6 +185,7 @@ export interface CreateAppFromTemplateInput {
   variantSlug?: string;
   name?: string;
   serverId?: string;
+  clusterId?: string;
   projectId?: string;
   environmentId?: string;
   folderId?: string;
@@ -692,6 +693,7 @@ export async function createAppFromTemplate(
     autoDomainPath: blueprint.expose?.path ?? null,
     mounts: blueprint.mounts,
     serverId: input.serverId,
+    clusterId: input.clusterId,
     projectId: input.projectId ?? null,
     environmentId: input.environmentId ?? null,
     folderId: input.folderId ?? null,
