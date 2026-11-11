@@ -23,6 +23,7 @@ import { sweepDomainDns } from "../data/domains/dns-check";
 import { reconcileNameForwarders } from "../data/clusters/forwarders";
 import { reconcileClusterImages } from "../data/clusters/images";
 import { reconcileFailoverBundles } from "../data/clusters/bundles";
+import { reconcileDatabaseBundles } from "../data/clusters/database-bundles";
 import { rehostClusterAddresses } from "../data/clusters/failover-address";
 import { reconcileClusterRelay } from "../data/clusters/relay";
 import { sweepCloudflareCertificates } from "../data/domains/cloudflare-mode";
@@ -54,6 +55,7 @@ export async function runMaintenanceSweep(): Promise<void> {
   await settle("cluster images", reconcileClusterImages);
   await settle("name forwarders", reconcileNameForwarders);
   await settle("failover bundles", reconcileFailoverBundles);
+  await settle("database bundles", reconcileDatabaseBundles);
   await settle("cluster addresses", rehostClusterAddresses);
   await settle("cloudflare certificates", sweepCloudflareCertificates);
   await settle("git tokens", checkGitConnections);

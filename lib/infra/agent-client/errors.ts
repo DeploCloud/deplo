@@ -89,6 +89,14 @@ export const clusterFailoverUnsupportedMessage = (
   `The agent on ${server} is too old to take over Apps when another server in cluster ${cluster} stops. ` +
   `Update the agent on ${server}.`;
 
+/** An agent without `cluster.failover.restore`: named, never handed a database to restore. */
+export const clusterRestoreUnsupportedMessage = (
+  server: string,
+  cluster: string,
+) =>
+  `The agent on ${server} is too old to restore a database when another server in cluster ${cluster} stops. ` +
+  `Update the agent on ${server}.`;
+
 /** An agent without `cluster.forwarders`: named, never failed at runtime. */
 export class AgentClusterForwardersUnsupportedError extends Error {}
 

@@ -278,6 +278,25 @@ async function relayBackup(
   }
 }
 
+/** What an agent is handed to restore an artifact it can read itself: a bucket, or a store on its own disk. */
+export function restoreRequestFor(
+  creds: DestinationWithSecrets,
+  target: Omit<TransportTarget, "serverId">,
+  objectKey: string,
+  expectedSha256 = "",
+): RestoreRequest {
+  const dest = creds.destination;
+  return {
+    kind: wireKind(target.kind),
+    database: target.database,
+    project: target.project,
+    s3: dest.kind === "s3" ? s3TargetFor(creds, objectKey) : undefined,
+    store: dest.kind === "server" ? storeTargetFor(dest, objectKey) : undefined,
+    ageIdentity: creds.ageIdentity,
+    expectedSha256,
+  };
+}
+
 export async function restoreFromDestination(
   creds: DestinationWithSecrets,
   target: TransportTarget,
@@ -288,16 +307,7 @@ export async function restoreFromDestination(
   const destServer = destinationServerId(dest, target.serverId);
 
   if (dest.kind === "s3" || destServer === target.serverId) {
-    const req: RestoreRequest = {
-      kind: wireKind(target.kind),
-      database: target.database,
-      project: target.project,
-      s3: dest.kind === "s3" ? s3TargetFor(creds, objectKey) : undefined,
-      store:
-        dest.kind === "server" ? storeTargetFor(dest, objectKey) : undefined,
-      ageIdentity: creds.ageIdentity,
-      expectedSha256,
-    };
+    const req = restoreRequestFor(creds, target, objectKey, expectedSha256);
     const conn = await connectBackupAgent(target.serverId, {
       store: dest.kind === "server",
       encryptedS3: dest.kind === "s3" && !!dest.ageRecipient,

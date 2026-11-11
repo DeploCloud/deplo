@@ -8,6 +8,7 @@ import { databases as databasesTable } from "../../db/schema/control-plane/datab
 import { getCurrentUser } from "../../auth/current-user";
 import { requireCapability } from "../../membership";
 import { recordActivity } from "../activity";
+import { dropFailoverBundle } from "../clusters/bundles";
 import { clearPlacement } from "../clusters/placement";
 import { deleteBackupsWithTarget } from "../backups/artifact-delete";
 import { connectAgent } from "../../infra/agent-client/connect";
@@ -265,7 +266,10 @@ export async function deleteDatabase(
       ]);
     }
     await getDb().delete(databasesTable).where(eq(databasesTable.id, id));
-    if (db.clusterId) await clearPlacement("database", id).catch(() => {});
+    if (db.clusterId) {
+      await clearPlacement("database", id).catch(() => {});
+      await dropFailoverBundle(id, db.clusterId, "database").catch(() => {});
+    }
     publishDatabaseChanged(id);
     await recordActivity(
       "database",

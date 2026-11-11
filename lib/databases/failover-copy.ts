@@ -37,3 +37,31 @@ export function recoverySentence(
     seconds < 60 ? "under a minute" : `about ${span(Math.round(seconds / 60))}`;
   return `Recovery takes ${took}: the last backup is ${formatBytes(lastBackupBytes)}.`;
 }
+
+/** The Activity entry of a failover that restored a backup: its time in the schedule's timezone, with the date when it is not today's. */
+export function restoredSentence(
+  name: string,
+  server: string,
+  takenAt: string | null,
+  timeZone: string,
+  now = new Date(),
+): string {
+  const at = takenAt ? new Date(takenAt) : null;
+  if (!at || Number.isNaN(at.getTime()))
+    return `Restored ${name} on ${server} from its latest backup`;
+  const part = (d: Date, o: Intl.DateTimeFormatOptions) =>
+    new Intl.DateTimeFormat("en-GB", { timeZone, ...o }).format(d);
+  const day = (d: Date) => part(d, { day: "numeric", month: "short" });
+  try {
+    const time = part(at, {
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: false,
+    });
+    const when = day(at) === day(now) ? time : `${day(at)}, ${time}`;
+    return `Restored ${name} on ${server} from the backup of ${when}`;
+  } catch {
+    // A timezone this runtime does not know must not cost the entry.
+    return restoredSentence(name, server, takenAt, "UTC", now);
+  }
+}

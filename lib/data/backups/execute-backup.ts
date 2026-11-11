@@ -31,6 +31,7 @@ import { requireBackupCapability } from "./target-access";
 import { resolveTarget } from "./target-descriptor";
 import { MAX_RUNS_PER_TARGET, pruneRetention } from "./retention";
 import { formatBytes } from "./format-bytes";
+import { scheduleDatabaseBundle } from "../clusters/database-bundles";
 import type { BackupRun, BackupTargetKind } from "../../types/backup";
 
 export const backupRunsInFlight = new Map<string, AbortController>();
@@ -250,6 +251,10 @@ export async function executeBackup(
     }
     throw new Error("This backup was canceled");
   }
+
+  // A database on a cluster fails over from its latest backup: its leader learns of this one now (#202).
+  if (!failure && opts.kind === "database" && opts.databaseId)
+    scheduleDatabaseBundle(opts.databaseId);
 
   await recordActivity(
     "backup",
