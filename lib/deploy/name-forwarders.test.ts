@@ -67,21 +67,25 @@ describe("which names go on which member", () => {
       assert.ok(!plan.get(member)!.hold.some((h) => h.name === own));
   });
 
-  test("a member serves only the workloads placed on it, to its Environment's other members", () => {
-    assert.deepEqual(plan.get("m2")!.serve, [
-      {
-        network: ENV_A,
-        kind: "app",
-        workloadId: "web",
-        port: 3000,
-        sourceFingerprints: [FP.m1],
-      },
-    ]);
-    const m1 = plan.get("m1")!.serve;
+  test("every member of an Environment is handed the entry of each of its workloads, so a failover needs no new table", () => {
+    // web runs on m2 and shop on m1: each member is ready to serve the other's workload once the leader places it there.
     assert.deepEqual(
-      m1.map((s) => [s.network, s.workloadId, s.sourceFingerprints]),
+      plan
+        .get("m2")!
+        .serve.map((s) => [s.network, s.workloadId, s.sourceFingerprints]),
       [
+        [ENV_A, "web", [FP.m1]],
+        [ENV_A, "shop", [FP.m1]],
+      ],
+    );
+    assert.deepEqual(
+      plan
+        .get("m1")!
+        .serve.map((s) => [s.network, s.workloadId, s.sourceFingerprints]),
+      [
+        [ENV_A, "web", [FP.m2]],
         [ENV_A, "shop", [FP.m2]],
+        [ENV_B, "blog", [FP.m3]],
         [ENV_B, "other", [FP.m3]],
       ],
     );
@@ -92,9 +96,13 @@ describe("which names go on which member", () => {
     assert.ok(!toShop.sourceFingerprints.includes(FP.m3));
     assert.ok(!plan.get("m3")!.hold.some((h) => h.network === ENV_A));
     assert.ok(!plan.get("m2")!.hold.some((h) => h.network === ENV_B));
+    // m3 is handed its own Environment's entries, never the other team's
     assert.deepEqual(
-      plan.get("m3")!.serve.map((s) => s.workloadId),
-      ["blog"],
+      plan.get("m3")!.serve.map((s) => [s.network, s.workloadId]),
+      [
+        [ENV_B, "blog"],
+        [ENV_B, "other"],
+      ],
     );
   });
 
@@ -136,7 +144,15 @@ describe("which names go on which member", () => {
       p.get("m2")!.hold.map((h) => h.name),
       ["db-shop"],
     );
-    assert.deepEqual(p.get("m2")!.serve, []);
+    // the stack's member is ready for the database, and nobody is handed an entry for the stack
+    assert.deepEqual(
+      p.get("m2")!.serve.map((s) => s.workloadId),
+      ["shop"],
+    );
+    assert.deepEqual(
+      p.get("m1")!.serve.map((s) => s.workloadId),
+      ["shop"],
+    );
     assert.deepEqual(p.get("m1")!.hold, []);
     assert.deepEqual(p.get("m1")!.serve[0]!.sourceFingerprints, [FP.m2]);
   });
@@ -155,11 +171,8 @@ describe("which names go on which member", () => {
         workloads: [{ ...db("x", ["m1"]), name }, app("web", ["m2"])],
       });
       assert.deepEqual(p.get("m2")!.hold, [], name);
-      assert.deepEqual(
-        p.get("m1")!.serve.map((s) => s.workloadId),
-        [],
-        name,
-      );
+      for (const m of ["m1", "m2"])
+        assert.ok(!p.get(m)!.serve.some((s) => s.workloadId === "x"), name);
     }
   });
 });

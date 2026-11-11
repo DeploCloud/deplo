@@ -25,7 +25,7 @@ export interface ForwardedWorkload {
   port: number;
   /** Where each replica runs now, in placement order; the leader's mirror. */
   members: string[];
-  /** Members holding a standby copy: they hold the name like any other, and may serve it once promoted. */
+  /** Members holding a standby copy: they are members of the Environment like any other. */
   standbys?: string[];
 }
 
@@ -59,7 +59,7 @@ const byKey =
 
 /**
  * Which names go on which member. Per network: a member running a workload of it holds the names of that
- * network's workloads placed elsewhere, and serves its own to the other members of that same network.
+ * network's workloads placed elsewhere, and is handed the entry to serve each of them to the others.
  */
 export function planNameForwarding(input: {
   workloads: ForwardedWorkload[];
@@ -94,12 +94,11 @@ export function planNameForwarding(input: {
         if (w.name === null || isReservedSharedName(w.name)) continue;
         const base = { network, kind: w.kind, workloadId: w.id, port: w.port };
         // Where it runs, its own container already answers to the name.
-        if (w.members.includes(serverId))
-          m.serve.push({ ...base, sourceFingerprints: sources });
-        else m.hold.push({ ...base, name: w.name });
-        // Served ahead of time: after a promotion the others reach it before Deplo has said a word.
-        if (!w.members.includes(serverId) && w.standbys?.includes(serverId))
-          m.serve.push({ ...base, sourceFingerprints: sources });
+        if (!w.members.includes(serverId))
+          m.hold.push({ ...base, name: w.name });
+        // Handed to every member ahead of time: after a failover the others reach it before Deplo has said
+        // a word. The server agent serves it only once the leader's lease places the workload there.
+        m.serve.push({ ...base, sourceFingerprints: sources });
       }
     }
   }

@@ -211,7 +211,9 @@ test("an App of the same Environment reaches the database by its name after the 
     [["db-main", "db_main", 5432]],
   );
   assert.deepEqual(
-    last("srv_4").serve.map((s) => [s.workloadId, s.sourceFingerprints]),
+    last("srv_4")
+      .serve.filter((s) => s.kind === "database")
+      .map((s) => [s.workloadId, s.sourceFingerprints]),
     [["db_main", [fp(3)]]],
   );
   // The server that lost it serves it to nobody.
