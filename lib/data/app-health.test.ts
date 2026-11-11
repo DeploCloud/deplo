@@ -12,9 +12,19 @@ import {
   SERVER_1,
   TRUNCATE_PROJECT_GRAPH,
 } from "./app-graph-test-helpers";
-import { RestartEvent_Kind, type RestartEvent } from "../agent/gen/agent";
-import { recordContainerSample } from "../monitoring/container-history";
-import type { ContainerMetricsSample } from "./container-metrics";
+import {
+  RestartEvent_Kind,
+  type ContainerStat,
+  type RestartEvent,
+} from "../agent/gen/agent";
+import {
+  recordContainerInstances,
+  recordContainerSample,
+} from "../monitoring/container-history";
+import {
+  aggregateContainerStats,
+  type ContainerMetricsSample,
+} from "./container-metrics";
 import { applyRestartEvents } from "./restart-events";
 import type {
   AgentConnection,
@@ -208,6 +218,34 @@ test("with telemetry open, the Overview still reads the verdict for an App its s
     rt = await overview();
   }
   assert.equal(rt?.unhealthy, 1);
+});
+
+test("with telemetry open, an App that stops answering reads unhealthy before its first restart", async () => {
+  const appId = await freshApp();
+  // Docker has no complaint; the verdict rides the metrics frame.
+  const frame = aggregateContainerStats(
+    appId,
+    [
+      {
+        ...({} as ContainerStat),
+        name: "deplo-web",
+        running: true,
+        health: "healthy",
+        answer: "not_answering",
+      },
+    ],
+    Date.now(),
+    { memTotal: 1024 ** 3, cpuCores: 1 },
+  );
+  recordContainerInstances(appId, frame.instances);
+  recordContainerSample(frame);
+  const [state] = await runWithIdentity({ userId: OWNER, teamId: TEAM_A }, () =>
+    loadOverviewAppStates([appId], async () => {
+      throw new Error("the server agent is not asked");
+    }),
+  );
+  assert.equal(state.runtime?.unhealthy, 1);
+  assert.deepEqual(state.runtime?.unhealthyContainers, ["deplo-web"]);
 });
 
 test("the Overview follows the same verdict", async () => {

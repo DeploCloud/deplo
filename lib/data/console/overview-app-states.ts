@@ -127,8 +127,8 @@ function mergeHealth(
   };
 }
 
-// Telemetry carries Docker's own health only. The server agent's verdict is read for an App with its own
-// http check, and for one the agent restarted for not answering, until it says the App answers again.
+// Telemetry carries the server agent's verdict only from an agent new enough to send it. The agent is still
+// asked for an App with its own http check, and for one it restarted, until it says the App answers again.
 function asksTheAgent(row: {
   healthCheckEnabled: boolean;
   healthCheckType: string | null;
