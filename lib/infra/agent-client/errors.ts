@@ -64,45 +64,45 @@ export class AgentUninstallUnsupportedError extends Error {}
 export class AgentClusterUnsupportedError extends Error {}
 
 export const CLUSTER_HOST_UNSUPPORTED_MESSAGE =
-  "The agent on this server is too old to run a cluster leader. " +
-  "Update the agent on this server, then try again.";
+  "The server agent on this server is too old to run a cluster leader. " +
+  "Deplo updates it on its own: try again in a few minutes.";
 
 /** An agent without `cluster`: named, never failed at runtime. */
 export class AgentClusterMemberUnsupportedError extends Error {}
 
 export const CLUSTER_MEMBER_UNSUPPORTED_MESSAGE =
-  "The agent on this server is too old to join a cluster. " +
-  "Update the agent on this server, then try again.";
+  "The server agent on this server is too old to join a cluster. " +
+  "Deplo updates it on its own: try again in a few minutes.";
 
 /** An agent without `cluster.images`: named, never failed at runtime. */
 export class AgentClusterImagesUnsupportedError extends Error {}
 
 export const CLUSTER_IMAGES_UNSUPPORTED_MESSAGE =
-  "The agent on this server is too old to copy images to the other servers of its cluster. " +
-  "Update the agent on this server, then try again.";
+  "The server agent on this server is too old to copy images to the other servers of its cluster. " +
+  "Deplo updates it on its own.";
 
 /** An agent without `cluster.failover`: named, never handed a workload to start. */
 export const clusterFailoverUnsupportedMessage = (
   server: string,
   cluster: string,
 ) =>
-  `The agent on ${server} is too old to take over Apps when another server in cluster ${cluster} stops. ` +
-  `Update the agent on ${server}.`;
+  `The server agent on ${server} is too old to take over Apps when another server in cluster ${cluster} stops. ` +
+  "Deplo updates it on its own.";
 
 /** An agent without `cluster.failover.restore`: named, never handed a database to restore. */
 export const clusterRestoreUnsupportedMessage = (
   server: string,
   cluster: string,
 ) =>
-  `The agent on ${server} is too old to restore a database when another server in cluster ${cluster} stops. ` +
-  `Update the agent on ${server}.`;
+  `The server agent on ${server} is too old to restore a database when another server in cluster ${cluster} stops. ` +
+  "Deplo updates it on its own.";
 
 /** An agent without `cluster.forwarders`: named, never failed at runtime. */
 export class AgentClusterForwardersUnsupportedError extends Error {}
 
 export const CLUSTER_FORWARDERS_UNSUPPORTED_MESSAGE =
-  "The agent on this server is too old to keep names working across the servers of its cluster. " +
-  "Update the agent on this server, then try again.";
+  "The server agent on this server is too old to keep names working across the servers of its cluster. " +
+  "Deplo updates it on its own.";
 
 export class ClusterReleaseUnavailableError extends Error {}
 

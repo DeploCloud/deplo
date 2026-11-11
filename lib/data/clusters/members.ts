@@ -203,7 +203,7 @@ async function joinReasons(
   else if (probe === "too_old")
     out.push({
       code: "agent_too_old",
-      message: `The Deplo agent on ${server.name} is too old to join a cluster. Update it first.`,
+      message: `The server agent on ${server.name} is too old to join a cluster. Deplo updates it on its own.`,
     });
   return out;
 }

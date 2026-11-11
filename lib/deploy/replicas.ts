@@ -2,7 +2,7 @@ import type { App } from "../types/app";
 import { servicesOf } from "./compose-lint/document";
 import { isFilesConventionSource } from "./compose-lint/volumes";
 
-// The agent runs several copies of one App and waits for every one before an old one stops.
+// The server agent runs several replicas of one App and waits for every one before an old one stops.
 export const REPLICAS_CAPABILITY = "deploy.replicas";
 
 export const MAX_REPLICAS = 10;
@@ -11,7 +11,7 @@ export const REPLICAS_DATA_MESSAGE =
   "An App that keeps data on its own disk runs one copy. Keep the data in a database to run more.";
 
 export const REPLICAS_AGENT_MESSAGE =
-  "This server's agent is too old to run more than one copy of an App. Deplo updates the agent on its own.";
+  "The server agent on this server is too old to run more than one replica of an App. Deplo updates it on its own.";
 
 export function cleanReplicas(n: number): number {
   if (!Number.isInteger(n) || n < 1 || n > MAX_REPLICAS)
@@ -31,7 +31,7 @@ export function appKeepsDataOnDisk(
   );
 }
 
-// The one guard: the message to show when this App may not run `replicas` copies.
+// The one guard: the message to show when this App may not run that many replicas.
 export function replicasRefusal(
   app: Pick<App, "volumes" | "ports">,
   replicas: number,
@@ -39,7 +39,7 @@ export function replicasRefusal(
   return replicas > 1 && appKeepsDataOnDisk(app) ? REPLICAS_DATA_MESSAGE : null;
 }
 
-// Services of a compose stack that ask for several copies and keep data on disk or hold a host port.
+// Services of a compose stack that ask for several replicas and keep data on disk or hold a host port.
 export function composeReplicasConflicts(composeYaml: string): string[] {
   const services = servicesOf(composeYaml);
   if (!services) return [];

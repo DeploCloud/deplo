@@ -279,7 +279,7 @@ test("a join is refused when the server agent is too old", async () => {
   );
   await assert.rejects(
     () => asAdmin(() => addClusterMember(cluster.id, "srv_2")),
-    /too old to join a cluster/,
+    /The server agent on srv_2 is too old to join a cluster\. Deplo updates it on its own\./,
   );
 });
 

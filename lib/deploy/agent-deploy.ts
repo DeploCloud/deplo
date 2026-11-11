@@ -248,7 +248,7 @@ export async function runAgentDeploy(opts: {
       req.standInComposeYaml = opts.overlap.standIn;
     } else if (replicas > 1 || scaled) {
       throw new Error(
-        `Running ${scaled ? "replicas on several servers" : `${replicas} copies`} needs the new version to start beside the old one. ${choice.reason}`,
+        `Running ${scaled ? "replicas on several servers" : `${replicas} replicas`} needs the new version to start beside the old one. ${choice.reason}`,
       );
     } else opts.sink.log("info", choice.reason);
   }
@@ -259,8 +259,8 @@ export async function runAgentDeploy(opts: {
     // A HARD gate: an older agent starts it at once, and the tunnel would send visitors to an App that is not up.
     if (!hello.capabilities.includes(START_AFTER_READY_CAPABILITY))
       throw new AgentUnavailableError(
-        "this server's agent is too old to start the App's tunnel once it is ready - " +
-          "Deplo updates the agent on its own",
+        "the server agent on this server is too old to start the App's tunnel once it is ready - " +
+          "Deplo updates it on its own",
       );
     req.composeYaml = withAppConnector(
       req.composeYaml,

@@ -62,7 +62,7 @@ const ConsoleInfoRef = builder.objectRef<ConsoleInfo>("ConsoleInfo").implement({
     unavailable: t.stringList({
       description:
         "The servers running this app that could not be asked for their " +
-        "copies, by name. Empty unless its replicas are spread over a cluster.",
+        "replicas, by name. Empty unless its replicas are spread over a cluster.",
       resolve: (c) => c.unavailable ?? [],
     }),
   }),

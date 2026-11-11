@@ -335,7 +335,7 @@ test("a deploy spreads the replicas of an App with a Cloudflare domain: each ser
   // srv_2 went first: nothing starts elsewhere before the first server runs the release.
   assert.match(
     await logs(),
-    /Starting 1 replica on srv_3…[\s\S]*Starting 1 replica on srv_4…/,
+    /Starting 1 replica on srv_3(?!…)[\s\S]*Starting 1 replica on srv_4(?!…)/,
   );
 });
 

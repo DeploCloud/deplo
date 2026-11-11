@@ -223,7 +223,7 @@ describe("replicas always deploy through the overlap path", () => {
     assert.equal(sent.length, 0);
     assert.match(
       await logs(),
-      /3 copies needs the new version to start beside/,
+      /3 replicas needs the new version to start beside/,
     );
   });
 

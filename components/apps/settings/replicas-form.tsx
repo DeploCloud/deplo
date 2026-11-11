@@ -26,6 +26,13 @@ const SET = /* GraphQL */ `
 
 const COUNTS = Array.from({ length: MAX_REPLICAS }, (_, i) => i + 1);
 
+// The count applies from the next deploy: never "running 3" while 1 runs.
+export const replicasSaved = (n: number) =>
+  `${n === 1 ? "1 replica" : `${n} replicas`} from the next deploy`;
+
+export const REPLICAS_MEMORY_NOTE =
+  "A deploy briefly uses twice the memory while the new replicas start.";
+
 export function ReplicasForm({
   appId,
   replicas: initial,
@@ -36,7 +43,7 @@ export function ReplicasForm({
 }: {
   appId: string;
   replicas: number;
-  // Why more than one copy is refused for this app right now, or null.
+  // Why more than one replica is refused for this app right now, or null.
   refusal: string | null;
   agentTooOld: boolean;
   // On a cluster: how its replicas are laid out over the servers, and the count while some wait for room.
@@ -54,9 +61,7 @@ export function ReplicasForm({
     startTransition(async () => {
       const res = await gqlAction(SET, { id: appId, value: next });
       if (res.ok) {
-        toast.success(
-          next === 1 ? "Running one copy" : `Running ${next} copies`,
-        );
+        toast.success(replicasSaved(next));
         router.refresh();
       } else {
         setReplicas(before);
@@ -80,8 +85,7 @@ export function ReplicasForm({
       docs={spread ? "clusters.replicas" : "deploy.replicas"}
       description={
         blocked ??
-        ([waiting, spread].filter(Boolean).join(". ") ||
-          "A deploy briefly uses twice the memory while the new copies start.")
+        ([waiting, spread].filter(Boolean).join(". ") || REPLICAS_MEMORY_NOTE)
       }
       control={
         <Select

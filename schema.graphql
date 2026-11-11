@@ -280,7 +280,9 @@ type App {
   """The Project container this app belongs to, if any."""
   projectId: ID
 
-  """How many copies of this single-image app run on its server (1 to 10)."""
+  """
+  How many replicas of this single-image app run on its server (1 to 10).
+  """
   replicas: Int
 
   """
@@ -304,7 +306,7 @@ type App {
   restartWhenUnresponsive: Boolean
 
   """
-  When the agent paused those restarts because the app kept failing; null while they are on.
+  When the server agent paused those restarts because the app kept failing; null while they are on.
   """
   restartsPausedAt: String
 
@@ -1374,7 +1376,7 @@ type ClusterReleasedWorkload {
   """The server it stays on."""
   serverName: String
 
-  """The other servers a spread App also runs on. Its copies there stop."""
+  """The other servers a spread App also runs on. Its replicas there stop."""
   stopsOn: [String!]
 
   """
@@ -1454,7 +1456,7 @@ type ConsoleInfo {
   running: Boolean
 
   """
-  The servers running this app that could not be asked for their copies, by name. Empty unless its replicas are spread over a cluster.
+  The servers running this app that could not be asked for their replicas, by name. Empty unless its replicas are spread over a cluster.
   """
   unavailable: [String!]
 }
@@ -5123,7 +5125,7 @@ type Mutation {
   setAppPreviewSettings(appId: ID!, input: AppPreviewSettingsInput!): Boolean
 
   """
-  Run a single-image app as 1 to 10 copies on its server. Refused with a Volume, a Bind or a published host port. Applies from the next deploy.
+  Run a single-image app as 1 to 10 replicas on its server. Refused with a Volume, a Bind or a published host port. Applies from the next deploy.
   """
   setAppReplicas(id: String!, value: Int!): App
 

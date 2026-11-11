@@ -117,7 +117,7 @@ test("a member whose agent cannot start a moved App is marked for the leader and
     [
       {
         message:
-          "The agent on server-3 is too old to take over Apps when another server in cluster eu stops. Update the agent on server-3.",
+          "The server agent on server-3 is too old to take over Apps when another server in cluster eu stops. Deplo updates it on its own.",
         actor: "Deplo",
       },
     ],

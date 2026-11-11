@@ -37,7 +37,10 @@ describe("the replicas guard", () => {
       { volumes: [vol("host")], ports: [] },
       { volumes: [], ports: [port] },
     ])
-      assert.equal(guard(app, 2), REPLICAS_DATA_MESSAGE);
+      assert.equal(
+        guard(app, 2),
+        "An App that keeps data on its own disk runs one copy. Keep the data in a database to run more.",
+      );
   });
 
   test("Files and a bare app pass", () => {

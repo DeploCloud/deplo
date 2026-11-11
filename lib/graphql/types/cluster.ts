@@ -216,7 +216,7 @@ const ClusterReleasedWorkloadRef = builder
       }),
       stopsOn: t.exposeStringList("stopsOn", {
         description:
-          "The other servers a spread App also runs on. Its copies there stop.",
+          "The other servers a spread App also runs on. Its replicas there stop.",
       }),
       waiting: t.exposeBoolean("waiting", {
         description:

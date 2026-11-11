@@ -254,7 +254,7 @@ export const AppRef = builder.objectRef<AppSummary>("App").implement({
     restartsPausedAt: t.string({
       nullable: true,
       description:
-        "When the agent paused those restarts because the app kept failing; null while they are on.",
+        "When the server agent paused those restarts because the app kept failing; null while they are on.",
       resolve: (p) => p.restartsPausedAt,
     }),
     zeroDowntimeDeploys: t.exposeBoolean("zeroDowntimeDeploys", {
@@ -264,7 +264,7 @@ export const AppRef = builder.objectRef<AppSummary>("App").implement({
     }),
     replicas: t.exposeInt("replicas", {
       description:
-        "How many copies of this single-image app run on its server (1 to 10).",
+        "How many replicas of this single-image app run on its server (1 to 10).",
     }),
     stickySessions: t.exposeBoolean("stickySessions", {
       description:

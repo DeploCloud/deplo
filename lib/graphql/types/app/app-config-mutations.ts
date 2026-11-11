@@ -429,7 +429,7 @@ builder.mutationFields((t) => ({
     type: AppRef,
     authScopes: { capability: "configure_apps" },
     description:
-      "Run a single-image app as 1 to 10 copies on its server. Refused with a Volume, " +
+      "Run a single-image app as 1 to 10 replicas on its server. Refused with a Volume, " +
       "a Bind or a published host port. Applies from the next deploy.",
     args: {
       id: t.arg.string({ required: true }),
