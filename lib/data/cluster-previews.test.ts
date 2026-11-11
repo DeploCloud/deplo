@@ -349,6 +349,7 @@ test("a preview of a cluster App runs on the member the leader names, with no bu
     name: "web",
     environment: "",
     limitMb: 0,
+    peakMb: 0,
     image: "",
     archs: [],
   });
