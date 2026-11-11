@@ -40,6 +40,7 @@ import { runAgentDeploy } from "../deploy/agent-deploy";
 import { addRegistry } from "./registries";
 import { createCluster } from "./clusters/manage";
 import { addClusterMember } from "./clusters/members";
+import { reconcileCluster } from "./clusters/watch";
 import {
   flushFailoverBundles,
   scheduleFailoverBundle,
@@ -122,6 +123,7 @@ function leaderCalls(l: TestLeader) {
           deploymentId: b.deploymentId,
         })),
       });
+    if (method === "leader.snapshot") return answer({ head: 0, clusters: {} });
     return payload;
   };
 }
@@ -559,6 +561,15 @@ test("a relink compares deployment ids: a leader behind gets the live one, one t
   leader.held.get(app.id)!.deploymentId = "dpl_0";
   await reconcileFailoverBundles();
   assert.equal(puts().length, before + 1);
+  assert.equal(leader.held.get(app.id)!.deploymentId, "dpl_1");
+});
+
+test("a watch that reconnects resends the bundle a leader missed, without waiting for the sweep", async () => {
+  const cluster = await eu();
+  const app = await clusterApp(cluster.id);
+  await deployOn(app, "dpl_1");
+  leader.held.get(app.id)!.deploymentId = "dpl_0";
+  await reconcileCluster(cluster.id);
   assert.equal(leader.held.get(app.id)!.deploymentId, "dpl_1");
 });
 

@@ -318,7 +318,9 @@ export async function flushDatabaseBundles(): Promise<void> {
   while (inFlight.size > 0) await Promise.all([...inFlight]);
 }
 
-async function reconcileCluster(clusterId: string): Promise<void> {
+export async function reconcileClusterDatabaseBundles(
+  clusterId: string,
+): Promise<void> {
   const cluster = await getClusterById(clusterId);
   if (!cluster) return;
   const db = getDb();
@@ -366,7 +368,7 @@ export async function reconcileDatabaseBundles(): Promise<void> {
     .select({ id: clustersTable.id })
     .from(clustersTable);
   for (const r of rows)
-    await reconcileCluster(r.id).catch((e) =>
+    await reconcileClusterDatabaseBundles(r.id).catch((e) =>
       console.warn(
         `[failover-bundle] ${r.id}: ${e instanceof Error ? e.message : String(e)}`,
       ),

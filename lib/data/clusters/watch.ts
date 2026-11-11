@@ -21,7 +21,9 @@ import {
 } from "./leader-sync";
 import { recordPlacement } from "./placement";
 import { applyLeftSaved, applyMemberReturned } from "./returned";
+import { reconcileClusterBundles } from "./bundles";
 import { recordClusterActivity } from "./cluster-activity";
+import { reconcileClusterDatabaseBundles } from "./database-bundles";
 import { getClusterById } from "./roster";
 import { markPreviewsOffline } from "../../deploy/preview-lifecycle/cluster-member";
 import { getServerById } from "../servers/roster";
@@ -227,20 +229,31 @@ export async function reconcileCluster(
   // A leader that had no roster yet knows the cluster only now.
   const view =
     before ?? (await readLeaderSnapshot(cluster))?.clusters[clusterId];
-  if (!view) return;
-  for (const m of view.members)
-    if (LEASE_STATES.has(m.state))
-      await memberLeaseChanged(
-        clusterId,
-        cluster.name,
-        m.id,
-        m.state as ClusterLeaseState,
-      );
-  if (view.epoch > cluster.leaderEpoch)
-    await getDb()
-      .update(clustersTable)
-      .set({ leaderEpoch: view.epoch })
-      .where(eq(clustersTable.id, clusterId));
+  if (view) {
+    for (const m of view.members)
+      if (LEASE_STATES.has(m.state))
+        await memberLeaseChanged(
+          clusterId,
+          cluster.name,
+          m.id,
+          m.state as ClusterLeaseState,
+        );
+    if (view.epoch > cluster.leaderEpoch)
+      await getDb()
+        .update(clustersTable)
+        .set({ leaderEpoch: view.epoch })
+        .where(eq(clustersTable.id, clusterId));
+  }
+  // A push the leader missed while the link was down: it must not start the previous release.
+  for (const resend of [
+    reconcileClusterBundles,
+    reconcileClusterDatabaseBundles,
+  ])
+    await resend(clusterId).catch((e) =>
+      console.warn(
+        `[failover-bundle] ${clusterId}: ${e instanceof Error ? e.message : String(e)}`,
+      ),
+    );
 }
 
 export type WatchEnd = "ended" | "frozen" | "reset" | "no_leader";
