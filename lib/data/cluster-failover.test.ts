@@ -314,6 +314,55 @@ test("waiting Apps show the room note, and one alert goes out per failover that 
   assert.equal(await waitingForRoomNote("prj_web", "eu"), null);
 });
 
+test("each team with something left waiting gets its own alert for one failover", async () => {
+  const cluster = await eu();
+  lab.seq = 0;
+  await web(cluster.id);
+  await web(cluster.id, "prj_theirs", TEAM_B);
+  const channel = (url: string) => ({
+    kind: "webhook" as const,
+    name: "",
+    enabled: true,
+    url,
+    target: "",
+    emailFrom: "",
+    emailProvider: "resend" as const,
+    smtpHost: "",
+    smtpPort: 587,
+    smtpUser: "",
+    alerts: ["cluster_failover_waiting" as const],
+  });
+  await asAdmin(() => saveNotificationChannel(null, channel("https://a/hook")));
+  await runWithIdentity({ userId: "user_b", teamId: TEAM_B }, () =>
+    saveNotificationChannel(null, channel("https://b/hook")),
+  );
+  lab.capture = captureFetch();
+  await apply(
+    cluster.id,
+    event(cluster.id, "failover", {
+      member: "srv_2",
+      reason: "stopped_answering",
+      moved: [],
+      waiting: [
+        { kind: "app", workloadId: "prj_web", reason: "no_room" },
+        { kind: "app", workloadId: "prj_theirs", reason: "no_room" },
+      ],
+    }),
+  );
+  await __settleAlertsForTest();
+  assert.deepEqual(lab.capture.calls.map((c) => c.url).sort(), [
+    "https://a/hook",
+    "https://b/hook",
+  ]);
+  const titles = lab.capture.calls.map((c) =>
+    String((c.body as { title?: string }).title),
+  );
+  assert.ok(
+    titles.every((t) => !/2 Apps/.test(t)),
+    "a team is told of its own App only",
+  );
+});
+
 test("the cluster card lists a team's own waiting Apps, and never another team's", async () => {
   const cluster = await eu();
   lab.seq = 0;

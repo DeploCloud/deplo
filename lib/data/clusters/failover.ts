@@ -266,7 +266,11 @@ export async function applyFailoverSummary(
     dispatchAlert({
       teamId,
       key: "cluster_failover_waiting",
-      dedupe: { id: `failover:${cluster.id}:${seq}`, state: "waiting" },
+      // Per team: one id for all would let the first team's alert silence the others'.
+      dedupe: {
+        id: `failover:${cluster.id}:${seq}:${teamId}`,
+        state: "waiting",
+      },
       title: `${only ? names : many} waiting for room in ${cluster.name}`,
       body: `${from} stopped answering. ${names} found no room on the other servers yet. Deplo tries again every 30 seconds.`,
       path: !only
