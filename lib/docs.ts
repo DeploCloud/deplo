@@ -186,6 +186,7 @@ export const DOCS = {
   "clusters.leader": "operations/clusters#run-the-leader-on-another-server",
   "clusters.databases": "operations/clusters#databases",
   "clusters.addresses": "operations/clusters#addresses",
+  "clusters.updates": "operations/clusters#updates",
   "registries.overview": "operations/servers/container-registries",
   "registries.add": "operations/servers/container-registries#add-one",
 

@@ -6,12 +6,14 @@ import { clusters as clustersTable } from "../../db/schema/control-plane/cluster
 import { nowIso } from "../../ids";
 import {
   clusterLeaderAnswers,
+  clusterLeaderReach,
   installClusterLeader,
 } from "../../infra/agent-client/cluster-host";
 import type { Cluster } from "../../types/cluster";
 import { recordActivity } from "../activity";
 import { instanceFrozen } from "../deplo-move/freeze";
 import { getServerById } from "../servers/roster";
+import { updatingClusterHost } from "./binary-rollout";
 import { reconcileClusterBundles } from "./bundles";
 import { leaderHostOf } from "./host";
 import { leadFrom } from "./leader-move";
@@ -56,7 +58,10 @@ export async function superviseClusterLeader(
     misses.delete(clusterId);
     return null;
   }
-  const answers = await clusterLeaderAnswers(cluster.leaderServerId);
+  // Deplo is restarting it for an update: its leases are extended, and nobody needs to stand in.
+  if (updatingClusterHost(cluster.leaderServerId)) return null;
+  const reach = await clusterLeaderReach(cluster.leaderServerId);
+  const answers = reach === "answers";
   const name =
     (await getServerById(cluster.leaderServerId))?.name ??
     "The leader's server";
@@ -92,7 +97,9 @@ export async function superviseClusterLeader(
   misses.delete(clusterId);
   await say(
     cluster,
-    `${name} stopped answering, so Deplo's machine leads cluster ${cluster.name} until it answers again`,
+    reach === "outdated"
+      ? `The leader on ${name} is older than this Deplo accepts, so Deplo's machine leads cluster ${cluster.name} until it is updated`
+      : `${name} stopped answering, so Deplo's machine leads cluster ${cluster.name} until it answers again`,
   );
   await reconcileClusterBundles(clusterId).catch(() => {});
   return "taken_over";
