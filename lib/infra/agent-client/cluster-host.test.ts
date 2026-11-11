@@ -111,7 +111,7 @@ test("an agent without cluster.host is named, for every operation", async () => 
     () => installClusterLeader("srv_old"),
     () => removeClusterLeader("srv_old"),
     () => clusterLeaderStatus("srv_old"),
-    () => callClusterLeader("srv_old", "place"),
+    () => callClusterLeader("srv_old", "placement.place"),
   ]) {
     await assert.rejects(run, (e: Error) => {
       assert.ok(e instanceof AgentClusterUnsupportedError);
@@ -136,51 +136,61 @@ test("a forwarded call reaches the leader and its answer comes back untouched", 
     status: leaderAt("0.2.0"),
     leader: (_m, p) => new Uint8Array([...p, 9]),
   });
-  const out = await callClusterLeader("srv_a", "place", new Uint8Array([1, 2]));
+  const out = await callClusterLeader(
+    "srv_a",
+    "placement.place",
+    new Uint8Array([1, 2]),
+  );
   assert.deepEqual([...out], [1, 2, 9]);
   assert.deepEqual(host.calls, [
-    { method: "place", payload: new Uint8Array([1, 2]) },
+    { method: "placement.place", payload: new Uint8Array([1, 2]) },
   ]);
 });
 
 test("a leader below clusterMin is refused in plain words and never called", async () => {
   const host = fleet.host("srv_a", { status: leaderAt("0.1.9") });
-  await assert.rejects(callClusterLeader("srv_a", "place"), (e: Error) => {
-    assert.ok(e instanceof ClusterLeaderTooOldError);
-    assert.match(
-      e.message,
-      /v0\.1\.9, older than the v0\.2\.0 this Deplo needs/,
-    );
-    assert.match(e.message, /Deplo's own server leads/);
-    return true;
-  });
+  await assert.rejects(
+    callClusterLeader("srv_a", "placement.place"),
+    (e: Error) => {
+      assert.ok(e instanceof ClusterLeaderTooOldError);
+      assert.match(
+        e.message,
+        /v0\.1\.9, older than the v0\.2\.0 this Deplo needs/,
+      );
+      assert.match(e.message, /Deplo's own server leads/);
+      return true;
+    },
+  );
   assert.deepEqual(host.calls, []);
 });
 
 test("a canary of the floor's own release is below it, the release itself is not", async () => {
   fleet.host("srv_a", { status: leaderAt("0.2.0-canary.3") });
   await assert.rejects(
-    callClusterLeader("srv_a", "x"),
+    callClusterLeader("srv_a", "leader.key"),
     ClusterLeaderTooOldError,
   );
   fleet.host("srv_b", { status: leaderAt("0.2.0") });
-  await callClusterLeader("srv_b", "x");
+  await callClusterLeader("srv_b", "leader.key");
 });
 
 test("an unset floor refuses no leader", async () => {
   __setClusterPinForTest({ version: "", min: "" });
   fleet.host("srv_a", { status: leaderAt("0.0.1") });
-  await callClusterLeader("srv_a", "x");
+  await callClusterLeader("srv_a", "leader.key");
 });
 
 test("no leader, or one that is down, is said so", async () => {
   fleet.host("srv_none");
   fleet.host("srv_down", { status: leaderAt("0.2.0", false) });
   await assert.rejects(
-    callClusterLeader("srv_none", "x"),
+    callClusterLeader("srv_none", "leader.key"),
     /No cluster leader is installed/,
   );
-  await assert.rejects(callClusterLeader("srv_down", "x"), /not running/);
+  await assert.rejects(
+    callClusterLeader("srv_down", "leader.key"),
+    /not running/,
+  );
 });
 
 test("the only way to a leader is connectAgent: no pin-free door, no dial of its own", async () => {

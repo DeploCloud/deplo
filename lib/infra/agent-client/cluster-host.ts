@@ -134,13 +134,26 @@ async function assertLeaderUsable(
     throw new ClusterLeaderTooOldError(here.version, min);
 }
 
+/** Every method the leader answers: a contract across three repos (docs/agents/cluster-rollout.md, section 7). */
+export type LeaderMethod =
+  | "failover.move"
+  | "leader.beat"
+  | "leader.bundle.drop"
+  | "leader.bundle.list"
+  | "leader.bundle.put"
+  | "leader.forget"
+  | "leader.key"
+  | "leader.roster"
+  | "leader.snapshot"
+  | "placement.place";
+
 /**
  * One call to the leader on `serverId`, forwarded by its agent. A leader below `clusterMin` is refused. `sent` runs
  * once the call itself leaves: a failure before it never reached the leader.
  */
 export async function callClusterLeader(
   serverId: string,
-  method: string,
+  method: LeaderMethod,
   payload: Uint8Array = new Uint8Array(),
   opts: { timeoutMs?: number; sent?: () => void } = {},
 ): Promise<Uint8Array> {
@@ -178,10 +191,10 @@ export async function* watchClusterLeader(
   }
 }
 
-/** One call to the relay on `serverId`, forwarded by its agent. A method is named `relay.<verb>`. */
+/** One call to the relay on `serverId`, forwarded by its agent. */
 export async function callClusterRelay(
   serverId: string,
-  method: `relay.${string}`,
+  method: "relay.roster",
   payload: Uint8Array = new Uint8Array(),
 ): Promise<Uint8Array> {
   return onHost(serverId, async (conn) => {
