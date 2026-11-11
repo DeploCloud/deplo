@@ -144,6 +144,8 @@ async function probeRuntimeOn(p: App): Promise<AppRuntime> {
 
     const declared = p.compose ? composeServiceNames(p.compose) : [p.slug];
     const present = new Set(containers.map((c) => c.service));
+    // With replicas an image App's service is its stack name, not its slug.
+    if (!p.compose && present.has(containerName(p))) present.add(p.slug);
     const missing = declared.filter((s) => !present.has(s));
 
     return {

@@ -114,6 +114,22 @@ test("the page shows the verdict the server agent reports", async () => {
   }
 });
 
+test("an App with replicas counts its replicas, with no container left to create", async () => {
+  const id = await freshApp();
+  const slug = `web${seq}`;
+  agentReporting(() =>
+    [1, 2, 3].map((n) =>
+      instance({
+        name: `deplo-${slug}-deplo-${slug}-${n}`,
+        service: `deplo-${slug}`,
+      }),
+    ),
+  );
+  const rt = await runtimeOf(id);
+  assert.deepEqual([rt?.running, rt?.total, rt?.missing], [3, 3, []]);
+  assert.equal(displayStatus("active", rt), "active");
+});
+
 test("a verdict moves with the agent, with no page open in between", async (t) => {
   let now = Date.now();
   t.mock.method(Date, "now", () => now);
