@@ -31,6 +31,7 @@ import {
 import type { ServerStatus } from "../../types/server";
 import { recordActivity } from "../activity";
 import { getServerById, listAllServers } from "../servers/roster";
+import { recordJoinedPlacements } from "./placement";
 import { pushClusterRoster } from "./relay";
 import { getCluster, getClusterById } from "./roster";
 
@@ -295,12 +296,26 @@ export async function addClusterMember(
       .update(appsTable)
       .set({ clusterId })
       .where(eq(appsTable.serverId, serverId))
-      .returning({ id: appsTable.id });
+      .returning({ id: appsTable.id, replicas: appsTable.replicas });
     const dbs = await tx
       .update(databasesTable)
       .set({ clusterId })
       .where(eq(databasesTable.serverId, serverId))
       .returning({ id: databasesTable.id });
+    // Without these the leader never hears of the workloads, so it neither fences nor moves them.
+    await recordJoinedPlacements(
+      tx,
+      serverId,
+      Math.max(cluster.leaderEpoch, 1),
+      [
+        ...apps.map((a) => ({ kind: "app" as const, ...a })),
+        ...dbs.map((d) => ({
+          kind: "database" as const,
+          id: d.id,
+          replicas: 1,
+        })),
+      ],
+    );
     return { apps: apps.length, databases: dbs.length };
   });
 

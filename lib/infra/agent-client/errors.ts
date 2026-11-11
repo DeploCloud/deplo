@@ -81,6 +81,14 @@ export const CLUSTER_IMAGES_UNSUPPORTED_MESSAGE =
   "The agent on this server is too old to copy images to the other servers of its cluster. " +
   "Update the agent on this server, then try again.";
 
+/** An agent without `cluster.failover`: named, never handed a workload to start. */
+export const clusterFailoverUnsupportedMessage = (
+  server: string,
+  cluster: string,
+) =>
+  `The agent on ${server} is too old to take over Apps when another server in cluster ${cluster} stops. ` +
+  `Update the agent on ${server}.`;
+
 export class ClusterReleaseUnavailableError extends Error {}
 
 /** A cluster leader below `clusterMin`: refused until the agent that supervises it updates it. */

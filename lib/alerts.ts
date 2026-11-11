@@ -48,6 +48,13 @@ export const ALERT_META: Record<AlertKey, AlertMeta> = {
     keywords: "hang hung frozen unresponsive restart paused give up",
     defaultOn: true,
   },
+  cluster_failover_waiting: {
+    label: "Apps waiting for room after a failover",
+    description:
+      "A server in a cluster stopped answering and some of its Apps found no room on the others yet. You hear once per failover.",
+    keywords: "cluster failover waiting room server down capacity",
+    defaultOn: true,
+  },
   security_update_available: {
     label: "Security update available",
     description:
@@ -321,6 +328,7 @@ export const ALERT_CATEGORIES: {
       "app_crash_loop",
       "app_unresponsive",
       "app_restarts_paused",
+      "cluster_failover_waiting",
       "app_out_of_memory",
       "security_update_available",
     ],

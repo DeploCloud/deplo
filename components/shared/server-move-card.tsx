@@ -30,7 +30,13 @@ type MoveServer = {
   /** A cluster: the move lets its leader pick the server. */
   kind?: "cluster";
 };
-type OnCluster = { id: string; name: string; serverName: string };
+type OnCluster = {
+  id: string;
+  name: string;
+  serverName: string;
+  /** "Waiting for room in eu" while no server of the cluster runs it. */
+  waiting?: string | null;
+};
 
 export function AppServerCard({
   appId,
@@ -155,7 +161,9 @@ function ServerMoveCard({
           <p className="flex items-center gap-2 text-sm">
             <ServerIcon className="size-4 text-muted-foreground" />
             <LoadingText>
-              {cluster ? (
+              {cluster?.waiting ? (
+                cluster.waiting
+              ) : cluster ? (
                 <>
                   Runs on <strong>{cluster.name}</strong> · now on{" "}
                   {cluster.serverName}

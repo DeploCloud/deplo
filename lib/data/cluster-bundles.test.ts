@@ -41,6 +41,7 @@ import { createCluster } from "./clusters/manage";
 import { addClusterMember } from "./clusters/members";
 import {
   flushFailoverBundles,
+  scheduleFailoverBundle,
   keyFingerprint,
   reconcileFailoverBundles,
   type FailoverBundle,
@@ -337,6 +338,78 @@ test("the sealed bundle opens with the leader's key and holds what the member's 
     keys.map((k) => k.publicKey),
     [leader.publicKey],
   );
+});
+
+test("the bundle keeps the deploy's ready check, restart rule and files, so a moved App is checked and restarted as before", async () => {
+  const cluster = await eu();
+  const app = await clusterApp(cluster.id);
+  hosts.srv_2.capabilities.push("deploy.ready-check", "health.restart");
+  await seedDeployment(db, { id: "dpl_1", appId: app.id, status: "ready" });
+  await runAgentDeploy({
+    serverId: "srv_2",
+    deployId: "dpl_1",
+    slug: app.slug,
+    appId: app.id,
+    imageRef: "nginx:1.27",
+    composeYaml: COMPOSE,
+    network: "deplo-team-x",
+    env: {},
+    plan: {
+      kind: "compose",
+      mounts: [{ filePath: "config/app.toml", content: "a = 1" }],
+    },
+    ready: { port: 3000, portRequired: true, service: "web" },
+    sink: { log: () => {} },
+  });
+  await flushFailoverBundles();
+
+  const sent = hosts.srv_2.deploys[0];
+  assert.ok(sent.restartRule, "the deploy itself carried a restart rule");
+  const { stack } = await open(leader, app.id);
+  assert.deepEqual(stack.ready, {
+    port: 3000,
+    portRequired: true,
+    service: "web",
+  });
+  assert.deepEqual(stack.restartRule, {
+    probe: "PROBE_HTTP",
+    port: 3000,
+    path: "/",
+    intervalS: 30,
+    timeoutS: 10,
+    retries: 3,
+    startPeriodS: 60,
+    service: "web",
+  });
+  assert.deepEqual(stack.mounts, [
+    { path: "config/app.toml", content: "a = 1" },
+  ]);
+  assert.equal(stack.startAfterReady, undefined, "nothing starts late here");
+});
+
+test("the services a deploy starts only after it is ready travel in the bundle", async () => {
+  const cluster = await eu();
+  const app = await clusterApp(cluster.id);
+  await seedDeployment(db, { id: "dpl_1", appId: app.id, status: "ready" });
+  scheduleFailoverBundle({
+    appId: app.id,
+    deploymentId: "dpl_1",
+    stack: {
+      slug: app.slug,
+      projectId: app.id,
+      imageRef: "nginx:1.27",
+      composeYaml: COMPOSE,
+      network: "deplo-team-x",
+      env: {},
+      registryAuth: [],
+      composeUpArgs: [],
+      startAfterReady: ["connector"],
+    },
+  });
+  await flushFailoverBundles();
+  assert.deepEqual((await open(leader, app.id)).stack.startAfterReady, [
+    "connector",
+  ]);
 });
 
 test("a pulled image's bundle carries the registry credentials, a built one's does not", async () => {

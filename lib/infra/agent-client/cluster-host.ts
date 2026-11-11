@@ -23,6 +23,7 @@ import {
 } from "./errors";
 import {
   CLUSTER_CAPABILITY,
+  CLUSTER_FAILOVER_CAPABILITY,
   CLUSTER_HOST_CAPABILITY,
   CLUSTER_IMAGES_CAPABILITY,
 } from "./hello-capabilities";
@@ -196,6 +197,42 @@ export async function probeClusterMember(
   } finally {
     conn.close();
   }
+}
+
+const takesOver = new Map<string, { can: boolean; until: number }>();
+
+/** Test seam: forget what each agent was last seen able to do. */
+export function __forgetMemberProbes(): void {
+  takesOver.clear();
+}
+
+/**
+ * Whether the member's agent can start a workload its leader moves to it (Hello `cluster.failover`).
+ * An agent that does not answer counts as able: the leader believes only a member that says it started.
+ */
+export async function memberTakesOver(serverId: string): Promise<boolean> {
+  const seen = takesOver.get(serverId);
+  if (seen && seen.until > Date.now()) return seen.can;
+  let can = true;
+  let answered = false;
+  try {
+    const conn = await connectAgent(serverId);
+    try {
+      const hello = await conn.hello();
+      answered = true;
+      can = Boolean(hello.capabilities?.includes(CLUSTER_FAILOVER_CAPABILITY));
+    } finally {
+      conn.close();
+    }
+  } catch {
+    // unknown: asked again in a minute
+  }
+  // An agent never loses a capability, so a yes is kept; a no or no answer is asked again.
+  takesOver.set(serverId, {
+    can,
+    until: answered && can ? Infinity : Date.now() + 60_000,
+  });
+  return can;
 }
 
 /** Makes the server's agent a cluster party that dials every relay it knows, or stops it (ADR-0044). */

@@ -16,6 +16,18 @@ function json(raw: Uint8Array): Record<string, unknown> {
   throw new Error("The cluster's leader gave an answer Deplo could not read.");
 }
 
+/** What the leader places the workload by when Deplo is away. No secret is in it. */
+export interface BundleMeta {
+  name: string;
+  environment: string;
+  image: string;
+  archs: string[];
+  limitMb: number;
+  peakMb: number;
+  hasDomain: boolean;
+  createdAt: string;
+}
+
 export interface HeldBundle {
   kind: string;
   id: string;
@@ -39,6 +51,7 @@ export async function putLeaderBundle(
     id: string;
     deploymentId: string;
     sealed: Uint8Array;
+    meta: BundleMeta;
   },
 ): Promise<void> {
   await callClusterLeader(
@@ -51,6 +64,7 @@ export async function putLeaderBundle(
         id: b.id,
         deploymentId: b.deploymentId,
         sealed: Buffer.from(b.sealed).toString("base64"),
+        meta: b.meta,
       }),
     ),
   );

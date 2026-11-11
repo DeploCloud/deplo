@@ -969,7 +969,14 @@ export interface DeployRequest {
    * own, so it works while the control plane is down. Unset => none, and a stored rule is removed.
    * Advertised as `health.restart`.
    */
-  restartRule?: RestartRule | undefined;
+  restartRule?:
+    | RestartRule
+    | undefined;
+  /**
+   * Compose services to start only once the deploy is ready: the stack comes up without them, and a
+   * deploy that is not ready never starts them. Advertised as `deploy.start-after-ready`.
+   */
+  startAfterReady: string[];
 }
 
 export interface DeployRequest_EnvEntry {
@@ -5090,6 +5097,7 @@ function createBaseDeployRequest(): DeployRequest {
     reuseImage: undefined,
     standInComposeYaml: "",
     restartRule: undefined,
+    startAfterReady: [],
   };
 }
 
@@ -5181,6 +5189,9 @@ export const DeployRequest: MessageFns<DeployRequest> = {
     }
     if (message.restartRule !== undefined) {
       RestartRule.encode(message.restartRule, writer.uint32(234).fork()).join();
+    }
+    for (const v of message.startAfterReady) {
+      writer.uint32(242).string(v!);
     }
     return writer;
   },
@@ -5433,6 +5444,14 @@ export const DeployRequest: MessageFns<DeployRequest> = {
             message.restartRule = RestartRule.decode(reader, reader.uint32());
             continue;
           }
+          case 30: {
+            if (tag !== 242) {
+              break;
+            }
+
+            message.startAfterReady.push(reader.string());
+            continue;
+          }
         }
         if ((tag & 7) === 4 || tag === 0) {
           break;
@@ -5579,6 +5598,11 @@ export const DeployRequest: MessageFns<DeployRequest> = {
         : isSet(object.restart_rule)
         ? RestartRule.fromJSON(object.restart_rule)
         : undefined,
+      startAfterReady: globalThis.Array.isArray(object?.startAfterReady)
+        ? object.startAfterReady.map((e: any) => globalThis.String(e))
+        : globalThis.Array.isArray(object?.start_after_ready)
+        ? object.start_after_ready.map((e: any) => globalThis.String(e))
+        : [],
     };
   },
 
@@ -5677,6 +5701,9 @@ export const DeployRequest: MessageFns<DeployRequest> = {
     if (message.restartRule !== undefined) {
       obj.restartRule = RestartRule.toJSON(message.restartRule);
     }
+    if (message.startAfterReady?.length) {
+      obj.startAfterReady = message.startAfterReady;
+    }
     return obj;
   },
 
@@ -5732,6 +5759,7 @@ export const DeployRequest: MessageFns<DeployRequest> = {
     message.restartRule = (object.restartRule !== undefined && object.restartRule !== null)
       ? RestartRule.fromPartial(object.restartRule)
       : undefined;
+    message.startAfterReady = object.startAfterReady?.map((e) => e) || [];
     return message;
   },
 };

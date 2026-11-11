@@ -25,6 +25,8 @@ import {
   type LiveApp,
 } from "@/components/apps/app-live-status";
 import { AppHeader } from "@/components/apps/app-header";
+import { WaitingForRoom } from "@/components/shared/waiting-for-room";
+import { appWaitingNote } from "@/lib/data/clusters/placement";
 
 const PROJECT_TITLE_MAX = 24;
 
@@ -50,13 +52,15 @@ export default async function AppLayout(
   const project = await getAppBySlug(slug);
   if (!project || project.deletingAt) notFound();
   const buildsOwnImage = appBuildsItsOwnImage(project);
-  const [capabilities, rollback, latestScreenshotAt] = await Promise.all([
-    appCapabilities(project.id),
-    buildsOwnImage ? rollbackTarget(project.id) : null,
-    project.latestDeployment
-      ? screenshotCapturedAt(project.latestDeployment.id)
-      : null,
-  ]);
+  const [capabilities, rollback, latestScreenshotAt, waiting] =
+    await Promise.all([
+      appCapabilities(project.id),
+      buildsOwnImage ? rollbackTarget(project.id) : null,
+      project.latestDeployment
+        ? screenshotCapturedAt(project.latestDeployment.id)
+        : null,
+      appWaitingNote(project),
+    ]);
 
   const initialLive: LiveApp = {
     id: project.id,
@@ -107,7 +111,9 @@ export default async function AppLayout(
               name={project.name}
               status={<AppStatusBadge status={project.status} />}
               subtitle={
-                project.productionUrl ? (
+                waiting ? (
+                  <WaitingForRoom note={waiting} />
+                ) : project.productionUrl ? (
                   <a
                     href={project.productionUrl}
                     target="_blank"

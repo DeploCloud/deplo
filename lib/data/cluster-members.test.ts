@@ -18,7 +18,10 @@ import { seedDatabase } from "./backup-test-helpers";
 import { seedServerRow } from "./infra-test-helpers";
 import { activities } from "../db/schema/control-plane/activity";
 import { apps as appsTable } from "../db/schema/control-plane/apps";
-import { clusterMembers } from "../db/schema/control-plane/clusters";
+import {
+  clusterMembers,
+  workloadPlacements,
+} from "../db/schema/control-plane/clusters";
 import { databases as databasesTable } from "../db/schema/control-plane/databases";
 import { servers as serversTable } from "../db/schema/control-plane/servers";
 import { __resetReleaseCacheForTests } from "../agent/release";
@@ -38,6 +41,7 @@ import {
   pushClusterRoster,
   pushClusterRosters,
 } from "./clusters/relay";
+import { placementEntries } from "./clusters/leader-sync";
 import { getCluster } from "./clusters/roster";
 import { listServerChoices } from "./servers/roster";
 import { createApp } from "./apps/create";
@@ -170,6 +174,40 @@ test("joining brings the Apps and databases along where they run, with nothing r
   // No deploy, no stack change: the member's agent was only asked to start dialing.
   assert.deepEqual(fleet.host("srv_2").calls, []);
   assert.equal(fleet.host("srv_2").installs.length, 0);
+});
+
+test("joining records where each App and database runs, so the leader fences and fails them over", async () => {
+  fleet.host("srv_2");
+  await seedApp(db, { id: "web", serverId: "srv_2" });
+  await seedApp(db, { id: "twice", slug: "twice", serverId: "srv_2" });
+  await db
+    .update(appsTable)
+    .set({ replicas: 2 })
+    .where(eq(appsTable.id, "twice"));
+  await seedDatabase(db, { id: "db_1", serverId: "srv_2" });
+  await seedApp(db, { id: "elsewhere", serverId: "srv_3" });
+  const cluster = await asAdmin(() => createCluster("eu", everyone));
+  await asAdmin(() => addClusterMember(cluster.id, "srv_2"));
+
+  const rows = (await db.select().from(workloadPlacements))
+    .map((r) => `${r.kind}/${r.workloadId}/${r.replica}@${r.memberServerId}`)
+    .sort();
+  assert.deepEqual(rows, [
+    "app/twice/0@srv_2",
+    "app/twice/1@srv_2",
+    "app/web/0@srv_2",
+    "database/db_1/0@srv_2",
+  ]);
+  const told = (await placementEntries(cluster.id)).map(
+    (e) =>
+      `${e.kind}/${e.id}/${e.replica}@${e.member}${e.singleWriter ? " single-writer" : ""}`,
+  );
+  assert.deepEqual(told, [
+    "app/twice/0@srv_2",
+    "app/twice/1@srv_2",
+    "app/web/0@srv_2",
+    "database/db_1/0@srv_2 single-writer",
+  ]);
 });
 
 test("joining records Activity and pushes the roster with the new member", async () => {

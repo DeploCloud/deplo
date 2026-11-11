@@ -1,7 +1,8 @@
 import "server-only";
 
-import { and, eq, inArray, ne } from "drizzle-orm";
+import { and, eq, gte, inArray, ne } from "drizzle-orm";
 import { getDb } from "../../db/client";
+import { activities } from "../../db/schema/control-plane/activity";
 import {
   appVolumes,
   apps as appsTable,
@@ -12,9 +13,16 @@ import {
   workloadPlacements,
 } from "../../db/schema/control-plane/clusters";
 import { databases as databasesTable } from "../../db/schema/control-plane/databases";
+import { servers as serversTable } from "../../db/schema/control-plane/servers";
 import { nowIso } from "../../ids";
-import { callClusterLeader } from "../../infra/agent-client/cluster-host";
+import {
+  callClusterLeader,
+  memberTakesOver,
+} from "../../infra/agent-client/cluster-host";
+import { clusterFailoverUnsupportedMessage } from "../../infra/agent-client/errors";
 import type { Cluster, ClusterLeaseState } from "../../types/cluster";
+import { recordActivity } from "../activity";
+import { clusterMemberFacts } from "./facts";
 import { leaderHost } from "./host";
 import { fingerprintOf } from "./relay";
 import { clusterMemberServerIds } from "./roster";
@@ -77,13 +85,13 @@ export async function placementEntries(
   ]);
   const out: LeaderEntry[] = [];
   for (const r of rows) {
-    if (!r.memberServerId) continue;
     const kind = r.kind === "database" ? "database" : "app";
     out.push({
       kind,
       id: r.workloadId,
       replica: r.replica,
-      member: r.memberServerId,
+      // Empty is waiting for room: the leader keeps trying only what the roster still names.
+      member: r.memberServerId ?? "",
       slug: slugOf.get(r.workloadId) ?? "",
       singleWriter: kind === "database" || withVolume.has(r.workloadId),
     });
@@ -95,6 +103,14 @@ export async function placementEntries(
   );
 }
 
+/** One replica the leader moved, or left waiting (`member` empty), that no roster has repeated yet. */
+export interface LeaderMove extends LeaderEntry {
+  from: string;
+  reason: string;
+  /** The leader's event that reported it. */
+  seq: number;
+}
+
 export interface LeaderSnapshot {
   head: number;
   clusters: Record<
@@ -103,6 +119,8 @@ export interface LeaderSnapshot {
       epoch: number;
       superseded: boolean;
       members: { id: string; state: string }[];
+      placement?: LeaderEntry[];
+      moves?: LeaderMove[];
     }
   >;
 }
@@ -114,6 +132,26 @@ export async function readLeaderSnapshot(
   if (!host) return null;
   const raw = await callClusterLeader(host.id, "leader.snapshot", enc({}));
   return JSON.parse(new TextDecoder().decode(raw)) as LeaderSnapshot;
+}
+
+/** Says once a day which member cannot take over, so the gap is read in Activity and not found in a failover. */
+async function nameOldAgent(cluster: Cluster, serverId: string): Promise<void> {
+  const [server] = await getDb()
+    .select({ name: serversTable.name })
+    .from(serversTable)
+    .where(eq(serversTable.id, serverId))
+    .limit(1);
+  if (!server) return;
+  const message = clusterFailoverUnsupportedMessage(server.name, cluster.name);
+  const since = new Date(Date.now() - 24 * 3_600_000).toISOString();
+  const seen = await getDb()
+    .select({ id: activities.id })
+    .from(activities)
+    .where(
+      and(eq(activities.message, message), gte(activities.createdAt, since)),
+    )
+    .limit(1);
+  if (seen.length === 0) await recordActivity("server", message, "Deplo");
 }
 
 const pushed = new Map<string, string>();
@@ -134,11 +172,29 @@ export async function pushLeaderRoster(
 ): Promise<boolean> {
   const host = await leaderHost(cluster);
   if (!host) return false;
-  const members: { id: string; fingerprint: string }[] = [];
+  const members: Record<string, unknown>[] = [];
+  const facts = new Map(
+    (await clusterMemberFacts(cluster.id)).map((f) => [f.id, f]),
+  );
   for (const id of await clusterMemberServerIds(cluster.id)) {
     const fingerprint = await fingerprintOf(id);
     // A member that has not enrolled has no certificate to be reached by yet.
-    if (fingerprint) members.push({ id, fingerprint });
+    if (!fingerprint) continue;
+    const f = facts.get(id);
+    const tooOld = !(await memberTakesOver(id));
+    if (tooOld) await nameOldAgent(cluster, id);
+    // The facts ride along so the leader can place work while Deplo is away.
+    members.push({
+      id,
+      fingerprint,
+      arch: f?.arch ?? "",
+      freeMb: f?.freeMb ?? 0,
+      images: f?.images ?? [],
+      emptying: f?.emptying ?? false,
+      databaseEnvs: f?.databaseEnvs ?? [],
+      // The leader never hands a moved workload to an agent that would not start it.
+      ...(tooOld ? { noFailover: true } : {}),
+    });
   }
   const placement = await placementEntries(cluster.id);
   const body = (epoch: number) =>
