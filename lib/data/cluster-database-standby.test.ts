@@ -14,7 +14,7 @@ import { users as usersTable } from "../db/schema/control-plane/identity";
 import { workloadPlacements } from "../db/schema/control-plane/clusters";
 import { databases as databasesTable } from "../db/schema/control-plane/databases";
 import type { AgentConnection } from "../infra/agent-client/connection";
-import { removeClusterMember } from "./clusters/dissolve";
+import { deleteCluster, removeClusterMember } from "./clusters/dissolve";
 import { planClusterForwarding } from "./clusters/forwarders";
 import {
   flushStandbySyncs,
@@ -706,6 +706,33 @@ test("a database that leaves its cluster keeps no copy and the switch goes off",
   // Where it runs now it stops keeping changes for a copy.
   assert.match(
     execs.find((e) => e.on === "srv_4")!.command,
+    /DROP ROLE IF EXISTS deplo_standby/,
+  );
+});
+
+test("deleting the cluster takes the copy away with it, and the switch goes off", async () => {
+  const cluster = await eu();
+  await main(cluster.id);
+  onSrv3();
+  await asAdmin(() => setDatabaseStandby("db_main", true));
+  execs = [];
+
+  await asAdmin(() => deleteCluster(cluster.id));
+
+  const now = await row();
+  assert.equal(now.clusterId, null);
+  assert.equal(now.serverId, "srv_2");
+  assert.equal(now.standby, false);
+  assert.deepEqual(
+    await db
+      .select()
+      .from(workloadPlacements)
+      .where(eq(workloadPlacements.workloadId, "db_main")),
+    [],
+  );
+  assert.ok(host.srv_3.stack.includes("destroy:db-main"));
+  assert.match(
+    execs.find((e) => e.on === "srv_2")!.command,
     /DROP ROLE IF EXISTS deplo_standby/,
   );
 });

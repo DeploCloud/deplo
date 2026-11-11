@@ -28,6 +28,7 @@ import {
   type ClusterDeletion,
 } from "../../types/cluster";
 import { recordActivity } from "../activity";
+import { endStandby } from "../databases/standby";
 import { instanceFrozen } from "../deplo-move/freeze";
 import { getServerById, listAllServers } from "../servers/roster";
 import { teardownOrQueue } from "../teardown-queue";
@@ -258,6 +259,12 @@ async function detach(tx: DbTx, clusterId: string): Promise<void> {
   }
 }
 
+// A database that left its cluster keeps no standby copy: the switch goes off with it (#218).
+async function endStandbys(held: Held[]): Promise<void> {
+  for (const id of ofKind(held, "database"))
+    await endStandby(id).catch((e) => warn(id, e));
+}
+
 /** Refuses when a server that still runs work does not answer: cut off unheard, it would stop that work itself a minute later. */
 async function assertHoldersAnswer(
   cluster: Cluster,
@@ -393,6 +400,7 @@ export async function removeClusterMember(
   await pushMembership([clusterId]);
   if (keep) {
     await dropBundlesAtLeaders(cluster, released);
+    await endStandbys(released);
     await leaveTunnels(released, user);
   }
   await recordActivity(
@@ -481,6 +489,7 @@ export async function deleteCluster(clusterId: string): Promise<void> {
   await leave(clusterId, members);
   await retireCluster(cluster);
   await stopOtherReplicas(held, placed);
+  await endStandbys(held);
   await leaveTunnels(held, user);
 
   const failover = failoverOn(members.length);
