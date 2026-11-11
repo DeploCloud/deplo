@@ -398,6 +398,58 @@ test("waiting Apps show the room note, and one alert goes out per failover that 
   assert.equal(await waitingForRoomNote("prj_web", "eu"), null);
 });
 
+test("an App left waiting for another reason than room is told that reason, not 'no room'", async () => {
+  const cluster = await eu();
+  lab.seq = 0;
+  await web(cluster.id);
+  await web(cluster.id, "prj_two");
+  await asAdmin(() =>
+    saveNotificationChannel(null, {
+      kind: "webhook",
+      name: "",
+      enabled: true,
+      url: "https://ops/hook",
+      target: "",
+      emailFrom: "",
+      emailProvider: "resend",
+      smtpHost: "",
+      smtpPort: 587,
+      smtpUser: "",
+      alerts: ["cluster_failover_waiting"],
+    }),
+  );
+  lab.capture = captureFetch();
+  await apply(
+    cluster.id,
+    event(cluster.id, "failover", {
+      member: "srv_2",
+      reason: "stopped_answering",
+      moved: [],
+      waiting: [
+        { kind: "app", workloadId: "prj_web", reason: "no_image" },
+        { kind: "app", workloadId: "prj_two", reason: "start_failed" },
+      ],
+    }),
+  );
+  await __settleAlertsForTest();
+  assert.deepEqual(
+    (await messages())
+      .map((m) => m.message)
+      .filter((m) => /is waiting/.test(m))
+      .sort(),
+    [
+      "prj_two is waiting in eu: server-2 stopped answering and it did not start on another server",
+      "web is waiting in eu: server-2 stopped answering and no other server has its image yet",
+    ],
+  );
+  const sent = lab.capture.calls[0].body as { title?: string; body?: string };
+  assert.equal(sent.title, "2 Apps waiting in eu");
+  assert.equal(
+    sent.body,
+    "server-2 stopped answering. No other server has the image of web yet. prj_two did not start on another server. Deplo tries again every 30 seconds.",
+  );
+});
+
 test("each team with something left waiting gets its own alert for one failover", async () => {
   const cluster = await eu();
   lab.seq = 0;
