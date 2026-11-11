@@ -8,6 +8,7 @@ import { clusters as clustersTable } from "../../db/schema/control-plane/cluster
 import { acquireLease, releaseLease } from "../../backups/lease";
 import { instanceFrozen } from "../deplo-move/freeze";
 import { shipChangeLogs } from "./change-log";
+import { runClusterRollout } from "./binary-rollout";
 import { runEmptyingPass } from "./empty";
 import { leaderHost } from "./host";
 import { superviseClusterLeader } from "./leader-standby";
@@ -20,6 +21,7 @@ export const CLUSTER_WATCH_LEASE = "cluster-watch";
 
 const TICK_MS = 15_000;
 const CHANGE_LOG_EVERY_MS = 60_000;
+const ROLLOUT_EVERY_MS = 60_000;
 
 interface State {
   started: boolean;
@@ -31,6 +33,8 @@ interface State {
   leading?: Map<string, string>;
   /** When the change logs were last collected. */
   changeLogAt?: number;
+  /** When the last rollout pass over the cluster binaries started. */
+  rolledAt?: number;
 }
 
 const KEY = Symbol.for("deplo.cluster.watch");
@@ -103,6 +107,12 @@ export async function runClusterWatchTick(): Promise<void> {
         console.error("[deplo] collecting a change log failed:", e),
       );
     }
+    if (Date.now() - (state.rolledAt ?? 0) >= ROLLOUT_EVERY_MS) {
+      state.rolledAt = Date.now();
+      void runClusterRollout().catch((e) =>
+        console.error("[deplo] cluster rollout failed:", e),
+      );
+    }
   } catch (e) {
     console.error("[deplo] cluster watch tick failed:", e);
   } finally {
@@ -135,6 +145,7 @@ export function __resetClusterWatchForTest(): void {
   stopAll();
   state.started = false;
   state.changeLogAt = 0;
+  state.rolledAt = 0;
   if (state.timer) clearInterval(state.timer);
   state.timer = null;
 }

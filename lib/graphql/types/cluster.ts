@@ -58,6 +58,7 @@ const ClusterLeaderStateEnum = builder.enumType("ClusterLeaderState", {
     "not_installed",
     "unreachable",
     "unavailable",
+    "outdated",
   ] as const,
 });
 
@@ -86,6 +87,10 @@ const ClusterLeaderRef = builder
         nullable: true,
         description:
           "Since when Deplo's own machine leads the cluster because this leader does not answer; null while this leader leads. It leads again once it answers.",
+      }),
+      updateMessage: t.exposeString("updateMessage", {
+        description:
+          "One plain sentence while Deplo cannot update a leader this cluster relies on; empty otherwise. Deplo retries on its own.",
       }),
     }),
   });

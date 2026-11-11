@@ -42,6 +42,7 @@ const LEADER_BADGE: Record<
   not_installed: { label: "Not started", variant: "warning" },
   unreachable: { label: "Not reachable", variant: "destructive" },
   unavailable: { label: "Can't start", variant: "warning" },
+  outdated: { label: "Needs an update", variant: "warning" },
 };
 
 const MEMBER_BADGE: Record<
@@ -226,7 +227,7 @@ async function LeaderLine({ clusterId }: { clusterId: string }) {
         <span className="text-muted-foreground">Leader runs on</span>
         <span className="font-medium">{leader.serverName}</span>
         <Badge variant={badge.variant}>{badge.label}</Badge>
-        {leader.state !== "running" && leader.state !== "unavailable" && (
+        {!["running", "unavailable", "outdated"].includes(leader.state) && (
           <StartLeaderButton clusterId={clusterId} />
         )}
         <div className="ml-auto">
@@ -239,7 +240,13 @@ async function LeaderLine({ clusterId }: { clusterId: string }) {
       {leader.takenOverAt && (
         <p className="text-xs text-muted-foreground">
           Deplo&apos;s own machine leads this cluster until {leader.serverName}{" "}
-          answers again. <DocsLink topic="clusters.leader" />
+          {leader.state === "outdated" ? "is updated" : "answers again"}.{" "}
+          <DocsLink topic="clusters.leader" />
+        </p>
+      )}
+      {leader.updateMessage && (
+        <p className="text-xs text-warning">
+          {leader.updateMessage} <DocsLink topic="clusters.updates" />
         </p>
       )}
     </div>

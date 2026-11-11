@@ -71,6 +71,7 @@ const CONTROL_PLANE = [
   "workload_placements",
   "cluster_image_copies",
   "failover_bundle_pushes",
+  "cluster_binary_updates",
   "docker_cleanup_policy",
   "docker_cleanup_policy_scopes",
   "app_tunnels",

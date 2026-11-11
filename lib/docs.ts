@@ -190,6 +190,7 @@ export const DOCS = {
   "clusters.appData": "operations/clusters#apps-that-keep-data",
   "clusters.addresses": "operations/clusters#addresses",
   "clusters.replicas": "operations/clusters#replicas-across-servers",
+  "clusters.updates": "operations/clusters#updates",
   "registries.overview": "operations/servers/container-registries",
   "registries.add": "operations/servers/container-registries#add-one",
 

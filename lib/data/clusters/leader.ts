@@ -4,13 +4,16 @@ import { getCurrentUser } from "../../auth/current-user";
 import { isDeploHostServer } from "../../deploy/domains";
 import {
   clusterLeaderStatus,
+  clusterPin,
   installClusterLeader,
 } from "../../infra/agent-client/cluster-host";
 import { AgentClusterUnsupportedError } from "../../infra/agent-client/errors";
 import { requireActiveTeamId, requireInstanceAdmin } from "../../membership";
 import type { Cluster, ClusterLeader } from "../../types/cluster";
 import type { Server } from "../../types/server";
+import { versionAtLeast } from "../../version";
 import { recordActivity } from "../activity";
+import { failingClusterUpdate } from "./binary-rollout";
 import { leaderHostOf } from "./host";
 import { ensureClusterRelay, pushClusterRoster, relayAddress } from "./relay";
 import { getClusterById } from "./roster";
@@ -31,6 +34,7 @@ function down(
     version: "",
     message,
     takenOverAt: null,
+    updateMessage: "",
   };
 }
 
@@ -47,6 +51,14 @@ async function readLeader(host: Server | null): Promise<ClusterLeader> {
         state: "stopped",
         version: s.version,
         message: "The leader is installed but not running.",
+      };
+    if (!versionAtLeast(s.version, clusterPin().min))
+      return {
+        ...base,
+        state: "outdated",
+        version: s.version,
+        message:
+          "This leader is older than this Deplo accepts. Deplo updates it on its own.",
       };
     return { ...base, version: s.version };
   } catch (e) {
@@ -68,11 +80,24 @@ export async function getClusterLeader(
   const cluster = await getClusterById(clusterId);
   if (!cluster) throw new Error("Cluster not found");
   // Where it was put, not who stands in for it: the card says both.
-  const leader = await readLeader(await leaderHostOf(cluster.leaderServerId));
+  const host = await leaderHostOf(cluster.leaderServerId);
+  const leader = await readLeader(host);
   return {
     ...leader,
     takenOverAt: cluster.leaderServerId ? cluster.leaderTakeoverAt : null,
+    updateMessage: await updateMessage(host),
   };
+}
+
+// Deplo's own machine stands in for a leader elsewhere, so its failing update is this cluster's too.
+async function updateMessage(host: Server | null): Promise<string> {
+  const own = await leaderHostOf(null);
+  for (const server of [host, own]) {
+    const row = server && (await failingClusterUpdate(server.id));
+    if (row)
+      return `Deplo could not update the leader on ${server.name} to v${row.targetVersion}: ${row.lastError} It retries on its own.`;
+  }
+  return "";
 }
 
 /**

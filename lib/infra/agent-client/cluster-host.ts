@@ -46,9 +46,11 @@ export function __setClusterPinForTest(
   pinOverride = pin;
 }
 
-function pin(): { version: string; min: string } {
+/** The cluster release this Deplo installs and the oldest it accepts (`deplo.cluster` / `deplo.clusterMin`). */
+export function clusterPin(): { version: string; min: string } {
   return pinOverride ?? { version: CLUSTER_VERSION, min: CLUSTER_MIN_VERSION };
 }
+const pin = clusterPin;
 
 async function onHost<T>(
   serverId: string,
@@ -219,16 +221,24 @@ export async function probeClusterHost(serverId: string): Promise<MemberProbe> {
   return probe(serverId, CLUSTER_HOST_CAPABILITY);
 }
 
-/** Whether the leader on the server answers calls: it runs, at a version this Deplo accepts. Never throws. */
-export async function clusterLeaderAnswers(serverId: string): Promise<boolean> {
+export type LeaderReach = "answers" | "outdated" | "away";
+
+/** Whether the leader on the server answers calls, runs but is below `clusterMin`, or is away. Never throws. */
+export async function clusterLeaderReach(
+  serverId: string,
+): Promise<LeaderReach> {
   try {
     const here = await clusterLeaderStatus(serverId);
-    return (
-      here.installed && here.running && versionAtLeast(here.version, pin().min)
-    );
+    if (!here.installed || !here.running) return "away";
+    return versionAtLeast(here.version, pin().min) ? "answers" : "outdated";
   } catch {
-    return false;
+    return "away";
   }
+}
+
+/** Whether the leader on the server answers calls: it runs, at a version this Deplo accepts. Never throws. */
+export async function clusterLeaderAnswers(serverId: string): Promise<boolean> {
+  return (await clusterLeaderReach(serverId)) === "answers";
 }
 
 const FAILOVER_CAPABILITIES = [

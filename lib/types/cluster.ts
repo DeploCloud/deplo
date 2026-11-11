@@ -16,7 +16,13 @@ export interface Cluster {
 }
 
 export type ClusterLeaderState =
-  "running" | "stopped" | "not_installed" | "unreachable" | "unavailable";
+  | "running"
+  | "stopped"
+  | "not_installed"
+  | "unreachable"
+  | "unavailable"
+  // It runs, on a version below the one this Deplo accepts.
+  | "outdated";
 
 /** Where a cluster's leader runs and whether it answers, read live from the agent that supervises it. */
 export interface ClusterLeader {
@@ -29,6 +35,8 @@ export interface ClusterLeader {
   message: string;
   /** Since when Deplo's own machine leads in its place; null while this leader leads. */
   takenOverAt: string | null;
+  /** One plain sentence while Deplo cannot update a leader this cluster relies on; empty otherwise. */
+  updateMessage: string;
 }
 
 /** A server the "Run the leader on another server" picker offers. */

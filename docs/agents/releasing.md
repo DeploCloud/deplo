@@ -57,8 +57,13 @@ the answers. Settle these first - from the request or the tree when they are the
    `git -C ../deplo-cluster log --oneline v<deplo.cluster>..origin/main` (with no `deplo.cluster`
    pinned yet, any commit on `main` counts). Empty: cut none. Not empty: it ships **first** (its own
    `v*` tag in `DeploCloud/deplo-cluster`, wait for `checksums.txt`), then `deplo.cluster` moves in
-   a `chore(cluster):` commit, then the panel is tagged. `deplo.clusterMin` moves only when the
-   panel cannot lead with the older one. See `docs/agents/cluster-rollout.md`.
+   a `chore(cluster):` commit, then the panel is tagged. A cluster release that needs something
+   new from the server agent comes after question 2's agent release, never before it.
+8. **Does this panel need the newer cluster binary?** Only then does `deplo.clusterMin` move. Every
+   leader below it is refused: Deplo's own machine leads that cluster until the update lands, and a
+   cluster led from Deplo's machine has **no leader** for the minute that takes. Name the clusters
+   in the question (Settings → Servers, each cluster card's "Leader runs on"). The order and what
+   breaks without it: `docs/agents/cluster-rollout.md`.
 
 A release's migrations must leave the previous release working: the installer rolls a failed update
 back onto them, so a column goes one release after its last reader (`lib/db/server-agent-pin-migration.test.ts`).

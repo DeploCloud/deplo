@@ -154,3 +154,18 @@ export const workloadPlacements = pgTable(
     index("workload_placements_member_idx").on(t.memberServerId),
   ],
 );
+
+// One row per server whose cluster binary update is failing; none means idle. See docs/agents/cluster-rollout.md.
+export const clusterBinaryUpdates = pgTable("cluster_binary_updates", {
+  serverId: text("server_id")
+    .primaryKey()
+    .references(() => servers.id, { onDelete: "cascade" }),
+  targetVersion: text("target_version").notNull(),
+  // "busy" | "error" | "no_return"
+  failure: text("failure").notNull(),
+  attempts: integer("attempts").notNull().default(0),
+  firstFailedAt: isoTimestamptz("first_failed_at").notNull(),
+  nextRetryAt: isoTimestamptz("next_retry_at").notNull(),
+  lastError: text("last_error").notNull().default(""),
+  updatedAt: isoTimestamptz("updated_at").notNull(),
+});
