@@ -12,7 +12,11 @@ import {
   Gauge,
 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
-import { TimeSeriesChart } from "@/components/monitoring/time-series-chart";
+import {
+  TimeSeriesChart,
+  type ChartMarker,
+  type ChartSeriesDef,
+} from "@/components/monitoring/time-series-chart";
 import { GaugeTile } from "@/components/monitoring/radial-gauge";
 import { MonitoringGraphic } from "@/components/monitoring/monitoring-graphic";
 import { NotRunningGraphic } from "@/components/apps/not-running-graphic";
@@ -22,6 +26,7 @@ import {
   ChartCard,
   WindowSelector,
   LiveStatusLine,
+  fmtClock,
   WINDOWS,
   pollIntervalFor,
   MAX_POINTS,
@@ -50,7 +55,10 @@ export function fmtCoresUsed(cpuPct: number, hostCores: number): string | null {
 function netNoteFor(c: InstanceMetrics, all: InstanceMetrics[]): string | null {
   if (c.netNsHost) return "host network";
   if (!c.netNsId) return null;
-  const owner = all.find((o) => o.running && o.netNsId === c.netNsId);
+  // A namespace id means something on its own server only.
+  const owner = all.find(
+    (o) => o.running && o.netNsId === c.netNsId && o.server === c.server,
+  );
   return owner && owner.name !== c.name
     ? `network shared with ${owner.name}`
     : null;
@@ -59,6 +67,7 @@ function netNoteFor(c: InstanceMetrics, all: InstanceMetrics[]): string | null {
 interface InstanceMetrics {
   name: string;
   replica?: string | null;
+  server?: string | null;
   running: boolean;
   cpu: number;
   memUsed: number;
@@ -90,14 +99,21 @@ export interface ContainerSample {
   running: number;
   containers: number;
   hostCores: number;
+  // Each server's share, when the history spans several servers.
+  members?: { server?: string; cpu: number; memUsed: number }[];
 }
 interface ContainerLive extends ContainerSample {
   unsupported: boolean;
   instances: InstanceMetrics[];
+  unavailable?: string[];
 }
 
 const SAMPLE_FIELDS = `online ts cpu memUsed memLimit memPct netRx netTx blockRead blockWrite pids running containers hostCores`;
-const LIVE_FIELDS = `${SAMPLE_FIELDS} unsupported instances { name replica running cpu memUsed memLimit memPct netRx netTx blockRead blockWrite pids state health restartCount netNsId netNsHost }`;
+const HISTORY_FIELDS = `${SAMPLE_FIELDS} members { server cpu memUsed }`;
+const LIVE_FIELDS = `${SAMPLE_FIELDS} unsupported unavailable instances { name replica server running cpu memUsed memLimit memPct netRx netTx blockRead blockWrite pids state health restartCount netNsId netNsHost }`;
+
+// The total keeps chart-1; each server takes the next colour.
+const MEMBER_COLORS = [2, 3, 4, 5].map((n) => `var(--chart-${n})`);
 
 function rate(cur: number, prev: number, dtSec: number): number {
   if (dtSec <= 0) return 0;
@@ -142,6 +158,7 @@ export function ContainerMonitoringDashboard({
     initialHistory.filter((s) => s.online),
   );
   const [last, setLast] = React.useState<ContainerLive | null>(null);
+  const [markers, setMarkers] = React.useState<ChartMarker[]>([]);
   const [now, setNow] = React.useState<number>(() => Date.now());
   const pollMs = React.useMemo(
     () => pollIntervalFor(samples.map((x) => x.ts)),
@@ -158,21 +175,36 @@ export function ContainerMonitoringDashboard({
       busy = true;
       try {
         const res = await gqlAction<
-          Record<string, ContainerLive | ContainerSample[] | null>,
-          { live: ContainerLive | null; history: ContainerSample[] }
+          Record<
+            string,
+            ContainerLive | ContainerSample[] | ChartMarker[] | null
+          >,
+          {
+            live: ContainerLive | null;
+            history: ContainerSample[];
+            markers: ChartMarker[];
+          }
         >(
           `query Metrics($id: String!) {
             ${metricsField}(${idArg}: $id) { ${LIVE_FIELDS} }
-            ${historyField}(${idArg}: $id) { ${SAMPLE_FIELDS} }
+            ${historyField}(${idArg}: $id) { ${HISTORY_FIELDS} }
+            ${kind === "app" ? "appMetricsMarkers(appId: $id) { ts label }" : ""}
           }`,
           { id },
           (d) => ({
             live: (d[metricsField] as ContainerLive | null) ?? null,
             history: (d[historyField] as ContainerSample[]) ?? [],
+            markers: (d.appMetricsMarkers as ChartMarker[] | undefined) ?? [],
           }),
         );
         if (!active || !res.ok || !res.data) return;
         setLast(res.data.live);
+        const marked = res.data.markers;
+        setMarkers((prev) =>
+          prev.length === marked.length && prev.at(-1)?.ts === marked.at(-1)?.ts
+            ? prev
+            : marked,
+        );
         if (res.data.history.length === 0) return;
         const fresh = res.data.history.filter((s) => s.online);
         setSamples((prev) => {
@@ -208,33 +240,69 @@ export function ContainerMonitoringDashboard({
       window.removeEventListener("focus", onWake);
       window.removeEventListener("pageshow", onWake);
     };
-  }, [id, metricsField, historyField, idArg, pollMs]);
+  }, [id, kind, metricsField, historyField, idArg, pollMs]);
 
   const points = React.useMemo(
     () =>
       samples.map((s, i) => {
         const prev = samples[i - 1];
         const dt = prev ? (s.ts - prev.ts) / 1000 : 0;
-        return {
-          ts: s.ts,
-          values: {
-            cpu:
-              cpuLimitCores && s.running > 0
-                ? s.cpu / (cpuLimitCores * s.running)
-                : s.cpu,
-            mem:
-              memLimitBytes && s.running > 0
-                ? (s.memUsed / (memLimitBytes * s.running)) * 100
-                : s.memPct,
-            rx: prev ? rate(s.netRx, prev.netRx, dt) : 0,
-            tx: prev ? rate(s.netTx, prev.netTx, dt) : 0,
-            bread: prev ? rate(s.blockRead, prev.blockRead, dt) : 0,
-            bwrite: prev ? rate(s.blockWrite, prev.blockWrite, dt) : 0,
-          },
+        const values: Record<string, number> = {
+          cpu:
+            cpuLimitCores && s.running > 0
+              ? s.cpu / (cpuLimitCores * s.running)
+              : s.cpu,
+          mem:
+            memLimitBytes && s.running > 0
+              ? (s.memUsed / (memLimitBytes * s.running)) * 100
+              : s.memPct,
+          rx: prev ? rate(s.netRx, prev.netRx, dt) : 0,
+          tx: prev ? rate(s.netTx, prev.netTx, dt) : 0,
+          bread: prev ? rate(s.blockRead, prev.blockRead, dt) : 0,
+          bwrite: prev ? rate(s.blockWrite, prev.blockWrite, dt) : 0,
         };
+        // Each server's share on the total's own scale, so the shares add up to its line.
+        for (const m of s.members ?? []) {
+          if (!m.server) continue;
+          values[`cpu:${m.server}`] =
+            cpuLimitCores && s.running > 0
+              ? m.cpu / (cpuLimitCores * s.running)
+              : m.cpu;
+          values[`mem:${m.server}`] =
+            memLimitBytes && s.running > 0
+              ? (m.memUsed / (memLimitBytes * s.running)) * 100
+              : s.memLimit > 0
+                ? (m.memUsed / s.memLimit) * 100
+                : 0;
+        }
+        return { ts: s.ts, values };
       }),
     [samples, cpuLimitCores, memLimitBytes],
   );
+
+  const servers = React.useMemo(
+    () => [
+      ...new Set(
+        samples.flatMap((s) =>
+          (s.members ?? []).flatMap((m) => m.server ?? []),
+        ),
+      ),
+    ],
+    [samples],
+  );
+  const seriesFor = (key: "cpu" | "mem", label: string): ChartSeriesDef[] => [
+    {
+      key,
+      label: servers.length > 1 ? "Total" : label,
+      color: "var(--chart-1)",
+      fill: true,
+    },
+    ...(servers.length > 1 ? servers : []).map((server, i) => ({
+      key: `${key}:${server}`,
+      label: server,
+      color: MEMBER_COLORS[i % MEMBER_COLORS.length],
+    })),
+  ];
 
   const cur = samples[samples.length - 1] ?? null;
   const curCpu = cur ? cpuOf(cur.cpu, cur.running) : 0;
@@ -332,6 +400,22 @@ export function ContainerMonitoringDashboard({
   } else {
     body = (
       <>
+        {(last?.unavailable?.length ?? 0) > 0 && (
+          <p className="text-xs text-[var(--warning)]">
+            No readings from {last!.unavailable!.join(", ")} right now, so the
+            totals leave {last!.unavailable!.length === 1 ? "it" : "them"} out.
+          </p>
+        )}
+        {markers.length > 0 && (
+          <ul className="space-y-1 text-xs text-muted-foreground">
+            {markers.map((m) => (
+              <li key={`${m.ts}:${m.label}`} className="flex gap-2">
+                <span className="shrink-0 tabular-nums">{fmtClock(m.ts)}</span>
+                <span>{m.label}</span>
+              </li>
+            ))}
+          </ul>
+        )}
         {hasLimits && (
           <div className="flex items-start gap-2 rounded-lg border border-border bg-surface px-3 py-2.5 text-xs text-muted-foreground">
             <Gauge className="mt-0.5 size-4 shrink-0" />
@@ -446,14 +530,8 @@ export function ContainerMonitoringDashboard({
               unit="percent"
               windowMs={windowMs}
               points={points}
-              series={[
-                {
-                  key: "cpu",
-                  label: "CPU",
-                  color: "var(--chart-1)",
-                  fill: true,
-                },
-              ]}
+              series={seriesFor("cpu", "CPU")}
+              markers={markers}
               ariaLabel={`CPU usage over time, currently ${curCpu.toFixed(1)}%${
                 cpuLimitAggCores != null
                   ? ` of the ${fmtCores(cpuLimitAggCores)} limit`
@@ -477,14 +555,8 @@ export function ContainerMonitoringDashboard({
               unit="percent"
               windowMs={windowMs}
               points={points}
-              series={[
-                {
-                  key: "mem",
-                  label: "Memory",
-                  color: "var(--chart-1)",
-                  fill: true,
-                },
-              ]}
+              series={seriesFor("mem", "Memory")}
+              markers={markers}
               ariaLabel={`Memory usage over time, currently ${curMemPct.toFixed(1)}%${memLimitAggMb != null ? ` of the ${fmtMemMb(memLimitAggMb)} limit` : ""}`}
             />
           </ChartCard>
@@ -498,6 +570,7 @@ export function ContainerMonitoringDashboard({
                 { key: "rx", label: "↓ Received", color: "var(--chart-1)" },
                 { key: "tx", label: "↑ Sent", color: "var(--chart-2)" },
               ]}
+              markers={markers}
               ariaLabel="Network throughput over time, received and sent bytes per second"
             />
           </ChartCard>
@@ -511,6 +584,7 @@ export function ContainerMonitoringDashboard({
                 { key: "bread", label: "Read", color: "var(--chart-1)" },
                 { key: "bwrite", label: "Write", color: "var(--chart-2)" },
               ]}
+              markers={markers}
               ariaLabel="Block device throughput over time, read and write bytes per second"
             />
           </ChartCard>
@@ -574,7 +648,10 @@ function ContainerBreakdown({ instances }: { instances: InstanceMetrics[] }) {
             </thead>
             <tbody>
               {instances.map((c) => (
-                <tr key={c.name} className="border-b last:border-0">
+                <tr
+                  key={`${c.name}@${c.server ?? ""}`}
+                  className="border-b last:border-0"
+                >
                   <td className="px-4 py-2">
                     <span className="font-mono text-xs" title={c.name}>
                       {c.replica ?? c.name}

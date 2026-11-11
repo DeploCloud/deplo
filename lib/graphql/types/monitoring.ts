@@ -20,7 +20,12 @@ import {
   type ContainerMetrics,
   type ContainerMetricsSample,
   type ContainerInstanceMetrics,
+  type MemberShare,
 } from "@/lib/data/container-metrics";
+import {
+  getAppMetricsMarkers,
+  type MetricsMarker,
+} from "@/lib/data/metrics-markers";
 
 const ServerMetricsRef = builder
   .objectRef<ServerMetrics>("ServerMetrics")
@@ -79,7 +84,16 @@ const ContainerInstanceMetricsRef = builder
       name: t.exposeString("name"),
       replica: t.exposeString("replica", {
         nullable: true,
-        description: "`web-2` when this is one of several replicas; else null.",
+        description:
+          "`web-2` when this is one of several replicas, `web-2 · server-b` " +
+          "when the app runs on several servers; else null.",
+      }),
+      server: t.string({
+        nullable: true,
+        description:
+          "The server this container is on, by name, when the app runs on " +
+          "several; else null.",
+        resolve: (i) => i.server ?? null,
       }),
       running: t.exposeBoolean("running"),
       cpu: t.exposeFloat("cpu"),
@@ -122,6 +136,34 @@ const ContainerInstanceMetricsRef = builder
     }),
   });
 
+const MemberShareRef = builder
+  .objectRef<MemberShare>("ContainerMetricsShare")
+  .implement({
+    description: "One server's part of a sample that totals several servers.",
+    fields: (t) => ({
+      server: t.string({
+        description: "The server's name.",
+        resolve: (m) => m.server ?? "",
+      }),
+      cpu: t.exposeFloat("cpu"),
+      memUsed: t.exposeFloat("memUsed"),
+      running: t.exposeInt("running"),
+    }),
+  });
+
+const MetricsMarkerRef = builder
+  .objectRef<MetricsMarker>("MetricsMarker")
+  .implement({
+    description:
+      "A moment an app changed servers (a move or a failover), read from Activity.",
+    fields: (t) => ({
+      ts: t.exposeFloat("ts", { description: "Epoch ms." }),
+      label: t.exposeString("label", {
+        description: "The Activity entry, as written.",
+      }),
+    }),
+  });
+
 const ContainerMetricsSampleRef = builder
   .objectRef<ContainerMetricsSample>("ContainerMetricsSample")
   .implement({
@@ -150,6 +192,13 @@ const ContainerMetricsSampleRef = builder
           "The owning machine's core count. `cpu` is a percentage of ONE core " +
           "(like `docker stats` and htop), so 299% is three busy cores of this " +
           "many. 0 before the first frame.",
+      }),
+      members: t.field({
+        type: [MemberShareRef],
+        description:
+          "Each server's share of this sample, when the history spans several " +
+          "servers (replicas spread over a cluster, a move, a failover); else empty.",
+        resolve: (s) => s.members ?? [],
       }),
     }),
   });
@@ -185,6 +234,12 @@ const ContainerMetricsRef = builder
         type: [ContainerInstanceMetricsRef],
         description: "Per-container usage (multi-container stacks). Live only.",
         resolve: (m) => m.instances,
+      }),
+      unavailable: t.stringList({
+        description:
+          "The servers running this workload whose readings are missing from " +
+          "the total, by name. Empty unless it runs on several servers.",
+        resolve: (m) => m.unavailable ?? [],
       }),
     }),
   });
@@ -292,6 +347,15 @@ builder.queryFields((t) => ({
       "stream has not delivered a frame for it yet.",
     args: { appId: t.arg.string({ required: true }) },
     resolve: (_r, { appId }) => getAppMetricsHistory(appId),
+  }),
+  appMetricsMarkers: t.field({
+    type: [MetricsMarkerRef],
+    authScopes: { capability: "view_metrics" },
+    description:
+      "Each move or failover of one app inside the metrics history window " +
+      "(oldest first), so a jump in a chart has its explanation beside it.",
+    args: { appId: t.arg.string({ required: true }) },
+    resolve: (_r, { appId }) => getAppMetricsMarkers(appId),
   }),
   databaseMetrics: t.field({
     type: ContainerMetricsRef,

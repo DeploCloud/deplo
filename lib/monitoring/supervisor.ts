@@ -42,9 +42,9 @@ import {
   markMetricsStreamUnsupported,
 } from "./stream-modes";
 import {
+  dropMemberSamples,
   pruneContainerHistoryTo,
-  recordContainerInstances,
-  recordContainerSample,
+  recordMemberSample,
 } from "./container-history";
 import { instanceFrozen } from "../data/deplo-move/freeze";
 
@@ -166,9 +166,9 @@ async function ingestFrame(
   };
   for (const [projectId, stats] of byProject) {
     const agg = aggregateContainerStats(projectId, stats, ts, capacity);
-    recordContainerInstances(projectId, agg.instances);
-    recordContainerSample(toContainerSample(agg));
+    recordMemberSample(serverId, toContainerSample(agg), agg.instances);
   }
+  dropMemberSamples(serverId, byProject);
   return byProject;
 }
 

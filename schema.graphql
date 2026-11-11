@@ -1462,7 +1462,9 @@ type ContainerInstanceMetrics {
   netTx: Float
   pids: Int
 
-  """`web-2` when this is one of several replicas; else null."""
+  """
+  `web-2` when this is one of several replicas, `web-2 · server-b` when the app runs on several servers; else null.
+  """
   replica: String
 
   """
@@ -1470,6 +1472,11 @@ type ContainerInstanceMetrics {
   """
   restartCount: Int
   running: Boolean
+
+  """
+  The server this container is on, by name, when the app runs on several; else null.
+  """
+  server: String
 
   """
   Raw docker state: running | restarting | exited | created | paused | dead | removing. Empty from an agent too old to report it.
@@ -1501,6 +1508,11 @@ type ContainerMetrics {
   pids: Int
   running: Int
   ts: Float
+
+  """
+  The servers running this workload whose readings are missing from the total, by name. Empty unless it runs on several servers.
+  """
+  unavailable: [String!]
   unsupported: Boolean
 }
 
@@ -1521,12 +1533,27 @@ type ContainerMetricsSample {
   memLimit: Float
   memPct: Float
   memUsed: Float
+
+  """
+  Each server's share of this sample, when the history spans several servers (replicas spread over a cluster, a move, a failover); else empty.
+  """
+  members: [ContainerMetricsShare!]
   netRx: Float
   netTx: Float
   online: Boolean
   pids: Int
   running: Int
   ts: Float
+}
+
+"""One server's part of a sample that totals several servers."""
+type ContainerMetricsShare {
+  cpu: Float
+  memUsed: Float
+  running: Int
+
+  """The server's name."""
+  server: String
 }
 
 input CreateAppFromTemplateInput {
@@ -3526,6 +3553,17 @@ type Member {
   roleName: String
   userId: ID
   username: String
+}
+
+"""
+A moment an app changed servers (a move or a failover), read from Activity.
+"""
+type MetricsMarker {
+  """The Activity entry, as written."""
+  label: String
+
+  """Epoch ms."""
+  ts: Float
 }
 
 type MigrationDataMoveResult {
@@ -5867,6 +5905,11 @@ type Query {
   The metrics history buffered for one app (oldest first) - what the app's Monitoring charts seed from. Empty when the owning server's telemetry stream has not delivered a frame for it yet.
   """
   appMetricsHistory(appId: String!): [ContainerMetricsSample!]
+
+  """
+  Each move or failover of one app inside the metrics history window (oldest first), so a jump in a chart has its explanation beside it.
+  """
+  appMetricsMarkers(appId: String!): [MetricsMarker!]
 
   """Pull request previews for an app, plus why they may not work."""
   appPreviews(appId: ID!): AppPreviewsView

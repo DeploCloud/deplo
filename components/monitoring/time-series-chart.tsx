@@ -24,6 +24,12 @@ export interface ChartPoint {
 
 export type ChartUnit = "percent" | "bytesPerSec" | "count";
 
+// A moment worth explaining (a move, a failover): a dashed line, with its sentence on hover.
+export interface ChartMarker {
+  ts: number;
+  label: string;
+}
+
 const M_TOP = 10;
 const M_RIGHT = 12;
 const M_BOTTOM = 24;
@@ -122,6 +128,7 @@ export function TimeSeriesChart({
   unit,
   height = 200,
   ariaLabel,
+  markers = [],
 }: {
   series: ChartSeriesDef[];
   points: ChartPoint[];
@@ -129,6 +136,7 @@ export function TimeSeriesChart({
   unit: ChartUnit;
   height?: number;
   ariaLabel: string;
+  markers?: ChartMarker[];
 }) {
   const wrapRef = React.useRef<HTMLDivElement>(null);
   const [width, setWidth] = React.useState(0);
@@ -428,6 +436,25 @@ export function TimeSeriesChart({
                 </g>
               );
             })}
+          </g>
+
+          <g clipPath={`url(#${clipId})`}>
+            {markers
+              .filter((m) => m.ts >= t0 && m.ts <= t1)
+              .map((m) => (
+                <line
+                  key={`${m.ts}:${m.label}`}
+                  x1={xOf(m.ts)}
+                  x2={xOf(m.ts)}
+                  y1={M_TOP}
+                  y2={M_TOP + plotH}
+                  className="stroke-[var(--warning)]"
+                  strokeWidth={1.5}
+                  strokeDasharray="4 3"
+                >
+                  <title>{`${fmtTime(m.ts, true)} ${m.label}`}</title>
+                </line>
+              ))}
           </g>
 
           {last &&
