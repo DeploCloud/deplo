@@ -154,9 +154,10 @@ test("turning it on places the copy on another server than the database, which f
     plan.get("srv_3")!.serve.map((s) => [s.workloadId, s.sourceFingerprints]),
     [["db_main", [fp(2)]]],
   );
+  // The database's own server lets the copy's server in.
   assert.deepEqual(
-    plan.get("srv_2")!.serve.map((s) => s.workloadId),
-    ["db_main"],
+    plan.get("srv_2")!.serve.map((s) => [s.workloadId, s.sourceFingerprints]),
+    [["db_main", [fp(3)]]],
   );
   assert.deepEqual(plan.get("srv_2")!.hold, []);
   assert.deepEqual(

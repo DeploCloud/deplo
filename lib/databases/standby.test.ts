@@ -1,5 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { execFileSync } from "node:child_process";
 
 import { parse } from "yaml";
 
@@ -166,4 +167,22 @@ test("a promotion is refused by the copy itself when it had stopped following", 
   assert.match(pg.check, /seeding/);
   assert.match(pg.check, /following/);
   assert.match(pg.check, /behind/);
+});
+
+test("every script of every engine row is shell a container's sh can read", () => {
+  for (const [type, engine] of Object.entries(STANDBY_ENGINES)) {
+    const start = engine.start({ ...args, primaryHost: "db-main", seed: "s" });
+    const scripts = {
+      prepare: engine.prepare(args),
+      retire: engine.retire(args),
+      check: engine.check,
+      start: start.command.at(-1)!,
+      promote: engine.promote.command.at(-1)!,
+    };
+    for (const [name, script] of Object.entries(scripts))
+      assert.doesNotThrow(
+        () => execFileSync("sh", ["-n", "-c", script], { stdio: "pipe" }),
+        `${type}.${name} does not parse`,
+      );
+  }
 });
