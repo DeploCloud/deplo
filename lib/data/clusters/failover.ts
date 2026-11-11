@@ -24,6 +24,7 @@ import { assembleDatabase } from "../backup-rows";
 import { markLinkedAppsPending } from "../database-links";
 import { failoverOnly } from "./architectures";
 import { changeLogBroken } from "./change-log";
+import { rehomeFailoverBackups } from "../databases/failover";
 import { syncStandbySoon } from "../databases/standby";
 import { databasePassword } from "../databases/stack";
 import { getServerById } from "../servers/roster";
@@ -192,6 +193,8 @@ async function databaseFailedOver(
     await markLinkedAppsPending(row.id).catch(quietly(row.id));
   }
   publishDatabaseChanged(row.id);
+  // It may now sit on the server its own backups are kept on: the bundle below names where they go next.
+  await rehomeFailoverBackups(cluster.id).catch(quietly(row.id));
   await pushDatabaseBundle(row.id).catch(quietly(row.id));
   await syncNameForwarders(cluster.id).catch(quietly(cluster.id));
   // A promoted copy is the database now: another server gets a new one when there is one.

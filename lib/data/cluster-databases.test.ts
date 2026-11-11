@@ -44,7 +44,11 @@ import { __setAgentConnectorForTest } from "../infra/agent-client/connect";
 import { createCluster } from "./clusters/manage";
 import { addClusterMember } from "./clusters/members";
 import { applyLeaderReport } from "./clusters/placement";
-import { getDatabaseFailover, getFailoverPreview } from "./databases/failover";
+import {
+  getDatabaseFailover,
+  getFailoverPreview,
+  rehomeFailoverBackups,
+} from "./databases/failover";
 import { deleteDatabase } from "./databases/lifecycle";
 import { createDatabase } from "./databases/provision";
 import { moveDatabaseToCluster, updateDatabase } from "./databases/server-move";
@@ -513,6 +517,145 @@ test("the page warns once a failover puts the database on its destination's serv
     after?.warning,
     "main now runs on server-3, the server its backups are kept on. If server-3 stops, the backups go with it. Pick another destination for its backup.",
   );
+});
+
+test("after a failover onto its destination's server, Deplo's own backup moves to a server a failover can read", async () => {
+  const cluster = await eu(["srv_2", "srv_3", "srv_4"]);
+  const created = await asMember(() => newDb(cluster.id));
+  await settleProvisioning(db);
+  assert.equal((await destinationOf(created.id)).serverId, "srv_3");
+
+  await applyLeaderReport({
+    clusterId: cluster.id,
+    kind: "database",
+    workloadId: created.id,
+    members: ["srv_3"],
+    epoch: 2,
+  });
+  await rehomeFailoverBackups(cluster.id);
+
+  const dest = await destinationOf(created.id);
+  assert.notEqual(dest.serverId, "srv_3");
+  assert.ok(["srv_2", "srv_4"].includes(dest.serverId!));
+  assert.equal(
+    (await asMember(() => getDatabaseFailover(created.id)))?.warning,
+    null,
+  );
+  const said = await db
+    .select()
+    .from(activitiesTable)
+    .where(eq(activitiesTable.databaseId, created.id));
+  assert.ok(
+    said.some(
+      (a) =>
+        a.actor === "Deplo" &&
+        a.message ===
+          `Backs up main every 15 minutes to ${dest.name} from now on: main now runs on server-3, where its backups were kept.`,
+    ),
+    said.map((a) => a.message).join(" | "),
+  );
+  // Settled: a second pass changes and says nothing.
+  await rehomeFailoverBackups(cluster.id);
+  assert.equal((await destinationOf(created.id)).id, dest.id);
+});
+
+test("a cluster that grows moves the backup off Deplo's own server, which no failover could read", async () => {
+  const cluster = await eu(["srv_2"]);
+  const created = await asMember(() => newDb(cluster.id));
+  assert.equal((await destinationOf(created.id)).serverId, SERVER_1);
+
+  await asAdmin(() => addClusterMember(cluster.id, "srv_3"));
+  assert.equal((await destinationOf(created.id)).serverId, "srv_3");
+});
+
+test("a schedule the team made itself is never moved, and an offline server is no new home", async () => {
+  const cluster = await eu();
+  await seedDestination(db, {
+    id: "dst_own",
+    name: "On server-3",
+    kind: "server",
+    serverId: "srv_3",
+  });
+  const created = await asMember(() => newDb(cluster.id));
+  await db
+    .update(backupsTable)
+    .set({ name: "Nightly" })
+    .where(eq(backupsTable.databaseId, created.id));
+  const move = () =>
+    applyLeaderReport({
+      clusterId: cluster.id,
+      kind: "database",
+      workloadId: created.id,
+      members: ["srv_3"],
+      epoch: 2,
+    });
+  await move();
+  await rehomeFailoverBackups(cluster.id);
+  assert.equal((await destinationOf(created.id)).id, "dst_own");
+
+  await db
+    .update(backupsTable)
+    .set({ name: "Failover backup" })
+    .where(eq(backupsTable.databaseId, created.id));
+  await db
+    .update(serversTable)
+    .set({ status: "offline" })
+    .where(eq(serversTable.id, "srv_2"));
+  await rehomeFailoverBackups(cluster.id);
+  assert.equal(
+    (await destinationOf(created.id)).id,
+    "dst_own",
+    "the only other member is down: a backup that runs beats one that cannot",
+  );
+});
+
+test("only a schedule a failover can use counts as having one", async () => {
+  const cluster = await eu();
+  await seedDestination(db, { id: "dst_bucket", name: "Bucket" });
+  await seedDestination(db, {
+    id: "dst_same",
+    name: "On server-2",
+    kind: "server",
+    serverId: "srv_2",
+  });
+  for (const [id, over] of [
+    ["db_off", { destinationId: "dst_bucket", enabled: false }],
+    ["db_same", { destinationId: "dst_same" }],
+    ["db_daily", { destinationId: "dst_bucket" }],
+  ] as const) {
+    await seedDatabase(db, { id, name: id, serverId: "srv_4", type: "mysql" });
+    await seedBackup(db, { id: `bkp_${id}`, databaseId: id, ...over });
+    await asMember(() => moveDatabaseToCluster(id, cluster.id));
+  }
+  const names = async (id: string) =>
+    (await schedulesOf(id)).map((s) => s.name).sort();
+  assert.deepEqual(await names("db_off"), ["Failover backup", "bkp_db_off"]);
+  assert.deepEqual(await names("db_same"), ["Failover backup", "bkp_db_same"]);
+  assert.deepEqual(
+    await names("db_daily"),
+    ["bkp_db_daily"],
+    "a daily backup to a bucket is one: the page says how much a failover can lose",
+  );
+  // Asked again, Deplo's own is never made twice, and not when the team switched it off.
+  await db
+    .update(backupsTable)
+    .set({ enabled: false })
+    .where(eq(backupsTable.name, "Failover backup"));
+  await asAdmin(() => addClusterMember(cluster.id, "srv_4"));
+  assert.equal((await names("db_off")).length, 2);
+});
+
+test("a destination on a server outside the cluster is passed over for a new one on a member", async () => {
+  const cluster = await eu();
+  await seedDestination(db, {
+    id: "dst_outside",
+    name: "outside",
+    kind: "server",
+    serverId: "srv_4",
+  });
+  const created = await asMember(() => newDb(cluster.id));
+  const dest = await destinationOf(created.id);
+  assert.equal(dest.serverId, "srv_3");
 });
 
 test("the database page states loss and recovery, from the last backup and the last measured restore", async () => {
