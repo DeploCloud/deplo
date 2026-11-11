@@ -86,14 +86,20 @@ export function refusalSentence(
 
 function parseAnswer(raw: Uint8Array): {
   member?: string;
+  members?: (string | null)[];
   refusal?: PlacementRefusal;
 } {
   try {
     const a = JSON.parse(new TextDecoder().decode(raw)) as {
       member?: unknown;
+      members?: unknown;
       refusal?: Partial<PlacementRefusal> | null;
     };
     if (typeof a.member === "string" && a.member) return { member: a.member };
+    if (Array.isArray(a.members) && a.members.length > 0)
+      return {
+        members: a.members.map((m) => (typeof m === "string" && m ? m : null)),
+      };
     const r = a.refusal;
     if (r && REASON_REFUSALS.has(String(r.reason)))
       return {
@@ -112,14 +118,11 @@ function parseAnswer(raw: Uint8Array): {
   );
 }
 
-/**
- * Asks the cluster's leader (through the agent that supervises it) which member runs the workload.
- * A refusal throws PlacementRefusedError with the sentence; nothing is written or stopped.
- */
-export async function askLeaderToPlace(
+async function askLeader(
   cluster: Cluster,
   req: PlacementRequest,
-): Promise<string> {
+  many?: { replicas: number; current: (string | null)[] },
+): Promise<{ member?: string; members?: (string | null)[] }> {
   const host = await leaderHost(cluster);
   if (!host)
     throw new PlacementUnavailableError(
@@ -143,6 +146,12 @@ export async function askLeaderToPlace(
             archs: req.archs ?? [],
           },
           members: await clusterMemberFacts(cluster.id),
+          ...(many
+            ? {
+                replicas: many.replicas,
+                current: many.current.map((m) => m ?? ""),
+              }
+            : {}),
         }),
       ),
     );
@@ -161,16 +170,52 @@ export async function askLeaderToPlace(
       }),
     );
   const members = await clusterMemberServerIds(cluster.id);
-  if (!answer.member || !members.includes(answer.member))
+  const named = answer.members ?? [answer.member ?? null];
+  if (named.every((m) => !m) || named.some((m) => m && !members.includes(m)))
     throw new PlacementUnavailableError(
       `Cluster ${cluster.name}'s leader named a server that is not in it.`,
     );
   // The leader may not have heard yet; nothing new lands on a member that is being emptied.
-  if (await memberIsEmptying(answer.member))
+  for (const m of new Set(named))
+    if (m && (await memberIsEmptying(m)))
+      throw new PlacementUnavailableError(
+        `Cluster ${cluster.name}'s leader named a server that is being emptied. Try again in a moment.`,
+      );
+  return answer;
+}
+
+/**
+ * Asks the cluster's leader (through the agent that supervises it) which member runs the workload.
+ * A refusal throws PlacementRefusedError with the sentence; nothing is written or stopped.
+ */
+export async function askLeaderToPlace(
+  cluster: Cluster,
+  req: PlacementRequest,
+): Promise<string> {
+  const { member } = await askLeader(cluster, req);
+  if (!member)
     throw new PlacementUnavailableError(
-      `Cluster ${cluster.name}'s leader named a server that is being emptied. Try again in a moment.`,
+      `Cluster ${cluster.name}'s leader named a server that is not in it.`,
     );
-  return answer.member;
+  return member;
+}
+
+/**
+ * Asks the leader where each of an App's replicas runs, spread across members. `current` is where each one
+ * runs now; null in the answer is a replica the leader keeps waiting for room.
+ */
+export async function askLeaderToSpread(
+  cluster: Cluster,
+  req: PlacementRequest,
+  replicas: number,
+  current: (string | null)[],
+): Promise<(string | null)[]> {
+  const { members } = await askLeader(cluster, req, { replicas, current });
+  if (members?.length !== replicas)
+    throw new PlacementUnavailableError(
+      "The cluster's leader gave an answer Deplo could not read.",
+    );
+  return members;
 }
 
 export interface PlacementReport {
@@ -360,7 +405,10 @@ export async function listAppLogMembers(app: {
   ];
 }
 
-/** "Waiting for room in eu" while the leader has nowhere to run an App; null once it runs, or for an App on one server. */
+/**
+ * "Waiting for room in eu" while the leader has nowhere to run an App, or "2 of 3 replicas running · waiting
+ * for room" while only some of them found a server; null once all run, or for an App on one server.
+ */
 export async function waitingForRoomNote(
   appId: string,
   clusterName: string | null,
@@ -375,9 +423,11 @@ export async function waitingForRoomNote(
         eq(workloadPlacements.workloadId, appId),
       ),
     );
-  return rows.some((r) => r.member === null)
-    ? `Waiting for room in ${clusterName}`
-    : null;
+  const running = rows.filter((r) => r.member !== null).length;
+  if (running === rows.length) return null;
+  return running > 0
+    ? `${running} of ${rows.length} replicas running · waiting for room`
+    : `Waiting for room in ${clusterName}`;
 }
 
 /** The same note for an App the caller already read under its own gates. */

@@ -45,6 +45,8 @@ export interface FailoverStack {
   composeUpArgs: string[];
   /** The App's own tunnel run token, when it has one. */
   tunnelToken?: string;
+  /** The text in `composeYaml` that stands for the replica count: the leader places each replica on its own. */
+  scale?: string;
   /** Services the member starts only once the App is ready: the tunnel's connector. */
   startAfterReady?: string[];
   /** The deploy's ready check and restart rule, in the agent's own JSON: the leader passes them on unread. */

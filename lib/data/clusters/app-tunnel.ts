@@ -82,6 +82,14 @@ export async function loadAppConnectorToken(
   return decryptSecretOrThrow(row.tokenEnc, "the App's tunnel token");
 }
 
+/** Whether a domain of the App goes through its own tunnel, which reaches every server it runs on. */
+export async function appHasTunnel(appId: string): Promise<boolean> {
+  return (
+    (await loadAppTunnel(appId)) !== null &&
+    (await heldDomains(appId)).length > 0
+  );
+}
+
 function tunnelName(slug: string): string {
   const clean = slug
     .toLowerCase()

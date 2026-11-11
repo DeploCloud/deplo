@@ -6,14 +6,31 @@ import {
   RestartRule,
   SourceKind,
 } from "../agent/gen/agent";
+import { parseDocument } from "yaml";
+
 import { scheduleFailoverBundle } from "../data/clusters/bundles";
+
+/** Stands for the replica count in a bundle's stack; the leader puts in how many a member runs. */
+export const REPLICAS_MARK = "__DEPLO_REPLICAS__";
+
+function markReplicas(composeYaml: string, service: string): string | null {
+  const doc = parseDocument(composeYaml);
+  if (!doc.hasIn(["services", service, "deploy", "replicas"])) return null;
+  doc.setIn(["services", service, "deploy", "replicas"], REPLICAS_MARK);
+  return doc.toString({ lineWidth: 0 });
+}
 
 /** Hands a cluster App's leader what this deploy sent, so it can start the App again without Deplo (ADR-0045). */
 export function offerFailoverBundle(
   appId: string,
   agentDeployId: string,
   req: DeployRequest,
+  // The service of an App spread over its cluster: the leader says how many replicas a member starts.
+  scaledService?: string,
 ): void {
+  const composeYaml = scaledService
+    ? markReplicas(req.composeYaml, scaledService)
+    : null;
   scheduleFailoverBundle({
     appId,
     deploymentId: agentDeployId.replace(/-stack$/, ""),
@@ -21,7 +38,8 @@ export function offerFailoverBundle(
       slug: req.slug,
       projectId: req.projectId,
       imageRef: req.imageRef,
-      composeYaml: req.composeYaml,
+      composeYaml: composeYaml ?? req.composeYaml,
+      ...(composeYaml ? { scale: REPLICAS_MARK } : {}),
       network: req.network,
       env: { ...req.env },
       // Pulled images need their credentials again; a built image is already on the member.

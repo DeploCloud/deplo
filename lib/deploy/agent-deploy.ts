@@ -23,8 +23,9 @@ import {
   FILES_BIND_CHECK_CAPABILITY,
   RESTART_CAPABILITY,
   START_AFTER_READY_CAPABILITY,
+  SPREAD_CAPABILITY,
 } from "../infra/agent-client/hello-capabilities";
-import { stackFilesDir } from "./deploy-key";
+import { stackFilesDir, stackName } from "./deploy-key";
 import { fileBindsUnderFilesDir, filesBindSources } from "./file-binds";
 import { loadRegistryAuthsForApp } from "../data/registries";
 import { restartRuleForApp } from "./restart-rule-app";
@@ -333,7 +334,11 @@ export async function runAgentDeploy(opts: {
       (await restartRuleForApp(opts.appId, opts.ready)) ?? undefined;
   if (opts.overlap && !opts.buildOnly) {
     const replicas = opts.overlap.replicas;
-    if (replicas > 1 && !hello.capabilities.includes(REPLICAS_CAPABILITY))
+    const scaled = opts.overlap.scaled === true;
+    if (
+      (replicas > 1 && !hello.capabilities.includes(REPLICAS_CAPABILITY)) ||
+      (scaled && !hello.capabilities.includes(SPREAD_CAPABILITY))
+    )
       throw new Error(REPLICAS_AGENT_MESSAGE);
     const choice = deployOverlap({
       ports: opts.overlap.ports,
@@ -343,9 +348,9 @@ export async function runAgentDeploy(opts: {
     if (choice.overlap) {
       req.composeYaml = opts.overlap.live;
       req.standInComposeYaml = opts.overlap.standIn;
-    } else if (replicas > 1) {
+    } else if (replicas > 1 || scaled) {
       throw new Error(
-        `Running ${replicas} copies needs the new version to start beside the old one. ${choice.reason}`,
+        `Running ${scaled ? "replicas on several servers" : `${replicas} copies`} needs the new version to start beside the old one. ${choice.reason}`,
       );
     } else opts.sink.log("info", choice.reason);
   }
@@ -398,7 +403,12 @@ export async function runAgentDeploy(opts: {
   // A cluster App's leader gets what this deploy sent, sealed, once it is ready (ADR-0045).
   const offerBundle = (r: AgentDeployResult): AgentDeployResult => {
     if (r.ready && !opts.buildOnly && !opts.forkPreview)
-      offerFailoverBundle(opts.appId, opts.deployId, req);
+      offerFailoverBundle(
+        opts.appId,
+        opts.deployId,
+        req,
+        opts.overlap?.scaled ? stackName(opts.slug) : undefined,
+      );
     return r;
   };
 

@@ -13,6 +13,8 @@ export type OverlapStacks = {
   ports: App["ports"];
   // Above 1 the deploy always overlaps: it is never allowed to fall back to a swap in place.
   replicas: number;
+  // One member's share of an App spread over a cluster: it overlaps like replicas do, even with one copy.
+  scaled?: boolean;
 };
 
 export type DeployOverlap =
