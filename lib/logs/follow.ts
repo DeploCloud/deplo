@@ -1,4 +1,4 @@
-import type { AttachHandle } from "../infra/docker";
+import type { AttachHandle } from "../attach/types";
 import type {
   AgentConnection,
   FollowLogsOptions,

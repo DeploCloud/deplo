@@ -40,7 +40,7 @@ export type {
   RestartControlPlaneResponse,
   UpdateControlPlaneResponse,
 } from "../../agent/gen/agent";
-import type { AttachHandle } from "../docker";
+import type { AttachHandle } from "../../attach/types";
 
 /** What one cluster member is handed to run its name forwarders (#200). */
 export interface ClusterForwarderTable {
