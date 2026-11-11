@@ -139,10 +139,6 @@ export async function reapInFlightRuns(
   const byServer = new Map<string, InFlightRun[]>();
   for (const r of runs) {
     const serverId = serverOf(r);
-    if (r.run.agentJobId && stopped.has(serverId)) {
-      await settleServerLost(r, serverId, now);
-      continue;
-    }
     const list = byServer.get(serverId);
     if (list) list.push(r);
     else byServer.set(serverId, [r]);
@@ -156,7 +152,10 @@ export async function reapInFlightRuns(
       conn = await connectFn(serverId);
     } catch (e) {
       for (const r of group) {
-        if (now.getTime() > deadlineOf(r.run)) {
+        // What is stored about the member counts only when its own agent cannot be asked.
+        if (r.run.agentJobId && stopped.has(serverId))
+          await settleServerLost(r, serverId, now);
+        else if (now.getTime() > deadlineOf(r.run)) {
           await settle(
             r,
             "lost",
@@ -173,7 +172,7 @@ export async function reapInFlightRuns(
     try {
       for (const r of group) {
         try {
-          await reapOne(conn, r, now);
+          await reapOne(conn, r, now, stopped);
         } catch (e) {
           console.warn(
             `[crons] reaping run ${r.run.id} failed: ${agentMessage(e)}`,
@@ -190,6 +189,7 @@ async function reapOne(
   conn: AgentConnection,
   r: InFlightRun,
   now: Date,
+  stopped: ReadonlySet<string> = new Set(),
 ): Promise<boolean> {
   if (!r.run.agentJobId) {
     if (r.run.nextAttemptAt) {
@@ -209,7 +209,8 @@ async function reapOne(
   }
 
   const poll = await conn.pollJob(r.run.agentJobId);
-  if (poll.fenced) {
+  // An agent that forgot the job on a member that stopped lost it to the stop, not to a restart.
+  if (poll.fenced || (!poll.found && stopped.has(serverOf(r)))) {
     await settleServerLost(r, serverOf(r), now);
     return false;
   }
