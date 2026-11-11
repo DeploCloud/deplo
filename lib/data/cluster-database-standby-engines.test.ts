@@ -283,6 +283,18 @@ for (const type of ["mysql", "redis", "mongodb"] as const)
     assert.deepEqual(host.srv_2.stack, []);
   });
 
+/** Another team's owner, who holds the Capability in its own team, learns nothing: not even why it is refused. */
+async function strangerLearnsNothing() {
+  const asB = <T>(fn: () => Promise<T>) =>
+    runWithIdentity({ userId: "user_b", teamId: TEAM_B }, fn);
+  await assert.rejects(
+    asB(() => setDatabaseStandby("db_main", true)),
+    /not found/i,
+  );
+  assert.equal(await asB(() => getDatabaseStandby("db_main")), null);
+  assert.equal(await asB(() => getDatabaseFailover("db_main")), null);
+}
+
 const THREE =
   "Deplo keeps a standby copy of a MongoDB database only on a cluster of 3 servers or more. Cluster eu has 2: add a server to it.";
 
@@ -305,14 +317,7 @@ test("MongoDB under three servers: the switch is refused in words before anythin
   assert.equal(sw!.enabled, false);
   assert.equal(sw!.unavailable, THREE);
 
-  // Another team's owner learns nothing about it, not even the reason.
-  const asB = <T>(fn: () => Promise<T>) =>
-    runWithIdentity({ userId: "user_b", teamId: TEAM_B }, fn);
-  await assert.rejects(
-    asB(() => setDatabaseStandby("db_main", true)),
-    /not found/i,
-  );
-  assert.equal(await asB(() => getDatabaseStandby("db_main")), null);
+  await strangerLearnsNothing();
 
   // The same cluster keeps a copy of every other engine: the rule is MongoDB's.
   await db
@@ -406,6 +411,7 @@ test("ClickHouse on a cluster shows why it keeps no standby copy, and the switch
     asAdmin(() => setDatabaseStandby("db_main", true)),
     { message: NEVER },
   );
+  await strangerLearnsNothing();
   assert.equal((await row()).standby, false);
   assert.equal(asked, 0);
   assert.equal(execs.length, 0);
@@ -423,6 +429,7 @@ test("an engine older than its copy needs is refused with the version it needs",
     (await asAdmin(() => getDatabaseStandby("db_main")))!.unavailable,
     "A standby copy needs MariaDB 11.4 or newer. main runs 10.11.",
   );
+  await strangerLearnsNothing();
   assert.equal((await row()).standby, false);
   assert.equal(asked, 0);
   assert.deepEqual(host.srv_2.stack, []);
