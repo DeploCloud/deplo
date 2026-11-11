@@ -763,6 +763,14 @@ setting says. Calling it an error sends the reader to look for build logs that d
 _Avoid_: expired (that is the idle timeout), deleted, closed (that is the pull request's own
 lifecycle), "out of space" / "space error" (nothing to do with disk), "over quota".
 
+**Offline: its server stopped** (a pull request preview's status, `offline` in the store):
+The preview of a **cluster** App ran on a member that stopped. A preview is placed by the
+cluster's leader like an App (`app_previews.server_id` records the member), but it has no
+failover bundle and no tunnel, and the leader keeps no record of it: nothing moves it. It
+reads offline until the next push or **Redeploy** places it again, possibly on another
+member, where a generated address follows it. It still holds its slot.
+_Avoid_: failed over, moved, waiting for room (those are an App's), error (no build failed).
+
 **Database**:
 A managed datastore container (`postgres`/`mysql`/`mariadb`/`mongodb`/`redis`/`clickhouse`)
 keyed by slug `db-<name>` on the `deplo` network, so apps reach it by a stable DNS name and
