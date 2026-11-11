@@ -136,6 +136,17 @@ export const clusterImageCopies = pgTable(
   ],
 );
 
+// The architectures a pulled image is published for, as its registry listed them. No row means not known.
+export const imageArchitectures = pgTable(
+  "image_architectures",
+  {
+    imageRef: text("image_ref").notNull(),
+    arch: text("arch").notNull(),
+    checkedAt: isoTimestamptz("checked_at").notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.imageRef, t.arch] })],
+);
+
 // The leader's placement, mirrored; only the placement module writes it. A null member is waiting for room.
 export const workloadPlacements = pgTable(
   "workload_placements",

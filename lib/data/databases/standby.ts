@@ -26,6 +26,7 @@ import type { Cluster } from "../../types/cluster";
 import type { Database } from "../../types/database";
 import { recordActivity } from "../activity";
 import { assembleDatabase } from "../backup-rows";
+import { redeployArchs } from "../clusters/architectures";
 import { recordOnce } from "../clusters/bundles";
 import { pushDatabaseBundle } from "../clusters/database-bundles";
 import { syncNameForwarders } from "../clusters/forwarders";
@@ -119,6 +120,7 @@ async function placeCopy(db: Database, cluster: Cluster): Promise<string> {
       name: db.name,
       environmentId: db.environmentId,
       limitMb: db.resources?.memoryMb ?? 0,
+      archs: await redeployArchs("database", db.id),
       exclude: [db.serverId, ...old],
     });
   } catch (e) {

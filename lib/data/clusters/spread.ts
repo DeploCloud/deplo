@@ -5,6 +5,7 @@ import { serverSupports } from "../../infra/agent-client/preflight";
 import type { App } from "../../types/app";
 import { usesComposeStack } from "../../utils";
 import { appHasTunnel } from "./app-tunnel";
+import { imageArchs } from "./architectures";
 import { syncNameForwardersSoon } from "./forwarders";
 import {
   askLeaderToSpread,
@@ -105,7 +106,6 @@ export async function planAppReplicas(app: App): Promise<ReplicaPlan | null> {
     next = current;
     if (!settled)
       try {
-        const arch = facts.find((f) => f.id === app.serverId)?.arch;
         next = await askLeaderToSpread(
           cluster,
           {
@@ -114,8 +114,11 @@ export async function planAppReplicas(app: App): Promise<ReplicaPlan | null> {
             name: app.name,
             environmentId: app.environmentId ?? null,
             limitMb: app.resources?.memoryMb ?? 0,
-            // An image built here runs only on servers with this one's kind of processor.
-            archs: app.source !== "docker-image" && arch ? [arch] : [],
+            // Only the servers whose kind of processor the image runs on.
+            archs: await imageArchs(
+              app.source === "docker-image" ? (app.dockerImage ?? "") : "",
+              app.serverId,
+            ),
           },
           app.replicas,
           current,

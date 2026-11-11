@@ -3,10 +3,16 @@
 import { LoadingText } from "@/components/apps/settings/settings-loading";
 import * as React from "react";
 import { useRouter } from "@/lib/nav";
-import { ArrowRightLeft, Boxes, Server as ServerIcon } from "lucide-react";
+import {
+  ArrowRightLeft,
+  Boxes,
+  Server as ServerIcon,
+  TriangleAlert,
+} from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { DocsLink } from "@/components/ui/docs-link";
 import { FieldLabel } from "@/components/ui/info-tip";
 import {
   Select,
@@ -39,6 +45,8 @@ type OnCluster = {
   serverName: string;
   /** "Waiting for room in eu" while no server of the cluster runs it. */
   waiting?: string | null;
+  /** A cluster of ARM and x86 servers: which ones it can fail over to, or that it has none. */
+  reach?: { line: string | null; warning: string | null } | null;
 };
 
 export function AppServerCard({
@@ -200,6 +208,20 @@ function ServerMoveCard({
               )}
             </LoadingText>
           </p>
+          {cluster?.reach?.line && (
+            <p className="text-xs text-muted-foreground">
+              {cluster.reach.line} <DocsLink topic="clusters.architectures" />
+            </p>
+          )}
+          {cluster?.reach?.warning && (
+            <p className="flex items-start gap-1.5 text-xs text-warning">
+              <TriangleAlert className="mt-0.5 size-3.5 shrink-0" />
+              <span>
+                {cluster.reach.warning}{" "}
+                <DocsLink topic="clusters.architectures" />
+              </span>
+            </p>
+          )}
         </div>
         <ConfirmAction
           trigger={

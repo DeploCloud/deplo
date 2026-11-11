@@ -14,6 +14,7 @@ import { getCurrentUser } from "../../auth/current-user";
 import { nowIso } from "../../ids";
 import { dropFailoverBundle } from "../clusters/bundles";
 import { assertServerNotInCluster } from "../clusters/members";
+import { redeployArchs } from "../clusters/architectures";
 import {
   askLeaderToPlace,
   clearPlacement,
@@ -109,6 +110,7 @@ export async function moveAppToCluster(
     name: app.name,
     environmentId: app.environmentId ?? null,
     limitMb: app.resources?.memoryMb ?? 0,
+    archs: await redeployArchs("app", id),
   });
   await writeAppSource(
     id,

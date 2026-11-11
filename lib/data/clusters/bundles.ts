@@ -8,7 +8,6 @@ import {
   apps as appsTable,
 } from "../../db/schema/control-plane/apps";
 import { domains as domainsTable } from "../../db/schema/control-plane/domains";
-import { servers as serversTable } from "../../db/schema/control-plane/servers";
 import {
   clusterLeaderKeys,
   clusters as clustersTable,
@@ -23,6 +22,7 @@ import { recordActivity } from "../activity";
 import type { FailoverKeep } from "../backups/left-behind";
 import { instanceFrozen } from "../deplo-move/freeze";
 import { loadAppConnectorToken } from "./app-tunnel";
+import { imageArchs } from "./architectures";
 import {
   type BundleMeta,
   askLeaderKey,
@@ -235,10 +235,9 @@ async function bundleMeta(
       environmentId: appsTable.environmentId,
       limit: appsTable.resourceMemLimitMb,
       createdAt: appsTable.createdAt,
-      arch: serversTable.hostArch,
+      serverId: appsTable.serverId,
     })
     .from(appsTable)
-    .leftJoin(serversTable, eq(serversTable.id, appsTable.serverId))
     .where(eq(appsTable.id, appId))
     .limit(1);
   const [dom] = await db
@@ -251,7 +250,8 @@ async function bundleMeta(
     name: app?.name ?? "",
     environment: app?.environmentId ?? "",
     image: built ? imageRef : "",
-    archs: built && app?.arch ? [app.arch] : [],
+    // ponytail: a stack of several images is kept on its own architecture; read each service's image when one needs more.
+    archs: await imageArchs(imageRef, app?.serverId),
     limitMb: app?.limit ?? 0,
     peakMb: 0,
     hasDomain: Boolean(dom),

@@ -22,6 +22,7 @@ import { recordActivity } from "../activity";
 import { isBaseBackupKey } from "../backup-objectkey";
 import { assembleDatabase } from "../backup-rows";
 import { markLinkedAppsPending } from "../database-links";
+import { failoverOnly } from "./architectures";
 import { changeLogBroken } from "./change-log";
 import { syncStandbySoon } from "../databases/standby";
 import { databasePassword } from "../databases/stack";
@@ -351,11 +352,14 @@ export async function applyFailoverSummary(
         ? await appReplicasWaiting({ id: r.id, clusterId: cluster.id })
         : null;
     if (some) partial.set(r.id, some);
+    // On a mixed cluster: the kind of server it waits for.
+    const only = await failoverOnly(r.kind, r.id, cluster.id);
+    const other = only ? `no other ${only} server` : "no other server";
     await recordActivity(
       r.kind,
       some
-        ? `${r.name}: ${some}. ${from} stopped answering and no other server has room for the rest yet`
-        : `${r.name} is waiting for room in ${cluster.name}: ${from} stopped answering and no other server has room yet`,
+        ? `${r.name}: ${some}. ${from} stopped answering and ${other} has room for the rest yet`
+        : `${r.name} is waiting for room in ${cluster.name}: ${from} stopped answering and ${other} has room yet`,
       ACTOR,
       r.kind === "app" ? r.id : null,
       r.teamId,

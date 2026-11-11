@@ -58,6 +58,16 @@ export function failoverOn(memberCount: number): boolean {
   return memberCount >= FAILOVER_MIN_MEMBERS;
 }
 
+const ARCH_WORDS: Record<string, string> = { amd64: "x86", arm64: "ARM" };
+
+/** The words a user reads for the architectures servers come in: "x86", "ARM", or "x86 or ARM". */
+export function archWords(archs: string[]): string {
+  const words = [
+    ...new Set(archs.map((a) => ARCH_WORDS[a]).filter((w) => w !== undefined)),
+  ];
+  return words.join(" or ") || archs.join(" or ");
+}
+
 /** What the leader last said about a member's lease: ok, not responding (15 s) or fenced (60 s). */
 export type ClusterLeaseState = "ok" | "not_responding" | "fenced";
 

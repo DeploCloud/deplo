@@ -11,9 +11,13 @@ import { runGraphql } from "../mcp/execute";
 import { MCP_TOOLS } from "../mcp/tools/catalog";
 import { seedIdentity, TEAM_A, TEAM_B, USER_1 } from "./identity-test-helpers";
 import { users as usersTable } from "../db/schema/control-plane/identity";
-import { workloadPlacements } from "../db/schema/control-plane/clusters";
+import {
+  imageArchitectures,
+  workloadPlacements,
+} from "../db/schema/control-plane/clusters";
 import { databases as databasesTable } from "../db/schema/control-plane/databases";
 import type { AgentConnection } from "../infra/agent-client/connection";
+import { fakeRegistry } from "../registry/registry-test-helpers";
 import { deleteCluster, removeClusterMember } from "./clusters/dissolve";
 import { planClusterForwarding } from "./clusters/forwarders";
 import {
@@ -205,6 +209,30 @@ test("turning it on places the copy on another server than the database, which f
     TEAM_A,
     "db_main",
   ]);
+});
+
+test("the copy is only offered servers the database's image runs on", async () => {
+  const cluster = await eu(["srv_2", "srv_3", "srv_4"]);
+  await main(cluster.id);
+  const offered = () =>
+    JSON.parse(
+      dec.decode(
+        leaderHost.calls.findLast((c) => c.method === "placement.place")!
+          .payload,
+      ),
+    ).workload.archs;
+
+  // No registry described the image: the kind of server the database runs on.
+  onSrv3();
+  await asAdmin(() => setDatabaseStandby("db_main", true));
+  assert.deepEqual(offered(), ["amd64"]);
+
+  // The official image is published for both kinds, so the copy may run on either.
+  await asAdmin(() => setDatabaseStandby("db_main", false));
+  await db.delete(imageArchitectures);
+  fakeRegistry({ "library/postgres:16-alpine": ["amd64", "arm64"] });
+  await asAdmin(() => setDatabaseStandby("db_main", true));
+  assert.deepEqual(offered(), ["amd64", "arm64"]);
 });
 
 test("the copy's password is made by Deplo, reaches the servers inside their agent's call, and is nowhere in Deplo's database", async () => {
