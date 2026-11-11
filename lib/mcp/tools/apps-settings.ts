@@ -54,10 +54,12 @@ export const APPS_SETTINGS: McpToolDef[] = [
           restarting
           unhealthy
           unreachable
+          unreachableServers
           missing
           containers {
             name
             service
+            server
             state
             health
             running
