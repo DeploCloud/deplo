@@ -468,6 +468,32 @@ test("a server whose deploy fails keeps its release, the App goes on answering a
   assert.deepEqual(await placement(), ["srv_2", "srv_3", "srv_4"]);
 });
 
+test("a deploy that fails before the release runs anywhere puts the placement back", async () => {
+  await withCloudflareDomain();
+  hosts.srv_2.extra = {
+    deploy: async function* (req: DeployRequest) {
+      hosts.srv_2.deploys.push(req);
+      yield {
+        seq: 1,
+        result: {
+          ready: false,
+          error: "The image could not be pulled",
+          commitSha: "",
+          observedPort: 0,
+          builtWith: "",
+          listeningPorts: [],
+        },
+      };
+    } as never,
+  };
+  await runDeploymentGuarded("dpl_1");
+
+  assert.equal(await deployStatus(), "error");
+  assert.equal(hosts.srv_3.deploys.length, 0);
+  // Nothing of this release runs on srv_3 or srv_4, so the mirror must not say it does.
+  assert.deepEqual(await placement(), ["srv_2", "srv_2", "srv_2"]);
+});
+
 test("a server left with none of the replicas loses its copy of the stack", async () => {
   await withCloudflareDomain();
   await runDeploymentGuarded("dpl_1");
