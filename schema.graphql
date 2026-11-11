@@ -1249,6 +1249,11 @@ type ClusterLeader {
   """It runs on the machine Deplo itself runs on."""
   onDeploHost: Boolean
 
+  """
+  The warning while Deplo's own server is a member of the cluster and the leader runs on it; empty otherwise. moveClusterLeader fixes it.
+  """
+  ownServerWarning: String
+
   """The server it runs on; null when Deplo's machine has no server entry."""
   serverId: ID
   serverName: String

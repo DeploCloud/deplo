@@ -221,6 +221,7 @@ async function LeaderLine({ clusterId }: { clusterId: string }) {
     listClusterLeaderChoices(clusterId),
   ]);
   const badge = LEADER_BADGE[leader.state];
+  const move = <MoveLeaderButton clusterId={clusterId} options={choices} />;
   return (
     <div className="space-y-1">
       <div className="flex flex-wrap items-center gap-2 text-sm">
@@ -230,10 +231,16 @@ async function LeaderLine({ clusterId }: { clusterId: string }) {
         {!["running", "unavailable", "outdated"].includes(leader.state) && (
           <StartLeaderButton clusterId={clusterId} />
         )}
-        <div className="ml-auto">
-          <MoveLeaderButton clusterId={clusterId} options={choices} />
-        </div>
+        {!leader.ownServerWarning && <div className="ml-auto">{move}</div>}
       </div>
+      {leader.ownServerWarning && (
+        <div className="flex flex-wrap items-center gap-2">
+          <p className="text-xs text-warning">
+            {leader.ownServerWarning} <DocsLink topic="clusters.leader" />
+          </p>
+          <div className="ml-auto">{move}</div>
+        </div>
+      )}
       {leader.message && (
         <p className="text-xs text-muted-foreground">{leader.message}</p>
       )}
