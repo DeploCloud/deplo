@@ -7,3 +7,14 @@ export function portProbeCommand(port: number, procNet = "/proc/net"): string {
     `done; exit 1`
   );
 }
+
+// The health check that runs it; `$$` is how a compose file spells a `$` the shell must receive.
+export function portProbeHealthCheck(port: number): Record<string, unknown> {
+  return {
+    test: ["CMD-SHELL", portProbeCommand(port).replace(/\$/g, "$$$$")],
+    interval: "30s",
+    timeout: "5s",
+    retries: 3,
+    start_period: "180s",
+  };
+}

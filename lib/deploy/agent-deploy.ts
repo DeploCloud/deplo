@@ -344,6 +344,7 @@ export async function runAgentDeploy(opts: {
       ports: opts.overlap.ports,
       capabilities: hello.capabilities,
       dockerVersion: (await getServerById(opts.serverId))?.dockerVersion,
+      stack: opts.overlap.stack,
     });
     if (choice.overlap) {
       req.composeYaml = opts.overlap.live;

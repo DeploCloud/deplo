@@ -35,3 +35,12 @@ test("a known copy is tagged without looking at its siblings", () => {
   assert.equal(replicaTag("deplo-shop-api-3", "shop"), "api-3");
   assert.equal(replicaTag("deplo-web", "web"), "deplo-web");
 });
+
+// During a deploy the next release runs beside the live one: its lines must not read as the live copy's.
+test("a stand-in's copies are tagged apart from the live ones", () => {
+  assert.equal(replicaTag("deplo-shop_next-api_next-3", "shop"), "api_next-3");
+  assert.equal(
+    replicaTag("deplo-web_next-deplo-web_next-1", "web"),
+    "web_next-1",
+  );
+});

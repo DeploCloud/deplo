@@ -23,6 +23,9 @@ export const BACKUP_REDIS_AOF_CAPABILITY = "backup.redis-aof";
 // A Postgres base backup, its change log, and the restore that replays both (#203).
 export const POSTGRES_ARCHIVE_CAPABILITY = "backup.postgres-archive";
 
+// The agent starts a whole compose stack beside the live one and swaps only once every service is ready.
+export const STACK_OVERLAP_CAPABILITY = "deploy.overlap.stack";
+
 export const CRON_CAPABILITY = "cron";
 
 export const METRICS_STREAM_CAPABILITY = "metrics-stream";

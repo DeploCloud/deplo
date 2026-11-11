@@ -22,22 +22,15 @@ import {
   renderHealthCheckYaml,
   renderYamlKeys,
 } from "../health-check";
-import type { OverlapStacks } from "../overlap";
+import { STAND_IN_LABEL, standInName, type OverlapStacks } from "../overlap";
 import { replicasRefusal } from "../replicas";
-import { portProbeCommand } from "../port-probe";
+import { portProbeHealthCheck } from "../port-probe";
 import { deployNetwork } from "../network";
 import { defaultLogging, renderResourceLimitsYaml } from "../resources";
 import { traefikRouterLabels } from "../routing";
 import { appEnv, type PreviewEnvContext } from "./deploy-env";
 
 export type RenderComposeOptions = Parameters<typeof renderCompose>[0];
-
-export const STAND_IN_LABEL = "deplo.stand-in=true";
-
-// `_` never appears in an app's slug, so no other app's container can hold this name.
-export function standInName(name: string): string {
-  return `${name}_next`;
-}
 
 // https://deplo.build/docs/concepts/what-happens-on-a-deploy
 export function renderOverlapStacks(opts: RenderComposeOptions): {
@@ -67,16 +60,7 @@ function overlapHealthCheck(
   const hc = own
     ? { ...own }
     : opts.routes.length > 0
-      ? {
-          test: [
-            "CMD-SHELL",
-            escapeComposeDollars(portProbeCommand(opts.port)),
-          ],
-          interval: "30s",
-          timeout: "5s",
-          retries: 3,
-          start_period: "180s",
-        }
+      ? portProbeHealthCheck(opts.port)
       : null;
   if (!hc) return null;
   const svc = { healthcheck: hc };

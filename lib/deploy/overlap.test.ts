@@ -39,4 +39,18 @@ describe("overlap or in-place", () => {
       assert.match(d.overlap ? "" : d.reason, /Docker/);
     }
   });
+
+  test("a compose stack needs a server agent that can start a whole stack beside itself", () => {
+    const d = deployOverlap({ ...ready, stack: true });
+    assert.equal(d.overlap, false);
+    assert.match(d.overlap ? "" : d.reason, /agent is too old/);
+    assert.deepEqual(
+      deployOverlap({
+        ...ready,
+        stack: true,
+        capabilities: [OVERLAP_CAPABILITY, "deploy.overlap.stack"],
+      }),
+      { overlap: true },
+    );
+  });
 });

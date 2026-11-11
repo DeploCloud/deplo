@@ -490,6 +490,14 @@ scripts/gen-schema.ts`. Both halves of that prefix are load-bearing: the shim
   `db-<slug>` is checked against the databases sharing that NETWORK, not the whole server.
   Inside one Environment two stacks may still claim one name; the deploy warns
   (`nameClashes`), it does not refuse.
+  **A stack with `deploy.replicas` deploys beside itself, and its stand-in takes no live name.**
+  `standInStack` (lib/deploy/compose-stack/stand-in.ts) renders the stack once more with every
+  service as `<name>_next`: on the Environment's network a stand-in answers only to that, so other
+  stacks reach the live release until it is replaced, and on the stack's own networks (a second
+  set, per compose project) it keeps the service's name. `stackOverlapBlocker` is the one rule for
+  "can this stack run twice": no named volume, host path or published port on ANY service, and
+  nothing that fixes a name or an address. A stack it stops deploys in place and the deploy says
+  why. Gated on the agent's `deploy.overlap.stack`.
   **The agent has no fallback**: it creates the network the request names - refusing a name
   that is not a tenant's - and connects Traefik to it, including after the `--force-recreate`
   a Traefik config apply does. The control plane gates the deploy on the agent's
