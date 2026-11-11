@@ -204,7 +204,11 @@ export async function ensureFailoverBackup(
     };
     await getDb().insert(backupsTable).values(backupToRow(b));
     await say(
-      `Backs up ${db.name} every ${FAILOVER_BACKUP_MINUTES} minutes to ${dest.name}`,
+      `Backs up ${db.name} every ${FAILOVER_BACKUP_MINUTES} minutes to ${dest.name}` +
+        // A database is dumped while it runs; an App's files are only whole while nothing writes them.
+        (isApp
+          ? `. ${db.name} pauses while each backup is taken, so its files are copied whole.`
+          : ""),
     );
   } catch (e) {
     await say(
