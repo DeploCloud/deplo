@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 
 import { eq } from "drizzle-orm";
 
+import { HelloResponse } from "../agent/gen/agent";
 import { __resetReleaseCacheForTests } from "../agent/release";
 import {
   clusterBinaryUpdates,
@@ -150,6 +151,28 @@ test("the background pass updates the leaders on its own", async () => {
     for (const h of Object.values(hosts)) h.watch.drop();
     await releaseClusterWatchLease();
   }
+});
+
+test("a server whose agent is behind its own pin waits for that update first", async () => {
+  await euLedFromSrv4();
+  const before = hosts.srv_4.installs.length;
+  hosts.srv_4.extra.hello = async () =>
+    HelloResponse.fromPartial({
+      agentVersion: "0.0.1",
+      capabilities: hosts.srv_4.capabilities,
+    });
+  pin("0.3.0");
+
+  await runClusterRollout();
+
+  // The agent is what installs and restarts the binary: the agent rollout goes first, and says so itself.
+  assert.equal(hosts.srv_4.installs.length, before);
+  assert.deepEqual(await updateRows(), []);
+  assert.equal(hosts[SERVER_1].status.version, "0.3.0");
+
+  delete hosts.srv_4.extra.hello;
+  await runClusterRollout();
+  assert.equal(hosts.srv_4.status.version, "0.3.0");
 });
 
 test("with no cluster release pinned, nothing is asked of any server", async () => {

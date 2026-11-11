@@ -13,9 +13,10 @@ import {
   clusterPin,
   installClusterLeader,
 } from "../../infra/agent-client/cluster-host";
+import { connectAgent } from "../../infra/agent-client/connect";
 import type { ClusterHostStatus } from "../../infra/agent-client/connection";
 import type { Server } from "../../types/server";
-import { clusterPinned, isNewer } from "../../version";
+import { AGENT_VERSION, clusterPinned, isNewer } from "../../version";
 import { recordActivity } from "../activity";
 import { instanceFrozen } from "../deplo-move/freeze";
 import { nextRetryAt } from "../servers/agent-update-state";
@@ -130,6 +131,16 @@ async function movingCluster(host: Host): Promise<string | null> {
   return row ? host.leads.find((c) => c.id === row.clusterId)!.name : null;
 }
 
+// The agent installs, stops and starts the binary, so a server behind its own agent pin gets that update first.
+async function agentBehind(serverId: string): Promise<boolean> {
+  const conn = await connectAgent(serverId);
+  try {
+    return isNewer(AGENT_VERSION, (await conn.hello()).agentVersion);
+  } finally {
+    conn.close();
+  }
+}
+
 const what = (here: ClusterHostStatus) =>
   here.relay ? "cluster leader and relay" : "cluster leader";
 
@@ -194,6 +205,8 @@ async function updateHost(host: Host): Promise<boolean> {
   const row = await failingClusterUpdate(id);
   if (row && Date.parse(row.nextRetryAt) > Date.now())
     return row.failure !== "no_return";
+  // Not a failure of this update: the agent rollout carries the server and says where it stands.
+  if (await agentBehind(id).catch(() => true)) return true;
   const moving = await movingCluster(host);
   if (moving) {
     await fail(
