@@ -166,3 +166,28 @@ test("only a member who may configure the app sets sticky sessions", async () =>
   );
   assert.equal(await sticky(), false);
 });
+
+const asStack = (replicas: number) =>
+  db
+    .update(apps)
+    .set({
+      source: "compose",
+      dockerImage: null,
+      compose: `services:\n  web:\n    image: nginx\n    deploy:\n      replicas: ${replicas}\n`,
+    })
+    .where(eq(apps.id, APP));
+
+test("a compose stack takes the switch once a service of it asks for replicas", async () => {
+  await asStack(1);
+  await assert.rejects(
+    as(OWNER, TEAM_A, () => setAppStickySessions(APP, true)),
+    /more than one/,
+  );
+  await asStack(3);
+  await as(OWNER, TEAM_A, () => setAppStickySessions(APP, true));
+  assert.equal(await sticky(), true);
+  await assert.rejects(
+    as(STRANGER, TEAM_B, () => setAppStickySessions(APP, false)),
+  );
+  assert.equal(await sticky(), true);
+});

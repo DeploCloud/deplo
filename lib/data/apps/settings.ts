@@ -44,6 +44,7 @@ import { publishAppChanged } from "../../graphql/pubsub";
 import { cleanAppName } from "./create";
 import type { UploadArchive } from "../../types/app";
 import type { HealthCheck } from "../../types/container";
+import { stackReplicas } from "../../deploy/compose-stack/stand-in";
 
 export async function updateAppOwned(
   id: string,
@@ -191,9 +192,11 @@ export async function setAppStickySessions(
   const app = await loadAppGraph(id);
   if (!app || app.teamId !== membership.teamId)
     throw new Error("App not found");
-  if (usesComposeStack(app))
-    throw new Error("A compose stack sets its own routing labels");
-  if (enabled && app.replicas < 2)
+  // A stack says how many in its own YAML.
+  const replicas = usesComposeStack(app)
+    ? stackReplicas(app.compose)
+    : app.replicas;
+  if (enabled && replicas < 2)
     throw new Error("Sticky sessions need more than one replica");
   await getDb()
     .update(appsTable)

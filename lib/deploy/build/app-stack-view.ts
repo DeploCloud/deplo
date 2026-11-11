@@ -58,6 +58,7 @@ export async function renderAppStack(appId: string): Promise<string | null> {
       envKeys: await appEnvKeys(appId),
       resources: project.resources,
       volumes: project.volumes,
+      stickySessions: project.stickySessions,
     });
   }
 

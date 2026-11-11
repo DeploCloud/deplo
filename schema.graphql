@@ -5158,7 +5158,7 @@ type Mutation {
   setAppScreenshots(id: String!, value: Boolean!): App
 
   """
-  Keep each visitor on the same replica with a cookie. Needs more than one replica. Applies from the next deploy.
+  Keep each visitor on the same replica with a cookie. Needs more than one replica, set on the App or in a compose stack's own YAML. Applies from the next deploy.
   """
   setAppStickySessions(id: String!, value: Boolean!): App
   setAppTraefikLabels(id: String!, labels: [TraefikLabelInput!]!): App

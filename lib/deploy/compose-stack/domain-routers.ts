@@ -4,6 +4,7 @@ import { certResolver } from "../domains";
 import { traefikRouterLabels, hash6 } from "../routing";
 import { declaredPort } from "../compose-lint/routing";
 import { serviceReservedClaim } from "../compose-lint/networks";
+import { composeServiceReplicas } from "../replicas";
 import { mergeLabels } from "./service-stamp";
 import type { WireApp } from "./stack-network";
 import type { App, ComposeStackInput } from "./types";
@@ -23,6 +24,7 @@ function traefikLabels(opts: {
   stripPrefix?: boolean;
   redirectTo?: string;
   basicAuth?: { name: string; users: string };
+  sticky?: boolean;
 }): string[] {
   const {
     router,
@@ -54,6 +56,7 @@ function traefikLabels(opts: {
     certResolver: certResolver(),
     dockerNetwork: opts.network,
     alwaysService: true,
+    sticky: opts.sticky,
     ...(basicAuth ? { basicAuth } : {}),
   });
 }
@@ -119,6 +122,9 @@ export function wireDomainRoutes(opts: {
         stripPrefix: route.stripPrefix,
         redirectTo: route.redirectTo,
         ...(basicAuth ? { basicAuth } : {}),
+        sticky:
+          input.stickySessions === true &&
+          composeServiceReplicas(services[service]) > 1,
       }),
     );
   }

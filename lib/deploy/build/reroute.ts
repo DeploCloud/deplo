@@ -123,6 +123,7 @@ async function rerouteOn(
         // Omitting these would silently unmount storage or lift limits: a compose stack is re-rendered, not read back.
         envKeys: await appEnvKeys(appId),
         volumes: project.volumes,
+        stickySessions: project.stickySessions,
         resources: project.resources,
       });
       mounts = (project.mounts ?? []).map((m) => ({

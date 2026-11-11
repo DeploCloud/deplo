@@ -57,6 +57,7 @@ export interface ComposeStackApp {
   slug: string;
   compose: string | null;
   composeUpArgs?: string | null;
+  stickySessions?: boolean;
   mounts?: { filePath: string; content: string }[] | null;
   resources?: ResourceLimits | null;
   volumes?: VolumeMount[] | null;
@@ -138,6 +139,7 @@ async function prepareComposeStack(
     filesDir,
     basicAuthUsers,
     envKeys,
+    stickySessions: project.stickySessions,
     resources: project.resources,
     volumes: project.volumes,
     network: deployNetwork(project, opts.preview ? deployKey : null),
