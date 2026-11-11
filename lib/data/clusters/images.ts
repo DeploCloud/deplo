@@ -136,8 +136,10 @@ export async function copyReleaseToMembers(
   imageRef: string,
   sourceServerId: string,
 ): Promise<void> {
-  if (inFlight.has(appId)) return;
-  inFlight.add(appId);
+  // The same release asked for twice is one copy; a newer one waits its turn behind the lock.
+  const flight = `${appId} ${imageRef}`;
+  if (inFlight.has(flight)) return;
+  inFlight.add(flight);
   try {
     await withKeyedLock(`cluster-images:${appId}`, async () => {
       if (await instanceFrozen()) return;
@@ -199,7 +201,7 @@ export async function copyReleaseToMembers(
       }
     });
   } finally {
-    inFlight.delete(appId);
+    inFlight.delete(flight);
   }
 }
 

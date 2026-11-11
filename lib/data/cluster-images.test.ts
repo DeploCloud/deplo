@@ -278,6 +278,32 @@ test("a member still copying is not a holder, and the card shows how far it is",
   );
 });
 
+test("a release that finishes while the one before is still copying is copied too", async () => {
+  await clusterWithApp();
+  let release = () => {};
+  const gate = new Promise<void>((r) => (release = r));
+  const quick = hostOf("srv_2").imageCopy;
+  // The agent's answer is awaited, so the first copy can be held open.
+  hostOf("srv_2").imageCopy = ((ref: string, fp: string, keep: number) =>
+    ref === REL1
+      ? gate.then(() => quick(ref, fp, keep))
+      : quick(ref, fp, keep)) as typeof quick;
+  const first = copyReleaseToMembers("app_web", REL1, "srv_2");
+  await until(
+    "the first copy to start",
+    async () => hostOf("srv_2").imageCopies.length > 0,
+  );
+  const second = copyReleaseToMembers("app_web", REL2, "srv_2");
+  release();
+  await Promise.all([first, second]);
+
+  assert.deepEqual(await states(REL2), {
+    srv_2: "held",
+    srv_3: "held",
+    srv_4: "held",
+  });
+});
+
 test("a member that joins later gets the newest release on the next sweep", async () => {
   const cluster = await clusterWithApp(["srv_2", "srv_3"]);
   await copyReleaseToMembers("app_web", REL1, "srv_2");
