@@ -164,6 +164,14 @@ test("by default a Volume App's bundle names no backup, so its leader makes it w
   // The leader stops it first when its server's lease runs out: never two writers.
   const [entry] = await placementEntries(cluster.id);
   assert.equal(entry.singleWriter, true);
+  // What a server that comes back still holds of it goes to the same destination, as its Volumes.
+  const [schedule] = await schedules();
+  assert.equal(b.keep!.ref, schedule.destinationId);
+  const req = b.keep!.request as Record<string, Record<string, unknown>>;
+  assert.equal(req.kind, "BACKUP_KIND_PROJECT");
+  assert.deepEqual(req.project.volumeNames, ["deplo-web-uploads"]);
+  assert.equal(req.store.objectKey, `deplo/${TEAM_A}/app/prj_web/left`);
+  assert.equal(req.project.composeYaml ?? "", "");
 });
 
 test("a Volume row with no type and a stack's own volume are single-writer too; a Bind alone is not", async () => {

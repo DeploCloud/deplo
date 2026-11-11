@@ -20,6 +20,7 @@ import { decryptSecretOrThrow, encryptSecret, sha256Hex } from "../../crypto";
 import { nowIso } from "../../ids";
 import type { Cluster } from "../../types/cluster";
 import { recordActivity } from "../activity";
+import type { FailoverKeep } from "../backups/left-behind";
 import { instanceFrozen } from "../deplo-move/freeze";
 import { loadAppConnectorToken } from "./app-tunnel";
 import {
@@ -79,6 +80,8 @@ export interface FailoverBundle {
   deploymentId: string;
   stack: FailoverStack;
   restore?: FailoverRestore;
+  /** Set for a workload that keeps data: how a member that comes back saves what it still held (#206). */
+  keep?: FailoverKeep;
   /** Set while the workload keeps a standby copy: how its member makes that copy the workload (#218). */
   promote?: { container: string; user: string; command: string[] };
 }
@@ -368,6 +371,7 @@ export async function pushFailoverBundle(input: {
   deploymentId: string;
   stack: FailoverStack;
   restore?: FailoverRestore;
+  keep?: FailoverKeep;
 }): Promise<void> {
   if (await instanceFrozen()) return;
   const db = getDb();
@@ -406,6 +410,7 @@ export async function pushFailoverBundle(input: {
     deploymentId: input.deploymentId,
     stack: tunnelToken ? { ...input.stack, tunnelToken } : input.stack,
     ...(input.restore ? { restore: input.restore } : {}),
+    ...(input.keep ? { keep: input.keep } : {}),
   };
   const failed = await deliver(
     cluster,

@@ -6,6 +6,7 @@ import { DocsLink } from "@/components/ui/docs-link";
 import { useOptimisticRow } from "@/components/shared/optimistic-list";
 import { formatBytes, timeAgo } from "@/lib/utils";
 import { gqlAction } from "@/lib/graphql-client";
+import { leftBehindRestoreCost } from "@/lib/backups/left-behind";
 import type { BackupRun } from "@/lib/types/backup";
 import { noun, type BackupTarget } from "./target";
 
@@ -60,13 +61,25 @@ export function RestoreRunDialog({
       successMessage="Restore started"
       confirmText={target.name}
       description={
-        <>
-          This overwrites <strong>{target.name}</strong> in place with the
-          backup from {timeAgo(run.startedAt)}.{" "}
-          <DocsLink topic="backups.restore" />
-        </>
+        run.leftAt ? (
+          <>
+            This overwrites <strong>{target.name}</strong> in place with what{" "}
+            {run.leftOnServer || "its old server"} still held when it came back.{" "}
+            <DocsLink topic="backups.restore" />
+          </>
+        ) : (
+          <>
+            This overwrites <strong>{target.name}</strong> in place with the
+            backup from {timeAgo(run.startedAt)}.{" "}
+            <DocsLink topic="backups.restore" />
+          </>
+        )
       }
-      consequence={`The ${noun(target)} is stopped and its current data is wiped. The current state is not recoverable.`}
+      consequence={
+        run.leftAt
+          ? leftBehindRestoreCost(noun(target))
+          : `The ${noun(target)} is stopped and its current data is wiped. The current state is not recoverable.`
+      }
       onConfirm={async () => {
         const res = await gqlAction(
           `mutation($runId: String!) { restoreBackup(runId: $runId) }`,

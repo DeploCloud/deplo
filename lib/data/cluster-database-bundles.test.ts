@@ -5,6 +5,7 @@ import { eq } from "drizzle-orm";
 
 import { TEAM_A, TEAM_B } from "./identity-test-helpers";
 import {
+  seedBackup,
   seedDatabase,
   seedDestination,
   seedRun,
@@ -18,6 +19,7 @@ import {
 import { CLUSTER_FAILOVER_RESTORE_CAPABILITY } from "../infra/agent-client/hello-capabilities";
 import { decryptSecretOrThrow } from "../crypto";
 import { executeBackup } from "./backups/execute-backup";
+import { recordLeftBehindRun } from "./backups/left-behind";
 import {
   flushDatabaseBundles,
   pushDatabaseBundle,
@@ -63,6 +65,7 @@ test("a database's bundle holds its stack, its engine password, its destination'
     "v",
     "workload",
   ]);
+  assert.equal(b.keep, undefined, "no schedule: nowhere to save what is left");
   assert.equal(b.kind, "database");
   assert.equal(b.workload, "db_main");
   assert.equal(
@@ -458,4 +461,84 @@ test("only the leader that leads decides a failover: one standing by that takes 
   assert.deepEqual(await cannot(), [
     "main cannot fail over yet: the cluster's leader did not take its bundle. Deplo will send it again. Cluster eu will not move it to another server until that is fixed.",
   ]);
+});
+
+test("the bundle says where a server that comes back saves what it still held: the schedule's destination, as a volume", async () => {
+  const cluster = await eu();
+  await main(cluster.id);
+  await backedUp();
+  await seedBackup(db, {
+    id: "bkp_1",
+    databaseId: "db_main",
+    destinationId: "dst_s3",
+  });
+
+  await pushDatabaseBundle("db_main");
+
+  const k = (await open()).keep!;
+  assert.deepEqual(Object.keys(k).sort(), ["ref", "request"]);
+  assert.equal(k.ref, "dst_s3");
+  const req = k.request as Record<string, Record<string, unknown>>;
+  assert.equal(req.kind, "BACKUP_KIND_PROJECT");
+  assert.equal(req.database, undefined);
+  assert.equal(req.project.slug, "db-main");
+  assert.deepEqual(req.project.volumeNames, ["deplo-db-main_db-main-data"]);
+  // Only where to write: the member adds the time and its own id, and the stack is not part of it.
+  assert.equal(req.s3.objectKey, `deplo/${TEAM_A}/database/db_main/left`);
+  assert.equal(req.s3.secretKey, "secret_test");
+  assert.equal(req.project.composeYaml ?? "", "");
+  assert.ok(
+    req.ageRecipient,
+    "encrypted like every backup of that destination",
+  );
+});
+
+test("a keep on a server's disk names that server, so a member elsewhere knows it cannot write there", async () => {
+  const cluster = await eu();
+  await main(cluster.id);
+  await seedDestination(db, {
+    id: "dst_srv3",
+    kind: "server",
+    serverId: "srv_3",
+    path: "/mnt/backups",
+  });
+  await seedBackup(db, {
+    id: "bkp_1",
+    databaseId: "db_main",
+    destinationId: "dst_srv3",
+  });
+
+  await pushDatabaseBundle("db_main");
+
+  const k = (await open()).keep!;
+  assert.equal(k.storeMember, "srv_3");
+  const req = k.request as Record<string, Record<string, unknown>>;
+  assert.deepEqual(req.store, {
+    root: "/mnt/backups",
+    objectKey: `deplo/${TEAM_A}/database/db_main/left`,
+  });
+});
+
+test("what a returning server left is never the backup a failover restores, however new", async () => {
+  const cluster = await eu();
+  await main(cluster.id);
+  await backedUp();
+  const left = await recordLeftBehindRun({
+    teamId: TEAM_A,
+    kind: "database",
+    targetId: "db_main",
+    destinationId: "dst_s3",
+    objectKey: `deplo/${TEAM_A}/database/db_main/left-20260302T100000Z-srv_3.tar.gz.age`,
+    sizeBytes: 10,
+    decryptedSizeBytes: null,
+    sha256: "feed",
+    serverId: "srv_3",
+    failedOverAt: "2026-03-02T09:00:00.000Z",
+    savedAt: "2026-03-02T10:00:00.000Z",
+  });
+  assert.ok(left);
+
+  await pushDatabaseBundle("db_main");
+
+  assert.equal((await open()).restore!.backupId, "brun_1");
 });

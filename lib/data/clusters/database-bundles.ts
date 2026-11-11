@@ -20,6 +20,11 @@ import type { Database } from "../../types/database";
 import { assembleDatabase } from "../backup-rows";
 import { changeLogPrefix, isBaseBackupKey } from "../backup-objectkey";
 import { restoreRequestFor } from "../backup-transport";
+import {
+  databaseVolumeProject,
+  leftBehindKeep,
+  notLeftBehind,
+} from "../backups/left-behind";
 import { databaseDescriptor } from "../backups/target-descriptor";
 import { mountsFor } from "../databases/rows";
 import {
@@ -84,7 +89,6 @@ const nameOf = async (serverId: string | null) =>
 export async function latestRestorable(
   t: RestoreTarget,
 ): Promise<RestoreSource> {
-  // ponytail: ticket #206's left-behind runs must be skipped here: nothing restores one on its own.
   const runs = await getDb()
     .select()
     .from(runsTable)
@@ -95,6 +99,8 @@ export async function latestRestorable(
         eq(runsTable.targetId, t.id),
         eq(runsTable.status, "success"),
         isNull(runsTable.orphanedAt),
+        // What a returning member left is older than the failover: nothing restores it on its own.
+        notLeftBehind,
       ),
     )
     .orderBy(desc(runsTable.seq))
@@ -201,6 +207,12 @@ export async function pushDatabaseBundle(databaseId: string): Promise<void> {
     engine && copyOn && copyOn !== db.serverId
       ? { container: standbyContainer(db.host), ...engine.promote }
       : null;
+  const keep = await leftBehindKeep({
+    teamId: db.teamId,
+    kind: KIND,
+    id: db.id,
+    project: databaseVolumeProject(db),
+  });
   const body = {
     stack: {
       slug: sent.slug,
@@ -215,6 +227,7 @@ export async function pushDatabaseBundle(databaseId: string): Promise<void> {
       ...(sent.mounts.length > 0 ? { mounts: sent.mounts } : {}),
     },
     ...(source.restore ? { restore: source.restore } : {}),
+    ...(keep ? { keep } : {}),
     ...(promote ? { promote } : {}),
   };
   const bundle: FailoverBundle = {

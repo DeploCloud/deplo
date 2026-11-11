@@ -242,11 +242,16 @@ export function backupRunToRow(r: BackupRun): BackupRunInsert {
     heldMs: r.heldMs,
     sha256: r.sha256,
     orphanedAt: r.orphanedAt,
+    leftAt: r.leftAt ?? null,
+    leftOnServerId: r.leftOnServerId ?? null,
     status: r.status,
     error: r.error,
     startedAt: r.startedAt,
     finishedAt: r.finishedAt,
-  } satisfies Record<keyof BackupRun, unknown> as BackupRunInsert;
+  } satisfies Record<
+    Exclude<keyof BackupRun, "leftOnServer">,
+    unknown
+  > as BackupRunInsert;
 }
 
 export function assembleBackupRun(row: BackupRunRow): BackupRun {
@@ -265,6 +270,8 @@ export function assembleBackupRun(row: BackupRunRow): BackupRun {
     heldMs: row.heldMs ?? null,
     sha256: row.sha256 ?? null,
     orphanedAt: row.orphanedAt ?? null,
+    leftAt: row.leftAt ?? null,
+    leftOnServerId: row.leftOnServerId ?? null,
     status: row.status as BackupRunStatus,
     error: row.error,
     startedAt: row.startedAt,

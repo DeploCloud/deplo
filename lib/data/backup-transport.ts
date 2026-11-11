@@ -60,15 +60,14 @@ function hasS3Args(dest: BackupDestination): boolean {
 
 const isRedis = (t: TransportTarget) => t.database?.dbType === "redis";
 
-export async function backupToDestination(
+/** What an agent is handed to write an artifact where it can reach it itself: a bucket, or a store on its own disk. */
+export function backupRequestFor(
   creds: DestinationWithSecrets,
-  target: TransportTarget,
+  target: Omit<TransportTarget, "serverId">,
   objectKey: string,
-  signal?: AbortSignal,
-): Promise<BackupOutcome> {
+): BackupRequest {
   const dest = creds.destination;
-  const destServer = destinationServerId(dest, target.serverId);
-  const req: BackupRequest = {
+  return {
     kind: wireKind(target.kind),
     database: target.database,
     project: target.project,
@@ -78,6 +77,17 @@ export async function backupToDestination(
     streamOut: false,
     archive: target.archive ?? PostgresArchive.POSTGRES_ARCHIVE_NONE,
   };
+}
+
+export async function backupToDestination(
+  creds: DestinationWithSecrets,
+  target: TransportTarget,
+  objectKey: string,
+  signal?: AbortSignal,
+): Promise<BackupOutcome> {
+  const dest = creds.destination;
+  const destServer = destinationServerId(dest, target.serverId);
+  const req = backupRequestFor(creds, target, objectKey);
 
   if (dest.kind === "s3" || destServer === target.serverId) {
     const conn = await connectBackupAgent(target.serverId, {
