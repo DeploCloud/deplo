@@ -4,6 +4,7 @@ import { and, eq, inArray, isNotNull, isNull } from "drizzle-orm";
 
 import { getDb } from "../../db/client";
 import { apps as appsTable } from "../../db/schema/control-plane/apps";
+import { clusterImageCopies } from "../../db/schema/control-plane/clusters";
 import { databases as databasesTable } from "../../db/schema/control-plane/databases";
 import {
   appPreviews as appPreviewsTable,
@@ -13,6 +14,7 @@ import { appBuildsItsOwnImage } from "../../utils";
 import { previewDeployKey } from "../../deploy/deploy-key";
 import { appNetwork, previewNetwork } from "../../deploy/network";
 import { MAX_ROLLBACK_KEEP } from "../../types/app";
+import { IMAGE_RELEASES_KEPT } from "../clusters/images";
 
 // The largest int32, keep_per_slug's wire type: anything bigger wraps around.
 export const SPARE_ALL_IMAGES = 2_147_483_647;
@@ -39,6 +41,18 @@ export async function rollbackKeepBySlug(
       Math.max(1, Math.trunc(r.keep) + 1),
     );
   }
+  // A cluster member keeps the last releases it holds, so a failover or a rollback finds its image anywhere.
+  for (const r of await getDb()
+    .selectDistinct({ slug: appsTable.slug })
+    .from(clusterImageCopies)
+    .innerJoin(appsTable, eq(appsTable.id, clusterImageCopies.appId))
+    .where(
+      and(
+        eq(clusterImageCopies.serverId, serverId),
+        eq(clusterImageCopies.state, "held"),
+      ),
+    ))
+    out[r.slug] = Math.max(out[r.slug] ?? 0, IMAGE_RELEASES_KEPT);
   // A rollback still queued needs an image that a deploy finishing first may have pushed out of the count.
   for (const r of await getDb()
     .select({ slug: appsTable.slug })
