@@ -493,7 +493,7 @@ test("the bundle says where a server that comes back saves what it still held: t
   );
 });
 
-test("a keep on a server's disk names that server, so a member elsewhere knows it cannot write there", async () => {
+test("a keep on a server's disk names that server and where on it, so the leader can tell it what to accept", async () => {
   const cluster = await eu();
   await main(cluster.id);
   await seedDestination(db, {
@@ -512,11 +512,16 @@ test("a keep on a server's disk names that server, so a member elsewhere knows i
 
   const k = (await open()).keep!;
   assert.equal(k.storeMember, "srv_3");
+  assert.equal(k.storeRoot, "/mnt/backups");
+  assert.equal(k.storeStem, `deplo/${TEAM_A}/database/db_main/left`);
   const req = k.request as Record<string, Record<string, unknown>>;
   assert.deepEqual(req.store, {
     root: "/mnt/backups",
     objectKey: `deplo/${TEAM_A}/database/db_main/left`,
   });
+  // The archive leaves the returning server already encrypted: the server that stores it holds no key.
+  assert.match(String(req.ageRecipient), /^age1/);
+  assert.equal(req.ageIdentity, undefined);
 });
 
 test("what a returning server left is never the backup a failover restores, however new", async () => {
