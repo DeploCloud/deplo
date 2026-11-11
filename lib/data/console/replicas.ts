@@ -1,5 +1,5 @@
 import { replicaIndexOf, replicaLabels } from "../../deploy/replica-names";
-import type { ConsoleInstance } from "./index";
+import type { ConsoleInstance } from "./instances";
 
 // The logs target that reads every copy of a service as one stream.
 export const ALL_REPLICAS_PREFIX = "replicas:";

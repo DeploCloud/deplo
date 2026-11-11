@@ -15,7 +15,7 @@ import {
 import { metricsStreamUnsupported } from "../../monitoring/stream-modes";
 import { HEALTH_CHECK_DEFAULTS } from "../../deploy/health-check";
 import type { AppStatus } from "../../types/app";
-import type { AppRuntime } from "./index";
+import type { AppRuntime } from "./runtime";
 
 export type OverviewRuntime = Pick<
   AppRuntime,

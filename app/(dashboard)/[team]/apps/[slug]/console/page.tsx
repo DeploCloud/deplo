@@ -28,7 +28,11 @@ export default async function AppConsolePage(
         }}
         initialInfo={
           info?.running
-            ? { containerName: info.containerName, instances: info.instances }
+            ? {
+                containerName: info.containerName,
+                instances: info.instances,
+                unavailable: info.unavailable,
+              }
             : null
         }
         initialRunning={!!info?.running}

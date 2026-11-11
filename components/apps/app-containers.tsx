@@ -74,8 +74,16 @@ export function AppContainers({
           <div className="space-y-1 border-b border-border p-4 pr-12">
             <SheetTitle>Containers</SheetTitle>
             <SheetDescription>
-              Live from {serverName ?? "the app's server"}.
+              {runtime.containers.some((c) => c.server)
+                ? "Live from every server it runs on."
+                : `Live from ${serverName ?? "the app's server"}.`}
             </SheetDescription>
+            {(runtime.unreachableServers?.length ?? 0) > 0 && (
+              <p className="text-xs text-[var(--warning)]">
+                Can&apos;t reach {runtime.unreachableServers!.join(", ")} right
+                now.
+              </p>
+            )}
             {!runtime.unreachable && counts.size > 0 && (
               <div className="flex flex-wrap gap-2 pt-2">
                 {[...counts].map(([state, { dot, n }]) => (
