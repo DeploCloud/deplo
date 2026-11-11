@@ -3,12 +3,8 @@ import assert from "node:assert/strict";
 
 import { and, eq } from "drizzle-orm";
 
-import { runWithIdentity, type RequestIdentity } from "../auth/request-context";
-import { getCurrentUser } from "../auth/current-user";
-import { getActiveTeamId, reachableCapabilities } from "../membership";
-import type { GraphQLContext } from "../graphql/context";
-import { runGraphql } from "../mcp/execute";
-import { MCP_TOOLS } from "../mcp/tools/catalog";
+import { runWithIdentity } from "../auth/request-context";
+import { runTool } from "../mcp/run-tool-test-helpers";
 import { seedIdentity, TEAM_A, TEAM_B, USER_1 } from "./identity-test-helpers";
 import { users as usersTable } from "../db/schema/control-plane/identity";
 import {
@@ -779,25 +775,6 @@ test("a server that holds only a copy leaves its cluster, and the copy is made a
   assert.ok(host.srv_3.stack.includes("destroy:db-main"));
   assert.equal((await row()).standby, true);
 });
-
-async function runTool(
-  identity: RequestIdentity,
-  name: string,
-  args: Record<string, unknown>,
-) {
-  const tool = MCP_TOOLS.find((t) => t.name === name)!;
-  const ctx = await runWithIdentity(
-    identity,
-    async (): Promise<GraphQLContext> => ({
-      viewer: await getCurrentUser(),
-      teamId: await getActiveTeamId(),
-      capabilities: await reachableCapabilities(),
-      via: "token",
-      identity,
-    }),
-  );
-  return runGraphql(tool.query, tool.variables!(args as never), ctx);
-}
 
 test("GraphQL and MCP turn the copy on, the field gate refuses a member without the Capability, and another team finds nothing", async () => {
   const cluster = await eu();
