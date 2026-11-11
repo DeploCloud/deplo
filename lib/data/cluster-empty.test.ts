@@ -422,18 +422,14 @@ test("emptying sets emptying since, records who started it and tells the leader 
   assert.equal((await card(cluster.id, "srv_3")).emptying, null);
 });
 
-test(
-  "the roster the leader gets marks the member as emptying",
-  { todo: "holds once #198 merges: its member facts carry the flag" },
-  async () => {
-    await runningApp("web", "srv_2");
-    const cluster = await eu();
-    await asAdmin(() => emptyClusterMember(cluster.id, "srv_2"));
-    const sent = rosters.at(-1)!.members;
-    assert.equal(sent.find((m) => m.id === "srv_2")?.emptying, true);
-    assert.equal(sent.find((m) => m.id === "srv_3")?.emptying, false);
-  },
-);
+test("the roster the leader gets marks the member as emptying", async () => {
+  await runningApp("web", "srv_2");
+  const cluster = await eu();
+  await asAdmin(() => emptyClusterMember(cluster.id, "srv_2"));
+  const sent = rosters.at(-1)!.members;
+  assert.equal(sent.find((m) => m.id === "srv_2")?.emptying, true);
+  assert.equal(sent.find((m) => m.id === "srv_3")?.emptying, false);
+});
 
 test("a server that is not in the cluster cannot be emptied", async () => {
   const cluster = await eu();
