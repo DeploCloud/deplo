@@ -1,7 +1,7 @@
 import "server-only";
 
-import { and, asc, eq, inArray } from "drizzle-orm";
-import { getDb } from "../../db/client";
+import { and, asc, eq, inArray, isNull } from "drizzle-orm";
+import { type DbTx, getDb } from "../../db/client";
 import { apps as appsTable } from "../../db/schema/control-plane/apps";
 import {
   clusterImageCopies,
@@ -10,10 +10,12 @@ import {
 import { databases as databasesTable } from "../../db/schema/control-plane/databases";
 import { nowIso } from "../../ids";
 import { callClusterLeader } from "../../infra/agent-client/cluster-host";
+import { requireActiveTeamId } from "../../membership";
 import type { Cluster } from "../../types/cluster";
 import { instanceFrozen } from "../deplo-move/freeze";
+import { clusterMemberFacts } from "./facts";
 import { leaderHost } from "./host";
-import { clusterMemberServerIds } from "./roster";
+import { clusterMemberServerIds, getCluster } from "./roster";
 
 export type WorkloadKind = "app" | "database";
 
@@ -25,6 +27,10 @@ export interface PlacementRequest {
   environmentId: string | null;
   /** The App's memory limit in MB; 0 asks for its 24-hour peak, then the 256 MB floor. */
   limitMb: number;
+  /** A built release the members must already hold; empty for a first placement or a pulled image. */
+  imageRef?: string;
+  /** The architectures the image runs on; empty means any. */
+  archs?: string[];
 }
 
 export type PlacementRefusalReason =
@@ -130,7 +136,10 @@ export async function askLeaderToPlace(
             name: req.name,
             environment: req.environmentId ?? "",
             limitMb: req.limitMb,
+            image: req.imageRef ?? "",
+            archs: req.archs ?? [],
           },
+          members: await clusterMemberFacts(cluster.id),
         }),
       ),
     );
@@ -212,6 +221,35 @@ export async function recordPlacement(r: PlacementReport): Promise<boolean> {
   });
 }
 
+/**
+ * A server joining a cluster brings its workloads where they run: one row per replica, on that server.
+ * Runs inside the join's transaction, so a member never exists without them.
+ */
+export async function recordJoinedPlacements(
+  tx: DbTx,
+  serverId: string,
+  epoch: number,
+  joined: { kind: WorkloadKind; id: string; replicas: number }[],
+): Promise<void> {
+  if (joined.length === 0) return;
+  const now = nowIso();
+  await tx
+    .insert(workloadPlacements)
+    .values(
+      joined.flatMap((w) =>
+        Array.from({ length: Math.max(w.replicas, 1) }, (_, replica) => ({
+          kind: w.kind,
+          workloadId: w.id,
+          replica,
+          memberServerId: serverId,
+          epoch,
+          updatedAt: now,
+        })),
+      ),
+    )
+    .onConflictDoNothing();
+}
+
 /** A leader's report arriving in the background: ignored while a Deplo move freezes this instance. */
 export async function applyLeaderReport(r: PlacementReport): Promise<boolean> {
   if (await instanceFrozen()) return false;
@@ -270,4 +308,57 @@ export async function listWorkloadPlacements(
     out.set(r.workloadId, list);
   }
   return out;
+}
+
+/** "Waiting for room in eu" while the leader has nowhere to run an App; null once it runs, or for an App on one server. */
+export async function waitingForRoomNote(
+  appId: string,
+  clusterName: string | null,
+): Promise<string | null> {
+  if (!clusterName) return null;
+  const rows = await getDb()
+    .select({ member: workloadPlacements.memberServerId })
+    .from(workloadPlacements)
+    .where(
+      and(
+        eq(workloadPlacements.kind, "app"),
+        eq(workloadPlacements.workloadId, appId),
+      ),
+    );
+  return rows.some((r) => r.member === null)
+    ? `Waiting for room in ${clusterName}`
+    : null;
+}
+
+/** The same note for an App the caller already read under its own gates. */
+export async function appWaitingNote(app: {
+  id: string;
+  clusterId?: string | null;
+}): Promise<string | null> {
+  if (!app.clusterId) return null;
+  // A cluster the team can no longer see is not named to it.
+  const cluster = await getCluster(app.clusterId);
+  return waitingForRoomNote(app.id, cluster?.name ?? null);
+}
+
+/**
+ * The active team's Apps on this cluster that found no room after a server stopped, by name. The leader tries
+ * them again every 30 seconds, so the list clears itself.
+ */
+export async function listClusterWaiting(clusterId: string): Promise<string[]> {
+  const teamId = await requireActiveTeamId();
+  const rows = await getDb()
+    .selectDistinct({ name: appsTable.name })
+    .from(workloadPlacements)
+    .innerJoin(appsTable, eq(appsTable.id, workloadPlacements.workloadId))
+    .where(
+      and(
+        eq(workloadPlacements.kind, "app"),
+        isNull(workloadPlacements.memberServerId),
+        eq(appsTable.clusterId, clusterId),
+        eq(appsTable.teamId, teamId),
+      ),
+    )
+    .orderBy(asc(appsTable.name));
+  return rows.map((r) => r.name);
 }
