@@ -33,7 +33,7 @@ async function stored(ref: string) {
 }
 
 /** What a pulled image is known to run on, without asking anyone; empty when not known. */
-export async function knownImageArchs(imageRef: string): Promise<string[]> {
+async function knownImageArchs(imageRef: string): Promise<string[]> {
   const ref = imageRef.trim();
   if (!ref || isBuiltImage(ref)) return [];
   return (await stored(ref))
