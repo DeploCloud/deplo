@@ -11,6 +11,7 @@ import {
 } from "./destinations/credentials";
 import {
   BackupKind,
+  PostgresArchive,
   type BackupRequest,
   type RestoreEvent,
   type RestoreRequest,
@@ -18,12 +19,15 @@ import {
 import type { DatabaseDescriptor, ProjectDescriptor } from "../agent/gen/agent";
 import type { BackupDestination, BackupTargetKind } from "../types/backup";
 import { parseS3Args } from "../backups/s3-args";
+import { changeLogPrefix, isBaseBackupKey } from "./backup-objectkey";
 
 export interface TransportTarget {
   serverId: string;
   kind: BackupTargetKind;
   database?: DatabaseDescriptor;
   project?: ProjectDescriptor;
+  /** Postgres on a cluster: a base backup, or the change log archived since the last shipment. */
+  archive?: PostgresArchive;
 }
 
 export interface BackupOutcome {
@@ -72,10 +76,12 @@ export async function backupToDestination(
     store: dest.kind === "server" ? storeTargetFor(dest, objectKey) : undefined,
     ageRecipient: dest.ageRecipient ?? "",
     streamOut: false,
+    archive: target.archive ?? PostgresArchive.POSTGRES_ARCHIVE_NONE,
   };
 
   if (dest.kind === "s3" || destServer === target.serverId) {
     const conn = await connectBackupAgent(target.serverId, {
+      postgresArchive: !!target.archive,
       store: dest.kind === "server",
       // An agent ignoring the recipient would write the app's decrypted env to the bucket in the clear.
       encryptedS3: dest.kind === "s3" && !!dest.ageRecipient,
@@ -166,7 +172,10 @@ async function relayBackup(
 ): Promise<BackupOutcome> {
   const dest = creds.destination;
   // store: true though the SOURCE writes nothing: stream_out rides the same backup-store capability.
-  const src = await connectBackupAgent(target.serverId, { store: true });
+  const src = await connectBackupAgent(target.serverId, {
+    store: true,
+    postgresArchive: !!target.archive,
+  });
   let sink: AgentConnection | null = null;
   let release = abortWith(signal, src);
   try {
@@ -232,6 +241,11 @@ async function relayBackup(
       };
     }
     if (!produced.ok) return produced;
+    if (produced.sizeBytes === 0) {
+      // Nothing was waiting: the empty file the relay opened must not stay where a restore would read it.
+      await sink.storeDelete(storeTargetFor(dest, objectKey)).catch(() => {});
+      return produced;
+    }
     if (!landed.ok) {
       return {
         ok: false,
@@ -284,9 +298,12 @@ export function restoreRequestFor(
   target: Omit<TransportTarget, "serverId">,
   objectKey: string,
   expectedSha256 = "",
+  // Only a failover replays the change log: a restore by hand goes back to the backup it names.
+  logPrefix = "",
 ): RestoreRequest {
   const dest = creds.destination;
   return {
+    logPrefix,
     kind: wireKind(target.kind),
     database: target.database,
     project: target.project,
@@ -313,6 +330,7 @@ export async function restoreFromDestination(
       encryptedS3: dest.kind === "s3" && !!dest.ageRecipient,
       s3Args: hasS3Args(dest),
       redisAof: isRedis(target),
+      postgresArchive: isBaseBackupKey(objectKey),
     });
     try {
       return await consumeRestore(conn.restore(req));
@@ -327,6 +345,7 @@ export async function restoreFromDestination(
     workload = await connectBackupAgent(target.serverId, {
       store: true,
       redisAof: isRedis(target),
+      postgresArchive: isBaseBackupKey(objectKey),
     });
     const bytes = src.readStoreFile({ store: storeTargetFor(dest, objectKey) });
     return await consumeRestore(
@@ -414,6 +433,12 @@ export async function deleteManyFromDestination(
   targets: { key: string; prefix?: boolean }[],
 ): Promise<{ ok: boolean; error: string; deleted: number }[]> {
   if (targets.length === 0) return [];
+  // A base backup goes with the change log archived after it, wherever a run is deleted.
+  targets = targets.flatMap((t) =>
+    !t.prefix && isBaseBackupKey(t.key)
+      ? [t, { key: changeLogPrefix(t.key), prefix: true, withBase: true }]
+      : [t],
+  );
   const dest = creds.destination;
   const serverId = destinationServerId(dest, targetServerId);
   const conn = await connectBackupAgent(serverId, {
@@ -438,7 +463,8 @@ export async function deleteManyFromDestination(
         out.push({ ok: false, error: mapped.message, deleted: 0 });
       }
     }
-    return out;
+    // One answer per target asked for: the change log's folder is best effort, the next prune tries again.
+    return out.filter((_, i) => !("withBase" in targets[i]!));
   } finally {
     conn.close();
   }

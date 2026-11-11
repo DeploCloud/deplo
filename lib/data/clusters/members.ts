@@ -31,7 +31,9 @@ import {
   type ClusterMember,
 } from "../../types/cluster";
 import type { ServerStatus } from "../../types/server";
+import { archivesChangeLog } from "../../databases/change-log";
 import { recordActivity } from "../activity";
+import { assembleDatabase } from "../backup-rows";
 import { getServerById, listAllServers } from "../servers/roster";
 import { listMemberWorkloads } from "./member-workloads";
 import { recordJoinedPlacements } from "./placement";
@@ -357,6 +359,22 @@ export async function addClusterMember(
     null,
     teamId,
   );
+  // Joining restarts nothing, and Postgres archives only once its stack is rendered again: say so, to its own team.
+  for (const row of await getDb()
+    .select()
+    .from(databasesTable)
+    .where(eq(databasesTable.serverId, serverId))) {
+    if (!archivesChangeLog(assembleDatabase(row))) continue;
+    await recordActivity(
+      "database",
+      `${row.name} archives its change log once it is redeployed. Until then a failover restores its latest backup.`,
+      "Deplo",
+      null,
+      row.teamId,
+      null,
+      row.id,
+    );
+  }
   // A database that came with its server needs the backup a failover restores, once there is a second member (#202).
   if (failoverOn(members.length))
     for (const d of await getDb()

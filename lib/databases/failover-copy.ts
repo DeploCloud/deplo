@@ -18,8 +18,13 @@ function span(minutes: number): string {
   return plural(Math.round(minutes / 1440), "day");
 }
 
-/** How much a failover can lose: the time between two backups, or null when none is scheduled. */
-export function lossSentence(windowMinutes: number | null): string {
+/** How much a failover can lose: the time between two backups, null when none is scheduled, about a minute once the change log is archived. */
+export function lossSentence(
+  windowMinutes: number | null,
+  changeLogArchived = false,
+): string {
+  if (changeLogArchived && windowMinutes != null)
+    return "A failover can lose about a minute of writes: its change log is archived continuously.";
   if (windowMinutes == null)
     return "No backup is scheduled, so a failover has nothing recent to restore.";
   return `A failover can lose up to ${span(windowMinutes)} of writes: everything since the last backup.`;
@@ -38,13 +43,17 @@ export function recoverySentence(
   return `Recovery takes ${took}: the last backup is ${formatBytes(lastBackupBytes)}.`;
 }
 
-/** The Activity entry of a failover that restored a backup: its time in the schedule's timezone, with the date when it is not today's. */
+/**
+ * The Activity entry of a failover that restored a backup: its time in the schedule's timezone, with the date when
+ * it is not today's. `logAt` is how far the change log replayed after it reached, when it reached past the backup.
+ */
 export function restoredSentence(
   name: string,
   server: string,
   takenAt: string | null,
   timeZone: string,
   now = new Date(),
+  logAt: string | null = null,
 ): string {
   const at = takenAt ? new Date(takenAt) : null;
   if (!at || Number.isNaN(at.getTime()))
@@ -58,10 +67,17 @@ export function restoredSentence(
       minute: "2-digit",
       hour12: false,
     });
+    const clock = (d: Date) =>
+      part(d, { hour: "2-digit", minute: "2-digit", hour12: false });
     const when = day(at) === day(now) ? time : `${day(at)}, ${time}`;
-    return `Restored ${name} on ${server} from the backup of ${when}`;
+    const log = logAt ? new Date(logAt) : null;
+    const upTo =
+      log && log.getTime() > at.getTime()
+        ? ` and its change log up to ${day(log) === day(at) ? clock(log) : `${day(log)}, ${clock(log)}`}`
+        : "";
+    return `Restored ${name} on ${server} from the backup of ${when}${upTo}`;
   } catch {
     // A timezone this runtime does not know must not cost the entry.
-    return restoredSentence(name, server, takenAt, "UTC", now);
+    return restoredSentence(name, server, takenAt, "UTC", now, logAt);
   }
 }

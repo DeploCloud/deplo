@@ -60,6 +60,8 @@ export interface Backup {
   lastRunAt: string | null;
   lastStatus: "success" | "failed" | "running" | "canceled" | "never";
   enabled: boolean;
+  /** Its runs are Postgres base backups, which a failover replays the change log onto. */
+  baseBackup?: boolean;
   createdAt: string;
 }
 

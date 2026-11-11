@@ -15,6 +15,7 @@ import { connectAgent } from "../../infra/agent-client/connect";
 import { withKeyedLock } from "../keyed-mutex";
 import { enqueueTeardowns } from "../teardown-queue";
 import { assertDataCopyIntact, clearDataCopyError } from "../data-copy";
+import { changeLogBroken } from "../clusters/change-log";
 import { assertNotPausedForMove } from "../deplo-move/source-guard";
 import { publishDatabaseChanged } from "../../graphql/pubsub";
 import { assertNotProvisioning, databaseExists, requireDatabase } from "./rows";
@@ -201,6 +202,7 @@ export async function rebuildDatabase(id: string): Promise<void> {
       .set({ status: "running" })
       .where(eq(databasesTable.id, id));
     await clearDataCopyError({ kind: "database", id });
+    await changeLogBroken(id);
     publishDatabaseChanged(id);
   });
   await recordActivity(

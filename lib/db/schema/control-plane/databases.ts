@@ -66,6 +66,8 @@ export const databases = pgTable(
     sizeMb: bigint("size_mb", { mode: "number" }).notNull(),
     // Artifact bytes per second of the last restore; NULL until one was measured.
     restoreBytesPerSec: bigint("restore_bytes_per_sec", { mode: "number" }),
+    // When Postgres's change log last reached the backup destination; NULL while it is not archived.
+    walArchivedAt: isoTimestamptz("wal_archived_at"),
     createdAt: isoTimestamptz("created_at").notNull(),
   },
   (t) => [

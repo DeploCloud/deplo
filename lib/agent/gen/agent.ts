@@ -307,6 +307,45 @@ export function backupKindToJSON(object: BackupKind): string {
   }
 }
 
+export enum PostgresArchive {
+  POSTGRES_ARCHIVE_NONE = 0,
+  POSTGRES_ARCHIVE_BASE = 1,
+  POSTGRES_ARCHIVE_LOG = 2,
+  UNRECOGNIZED = -1,
+}
+
+export function postgresArchiveFromJSON(object: any): PostgresArchive {
+  switch (object) {
+    case 0:
+    case "POSTGRES_ARCHIVE_NONE":
+      return PostgresArchive.POSTGRES_ARCHIVE_NONE;
+    case 1:
+    case "POSTGRES_ARCHIVE_BASE":
+      return PostgresArchive.POSTGRES_ARCHIVE_BASE;
+    case 2:
+    case "POSTGRES_ARCHIVE_LOG":
+      return PostgresArchive.POSTGRES_ARCHIVE_LOG;
+    case -1:
+    case "UNRECOGNIZED":
+    default:
+      return PostgresArchive.UNRECOGNIZED;
+  }
+}
+
+export function postgresArchiveToJSON(object: PostgresArchive): string {
+  switch (object) {
+    case PostgresArchive.POSTGRES_ARCHIVE_NONE:
+      return "POSTGRES_ARCHIVE_NONE";
+    case PostgresArchive.POSTGRES_ARCHIVE_BASE:
+      return "POSTGRES_ARCHIVE_BASE";
+    case PostgresArchive.POSTGRES_ARCHIVE_LOG:
+      return "POSTGRES_ARCHIVE_LOG";
+    case PostgresArchive.UNRECOGNIZED:
+    default:
+      return "UNRECOGNIZED";
+  }
+}
+
 /**
  * Which classes of object a cleanup may reclaim. Adding one would turn a disk-reclaim
  * button into a data-loss button.
@@ -1780,6 +1819,12 @@ export interface BackupRequest {
    * destination's StoreResult.bytes_written.
    */
   streamOut: boolean;
+  /**
+   * Postgres only. BASE writes a physical base backup instead of a dump; LOG writes the change-log
+   * segments Postgres archived into <PGDATA>/deplo-wal since the last LOG, then removes them there.
+   * A LOG with nothing waiting succeeds with an empty object_key and writes no artifact.
+   */
+  archive: PostgresArchive;
 }
 
 /**
@@ -1845,6 +1890,11 @@ export interface RestoreRequest {
    * can prove the bytes it is about to act on are that artifact.
    */
   expectedSha256: string;
+  /**
+   * Postgres base backups only: the folder, at the same destination, of the change-log artifacts
+   * (BackupRequest.archive LOG) to replay after the base backup, in name order.
+   */
+  logPrefix: string;
 }
 
 export interface RestoreEvent {
@@ -11037,6 +11087,7 @@ function createBaseBackupRequest(): BackupRequest {
     store: undefined,
     ageRecipient: "",
     streamOut: false,
+    archive: 0,
   };
 }
 
@@ -11062,6 +11113,9 @@ export const BackupRequest: MessageFns<BackupRequest> = {
     }
     if (message.streamOut !== false) {
       writer.uint32(56).bool(message.streamOut);
+    }
+    if (message.archive !== 0) {
+      writer.uint32(64).int32(message.archive);
     }
     return writer;
   },
@@ -11135,6 +11189,14 @@ export const BackupRequest: MessageFns<BackupRequest> = {
             message.streamOut = reader.bool();
             continue;
           }
+          case 8: {
+            if (tag !== 64) {
+              break;
+            }
+
+            message.archive = reader.int32() as any;
+            continue;
+          }
         }
         if ((tag & 7) === 4 || tag === 0) {
           break;
@@ -11164,6 +11226,7 @@ export const BackupRequest: MessageFns<BackupRequest> = {
         : isSet(object.stream_out)
         ? globalThis.Boolean(object.stream_out)
         : false,
+      archive: isSet(object.archive) ? postgresArchiveFromJSON(object.archive) : 0,
     };
   },
 
@@ -11190,6 +11253,9 @@ export const BackupRequest: MessageFns<BackupRequest> = {
     if (message.streamOut !== false) {
       obj.streamOut = message.streamOut;
     }
+    if (message.archive !== 0) {
+      obj.archive = postgresArchiveToJSON(message.archive);
+    }
     return obj;
   },
 
@@ -11211,6 +11277,7 @@ export const BackupRequest: MessageFns<BackupRequest> = {
       : undefined;
     message.ageRecipient = object.ageRecipient ?? "";
     message.streamOut = object.streamOut ?? false;
+    message.archive = object.archive ?? 0;
     return message;
   },
 };
@@ -11508,6 +11575,7 @@ function createBaseRestoreRequest(): RestoreRequest {
     store: undefined,
     ageIdentity: "",
     expectedSha256: "",
+    logPrefix: "",
   };
 }
 
@@ -11533,6 +11601,9 @@ export const RestoreRequest: MessageFns<RestoreRequest> = {
     }
     if (message.expectedSha256 !== "") {
       writer.uint32(58).string(message.expectedSha256);
+    }
+    if (message.logPrefix !== "") {
+      writer.uint32(66).string(message.logPrefix);
     }
     return writer;
   },
@@ -11606,6 +11677,14 @@ export const RestoreRequest: MessageFns<RestoreRequest> = {
             message.expectedSha256 = reader.string();
             continue;
           }
+          case 8: {
+            if (tag !== 66) {
+              break;
+            }
+
+            message.logPrefix = reader.string();
+            continue;
+          }
         }
         if ((tag & 7) === 4 || tag === 0) {
           break;
@@ -11635,6 +11714,11 @@ export const RestoreRequest: MessageFns<RestoreRequest> = {
         : isSet(object.expected_sha256)
         ? globalThis.String(object.expected_sha256)
         : "",
+      logPrefix: isSet(object.logPrefix)
+        ? globalThis.String(object.logPrefix)
+        : isSet(object.log_prefix)
+        ? globalThis.String(object.log_prefix)
+        : "",
     };
   },
 
@@ -11661,6 +11745,9 @@ export const RestoreRequest: MessageFns<RestoreRequest> = {
     if (message.expectedSha256 !== "") {
       obj.expectedSha256 = message.expectedSha256;
     }
+    if (message.logPrefix !== "") {
+      obj.logPrefix = message.logPrefix;
+    }
     return obj;
   },
 
@@ -11682,6 +11769,7 @@ export const RestoreRequest: MessageFns<RestoreRequest> = {
       : undefined;
     message.ageIdentity = object.ageIdentity ?? "";
     message.expectedSha256 = object.expectedSha256 ?? "";
+    message.logPrefix = object.logPrefix ?? "";
     return message;
   },
 };

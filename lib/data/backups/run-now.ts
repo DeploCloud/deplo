@@ -28,6 +28,7 @@ export async function runBackup(id: string): Promise<void> {
     appId: b.appId,
     destinationId: b.destinationId,
     retentionCount: b.retentionCount,
+    baseBackup: b.baseBackup,
   });
 }
 
@@ -40,6 +41,7 @@ export async function runScheduledBackup(backup: Backup): Promise<void> {
       appId: backup.appId,
       destinationId: backup.destinationId,
       retentionCount: backup.retentionCount,
+      baseBackup: backup.baseBackup,
     });
   } catch {}
 }

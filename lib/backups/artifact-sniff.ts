@@ -40,6 +40,16 @@ export async function sniffArtifact(
         "volumes and files; this is not one. If it is a database dump, restore " +
         "it from that database's Backups tab.",
     );
+  // pg_basebackup's archive opens with this file; it is restored in place, with the change log beside it.
+  if (
+    opts.kind === "database" &&
+    isTar &&
+    unpacked.toString("latin1", 0, 13) === "backup_label\0"
+  )
+    throw new Error(
+      "That is a base backup of a Postgres database on a cluster, not a dump. " +
+        "Restore it from that database's Backups tab.",
+    );
   if (opts.kind === "database" && isTar)
     throw new Error(
       "That is an app backup, not a database dump. Restore it from that app's " +

@@ -180,8 +180,15 @@ async function writeDatabasePlacement(
         dbName: cur.dbName,
       }),
     );
+    // Rendered for where it will be: arriving on a cluster starts archiving a Postgres change log, leaving stops it.
+    const clusterId = movingFrom ? (cluster?.id ?? null) : cur.clusterId;
     const yaml = renderDatabaseStackYaml(
-      { ...cur, exposedPublicly: exposed, exposedPort: newExposedPort },
+      {
+        ...cur,
+        clusterId,
+        exposedPublicly: exposed,
+        exposedPort: newExposedPort,
+      },
       password,
     );
     const agent = await connectAgent(targetServer.id);
@@ -249,7 +256,8 @@ async function writeDatabasePlacement(
       .update(databasesTable)
       .set({
         serverId: targetServer.id,
-        ...(movingFrom ? { clusterId: cluster?.id ?? null } : {}),
+        ...(movingFrom ? { clusterId } : {}),
+        ...(clusterId ? {} : { walArchivedAt: null }),
         exposedPublicly: exposed,
         exposedPort: newExposedPort,
         connectionStringEnc: connEnc,

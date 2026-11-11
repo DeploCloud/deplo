@@ -99,6 +99,8 @@ export const backups = pgTable(
     lastRunAt: isoTimestamptz("last_run_at"),
     lastStatus: text("last_status").notNull(),
     enabled: boolean("enabled").notNull(),
+    // Its runs are Postgres base backups, which the archived change log is replayed onto.
+    baseBackup: boolean("base_backup").notNull().default(false),
     createdAt: isoTimestamptz("created_at").notNull(),
   },
   (t) => [

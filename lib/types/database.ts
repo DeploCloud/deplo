@@ -38,6 +38,8 @@ export interface Database {
   sizeMb: number;
   /** Artifact bytes per second of the last restore; null until one was measured. */
   restoreBytesPerSec?: number | null;
+  /** When its change log last reached the backup destination; null while it is not archived. */
+  walArchivedAt?: string | null;
   createdAt: string;
 }
 

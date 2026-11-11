@@ -5,6 +5,10 @@ import { defaultLogging, renderResourceLimitsYaml } from "./resources";
 import type { ResourceLimits } from "../types/container";
 import type { DatabaseType } from "../types/database";
 import type { DatabaseReach } from "../databases/link";
+import {
+  CHANGE_LOG_DIR,
+  CHANGE_LOG_KEPT_MINUTES,
+} from "../databases/change-log";
 import { isOfficialEngineImage } from "../databases/images";
 import { formatHostPort } from "../host-address";
 import { deploImageClaim, deploImageMessage } from "./deplo-image";
@@ -104,6 +108,16 @@ else
 fi
 `;
 
+// A finished piece of the change log is copied beside the data, at most a minute after its first write; the
+// server agent ships it from there. https://deplo.build/docs/operations/clusters#databases
+const WAL_DIR = `${DB_DATA_DIRS.postgres}/${CHANGE_LOG_DIR}`;
+const POSTGRES_ARCHIVE = [
+  "archive_mode=on",
+  // What nothing collected in time is dropped, so a destination that is away never fills the database's disk.
+  `archive_command=mkdir -p ${WAL_DIR} && { find ${WAL_DIR} -type f -mmin +${CHANGE_LOG_KEPT_MINUTES} -delete; cp %p ${WAL_DIR}/.%f; } && mv ${WAL_DIR}/.%f ${WAL_DIR}/%f`,
+  "archive_timeout=60",
+];
+
 export function generateDatabaseCompose(input: {
   name: string;
   databaseId: string;
@@ -121,6 +135,8 @@ export function generateDatabaseCompose(input: {
   network: string;
   // MongoDB runs as a one-member replica set when it has one: the dump then carries its oplog.
   mongoKeyfile?: string | null;
+  // Postgres on a cluster: see archivesChangeLog.
+  archiveChangeLog?: boolean;
 }): string {
   const {
     name,
@@ -169,13 +185,19 @@ export function generateDatabaseCompose(input: {
       `CLICKHOUSE_DB=${dbName}`,
     ],
   };
+  // Postgres settings the platform owns, each one a `-c`; empty leaves the image's own command.
+  const postgresSettings: string[] = [];
+  if (type === "postgres" && input.archiveChangeLog)
+    postgresSettings.push(...POSTGRES_ARCHIVE);
   const command = customCommand
     ? `    command: ${escapeComposeDollars(JSON.stringify(customCommand))}\n`
-    : replicaSet
-      ? `    command: ${JSON.stringify(["sh", "-c", MONGO_REPLICA_START])}\n`
-      : type === "redis"
-        ? `    command: ${escapeComposeDollars(JSON.stringify(["sh", "-c", REDIS_START]))}\n`
-        : "";
+    : postgresSettings.length > 0
+      ? `    command: ${JSON.stringify(["postgres", ...postgresSettings.flatMap((s) => ["-c", s])])}\n`
+      : replicaSet
+        ? `    command: ${JSON.stringify(["sh", "-c", MONGO_REPLICA_START])}\n`
+        : type === "redis"
+          ? `    command: ${escapeComposeDollars(JSON.stringify(["sh", "-c", REDIS_START]))}\n`
+          : "";
   const envLines = envByType[type];
   const envBlock = envLines.length
     ? "    environment:\n" +

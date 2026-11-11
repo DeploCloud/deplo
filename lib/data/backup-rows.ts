@@ -67,6 +67,7 @@ export function databaseToRow(d: Database): DatabaseInsert {
     restartLoopStoppedAt: d.restartLoopStoppedAt,
     sizeMb: d.sizeMb,
     restoreBytesPerSec: d.restoreBytesPerSec ?? null,
+    walArchivedAt: d.walArchivedAt ?? null,
     createdAt: d.createdAt,
   } satisfies Record<
     Exclude<keyof Database, "resources" | "mounts">,
@@ -107,6 +108,7 @@ export function assembleDatabase(
     mounts,
     sizeMb: row.sizeMb,
     restoreBytesPerSec: row.restoreBytesPerSec ?? null,
+    walArchivedAt: row.walArchivedAt ?? null,
     createdAt: row.createdAt,
   };
 }
@@ -195,6 +197,7 @@ export function backupToRow(b: Backup): BackupInsert {
     lastRunAt: b.lastRunAt,
     lastStatus: b.lastStatus,
     enabled: b.enabled,
+    baseBackup: b.baseBackup ?? false,
     createdAt: b.createdAt,
   } satisfies Record<keyof Backup, unknown> as BackupInsert;
 }
@@ -214,6 +217,7 @@ export function assembleBackup(row: BackupRow): Backup {
     lastRunAt: row.lastRunAt,
     lastStatus: row.lastStatus as Backup["lastStatus"],
     enabled: row.enabled,
+    baseBackup: row.baseBackup,
     createdAt: row.createdAt,
   };
 }
