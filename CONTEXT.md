@@ -881,6 +881,15 @@ about a second of writes is lost. Expert only, off by default, and it costs the 
 memory and disk a second time. It is never a **replica**: nothing reads from it.
 _Avoid_: replica (those are copies of an App that all answer), secondary, slave, mirror.
 
+**Left on a server**:
+What a member of a **cluster** still held of a database, or of an App with a Volume, when it came
+back after a **failover**: saved as a backup before that member removes its copy, and listed with
+the workload's backups as "Left on _server_ after the failover at 14:32". No schedule ever prunes
+it and Deplo never restores it on its own; restoring it by hand loses everything written since the
+failover. When it cannot be saved, the data stays on that server and **Activity** says why.
+_Avoid_: left-behind backup (a server **left behind** is one that missed an **update stop**),
+orphan backup, stale backup, old copy.
+
 **Storage-only server**:
 A **server** whose agent is installed to HOLD BACKUPS and nothing else: no Docker, no
 Traefik, never a deploy target. Chosen at registration; the install command then skips all of

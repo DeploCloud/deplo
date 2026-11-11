@@ -4,6 +4,8 @@
 
 To fail over while Deplo is down, the leader must re-send a workload's last stack with its decrypted variables, which until now only the control plane could produce. **The leader keeps one failover bundle per cluster workload**: the last rendered stack, its plaintext env-file, registry credentials, the run token of the App's own Cloudflare tunnel, and for a database its engine password and backup destination credentials. It holds exactly what a member already receives at deploy, and no more: never `DEPLO_SECRET`, never an account or zone token.
 
+A workload that keeps data also carries the backup request a member that comes back uses to save what it still held before removing it (#206). It names the same destination, and the leader hands it only to the member that workload moved off, with the order that asks what it removed; neither the leader nor that member writes it to disk.
+
 The leader makes an age key pair at install and only its public key leaves its machine. The control plane seals every bundle to it, so bundles are ciphertext at rest and opened in memory only to send a failover inside mutual TLS. A new bundle follows every successful deploy; leaving the cluster deletes it; a moved or reinstalled leader gets a new key and every bundle again.
 
 ## Considered options
