@@ -7,18 +7,31 @@ import {
 // How an App that keeps data on its server fails over (spec #176, stories 70-72).
 // https://deplo.build/docs/operations/clusters/apps-with-stored-data
 
-/** An App's storage rows and its own compose: all that decides how it fails over. A row with no type is a Volume. */
+/** An App's storage rows, its config files and its own compose: all that decides how it fails over. A row with no type is a Volume. */
 export interface StoredOnDisk {
-  volumes?: readonly { type?: string | null }[] | null;
+  volumes?:
+    readonly { type?: string | null; projectPath?: string | null }[] | null;
+  /** The files Deplo holds the content of and writes at every deploy; they travel in the failover bundle. */
+  mounts?: readonly { filePath: string }[] | null;
   compose?: string | null;
 }
 type Stored = StoredOnDisk;
 
-/** A Volume or a File: data on its server's disk that only a backup carries to another one. */
+const rel = (p: string | null | undefined) =>
+  (p ?? "").replace(/^(\.\/|\/)+/, "").replace(/\/+$/, "");
+
+/**
+ * Data on its server's disk that only a backup carries to another one: a Volume, or a File nothing but that
+ * disk holds. A File whose content Deplo holds is written again wherever the stack starts, so it keeps nothing.
+ */
 export function appKeepsVolume(app: Stored): boolean {
+  const written = new Set((app.mounts ?? []).map((m) => rel(m.filePath)));
   return (
-    (app.volumes ?? []).some((v) => v.type !== "host") ||
-    composeOwnVolumeKeys(app.compose ?? "").length > 0
+    (app.volumes ?? []).some(
+      (v) =>
+        v.type !== "host" &&
+        !(v.type === "app" && written.has(rel(v.projectPath))),
+    ) || composeOwnVolumeKeys(app.compose ?? "").length > 0
   );
 }
 

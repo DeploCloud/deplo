@@ -4,6 +4,7 @@ import { and, eq, gte, inArray, ne } from "drizzle-orm";
 import { getDb } from "../../db/client";
 import { activities } from "../../db/schema/control-plane/activity";
 import {
+  appMounts,
   appVolumes,
   apps as appsTable,
 } from "../../db/schema/control-plane/apps";
@@ -76,7 +77,11 @@ export async function placementEntries(
     .where(inArray(workloadPlacements.workloadId, ids));
   const volumes = apps.length
     ? await db
-        .select({ appId: appVolumes.appId, type: appVolumes.type })
+        .select({
+          appId: appVolumes.appId,
+          type: appVolumes.type,
+          projectPath: appVolumes.projectPath,
+        })
         .from(appVolumes)
         .where(
           inArray(
@@ -85,13 +90,25 @@ export async function placementEntries(
           ),
         )
     : [];
-  // The one rule of what keeps data: a Volume, a File, or a stack's own volume. A Bind alone moves nowhere.
+  const mounts = apps.length
+    ? await db
+        .select({ appId: appMounts.appId, filePath: appMounts.filePath })
+        .from(appMounts)
+        .where(
+          inArray(
+            appMounts.appId,
+            apps.map((a) => a.id),
+          ),
+        )
+    : [];
+  // The one rule of what keeps data: a Volume, a File only its server holds, or a stack's own volume. A Bind alone moves nowhere.
   const withVolume = new Set(
     apps
       .filter((a) =>
         appKeepsVolume({
           compose: a.compose,
           volumes: volumes.filter((v) => v.appId === a.id),
+          mounts: mounts.filter((m) => m.appId === a.id),
         }),
       )
       .map((a) => a.id),

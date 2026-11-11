@@ -526,9 +526,17 @@ test("a database is single-writer, and so is an App with a volume; a plain App i
   const cluster = await eu();
   await inCluster(cluster.id, "prj_files", "srv_2");
   await inCluster(cluster.id, "prj_plain", "srv_2");
+  await inCluster(cluster.id, "prj_config", "srv_2");
+  await inCluster(cluster.id, "prj_sqlite", "srv_2");
   await pg.exec(`insert into app_volumes (app_id, position, volume_id, type, name, mount_path, read_only)
     values ('prj_files', 0, 'vol_1', 'named', 'data', '/data', false)`);
-  for (const id of ["prj_files", "prj_plain"])
+  // A File Deplo writes at every deploy travels with the stack; one only its server holds does not.
+  await pg.exec(`insert into app_volumes (app_id, position, volume_id, type, name, project_path, mount_path, read_only)
+    values ('prj_config', 0, 'vol_2', 'app', 'conf', 'conf/app.toml', '/app/conf/app.toml', true),
+           ('prj_sqlite', 0, 'vol_3', 'app', 'db', 'data.sqlite', '/app/data.sqlite', false)`);
+  await pg.exec(`insert into app_mounts (app_id, position, file_path, content)
+    values ('prj_config', 0, 'conf/app.toml', 'a = 1')`);
+  for (const id of ["prj_files", "prj_plain", "prj_config", "prj_sqlite"])
     await db.insert(workloadPlacements).values({
       kind: "app",
       workloadId: id,
@@ -541,8 +549,10 @@ test("a database is single-writer, and so is an App with a volume; a plain App i
   assert.deepEqual(
     entries.map((e) => [e.id, e.singleWriter]),
     [
+      ["prj_config", false],
       ["prj_files", true],
       ["prj_plain", false],
+      ["prj_sqlite", true],
     ],
   );
 });
