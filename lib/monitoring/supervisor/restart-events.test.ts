@@ -6,7 +6,15 @@ import { eq } from "drizzle-orm";
 import { apps as appsTable } from "../../db/schema/control-plane/apps";
 import { activities } from "../../db/schema/control-plane/activity";
 import { runWithIdentity } from "../../auth/request-context";
-import { seedApp, seedDeployment } from "../../data/app-graph-test-helpers";
+import {
+  seedApp,
+  seedDeployment,
+  seedPreview,
+} from "../../data/app-graph-test-helpers";
+import {
+  clusters,
+  workloadPlacements,
+} from "../../db/schema/control-plane/clusters";
 import { saveNotificationChannel } from "../../data/notifications";
 import { TEAM_A, USER_1 } from "../../data/identity-test-helpers";
 import { commitOutcome } from "../../deploy/build/deployment-state";
@@ -19,6 +27,7 @@ import {
 import { RestartEvent_Kind, type RestartEvent } from "../../agent/gen/agent";
 import {
   SRV_A,
+  SRV_B,
   frame,
   seedEnrolledServer,
   setupSupervisor,
@@ -107,6 +116,93 @@ test("a restart is an Activity entry by Deplo and the first one alerts", async (
   assert.equal(row.actor, "Deplo");
   assert.equal(capture!.calls.length, 1);
   assert.match(titles()[0], /web stopped answering/);
+});
+
+test("with several replicas the entry names the one that was restarted", async () => {
+  const feed = await setup();
+  await h.db
+    .update(appsTable)
+    .set({ replicas: 3 })
+    .where(eq(appsTable.id, "prj_web"));
+  await send(
+    feed,
+    ev(RestartEvent_Kind.KIND_RESTARTED, {
+      container: "deplo-web-deplo-web-2",
+      unansweredS: 90,
+    }),
+  );
+  await waitFor(async () => (await messages()).length === 1, "activity");
+  assert.deepEqual(await messages(), [
+    "Restarted web replica web-2: it stopped answering for 90 s",
+  ]);
+});
+
+test("a spread App's restart on another server of its cluster reaches Activity, with the server", async () => {
+  const feed = await setup();
+  const at = "2026-01-01T00:00:00.000Z";
+  await seedEnrolledServer(h.db, SRV_B, at);
+  await h.db
+    .insert(clusters)
+    .values({ id: "clu_eu", name: "eu", createdAt: at });
+  // It "runs on" srv_b; the server reporting here holds its second replica.
+  await h.db
+    .update(appsTable)
+    .set({ clusterId: "clu_eu", serverId: SRV_B, replicas: 2 })
+    .where(eq(appsTable.id, "prj_web"));
+  await h.db.insert(workloadPlacements).values(
+    [SRV_B, SRV_A].map((memberServerId, replica) => ({
+      kind: "app",
+      workloadId: "prj_web",
+      replica,
+      memberServerId,
+      updatedAt: at,
+    })),
+  );
+  await send(
+    feed,
+    ev(RestartEvent_Kind.KIND_RESTARTED, {
+      container: "deplo-web-deplo-web-1",
+      unansweredS: 90,
+    }),
+  );
+  await waitFor(async () => (await messages()).length === 1, "activity");
+  assert.deepEqual(await messages(), [
+    `Restarted web replica web-1 on ${SRV_A}: it stopped answering for 90 s`,
+  ]);
+  assert.deepEqual(titles(), ["web stopped answering"]);
+});
+
+test("a preview's restart is an Activity entry and never the App's own state", async () => {
+  const feed = await setup();
+  await seedPreview(h.db, { id: "prv_7", appId: "prj_web", prNumber: 7 });
+  await send(
+    feed,
+    ev(RestartEvent_Kind.KIND_RESTARTED, {
+      slug: "web__pr-7",
+      unansweredS: 90,
+    }),
+    ev(RestartEvent_Kind.KIND_PAUSED, { slug: "web__pr-7", restarts: 5 }),
+  );
+  await waitFor(async () => (await messages()).length === 2, "activity");
+  assert.deepEqual((await messages()).sort(), [
+    "Paused restarts for the preview for pull request #7 of web: it restarted 5 times in 30 minutes and still does not answer",
+    "Restarted the preview for pull request #7 of web: it stopped answering for 90 s",
+  ]);
+  assert.equal(await paused(), null);
+  assert.deepEqual(titles(), []);
+});
+
+test("an App on another server is never read from this one's events", async () => {
+  const feed = await setup();
+  await seedEnrolledServer(h.db, SRV_B, "2026-01-01T00:00:00.000Z");
+  await h.db
+    .update(appsTable)
+    .set({ serverId: SRV_B })
+    .where(eq(appsTable.id, "prj_web"));
+  await send(feed, ev(RestartEvent_Kind.KIND_PAUSED, { restarts: 5 }));
+  await send(feed, ev(RestartEvent_Kind.KIND_RESTARTED, { unansweredS: 90 }));
+  assert.deepEqual(await messages(), []);
+  assert.equal(await paused(), null);
 });
 
 test("more restarts inside the 30-minute cooldown are Activity only", async () => {
