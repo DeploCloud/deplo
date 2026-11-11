@@ -186,7 +186,7 @@ test("the security floor names a release no later than this one", () => {
   );
 });
 
-// Nothing is released from deplo-cluster yet, so both pins start empty; an empty pin is the one explicit "unpinned" state.
+// An empty pin is the one explicit "unpinned" state, and only with an empty floor.
 test("the cluster pin is unset, or set with a floor it satisfies", () => {
   if (!CLUSTER_VERSION) {
     assert.equal(CLUSTER_MIN_VERSION, "", "a floor without a pin");

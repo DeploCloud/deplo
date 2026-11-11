@@ -177,7 +177,7 @@ test("a server whose agent is behind its own pin waits for that update first", a
 
 test("with no cluster release pinned, nothing is asked of any server", async () => {
   await euLedFromSrv4();
-  __setClusterPinForTest(null);
+  __setClusterPinForTest({ version: "", min: "" });
   const opened = Object.values(hosts).map((h) => h.opened.length);
 
   await runClusterRollout();
