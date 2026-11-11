@@ -70,7 +70,12 @@ export async function deployOtherMembers(opts: {
   // A registry image is pulled by each member; one Deplo built is copied to it first.
   const built = isBuiltImage(imageRef);
   if (built && others.length > 0)
-    await copyReleaseToMembers(project.id, imageRef, first.serverId);
+    await copyReleaseToMembers(
+      project.id,
+      imageRef,
+      first.serverId,
+      others.map((m) => m.serverId),
+    );
   const holding = built ? await membersHoldingImage(project.id, imageRef) : [];
   const done = [await nameOf(first.serverId)];
   for (const m of others) {

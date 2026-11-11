@@ -135,9 +135,11 @@ export async function copyReleaseToMembers(
   appId: string,
   imageRef: string,
   sourceServerId: string,
+  // A deploy waits only for the members it is about to start replicas on; the rest follow in the background.
+  only?: readonly string[],
 ): Promise<void> {
   // The same release asked for twice is one copy; a newer one waits its turn behind the lock.
-  const flight = `${appId} ${imageRef}`;
+  const flight = `${appId} ${imageRef} ${only ? [...only].sort().join() : "*"}`;
   if (inFlight.has(flight)) return;
   inFlight.add(flight);
   try {
@@ -156,7 +158,10 @@ export async function copyReleaseToMembers(
       // An unknown architecture is never assumed to match another.
       if (!source || !source.arch) return;
       const targets = all.filter(
-        (m) => m.serverId !== source.serverId && m.arch === source.arch,
+        (m) =>
+          m.serverId !== source.serverId &&
+          m.arch === source.arch &&
+          (!only || only.includes(m.serverId)),
       );
       // The release a deploy just made (or rolled back to) is the newest, whatever its first copy date.
       await setCopy(appId, imageRef, source.serverId, "held", "", true);
