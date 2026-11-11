@@ -323,3 +323,17 @@ test("the sweep that finishes a dissolved cluster runs with the others and stops
     /export async function reconcileDissolvedClusters\(\): Promise<void> \{\n {2}if \(await instanceFrozen\(\)\) return;/,
   );
 });
+
+test("a leader that missed the delete forgets the cluster with the next sweep, and keeps the ones that exist", async () => {
+  const eu = await clusterOf("eu", ["srv_2"]);
+  const us = await clusterOf("us", ["srv_3"]);
+  hosts[SERVER_1].unreachable = true;
+  await asAdmin(() => deleteCluster(eu.id));
+  assert.deepEqual(told[SERVER_1].forgotten, [], "it never heard");
+
+  hosts[SERVER_1].unreachable = false;
+  told[SERVER_1].serving = [eu.id, us.id];
+  await reconcileDissolvedClusters();
+  assert.deepEqual(told[SERVER_1].forgotten, [eu.id]);
+  assert.equal(hosts[SERVER_1].removes, 0, "us still needs its leader");
+});

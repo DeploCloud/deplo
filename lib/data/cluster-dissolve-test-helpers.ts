@@ -102,6 +102,8 @@ export interface Told {
   }[];
   dropped: string[];
   forgotten: string[];
+  /** The clusters its snapshot names: what it still serves. */
+  serving: string[];
 }
 export const told: Record<string, Told> = {};
 
@@ -109,7 +111,7 @@ export function leaderOn(
   serverId: string,
   over: Partial<FakeClusterHost> = {},
 ) {
-  const t: Told = { rosters: [], dropped: [], forgotten: [] };
+  const t: Told = { rosters: [], dropped: [], forgotten: [], serving: [] };
   told[serverId] = t;
   hosts[serverId] = fleet.host(serverId, {
     status: { ...RUNNING },
@@ -118,7 +120,10 @@ export function leaderOn(
       if (method === "leader.roster") t.rosters.push(body);
       if (method === "leader.forget") t.forgotten.push(body.cluster);
       if (method === "leader.bundle.drop") t.dropped.push(body.id);
-      if (method === "leader.snapshot") return answer({ clusters: {} });
+      if (method === "leader.snapshot")
+        return answer({
+          clusters: Object.fromEntries(t.serving.map((id) => [id, {}])),
+        });
       if (method === "leader.key")
         return answer({ publicKey: `age1${serverId}` });
       if (method === "leader.bundle.list") return answer({ bundles: [] });

@@ -15,6 +15,7 @@ import { databases as databasesTable } from "../../db/schema/control-plane/datab
 import { teams as teamsTable } from "../../db/schema/control-plane/identity";
 import { servers as serversTable } from "../../db/schema/control-plane/servers";
 import {
+  callClusterLeader,
   clusterLeaderStatus,
   probeClusterMember,
   removeClusterLeader,
@@ -35,7 +36,7 @@ import { dropLeaderBundle, forgetLeaderCluster } from "./bundle-calls";
 import { hostFor, keyRows } from "./bundles";
 import { leaderHostOf } from "./host";
 import { retireLeader } from "./leader-move";
-import { forgetLeaderRoster } from "./leader-sync";
+import { forgetLeaderRoster, type LeaderSnapshot } from "./leader-sync";
 import { clusterOfServer } from "./members";
 import { listMemberWorkloads } from "./member-workloads";
 import type { WorkloadKind } from "./placement";
@@ -521,22 +522,43 @@ export async function deleteCluster(clusterId: string): Promise<void> {
   }
 }
 
+// A leader that missed the delete still serves the cluster, bundles included: it forgets what Deplo no longer has.
+async function forgetOrphans(hostId: string): Promise<void> {
+  const raw = await callClusterLeader(hostId, "leader.snapshot");
+  const serving = Object.keys(
+    (JSON.parse(new TextDecoder().decode(raw)) as LeaderSnapshot).clusters ??
+      {},
+  );
+  // Read after the snapshot: a cluster's row exists before its leader hears of it.
+  const known = new Set(
+    (await getDb().select({ id: clustersTable.id }).from(clustersTable)).map(
+      (c) => c.id,
+    ),
+  );
+  for (const id of serving)
+    if (!known.has(id)) await forgetLeaderCluster(hostId, id);
+}
+
 /** The sweep's job: whatever a removal or a delete could not finish at the time is finished now. */
 export async function reconcileDissolvedClusters(): Promise<void> {
   if (await instanceFrozen()) return;
   await reconcileLeftMembers();
-  const left = await getDb()
-    .select({ id: clustersTable.id })
-    .from(clustersTable)
-    .limit(1);
-  if (left.length > 0) return;
-  // No cluster is left, so Deplo's machine runs no leader and no relay; the relay sweep takes the route out.
   const own = await leaderHostOf(null);
-  if (own && (await clusterLeaderStatus(own.id)).installed)
-    await removeClusterLeader(own.id);
+  const clusters = await getDb()
+    .select({ leader: clustersTable.leaderServerId })
+    .from(clustersTable);
+  if (clusters.length === 0) {
+    // No cluster is left, so Deplo's machine runs no leader and no relay; the relay sweep takes the route out.
+    if (own && (await clusterLeaderStatus(own.id)).installed)
+      await removeClusterLeader(own.id);
+    return;
+  }
+  for (const id of new Set([own?.id, ...clusters.map((c) => c.leader)]))
+    if (id) await forgetOrphans(id).catch((e) => warn(id, e));
 }
 
 /** A server that left its cluster while it did not answer is told, once it answers. */
+// ponytail: what its dead lease stopped meanwhile stays stopped; starting it again is the returning-member work of #205.
 export async function reconcileLeftMembers(): Promise<void> {
   const pending = await getDb()
     .select({ id: serversTable.id })
