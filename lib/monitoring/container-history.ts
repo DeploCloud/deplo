@@ -27,8 +27,40 @@ function evict(buf: ContainerMetricsSample[], now: number): void {
   if (drop > 0) buf.splice(0, drop);
 }
 
+// The highest memory reading per workload and hour, for the last day: what placement counts when no limit is set.
+// ponytail: in this process like the history, so a restart falls back to the floor until readings return.
+const PEAKS_KEY = Symbol.for("deplo.monitoring.container-peaks");
+const gp = globalThis as unknown as {
+  [PEAKS_KEY]?: Map<string, Map<number, number>>;
+};
+const peaks: Map<string, Map<number, number>> = (gp[PEAKS_KEY] ??= new Map());
+const HOUR_MS = 3_600_000;
+const PEAK_HOURS = 24;
+
+function notePeak(id: string, ts: number, memUsed: number): void {
+  const hours = peaks.get(id) ?? new Map<number, number>();
+  const hour = Math.floor(ts / HOUR_MS);
+  hours.set(hour, Math.max(hours.get(hour) ?? 0, memUsed));
+  for (const h of hours.keys()) if (h < hour - PEAK_HOURS) hours.delete(h);
+  peaks.set(id, hours);
+}
+
+/** The workload's 24-hour memory peak in MB, per replica; 0 when nothing was measured. */
+export function peakMemoryMb(
+  id: string,
+  replicas = 1,
+  now = Date.now(),
+): number {
+  const from = Math.floor(now / HOUR_MS) - PEAK_HOURS;
+  let peak = 0;
+  for (const [hour, used] of peaks.get(id) ?? [])
+    if (hour >= from && used > peak) peak = used;
+  return Math.ceil(peak / Math.max(replicas, 1) / (1024 * 1024));
+}
+
 export function recordContainerSample(sample: ContainerMetricsSample): void {
   if (!sample.online) return;
+  notePeak(sample.id, sample.ts, sample.memUsed);
   const buf = buffers.get(sample.id) ?? [];
   const last = buf[buf.length - 1];
   if (last && sample.ts - last.ts < MIN_GAP_MS) return;
@@ -82,10 +114,12 @@ export function clearContainerHistory(id?: string): void {
     buffers.delete(id);
     instances.delete(id);
     spreads.delete(id);
+    peaks.delete(id);
   } else {
     buffers.clear();
     instances.clear();
     spreads.clear();
+    peaks.clear();
   }
 }
 
@@ -99,6 +133,9 @@ export function pruneContainerHistoryTo(ids: ReadonlySet<string>): void {
   }
   for (const id of spreads.keys()) {
     if (!ids.has(id)) spreads.delete(id);
+  }
+  for (const id of peaks.keys()) {
+    if (!ids.has(id)) peaks.delete(id);
   }
 }
 

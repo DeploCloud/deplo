@@ -1,6 +1,7 @@
 import "server-only";
 
 import { and, desc, eq, inArray, isNull, notInArray } from "drizzle-orm";
+import { peakMemoryMb } from "../../monitoring/container-history";
 import { getDb } from "../../db/client";
 import { RestoreRequest } from "../../agent/gen/agent";
 import type {
@@ -276,7 +277,7 @@ export async function pushDatabaseBundle(databaseId: string): Promise<void> {
             image: "",
             archs: await imageArchs(effectiveDatabaseImage(db), db.serverId),
             limitMb: db.resources?.memoryMb ?? 0,
-            peakMb: 0,
+            peakMb: peakMemoryMb(db.id),
             hasDomain: false,
             createdAt: db.createdAt,
           },

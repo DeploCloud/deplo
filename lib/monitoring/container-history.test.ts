@@ -14,6 +14,7 @@ import {
   recordMemberSample,
   dropMemberSamples,
   freshMemberIds,
+  peakMemoryMb,
 } from "./container-history";
 import type {
   ContainerInstanceMetrics,
@@ -320,4 +321,23 @@ test("clearing or pruning a workload forgets its servers too", () => {
   assert.equal(getContainerHistory("app_1").length, 1, "srv_b leads alone");
   pruneContainerHistoryTo(new Set());
   assert.deepEqual(freshMemberIds("app_1", NOW), []);
+});
+
+test("the 24-hour peak is the highest reading of the last day, in MB, and older ones are forgotten", () => {
+  const MB = 1024 * 1024;
+  const HOUR = 3_600_000;
+  clearContainerHistory();
+  assert.equal(peakMemoryMb("prj_peak", 1, NOW), 0, "nothing was measured");
+  recordContainerSample(
+    sample("prj_peak", NOW - 30 * HOUR, { memUsed: 4000 * MB }),
+  );
+  recordContainerSample(
+    sample("prj_peak", NOW - 20 * HOUR, { memUsed: 900 * MB }),
+  );
+  recordContainerSample(sample("prj_peak", NOW - 1000, { memUsed: 300 * MB }));
+  assert.equal(peakMemoryMb("prj_peak", 1, NOW), 900);
+  assert.equal(peakMemoryMb("prj_peak", 3, NOW), 300, "one replica's share");
+  assert.equal(peakMemoryMb("prj_other", 1, NOW), 0);
+  clearContainerHistory("prj_peak");
+  assert.equal(peakMemoryMb("prj_peak", 1, NOW), 0);
 });

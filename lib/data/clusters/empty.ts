@@ -19,6 +19,7 @@ import { instanceFrozen } from "../deplo-move/freeze";
 import { hasPendingLock } from "../keyed-mutex";
 import { getServerById } from "../servers/roster";
 import { redeployArchs } from "./architectures";
+import { neededMb } from "./facts";
 import { pushLeaderRoster } from "./leader-sync";
 import { listMemberWorkloads, type MemberWorkload } from "./member-workloads";
 import {
@@ -64,8 +65,7 @@ async function admin(clusterId: string, serverId: string) {
 }
 
 // ponytail: the floor the leader's rule uses; one constant with #198's facts.ts once both are merged.
-const MIN_WORKLOAD_MB = 256;
-const needMb = (w: MemberWorkload) => Math.max(w.limitMb, MIN_WORKLOAD_MB);
+const needMb = (w: MemberWorkload) => neededMb(w.id, w.limitMb);
 
 /**
  * Refuses with the room sentence unless the other members can take everything `serverId` holds.

@@ -1,6 +1,7 @@
 import "server-only";
 
 import { and, desc, eq, gte, inArray, isNull, notInArray } from "drizzle-orm";
+import { peakMemoryMb } from "../../monitoring/container-history";
 import { getDb } from "../../db/client";
 import { activities } from "../../db/schema/control-plane/activity";
 import {
@@ -234,6 +235,7 @@ async function bundleMeta(
       name: appsTable.name,
       environmentId: appsTable.environmentId,
       limit: appsTable.resourceMemLimitMb,
+      replicas: appsTable.replicas,
       createdAt: appsTable.createdAt,
       serverId: appsTable.serverId,
     })
@@ -253,7 +255,7 @@ async function bundleMeta(
     // ponytail: a stack of several images is kept on its own architecture; read each service's image when one needs more.
     archs: await imageArchs(imageRef, app?.serverId),
     limitMb: app?.limit ?? 0,
-    peakMb: 0,
+    peakMb: peakMemoryMb(appId, app?.replicas),
     hasDomain: Boolean(dom),
     createdAt: app?.createdAt ?? "",
   };

@@ -38,6 +38,10 @@ import {
 } from "../deploy/deploy-queue";
 import { runAgentDeploy } from "../deploy/agent-deploy";
 import { addRegistry } from "./registries";
+import {
+  clearContainerHistory,
+  recordContainerSample,
+} from "../monitoring/container-history";
 import { createCluster } from "./clusters/manage";
 import { addClusterMember } from "./clusters/members";
 import { reconcileCluster } from "./clusters/watch";
@@ -73,6 +77,8 @@ interface TestLeader {
   identity: string;
   publicKey: string;
   held: Map<string, { deploymentId: string; sealed: Uint8Array }>;
+  /** What the leader places each workload by, as last sent. */
+  metas: Map<string, { peakMb: number; limitMb: number }>;
   dropped: string[];
   refuseKey: boolean;
   refusePut: boolean;
@@ -85,6 +91,7 @@ async function newLeader(): Promise<TestLeader> {
     identity,
     publicKey: await age.identityToRecipient(identity),
     held: new Map(),
+    metas: new Map(),
     dropped: [],
     refuseKey: false,
     refusePut: false,
@@ -104,6 +111,10 @@ function leaderCalls(l: TestLeader) {
     }
     if (method === "leader.bundle.put") {
       if (l.refusePut) throw new Error("disk full");
+      l.metas.set(
+        body.id,
+        body.meta as unknown as { peakMb: number; limitMb: number },
+      );
       l.held.set(body.id, {
         deploymentId: body.deploymentId,
         sealed: Buffer.from(body.sealed, "base64"),
@@ -571,6 +582,35 @@ test("a watch that reconnects resends the bundle a leader missed, without waitin
   leader.held.get(app.id)!.deploymentId = "dpl_0";
   await reconcileCluster(cluster.id);
   assert.equal(leader.held.get(app.id)!.deploymentId, "dpl_1");
+});
+
+test("the bundle tells the leader the App's 24-hour peak, so a failover finds real room", async () => {
+  const cluster = await eu();
+  const app = await clusterApp(cluster.id);
+  clearContainerHistory();
+  recordContainerSample({
+    id: app.id,
+    online: true,
+    ts: Date.now(),
+    cpu: 0,
+    memUsed: 3000 * 1024 * 1024,
+    memLimit: 0,
+    memPct: 0,
+    netRx: 0,
+    netTx: 0,
+    blockRead: 0,
+    blockWrite: 0,
+    pids: 1,
+    running: 1,
+    containers: 1,
+    hostCores: 2,
+  });
+  await deployOn(app, "dpl_1");
+  assert.deepEqual(
+    [leader.metas.get(app.id)?.limitMb, leader.metas.get(app.id)?.peakMb],
+    [0, 3000],
+  );
+  clearContainerHistory();
 });
 
 test("a bundle the leader holds for no App of the cluster is dropped", async () => {

@@ -1,6 +1,7 @@
 import "server-only";
 
 import { and, asc, desc, eq, inArray, isNull } from "drizzle-orm";
+import { peakMemoryMb } from "../../monitoring/container-history";
 import { type DbTx, getDb } from "../../db/client";
 import { apps as appsTable } from "../../db/schema/control-plane/apps";
 import {
@@ -154,6 +155,7 @@ async function askLeader(
             name: req.name,
             environment: req.environmentId ?? "",
             limitMb: req.limitMb,
+            peakMb: peakMemoryMb(req.id, many?.replicas),
             image: req.imageRef ?? "",
             archs: req.archs ?? [],
           },
