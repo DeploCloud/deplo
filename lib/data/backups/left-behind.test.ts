@@ -8,6 +8,7 @@ import { __setTestDb, __resetTestDb } from "../../db/client";
 import { runWithIdentity } from "../../auth/request-context";
 import { __setAgentConnectorForTest } from "../../infra/agent-client/connect";
 import { BackupKind } from "../../agent/gen/agent";
+import { ALL_CAPABILITIES } from "../../types/identity";
 import { leftBehindLabel } from "../../backups/left-behind";
 import { seedIdentity, TEAM_A, TEAM_B, USER_1 } from "../identity-test-helpers";
 import { seedApp, seedServer, SERVER_1 } from "../app-graph-test-helpers";
@@ -303,6 +304,61 @@ test("another team cannot restore, download or delete it", async () => {
     [],
   );
   assert.deepEqual(await runIds(), [runId]);
+});
+
+test("a member whose reach is one other project cannot touch an App's or a database's, the folder gate included", async () => {
+  const dbRun = await seedLeft();
+  const appRun = await recordLeftBehindRun({
+    teamId: TEAM_A,
+    kind: "app",
+    targetId: "prj_1",
+    destinationId: "s3_1",
+    objectKey: `deplo/${TEAM_A}/app/prj_1/left-20260303T160000Z-${SERVER_1}.tar.gz.age`,
+    sizeBytes: 1,
+    decryptedSizeBytes: null,
+    sha256: null,
+    serverId: SERVER_1,
+    failedOverAt: FAILED_OVER,
+    savedAt: CAME_BACK,
+  });
+  assert.ok(appRun);
+  const narrowed = <T>(fn: () => Promise<T>) =>
+    runWithIdentity(
+      {
+        userId: USER_1,
+        teamId: TEAM_A,
+        token: {
+          id: "tok_narrow",
+          capabilities: [...ALL_CAPABILITIES],
+          scope: {
+            teamIds: [TEAM_A],
+            wholeTeamIds: [],
+            projectIds: ["prc_elsewhere"],
+            folderIds: [],
+            appIds: [],
+            appProjectIds: [],
+          },
+          instanceAdmin: false,
+        },
+      },
+      fn,
+    );
+  for (const runId of [dbRun, appRun!]) {
+    for (const act of [restoreBackup, deleteBackupRun, downloadBackupArtifact])
+      await assert.rejects(
+        () => narrowed<unknown>(() => act(runId)),
+        /not found|permission|can't access/i,
+      );
+  }
+  assert.deepEqual(
+    await narrowed(() => listBackupRuns({ appId: "prj_1" })),
+    [],
+  );
+  assert.deepEqual(
+    calls.filter((c) => c.m !== "hello"),
+    [],
+  );
+  assert.equal((await runIds()).length, 2);
 });
 
 test("its own team downloads it and deletes it, file included", async () => {
