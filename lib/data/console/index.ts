@@ -12,7 +12,7 @@ import { getServerById } from "../servers/roster";
 import { requireActiveTeamId } from "../../membership";
 import { hasAppCapability, requireAppCapability } from "../node-access";
 import { loadTeamApp } from "../app-graph-load";
-import { listAppLogMembers } from "../clusters/placement";
+import { listAppLogMembers, listAppMembers } from "../clusters/placement";
 import { primaryDomainApp } from "../domains/primary-domain";
 import { composeServiceNames } from "../../deploy/compose-stack/compose-read";
 import {
@@ -81,8 +81,6 @@ export function containerName(p: App, deployKey: string = p.slug): string {
   return `deplo-${deployKey}`;
 }
 
-// ponytail: the console, the runtime strip and metrics read the server the App "runs on now"; replicas on its
-// other servers (#208) show in logs only. Fan out over `listAppMembers` here when someone needs them.
 export async function listInstances(p: App): Promise<ConsoleInstance[]> {
   const exposeService = await primaryDomainApp(p.id);
   const conn = await connectAgent(p.serverId);
@@ -157,6 +155,78 @@ async function listInstancesForDisplay(p: App): Promise<{
   }
 }
 
+// A copy the console can open: its own container name, the server it is on, and how the picker names it.
+interface Copy {
+  instance: ConsoleInstance;
+  target: string;
+  serverId: string;
+}
+
+// An App's copies wherever they run: one server's as before, every server's when its replicas are spread.
+// `down` names the servers that could not be asked; with none answering it throws as one server does.
+async function listCopies(p: App): Promise<{ copies: Copy[]; down: string[] }> {
+  const memberIds = await listAppMembers(p);
+  if (memberIds.length < 2)
+    return {
+      copies: (await listInstances(p)).map((instance) => ({
+        instance,
+        target: instance.name,
+        serverId: p.serverId,
+      })),
+      down: [],
+    };
+  const { up, down, error } = await listMemberCopies(p, memberIds);
+  if (up.length === 0)
+    throw error ?? new AgentUnreachableError("No server of this App answered");
+  return {
+    copies: up.flatMap((m) =>
+      m.instances.map((i) => ({
+        instance: onServer(i, m.server),
+        target: `${i.name}${ON_SERVER}${m.server.id}`,
+        serverId: m.server.id,
+      })),
+    ),
+    down,
+  };
+}
+
+// `web-1 · server-b`: how a picker names one server's copy.
+const onServer = (i: ConsoleInstance, server: Server): ConsoleInstance => ({
+  ...i,
+  replica: `${i.replica ?? i.name} · ${server.name}`,
+});
+
+function pickCopy(
+  copies: Copy[],
+  target: string | undefined,
+  fallback: "running" | "first",
+): Copy | undefined {
+  if (target) return copies.find((c) => c.target === target);
+  return (
+    (fallback === "running" && copies.find((c) => c.instance.running)) ||
+    copies[0]
+  );
+}
+
+async function consoleInstancesForDisplay(p: App): Promise<{
+  instances: ConsoleInstance[];
+  unavailable: string[];
+}> {
+  try {
+    const { copies, down } = await listCopies(p);
+    return {
+      instances: copies.length
+        ? copies.map((c) => ({ ...c.instance, name: c.target }))
+        : [displayFallback(p)],
+      unavailable: down,
+    };
+  } catch (e) {
+    if (e instanceof AgentUnreachableError)
+      return { instances: [displayFallback(p)], unavailable: [] };
+    throw e;
+  }
+}
+
 // On several members of a cluster the picker lists every server's copies, each named with its server.
 export async function getLogsInfo(appId: string): Promise<LogsInfo | null> {
   const teamId = await requireActiveTeamId();
@@ -193,6 +263,8 @@ export interface RuntimeContainer {
   startedAtUnix: number;
   running: boolean;
   exposed: boolean;
+  // Only for an App on several servers: the one this container is on, by name.
+  server?: string;
 }
 
 export interface AppRuntime {
@@ -203,6 +275,8 @@ export interface AppRuntime {
   missing: string[];
   containers: RuntimeContainer[];
   unreachable: boolean;
+  // Only for an App on several servers: the ones that did not answer, by name. The counts leave them out.
+  unreachableServers?: string[];
 }
 
 const RUNTIME_TTL_MS = 3_000;
@@ -223,7 +297,45 @@ export async function getAppRuntime(appId: string): Promise<AppRuntime | null> {
   return value;
 }
 
+// Every server that runs the App's replicas is asked; one that does not answer is named, not the whole view.
 async function probeRuntime(p: App): Promise<AppRuntime> {
+  const memberIds = await listAppMembers(p);
+  if (memberIds.length < 2) return probeRuntimeOn(p);
+  const parts = await Promise.all(
+    memberIds.map(async (id) => ({
+      server: await getServerById(id),
+      runtime: await probeRuntimeOn({ ...p, serverId: id }),
+    })),
+  );
+  const up = parts.filter((m) => m.server && !m.runtime.unreachable);
+  if (up.length === 0) return unknownRuntime();
+  const containers = up.flatMap((m) =>
+    m.runtime.containers.map((c) => ({
+      ...c,
+      name: `${c.name}${ON_SERVER}${m.server!.id}`,
+      server: m.server!.name,
+    })),
+  );
+  const sum = (f: (r: AppRuntime) => number) =>
+    up.reduce((a, m) => a + f(m.runtime), 0);
+  return {
+    total: containers.length,
+    running: sum((r) => r.running),
+    restarting: sum((r) => r.restarting),
+    unhealthy: sum((r) => r.unhealthy),
+    // A service is missing only when no server has it.
+    missing: up[0]!.runtime.missing.filter((s) =>
+      up.every((m) => m.runtime.missing.includes(s)),
+    ),
+    containers,
+    unreachable: false,
+    unreachableServers: parts
+      .filter((m) => m.server && m.runtime.unreachable)
+      .map((m) => m.server!.name),
+  };
+}
+
+async function probeRuntimeOn(p: App): Promise<AppRuntime> {
   const exposeService = await primaryDomainApp(p.id);
   let conn: AgentConnection;
   try {
@@ -326,6 +438,8 @@ export interface ConsoleInfo {
   image: string;
   running: boolean;
   instances: ConsoleInstance[];
+  // The servers running this App that could not be asked for their copies, by name.
+  unavailable?: string[];
 }
 
 export async function getConsoleInfo(
@@ -335,13 +449,14 @@ export async function getConsoleInfo(
   const p = await loadTeamApp(appId, teamId);
   if (!p) return null;
   await requireAppCapability(appId, "view");
-  const { instances } = await listInstancesForDisplay(p);
+  const { instances, unavailable } = await consoleInstancesForDisplay(p);
   const def = instances[0];
   return {
     containerName: def.name,
     image: def.image,
     running: instances.some((i) => i.running),
     instances,
+    unavailable,
   };
 }
 
@@ -353,12 +468,14 @@ export async function getShellLabel(
   const p = await loadTeamApp(appId, teamId);
   if (!p) return "raw exec (no shell)";
   await requireAppCapability(appId, "view");
-  const { instances } = await listInstancesForDisplay(p);
-  const pick = target
-    ? instances.find((i) => i.name === target)
-    : (instances.find((i) => i.running) ?? instances[0]);
-  if (!pick || !pick.running) return "raw exec (no shell)";
-  return probeShellLabel(p, pick.name, pick.image);
+  let pick: Copy | undefined;
+  try {
+    pick = pickCopy((await listCopies(p)).copies, target, "running");
+  } catch (e) {
+    if (!(e instanceof AgentUnreachableError)) throw e;
+  }
+  if (!pick || !pick.instance.running) return "raw exec (no shell)";
+  return probeShellLabel(p, pick);
 }
 
 export async function getAttachInfo(appId: string): Promise<AttachInfo | null> {
@@ -371,7 +488,10 @@ export async function getAttachInfo(appId: string): Promise<AttachInfo | null> {
   const running = instances.some((i) => i.running);
   let shell = "raw exec (no shell)";
   if (running) {
-    shell = await probeShellLabel(p, def.name, def.image);
+    shell = await probeShellLabel(p, {
+      instance: def,
+      serverId: p.serverId,
+    });
   }
   return {
     containerName: def.name,
@@ -384,12 +504,11 @@ export async function getAttachInfo(appId: string): Promise<AttachInfo | null> {
 
 async function probeShellLabel(
   p: App,
-  container: string,
-  image: string,
+  copy: Pick<Copy, "instance" | "serverId">,
 ): Promise<string> {
-  const conn = await connectAgent(p.serverId);
+  const conn = await connectAgent(copy.serverId);
   try {
-    return await conn.shellLabel(p.id, container, image);
+    return await conn.shellLabel(p.id, copy.instance.name, copy.instance.image);
   } catch (e) {
     if (e instanceof AgentUnreachableError) return "raw exec (no shell)";
     throw e;
@@ -417,20 +536,22 @@ export async function resolveAttachTarget(
   await requireAppCapability(appId, "open_app_console");
   if (!p.consoleEnabled) return { ok: false, reason: "not-found" };
 
-  let instances: ConsoleInstance[];
+  let copies: Copy[];
   try {
-    instances = await listInstances(p);
+    ({ copies } = await listCopies(p));
   } catch (e) {
     if (e instanceof AgentUnreachableError)
       return { ok: false, reason: "unreachable" };
     throw e;
   }
-  const pick = target
-    ? instances.find((i) => i.name === target)
-    : (instances.find((i) => i.running) ?? instances[0]);
+  const pick = pickCopy(copies, target, "running");
   if (!pick) return { ok: false, reason: "no-instance" };
-  if (!pick.running) return { ok: false, reason: "stopped" };
-  return { ok: true, instance: pick, server: await serverOf(p) };
+  if (!pick.instance.running) return { ok: false, reason: "stopped" };
+  return {
+    ok: true,
+    instance: pick.instance,
+    server: (await getServerById(pick.serverId)) ?? undefined,
+  };
 }
 
 export interface LogsMember {
@@ -579,9 +700,8 @@ async function memberCopiesForDisplay(
         });
       }
       out.push({
-        ...i,
+        ...onServer(i, m.server),
         name: `${i.name}${ON_SERVER}${m.server.id}`,
-        replica: `${i.replica ?? i.name} · ${m.server.name}`,
       });
     }
   return { instances: out, real: true, unreachable: false };
@@ -644,13 +764,10 @@ export async function execInContainer(
   if (command === "clear") return { output: "\f" };
 
   try {
-    const instances = await listInstances(p);
-    const pick = target
-      ? instances.find((i) => i.name === target)
-      : instances[0];
+    const pick = pickCopy((await listCopies(p)).copies, target, "first");
     if (!pick) return { output: `! no such instance: ${target}` };
 
-    const res = await execOnAgent(p, pick.name, command, pick.image);
+    const res = await execOnAgent(p, pick, command);
 
     if (isDockerLevelStderr(res.stderr)) {
       const reason =
@@ -679,13 +796,17 @@ export async function execInContainer(
 
 async function execOnAgent(
   p: App,
-  container: string,
+  copy: Copy,
   command: string,
-  image: string,
 ): Promise<{ stdout: string; stderr: string; code: number; rawMode: boolean }> {
-  const conn: AgentConnection = await connectAgent(p.serverId);
+  const conn: AgentConnection = await connectAgent(copy.serverId);
   try {
-    return await conn.exec(p.id, container, command, image);
+    return await conn.exec(
+      p.id,
+      copy.instance.name,
+      command,
+      copy.instance.image,
+    );
   } finally {
     conn.close();
   }

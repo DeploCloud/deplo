@@ -65,6 +65,8 @@ export interface RuntimeContainerLike {
   startedAtUnix?: number;
   running: boolean;
   exposed: boolean;
+  // The server it is on, by name, when the App runs on several.
+  server?: string | null;
 }
 
 export interface RuntimeLike {
@@ -91,7 +93,7 @@ export interface ContainerRow {
 function rowFor(c: RuntimeContainerLike): ContainerRow {
   const base = {
     key: c.name,
-    label: c.service || c.name,
+    label: (c.service || c.name) + (c.server ? ` · ${c.server}` : ""),
     restarts: c.restartCount,
     startedAtUnix: c.running ? (c.startedAtUnix ?? 0) : 0,
     exposed: c.exposed,

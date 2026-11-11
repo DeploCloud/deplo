@@ -59,6 +59,12 @@ const ConsoleInfoRef = builder.objectRef<ConsoleInfo>("ConsoleInfo").implement({
       type: [ConsoleInstanceRef],
       resolve: (c) => c.instances,
     }),
+    unavailable: t.stringList({
+      description:
+        "The servers running this app that could not be asked for their " +
+        "copies, by name. Empty unless its replicas are spread over a cluster.",
+      resolve: (c) => c.unavailable ?? [],
+    }),
   }),
 });
 
@@ -124,6 +130,13 @@ const RuntimeContainerRef = builder
       }),
       running: t.exposeBoolean("running"),
       exposed: t.exposeBoolean("exposed"),
+      server: t.string({
+        nullable: true,
+        description:
+          "The server this container is on, by name, when the app runs on " +
+          "several; else null.",
+        resolve: (c) => c.server ?? null,
+      }),
     }),
   });
 
@@ -151,6 +164,12 @@ const AppRuntimeRef = builder.objectRef<AppRuntime>("AppRuntime").implement({
     unreachable: t.exposeBoolean("unreachable", {
       description:
         "The agent did not answer: the counts are unknown, not zero.",
+    }),
+    unreachableServers: t.stringList({
+      description:
+        "For an app on several servers: the ones that did not answer, by " +
+        "name. The counts cover the others.",
+      resolve: (r) => r.unreachableServers ?? [],
     }),
     containers: t.field({
       type: [RuntimeContainerRef],

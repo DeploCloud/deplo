@@ -520,6 +520,11 @@ type AppRuntime {
 
   """The agent did not answer: the counts are unknown, not zero."""
   unreachable: Boolean
+
+  """
+  For an app on several servers: the ones that did not answer, by name. The counts cover the others.
+  """
+  unreachableServers: [String!]
 }
 
 """
@@ -1412,6 +1417,11 @@ type ConsoleInfo {
   image: String
   instances: [ConsoleInstance!]
   running: Boolean
+
+  """
+  The servers running this app that could not be asked for their copies, by name. Empty unless its replicas are spread over a cluster.
+  """
+  unavailable: [String!]
 }
 
 """A single attachable container in an app's stack."""
@@ -6650,6 +6660,11 @@ type RuntimeContainer {
   """Times docker has restarted this container."""
   restartCount: Int
   running: Boolean
+
+  """
+  The server this container is on, by name, when the app runs on several; else null.
+  """
+  server: String
   service: String
 
   """

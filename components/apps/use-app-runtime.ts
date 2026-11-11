@@ -13,6 +13,7 @@ const APP_RUNTIME_QUERY = /* GraphQL */ `
       unhealthy
       missing
       unreachable
+      unreachableServers
       containers {
         name
         service
@@ -22,6 +23,7 @@ const APP_RUNTIME_QUERY = /* GraphQL */ `
         startedAtUnix
         running
         exposed
+        server
       }
     }
   }
@@ -36,10 +38,12 @@ export interface RuntimeContainerView {
   startedAtUnix?: number;
   running: boolean;
   exposed: boolean;
+  server?: string | null;
 }
 
 export interface AppRuntimeView extends RuntimeSnapshot {
   containers: RuntimeContainerView[];
+  unreachableServers?: string[];
 }
 
 type Response = { appRuntime: AppRuntimeView | null };
