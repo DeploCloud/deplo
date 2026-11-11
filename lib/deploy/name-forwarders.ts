@@ -50,7 +50,12 @@ export interface MemberForwarding {
   serverId: string;
   hold: HeldName[];
   serve: ServedName[];
+  /** It runs, or stands by for, a workload with a name: a table it cannot take is a problem, not a detail. */
+  involved: boolean;
 }
+
+/** What the server agent accepts in one table: names held, names served and the roster together. */
+export const MAX_TABLE_ENTRIES = 512;
 
 const byKey =
   <T>(key: (t: T) => string) =>
@@ -59,11 +64,11 @@ const byKey =
 
 /**
  * Which names go on which member. Per network: a member running a workload of it holds the names of that
- * network's workloads placed elsewhere, and serves its own to the other members of that same network.
+ * network's workloads placed elsewhere, and every member serves each name to the members that hold it.
  */
 export function planNameForwarding(input: {
   workloads: ForwardedWorkload[];
-  /** Certificate fingerprint of each member server; one with none is left out of the sources. */
+  /** Certificate fingerprint of every member of the cluster; one with none is left out of the sources. */
   fingerprints: ReadonlyMap<string, string>;
 }): Map<string, MemberForwarding> {
   const out = new Map<string, MemberForwarding>();
@@ -75,16 +80,23 @@ export function planNameForwarding(input: {
   }
   const entry = (serverId: string): MemberForwarding => {
     let m = out.get(serverId);
-    if (!m) out.set(serverId, (m = { serverId, hold: [], serve: [] }));
+    if (!m)
+      out.set(
+        serverId,
+        (m = { serverId, hold: [], serve: [], involved: false }),
+      );
     return m;
   };
+  const cluster = [...input.fingerprints.keys()];
   for (const [network, group] of networks) {
-    const members = [
+    // The members running a workload of this Environment: the only ones that hold its names or dial for them.
+    const running = [
       ...new Set(group.flatMap((w) => [...w.members, ...(w.standbys ?? [])])),
     ].sort();
-    for (const serverId of members) {
+    for (const serverId of [...new Set([...running, ...cluster])].sort()) {
       const m = entry(serverId);
-      const sources = members
+      if (running.includes(serverId)) m.involved = true;
+      const sources = running
         .filter((o) => o !== serverId)
         .map((o) => input.fingerprints.get(o))
         .filter((f): f is string => Boolean(f))
@@ -93,18 +105,32 @@ export function planNameForwarding(input: {
         // A name the proxy resolves on every network is never held, whatever a workload is called.
         if (w.name === null || isReservedSharedName(w.name)) continue;
         const base = { network, kind: w.kind, workloadId: w.id, port: w.port };
+        // Served by every member ahead of time: wherever the leader starts it next, the others reach it before
+        // Deplo has said a word. The server agent answers only while its lease places the workload on it.
+        m.serve.push({ ...base, sourceFingerprints: sources });
         // Where it runs, its own container already answers to the name.
-        if (w.members.includes(serverId))
-          m.serve.push({ ...base, sourceFingerprints: sources });
-        else m.hold.push({ ...base, name: w.name });
-        // Served ahead of time: after a promotion the others reach it before Deplo has said a word.
-        if (!w.members.includes(serverId) && w.standbys?.includes(serverId))
-          m.serve.push({ ...base, sourceFingerprints: sources });
+        if (running.includes(serverId) && !w.members.includes(serverId))
+          m.hold.push({ ...base, name: w.name });
       }
     }
   }
+  const runs = new Map(input.workloads.map((w) => [w.id, w] as const));
   for (const m of out.values()) {
     m.hold.sort(byKey((h) => `${h.network}|${h.name}`));
+    m.serve.sort(byKey((s) => `${s.network}|${s.kind}|${s.workloadId}`));
+    // ponytail: the server agent refuses a table over 512 entries, so past that only what a member runs or
+    // stands by for is served ahead of time; raise both ends together when a cluster grows that large.
+    const room = MAX_TABLE_ENTRIES - m.hold.length - input.fingerprints.size;
+    if (m.serve.length <= room) continue;
+    const here = (s: ServedName) => {
+      const w = runs.get(s.workloadId);
+      return Boolean(
+        w?.members.includes(m.serverId) || w?.standbys?.includes(m.serverId),
+      );
+    };
+    const ahead = m.serve.filter((s) => !here(s));
+    const mine = m.serve.filter(here);
+    m.serve = [...mine, ...ahead.slice(0, Math.max(room - mine.length, 0))];
     m.serve.sort(byKey((s) => `${s.network}|${s.kind}|${s.workloadId}`));
   }
   return out;

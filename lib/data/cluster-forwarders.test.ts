@@ -257,12 +257,18 @@ test("a compose stack on another member is handed its Environment's names and of
     last("srv_3").hold.map((h) => h.name),
     ["db-shop"],
   );
-  assert.deepEqual(last("srv_3").serve, []);
+  // The stack's own name is served nowhere; the database's is, to the stack's member.
+  for (const id of ["srv_2", "srv_3", "srv_4"])
+    assert.deepEqual(
+      last(id).serve.map((s) => s.workloadId),
+      ["shop"],
+      id,
+    );
   assert.deepEqual(last("srv_2").hold, []);
   assert.deepEqual(last("srv_2").serve[0]!.sourceFingerprints, [fp(3)]);
 });
 
-test("a member's entries name only its own workloads, and only same-Environment members as sources", async () => {
+test("a name is served to the members of its own Environment only, wherever it is served", async () => {
   const c = await cluster();
   await placeDatabase(c.id, "shop", "environ_a1", "srv_2");
   await place(c.id, "web", "environ_a1", "srv_3");
@@ -271,34 +277,45 @@ test("a member's entries name only its own workloads, and only same-Environment 
 
   await syncNameForwarders(c.id);
 
-  assert.deepEqual(
-    last("srv_2").serve.map((s) => [s.workloadId, s.sourceFingerprints]),
-    [["shop", [fp(3)]]],
-  );
-  assert.deepEqual(
-    last("srv_3").serve.map((s) => [s.workloadId, s.sourceFingerprints]),
-    [
-      ["web", [fp(2)]],
-      ["staging", []],
-    ],
-  );
-  // another team's member and another Environment's member are never a source
-  assert.deepEqual(
-    last("srv_4").serve.map((s) => [s.workloadId, s.sourceFingerprints]),
-    [["blog", []]],
-  );
-  for (const id of ["srv_2", "srv_3"])
-    assert.ok(
-      last(id).serve.every((s) => !s.sourceFingerprints.includes(fp(4))),
+  const served = (id: string) =>
+    Object.fromEntries(
+      last(id).serve.map((s) => [s.workloadId, s.sourceFingerprints]),
     );
+  assert.deepEqual(served("srv_2"), {
+    shop: [fp(3)],
+    web: [fp(3)],
+    staging: [fp(3)],
+    blog: [fp(4)],
+  });
+  assert.deepEqual(served("srv_3"), {
+    shop: [fp(2)],
+    web: [fp(2)],
+    staging: [],
+    blog: [fp(4)],
+  });
+  // another team's member is never let in to team A's names, on any server that may run them
+  assert.deepEqual(served("srv_4"), {
+    shop: [fp(2), fp(3)],
+    web: [fp(2), fp(3)],
+    staging: [fp(3)],
+    blog: [],
+  });
 });
 
-test("a failover moves the serving entry with a new table and no stack render", async () => {
+test("a failover needs no new table: the server the database lands on already serves it, with no stack render", async () => {
   const c = await cluster();
   await placeDatabase(c.id, "shop", "environ_a1", "srv_2");
   await place(c.id, "web", "environ_a1", "srv_3");
   await syncNameForwarders(c.id);
-  assert.equal(last("srv_2").serve.length, 1);
+  // Before anything fails: srv_4 runs nothing of the Environment and is already told who may reach shop on it.
+  assert.deepEqual(
+    last("srv_4").serve.map((s) => [s.workloadId, s.sourceFingerprints]),
+    [
+      ["web", [fp(2), fp(3)]],
+      ["shop", [fp(2), fp(3)]],
+    ],
+  );
+  assert.deepEqual(last("srv_4").hold, []);
 
   await recordPlacement({
     clusterId: c.id,
@@ -309,18 +326,17 @@ test("a failover moves the serving entry with a new table and no stack render", 
   });
   await syncNameForwarders(c.id);
 
-  assert.deepEqual(last("srv_2").serve, []);
-  assert.deepEqual(
-    last("srv_4").serve.map((s) => s.workloadId),
-    ["shop"],
-  );
   // the App's member still holds the database's name; the server that lost it now runs nothing of the Environment
   assert.deepEqual(
     last("srv_3").hold.map((h) => h.name),
     ["db-shop"],
   );
   assert.deepEqual(last("srv_2").hold, []);
-  assert.deepEqual(last("srv_4").serve[0]!.sourceFingerprints, [fp(3)]);
+  assert.deepEqual(
+    last("srv_4").serve.find((s) => s.workloadId === "shop")!
+      .sourceFingerprints,
+    [fp(3)],
+  );
   assert.equal(hosts.srv_2!.deploys.length, 0);
 });
 
@@ -368,7 +384,7 @@ test("a server outside the cluster is never handed a table, whatever a placement
     updatedAt: T0,
   });
   const plan = await planClusterForwarding(c.id);
-  assert.deepEqual([...plan.keys()], ["srv_2"]);
+  assert.deepEqual([...plan.keys()].sort(), ["srv_2", "srv_3", "srv_4"]);
   await syncNameForwarders(c.id);
   assert.deepEqual(hosts.srv_1!.forwarders, []);
 });

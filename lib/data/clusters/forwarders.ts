@@ -157,7 +157,10 @@ export async function syncNameForwarders(clusterId: string): Promise<void> {
       });
     } catch (e) {
       // A member with nothing to run and an agent too old to take the table is not a problem.
-      if (!mine && e instanceof AgentClusterForwardersUnsupportedError)
+      if (
+        !mine?.involved &&
+        e instanceof AgentClusterForwardersUnsupportedError
+      )
         continue;
       console.warn(
         `[cluster-forwarders] ${clusterId} -> ${serverId}: ${message(e)}`,

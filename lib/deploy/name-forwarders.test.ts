@@ -5,6 +5,7 @@ import yaml from "../yaml";
 import { renderCompose } from "./build/compose-render";
 import { generateDatabaseCompose } from "./database-compose";
 import {
+  MAX_TABLE_ENTRIES,
   isForwardedApp,
   planNameForwarding,
   type ForwardedWorkload,
@@ -67,8 +68,9 @@ describe("which names go on which member", () => {
       assert.ok(!plan.get(member)!.hold.some((h) => h.name === own));
   });
 
-  test("a member serves only the workloads placed on it, to its Environment's other members", () => {
-    assert.deepEqual(plan.get("m2")!.serve, [
+  test("a member serves each name to its Environment's other members, and to nobody else", () => {
+    assert.deepEqual(
+      plan.get("m2")!.serve.find((s) => s.workloadId === "web"),
       {
         network: ENV_A,
         kind: "app",
@@ -76,15 +78,27 @@ describe("which names go on which member", () => {
         port: 3000,
         sourceFingerprints: [FP.m1],
       },
-    ]);
+    );
     const m1 = plan.get("m1")!.serve;
     assert.deepEqual(
       m1.map((s) => [s.network, s.workloadId, s.sourceFingerprints]),
       [
+        [ENV_A, "web", [FP.m2]],
         [ENV_A, "shop", [FP.m2]],
+        [ENV_B, "blog", [FP.m3]],
         [ENV_B, "other", [FP.m3]],
       ],
     );
+  });
+
+  test("a failover needs no new table: every member already serves the name to the Environment's members", () => {
+    // shop runs on m1; m3 runs nothing of its Environment, and the leader may start shop there next.
+    const onM3 = plan.get("m3")!.serve.find((s) => s.workloadId === "shop")!;
+    assert.deepEqual(onM3.sourceFingerprints, [FP.m1, FP.m2]);
+    const onM2 = plan.get("m2")!.serve.find((s) => s.workloadId === "shop")!;
+    assert.deepEqual(onM2.sourceFingerprints, [FP.m1]);
+    // Serving is not holding: no forwarder runs for an Environment the member has no workload of.
+    assert.ok(!plan.get("m3")!.hold.some((h) => h.network === ENV_A));
   });
 
   test("another team's member is never a source and never holds the name, even on a shared member", () => {
@@ -92,10 +106,10 @@ describe("which names go on which member", () => {
     assert.ok(!toShop.sourceFingerprints.includes(FP.m3));
     assert.ok(!plan.get("m3")!.hold.some((h) => h.network === ENV_A));
     assert.ok(!plan.get("m2")!.hold.some((h) => h.network === ENV_B));
-    assert.deepEqual(
-      plan.get("m3")!.serve.map((s) => s.workloadId),
-      ["blog"],
-    );
+    // Wherever a name of ENV_A is served, another Environment's member is never let in.
+    for (const m of plan.values())
+      for (const e of m.serve.filter((x) => x.network === ENV_A))
+        assert.ok(!e.sourceFingerprints.includes(FP.m3), m.serverId);
   });
 
   test("a workload waiting for room, or a member with no certificate, adds nothing", () => {
@@ -126,6 +140,24 @@ describe("which names go on which member", () => {
     assert.ok(!p.get("m1")!.hold.some((h) => h.name === "deplo-web"));
   });
 
+  test("a table never outgrows what the server agent accepts: past that, only what a member runs is served", () => {
+    const many = Array.from({ length: 400 }, (_, i) =>
+      db(`d${String(i).padStart(3, "0")}`, [i % 2 ? "m2" : "m1"]),
+    );
+    const p = planNameForwarding({ fingerprints, workloads: many });
+    for (const m of p.values())
+      assert.ok(
+        m.hold.length + m.serve.length + fingerprints.size <= MAX_TABLE_ENTRIES,
+        m.serverId,
+      );
+    // Every one it runs is still served; the ones it only might run later are what gave way.
+    const m1 = p.get("m1")!.serve.map((s) => s.workloadId);
+    for (const w of many.filter((d) => d.members[0] === "m1"))
+      assert.ok(m1.includes(w.id), w.id);
+    assert.ok(m1.length < many.length);
+    assert.equal(p.get("m3")!.serve.length, many.length);
+  });
+
   test("a compose stack reaches its Environment's names from its member and offers none", () => {
     const stack = { ...app("stack", ["m2"]), name: null };
     const p = planNameForwarding({
@@ -136,7 +168,13 @@ describe("which names go on which member", () => {
       p.get("m2")!.hold.map((h) => h.name),
       ["db-shop"],
     );
-    assert.deepEqual(p.get("m2")!.serve, []);
+    // The stack's own name is served nowhere: only the database's is.
+    for (const m of p.values())
+      assert.deepEqual(
+        m.serve.map((x) => x.workloadId),
+        ["shop"],
+        m.serverId,
+      );
     assert.deepEqual(p.get("m1")!.hold, []);
     assert.deepEqual(p.get("m1")!.serve[0]!.sourceFingerprints, [FP.m2]);
   });
@@ -155,11 +193,8 @@ describe("which names go on which member", () => {
         workloads: [{ ...db("x", ["m1"]), name }, app("web", ["m2"])],
       });
       assert.deepEqual(p.get("m2")!.hold, [], name);
-      assert.deepEqual(
-        p.get("m1")!.serve.map((s) => s.workloadId),
-        [],
-        name,
-      );
+      for (const m of p.values())
+        assert.ok(!m.serve.some((x) => x.workloadId === "x"), name);
     }
   });
 });
