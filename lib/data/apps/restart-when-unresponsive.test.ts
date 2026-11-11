@@ -62,14 +62,14 @@ test("automatic restart is on until someone turns it off", async () => {
   assert.equal((await row()).restartWhenUnresponsive, true);
 });
 
-test("changing the switch marks the app as needing a deploy and clears the pause", async () => {
+test("changing the switch marks the app as needing a deploy; the pause stays until that deploy, as on its server", async () => {
   await db
     .update(apps)
     .set({ restartsPausedAt: "2026-11-10T03:00:00.000Z" })
     .where(eq(apps.id, APP));
   await as(OWNER, TEAM_A, () => setAppRestartWhenUnresponsive(APP, false));
   const after = await row();
-  assert.equal(after.restartsPausedAt, null);
+  assert.equal(after.restartsPausedAt, "2026-11-10T03:00:00.000Z");
   assert.ok(after.pendingChangesAt);
 });
 
