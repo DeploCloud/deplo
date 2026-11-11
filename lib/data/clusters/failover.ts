@@ -9,7 +9,10 @@ import {
 } from "../../db/schema/control-plane/backups";
 import { databases as databasesTable } from "../../db/schema/control-plane/databases";
 import { encryptSecret } from "../../crypto";
-import { restoredSentence } from "../../databases/failover-copy";
+import {
+  promotedSentence,
+  restoredSentence,
+} from "../../databases/failover-copy";
 import { buildConnectionString } from "../../deploy/database-compose";
 import { publishDatabaseChanged } from "../../graphql/pubsub";
 import { dispatchAlert } from "../../notify/dispatch";
@@ -17,6 +20,7 @@ import type { Cluster } from "../../types/cluster";
 import { recordActivity } from "../activity";
 import { assembleDatabase } from "../backup-rows";
 import { markLinkedAppsPending } from "../database-links";
+import { syncStandbySoon } from "../databases/standby";
 import { databasePassword } from "../databases/stack";
 import { getServerById } from "../servers/roster";
 import { pushDatabaseBundle } from "./database-bundles";
@@ -64,7 +68,14 @@ const quietly = (what: string) => (e: unknown) =>
  */
 async function databaseFailedOver(
   cluster: Cluster,
-  d: { workloadId: string; to: string; backupId?: unknown; backupAt?: unknown },
+  d: {
+    workloadId: string;
+    from: string;
+    to: string;
+    backupId?: unknown;
+    backupAt?: unknown;
+    promoted?: unknown;
+  },
 ): Promise<void> {
   const db = getDb();
   const [row] = await db
@@ -100,12 +111,19 @@ async function databaseFailedOver(
       : [];
   await recordActivity(
     "database",
-    restoredSentence(
-      row.name,
-      target?.name ?? "another server",
-      run?.startedAt ?? (typeof d.backupAt === "string" ? d.backupAt : null),
-      run?.timezone ?? "UTC",
-    ),
+    d.promoted === true
+      ? promotedSentence(
+          row.name,
+          target?.name ?? "another server",
+          await serverName(d.from),
+        )
+      : restoredSentence(
+          row.name,
+          target?.name ?? "another server",
+          run?.startedAt ??
+            (typeof d.backupAt === "string" ? d.backupAt : null),
+          run?.timezone ?? "UTC",
+        ),
     ACTOR,
     null,
     row.teamId,
@@ -135,6 +153,8 @@ async function databaseFailedOver(
   publishDatabaseChanged(row.id);
   await pushDatabaseBundle(row.id).catch(quietly(row.id));
   await syncNameForwarders(cluster.id).catch(quietly(cluster.id));
+  // A promoted copy is the database now: another server gets a new one when there is one.
+  if (row.standby) syncStandbySoon(row.id);
 }
 
 /** One workload has run on its new member: say so, and give an App's generated address its new host. */
@@ -147,9 +167,11 @@ export async function applyFailedOver(
   if (d.kind === "database")
     return databaseFailedOver(cluster, {
       workloadId: d.workloadId,
+      from: d.from,
       to: d.to,
       backupId: d.backupId,
       backupAt: d.backupAt,
+      promoted: d.promoted,
     });
   if (d.kind !== "app") return;
   const app = await ownApp(cluster.id, d.workloadId);
@@ -328,6 +350,7 @@ export async function adoptLeaderMoves(
           reason: m.reason,
           backupId: m.backupId,
           backupAt: m.backupAt,
+          promoted: m.promoted,
         });
       else {
         const w = waiting.get(m.from) ?? { seq: 0, left: [] };

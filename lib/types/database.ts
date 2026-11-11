@@ -38,6 +38,10 @@ export interface Database {
   sizeMb: number;
   /** Artifact bytes per second of the last restore; null until one was measured. */
   restoreBytesPerSec?: number | null;
+  /** On a cluster: a copy on another member follows it, and a failover promotes that copy. */
+  standby?: boolean;
+  /** Marks the copy made last, so a member never starts one over data it did not seed. */
+  standbySeed?: string | null;
   createdAt: string;
 }
 

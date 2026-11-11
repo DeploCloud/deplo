@@ -13,6 +13,9 @@ import {
   FAILOVER_BACKUP_MINUTES,
   FAILOVER_BACKUP_SCHEDULE,
   FAILOVER_PROMISES,
+  STANDBY_LOSS,
+  STANDBY_PROMISES,
+  STANDBY_RECOVERY,
   lossSentence,
   recoverySentence,
 } from "../../databases/failover-copy";
@@ -26,6 +29,7 @@ import {
   assembleDestination,
   backupToRow,
 } from "../backup-rows";
+import { standbyMemberOf } from "../clusters/placement";
 import { clusterMemberServerIds, getClusterById } from "../clusters/roster";
 import { insertServerDestination } from "../destinations/create";
 import { getServerById, listAllServers } from "../servers/roster";
@@ -185,6 +189,13 @@ export async function getFailoverPreview(
     forRead: true,
   });
   if (!db) return null;
+  // The switch travels with the database from one cluster to another, so the offer already counts on its copy.
+  if (db.standby)
+    return {
+      promises: STANDBY_PROMISES,
+      loss: STANDBY_LOSS,
+      recovery: STANDBY_RECOVERY,
+    };
   const schedules = await schedulesOf(db);
   const copy = await lossAndRecovery(db, schedules);
   return {
@@ -206,6 +217,10 @@ export interface DatabaseFailover extends FailoverPreview {
   destination: string | null;
   /** Set when it runs on the server its backups are kept on. */
   warning: string | null;
+  /** The server holding its standby copy; null with none. */
+  standbyOn: string | null;
+  /** Set while the switch is on and no copy exists: a failover would restore a backup. */
+  standbyNote: string | null;
 }
 
 /** What a database on a cluster relies on, as its page states it; null for a database on one server. */
@@ -237,11 +252,29 @@ export async function getDatabaseFailover(
   const onSameServer = destinations.some(
     (d) => d.kind === "server" && d.serverId === db.serverId,
   );
+  const copyOn = db.standby ? await standbyMemberOf(db.id) : null;
+  const standbyOn =
+    copyOn && copyOn !== db.serverId
+      ? ((await getServerById(copyOn))?.name ?? "another server")
+      : null;
   return {
     cluster: cluster.name,
     serverName,
-    promises: FAILOVER_PROMISES,
-    ...(await lossAndRecovery(db, schedules)),
+    standbyOn,
+    standbyNote:
+      db.standby && !standbyOn
+        ? "There is no standby copy right now, so a failover restores the latest backup. Deplo makes a new copy as soon as another server has room."
+        : null,
+    ...(standbyOn
+      ? {
+          promises: STANDBY_PROMISES,
+          loss: STANDBY_LOSS,
+          recovery: STANDBY_RECOVERY,
+        }
+      : {
+          promises: FAILOVER_PROMISES,
+          ...(await lossAndRecovery(db, schedules)),
+        }),
     destination:
       destinations.find((d) => d.id === schedules[0]?.destinationId)?.name ??
       null,

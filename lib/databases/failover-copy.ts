@@ -6,6 +6,22 @@ export const FAILOVER_PROMISES = [
   "A failover restores the latest backup, and says how old it was",
 ] as const;
 
+/** The same, for a database that keeps a standby copy (#218). */
+export const STANDBY_PROMISES = [
+  "Never two writers",
+  "A failover promotes the standby copy; a backup is restored only when the copy had stopped following",
+] as const;
+
+export const STANDBY_LOSS =
+  "A failover loses about a second of writes: the standby copy follows every change.";
+
+export const STANDBY_RECOVERY =
+  "Recovery takes about two minutes: the copy takes over and nothing is restored.";
+
+/** The Activity entry of a failover that promoted the standby copy instead of restoring a backup. */
+export const promotedSentence = (name: string, server: string, from: string) =>
+  `Promoted the standby copy of ${name} on ${server}: ${from} stopped answering. No backup was restored.`;
+
 /** The schedule Deplo gives a database placed on a cluster. */
 export const FAILOVER_BACKUP_SCHEDULE = "*/15 * * * *";
 export const FAILOVER_BACKUP_MINUTES = 15;

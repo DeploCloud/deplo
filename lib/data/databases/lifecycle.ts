@@ -10,6 +10,7 @@ import { requireCapability } from "../../membership";
 import { recordActivity } from "../activity";
 import { dropFailoverBundle } from "../clusters/bundles";
 import { clearPlacement } from "../clusters/placement";
+import { dropStandbyCopy } from "./standby";
 import { deleteBackupsWithTarget } from "../backups/artifact-delete";
 import { connectAgent } from "../../infra/agent-client/connect";
 import { withKeyedLock } from "../keyed-mutex";
@@ -232,6 +233,18 @@ export async function deleteDatabase(
   await withKeyedLock(id, async () => {
     if (!(await databaseExists(id))) return;
     let failure: { why: string; retry: string } | null = null;
+    // Delete means all of it: the standby copy on another server goes too, or is queued until that server answers.
+    const copyLeftOn = await dropStandbyCopy(db).catch(() => null);
+    if (copyLeftOn)
+      await enqueueTeardowns([
+        {
+          serverId: copyLeftOn,
+          deployKey: db.host,
+          projectLabel: db.id,
+          label: `${db.name} (standby copy)`,
+          teamId: db.teamId,
+        },
+      ]);
     try {
       const reason = await teardownDatabaseStack(db);
       if (reason)

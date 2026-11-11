@@ -104,6 +104,9 @@ export const CLUSTER_FAILOVER_CAPABILITY = "cluster.failover";
 // The agent restores the bundle's backup into a moved workload before it counts as started (#202).
 export const CLUSTER_FAILOVER_RESTORE_CAPABILITY = "cluster.failover.restore";
 
+// The agent holds a database's standby copy and promotes it when its leader says so (#218).
+export const CLUSTER_STANDBY_CAPABILITY = "cluster.standby";
+
 // The agent holds workloads' names on its Environments' networks and relays them to the member that runs them (#200).
 export const CLUSTER_FORWARDERS_CAPABILITY = "cluster.forwarders";
 

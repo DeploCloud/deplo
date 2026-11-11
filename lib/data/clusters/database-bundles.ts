@@ -43,7 +43,9 @@ import {
   recordOnce,
   refreshLeaderKeys,
 } from "./bundles";
+import { standbyMemberOf } from "./placement";
 import { clusterMemberServerIds, getClusterById } from "./roster";
+import { STANDBY_ENGINES, standbyContainer } from "../../databases/standby";
 
 // A cluster database's failover bundle: its stack, and the backup another member restores before it starts (#202).
 // https://deplo.build/docs/operations/clusters#when-a-server-stops
@@ -176,6 +178,12 @@ export async function pushDatabaseBundle(databaseId: string): Promise<void> {
     clusterId: cluster.id,
     database: databaseDescriptor(db),
   });
+  const engine = db.standby ? STANDBY_ENGINES[db.type] : undefined;
+  const copyOn = engine ? await standbyMemberOf(db.id) : null;
+  const promote =
+    engine && copyOn && copyOn !== db.serverId
+      ? { container: standbyContainer(db.host), ...engine.promote }
+      : null;
   const body = {
     stack: {
       slug: sent.slug,
@@ -190,6 +198,7 @@ export async function pushDatabaseBundle(databaseId: string): Promise<void> {
       ...(sent.mounts.length > 0 ? { mounts: sent.mounts } : {}),
     },
     ...(source.restore ? { restore: source.restore } : {}),
+    ...(promote ? { promote } : {}),
   };
   const bundle: FailoverBundle = {
     v: 1,

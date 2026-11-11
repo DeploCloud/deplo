@@ -67,6 +67,8 @@ export function databaseToRow(d: Database): DatabaseInsert {
     restartLoopStoppedAt: d.restartLoopStoppedAt,
     sizeMb: d.sizeMb,
     restoreBytesPerSec: d.restoreBytesPerSec ?? null,
+    standby: d.standby ?? false,
+    standbySeed: d.standbySeed ?? null,
     createdAt: d.createdAt,
   } satisfies Record<
     Exclude<keyof Database, "resources" | "mounts">,
@@ -107,6 +109,8 @@ export function assembleDatabase(
     mounts,
     sizeMb: row.sizeMb,
     restoreBytesPerSec: row.restoreBytesPerSec ?? null,
+    standby: row.standby ?? false,
+    standbySeed: row.standbySeed ?? null,
     createdAt: row.createdAt,
   };
 }

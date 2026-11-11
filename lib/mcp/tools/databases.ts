@@ -13,6 +13,7 @@ const DATABASE_FIELDS = /* GraphQL */ `
   username
   serverId
   clusterId
+  standby
   sizeMb
   exposedPublicly
   connectionStringMasked
