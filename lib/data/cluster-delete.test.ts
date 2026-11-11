@@ -377,6 +377,21 @@ test("a leader that could not be taken off Deplo's machine with the last cluster
   assert.equal(hosts[SERVER_1].removes, 1, "nothing left to remove");
 });
 
+test("a leader on a server that did not answer at delete is uninstalled once it does", async () => {
+  const eu = await clusterOf("eu", ["srv_2"]);
+  await clusterOf("us", ["srv_3"]);
+  await asAdmin(() => moveClusterLeader(eu.id, "srv_4"));
+  hosts.srv_4.unreachable = true;
+
+  await asAdmin(() => deleteCluster(eu.id));
+  await reconcileDissolvedClusters();
+  assert.equal(hosts.srv_4.removes, 0, "still away");
+
+  hosts.srv_4.unreachable = false;
+  await reconcileDissolvedClusters();
+  assert.equal(hosts.srv_4.removes, 1);
+});
+
 test("the sweep that finishes a dissolved cluster runs with the others and stops for a Deplo move", () => {
   const sweep = readFileSync(
     new URL("../notify/maintenance.ts", import.meta.url),

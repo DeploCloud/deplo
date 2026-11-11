@@ -1,9 +1,10 @@
 import "server-only";
 
-import { and, eq } from "drizzle-orm";
+import { and, eq, isNotNull } from "drizzle-orm";
 import { getCurrentUser } from "../../auth/current-user";
 import { getDb } from "../../db/client";
 import { clusters as clustersTable } from "../../db/schema/control-plane/clusters";
+import { servers as serversTable } from "../../db/schema/control-plane/servers";
 import {
   callClusterRelay,
   installClusterLeader,
@@ -11,6 +12,7 @@ import {
   removeClusterLeader,
 } from "../../infra/agent-client/cluster-host";
 import { CLUSTER_HOST_UNSUPPORTED_MESSAGE } from "../../infra/agent-client/errors";
+import { nowIso } from "../../ids";
 import { requireActiveTeamId, requireInstanceAdmin } from "../../membership";
 import type { Cluster, ClusterLeaderChoice } from "../../types/cluster";
 import { recordActivity } from "../activity";
@@ -141,6 +143,48 @@ export async function retireLeader(
   await syncLeaderRelayRoute(server, false);
 }
 
+const retirePending = (serverId: string, at: string | null) =>
+  getDb()
+    .update(serversTable)
+    .set({ clusterLeaderRetirePendingAt: at })
+    .where(eq(serversTable.id, serverId));
+
+/** Retires a leader, or leaves a mark the sweep finishes: a server that does not answer keeps nothing for good. */
+export async function retireLeaderOrQueue(
+  clusterId: string,
+  serverId: string,
+): Promise<void> {
+  try {
+    await retireLeader(clusterId, serverId);
+    await retirePending(serverId, null);
+  } catch (e) {
+    warn(clusterId, e);
+    await retirePending(serverId, nowIso());
+  }
+}
+
+/** The sweep's half: a leader no cluster uses any more is uninstalled once its server answers. */
+// ponytail: one that leads another cluster again keeps the lost cluster's sealed bundles; drop them here if it matters.
+export async function reconcileRetiredLeaders(): Promise<void> {
+  const pending = await getDb()
+    .select({ id: serversTable.id })
+    .from(serversTable)
+    .where(isNotNull(serversTable.clusterLeaderRetirePendingAt));
+  for (const { id } of pending) {
+    const leads = await getDb()
+      .select({ id: clustersTable.id })
+      .from(clustersTable)
+      .where(eq(clustersTable.leaderServerId, id))
+      .limit(1);
+    try {
+      if (leads.length === 0) await retireLeader("", id);
+    } catch {
+      continue;
+    }
+    await retirePending(id, null);
+  }
+}
+
 /** "Run the leader on another server": the picked server's agent installs it, and it leads from the next epoch. */
 export async function moveClusterLeader(
   clusterId: string,
@@ -187,11 +231,8 @@ export async function moveClusterLeader(
   for (const f of push.failed) warn(clusterId, f.message);
   // A new leader is a new key: what is live is sealed to it and sent, and the key of the server it left is retired.
   await reconcileClusterBundles(clusterId).catch((e) => warn(clusterId, e));
-  // ponytail: a server that is offline now keeps its idle leader installed; sweep for those if it ever matters.
   if (cluster.leaderServerId)
-    await retireLeader(clusterId, cluster.leaderServerId).catch((e) =>
-      warn(clusterId, e),
-    );
+    await retireLeaderOrQueue(clusterId, cluster.leaderServerId);
   await recordActivity(
     "server",
     `Moved the leader of cluster ${cluster.name} to ${target.name}`,

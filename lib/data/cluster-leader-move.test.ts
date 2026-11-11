@@ -13,6 +13,7 @@ import { ensureClusterLeader, getClusterLeader } from "./clusters/leader";
 import {
   listClusterLeaderChoices,
   moveClusterLeader,
+  reconcileRetiredLeaders,
 } from "./clusters/leader-move";
 import { getClusterById } from "./clusters/roster";
 import { keyFingerprint } from "./clusters/bundles";
@@ -341,4 +342,36 @@ test("the picker offers every server, Deplo's own machine first, and says which 
     asTeamB(() => listClusterLeaderChoices(cluster.id)),
     /instance admin/i,
   );
+});
+
+test("a leader left on a server that did not answer is taken away once it answers", async () => {
+  const cluster = await eu();
+  hosts.srv_4.proxy.yaml = TRAEFIK;
+  await asAdmin(() => moveClusterLeader(cluster.id, "srv_4"));
+  hosts.srv_4.unreachable = true;
+
+  await asAdmin(() => moveClusterLeader(cluster.id, null));
+  assert.equal(hosts.srv_4.removes, 0, "it could not be asked");
+  await reconcileRetiredLeaders();
+  assert.equal(hosts.srv_4.removes, 0, "still away");
+
+  hosts.srv_4.unreachable = false;
+  await reconcileRetiredLeaders();
+  assert.equal(hosts.srv_4.removes, 1);
+  assert.doesNotMatch(hosts.srv_4.proxy.yaml, /cluster\/relay/);
+  await reconcileRetiredLeaders();
+  assert.equal(hosts.srv_4.removes, 1, "asked once");
+});
+
+test("a server that leads again before it could be asked keeps its leader", async () => {
+  const cluster = await eu();
+  await asAdmin(() => moveClusterLeader(cluster.id, "srv_4"));
+  hosts.srv_4.unreachable = true;
+  await asAdmin(() => moveClusterLeader(cluster.id, null));
+  hosts.srv_4.unreachable = false;
+  await asAdmin(() => moveClusterLeader(cluster.id, "srv_4"));
+
+  await reconcileRetiredLeaders();
+
+  assert.equal(hosts.srv_4.removes, 0);
 });

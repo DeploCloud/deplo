@@ -40,7 +40,7 @@ import { dropLeaderBundle, forgetLeaderCluster } from "./bundle-calls";
 import { hostFor, keyRows } from "./bundles";
 import { planClusterForwarding } from "./forwarders";
 import { leaderHostOf } from "./host";
-import { retireLeader } from "./leader-move";
+import { reconcileRetiredLeaders, retireLeaderOrQueue } from "./leader-move";
 import { forgetLeaderRoster, type LeaderSnapshot } from "./leader-sync";
 import { clusterOfServer } from "./members";
 import { listMemberWorkloads } from "./member-workloads";
@@ -501,9 +501,7 @@ async function retireCluster(cluster: Cluster): Promise<void> {
       );
   }
   if (cluster.leaderServerId)
-    await retireLeader(cluster.id, cluster.leaderServerId).catch((e) =>
-      warn(cluster.id, e),
-    );
+    await retireLeaderOrQueue(cluster.id, cluster.leaderServerId);
   const left = await getDb()
     .select({ id: clustersTable.id })
     .from(clustersTable)
@@ -607,6 +605,7 @@ async function forgetOrphans(hostId: string): Promise<void> {
 export async function reconcileDissolvedClusters(): Promise<void> {
   if (await instanceFrozen()) return;
   await reconcileLeftMembers();
+  await reconcileRetiredLeaders();
   const own = await leaderHostOf(null);
   const clusters = await getDb()
     .select({ leader: clustersTable.leaderServerId })
