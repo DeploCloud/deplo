@@ -103,3 +103,6 @@ export const CLUSTER_FAILOVER_CAPABILITY = "cluster.failover";
 
 // The agent holds workloads' names on its Environments' networks and relays them to the member that runs them (#200).
 export const CLUSTER_FORWARDERS_CAPABILITY = "cluster.forwarders";
+
+// The agent holds a marked service back until the App is ready: a tunnel's connector must not send visitors to an App that is not up.
+export const START_AFTER_READY_CAPABILITY = "deploy.start-after-ready";

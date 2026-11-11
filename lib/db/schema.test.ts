@@ -73,6 +73,8 @@ const CONTROL_PLANE = [
   "failover_bundle_pushes",
   "docker_cleanup_policy",
   "docker_cleanup_policy_scopes",
+  "app_tunnels",
+  "app_tunnel_domains",
   "dns_provider_teams",
   "dns_provider_tunnels",
   "dns_providers",

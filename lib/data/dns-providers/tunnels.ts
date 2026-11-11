@@ -8,6 +8,7 @@ import * as cloudflare from "../../cloudflare/tunnel-api";
 import { decryptSecretOrThrow } from "../../crypto";
 import { getDb } from "../../db/client";
 import {
+  appTunnels,
   dnsProviders,
   dnsProviderTunnels,
   domainDnsRecords,
@@ -176,9 +177,25 @@ export async function retireProviderTunnels(
     })
     .from(dnsProviderTunnels)
     .where(eq(dnsProviderTunnels.providerId, providerId));
-  if (tunnels.length === 0) return null;
+  const ownTunnels = await getDb()
+    .select({ tunnelId: appTunnels.tunnelId })
+    .from(appTunnels)
+    .where(eq(appTunnels.providerId, providerId));
+  if (tunnels.length === 0 && ownTunnels.length === 0) return null;
   const provider = await loadProviderSecret(providerId).catch(() => null);
   const problems: string[] = [];
+  for (const t of ownTunnels) {
+    if (!provider) continue;
+    try {
+      await cloudflare.deleteTunnel(
+        provider.token,
+        provider.accountId,
+        t.tunnelId,
+      );
+    } catch (e) {
+      problems.push(`Cloudflare still has a tunnel: ${messageOf(e)}`);
+    }
+  }
   const { fetchHostInfo, withTraefikStackLock, applyTraefikConfig } =
     await import("../../infra/agent-client/host-ops");
 

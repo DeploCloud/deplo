@@ -12,6 +12,8 @@ import {
   withPanelTunnel,
   withTunnelConnector,
 } from "./panel-tunnel-stack";
+import { appConnectorService, withAppConnector } from "./app-connector";
+import { MASKED, redactComposeForDisplay } from "./compose-redact";
 import { domainScheme, domainTlsConfig } from "./domains";
 
 const STACK = `services:
@@ -70,4 +72,50 @@ test("a tunnel domain routes plain HTTP on web, whatever its certificate says", 
     "https",
     "its public address is still https",
   );
+});
+
+const APP_STACK = `services:
+  deplo-web:
+    image: deplo/web:1
+    networks:
+      - deplo
+networks:
+  deplo:
+    name: deplo-env-environ_1
+    external: true
+`;
+
+test("an App's own connector rides in its stack, on its network, marked to start after the App", () => {
+  const out = withAppConnector(APP_STACK, "web", "tok_ABC-123");
+  const doc = parseDocument(out).toJS() as {
+    services: Record<string, Record<string, unknown>>;
+    networks: Record<string, unknown>;
+  };
+  const name = appConnectorService("web");
+  assert.equal(name, "deplo-connector_web");
+  assert.deepEqual(Object.keys(doc.services), ["deplo-web", name]);
+  const connector = doc.services[name];
+  assert.deepEqual(connector.environment, ["TUNNEL_TOKEN=tok_ABC-123"]);
+  assert.deepEqual(connector.labels, { "deplo.start-after-ready": "true" });
+  // The stack's one network is the Environment's, where the proxy answers by name.
+  assert.deepEqual(connector.networks, ["deplo"]);
+  assert.deepEqual(doc.networks, {
+    deplo: { name: "deplo-env-environ_1", external: true },
+  });
+  assert.equal(withAppConnector(out, "web", "tok_ABC-123"), out);
+
+  // A server's proxy starts its connector with the proxy: nothing to wait for there.
+  const proxy = parseDocument(
+    withTunnelConnector(STACK, "deplo-dns-tunnel-x", "tok"),
+  ).toJS() as { services: Record<string, Record<string, unknown>> };
+  assert.equal(proxy.services["deplo-dns-tunnel-x"].labels, undefined);
+});
+
+test("the run token is masked in a stack shown to a user", () => {
+  const shown = redactComposeForDisplay(
+    withAppConnector(APP_STACK, "web", "tok_ABC-123"),
+  );
+  assert.doesNotMatch(shown, /tok_ABC-123/);
+  assert.match(shown, new RegExp(`TUNNEL_TOKEN=${MASKED}`));
+  assert.match(shown, /deplo\.start-after-ready: "true"/);
 });

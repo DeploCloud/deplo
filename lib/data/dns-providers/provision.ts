@@ -21,6 +21,7 @@ import { nowIso } from "../../ids";
 import { requireActiveTeamId } from "../../membership";
 import { loadAppGraph } from "../app-graph-load";
 import { appServerAddresses } from "../domains/dns-check";
+import { ensureAppTunnel, settleAppTunnel } from "../clusters/app-tunnel";
 import {
   ensureServerTunnel,
   loadProviderSecret,
@@ -118,6 +119,8 @@ export interface ProvisionedDns {
   tunnelRowId: string | null;
   // Deplo made the record and may delete it; a record that already pointed here is left alone.
   created: boolean;
+  // The record points at a cluster App's own tunnel, which the domain must be registered under.
+  appId?: string;
 }
 
 const RECORD_COMMENT = "Deplo app";
@@ -169,16 +172,40 @@ export async function provisionDomainDns(input: {
   const app = await loadAppGraph(input.appId);
   if (!app?.serverId)
     throw new Error("This app has no server yet, so it cannot use a tunnel");
-  const tunnel = await ensureServerTunnel(
-    provider,
-    app.serverId,
+  if (!app.clusterId)
+    return pointAtServerTunnel(provider, app.serverId, input.hostname);
+  // A cluster App's connector runs wherever the App does, so its tunnel is the App's own.
+  const own = await ensureAppTunnel({ id: app.id, slug: app.slug }, provider);
+  const pointed = await cloudflare.pointAtTunnel(
+    provider.token,
+    provider.zoneId,
     input.hostname,
+    own.tunnelId,
+    () => false,
+    RECORD_COMMENT,
   );
+  return {
+    providerId: provider.id,
+    zoneId: provider.zoneId,
+    recordId: pointed.id,
+    tunnelRowId: null,
+    created: pointed.created,
+    appId: app.id,
+  };
+}
+
+/** A CNAME to the provider's tunnel on this server, whose connector runs beside the server's proxy. */
+export async function pointAtServerTunnel(
+  provider: ProviderSecret,
+  serverId: string,
+  hostname: string,
+): Promise<ProvisionedDns> {
+  const tunnel = await ensureServerTunnel(provider, serverId, hostname);
   try {
     const pointed = await cloudflare.pointAtTunnel(
       provider.token,
       provider.zoneId,
-      input.hostname,
+      hostname,
       tunnel.tunnelId,
       () => false,
       RECORD_COMMENT,
@@ -224,6 +251,7 @@ export async function undoProvision(dns: ProvisionedDns): Promise<void> {
       .deleteDnsRecord(provider.token, dns.zoneId, dns.recordId)
       .catch(() => {});
   if (dns.tunnelRowId) await resyncTunnel(provider, dns.tunnelRowId);
+  if (dns.appId) await settleAppTunnel(dns.appId).catch(() => {});
 }
 
 type HeldRecord = {

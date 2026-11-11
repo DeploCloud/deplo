@@ -20,6 +20,7 @@ import {
   recordPlacement,
 } from "../clusters/placement";
 import { listClustersForTeam } from "../clusters/roster";
+import { joinAppTunnel, leaveAppTunnel } from "../clusters/app-tunnel";
 import { canHostWorkloads, listServersForTeam } from "../servers/roster";
 import { hostPortClaimed } from "../host-ports";
 import { assertNoNameClash, withNetworkLock } from "../name-clash";
@@ -126,6 +127,23 @@ export async function moveAppToCluster(
     members: [member],
     epoch: cluster.leaderEpoch,
   });
+}
+
+// A tunnel that could not be set up never blocks the move: the domains keep their address, and Activity says so.
+async function tunnelWarn(
+  app: { id: string; teamId: string },
+  did: string,
+  e: unknown,
+): Promise<void> {
+  const why = e instanceof Error ? e.message : String(e);
+  console.warn(`[app-tunnel] ${app.id}: ${why}`);
+  await recordActivity(
+    "domain",
+    `Could not ${did} this App's Cloudflare Tunnel, so its domains keep their address: ${why}`,
+    "Deplo",
+    app.id,
+    app.teamId,
+  );
 }
 
 async function writeAppSource(
@@ -369,6 +387,14 @@ async function writeAppSource(
     current.clusterId !== move?.cluster?.id
   )
     await dropFailoverBundle(id, current.clusterId).catch(() => {});
+  // Joining gives the App its own tunnel before the deploy that starts its connector; leaving points DNS back.
+  const moved = { id, teamId: membership.teamId };
+  if (after.moved && move?.cluster && !current?.clusterId)
+    await joinAppTunnel(id, user).catch((e) => tunnelWarn(moved, "set up", e));
+  if (after.moved && current?.clusterId && !move?.cluster)
+    await leaveAppTunnel(id, user).catch((e) =>
+      tunnelWarn(moved, "switch back from", e),
+    );
 
   if (after.moved && (move ? move.deploy : input.source !== "upload")) {
     try {

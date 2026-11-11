@@ -2,6 +2,8 @@ import { appTraefikOverrides } from "../../data/apps/traefik-labels";
 import "server-only";
 
 import { loadAppGraph } from "../../data/app-graph-load";
+import { loadAppConnectorToken } from "../../data/clusters/app-tunnel";
+import { withAppConnector } from "../app-connector";
 import { basicAuthUsersValue } from "../../data/basic-auth";
 import { primaryDomainName } from "../../data/domains/primary-domain";
 import { withKeyedLock } from "../../data/keyed-mutex";
@@ -132,6 +134,10 @@ async function rerouteAppLocked(
         replicas: parseStackReplicas(current.yaml, name),
       });
     }
+
+    // The App's tunnel connector is part of its stack, so a re-render keeps it.
+    const connector = await loadAppConnectorToken(appId);
+    if (connector) rendered = withAppConnector(rendered, deployKey, connector);
 
     if (current.yaml === rendered) return "unchanged";
 

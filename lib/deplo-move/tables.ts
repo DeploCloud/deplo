@@ -102,6 +102,9 @@ export const MOVE_TABLES: Readonly<Record<string, TablePolicy>> = {
   // Derived: the next deploy on the new Deplo takes them again.
   deployment_screenshots: { kind: "skip" },
   deployments: { kind: "copy", nullOnCopy: ["preview_id"] },
+  // The tunnel and its connectors live on, so the copy keeps the run token the connectors hold.
+  app_tunnels: { kind: "copy", rekey: { token_enc: SECRET } },
+  app_tunnel_domains: COPY,
   dns_provider_teams: COPY,
   // A tunnel's connector runs in a server's proxy stack the old Deplo wrote; the new one makes its own.
   dns_provider_tunnels: { kind: "skip" },

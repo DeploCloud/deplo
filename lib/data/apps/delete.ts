@@ -1,5 +1,6 @@
 import "server-only";
 
+import { retireAppTunnel } from "../clusters/app-tunnel";
 import { dropFailoverBundle } from "../clusters/bundles";
 import { clearPlacement } from "../clusters/placement";
 import { eq, inArray, isNotNull } from "drizzle-orm";
@@ -76,6 +77,7 @@ async function destroyApp(project: App, actor: string): Promise<void> {
       }).catch(() => {});
     await removeUploads(id).catch(() => {});
 
+    await retireAppTunnel(id).catch(() => null);
     const heldDns = await takeAppDns([id]).catch(() => []);
     await getDb().delete(appsTable).where(eq(appsTable.id, id));
     await clearPlacement("app", id).catch(() => {});
