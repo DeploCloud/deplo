@@ -95,14 +95,11 @@ export async function imageArchs(
   return here ? [here] : [];
 }
 
-/**
- * What a move that deploys again can land on. A built App is built again where it lands, so only a pulled
- * image restricts it; a database always runs a pulled image.
- */
-export async function redeployArchs(
+/** The image a placed App or database runs, and whether Deplo pulls it rather than builds it. */
+async function imageOf(
   kind: "app" | "database",
   id: string,
-): Promise<string[]> {
+): Promise<{ image: string; pulled: boolean; serverId: string } | null> {
   if (kind === "database") {
     const [db] = await getDb()
       .select({
@@ -114,11 +111,12 @@ export async function redeployArchs(
       .from(databasesTable)
       .where(eq(databasesTable.id, id))
       .limit(1);
-    if (!db) return [];
-    return imageArchs(
-      effectiveDatabaseImage({ ...db, type: db.type as DatabaseType }),
-      db.serverId,
-    );
+    if (!db) return null;
+    const image = effectiveDatabaseImage({
+      ...db,
+      type: db.type as DatabaseType,
+    });
+    return { image, pulled: true, serverId: db.serverId };
   }
   const [app] = await getDb()
     .select({
@@ -129,9 +127,25 @@ export async function redeployArchs(
     .from(appsTable)
     .where(eq(appsTable.id, id))
     .limit(1);
-  return app?.source === "docker-image" && app.dockerImage
-    ? imageArchs(app.dockerImage, app.serverId)
-    : [];
+  if (!app) return null;
+  const pulled = app.source === "docker-image" && Boolean(app.dockerImage);
+  return {
+    image: pulled ? (app.dockerImage ?? "") : "",
+    pulled,
+    serverId: app.serverId,
+  };
+}
+
+/**
+ * What a move that deploys again can land on. A built App is built again where it lands, so only a pulled
+ * image restricts it; a database always runs a pulled image.
+ */
+export async function redeployArchs(
+  kind: "app" | "database",
+  id: string,
+): Promise<string[]> {
+  const w = await imageOf(kind, id);
+  return w?.pulled ? imageArchs(w.image, w.serverId) : [];
 }
 
 /** "x86" when a workload that runs on `archs` cannot use every one of these servers; null when it can. */
@@ -142,6 +156,28 @@ export function onlyArch(
   return archs?.length && members.some((m) => !archs.includes(m.arch))
     ? archWords(archs)
     : null;
+}
+
+function memberArchs(clusterId: string) {
+  return getDb()
+    .select({ name: serversTable.name, arch: serversTable.hostArch })
+    .from(membersTable)
+    .innerJoin(serversTable, eq(serversTable.id, membersTable.serverId))
+    .where(eq(membersTable.clusterId, clusterId));
+}
+
+/** "x86" when a failover of this workload cannot use every server of its cluster; null when it can. */
+export async function failoverOnly(
+  kind: "app" | "database",
+  id: string,
+  clusterId: string,
+): Promise<string | null> {
+  const w = await imageOf(kind, id);
+  if (!w) return null;
+  return onlyArch(
+    await imageArchs(w.image, w.serverId, { lookup: false }),
+    await memberArchs(clusterId),
+  );
 }
 
 export interface FailoverReach {
@@ -167,11 +203,7 @@ export async function appFailoverReach(app: {
   // A cluster the team can no longer see is not described to it.
   const cluster = await getCluster(app.clusterId);
   if (!cluster) return none;
-  const members = await getDb()
-    .select({ name: serversTable.name, arch: serversTable.hostArch })
-    .from(membersTable)
-    .innerJoin(serversTable, eq(serversTable.id, membersTable.serverId))
-    .where(eq(membersTable.clusterId, cluster.id));
+  const members = await memberArchs(cluster.id);
   const archs = await imageArchs(
     app.source === "docker-image" ? (app.dockerImage ?? "") : "",
     app.serverId,

@@ -15,10 +15,13 @@ import { createApp } from "./apps/create";
 import { moveAppToCluster } from "./apps/source";
 import { seedDatabase } from "./backup-test-helpers";
 import {
+  apply,
   asAdmin,
   databaseLab,
   db,
+  deploSaid,
   eu,
+  event,
   leaderHost,
   main,
   web,
@@ -290,6 +293,36 @@ test("the leader is told what each workload runs on, so a failover follows the s
 
   await pushDatabaseBundle("db_main");
   assert.deepEqual(metaOf("database", "db_main").archs, BOTH);
+});
+
+test("an App left waiting on a mixed cluster is told which kind of server it waits for", async () => {
+  const cluster = await mixed({ srv_3: "arm64" });
+  await web(cluster.id, "srv_2");
+  await main(cluster.id);
+  // The official image was read at a deploy: the database can use every server, the built App only x86.
+  fakeRegistry({ "library/postgres:16-alpine": BOTH });
+  await imageArchs("postgres:16-alpine", "srv_2");
+
+  await apply(
+    cluster.id,
+    event(cluster.id, "failover", {
+      member: "srv_2",
+      reason: "stopped_answering",
+      moved: [],
+      waiting: [
+        { kind: "database", workloadId: "db_main", reason: "no_room" },
+        { kind: "app", workloadId: "prj_web", reason: "no_architecture" },
+      ],
+    }),
+  );
+
+  assert.deepEqual(
+    (await deploSaid()).filter((m) => /waiting for room/.test(m)),
+    [
+      "main is waiting for room in eu: server-2 stopped answering and no other server has room yet",
+      "web is waiting for room in eu: server-2 stopped answering and no other x86 server has room yet",
+    ],
+  );
 });
 
 const reach = async () =>
