@@ -59,16 +59,25 @@ export async function replicaSpread(app: App): Promise<ReplicaSpread> {
   );
   if (able.includes(false)) return { kind: "together", why: "agent" };
   const on = distinct(await placed(app.id)).length;
-  return {
-    kind: "spread",
-    servers: on > 1 ? on : Math.min(app.replicas, members.length),
-  };
+  if (on > 1) return { kind: "spread", servers: on };
+  // Before the first placement: only the servers the leader could pick, never one being emptied or of another kind.
+  const archs = await imageArchs(
+    app.source === "docker-image" ? (app.dockerImage ?? "") : "",
+    app.serverId,
+    { lookup: false },
+  );
+  const fit = members.filter(
+    (m) => !m.emptying && (archs.length === 0 || archs.includes(m.arch)),
+  ).length;
+  return { kind: "spread", servers: Math.min(app.replicas, fit) };
 }
 
 /** The sentence the Replicas setting shows about a cluster App, or null when there is nothing to say. */
 export async function replicaSpreadNote(app: App): Promise<string | null> {
   const s = await replicaSpread(app);
-  if (s.kind === "spread") return spreadSentence(s.servers);
+  // One server to pick from is no spread to announce yet.
+  if (s.kind === "spread")
+    return s.servers > 1 ? spreadSentence(s.servers) : null;
   if (s.kind === "together")
     return s.why === "agent" ? SPREAD_AGENT : SPREAD_NO_CLOUDFLARE;
   return null;
