@@ -28,6 +28,7 @@ import {
 } from "./leader-sync";
 import { pushClusterRoster, relayAddress, syncLeaderRelayRoute } from "./relay";
 import { getClusterById } from "./roster";
+import { messageOf } from "../../utils";
 
 // Running the leader on another server (spec #176).
 // https://deplo.build/docs/operations/clusters/leader#run-the-leader-on-another-server
@@ -36,9 +37,7 @@ const NO_HOST =
   "Deplo's own machine is not connected as a server yet, so the leader cannot run on it.";
 
 const warn = (clusterId: string, e: unknown) =>
-  console.warn(
-    `[cluster-leader] ${clusterId}: ${e instanceof Error ? e.message : String(e)}`,
-  );
+  console.warn(`[cluster-leader] ${clusterId}: ${messageOf(e)}`);
 
 /**
  * Makes another leader lead the cluster. The stored epoch rises first and the leader is told after, so no two

@@ -19,6 +19,7 @@ import { backupToDestination } from "../backup-transport";
 import { databaseDescriptor } from "../backups/target-descriptor";
 import { instanceFrozen } from "../deplo-move/freeze";
 import { getDestinationWithSecretsForTeam } from "../destinations/credentials";
+import { messageOf } from "../../utils";
 
 // Postgres on a cluster leaves each finished piece of its change log on its member; this collects them into the
 // folder beside the latest base backup. https://deplo.build/docs/operations/clusters/databases
@@ -139,9 +140,7 @@ async function shipAll(): Promise<void> {
     const db = assembleDatabase(row);
     if (!archivesChangeLog(db) || db.status === "provisioning") continue;
     await shipOne(db).catch((e) =>
-      console.warn(
-        `[change-log] ${db.id}: ${e instanceof Error ? e.message : String(e)}`,
-      ),
+      console.warn(`[change-log] ${db.id}: ${messageOf(e)}`),
     );
   }
 }

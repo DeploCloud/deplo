@@ -53,11 +53,12 @@ import {
 } from "./relay";
 import { clusterMemberServerIds, getClusterById } from "./roster";
 import { stopClusterWatch } from "./watch-scheduler";
+import { messageOf } from "../../utils";
 
 // Taking a cluster apart: removing a member and deleting the cluster (spec #176).
 // https://deplo.build/docs/operations/clusters/manage-servers#remove-a-server
 
-const message = (e: unknown) => (e instanceof Error ? e.message : String(e));
+const message = (e: unknown) => messageOf(e);
 const warn = (clusterId: string, e: unknown) =>
   console.warn(`[cluster-dissolve] ${clusterId}: ${message(e)}`);
 

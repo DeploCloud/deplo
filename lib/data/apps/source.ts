@@ -53,6 +53,7 @@ import type { App, DeploySource } from "../../types/app";
 import type { Cluster } from "../../types/cluster";
 import type { Server } from "../../types/server";
 import type { GitRepo } from "../../types/build";
+import { messageOf } from "../../utils";
 
 export interface UpdateSourceInput {
   source: DeploySource;
@@ -137,7 +138,7 @@ async function tunnelWarn(
   did: string,
   e: unknown,
 ): Promise<void> {
-  const why = e instanceof Error ? e.message : String(e);
+  const why = messageOf(e);
   console.warn(`[app-tunnel] ${app.id}: ${why}`);
   await recordActivity(
     "domain",
@@ -465,7 +466,7 @@ async function applyAppSource(
     } catch (e) {
       throw new Error(
         `The move was saved, but starting the initial deploy on the new server ` +
-          `failed (${e instanceof Error ? e.message : String(e)}). Trigger a ` +
+          `failed (${messageOf(e)}). Trigger a ` +
           `production deploy to complete the move and migrate the data.`,
       );
     }

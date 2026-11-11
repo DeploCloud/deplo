@@ -51,6 +51,7 @@ import {
   rerouteDatabase,
   rerouteRequest,
 } from "./stack";
+import { messageOf } from "../../utils";
 
 // A cluster database's standby copy (spec #176, #218): placed by the leader on another member, following the
 // database over the relay, promoted on a failover. https://deplo.build/docs/operations/clusters/standby-copy
@@ -63,9 +64,7 @@ export function standbyPassword(databaseId: string): string {
 }
 
 const quietly = (what: string) => (e: unknown) =>
-  console.warn(
-    `[database-standby] ${what}: ${e instanceof Error ? e.message : String(e)}`,
-  );
+  console.warn(`[database-standby] ${what}: ${messageOf(e)}`);
 
 async function onServer<T>(
   serverId: string,
@@ -302,7 +301,7 @@ export async function setDatabaseStandby(
       await applySettings(db, engine).catch(quietly(db.host));
       await tellCluster({ ...db, standby: false }, cluster);
       throw new Error(
-        `The standby copy of ${db.name} could not be made: ${e instanceof Error ? e.message : String(e)}`,
+        `The standby copy of ${db.name} could not be made: ${messageOf(e)}`,
       );
     }
     publishDatabaseChanged(id);
@@ -405,7 +404,7 @@ export async function syncStandby(id: string): Promise<void> {
       await tellCluster(db, cluster);
       await recordOnce(
         db,
-        `${db.name} has no standby copy right now. ${e instanceof Error ? e.message : String(e)}`,
+        `${db.name} has no standby copy right now. ${messageOf(e)}`,
         "database",
       );
     }

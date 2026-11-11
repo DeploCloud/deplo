@@ -34,6 +34,7 @@ import {
 import { leaderHostOf } from "./host";
 import { isBuiltImage } from "./images";
 import { getClusterById } from "./roster";
+import { messageOf } from "../../utils";
 
 const ACTOR = "Deplo";
 const KIND = "app";
@@ -440,11 +441,7 @@ const inFlight = new Set<Promise<void>>();
 /** Runs a bundle's push in the background: what called it never waits on, or fails with, the leader. */
 export function inBackground(id: string, push: () => Promise<void>): void {
   const p: Promise<void> = push()
-    .catch((e) =>
-      console.warn(
-        `[failover-bundle] ${id}: ${e instanceof Error ? e.message : String(e)}`,
-      ),
-    )
+    .catch((e) => console.warn(`[failover-bundle] ${id}: ${messageOf(e)}`))
     .finally(() => void inFlight.delete(p));
   inFlight.add(p);
 }
@@ -625,8 +622,6 @@ export async function reconcileFailoverBundles(): Promise<void> {
     .from(clustersTable);
   for (const r of rows)
     await reconcileClusterBundles(r.id).catch((e) =>
-      console.warn(
-        `[failover-bundle] ${r.id}: ${e instanceof Error ? e.message : String(e)}`,
-      ),
+      console.warn(`[failover-bundle] ${r.id}: ${messageOf(e)}`),
     );
 }

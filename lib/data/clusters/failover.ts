@@ -37,6 +37,7 @@ import {
   listWorkloadPlacements,
   recordPlacement,
 } from "./placement";
+import { messageOf } from "../../utils";
 
 // What the control plane does with a failover the leader reports (spec #176): words for the user, a new address
 // for an App on a generated one, and one alert when something is left waiting. The leader has already moved it.
@@ -99,9 +100,7 @@ export async function backupClock(
 }
 
 const quietly = (what: string) => (e: unknown) =>
-  console.warn(
-    `[cluster-failover] ${what}: ${e instanceof Error ? e.message : String(e)}`,
-  );
+  console.warn(`[cluster-failover] ${what}: ${messageOf(e)}`);
 
 /**
  * One database was restored on its new member: say from which backup, point a published address at the new
@@ -258,7 +257,7 @@ export async function applyFailedOver(
     // The sweep tries again; until then the App runs but its generated address still names the old server.
     await recordActivity(
       "app",
-      `${app.name} runs on ${to}, but its generated address could not be updated yet: ${e instanceof Error ? e.message : String(e)}`,
+      `${app.name} runs on ${to}, but its generated address could not be updated yet: ${messageOf(e)}`,
       ACTOR,
       app.id,
       app.teamId,
@@ -504,9 +503,7 @@ export async function adoptLeaderMoves(
           epoch: view.epoch || cluster.leaderEpoch,
         });
       } catch (e) {
-        console.warn(
-          `[cluster-watch] ${cluster.id}: ${e instanceof Error ? e.message : String(e)}`,
-        );
+        console.warn(`[cluster-watch] ${cluster.id}: ${messageOf(e)}`);
         continue;
       }
     for (const m of moves) {

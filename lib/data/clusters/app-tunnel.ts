@@ -36,6 +36,7 @@ import {
 import { appServerAddresses, checkDomainDns } from "../domains/dns-check";
 import { certProviderForDnsWithinQuota } from "../domains/letsencrypt-quota";
 import { withKeyedLock } from "../keyed-mutex";
+import { messageOf } from "../../utils";
 
 const ACTOR = "Deplo";
 const RECORD_COMMENT = "Deplo app";
@@ -637,8 +638,4 @@ export async function clusterAddressNote(app: {
   const viewer = await getCurrentUser();
   const covered = await coveredDomains(app, viewer?.id ?? "");
   return covered.length > 0 ? null : ADDRESS_CHANGES_NOTE;
-}
-
-function messageOf(e: unknown): string {
-  return e instanceof Error ? e.message : String(e);
 }

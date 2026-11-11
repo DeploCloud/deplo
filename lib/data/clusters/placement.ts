@@ -21,6 +21,7 @@ import { syncNameForwardersSoon } from "./forwarders";
 import { leaderHost } from "./host";
 import { memberIsEmptying } from "./member-workloads";
 import { clusterMemberServerIds, getCluster } from "./roster";
+import { messageOf } from "../../utils";
 
 export type WorkloadKind = "app" | "database";
 
@@ -172,7 +173,7 @@ async function askLeader(
     );
   } catch (e) {
     throw new PlacementUnavailableError(
-      `Cluster ${cluster.name}'s leader did not answer, so nothing was placed: ${e instanceof Error ? e.message : String(e)}`,
+      `Cluster ${cluster.name}'s leader did not answer, so nothing was placed: ${messageOf(e)}`,
     );
   }
   const answer = parseAnswer(raw);

@@ -17,6 +17,7 @@ import { withKeyedLock } from "../keyed-mutex";
 import { serverWildcardIp } from "../servers/addresses";
 import { getServerById } from "../servers/roster";
 import { recordOnce } from "./bundles";
+import { messageOf } from "../../utils";
 
 /**
  * A generated address carries its server's IP, so an App the leader moved answers on a name that points at the
@@ -42,7 +43,7 @@ export async function rehostClusterApp(appId: string): Promise<string[]> {
       } catch (e) {
         await recordOnce(
           app,
-          `${app.name} moved to another server of its cluster, but its generated address stays ${d.name}: ${e instanceof Error ? e.message : String(e)}`,
+          `${app.name} moved to another server of its cluster, but its generated address stays ${d.name}: ${messageOf(e)}`,
         );
       }
     }
@@ -96,8 +97,6 @@ export async function rehostClusterAddresses(): Promise<void> {
     .where(isNotNull(appsTable.clusterId));
   for (const r of rows)
     await rehostClusterApp(r.id).catch((e) =>
-      console.warn(
-        `[cluster-address] ${r.id}: ${e instanceof Error ? e.message : String(e)}`,
-      ),
+      console.warn(`[cluster-address] ${r.id}: ${messageOf(e)}`),
     );
 }

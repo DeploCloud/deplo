@@ -72,6 +72,11 @@ export function errorMessage(e: unknown, fallback: string): string {
   return e instanceof Error && e.message ? e.message : fallback;
 }
 
+/** What went wrong, as text, whatever was thrown. */
+export function messageOf(e: unknown): string {
+  return e instanceof Error ? e.message : String(e);
+}
+
 export function plural(n: number, one: string, many: string): string {
   return `${n} ${n === 1 ? one : many}`;
 }

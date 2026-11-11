@@ -61,6 +61,7 @@ import {
   standbyContainer,
   standbyMembersRefusal,
 } from "../../databases/standby";
+import { messageOf } from "../../utils";
 
 // A cluster database's failover bundle: its stack, and the backup another member restores before it starts (#202).
 // https://deplo.build/docs/operations/clusters/failover
@@ -306,9 +307,7 @@ const inFlight = new Set<Promise<void>>();
 export function scheduleDatabaseBundle(databaseId: string): void {
   const p: Promise<void> = pushDatabaseBundle(databaseId)
     .catch((e) =>
-      console.warn(
-        `[failover-bundle] ${databaseId}: ${e instanceof Error ? e.message : String(e)}`,
-      ),
+      console.warn(`[failover-bundle] ${databaseId}: ${messageOf(e)}`),
     )
     .finally(() => void inFlight.delete(p));
   inFlight.add(p);
@@ -370,8 +369,6 @@ export async function reconcileDatabaseBundles(): Promise<void> {
     .from(clustersTable);
   for (const r of rows)
     await reconcileClusterDatabaseBundles(r.id).catch((e) =>
-      console.warn(
-        `[failover-bundle] ${r.id}: ${e instanceof Error ? e.message : String(e)}`,
-      ),
+      console.warn(`[failover-bundle] ${r.id}: ${messageOf(e)}`),
     );
 }

@@ -17,6 +17,7 @@ import { failingClusterUpdate } from "./binary-rollout";
 import { leaderHostOf } from "./host";
 import { ensureClusterRelay, pushClusterRoster, relayAddress } from "./relay";
 import { clusterMemberServerIds, getClusterById } from "./roster";
+import { messageOf } from "../../utils";
 
 export const OWN_SERVER_WARNING =
   "If Deplo's own server stops, its Apps cannot move. Run the leader on another server to fix this.";
@@ -191,8 +192,6 @@ async function bringUpRelay(
     for (const f of push.failed)
       console.warn(`[cluster-relay] ${cluster.id}: ${f.message}`);
   } catch (e) {
-    console.warn(
-      `[cluster-relay] ${cluster.id}: ${e instanceof Error ? e.message : String(e)}`,
-    );
+    console.warn(`[cluster-relay] ${cluster.id}: ${messageOf(e)}`);
   }
 }

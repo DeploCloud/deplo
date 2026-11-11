@@ -30,6 +30,7 @@ import {
   refusalSentence,
 } from "./placement";
 import { getClusterById } from "./roster";
+import { messageOf } from "../../utils";
 
 // https://deplo.build/docs/operations/clusters/manage-servers#empty-a-server
 
@@ -117,9 +118,7 @@ async function assertRoomElsewhere(
 // The leader hears of it now; the watch tick sends the roster again if this one is lost.
 async function tellLeader(cluster: Cluster): Promise<void> {
   await pushLeaderRoster(cluster).catch((e) =>
-    console.warn(
-      `[cluster-empty] ${cluster.id}: ${e instanceof Error ? e.message : String(e)}`,
-    ),
+    console.warn(`[cluster-empty] ${cluster.id}: ${messageOf(e)}`),
   );
 }
 
@@ -338,7 +337,7 @@ async function move(
       .where(eq(appsTable.id, w.id));
 }
 
-const message = (e: unknown) => (e instanceof Error ? e.message : String(e));
+const message = (e: unknown) => messageOf(e);
 
 async function halt(m: Member, cluster: Cluster, why: string): Promise<void> {
   const stopped = await getDb()

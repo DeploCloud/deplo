@@ -16,6 +16,7 @@ import { superviseClusterLeader } from "./leader-standby";
 import { pushLeaderRoster } from "./leader-sync";
 import { getClusterById } from "./roster";
 import { runClusterWatch } from "./watch";
+import { messageOf } from "../../utils";
 
 // Starts a watch on every cluster's leader and keeps the leader's roster current; one Deplo instance holds the lease.
 export const CLUSTER_WATCH_LEASE = "cluster-watch";
@@ -80,9 +81,7 @@ export async function runClusterWatchTick(): Promise<void> {
     const leading = (state.leading ??= new Map());
     for (const id of ids) {
       await superviseClusterLeader(id).catch((e) =>
-        console.warn(
-          `[cluster-leader] ${id}: ${e instanceof Error ? e.message : String(e)}`,
-        ),
+        console.warn(`[cluster-leader] ${id}: ${messageOf(e)}`),
       );
       const cluster = await getClusterById(id);
       const host = (cluster && (await leaderHost(cluster))?.id) || "";

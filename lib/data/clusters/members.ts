@@ -45,6 +45,7 @@ import { listMemberWorkloads, type MemberWorkload } from "./member-workloads";
 import { recordJoinedPlacements } from "./placement";
 import { pushClusterRoster } from "./relay";
 import { getCluster, getClusterById } from "./roster";
+import { messageOf } from "../../utils";
 
 /** A join refused: `reasons` lists every blocker found, so the admin fixes them in one pass. */
 export class ClusterJoinRefusedError extends Error {
@@ -427,9 +428,7 @@ export async function addClusterMember(
   if (failoverOn(members.length)) await ensureVolumeAppBackups(clusterId);
   // A backup made while the cluster was smaller may sit where no failover can read it.
   await rehomeFailoverBackups(clusterId).catch((e) =>
-    console.warn(
-      `[cluster] ${clusterId}: ${e instanceof Error ? e.message : String(e)}`,
-    ),
+    console.warn(`[cluster] ${clusterId}: ${messageOf(e)}`),
   );
   // The member's own change already happened: the sweep puts the roster right if a relay is down.
   try {
@@ -440,9 +439,7 @@ export async function addClusterMember(
     for (const f of push.failed)
       console.warn(`[cluster-relay] ${clusterId}: ${f.serverId} ${f.message}`);
   } catch (e) {
-    console.warn(
-      `[cluster-relay] ${clusterId}: ${e instanceof Error ? e.message : String(e)}`,
-    );
+    console.warn(`[cluster-relay] ${clusterId}: ${messageOf(e)}`);
   }
   // An App that came along keeps its address wherever it runs from now: its domains switch without waiting for the sweep.
   if (came.appIds.length > 0)

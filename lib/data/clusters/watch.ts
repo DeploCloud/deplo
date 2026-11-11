@@ -27,6 +27,7 @@ import { reconcileClusterDatabaseBundles } from "./database-bundles";
 import { getClusterById } from "./roster";
 import { markPreviewsOffline } from "../../deploy/preview-lifecycle/cluster-member";
 import { getServerById } from "../servers/roster";
+import { messageOf } from "../../utils";
 
 // The control plane's long-lived watch on a cluster's leader, through the agent that supervises it (spec #176).
 // Events carry a sequence; the last one applied is stored, so a restart or a reconnect replays only what is new.
@@ -165,9 +166,7 @@ export async function applyLeaderEvent(
           });
         } catch (err) {
           // A placement naming a server that has left is stale; it must not hold up what follows it.
-          console.warn(
-            `[cluster-watch] ${clusterId}: ${err instanceof Error ? err.message : String(err)}`,
-          );
+          console.warn(`[cluster-watch] ${clusterId}: ${messageOf(err)}`);
         }
       }
       await advance();
@@ -250,9 +249,7 @@ export async function reconcileCluster(
     reconcileClusterDatabaseBundles,
   ])
     await resend(clusterId).catch((e) =>
-      console.warn(
-        `[failover-bundle] ${clusterId}: ${e instanceof Error ? e.message : String(e)}`,
-      ),
+      console.warn(`[failover-bundle] ${clusterId}: ${messageOf(e)}`),
     );
 }
 
@@ -283,7 +280,7 @@ export async function watchClusterOnce(
       await reconcileCluster(clusterId, lost);
     } catch (e) {
       console.warn(
-        `[cluster-watch] ${clusterId}: could not reconcile: ${e instanceof Error ? e.message : String(e)}`,
+        `[cluster-watch] ${clusterId}: could not reconcile: ${messageOf(e)}`,
       );
     }
   };
@@ -353,7 +350,7 @@ export async function runClusterWatch(
         await sleep(end === "reset" ? 0 : 1000, signal);
       }
     } catch (e) {
-      const message = e instanceof Error ? e.message : String(e);
+      const message = messageOf(e);
       if (message !== lastMessage)
         console.warn(`[cluster-watch] ${clusterId}: ${message}`);
       lastMessage = message;

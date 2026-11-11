@@ -30,7 +30,7 @@ import { databases as databasesTable } from "../../db/schema/control-plane/datab
 import { isDeploHostServer } from "../../deploy/domains";
 import { newId, nowIso } from "../../ids";
 import { requireActiveTeamId } from "../../membership";
-import { serverLabel } from "../../utils";
+import { serverLabel, messageOf } from "../../utils";
 import { recordActivity } from "../activity";
 import {
   assembleBackup,
@@ -211,9 +211,7 @@ export async function ensureFailoverBackup(
           : ""),
     );
   } catch (e) {
-    await say(
-      `Could not set up ${db.name}'s backup: ${e instanceof Error ? e.message : String(e)}`,
-    );
+    await say(`Could not set up ${db.name}'s backup: ${messageOf(e)}`);
   }
 }
 
